@@ -59,21 +59,24 @@ The eventual Pull Request (PR) for runtime changes will be specified only after 
 |------|--------|-----|
 | `docs/architecture/observability.md` | EDIT | Record the three-signal routing matrix, volume budgets, backend ownership, and failure isolation. |
 | `docs/architecture/runner_fleet.md` | EDIT | Reconcile runner-local logs, bounded fleet verbs, and any chosen trace-context propagation. |
-| `docs/architecture/data_flow.md` | EDIT if needed | Show the chosen cross-process trace and collector path only if the investigation changes the canonical flow. |
-| `docs/v2/pending/M139_003_P1_OBS_RUNNER_SIGNAL_IMPLEMENTATION.md` | CREATE if runtime work is justified | Pin the selected source changes, tests, and rollout without mixing investigation with implementation. |
+| `docs/architecture/data_flow.md` | NO CHANGE (reviewed) | Runtime flow does not change: this work selects and documents routing before code. |
+| `docs/v2/pending/M139_003_P1_OBS_BOUNDED_SIGNAL_EXPORT.md` | CREATE | Pin the selected source changes, tests, and rollout without mixing investigation with implementation. |
+| `audits/signal-routing.sh` | CREATE | Turn every completed investigation Dimension into a deterministic source-and-architecture assertion. |
+| `make/quality.mk` | EDIT | Run the signal-routing drift audit from the existing `lint-all` verification lane. |
 
-No source, schema, deployment, dashboard, or public API file is in scope for this investigation.
+No runtime source, schema, deployment, dashboard, or public API file is in scope. The audit script and its existing-lane verification hook are the only executable artifacts.
 
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — Observability (OBS) requires observable async failures; Ground in Source Truth (GRD) requires code-backed claims; No Dead Code (NDC) forbids speculative surfaces. Optional telemetry must degrade without blocking the product path.
 - **`dispatch/name_architecture.md`** — current architecture wins until this workstream reconciles it with source evidence.
 - **`dispatch/write_documentation.md`** and **`docs/DOCUMENTATION_RULES.md`** — architecture prose must state operational behavior directly and keep code identifiers exact.
+- **`dispatch/write_shell.md`** and **`dispatch/write_any.md`** — the deterministic audit remains portable, bounded, milestone-free, and free of hidden mutation.
 - **`docs/LOGGING_STANDARD.md`** — determines level, structure, redaction, and ownership for any recommended event.
 
 ## Applicable Gates
 
-N/A for runtime gates — this investigation edits Markdown only. The SPEC TEMPLATE GATE, Architecture Consult, documentation checks, and staged secret scan still apply.
+N/A for runtime gates. The Shell, File and Function Length, Logging, Milestone Identifier (ID), SPEC TEMPLATE, Architecture Consult, documentation, and staged secret-scan gates apply.
 
 ## Prior-Art / Reference Implementations
 
@@ -88,37 +91,37 @@ N/A for runtime gates — this investigation edits Markdown only. The SPEC TEMPL
 
 Create a call-site matrix for every production log sink, OTLP exporter, PostHog capture, runner heartbeat/activity/report field, and trace context. Distinguish declared types from production calls; specifically verify whether `FleetCompleted` is captured outside tests. Model events and bytes at named concurrency points, including burst and backend-outage conditions. Every candidate route records its queue bound, flush behavior, drop accounting, and retry ceiling.
 
-- **Dimension 1.1** — production wiring matrix distinguishes installed, called, declared-only, and absent signals → Test `test_signal_inventory_matches_production_calls`
-- **Dimension 1.2** — volume model covers steady state, burst, backend outage, and fleet growth for all three signals → Test `test_signal_volume_model_has_bounded_cases`
-- **Dimension 1.3** — current buffer, cardinality, retry, and drop behavior is source-cited rather than inferred from prose → Test `test_signal_limits_are_source_cited`
+- **Dimension 1.1 — DONE** — production wiring matrix distinguishes installed, called, declared-only, and absent signals → Audit `inventory`
+- **Dimension 1.2 — DONE** — volume model covers steady state, burst, backend outage, and fleet growth for runner logs, control-plane logs, metrics, and traces → Audit `volume`
+- **Dimension 1.3 — DONE** — current buffer, cardinality, retry, and drop behavior is source-cited rather than inferred from prose → Audit `limits`
 
 ### §2 — Decide log ownership without a control-plane log pipe
 
 Keep runner raw logs on stderr for local process supervision and journaling. Evaluate direct host collection only as an optional edge-to-backend path with bounded disk buffering, redaction, sampling, and outage behavior. `agentsfleetd` may log semantic facts it owns when handling heartbeat/report requests, but it does not accept or replay runner log lines. Activity frames remain user-visible run activity, not an observability tunnel.
 
-- **Dimension 2.1** — routing decision contains no raw runner-log ingestion endpoint or activity-frame repurposing → Test `test_log_route_bypasses_agentsfleetd_ingestion`
-- **Dimension 2.2** — direct collection decision states local authority, buffer bound, redaction, loss behavior, and credential owner → Test `test_log_collector_boundary_is_complete`
+- **Dimension 2.1 — DONE** — routing decision contains no raw runner-log ingestion endpoint or activity-frame repurposing → Audit `log-route`
+- **Dimension 2.2 — DONE** — direct collection decision states local authority, buffer bound, redaction, loss behavior, and credential owner → Audit `collector`
 
 ### §3 — Decide metrics at bounded semantic boundaries
 
 Prefer metrics derived after accepted heartbeat, lease, activity, and terminal report operations. Reuse fixed-cardinality labels and existing coalescing/export buffers. Reject runner Identifier (ID), event ID, lease ID, trace ID, model text, or error text as unbounded metric labels. Scheduler internals may expose aggregate counters for armed, fired, cancelled, stale, dropped, and queue depth only when they answer an operator question; never emit one remote metric sample per arm.
 
-- **Dimension 3.1** — each metric maps to an existing bounded semantic event or gives evidence for a new one → Test `test_metric_sources_are_bounded_and_owned`
-- **Dimension 3.2** — every label has a cardinality ceiling and overflow/drop rule → Test `test_metric_cardinality_budget_is_explicit`
+- **Dimension 3.1 — DONE** — each metric maps to an existing bounded semantic event or gives evidence for a new one → Audit `metric-source`
+- **Dimension 3.2 — DONE** — every label has a cardinality ceiling and overflow/drop rule → Audit `metric-cardinality`
 
 ### §4 — Decide trace propagation and sampling
 
 Audit the existing World Wide Web Consortium (W3C) trace context at `agentsfleetd` HTTP ingress and the runner engine's internal trace identifier. Decide whether one context should cross lease issue, renew, activity, and terminal report. Prefer run/control-plane boundary spans over scheduler-arm spans. The decision must cap spans per run, define sampling, reject malformed context without failing execution, and preserve correlation in logs without adding raw payload or secret fields.
 
-- **Dimension 4.1** — chosen propagation map names every boundary and the parent/child relation → Test `test_trace_propagation_map_is_complete`
-- **Dimension 4.2** — span budget, sampling, malformed-context behavior, and exporter-outage behavior are explicit → Test `test_trace_budget_and_degradation_are_explicit`
+- **Dimension 4.1 — DONE** — chosen propagation map names every boundary and the parent/child relation → Audit `trace-map`
+- **Dimension 4.2 — DONE** — span budget, sampling, malformed-context behavior, and exporter-outage behavior are explicit → Audit `trace-budget`
 
 ### §5 — Record the decision and pin the next implementation
 
 Update canonical architecture with one routing matrix and a topology diagram. The matrix covers signal, producer, local sink, network path, backend, volume unit, bound, loss visibility, privacy, and failure isolation. If runtime work remains, create M139_003 with only evidence-backed file changes and tests; otherwise record why current wiring is sufficient.
 
-- **Dimension 5.1** — architecture documents agree on the selected topology and ownership → Test `test_architecture_signal_routing_is_consistent`
-- **Dimension 5.2** — follow-on spec or no-change verdict is mechanically traceable to every investigation finding → Test `test_follow_on_scope_covers_decision_findings`
+- **Dimension 5.1 — DONE** — architecture documents agree on the selected topology and ownership → Audit `architecture`
+- **Dimension 5.2 — DONE** — follow-on spec or no-change verdict is mechanically traceable to every investigation finding → Audit `follow-on`
 
 ## Interfaces
 
@@ -165,30 +168,30 @@ This workstream adds no runtime signal. Its observability output is the verified
 
 | Dimension | Tier | Test | Asserts |
 |-----------|------|------|---------|
-| 1.1 | integration | `test_signal_inventory_matches_production_calls` | every claimed producer has a non-test call site; declared-only rows are labelled. |
-| 1.2 | unit | `test_signal_volume_model_has_bounded_cases` | each signal has steady, burst, outage, and growth rows with units. |
-| 1.3 | unit | `test_signal_limits_are_source_cited` | every capacity and retry value links to a current source symbol. |
-| 2.1 | integration | `test_log_route_bypasses_agentsfleetd_ingestion` | architecture contains no runner-log API or activity reuse. |
-| 2.2 | unit | `test_log_collector_boundary_is_complete` | chosen collector row contains all required ownership and loss fields. |
-| 3.1 | integration | `test_metric_sources_are_bounded_and_owned` | each chosen metric points to a handled semantic operation. |
-| 3.2 | unit | `test_metric_cardinality_budget_is_explicit` | every label lists allowed values, ceiling, and overflow action. |
-| 4.1 | integration | `test_trace_propagation_map_is_complete` | lease, renew, activity, report, and HTTP parentage are decided. |
-| 4.2 | unit | `test_trace_budget_and_degradation_are_explicit` | spans per run, sample rule, malformed input, and outage are covered. |
-| 5.1 | integration | `test_architecture_signal_routing_is_consistent` | observability and runner-fleet documents name the same owners and paths. |
-| 5.2 | integration | `test_follow_on_scope_covers_decision_findings` | each action finding maps to M139_003 or an explicit no-change result. |
+| 1.1 | integration | `bash audits/signal-routing.sh inventory` | every claimed producer has a non-test call site; declared-only rows are labelled. |
+| 1.2 | unit | `bash audits/signal-routing.sh volume` | each signal has steady, burst, outage, and growth rows with units. |
+| 1.3 | unit | `bash audits/signal-routing.sh limits` | every capacity and retry value matches a current source symbol. |
+| 2.1 | integration | `bash audits/signal-routing.sh log-route` | architecture contains no runner-log API or activity reuse. |
+| 2.2 | unit | `bash audits/signal-routing.sh collector` | chosen collector row contains all required ownership and loss fields. |
+| 3.1 | integration | `bash audits/signal-routing.sh metric-source` | each chosen metric points to a handled semantic operation. |
+| 3.2 | unit | `bash audits/signal-routing.sh metric-cardinality` | every label lists allowed values, ceiling, and overflow action. |
+| 4.1 | integration | `bash audits/signal-routing.sh trace-map` | lease, renew, activity, report, and HTTP parentage are decided. |
+| 4.2 | unit | `bash audits/signal-routing.sh trace-budget` | spans per run, sample rule, malformed input, and outage are covered. |
+| 5.1 | integration | `bash audits/signal-routing.sh architecture` | observability and runner-fleet documents name the same owners and paths. |
+| 5.2 | integration | `bash audits/signal-routing.sh follow-on` | each action finding maps to the follow-on implementation or an explicit no-change result. |
 
 ## Acceptance Rubric (single scoring surface)
 
 | ID | Weight | Criterion | Verify command | Pass condition |
 |----|--------|-----------|----------------|----------------|
-| R1 | 15 | Inventory is production-backed | `rg -n "installed|called|declared-only|absent" docs/architecture/observability.md` | four states are defined and used |
-| R2 | 15 | Three-signal matrix is complete | `rg -n "logs|metrics|traces" docs/architecture/observability.md` | all three appear with owner and path |
-| R3 | 15 | Raw runner logs bypass the control plane | `rg -n "raw runner log|direct collector|stderr" docs/architecture/observability.md` | rejection and chosen path are explicit |
-| R4 | 10 | Volume and loss are bounded | `rg -n "volume unit|queue bound|cardinality|drop|sampling" docs/architecture/observability.md` | every matrix column is present |
-| R5 | 10 | PostHog truth is reconciled | `rg -n "PostHog|FleetCompleted|declared-only" docs/architecture/observability.md` | installed and called states are distinct |
-| R6 | 10 | Trace boundaries are decided | `rg -n "lease|renew|activity|report|trace" docs/architecture/runner_fleet.md` | each boundary has an explicit verdict |
-| R7 | 10 | Failure isolation is explicit | `rg -n "never block|best effort|drop" docs/architecture/observability.md` | product work remains independent |
-| R8 | 5 | Follow-on scope is deterministic | `test -f docs/v2/pending/M139_003_P1_OBS_RUNNER_SIGNAL_IMPLEMENTATION.md || rg -n "no runtime change" docs/architecture/observability.md` | one branch succeeds |
+| R1 | 15 | Inventory is production-backed | `bash audits/signal-routing.sh inventory` | source and architecture agree |
+| R2 | 15 | Signal volume model is complete | `bash audits/signal-routing.sh volume` | all four scenarios exist for each route |
+| R3 | 15 | Raw runner logs bypass the control plane | `bash audits/signal-routing.sh log-route` | rejection and chosen path are explicit |
+| R4 | 10 | Volume and loss are bounded | `bash audits/signal-routing.sh limits` | source constants and documented limits agree |
+| R5 | 10 | PostHog truth is reconciled | `bash audits/signal-routing.sh inventory` | installed and called states remain distinct |
+| R6 | 10 | Trace boundaries are decided | `bash audits/signal-routing.sh trace-map` | each boundary has an explicit verdict |
+| R7 | 10 | Failure isolation is explicit | `bash audits/signal-routing.sh architecture` | both architecture documents preserve failure isolation |
+| R8 | 5 | Follow-on scope is deterministic | `bash audits/signal-routing.sh follow-on` | the pending implementation contains every selected decision |
 | S1 | 5 | Documentation checks pass | `make lint-all` | exits 0 |
 | S2 | 5 | Repository tests remain green | `make test-unit-all` | exits 0 |
 
@@ -196,7 +199,7 @@ This workstream adds no runtime signal. Its observability output is the verified
 
 ## Dead Code Sweep
 
-N/A — this workstream changes documentation only and deletes no source surface.
+The audit adds no production symbol and deletes no source surface. `make lint-all` is its durable caller, so source or architecture drift fails routine repository verification after this investigation closes.
 
 ## Out of Scope
 
@@ -236,6 +239,19 @@ N/A — this workstream changes documentation only and deletes no source surface
 - **Source finding:** `FleetCompleted` is declared and tested, but the initial call-site audit found no production capture. The investigation must confirm and record this as declared-only unless wiring appears.
 - **Source finding:** report settlement already emits run metrics after acceptance; runner metric storage has a fixed 4096-runner ceiling and OTLP metric/trace queues each hold 1024 entries.
 - **Architecture consult:** M80_007 already chose outbound fleet verbs over inbound runner scraping and documented multi-replica aggregation behavior.
+- **Capacity finding:** logs and traces each drain 50 entries every 5 seconds. The trace path therefore sustains 10 spans per second, which 100 idle runners consume through heartbeat request spans alone.
+- **Loss finding:** collection removes entries before an OTLP post. A rejected post is a definite local discard, while timeout or transport failure can leave remote delivery uncertain. Logs and traces count ring overflow internally but do not publish the count; metrics also discard beyond 256 coalesced series and expose that loss only through a later successful OTLP export.
+- **Partial-success finding:** an OTLP collector can return success while rejecting individual signal items. M139_003 parses the fixed per-signal rejected count, exposes it as `partial_rejected`, discards collector text, and treats malformed or impossible counts as uncertain without replay.
+- **Routing decision:** runner logs remain structured stderr; an optional host collector goes directly to Loki. `agentsfleetd` receives only bounded fleet verbs and derives operational metrics there.
+- **Trace decision:** no trace field crosses the runner protocol while the runner creates no spans. Successful high-rate runner request spans are removed in M139_003; generic request spans have a hard process budget with aggregate suppression counters, and one settled `fleet.delivery` span remains per run.
+- **Analytics decision:** PostHog stays business-only. M139_003 wires the declared `FleetCompleted` event after the fenced report claim and adds no scheduler mechanics.
+- **Follow-on:** `M139_003_P1_OBS_BOUNDED_SIGNAL_EXPORT.md` pins route-aware trace policy, multi-batch export draining, Prometheus exporter self-metrics, and once-only completion capture.
+- **Architecture note:** `data_flow.md` was reviewed and remains unchanged because M139_002 changes no runtime byte path.
 - **Metrics review:** no new runtime event is added by this investigation.
-- **Skill-driven review chain:** empty at creation; record `/write-unit-test`, native Codex review, gstack review, and post-push review outcomes if runtime work is later opened.
+- **`/write-unit-test` audit (Jul 23, 2026):** no runtime function, branch, error, or public symbol changes here. `audits/signal-routing.sh` turns every DONE Dimension into an executable source-and-architecture assertion. M139_003 owns runtime failure, concurrency, and performance tests.
+- **Verification (Jul 23, 2026):** all R1-R8 source assertions passed; `bash audits/spec-template.sh --staged`, `git diff --cached --check`, `gitleaks protect --staged --redact`, `make lint-all`, and `make test-unit-all` exited zero. Live command-line acceptance tests requiring an HTTPS target remained skipped by their existing environment gate; every local unit lane passed.
+- **Test delta:** baseline remains unit=2824 integration=376. Runtime test growth is zero because behavior is unchanged; the workstream adds one deterministic shell audit with eleven named cases. M139_003 specifies the required runtime test growth.
+- **Native Codex review (Jul 23, 2026):** four adversarial passes corrected inert audit wiring, multiplied shutdown deadlines, OTLP partial-success blindness, missing metric-label dependents, over-broad absence scans, and fail-open scan errors. The final pass reported no actionable defects.
+- **gstack review (Jul 23, 2026):** independent testing, performance, and red-team lanes reported no actionable findings.
+- **Skill-driven review chain:** `/write-unit-test`, native Codex review, and gstack review are complete. Post-push review is not applicable because this investigation is not opening a standalone Pull Request (PR); M139_001 remains active on the branch.
 - **Deferrals:** none.
