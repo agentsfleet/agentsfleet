@@ -17,7 +17,7 @@ import {
 } from "@testing-library/react";
 
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { GUIDANCE, OUTCOME, outcomeFor } from "@/lib/events/event-summary";
 import { __resetFleetDeliveryFailuresForTests } from "@/components/domain/useFleetDeliveryFailure";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
@@ -106,6 +106,7 @@ function ev(over: Partial<FleetEvent> & { actor: string; role: FleetEvent["role"
     text: over.text ?? "",
     reply: over.reply ?? "",
     outcome: over.outcome ?? OUTCOME.NO_REPLY,
+    failureLabel: over.failureLabel ?? null,
     createdAt: over.createdAt ?? new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
     status: over.status ?? "processed",
     custom: over.custom,
@@ -125,6 +126,7 @@ function toThreadMessage(e: FleetEvent): ThreadMessageLike {
         status: e.status,
         reply: e.reply,
         outcome: e.outcome,
+        failureLabel: e.failureLabel,
       },
     },
   };
@@ -359,6 +361,60 @@ describe("FleetThread — role rendering", () => {
     // A blocked turn does not render the instruction as if it succeeded — the
     // fleet bubble states the outcome (coding-agent finding #4).
     expect(screen.getByText(OUTCOME.WAITING_APPROVAL)).toBeTruthy();
+  });
+
+  it("names the failing check and what to do about it on a startup failure", () => {
+    const cause = "startup check 'instructions' failed: no instructions configured";
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "edited agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "fleet_error",
+        outcome: outcomeFor({ status: "fleet_error", failure_label: "startup_posture", failure_detail: cause }),
+        failureLabel: "startup_posture",
+      }),
+    ]);
+    renderThread();
+    // The cause reaches the row, not just the class sentence ...
+    expect(screen.getByText(new RegExp(cause))).toBeTruthy();
+    // ... and the operator is told where to fix it.
+    expect(screen.getByText(GUIDANCE.STARTUP)).toBeTruthy();
+  });
+
+  it("offers no guidance for a failure class the operator cannot act on", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "edited agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "fleet_error",
+        outcome: outcomeFor({ status: "fleet_error", failure_label: "oom_kill", failure_detail: null }),
+        failureLabel: "oom_kill",
+      }),
+    ]);
+    renderThread();
+    expect(screen.queryByText(GUIDANCE.STARTUP)).toBeNull();
+    expect(screen.queryByTestId("failure-guidance")).toBeNull();
+  });
+
+  it("lets the fleet's own reply stand instead of canned guidance", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "edited agentsfleet/agentsfleet#541",
+        reply: "I recovered on the retry and reviewed the change.",
+        status: "fleet_error",
+        outcome: OUTCOME.FAILED,
+        failureLabel: "startup_posture",
+      }),
+    ]);
+    renderThread();
+    expect(screen.getByText(/I recovered on the retry/)).toBeTruthy();
+    expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 
   it("labels an operator steer with a word, never the account identifier", () => {
@@ -766,6 +822,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
       text: "config has non-string actor in custom",
       reply: "",
       outcome: OUTCOME.NO_REPLY,
+      failureLabel: null,
       createdAt: new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
       status: "processed",
     };

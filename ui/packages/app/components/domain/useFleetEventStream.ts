@@ -138,6 +138,9 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
         // in its place when the reply is empty (still working, blocked, failed).
         reply: event.reply,
         outcome: event.outcome,
+        // The failure CLASS, not the sentence — the renderer picks remediation
+        // guidance off it (a sentence cannot be matched against reliably).
+        failureLabel: event.failureLabel,
         // The tool calls the fleet made while working this event. They ride the
         // custom bag rather than assistant-ui's tool-call content parts: the
         // backend publishes them as sibling frames keyed by event_id, not as

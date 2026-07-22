@@ -27,6 +27,8 @@ import {
 import type { EventRow } from "@/lib/api/events";
 import {
   failurePresentationFor,
+  guidanceFor,
+  outcomeFor,
   SENDER,
   senderLabelFor,
 } from "@/lib/events/event-summary";
@@ -50,6 +52,10 @@ const CREATED_LABEL = "Created";
 const EVENT_DETAILS_TITLE = "Event details";
 const EVENT_RESULT_MAX_CHARS = 20_000;
 const FIX_TITLE = "Fix";
+// Shown only when the row predates the recorded failure cause — with a cause
+// present the guidance above is already specific enough to act on.
+const NO_CAUSE_ADVICE =
+  "This event did not record which check failed. Retry it once; if it fails again, use the copy icon below and ask a coding agent to inspect the diagnostic.";
 const LOCAL_TIME_FALLBACK = "Local time";
 const NO_RESULT = "No result recorded";
 const NO_REQUEST_CONTEXT = "No request context recorded";
@@ -110,10 +116,14 @@ export function EventDetailsDialog({ row, onOpenChange }: EventDetailsDialogProp
 function EventDetails({ row }: { row: EventRow }) {
   const response = boundedResponse(row.response_text);
   const failure = row.failure_label ? failurePresentationFor(row.failure_label) : null;
-  const recordedResult = response || failure?.label || NO_RESULT;
+  // Inspect is where the operator comes for the whole story, so a failure
+  // renders its sentence AND its recorded cause — the console row shows one
+  // line, this shows the stored value.
+  const recordedResult = response || (failure ? outcomeFor(row) : "") || NO_RESULT;
   const result = truncateResult(recordedResult);
   const tone = EVENT_TONES[row.status] ?? WARNING_TONE;
   const diagnostic = formatEventDetailsForCopy(row, result, response);
+  const guidance = response ? null : guidanceFor(row.failure_label);
 
   return (
     <>
@@ -121,7 +131,7 @@ function EventDetails({ row }: { row: EventRow }) {
       <div className="space-y-lg pt-lg">
         <EventResult result={result} tone={tone} />
         <RequestContext row={row} />
-        {failure?.guidance === "startup" && !response ? <StartupFix /> : null}
+        {guidance ? <StartupFix guidance={guidance} hasCause={hasCause(row)} /> : null}
         <DialogFooter className="border-t border-border pt-lg">
           <CopyButton value={diagnostic} label={COPY_DIAGNOSTIC_LABEL} />
         </DialogFooter>
@@ -255,16 +265,28 @@ function RequestContextFallback({ children }: { children: string }) {
   );
 }
 
-function StartupFix() {
+/**
+ * The remediation panel for an actionable failure. A row that recorded its
+ * cause gets the direct instruction; one from a runner too old to report a
+ * cause keeps the older fall-back advice rather than pretending to know which
+ * check failed.
+ */
+function StartupFix({ guidance, hasCause }: { guidance: string; hasCause: boolean }) {
   return (
     <Alert variant="warning" className="block">
       <AlertTitle>{FIX_TITLE}</AlertTitle>
       <AlertDescription className="space-y-md text-foreground">
-        <p>Nothing specific can be fixed from this event because it did not record which startup check failed.</p>
-        <p>Retry it once. If it fails again, use the copy icon below and ask a coding agent to inspect the diagnostic.</p>
+        <p>{guidance}</p>
+        {hasCause ? null : (
+          <p>{NO_CAUSE_ADVICE}</p>
+        )}
       </AlertDescription>
     </Alert>
   );
+}
+
+function hasCause(row: EventRow): boolean {
+  return (row.failure_detail ?? "").trim().length > 0;
 }
 
 function formatCreatedTooltip(created: Date): string {

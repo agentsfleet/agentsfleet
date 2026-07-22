@@ -9,6 +9,8 @@ import {
   eventHeadlineFrom,
   failurePresentationFor,
   failureSentenceFor,
+  GUIDANCE,
+  guidanceFor,
   triggerBodyFor,
   replyBodyFor,
   outcomeFor,
@@ -138,6 +140,21 @@ describe("failureSentenceFor", () => {
   it("only attaches startup guidance to the startup safety failure", () => {
     expect(failurePresentationFor("startup_posture").guidance).toBe("startup");
     expect(failurePresentationFor("budget_breach").guidance).toBeNull();
+  });
+});
+
+describe("guidanceFor", () => {
+  it("turns the startup guidance token into the line the operator can act on", () => {
+    expect(guidanceFor("startup_posture")).toBe(GUIDANCE.STARTUP);
+  });
+
+  it("stays silent for classes with nothing actionable, and for no failure at all", () => {
+    // A guidance line the operator cannot follow is noise, so these render none.
+    expect(guidanceFor("oom_kill")).toBeNull();
+    expect(guidanceFor("brand_new_class")).toBeNull();
+    expect(guidanceFor(null)).toBeNull();
+    expect(guidanceFor(undefined)).toBeNull();
+    expect(guidanceFor("")).toBeNull();
   });
 });
 

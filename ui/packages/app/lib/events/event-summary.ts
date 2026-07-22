@@ -148,6 +148,21 @@ export function failureSentenceFor(tag: string): string {
   return failurePresentationFor(tag).label;
 }
 
+/**
+ * The remediation line shown under a failure sentence. Only classes the
+ * operator can actually act on from the console carry one — a guidance line
+ * that cannot be followed is noise, so an unmapped or unactionable class
+ * returns null and renders nothing.
+ */
+export const GUIDANCE = {
+  STARTUP: "Add this fleet's instructions on its Skill tab — the next delivery picks them up.",
+} as const;
+
+export function guidanceFor(tag: string | null | undefined): string | null {
+  if (!tag) return null;
+  return failurePresentationFor(tag).guidance === "startup" ? GUIDANCE.STARTUP : null;
+}
+
 // ── Outcome sentences ─────────────────────────────────────────────────────
 
 export const OUTCOME = {
