@@ -164,6 +164,12 @@ export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
         columns={columns}
         rows={items}
         rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
+        // The event log grows with the page instead of scrolling inside a
+        // fixed 384px box. The default bound is a constant, not a fit: the
+        // first fetch alone is 50 rows, so it showed ~8 of them above a
+        // screen of dead space, and "Load more" appended rows nobody could
+        // see — the page looked unchanged. A log's length is the point.
+        stickyHeader={false}
         pagination={{ kind: PAGINATION_KIND.cursor, nextCursor: cursor, onNext: loadMore, isLoading: pending }}
         empty={
           <EmptyState
