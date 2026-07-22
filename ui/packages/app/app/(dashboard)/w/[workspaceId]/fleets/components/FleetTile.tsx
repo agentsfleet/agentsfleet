@@ -183,10 +183,7 @@ function TileEyebrow({ eyebrow, title }: { eyebrow?: string; title?: string }) {
   );
 }
 
-function TileIdentity({ fleet, live, eyebrow, eyebrowTitle, children }: Omit<ShellProps, "workspaceId" | "kind" | "feed" | "emptyActivity">) {
-  // Stream frames re-render this tile frequently; identity changes only when
-  // React reuses the tile for a different immutable Fleet identifier.
-  const identity = useMemo(() => deriveFleetIdentity(fleet.id), [fleet.id]);
+function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, children }: Omit<ShellProps, "workspaceId" | "kind" | "feed" | "emptyActivity"> & { identity: FleetIdentity }) {
   return (
     <div className="flex items-start gap-4">
       <FleetSigil identity={identity} live={live} />
@@ -225,6 +222,9 @@ function TileMetrics({ fleet }: { fleet: Fleet }) {
 }
 
 function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed, emptyActivity, children }: ShellProps) {
+  // Stream frames re-render this tile frequently; identity changes only when
+  // React reuses the tile for a different immutable Fleet identifier.
+  const identity = useMemo(() => deriveFleetIdentity(fleet.id), [fleet.id]);
   return (
     <Card
       className={cn("min-h-44 p-4", kind === "drained" && "opacity-60")}
@@ -233,12 +233,13 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
       <Link
         href={workspacePath(workspaceId, `fleets/${fleet.id}`)}
         className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`${MANAGE_FLEET_LABEL}: ${fleet.name} — ${fleet.status}`}
+        aria-label={`${MANAGE_FLEET_LABEL}: ${fleet.name} — Agent ${identity.callsign} — ${fleet.status}`}
         data-state={fleetRowState(fleet.status)}
       />
       <div className="pointer-events-none flex h-full flex-col gap-3">
         <TileIdentity
           fleet={fleet}
+          identity={identity}
           live={live}
           eyebrow={eyebrow}
           eyebrowTitle={eyebrowTitle}
