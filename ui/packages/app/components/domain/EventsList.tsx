@@ -15,6 +15,11 @@ import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { failureSentenceFor, senderLabelFor } from "@/lib/events/event-summary";
+import {
+  groupEventRows,
+  isZeroMetricOnFailure,
+  MIN_ROW_GROUP,
+} from "@/lib/events/event-row-grouping";
 import { EVENTS_PAGE_SIZE } from "@/lib/pagination/cursor-trail";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
 import { formatMs } from "@/lib/utils";
@@ -40,6 +45,9 @@ const NULL_METRIC_SORT_VALUE = -1;
 // multi-megabyte agent response must not ride into the DOM per row.
 const SUMMARY_TITLE_MAX_CHARS = 2_000;
 const TOKEN_COUNT_FORMAT = new Intl.NumberFormat();
+const RUNS_PREFIX = "×";
+const RUNS_CLOSED_MARK = "▸";
+const RUNS_OPEN_MARK = "▾";
 
 // Map server status → Badge variant. Untracked statuses fall through to
 // the default (muted) badge — readable, not opinionated.
@@ -53,8 +61,20 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
 // The workspace event feed in the standard table every sibling data surface
 // uses (API keys, secrets, runners, billing). One row per event; the summary
 // column carries the response preview or the plain-language failure reason.
-function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn<EventRow>[] {
+function createEventColumns(
+  onInspect: (row: EventRow) => void,
+  runs: RunsColumn,
+): DataTableColumn<EventRow>[] {
   return [
+    {
+      // Leading column: how many consecutive deliveries this row stands for.
+      // Blank for a row that stands only for itself, so the eye catches the
+      // repeats rather than a column of "×1".
+      key: "runs",
+      header: "Runs",
+      sortValue: (row) => runs.countFor(row) ?? 0,
+      cell: (row) => <RunsCell row={row} runs={runs} />,
+    },
     {
       key: "time",
       header: "Time",
@@ -102,7 +122,11 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
       numeric: true,
       hideOnMobile: true,
       sortValue: (row) => row.cost_nanos ?? NULL_METRIC_SORT_VALUE,
-      cell: (row) => (row.cost_nanos === null ? VALUE_UNKNOWN : formatDollars(row.cost_nanos)),
+      cell: (row) => (
+        <DimmedWhenAbsent row={row} value={row.cost_nanos}>
+          {row.cost_nanos === null ? VALUE_UNKNOWN : formatDollars(row.cost_nanos)}
+        </DimmedWhenAbsent>
+      ),
     },
     {
       key: "tokens",
@@ -110,7 +134,11 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
       numeric: true,
       hideOnMobile: true,
       sortValue: (row) => row.tokens ?? NULL_METRIC_SORT_VALUE,
-      cell: (row) => (row.tokens === null ? VALUE_UNKNOWN : TOKEN_COUNT_FORMAT.format(row.tokens)),
+      cell: (row) => (
+        <DimmedWhenAbsent row={row} value={row.tokens}>
+          {row.tokens === null ? VALUE_UNKNOWN : TOKEN_COUNT_FORMAT.format(row.tokens)}
+        </DimmedWhenAbsent>
+      ),
     },
     {
       key: "duration",
@@ -118,23 +146,57 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
       numeric: true,
       hideOnMobile: true,
       sortValue: (row) => row.wall_ms ?? NULL_METRIC_SORT_VALUE,
-      cell: (row) => (row.wall_ms === null ? VALUE_UNKNOWN : formatMs(row.wall_ms)),
+      cell: (row) => (
+        <DimmedWhenAbsent row={row} value={row.wall_ms}>
+          {row.wall_ms === null ? VALUE_UNKNOWN : formatMs(row.wall_ms)}
+        </DimmedWhenAbsent>
+      ),
     },
   ];
 }
 
 export function EventsList({ initial, fleetId }: EventsListProps) {
   const [selected, setSelected] = useState<EventRow | null>(null);
-  const columns = useMemo(() => {
-    const all = createEventColumns(setSelected);
-    return fleetId ? all.filter((column) => column.key !== "fleet") : all;
-  }, [fleetId]);
+  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
 
   // The page lives in the URL; the Server Component above already fetched it.
   // Nothing is fetched here, so there is no client cache to fall out of sync
   // and no error state of its own — a failed page is the server's to report.
   const feed = useUrlCursorPages(initial.next_cursor);
-  const items = initial.items;
+
+  // Runs of the same failure collapse to their first row. Page-local by
+  // construction: this only ever sees the rows the server returned.
+  const entries = useMemo(() => groupEventRows(initial.items), [initial.items]);
+  const items = useMemo(
+    () =>
+      entries.flatMap((entry) =>
+        entry.rows.length < MIN_ROW_GROUP || opened.has(entry.lead.event_id)
+          ? entry.rows
+          : [entry.lead],
+      ),
+    [entries, opened],
+  );
+  const runs = useMemo<RunsColumn>(() => {
+    const counts = new Map<string, number>();
+    for (const entry of entries) {
+      if (entry.rows.length >= MIN_ROW_GROUP) counts.set(entry.lead.event_id, entry.rows.length);
+    }
+    return {
+      countFor: (row) => counts.get(row.event_id) ?? null,
+      isOpen: (row) => opened.has(row.event_id),
+      toggle: (row) =>
+        setOpened((prev) => {
+          const next = new Set(prev);
+          if (!next.delete(row.event_id)) next.add(row.event_id);
+          return next;
+        }),
+    };
+  }, [entries, opened]);
+
+  const columns = useMemo(() => {
+    const all = createEventColumns(setSelected, runs);
+    return fleetId ? all.filter((column) => column.key !== "fleet") : all;
+  }, [fleetId, runs]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -170,6 +232,50 @@ export function EventsList({ initial, fleetId }: EventsListProps) {
       />
     </div>
   );
+}
+
+type RunsColumn = {
+  /** How many rows this one stands for, or null when it stands alone. */
+  countFor: (row: EventRow) => number | null;
+  isOpen: (row: EventRow) => boolean;
+  toggle: (row: EventRow) => void;
+};
+
+// The count is a control, not a label: it opens to the rows it covers, so an
+// operator never has to take "×15" on trust.
+function RunsCell({ row, runs }: { row: EventRow; runs: RunsColumn }) {
+  const count = runs.countFor(row);
+  if (count === null) return null;
+  const open = runs.isOpen(row);
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-expanded={open}
+      aria-label={`${open ? "Collapse" : "Expand"} ${count} repeated failures`}
+      onClick={() => runs.toggle(row)}
+    >
+      <Badge variant="destructive">{`${RUNS_PREFIX}${count}`}</Badge>
+      <span aria-hidden="true">{open ? RUNS_OPEN_MARK : RUNS_CLOSED_MARK}</span>
+    </Button>
+  );
+}
+
+// A failed run's zero is an absence, not a measurement — it reports that
+// nothing ran, and rendering it at full weight invites reading it as a real
+// figure. A successful run's zero is a genuine result and stays.
+function DimmedWhenAbsent({
+  row,
+  value,
+  children,
+}: {
+  row: EventRow;
+  value: number | null;
+  children: React.ReactNode;
+}) {
+  if (!isZeroMetricOnFailure(row, value)) return <>{children}</>;
+  return <span className="text-muted-foreground/50">{children}</span>;
 }
 
 function EventTimeCell({ row }: { row: EventRow }) {

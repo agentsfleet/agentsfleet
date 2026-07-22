@@ -79,6 +79,54 @@ describe("EventsList — the standard workspace events table", () => {
     expect(container.querySelector(".max-h-96")).toBeNull();
   });
 
+  it("collapses repeated identical failures into one row that opens on demand", async () => {
+    const failure = (id: string) =>
+      row({
+        event_id: id,
+        status: "fleet_error",
+        response_text: null,
+        failure_label: "startup_posture",
+        failure_detail: "no instructions configured",
+      });
+    renderList({ items: [failure("f1"), failure("f2"), failure("f3")], next_cursor: null });
+
+    // Three deliveries, one row, and the count says so.
+    expect(screen.getByText("×3")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /Inspect event/ })).toHaveLength(1);
+
+    // The count is a control, not a claim: it opens to the rows it covers.
+    await userEvent.click(screen.getByRole("button", { name: /Expand 3 repeated failures/ }));
+    expect(screen.getAllByRole("button", { name: /Inspect event/ })).toHaveLength(3);
+  });
+
+  it("leaves successes alone however alike they look", () => {
+    renderList({
+      items: [
+        row({ event_id: "s1", status: "processed", response_text: "reviewed #1", failure_label: null }),
+        row({ event_id: "s2", status: "processed", response_text: "reviewed #2", failure_label: null }),
+      ],
+      next_cursor: null,
+    });
+    // Two successful runs are two pieces of work — collapsing them would hide
+    // what the fleet actually did.
+    expect(screen.queryByText(/^×/)).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Inspect event/ })).toHaveLength(2);
+  });
+
+  it("dims a failed run's zero metrics but never a successful run's", () => {
+    const { container } = renderList({
+      items: [
+        row({ event_id: "z1", status: "fleet_error", response_text: null, tokens: 0, wall_ms: 0, cost_nanos: 0 }),
+        row({ event_id: "z2", status: "processed", tokens: 0, wall_ms: 0, cost_nanos: 0, failure_label: null }),
+      ],
+      next_cursor: null,
+    });
+    // A failed run's zero reports that nothing ran; a successful run's zero is
+    // a genuine result and keeps full weight.
+    const dimmed = container.querySelectorAll(".text-muted-foreground\\/50");
+    expect(dimmed.length).toBe(3);
+  });
+
   it("renders default empty state when no items", () => {
     renderList({ items: [], next_cursor: null });
     expect(screen.getByText(/No events yet/i)).toBeTruthy();
@@ -122,7 +170,8 @@ describe("EventsList — the standard workspace events table", () => {
     const rowC = screen.getAllByRole("row").find((r) => r.textContent?.includes("gate_blocked"));
     expect(rowC).toBeTruthy();
     const cells = Array.from(rowC!.querySelectorAll("td"));
-    const summaryCell = cells[6];
+    // Index 7, not 6: the leading Runs column shifted every cell along.
+    const summaryCell = cells[7];
     expect(summaryCell?.textContent).toBe("No result recorded");
   });
 
@@ -241,6 +290,7 @@ describe("EventsList — the standard workspace events table", () => {
     renderList({ items: [row({ cost_nanos: 20_000_000 })], next_cursor: null }, "zomb_1234567890ab");
     const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
     expect(headers).toEqual([
+      "Runs",
       "Time",
       "Status",
       "Actor",

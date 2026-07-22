@@ -162,9 +162,9 @@ Cut by Indy at the design lock (verbatim quote in Discovery): the thread always 
 
 Consecutive rows with identical actor, status, and failure cause collapse into one row with a "×N" `Badge`, expandable in place; Inspect on the group opens the latest delivery. Zero-value Cost/Tokens/Duration on failed rows render dimmed. **Implementation default:** grouping within the fetched page only — no cross-page stitching over keyset pagination.
 
-- **Dimension 7.1** — Consecutive identical failures collapse with a count; expansion restores rows → Test `test_table_groups_identical_failures`
-- **Dimension 7.2** — Failed rows dim zero metrics; processed rows render unchanged → Test `test_zero_metrics_dimmed_on_failures`
-- **Dimension 7.3** — Grouping never crosses a page boundary; pagination behaviour unchanged (regression) → Test `test_grouping_respects_page_boundary`
+- **Dimension 7.1** — DONE — Consecutive identical failures collapse with a count; expansion restores rows → Test `test_table_groups_identical_failures`
+- **Dimension 7.2** — DONE — Failed rows dim zero metrics; processed rows render unchanged → Test `test_zero_metrics_dimmed_on_failures`
+- **Dimension 7.3** — DONE — Grouping never crosses a page boundary; pagination behaviour unchanged (regression) → Test `test_grouping_respects_page_boundary`
 
 ### §8 — The result type stops permitting illegal states
 
