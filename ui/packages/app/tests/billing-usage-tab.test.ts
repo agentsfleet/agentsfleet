@@ -10,12 +10,17 @@ vi.mock("lucide-react", () => ({
   ArrowUpDown: () => React.createElement("svg", { "data-icon": "ArrowUpDown" }),
 }));
 
-const { listChargesActionMock } = vi.hoisted(() => ({
-  listChargesActionMock: vi.fn(),
+// Paging is URL state: the pager navigates and the Server Component fetches
+// the page named by the cursor, so there is no client-side fetch to mock.
+const { routerPushMock, searchParamsRef } = vi.hoisted(() => ({
+  routerPushMock: vi.fn(),
+  searchParamsRef: { current: new URLSearchParams() },
 }));
 
-vi.mock("@/app/(dashboard)/settings/billing/actions", () => ({
-  listTenantBillingChargesAction: listChargesActionMock,
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: routerPushMock }),
+  usePathname: () => "/settings/billing",
+  useSearchParams: () => searchParamsRef.current,
 }));
 
 import BillingUsageTab from "@/app/(dashboard)/settings/billing/components/BillingUsageTab";
@@ -47,7 +52,8 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
 }
 
 beforeEach(() => {
-  listChargesActionMock.mockReset();
+  routerPushMock.mockReset();
+  searchParamsRef.current = new URLSearchParams();
 });
 afterEach(() => cleanup());
 
@@ -58,26 +64,10 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     expect(screen.queryByTestId("pagination-page")).toBeNull();
   });
 
-  it("recovers an empty first page by paging forward", async () => {
-    let resolveCharges: ((value: ActionResult<TenantBillingChargesResponse>) => void) | undefined;
-    listChargesActionMock.mockImplementation(() => new Promise((resolve) => {
-      resolveCharges = resolve;
-    }));
+  it("offers a way forward when an empty first page carries a cursor", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: "tok_page2" }));
-
     expect(screen.getByText("No charges yet")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    expect(screen.getByText("No charges yet")).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Pagination" }).getAttribute("aria-busy")).toBe("true");
-    expect(screen.getByText("Loading…")).toBeTruthy();
-
-    resolveCharges?.({ ok: true, data: { items: [charge()], next_cursor: null } });
-
-    await waitFor(() => expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy());
-    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 25, cursor: "tok_page2" });
-    // Page 2 keeps its pager — the way back matters as much as the way on.
-    expect(screen.getByText("Page 2")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Next page" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Next page" })).toBeTruthy();
   });
 
   it("renders a ledger row with date · amount · type · description", () => {
@@ -137,62 +127,20 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     expect(screen.queryByTestId("pagination-page")).toBeNull();
   });
 
-  it("replaces the rows with the next page instead of growing one long list", async () => {
-    listChargesActionMock.mockResolvedValue({
-      ok: true,
-      data: {
-        items: [charge({ id: "tel_2", event_id: "evt_2", recorded_at: 1_700_000_500_000 })],
-        next_cursor: null,
-      },
-    });
+  it("puts the page turn in the URL so a reload lands on the same page", async () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok_page2" }));
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    // One page on screen at a time — the operator never scrolls past rows
-    // they already read to reach the control.
-    await waitFor(() => expect(screen.getAllByText(/kimi-k2\.6/).length).toBe(1));
-    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 25, cursor: "tok_page2" });
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    expect(String(routerPushMock.mock.calls[0]?.[0])).toContain("c=tok_page2");
+  });
+
+  it("walks back down the trail to the first page", async () => {
+    searchParamsRef.current = new URLSearchParams("c=tok_page2");
+    render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: null }));
     expect(screen.getByText("Page 2")).toBeTruthy();
-  });
-
-  it("returns to a cached page without asking the server again", async () => {
-    listChargesActionMock.mockResolvedValue({
-      ok: true,
-      data: { items: [charge({ id: "tel_2", event_id: "evt_2" })], next_cursor: null },
-    });
-    render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
-    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    await waitFor(() => expect(screen.getByText("Page 2")).toBeTruthy());
-
-    const callsAfterForward = listChargesActionMock.mock.calls.length;
-    // The pager disables both buttons while a fetch is in flight, and the
-    // transition can still be settling after page 2 paints — clicking then
-    // would be swallowed. Wait for the control to be live before using it.
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Previous page" }).hasAttribute("disabled"),
-      ).toBe(false),
-    );
     fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
-    await waitFor(() => expect(screen.getByText("Page 1")).toBeTruthy());
-    // Backward motion is free: every page fetched is kept, so stepping back
-    // costs no request at all.
-    expect(listChargesActionMock.mock.calls.length).toBe(callsAfterForward);
-  });
-
-  it("surfaces a 'Not authenticated' alert when the action returns unauthenticated", async () => {
-    listChargesActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
-    render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
-    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Not authenticated"));
-  });
-
-  it("surfaces a fetch error inline without losing the previous page", async () => {
-    listChargesActionMock.mockResolvedValue({ ok: false, error: "503 service unavailable" });
-    render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
-    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("503 service unavailable"));
-    // The failed fetch leaves the operator on the page they can still read.
-    expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Next page" })).toBeTruthy();
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    // Page one carries no cursor, so the trail empties rather than shrinking.
+    expect(String(routerPushMock.mock.calls[0]?.[0])).not.toContain("c=");
   });
 });

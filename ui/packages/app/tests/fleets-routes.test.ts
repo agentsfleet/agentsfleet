@@ -325,7 +325,7 @@ describe("fleets routes", () => {
       }),
     );
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
-    expect(urls).toContainEqual(expect.stringContaining("/fleets/zom_1/events?limit=50"));
+    expect(urls).toContainEqual(expect.stringContaining("/fleets/zom_1/events?limit=25"));
     expect(urls.some((url) => url.includes("since="))).toBe(false);
     expect(markup).toContain('href="/w/ws_1/fleets/zom_1?view=events" aria-current="page"');
   });

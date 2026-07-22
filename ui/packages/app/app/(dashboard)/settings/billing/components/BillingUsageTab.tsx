@@ -1,9 +1,7 @@
 "use client";
 
-import { useCallback } from "react";
 import { ActivityIcon } from "lucide-react";
 import {
-  Alert,
   Badge,
   DataTable,
   EmptyState,
@@ -11,7 +9,6 @@ import {
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { listTenantBillingChargesAction } from "../actions";
 import { PROVIDER_MODE } from "@/lib/types";
 import {
   describeCharge,
@@ -19,8 +16,8 @@ import {
   formatDollars,
   type ChargeRow,
 } from "../lib/charges";
-import { presentErrorString } from "@/lib/errors";
-import { useCursorPages } from "@/lib/pagination/use-cursor-pages";
+import { BILLING_PAGE_SIZE } from "@/lib/pagination/cursor-trail";
+import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
 
 export type BillingUsageTabProps = {
   initialCharges: ChargeRow[];
@@ -32,10 +29,10 @@ export type BillingUsageTabProps = {
  * type · description), newest-first, paged like every other table.
  * Each row is one raw telemetry charge (receive = gate-pass, stage = run); the
  * model + token detail rides the description column. Charges are deductions, so
- * amounts render negative. Pages are fetched via `listTenantBillingChargesAction`,
- * a Server Action that mints the session token via `auth().getToken()`.
+ * amounts render negative. Pages are fetched by the Server Component above,
+ * keyed by the cursor in the URL — this component holds no rows of its own.
  */
-const PAGE_SIZE = 25;
+
 
 const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
@@ -79,23 +76,10 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
 ];
 
 export default function BillingUsageTab({ initialCharges, initialCursor }: BillingUsageTabProps) {
-  const fetchPage = useCallback(
-    (cursor: string) => listTenantBillingChargesAction({ limit: PAGE_SIZE, cursor }),
-    [],
-  );
-  // The ledger pages like every other table instead of appending forever. The
-  // old control sat under a list that grew on every press, so reaching it
-  // meant scrolling past everything already read.
-  const feed = useCursorPages<ChargeRow>(
-    { items: initialCharges, next_cursor: initialCursor },
-    fetchPage,
-    (result) => presentErrorString({
-      errorCode: result.errorCode,
-      message: result.error,
-      action: "load usage events",
-    }),
-  );
-  const { items: charges, error } = feed;
+  // The page lives in the URL and the Server Component above already fetched
+  // it, so this component holds no rows, no cache, and no fetch state.
+  const feed = useUrlCursorPages(initialCursor);
+  const charges = initialCharges;
 
   return (
     <div className="space-y-3">
@@ -114,14 +98,13 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
         pagination={{
           kind: PAGINATION_KIND.page,
           page: feed.page,
-          pageSize: PAGE_SIZE,
+          pageSize: BILLING_PAGE_SIZE,
           hasNext: feed.hasNext,
           totalLabel: "charges",
           onPageChange: feed.goToPage,
           isLoading: feed.isLoading,
         }}
       />
-      {error ? <Alert variant="destructive">{error}</Alert> : null}
     </div>
   );
 }
