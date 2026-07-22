@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M140
 **Workstream:** 001
 **Date:** Jul 22, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — dashboard users need dense datasets to remain navigable without scrolling the whole page
 **Categories:** User Interface (UI)
 **Batch:** B1 — standalone dashboard table improvement
@@ -51,7 +51,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M140_001_P1_UI_SORTABLE_PAGINATED_TABLES.md` | CREATE | Record intent, proof, and review outcomes. |
+| `docs/v2/done/M140_001_P1_UI_SORTABLE_PAGINATED_TABLES.md` | CREATE | Record intent, proof, and review outcomes. |
 | `VERSION` | EDIT | Advance the user-facing feature release to `0.20.0`. |
 | `build.zig.zon` | EDIT | Keep the daemon package version synchronized. |
 | `cli/package.json` | EDIT | Keep the command-line package version synchronized. |
@@ -64,6 +64,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/design-system/src/design-system/DataTableView.tsx` | CREATE | Centralize table chrome, scrolling, and controls. |
 | `ui/packages/design-system/src/design-system/DataTable.test.tsx` | EDIT | Prove sorting, pagination, loading, and empty states. |
 | `ui/packages/design-system/src/design-system/Pagination.tsx` | EDIT | Centralize pagination discriminants and standard buttons. |
+| `ui/packages/design-system/src/design-system/Pagination.test.tsx` | EDIT | Prove cursor status, loading, exhaustion, and numeric totals. |
 | `ui/packages/design-system/src/design-system/DashboardShellHeader.tsx` | CREATE | Render exact-height header chrome without border drift. |
 | `ui/packages/design-system/src/design-system/DashboardShellHeader.test.tsx` | CREATE | Pin semantic header geometry. |
 | `ui/packages/design-system/src/design-system/index.ts` | EDIT | Export public table and shell primitives. |
@@ -188,15 +189,15 @@ Vendor-specific TanStack types are internal and are not exported.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Table engine and interaction tests pass (§1–§2) | `cd ui/packages/design-system && bun run test` | exit 0; 52 files and 480 tests pass | P0 | |
-| R2 | Dashboard adoption tests pass (§3) | `cd ui/packages/app && bunx vitest run tests/admin-models-ui.test.ts tests/api-keys-components.test.ts tests/api-keys-create-dialog.test.ts tests/app-shell-navigation.test.ts tests/billing-charge-cell.test.tsx tests/billing-usage-tab.test.ts tests/events-components.test.ts tests/platform-catalog-table.test.tsx tests/runners-list.test.ts tests/secrets-list.test.ts` | exit 0; 10 files and 151 tests pass | P0 | |
-| R3 | Full unit lanes pass | `make test-unit-all` | exit 0; all unit lanes pass | P0 | |
-| R4 | TypeScript and design-system lint stays clean | `make lint-apps-ds-ctl` | exit 0 | P0 | |
-| R5 | Repository conformance stays green | `make harness-verify` | exit 0; ALL GATES GREEN | P0 | |
-| R6 | Release versions stay synchronized | `make check-version` | exit 0; all versions match `0.20.0` | P0 | |
-| R7 | No secrets enter the repository | `gitleaks detect` | exit 0; no leaks found | P0 | |
-| R8 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | every path is listed above or is this spec after lifecycle movement | P0 | |
-| R9 | New source files stay within the repository line limit | `git diff --name-only origin/main...HEAD | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1>350 && $2!="total"'` | no new source file exceeds the limit | P0 | |
+| R1 | Table engine and interaction tests pass (§1–§2) | `cd ui/packages/design-system && bun run test` | exit 0; 52 files and 488 tests pass | P0 | Pass — 52 files and 488 tests passed; branch coverage 99.56%. |
+| R2 | Dashboard adoption tests pass (§3) | `cd ui/packages/app && bunx vitest run tests/admin-models-ui.test.ts tests/api-keys-components.test.ts tests/api-keys-create-dialog.test.ts tests/app-shell-navigation.test.ts tests/billing-charge-cell.test.tsx tests/billing-usage-tab.test.ts tests/events-components.test.ts tests/platform-catalog-table.test.tsx tests/runners-list.test.ts tests/secrets-list.test.ts` | exit 0; 10 files and 152 tests pass | P0 | Pass — 10 files and 152 tests passed. |
+| R3 | Full unit lanes pass | `make test-unit-all` | exit 0; all unit lanes pass | P0 | Pass — application, website, command-line interface, and design-system unit lanes passed. |
+| R4 | TypeScript and design-system lint stays clean | `make lint-apps-ds-ctl` | exit 0 | P0 | Pass — application, design-system, and command-line interface lint passed. |
+| R5 | Repository conformance stays green | `make harness-verify` | exit 0; ALL GATES GREEN | P0 | Pass — all staged gates green. |
+| R6 | Release versions stay synchronized | `make check-version` | exit 0; all versions match `0.20.0` | P0 | Pass — all versions match `0.20.0`. |
+| R7 | No secrets enter the repository | `gitleaks detect` | exit 0; no leaks found | P0 | Pass — no leaks found. |
+| R8 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | every path is listed above or is this spec after lifecycle movement | P0 | Pass — every path is listed in Files Changed. |
+| R9 | New source files stay within the repository line limit | `git diff --diff-filter=A --name-only origin/main | grep -Ev '\.(md|lock)$' | xargs wc -l 2>/dev/null | awk '$1>350 && $2!="total"'` | no new source file exceeds the limit | P0 | Pass — command produced no output. |
 
 ## Dead Code Sweep
 
@@ -231,5 +232,10 @@ N/A — no files or public symbols were deleted or renamed.
 
 - **Consults** — Indy selected TanStack Table behind the existing `DataTable` API, requested Bun, standard buttons, bounded viewport scrolling, minimal motion, exact shell geometry, and approved the `0.20.0` minor release bump.
 - **Metrics review** — No analytics or funnel changes are required because the same datasets and actions remain; only presentation and navigation improve.
-- **Skill-chain outcomes** — Pending lifecycle grading.
+- **Test audit** — `/write-unit-test` found two uncovered public branches after the first coverage run: controlled server sorting must not reset page state, and non-paginated local sorting must reset the scroll viewport without rendering pagination. Both cases now have focused tests; design-system branch coverage rose from 98.91% to 99.56%.
+- **Review outcomes** — Native Codex review and gstack review found no remaining correctness, performance, security, or design defects. Four informational design-polish findings were applied before the clean rerun: concise cursor status, live status semantics, inset focus treatment, and a cursor-loading spinner.
+- **Test delta** — Zig unit and integration counts remain unit=2814 and integration=376 because this work changes no Zig source. Design-system tests increased from 486 to 488; the focused dashboard set finishes at 152 tests.
+- **Architecture documentation** — No architecture page changed because this is a presentation-only refactor: it adds no runtime, route, data source, queue, schema, or cross-service flow.
+- **Visual verification** — Authenticated browser inspection could not pass the sign-in boundary in this environment. Static geometry tests, interaction tests, type checks, lint, and the production application build provide the shipped evidence.
+- **Skill-chain outcomes** — `/write-unit-test`, native Codex review, and gstack review completed cleanly after the fixes above.
 - **Deferrals** — None.
