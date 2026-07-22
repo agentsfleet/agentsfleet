@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M139
 **Workstream:** 002
 **Date:** Jul 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — observability must explain runner execution without turning signal volume into control-plane load
 **Categories:** Observability (OBS)
 **Batch:** B2 — investigation adjacent to M139_001; no scheduler owner wiring is required to begin
