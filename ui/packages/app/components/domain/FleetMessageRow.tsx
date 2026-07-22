@@ -99,6 +99,71 @@ export function FleetMessageRow({
   );
 }
 
+export type FleetActivityRowProps = {
+  /** Who the delivery came from — a word, never an identifier. */
+  sender: string;
+  createdAt: Date;
+  /** The one-line headline: what arrived. */
+  headline: string;
+  /** How it ended — rendered muted after the headline, omitted while working. */
+  outcome?: string;
+  /** True when the outcome is a failure, which is the one thing that shouts. */
+  failed?: boolean;
+  /** Rendered inline after the headline — an action `Badge`, a link. */
+  annotation?: ReactNode;
+  /** Disclosure and any expansion, rendered under the tick line. */
+  children?: ReactNode;
+  messageRole: string;
+};
+
+/**
+ * The compact "rail tick" an integration delivery renders as (approved variant
+ * B). Same chronological column as the conversation rows and in the same
+ * order — activity recedes visually, it never moves. One line: sender,
+ * headline, outcome, time. No chip, no second outcome row.
+ */
+export function FleetActivityRow({
+  sender,
+  createdAt,
+  headline,
+  outcome,
+  failed,
+  annotation,
+  children,
+  messageRole,
+}: FleetActivityRowProps) {
+  return (
+    <div
+      className={cn(
+        "border-b border-border px-xl py-sm",
+        "hover:bg-card",
+        ROW_ENTER,
+      )}
+      data-role={messageRole}
+      data-compact="true"
+      data-failed={failed || undefined}
+    >
+      <div className="flex items-baseline gap-sm font-mono text-label leading-mono text-muted-foreground">
+        <span className="shrink-0">{sender}</span>
+        <span aria-hidden="true">{TICK_SEPARATOR}</span>
+        <span className="min-w-0 truncate text-foreground">{headline}</span>
+        {annotation}
+        {outcome ? (
+          <>
+            <span aria-hidden="true">{TICK_SEPARATOR}</span>
+            <span className={cn("min-w-0 truncate", failed && "text-destructive")}>{outcome}</span>
+          </>
+        ) : null}
+        <span className="flex-1" />
+        <Timestamp createdAt={createdAt} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
+const TICK_SEPARATOR = "·";
+
 function SenderChip({ sender, tone }: { sender: string; tone: RowTone }) {
   return (
     <span

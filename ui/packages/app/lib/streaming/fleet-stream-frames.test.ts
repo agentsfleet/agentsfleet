@@ -404,7 +404,7 @@ describe("applyLiveFrame", () => {
     expect(out).toBe(seed);
   });
 
-  // §8 D8.4 — the merges locate their event once and copy the array once, the
+  // The merges locate their event once and copy the array once, the
   // shape `applyToolCall` already used. Reference identity is the observable
   // proof: a second pass would rebuild every element, not just the target.
   it("a chunk rebuilds only its own event and leaves every sibling reference intact", () => {
