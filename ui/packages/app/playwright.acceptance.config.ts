@@ -38,13 +38,13 @@ const RAW_RESULTS_JSON = `${RAW_RESULTS_DIR}/results.json`;
 // journey group holds only specs whose seeds, users, and assertions are
 // prefix- or tenant-scoped, so worker count is a throughput knob, not a
 // correctness knob.
-const SUITE_WORKERS = 4;
+const SUITE_WORKERS = 2;
 
-// Latency budgets for a LIVE remote environment at 4-way parallelism —
+// Latency budgets for a live remote environment at two-way parallelism —
 // Playwright's defaults (30s test / 5s expect) assume a local dev server.
-// Four workers seeding fleets against one small dev deployment roughly
-// triples page/API latency; without headroom, healthy journeys burn their
-// whole budget and fail as blanket timeouts. Retries stay at zero: a
+// Two workers still share one small dev deployment; without headroom,
+// healthy journeys burn their whole budget and fail as blanket timeouts.
+// Retries stay at zero: a
 // deterministic failure still fails exactly once, it just gets the time a
 // remote round-trip actually needs.
 const REMOTE_ENV_TEST_TIMEOUT_MS = 60_000;
@@ -107,7 +107,7 @@ export default defineConfig({
     trace: RETAIN_ON_FAILURE,
     screenshot: "only-on-failure",
     // Video stays off: it is not part of the release evidence (raw results,
-    // report, traces, screenshots), and recording every test across four
+    // report, traces, screenshots), and recording every test across multiple
     // concurrent workers starves the suite into blanket timeouts.
     video: "off",
   },
