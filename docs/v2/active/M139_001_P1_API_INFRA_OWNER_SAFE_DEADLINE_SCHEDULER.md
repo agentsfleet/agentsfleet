@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M139
 **Workstream:** 001
 **Date:** Jul 22, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — reliability and bounded resource use across every daemon and runner outbound call
 **Categories:** API, INFRA
-**Batch:** B2 — begins only after M133's merged revision passes development acceptance
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
-**Depends on:** M133_001 — PR #542 must be merged, its exact merged revision deployed to development, and its same-revision browser acceptance completed before CHORE(open)
+**Batch:** B2 — begins by explicit Indy direction; independent of M133 acceptance
+**Branch:** feat/m139-deadline-scheduler
+**Test Baseline:** unit=2814 integration=376
+**Depends on:** None — Indy explicitly removed M133 acceptance as a prerequisite for this workstream
 **Provenance:** LLM-drafted (gpt-5.4, Jul 22, 2026) from Indy's approved follow-up to the M133 deadline-watchdog review
 **Canonical architecture:** `docs/architecture/concurrency.md` §Thread map, §Lock-invariant registry, and §Shutdown choreography
 
@@ -264,7 +264,8 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: pending; execute only after PR #542 merge, exact merged-revision development deployment, and M133 same-revision browser acceptance.
+- **Consults** — Architecture / Legacy-Design / gate-flag triage: pending; the prior M133 acceptance prerequisite was removed by Indy before CHORE(open).
 - **Metrics review** — pending; no product analytics or funnel change is expected because this is internal reliability work.
 - **Skill-chain outcomes** — pending; record `/write-unit-test`, `/review`, and `kishore-babysit-prs` outcomes during execution.
 - **Deferrals** — none at creation.
+- **Dependency decision** — > Indy (2026-07-22 23:29): "screw the depenedency - this spec doesnt need that" — context: M133 deployment and browser acceptance do not gate the owner-safe deadline scheduler.
