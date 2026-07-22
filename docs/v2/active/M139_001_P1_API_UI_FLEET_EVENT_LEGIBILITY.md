@@ -54,9 +54,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/032_fleet_events_failure_detail.sql` | CREATE | Additive nullable text column on `core.fleet_events`. |
-| `schema/embed.zig` | EDIT | Register the migration. |
-| `src/cmd/common.zig` | EDIT | Migration index assertions track the new position (RULE MIG). |
+| `schema/032_fleet_events_failure_detail.sql` | CREATE | Additive `ALTER TABLE … ADD COLUMN failure_detail` — first slot under Indy's additive-migration model; shipped slots frozen. |
+| `schema/embed.zig` | EDIT | Register slot 32 (single-source migration registry). |
+| `make/quality.mk` | EDIT | Remove `_schema_gate_check`/`check-schema-gate` per Indy (Discovery D3) — the teardown-era gate contradicts the new model. |
+| `docs/SCHEMA_CONVENTIONS.md` | EDIT | §Migration Model rewritten: additive migrations, frozen slot files, destructive changes owner-gated. |
 | `src/lib/contract/execution_result.zig` | EDIT | `failure_detail` field, defaulted empty — wire-compatible. |
 | `src/runner/child_exec.zig` | EDIT | Startup checks populate the detail (two sites already carry readable messages in `content`). |
 | `src/runner/child_supervisor.zig` | EDIT | `failed(.startup_posture)` sites name the failing step. |
@@ -83,7 +84,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — UFS (every new label/sentence is a named constant), NDC + NLR (the unused `guidance` hook gets a consumer in this diff — no latent surface remains), ESC (`failure_detail` is escaped at JSON emission), MIG (index assertions move with migration 032), STS + NSQ (no schema defaults; schema-qualified named-constant SQL), TST-NAM (milestone-free test identifiers), XCC (cross-compile both linux targets), FLS (new store reads drain), IMS (`[]const u8` for the detail), ORP (any renamed export swept cross-layer).
+- **`docs/greptile-learnings/RULES.md`** — UFS (every new label/sentence is a named constant), NDC + NLR (the unused `guidance` hook gets a consumer in this diff — no latent surface remains), ESC (`failure_detail` is escaped at JSON emission), STS + NSQ (no schema defaults; schema-qualified named-constant SQL), TST-NAM (milestone-free test identifiers), XCC (cross-compile both linux targets), FLS (new store reads drain), IMS (`[]const u8` for the detail), ORP (any renamed export swept cross-layer).
 - `dispatch/write_zig.md` — runner + daemon edits (lifecycle, tagged results, length caps).
 - `dispatch/write_ts_adhere_bun.md` — all dashboard edits (file-shape verdicts, design-system substitution).
 - `dispatch/write_sql.md` + `docs/SCHEMA_CONVENTIONS.md` — migration 032 (additive, single-concern, ≤100 lines).
@@ -98,14 +99,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File & Function Length (≤350/≤50/≤70) | yes — `fleetMessageRenderers.tsx` and `FleetThread.tsx` are near caps | Grouping, banner, and filter land as the two new components + a pure grouping module, not inline growth. |
 | UFS (repeated/semantic literals) | yes — labels, frame keys | Named constants; the frame key spelling shared runner↔daemon↔dashboard verbatim. |
 | UI Substitution / DESIGN TOKEN | yes — banner, group row, filter control | Design-system primitives (`Badge`, `Alert`, existing segmented patterns); theme tokens only. |
-| SCHEMA GUARD | yes — migration 032 | Additive nullable column; no DROP/ALTER of existing shape; `embed.zig` + array updated same diff. |
+| SCHEMA GUARD | model changed by Indy (Discovery D3) | Additive migration in a new numbered slot; the `check-schema-gate` lint target is removed in this diff; prior slots untouched. |
 | LOGGING / LIFECYCLE / ERROR REGISTRY | no — no new log lines, error codes, or init/deinit surfaces planned | Re-verdict at PLAN if a new allocation-owning component appears. |
 
 ## Prior-Art / Reference Implementations
 
 - **Reference:** M138_001 + `designs/fleet-workspace-20260721/` variant-A — the approved row grammar; this spec adds a compact variant and a group variant inside that grammar, it does not replace the skeleton.
 - **Reference:** `EventsList.tsx` sibling data surfaces (API keys, runners, billing) — the grouped table stays the standard `DataTable`; grouping is row-model preprocessing, not a new table component.
-- **Reference:** `schema/030_fleet_activity_counters.sql` → `031` — the additive-migration shape to mirror.
+- **Reference:** the `failure_label` column in the fleet-events DDL — the exact in-file shape (`TEXT NULL` + provenance comment) `failure_detail` mirrors.
 - **Greenfield:** chat coalescing and the failure banner have no in-repo prior art; their shape is defined by the `/design-shotgun` board committed under `docs/design/` and Indy's recorded pick.
 
 ## Sections (implementation slices)
@@ -114,7 +115,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 A failure that cannot say why it failed is noise. The runner names the cause at classification time; the cause survives the wire, the row, the envelope, and the live frame. **Implementation default:** truncate at a named byte cap at the report write (chat renders one line; Inspect shows the full stored value) because a runaway child must not bloat rows.
 
-- **Dimension 1.1** — Migration 032 adds nullable `failure_detail`; `embed.zig` + migration array + index assertions updated; store roundtrips the field → Test `test_event_row_failure_detail_roundtrip`
+- **Dimension 1.1** — A new additive migration adds nullable `failure_detail` (shipped slots frozen — Indy's migration-model decision, Discovery D3); the store roundtrips the field → Test `test_event_row_failure_detail_roundtrip`
 - **Dimension 1.2** — `ExecutionResult` gains defaulted `failure_detail`; a frame without the field parses to empty (old runner ⇒ new daemon, and inverse) → Test `test_result_frame_absent_detail_parses_empty`
 - **Dimension 1.3** — Every `startup_posture` classification site emits a human-readable cause (`child_exec` reuses its existing messages; `child_supervisor` names the failing step; `engine/runner` maps its error set) → Test `test_startup_posture_sites_carry_detail`
 - **Dimension 1.4** — Report verb persists label + detail; the events envelope returns both verbatim → Test `test_report_persists_and_envelope_returns_detail`
@@ -284,7 +285,7 @@ N/A — no files deleted. The one latent surface (`guidance` in `event-summary.t
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision. Jul 22, 2026: Indy confirmed Full scope (chat + table + backend cause) and the design bracket — `/design-shotgun` before implementation, `/design-review` after. Jul 22, 2026: variant board (`docs/design/fleet-events-board.html`) — Indy picked **variant B "Timeline Rail"** over the authoring recommendation (A): activity as inline rail ticks, floating failure card, pill segmented filter, leading Runs count column in the Events table. Jul 22, 2026: Indy's chronology question answered and pinned in the variant page's sequence-behaviour demo — the rail is inline treatment in ONE chronological column; groups are consecutive-only and break on any success or conversation row (already pinned by §4 Dimension 4.1 — no spec change needed).
+- **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision. Jul 22, 2026 (spec-vs-rules, **superseded by D3 below**): the authored spec prescribed a new numbered migration file; `docs/SCHEMA_CONVENTIONS.md` then forbade that pre-v2.0.0, so the spec was briefly amended to an inline `schema/015` edit. **D3 (Jul 22, 2026, harness ack)** — Indy, asked explicitly about `_schema_gate_check` in `make/quality.mk`: "Drop the gate entirely, and all migration will need the alter or add column and so on hence forth, the old schema should nt be touched." — schema model moved to additive migrations; gate removed; `SCHEMA_CONVENTIONS.md` §Migration Model rewritten; the 015 inline edit reverted; `failure_detail` lands as slot 032. Follow-up owed: the orly-side rule set (`dispatch/write_sql.md` §Pre-v2.0.0, AGENTS.md Schema Guard prose) still describes the teardown model and needs an `edit_rules`-flow sync. Jul 22, 2026: Indy confirmed Full scope (chat + table + backend cause) and the design bracket — `/design-shotgun` before implementation, `/design-review` after. Jul 22, 2026: variant board (`docs/design/fleet-events-board.html`) — Indy picked **variant B "Timeline Rail"** over the authoring recommendation (A): activity as inline rail ticks, floating failure card, pill segmented filter, leading Runs count column in the Events table. Jul 22, 2026: Indy's chronology question answered and pinned in the variant page's sequence-behaviour demo — the rail is inline treatment in ONE chronological column; groups are consecutive-only and break on any success or conversation row (already pinned by §4 Dimension 4.1 — no spec change needed).
 - **Metrics review** — no analytics/funnel playbook update required: no product events added, renamed, or removed (see Metrics & Observability).
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close)); `/design-shotgun` variant pick and `/design-review` findings land here.
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.

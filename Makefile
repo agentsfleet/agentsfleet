@@ -25,7 +25,6 @@ help:  ## Show all available Makefile targets
 	@echo "  lint-apps-ds-ctl         Lint app + design-system + agentsfleet"
 	@echo ""
 	@echo "Quality Gates:"
-	@echo "  check-schema-gate        Enforce pre-v2.0 teardown convention on schema/*.sql"
 	@echo "  check-openapi            Bundle YAML → openapi.json + Redocly lint + error-schema + URL-shape checks"
 	@echo "  check-gh-actions-valid   Validate .github/workflows/ (actionlint YAML + shellcheck + make-target refs)"
 	@echo "  check-playbooks          Validate playbooks/ (shellcheck + reference integrity + README/tree parity)"

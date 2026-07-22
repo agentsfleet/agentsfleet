@@ -4,15 +4,16 @@ Canonical reference for agentsfleet database schema patterns. All new tables **m
 
 ## Migration Model
 
-**Until v2.0.0:** Full teardown-rebuild. Tables are dropped and recreated from scratch on every deploy. No `ALTER TABLE` migrations. Schema changes are made inline in the DDL files. **Enforced by `check-schema-gate`** (`_schema_gate_check` in `make/quality.mk`): `ALTER TABLE` / `DROP TABLE` / `DROP COLUMN` in `schema/*.sql` fail while the major version is `< 2`. To remove a table pre-v2.0.0, delete its slot file + the `embed.zig` entry + the `canonicalMigrations()` array entry.
+**Additive migrations (current model, owner decision Jul 22, 2026).** Every schema change lands as a **new numbered migration file** — `ALTER TABLE … ADD COLUMN`, new tables, new indexes. **Shipped slot files are frozen history: never edit an existing `schema/NNN_*.sql`.** Migrations are version-tracked and applied incrementally (expected-vs-applied state is inspectable via `agentsfleetd doctor --schema-gate`). Use `IF NOT EXISTS` guards so a migration is idempotent against both a fresh bootstrap (all slots in order) and an already-provisioned database (new slots only).
 
-**After v2.0.0:** ALTER migrations required. Schema changes must be backward-compatible and additive. This document will be updated with migration rules when that transition happens.
+Destructive changes (`DROP TABLE`, `DROP COLUMN`, type rewrites) still require an explicit owner decision per change — additive is the default an agent may author alone.
+
+> Historical note: slots `001`–`031` predate this model (teardown-rebuild with inline DDL edits, enforced by a since-removed `check-schema-gate` lint target). They remain valid bootstrap history and are equally frozen.
 
 ## Schema File Organization
 
-- Each SQL file must be **≤100 lines** and **single-concern** (one table or one logical group).
-- Files are numbered sequentially: `001_core_foundation.sql`, `002_core_workflow.sql`, etc.
-- When splitting a file, slide subsequent file numbers to maintain order.
+- Each SQL file must be **≤100 lines** and **single-concern** (one table, one logical group, or one additive change).
+- Files are numbered sequentially: `001_core_foundation.sql`, `002_core_workflow.sql`, etc. New migrations append the next number; shipped numbers are never reused or slid.
 - Every SQL file must be registered in `schema/embed.zig` (compile-time embed) and `src/agentsfleetd/cmd/common.zig` (migration version array).
 - No-op stub files (e.g., columns folded into earlier files) are kept for version history but excluded from the migrations array.
 
