@@ -5,14 +5,6 @@
 //! correct when many streams attach, detach, and tear down at once, and (2) the
 //! reader's lock-released fan-out (push after snapshot, guarded by ref/unref)
 //! never frees a subscription another thread is mid-push on.
-//!
-//! These run on the hub directly with NO Redis and NO Postgres — the churn is
-//! the map edits, the refcount, and the fan-out push, so the test is fully
-//! deterministic (no pub/sub delivery timing to flake on) and uses
-//! `std.testing.allocator` so any leak or double-free fails the run. The
-//! at-scale live-SSE + Redis-kill soak is a separate integration concern; this
-//! isolates the substrate's thread-safety, which is where the fan-in's stability
-//! actually rests.
 
 const std = @import("std");
 const common = @import("common");
@@ -77,21 +69,25 @@ test "soak: concurrent shared-consumer churn leaves the hub empty, leak-free, an
 
     var failures: std.atomic.Value(u32) = .init(0);
     var threads: [WORKER_THREADS]std.Thread = undefined;
-    for (&threads, 0..) |*t, i| {
-        t.* = try std.Thread.spawn(.{}, churnWorker, .{ &hub, i, &failures });
+    var spawned: usize = 0;
+    defer for (threads[0..spawned]) |thread| thread.join();
+    while (spawned < threads.len) : (spawned += 1) {
+        threads[spawned] = try std.Thread.spawn(.{}, churnWorker, .{ &hub, spawned, &failures });
     }
-    for (&threads) |t| t.join();
+    for (threads[0..spawned]) |thread| thread.join();
+    spawned = 0;
 
     try testing.expectEqual(@as(u32, 0), failures.load(.monotonic));
     // Balanced churn: every attach was detached, so no channel may linger.
     try testing.expectEqual(@as(usize, 0), hub.channelCount());
 }
 
-/// The §6 refcount invariant, raced directly: a reader that has snapshotted a
+/// The refcount invariant, raced directly: a reader that has snapshotted a
 /// subscription and is pushing into it must not be use-after-freed by a
 /// concurrent unsubscribe. Simulates the reader's snapshot with an explicit
 /// ref+push while another thread detaches and releases.
 fn readerPushLoop(shared: *Subscription, stop: *std.atomic.Value(bool)) void {
+    // safe because: acquire pairs with the owner's release before join.
     while (!stop.load(.acquire)) {
         // Mirror the hub reader: take a ref for the push window, push, drop it.
         shared.ref();
@@ -117,9 +113,13 @@ test "soak: a subscription being pushed cannot be freed by a concurrent release 
     common.sleepNanos(20 * std.time.ns_per_ms);
     hub.detachChannel(shared, "fleet:soak-race:activity");
 
-    stop.store(true, .release);
+    stop.store(true, .release); // safe because: join observes all prior reader work.
     reader.join();
     // The reader dropped every ref it took; the owner's unref frees exactly once.
     shared.unref();
     try testing.expectEqual(@as(usize, 0), hub.channelCount());
+}
+
+test {
+    _ = @import("workspace_stream_live_soak_test.zig");
 }

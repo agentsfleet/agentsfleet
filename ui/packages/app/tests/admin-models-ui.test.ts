@@ -145,6 +145,15 @@ describe("CatalogueList — rows + rates + empty state", () => {
     expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
   });
 
+  it("sorts each catalogue data column from its header arrow", () => {
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    for (const name of ["Provider", "Model", "Context", "Rates ($ / 1M · in / cached / out)"]) {
+      fireEvent.click(screen.getByRole("button", { name }));
+      expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
+    }
+  });
+
   it("shows the empty state when there are no models", () => {
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: [], activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     expect(screen.getByText("No models yet")).toBeTruthy();
