@@ -31,6 +31,10 @@ const STATUS_IN_FLIGHT = "received";
 const SENDING_LABEL = "sending";
 const FAILED_LABEL = "not sent";
 const STREAM_CURSOR = "▍";
+const WORKING_LABEL = "Working";
+// Staggered so the three dots read as one travelling wave rather than three
+// lights blinking in unison.
+const WORKING_DOT_DELAYS = ["0ms", "160ms", "320ms"] as const;
 const OPEN_LINK_LABEL = "open ↗";
 const PAYLOAD_SHOW_LABEL = "▸ payload";
 const PAYLOAD_HIDE_LABEL = "▾ hide payload";
@@ -221,6 +225,10 @@ function FleetReply({
   const errored = status === STATUS_AGENT_ERROR;
   const streaming = status === STATUS_IN_FLIGHT;
   if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return null;
+  // A turn that has started but said nothing yet gets motion, not a sentence.
+  // "Still working." is true and completely inert — it reads the same at one
+  // second and at five minutes, so the operator cannot tell the fleet is alive.
+  const awaitingFirstWord = streaming && reply.length === 0;
   const body = reply.length > 0 ? reply : outcome;
   // The cause says what broke; the guidance says what to do about it. Only
   // rendered when the failure sentence is what the operator is reading — a
@@ -235,18 +243,45 @@ function FleetReply({
       annotation={errored ? <Badge variant="destructive">{STATUS_AGENT_ERROR}</Badge> : null}
     >
       <ToolCalls tools={tools} />
-      <span className={cn(errored && "text-destructive")}>{body}</span>
-      {streaming ? (
-        <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
-          {STREAM_CURSOR}
-        </span>
-      ) : null}
+      {awaitingFirstWord ? (
+        <WorkingIndicator />
+      ) : (
+        <>
+          <span className={cn(errored && "text-destructive")}>{body}</span>
+          {streaming ? (
+            <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
+              {STREAM_CURSOR}
+            </span>
+          ) : null}
+        </>
+      )}
       {guidance ? (
         <span className="mt-xs block text-label text-muted-foreground" data-testid="failure-guidance">
           {guidance}
         </span>
       ) : null}
     </FleetMessageRow>
+  );
+}
+
+// Three dots, staggered, under one live region so a screen reader is told
+// once that the fleet is working rather than on every animation frame.
+function WorkingIndicator() {
+  return (
+    <output
+      className="inline-flex items-baseline gap-xs"
+      aria-label={WORKING_LABEL}
+      data-testid="fleet-working"
+    >
+      {WORKING_DOT_DELAYS.map((delay) => (
+        <span
+          key={delay}
+          aria-hidden="true"
+          className="inline-block size-1 rounded-full bg-pulse motion-safe:animate-pulse"
+          style={{ animationDelay: delay }}
+        />
+      ))}
+    </output>
   );
 }
 

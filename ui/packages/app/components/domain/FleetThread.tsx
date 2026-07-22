@@ -13,7 +13,6 @@ import {
   CardContent,
   CardHeader,
   Skeleton,
-  WakePulse,
   cn,
 } from "@agentsfleet/design-system";
 import {
@@ -31,6 +30,7 @@ import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 import { FleetNameProvider } from "./FleetMessageRow";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
+import { FleetConnectionIndicator } from "./FleetConnectionIndicator";
 import { FleetFailureBanner } from "./FleetFailureBanner";
 import { failureBannerFor } from "@/lib/events/event-banner";
 import { useFleetDeliveryFailure } from "./useFleetDeliveryFailure";
@@ -42,23 +42,6 @@ const EMPTY_HINT =
 const JUMP_TO_LATEST = "Jump to latest";
 const JUMP_TO_LATEST_LABEL = "↓ latest";
 const BACKFILL_LABEL = "Loading recent activity";
-
-// The approved design carries the connection as a dot and a word, not a badge
-// cluster — present enough to be honest, quiet enough not to compete with the
-// conversation.
-const STATUS_LABEL: Record<ConnectionStatus, string> = {
-  [CONNECTION_STATUS.CONNECTING]: "Connecting…",
-  [CONNECTION_STATUS.LIVE]: "Live",
-  [CONNECTION_STATUS.RECONNECTING]: "Reconnecting…",
-  [CONNECTION_STATUS.OFFLINE]: "Not live",
-};
-
-const STATUS_CLASS: Record<ConnectionStatus, string> = {
-  [CONNECTION_STATUS.CONNECTING]: "text-info",
-  [CONNECTION_STATUS.LIVE]: "text-pulse",
-  [CONNECTION_STATUS.RECONNECTING]: "text-warning",
-  [CONNECTION_STATUS.OFFLINE]: "text-destructive",
-};
 
 const TERMINAL_EVENT_STATUSES: ReadonlySet<FleetEventStatus> = new Set([
   AGENTSFLEET_EVENT_STATUS.PROCESSED,
@@ -146,7 +129,7 @@ export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetT
             >
               <h2 className="border-b-2 border-pulse py-lg font-mono text-sm font-medium text-foreground">
                 {PANEL_TITLE}</h2>
-              <ConnectionIndicator status={stream.connectionStatus} />
+              <FleetConnectionIndicator status={stream.connectionStatus} />
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col p-0">
               <FleetConnectionNotice status={stream.connectionStatus} onRetry={stream.retryConnection} />
@@ -163,24 +146,6 @@ export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetT
 }
 
 // ── internals ────────────────────────────────────────────────────────────
-
-function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
-  const live = status === CONNECTION_STATUS.LIVE;
-  return (
-    <span
-      aria-label={`Connection status: ${STATUS_LABEL[status]}`}
-      className={cn("inline-flex items-center gap-sm font-mono text-label", STATUS_CLASS[status])}
-      data-connection={status}
-    >
-      <WakePulse
-        live={live}
-        className="inline-block h-2 w-2 rounded-full bg-current"
-        aria-hidden="true"
-      />
-      {STATUS_LABEL[status]}
-    </span>
-  );
-}
 
 function useRefreshSummariesOnCompletion(initial: EventRow[], events: FleetEvent[]) {
   const router = useRouter();

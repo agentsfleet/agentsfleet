@@ -170,6 +170,15 @@ function appendMessage(text: string): AppendMessage {
   };
 }
 
+function threadElement(initial: EventRow[] = []) {
+  return React.createElement(FleetThread, {
+    workspaceId: WS,
+    fleetId: ZID,
+    fleetName: FLEET_NAME,
+    initial,
+  });
+}
+
 function renderThread() {
   return renderThreadWithInitial([]);
 }
@@ -362,6 +371,62 @@ describe("FleetThread — role rendering", () => {
     // A blocked turn does not render the instruction as if it succeeded — the
     // fleet bubble states the outcome (coding-agent finding #4).
     expect(screen.getByText(OUTCOME.WAITING_APPROVAL)).toBeTruthy();
+  });
+
+  it("shows motion while connecting, and no band above the conversation", () => {
+    mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
+    const { container } = renderThread();
+
+    // The one moment the operator wants a sign of life is while we are
+    // trying, so the dot moves — and a state with no decision attached does
+    // not earn a band above their conversation.
+    expect(container.querySelector('[data-connection="connecting"]')).toBeTruthy();
+    expect(container.querySelector(".animate-pulse")).toBeTruthy();
+    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+    expect(screen.queryByText(/History remains available/i)).toBeNull();
+  });
+
+  it("keeps a band only for a connection that asks the operator to decide", () => {
+    mockStream([], { connectionStatus: CONNECTION_STATUS.RECONNECTING });
+    const reconnecting = renderThread();
+    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+    reconnecting.unmount();
+
+    mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
+    renderThread();
+    // Nothing to wait for and a choice to make — so it speaks, and offers it.
+    expect(screen.getByTestId("fleet-connection-notice")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("announces arrival once, and only when it was actually waiting", async () => {
+    mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
+    const view = renderThread();
+    mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
+    await act(async () => { view.rerender(threadElement()); });
+
+    const indicator = view.container.querySelector('[data-connection="live"]');
+    expect(indicator?.getAttribute("data-arrived")).toBe("true");
+    view.unmount();
+
+    // A surface that mounts already-live announces nothing: there was no
+    // wait to resolve.
+    mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
+    const fresh = renderThread();
+    expect(
+      fresh.container.querySelector('[data-connection="live"]')?.getAttribute("data-arrived"),
+    ).toBeNull();
+  });
+
+  it("animates a turn that has started but not spoken yet", () => {
+    mockStream([
+      ev({ role: "user", actor: "steer:user_abc", text: "Howdy", reply: "", status: "received" }),
+    ]);
+    renderThread();
+
+    // "Still working." reads the same at one second and at five minutes.
+    expect(screen.getByTestId("fleet-working")).toBeTruthy();
+    expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
   });
 
   it("pins one banner for a fleet that keeps failing the same way", () => {

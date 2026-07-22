@@ -175,6 +175,15 @@ Folded in by Indy at the §1 review (Discovery D4). Three findings surfaced by �
 - **Dimension 8.3** — DONE — The completion frame takes a named failure-cause struct, not adjacent same-typed strings → Test `test_completion_frame_cause_is_named`
 - **Dimension 8.4** — DONE — Chunk and completion merges locate their event once and copy the array once, matching the tool-call helper → Test `test_chunk_merge_single_pass`
 
+### §9 — The live connection reports itself without narrating
+
+Added mid-flight by Indy from live use: connecting shows a static banner reading "Connecting to live updates. History remains available." — motionless while the one thing the operator wants to know is whether anything is happening, and spending the loudest slot above the conversation on transport state they can already see. A steered turn then sits on the flat sentence "Still working." with no sign of life until the reply lands. **Implementation default:** the connection is chrome, so it lives in the header indicator and the transient banners go, because a state with no decision attached does not earn a band above someone's conversation.
+
+- **Dimension 9.1** — DONE — Connecting and reconnecting animate in the header indicator; neither renders a banner → Test `test_connecting_animates_without_a_banner`
+- **Dimension 9.2** — DONE — Reaching live fires one short arrival cue, then settles into the steady pulse; the lingering "restored" alert is gone → Test `test_arrival_cue_fires_once_then_settles`
+- **Dimension 9.3** — DONE — Only an unavailable connection keeps a banner, because only it offers a decision (Retry) → Test `test_only_offline_keeps_its_banner`
+- **Dimension 9.4** — DONE — A turn still working renders an animated indicator rather than a static sentence → Test `test_working_turn_animates`
+
 ## Interfaces
 
 ```
@@ -245,6 +254,10 @@ This workstream renders existing durable data; it adds, renames, and removes no 
 | 8.2 | unit | `test_report_round_trip_preserves_every_wire_field` | result→report→result returns the original; a cause on a processed outcome is dropped at the boundary (negative). |
 | 8.3 | unit | `test_completion_frame_cause_is_named` | Frame built from a named cause struct emits label+detail; a clean completion emits both empty. |
 | 8.4 | unit | `test_chunk_merge_single_pass` | Chunk and completion merges update only the target event and preserve every other reference. |
+| 9.1 | unit | `test_connecting_animates_without_a_banner` | Connecting/reconnecting → indicator animates, no alert rendered. |
+| 9.2 | unit | `test_arrival_cue_fires_once_then_settles` | Status flips to live → one-shot cue, then steady; no lingering alert. |
+| 9.3 | unit | `test_only_offline_keeps_its_banner` | Offline → banner + Retry; every other status → none (negative). |
+| 9.4 | unit | `test_working_turn_animates` | A `received` turn with no reply → animated indicator, not a static sentence. |
 | end-to-end (e2e) | e2e | `acceptance-e2e` console walk | Failing fleet → operator sees banner + collapsed group + cause sentence on the real rendered console. |
 
 ## Acceptance Rubric (single scoring surface)

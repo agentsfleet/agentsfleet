@@ -1,14 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { Alert, Button } from "@agentsfleet/design-system";
-import {
-  CONNECTION_STATUS,
-  type ConnectionStatus,
-} from "./useFleetEventStream";
 
-const RESTORED_NOTICE_MS = 4_000;
-const NOTICE_CLASS_NAME = "mx-xl my-md rounded-md px-lg py-sm";
+import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
+
+// A band above the conversation is the loudest thing on this surface. It is
+// spent only on a state that asks the operator for a decision.
+//
+// Connecting and reconnecting do not: they resolve on their own, usually
+// faster than the sentence describing them can be read, and the header
+// indicator already shows them with motion. They used to render a full-width
+// alert that sat motionless and explained that history remained available —
+// narrating our transport, and reassuring about something visible on screen.
+// Reaching live used to render a fourth alert that lingered for four seconds;
+// the indicator's arrival cue says it in one.
+//
+// Losing the connection is different. There is nothing to wait for and a
+// choice to make, so it keeps its band and its Retry.
+
+const OFFLINE_MESSAGE = "Live updates stopped. Retry any message that failed to send.";
+const RETRY_LABEL = "Retry";
 
 export function FleetConnectionNotice({
   status,
@@ -17,59 +28,16 @@ export function FleetConnectionNotice({
   status: ConnectionStatus;
   onRetry: () => void;
 }) {
-  const recoveryPending = useRef(
-    status === CONNECTION_STATUS.RECONNECTING || status === CONNECTION_STATUS.OFFLINE,
-  );
-  const [restored, setRestored] = useState(false);
-
-  useEffect(() => {
-    if (status === CONNECTION_STATUS.RECONNECTING || status === CONNECTION_STATUS.OFFLINE) {
-      recoveryPending.current = true;
-      setRestored(false);
-      return;
-    }
-    if (status === CONNECTION_STATUS.CONNECTING) {
-      setRestored(false);
-      return;
-    }
-    if (!recoveryPending.current) {
-      return;
-    }
-    recoveryPending.current = false;
-    setRestored(true);
-    const timer = setTimeout(() => setRestored(false), RESTORED_NOTICE_MS);
-    return () => clearTimeout(timer);
-  }, [status]);
-
-  if (status === CONNECTION_STATUS.LIVE) {
-    return restored ? (
-      <Alert variant="success" className={NOTICE_CLASS_NAME}>
-        Live connection restored.
-      </Alert>
-    ) : null;
-  }
-  if (status === CONNECTION_STATUS.CONNECTING) {
-    return (
-      <Alert variant="info" className={NOTICE_CLASS_NAME}>
-        Connecting to live updates. History remains available.
-      </Alert>
-    );
-  }
-  if (status === CONNECTION_STATUS.RECONNECTING) {
-    return (
-      <Alert variant="warning" className={NOTICE_CLASS_NAME}>
-        Reconnecting to live updates. History remains available; retry any failed send.
-      </Alert>
-    );
-  }
+  if (status !== CONNECTION_STATUS.OFFLINE) return null;
   return (
     <Alert
       variant="destructive"
-      className={`${NOTICE_CLASS_NAME} items-center justify-between gap-md`}
+      data-testid="fleet-connection-notice"
+      className="mx-xl my-md flex items-center justify-between gap-md rounded-md px-lg py-sm"
     >
-      <span>Live updates unavailable. History remains available; retry any failed send.</span>
+      <span>{OFFLINE_MESSAGE}</span>
       <Button type="button" size="sm" variant="outline" onClick={onRetry}>
-        Retry
+        {RETRY_LABEL}
       </Button>
     </Alert>
   );
