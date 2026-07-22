@@ -10,8 +10,12 @@ vi.mock("lucide-react", () => ({
   ArrowUpDown: () => React.createElement("svg", { "data-icon": "ArrowUpDown" }),
 }));
 
-vi.mock("@/app/(dashboard)/settings/billing/actions", () => ({
-  listTenantBillingChargesAction: vi.fn(),
+
+// The usage ledger's pager reads the cursor trail from the URL.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/settings/billing",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 import BillingUsageTab from "@/app/(dashboard)/settings/billing/components/BillingUsageTab";

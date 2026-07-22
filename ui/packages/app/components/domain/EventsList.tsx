@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  Alert,
   Badge,
   type BadgeVariant,
   Button,
@@ -13,17 +12,16 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 import { ActivityIcon, ChevronRightIcon } from "lucide-react";
-import { listWorkspaceEventsAction } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { failureSentenceFor, senderLabelFor } from "@/lib/events/event-summary";
-import { presentErrorString } from "@/lib/errors";
-import { useCursorPages } from "@/lib/pagination/use-cursor-pages";
+import { EVENTS_PAGE_SIZE } from "@/lib/pagination/cursor-trail";
+import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
 import { formatMs } from "@/lib/utils";
 import { EventDetailsDialog } from "./EventDetailsDialog";
 
 export type EventsListProps = {
-  workspaceId: string;
+  /** The page the Server Component fetched for the cursor in the URL. */
   initial: EventsPage;
   fleetId?: string;
 };
@@ -42,17 +40,6 @@ const NULL_METRIC_SORT_VALUE = -1;
 // multi-megabyte agent response must not ride into the DOM per row.
 const SUMMARY_TITLE_MAX_CHARS = 2_000;
 const TOKEN_COUNT_FORMAT = new Intl.NumberFormat();
-// Matches the server-side page the surrounding pages request, so the pager's
-// numbering and the fetch boundary are the same thing.
-export const EVENTS_PAGE_SIZE = 25;
-
-function presentPageError(result: { error: string; errorCode?: string }): string {
-  return presentErrorString({
-    errorCode: result.errorCode,
-    message: result.error,
-    action: "load events",
-  });
-}
 
 // Map server status → Badge variant. Untracked statuses fall through to
 // the default (muted) badge — readable, not opinionated.
@@ -136,23 +123,18 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
   ];
 }
 
-export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
+export function EventsList({ initial, fleetId }: EventsListProps) {
   const [selected, setSelected] = useState<EventRow | null>(null);
   const columns = useMemo(() => {
     const all = createEventColumns(setSelected);
     return fleetId ? all.filter((column) => column.key !== "fleet") : all;
   }, [fleetId]);
 
-  const fetchPage = useCallback(
-    (cursor: string) =>
-      listWorkspaceEventsAction(workspaceId, {
-        cursor,
-        ...(fleetId ? { fleet_id: fleetId } : {}),
-      }),
-    [workspaceId, fleetId],
-  );
-  const feed = useCursorPages<EventRow>(initial, fetchPage, presentPageError);
-  const { items, error } = feed;
+  // The page lives in the URL; the Server Component above already fetched it.
+  // Nothing is fetched here, so there is no client cache to fall out of sync
+  // and no error state of its own — a failed page is the server's to report.
+  const feed = useUrlCursorPages(initial.next_cursor);
+  const items = initial.items;
 
   return (
     <div className="flex flex-col gap-3">
@@ -186,7 +168,6 @@ export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
         row={selected}
         onOpenChange={() => setSelected(null)}
       />
-      {error ? <Alert variant="destructive">{error}</Alert> : null}
     </div>
   );
 }

@@ -12,6 +12,12 @@ import { listApprovals } from "@/lib/api/approvals";
 import { listMemories } from "@/lib/api/memory";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import { EventsList } from "@/components/domain/EventsList";
+import {
+  CURSOR_TRAIL_PARAM,
+  EVENTS_PAGE_SIZE,
+  cursorForTrail,
+  cursorTrailFrom,
+} from "@/lib/pagination/cursor-trail";
 import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
 import TriggerPanel from "./components/TriggerPanel";
 import FleetConfig from "./components/FleetConfig";
@@ -42,6 +48,8 @@ type PageContext = {
   fleet: FleetDetail;
   etag: string;
   token: string;
+  /** Cursor of the events page named by the URL; null on the first page. */
+  eventsCursor: string | null;
 };
 
 const LIFECYCLE_ACTION_STATUSES = new Set<string>([
@@ -55,15 +63,18 @@ export default async function FleetDetailPage({
   searchParams,
 }: {
   params: Promise<{ workspaceId: string; id: string }>;
-  searchParams?: Promise<{ view?: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspaceId, id } = await params;
-  const query = searchParams ? await searchParams : { view: undefined };
+  const query: Record<string, string | string[] | undefined> = searchParams
+    ? await searchParams
+    : {};
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const view = resolveFleetView(query.view);
+  const view = resolveFleetView(typeof query.view === "string" ? query.view : undefined);
+  const eventsCursor = cursorForTrail(cursorTrailFrom(query[CURSOR_TRAIL_PARAM]));
   if (!view) redirect(workspacePath(workspaceId, `fleets/${id}`));
 
   const [fleetResult, billing] = await Promise.all([
@@ -73,7 +84,7 @@ export default async function FleetDetailPage({
   if (!fleetResult) notFound();
 
   const { fleet, etag } = fleetResult;
-  const content = await loadFleetView(view, { workspaceId, fleet, etag, token });
+  const content = await loadFleetView(view, { workspaceId, fleet, etag, token, eventsCursor });
   // The chat is a conversation surface, not a document: it claims the frame so
   // its composer stays on screen and only the message list scrolls. Every
   // other view is ordinary page content and scrolls with the page.
@@ -179,10 +190,14 @@ async function loadChatView({ workspaceId, fleet, token }: PageContext) {
   );
 }
 
-async function loadEventsView({ workspaceId, fleet, token }: PageContext) {
-  const initial = await listFleetEvents(workspaceId, fleet.id, token, { limit: 50 })
-    .catch(() => ({ items: [], next_cursor: null }));
-  return <EventsList workspaceId={workspaceId} fleetId={fleet.id} initial={initial} />;
+async function loadEventsView({ workspaceId, fleet, token, eventsCursor }: PageContext) {
+  // Fetched on the server for the cursor the URL names, so a reload or a
+  // shared link opens the page the operator was actually looking at.
+  const initial = await listFleetEvents(workspaceId, fleet.id, token, {
+    limit: EVENTS_PAGE_SIZE,
+    ...(eventsCursor ? { cursor: eventsCursor } : {}),
+  }).catch(() => ({ items: [], next_cursor: null }));
+  return <EventsList fleetId={fleet.id} initial={initial} />;
 }
 
 async function loadMemoryView({ workspaceId, fleet, token }: PageContext) {

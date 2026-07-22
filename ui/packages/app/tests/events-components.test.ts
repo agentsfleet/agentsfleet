@@ -5,16 +5,23 @@ import userEvent from "@testing-library/user-event";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
-const { listWorkspaceEventsActionMock } = vi.hoisted(() => ({
-  listWorkspaceEventsActionMock: vi.fn(),
+// Paging is URL state now: the pager navigates and the Server Component
+// fetches the page the cursor names, so these assert the URL that gets
+// pushed rather than a client-side fetch.
+const { routerPushMock, searchParamsRef } = vi.hoisted(() => ({
+  routerPushMock: vi.fn(),
+  searchParamsRef: { current: new URLSearchParams() },
 }));
 
-vi.mock("@/app/(dashboard)/w/[workspaceId]/events/actions", () => ({
-  listWorkspaceEventsAction: listWorkspaceEventsActionMock,
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: routerPushMock }),
+  usePathname: () => "/w/ws_1/events",
+  useSearchParams: () => searchParamsRef.current,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  searchParamsRef.current = new URLSearchParams();
 });
 
 afterEach(() => cleanup());
@@ -55,7 +62,7 @@ function renderList(initial: EventsPage, fleetId?: string) {
     React.createElement(
       TooltipProvider,
       null,
-      React.createElement(EventsList, { workspaceId: "ws_1", initial, fleetId }),
+      React.createElement(EventsList, { initial, fleetId }),
     ),
   );
 }
@@ -81,12 +88,12 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.queryByRole("button", { name: /load more|next/i })).toBeNull();
   });
 
-  it("still offers Load more when an empty page carries a cursor (no stranded data)", () => {
+  it("still offers a way forward when an empty page carries a cursor (no stranded data)", () => {
     renderList({ items: [], next_cursor: "cur_more" });
     // Compaction between pages can return an empty page with a live cursor —
     // the affordance to keep paging must survive the empty state.
     expect(screen.getByText(/No events yet/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /load more|next/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeTruthy();
   });
 
   it("test_events_page_uses_standard_table — one table row per event with status badge, actor, and summary", () => {
@@ -292,17 +299,16 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("fleet-scoped pagination preserves the fleet filter", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { items: [], next_cursor: null },
-    });
+  it("keeps every other query value when turning the page", async () => {
+    // The fleet page carries its open tab in the URL. A page turn that
+    // dropped it would throw the operator back to the Chat tab.
+    searchParamsRef.current = new URLSearchParams("view=events");
     renderList({ items: [row()], next_cursor: "cur_fleet" }, "zomb_1234567890ab");
-    await userEvent.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() => expect(listWorkspaceEventsActionMock).toHaveBeenCalledWith("ws_1", {
-      cursor: "cur_fleet",
-      fleet_id: "zomb_1234567890ab",
-    }));
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    const pushed = new URLSearchParams(String(routerPushMock.mock.calls[0]?.[0]).split("?")[1]);
+    expect(pushed.get("view")).toBe("events");
+    expect(pushed.getAll("c")).toEqual(["cur_fleet"]);
   });
 
   it("renders relative <time> with a standard datetime when created_at is valid; omits when invalid", () => {
@@ -319,67 +325,30 @@ describe("EventsList — the standard workspace events table", () => {
     expect(times[0]!.textContent).toMatch(/ago|^in /i);
   });
 
-  it("test_events_table_paginates_by_cursor — load more appends rows and updates the cursor", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: {
-        items: [row({ event_id: "p2", response_text: "page two" })],
-        next_cursor: null,
-      },
-    });
-    renderList({
-      items: [row({ event_id: "p1", response_text: "page one" })],
-      next_cursor: "cur_1",
-    });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() => expect(listWorkspaceEventsActionMock).toHaveBeenCalled());
-    expect(listWorkspaceEventsActionMock).toHaveBeenCalledWith("ws_1", { cursor: "cur_1" });
-    // The next page REPLACES the current one: a page of rows is a screenful,
-    // not one list that grows until the pager falls off the bottom.
-    await waitFor(() => expect(screen.getByText("page two")).toBeTruthy());
-    expect(screen.queryByText("page one")).toBeNull();
+  it("test_events_table_paginates_by_cursor — the page turn lands in the URL", async () => {
+    renderList({ items: [row({ event_id: "p1", response_text: "page one" })], next_cursor: "cur_1" });
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    // The cursor is appended to the trail, so the server fetches page two and
+    // Back walks the operator to page one.
+    expect(String(routerPushMock.mock.calls[0]?.[0])).toContain("c=cur_1");
   });
 
-  it("loadMore surfaces 'Not authenticated' when the action reports unauth", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: "Not authenticated",
-      status: 401,
-    });
-    renderList({ items: [row()], next_cursor: "cur_x" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
-    );
+  it("walks back down the trail instead of re-asking the server", async () => {
+    searchParamsRef.current = new URLSearchParams("c=cur_1");
+    renderList({ items: [row()], next_cursor: null });
+    expect(screen.getByText("Page 2")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    // Dropping the last cursor is page one, which needs no cursor at all.
+    expect(String(routerPushMock.mock.calls[0]?.[0])).not.toContain("c=");
   });
 
-  it("loadMore surfaces error message when the action returns an error", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({ ok: false, error: "backend down" });
-    renderList({ items: [row()], next_cursor: "cur_x" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/backend down/),
-    );
+  it("stops at the end of the feed rather than offering an empty page", () => {
+    renderList({ items: [row()], next_cursor: null });
+    // A single page needs no pager at all.
+    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
   });
-
-  it("loadMore falls back to default message when the action returns an empty error", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
-    renderList({ items: [row()], next_cursor: "cur_x" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load events/),
-    );
-  });
-
-  // ── The event's cost columns ───────────────────────────────────────────────
-  //
-  // tokens and wall_ms ride the wire on every EventRow; the table gives each
-  // its own labelled column, and a row without them renders a dash — an unknown
-  // is never a fabricated zero.
 
   it("renders tokens and duration in their columns on a row that carries them", () => {
     renderList({ items: [row({ tokens: 12480, wall_ms: 3200 })], next_cursor: null });

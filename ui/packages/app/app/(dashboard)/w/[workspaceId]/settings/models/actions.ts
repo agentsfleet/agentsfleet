@@ -18,7 +18,7 @@ import type { TenantModelEntryList, TenantModelEntryWriteResult, TenantProvider 
 
 // The model library read (GET /v1/models) is bearer-authed; the client-side
 // catalogue provider fetches through this action so the token never reaches
-// the browser. Mirrors listTenantBillingChargesAction.
+// the browser.
 export async function getModelLibraryAction(): Promise<ActionResult<ModelLibrary>> {
   return withToken((t) => apiGetModelLibrary(t));
 }
