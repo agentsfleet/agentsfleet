@@ -77,6 +77,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/dev_release_verdict.sh` | ADD (discovered) | Notification verdict extracted to a directly testable script. |
 | `ui/packages/app/tests/e2e/acceptance/multi-workspace.spec.ts` | EDIT (discovered) | Import the shared secondary-workspace name provisioned once in setup. |
 | `ui/packages/app/tests/e2e/acceptance/workspace-fleet-lifecycle.spec.ts` | EDIT (discovered) | Shared secondary-workspace name plus prefix-scoped cleanup. |
+| `ui/packages/app/lib/auth/client.ts` | EDIT (discovered) | Keep the Clerk session token fresh during long-lived dashboard use without exposing it to application code. |
+| `ui/packages/app/lib/auth/client.test.tsx` | ADD (discovered) | Pin active, resumed, hidden, and signed-out session-refresh behavior. |
+| `ui/packages/app/app/layout.tsx` | EDIT (discovered) | Mount the session keeper once under the Clerk provider. |
+| `docs/AUTH.md` | EDIT (discovered) | Document proactive refresh and the expired-POST failure it prevents. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/lifecycle.ts` | EDIT (discovered) | Remove the harness-only refresh so long lifecycle journeys prove product session continuity. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/auth.ts` | EDIT (discovered) | Delete the token-exposing manual session refresh workaround. |
+| `ui/packages/app/tests/e2e/acceptance/platform-library-onboarding.spec.ts` | EDIT | Let long import and publish mutations exercise product session continuity without fixture intervention. |
 
 ## Applicable Rules
 
@@ -139,6 +146,12 @@ The notification includes quality, browser acceptance, CLI acceptance, and runne
 - **Dimension 5.1 — DONE** — CLI failure, skip, or cancellation makes the notification red → Test `test_dev_notification_includes_cli_result`
 - **Dimension 5.2 — DONE** — green requires every release-critical job successful and reports the release commit → Test `test_dev_notification_green_requires_all_gates`
 
+### §6 — Long-lived dashboard sessions remain mutation-capable — **IN_PROGRESS**
+
+Keep the short-lived Clerk session token fresh while an authenticated dashboard is active. Refresh on mount, while visible, and when the browser resumes; never expose the token value or construct a client-side Bearer header.
+
+- **Dimension 6.1 — IN_PROGRESS** — an active or resumed signed-in dashboard refreshes before token expiry while hidden and signed-out dashboards do not poll → Test `test_dashboard_session_refresh_survives_long_journeys`
+
 ## Interfaces
 
 ```text
@@ -161,6 +174,7 @@ notify green                 = qa-dev success
 | Cache drift | lock or browser version changed | exact cache miss and fresh selected-browser install |
 | Cancellation | workflow cap or external interruption | raw results and traces upload under `always()` |
 | False green | CLI or browser result skipped, canceled, or failed | notify emits red verdict with all job results |
+| Expired mutation cookie | a long dashboard journey outlives Clerk's short session-token lifetime | client refresh keeps the cookie current; the next Server Action POST reaches middleware authenticated |
 
 ## Invariants
 
@@ -168,6 +182,7 @@ notify green                 = qa-dev success
 2. A green notification includes successful browser and CLI acceptance results.
 3. No artifact, trace, screenshot, or step summary contains loaded secret values.
 4. Playwright remains the browser engine for this milestone.
+5. Session refresh never returns a token value to application code or constructs a client-side Bearer header.
 
 ## Metrics & Observability
 
@@ -191,6 +206,7 @@ notify green                 = qa-dev success
 | 4.2 | integration | `test_acceptance_artifacts_survive_failure` | failed run retains raw results and traces |
 | 5.1 | integration | `test_dev_notification_includes_cli_result` | CLI non-success yields red notification |
 | 5.2 | integration | `test_dev_notification_green_requires_all_gates` | only all-success matrix yields green |
+| 6.1 | unit | `test_dashboard_session_refresh_survives_long_journeys` | signed-in visible and resumed sessions refresh; hidden and signed-out sessions do not poll |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -245,7 +261,8 @@ N/A — no files deleted. Removed retry and stale-selector branches require zero
   - QStash 503s (UZ-SCHED-007) were an unseeded development platform-admin vault, not a workflow secrets gap — credentials load from the database vault at boot (`src/agentsfleetd/cron/Credentials.zig`). The environment has since been seeded; the preflight now proves it on every run and diagnoses a regression with the registration playbook.
   - Test-tier deviation: Dimensions 3.2/3.3 are proven at the configuration layer (project grouping, ignore lists, dependency chains pinned by `release-gate-suite-config.test.ts`) plus a live four-worker suite run, rather than by a dedicated in-run concurrency assertion. The spec's tier column said end-to-end; the configuration pin is deterministic where an in-run assertion would be timing-dependent.
   - **Stream 401 (UZ-AUTH-002) — root cause found and fixed here.** Indy's report was a real deployment defect, not harness drift. The four token-minting proxy Route Handlers lived under `app/backend/…`, the same prefix as the `/backend/:path*` rewrite in `next.config.ts`. Vercel's edge router applies rewrites ahead of same-prefix filesystem routes, so on the deployed app the handler never ran: the browser's EventSource request went straight to `api-dev` carrying only a cookie and no Bearer, and every stream connect answered 401. Local `next start` resolves the handler first, which is why the suite passed locally and failed on app-dev. Proof: a fresh fixture token gets HTTP 200 on `api-dev` directly (`/v1/workspaces/{ws}/events/stream` → `event: hello`), while the same stream through `app-dev.agentsfleet.net/backend/…` returns `UZ-AUTH-002` 4 seconds after sign-in. Fix: the handlers move to `app/live/…`, a prefix no rewrite can claim; `tests/stream-proxy-routing.test.ts` pins the invariant (red-green proven — 2 of 3 assertions fail against the old layout).
-  - **Server-Action 307 → `/sign-in` — second auth arm, also fixed here.** Clerk session tokens live ~60 seconds. A journey step that outlives one (GitHub import, install stream, observe walk) leaves the next Server Action POST holding a stale `__session` cookie; `clerkMiddleware` cannot run a handshake on a POST, treats it as unauthenticated, and redirects — silently losing the mutation. Fix: `refreshBrowserSession(page)` (`fixtures/auth.ts`) forces `getToken({ skipCache: true })` before mutations that follow a long wait, wired into the lifecycle fixture and the platform-library walks. This is a harness-side guard for a real product sharp edge; the durable product fix (refresh-on-focus or middleware handshake for POSTs) belongs to the auth-flow milestone.
+  - **Server-Action 307 → `/sign-in` — second auth arm, also fixed here.** Clerk session tokens live ~60 seconds. A journey step that outlives one (GitHub import, install stream, observe walk) leaves the next Server Action POST holding a stale `__session` cookie; Clerk does not handshake non-GET requests, so `auth.protect()` redirects to sign-in before the action executes. `AuthSessionKeeper` now refreshes through Clerk's `user.reload()` on mount, before expiry while visible, and when focus, visibility, or connectivity resumes. It never receives token bytes. The shared lifecycle fixture's manual refresh is removed so long acceptance journeys exercise the product behavior rather than masking it.
+  - Same-branch auth decision: Indy explicitly requested the durable Clerk session-expiry fix in `feat/m135-release-readiness`; M135_004 therefore owns the product-side session keeper rather than routing it to a separate auth Pull Request (PR).
   - Blast-radius rows `install-ui.ts`, `nav.ts`, `seed.ts`, `platform-library-onboarding.spec.ts`, and `cli-adversarial.spec.ts` were verified current against the shipped product (the acceptance-repair commit that landed after this spec was authored already fixed them) — no diff needed; the `cli-adversarial` fail-on-missing-artifact requirement landed in the shared `cli-runner.ts` fixture all CLI specs spawn through.
   - Adversarial review (REVIEW stage) surfaced and this diff fixed: the raw Vercel bypass secret riding into retained failure traces (now traded for its derived cookie via storage state before any traced context exists), a re-run artifact-name conflict (overwrite enabled), the fetch-audit group not being strictly last, silent empty Playwright-version cache keys, two jobs loading secrets before installs, missing prod-suite concurrency, and a string-concatenated notification payload (now jq-built).
   - Known-bounded residual: retained traces still carry fixture-user Clerk session cookies (dev/prod fixture tenants only; sessions revoked at teardown) and cross-job fleet mutations between `cli-acceptance-dev` and the browser suite share fixture tenants — both routed to the M135_003 CLI-lane workstream on this same branch.

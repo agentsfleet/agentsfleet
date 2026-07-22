@@ -110,17 +110,3 @@ export async function signInAs(page: Page, key: FixtureKey): Promise<void> {
 export function fixtureEmail(key: FixtureKey): string {
   return getFixtureEntry(loadCache(), key).email;
 }
-
-/**
- * Force clerk-js to refresh the `__session` cookie NOW. Session tokens live
- * ~60 seconds; a journey step that outlives that (GitHub import, install
- * stream, observe walks) leaves the next Server Action POST holding a stale
- * cookie — clerkMiddleware cannot handshake a POST, treats it as
- * unauthenticated, and 307s to /sign-in, silently losing the mutation.
- * Call this immediately before any mutation that follows a long wait.
- */
-export async function refreshBrowserSession(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    await window.Clerk?.session?.getToken({ skipCache: true });
-  });
-}
