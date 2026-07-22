@@ -4,6 +4,7 @@ import {
   __resetRegistryForTests,
   CONNECTION_STATUS,
   appendOptimistic,
+  discardOptimistic,
   getSnapshot,
   markOptimisticFailed,
   reconcileOptimistic,
@@ -239,6 +240,30 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     a();
   });
 
+  it("grafts the operator's text onto a body-less live row that beat the POST response", () => {
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const tempId = appendOptimistic(Z_A, "deploy the canary", "steer:k@e2e.com");
+    // The SSE EVENT_RECEIVED for this steer lands before the Server Action
+    // resolves — the frame carries no message body, so the live row holds
+    // the real event id with an empty trigger.
+    const es = FakeEventSource.instances[0]!;
+    es.onmessage?.call(es as unknown as EventSource, {
+      data: JSON.stringify({
+        kind: FRAME_KIND.EVENT_RECEIVED,
+        event_id: "evt_early",
+        actor: "steer:k@e2e.com",
+      }),
+    } as MessageEvent);
+    expect(reconcileOptimistic(Z_A, tempId, "evt_early")).toBe(false);
+    const events = getSnapshot(Z_A).events;
+    expect(events).toHaveLength(1);
+    expect(events[0]!.id).toBe("evt_early");
+    // The optimistic row was the only holder of the operator's message;
+    // reconciliation must not blank it out of the thread until reload.
+    expect(events[0]!.text).toBe("deploy the canary");
+    a();
+  });
+
   it("drops the optimistic duplicate when the real event completed before reconciliation", () => {
     const a = subscribe(
       WS,
@@ -282,6 +307,45 @@ describe("fleet-stream-registry — mutation edges", () => {
   it("markOptimisticFailed is a no-op for a fleet with no active subscription", () => {
     markOptimisticFailed("never_subscribed", "temp_x");
     expect(getSnapshot("never_subscribed").events).toHaveLength(0);
+  });
+
+  it("discardOptimistic removes only the matching row", () => {
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const keep = appendOptimistic(Z_A, "first", "steer:k");
+    const stale = appendOptimistic(Z_A, "second", "steer:k");
+    markOptimisticFailed(Z_A, stale);
+    discardOptimistic(Z_A, stale);
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual([keep]);
+    a();
+  });
+
+  it("discardOptimistic is a no-op for a fleet with no active subscription", () => {
+    discardOptimistic("never_subscribed", "temp_x");
+    expect(getSnapshot("never_subscribed").events).toHaveLength(0);
+  });
+
+  it("a stale tempId from a torn-down entry can never discard a fresh row", () => {
+    // A FailedDelivery outlives the stream entry: fail, navigate away past
+    // the idle window (entry torn down), come back, send a new message. A
+    // per-entry counter would hand the new row the SAME id the failure
+    // stored, and retry's discard would remove the operator's newest
+    // pending message instead of the stale failed one.
+    const first = subscribe(WS, Z_A, NO_SEED, () => {});
+    const staleTempId = appendOptimistic(Z_A, "old failed send", "steer:k");
+    markOptimisticFailed(Z_A, staleTempId);
+    first();
+    vi.advanceTimersByTime(IDLE_RELEASE_MS);
+    expect(getSnapshot(Z_A).events).toHaveLength(0);
+
+    const second = subscribe(WS, Z_A, NO_SEED, () => {});
+    const freshTempId = appendOptimistic(Z_A, "newest message", "steer:k");
+    expect(freshTempId).not.toBe(staleTempId);
+    discardOptimistic(Z_A, staleTempId);
+    const events = getSnapshot(Z_A).events;
+    expect(events).toHaveLength(1);
+    expect(events[0]!.id).toBe(freshTempId);
+    expect(events[0]!.text).toBe("newest message");
+    second();
   });
 
   it("rewrites only the matching optimistic row and leaves the others untouched", () => {
@@ -720,5 +784,149 @@ describe("fleet-stream-registry — reconnect backfill", () => {
     expect(url).toContain("limit=200");
     expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_first_ever"]);
     a();
+  });
+});
+
+describe("fleet-stream-registry — a lost connection recovers itself", () => {
+  function failCurrent(): void {
+    const es = FakeEventSource.instances.at(-1)!;
+    es.onerror?.call(es as unknown as EventSource, {} as Event);
+  }
+
+  // Drives past the fast attempts so the connection is reported as not live.
+  function exhaustFastAttempts(): void {
+    for (let attempt = 0; attempt < FAST_ATTEMPTS + 1; attempt += 1) {
+      failCurrent();
+      vi.advanceTimersByTime(FAST_BACKOFF_CAP_MS);
+    }
+  }
+
+  const FAST_ATTEMPTS = 5;
+  const FAST_BACKOFF_CAP_MS = 15_000;
+  const OFFLINE_RETRY_MS = 30_000;
+
+  it("escalates an accept-then-close upstream instead of hammering at base delay", () => {
+    // An unhealthy upstream that opens then immediately errors must NOT reset
+    // the attempt count on open — otherwise it retries at the base delay
+    // forever, stampeding the failing server. Only a delivered frame proves
+    // health and returns to fast backoff.
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    for (let cycle = 0; cycle < FAST_ATTEMPTS + 1; cycle += 1) {
+      const es = FakeEventSource.instances.at(-1)!;
+      es.onopen?.call(es as unknown as EventSource, {} as Event);
+      es.onerror?.call(es as unknown as EventSource, {} as Event);
+      vi.advanceTimersByTime(FAST_BACKOFF_CAP_MS);
+    }
+    // Despite every cycle reaching onopen, the connection is reported not live.
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.OFFLINE);
+    release();
+  });
+
+  it("returns to fast backoff once a real frame proves the stream healthy", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    exhaustFastAttempts();
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.OFFLINE);
+
+    // Recover, and this time a frame actually arrives.
+    vi.advanceTimersByTime(OFFLINE_RETRY_MS);
+    const es = FakeEventSource.instances.at(-1)!;
+    es.onopen?.call(es as unknown as EventSource, {} as Event);
+    es.onmessage?.call(es as unknown as EventSource, {
+      data: JSON.stringify({ kind: "event_received", event_id: "e1", actor: "fleet" }),
+    } as MessageEvent);
+    // A subsequent failure is treated as attempt 1 (fast), not a continuation
+    // of the exhausted offline count.
+    es.onerror?.call(es as unknown as EventSource, {} as Event);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
+    release();
+  });
+
+  it("keeps trying on its own once the fast attempts are exhausted", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    exhaustFastAttempts();
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.OFFLINE);
+
+    // No operator action of any kind — only time passing.
+    const before = FakeEventSource.instances.length;
+    vi.advanceTimersByTime(OFFLINE_RETRY_MS);
+    expect(FakeEventSource.instances.length).toBe(before + 1);
+    release();
+  });
+
+  it("reports not-live without ever abandoning the fleet", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    exhaustFastAttempts();
+    const opened = FakeEventSource.instances.length;
+
+    // Each unhurried attempt that also fails schedules the next one. The old
+    // client stopped after a fixed count and only a button brought it back.
+    for (let round = 0; round < 3; round += 1) {
+      failCurrent();
+      vi.advanceTimersByTime(OFFLINE_RETRY_MS);
+    }
+    expect(FakeEventSource.instances.length).toBe(opened + 3);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.OFFLINE);
+    release();
+  });
+
+  it("retries immediately when the tab returns or the network comes back", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    exhaustFastAttempts();
+    const opened = FakeEventSource.instances.length;
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(FakeEventSource.instances.length).toBe(opened + 1);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+    release();
+  });
+
+  it("opens exactly one connection when both recovery signals fire together", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    exhaustFastAttempts();
+    const opened = FakeEventSource.instances.length;
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("online"));
+    // The second signal finds a connection already in flight and does nothing.
+    expect(FakeEventSource.instances.length).toBe(opened + 1);
+    release();
+  });
+
+  it("does not reconnect for a tab that is still hidden", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    exhaustFastAttempts();
+    const opened = FakeEventSource.instances.length;
+
+    // `visibilitychange` fires on the way OUT as well as in. Reconnecting for a
+    // tab nobody is looking at spends a stream slot on nothing.
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(FakeEventSource.instances.length).toBe(opened);
+
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(FakeEventSource.instances.length).toBe(opened + 1);
+    visibility.mockRestore();
+    release();
+  });
+
+  it("ignores a recovery signal while a connection is already live", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    const opened = FakeEventSource.instances.length;
+    window.dispatchEvent(new Event("online"));
+    expect(FakeEventSource.instances.length).toBe(opened);
+    release();
+  });
+
+  it("stops listening for recovery once the fleet's last subscriber is gone", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    exhaustFastAttempts();
+    release();
+    vi.advanceTimersByTime(IDLE_RELEASE_MS);
+    const afterTeardown = FakeEventSource.instances.length;
+
+    window.dispatchEvent(new Event("online"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(FakeEventSource.instances.length).toBe(afterTeardown);
   });
 });

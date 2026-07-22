@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { HEADLINE, OUTCOME } from "@/lib/events/event-summary";
 import {
-  actorToRole,
   applyLiveFrame,
   maxServerCreatedAt,
   mergeBackfill,
@@ -38,20 +38,13 @@ function evt(over: Partial<FleetEvent> = {}): FleetEvent {
     role: "assistant",
     actor: "fleet",
     text: "x",
+    reply: "",
+    outcome: OUTCOME.WORKING,
     createdAt: new Date(2000),
     status: "received",
     ...over,
   };
 }
-
-describe("actorToRole", () => {
-  it("maps steer:* to user, fleet to assistant, everything else to system", () => {
-    expect(actorToRole("steer:alice")).toBe("user");
-    expect(actorToRole("fleet")).toBe("assistant");
-    expect(actorToRole("system")).toBe("system");
-    expect(actorToRole("webhook")).toBe("system");
-  });
-});
 
 describe("mergeBackfill", () => {
   it("dedupes by id and sorts the union oldest-first", () => {
@@ -72,24 +65,68 @@ describe("mergeBackfill", () => {
   it("replaces a partial live row with a terminal backfill row of the same id", () => {
     // An event that straddled an outage: live chunks accumulated a partial
     // text, the durable row carries the full final text + terminal status.
-    const prev = [evt({ id: "e1", text: "partial chu", status: "received" })];
+    const prev = [evt({ id: "e1", reply: "partial chu", status: "received" })];
     const merged = mergeBackfill(prev, [
       row({ event_id: "e1", status: "processed", response_text: "the full final text" }),
     ]);
     expect(merged).toHaveLength(1);
-    expect(merged[0]?.text).toBe("the full final text");
+    expect(merged[0]?.reply).toBe("the full final text");
     expect(merged[0]?.status).toBe("processed");
+  });
+
+  it("recovers the operator's own submitted text from the durable row", () => {
+    // The reply field belongs to the fleet. An operator's message lives in the
+    // stored request payload, so reading the reply field renders their own
+    // message blank the moment the page reloads.
+    const [first] = mergeBackfill(
+      [],
+      [
+        row({
+          actor: "steer:user_3gkbgxjnujsxbdxttcwcslpc87k",
+          event_type: "chat",
+          request_json: '{"message":"are you alive"}',
+          response_text: null,
+        }),
+      ],
+    );
+    expect(first?.role).toBe("user");
+    expect(first?.text).toBe("are you alive");
+  });
+
+  it("gives an integration event a headline instead of an empty body", () => {
+    const [first] = mergeBackfill(
+      [],
+      [
+        row({
+          actor: "github-app",
+          event_type: "webhook",
+          request_json: JSON.stringify({ repo: "owner/repo", number: 12, action: "opened" }),
+          response_text: null,
+        }),
+      ],
+    );
+    expect(first?.role).toBe("system");
+    expect(first?.text).toBe("opened · owner/repo#12");
+  });
+
+  it("carries a non-empty outcome for a row with no body at all", () => {
+    const [first] = mergeBackfill(
+      [],
+      [row({ response_text: null, status: "fleet_error", failure_label: "startup_posture" })],
+    );
+    expect(first?.text).toBe("");
+    expect(first?.outcome).toBe("Failed a startup safety check");
   });
 
   it("keeps the live accumulation when the backfill row is still in progress", () => {
     // The live chunk stream is newer than the list snapshot for a running
     // event — a "received" backfill row must not clobber it.
-    const prev = [evt({ id: "e1", text: "live chunks so far", status: "received" })];
+    const prev = [evt({ id: "e1", reply: "live chunks so far", status: "received" })];
     const merged = mergeBackfill(prev, [
       row({ event_id: "e1", status: "received", response_text: "stale snapshot" }),
     ]);
     expect(merged).toHaveLength(1);
-    expect(merged[0]?.text).toBe("live chunks so far");
+    expect(merged[0]?.reply).toBe("live chunks so far");
   });
 });
 
@@ -123,17 +160,27 @@ describe("applyLiveFrame", () => {
     expect(twice).toBe(once); // unchanged reference — no duplicate row
   });
 
-  it("CHUNK creates an assistant event when none exists, then concatenates text", () => {
-    const created = applyLiveFrame([], { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "Hel" });
-    expect(created[0]).toMatchObject({ role: "assistant", actor: "fleet", text: "Hel" });
-    const appended = applyLiveFrame(created, { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "lo" });
-    expect(appended[0]?.text).toBe("Hello");
+  it("EVENT_RECEIVED for a webhook actor renders the neutral floor, not a chat caption", () => {
+    // The frame carries no payload and no event type — fabricating "chat"
+    // captioned webhook/cron turns as "chat received" until reload.
+    const frame: LiveFrame = { kind: FRAME_KIND.EVENT_RECEIVED, event_id: "e2", actor: "webhook:github" };
+    const out = applyLiveFrame([], frame);
+    expect(out[0]).toMatchObject({ role: "system", text: HEADLINE.EVENT_FALLBACK });
   });
 
-  it("CHUNK keeps a user-role event as user while concatenating", () => {
-    const seed = [evt({ id: "e9", role: "user", actor: "steer:x", text: "Hi " })];
+  it("CHUNK creates an assistant event when none exists, accumulating into the reply", () => {
+    const created = applyLiveFrame([], { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "Hel" });
+    expect(created[0]).toMatchObject({ role: "assistant", actor: "fleet", text: "", reply: "Hel" });
+    const appended = applyLiveFrame(created, { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "lo" });
+    // The chunk stream is the fleet's reply — it never becomes the trigger text.
+    expect(appended[0]?.reply).toBe("Hello");
+    expect(appended[0]?.text).toBe("");
+  });
+
+  it("CHUNK on an operator turn appends to the reply, never the operator's own text", () => {
+    const seed = [evt({ id: "e9", role: "user", actor: "steer:x", text: "Hi ", reply: "" })];
     const out = applyLiveFrame(seed, { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "there" });
-    expect(out[0]).toMatchObject({ role: "user", text: "Hi there" });
+    expect(out[0]).toMatchObject({ role: "user", text: "Hi ", reply: "there" });
   });
 
   it("EVENT_COMPLETE sets the reported status", () => {
@@ -169,12 +216,12 @@ describe("applyLiveFrame", () => {
 
   it("CHUNK with two events: only the matching event is updated; the other is returned unchanged", () => {
     // Two-element array exercises the `: e` (non-matching) arm of the map call.
-    const bystander = evt({ id: "bystander", text: "untouched" });
-    const target = evt({ id: "target", text: "start" });
+    const bystander = evt({ id: "bystander", reply: "untouched" });
+    const target = evt({ id: "target", reply: "start" });
     const seed = [bystander, target];
     const out = applyLiveFrame(seed, { kind: FRAME_KIND.CHUNK, event_id: "target", text: " more" });
-    // The target event must have its text extended.
-    expect(out.find((e) => e.id === "target")?.text).toBe("start more");
+    // The target event must have its reply extended.
+    expect(out.find((e) => e.id === "target")?.reply).toBe("start more");
     // The bystander element must be the exact same object reference — not a copy.
     expect(out.find((e) => e.id === "bystander")).toBe(bystander);
   });

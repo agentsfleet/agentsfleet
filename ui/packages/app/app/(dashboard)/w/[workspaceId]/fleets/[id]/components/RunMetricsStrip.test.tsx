@@ -3,6 +3,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import RunMetricsStrip from "./RunMetricsStrip";
 import type { EventRow } from "@/lib/api/events";
 import { METRICS_EMPTY, METRICS_TIME_LABEL } from "./console-copy";
+import { OUTCOME } from "@/lib/events/event-summary";
+import { formatTimeClock } from "@agentsfleet/design-system";
 
 afterEach(() => cleanup());
 
@@ -59,19 +61,44 @@ describe("RunMetricsStrip", () => {
     expect(screen.getByText(METRICS_TIME_LABEL)).toBeTruthy();
   });
 
-  it("derives a received outcome only from stored status and event type", () => {
+  it("says a run is still working rather than naming its event type", () => {
     renderStrip(event({ status: "received", event_type: "webhook", response_text: null }));
-    expect(screen.getByText("Received webhook")).toBeTruthy();
+    expect(screen.getByText(OUTCOME.WORKING)).toBeTruthy();
   });
 
   it.each([
-    [{ failure_label: "Provider quota exceeded", response_text: null }, "Provider quota exceeded"],
-    [{ status: "gate_blocked", response_text: null }, "Waiting for approval"],
-    [{ status: "fleet_error", event_type: "ticket", response_text: null }, "ticket failed"],
-    [{ status: "processed", event_type: "ticket", response_text: null }, "ticket completed"],
+    [{ status: "gate_blocked", response_text: null }, OUTCOME.WAITING_APPROVAL],
+    [{ status: "fleet_error", event_type: "ticket", response_text: null }, OUTCOME.FAILED],
+    [{ status: "processed", event_type: "ticket", response_text: null }, OUTCOME.NO_REPLY],
   ] as const)("derives every stored outcome fallback", (over, expected) => {
     renderStrip(event(over));
     expect(screen.getByText(expected)).toBeTruthy();
+  });
+
+  it("renders a runner failure as a sentence, never as its raw tag", () => {
+    // The raw tag is what an operator saw here before: `startup_posture`.
+    renderStrip(event({
+      status: "fleet_error",
+      failure_label: "startup_posture",
+      response_text: null,
+    }));
+    expect(screen.getByText("Failed a startup safety check")).toBeTruthy();
+    expect(screen.queryByText("startup_posture")).toBeNull();
+  });
+
+  it("omits the time rather than printing a broken one", () => {
+    // A row whose stored timestamp does not read as a date still renders its
+    // outcome; the strip drops the time instead of showing "Invalid Date".
+    renderStrip(event({ created_at: Number.NaN, response_text: "review completed" }));
+    expect(screen.getByText("review completed")).toBeTruthy();
+    expect(screen.queryByText(/invalid/i)).toBeNull();
+  });
+
+  it("shows when the latest outcome happened", () => {
+    const at = Date.UTC(2026, 6, 21, 10, 42, 17);
+    renderStrip(event({ created_at: at, response_text: "Pull request review completed" }));
+    expect(screen.getByText("Pull request review completed")).toBeTruthy();
+    expect(screen.getByText(formatTimeClock(new Date(at)))).toBeTruthy();
   });
 
   it("renders missing telemetry as unknown, never fabricated zero", () => {

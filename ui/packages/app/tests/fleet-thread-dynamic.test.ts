@@ -49,6 +49,7 @@ describe("FleetThreadDynamic", () => {
       React.createElement(FleetThreadDynamic, {
         workspaceId: "ws_1",
         fleetId: "zomb_1",
+        fleetName: "console-fleet",
         initial: [],
       }),
     );
@@ -62,6 +63,7 @@ describe("FleetThreadDynamic", () => {
       React.createElement(FleetThreadDynamic, {
         workspaceId: "ws_prod",
         fleetId: "zomb_42",
+        fleetName: "console-fleet",
         initial: [],
       }),
     );

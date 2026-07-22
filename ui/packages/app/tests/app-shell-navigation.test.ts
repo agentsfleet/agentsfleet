@@ -331,3 +331,33 @@ describe("resolveActiveHref — single active winner", () => {
     expect(resolveActiveHref(["/w/1/fleets"], "/admin/runners")).toBe("");
   });
 });
+
+describe("app shell frame", () => {
+  it("is a fixed frame whose content region owns the scroll", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
+    const { container } = render(React.createElement(Shell, null, React.createElement("div")));
+
+    // A growing document cannot host a surface that pins its own composer:
+    // the page scrolls and the composer leaves the viewport with it.
+    const frame = container.querySelector('[data-glow="dashboard"]') as HTMLElement;
+    expect(frame.className).toMatch(/h-dvh/);
+    expect(frame.className).not.toMatch(/min-h-screen/);
+
+    const main = container.querySelector("main") as HTMLElement;
+    expect(main.className).toMatch(/overflow-y-auto/);
+    expect(main.className).toMatch(/min-h-0/);
+  });
+
+  it("lets an ordinary page grow while letting one page claim the region", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
+    const { container } = render(React.createElement(Shell, null, React.createElement("div")));
+
+    // `min-h-full` + column flow: tall content still scrolls the region, and a
+    // child asking for `flex-1` fills it exactly instead.
+    const canvas = container.querySelector("main > div") as HTMLElement;
+    expect(canvas.className).toMatch(/min-h-full/);
+    expect(canvas.className).toMatch(/flex-col/);
+  });
+});

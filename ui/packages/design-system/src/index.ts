@@ -178,6 +178,7 @@ export {
   type SelectSeparatorProps,
   Time,
   formatTimeAbsolute,
+  formatTimeClock,
   formatTimeRelative,
   TIME_INVALID_FALLBACK,
   type TimeProps,

@@ -190,6 +190,7 @@ export {
 export { Time, type TimeProps } from "./Time";
 export {
   formatTimeAbsolute,
+  formatTimeClock,
   formatTimeRelative,
   TIME_INVALID_FALLBACK,
   type TimeFormat,

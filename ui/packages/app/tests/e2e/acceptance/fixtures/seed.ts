@@ -130,6 +130,41 @@ export async function seedFleet(
   return { id: resp.fleet_id, name: resp.name };
 }
 
+/**
+ * Poll until the fleet is `active`. `seedFleet` returns on the create response,
+ * but the detail page hides its working surfaces behind the install gate until
+ * the status flips — a spec that navigates immediately lands on the gate, not
+ * the fleet. Waiting for `active` specifically (not merely "not installing")
+ * means a fleet that FAILED, was killed, or paused fails the wait loudly
+ * instead of passing the suite onto a fleet that can never render a console.
+ */
+export async function waitForFleetActive(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const c = clientFor(handle);
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const fleet = await c.get<{ status: string }>(
+      `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+    );
+    if (fleet.status === "active") return;
+    if (fleet.status !== "installing") {
+      throw new Error(
+        `[e2e:seed] fleet ${fleetId} reached terminal status "${fleet.status}" before active`,
+      );
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        `[e2e:seed] fleet ${fleetId} still installing after ${timeoutMs}ms`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 export async function listFleets(handle: ClientHandle, workspaceId: string): Promise<Fleet[]> {
   const c = clientFor(handle);
   const res = await c.get<ListResp<Fleet>>(`/v1/workspaces/${workspaceId}/fleets`);
