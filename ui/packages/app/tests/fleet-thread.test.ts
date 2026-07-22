@@ -341,9 +341,24 @@ describe("FleetThread — role rendering", () => {
   });
 
   it("labels a fleet reply with the fleet's own name", () => {
-    mockStream([ev({ role: "assistant", actor: "fleet", text: "reviewed it" })]);
+    mockStream([ev({ role: "assistant", actor: "fleet", reply: "reviewed it" })]);
     renderThread();
     expect(screen.getByText(FLEET_NAME)).toBeTruthy();
+    expect(screen.getByText("reviewed it")).toBeTruthy();
+  });
+
+  it("falls back to 'Fleet' for the reply when no fleet name is known", () => {
+    mockStream([ev({ role: "assistant", actor: "fleet", reply: "reviewed it" })]);
+    // A console that never learned the fleet's name still labels the reply.
+    render(
+      React.createElement(FleetThread, {
+        workspaceId: WS,
+        fleetId: ZID,
+        fleetName: "",
+        initial: [],
+      }),
+    );
+    expect(screen.getByText("Fleet")).toBeTruthy();
   });
 
   it("gives every row a sender chip and a machine-readable timestamp", () => {

@@ -52,6 +52,12 @@ describe("roleFor", () => {
     expect(roleFor(PLATFORM_IDENTITY)).toBe("system");
     expect(roleFor("")).toBe("system");
   });
+
+  it("unwraps a continuation to the turn it resumed", () => {
+    expect(roleFor(`continuation:${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`)).toBe("user");
+    expect(roleFor(`continuation:${ACTOR.FLEET}`)).toBe("assistant");
+    expect(roleFor(`continuation:${PLATFORM_IDENTITY}`)).toBe("system");
+  });
 });
 
 describe("senderLabelFor", () => {
