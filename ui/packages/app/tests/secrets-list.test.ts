@@ -34,6 +34,12 @@ vi.mock("lucide-react", () => {
     KeyRoundIcon: make("KeyRoundIcon"),
     PencilIcon: make("PencilIcon"),
     PencilLineIcon: make("PencilLineIcon"),
+    ArrowUpIcon: make("ArrowUpIcon"),
+    ArrowDownIcon: make("ArrowDownIcon"),
+    ArrowUpDownIcon: make("ArrowUpDownIcon"),
+    ArrowUp: make("ArrowUp"),
+    ArrowDown: make("ArrowDown"),
+    ArrowUpDown: make("ArrowUpDown"),
   };
 });
 
@@ -129,6 +135,16 @@ describe("SecretsList component", () => {
     for (const t of times) {
       expect(t.getAttribute("datetime")).toMatch(/^2026-04-26T/);
       expect(t.textContent).toMatch(/ago$/);
+    }
+  });
+
+  it("sorts secret names and creation times from their header arrows", async () => {
+    const user = userEvent.setup();
+    await renderList();
+
+    for (const name of ["Name", "Created"]) {
+      await user.click(screen.getByRole("button", { name }));
+      expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
     }
   });
 

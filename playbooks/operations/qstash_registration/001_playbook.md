@@ -70,7 +70,7 @@ Upstash uses the API token in the `Authorization: Bearer …` header for schedul
 
 ### Acceptance
 
-All three values are available to the operator and are not pasted into chat, tickets, shell history, or command arguments.
+All four values are available to the operator and are not pasted into chat, tickets, shell history, or command arguments.
 
 ---
 
@@ -142,7 +142,7 @@ AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet schedule status "$FLEET_ID" "$SCHED
 
 ### Acceptance
 
-The exact platform workspace lists `qstash` metadata only; after the daemon roll, `schedule sync` reaches QStash and `schedule status` reports `sync_status=active` for the current generation.
+The exact platform workspace lists `qstash` metadata only; after the daemon roll, `schedule sync` reaches QStash and `schedule status` reports `desired_status=active` and `sync_status=synced` for the current generation.
 
 ---
 

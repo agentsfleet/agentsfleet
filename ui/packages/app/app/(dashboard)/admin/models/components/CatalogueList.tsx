@@ -107,13 +107,14 @@ function buildColumns({
   onDelete: (m: AdminModel) => void;
 }): DataTableColumn<AdminModel>[] {
   return [
-    { key: "provider", header: "Provider", cell: (m) => <Badge variant="cyan">{m.provider}</Badge> },
-    { key: "model", header: "Model", cell: (m) => <ModelCell model={m} active={active} /> },
+    { key: "provider", header: "Provider", sortValue: (m) => m.provider, cell: (m) => <Badge variant="cyan">{m.provider}</Badge> },
+    { key: "model", header: "Model", sortValue: (m) => m.model_id, cell: (m) => <ModelCell model={m} active={active} /> },
     {
       key: "context",
       header: "Context",
       hideOnMobile: true,
       numeric: true,
+      sortValue: (m) => m.context_cap_tokens,
       cell: (m) => (
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {/* Pin the locale — a bare toLocaleString() groups digits per the
@@ -127,6 +128,7 @@ function buildColumns({
       key: "rates",
       header: "Rates ($ / 1M · in / cached / out)",
       numeric: true,
+      sortValue: (m) => m.input_nanos_per_mtok,
       cell: (m) => (
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {usd(m.input_nanos_per_mtok)} / {usd(m.cached_input_nanos_per_mtok)} / {usd(m.output_nanos_per_mtok)}
