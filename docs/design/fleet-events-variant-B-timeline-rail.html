@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>M139 variant B — Timeline Rail</title>
+<style>
+  :root{
+    --bg:#0a0e0d; --panel:#0e1412; --deep:#0b100e; --line:#182220; --line2:#22302c;
+    --fg:#d6e2dd; --mut:#78877f; --dim:#4d5a55; --mint:#4ade9b; --red:#ef6a6a;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--fg);font:13px/1.55 var(--mono);padding:24px}
+  .screen-label{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:26px 0 10px;text-transform:uppercase}
+  .shell{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+  .side{width:180px;border-right:1px solid var(--line);padding:14px 0;background:var(--deep);flex-shrink:0}
+  .side h4{font-size:9px;letter-spacing:.16em;color:var(--dim);padding:10px 16px 4px}
+  .side a{display:block;padding:5px 16px;color:var(--mut);text-decoration:none;font-size:12px}
+  .side a.on{color:var(--mint);background:rgba(74,222,155,.07);border-left:2px solid var(--mint);padding-left:14px}
+  .fnav{width:130px;border-right:1px solid var(--line);padding:14px 0;flex-shrink:0}
+  .fnav a{display:block;padding:6px 16px;color:var(--mut);text-decoration:none;font-size:12px}
+  .fnav a.on{color:var(--fg);background:var(--line)}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .crumb{display:flex;align-items:center;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line);font-size:12px;color:var(--mut)}
+  .crumb b{color:var(--fg);font-weight:600}
+  .crumb .btns{margin-left:auto;display:flex;gap:8px}
+  .btn{border:1px solid var(--line2);border-radius:6px;padding:3px 12px;font-size:11px;color:var(--fg)}
+  .btn.kill{border-color:rgba(239,106,106,.6);color:var(--red);background:rgba(239,106,106,.08)}
+  .phead{display:flex;align-items:center;padding:0 20px;border-bottom:1px solid var(--line)}
+  .ptitle{padding:12px 0;border-bottom:2px solid var(--mint);font-size:13px}
+  .seg{margin-left:auto;display:flex;border:1px solid var(--line2);border-radius:99px;overflow:hidden;font-size:11px}
+  .seg span{padding:4px 12px;color:var(--mut)}
+  .seg span.on{background:var(--line);color:var(--fg)}
+  .live{margin-left:14px;color:var(--mint);font-size:11px}
+  .live::before{content:"●";margin-right:6px}
+  /* floating failure card */
+  .viewport{position:relative;padding-top:56px}
+  .float{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:2;
+    background:#101614;border:1px solid rgba(239,106,106,.55);border-radius:8px;
+    box-shadow:0 10px 28px rgba(0,0,0,.55);padding:8px 18px;font-size:11.5px;white-space:nowrap}
+  .float b{color:var(--red);font-weight:600}
+  .float .m{color:var(--mut)}
+  .float a{color:var(--mint);text-decoration:none}
+  /* rail */
+  .rail{position:relative;margin-left:46px;border-left:1px solid var(--line2)}
+  .tick{position:relative;padding:4px 0 4px 18px;font-size:11px;color:var(--dim);display:flex;align-items:center;gap:8px}
+  .tick::before{content:"";position:absolute;left:-3.5px;top:50%;transform:translateY(-50%);
+    width:6px;height:6px;border-radius:50%;background:var(--line2)}
+  .tick.grp::before{background:var(--red);width:8px;height:8px;left:-4.5px}
+  .tick .pill{border:1px solid rgba(239,106,106,.5);color:var(--red);border-radius:10px;padding:0 8px;font-size:10.5px}
+  .tick .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* full-width conversation rows */
+  .row{display:flex;gap:12px;padding:13px 20px;border-bottom:1px solid var(--line)}
+  .chip{width:28px;height:28px;border:1px solid var(--line2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9.5px;flex-shrink:0;background:var(--deep)}
+  .chip.fl{border-color:rgba(74,222,155,.45);color:var(--mint)}
+  .rb{flex:1;min-width:0}
+  .rh{display:flex;align-items:baseline;gap:10px}
+  .rh .s{font-size:12.5px}
+  .rh .s.fl{color:var(--mint)}
+  .rh .t{margin-left:auto;color:var(--dim);font-size:10.5px}
+  .rt{margin-top:2px;font-size:13px}
+  .comp{display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid var(--line);color:var(--dim)}
+  .comp .send{margin-left:auto;border:1px solid rgba(74,222,155,.5);color:var(--mint);border-radius:6px;padding:3px 14px;font-size:11px}
+  /* events table */
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{font-size:9.5px;letter-spacing:.12em;color:var(--dim);text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+  td{padding:10px 14px;border-bottom:1px solid var(--line)}
+  .st{border:1px solid;border-radius:4px;padding:1px 8px;font-size:9.5px;letter-spacing:.06em}
+  .st.ok{border-color:rgba(74,222,155,.5);color:var(--mint);background:rgba(74,222,155,.07)}
+  .st.er{border-color:rgba(239,106,106,.5);color:var(--red);background:rgba(239,106,106,.07)}
+  .runs{border:1px solid rgba(239,106,106,.5);color:var(--red);border-radius:10px;padding:0 8px;font-size:10.5px}
+  .zero{opacity:.32}
+  .res-err{color:var(--red)}
+  .num{text-align:right}
+</style>
+</head>
+<body>
+
+<div class="screen-label">Screen 1 — Chat · variant B “Timeline Rail”</div>
+<div class="shell">
+  <div class="side">
+    <h4>Automations</h4><a class="on">⛴ Fleets</a><a>◎ Approvals</a><a>∿ Events</a>
+    <h4>Configuration</h4><a>⌘ Models</a><a>⚲ Integrations</a><a>⚿ Secrets</a>
+  </div>
+  <div class="fnav"><a class="on">Chat</a><a>Events</a><a>Memory</a><a>Skill</a><a>Trigger</a></div>
+  <div class="main">
+    <div class="crumb">Fleets / <b>github-pr-reviewer</b>
+      <span class="btns"><span class="btn">Stop</span><span class="btn kill">Kill</span></span></div>
+    <div class="phead">
+      <span class="ptitle">Chat</span>
+      <span class="seg"><span class="on">All</span><span>Conversation</span><span>Activity</span></span>
+      <span class="live">Live</span>
+    </div>
+    <div class="viewport">
+      <div class="float"><b>Startup safety check failing ×15</b>
+        <span class="m"> · fleet has no instructions configured · last 12:03 PM · </span><a>Fix in Skill →</a></div>
+      <div class="row"><span class="chip">OP</span><div class="rb">
+        <div class="rh"><span class="s">Operator</span><span class="t">11:36 AM</span></div>
+        <div class="rt">deploy the review guidelines update</div></div></div>
+      <div class="rail">
+        <div class="tick"><span class="lbl">GitHub App · opened agentsfleet/agentsfleet#541 · processed</span><span style="margin-left:auto">11:37</span></div>
+        <div class="tick grp"><span class="pill">×15</span>
+          <span class="lbl">GitHub App · edited #541 · startup safety check failed ▸</span>
+          <span style="margin-left:auto">11:38–12:03</span></div>
+      </div>
+      <div class="row"><span class="chip">OP</span><div class="rb">
+        <div class="rh"><span class="s">Operator</span><span class="t">12:05 PM</span></div>
+        <div class="rt">why are runs failing?</div></div></div>
+      <div class="row"><span class="chip fl">GP</span><div class="rb">
+        <div class="rh"><span class="s fl">github-pr-reviewer</span><span class="t">12:05 PM</span></div>
+        <div class="rt">The last 15 GitHub deliveries failed my startup safety check — I have no instructions configured. Add instructions in Skill and I’ll pick up the next delivery.</div></div></div>
+    </div>
+    <div class="comp">Message this fleet…<span class="send">Send ↵</span></div>
+  </div>
+</div>
+
+<div class="screen-label">Sequence behaviour — one chronological column; groups are consecutive-only</div>
+<div class="shell"><div class="main">
+  <div style="padding:10px 20px;border-bottom:1px solid var(--line);font-size:11px;color:var(--mut)">
+    Success and failure interleaved. A group’s ×N only ever spans a <b style="color:var(--fg)">contiguous</b> run —
+    any success, or any operator/fleet row, breaks it. Nothing is reordered; activity recedes visually but never moves.
+  </div>
+  <div class="rail" style="margin-top:8px">
+    <div class="tick"><span class="lbl">GitHub App · opened #542 · processed</span><span style="margin-left:auto">2:10</span></div>
+    <div class="tick grp"><span class="pill">×3</span><span class="lbl">GitHub App · edited #542 · startup safety check failed ▸</span><span style="margin-left:auto">2:12–2:19</span></div>
+    <div class="tick"><span class="lbl">GitHub App · synchronize #542 · processed</span><span style="margin-left:auto">2:24</span></div>
+  </div>
+  <div class="row"><span class="chip">OP</span><div class="rb">
+    <div class="rh"><span class="s">Operator</span><span class="t">2:25 PM</span></div>
+    <div class="rt">looks recovered — summarize what changed?</div></div></div>
+  <div class="row"><span class="chip fl">GP</span><div class="rb">
+    <div class="rh"><span class="s fl">github-pr-reviewer</span><span class="t">2:26 PM</span></div>
+    <div class="rt">Three deliveries failed while instructions were missing; the 2:24 delivery processed cleanly and I reviewed #542.</div></div></div>
+  <div style="padding:8px 20px;font-size:10.5px;color:var(--dim)">Floating failure card: visible only while the latest terminal event is still the failure; the 2:24 success clears it.</div>
+</div></div>
+
+<div class="screen-label">Screen 2 — Events · variant B</div>
+<div class="shell">
+  <div class="side">
+    <h4>Automations</h4><a class="on">⛴ Fleets</a><a>◎ Approvals</a><a>∿ Events</a>
+    <h4>Configuration</h4><a>⌘ Models</a><a>⚲ Integrations</a><a>⚿ Secrets</a>
+  </div>
+  <div class="fnav"><a>Chat</a><a class="on">Events</a><a>Memory</a><a>Skill</a><a>Trigger</a></div>
+  <div class="main">
+    <div class="crumb">Fleets / <b>github-pr-reviewer</b>
+      <span class="btns"><span class="btn">Stop</span><span class="btn kill">Kill</span></span></div>
+    <table>
+      <tr><th>Runs</th><th>Time</th><th>Status</th><th>Actor</th><th>Type</th><th>Result</th><th class="num">Cost</th><th class="num">Tokens</th><th class="num">Duration</th></tr>
+      <tr><td></td><td>32 minutes ago</td><td><span class="st ok">PROCESSED</span></td><td>Operator</td><td>chat</td>
+        <td>Replied: cause of the failing runs</td><td class="num">$0.04</td><td class="num">18,204</td><td class="num">41s</td></tr>
+      <tr><td><span class="runs">×15</span></td><td>43 minutes ago</td>
+        <td><span class="st er">FLEET_ERROR</span></td><td>GitHub App</td><td>webhook</td>
+        <td class="res-err">Failed a startup safety check — fleet has no instructions configured <span style="color:var(--dim)">· 11:38–12:03 ▸</span></td>
+        <td class="num zero">$0.00</td><td class="num zero">0</td><td class="num zero">0ms</td></tr>
+      <tr><td></td><td>3 hours ago</td><td><span class="st ok">PROCESSED</span></td><td>GitHub App</td><td>webhook</td>
+        <td>Reviewed agentsfleet/agentsfleet#540</td><td class="num">$0.11</td><td class="num">52,882</td><td class="num">2m 04s</td></tr>
+    </table>
+  </div>
+</div>
+
+</body>
+</html>
