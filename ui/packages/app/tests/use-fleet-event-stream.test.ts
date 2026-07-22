@@ -279,6 +279,19 @@ describe("useFleetEventStream", () => {
     expect(result.current.events[0]!.id).toBe(tempId);
   });
 
+  it("discardOptimistic removes the failed row so a retry cannot duplicate it", async () => {
+    const { result } = mount();
+    let tempId = "";
+    act(() => {
+      tempId = result.current.appendOptimistic("send that fails", "steer:pending");
+    });
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+    act(() => result.current.markOptimisticFailed(tempId));
+    await waitFor(() => expect(result.current.events[0]!.status).toBe("failed"));
+    act(() => result.current.discardOptimistic(tempId));
+    await waitFor(() => expect(result.current.events).toHaveLength(0));
+  });
+
   it("flips to RECONNECTING on onerror and reopens via backoff", async () => {
     vi.useFakeTimers();
     const { result } = mount();
