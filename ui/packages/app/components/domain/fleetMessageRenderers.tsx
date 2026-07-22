@@ -1,16 +1,19 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { MessageState } from "@assistant-ui/react";
 import { Badge, cn } from "@agentsfleet/design-system";
 import { readTools, ToolCalls } from "./FleetToolCalls";
 import {
   FleetActivityRow,
+  FleetGroupRow,
   FleetMessageRow,
   ROW_TONE,
   useFleetName,
   type RowTone,
 } from "./FleetMessageRow";
+import { GROUP_META } from "./useFleetThreadEntries";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
 import {
   SENDER,
   changeProposalActionFrom,
@@ -50,6 +53,9 @@ function FleetMessage({ message }: { message: MessageState }) {
   const tools = readTools(message);
   const trigger = readText(message);
   const isReplyRow = message.role === "assistant";
+  // A run of identical deliveries is one row until the operator opens it.
+  const group = readGroupMembers(message);
+  if (group) return <FleetGroupMessage message={message} fleetName={fleetName} members={group} />;
   // Integration deliveries recede to a one-line tick so the operator's own
   // conversation dominates the column (approved variant B). Order is
   // untouched — activity looks quieter, it never moves.
@@ -124,6 +130,54 @@ function FleetActivityMessage({
         <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
       ) : null}
     </>
+  );
+}
+
+/**
+ * A run of identical deliveries as one "×N" row. Collapsed by default; opening
+ * it renders every member as its own tick, so the count is always a summary
+ * the operator can check rather than a claim they have to trust.
+ */
+function FleetGroupMessage({
+  message,
+  fleetName,
+  members,
+}: {
+  message: MessageState;
+  fleetName: string;
+  members: FleetEvent[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const newest = members[members.length - 1];
+  const range = readGroupRange(message);
+  if (newest === undefined || range === null) return null;
+  const failed = newest.status === STATUS_AGENT_ERROR;
+  return (
+    <FleetGroupRow
+      sender={senderLabelFor(newest.actor, fleetName)}
+      headline={newest.text}
+      outcome={newest.reply.length > 0 ? undefined : newest.outcome}
+      failed={failed}
+      count={members.length}
+      first={range.first}
+      last={range.last}
+      expanded={expanded}
+      onToggle={() => setExpanded((open) => !open)}
+    >
+      {members.map((member) => (
+        <FleetActivityRow
+          key={member.id}
+          sender={senderLabelFor(member.actor, fleetName)}
+          createdAt={member.createdAt}
+          headline={member.text}
+          outcome={member.reply.length > 0 ? member.reply : member.outcome}
+          failed={member.status === STATUS_AGENT_ERROR}
+          messageRole="system"
+        >
+          {member.custom?.requestJson ? <PayloadDisclosure json={member.custom.requestJson} /> : null}
+        </FleetActivityRow>
+      ))}
+    </FleetGroupRow>
   );
 }
 
@@ -260,6 +314,19 @@ function readReply(message: MessageState): string {
 function readOutcome(message: MessageState): string {
   const raw = message.metadata.custom["outcome"];
   return typeof raw === "string" ? raw : "";
+}
+
+// Present only on a grouped message; null means this row stands for itself.
+function readGroupMembers(message: MessageState): FleetEvent[] | null {
+  const raw = message.metadata.custom[GROUP_META.MEMBERS];
+  return Array.isArray(raw) && raw.length > 0 ? (raw as FleetEvent[]) : null;
+}
+
+function readGroupRange(message: MessageState): { first: Date; last: Date } | null {
+  const first = message.metadata.custom[GROUP_META.FIRST_AT];
+  const last = message.metadata.custom[GROUP_META.LAST_AT];
+  if (!(first instanceof Date) || !(last instanceof Date)) return null;
+  return { first, last };
 }
 
 function readFailureLabel(message: MessageState): string | null {
