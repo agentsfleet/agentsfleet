@@ -419,8 +419,13 @@ describe("fleets routes", () => {
     expect(markup).toContain("Memory");
     expect(markup).toContain("Skill");
     expect(markup).toContain("Trigger");
-    expect(markup).toContain("Settings");
+    expect(markup).not.toContain("Settings");
     expect(markup).toContain('aria-label="Fleet summary"');
+    expect(markup).toContain('aria-label="Fleet lifecycle actions"');
+    expect(markup).toContain('data-testid="fleet-header-alignment-spacer"');
+    expect(markup).toContain("lg:w-56");
+    expect(markup).toContain("Stop");
+    expect(markup).toContain("Kill");
     expect(markup).not.toContain("What it knows");
   });
 
@@ -501,7 +506,7 @@ describe("fleets routes", () => {
     expect(markup).toContain('href="/w/ws_1/approvals?fleetId=zom_1"');
   });
 
-  it("fleet Settings view contains runtime controls and the danger zone", async () => {
+  it("an obsolete Settings query falls back to Chat with actions in the header", async () => {
     mockFetchBilling(happyBilling);
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const settingsMarkup = renderToStaticMarkup(
@@ -510,11 +515,67 @@ describe("fleets routes", () => {
         searchParams: Promise.resolve({ view: "settings" }),
       }),
     );
-    expect(settingsMarkup).toContain("Runtime");
+    expect(settingsMarkup).toContain("Chat");
+    expect(settingsMarkup).not.toContain("Runtime");
     expect(settingsMarkup).toContain("Stop");
     expect(settingsMarkup).toContain("Kill");
-    expect(settingsMarkup).toContain("Danger zone");
-    expect(settingsMarkup).toContain("Delete fleet");
+    expect(settingsMarkup).not.toContain("Danger zone");
+    expect(settingsMarkup).not.toContain("Delete fleet");
+  });
+
+  it("shows Delete instead of lifecycle controls after a fleet is killed", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/approvals")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
+      if (url.includes("/events")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      return detailResponse({ status: "killed" });
+    });
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+    );
+
+    expect(markup).toContain("Delete fleet");
+    expect(markup).not.toContain(">Stop<");
+    expect(markup).not.toContain(">Kill<");
+  });
+
+  it("shows an unknown fleet status without falsely presenting terminal actions", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/approvals")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
+      if (url.includes("/events")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      return detailResponse({ status: "draining" });
+    });
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+    );
+
+    expect(markup).toContain('aria-label="Fleet status: draining"');
+    expect(markup).toContain("draining");
+    expect(markup).not.toContain(">Killed<");
+    expect(markup).not.toContain("Delete fleet");
+    expect(markup).not.toContain(">Stop<");
+    expect(markup).not.toContain(">Kill<");
   });
 
   it("fleets detail page handles billing fetch failure gracefully (catch branch)", async () => {
@@ -567,6 +628,8 @@ describe("fleets routes", () => {
     );
     // Header carries the status label + the installing live indicator.
     expect(markup).toContain("installing");
+    expect(markup).toContain('aria-label="Fleet status: installing"');
+    expect(markup).not.toContain(">Killed<");
     expect(markup).toContain("data-live");
     // The install states surface is shown; the gate withholds the lower panels.
     expect(markup).toContain("Install states");

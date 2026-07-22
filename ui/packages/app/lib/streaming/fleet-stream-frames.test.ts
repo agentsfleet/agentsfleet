@@ -56,10 +56,15 @@ describe("mergeBackfill", () => {
     expect(merged.map((e) => e.id)).toEqual(["e1", "e2"]);
   });
 
-  it("maps a null response_text to an empty string and carries request_json", () => {
-    const [first] = mergeBackfill([], [row({ response_text: null, request_json: "{\"a\":1}" })]);
+  it("maps a null response_text and carries request context plus the failure reason", () => {
+    const [first] = mergeBackfill([], [row({
+      response_text: null,
+      request_json: "{\"a\":1}",
+      failure_label: "startup_posture",
+    })]);
     expect(first?.text).toBe("");
     expect(first?.custom?.requestJson).toBe("{\"a\":1}");
+    expect(first?.custom?.reason).toBe("startup_posture");
   });
 
   it("replaces a partial live row with a terminal backfill row of the same id", () => {

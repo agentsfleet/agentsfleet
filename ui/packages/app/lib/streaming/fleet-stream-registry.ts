@@ -227,6 +227,12 @@ export function subscribe(
   return () => releaseSubscriber(fleetId, listener);
 }
 
+export function reconcileServerRows(fleetId: string, rows: EventRow[]): void {
+  const entry = REGISTRY.get(fleetId);
+  if (!entry || rows.length === 0) return;
+  setEvents(entry, (prev) => mergeBackfill(prev, rows));
+}
+
 function releaseSubscriber(fleetId: string, listener: Listener): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;

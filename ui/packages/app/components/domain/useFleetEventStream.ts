@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { EventRow } from "@/lib/api/events";
 import {
@@ -10,6 +10,7 @@ import {
   getSnapshot,
   markOptimisticFailed as registryMarkOptimisticFailed,
   reconcileOptimistic as registryReconcileOptimistic,
+  reconcileServerRows,
   retryConnection as registryRetryConnection,
   subscribe,
   type ConnectionStatus,
@@ -72,6 +73,10 @@ export function useFleetEventStream(
   );
   const snapshotFn = useCallback(() => getSnapshot(fleetId), [fleetId]);
   const snapshot = useSyncExternalStore(subscribeFn, snapshotFn, snapshotFn);
+
+  useEffect(() => {
+    reconcileServerRows(fleetId, initial);
+  }, [fleetId, initial]);
 
   const appendOptimistic = useCallback(
     (text: string, actor: string) =>

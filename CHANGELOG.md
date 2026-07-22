@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fleet details now match the workspace design, with visible lifecycle actions, a conversational chat layout, actionable event diagnostics, and local relative timestamps.
+
 ### Added
 
 - Per-runner Prometheus metrics on `agentsfleetd` `/metrics`: `agentsfleet_runner_failures_total{runner_id,reason}`, `agentsfleet_runner_executions_total{runner_id,outcome}`, `agentsfleet_runner_last_seen_seconds{runner_id}`, `agentsfleet_runner_active_leases{runner_id}` — in-memory slot table, scrape-path DB-free, `runner_id="_other"` overflow at capacity

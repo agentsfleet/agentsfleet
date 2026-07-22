@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   Alert,
   Badge,
   type BadgeVariant,
+  Button,
   DataTable,
   type DataTableColumn,
   EmptyState,
@@ -12,13 +13,15 @@ import {
   Separator,
   Time,
 } from "@agentsfleet/design-system";
-import { ActivityIcon } from "lucide-react";
+import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { listWorkspaceEventsAction } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { failureSentenceFor } from "@/lib/events/event-summary";
 import { presentErrorString } from "@/lib/errors";
 import { formatMs } from "@/lib/utils";
+import { EventDetailsDialog } from "./EventDetailsDialog";
+import { presentFleetActor } from "./fleetActorPresentation";
 
 export type EventsListProps = {
   workspaceId: string;
@@ -38,6 +41,7 @@ const VALUE_UNKNOWN = "—";
 // The summary tooltip carries more context than the 160-char preview, but a
 // multi-megabyte agent response must not ride into the DOM per row.
 const SUMMARY_TITLE_MAX_CHARS = 2_000;
+const TOKEN_COUNT_FORMAT = new Intl.NumberFormat();
 
 // Map server status → Badge variant. Untracked statuses fall through to
 // the default (muted) badge — readable, not opinionated.
@@ -51,52 +55,73 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
 // The workspace event feed in the standard table every sibling data surface
 // uses (API keys, secrets, runners, billing). One row per event; the summary
 // column carries the response preview or the plain-language failure reason.
-const EVENT_COLUMNS_WITH_FLEET: DataTableColumn<EventRow>[] = [
-  { key: "time", header: "Time", cell: (row) => <EventTimeCell row={row} /> },
-  {
-    key: "status",
-    header: "Status",
-    cell: (row) => <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>{row.status}</Badge>,
-  },
-  {
-    key: "fleet",
-    header: "Fleet",
-    hideOnMobile: true,
-    cell: (row) => <span className="font-mono text-xs">{shortId(row.fleet_id)}</span>,
-  },
-  { key: "actor", header: "Actor", cell: (row) => row.actor },
-  { key: "type", header: "Type", hideOnMobile: true, cell: (row) => row.event_type },
-  { key: "result", header: "Result", cell: (row) => <EventSummaryCell row={row} /> },
-  {
-    key: "cost",
-    header: "Cost",
-    numeric: true,
-    hideOnMobile: true,
-    cell: (row) => (row.cost_nanos === null ? VALUE_UNKNOWN : formatDollars(row.cost_nanos)),
-  },
-  {
-    key: "tokens",
-    header: "Tokens",
-    numeric: true,
-    hideOnMobile: true,
-    cell: (row) => (row.tokens === null ? VALUE_UNKNOWN : row.tokens.toLocaleString()),
-  },
-  {
-    key: "duration",
-    header: "Duration",
-    numeric: true,
-    hideOnMobile: true,
-    cell: (row) => (row.wall_ms === null ? VALUE_UNKNOWN : formatMs(row.wall_ms)),
-  },
-];
-
-const EVENT_COLUMNS_FLEET = EVENT_COLUMNS_WITH_FLEET.filter((column) => column.key !== "fleet");
+function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn<EventRow>[] {
+  return [
+    { key: "time", header: "Time", cell: (row) => <EventTimeCell row={row} /> },
+    {
+      key: "status",
+      header: "Status",
+      cell: (row) => <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>{row.status}</Badge>,
+    },
+    {
+      key: "fleet",
+      header: "Fleet",
+      hideOnMobile: true,
+      cell: (row) => <span className="font-mono text-xs">{shortId(row.fleet_id)}</span>,
+    },
+    { key: "actor", header: "Actor", cell: (row) => presentFleetActor(row.actor) },
+    {
+      key: "details",
+      header: "Details",
+      cell: (row) => (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Inspect event ${row.event_id}`}
+          onClick={() => onInspect(row)}
+        >
+          Inspect
+          <ChevronRightIcon size={14} aria-hidden="true" />
+        </Button>
+      ),
+    },
+    { key: "type", header: "Type", hideOnMobile: true, cell: (row) => row.event_type },
+    { key: "result", header: "Result", cell: (row) => <EventSummaryCell row={row} /> },
+    {
+      key: "cost",
+      header: "Cost",
+      numeric: true,
+      hideOnMobile: true,
+      cell: (row) => (row.cost_nanos === null ? VALUE_UNKNOWN : formatDollars(row.cost_nanos)),
+    },
+    {
+      key: "tokens",
+      header: "Tokens",
+      numeric: true,
+      hideOnMobile: true,
+      cell: (row) => (row.tokens === null ? VALUE_UNKNOWN : TOKEN_COUNT_FORMAT.format(row.tokens)),
+    },
+    {
+      key: "duration",
+      header: "Duration",
+      numeric: true,
+      hideOnMobile: true,
+      cell: (row) => (row.wall_ms === null ? VALUE_UNKNOWN : formatMs(row.wall_ms)),
+    },
+  ];
+}
 
 export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
   const [items, setItems] = useState<EventRow[]>(initial.items);
   const [cursor, setCursor] = useState<string | null>(initial.next_cursor);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<EventRow | null>(null);
   const [pending, startTransition] = useTransition();
+  const columns = useMemo(() => {
+    const all = createEventColumns(setSelected);
+    return fleetId ? all.filter((column) => column.key !== "fleet") : all;
+  }, [fleetId]);
 
   function loadMore(nextCursor: string) {
     setError(null);
@@ -124,7 +149,7 @@ export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
     <div className="flex flex-col gap-3">
       <DataTable
         caption={fleetId ? FLEET_EVENTS_LABEL : WORKSPACE_EVENTS_LABEL}
-        columns={fleetId ? EVENT_COLUMNS_FLEET : EVENT_COLUMNS_WITH_FLEET}
+        columns={columns}
         rows={items}
         rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
         empty={
@@ -134,6 +159,10 @@ export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
             description={EVENTS_EMPTY_DESCRIPTION}
           />
         }
+      />
+      <EventDetailsDialog
+        row={selected}
+        onOpenChange={() => setSelected(null)}
       />
       {error ? <Alert variant="destructive">{error}</Alert> : null}
       {items.length > 0 || cursor ? (
@@ -155,9 +184,7 @@ function EventTimeCell({ row }: { row: EventRow }) {
   return (
     <Time
       value={created}
-      tooltip
-      label={clockTime(created)}
-      tooltipContent={created.toISOString()}
+      format="relative"
       className="font-mono text-xs text-muted-foreground tabular-nums"
     />
   );
@@ -170,7 +197,7 @@ function EventSummaryCell({ row }: { row: EventRow }) {
   if (preview) {
     return (
       <span
-        className="block max-w-prose truncate text-muted-foreground"
+        className="block max-w-prose truncate py-sm text-foreground"
         title={row.response_text?.slice(0, SUMMARY_TITLE_MAX_CHARS)}
       >
         {preview}
@@ -180,7 +207,7 @@ function EventSummaryCell({ row }: { row: EventRow }) {
   if (row.failure_label) {
     return <span className="text-warning">{failureSentenceFor(row.failure_label)}</span>;
   }
-  return null;
+  return <span className="text-muted-foreground">No result recorded</span>;
 }
 
 function previewText(text: string | null): string {
@@ -191,19 +218,4 @@ function previewText(text: string | null): string {
 
 function shortId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id;
-}
-
-// Visible HH:MM clock label is intentionally browser-local — operators
-// scan the activity feed in their own time zone. The Tooltip surfaces
-// the canonical UTC ISO string (`tooltipContent`), so the precise
-// instant is always one hover away. Using Intl rather than getHours()
-// so locale formatting (24h vs 12h) follows the user's region instead
-// of forcing 24h everywhere.
-const CLOCK_FORMAT = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-function clockTime(d: Date): string {
-  return CLOCK_FORMAT.format(d);
 }

@@ -68,6 +68,16 @@ describe("KillSwitch component", () => {
     expect(screen.getByRole("button", { name: /^kill$/i })).toBeTruthy();
   });
 
+  it("styles reversible Stop separately from terminal Kill and keeps both touchable", async () => {
+    await renderSwitch("active");
+    const stop = screen.getByRole("button", { name: /^stop$/i });
+    const kill = screen.getByRole("button", { name: /^kill$/i });
+    expect(stop.getAttribute("data-variant")).toBe("outline");
+    expect(kill.getAttribute("data-variant")).toBe("destructive");
+    expect(stop.className).toMatch(/min-h-11/);
+    expect(kill.className).toMatch(/min-h-11/);
+  });
+
   // After opening the action dialog, both the trigger button and the
   // ConfirmDialog confirm button carry the same accessible name. Scope the
   // confirm-click to the alertdialog subtree to disambiguate.

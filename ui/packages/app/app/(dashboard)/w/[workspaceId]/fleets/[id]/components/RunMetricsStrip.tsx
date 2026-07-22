@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import {
-  Badge,
   Button,
   Card,
   Time,
@@ -56,16 +55,18 @@ export default function RunMetricsStrip({
 }) {
   return (
     <Card className="flex flex-col gap-lg p-lg xl:flex-row xl:items-center" aria-label={METRICS_STRIP_LABEL}>
-      <DescriptionList layout="stacked" className="grid flex-1 grid-cols-2 gap-lg space-y-0 md:grid-cols-5">
+      <DescriptionList layout="stacked" className="grid flex-1 grid-cols-2 gap-lg space-y-0 md:grid-cols-6">
         <Metric label={METRICS_STATUS_LABEL} value={status} status />
         <Metric
           label={METRICS_OUTCOME_LABEL}
           value={latestOutcome(latest, summaryAvailable)}
           detail={outcomeTime(latest, summaryAvailable)}
+          divided
+          wide
         />
-        <Metric label={METRICS_TOKENS_LABEL} value={formatTokens(latest, summaryAvailable)} />
-        <Metric label={METRICS_COST_LABEL} value={formatCost(latest, summaryAvailable)} emphatic />
-        <Metric label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} />
+        <Metric label={METRICS_TOKENS_LABEL} value={formatTokens(latest, summaryAvailable)} divided />
+        <Metric label={METRICS_COST_LABEL} value={formatCost(latest, summaryAvailable)} divided emphatic />
+        <Metric label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} divided />
       </DescriptionList>
       {!approvalsAvailable ? (
         <span className="font-mono text-xs text-destructive">
@@ -89,15 +90,19 @@ function Metric({
   detail,
   emphatic,
   status,
+  divided,
+  wide,
 }: {
   label: string;
   value: string;
   detail?: ReactNode;
   emphatic?: boolean;
   status?: boolean;
+  divided?: boolean;
+  wide?: boolean;
 }) {
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", divided && "md:border-l md:border-border md:pl-lg", wide && "md:col-span-2")}>
       <DescriptionTerm className="font-mono text-eyebrow uppercase">{label}</DescriptionTerm>
       <DescriptionDetails
         className={cn(
@@ -106,9 +111,10 @@ function Metric({
         )}
       >
         {status ? (
-          <Badge variant={value === AGENTSFLEET_STATUS.ACTIVE ? "live" : "default"}>
+          <span className={cn("inline-flex items-center gap-sm uppercase", value === AGENTSFLEET_STATUS.ACTIVE && "text-pulse")}>
+            <span className="size-2 rounded-full bg-current" aria-hidden="true" />
             {value}
-          </Badge>
+          </span>
         ) : value}
       </DescriptionDetails>
       {detail ? (
