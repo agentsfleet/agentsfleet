@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M135
 **Workstream:** 004
 **Date:** Jul 20, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — the browser job reaches its workflow cap on deterministic drift, and the deployment notification can still say release-ready without the CLI result.
 **Categories:** INFRA, UI
 **Batch:** B3 — integrates the prerequisite and CLI workstreams into one release gate
