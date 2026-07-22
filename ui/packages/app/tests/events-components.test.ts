@@ -119,6 +119,7 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.queryByText("oom_kill")).toBeNull();
     expect(screen.queryByText("resource_kill")).toBeNull();
     expect(screen.getByRole("button", { name: "Inspect event f" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Inspect event f" }).className).toContain("min-h-11");
   });
 
   it("keeps a recorded response visible without exposing its internal failure tag", () => {

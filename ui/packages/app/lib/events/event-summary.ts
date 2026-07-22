@@ -42,6 +42,7 @@ export const EVENT_STATUS = {
 export const SENDER = {
   OPERATOR: "Operator",
   API: "API",
+  GITHUB_APP: "GitHub App",
   FLEET_FALLBACK: "Fleet",
   SCHEDULE: "Schedule",
   CONTINUATION: "Continuation",
@@ -85,7 +86,7 @@ export function senderLabelFor(actor: string, fleetName?: string): string {
   if (base.startsWith(ACTOR.STEER_PREFIX)) return SENDER.OPERATOR;
   if (base === ACTOR.FLEET) return fleetName && fleetName.length > 0 ? fleetName : SENDER.FLEET_FALLBACK;
   if (base.startsWith(ACTOR.WEBHOOK_PREFIX)) return sourceOf(base.slice(ACTOR.WEBHOOK_PREFIX.length));
-  if (base === ACTOR.CRON) return SENDER.SCHEDULE;
+  if (base === ACTOR.CRON || base.startsWith(`${ACTOR.CRON}:`)) return SENDER.SCHEDULE;
   if (base === ACTOR.CONTINUATION) return SENDER.CONTINUATION;
   if (base === ACTOR.CONFIG_RELOAD) return SENDER.CONFIG_RELOAD;
   if (base === ACTOR.GATE_BLOCKED) return SENDER.APPROVAL_GATE;
@@ -99,6 +100,7 @@ export function senderLabelFor(actor: string, fleetName?: string): string {
 function sourceOf(token: string): string {
   const trimmed = token.trim();
   if (trimmed.length === 0 || OPAQUE_ID.test(trimmed)) return SENDER.UNKNOWN;
+  if (trimmed === "github" || trimmed === "github-app") return SENDER.GITHUB_APP;
   return trimmed;
 }
 
@@ -119,21 +121,31 @@ export function senderInitialsFor(label: string): string {
 // plain English. A tag this list has not caught up to renders its own name
 // rather than throwing or hiding the failure.
 
-const FAILURE_SENTENCE: Record<string, string> = {
-  startup_posture: "Failed a startup safety check",
-  policy_deny: "Blocked by fleet policy",
-  timeout_kill: "Timed out",
-  oom_kill: "Ran out of memory",
-  resource_kill: "Hit a resource limit",
-  runner_crash: "The runner crashed",
-  transport_loss: "Lost connection to the runner",
-  landlock_deny: "Blocked by the sandbox policy",
-  lease_expired: "The run's lease expired",
-  renewal_terminate: "Stopped by lease renewal policy",
+export type EventFailurePresentation = {
+  label: string;
+  guidance: "startup" | null;
 };
 
+const FAILURE_PRESENTATION: Record<string, EventFailurePresentation> = {
+  startup_posture: { label: "Failed a startup safety check", guidance: "startup" },
+  budget_breach: { label: "Fleet budget limit reached", guidance: null },
+  policy_deny: { label: "Blocked by fleet policy", guidance: null },
+  timeout_kill: { label: "Timed out", guidance: null },
+  oom_kill: { label: "Ran out of memory", guidance: null },
+  resource_kill: { label: "Hit a resource limit", guidance: null },
+  runner_crash: { label: "The runner crashed", guidance: null },
+  transport_loss: { label: "Lost connection to the runner", guidance: null },
+  landlock_deny: { label: "Blocked by the sandbox policy", guidance: null },
+  lease_expired: { label: "The run's lease expired", guidance: null },
+  renewal_terminate: { label: "Stopped by lease renewal policy", guidance: null },
+};
+
+export function failurePresentationFor(tag: string): EventFailurePresentation {
+  return FAILURE_PRESENTATION[tag] ?? { label: tag, guidance: null };
+}
+
 export function failureSentenceFor(tag: string): string {
-  return FAILURE_SENTENCE[tag] ?? tag;
+  return failurePresentationFor(tag).label;
 }
 
 // ── Outcome sentences ─────────────────────────────────────────────────────

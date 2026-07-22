@@ -7,6 +7,7 @@ import {
   OUTCOME,
   SENDER,
   eventHeadlineFrom,
+  failurePresentationFor,
   failureSentenceFor,
   triggerBodyFor,
   replyBodyFor,
@@ -83,13 +84,14 @@ describe("senderLabelFor", () => {
 
   it("translates the runtime's own actors", () => {
     expect(senderLabelFor(ACTOR.CRON)).toBe(SENDER.SCHEDULE);
+    expect(senderLabelFor(`${ACTOR.CRON}:nightly`)).toBe(SENDER.SCHEDULE);
     expect(senderLabelFor(ACTOR.CONTINUATION)).toBe(SENDER.CONTINUATION);
     expect(senderLabelFor(ACTOR.CONFIG_RELOAD)).toBe(SENDER.CONFIG_RELOAD);
     expect(senderLabelFor(ACTOR.GATE_BLOCKED)).toBe(SENDER.APPROVAL_GATE);
   });
 
-  it("renders an unknown platform identity as itself, and an empty actor as a word", () => {
-    expect(senderLabelFor(PLATFORM_IDENTITY)).toBe(PLATFORM_IDENTITY);
+  it("renders the GitHub platform identity readably, and an empty actor as a word", () => {
+    expect(senderLabelFor(PLATFORM_IDENTITY)).toBe(SENDER.GITHUB_APP);
     expect(senderLabelFor("")).toBe(SENDER.UNKNOWN);
   });
 
@@ -126,6 +128,15 @@ describe("failureSentenceFor", () => {
 
   it("renders the raw tag for a failure class the vocabulary has not caught up to", () => {
     expect(failureSentenceFor("brand_new_class")).toBe("brand_new_class");
+    expect(failurePresentationFor("brand_new_class")).toEqual({
+      label: "brand_new_class",
+      guidance: null,
+    });
+  });
+
+  it("only attaches startup guidance to the startup safety failure", () => {
+    expect(failurePresentationFor("startup_posture").guidance).toBe("startup");
+    expect(failurePresentationFor("budget_breach").guidance).toBeNull();
   });
 });
 

@@ -25,8 +25,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { EventRow } from "@/lib/api/events";
-import { presentEventFailure } from "./eventFailurePresentation";
-import { presentFleetActor } from "./fleetActorPresentation";
+import {
+  failurePresentationFor,
+  SENDER,
+  senderLabelFor,
+} from "@/lib/events/event-summary";
 
 type EventDetailsDialogProps = {
   row: EventRow | null;
@@ -105,12 +108,12 @@ export function EventDetailsDialog({ row, onOpenChange }: EventDetailsDialogProp
 }
 
 function EventDetails({ row }: { row: EventRow }) {
-  const response = row.response_text?.trim() ?? "";
-  const failure = row.failure_label ? presentEventFailure(row.failure_label) : null;
+  const response = boundedResponse(row.response_text);
+  const failure = row.failure_label ? failurePresentationFor(row.failure_label) : null;
   const recordedResult = response || failure?.label || NO_RESULT;
   const result = truncateResult(recordedResult);
   const tone = EVENT_TONES[row.status] ?? WARNING_TONE;
-  const diagnostic = formatEventDetailsForCopy(row, recordedResult);
+  const diagnostic = formatEventDetailsForCopy(row, result, response);
 
   return (
     <>
@@ -128,7 +131,7 @@ function EventDetails({ row }: { row: EventRow }) {
 }
 
 function EventDetailsHeader({ row, result }: { row: EventRow; result: string }) {
-  const actor = presentFleetActor(row.actor);
+  const actor = senderLabelFor(row.actor);
   const created = new Date(row.created_at);
   return (
     <DialogHeader className="gap-lg border-b border-border pb-lg pr-4xl">
@@ -178,7 +181,7 @@ function EventResult({ result, tone }: { result: string; tone: EventTone }) {
 }
 
 function RequestContext({ row }: { row: EventRow }) {
-  const actor = presentFleetActor(row.actor);
+  const actor = senderLabelFor(row.actor);
   const context = parseRequestContext(row.request_json);
   return (
     <Section aria-labelledby="request-context" className="gap-md">
@@ -191,7 +194,7 @@ function RequestContext({ row }: { row: EventRow }) {
           <Badge>{row.event_type}</Badge>
         </div>
       </div>
-      <RequestContextBody context={context} githubSource={isGitHubSource(row.actor)} />
+      <RequestContextBody context={context} githubSource={actor === SENDER.GITHUB_APP} />
     </Section>
   );
 }
@@ -224,7 +227,8 @@ function RequestContextBody({ context, githubSource }: { context: unknown; githu
       ))}
       {hasMore ? (
         <div className="px-lg py-md font-mono text-xs text-muted-foreground">
-          {REQUEST_CONTEXT_OMITTED}
+          <dt className="sr-only">Preview limit</dt>
+          <dd>{REQUEST_CONTEXT_OMITTED}</dd>
         </div>
       ) : null}
     </dl>
@@ -268,7 +272,7 @@ function formatCreatedTooltip(created: Date): string {
   return `${formatTimeAbsolute(created)} · ${timeZone}`;
 }
 
-function formatEventDetailsForCopy(row: EventRow, result: string): string {
+function formatEventDetailsForCopy(row: EventRow, result: string, response: string): string {
   const created = new Date(row.created_at);
   return JSON.stringify({
     event_id: row.event_id,
@@ -276,7 +280,7 @@ function formatEventDetailsForCopy(row: EventRow, result: string): string {
     workspace_id: row.workspace_id,
     status: row.status,
     result,
-    recorded_response: row.response_text,
+    recorded_response: response || null,
     created_at: Number.isNaN(created.getTime()) ? String(row.created_at) : created.toISOString(),
     source: {
       actor: row.actor,
@@ -297,11 +301,13 @@ function formatEventDetailsForCopy(row: EventRow, result: string): string {
 }
 
 function copiedRequestContext(raw: string): string | null {
-  return raw.trim() ? COPIED_REQUEST_CONTEXT_OMITTED : null;
+  return raw.slice(0, REQUEST_CONTEXT_MAX_CHARS + 1).trim()
+    ? COPIED_REQUEST_CONTEXT_OMITTED
+    : null;
 }
 
 function parseRequestContext(raw: string): unknown {
-  const request = raw.trim();
+  const request = raw.slice(0, REQUEST_CONTEXT_MAX_CHARS).trim();
   if (!request) return null;
   try {
     const parsed: unknown = JSON.parse(request);
@@ -320,14 +326,17 @@ function presentRequestLabel(key: string, githubSource: boolean): string {
   return REQUEST_CONTEXT_LABELS[key] ?? key.replaceAll("_", " ");
 }
 
-function isGitHubSource(actor: string): boolean {
-  const normalized = actor.trim().toLowerCase();
-  return normalized === "github-app" || normalized === "webhook:github";
-}
-
 function truncateResult(value: string): string {
   if (value.length <= EVENT_RESULT_MAX_CHARS) return value;
   return `${value.slice(0, EVENT_RESULT_MAX_CHARS - 1)}…`;
+}
+
+function boundedResponse(value: string | null): string {
+  if (!value) return "";
+  const prefix = value.slice(0, EVENT_RESULT_MAX_CHARS + 1).trim();
+  if (value.length <= EVENT_RESULT_MAX_CHARS || !prefix) return prefix;
+  if (prefix.length >= EVENT_RESULT_MAX_CHARS) return truncateResult(prefix);
+  return `${prefix}…`;
 }
 
 function formatRequestValue(value: unknown): string {

@@ -65,7 +65,7 @@ export type FleetEvent = {
   status: FleetEventStatus;
   /** Tools called while working this event, in first-seen order. */
   tools?: FleetToolCall[];
-  custom?: { requestJson?: string | null; reason?: string };
+  custom?: { requestJson?: string | null };
 };
 
 export function mergeBackfill(
@@ -86,7 +86,9 @@ export function mergeBackfill(
   }
   const kept = prev.map((e) => {
     const replacement = authoritative.get(e.id);
-    return replacement ? rowToEvent(replacement) : e;
+    if (!replacement) return e;
+    const reconciled = rowToEvent(replacement);
+    return e.tools ? { ...reconciled, tools: e.tools } : reconciled;
   });
   const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
   return [...fromBackfill, ...kept].sort(
@@ -197,10 +199,7 @@ function rowToEvent(row: EventRow): FleetEvent {
     outcome: outcomeFor(row),
     createdAt: new Date(row.created_at),
     status: row.status as FleetEventStatus,
-    custom: {
-      requestJson: row.request_json,
-      ...(row.failure_label ? { reason: row.failure_label } : {}),
-    },
+    custom: { requestJson: row.request_json },
   };
 }
 

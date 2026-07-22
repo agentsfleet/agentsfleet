@@ -137,7 +137,7 @@ export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetT
       <FleetNameProvider fleetName={fleetName}>
         <div className="flex min-h-0 flex-1 flex-col gap-lg">
           <Card id="fleet-chat-transcript" aria-label="Fleet chat"
-            className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+            className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card p-0">
             <CardHeader
               data-testid="fleet-chat-header"
               className="flex flex-row items-center justify-between gap-md space-y-0 border-b border-border px-xl py-0"

@@ -58,7 +58,7 @@ export function FleetConnectionNotice({
   if (status === CONNECTION_STATUS.RECONNECTING) {
     return (
       <Alert variant="warning" className={NOTICE_CLASS_NAME}>
-        Reconnecting to live updates. Messages will queue; history remains available.
+        Reconnecting to live updates. History remains available; retry any failed send.
       </Alert>
     );
   }
@@ -67,7 +67,7 @@ export function FleetConnectionNotice({
       variant="destructive"
       className={`${NOTICE_CLASS_NAME} items-center justify-between gap-md`}
     >
-      <span>Live updates unavailable. Messages will queue; history remains available.</span>
+      <span>Live updates unavailable. History remains available; retry any failed send.</span>
       <Button type="button" size="sm" variant="outline" onClick={onRetry}>
         Retry
       </Button>
