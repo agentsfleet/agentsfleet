@@ -5,10 +5,9 @@ import { ActivityIcon } from "lucide-react";
 import {
   Alert,
   Badge,
-  Button,
   DataTable,
   EmptyState,
-  Spinner,
+  PAGINATION_KIND,
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
@@ -41,6 +40,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     key: "date",
     header: "Date",
+    sortValue: (c) => c.recorded_at,
     // The ledger keeps its approved "MMM DD, YYYY · HH:MM" string, now rendered
     // through Time so the cell carries the canonical <time datetime> ISO instant.
     // The label already IS the precise instant, so no hover tooltip is added.
@@ -56,6 +56,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "amount",
     header: "Amount",
     numeric: true,
+    sortValue: (c) => -c.credit_deducted_nanos,
     cell: (c) => (
       <span className="font-mono tabular-nums text-destructive">−{formatDollars(c.credit_deducted_nanos)}</span>
     ),
@@ -63,6 +64,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     key: "type",
     header: "Type",
+    sortValue: (c) => c.posture,
     cell: (c) => (
       <Badge variant={c.posture === PROVIDER_MODE.self_managed ? "cyan" : "default"}>{c.posture}</Badge>
     ),
@@ -70,6 +72,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     key: "description",
     header: "Description",
+    sortValue: (c) => describeCharge(c),
     cell: (c) => <span className="text-muted-foreground">{describeCharge(c)}</span>,
   },
 ];
@@ -80,8 +83,7 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // `cursor` is passed in (narrowed to a non-null string by the `{cursor ? …}`
-  // render guard on the trigger), so no in-function null check is needed.
+  // CursorPagination invokes this callback only when a cursor is present.
   function loadMore(cursor: string) {
     setError(null);
     startTransition(async () => {
@@ -104,16 +106,6 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
     });
   }
 
-  if (charges.length === 0) {
-    return (
-      <EmptyState
-        icon={<ActivityIcon size={28} />}
-        title="No charges yet"
-        description="Charges appear once fleets run."
-      />
-    );
-  }
-
   return (
     <div className="space-y-3">
       <DataTable
@@ -121,30 +113,16 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
         rows={charges}
         rowKey={(c) => c.id}
         caption="usage history"
-        stickyHeader
-      />
-      <div className="flex items-center gap-3 text-xs">
-        {cursor ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => loadMore(cursor)}
-            disabled={pending}
-            data-testid="usage-load-more"
-          >
-            {pending ? <Spinner size="sm" srLabel="Loading" /> : null}
-            Load more
-          </Button>
-        ) : (
-          <span className="text-muted-foreground">No more events.</span>
+        empty={(
+          <EmptyState
+            icon={<ActivityIcon size={28} />}
+            title={cursor ? "No charges loaded" : "No charges yet"}
+            description={cursor ? "Load more to continue." : "Charges appear once fleets run."}
+          />
         )}
-        {error ? (
-          <Alert variant="destructive" className="px-2 py-1">
-            {error}
-          </Alert>
-        ) : null}
-      </div>
+        pagination={{ kind: PAGINATION_KIND.cursor, nextCursor: cursor, onNext: loadMore, isLoading: pending }}
+      />
+      {error ? <Alert variant="destructive">{error}</Alert> : null}
     </div>
   );
 }
