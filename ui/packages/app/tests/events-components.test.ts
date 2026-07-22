@@ -61,6 +61,17 @@ function renderList(initial: EventsPage, fleetId?: string) {
 }
 
 describe("EventsList — the standard workspace events table", () => {
+  it("lets the event log grow with the page instead of a fixed-height scroll box", () => {
+    // Regression for the dead-space report: the table's default bound is a
+    // constant 384px, so a 50-row first fetch rendered ~8 rows above a screen
+    // of black space and "Load more" appended rows nobody could see.
+    const { container } = renderList({
+      items: [row({ event_id: "evt_grow_1" })],
+      next_cursor: "cursor-1",
+    });
+    expect(container.querySelector(".max-h-96")).toBeNull();
+  });
+
   it("renders default empty state when no items", () => {
     renderList({ items: [], next_cursor: null });
     expect(screen.getByText(/No events yet/i)).toBeTruthy();
