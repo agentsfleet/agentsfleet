@@ -5,12 +5,20 @@ import type { MessageState } from "@assistant-ui/react";
 import { Badge, cn } from "@agentsfleet/design-system";
 import { readTools, ToolCalls } from "./FleetToolCalls";
 import {
+  FleetActivityRow,
   FleetMessageRow,
   ROW_TONE,
   useFleetName,
   type RowTone,
 } from "./FleetMessageRow";
-import { SENDER, guidanceFor, roleFor, senderLabelFor } from "@/lib/events/event-summary";
+import {
+  SENDER,
+  changeProposalActionFrom,
+  eventLinkFrom,
+  guidanceFor,
+  roleFor,
+  senderLabelFor,
+} from "@/lib/events/event-summary";
 
 const SENDER_FLEET = SENDER.FLEET_FALLBACK;
 const STATUS_OPTIMISTIC = "optimistic";
@@ -20,6 +28,7 @@ const STATUS_IN_FLIGHT = "received";
 const SENDING_LABEL = "sending";
 const FAILED_LABEL = "not sent";
 const STREAM_CURSOR = "▍";
+const OPEN_LINK_LABEL = "open ↗";
 const PAYLOAD_SHOW_LABEL = "▸ payload";
 const PAYLOAD_HIDE_LABEL = "▾ hide payload";
 
@@ -41,6 +50,12 @@ function FleetMessage({ message }: { message: MessageState }) {
   const tools = readTools(message);
   const trigger = readText(message);
   const isReplyRow = message.role === "assistant";
+  // Integration deliveries recede to a one-line tick so the operator's own
+  // conversation dominates the column (approved variant B). Order is
+  // untouched — activity looks quieter, it never moves.
+  if (message.role === "system") {
+    return <FleetActivityMessage message={message} fleetName={fleetName} tools={tools} />;
+  }
   return (
     <>
       {isReplyRow ? null : (
@@ -58,6 +73,78 @@ function FleetMessage({ message }: { message: MessageState }) {
         </FleetMessageRow>
       )}
       <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
+    </>
+  );
+}
+
+/**
+ * One integration delivery as a compact rail tick. When the fleet actually
+ * answered, its reply still gets its own full conversation row underneath —
+ * the tick demotes the TRIGGER, never the fleet's words.
+ */
+function FleetActivityMessage({
+  message,
+  fleetName,
+  tools,
+}: {
+  message: MessageState;
+  fleetName: string;
+  tools: ReturnType<typeof readTools>;
+}) {
+  const status = readCustomStatus(message);
+  const reply = readReply(message);
+  const payload = readRequestJson(message);
+  const working = status === STATUS_IN_FLIGHT;
+  const errored = status === STATUS_AGENT_ERROR;
+  // The tick states the outcome itself — a delivery whose only content is its
+  // outcome does not earn a second row. A real reply does.
+  const outcome = working || reply.length > 0 ? undefined : readOutcome(message);
+  const guidance = reply.length > 0 ? null : guidanceFor(readFailureLabel(message));
+  const action = changeProposalActionFrom(payload);
+  const link = eventLinkFrom(payload);
+  return (
+    <>
+      <FleetActivityRow
+        sender={senderLabelFor(readActor(message), fleetName)}
+        createdAt={message.createdAt}
+        headline={readText(message)}
+        outcome={outcome}
+        failed={errored}
+        messageRole={message.role}
+        annotation={<ActivityAnnotation action={action} link={link} />}
+      >
+        {guidance ? (
+          <span className="mt-xs block text-label text-muted-foreground" data-testid="failure-guidance">
+            {guidance}
+          </span>
+        ) : null}
+        {payload ? <PayloadDisclosure json={payload} /> : null}
+      </FleetActivityRow>
+      {reply.length > 0 ? (
+        <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
+      ) : null}
+    </>
+  );
+}
+
+// The action verb as a `Badge`, and the provider's own link when the payload
+// carries one. A payload with neither renders nothing rather than a dead
+// affordance.
+function ActivityAnnotation({ action, link }: { action: string; link: string | null }) {
+  if (action.length === 0 && link === null) return null;
+  return (
+    <>
+      {action.length > 0 ? <Badge variant="evidence">{action}</Badge> : null}
+      {link ? (
+        <a
+          href={link}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="shrink-0 text-label text-muted-foreground underline hover:text-foreground"
+        >
+          {OPEN_LINK_LABEL}
+        </a>
+      ) : null}
     </>
   );
 }

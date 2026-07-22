@@ -363,6 +363,90 @@ describe("FleetThread — role rendering", () => {
     expect(screen.getByText(OUTCOME.WAITING_APPROVAL)).toBeTruthy();
   });
 
+  it("renders an integration delivery as one compact line, payload still reachable", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "opened · agentsfleet/agentsfleet#541 — Fix routing",
+        reply: "",
+        status: "processed",
+        outcome: OUTCOME.NO_REPLY,
+        custom: { requestJson: '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541}' },
+      }),
+    ]);
+    const { container } = renderThread();
+
+    // One tick, not a full row with a chip plus a second outcome row.
+    const tick = container.querySelector('[data-compact="true"]');
+    expect(tick).toBeTruthy();
+    expect(container.querySelectorAll('[data-role="system"]')).toHaveLength(1);
+    expect(tick?.textContent).toContain("agentsfleet/agentsfleet#541");
+    // The outcome rides the same line rather than earning its own row.
+    expect(tick?.textContent).toContain(OUTCOME.NO_REPLY);
+    // Disclosure survives the demotion — nothing became unreachable.
+    expect(screen.getByText("▸ payload")).toBeTruthy();
+  });
+
+  it("keeps the operator's and the fleet's own rows in the full skeleton", () => {
+    mockStream([
+      ev({ role: "user", actor: "steer:user_abc", text: "deploy staging", reply: "" }),
+      ev({ role: "assistant", actor: "fleet", text: "", reply: "Deployed." }),
+    ]);
+    const { container } = renderThread();
+
+    // Regression guard: demotion applies to activity ONLY. A
+    // conversation row that lost its chip would be the failure this catches.
+    expect(container.querySelector('[data-compact="true"]')).toBeNull();
+    expect(container.querySelectorAll("[data-chip]").length).toBeGreaterThan(0);
+    expect(screen.getByText("deploy staging")).toBeTruthy();
+    expect(screen.getByText("Deployed.")).toBeTruthy();
+  });
+
+  it("badges the action and links out only when the payload carries a URL", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "opened · agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "processed",
+        custom: {
+          requestJson:
+            '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541,"url":"https://github.com/agentsfleet/agentsfleet/pull/541"}',
+        },
+      }),
+    ]);
+    const { container } = renderThread();
+
+    expect(screen.getByText("opened")).toBeTruthy();
+    const link = container.querySelector('a[href^="https://github.com"]');
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute("rel")).toContain("noopener");
+  });
+
+  it("renders no link for a payload whose URL is not an absolute http(s) address", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "opened · agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "processed",
+        // A script URL and a relative path are both refused: one executes,
+        // the other resolves against the console's own origin.
+        custom: {
+          requestJson:
+            '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541,"url":"javascript:alert(1)"}',
+        },
+      }),
+    ]);
+    const { container } = renderThread();
+
+    expect(screen.getByText("opened")).toBeTruthy();
+    expect(container.querySelector("a[href]")).toBeNull();
+  });
+
   it("names the failing check and what to do about it on a startup failure", () => {
     const cause = "startup check 'instructions' failed: no instructions configured";
     mockStream([
