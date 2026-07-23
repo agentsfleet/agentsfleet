@@ -24,11 +24,14 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("contract").event_envelope;
 const webhook_parse = @import("webhook_parse.zig");
+
+const S_FLEET_ID_MUST_BE_UUIDV7 = "fleet_id must be a valid UUIDv7";
 
 const log = logging.scoped(.http_webhook);
 
@@ -146,6 +149,14 @@ fn releaseDedupSlot(hx: Hx, fleet_id: []const u8, dedup_key: []const u8) void {
 // ── Main handler ───────────────────────────────────────────────────────────
 
 pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u8) void {
+    // The fleet id lands in a case-sensitive Redis dedup key below while
+    // `WHERE id = $1::uuid` folds case in Postgres. Without this guard the same
+    // delivery under two spellings resolves to one fleet but two dedup slots,
+    // and gets processed twice. Validate before the id is used as a key.
+    if (!id_format.isUuidV7(fleet_id)) {
+        hx.fail(ec.ERR_UUIDV7_INVALID_ID_SHAPE, S_FLEET_ID_MUST_BE_UUIDV7);
+        return;
+    }
     const payload = webhook_parse.parseBody(hx, req, fleet_id) orelse return;
     deliverToFleet(hx, fleet_id, payload);
 }
@@ -156,6 +167,14 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u8) vo
 /// as the fleet event's data. Signature is verified by the svix middleware
 /// before this handler runs.
 pub fn innerReceiveSvixWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u8) void {
+    // The fleet id lands in a case-sensitive Redis dedup key below while
+    // `WHERE id = $1::uuid` folds case in Postgres. Without this guard the same
+    // delivery under two spellings resolves to one fleet but two dedup slots,
+    // and gets processed twice. Validate before the id is used as a key.
+    if (!id_format.isUuidV7(fleet_id)) {
+        hx.fail(ec.ERR_UUIDV7_INVALID_ID_SHAPE, S_FLEET_ID_MUST_BE_UUIDV7);
+        return;
+    }
     const payload = webhook_parse.parseSvixBody(hx, req, fleet_id) orelse return;
     deliverToFleet(hx, fleet_id, payload);
 }
