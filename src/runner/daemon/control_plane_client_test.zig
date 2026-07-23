@@ -10,6 +10,7 @@ const std = @import("std");
 const testing = std.testing;
 const common = @import("common");
 const client = @import("control_plane_client.zig");
+const dts = @import("deadline_test_support.zig");
 
 test "classifyRenew: a 2xx parses the new kill deadline into renewed" {
     const out = try client.classifyRenew(testing.allocator, 200, "{\"lease_expires_at\":1900000000123}");
@@ -90,7 +91,9 @@ test "the persistent control-plane socket cannot cross exec (CLOEXEC)" {
 
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
-    var c = client.init(alloc, io, url);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client.init(alloc, io, try deadlines.start(alloc), url);
     defer c.deinit();
 
     const host = try std.Io.net.HostName.init("127.0.0.1");
@@ -130,7 +133,9 @@ test "a hung control plane surfaces a transport error within the armed deadline"
 
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
-    var c = client.init(alloc, io, url);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client.init(alloc, io, try deadlines.start(alloc), url);
     defer c.deinit();
 
     // Nobody accepts or responds: the armed call-deadline watchdog must shut
@@ -190,7 +195,9 @@ test "two verbs ride one pooled connection (keep-alive reuse)" {
 
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
-    var c = client.init(alloc, io, url);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client.init(alloc, io, try deadlines.start(alloc), url);
 
     const first = try c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS);
     try testing.expectEqual(.ok, first.status);
@@ -215,12 +222,14 @@ test "the control-plane client's field surface is reviewed" {
     inline for (fields) |f| {
         // Guards field NAMES, not TYPES: a type change to an existing field
         // keeps the name + count and passes silently — review those by hand.
-        // Reviewed: `watchdog` owns no fd (its handle copy is only valid while
-        // a call is armed) and its thread is joined by client deinit.
+        // Reviewed: `sched` is a BORROWED pointer to the runner root's one
+        // process scheduler — the client neither owns nor deinits it, and it
+        // holds no descriptor (a deadline names a connection generation, and
+        // the socket it may shut down is published per attempt by `send`).
         const known = comptime (std.mem.eql(u8, f.name, "base_url") or std.mem.eql(u8, f.name, "io") or
             std.mem.eql(u8, f.name, "http") or std.mem.eql(u8, f.name, "host") or
             std.mem.eql(u8, f.name, "port") or std.mem.eql(u8, f.name, "tls") or
-            std.mem.eql(u8, f.name, "watchdog"));
+            std.mem.eql(u8, f.name, "sched"));
         if (!known)
             @compileError("control-plane client gained field '" ++ f.name ++ "' — review for fd/credential ownership before it lands");
     }
@@ -299,7 +308,9 @@ test "renew puts the cumulative splits on the wire as the POST body (production 
 
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
-    var c = client.init(alloc, io, url);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client.init(alloc, io, try deadlines.start(alloc), url);
     defer c.deinit();
 
     const out = try c.renew(alloc, "agt_rtest", "lease-1", .{ .input_tokens = 100, .cached_input_tokens = 0, .output_tokens = 40 }, DEADLINE_PROBE_MS);
@@ -374,7 +385,9 @@ fn expectVerbReleasesBufferOnMidStreamFailure(comptime verb: enum { post, get })
 
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
-    var c = client.init(alloc, io, url);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client.init(alloc, io, try deadlines.start(alloc), url);
     defer c.deinit();
 
     const result = switch (verb) {

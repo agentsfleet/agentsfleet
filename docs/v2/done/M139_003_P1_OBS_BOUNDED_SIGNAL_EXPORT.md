@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M139
 **Workstream:** 003
 **Date:** Jul 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — current runner request spans can exceed exporter drain capacity before useful work begins
 **Categories:** API, Observability (OBS)
 **Batch:** B2 — implementation output of the M139_002 signal-routing investigation

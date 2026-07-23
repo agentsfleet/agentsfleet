@@ -5,6 +5,7 @@ const common = @import("common");
 const logging = @import("log");
 const InterruptTarget = @import("InterruptTarget.zig");
 const log = logging.scoped(.call_deadline);
+const EV_SCHEDULER_STOPPED = "scheduler_stopped";
 
 /// The scheduler every production network owner arms against: owner-mediated
 /// interruption plus the boot clock.
@@ -172,7 +173,13 @@ fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime 
             worker.join();
             self.mutex.lock();
             self.state = .stopped;
-            log.debug("scheduler_stopped", .{ .registration_count = self.registrations.count() });
+            // A non-empty drain means some owner was still in flight at stop:
+            // its call is about to surface an early "timeout". Legal, but worth
+            // a warn — the roots are expected to quiesce network users first.
+            if (self.registrations.count() > 0)
+                log.warn(EV_SCHEDULER_STOPPED, .{ .registration_count = self.registrations.count() })
+            else
+                log.debug(EV_SCHEDULER_STOPPED, .{ .registration_count = self.registrations.count() });
             self.cond.broadcast();
             self.mutex.unlock();
         }

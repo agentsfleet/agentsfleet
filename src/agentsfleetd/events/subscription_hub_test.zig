@@ -907,3 +907,302 @@ test "integration: concurrent_read_write_one_subscriber_conn" {
     viewer_detached = true;
     try expectNumsub(&pub_client, CHANNEL_A, 0);
 }
+
+// ── Bounded recovery under stall; send-path recovery ────────────────────────
+
+const test_port = @import("../http/test_port.zig");
+
+/// Channels owned exclusively by the two dimension tests below — no other test
+/// subscribes them, so their NUMSUB settles are attributable.
+const CHANNEL_32A = "hubtest:m139:recover-a";
+const CHANNEL_32B = "hubtest:m139:recover-b";
+const CHANNEL_32C = "hubtest:m139:recover-c";
+const CHANNEL_33 = "hubtest:m139:sendpath";
+/// Redial budget for the stalled attempts — short so the test observes several
+/// interrupted attempts without stretching the suite.
+const STALL_SETUP_TIMEOUT_MS: u31 = 300;
+/// Stop must return well inside this while recovery is stalled: without the
+/// bound, a stalled TLS handshake read would hold the reader forever.
+const STALLED_STOP_CEILING_MS: i64 = 5_000;
+const PROXY_MAX_CONNS = 32;
+
+/// A TCP forwarder the test can flip into stall mode: forwarded connections
+/// byte-pump both directions; stalled connections are accepted and then held
+/// silent, which is exactly the peer shape a redial deadline must bound (TCP
+/// completes, TLS/AUTH never answers). The hub's config points here once at
+/// start, so recovery behavior toggles without touching hub state mid-run.
+const StallableProxy = struct {
+    io: std.Io,
+    loopback: test_port.Loopback,
+    upstream_port: u16,
+    stall: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    /// Accepted-while-stalled counter: ≥1 proves a redial reached the stalled
+    /// peer (and its budget then fired — the attempt cannot succeed).
+    stall_accepts: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    stopping: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    accept_thread: ?std.Thread = null,
+    conns: [PROXY_MAX_CONNS]?Conn = [_]?Conn{null} ** PROXY_MAX_CONNS,
+    conn_count: usize = 0,
+
+    const Conn = struct {
+        down: std.Io.net.Stream,
+        up: ?std.Io.net.Stream,
+        pump_down_up: ?std.Thread = null,
+        pump_up_down: ?std.Thread = null,
+    };
+
+    fn start(io: std.Io, upstream_port: u16) !*StallableProxy {
+        const self = try testing.allocator.create(StallableProxy);
+        self.* = .{ .io = io, .loopback = try test_port.listenLoopback(io), .upstream_port = upstream_port };
+        self.accept_thread = try std.Thread.spawn(.{}, acceptLoop, .{self});
+        return self;
+    }
+
+    fn acceptLoop(self: *StallableProxy) void {
+        while (!self.stopping.load(.acquire)) {
+            const down = self.loopback.server.accept(self.io) catch return;
+            if (self.stopping.load(.acquire)) {
+                down.close(self.io);
+                return;
+            }
+            if (self.conn_count >= PROXY_MAX_CONNS) {
+                down.close(self.io);
+                continue;
+            }
+            if (self.stall.load(.acquire)) {
+                // Hold silent: never dial upstream, never write a byte. The
+                // peer's deadline is what ends this connection.
+                _ = self.stall_accepts.fetchAdd(1, .release);
+                self.conns[self.conn_count] = .{ .down = down, .up = null };
+                self.conn_count += 1;
+                continue;
+            }
+            var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", self.upstream_port) catch {
+                down.close(self.io);
+                continue;
+            };
+            const up = addr.connect(self.io, .{ .mode = .stream }) catch {
+                down.close(self.io);
+                continue;
+            };
+            self.conns[self.conn_count] = .{ .down = down, .up = up };
+            const conn = &self.conns[self.conn_count].?;
+            self.conn_count += 1;
+            conn.pump_down_up = std.Thread.spawn(.{}, pump, .{ down.socket.handle, up.socket.handle }) catch null;
+            conn.pump_up_down = std.Thread.spawn(.{}, pump, .{ up.socket.handle, down.socket.handle }) catch null;
+        }
+    }
+
+    /// One-direction byte pump; exits on EOF or error, then shuts the write
+    /// side of the destination so the sibling pump unblocks too.
+    fn pump(from: std.posix.fd_t, to: std.posix.fd_t) void {
+        var buf: [4096]u8 = undefined;
+        while (true) {
+            const n = std.posix.read(from, &buf) catch break;
+            if (n == 0) break;
+            var sent: usize = 0;
+            while (sent < n) {
+                const rc = std.posix.system.write(to, buf[sent..].ptr, n - sent);
+                if (std.posix.errno(rc) != .SUCCESS) return shutdownFd(to);
+                sent += @intCast(rc);
+            }
+        }
+        shutdownFd(to);
+    }
+
+    fn shutdownFd(fd: std.posix.fd_t) void {
+        _ = std.posix.system.shutdown(fd, std.posix.SHUT.RDWR);
+    }
+
+    fn deinit(self: *StallableProxy) void {
+        self.stopping.store(true, .release);
+        // Wake the blocked accept with one throwaway loopback connect (a
+        // listener deinit does not wake accept on Linux).
+        var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", self.loopback.port) catch
+            @panic("loopback literal cannot fail to parse");
+        if (addr.connect(self.io, .{ .mode = .stream })) |s| s.close(self.io) else |_| {}
+        if (self.accept_thread) |t| t.join();
+        for (self.conns[0..self.conn_count]) |*slot| {
+            const conn = &(slot.* orelse continue);
+            shutdownFd(conn.down.socket.handle);
+            if (conn.up) |up| shutdownFd(up.socket.handle);
+            if (conn.pump_down_up) |t| t.join();
+            if (conn.pump_up_down) |t| t.join();
+            conn.down.close(self.io);
+            if (conn.up) |up| up.close(self.io);
+        }
+        self.loopback.server.deinit(self.io);
+        testing.allocator.destroy(self);
+    }
+};
+
+/// Duplicate `cfg` with the proxy's port swapped in. Host, credentials, and
+/// TLS posture stay identical, so the TLS handshake still verifies against the
+/// broker's real certificate through the byte pump.
+fn cfgViaProxy(cfg: redis_config.Config, port: u16) !redis_config.Config {
+    return .{
+        .host = try testing.allocator.dupe(u8, cfg.host),
+        .port = port,
+        .username = if (cfg.username) |v| try testing.allocator.dupe(u8, v) else null,
+        .password = if (cfg.password) |v| try testing.allocator.dupe(u8, v) else null,
+        .use_tls = cfg.use_tls,
+        .ca_cert_file = if (cfg.ca_cert_file) |v| try testing.allocator.dupe(u8, v) else null,
+    };
+}
+
+test "integration: redis reconnect and resubscribe are bounded" {
+    // Dimension 3.2: recovery dials through a proxy the test can stall. A
+    // stalled redial is interrupted by its setup budget and RETRIED (recovery
+    // succeeds once the stall lifts, across a multi-channel sweep), and stop
+    // during a stalled attempt returns promptly instead of waiting the stall out.
+    const url = try requireRedisUrlOrSkip();
+    const cfg = try queue_redis.testing.poolConfigFromUrl(testing.allocator, url);
+    defer redis_config.deinitConfig(testing.allocator, cfg);
+    var pub_client = try queue_redis.testing.connectFromUrl(common.globalIo(), testing.allocator, url);
+    defer pub_client.deinit();
+
+    var test_sched: TestScheduler = .{};
+    defer test_sched.deinit();
+    var proxy = try StallableProxy.start(test_sched.io(), cfg.port);
+    defer proxy.deinit();
+    const proxied_cfg = try cfgViaProxy(cfg, proxy.loopback.port);
+    defer redis_config.deinitConfig(testing.allocator, proxied_cfg);
+
+    var hub = subscription_hub.init(testing.allocator, test_sched.io());
+    defer hub.deinit();
+    defer hub.stop();
+    hub.setup_timeout_ms = STALL_SETUP_TIMEOUT_MS;
+    try hub.start(proxied_cfg, try test_sched.start());
+
+    // Multi-channel map so recovery is a sweep, not a single send. Detached
+    // explicitly before the stop phase — stop()'s drain window waits for live
+    // subscriptions, which would mask the stalled-redial latency under test.
+    var subs_detached = false;
+    const sub_a = try hub.subscribe(CHANNEL_32A);
+    defer if (!subs_detached) hub.unsubscribe(sub_a);
+    const sub_b = try hub.subscribe(CHANNEL_32B);
+    defer if (!subs_detached) hub.unsubscribe(sub_b);
+    const sub_c = try hub.subscribe(CHANNEL_32C);
+    defer if (!subs_detached) hub.unsubscribe(sub_c);
+    try expectNumsub(&pub_client, CHANNEL_32A, 1);
+    try expectNumsub(&pub_client, CHANNEL_32B, 1);
+    try expectNumsub(&pub_client, CHANNEL_32C, 1);
+
+    // Stall recovery, sever the wire. Every redial now reaches a peer that
+    // accepts and never answers; only the setup budget can release it.
+    const generation_before_reconnect = hub.wire_generation;
+    proxy.stall.store(true, .release);
+    try testing.expect(hub.testDisconnectConnection());
+
+    // ≥1 stalled attempt observed → that attempt was interrupted (it cannot
+    // have succeeded) and the loop moved on to retry.
+    var waited_ms: u64 = 0;
+    while (proxy.stall_accepts.load(.acquire) < 1 and waited_ms < RECOVERY_WAIT_MS) : (waited_ms += 100) {
+        common.sleepNanos(POLL_SLEEP_NS);
+    }
+    try testing.expect(proxy.stall_accepts.load(.acquire) >= 1);
+
+    // Lift the stall: the NEXT retry must recover and resubscribe the whole
+    // sweep — interrupted attempts did not wedge the reader.
+    proxy.stall.store(false, .release);
+    waited_ms = 0;
+    var recovered = false;
+    while (waited_ms < RECOVERY_WAIT_MS) : (waited_ms += 200) {
+        try pub_client.publish(CHANNEL_32B, PAYLOAD_ONE);
+        switch (sub_b.pop(200)) {
+            .message => |payload| {
+                testing.allocator.free(payload);
+                recovered = true;
+                break;
+            },
+            .timeout => continue,
+            .closed => return error.TestUnexpectedResult,
+        }
+    }
+    try testing.expect(recovered);
+    try expectNumsub(&pub_client, CHANNEL_32A, 1);
+    try expectNumsub(&pub_client, CHANNEL_32C, 1);
+    // Reconnect REBOUND the wire owner: a fresh generation guards the fresh
+    // socket. Without the rebind, post-reconnect send deadlines would arm
+    // against the retired descriptor — the cross-connection kill this
+    // milestone exists to prevent.
+    try testing.expect(hub.wire_generation != generation_before_reconnect);
+
+    // Viewers detach on the LIVE connection (fast wire unsubscribes), so the
+    // stop bound below measures the stalled redial, not subscriber drain.
+    hub.unsubscribe(sub_a);
+    hub.unsubscribe(sub_b);
+    hub.unsubscribe(sub_c);
+    subs_detached = true;
+
+    // Stall again and sever: stop must land while a redial is mid-stall,
+    // bounded by the setup budget — never by the peer's silence.
+    proxy.stall.store(true, .release);
+    const before_stop_accepts = proxy.stall_accepts.load(.acquire);
+    try testing.expect(hub.testDisconnectConnection());
+    waited_ms = 0;
+    while (proxy.stall_accepts.load(.acquire) == before_stop_accepts and waited_ms < RECOVERY_WAIT_MS) : (waited_ms += 100) {
+        common.sleepNanos(POLL_SLEEP_NS);
+    }
+    const stop_started_ms = common.clock.nowMillis();
+    hub.stop();
+    const stop_elapsed_ms = common.clock.nowMillis() - stop_started_ms;
+    try testing.expect(stop_elapsed_ms < STALLED_STOP_CEILING_MS);
+}
+
+test "integration: hub send deadline preserves recovery" {
+    // Dimension 3.3: normal sends keep first/last-subscriber wire behavior,
+    // and an owner-targeted interruption of the live connection is followed by
+    // full fan-out recovery — the send path never wedges the hub.
+    const url = try requireRedisUrlOrSkip();
+    const cfg = try queue_redis.testing.poolConfigFromUrl(testing.allocator, url);
+    defer redis_config.deinitConfig(testing.allocator, cfg);
+    var pub_client = try queue_redis.testing.connectFromUrl(common.globalIo(), testing.allocator, url);
+    defer pub_client.deinit();
+
+    var test_sched: TestScheduler = .{};
+    defer test_sched.deinit();
+    var hub = subscription_hub.init(testing.allocator, test_sched.io());
+    defer hub.deinit();
+    defer hub.stop();
+    try hub.start(cfg, try test_sched.start());
+
+    // First subscriber sends the wire SUBSCRIBE; the second only refcounts.
+    const first = try hub.subscribe(CHANNEL_33);
+    try expectNumsub(&pub_client, CHANNEL_33, 1);
+    const second = try hub.subscribe(CHANNEL_33);
+    try expectNumsub(&pub_client, CHANNEL_33, 1);
+
+    // Owner-targeted interruption — the exact route a fired send deadline
+    // takes. Recovery must restore fan-out to BOTH viewers.
+    try testing.expect(hub.testDisconnectConnection());
+    var waited_ms: u64 = 0;
+    var first_got = false;
+    var second_got = false;
+    while (waited_ms < RECOVERY_WAIT_MS and !(first_got and second_got)) : (waited_ms += 200) {
+        try pub_client.publish(CHANNEL_33, PAYLOAD_TWO);
+        if (!first_got) switch (first.pop(100)) {
+            .message => |payload| {
+                testing.allocator.free(payload);
+                first_got = true;
+            },
+            .timeout => {},
+            .closed => return error.TestUnexpectedResult,
+        };
+        if (!second_got) switch (second.pop(100)) {
+            .message => |payload| {
+                testing.allocator.free(payload);
+                second_got = true;
+            },
+            .timeout => {},
+            .closed => return error.TestUnexpectedResult,
+        };
+    }
+    try testing.expect(first_got and second_got);
+
+    // Middle unsubscribe is wire-silent; the LAST one drops the wire count.
+    hub.unsubscribe(first);
+    try expectNumsub(&pub_client, CHANNEL_33, 1);
+    hub.unsubscribe(second);
+    try expectNumsub(&pub_client, CHANNEL_33, 0);
+}
