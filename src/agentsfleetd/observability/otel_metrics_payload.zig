@@ -27,8 +27,6 @@ const UNIT_MILLIS = "ms";
 const UNIT_COUNT = "1";
 
 pub const LABEL_POSTURE = "posture";
-pub const LABEL_MODEL = "model";
-pub const LABEL_WORKSPACE = "workspace";
 pub const LABEL_DIRECTION = "direction";
 
 pub const DIRECTION_INPUT = "input";

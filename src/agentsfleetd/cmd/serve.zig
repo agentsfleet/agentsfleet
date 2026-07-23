@@ -46,7 +46,7 @@ const webhook_sig = auth_mw.webhook_sig_mod;
 const svix_signature = auth_mw.svix_signature_mod;
 
 pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
-    preflight.initOtelExporters(env_map, alloc);
+    preflight.initOtelExporters(io, env_map, alloc);
     defer preflight.deinitOtelExporters();
     log.info("startup.serve_start", .{});
 

@@ -11,6 +11,7 @@ pub const setSseInFlightStreams = mc.setSseInFlightStreams;
 pub const incSseDroppedFrames = mc.incSseDroppedFrames;
 pub const incSseHubReconnects = mc.incSseHubReconnects;
 pub const snapshot = mc.snapshot;
+pub const incTraceSuppressed = @import("metrics_trace.zig").inc;
 
 pub const renderPrometheus = mr.renderPrometheus;
 

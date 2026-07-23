@@ -5,6 +5,7 @@ const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_runner.zig");
 const mrp = @import("metrics_redis_pool.zig");
 const msm = @import("metrics_sensitive_memory.zig");
+const mt = @import("metrics_trace.zig");
 
 const S_TYPE_S_S_N = "# TYPE {s} {s}\n";
 const S_REASON = "reason";
@@ -67,6 +68,15 @@ pub fn renderPrometheus(
     try appendMetric(writer, "fleet_sse_dropped_frames_total", S_COUNTER, "Total SSE frames dropped against slow consumers (bounded per-stream queues).", s.sse_dropped_frames_total);
     try appendMetric(writer, "fleet_sse_hub_reconnects_total", S_COUNTER, "Total successful redials of the shared SSE pub/sub connection.", s.sse_hub_reconnects_total);
     try appendMetric(writer, "fleet_worker_running", S_GAUGE, "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
+
+    const trace = mt.snapshot();
+    try appendLabeledFamily(writer, "fleet_http_trace_suppressed_total", S_COUNTER, "HTTP request spans suppressed by the bounded trace admission policy.", S_REASON, &.{
+        .{ .label_value = "noisy_route", .value = trace.noisy_route_total },
+        .{ .label_value = "runner_rejection_budget", .value = trace.runner_rejection_budget_total },
+        .{ .label_value = "server_error_budget", .value = trace.server_error_budget_total },
+        .{ .label_value = "sampled_success_budget", .value = trace.sampled_success_budget_total },
+        .{ .label_value = "sample_miss", .value = trace.sample_miss_total },
+    });
 
     // Signup funnel counters.
     try appendMetric(writer, "fleet_signup_bootstrapped_total", S_COUNTER, "Clerk webhooks that provisioned a fresh personal account.", s.signup_bootstrapped_total);

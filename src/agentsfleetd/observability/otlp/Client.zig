@@ -9,12 +9,17 @@ const Client = @This();
 
 inner: std.http.Client,
 
+pub const ExportResult = union(enum) {
+    accepted,
+    partial_rejected: u64,
+};
+
 /// Create a persistent client. The client's own connection-pool bookkeeping
 /// uses the page allocator (it lives across flushes); the process-global
 /// blocking io matches the flush thread's blocking one-shot POST loop (not an
 /// async event loop).
-pub fn init() Client {
-    return .{ .inner = .{ .allocator = std.heap.page_allocator, .io = common.globalIo() } };
+pub fn init(io: std.Io) Client {
+    return .{ .inner = .{ .allocator = std.heap.page_allocator, .io = io } };
 }
 
 pub fn deinit(self: *Client) void {
@@ -32,7 +37,7 @@ pub fn post(
     cfg: config.GrafanaOtlpConfig,
     path: []const u8,
     payload: []const u8,
-) !void {
+) !ExportResult {
     const endpoint = std.mem.trimEnd(u8, cfg.endpoint, "/");
     const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ endpoint, path });
     defer alloc.free(url);
@@ -76,6 +81,26 @@ pub fn post(
     if (result.status != .ok and result.status != .no_content and result.status != .accepted) {
         return error.OtlpExportRejected;
     }
+
+    const response = aw.writer.buffered();
+    if (response.len == 0) return .accepted;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, response, .{}) catch return error.OtlpPartialResponseMalformed;
+    defer parsed.deinit();
+    const partial = switch (parsed.value) {
+        .object => |object| object.get("partialSuccess") orelse return .accepted,
+        else => return error.OtlpPartialResponseMalformed,
+    };
+    const rejected = switch (partial) {
+        .object => |object| blk: {
+            const key = if (std.mem.endsWith(u8, path, "/logs")) "rejectedLogRecords" else if (std.mem.endsWith(u8, path, "/traces")) "rejectedSpans" else "rejectedDataPoints";
+            break :blk object.get(key) orelse return error.OtlpPartialResponseMalformed;
+        },
+        else => return error.OtlpPartialResponseMalformed,
+    };
+    return switch (rejected) {
+        .integer => |value| if (value >= 0) .{ .partial_rejected = @intCast(value) } else error.OtlpPartialResponseMalformed,
+        else => error.OtlpPartialResponseMalformed,
+    };
 }
 
 test {
@@ -83,5 +108,4 @@ test {
 }
 
 const std = @import("std");
-const common = @import("common");
 const config = @import("config.zig");

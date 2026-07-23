@@ -135,9 +135,9 @@ Define the route class from route and response status, then admit it through fix
 
 The process budget is 10 generic request spans per monotonic second, matching the audited pre-refactor trace drain ceiling: four runner rejections, four server errors, and two sampled successes. Each bucket uses atomic fixed-window admission with no allocator and no global lock. Excess requests do not enqueue a span and increment `agentsfleet_http_trace_suppressed_total` under a fixed reason. Existing structured rejection logs and request counters remain; the aggregate makes the full rejection volume visible without allowing an invalid-token flood to evict useful spans.
 
-- **Dimension 1.1** — every current route has an explicit trace class; empty and granted lease responses plus other noisy runner successes suppress → Test `test_trace_policy_is_total_and_suppresses_runner_chatter`
-- **Dimension 1.2** — deterministic sampling selects exactly the documented fraction over a fixed server-owned identifier corpus and caller trace identifiers cannot force selection → Test `test_trace_sampling_uses_server_owned_entropy`
-- **Dimension 1.3** — matched runner rejections, including pre-handler admission shedding, and server errors emit only within their hard budgets; every excess is counted → Tests `test_trace_error_budgets_are_hard` and `test_runner_admission_rejection_is_traced_or_counted`
+- **Dimension 1.1 — DONE** — every current route has an explicit trace class; empty and granted lease responses plus other noisy runner successes suppress → Test `test_trace_policy_is_total_and_suppresses_runner_chatter`
+- **Dimension 1.2 — DONE** — deterministic sampling selects exactly the documented fraction over a fixed server-owned identifier corpus and caller trace identifiers cannot force selection → Test `test_trace_sampling_uses_server_owned_entropy`
+- **Dimension 1.3 — DONE** — matched runner rejections, including pre-handler admission shedding, and server errors emit only within their hard budgets; every excess is counted → Tests `test_trace_error_budgets_are_hard` and `test_runner_admission_rejection_is_traced_or_counted`
 
 ### §2 — Export drains by work, not one batch per interval
 

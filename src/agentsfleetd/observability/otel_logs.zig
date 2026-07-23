@@ -36,6 +36,7 @@ const Exporter = otlp_exporter.Exporter(.{
     .scope = .otel_logs,
     .collect = collectLogs,
     .pending = logsPending,
+    .wake_threshold = FLUSH_BATCH_SIZE,
 });
 
 pub const install = Exporter.install;
@@ -61,6 +62,7 @@ pub fn enqueue(
     @memcpy(entry.body[0..entry.body_len], msg[0..entry.body_len]);
 
     _ = g_ring.push(entry);
+    Exporter.notify();
 }
 
 // ---------------------------------------------------------------------------
