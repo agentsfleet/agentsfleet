@@ -114,11 +114,11 @@ Nine indexes, each tied to a query that scans or sorts today. The two sweeper re
 **Implementation default:** one migration slot for all nine, because they share a justification and a rollback; splitting them across slots would make the evidence in §1's test harder to read than the change itself.
 
 - **Dimension 1.1** — the slot applies cleanly to a fresh bootstrap and to an already-provisioned database, twice in a row → Test `test_migration_slot_is_idempotent` — **DONE**
-- **Dimension 1.2** — the affinity-expiry sweep is planned as an index scan → Test `test_affinity_expiry_uses_index`
+- **Dimension 1.2** — the affinity-expiry sweep is planned as an index scan → Test `test_affinity_expiry_uses_index` — **DONE**
 - **Dimension 1.3** — the due-runner read satisfies both its filter and its ordering from an index → Test `test_due_runner_read_is_index_ordered` — **DONE**
 - **Dimension 1.4** — a bounded memory read over a fleet's entries is served pre-ordered by the composite index, with no sort node → Test `test_bounded_memory_read_is_index_ordered` — **amended at EXECUTE against measured plans; see Discovery. The original wording ("memory hydration returns rows pre-ordered") is not achievable: `fleet_memory.listAll` fetches a fleet's whole memory set with no `LIMIT`, and for an unbounded fetch PostgreSQL correctly prefers bitmap-scan-plus-sort whether or not the redundant narrow index is present.**
-- **Dimension 1.5** — the workspace event keyset resolves as a single index seek rather than a seek plus filter → Test `test_event_keyset_is_index_seek`
-- **Dimension 1.6** — the reclaim lease lookup and the fleet-list page each plan against their new index → Test `test_reclaim_and_fleet_list_use_indexes`
+- **Dimension 1.5** — the workspace event keyset resolves as a single index seek rather than a seek plus filter → Test `test_event_keyset_is_index_seek` — **DONE**
+- **Dimension 1.6** — the reclaim lease lookup and the fleet-list page each plan against their new index → Test `test_reclaim_and_fleet_list_use_indexes` — **DONE**
 
 ### §2 — Retire the indexes nothing reads
 
