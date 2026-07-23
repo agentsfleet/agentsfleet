@@ -158,10 +158,10 @@ pub fn claimAndSettle(
     now_ms: i64,
     meter: renewal.MeterInputs,
 ) !SettleOutcome {
-    var ledger_uid_buf: [36]u8 = undefined;
-    var breakdown_uid_buf: [36]u8 = undefined;
-    const ledger_uid = try id_format.formatUuidV7(&ledger_uid_buf);
-    const breakdown_uid = try id_format.formatUuidV7(&breakdown_uid_buf);
+    const ledger_uid_value = try id_format.generateUuidV7();
+    const breakdown_uid_value = try id_format.generateUuidV7();
+    const ledger_uid: []const u8 = &ledger_uid_value;
+    const breakdown_uid: []const u8 = &breakdown_uid_value;
     var q = PgQuery.from(try conn.query(CLAIM_SETTLE_SQL, .{
         lease_id,
         runner_id,
