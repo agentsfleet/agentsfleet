@@ -147,6 +147,17 @@ stack-local owner safe to leave scope. Arming is fail-CLOSED everywhere: a
 scheduler that cannot arm refuses the call; no path falls through to an
 unbounded run.
 
+The bounded connection setup adds an **Io precondition**: the dial is raced
+against the budget with `std.Io.Select` (`queue/redis_subscriber.zig`
+`dialWithinBudget`), so the `io` a process root hands its network owners must
+support concurrency. Production always satisfies this — `main.zig` passes the
+process-init Io. `common.globalIo()` does **not** (it is the statically
+single-threaded instance; its first `select.concurrent` fails with
+`ConcurrencyUnavailable`, and fail-CLOSED turns that into a refused boot).
+Any harness that boots `serve.run` or starts the hub must construct its own
+`std.Io.Threaded` — the shape `http/test_harness.zig` (`hub_io`) and the
+serve-lifecycle test both follow.
+
 ---
 
 ## Shutdown choreography
