@@ -7,6 +7,7 @@
 //! Only the SHA-256 hash of the key is stored. The raw key is shown once at creation.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const constants = @import("common");
 const clock = constants.clock;
 const logging = @import("log");
@@ -93,8 +94,7 @@ pub fn innerCreateFleetKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
     // Verify fleet belongs to this workspace before minting key material.
     {
         var fleet_q = PgQuery.from(conn.query(
-            \\SELECT 1 FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid LIMIT 1
-        , .{ body.fleet_id, workspace_id }) catch {
+            sql.SELECT_FLEET_IN_WORKSPACE, .{ body.fleet_id, workspace_id }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return;
         });
@@ -124,10 +124,7 @@ pub fn innerCreateFleetKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
     const desc = body.description orelse "";
 
     _ = conn.exec(
-        \\INSERT INTO core.fleet_keys
-        \\  (uid, fleet_key_id, workspace_id, fleet_id, name, description, key_hash, created_at)
-        \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, $4, $5, $6, $7)
-    , .{ fleet_key_id, workspace_id, body.fleet_id, body.name, desc, key_hash, now_ms }) catch {
+        sql.INSERT_FLEET_KEY, .{ fleet_key_id, workspace_id, body.fleet_id, body.name, desc, key_hash, now_ms }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -176,11 +173,7 @@ pub fn innerListFleetKeys(hx: Hx, workspace_id: []const u8) void {
     }
 
     var q = PgQuery.from(conn.query(
-        \\SELECT fleet_key_id, fleet_id::text, name, description, created_at, last_used_at
-        \\FROM core.fleet_keys
-        \\WHERE workspace_id = $1::uuid
-        \\ORDER BY created_at DESC
-    , .{workspace_id}) catch {
+        sql.SELECT_FLEET_KEYS_FOR_WORKSPACE, .{workspace_id}) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -223,10 +216,7 @@ pub fn innerDeleteFleetKey(hx: Hx, workspace_id: []const u8, fleet_key_id: []con
     }
 
     var del_q = PgQuery.from(conn.query(
-        \\DELETE FROM core.fleet_keys
-        \\WHERE fleet_key_id = $1 AND workspace_id = $2::uuid
-        \\RETURNING fleet_key_id
-    , .{ fleet_key_id, workspace_id }) catch {
+        sql.DELETE_FLEET_KEY, .{ fleet_key_id, workspace_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });

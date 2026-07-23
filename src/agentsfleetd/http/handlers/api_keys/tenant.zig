@@ -9,6 +9,7 @@
 //! rollback step 1).
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const constants = @import("common");
 const clock = constants.clock;
 const logging = @import("log");
@@ -133,9 +134,7 @@ fn performCreate(
     // where two concurrent POSTs could both pass the check and race.
     const description: []const u8 = body.description orelse "";
     _ = conn.exec(
-        \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, TRUE, $7, $7)
-    , .{ id, tenant_id, body.key_name, description, key_hash[0..], user_id, now_ms }) catch {
+        sql.INSERT_TENANT_KEY, .{ id, tenant_id, body.key_name, description, key_hash[0..], user_id, now_ms }) catch {
         if (conn.err) |pe| {
             if (std.mem.eql(u8, pe.code, "23505")) return error.NameTaken;
         }
@@ -193,25 +192,7 @@ pub fn innerPatchApiKey(hx: Hx, req: *httpz.Request, key_id: []const u8) void {
 fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u8, key_id: []const u8) void {
     const now_ms = clock.nowMillis();
     var q = PgQuery.from(conn.query(
-        \\WITH current_row AS (
-        \\    SELECT uid, active
-        \\    FROM core.api_keys
-        \\    WHERE uid = $1::uuid AND tenant_id = $2::uuid
-        \\), updated AS (
-        \\    UPDATE core.api_keys k
-        \\    SET active = FALSE, revoked_at = $3, updated_at = $3
-        \\    FROM current_row c
-        \\    WHERE k.uid = c.uid AND c.active = TRUE
-        \\    RETURNING k.uid::text, k.revoked_at
-        \\)
-        \\SELECT u.uid, u.revoked_at, TRUE AS changed, FALSE AS active
-        \\FROM updated u
-        \\UNION ALL
-        \\SELECT c.uid::text, NULL::bigint AS revoked_at, FALSE AS changed, c.active
-        \\FROM current_row c
-        \\WHERE NOT EXISTS (SELECT 1 FROM updated)
-        \\LIMIT 1
-    , .{ key_id, tenant_id, now_ms }) catch {
+        sql.REVOKE_TENANT_KEY, .{ key_id, tenant_id, now_ms }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -254,24 +235,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
     defer hx.ctx.pool.release(conn);
 
     var q = PgQuery.from(conn.query(
-        \\WITH current_row AS (
-        \\    SELECT uid, active
-        \\    FROM core.api_keys
-        \\    WHERE uid = $1::uuid AND tenant_id = $2::uuid
-        \\), deleted AS (
-        \\    DELETE FROM core.api_keys k
-        \\    USING current_row c
-        \\    WHERE k.uid = c.uid AND c.active = FALSE
-        \\    RETURNING k.uid::text
-        \\)
-        \\SELECT d.uid, TRUE AS changed, FALSE AS active
-        \\FROM deleted d
-        \\UNION ALL
-        \\SELECT c.uid::text, FALSE AS changed, c.active
-        \\FROM current_row c
-        \\WHERE NOT EXISTS (SELECT 1 FROM deleted)
-        \\LIMIT 1
-    , .{ key_id, tenant_id }) catch {
+        sql.DELETE_TENANT_KEY, .{ key_id, tenant_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
