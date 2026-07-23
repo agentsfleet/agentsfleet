@@ -12,7 +12,17 @@ import {
   useFleetName,
   type RowTone,
 } from "./FleetMessageRow";
-import { GROUP_META } from "./useFleetThreadEntries";
+import {
+  readActor,
+  readCustomStatus,
+  readFailureLabel,
+  readGroupMembers,
+  readGroupRange,
+  readOutcome,
+  readReply,
+  readRequestJson,
+  readText,
+} from "./fleetMessageReaders";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
 import {
   SENDER,
@@ -322,56 +332,4 @@ function PayloadDisclosure({ json }: { json: string }) {
 function toneFor(actor: string, status: string): RowTone {
   if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return ROW_TONE.OPERATOR;
   return roleFor(actor) === "user" ? ROW_TONE.OPERATOR : ROW_TONE.EVENT;
-}
-
-function readText(message: MessageState): string {
-  for (const part of message.content) {
-    if (part.type === "text") return part.text;
-  }
-  return "";
-}
-
-function readActor(message: MessageState): string {
-  const raw = message.metadata.custom["actor"];
-  return typeof raw === "string" ? raw : "";
-}
-
-function readCustomStatus(message: MessageState): string {
-  const raw = message.metadata.custom["status"];
-  return typeof raw === "string" ? raw : "";
-}
-
-function readReply(message: MessageState): string {
-  const raw = message.metadata.custom["reply"];
-  return typeof raw === "string" ? raw : "";
-}
-
-function readOutcome(message: MessageState): string {
-  const raw = message.metadata.custom["outcome"];
-  return typeof raw === "string" ? raw : "";
-}
-
-// Present only on a grouped message; null means this row stands for itself.
-function readGroupMembers(message: MessageState): FleetEvent[] | null {
-  const raw = message.metadata.custom[GROUP_META.MEMBERS];
-  return Array.isArray(raw) && raw.length > 0 ? (raw as FleetEvent[]) : null;
-}
-
-function readGroupRange(message: MessageState): { first: Date; last: Date } | null {
-  const first = message.metadata.custom[GROUP_META.FIRST_AT];
-  const last = message.metadata.custom[GROUP_META.LAST_AT];
-  if (!(first instanceof Date) || !(last instanceof Date)) return null;
-  return { first, last };
-}
-
-function readFailureLabel(message: MessageState): string | null {
-  const raw = message.metadata.custom["failureLabel"];
-  return typeof raw === "string" && raw.length > 0 ? raw : null;
-}
-
-function readRequestJson(message: MessageState): string | null {
-  const raw = message.metadata.custom["requestJson"];
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  return trimmed.length > 0 && trimmed !== "{}" ? trimmed : null;
 }
