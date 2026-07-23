@@ -55,24 +55,62 @@ pub fn connectFromEnv(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocat
     var cfg = try redis_config.parseRedisUrl(alloc, url);
     defer redis_config.deinitConfig(alloc, cfg);
     cfg.ca_cert_file = try common.env.owned(env_map, alloc, redis_config.CA_CERT_FILE_ENV);
-    return connectFromConfig(io, alloc, cfg, options);
+    return connectFromConfig(io, alloc, cfg, options, null);
 }
 
 pub fn connectFromUrl(io: std.Io, alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Self {
     var cfg = try redis_config.parseRedisUrl(alloc, url);
     defer redis_config.deinitConfig(alloc, cfg);
     if (options.ca_cert_file) |ca| cfg.ca_cert_file = try alloc.dupe(u8, ca);
-    return connectFromConfig(io, alloc, cfg, options);
+    return connectFromConfig(io, alloc, cfg, options, null);
 }
+
+/// One absolute boot-clock budget for a whole connection attempt: resolve,
+/// dial, TLS handshake, and AUTH all spend from it, so a stall in any stage
+/// cannot reset the allowance the way per-stage timeouts would.
+///
+/// The owner is CALLER-owned and address-stable. The caller arms a scheduler
+/// guard on it before calling connect and finishes that guard before moving the
+/// returned Subscriber — a Subscriber is returned by value, so its own storage
+/// is not a safe interrupt target.
+pub const SetupBudget = struct {
+    owner: *call_deadline.SocketOwner,
+    generation: u64,
+    /// Absolute boot-clock nanoseconds.
+    deadline_ns: i96,
+};
+
+/// Setup stalled past its budget. Distinct from an auth rejection and from an
+/// ordinary transport failure so a caller can retry only what is retryable.
+pub const SetupError = error{RedisSetupTimedOut};
 
 /// Dial a dedicated pub/sub connection from an already-resolved config. `cfg`
 /// is BORROWED (e.g. the request-path Client's pool config) — read during the
 /// dial, never freed here. This is the SSE path's seam: it reuses the pool's
 /// resolved config instead of re-reading env.
-pub fn connectFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Self {
-    // Zig 0.16 dial: resolve host (DNS) + connect via Io.net.HostName.
+///
+/// `budget` null keeps the historical unbounded dial for callers that drive
+/// their own deadline; the hub always supplies one.
+pub fn connectFromConfig(
+    io: std.Io,
+    alloc: std.mem.Allocator,
+    cfg: redis_config.Config,
+    options: InitOptions,
+    budget: ?SetupBudget,
+) !Self {
+    // Zig 0.16 dial: resolve host (DNS) + connect via Io.net.HostName. Name
+    // resolution has no socket yet, so shutdown cannot interrupt it — the dial
+    // is raced against the budget instead, and the loser is canceled.
     const hostname = try std.Io.net.HostName.init(cfg.host);
-    const stream = try hostname.connect(io, cfg.port, .{ .mode = .stream });
+    const stream = if (budget) |b|
+        try dialWithinBudget(io, hostname, cfg.port, b.deadline_ns)
+    else
+        try hostname.connect(io, cfg.port, .{ .mode = .stream });
+
+    // The attempt owns the socket the moment one exists, so every later stage
+    // is interruptible even though the dial was not.
+    if (budget) |b| _ = b.owner.attachSocket(b.generation, stream.socket.handle);
+
     // SAFETY: written by surrounding init logic before any read of this storage.
     var sub = Self{ .alloc = alloc, .io = io, .transport = undefined, .read_timeout_ms = options.read_timeout_ms };
 
@@ -84,6 +122,7 @@ pub fn connectFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config
         sub.transport = .{ .plain = try redis_transport.PlainTransport.init(io, alloc, stream) };
     }
     errdefer sub.transport.deinit(io, alloc);
+    try checkBudget(budget);
 
     if (cfg.password) |pwd| {
         if (cfg.username) |usr| {
@@ -93,11 +132,66 @@ pub fn connectFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config
         }
         var auth = try redis_protocol.readRespValue(alloc, sub.transport.reader());
         defer auth.deinit(alloc);
+        try checkBudget(budget);
         try redis_protocol.ensureSimpleOk(auth);
     }
 
     log.debug("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
     return sub;
+}
+
+/// Between-stage check: the deadline fired and shut the socket down, so the
+/// stage that just returned did so because of us, not the peer.
+fn checkBudget(budget: ?SetupBudget) SetupError!void {
+    const b = budget orelse return;
+    if (b.owner.wasInterrupted()) return SetupError.RedisSetupTimedOut;
+}
+
+/// Race resolve+dial against the shared budget and cancel the loser, so a
+/// black-holed DNS server or a SYN that never completes cannot outlive it.
+fn dialWithinBudget(
+    io: std.Io,
+    hostname: std.Io.net.HostName,
+    port: u16,
+    deadline_ns: i96,
+) !std.Io.net.Stream {
+    if (std.Io.Clock.boot.now(io).toNanoseconds() >= deadline_ns) return SetupError.RedisSetupTimedOut;
+
+    const Selected = union(enum) {
+        dial: std.Io.net.HostName.ConnectError!std.Io.net.Stream,
+        timeout: std.Io.Cancelable!void,
+    };
+    var result_buf: [2]Selected = undefined;
+    var select = std.Io.Select(Selected).init(io, &result_buf);
+    try select.concurrent(.timeout, waitForDeadline, .{ io, deadline_ns });
+    select.concurrent(.dial, dialTask, .{ io, hostname, port }) catch |err| {
+        select.cancelDiscard();
+        return err;
+    };
+    const selected = select.await() catch |err| {
+        select.cancelDiscard();
+        return err;
+    };
+    // Joins the loser before returning: no dial helper outlives this call.
+    select.cancelDiscard();
+    return switch (selected) {
+        .dial => |result| result,
+        .timeout => |result| {
+            result catch |err| switch (err) {
+                error.Canceled => {},
+            };
+            return SetupError.RedisSetupTimedOut;
+        },
+    };
+}
+
+fn dialTask(io: std.Io, hostname: std.Io.net.HostName, port: u16) std.Io.net.HostName.ConnectError!std.Io.net.Stream {
+    return hostname.connect(io, port, .{ .mode = .stream });
+}
+
+fn waitForDeadline(io: std.Io, deadline_ns: i96) std.Io.Cancelable!void {
+    const deadline = std.Io.Timestamp.fromNanoseconds(deadline_ns).withClock(.boot);
+    try deadline.wait(io);
 }
 
 pub fn deinit(self: *Self) void {
@@ -185,10 +279,11 @@ pub fn installReadTimeout(self: *Self) void {
     if (self.read_timeout_ms) |ms| self.transport.setReadTimeout(ms);
 }
 
-/// The socket handle, for owners that bound their blocking sends with a
-/// call_deadline watchdog (the hub's wire writes).
-pub fn socketHandle(self: *Self) std.posix.fd_t {
-    return self.transport.socketHandle();
+/// Hand this connection's socket to a caller-owned control block, so the
+/// owner can bound its blocking sends without ever seeing the descriptor.
+/// Returns false when `generation` was already retired.
+pub fn attachTo(self: *Self, owner: *call_deadline.SocketOwner, generation: u64) bool {
+    return owner.attachSocket(generation, self.transport.socketHandle());
 }
 
 fn sendCommand(self: *Self, argv: []const []const u8) !void {
@@ -222,6 +317,7 @@ fn expectSubscribeAck(value: redis_protocol.RespValue, channel: []const u8) !voi
 const std = @import("std");
 const common = @import("common");
 const logging = @import("log");
+const call_deadline = @import("call_deadline");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");

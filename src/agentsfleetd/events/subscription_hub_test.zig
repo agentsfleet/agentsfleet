@@ -16,6 +16,34 @@ const metrics = @import("../observability/metrics.zig");
 const queue_redis = @import("../queue/redis.zig");
 const redis_config = @import("../queue/redis_config.zig");
 const subscription_hub = @import("subscription_hub.zig");
+const call_deadline = @import("call_deadline");
+/// One scheduler per test, declared before the hub so its deinit unwinds LAST —
+/// the hub's wire registrations must be finished before the scheduler storage
+/// they live in is freed.
+const TestScheduler = struct {
+    backend: call_deadline.MonotonicBackend = .{},
+    sched: ?call_deadline.ProcessScheduler = null,
+    /// Concurrency-capable Io for the hub under test. `common.globalIo()` is
+    /// statically single-threaded, so the raced dial would fail on it.
+    hub_io: ?std.Io.Threaded = null,
+
+    fn io(self: *TestScheduler) std.Io {
+        if (self.hub_io == null) self.hub_io = std.Io.Threaded.init(testing.allocator, .{});
+        return self.hub_io.?.io();
+    }
+
+    fn start(self: *TestScheduler) !*call_deadline.ProcessScheduler {
+        self.sched = call_deadline.ProcessScheduler.init(testing.allocator, &self.backend);
+        try self.sched.?.start();
+        return &self.sched.?;
+    }
+
+    fn deinit(self: *TestScheduler) void {
+        if (self.sched) |*s| s.deinit();
+        if (self.hub_io) |*t| t.deinit();
+    }
+};
+
 const Subscription = subscription_hub.Subscription;
 
 const TEST_REDIS_URL_ENV = "TEST_REDIS_TLS_URL";
@@ -480,11 +508,13 @@ test "hub: start propagates a refused connection and tears down cleanly" {
     const cfg = try queue_redis.testing.poolConfigFromUrl(testing.allocator, REFUSED_REDIS_URL);
     defer redis_config.deinitConfig(testing.allocator, cfg);
 
-    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    var test_sched: TestScheduler = .{};
+    defer test_sched.deinit();
+    var hub = subscription_hub.init(testing.allocator, test_sched.io());
     defer hub.deinit();
     defer hub.stop();
 
-    if (hub.start(cfg)) |_| return error.TestUnexpectedResult else |_| {}
+    if (hub.start(cfg, try test_sched.start())) |_| return error.TestUnexpectedResult else |_| {}
 }
 
 // ── Live-Redis wire tests (integration env, same gating as the SSE suites) ──
@@ -521,10 +551,12 @@ test "integration: hub holds one wire subscriber per channel for N viewers; fan-
     var pub_client = try queue_redis.testing.connectFromUrl(common.globalIo(), testing.allocator, url);
     defer pub_client.deinit();
 
-    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    var test_sched: TestScheduler = .{};
+    defer test_sched.deinit();
+    var hub = subscription_hub.init(testing.allocator, test_sched.io());
     defer hub.deinit();
     defer hub.stop();
-    try hub.start(cfg);
+    try hub.start(cfg, try test_sched.start());
 
     const s1 = try hub.subscribe(CHANNEL_A);
     const s2 = try hub.subscribe(CHANNEL_A);
@@ -577,10 +609,12 @@ test "integration: a shared consumer receives both channels over the wire, each 
     var pub_client = try queue_redis.testing.connectFromUrl(common.globalIo(), testing.allocator, url);
     defer pub_client.deinit();
 
-    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    var test_sched: TestScheduler = .{};
+    defer test_sched.deinit();
+    var hub = subscription_hub.init(testing.allocator, test_sched.io());
     defer hub.deinit();
     defer hub.stop();
-    try hub.start(cfg);
+    try hub.start(cfg, try test_sched.start());
 
     const shared = try hub.createSharedConsumer(WS_LABEL);
     try hub.attachChannel(shared, CHANNEL_A);
@@ -627,10 +661,12 @@ test "integration: hub reconnects after its connection is killed and delivery re
     var pub_client = try queue_redis.testing.connectFromUrl(common.globalIo(), testing.allocator, url);
     defer pub_client.deinit();
 
-    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    var test_sched: TestScheduler = .{};
+    defer test_sched.deinit();
+    var hub = subscription_hub.init(testing.allocator, test_sched.io());
     defer hub.deinit();
     defer hub.stop();
-    try hub.start(cfg);
+    try hub.start(cfg, try test_sched.start());
 
     const sub = try hub.subscribe(CHANNEL_A);
     defer hub.unsubscribe(sub);
@@ -672,10 +708,12 @@ test "integration: a stalled viewer drops oldest while its channel sibling recei
     var pub_client = try queue_redis.testing.connectFromUrl(common.globalIo(), testing.allocator, url);
     defer pub_client.deinit();
 
-    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    var test_sched: TestScheduler = .{};
+    defer test_sched.deinit();
+    var hub = subscription_hub.init(testing.allocator, test_sched.io());
     defer hub.deinit();
     defer hub.stop();
-    try hub.start(cfg);
+    try hub.start(cfg, try test_sched.start());
 
     const active = try hub.subscribe(CHANNEL_ISOLATION);
     defer hub.unsubscribe(active);
@@ -826,10 +864,12 @@ test "integration: concurrent_read_write_one_subscriber_conn" {
     var pub_client = try queue_redis.testing.connectFromUrl(common.globalIo(), testing.allocator, url);
     defer pub_client.deinit();
 
-    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    var test_sched: TestScheduler = .{};
+    defer test_sched.deinit();
+    var hub = subscription_hub.init(testing.allocator, test_sched.io());
     defer hub.deinit();
     defer hub.stop();
-    try hub.start(cfg);
+    try hub.start(cfg, try test_sched.start());
 
     // A live viewer keeps the reader busy with real frames…
     const viewer = try hub.subscribe(CHANNEL_A);

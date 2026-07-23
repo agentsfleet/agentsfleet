@@ -14,6 +14,7 @@ const common = @import("common");
 const clock = common.clock;
 const logging = @import("log");
 const redis_subscriber = @import("../queue/redis_subscriber.zig");
+const wire = @import("subscription_hub_wire.zig");
 const metrics = @import("../observability/metrics.zig");
 const Hub = @import("subscription_hub.zig");
 
@@ -102,7 +103,7 @@ fn reconnect(hub: *Hub) void {
             if (hub.stopped.load(.acquire)) return;
             common.sleepNanos(RECONNECT_SLICE_MS * std.time.ns_per_ms);
         }
-        var fresh = redis_subscriber.connectFromConfig(hub.io, hub.alloc, hub.cfg.?, .{ .read_timeout_ms = hub.read_timeout_ms }) catch |err| {
+        var fresh = wire.connectBounded(hub) catch |err| {
             log.warn("hub_redial_failed", .{ .err = @errorName(err) });
             continue;
         };

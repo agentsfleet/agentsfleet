@@ -176,7 +176,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     var hub = subscription_hub.init(alloc, io);
     var fleet_sets = fleet_set_cache.init(alloc, io);
     defer serve_shutdown.deinitStreaming(&hub, &streams, &fleet_sets);
-    hub.start(api_queue.pool.cfg) catch |err| {
+    hub.start(api_queue.pool.cfg, deadline_scheduler) catch |err| {
         log.err("startup.subscription_hub_failed", .{
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
             .err = @errorName(err),
