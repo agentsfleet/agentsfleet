@@ -65,7 +65,7 @@ export function FleetSubnavigation({
   return (
     <Nav
       aria-label="Fleet sections"
-      className="flex gap-xs overflow-x-auto border-b border-border pb-md lg:w-56 lg:shrink-0 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:pb-0 lg:pr-xl"
+      className="flex gap-xs overflow-x-auto border-b border-border pb-md lg:min-h-full lg:w-56 lg:shrink-0 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:pb-0 lg:pr-xl"
     >
       {FLEET_NAV_ITEMS.map((item) => {
         const Icon = item.icon;

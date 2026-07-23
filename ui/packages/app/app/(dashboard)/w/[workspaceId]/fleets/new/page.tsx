@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { PageHeader, PageTitle } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { listWorkspaceFleetLibraryCached } from "@/lib/api/fleet-library";
 import { listSecrets } from "@/lib/api/secrets";
 import { InstallFleet } from "./InstallFleet";
@@ -46,7 +46,7 @@ export default async function InstallFleetPage({
   const initialCreateOpen = query.create === "1";
 
   return (
-    <div>
+    <PageLayout>
       <PageHeader description={INSTALL_PAGE_DESCRIPTION}>
         <PageTitle>Install fleet</PageTitle>
       </PageHeader>
@@ -58,6 +58,6 @@ export default async function InstallFleetPage({
         canAddLibraryEntry={hasLibraryWriteScope(sessionClaims)}
         initialCreateOpen={initialCreateOpen}
       />
-    </div>
+    </PageLayout>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, EmptyState, PageHeader, PageTitle } from "@agentsfleet/design-system";
+import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { AlertTriangleIcon } from "lucide-react";
 
 // Dashboard error boundary. A transient failure loading a dashboard surface
@@ -9,7 +9,7 @@ import { AlertTriangleIcon } from "lucide-react";
 // re-renders the segment, re-running the failed server work.
 export default function DashboardError({ reset }: { error: Error; reset: () => void }) {
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader>
         <PageTitle>Something went wrong</PageTitle>
       </PageHeader>
@@ -23,6 +23,6 @@ export default function DashboardError({ reset }: { error: Error; reset: () => v
           </Button>
         }
       />
-    </div>
+    </PageLayout>
   );
 }

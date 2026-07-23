@@ -1,6 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import { FleetMessageRow, FleetNameProvider, ROW_TONE, useFleetName } from "./FleetMessageRow";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  FleetActivityRow,
+  FleetGroupRow,
+  FleetMessageRow,
+  FleetNameProvider,
+  ROW_TONE,
+  useFleetName,
+} from "./FleetMessageRow";
 
 const AT = new Date(Date.UTC(2026, 6, 21, 10, 42, 17));
 
@@ -21,14 +28,29 @@ function renderRow(overrides: Partial<Parameters<typeof FleetMessageRow>[0]> = {
 }
 
 describe("FleetMessageRow", () => {
-  it("renders the approved shape: chip, sender, timestamp, body, separator", () => {
+  it("renders an operator turn in a right-aligned bounded surface", () => {
     const { container } = renderRow();
     const row = container.querySelector('[data-role="user"]') as HTMLElement;
     expect(row).toBeTruthy();
     expect(row.querySelector('[data-chip="operator"]')?.textContent).toBe("OP");
     expect(screen.getByText("Operator")).toBeTruthy();
     expect(screen.getByText("please review the change")).toBeTruthy();
-    expect(row.className).toMatch(/border-b/);
+    const surface = row.querySelector("[data-dashboard-row]") as HTMLElement;
+    expect(surface.className).toMatch(/max-w-4xl/);
+    expect(surface.className).toMatch(/rounded-lg/);
+    expect(surface.className).toMatch(/border/);
+  });
+
+  it("keeps fleet replies left aligned without an operator bubble", () => {
+    const { container } = renderRow({
+      tone: ROW_TONE.FLEET,
+      sender: "pr-reviewer",
+      messageRole: "assistant",
+    });
+    const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
+    const surface = row.querySelector("[data-dashboard-row]") as HTMLElement;
+    expect(surface.className).toMatch(/max-w-5xl/);
+    expect(surface.className).not.toMatch(/rounded-lg/);
   });
 
   it("carries the exact instant in the timestamp, whatever the visible format", () => {
@@ -39,9 +61,7 @@ describe("FleetMessageRow", () => {
   it("pushes the timestamp to the far edge, away from the sender", () => {
     const { container } = renderRow();
     const header = container.querySelector("time")?.parentElement as HTMLElement;
-    expect(header.className).toMatch(/items-baseline/);
-    // The spacer between sender and time is what holds them apart.
-    expect(header.querySelector(".flex-1")).toBeTruthy();
+    expect(header.className).toMatch(/ml-auto/);
   });
 
   it("keeps a long body inside its own row rather than widening the page", () => {
@@ -70,6 +90,82 @@ describe("FleetMessageRow", () => {
   it("renders an annotation beside the sender when one is given", () => {
     renderRow({ annotation: <span>sending</span> });
     expect(screen.getByText("sending")).toBeTruthy();
+  });
+});
+
+describe("FleetActivityRow", () => {
+  it("keeps integration metadata together and separates a failed outcome", () => {
+    const { container } = render(
+      <FleetActivityRow
+        sender="GitHub App"
+        headline="agentsfleet/agentsfleet#546 was edited"
+        createdAt={AT}
+        annotation={<span>EDITED</span>}
+        outcome="This fleet needs instructions before it can respond."
+        failed
+        messageRole="system"
+      >
+        <span>extended delivery context</span>
+      </FleetActivityRow>,
+    );
+    const row = container.querySelector('[data-role="system"]') as HTMLElement;
+    const card = row as HTMLElement;
+    const outcome = screen.getByText("This fleet needs instructions before it can respond.");
+
+    expect(card.className).toMatch(/w-full/);
+    expect(card.className).toMatch(/border-b/);
+    expect(screen.getByText("EDITED")).toBeTruthy();
+    expect(row.querySelector("time")?.getAttribute("dateTime")).toBe(AT.toISOString());
+    expect(outcome.className).toMatch(/text-destructive/);
+    expect(screen.getByText("Details")).toBeTruthy();
+  });
+
+  it("shows guidance even when the integration has no outcome text", () => {
+    render(
+      <FleetActivityRow
+        sender="GitHub App"
+        headline="Webhook received"
+        createdAt={AT}
+        guidance={<span>Connect the source, then retry.</span>}
+        messageRole="system"
+      />,
+    );
+
+    expect(screen.getByText("Connect the source, then retry.")).toBeTruthy();
+  });
+});
+
+describe("FleetGroupRow", () => {
+  function renderGroup(expanded: boolean, outcome?: string) {
+    const onToggle = vi.fn();
+    const view = render(
+      <FleetGroupRow
+        sender="GitHub App"
+        headline="Webhook received"
+        outcome={outcome}
+        count={2}
+        first={AT}
+        last={new Date(AT.getTime() + 60_000)}
+        expanded={expanded}
+        onToggle={onToggle}
+      >
+        <span>Individual delivery</span>
+      </FleetGroupRow>,
+    );
+    return { onToggle, ...view };
+  }
+
+  it("toggles a collapsed group and omits the outcome when none exists", () => {
+    const { onToggle, container } = renderGroup(false);
+    expect(container.textContent).not.toContain("No outcome");
+    fireEvent.click(screen.getByRole("button", { name: /Webhook received/ }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles an expanded group closed", () => {
+    const { onToggle } = renderGroup(true, "No outcome");
+    fireEvent.click(screen.getByRole("button", { name: /Webhook received/ }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 });
 

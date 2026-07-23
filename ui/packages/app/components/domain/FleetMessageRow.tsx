@@ -1,7 +1,16 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { Time, cn } from "@agentsfleet/design-system";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  DashboardRow,
+  DashboardRowGroup,
+  Time,
+  cn,
+} from "@agentsfleet/design-system";
 import { senderInitialsFor } from "@/lib/events/event-summary";
 
 // The approved conversation row (designs/fleet-workspace-20260721/variant-A):
@@ -10,7 +19,7 @@ import { senderInitialsFor } from "@/lib/events/event-summary";
 // this same shape — an operator message, a fleet reply and an integration
 // event differ in their chip tone and their body, never in their skeleton.
 
-const ROW_ENTER = "animate-in fade-in-0 duration-150";
+const ROW_ENTER = "animate-in fade-in-0 motion-safe:slide-in-from-bottom-1 duration-150";
 
 // Which side of the conversation a row belongs to. Drives only the chip tone;
 // the layout is identical for all three so the thread reads as one column.
@@ -71,30 +80,36 @@ export function FleetMessageRow({
   dimmed,
   failed,
 }: FleetMessageRowProps) {
+  const isOperator = tone === ROW_TONE.OPERATOR;
   return (
     <div
-      className={cn(
-        "flex items-start gap-md border-b border-border px-xl py-lg",
-        "hover:bg-card",
-        ROW_ENTER,
-        dimmed && "opacity-60",
-      )}
+      className={cn("w-full", ROW_ENTER, dimmed && "opacity-60")}
       data-role={messageRole}
       data-optimistic={dimmed || undefined}
       data-failed={failed || undefined}
     >
-      <SenderChip sender={sender} tone={tone} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-md">
-          <span className="min-w-0 truncate font-mono text-mono text-foreground">{sender}</span>
-          {annotation}
-          <span className="flex-1" />
-          <Timestamp createdAt={createdAt} />
-        </div>
-        <div className="mt-xs min-w-0 break-words font-mono text-mono leading-mono text-foreground">
-          {children}
-        </div>
-      </div>
+      <DashboardRow
+        data-dashboard-row=""
+        icon={<SenderChip sender={sender} tone={tone} />}
+        title={
+          <div className="flex min-w-0 items-center gap-sm">
+            <span className="min-w-0 truncate font-mono text-label text-foreground">{sender}</span>
+            {annotation}
+          </div>
+        }
+        description={
+          <div className="min-w-0 break-words font-mono text-mono leading-mono text-foreground">
+            {children}
+          </div>
+        }
+        action={<Timestamp createdAt={createdAt} />}
+        className={cn(
+          "min-w-0",
+          isOperator
+            ? "ml-auto w-full max-w-4xl rounded-lg border border-border bg-card"
+            : "w-full max-w-5xl",
+        )}
+      />
     </div>
   );
 }
@@ -109,6 +124,8 @@ export type FleetActivityRowProps = {
   outcome?: string;
   /** True when the outcome is a failure, which is the one thing that shouts. */
   failed?: boolean;
+  /** Remediation shown directly below a failure, outside the details disclosure. */
+  guidance?: ReactNode;
   /** Rendered inline after the headline — an action `Badge`, a link. */
   annotation?: ReactNode;
   /** Disclosure and any expansion, rendered under the tick line. */
@@ -117,10 +134,9 @@ export type FleetActivityRowProps = {
 };
 
 /**
- * The compact "rail tick" an integration delivery renders as (approved variant
- * B). Same chronological column as the conversation rows and in the same
- * order — activity recedes visually, it never moves. One line: sender,
- * headline, outcome, time. No chip, no second outcome row.
+ * A compact evidence line for an integration delivery. It stays in the same
+ * chronological column as conversation turns, while verbose guidance and
+ * payloads remain available behind one disclosure.
  */
 export function FleetActivityRow({
   sender,
@@ -128,41 +144,68 @@ export function FleetActivityRow({
   headline,
   outcome,
   failed,
+  guidance,
   annotation,
   children,
   messageRole,
 }: FleetActivityRowProps) {
   return (
-    <div
-      className={cn(
-        "border-b border-border px-xl py-sm",
-        "hover:bg-card",
-        ROW_ENTER,
-      )}
+    <DashboardRow
+      data-dashboard-row=""
       data-role={messageRole}
       data-compact="true"
       data-failed={failed || undefined}
+      icon={<SenderChip sender={sender} tone={ROW_TONE.EVENT} />}
+      title={
+        <div className="min-w-0 font-mono leading-mono">
+          <div className="flex min-w-0 items-center gap-sm text-label text-muted-foreground">
+            <span className="shrink-0">{sender}</span>
+            {annotation}
+          </div>
+          <div className="mt-xs min-w-0 break-words text-mono text-foreground" title={headline}>
+            {headline}
+          </div>
+        </div>
+      }
+      description={
+        outcome || guidance ? (
+          <div>
+            {outcome ? (
+          <p
+            className={cn(
+              "font-mono text-mono leading-mono",
+              failed ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {outcome}
+          </p>
+            ) : null}
+            {guidance}
+          </div>
+        ) : undefined
+      }
+      meta={
+        children ? (
+          <Accordion type="single" collapsible>
+            <AccordionItem value={DETAILS_VALUE} className="border-0">
+              <AccordionTrigger className="py-xs font-mono text-label text-muted-foreground hover:no-underline">
+                {DETAILS_LABEL}
+              </AccordionTrigger>
+              <AccordionContent>{children}</AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        ) : undefined
+      }
+      action={<Timestamp createdAt={createdAt} />}
+      className={cn("w-full", ROW_ENTER)}
     >
-      <div className="flex items-baseline gap-sm font-mono text-label leading-mono text-muted-foreground">
-        <span className="shrink-0">{sender}</span>
-        <span aria-hidden="true">{TICK_SEPARATOR}</span>
-        <span className="min-w-0 truncate text-foreground">{headline}</span>
-        {annotation}
-        {outcome ? (
-          <>
-            <span aria-hidden="true">{TICK_SEPARATOR}</span>
-            <span className={cn("min-w-0 truncate", failed && "text-destructive")}>{outcome}</span>
-          </>
-        ) : null}
-        <span className="flex-1" />
-        <Timestamp createdAt={createdAt} />
-      </div>
-      {children}
-    </div>
+    </DashboardRow>
   );
 }
 
 const TICK_SEPARATOR = "·";
+const DETAILS_LABEL = "Details";
+const DETAILS_VALUE = "details";
 
 export type FleetGroupRowProps = {
   sender: string;
@@ -198,50 +241,51 @@ export function FleetGroupRow({
   children,
 }: FleetGroupRowProps) {
   return (
-    <div className="border-b border-border" data-role="system" data-group="true">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className={cn(
-          "flex w-full items-baseline gap-sm px-xl py-sm text-left",
-          "font-mono text-label leading-mono text-muted-foreground hover:bg-card",
-          ROW_ENTER,
-        )}
-      >
-        <span
-          className="shrink-0 rounded-sm border border-border px-xs text-foreground tabular-nums"
-          data-testid="group-count"
+    <div className={cn("w-full", ROW_ENTER)} data-role="system" data-group="true">
+      <DashboardRowGroup>
+        <Accordion
+          type="single"
+          collapsible
+          value={expanded ? GROUP_VALUE : ""}
+          onValueChange={onToggle}
         >
-          ×{count}
-        </span>
-        <span className="shrink-0">{sender}</span>
-        <span aria-hidden="true">{TICK_SEPARATOR}</span>
-        <span className="min-w-0 truncate text-foreground">{headline}</span>
-        {outcome ? (
-          <>
-            <span aria-hidden="true">{TICK_SEPARATOR}</span>
-            <span className={cn("min-w-0 truncate", failed && "text-destructive")}>{outcome}</span>
-          </>
-        ) : null}
-        <span className="flex-1" />
-        <span className="shrink-0 tabular-nums">
-          <Time value={first} format="clock" className="font-mono text-label text-muted-foreground" />
-          {RANGE_SEPARATOR}
-          <Time value={last} format="clock" className="font-mono text-label text-muted-foreground" />
-        </span>
-        <span aria-hidden="true" className="shrink-0">
-          {expanded ? EXPANDED_MARK : COLLAPSED_MARK}
-        </span>
-      </button>
-      {expanded ? children : null}
+          <AccordionItem value={GROUP_VALUE} className="border-0">
+            <AccordionTrigger className="px-lg py-md font-mono text-label leading-mono text-muted-foreground hover:no-underline">
+              <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-sm text-left">
+                <span
+                  className="shrink-0 rounded-sm border border-border px-xs text-foreground tabular-nums"
+                  data-testid="group-count"
+                >
+                  ×{count}
+                </span>
+                <span className="shrink-0">{sender}</span>
+                <span aria-hidden="true">{TICK_SEPARATOR}</span>
+                <span className="min-w-0 break-words text-foreground">{headline}</span>
+                {outcome ? (
+                  <>
+                    <span aria-hidden="true">{TICK_SEPARATOR}</span>
+                    <span className={cn("min-w-0 break-words", failed && "text-destructive")}>
+                      {outcome}
+                    </span>
+                  </>
+                ) : null}
+                <span className="ml-auto shrink-0 tabular-nums">
+                  <Time value={first} format="clock" className="font-mono text-label text-muted-foreground" />
+                  {RANGE_SEPARATOR}
+                  <Time value={last} format="clock" className="font-mono text-label text-muted-foreground" />
+                </span>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-lg">{children}</AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </DashboardRowGroup>
     </div>
   );
 }
 
 const RANGE_SEPARATOR = "–";
-const COLLAPSED_MARK = "▸";
-const EXPANDED_MARK = "▾";
+const GROUP_VALUE = "group";
 
 function SenderChip({ sender, tone }: { sender: string; tone: RowTone }) {
   return (

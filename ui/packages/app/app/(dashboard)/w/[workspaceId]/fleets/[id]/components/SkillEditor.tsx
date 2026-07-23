@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PencilIcon } from "lucide-react";
 import {
   Alert,
-  Badge,
   Button,
   Card,
   ConfirmDialog,
   CopyButton,
   Textarea,
+  cn,
 } from "@agentsfleet/design-system";
 import { getFleetDetailAction, saveFleetSourceAction } from "../../actions";
 import { captureProductEvent } from "@/lib/analytics/posthog";
@@ -18,9 +18,6 @@ import { EVENTS } from "@/lib/analytics/events";
 import { presentErrorString } from "@/lib/errors";
 import {
   CANCEL_EDIT_LABEL,
-  DIFF_CURRENT_LABEL,
-  DIFF_PANEL_TITLE,
-  DIFF_PENDING_LABEL,
   EDIT_SOURCE_LABEL,
   HIDE_SOURCE_LABEL,
   OUTCOME,
@@ -40,6 +37,9 @@ import {
 } from "./console-copy";
 
 const PRECONDITION_FAILED = 412;
+const SERVER_SOURCE_LABEL = "Current server version";
+const UNSAVED_DRAFT_LABEL = "Your unsaved draft";
+const STALE_SOURCE_REVIEW_LABEL = "Review server changes";
 
 type Props = {
   workspaceId: string;
@@ -48,6 +48,7 @@ type Props = {
   sourceMarkdown: string;
   triggerMarkdown: string | null;
   etag: string;
+  fillAvailableSpace?: boolean;
 };
 
 const PATCH_FIELD: Record<SourceField, "source_markdown" | "trigger_markdown"> = {
@@ -70,6 +71,7 @@ export default function SkillEditor({
   sourceMarkdown,
   triggerMarkdown,
   etag: initialEtag,
+  fillAvailableSpace = false,
 }: Props) {
   const router = useRouter();
   const panelId = useId();
@@ -77,7 +79,7 @@ export default function SkillEditor({
   const [base, setBase] = useState(initial);
   const [draft, setDraft] = useState(initial);
   const [editing, setEditing] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [etag, setEtag] = useState(initialEtag);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export default function SkillEditor({
   const fieldRef = useRef(field);
   editingRef.current = editing;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const fresh = documentValue(field, sourceMarkdown, triggerMarkdown);
     const sameField = fieldRef.current === field;
     setBase(fresh);
@@ -181,7 +183,10 @@ export default function SkillEditor({
   }
 
   return (
-    <Card className="flex flex-col gap-md bg-card p-4" aria-label={title}>
+    <Card
+      className={cn("flex flex-col gap-md bg-card p-4", fillAvailableSpace && "min-h-0 flex-1")}
+      aria-label={title}
+    >
       <div className="flex items-center justify-between gap-md">
         <span className="font-mono text-sm font-medium text-foreground">{title}</span>
         <EditorActions
@@ -197,17 +202,17 @@ export default function SkillEditor({
       </div>
 
       {expanded || editing ? (
-        <div id={panelId} className="flex flex-col gap-md">
+        <div id={panelId} className={cn("flex flex-col gap-md", fillAvailableSpace && "min-h-0 flex-1")}>
           <DocumentPane
             label={label}
             editing={editing}
             value={editing ? draft : base}
             emptyHint={field === SOURCE_FIELD.trigger ? TRIGGER_DOC_EMPTY : ""}
             onChange={setDraft}
+            fillAvailableSpace={fillAvailableSpace}
           />
-          {editing && changed ? (
-            <ChangePreview current={base} pending={draft} stale={staleReloaded} />
-          ) : null}
+          {staleReloaded ? <Alert variant="warning">{SAVE_STALE_RELOADED_NOTICE}</Alert> : null}
+          {staleReloaded ? <StaleSourceComparison base={base} draft={draft} /> : null}
           {error ? <Alert variant="destructive">{error}</Alert> : null}
         </div>
       ) : null}
@@ -274,38 +279,82 @@ function EditorActions({
   );
 }
 
+function StaleSourceComparison({ base, draft }: { base: string; draft: string }) {
+  return (
+    <details open className="rounded-md border border-warning/40 bg-warning/5 px-3 py-2">
+      <summary className="cursor-pointer font-mono text-xs font-medium text-foreground">
+        {STALE_SOURCE_REVIEW_LABEL}
+      </summary>
+      <div className="grid gap-sm pt-sm md:grid-cols-2">
+        <SourceComparisonPane label={SERVER_SOURCE_LABEL} value={base} />
+        <SourceComparisonPane label={UNSAVED_DRAFT_LABEL} value={draft} />
+      </div>
+    </details>
+  );
+}
+
+function SourceComparisonPane({ label, value }: { label: string; value: string }) {
+  return (
+    <div data-testid={`source-comparison-${label.toLowerCase().replaceAll(" ", "-")}`} className="min-w-0">
+      <p className="mb-xs font-mono text-xs text-muted-foreground">{label}</p>
+      <pre className="max-h-48 overflow-auto rounded-sm border border-border bg-muted/30 px-2 py-1 font-mono text-xs leading-mono text-foreground">
+        {value}
+      </pre>
+    </div>
+  );
+}
+
 function DocumentPane({
   label,
   editing,
   value,
   emptyHint,
   onChange,
+  fillAvailableSpace,
 }: {
   label: string;
   editing: boolean;
   value: string;
   emptyHint: string;
   onChange: (value: string) => void;
+  fillAvailableSpace: boolean;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!editing || !textarea) return;
+
+    textarea.focus();
+    focusEditorAtStart(textarea);
+  }, [editing]);
+
   if (editing) {
     return (
       <Textarea
         aria-label={`Edit ${label}`}
+        ref={textareaRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-64 w-full resize-y font-mono text-xs leading-mono"
+        className={cn(
+          "min-h-64 w-full resize-y font-mono text-xs leading-mono",
+          fillAvailableSpace && "min-h-96 flex-1",
+        )}
       />
     );
   }
   if (value.length === 0) return <p className="text-sm text-muted-foreground">{emptyHint}</p>;
   return (
-    <div className="relative">
+    <div className={cn("relative", fillAvailableSpace && "flex min-h-0 flex-1 flex-col")}>
       <div className="absolute right-xs top-xs">
         <CopyButton value={value} label={`Copy ${label}`} />
       </div>
       <pre
         aria-label={label}
-        className="max-h-96 overflow-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-mono text-foreground"
+        className={cn(
+          "max-h-96 overflow-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-mono text-foreground",
+          fillAvailableSpace && "max-h-none min-h-96 flex-1",
+        )}
       >
         {value}
       </pre>
@@ -313,29 +362,7 @@ function DocumentPane({
   );
 }
 
-function ChangePreview({ current, pending, stale }: { current: string; pending: string; stale: boolean }) {
-  return (
-    <div className="flex flex-col gap-xs" data-testid="source-diff">
-      <div className="flex items-center gap-md">
-        <span className="font-mono text-eyebrow uppercase text-muted-foreground">{DIFF_PANEL_TITLE}</span>
-        {stale ? <Badge variant="amber">reloaded</Badge> : null}
-      </div>
-      {stale ? <Alert variant="warning">{SAVE_STALE_RELOADED_NOTICE}</Alert> : null}
-      <div className="grid gap-sm">
-        <SourcePreview label={DIFF_CURRENT_LABEL} value={current} />
-        <SourcePreview label={DIFF_PENDING_LABEL} value={pending} />
-      </div>
-    </div>
-  );
-}
-
-function SourcePreview({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-xs">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <pre className="max-h-48 overflow-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-mono">
-        {value}
-      </pre>
-    </div>
-  );
+function focusEditorAtStart(textarea: HTMLTextAreaElement) {
+  textarea.setSelectionRange(0, 0);
+  textarea.scrollTop = 0;
 }

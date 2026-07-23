@@ -37,7 +37,7 @@ describe("TriggerPanel", () => {
         lastDeliveryByKey={{ [triggerKey(triggers[0]!)]: null }}
       />,
     );
-    expect(screen.getByText("Never delivered")).toBeTruthy();
+    expect(screen.getByText("No deliveries yet")).toBeTruthy();
   });
 
   it("handles a webhook without event filters and shows a durable delivery time", () => {
