@@ -99,6 +99,10 @@ pub const TestHarness = struct {
     /// One deadline scheduler, mirroring serve.zig's single process worker.
     deadline_backend: call_deadline.MonotonicBackend,
     deadline_scheduler: call_deadline.ProcessScheduler,
+    /// Concurrency-capable Io for the hub, mirroring the process Io that
+    /// `serve.run` hands it. `globalIo()` is statically single-threaded, so a
+    /// raced dial cannot run on it.
+    hub_io: std.Io.Threaded,
     hub: subscription_hub,
     /// Live-stream owner, mirroring serve.zig. Cheap init, no Redis dependency.
     streams: stream_registry,
@@ -137,7 +141,7 @@ pub const TestHarness = struct {
         // Lower the reader-socket timeout BEFORE start() so the reader thread is
         // created with it — bounds the per-test `deinit()` join (see the const).
         self.hub.read_timeout_ms = TEST_HUB_READ_TIMEOUT_MS;
-        try self.hub.start(self.queue.pool.cfg);
+        try self.hub.start(self.queue.pool.cfg, &self.deadline_scheduler);
         // SessionStore holds a pointer to `self.queue`; safe now that the
         // queue handle is initialized. `ctx.auth_sessions` already points
         // to `&self.session_store`, so the in-place init is observed by
@@ -195,7 +199,10 @@ pub const TestHarness = struct {
             }),
             // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .queue = undefined,
-            .hub = subscription_hub.init(alloc, constants.globalIo()),
+            .hub_io = std.Io.Threaded.init(alloc, .{}),
+            // SAFETY: repointed at the harness-owned Io immediately below, once
+            // `h` has its final address.
+            .hub = undefined,
             .streams = stream_registry.init(alloc, constants.globalIo()),
             .fleet_sets = blk: {
                 var fs = fleet_set_cache.init(alloc, constants.globalIo());
@@ -220,6 +227,7 @@ pub const TestHarness = struct {
         };
         // Mirror deinit()'s teardown order from here forward — each
         // resource that gets a deinit there gets an errdefer here.
+        h.hub = subscription_hub.init(alloc, h.hub_io.io());
         h.deadline_scheduler = call_deadline.ProcessScheduler.init(alloc, &h.deadline_backend);
         try h.deadline_scheduler.start();
         errdefer h.deadline_scheduler.deinit();
@@ -328,6 +336,7 @@ pub const TestHarness = struct {
         // Every network user is joined above, so no interrupt callback can
         // still be running against a registration this frees.
         self.deadline_scheduler.deinit();
+        self.hub_io.deinit();
         // Redis-backed SessionStore is a pure facade — no per-instance
         // teardown. `queue.deinit()` below releases the underlying pool.
         if (self.has_redis) self.queue.deinit();
