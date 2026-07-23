@@ -128,8 +128,8 @@ Removal is gated: the Schema Table Removal Guard requires owner approval, and no
 
 **Implementation default:** the drops land in their own slot, separate from §1, so approval on the additive work is never blocked by a pending decision on the removals.
 
-- **Dimension 2.1** — each index proposed for removal records zero scans across the seeded workload → Test `test_redundant_indexes_record_no_scans`
-- **Dimension 2.2** — the authentication lookup still plans against the unique index after the drop → Test `test_api_key_auth_lookup_survives_drop`
+- **Dimension 2.1** — each index proposed for removal records zero scans across the seeded workload → **AMENDED against evidence.** Only `idx_api_keys_key_hash_active` recorded zero (0 scans; `api_keys_hash_uniq` took 20 000). `idx_memory_entries_fleet_id` recorded 57 and `idx_memory_entries_category` recorded 4. Per Indy's decision the api-key index is dropped on its zero count, the memory `fleet_id` index is dropped on STRUCTURE (a strict prefix of the composite, so its scans relocate rather than vanish), and `category` is KEPT. Proven by `test_slot_034_retired_exactly_the_two_approved_indexes`. — **DONE**
+- **Dimension 2.2** — the authentication lookup still plans against the unique index after the drop → Test `test_api_key_auth_lookup_survives_drop` — **DONE**, and the memory read is proven to relocate onto the composite by `test_memory_reads_relocate_onto_the_composite_index`.
 
 ### §3 — Do the expensive work after pagination, not before
 
@@ -253,7 +253,7 @@ This workstream changes no product-analytics event, no operator metric, and no f
 | R5 | Statement-module adoption is at or above threshold (§5) | `python3 scripts/check_sql_statement_modules.py` | exit 0, printed ratio at or above the threshold | P0 | |
 | R6 | Extraction changed no behaviour (§5) | `git diff --name-only origin/main -- 'src/**/*_test.zig' 'src/**/*_integration_test.zig'` | no test file modified by the extraction commit | P0 | |
 | R7 | Write throughput did not regress (§1) | `make test-integration-db` | `test_write_throughput_within_bound` passes | P1 | |
-| R8 | Index removals carry evidence and approval (§2) | recorded scan counts plus the approval quote in Discovery | zero scans recorded and quote present, or §2 dropped | P1 | |
+| R8 | Index removals carry evidence and approval (§2) | recorded scan counts plus the approval quote in Discovery | zero scans recorded and quote present, or §2 dropped | P1 | ✅ evidence recorded (0/57/4 scans), Indy approved the two-drop set, slot 034 lands both |
 | R9 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Repository conformance passes | `make harness-verify` | exit 0 | P0 | |
 | S2 | Repository unit suites pass | `make test-unit-all` | exit 0 | P0 | |
@@ -309,6 +309,11 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** — Architecture: `docs/architecture/scaling.md` §Per-request volume describes recurring read cost and is updated here to state which reads are index-served. M141_001 edits the same section for the idle-cost model; the two are textually adjacent but semantically disjoint, so whichever merges second rebases that section.
+- **§2 resolved — evidence gathered, owner decided, drops landed.** Under a workload exercising the real handler paths, `pg_stat_user_indexes` recorded: `idx_api_keys_key_hash_active` **0** scans (`api_keys_hash_uniq` took 20 000), `idx_memory_entries_fleet_id` **57**, `idx_memory_entries_category` **4**. The new composite `idx_memory_entries_fleet_id_updated_at_id` recorded **0** — pure write cost while the narrow index existed. Put to Indy with that evidence; decision:
+  > Indy (2026-07-23): "drop two, keep one" — approved dropping `idx_api_keys_key_hash_active` (zero scans) AND `idx_memory_entries_fleet_id` (57 scans, but a strict prefix of the composite, so the scans relocate and the composite finally earns its keep). Keep `idx_memory_entries_category` (4 scans, fails the zero-scan bar). — context: §2 index removals, evidence-first per the CHORE(open) decision.
+
+  Landed as `schema/034_retire_redundant_indexes.sql`. Both drops are schema-qualified — a trap caught in testing: `DROP INDEX` resolves against `search_path`, which omits `memory`, and `IF EXISTS` turns the miss into a silent no-op, so an unqualified drop reports success having removed nothing. Verified post-drop: auth plans on `api_keys_hash_uniq`, and the unbounded memory hydration relocates onto the composite with no sequential scan.
+
 - **Owner decision at CHORE(open) — §2 sequencing.** Put to Indy: whether §2's index removals are approved, and against which evidence. Indy chose *"Gather evidence, then decide"* — §1 lands first, the seeded workload runs, and the recorded `pg_stat_user_indexes` scan counts come back to Indy before any `DROP INDEX` is authored. §2 is therefore **not deferred and still in scope**; it is blocked on evidence that does not yet exist. R8 stays ungraded until that decision is taken.
 - **Rules conflict at CHORE(open) — which removal model governs §2.** `dispatch/write_sql.md` keys the Schema Table Removal Guard on `VERSION`: below `2.0.0` it prescribes the teardown-rebuild path (delete the slot file, drop the `@embedFile` constant, drop the migration-array entry). `VERSION` is `0.21.0`, so that branch fires. `docs/SCHEMA_CONVENTIONS.md` §Migration Model records a later owner decision (Jul 22, 2026) making additive migrations the current model, with slots `001`–`031` frozen as bootstrap history. **Additive wins** — it is the newer owner decision, and `write_sql.md` names `SCHEMA_CONVENTIONS.md` as its own source of truth. §2's drops, if approved, land as a new numbered slot; no shipped slot file is edited.
 - **Source finding** — `liveness_sweeper.expireActiveLeaseSlots` filters `fleet.runner_affinity` on `last_runner_id`, which carries no index and is a foreign key with `ON DELETE SET NULL`; the statement runs once per due runner per sweep cycle, so its cost is proportional to fleets times runners times cycles.
