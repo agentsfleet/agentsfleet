@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M142
 **Workstream:** 001
 **Date:** Jul 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — background sweeps re-scan whole tables on every cycle, so idle database load grows with fleet and runner count while no user is waiting on it
 **Categories:** API
 **Batch:** B1 — single workstream; nothing else in this milestone
