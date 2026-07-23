@@ -39,6 +39,7 @@ const SEED_ROWS: u32 = 20_000;
 const FLEET_MEM = "0195b4ba-8d3a-7f13-8abc-0000000b0002";
 const HOST_PREFIX = "idxprobe-";
 const MEM_ID_PREFIX = "idxprobe-mem-";
+const KEY_PREFIX = "idxprobe-key-";
 
 /// Memory fixture: the probe fleet is a selective slice of a table holding many
 /// fleets, mirroring production. These exact proportions are the ones the plan
@@ -154,6 +155,57 @@ fn seedMemory(conn: *pg.Conn, rows: u32) !void {
 fn wipeMemory(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM memory.memory_entries WHERE id LIKE $1", .{MEM_ID_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory wipe ignored: {s}", .{@errorName(err)});
+}
+
+/// Api-keys for one tenant. `api_keys_revoked_iff_inactive` ties `active` to
+/// `revoked_at`, so every seeded row is active with a null revocation.
+fn seedApiKeys(conn: *pg.Conn, rows: u32) !void {
+    try base.seedTenant(conn);
+    _ = try conn.exec(
+        \\INSERT INTO core.api_keys
+        \\  (uid, tenant_id, key_name, description, key_hash, created_by, active,
+        \\   revoked_at, last_used_at, created_at, updated_at)
+        \\SELECT overlay(md5('k' || g)::uuid::text placing '7' from 15 for 1)::uuid,
+        \\       $1::uuid, $2 || g, '', $2 || g, 'seed', TRUE,
+        \\       NULL, NULL, 1750000000000 + g, 0
+        \\FROM generate_series(1, $3::int) g
+        \\ON CONFLICT DO NOTHING
+    , .{ base.TEST_TENANT_ID, KEY_PREFIX, @as(i32, @intCast(rows)) });
+    _ = try conn.exec("ANALYZE core.api_keys", .{});
+}
+
+fn wipeApiKeys(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM core.api_keys WHERE key_name LIKE $1", .{KEY_PREFIX ++ "%"}) catch |err|
+        std.log.warn("api key wipe ignored: {s}", .{@errorName(err)});
+}
+
+test "api key list sorts are served by an index" {
+    // Both sort columns, one index each. Direction does not need its own index:
+    // `tenant_id` leads as an equality, so a btree serves ascending forward and
+    // descending backward.
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    defer wipeApiKeys(db.conn);
+    try seedApiKeys(db.conn, SEED_ROWS);
+
+    const by_created = try planOf(alloc, db.conn,
+        \\SELECT uid, key_name FROM core.api_keys
+        \\WHERE tenant_id = '0195b4ba-8d3a-7f13-8abc-000000000001'::uuid
+        \\ORDER BY created_at DESC, uid DESC LIMIT 25 OFFSET 0
+    );
+    defer alloc.free(by_created);
+    try expectIndex(by_created, "idx_api_keys_tenant_id_created_at_uid");
+    try expectNoSort(by_created);
+
+    const by_name = try planOf(alloc, db.conn,
+        \\SELECT uid, key_name FROM core.api_keys
+        \\WHERE tenant_id = '0195b4ba-8d3a-7f13-8abc-000000000001'::uuid
+        \\ORDER BY key_name ASC, uid ASC LIMIT 25 OFFSET 0
+    );
+    defer alloc.free(by_name);
+    try expectIndex(by_name, "idx_api_keys_tenant_id_key_name_uid");
+    try expectNoSort(by_name);
 }
 
 test "slot 033 indexes are applied exactly once" {

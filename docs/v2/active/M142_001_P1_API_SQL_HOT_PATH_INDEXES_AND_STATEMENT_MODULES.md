@@ -61,7 +61,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/lint.mk` | EDIT | Wire the adoption checker into repository conformance. |
 | `src/agentsfleetd/http/handlers/fleet/runners_list.zig` | EDIT | Evaluate the lease-liveness check after pagination, not before. |
 | `src/agentsfleetd/http/handlers/fleets/secret_list.zig` | EDIT | Collapse the per-credential load into one query. |
-| `src/agentsfleetd/http/handlers/api_keys/list.zig` | EDIT | Order through the new index. |
+| ~~`src/agentsfleetd/http/handlers/api_keys/list.zig`~~ | NO CHANGE | Its sort clauses already match the new indexes; the index was the missing half, not the query. |
 | `src/agentsfleetd/state/fleet_events_filter.zig` | EDIT | Escape the backslash in the glob translator. |
 | `src/agentsfleetd/state/fleet_events_filter_test.zig` | EDIT | Cover the trailing-backslash and literal-backslash cases. |
 | `src/agentsfleetd/db/index_usage_integration_test.zig` | CREATE | Prove each new index is chosen by the planner under a seeded workload. |
@@ -139,7 +139,7 @@ Three list reads pay per-row cost across the whole result set to return one page
 
 - **Dimension 3.1** — the liveness check is evaluated only for rows on the returned page → Test `test_runner_list_liveness_bounded_by_page` — **DONE**, though the mechanism differs from the spec's premise; see Discovery.
 - **Dimension 3.2** — the credential list issues a fixed number of queries regardless of credential count → Test `test_secret_list_query_count_is_constant`
-- **Dimension 3.3** — the api-key list satisfies its ordering from an index → Test `test_api_key_list_is_index_ordered`
+- **Dimension 3.3** — the api-key list satisfies its ordering from an index → Test `test_api_key_list_is_index_ordered` — **DONE, with no handler edit.** Files Changed lists `api_keys/list.zig` as an EDIT to "order through the new index"; it already orders by `created_at, uid` / `key_name, uid`, which is exactly what the two new indexes cover. The index was the missing half, not the query.
 - **Dimension 3.4** — all three endpoints return byte-identical payloads to the current implementation for the same fixture → Test `test_list_payloads_unchanged` — **DONE for the runner list**; the credential and api-key lists follow with 3.2 and 3.3.
 
 ### §4 — An event filter never returns a 500 for user input
