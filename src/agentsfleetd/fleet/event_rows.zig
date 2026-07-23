@@ -77,8 +77,8 @@ pub fn insertReceivedRow(
     const conn = try pool.acquire();
     defer pool.release(conn);
     const now_ms = clock.nowMillis();
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
 
     // Continuation events carry parent event_id in request_json's
     // `original_event_id` (§7); lift onto resumes_event_id for index walks.

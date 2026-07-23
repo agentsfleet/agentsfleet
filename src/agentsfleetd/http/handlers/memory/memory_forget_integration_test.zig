@@ -68,8 +68,8 @@ fn seed(conn: *pg.Conn, now_ms: i64) !void {
 fn seedEntry(conn: *pg.Conn, fleet_id: []const u8, key: []const u8, content: []const u8) !void {
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer _ = conn.exec("RESET ROLE", .{}) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     var id_buf: [128]u8 = undefined;
     const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ fleet_id, key });
     _ = try conn.exec(

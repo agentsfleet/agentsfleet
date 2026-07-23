@@ -30,8 +30,9 @@ pub fn nowNanos() i128 {
         .SUCCESS => @as(i128, ts.sec) * std.time.ns_per_s + ts.nsec,
         // CLOCK_REALTIME can only fail with EFAULT/EINVAL — both programmer
         // errors given the stack `timespec` + hard-coded clock id. Fail closed:
-        // a silent epoch-0 return would corrupt UUIDv7 monotonicity and make the
-        // redis pool's acquire deadline never fire (it loops forever).
+        // a silent epoch-0 return would corrupt UUIDv7 timestamp ordering (the
+        // ids stay unique, but stop sorting by mint time) and make the redis
+        // pool's acquire deadline never fire (it loops forever).
         else => |err| std.debug.panic("clock_gettime(CLOCK_REALTIME) failed: {s}", .{@tagName(err)}),
     };
 }

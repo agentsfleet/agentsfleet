@@ -112,8 +112,8 @@ pub fn insertMembership(
     role: []const u8,
     now_ms: i64,
 ) !void {
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.memberships (uid, tenant_id, user_id, role, created_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)

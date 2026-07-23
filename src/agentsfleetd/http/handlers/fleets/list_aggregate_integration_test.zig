@@ -70,8 +70,8 @@ fn seedFleet(alloc: std.mem.Allocator, conn: *pg.Conn, name: []const u8, now_ms:
 }
 
 fn addEvent(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, ts: i64) !void {
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
         \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
@@ -81,8 +81,8 @@ fn addEvent(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, ts: i64)
 }
 
 fn addTelemetry(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, charge: []const u8, nanos: i64, ts: i64) !void {
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     var id_buf: [80]u8 = undefined;
     const id = try std.fmt.bufPrint(&id_buf, "{s}-{s}", .{ event_id, charge });
     _ = try conn.exec(
