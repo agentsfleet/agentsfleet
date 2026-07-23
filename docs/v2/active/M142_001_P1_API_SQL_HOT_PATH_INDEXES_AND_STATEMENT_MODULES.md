@@ -146,8 +146,10 @@ Three list reads pay per-row cost across the whole result set to return one page
 
 `globToLike` escapes `%` and `_` but passes `\` through unchanged. A filter ending in a backslash produces a pattern ending in an escape character, which PostgreSQL rejects with `22025`, surfacing as a 500. A filter containing an interior backslash silently escapes the following character instead of matching a literal one.
 
-- **Dimension 4.1** — an actor filter ending in a backslash returns a normal page, never a server error → Test `test_actor_filter_trailing_backslash_is_literal`
-- **Dimension 4.2** — an interior backslash matches a literal backslash rather than escaping its successor → Test `test_actor_filter_interior_backslash_is_literal`
+- **Dimension 4.1** — an actor filter ending in a backslash returns a normal page, never a server error → Test `test_actor_filter_trailing_backslash_is_literal` — **DONE**
+- **Dimension 4.2** — an interior backslash matches a literal backslash rather than escaping its successor → Test `test_actor_filter_interior_backslash_is_literal` — **DONE**
+
+**Verified at the database, not only in the translator:** the pre-fix output raises `LIKE pattern must not end with escape character`; the post-fix output matches the trailing case, matches an interior literal backslash, and — the over-correction check — does *not* match `domainXuser` against `domain\\user`.
 
 ### §5 — Statement text lives in statement modules
 
@@ -321,7 +323,7 @@ N/A — no files deleted.
 - **§1 evidence — the sweeper read, measured.** On a 20 000-row `fleet.runners` fixture, `fetchDueRunners` before the slot plans as `Seq Scan` + `Sort` over the whole table; after, as `Index Scan using idx_runners_updated_at_id` with **no sort node**, returning its 200-row batch in **6 shared buffer hits**, with the lease subplan `never executed`. That is the P1 justification, and it is why the tests assert on the plan rather than on the index existing.
 - **§2 evidence (partial) — `idx_memory_entries_fleet_id` is superseded.** On a 4 000-of-40 000 fixture, dropping the narrow index moves the hydration read onto `idx_memory_entries_fleet_id_updated_at_id` with no other plan change: the composite serves the same equality filter, as its prefix. That is one of the three removals evidenced. `idx_api_keys_key_hash_active` and `idx_memory_entries_category` still need their scan counts before the decision Indy reserved.
 - **Open question raised at EXECUTE — does index 4 earn its place before §2 lands?** With the narrow index still present, the unbounded `listAll` keeps choosing it, so the composite's read benefit today is limited to bounded reads while its write cost is paid on every memory write. It becomes unambiguously load-bearing the moment §2 drops the narrow index. Options: ship both together, or hold index 4 with §2. Indy's call — flagged, not decided.
-- **Environment note — the integration database is shared and was being reset mid-run.** `make/test-integration.mk`'s `_reset-test-db` hardcodes `-d agentsfleetdb`, so a suite run from any checkout drops every schema out from under a concurrent run in another worktree. This workstream's plan assertions therefore run against a dedicated `agentsfleetdb_m142`. Worth a follow-up so worktrees do not collide by default.
+- **Environment note — the integration database is shared and was being reset mid-run.** `make/test-integration.mk`'s `_reset-test-db` hardcodes `-d agentsfleetdb`, so a suite run from any checkout drops every schema out from under a concurrent run in another worktree. This workstream's plan assertions therefore run against a dedicated `agentsfleetdb_m142`. That is only a partial shield: a sibling worktree's `_ensure-test-infra` recreated the Postgres container mid-session, which drops every database on the instance including the dedicated one. Re-provisioning is scripted and cheap, but a local integration run is not reproducible while another worktree is active. Worth a follow-up so worktrees do not collide by default.
 - **Metrics review** — no product-analytics event, operator metric, or funnel changes; no analytics playbook update required.
 - **Skill-chain outcomes** —
 - **Deferrals** —
