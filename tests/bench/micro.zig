@@ -55,9 +55,21 @@ fn benchJsonEncodeResponse(allocator: std.mem.Allocator) void {
     std.mem.doNotOptimizeAway(s.ptr);
 }
 
-// ── uuid_v7_generate ──────────────────────────────────────────────────────
+// ── uuid_v7_generate ─ the mint algorithm, with no allocator in the timing
+// The bench allocator is a DebugAllocator, whose 36-byte alloc+free costs tens
+// of microseconds — orders of magnitude more than the mint itself. Timing the
+// heap-returning variant here would bury an algorithm regression under
+// allocator noise, so this line measures the by-value path and the heap cost
+// gets its own line below.
 fn benchUuidV7Generate(allocator: std.mem.Allocator) void {
-    const id = id_format.generateWorkspaceId(allocator) catch @panic("uuid mint OOM");
+    _ = allocator;
+    const id = id_format.generateUuidV7() catch @panic("uuid mint failed");
+    std.mem.doNotOptimizeAway(&id);
+}
+
+// ── uuid_v7_alloc ─ the same mint plus the heap dupe callers pay for ownership
+fn benchUuidV7Alloc(allocator: std.mem.Allocator) void {
+    const id = id_format.allocUuidV7(allocator) catch @panic("uuid mint OOM");
     defer allocator.free(id);
     std.mem.doNotOptimizeAway(id.ptr);
 }
@@ -169,6 +181,7 @@ pub fn main() !void {
     try bench.add("keyset_cursor_roundtrip", benchActivityCursorRoundtrip, .{});
     try bench.add("json_encode_response", benchJsonEncodeResponse, .{});
     try bench.add("uuid_v7_generate", benchUuidV7Generate, .{});
+    try bench.add("uuid_v7_alloc", benchUuidV7Alloc, .{});
     try bench.add("activity_chunk_encode", benchActivityChunkEncode, .{});
     try bench.add("broker_cache_hit", benchBrokerCacheHit, .{});
     try bench.add("static_mint_dispatch", benchStaticMintDispatch, .{});
