@@ -29,12 +29,15 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("contract").event_envelope;
 const normalizer = @import("../../../fleet_runtime/webhook/normalizer/github_app.zig");
 const filter = @import("github_filter.zig");
+
+const S_FLEET_ID_MUST_BE_UUIDV7 = "fleet_id must be a valid UUIDv7";
 const BYTES_PER_KIB = 1024;
 
 const log = logging.scoped(.http_webhook_github);
@@ -52,6 +55,14 @@ const HEADER_EVENT = "x-github-event";
 const HEADER_DELIVERY = "x-github-delivery";
 
 pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u8) void {
+    // The fleet id lands in a case-sensitive Redis dedup key below while
+    // `WHERE id = $1::uuid` folds case in Postgres. Without this guard the same
+    // delivery under two spellings resolves to one fleet but two dedup slots,
+    // and gets processed twice. Validate before the id is used as a key.
+    if (!id_format.isUuidV7(fleet_id)) {
+        hx.fail(ec.ERR_UUIDV7_INVALID_ID_SHAPE, S_FLEET_ID_MUST_BE_UUIDV7);
+        return;
+    }
     // Pre-read fence: reject oversized payloads before httpz buffers them.
     // The httpz server-level max_body_size may be larger than our 1 MiB cap,
     // so without this guard a >1 MiB body would be fully buffered + discarded.

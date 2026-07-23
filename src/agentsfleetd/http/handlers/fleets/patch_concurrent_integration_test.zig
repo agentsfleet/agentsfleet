@@ -311,11 +311,11 @@ const Worker = struct {
         };
         defer h.releaseConn(conn);
         const now = clock.nowMillis();
-        var uid_buf: [36]u8 = undefined;
-        const uid = id_format.formatUuidV7(&uid_buf) catch |err| {
+        const uid_value = id_format.generateUuidV7() catch |err| {
             slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = clock.nowMillis() - t0 };
             return;
         };
+        const uid: []const u8 = &uid_value;
         _ = conn.exec(
             \\INSERT INTO core.fleet_events
             \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,

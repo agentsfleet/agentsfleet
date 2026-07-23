@@ -228,10 +228,10 @@ pub fn renew(
     meter: MeterInputs,
 ) !RenewOutcome {
     const want_until = now_ms + constants.LEASE_TTL_MS;
-    var ledger_uid_buf: [36]u8 = undefined;
-    var breakdown_uid_buf: [36]u8 = undefined;
-    const ledger_uid = try id_format.formatUuidV7(&ledger_uid_buf);
-    const breakdown_uid = try id_format.formatUuidV7(&breakdown_uid_buf);
+    const ledger_uid_value = try id_format.generateUuidV7();
+    const breakdown_uid_value = try id_format.generateUuidV7();
+    const ledger_uid: []const u8 = &ledger_uid_value;
+    const breakdown_uid: []const u8 = &breakdown_uid_value;
     var q = PgQuery.from(try conn.query(RENEW_METER_SQL, .{
         lease_id,
         runner_id,
