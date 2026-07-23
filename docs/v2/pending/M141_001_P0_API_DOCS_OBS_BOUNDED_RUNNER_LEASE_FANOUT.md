@@ -47,8 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `src/agentsfleetd/fleet/assign.zig` — the whole defect lives here: `listCandidates` has no bound and `selectInner` iterates every row. Read `tryCandidate` and `acquireFresh` to count what one idle candidate actually costs before changing either.
 2. `src/agentsfleetd/queue/redis_client.zig` §`xaddFleetEvent` — the single producer for `fleet:{id}:events`, reached by all five ingress paths (messages, two webhook surfaces, Slack events, GitHub ingress). Readiness is recorded here, once, or it is recorded five times and drifts.
 3. `src/agentsfleetd/fleet/reclaim_sweeper.zig` — the existing background-sweep lifecycle to mirror for the readiness sweep: boot start, tick-interruptible shutdown, join on drain.
-4. `docs/architecture/scaling.md` §Per-request volume — currently models an idle poll as one bounded scan. That model is wrong and this spec corrects it; read it to understand what the deployment sizing procedure promises operators today.
-5. `docs/architecture/runner_fleet.md` §Failure Recovery Model — the claim/fencing/reclaim guarantees that must survive unchanged.
+4. `docs/architecture/scaling.md` §Per-request volume and `runner_fleet.md` §Failure Recovery Model — the first models an idle poll as one bounded scan, which is wrong and which this spec corrects; read it for what the sizing procedure promises operators today. The second holds the claim/fencing/reclaim guarantees that must survive unchanged.
 
 ## Files Changed (blast radius)
 
@@ -93,7 +92,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `src/agentsfleetd/fleet/reclaim_sweeper.zig` — not merely a pattern to mirror but the module this spec extends: the periodic bounded sweep that re-derives state from Redis, with its cadence handling and tick-interruptible shutdown already registered in `serve_background`. `http/handlers/connectors/outbound/worker.zig` is the second in-repo instance of the same shape (non-blocking claim plus client-side idle backoff) if a third is ever needed.
-- **Divergence:** the readiness index is a new Redis namespace with no in-repo precedent; its key shape and cardinality bound are settled in `docs/architecture/` in the same Pull Request (PR) per the architecture consult.
+- **Divergence:** the readiness index is a new Redis namespace with no in-repo precedent; its key shape, token discipline, and cardinality bound are settled in `docs/architecture/` in the same Pull Request (PR) per the architecture consult.
+
 
 ## Sections (implementation slices)
 
@@ -119,15 +119,12 @@ The label gate and sticky ordering are properties of the candidate query and sta
 
 The index is a hint, not the system of record; the streams are. Two mechanisms keep a hint failure from becoming lost work.
 
-**The clear site is where the code already proves emptiness.** Do not test whether the stream is empty — it never is. Ingress trims at `MAXLEN ~ 10000`, so delivered entries persist, and a stream-empty condition would essentially never fire, leaving every fleet that ever received an event permanently in the index and restoring the very scan this spec removes. The real proof already exists: in `acquireFresh`, a claim-won poll whose own-PEL read and whose undelivered read both return null has established there is nothing deliverable, and that site already releases the claim. Clear readiness there, at zero additional Redis cost.
+**The clear site is where the code already proves emptiness.** Do not test whether the stream is empty — it never is. Ingress trims at `MAXLEN ~ 10000`, so delivered entries persist, and a stream-empty condition would essentially never fire, leaving every fleet that ever received an event permanently in the index and restoring the very scan this spec removes. The real proof already exists: in `acquireFresh`, a claim-won poll whose own-PEL read and whose undelivered read both return null has established there is nothing deliverable, and that site already releases the claim. Clear readiness there, at zero additional Redis cost. **But the clear must be compare-and-clear, never an unconditional delete.** The per-fleet affinity claim serializes runners against each other, but ingress takes no claim — it can append and mark at any instant, including between the two null reads and the clear. An unconditional delete would then erase a mark for a genuinely undelivered event, and the sweeper would not rediscover it until its next pass: a routine multi-second pickup delay on a completely healthy system, replacing today's sub-second idle poll. That is a latency regression this spec must not introduce, so the index entry carries a token that every mark advances, `peek` returns the token it observed, and `clear` deletes only if the token still matches — evaluated atomically inside Redis, not read-then-delete from the caller.
 
-**The backstop is the sweeper that already runs.** `reclaim_sweeper` already wakes on `fleet_reclaim_interval_ms`, pulls active fleets from Postgres, and walks each fleet with a registered lifecycle in `serve_background` and an integration test that drives `sweepOnce` directly. Readiness re-marking belongs inside that existing loop, not in a second thread. It closes the hole the clear site leaves: the own-PEL read sees only this instance's pending entries, and a reclaimed stray re-enters the lease flow only "on the next poll" — which never comes once readiness is cleared.
-
-**The sweeper must probe for undelivered entries, not only for pending ones.** Today `reclaimFleetStrays` calls only `XAUTOCLAIM`, which reads the pending list. The worst case this spec must survive is a successful stream append whose readiness mark then fails: that entry is undelivered and in nobody's pending list, so `XAUTOCLAIM` can never see it and no amount of re-marking-on-reclaim recovers it. The fleet becomes permanently invisible and its event is stranded forever — the exact failure this section claims to prevent. The sweeper therefore needs a bounded per-fleet undelivered probe (the consumer group's lag against the stream) and must re-mark on a non-zero result, independent of whether anything was reclaimed.
-
-**Implementation default:** the sweeper re-marks but never clears — a false-positive entry costs one wasted candidate check, a false-negative strands an event. Worst-case recovery is therefore the shipped `fleet_xautoclaim_min_idle_ms_int` plus one `fleet_reclaim_interval_ms`, not a new cadence.
+**The backstop is the sweeper that already runs.** `reclaim_sweeper` already wakes on `fleet_reclaim_interval_ms`, pulls active fleets from Postgres, and walks each fleet with a registered lifecycle in `serve_background` and an integration test that drives `sweepOnce` directly. Readiness re-marking belongs inside that existing loop, not in a second thread. It closes the hole the clear site leaves: the own-PEL read sees only this instance's pending entries, and a reclaimed stray re-enters the lease flow only "on the next poll" — which never comes once readiness is cleared. **It must probe for undelivered entries, not only for pending ones.** Today `reclaimFleetStrays` calls only `XAUTOCLAIM`, which reads the pending list. The worst case this spec must survive is a successful stream append whose readiness mark then fails: that entry is undelivered and in nobody's pending list, so `XAUTOCLAIM` can never see it and no amount of re-marking-on-reclaim recovers it. The fleet becomes permanently invisible and its event is stranded forever — the exact failure this section claims to prevent. The sweeper therefore needs a bounded per-fleet undelivered probe (the consumer group's lag against the stream) and must re-mark on a non-zero result, independent of whether anything was reclaimed. **Implementation default:** the sweeper re-marks but never clears — a false-positive entry costs one wasted candidate check, a false-negative strands an event. Worst-case recovery is therefore the shipped `fleet_xautoclaim_min_idle_ms_int` plus one `fleet_reclaim_interval_ms`, not a new cadence.
 
 - **Dimension 3.1** — a claim-won poll clears readiness exactly when both the own-PEL read and the undelivered read return null, and never merely because the stream holds delivered entries → Test `test_ready_cleared_only_when_nothing_deliverable`
+- **Dimension 3.6** — an ingress mark landing between the two null reads and the clear survives: the token has advanced, the clear is a no-op, and the next poll leases the new event without waiting for a sweep → Test `test_clear_does_not_erase_racing_ingress_mark`
 - **Dimension 3.2** — a fleet with a pending PEL entry stays ready and is re-delivered → Test `test_pending_entry_keeps_fleet_ready`
 - **Dimension 3.3** — an event appended to the stream whose readiness mark then failed is found by the sweeper's undelivered probe and re-marked, with nothing in any pending list → Test `test_sweeper_recovers_undelivered_without_pel_entry`
 - **Dimension 3.4** — a stray reclaimed by the sweeper re-marks its fleet ready, so a strand left by another replica becomes leasable without waiting for unrelated ingress → Test `test_reclaimed_stray_remarks_readiness`
@@ -135,9 +132,7 @@ The index is a hint, not the system of record; the streams are. Two mechanisms k
 
 ### §4 — Consumer-group creation stops costing a Redis command per candidate
 
-`ensureFleetConsumerGroup` issues an `XGROUP CREATE` on every call and relies on the `BUSYGROUP` error for the steady state, so it costs one Redis round-trip per candidate per poll forever. The group is durable, so the result is memoizable in-process. Memoization is per-process and bounded; a cold process, an evicted entry, or a genuinely new fleet still takes the real path.
-
-**Implementation default:** mirror the fixed-capacity, allocator-free table already used by `metrics_runner.zig`, because the same constraints apply — a bounded key space, no allocator on a hot path, and a defined overflow behaviour.
+`ensureFleetConsumerGroup` issues an `XGROUP CREATE` on every call and relies on the `BUSYGROUP` error for the steady state, so it costs one Redis round-trip per candidate per poll forever. The group is durable, so the result is memoizable in-process. Memoization is per-process and bounded; a cold process, an evicted entry, or a genuinely new fleet still takes the real path. **Implementation default:** mirror the fixed-capacity, allocator-free table already used by `metrics_runner.zig`, because the same constraints apply — a bounded key space, no allocator on a hot path, and a defined overflow behaviour.
 
 - **Dimension 4.1** — repeated leases against one fleet issue the group-create command once per process → Test `test_consumer_group_ensured_once_per_process`
 - **Dimension 4.2** — a fleet beyond the memo capacity still gets a correctly created group → Test `test_group_memo_overflow_still_creates`
@@ -145,12 +140,11 @@ The index is a hint, not the system of record; the streams are. Two mechanisms k
 
 ### §5 — Poll cost is visible on the existing scrape path
 
-The defect this spec fixes was invisible: nothing on `/metrics` distinguished an idle poll that cost one Redis read from one that walked every fleet on the platform. The new families make per-poll cost and readiness depth observable so a regression is caught by a dashboard rather than by a Postgres incident. They carry no fleet, workspace, tenant, or runner label, so they live with the other global unlabelled families rather than in the per-runner table. **The scrape path stays datastore-free:** `runner_fleet.md` promises `/metrics` renders from memory so it stays healthy exactly when the database is not, so readiness depth is an in-process counter maintained by mark and clear, never read back from Redis at render time.
-
-Names, units, and attribute keys come from the pinned semantic registry created by M139_004; this section adds no private descriptor of its own.
+The defect this spec fixes was invisible: nothing on `/metrics` distinguished an idle poll that cost one Redis read from one that walked every fleet on the platform. The new families make per-poll cost and readiness depth observable so a regression is caught by a dashboard rather than by a Postgres incident. They carry no fleet, workspace, tenant, or runner label, so they live with the other global unlabelled families rather than in the per-runner table. **Readiness depth is sampled, not counted.** The index is one deduplicated Redis set shared by every replica, so a process-local counter incremented on mark and decremented on clear does not describe it: one replica marks while another clears, a restart zeroes the local delta, and deduplicated repeat marks never increment at all. The gauge would drift permanently from the set it claims to measure and would mislead exactly the dashboards this section adds. It is therefore **sampled** — the reclaim sweeper reads the set's true size once per pass and stores it in memory, and `/metrics` renders that stored value. That keeps the render path datastore-free as `runner_fleet.md` requires, at the cost of one sweep interval of staleness, which a slow-moving depth gauge tolerates. Each replica samples the same shared set, so the fleet-wide value is any single instance's series, not a sum across them — the dashboard must not add them. Names, units, and attribute keys come from the pinned semantic registry created by M139_004; this section adds no private descriptor of its own.
 
 - **Dimension 5.1** — candidate-scan depth and per-poll database round-trips render as bounded, unlabelled families → Test `test_poll_cost_metrics_render_unlabelled`
-- **Dimension 5.2** — readiness depth and readiness-write failures render and move with observed state → Test `test_ready_depth_and_failures_observable`
+- **Dimension 5.2** — readiness depth renders the sweeper's sample of the shared set, not a process-local delta: marks applied by a second client are reflected after a sweep, and a simulated restart does not corrupt the value → Test `test_ready_depth_samples_shared_set`
+- **Dimension 5.3** — readiness write failures render and move with observed state → Test `test_ready_failures_observable`
 
 ## Interfaces
 
@@ -166,10 +160,14 @@ fleet_ready (new internal module)
                                     Redis read — never read-all-then-slice (that puts the
                                     O(fleets) cost back in the client). Randomized sampling
                                     is also the anti-starvation property.
-  clear(client, fleet_id)           called ONLY from the acquireFresh site that already
-                                    proved nothing is deliverable; never re-derives it (§3)
-  -- depth: in-process counter (mark/clear), never read from Redis, so /metrics
-     keeps its datastore-free render path per runner_fleet.md.
+  clear(client, fleet_id, token)    COMPARE-AND-CLEAR, server-side atomic. Removes the
+                                    entry only if its token still equals the one `peek`
+                                    returned. An interleaved ingress mark advances the
+                                    token, so the clear becomes a no-op instead of
+                                    deleting that mark. An unconditional delete here is
+                                    a correctness bug, not an optimization (§3).
+  -- depth: sampled by the reclaim sweeper into an in-process value and rendered from
+     memory, so it reflects the shared Redis set yet keeps /metrics datastore-free.
 
 assign.select(ctx, alloc, runner_id) -> ?Acquired   signature UNCHANGED.
   Internally: readiness peek precedes any pool acquire; an empty peek returns
@@ -189,8 +187,7 @@ No public API path, request body, response body, Command-Line Interface (CLI), o
 | Readiness peek fails | Redis unavailable at lease time | Treat as retryable, not fatal; answer no-work with the existing backoff hint. Runners retry; no partial or unbounded Postgres scan is attempted. |
 | Fleet stuck ready | Every ready fleet requires tags no polling runner advertises | Readiness is not cleared (the fleet is genuinely non-empty); the ceiling plus rotation stops those fleets from starving the rest of the ready set. |
 | Two runners peek the same fleet | Concurrent polls read overlapping slices | Unchanged: `affinity.claim` decides exactly one winner and the loser moves on having read no event. |
-| Readiness cleared with work pending | A drain check races a concurrent ingress | Clearing requires a won claim plus proof both the PEL and the stream are empty; a racing ingress re-marks. The sweep is the backstop. |
-| Sweep overlaps a lease | Sweep marks a fleet a lease is draining | Marking is idempotent; a redundant entry costs one wasted candidate check and is cleared on the next drained poll. |
+| Readiness cleared with work pending | Ingress appends and marks between the two null reads and the clear; ingress holds no claim, so nothing serializes it against the poll | The token-guarded compare-and-clear sees an advanced token and becomes a no-op, leaving the new mark intact so the next poll leases it. Falling back to the sweeper here would be a multi-second pickup delay on a healthy system, not an acceptable degradation. A sweeper re-mark landing mid-drain is the same shape and equally safe: marking is idempotent and the stale-token clear simply no-ops. |
 | Memo returns a stale hit | Consumer group deleted out-of-band | The read path surfaces the missing group as a retryable error, the entry is invalidated, and the next poll recreates it. |
 | Pool exhausted under load | Unrelated saturation during a busy poll | Unchanged existing behaviour: acquire failure is logged and the lease answers no-work. |
 
@@ -198,13 +195,13 @@ No public API path, request body, response body, Command-Line Interface (CLI), o
 
 1. A poll whose readiness peek returns empty performs zero Postgres pool acquisitions — enforced by a test asserting the acquire count, not by review.
 2. The candidate query returns at most the named ceiling of rows — enforced by the query's own bound, asserted in test.
-3. Readiness is cleared only from the `acquireFresh` site where the own-PEL read and the undelivered read have both returned null — enforced by that being the single call site of `clear`, asserted by a test that leaves delivered entries in the stream and proves the fleet still clears.
+3. Readiness is cleared only from the `acquireFresh` site where both reads returned null, and only by a token-guarded compare-and-clear evaluated atomically in Redis — enforced by `clear` taking the observed token as a required argument, so an unconditional delete is not expressible, and asserted by a racing-ingress test.
 4. Every fleet holding an undelivered entry or a non-empty PEL is either in the readiness index or re-marked by the reclaim sweeper — enforced by the sweeper test that deletes an entry and asserts recovery, and by the reclaim test that asserts a reclaimed stray re-marks its fleet.
 5. The `/v1/runners` wire protocol is byte-identical — enforced by the frozen protocol tests in `src/lib/contract/`, which this spec does not modify.
 6. Every candidate still passes `required_tags <@ labels` — enforced by keeping the gate in the query and asserting a tag-mismatched ready fleet is never leased.
 7. No new metric carries a fleet, workspace, tenant, event, lease, or runner label — enforced by the unlabelled-render test.
 8. A readiness failure never fails an ingress call or a lease reply — enforced by the ingress and peek failure-injection tests.
-9. The `/metrics` render path issues no Redis and no Postgres call — enforced by the in-process depth counter and a render test that runs with the datastore unavailable.
+9. The `/metrics` render path issues no Redis and no Postgres call, and readiness depth is the sweeper's sample of the shared set rather than a process-local delta — enforced by `metrics_counters` exposing only a setter for the sampled value, with no mark/clear increment path, plus a render test that runs with the datastore unavailable.
 
 ## Metrics & Observability
 
@@ -212,7 +209,7 @@ No public API path, request body, response body, Command-Line Interface (CLI), o
 |----------------|-------|------------|--------------------|---------------|------------|
 | candidate-scan depth | ops | every completed lease poll | bucketed count only | no fleet, workspace, tenant, or runner identity | `test_poll_cost_metrics_render_unlabelled` |
 | per-poll database round-trips | ops | every completed lease poll | bucketed count only | same | `test_poll_cost_metrics_render_unlabelled` |
-| readiness depth | ops | maintained in-process by mark/clear; rendered from memory, never read back from Redis | single gauge value | same | `test_ready_depth_and_failures_observable` |
+| readiness depth | ops | sampled from the shared set by the reclaim sweeper each pass; rendered from memory, never read at scrape | single gauge value; not summable across replicas | same | `test_ready_depth_samples_shared_set` |
 | readiness write failures | ops | a mark or clear fails against Redis | fixed reason only | no key contents or error text | `test_ready_mark_failure_never_fails_ingress` |
 | sweep recoveries | ops | the sweep restores a missing entry | count only | same | `test_sweep_recovers_dropped_readiness` |
 
@@ -229,6 +226,7 @@ Exact names, units, and attribute keys are taken from the pinned semantic regist
 | 2.3 | integration | `test_ready_set_never_bypasses_label_gate` | a ready fleet requiring a tag the runner lacks is never leased to it; a matching runner leases it. |
 | 2.4 | integration | `test_sticky_ordering_survives_ready_filter` | with two ready fleets, the one carrying the runner's affinity is attempted first. |
 | 3.1 | integration | `test_ready_cleared_only_when_nothing_deliverable` | a fleet whose stream still holds delivered-and-acked entries but has no PEL entry and no undelivered entry DOES clear; a fleet with an undelivered entry does not. Guards the regression where a stream-empty condition never fires. |
+| 3.6 | integration | `test_clear_does_not_erase_racing_ingress_mark` | append + mark injected after both reads return null but before the clear: the clear is a no-op, the fleet stays ready, and the next poll leases the event with no sweep. Fails against an unconditional delete. |
 | 3.2 | integration | `test_pending_entry_keeps_fleet_ready` | a fleet with a PEL entry stays ready across a poll and the entry is re-delivered. |
 | 3.3 | integration | `test_sweeper_recovers_undelivered_without_pel_entry` | append an event, delete its readiness key, leave nothing in any pending list: `sweepOnce`'s undelivered probe re-marks the fleet and the event then leases. Fails against a PEL-only sweeper. |
 | 3.4 | integration | `test_reclaimed_stray_remarks_readiness` | a stray reclaimed by `sweepOnce` from another consumer's PEL leaves its fleet ready, and the next poll leases it without any new ingress. |
@@ -237,7 +235,8 @@ Exact names, units, and attribute keys are taken from the pinned semantic regist
 | 4.2 | unit | `test_group_memo_overflow_still_creates` | a fleet past the memo capacity still gets a created group and a successful read. |
 | 4.3 | integration | `test_group_memo_invalidates_on_missing_group` | deleting a group out-of-band makes the next read fail once, drop the memo entry, and recreate — not fail that fleet until restart. |
 | 5.1 | unit | `test_poll_cost_metrics_render_unlabelled` | rendered output contains the scan-depth and round-trip families with no fleet, workspace, tenant, or runner label. |
-| 5.2 | unit | `test_ready_depth_and_failures_observable` | marking three fleets renders depth three; an injected failure renders a failure count of one. |
+| 5.2 | integration | `test_ready_depth_samples_shared_set` | three fleets marked by a SECOND Redis client render depth three after one `sweepOnce`, proving the gauge tracks the shared set and not this process's mark/clear deltas; re-running the sampler does not double it. |
+| 5.3 | unit | `test_ready_failures_observable` | an injected mark failure renders a failure count of one. |
 | regression | integration | `test_reclaim_and_fencing_unchanged` | the existing reclaim, fencing-token, and double-lease guarantees hold under the ready-first path. |
 | regression | integration | `test_concurrent_runners_single_winner` | one hundred concurrent polls against one ready fleet yield exactly one lease. |
 
@@ -310,6 +309,7 @@ Exact names, units, and attribute keys are taken from the pinned semantic regist
   - **[P0]** the original clear condition ("PEL and stream both empty") can never fire — ingress trims at `MAXLEN ~ 10000`, so delivered entries persist and the stream is never empty. The index would have grown to hold every fleet and silently restored the O(fleets) scan. Now clears at the `acquireFresh` site where both reads already returned null; §3, Invariant 3, and Dimension 3.1 rewritten to guard the regression.
   - **[P1 ×2, one fix]** the original §3 specced a `ready_sweep.zig` thread duplicating `reclaim_sweeper.zig` (which already walks active fleets on an interval with a registered lifecycle and a `sweepOnce` test); separately, the own-PEL read sees only this instance's pending entries, so another replica's strand is invisible to the clear site and a reclaimed stray re-enters the lease flow only "on the next poll" — which never comes once readiness is cleared. Both close by folding re-marking into the existing sweeper: two CREATE files dropped, Dimension 3.4 added.
   - **[P1 + P2, observability placement]** `depth(client)` read the gauge from Redis at scrape time, breaking the datastore-free `/metrics` path `runner_fleet.md` promises — now an in-process counter, Invariant 9 added; and the poll-cost families were homed in the per-runner labelled table when they are global and unlabelled, so they move to the global counters.
+- **Greptile review on PR #548** — two P1s, both accepted and folded. (a) The clear raced ingress: ingress takes no affinity claim, so an append-plus-mark landing between the two null reads and the clear would have been erased by an unconditional delete, pushing that event's pickup out to a sweep pass on an otherwise healthy system. `clear` now takes the token `peek` observed and compare-and-clears atomically in Redis; Dimension 3.6 fails against an unconditional delete. (b) Readiness depth as a process-local mark/clear counter cannot describe a set shared by every replica — cross-replica mark/clear, restarts, and deduplicated repeat marks all drift it. It is now sampled by the sweeper and rendered from memory, which keeps the scrape path datastore-free without the divergence; Dimension 5.2 proves it by marking from a second client, and the gauge is documented as not summable across replicas.
 - **Pre-existing defect found during review (not caused by this spec)** — `reclaim_sweeper.fetchActiveFleets` selects `ORDER BY updated_at ASC LIMIT SWEEP_BATCH_LIMIT`, so above that bound a pass never reaches the remaining active fleets. Tolerable while it only rescues strays; **load-bearing once it is also the readiness backstop**. Dimension 3.5 covers it.
 - **Source finding** — `assign.listCandidates` carries no `LIMIT` and no workspace scope, so it returns every active fleet platform-wide; `selectInner` iterates the full list, and each candidate the runner wins costs three Postgres round-trips plus three Redis commands before it is released. Idle cost is therefore proportional to runners × active fleets, not to runners.
 - **Source finding** — `docs/architecture/scaling.md` §Per-request volume models an idle poll as one bounded `XREADGROUP` scan and derives the sizing procedure and the Upstash bill from that figure. The model omits the per-candidate multiplier, so the published operator sizing understates idle cost; correcting it is in scope here.
