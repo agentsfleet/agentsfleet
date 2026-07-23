@@ -3,6 +3,7 @@
 //! owns the enclosing transaction — none begin/commit on their own.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
@@ -56,19 +57,7 @@ pub fn findExistingByOidcSubject(
     oidc_subject: []const u8,
 ) !?ExistingAccount {
     var q = PgQuery.from(try conn.query(
-        \\SELECT
-        \\    u.user_id::text,
-        \\    t.tenant_id::text,
-        \\    w.workspace_id::text,
-        \\    w.name
-        \\FROM core.users u
-        \\JOIN core.memberships m ON m.user_id = u.user_id AND m.role = 'owner'
-        \\JOIN core.tenants t ON t.tenant_id = m.tenant_id
-        \\JOIN core.workspaces w ON w.tenant_id = t.tenant_id AND w.name IS NOT NULL
-        \\WHERE u.oidc_subject = $1
-        \\ORDER BY w.created_at ASC
-        \\LIMIT 1
-    , .{oidc_subject}));
+        sql.SELECT_BOOTSTRAP_IDENTITY, .{oidc_subject}));
     defer q.deinit();
 
     const row = (try q.next()) orelse return null;
@@ -91,18 +80,12 @@ pub fn findExistingByOidcSubject(
 
 pub fn insertTenant(conn: *pg.Conn, row: TenantRow) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.tenants
-        \\  (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $3)
-    , .{ row.tenant_id, row.name, row.now_ms });
+        sql.INSERT_TENANT, .{ row.tenant_id, row.name, row.now_ms });
 }
 
 pub fn insertUser(conn: *pg.Conn, row: UserRow) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.users
-        \\  (user_id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $6)
-    , .{ row.user_id, row.tenant_id, row.oidc_subject, row.email, row.display_name, row.now_ms });
+        sql.INSERT_USER, .{ row.user_id, row.tenant_id, row.oidc_subject, row.email, row.display_name, row.now_ms });
 }
 
 pub fn insertMembership(
@@ -115,9 +98,7 @@ pub fn insertMembership(
     const uid_value = try id_format.generateUuidV7();
     const uid: []const u8 = &uid_value;
     _ = try conn.exec(
-        \\INSERT INTO core.memberships (uid, tenant_id, user_id, role, created_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
-    , .{ uid, tenant_id, user_id, role, now_ms });
+        sql.INSERT_MEMBERSHIP, .{ uid, tenant_id, user_id, role, now_ms });
 }
 
 /// Returns true on insert, false on (tenant_id, name) collision. Caller
@@ -126,10 +107,6 @@ pub fn insertMembership(
 /// single statement keeps the connection clean inside the enclosing tx.
 pub fn tryInsertWorkspace(conn: *pg.Conn, row: WorkspaceRow) !bool {
     const affected = try conn.exec(
-        \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, name, created_by, created_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5)
-        \\ON CONFLICT (tenant_id, name) WHERE name IS NOT NULL DO NOTHING
-    , .{ row.workspace_id, row.tenant_id, row.name, row.created_by, row.now_ms });
+        sql.INSERT_WORKSPACE, .{ row.workspace_id, row.tenant_id, row.name, row.created_by, row.now_ms });
     return (affected orelse 0) > 0;
 }
