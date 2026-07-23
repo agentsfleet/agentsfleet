@@ -90,6 +90,14 @@ export function groupThreadEvents(
 // Identity by members, not by deep equality: the events themselves are already
 // replaced by reference whenever the stream changes one, so comparing the
 // references is both cheaper and exactly as strict.
+//
+// LOAD-BEARING INVARIANT (enforced in `fleet-stream-registry.ts` /
+// `fleet-stream-frames.ts`): a FleetEvent is replaced with a fresh object on
+// any change — `applyChunk`/`applyEventComplete` spread `{ ...existing, … }`,
+// `mergeBackfill` rebuilds changed rows and keeps unchanged ones by reference.
+// This reference comparison is only sound while that holds. An in-place
+// mutation of a FleetEvent (e.g. `event.reply += chunk`) would strand a stale
+// entry here and freeze a row's render. Keep those merges copy-on-write.
 function sameEntry(before: ThreadEntry, after: ThreadEntry): boolean {
   if (before.kind !== after.kind) return false;
   if (before.kind === "single" && after.kind === "single") return before.event === after.event;
