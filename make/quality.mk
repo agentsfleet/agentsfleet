@@ -314,10 +314,10 @@ check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate 
 	@set -e; for test_script in playbooks/founding/02_preflight/credentials_test.sh playbooks/founding/06_runner_bootstrap_dev/provision_runner_env_test.sh; do bash "$$test_script"; done
 	@echo "→ [playbooks] reference integrity — every playbooks/ path resolves..."
 	@# Scans the live operational surface (CI, scripts, active docs, the playbooks
-	@# themselves). Excludes docs/v2/ and CHANGELOG.md: specs and the changelog are
-	@# historical records that intentionally cite now-moved paths.
+	@# themselves). Excludes docs/v2/: specs are historical records that
+	@# intentionally cite now-moved paths.
 	@FAIL=0; \
-	REFS=$$(git -c safe.directory='*' grep -hoE 'playbooks/[A-Za-z0-9_./-]+' -- . ':!docs/v2/' ':!CHANGELOG.md' | sed 's/[.,):]*$$//' | sort -u); \
+	REFS=$$(git -c safe.directory='*' grep -hoE 'playbooks/[A-Za-z0-9_./-]+' -- . ':!docs/v2/' | sed 's/[.,):]*$$//' | sort -u); \
 	if [ -z "$$REFS" ]; then echo "✗ [playbooks] reference scan matched nothing — git failed, so this gate proved nothing"; exit 1; fi; \
 	for ref in $$REFS; do \
 	  [ -e "$$ref" ] || { echo "✗ broken playbooks/ reference: $$ref"; FAIL=1; }; \
