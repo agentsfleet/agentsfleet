@@ -137,8 +137,11 @@ HTTP ingress spans use server kind, route-based names, `http.request.method`, `h
 
 Update dashboard queries for Prometheus-normalized dotted names and attribute keys. Token throughput reads the histogram `_sum`; run latency reads seconds buckets; cached input is presented as a subset; credit panels state nanocredits; and model-attribution coverage is visible beside the model selector. Extend the existing signal-routing audit instead of adding another make target.
 
+The `/metrics` exposition carries two prefixes today: `metrics_render.zig` emits about twenty `fleet_*` families (API in-flight, Server-Sent Events (SSE), Redis pool, signup funnel, worker liveness, trigger totals) while `metrics_runner.zig`, `metrics_otel.zig`, and `metrics_trace.zig` emit `agentsfleet_*`. One process must expose one namespace. Normalize every family to the `agentsfleet_` prefix in the same atomic cutover as the OTLP schema, since both change the names an operator queries and neither has an external consumer before `2.0.0`. No dual emission and no recording-rule alias.
+
 - **Dimension 4.1** — every dashboard query resolves a live descriptor, uses the correct histogram suffix and normalized attribute key, and exposes attribution omissions → Test `test_grafana_queries_match_semantic_metrics`
 - **Dimension 4.2** — source, fixture, audit, architecture, and dashboard contain no superseded live name or private metric key after the atomic cutover → Test `test_semantic_schema_has_no_live_legacy_aliases`
+- **Dimension 4.3** — every Prometheus family rendered by the daemon shares the `agentsfleet_` prefix, and no `fleet_`-prefixed family remains live in source, audits, or the dashboard → Test `test_prometheus_families_share_one_namespace`
 
 ## Interfaces
 
@@ -214,6 +217,7 @@ No public API path, request body, response body, Command-Line Interface (CLI), o
 | 3.2 | integration | `test_delivery_span_uses_semantic_attributes_without_runner_claim` | accepted report emits exact split usage and namespaced correlations once; replay and content fields emit nothing. |
 | 4.1 | unit | `test_grafana_queries_match_semantic_metrics` | every expression uses normalized live names, histogram suffixes, seconds, and the omission family. |
 | 4.2 | integration | `test_semantic_schema_has_no_live_legacy_aliases` | source, fixture, audit, architecture, and dashboard have zero live superseded schema hits. |
+| 4.3 | unit | `test_prometheus_families_share_one_namespace` | rendering the full `/metrics` body yields zero `fleet_`-prefixed family names; every `# TYPE` line starts `agentsfleet_`. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -276,6 +280,7 @@ No files are deleted. Grep the four superseded OTLP metric names, private metric
 - **Source finding** — all three OTLP envelopes currently repeat only `service.name`; model is used by `agent-observability.json`, while workspace is absent from that dashboard and remains queryable in Postgres.
 - **Upstream finding** — the GenAI conventions are Development status and pin core `v1.43.0`; the selected commit publishes no GenAI schema URL, so none may be fabricated on the wire.
 - **Metrics review** — this work renames and corrects operational telemetry only; no PostHog event or analytics funnel changes.
+- **Source finding** — the `/metrics` exposition is split between `fleet_*` families in `metrics_render.zig` and `agentsfleet_*` families in `metrics_runner.zig`, `metrics_otel.zig`, and `metrics_trace.zig`. The bounded-signal-export workstream named its new suppression family `agentsfleet_http_trace_suppressed_total` to match its architecture document, which widened the split rather than creating it. Normalizing every family to one prefix belongs in this atomic schema cutover, not in exporter-bounding work.
 - **Skill-chain outcomes** —
 - **Deferrals** —
   > Indy (2026-07-23 09:27): "Yes create a workstream agree, and move to 139, so the workstream in pending is added in this PR" — context: this Pull Request adds the pending semantic-conventions specification; implementation begins only when M139_004 is opened.

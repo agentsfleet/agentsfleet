@@ -5,13 +5,15 @@ const aggregate = @import("otel_metrics_aggregate.zig");
 fn sumSample(value: i64, workspace: []const u8) payload.Sample {
     var s = payload.newSample(.credit_drain, value);
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, "standard");
-    _ = workspace;
+    _ = payload.addLabel(&s, payload.LABEL_MODEL, "m");
+    _ = payload.addLabel(&s, payload.LABEL_WORKSPACE, workspace);
     return s;
 }
 
 fn histSample(value: i64) payload.Sample {
     var s = payload.newSample(.run_duration, value);
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, "standard");
+    _ = payload.addLabel(&s, payload.LABEL_MODEL, "m");
     return s;
 }
 

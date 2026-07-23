@@ -43,6 +43,7 @@ const tenant_provider = @import("../state/tenant_provider.zig");
 const activity_publisher = @import("../fleet_runtime/activity_publisher.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
 const otel_metrics = @import("../observability/otel_metrics.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
 const runner_events = @import("runner_events.zig");
 
 const Hx = hx_mod.Hx;
@@ -110,7 +111,10 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
         @intCast(body.output_tokens),
         std.math.cast(i64, body.telemetry.wall_ms) orelse std.math.maxInt(i64),
         parsePosture(lease.posture).label(),
+        lease.model,
+        lease.workspace_id,
     );
+    captureCompletion(hx, lease, body);
 
     finalize(hx, runner_id, lease, body);
     // Per-runner telemetry (best-effort, in-memory — never gates the report).
@@ -120,6 +124,22 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
     metrics_runner.decRunnerActiveLeases(runner_id);
     if (body.outcome == .fleet_error) metrics_runner.incRunnerFailure(runner_id, body.failure_reason);
     hx.ok(.ok, protocol.ReportResponse{ .ok = true });
+}
+
+fn captureCompletion(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
+    hx.ctx.telemetry.capture(
+        telemetry_mod.FleetCompleted,
+        telemetry_mod.FleetCompleted.init(.{
+            .distinct_id = lease.workspace_id,
+            .workspace_id = lease.workspace_id,
+            .fleet_id = lease.fleet_id,
+            .event_id = lease.event_id,
+            .tokens = body.tokens,
+            .wall_ms = body.telemetry.wall_ms,
+            .exit_status = @tagName(body.outcome),
+            .time_to_first_token_ms = body.telemetry.time_to_first_token_ms,
+        }),
+    );
 }
 
 /// Atomically CLAIM the report (flip the lease active→reported, fenced) AND

@@ -3,6 +3,9 @@
 const std = @import("std");
 const trace_policy = @import("../http/route_trace.zig");
 
+pub const SUPPRESSED_NAME = "agentsfleet_http_trace_suppressed_total";
+pub const SUPPRESSED_HELP = "HTTP request spans suppressed by the bounded trace admission policy.";
+
 pub const Snapshot = struct {
     noisy_route_total: u64,
     runner_rejection_budget_total: u64,

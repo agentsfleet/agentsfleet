@@ -191,7 +191,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     if (first_delivery) switch (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, policy)) {
         // Post-commit, fire-and-forget OTLP metric: the receive credit drain.
         // The debit already committed inside debitReceive; this never blocks it.
-        .deducted => |nanos| otel_metrics.recordCreditDrain(nanos, ctx.posture.label()),
+        .deducted => |nanos| otel_metrics.recordCreditDrain(nanos, ctx.posture.label(), ctx.model, ctx.workspace_id),
         .exhausted => {
             blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
             return null;

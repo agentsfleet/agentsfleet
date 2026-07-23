@@ -135,7 +135,7 @@ zero bytes per second.
 | OTLP traces | installed and called when configured | `server.zig` emits `http.request`; `metering.zig` emits `fleet.delivery` |
 | OTLP run metrics | installed and called when configured | `service_report.zig` calls `recordRunSettlement` after the fenced claim |
 | PostHog product events | installed and partly called when configured | server start, workspace create, fleet trigger, and signup bootstrap have production captures |
-| PostHog `FleetCompleted` | declared-only | event type and tests exist; no production capture call exists |
+| PostHog `FleetCompleted` | installed and called when configured | `service_report.zig` captures once the fenced report claim returns `claimed=true` |
 | runner backend exporter | absent | runner registers one local stderr sink and no OTLP or PostHog client |
 | runner operational metrics | called through existing semantics | `agentsfleetd` updates fixed state after accepted heartbeat, lease, and report operations |
 
@@ -184,8 +184,9 @@ report. `event_id` and `lease_id` provide log correlation. A future runner span
 producer must first define a bounded span budget and durable context ownership;
 only then should standard W3C context cross the fleet protocol.
 
-High-rate runner API successes are not useful trace spans. The follow-on routing
-work removes successful heartbeat, lease, renew, activity, and report requests
+High-rate runner API successes are not useful trace spans. The shipped routing
+policy in `http/route_trace.zig` removes successful heartbeat, lease, renew,
+activity, and report requests
 from the default HTTP span stream. The lease rule intentionally covers both empty
 polls and grants; useful run work retains one settled `fleet.delivery` span. Trace
 lifetime starts after route match but before API admission. Every response at
@@ -212,14 +213,14 @@ library's internal drop counter, and logs a warning; its current `capture` API
 does not return queue admission. Application wording must therefore say
 `submitted`, never `captured` or `delivered`, for a successful call.
 
-The Jul 23, 2026 source audit found four production event types: `ServerStarted`,
-`WorkspaceCreated`, `FleetTriggered`, and `SignupBootstrapped`. `FleetCompleted`
-is declared and tested but has no production capture. The follow-on work may wire
-it only after durable report settlement and must set deterministic
-`$insert_id` to the 64-character lowercase Secure Hash Algorithm 256-bit
-(SHA-256) digest of
-`fleet_id || 0x00 || event_id`, allowing PostHog to deduplicate its own batch retry
-without forwarding an unbounded insertion key.
+Five production event types now capture: `ServerStarted`, `WorkspaceCreated`,
+`FleetTriggered`, `SignupBootstrapped`, and `FleetCompleted`. `FleetCompleted`
+fires only after durable report settlement — the same fenced claim that authorizes
+the settlement authorizes the capture, so a replayed or superseded report emits
+nothing. Its `$insert_id` is the 64-character lowercase Secure Hash Algorithm
+256-bit (SHA-256) digest of `fleet_id || 0x00 || event_id`, allowing PostHog to
+deduplicate its own batch retry without forwarding an unbounded insertion key.
+Runner-controlled `u64` properties saturate at `maxInt(i64)` rather than trapping.
 Scheduler mechanics, raw logs, spans, heartbeats, renewals, and activity frames
 never become PostHog events.
 
@@ -235,9 +236,9 @@ a named module). Its shape makes conformance by construction:
 - `envelope.zig` — wraps every line with the required keys (`ts_ms=`, `level=`,
   `scope=`) and scrubs newlines to close log-injection.
 - `sinks.zig` — fans application lines out to stderr **and** the OTLP sink, with
-  a 4 KiB buffer and a `truncated=true` marker when a line overflows. The follow-on
-  routing filter keeps exporter-internal scopes on stderr only, so a failed log
-  exporter cannot enqueue its own warning forever.
+  a 4 KiB buffer and a `truncated=true` marker when a line overflows. The routing
+  filter keeps exporter-internal scopes on stderr only, so a failed log exporter
+  cannot enqueue its own warning forever.
 
 Because the envelope and fan-out are enforced in the module, any call site that uses
 `log.scoped(...).level(...)` is conformant for free — there is no per-call
@@ -261,8 +262,8 @@ gated by a single env triple (`GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID
 All three are built on `observability/otlp/`: a generic lock-free multi-producer/
 single-consumer `Ring`, a shared `GrafanaOtlpConfig` + `configFromEnv`, a persistent
 basic-auth HTTP `Client`, and an `Exporter(hooks)` flush driver that owns the
-background flush thread. The follow-on passes the cancel-capable `std.Io` supplied
-by `std.process.Init` through installation and borrows it for event waits,
+background flush thread. Installation takes the cancel-capable `std.Io` supplied
+by `std.process.Init` and borrows it for event waits,
 monotonic timers, and HTTP. It does not use the non-canceling
 `common.globalIo()` seam and does not create another input/output thread pool.
 Each signal supplies only its entry type, serialization, and enqueue API. Emission
@@ -292,9 +293,9 @@ full from empty. Rates are capacity ceilings, not throughput benchmarks.
 
 | Signal | Usable queue | Flush behavior | Capacity implication |
 |---|---:|---|---|
-| logs | 2047 records; body truncated at 512 bytes | up to 50 records every 5 seconds | 10 records per second sustained before backlog; ring drops are counted internally but not exported |
-| traces | 1023 spans; 12 attributes per span | up to 50 spans every 5 seconds | 10 spans per second sustained; ring drops are counted internally but not exported |
-| OTLP metrics | 1023 samples; at most 256 coalesced series | drains up to 1023 every 5 seconds, then coalesces label sets | about 204 samples per second, or about 40 worst-case five-sample settlements per second; excess series are discarded and counted |
+| logs | 2047 records; body truncated at 512 bytes | wakes at 50 accepted records or 5 seconds, then drains the cycle-start backlog in 50-record batches | drain is bounded by the backlog present when the cycle began, not by one batch per interval; ring drops export as `ring_full` |
+| traces | 1023 spans; 12 attributes per span | wakes at 50 accepted spans or 5 seconds, then drains the cycle-start backlog in 50-span batches | same cycle-start rule as logs; ring drops export as `ring_full` |
+| OTLP metrics | 1023 samples; at most 256 coalesced series | wakes at 768 accepted samples or 5 seconds, then drains the cycle-start backlog and coalesces label sets | the 768 threshold leaves 255 usable slots while the consumer is scheduled; excess series export as `aggregate_cap` |
 | PostHog | 1000 events per double-buffer side; up to 2000 resident | 20 events or 10 seconds; three retries | a full write side drops the new event and increments the library drop counter; capture return alone does not prove admission |
 
 The scenario model below makes the producer unit and the limiting resource
@@ -310,36 +311,40 @@ of inventing a traffic number.
 | runner logs | burst | arbitrary `L` until the host supervisor applies its byte/rate policy | no `agentsfleetd` load; local host retention is the sole current bound |
 | runner logs | backend outage | unchanged local record rate | no application retry or queue; an enabled collector uses its declared disk ceiling then drops |
 | runner logs | fleet growth | sum of host-local `L`; no central application aggregation | each host remains isolated; direct collection stays disabled until numeric host policy and redaction proof exist |
-| control-plane logs | steady | `D` accepted structured records/s, each OTLP body truncated at 512 bytes | stderr remains authoritative; 2047 usable queue slots and the current 50-record batch every 5 seconds sustain 10 records/s before backlog |
-| control-plane logs | burst | arbitrary `D` from bounded control-plane events | non-blocking admission fills at 2047 records, then drops and counts overflow internally; the follow-on wakes at 50 and drains cycle-start backlog |
-| control-plane logs | backend outage | unchanged `D` while the endpoint is unavailable | the fixed ring fills, later entries drop, and product work continues; exporter warnings remain stderr-only after the follow-on |
+| control-plane logs | steady | `D` accepted structured records/s, each OTLP body truncated at 512 bytes | stderr remains authoritative; 2047 usable queue slots absorb the rate, and a cycle drains its whole starting backlog rather than one 50-record batch |
+| control-plane logs | burst | arbitrary `D` from bounded control-plane events | non-blocking admission fills at 2047 records, then drops and exports overflow as `ring_full`; the consumer wakes at 50 and drains the cycle-start backlog |
+| control-plane logs | backend outage | unchanged `D` while the endpoint is unavailable | the fixed ring fills, later entries drop, and product work continues; exporter warnings stay stderr-only and never re-enter the OTLP log ring |
 | control-plane logs | fleet growth | `D` follows semantic control-plane events, never the raw runner byte stream | queue capacity remains 2047 process-wide; the logging allowlist excludes prompt, body, token, credential, environment, and arbitrary error fields |
 | metrics | steady | idle heartbeats update memory but enqueue zero OTLP samples; each billed lease enqueues one credit sample and each accepted report enqueues at most five | 4096 runner slots; 1023 usable OTLP sample slots |
 | metrics | burst | at most `B + 5C` OTLP samples/s before coalescing | non-blocking ring admission; overflow drops and is counted |
 | metrics | backend outage | at most `B + 5C` attempted samples/s | ring holds 1023; later entries drop; request, debit, and settlement paths continue |
 | metrics | fleet growth | `R` liveness keys plus debit and report samples | 4096 exact runner slots regardless of `R`; overflow counters aggregate into `_other`, while last-seen and active-lease gauges drop |
-| traces | steady | `R/10` heartbeat requests/s before lease and run traffic | follow-on admits at most 10 generic request spans/s plus one settled delivery span per accepted run |
+| traces | steady | `R/10` heartbeat requests/s before lease and run traffic | route policy admits at most 10 generic request spans/s plus one settled delivery span per accepted run |
 | traces | burst | arbitrary matched requests plus `C` settled runs/s | generic spans keep the fixed 4 rejection, 4 server-error, and 2 sampled-success budget; the 1023-slot ring bounds all selected spans |
 | traces | backend outage | selected generic spans plus one delivery span per accepted run | ring fills to 1023, then selected spans drop without blocking product work |
 | traces | fleet growth | heartbeat input grows linearly with `R`; generic output does not | generic request output remains 10 spans/s process-wide and exact suppressions aggregate in Prometheus |
 
 Idle heartbeats alone produce one matched HTTP request every 10 seconds per
-runner. The current unsampled `http.request` path therefore produces 10 spans per
-second at 100 idle runners, 100 spans per second at 1000, and 1000 spans per second
-at 10000. Lease polls, renewals, activity batches, and reports add to that rate.
-The 100-runner case already consumes the trace exporter's steady drain budget.
+runner. Before route filtering, the unsampled `http.request` path produced 10 spans
+per second at 100 idle runners, 100 spans per second at 1000, and 1000 spans per
+second at 10000 — the 100-runner case alone consumed the trace exporter's whole
+steady drain budget. Route policy now decouples generic span output from request
+volume: successful runner chatter never enqueues, and the process ceiling is a
+fixed 10 generic spans per monotonic second at any fleet size.
 
 Metric coalescing happens after samples enter the ring, so it reduces wire series
 but not enqueue pressure. The aggregator admits at most 256 distinct label sets
 per flush and discards excess samples. The existing
 `agentsfleet.telemetry.samples_dropped` self-signal includes ring and aggregation
 loss, but arrives only if a later metric export succeeds. Prometheus therefore
-needs fixed `ring_full`, `aggregate_cap`, `serialize_failed`, `export_rejected`,
-`partial_rejected`, and `export_uncertain` reasons. The follow-on work also makes log and trace draining
-threshold-driven or drain-to-empty so the fixed five-second, 50-entry cadence is
-not their throughput ceiling. Definite backend rejection remains distinct from
-collector-declared partial rejection and uncertain remote delivery after a
-transport or malformed-response failure.
+carries fixed `ring_full`, `aggregate_cap`, `serialize_failed`, `export_rejected`,
+`partial_rejected`, and `export_uncertain` reasons through
+`agentsfleet_otlp_entries_discarded_total`, plus an `agentsfleet_otlp_queue_depth`
+gauge per signal — so local loss stays visible even when OTLP itself is dark. Log
+and trace draining is threshold-driven and cycle-start bounded, so the fixed
+five-second, 50-entry cadence is no longer their throughput ceiling. Definite
+backend rejection remains distinct from collector-declared partial rejection and
+uncertain remote delivery after a transport or malformed-response failure.
 
 ### Metrics: off-Postgres dashboards, money stays in PG
 
@@ -350,15 +355,24 @@ ceiling:
 |---|---|---|
 | `runner_id` | at most 4096 exact values | counters merge into `_other`; gauges drop |
 | runner `reason` and `outcome` | compile-time execution enums plus `unknown` for reason | closed sets; no dynamic overflow value |
-| `workspace` | prohibited; follow-on removes it | remove the label and its process-local guard; do not accumulate tenant series across restarts |
+| `workspace` | retained; first 100 distinct values per process | later workspaces emit the sample without the label (`otel_metrics_cardinality.zig`) |
 | `direction` | `input`, `cached`, `output` | closed set; no overflow value |
 | `posture` | `platform`, `self_managed` | closed set; no overflow value |
-| `model` | prohibited; follow-on removes it | remove the label and its dashboard selector; do not bucket an evolving catalog |
+| `model` | retained; value truncated at 64 bytes | no per-catalog cap; bounded only by the 256-series flush ceiling |
+
+`workspace` and `model` are bounded per process and per flush, which is not the
+same as bounded at the backend: series accumulate across replicas and restarts,
+and neither a 64-byte value ceiling nor a 100-workspace process guard caps that
+total. This is a known open question, not a settled position. Removing either
+label also removes a Grafana grouping operators use today, so the change needs a
+dashboard and migration decision of its own and is deliberately not folded into
+exporter-bounding work. Exporter-health labels are a separate, closed set: fixed
+`signal` and `reason` enums with no caller-provided values.
 
 The metrics signal lets operators watch credit-drain, token throughput, and run
 latency without any dashboard query touching the control-plane Postgres. Series:
 
-- `agentsfleet.credit.drained_nanos` (sum) — posture only after the follow-on removes the current unbounded model and workspace labels
+- `agentsfleet.credit.drained_nanos` (sum) — by posture, model, and (capped) workspace
 - `agentsfleet.tokens.processed` (sum) — by direction {input, cached, output}
 - `agentsfleet.run.duration_ms` (histogram)
 - `agentsfleet.telemetry.samples_dropped` (sum) — exporter self-observability

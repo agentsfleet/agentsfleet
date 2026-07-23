@@ -28,6 +28,7 @@ const redis_fleet = @import("../queue/redis_fleet.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
+const telemetry = @import("../observability/telemetry.zig");
 
 const ALLOC = std.testing.allocator;
 const LARGE_BALANCE_NANOS: i64 = 1000000000000;
@@ -40,6 +41,9 @@ const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddc01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dde01";
 const LEASE_OLD_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddf01";
+const METERING_COLLISION_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd0f1";
+const FENCED_ERROR_CODE = "UZ-RUN-005";
+const SEEDED_EVENT_ID = "evt-seed-1";
 
 const RUNNER_A_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "f" ** 64;
 const RUNNER_B_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "0" ** 64;
@@ -230,6 +234,35 @@ fn leaseExpiresAtOf(conn: *pg.Conn, lease_id: []const u8) !i64 {
     return row.get(i64, 0);
 }
 
+/// The slice ordinal the next settle will claim. `claimAndSettle` writes its
+/// final slice at `meter_slice_seq + 1`, so this is what a collision must target.
+fn nextMeterSliceSeq(conn: *pg.Conn) !i64 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT meter_slice_seq FROM fleet.runner_affinity WHERE fleet_id = $1::uuid",
+        .{FLEET_ID},
+    ));
+    defer q.deinit();
+    const row = try q.next() orelse return error.AffinityRowMissing;
+    return try row.get(i64, 0) + 1;
+}
+
+/// Occupy the slot the settle INSERT is about to take. `metering_periods` has
+/// no ON CONFLICT clause, so the unique (event_id, slice_seq) key turns the
+/// whole claim+settle statement into a database error — a real failure at the
+/// settlement step, with no fault-injection seam in production code.
+fn blockNextSettleSlice(conn: *pg.Conn, event_id: []const u8, slice_seq: i64) !void {
+    _ = try conn.exec(
+        \\INSERT INTO fleet.metering_periods
+        \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
+        \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
+        \\VALUES ($1::uuid, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0)
+    , .{ METERING_COLLISION_UID, event_id, slice_seq });
+}
+
+fn completionCaptureCount() u32 {
+    return telemetry.TestBackend.globalCount(.fleet_completed);
+}
+
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
@@ -245,7 +278,8 @@ fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     // the leaked slice makes any rerun collide on
     // uq_metering_periods_event_id_slice_seq (the sibling renewal/concurrency
     // suites all carry the same cleanup for their own fixed ids).
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = 'evt-seed-1'", .{});
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{SEEDED_EVENT_ID});
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE uid = $1::uuid", .{METERING_COLLISION_UID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });
@@ -373,12 +407,127 @@ test "the reclaim chain enforces monotonic token ordering across runners" {
 
     // A's late report on the stale token is fenced out (the reclaimed event id
     // is the seeded 'evt-seed-1' B re-leased).
-    const a_rep = try reportAs(h, RUNNER_A_TOKEN, LEASE_OLD_ID, "evt-seed-1", 1);
+    const a_rep = try reportAs(h, RUNNER_A_TOKEN, LEASE_OLD_ID, SEEDED_EVENT_ID, 1);
     defer a_rep.deinit();
-    try a_rep.expectErrorCode("UZ-RUN-005");
+    try a_rep.expectErrorCode(FENCED_ERROR_CODE);
 
     // B's report on its fresh lease + current token succeeds.
     const b_rep = try reportAs(h, RUNNER_B_TOKEN, lv.lease_id.?, lv.event_id.?, lv.fencing_token);
     defer b_rep.deinit();
     try b_rep.expectStatus(.ok);
+}
+
+test "integration: test_settled_report_captures_fleet_completed" {
+    const h = startHarness() catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN);
+    try seedActiveFleet(conn);
+    try publishFreshEvent(h);
+
+    const lv = try leaseAs(h, RUNNER_A_TOKEN);
+    defer lv.free();
+    try std.testing.expect(lv.present);
+
+    // The handler runs on an httpz worker thread, so the cross-thread tally —
+    // not TestBackend's threadlocal ring — is what this assertion can read.
+    telemetry.TestBackend.resetGlobal();
+
+    const rep = try reportAs(h, RUNNER_A_TOKEN, lv.lease_id.?, lv.event_id.?, lv.fencing_token);
+    defer rep.deinit();
+    try rep.expectStatus(.ok);
+    try std.testing.expectEqual(@as(u32, 1), completionCaptureCount());
+
+    // Replaying the identical report loses the fence, so the business funnel
+    // stays at exactly one completion per accepted run.
+    const replay = try reportAs(h, RUNNER_A_TOKEN, lv.lease_id.?, lv.event_id.?, lv.fencing_token);
+    defer replay.deinit();
+    try replay.expectErrorCode(FENCED_ERROR_CODE);
+    try std.testing.expectEqual(@as(u32, 1), completionCaptureCount());
+
+    // The key PostHog deduplicates on derives only from settled identifiers, so
+    // a delivery retry of this same completion carries the same insertion id.
+    const facts: telemetry.FleetCompleted.SettledFacts = .{
+        .distinct_id = WORKSPACE_ID,
+        .workspace_id = WORKSPACE_ID,
+        .fleet_id = FLEET_ID,
+        .event_id = lv.event_id.?,
+        .tokens = 10,
+        .wall_ms = 100,
+        .exit_status = "processed",
+        .time_to_first_token_ms = 5,
+    };
+    const first = telemetry.FleetCompleted.init(facts);
+    const again = telemetry.FleetCompleted.init(facts);
+    try std.testing.expectEqualStrings(&first.insert_id, &again.insert_id);
+    for (first.insert_id) |c| {
+        try std.testing.expect(std.ascii.isHex(c) and !std.ascii.isUpper(c));
+    }
+}
+
+test "integration: test_unaccepted_report_never_captures_completion" {
+    const h = startHarness() catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN);
+    try seedRunner(conn, RUNNER_B_ID, "roundtrip-b", RUNNER_B_TOKEN);
+    try seedActiveFleet(conn);
+    try seedAffinity(conn, RUNNER_A_ID, 1, 0);
+    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, 1);
+
+    // B reclaims A's event under a strictly higher token.
+    const lv = try leaseAs(h, RUNNER_B_TOKEN);
+    defer lv.free();
+    try std.testing.expect(lv.present);
+
+    telemetry.TestBackend.resetGlobal();
+
+    // 1. Stale fence — A reports on the token B superseded.
+    const stale = try reportAs(h, RUNNER_A_TOKEN, LEASE_OLD_ID, SEEDED_EVENT_ID, 1);
+    defer stale.deinit();
+    try stale.expectErrorCode(FENCED_ERROR_CODE);
+    try std.testing.expectEqual(@as(u32, 0), completionCaptureCount());
+
+    // 2. Malformed body — rejected before any claim runs.
+    const malformed_req = try (try h.post(protocol.PATH_RUNNER_REPORTS)
+        .bearer(RUNNER_B_TOKEN)).json("{\"lease_id\":");
+    const malformed = try malformed_req.send();
+    defer malformed.deinit();
+    try malformed.expectStatus(.bad_request);
+    try std.testing.expectEqual(@as(u32, 0), completionCaptureCount());
+
+    // 3. Unknown lease — no lease to claim, so nothing settles.
+    const unknown = try reportAs(h, RUNNER_B_TOKEN, LEASE_OLD_ID, lv.event_id.?, lv.fencing_token);
+    defer unknown.deinit();
+    try std.testing.expect(unknown.status != 200);
+    try std.testing.expectEqual(@as(u32, 0), completionCaptureCount());
+
+    // 4. Database failure at settlement — the slice this settle would write is
+    //    already taken, so claim+settle raises and the report answers 500.
+    const seq = try nextMeterSliceSeq(conn);
+    try blockNextSettleSlice(conn, lv.event_id.?, seq);
+    const db_failed = try reportAs(h, RUNNER_B_TOKEN, lv.lease_id.?, lv.event_id.?, lv.fencing_token);
+    defer db_failed.deinit();
+    try std.testing.expect(db_failed.status >= 500);
+    try std.testing.expectEqual(@as(u32, 0), completionCaptureCount());
 }

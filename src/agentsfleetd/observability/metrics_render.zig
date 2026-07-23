@@ -6,9 +6,13 @@ const mr = @import("metrics_runner.zig");
 const mrp = @import("metrics_redis_pool.zig");
 const msm = @import("metrics_sensitive_memory.zig");
 const mt = @import("metrics_trace.zig");
+const mot = @import("metrics_otel.zig");
 
 const S_TYPE_S_S_N = "# TYPE {s} {s}\n";
+/// One exposition line carrying a single label: `name{label="value"} 42`.
+const S_ONE_LABEL_SAMPLE = "{s}{{{s}=\"{s}\"}} {d}\n";
 const S_REASON = "reason";
+const S_SIGNAL = "signal";
 const S_COUNTER = "counter";
 const S_HELP_S_S_N = "# HELP {s} {s}\n";
 const S_GAUGE = "gauge";
@@ -46,7 +50,37 @@ fn appendLabeledFamily(
     try writer.print(S_HELP_S_S_N, .{ name, help });
     try writer.print(S_TYPE_S_S_N, .{ name, metric_type });
     for (samples) |sample| {
-        try writer.print("{s}{{{s}=\"{s}\"}} {d}\n", .{ name, label_name, sample.label_value, sample.value });
+        try writer.print(S_ONE_LABEL_SAMPLE, .{ name, label_name, sample.label_value, sample.value });
+    }
+}
+
+fn appendOtlpHealth(writer: anytype) !void {
+    const current = mot.snapshot();
+    try writer.print(S_HELP_S_S_N, .{ mot.QUEUE_DEPTH_NAME, mot.QUEUE_DEPTH_HELP });
+    try writer.print(S_TYPE_S_S_N, .{ mot.QUEUE_DEPTH_NAME, S_GAUGE });
+    for (mot.SIGNALS, 0..) |signal, signal_index| {
+        try writer.print(
+            S_ONE_LABEL_SAMPLE,
+            .{ mot.QUEUE_DEPTH_NAME, S_SIGNAL, @tagName(signal), current.queue_depth[signal_index] },
+        );
+    }
+
+    try writer.print(S_HELP_S_S_N, .{ mot.DISCARDED_NAME, mot.DISCARDED_HELP });
+    try writer.print(S_TYPE_S_S_N, .{ mot.DISCARDED_NAME, S_COUNTER });
+    for (mot.SIGNALS, 0..) |signal, signal_index| {
+        for (mot.DISCARD_REASONS, 0..) |reason, reason_index| {
+            try writer.print(
+                "{s}{{{s}=\"{s}\",{s}=\"{s}\"}} {d}\n",
+                .{
+                    mot.DISCARDED_NAME,
+                    S_SIGNAL,
+                    @tagName(signal),
+                    S_REASON,
+                    @tagName(reason),
+                    current.discarded[signal_index][reason_index],
+                },
+            );
+        }
     }
 }
 
@@ -70,13 +104,14 @@ pub fn renderPrometheus(
     try appendMetric(writer, "fleet_worker_running", S_GAUGE, "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
 
     const trace = mt.snapshot();
-    try appendLabeledFamily(writer, "fleet_http_trace_suppressed_total", S_COUNTER, "HTTP request spans suppressed by the bounded trace admission policy.", S_REASON, &.{
+    try appendLabeledFamily(writer, mt.SUPPRESSED_NAME, S_COUNTER, mt.SUPPRESSED_HELP, S_REASON, &.{
         .{ .label_value = "noisy_route", .value = trace.noisy_route_total },
         .{ .label_value = "runner_rejection_budget", .value = trace.runner_rejection_budget_total },
         .{ .label_value = "server_error_budget", .value = trace.server_error_budget_total },
         .{ .label_value = "sampled_success_budget", .value = trace.sampled_success_budget_total },
         .{ .label_value = "sample_miss", .value = trace.sample_miss_total },
     });
+    try appendOtlpHealth(writer);
 
     // Signup funnel counters.
     try appendMetric(writer, "fleet_signup_bootstrapped_total", S_COUNTER, "Clerk webhooks that provisioned a fresh personal account.", s.signup_bootstrapped_total);

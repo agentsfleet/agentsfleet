@@ -1,4 +1,4 @@
-//! OTLP JSON span exporter for Grafana Cloud Tempo.
+//! OpenTelemetry Protocol (OTLP) JSON span exporter for Grafana Cloud Tempo.
 //! Callers push completed spans; the shared otlp.Exporter batches and POSTs to
 //! GRAFANA_OTLP_ENDPOINT/v1/traces on a background flush thread, fire-and-forget.
 //!
@@ -7,7 +7,9 @@
 //! enqueue API. Lifecycle/thread/POST are the shared substrate.
 
 const std = @import("std");
+const common = @import("common");
 const trace = @import("trace.zig");
+const health = @import("metrics_otel.zig");
 const otlp_config = @import("otlp/config.zig");
 const otlp_ring = @import("otlp/ring.zig");
 const otlp_exporter = @import("otlp/exporter.zig");
@@ -53,10 +55,11 @@ const RingT = otlp_ring.Ring(SpanEntry, BUFFER_CAPACITY);
 var g_ring: RingT = .{};
 
 const Exporter = otlp_exporter.Exporter(.{
+    .signal = .traces,
     .path = OTLP_TRACES_PATH,
     .scope = .otel_traces,
     .collect = collectSpans,
-    .pending = spansPending,
+    .pending_count = spansPendingCount,
     .wake_threshold = FLUSH_BATCH_SIZE,
 });
 
@@ -67,8 +70,12 @@ pub const isInstalled = Exporter.isInstalled;
 /// Enqueue a completed span for async export. Non-blocking, fire-and-forget.
 pub fn enqueueSpan(entry: SpanEntry) void {
     if (!Exporter.isInstalled()) return;
-    _ = g_ring.push(entry);
-    Exporter.notify();
+    if (g_ring.push(entry)) {
+        health.setQueueDepth(.traces, g_ring.len());
+        Exporter.notifyAccepted();
+    } else {
+        health.recordDiscard(.traces, .ring_full, 1);
+    }
 }
 
 /// Helper: build a SpanEntry from a TraceContext, name, timing, and attributes.
@@ -112,61 +119,92 @@ pub fn addAttr(entry: *SpanEntry, key: []const u8, val: []const u8) bool {
 // Serialization (the exporter's collect hook)
 // ---------------------------------------------------------------------------
 
-fn spansPending() bool {
-    return g_ring.len() > 0;
+fn spansPendingCount() usize {
+    return g_ring.len();
 }
 
-fn collectSpans(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) !?[]const u8 {
+fn collectSpans(
+    alloc: std.mem.Allocator,
+    cfg: otlp_config.GrafanaOtlpConfig,
+    max_entries: usize,
+) otlp_exporter.CollectResult {
+    if (max_entries == 0) return .empty;
+    var removed: usize = 0;
+    const body = collectSpansBody(alloc, cfg, max_entries, &removed) catch {
+        return .{ .serialize_failed = removed };
+    };
+    if (removed == 0) return .empty;
+    return .{ .ready = .{
+        .body = body,
+        .removed_count = removed,
+        .export_count = removed,
+    } };
+}
+
+fn collectSpansBody(
+    alloc: std.mem.Allocator,
+    cfg: otlp_config.GrafanaOtlpConfig,
+    max_entries: usize,
+    removed: *usize,
+) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(alloc);
     try out.print(
         alloc,
         "{{\"resourceSpans\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":{f}}}}}]}},\"scopeSpans\":[{{\"scope\":{{\"name\":\"agentsfleetd\"}},\"spans\":[",
         .{std.json.fmt(cfg.service_name, .{})},
     );
 
-    var count: usize = 0;
     var first = true;
-    while (count < FLUSH_BATCH_SIZE) : (count += 1) {
+    const limit = @min(max_entries, FLUSH_BATCH_SIZE);
+    while (removed.* < limit) {
         const entry = g_ring.pop() orelse break;
+        removed.* += 1;
         if (!first) try out.appendSlice(alloc, ",");
         first = false;
-
-        try out.print(alloc, "{{\"traceId\":\"{s}\",\"spanId\":\"{s}\"", .{ entry.trace_id, entry.span_id });
-        if (entry.has_parent) {
-            try out.print(alloc, ",\"parentSpanId\":\"{s}\"", .{entry.parent_span_id});
-        }
-        // json.fmt emits the surrounding quotes (and escapes); the format must
-        // NOT wrap {f} in its own quotes — doing so produced invalid ""value"".
-        try out.print(
-            alloc,
-            ",\"name\":{f},\"kind\":1,\"startTimeUnixNano\":\"{d}\",\"endTimeUnixNano\":\"{d}\"",
-            .{ std.json.fmt(entry.name[0..entry.name_len], .{}), entry.start_ns, entry.end_ns },
-        );
-
-        if (entry.attr_count > 0) {
-            try out.appendSlice(alloc, ",\"attributes\":[");
-            var ai: u8 = 0;
-            while (ai < entry.attr_count) : (ai += 1) {
-                if (ai > 0) try out.appendSlice(alloc, ",");
-                try out.print(
-                    alloc,
-                    "{{\"key\":{f},\"value\":{{\"stringValue\":{f}}}}}",
-                    .{
-                        std.json.fmt(entry.attrs[ai].key[0..entry.attrs[ai].key_len], .{}),
-                        std.json.fmt(entry.attrs[ai].val[0..entry.attrs[ai].val_len], .{}),
-                    },
-                );
-            }
-            try out.appendSlice(alloc, "]");
-        }
-
-        try out.appendSlice(alloc, "}");
+        try appendSpan(&out, alloc, entry);
     }
 
-    if (count == 0) return null;
+    // Ring drained empty. The envelope prefix is already in `out`, and errdefer
+    // does not cover a successful return — free it here or every empty collect
+    // strands one buffer.
+    if (removed.* == 0) {
+        out.deinit(alloc);
+        return &.{};
+    }
 
     try out.appendSlice(alloc, "]}]}]}");
     return try out.toOwnedSlice(alloc);
+}
+
+fn appendSpan(out: *std.ArrayList(u8), alloc: std.mem.Allocator, entry: SpanEntry) !void {
+    try out.print(alloc, "{{\"traceId\":\"{s}\",\"spanId\":\"{s}\"", .{ entry.trace_id, entry.span_id });
+    if (entry.has_parent) {
+        try out.print(alloc, ",\"parentSpanId\":\"{s}\"", .{entry.parent_span_id});
+    }
+    try out.print(
+        alloc,
+        ",\"name\":{f},\"kind\":1,\"startTimeUnixNano\":\"{d}\",\"endTimeUnixNano\":\"{d}\"",
+        .{ std.json.fmt(entry.name[0..entry.name_len], .{}), entry.start_ns, entry.end_ns },
+    );
+    if (entry.attr_count > 0) try appendAttributes(out, alloc, entry);
+    try out.appendSlice(alloc, "}");
+}
+
+fn appendAttributes(out: *std.ArrayList(u8), alloc: std.mem.Allocator, entry: SpanEntry) !void {
+    try out.appendSlice(alloc, ",\"attributes\":[");
+    for (entry.attrs[0..entry.attr_count], 0..) |attr, attr_index| {
+        if (attr_index > 0) try out.appendSlice(alloc, ",");
+        try out.print(
+            alloc,
+            "{{\"key\":{f},\"value\":{{\"stringValue\":{f}}}}}",
+            .{
+                std.json.fmt(attr.key[0..attr.key_len], .{}),
+                std.json.fmt(attr.val[0..attr.val_len], .{}),
+            },
+        );
+    }
+    try out.appendSlice(alloc, "]");
 }
 
 pub const TestRing = RingT;
@@ -176,18 +214,33 @@ pub const TEST_MAX_NAME_LEN = MAX_NAME_LEN;
 
 /// Test hook: mark installed without spawning the flush thread.
 pub fn testSetInstalled(cfg: otlp_config.GrafanaOtlpConfig) void {
-    Exporter.testSetInstalled(cfg);
+    Exporter.testSetInstalled(common.globalIo(), cfg);
 }
 
 /// Test hook: clear installed state and drain the ring.
 pub fn testClear() void {
     Exporter.testClear();
     while (g_ring.pop()) |_| {}
+    health.setQueueDepth(.traces, 0);
 }
 
 /// Test hook: run one collect (drain + serialize the buffered spans).
 pub fn testCollect(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) !?[]const u8 {
-    return collectSpans(alloc, cfg);
+    return switch (collectSpans(alloc, cfg, FLUSH_BATCH_SIZE)) {
+        .empty => null,
+        .ready => |batch| batch.body,
+        .serialize_failed => error.SerializationFailed,
+    };
+}
+
+/// Test hook: number of entries pending in the production ring.
+pub fn testPendingCount() usize {
+    return spansPendingCount();
+}
+
+/// Test hook: accepted pushes counted toward the next exporter cycle.
+pub fn testAcceptedSinceCycle() u32 {
+    return Exporter.testAcceptedSinceCycle();
 }
 
 test {
