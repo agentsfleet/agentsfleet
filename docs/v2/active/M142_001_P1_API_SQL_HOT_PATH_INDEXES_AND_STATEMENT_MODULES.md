@@ -54,10 +54,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/033_hot_path_indexes.sql` | CREATE | The nine indexes, each with the query that justifies it named in a comment. |
-| `schema/embed.zig` | EDIT | Register the new slot's embed constant. |
-| `src/agentsfleetd/cmd/common.zig` | EDIT | Append the slot to the canonical migration array. |
-| `src/agentsfleetd/db/migration_versions.zig` | EDIT | Extend the version list and its index-based assertions. |
+| `schema/033_hot_path_indexes.sql` | CREATE | The ten indexes, each with the query that justifies it named in a comment. |
+| `schema/embed.zig` | EDIT | Register the new slot. This is the ONLY registration edit — see the correction below. |
 | `scripts/check_sql_statement_modules.py` | CREATE | Compute and gate statement-module adoption. |
 | `scripts/check_sql_statement_modules_test.py` | CREATE | Prove the checker's denominator, exclusions, and threshold behaviour. |
 | `make/lint.mk` | EDIT | Wire the adoption checker into repository conformance. |
@@ -115,10 +113,10 @@ Nine indexes, each tied to a query that scans or sorts today. The two sweeper re
 
 **Implementation default:** one migration slot for all nine, because they share a justification and a rollback; splitting them across slots would make the evidence in §1's test harder to read than the change itself.
 
-- **Dimension 1.1** — the slot applies cleanly to a fresh bootstrap and to an already-provisioned database, twice in a row → Test `test_migration_slot_is_idempotent`
+- **Dimension 1.1** — the slot applies cleanly to a fresh bootstrap and to an already-provisioned database, twice in a row → Test `test_migration_slot_is_idempotent` — **DONE**
 - **Dimension 1.2** — the affinity-expiry sweep is planned as an index scan → Test `test_affinity_expiry_uses_index`
-- **Dimension 1.3** — the due-runner read satisfies both its filter and its ordering from an index → Test `test_due_runner_read_is_index_ordered`
-- **Dimension 1.4** — memory hydration returns rows pre-ordered, with no sort node → Test `test_memory_hydrate_plans_without_sort`
+- **Dimension 1.3** — the due-runner read satisfies both its filter and its ordering from an index → Test `test_due_runner_read_is_index_ordered` — **DONE**
+- **Dimension 1.4** — a bounded memory read over a fleet's entries is served pre-ordered by the composite index, with no sort node → Test `test_bounded_memory_read_is_index_ordered` — **amended at EXECUTE against measured plans; see Discovery. The original wording ("memory hydration returns rows pre-ordered") is not achievable: `fleet_memory.listAll` fetches a fleet's whole memory set with no `LIMIT`, and for an unbounded fetch PostgreSQL correctly prefers bitmap-scan-plus-sort whether or not the redundant narrow index is present.**
 - **Dimension 1.5** — the workspace event keyset resolves as a single index seek rather than a seek plus filter → Test `test_event_keyset_is_index_seek`
 - **Dimension 1.6** — the reclaim lease lookup and the fleet-list page each plan against their new index → Test `test_reclaim_and_fleet_list_use_indexes`
 
@@ -191,7 +189,7 @@ sql.zig modules (internal)
 |------|-------|--------------------------------------------------------|
 | Migration applied twice | Re-run against a provisioned database | `IF NOT EXISTS` guards make every statement a no-op; the version row is unchanged and no error surfaces. |
 | Index created but not chosen | Planner prefers a sequential scan on a small seeded table | The index-usage test seeds enough rows to make the index the cheaper plan and asserts the plan, so a merely-created index fails the rubric rather than passing it. |
-| Index creation locks a live table | Building against a populated production table | The slot builds concurrently where the migration runner allows it; the operator-visible effect is a longer migration, never a blocked write path. |
+| Index creation locks a live table | Building against a populated production table | **Corrected at EXECUTE:** the runner cannot build concurrently. `pool_migrations.zig` wraps every slot in `BEGIN`/`COMMIT`, and PostgreSQL rejects `CREATE INDEX CONCURRENTLY` inside a transaction block, so each build takes a ShareLock for its duration. On a large table the operator creates the indexes by hand outside the migration first; the `IF NOT EXISTS` guards then make the slot a no-op. |
 | Write throughput regresses | Nine new indexes on tables with hot insert paths | The seeded workload measures insert cost before and after; a regression past the recorded bound returns the offending index to EXECUTE. |
 | A removal candidate is live | An index §2 proposes to drop is used by an unmeasured path | Removal is gated on recorded zero scans plus owner approval; absent either, §2 is dropped and §1 ships alone. |
 | Extraction changes statement text | A statement is edited while being moved | The integration suite runs unmodified across §5's commit; any behavioural difference fails it. |
@@ -224,7 +222,7 @@ This workstream changes no product-analytics event, no operator metric, and no f
 | 1.1 | integration | `test_migration_slot_is_idempotent` | applying the slot to a fresh and to a provisioned database, twice each, leaves identical index sets and raises nothing. |
 | 1.2 | integration | `test_affinity_expiry_uses_index` | with a seeded affinity population, the sweep's expiry statement plans as an index scan on the runner column. |
 | 1.3 | integration | `test_due_runner_read_is_index_ordered` | the due-runner read plans without a sort node and reads no more rows than its batch bound. |
-| 1.4 | integration | `test_memory_hydrate_plans_without_sort` | a hydration read over a seeded fleet plans without a sort node and returns rows newest-first. |
+| 1.4 | integration | `test_bounded_memory_read_is_index_ordered` | a bounded read over a fleet holding 4 000 of 40 000 entries plans as an index scan on the composite, with no sort node. |
 | 1.5 | integration | `test_event_keyset_is_index_seek` | a workspace keyset page plans as an index seek with no post-filter on the tiebreak column. |
 | 1.6 | integration | `test_reclaim_and_fleet_list_use_indexes` | the reclaim lookup and the fleet-list page each plan against their new index. |
 | 2.1 | integration | `test_redundant_indexes_record_no_scans` | after the seeded workload, each removal candidate records zero scans. |
@@ -317,6 +315,13 @@ N/A — no files deleted.
 - **Source finding** — `globToLike` escapes `%` and `_` but passes `\` through, so an actor filter ending in a backslash produces a pattern PostgreSQL rejects with `22025`, surfacing as a 500 on user input.
 - **Source finding** — 81 statements live in 11 `sql.zig` modules; 68 production modules still carry statement text inline, which is why auditing the query surface requires reading 68 files rather than 11.
 - **Adjacent finding (not this spec's scope)** — `M139_001` names two different specs on `main`: `docs/v2/done/M139_001_P1_API_UI_FLEET_EVENT_LEGIBILITY.md` and `docs/v2/pending/M139_001_P1_API_INFRA_OWNER_SAFE_DEADLINE_SCHEDULER.md`. If the deadline-scheduler branch has not renumbered its workstream, the collision resolves on merge or needs a rename; raised here so it is not lost.
+- **EXECUTE correction — the slot registers in one file, not three.** Files Changed named `cmd/common.zig` and `db/migration_versions.zig` as edits. Neither is needed. `schema/embed.zig` says so itself — *"adding a migration is ONE edit (one line here), not two files"* — because `common.canonicalMigrations()` derives the array from it at comptime, and `migration_versions.zig` holds a capacity constant (`MAX_TRACKED_MIGRATIONS = 64`), not an index-keyed assertion list. Slot 33 is well inside it. Both rows dropped from the table.
+- **EXECUTE correction — ten indexes, not nine.** The runner-list sort allowlist is four options over two columns (`created_at`, `host_id`, each direction), and one btree cannot serve both columns. Every index still traces to a named query; the count was the estimate, not the requirement.
+- **EXECUTE correction — the migration cannot build concurrently.** See the amended Failure Modes row. Load-bearing for anyone applying this to a populated database.
+- **§1 evidence — the sweeper read, measured.** On a 20 000-row `fleet.runners` fixture, `fetchDueRunners` before the slot plans as `Seq Scan` + `Sort` over the whole table; after, as `Index Scan using idx_runners_updated_at_id` with **no sort node**, returning its 200-row batch in **6 shared buffer hits**, with the lease subplan `never executed`. That is the P1 justification, and it is why the tests assert on the plan rather than on the index existing.
+- **§2 evidence (partial) — `idx_memory_entries_fleet_id` is superseded.** On a 4 000-of-40 000 fixture, dropping the narrow index moves the hydration read onto `idx_memory_entries_fleet_id_updated_at_id` with no other plan change: the composite serves the same equality filter, as its prefix. That is one of the three removals evidenced. `idx_api_keys_key_hash_active` and `idx_memory_entries_category` still need their scan counts before the decision Indy reserved.
+- **Open question raised at EXECUTE — does index 4 earn its place before §2 lands?** With the narrow index still present, the unbounded `listAll` keeps choosing it, so the composite's read benefit today is limited to bounded reads while its write cost is paid on every memory write. It becomes unambiguously load-bearing the moment §2 drops the narrow index. Options: ship both together, or hold index 4 with §2. Indy's call — flagged, not decided.
+- **Environment note — the integration database is shared and was being reset mid-run.** `make/test-integration.mk`'s `_reset-test-db` hardcodes `-d agentsfleetdb`, so a suite run from any checkout drops every schema out from under a concurrent run in another worktree. This workstream's plan assertions therefore run against a dedicated `agentsfleetdb_m142`. Worth a follow-up so worktrees do not collide by default.
 - **Metrics review** — no product-analytics event, operator metric, or funnel changes; no analytics playbook update required.
 - **Skill-chain outcomes** —
 - **Deferrals** —
