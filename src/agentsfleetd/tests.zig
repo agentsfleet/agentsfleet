@@ -82,6 +82,7 @@ test {
     _ = @import("http/stream_registry.zig");
     _ = @import("http/fleet_runner_events_integration_test.zig");
     _ = @import("http/runner_enrollment_integration_test.zig");
+    _ = @import("http/route_trace_integration_test.zig");
     _ = @import("http/secrets_json_metadata_integration_test.zig");
     _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
     _ = @import("http/tenant_model_entries_integration_test.zig");
@@ -113,6 +114,7 @@ test {
     _ = @import("observability/otel_metrics.zig");
     _ = @import("observability/otel_metrics_payload.zig");
     _ = @import("observability/otel_metrics_aggregate.zig");
+    _ = @import("observability/otel_metrics_cardinality.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");

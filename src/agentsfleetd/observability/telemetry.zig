@@ -94,16 +94,36 @@ pub const TestBackend = struct {
     threadlocal var ring: [64]?RecordedEvent = [_]?RecordedEvent{null} ** 64;
     threadlocal var count: usize = 0;
 
+    // The ring above is deliberately threadlocal, which makes it blind to an
+    // integration test: that drives the real handler on an httpz worker thread
+    // and asserts from the test thread. This per-kind tally is the cross-thread
+    // view — counts only, so it can stay allocation-free and lock-free.
+    const KIND_COUNT = @typeInfo(EventKind).@"enum".fields.len;
+    var global_counts = [_]std.atomic.Value(u32){std.atomic.Value(u32).init(0)} ** KIND_COUNT;
+
     pub fn capture(_: *TestBackend, comptime E: type, event: E) void {
         const did = if (@hasField(E, DISTINCT_ID_FIELD)) event.distinct_id else S_SYSTEM;
         const wid = if (@hasField(E, "workspace_id")) event.workspace_id else "";
         ring[count % 64] = RecordedEvent.initFromSlices(E.kind, did, wid);
         count += 1;
+        _ = global_counts[@intFromEnum(E.kind)].fetchAdd(1, .acq_rel);
     }
 
     pub fn reset() void {
         ring = [_]?RecordedEvent{null} ** 64;
         count = 0;
+    }
+
+    /// Captures of one kind recorded by ANY thread since `resetGlobal`.
+    pub fn globalCount(kind: EventKind) u32 {
+        // safe because: the paired fetchAdd releases, so an acquire load here
+        // observes every capture that happened-before it on the worker thread.
+        return global_counts[@intFromEnum(kind)].load(.acquire);
+    }
+
+    /// Clear the cross-thread tally. Call before driving the path under test.
+    pub fn resetGlobal() void {
+        for (&global_counts) |*value| value.store(0, .release);
     }
 
     pub fn lastEvent() ?RecordedEvent {
