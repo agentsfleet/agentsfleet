@@ -9,6 +9,7 @@
 //! retryable rather than a generic 500.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const logging = @import("log");
@@ -171,11 +172,7 @@ fn snapshotForUpdate(
     workspace_id: []const u8,
     fleet_id: []const u8,
 ) anyerror!?Snapshot {
-    var q = PgQuery.from(conn.query(
-        \\SELECT name, status, source_markdown, trigger_markdown FROM core.fleets
-        \\WHERE id = $1::uuid AND workspace_id = $2::uuid
-        \\FOR UPDATE
-    , .{ fleet_id, workspace_id }) catch |err| return lockTimeoutOr(conn, err));
+    var q = PgQuery.from(conn.query(sql.SELECT_FLEET_FOR_UPDATE, .{ fleet_id, workspace_id }) catch |err| return lockTimeoutOr(conn, err));
     defer q.deinit();
 
     const row = (try q.next()) orelse return null;
@@ -211,26 +208,7 @@ fn updateFleetRow(
     const killed = fleet_config.FleetStatus.killed.toSlice();
     const paused = fleet_config.FleetStatus.paused.toSlice();
 
-    var upd_q = PgQuery.from(conn.query(
-        \\UPDATE core.fleets SET
-        \\    config_json      = COALESCE($1::jsonb, config_json),
-        \\    status           = COALESCE($2,        status),
-        \\    trigger_markdown = COALESCE($11,       trigger_markdown),
-        \\    source_markdown  = COALESCE($12,       source_markdown),
-        \\    name             = COALESCE($13,       name),
-        \\    required_tags    = COALESCE($14::text[], required_tags),
-        \\    updated_at       = $3
-        \\WHERE id = $4::uuid
-        \\  AND workspace_id = $5::uuid
-        \\  AND status != $6
-        \\  AND (
-        \\        $2::text IS NULL
-        \\     OR ($2 = $6)
-        \\     OR ($2 = $7 AND status = ANY($9::text[]))
-        \\     OR ($2 = $8 AND status = ANY($10::text[]))
-        \\  )
-        \\RETURNING updated_at
-    , .{
+    var upd_q = PgQuery.from(conn.query(sql.PATCH_FLEET, .{
         new_config_json,
         body.status,
         now_ms,

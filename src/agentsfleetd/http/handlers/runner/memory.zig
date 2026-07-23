@@ -17,6 +17,7 @@
 //! `WHERE fleet_id = $1` at the database (never a fetch-all + in-memory filter).
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
@@ -222,15 +223,7 @@ pub fn innerRunnerMemoryHydrate(hx: Hx, fleet_id: []const u8) void {
 /// so a reclaim that bumped the seq strands the old holder below it. Null when the
 /// runner holds no live lease for the fleet; error on DB failure.
 pub fn liveLeaseSeq(conn: *pg.Conn, runner_id: []const u8, fleet_id: []const u8, now_ms: i64) !?u64 {
-    var q = PgQuery.from(try conn.query(
-        \\SELECT COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
-        \\FROM fleet.runner_leases l
-        \\LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
-        \\WHERE l.runner_id = $1::uuid AND l.fleet_id = $2::uuid
-        \\  AND l.status = $3 AND l.lease_expires_at > $4
-        \\ORDER BY l.created_at DESC
-        \\LIMIT 1
-    , .{ runner_id, fleet_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, now_ms }));
+    var q = PgQuery.from(try conn.query(sql.SELECT_LIVE_FENCE_BY_FLEET, .{ runner_id, fleet_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     // fencing seqs are server-issued and monotonic (never negative); a negative
@@ -247,14 +240,7 @@ pub fn liveLeaseSeq(conn: *pg.Conn, runner_id: []const u8, fleet_id: []const u8,
 /// lease.fencing_token)` so a reclaim that bumped the seq strands the old holder
 /// below it. Null when no such live lease; error on DB failure.
 pub fn pushLeaseSeq(conn: *pg.Conn, runner_id: []const u8, lease_id: []const u8, fleet_id: []const u8, now_ms: i64) !?u64 {
-    var q = PgQuery.from(try conn.query(
-        \\SELECT COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
-        \\FROM fleet.runner_leases l
-        \\LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
-        \\WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.fleet_id = $3::uuid
-        \\  AND l.status = $4 AND l.lease_expires_at > $5
-        \\LIMIT 1
-    , .{ lease_id, runner_id, fleet_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, now_ms }));
+    var q = PgQuery.from(try conn.query(sql.SELECT_LIVE_FENCE_BY_LEASE, .{ lease_id, runner_id, fleet_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     // fencing seqs are server-issued and monotonic (never negative); a negative

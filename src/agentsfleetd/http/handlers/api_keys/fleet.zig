@@ -93,8 +93,7 @@ pub fn innerCreateFleetKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
 
     // Verify fleet belongs to this workspace before minting key material.
     {
-        var fleet_q = PgQuery.from(conn.query(
-            sql.SELECT_FLEET_IN_WORKSPACE, .{ body.fleet_id, workspace_id }) catch {
+        var fleet_q = PgQuery.from(conn.query(sql.SELECT_FLEET_IN_WORKSPACE, .{ body.fleet_id, workspace_id }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return;
         });
@@ -123,8 +122,7 @@ pub fn innerCreateFleetKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
     const now_ms = clock.nowMillis();
     const desc = body.description orelse "";
 
-    _ = conn.exec(
-        sql.INSERT_FLEET_KEY, .{ fleet_key_id, workspace_id, body.fleet_id, body.name, desc, key_hash, now_ms }) catch {
+    _ = conn.exec(sql.INSERT_FLEET_KEY, .{ fleet_key_id, workspace_id, body.fleet_id, body.name, desc, key_hash, now_ms }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -172,8 +170,7 @@ pub fn innerListFleetKeys(hx: Hx, workspace_id: []const u8) void {
         return;
     }
 
-    var q = PgQuery.from(conn.query(
-        sql.SELECT_FLEET_KEYS_FOR_WORKSPACE, .{workspace_id}) catch {
+    var q = PgQuery.from(conn.query(sql.SELECT_FLEET_KEYS_FOR_WORKSPACE, .{workspace_id}) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -215,8 +212,7 @@ pub fn innerDeleteFleetKey(hx: Hx, workspace_id: []const u8, fleet_key_id: []con
         return;
     }
 
-    var del_q = PgQuery.from(conn.query(
-        sql.DELETE_FLEET_KEY, .{ fleet_key_id, workspace_id }) catch {
+    var del_q = PgQuery.from(conn.query(sql.DELETE_FLEET_KEY, .{ fleet_key_id, workspace_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });

@@ -133,8 +133,7 @@ fn performCreate(
     // name collisions. Pre-flight SELECT would create a TOCTOU window
     // where two concurrent POSTs could both pass the check and race.
     const description: []const u8 = body.description orelse "";
-    _ = conn.exec(
-        sql.INSERT_TENANT_KEY, .{ id, tenant_id, body.key_name, description, key_hash[0..], user_id, now_ms }) catch {
+    _ = conn.exec(sql.INSERT_TENANT_KEY, .{ id, tenant_id, body.key_name, description, key_hash[0..], user_id, now_ms }) catch {
         if (conn.err) |pe| {
             if (std.mem.eql(u8, pe.code, "23505")) return error.NameTaken;
         }
@@ -191,8 +190,7 @@ pub fn innerPatchApiKey(hx: Hx, req: *httpz.Request, key_id: []const u8) void {
 
 fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u8, key_id: []const u8) void {
     const now_ms = clock.nowMillis();
-    var q = PgQuery.from(conn.query(
-        sql.REVOKE_TENANT_KEY, .{ key_id, tenant_id, now_ms }) catch {
+    var q = PgQuery.from(conn.query(sql.REVOKE_TENANT_KEY, .{ key_id, tenant_id, now_ms }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -234,8 +232,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    var q = PgQuery.from(conn.query(
-        sql.DELETE_TENANT_KEY, .{ key_id, tenant_id }) catch {
+    var q = PgQuery.from(conn.query(sql.DELETE_TENANT_KEY, .{ key_id, tenant_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });

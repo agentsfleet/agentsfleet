@@ -10,6 +10,7 @@
 //! decision=denied   → status=revoked,  revoked_at set
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
@@ -75,9 +76,7 @@ fn verifyAndConsumeNonce(
 fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, fleet_id: []const u8) []const u8 {
     const conn = pool.acquire() catch return "";
     defer pool.release(conn);
-    var q = PgQuery.from(conn.query(
-        \\SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid LIMIT 1
-    , .{fleet_id}) catch return "");
+    var q = PgQuery.from(conn.query(sql.SELECT_FLEET_WORKSPACE, .{fleet_id}) catch return "");
     defer q.deinit();
     const row_opt = q.next() catch return "";
     const row = row_opt orelse return "";
@@ -107,17 +106,9 @@ fn applyDecision(
     now_ms: i64,
 ) DecisionOutcome {
     const affected = if (is_approved)
-        conn.exec(
-            \\UPDATE core.integration_grants
-            \\SET status = $1, approved_at = $2
-            \\WHERE grant_id = $3 AND fleet_id = $4::uuid AND status = $5
-        , .{ STATUS_APPROVED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch return .db_error
+        conn.exec(sql.APPROVE_GRANT, .{ STATUS_APPROVED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch return .db_error
     else
-        conn.exec(
-            \\UPDATE core.integration_grants
-            \\SET status = $1, revoked_at = $2
-            \\WHERE grant_id = $3 AND fleet_id = $4::uuid AND status = $5
-        , .{ STATUS_REVOKED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch return .db_error;
+        conn.exec(sql.REVOKE_GRANT, .{ STATUS_REVOKED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch return .db_error;
 
     // 0 rows affected → the WHERE's `status = pending` clause didn't match, i.e.
     // the grant was already resolved. 1 row → this call applied the decision.

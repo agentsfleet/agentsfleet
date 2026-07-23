@@ -56,8 +56,7 @@ pub fn findExistingByOidcSubject(
     alloc: std.mem.Allocator,
     oidc_subject: []const u8,
 ) !?ExistingAccount {
-    var q = PgQuery.from(try conn.query(
-        sql.SELECT_BOOTSTRAP_IDENTITY, .{oidc_subject}));
+    var q = PgQuery.from(try conn.query(sql.SELECT_BOOTSTRAP_IDENTITY, .{oidc_subject}));
     defer q.deinit();
 
     const row = (try q.next()) orelse return null;
@@ -79,13 +78,11 @@ pub fn findExistingByOidcSubject(
 }
 
 pub fn insertTenant(conn: *pg.Conn, row: TenantRow) !void {
-    _ = try conn.exec(
-        sql.INSERT_TENANT, .{ row.tenant_id, row.name, row.now_ms });
+    _ = try conn.exec(sql.INSERT_TENANT, .{ row.tenant_id, row.name, row.now_ms });
 }
 
 pub fn insertUser(conn: *pg.Conn, row: UserRow) !void {
-    _ = try conn.exec(
-        sql.INSERT_USER, .{ row.user_id, row.tenant_id, row.oidc_subject, row.email, row.display_name, row.now_ms });
+    _ = try conn.exec(sql.INSERT_USER, .{ row.user_id, row.tenant_id, row.oidc_subject, row.email, row.display_name, row.now_ms });
 }
 
 pub fn insertMembership(
@@ -97,8 +94,7 @@ pub fn insertMembership(
 ) !void {
     const uid_value = try id_format.generateUuidV7();
     const uid: []const u8 = &uid_value;
-    _ = try conn.exec(
-        sql.INSERT_MEMBERSHIP, .{ uid, tenant_id, user_id, role, now_ms });
+    _ = try conn.exec(sql.INSERT_MEMBERSHIP, .{ uid, tenant_id, user_id, role, now_ms });
 }
 
 /// Returns true on insert, false on (tenant_id, name) collision. Caller
@@ -106,7 +102,6 @@ pub fn insertMembership(
 /// partial unique index `uq_workspaces_tenant_name` from schema/001 —
 /// single statement keeps the connection clean inside the enclosing tx.
 pub fn tryInsertWorkspace(conn: *pg.Conn, row: WorkspaceRow) !bool {
-    const affected = try conn.exec(
-        sql.INSERT_WORKSPACE, .{ row.workspace_id, row.tenant_id, row.name, row.created_by, row.now_ms });
+    const affected = try conn.exec(sql.INSERT_WORKSPACE, .{ row.workspace_id, row.tenant_id, row.name, row.created_by, row.now_ms });
     return (affected orelse 0) > 0;
 }

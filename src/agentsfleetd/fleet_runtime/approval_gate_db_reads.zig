@@ -5,6 +5,7 @@
 // snapshot-consistent within a single statement, no cross-row locking.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const keyset_cursor = @import("keyset_cursor.zig");
@@ -87,22 +88,7 @@ pub fn listPending(
     const cursor_id: []const u8 = if (cursor) |c| c.id else "";
     const has_cursor: bool = cursor != null;
 
-    var q = PgQuery.from(try conn.query(
-        \\SELECT g.id::text, g.fleet_id::text, COALESCE(z.name, ''),
-        \\       g.workspace_id::text, g.action_id, g.tool_name, g.action_name,
-        \\       g.gate_kind, g.proposed_action, g.evidence::text, g.blast_radius,
-        \\       g.status, g.detail, g.requested_at, g.timeout_at,
-        \\       g.updated_at, g.resolved_by
-        \\FROM core.fleet_approval_gates g
-        \\JOIN core.fleets z ON z.id = g.fleet_id
-        \\WHERE g.workspace_id = $1::uuid
-        \\  AND g.status = $2
-        \\  AND ($3 = '' OR g.fleet_id = $3::uuid)
-        \\  AND ($4 = '' OR g.gate_kind = $4)
-        \\  AND ($5 = false OR (g.requested_at, g.id::text) > ($6, $7))
-        \\ORDER BY g.requested_at ASC, g.id ASC
-        \\LIMIT $8
-    , .{
+    var q = PgQuery.from(try conn.query(sql.SELECT_GATE_PAGE, .{
         filter.workspace_id, status_param, fleet_param, kind_param,
         has_cursor,          cursor_ts,    cursor_id,   @as(i64, @intCast(limit)),
     }));
@@ -133,16 +119,7 @@ pub fn getByGateId(
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    var q = PgQuery.from(try conn.query(
-        \\SELECT g.id::text, g.fleet_id::text, COALESCE(z.name, ''),
-        \\       g.workspace_id::text, g.action_id, g.tool_name, g.action_name,
-        \\       g.gate_kind, g.proposed_action, g.evidence::text, g.blast_radius,
-        \\       g.status, g.detail, g.requested_at, g.timeout_at,
-        \\       g.updated_at, g.resolved_by
-        \\FROM core.fleet_approval_gates g
-        \\JOIN core.fleets z ON z.id = g.fleet_id
-        \\WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid
-    , .{ gate_id, workspace_id }));
+    var q = PgQuery.from(try conn.query(sql.SELECT_GATE_BY_ID, .{ gate_id, workspace_id }));
     defer q.deinit();
 
     if (try q.next()) |row| {

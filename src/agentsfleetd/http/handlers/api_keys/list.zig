@@ -83,8 +83,7 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?PageRo
     const offset: i64 = @as(i64, q.page - 1) * @as(i64, q.page_size);
     const limit: i64 = q.page_size;
     // order_sql comes from sortClauseFor's fixed allowlist, never user input.
-    const list_sql = std.fmt.allocPrint(hx.alloc,
-        sql.SELECT_TENANT_KEY_PAGE_FMT, .{ q.order_sql, q.order_sql }) catch {
+    const list_sql = std.fmt.allocPrint(hx.alloc, sql.SELECT_TENANT_KEY_PAGE_FMT, .{ q.order_sql, q.order_sql }) catch {
         common.internalOperationError(hx.res, "Query build failed", hx.req_id);
         return null;
     };
