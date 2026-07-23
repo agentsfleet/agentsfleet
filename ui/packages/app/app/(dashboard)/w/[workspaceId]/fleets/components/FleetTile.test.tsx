@@ -17,7 +17,12 @@ vi.mock("@/components/domain/useWorkspaceStream", () => ({
   useWorkspaceFleetStream: (...a: unknown[]) => streamMock(...a),
 }));
 
-import FleetTile from "./FleetTile";
+import FleetTile, {
+  FLEET_AGENT_DESCRIPTION,
+  FLEET_NO_LIVE_ACTIVITY_COPY,
+  FLEET_WAITING_COPY,
+  MANAGE_FLEET_LABEL,
+} from "./FleetTile";
 import {
   TILE_CATCHING_UP_EYEBROW,
   TILE_EVENTS_SUFFIX,
@@ -54,18 +59,19 @@ afterEach(() => {
   streamMock.mockReset();
 });
 
-describe("FleetTile — the three kinds (Inv. 1)", () => {
-  it("a parked fleet is a drained tile that never calls the stream hook (1.3)", () => {
-    const { container } = renderTile(fleet({ status: "stopped" }));
+describe("FleetTile kinds", () => {
+  it("a parked fleet is a drained tile that never calls the stream hook", () => {
+    const { container, getByText } = renderTile(fleet({ status: "stopped" }));
     expect(streamMock).not.toHaveBeenCalled();
     const card = container.querySelector("[data-kind]");
     expect(card?.getAttribute("data-kind")).toBe("drained");
     expect(card?.className).toContain("opacity-60");
+    expect(getByText(FLEET_NO_LIVE_ACTIVITY_COPY)).toBeTruthy();
     // Every tile links to its console, drained included.
     expect(container.querySelector('a[href="/w/ws_1/fleets/flt_1"]')).not.toBeNull();
   });
 
-  it("an active fleet with a live stream renders the live kind + server-truth footer, pulse animating (1.2, 2.1)", () => {
+  it("an active fleet renders live identity, agent purpose, management, and server truth", () => {
     streamMock.mockReturnValue({
       events: [],
       connectionStatus: CONNECTION_STATUS.LIVE,
@@ -73,8 +79,15 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
       isLive: true,
       catchingUp: false,
     });
-    const { container, getByText } = renderTile(fleet());
+    const { container, getByRole, getByText } = renderTile(fleet());
     expect(container.querySelector('[data-kind="live"]')).not.toBeNull();
+    expect(container.querySelector('[data-fleet-sigil][data-live="true"]')).not.toBeNull();
+    expect(getByText(FLEET_AGENT_DESCRIPTION)).toBeTruthy();
+    expect(getByText(FLEET_WAITING_COPY)).toBeTruthy();
+    expect(getByText(MANAGE_FLEET_LABEL, { exact: false })).toBeTruthy();
+    expect(
+      getByRole("link", { name: /manage fleet: alpha — agent [a-z]+-[0-9a-f]{4} — active/i }),
+    ).toBeTruthy();
     // Footer reads server truth, not token math — figures carry their unit as
     // a plain word, never an abbreviation.
     expect(getByText("$1.20 spent")).toBeTruthy();
@@ -84,7 +97,7 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
     expect(container.querySelector('[data-live="true"]')).not.toBeNull();
   });
 
-  it("a reconnecting stream degrades to a snapshot tile with its last event, pulse STILL (2.2, 2.3)", async () => {
+  it("a reconnecting stream degrades to a snapshot tile with its last event and a still sigil", async () => {
     streamMock.mockReturnValue({
       events: [{ id: "e1", role: "assistant", actor: "fleet", text: "ran a check", createdAt: new Date(0), status: "received" }],
       connectionStatus: CONNECTION_STATUS.RECONNECTING,
@@ -114,6 +127,104 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
     expect(container.querySelector('[data-live="true"]')).toBeNull();
   });
 
+  it("derives a stable, distinct robot sigil from the immutable fleet id", () => {
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
+    });
+    const { container } = render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(FleetTile, { fleet: fleet({ id: "fleet-alpha" }), workspaceId: "ws_1" }),
+          React.createElement(FleetTile, { fleet: fleet({ id: "fleet-bravo" }), workspaceId: "ws_1" }),
+          React.createElement(FleetTile, { fleet: fleet({ id: "fleet-alpha" }), workspaceId: "ws_1" }),
+        ),
+      ),
+    );
+    const sigils = Array.from(container.querySelectorAll("[data-fleet-sigil]"));
+    const agentNames = Array.from(container.querySelectorAll("[data-agent-name]"));
+    expect(sigils).toHaveLength(3);
+    expect(agentNames).toHaveLength(3);
+    expect(sigils[0]?.getAttribute("data-fleet-sigil")).toBe(
+      sigils[2]?.getAttribute("data-fleet-sigil"),
+    );
+    expect(sigils[0]?.getAttribute("data-fleet-sigil")).not.toBe(
+      sigils[1]?.getAttribute("data-fleet-sigil"),
+    );
+    expect(agentNames[0]?.getAttribute("data-agent-name")).toBe(
+      agentNames[2]?.getAttribute("data-agent-name"),
+    );
+    expect(agentNames[0]?.getAttribute("data-agent-name")).not.toBe(
+      agentNames[1]?.getAttribute("data-agent-name"),
+    );
+    expect(container.textContent).toMatch(/Agent [A-Za-z]+-[0-9A-F]{4}/);
+  });
+
+  it("distinguishes same-named fleet links by their agent callsigns", () => {
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
+    });
+    const { getAllByRole } = render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(FleetTile, { fleet: fleet({ id: "fleet-alpha" }), workspaceId: "ws_1" }),
+          React.createElement(FleetTile, { fleet: fleet({ id: "fleet-bravo" }), workspaceId: "ws_1" }),
+        ),
+      ),
+    );
+    const labels = getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    expect(labels[0]).toMatch(/^Manage fleet: alpha — Agent [A-Za-z]+-[0-9A-F]{4} — active$/);
+    expect(labels[1]).toMatch(/^Manage fleet: alpha — Agent [A-Za-z]+-[0-9A-F]{4} — active$/);
+    expect(labels[0]).not.toBe(labels[1]);
+  });
+
+  it("preserves the canonical callsign and mirrored sigil geometry", () => {
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
+    });
+    const { container } = renderTile(
+      fleet({ id: "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee" }),
+    );
+    expect(container.querySelector('[data-fleet-sigil="4bce8453"]')).not.toBeNull();
+    expect(container.querySelector('[data-agent-name="Lumen-8453"]')).not.toBeNull();
+
+    const cells = Array.from(
+      container.querySelectorAll('svg rect[fill="currentColor"]'),
+      (cell) => ({
+        x: Number(cell.getAttribute("x")),
+        y: Number(cell.getAttribute("y")),
+        width: Number(cell.getAttribute("width")),
+        height: Number(cell.getAttribute("height")),
+      }),
+    );
+    for (const cell of cells) {
+      expect(cell.x).toBeGreaterThanOrEqual(4.5);
+      expect(cell.x + cell.width).toBeLessThanOrEqual(19.5);
+      expect(cell.y).toBeGreaterThanOrEqual(5);
+      expect(cell.y + cell.height).toBeLessThanOrEqual(20);
+      expect(cells).toContainEqual({ ...cell, x: 24 - cell.x - cell.width });
+    }
+  });
+
   it("an installing fleet streams with an info-toned marker", () => {
     streamMock.mockReturnValue({
       events: [],
@@ -124,6 +235,20 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
     });
     const { container } = renderTile(fleet({ status: "installing" }));
     expect(container.querySelector(".bg-info")).not.toBeNull();
+    expect(container.querySelector('[data-fleet-sigil][data-live="true"]')).toBeNull();
+  });
+
+  it("an active fleet does not glow before its stream connects", () => {
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.CONNECTING,
+      helloReceived: false,
+      isLive: true,
+      catchingUp: false,
+    });
+    const { container, getByText } = renderTile(fleet());
+    expect(container.querySelector('[data-fleet-sigil][data-live="true"]')).toBeNull();
+    expect(getByText(FLEET_NO_LIVE_ACTIVITY_COPY)).toBeTruthy();
   });
 
   it("a fleet the daemon sent no aggregates for renders dashes, not $0.00", () => {
