@@ -57,6 +57,7 @@ const Exporter = otlp_exporter.Exporter(.{
     .scope = .otel_traces,
     .collect = collectSpans,
     .pending = spansPending,
+    .wake_threshold = FLUSH_BATCH_SIZE,
 });
 
 pub const install = Exporter.install;
@@ -67,6 +68,7 @@ pub const isInstalled = Exporter.isInstalled;
 pub fn enqueueSpan(entry: SpanEntry) void {
     if (!Exporter.isInstalled()) return;
     _ = g_ring.push(entry);
+    Exporter.notify();
 }
 
 /// Helper: build a SpanEntry from a TraceContext, name, timing, and attributes.

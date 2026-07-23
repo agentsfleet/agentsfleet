@@ -110,8 +110,6 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
         @intCast(body.output_tokens),
         std.math.cast(i64, body.telemetry.wall_ms) orelse std.math.maxInt(i64),
         parsePosture(lease.posture).label(),
-        lease.model,
-        lease.workspace_id,
     );
 
     finalize(hx, runner_id, lease, body);

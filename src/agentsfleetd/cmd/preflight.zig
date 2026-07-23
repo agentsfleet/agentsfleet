@@ -91,9 +91,9 @@ pub fn initTelemetry(env_map: *const EnvMap, alloc: std.mem.Allocator) Telemetry
 /// by all three exporters (RULE UFS).
 const R_FLUSH_SPAWN_FAILED = "flush_thread_spawn_failed";
 
-pub fn initOtelLogs(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
+pub fn initOtelLogs(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) void {
     if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        switch (otel_logs.install(cfg)) {
+        switch (otel_logs.install(io, cfg)) {
             .installed => log.info("startup.otel_logs_ok", .{}),
             .already_running => log.info("startup.otel_logs_already_running", .{}),
             .spawn_failed => log.warn("startup.otel_logs_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
@@ -111,9 +111,9 @@ pub fn deinitOtelLogs() void {
 // OTLP trace exporter
 // ---------------------------------------------------------------------------
 
-pub fn initOtelTraces(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
+pub fn initOtelTraces(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) void {
     if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        switch (otel_traces.install(cfg)) {
+        switch (otel_traces.install(io, cfg)) {
             .installed => log.info("startup.otel_traces_ok", .{}),
             .already_running => log.info("startup.otel_traces_already_running", .{}),
             .spawn_failed => log.warn("startup.otel_traces_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
@@ -131,9 +131,9 @@ pub fn deinitOtelTraces() void {
 // OTLP metric exporter
 // ---------------------------------------------------------------------------
 
-pub fn initOtelMetrics(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
+pub fn initOtelMetrics(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) void {
     if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        switch (otel_metrics.install(cfg)) {
+        switch (otel_metrics.install(io, cfg)) {
             .installed => log.info("startup.otel_metrics_ok", .{}),
             .already_running => log.info("startup.otel_metrics_already_running", .{}),
             .spawn_failed => log.warn("startup.otel_metrics_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
@@ -153,10 +153,10 @@ pub fn deinitOtelMetrics() void {
 
 /// Install all three OTLP exporters (logs/traces/metrics) under the shared
 /// GRAFANA_OTLP_* gate. Pair with `deinitOtelExporters` via `defer`.
-pub fn initOtelExporters(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
-    initOtelLogs(env_map, alloc);
-    initOtelTraces(env_map, alloc);
-    initOtelMetrics(env_map, alloc);
+pub fn initOtelExporters(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) void {
+    initOtelLogs(io, env_map, alloc);
+    initOtelTraces(io, env_map, alloc);
+    initOtelMetrics(io, env_map, alloc);
 }
 
 /// Uninstall all three OTLP exporters (reverse order).

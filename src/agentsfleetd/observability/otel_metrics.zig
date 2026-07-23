@@ -15,7 +15,6 @@ const otlp_ring = @import("otlp/ring.zig");
 const otlp_exporter = @import("otlp/exporter.zig");
 const payload = @import("otel_metrics_payload.zig");
 const aggregate = @import("otel_metrics_aggregate.zig");
-const cardinality = @import("otel_metrics_cardinality.zig");
 
 const OTLP_METRICS_PATH = "/v1/metrics";
 const BUFFER_CAPACITY: usize = 1024;
@@ -34,6 +33,7 @@ const Exporter = otlp_exporter.Exporter(.{
     .scope = .otel_metrics,
     .collect = collectMetrics,
     .pending = metricsPending,
+    .wake_threshold = 768,
 });
 
 pub const install = Exporter.install;
@@ -49,38 +49,34 @@ fn currentNanos() u64 {
 // Callers invoke these AFTER the money transaction commits.
 // ---------------------------------------------------------------------------
 
-/// Record a committed credit-drain delta (nanos) labelled by posture/model and,
-/// when under the cardinality cap, workspace.
-pub fn recordCreditDrain(drained_nanos: i64, posture: []const u8, model: []const u8, workspace: []const u8) void {
+/// Record a committed credit-drain delta (nanos) with fixed posture labels.
+pub fn recordCreditDrain(drained_nanos: i64, posture: []const u8) void {
     if (!isInstalled()) return;
     if (drained_nanos == 0) return;
     var s = payload.newSample(.credit_drain, drained_nanos);
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
-    _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
-    if (workspace.len > 0 and cardinality.allowWorkspace(workspace)) {
-        _ = payload.addLabel(&s, payload.LABEL_WORKSPACE, workspace);
-    }
     _ = g_ring.push(s);
+    Exporter.notify();
 }
 
 /// Record a token-throughput delta for one direction (input/cached/output).
-pub fn recordTokens(count: i64, direction: []const u8, posture: []const u8, model: []const u8) void {
+pub fn recordTokens(count: i64, direction: []const u8, posture: []const u8) void {
     if (!isInstalled()) return;
     if (count == 0) return;
     var s = payload.newSample(.tokens, count);
     _ = payload.addLabel(&s, payload.LABEL_DIRECTION, direction);
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
-    _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
     _ = g_ring.push(s);
+    Exporter.notify();
 }
 
 /// Observe a run's wall-clock duration (ms) into the latency histogram.
-pub fn observeRunDuration(wall_ms: i64, posture: []const u8, model: []const u8) void {
+pub fn observeRunDuration(wall_ms: i64, posture: []const u8) void {
     if (!isInstalled()) return;
     var s = payload.newSample(.run_duration, wall_ms);
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
-    _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
     _ = g_ring.push(s);
+    Exporter.notify();
 }
 
 /// Emit the full metric bundle for one terminal run settlement: the stage
@@ -94,15 +90,13 @@ pub fn recordRunSettlement(
     output_tokens: i64,
     wall_ms: i64,
     posture: []const u8,
-    model: []const u8,
-    workspace: []const u8,
 ) void {
     if (!isInstalled()) return;
-    recordCreditDrain(charged_nanos, posture, model, workspace);
-    recordTokens(input_tokens, payload.DIRECTION_INPUT, posture, model);
-    recordTokens(cached_tokens, payload.DIRECTION_CACHED, posture, model);
-    recordTokens(output_tokens, payload.DIRECTION_OUTPUT, posture, model);
-    observeRunDuration(wall_ms, posture, model);
+    recordCreditDrain(charged_nanos, posture);
+    recordTokens(input_tokens, payload.DIRECTION_INPUT, posture);
+    recordTokens(cached_tokens, payload.DIRECTION_CACHED, posture);
+    recordTokens(output_tokens, payload.DIRECTION_OUTPUT, posture);
+    observeRunDuration(wall_ms, posture);
 }
 
 // ---------------------------------------------------------------------------

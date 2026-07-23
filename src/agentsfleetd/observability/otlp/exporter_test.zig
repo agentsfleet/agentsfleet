@@ -1,4 +1,5 @@
 const std = @import("std");
+const common = @import("common");
 const exporter = @import("exporter.zig");
 const config = @import("config.zig");
 
@@ -29,7 +30,7 @@ const TEST_CFG: config.GrafanaOtlpConfig = .{
 
 test "test_exporter_lifecycle: install spawns the flush thread, uninstall joins within a tick" {
     try std.testing.expect(!TestExporter.isInstalled());
-    try std.testing.expectEqual(TestExporter.InstallOutcome.installed, TestExporter.install(TEST_CFG));
+    try std.testing.expectEqual(TestExporter.InstallOutcome.installed, TestExporter.install(common.globalIo(), TEST_CFG));
     try std.testing.expect(TestExporter.isInstalled());
     // Empty buffer (collect→null) → no POST; uninstall wakes the tick sleep and
     // joins cleanly, no hang.
@@ -38,11 +39,11 @@ test "test_exporter_lifecycle: install spawns the flush thread, uninstall joins 
 }
 
 test "double install loses the claim — single-consumer guard (no orphaned second thread)" {
-    try std.testing.expectEqual(TestExporter.InstallOutcome.installed, TestExporter.install(TEST_CFG));
+    try std.testing.expectEqual(TestExporter.InstallOutcome.installed, TestExporter.install(common.globalIo(), TEST_CFG));
     // Second install while running must NOT spawn a second flush thread (two
     // consumers on one ring would corrupt it, and the overwritten handle
     // would never be joined).
-    try std.testing.expectEqual(TestExporter.InstallOutcome.already_running, TestExporter.install(TEST_CFG));
+    try std.testing.expectEqual(TestExporter.InstallOutcome.already_running, TestExporter.install(common.globalIo(), TEST_CFG));
     try std.testing.expect(TestExporter.isInstalled());
     // uninstall joins the single thread and completes (would hang/leak if a
     // second orphaned thread existed).
@@ -53,7 +54,7 @@ test "double install loses the claim — single-consumer guard (no orphaned seco
 /// Racing installer for the atomic-claim test: records its outcome.
 const RacingInstall = struct {
     fn run(outcome: *TestExporter.InstallOutcome) void {
-        outcome.* = TestExporter.install(TEST_CFG);
+        outcome.* = TestExporter.install(common.globalIo(), TEST_CFG);
     }
 };
 
@@ -111,7 +112,7 @@ const DRAIN_PENDING_SEED: usize = 5;
 
 test "exporter uninstall drains the ring before the flush thread joins" {
     g_drain_ring.store(DRAIN_PENDING_SEED, .release); // buffer pending entries
-    try std.testing.expectEqual(DrainExporter.InstallOutcome.installed, DrainExporter.install(TEST_CFG));
+    try std.testing.expectEqual(DrainExporter.InstallOutcome.installed, DrainExporter.install(common.globalIo(), TEST_CFG));
     // uninstall clears g_running, wakes the tick sleep, and joins the flush
     // thread — whose shutdown-drain loop runs flushOnce while pending() is true,
     // so the ring is empty by the time join returns. The join is the barrier, so

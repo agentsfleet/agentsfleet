@@ -1,4 +1,5 @@
 const std = @import("std");
+const common = @import("common");
 const Client = @import("Client.zig");
 const config = @import("config.zig");
 
@@ -8,7 +9,7 @@ const config = @import("config.zig");
 // (a unit test must not depend on network connectivity). Here we assert the
 // construct → tear-down lifecycle is sound (no crash, no leaked client state).
 test "test_persistent_client_lifecycle: construct and tear down without crash" {
-    var client = Client.init();
+    var client = Client.init(common.globalIo());
     client.deinit();
 }
 
@@ -26,7 +27,7 @@ test "test_persistent_client_lifecycle: construct and tear down without crash" {
 test "test_post_propagates_transport_error_to_exporter_log" {
     const alloc = std.testing.allocator;
 
-    var client = Client.init();
+    var client = Client.init(common.globalIo());
     defer client.deinit();
 
     // 127.0.0.1:1 — a privileged port with no listener; connect() is refused on
@@ -55,7 +56,7 @@ test "test_post_propagates_transport_error_to_exporter_log" {
 test "test_post_propagates_oversized_auth_formatting_error" {
     const alloc = std.testing.allocator;
 
-    var client = Client.init();
+    var client = Client.init(common.globalIo());
     defer client.deinit();
 
     const oversized_instance_id = "x" ** 600; // > the 512-byte auth_raw_buf

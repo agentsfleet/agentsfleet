@@ -14,6 +14,8 @@ const route_scopes = @import("route_scopes.zig");
 const hx_mod = @import("handlers/hx.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const metrics = @import("../observability/metrics.zig");
+const metrics_trace = @import("../observability/metrics_trace.zig");
+const route_trace = @import("route_trace.zig");
 const ZeroizingAllocator = @import("../secrets/zeroizing_allocator.zig");
 const sensitive_request = @import("sensitive_request.zig");
 const logging = @import("log");
@@ -180,7 +182,11 @@ fn invokeMatched(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, r
     const tctx = common.resolveTraceContext(req);
     const start_ns: u64 = @intCast(clock.nowNanos());
     dispatchMatchedRoute(ctx, registry, req, res, matched);
-    emitRequestSpan(tctx, path, start_ns);
+    const monotonic_second = start_ns / std.time.ns_per_s;
+    switch (route_trace.decide(matched, res.status, &tctx.span_id, monotonic_second)) {
+        .emit => emitRequestSpan(tctx, path, start_ns),
+        .suppress => |reason| metrics_trace.inc(reason),
+    }
 }
 
 /// 429 shed: problem+json envelope + Retry-After + X-RateLimit-* (instance
