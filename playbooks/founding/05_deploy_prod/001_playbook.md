@@ -51,7 +51,9 @@ flyctl secrets list --app cloudflared-prod | grep TUNNEL_TOKEN
 cat VERSION   # must match the tag you're about to push, e.g. 0.2.0
 ```
 
-5. Confirm `CHANGELOG.md` has a `## [X.Y.Z]` section for this version.
+5. Confirm the release is described at <https://docs.agentsfleet.net/changelog>. The
+   changelog lives only in the docs site; the GitHub release body links to it and
+   lists this tag's merged pull requests automatically.
 
 6. Confirm `deploy.sh` is bootstrapped and tested on all worker nodes (`playbooks/founding/07_runner_bootstrap_prod/001_playbook.md`). **Do not cut a release tag before this is verified.** If not done:
 ```bash
