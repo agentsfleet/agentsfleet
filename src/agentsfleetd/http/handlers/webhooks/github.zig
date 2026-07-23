@@ -21,6 +21,7 @@
 //         `actor=webhook:github`, `event_type=webhook`. Returns 202.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
@@ -282,9 +283,7 @@ fn deinitFleetRow(row: *const FleetRow, alloc: std.mem.Allocator) void {
 fn fetchFleetById(pool: *pg.Pool, alloc: std.mem.Allocator, fleet_id: []const u8) !?FleetRow {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text, status FROM core.fleets WHERE id = $1::uuid
-    , .{fleet_id}));
+    var q = PgQuery.from(try conn.query(sql.SELECT_FLEET_WORKSPACE_AND_STATUS, .{fleet_id}));
     defer q.deinit();
     const row = try q.next() orelse return null;
     const workspace_id = try alloc.dupe(u8, try row.get([]const u8, 0));

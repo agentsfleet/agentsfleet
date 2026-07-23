@@ -8,6 +8,7 @@
 //! mode wires it later. See `docs/AUTH.md` (Runner token).
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const constants = @import("common");
 const clock = constants.clock;
 const logging = @import("log");
@@ -83,21 +84,7 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
     // last_seen_at = RUNNER_LAST_SEEN_NEVER: the runner is minted but has not
     // connected, so the fleet read derives `registered` (not a fake `online`)
     // until its first heartbeat moves last_seen forward. created/updated = now.
-    _ = conn.exec(
-        \\WITH inserted AS (
-        \\  INSERT INTO fleet.runners
-        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
-        \\   last_seen_at, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::jsonb, NULL, $7::bigint, $8::bigint, $8::bigint)
-        \\  RETURNING id
-        \\)
-        \\INSERT INTO fleet.runner_events
-        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\SELECT $9::uuid, id, $10::text, $8::bigint,
-        \\       jsonb_build_object($11::text, $2::text, $12::text, $4::text),
-        \\       NULL, $8::bigint
-        \\FROM inserted
-    , .{
+    _ = conn.exec(sql.INSERT_RUNNER_WITH_EVENT, .{
         runner_id,
         body.host_id,
         token_hash[0..],

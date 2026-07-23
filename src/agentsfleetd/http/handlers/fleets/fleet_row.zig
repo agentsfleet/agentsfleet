@@ -7,6 +7,7 @@
 //! these primitives touch `httpz.Request` or a principal).
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const pg = @import("pg");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const create_fleet_bundle = @import("create_fleet_bundle.zig");
@@ -30,14 +31,7 @@ pub fn insertFleetOnConn(
 ) !void {
     const bundle_hash: ?[]const u8 = if (bundle_ref) |b| b.content_hash else null;
     const bundle_key: ?[]const u8 = if (bundle_ref) |b| b.snapshot_key else null;
-    _ = try conn.exec(
-        \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
-        \\   status, required_tags, bundle_content_hash,
-        \\   bundle_snapshot_key, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8::text[],
-        \\        $9, $10, $11, $11)
-    , .{
+    _ = try conn.exec(sql.INSERT_FLEET, .{
         fleet_id,
         workspace_id,
         parsed.config.name,
@@ -66,10 +60,7 @@ pub fn insertFleetOnConn(
 /// reactive resident fleet has no provisioning beat and is leaseable the instant
 /// its row + event stream exist.
 pub fn activateFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, now_ms: i64) !void {
-    _ = try conn.exec(
-        \\UPDATE core.fleets SET status = $1, updated_at = $2
-        \\WHERE id = $3::uuid AND workspace_id = $4::uuid AND status = $5
-    , .{
+    _ = try conn.exec(sql.UPDATE_FLEET_STATUS, .{
         fleet_config.FleetStatus.active.toSlice(),
         now_ms,
         fleet_id,
@@ -84,9 +75,7 @@ pub fn activateFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: [
 /// channel-fleet materialization, which deletes its own orphan when it loses
 /// the concurrent first-mention race (Invariant 6).
 pub fn deleteFleetRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8) !void {
-    _ = try conn.exec(
-        \\DELETE FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid
-    , .{ fleet_id, workspace_id });
+    _ = try conn.exec(sql.DELETE_FLEET, .{ fleet_id, workspace_id });
 }
 
 /// True when the last statement on `conn` failed the `uq_fleets_workspace_id_name`

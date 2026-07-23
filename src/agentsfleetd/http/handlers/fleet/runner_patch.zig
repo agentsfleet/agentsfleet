@@ -1,6 +1,7 @@
 //! PATCH /v1/fleets/runners/{id} — platform-admin runner operator plane.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
@@ -89,9 +90,7 @@ fn stateForAction(action: protocol.RunnerAdminAction) protocol.AdminState {
 }
 
 fn loadState(conn: *pg.Conn, runner_id: []const u8) !?protocol.AdminState {
-    var q = PgQuery.from(conn.query(
-        \\SELECT admin_state FROM fleet.runners WHERE id = $1::uuid
-    , .{runner_id}) catch return error.DbError);
+    var q = PgQuery.from(conn.query(sql.SELECT_RUNNER_ADMIN_STATE, .{runner_id}) catch return error.DbError);
     defer q.deinit();
 
     const row = q.next() catch return error.DbError;
@@ -109,31 +108,7 @@ fn updateState(
     const now_ms = clock.nowMillis();
     const bypass_revoked_guard = target == .revoked;
     const event_type = runner_events.eventTypeForAdminState(target);
-    var q = PgQuery.from(conn.query(
-        \\WITH current_state AS (
-        \\  SELECT id, admin_state AS from_admin_state
-        \\  FROM fleet.runners
-        \\  WHERE id = $1::uuid
-        \\  FOR UPDATE
-        \\), updated AS (
-        \\  UPDATE fleet.runners r
-        \\  SET admin_state = $2::text, updated_at = $3::bigint
-        \\  FROM current_state c
-        \\  WHERE r.id = c.id
-        \\    AND ($4::bool OR c.from_admin_state <> $5)
-        \\    AND c.from_admin_state <> $2::text
-        \\  RETURNING r.id::text, c.from_admin_state
-        \\), event AS (
-        \\  INSERT INTO fleet.runner_events
-        \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\  SELECT $6::uuid, id::uuid, $7::text, $3::bigint,
-        \\         jsonb_build_object($8::text, from_admin_state, $9::text, $2::text),
-        \\         NULL, $3::bigint
-        \\  FROM updated
-        \\  RETURNING id
-        \\)
-        \\SELECT id FROM updated
-    , .{
+    var q = PgQuery.from(conn.query(sql.PATCH_RUNNER_ADMIN_STATE, .{
         runner_id,
         @tagName(target),
         now_ms,

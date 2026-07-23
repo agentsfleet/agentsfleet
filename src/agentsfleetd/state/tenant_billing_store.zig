@@ -25,8 +25,7 @@ pub fn insertIfAbsent(
     grant_source: []const u8,
 ) !void {
     const now_ms = clock.nowMillis();
-    _ = try conn.exec(
-        sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
+    _ = try conn.exec(sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
 }
 
 pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
@@ -49,8 +48,7 @@ pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
     // there is a prior top-up moving balance_nanos above zero. Keeping
     // this in the same UPDATE keeps the transition atomic so the `stop`
     // gate can never see "positive balance AND exhausted_at set".
-    var q = PgQuery.from(try conn.query(
-        sql.DEBIT_TENANT_BALANCE, .{ tenant_id, nanos, now_ms }));
+    var q = PgQuery.from(try conn.query(sql.DEBIT_TENANT_BALANCE, .{ tenant_id, nanos, now_ms }));
     defer q.deinit();
     const row = (try q.next()) orelse {
         if (!try rowExists(conn, tenant_id)) return error.TenantBillingMissing;
@@ -62,8 +60,7 @@ pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
 }
 
 fn rowExists(conn: *pg.Conn, tenant_id: []const u8) !bool {
-    var q = PgQuery.from(try conn.query(
-        sql.SELECT_TENANT_BILLING_EXISTS, .{tenant_id}));
+    var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_BILLING_EXISTS, .{tenant_id}));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -73,8 +70,7 @@ pub fn loadByTenant(
     alloc: std.mem.Allocator,
     tenant_id: []const u8,
 ) !?BillingRow {
-    var q = PgQuery.from(try conn.query(
-        sql.SELECT_TENANT_BALANCE, .{tenant_id}));
+    var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_BALANCE, .{tenant_id}));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     const bal = try row.get(i64, 0);
@@ -95,8 +91,7 @@ pub fn loadByTenant(
 /// false if the row was already marked (idempotent replay).
 pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
     const now_ms = clock.nowMillis();
-    var q = PgQuery.from(try conn.query(
-        sql.MARK_BALANCE_EXHAUSTED, .{ tenant_id, now_ms }));
+    var q = PgQuery.from(try conn.query(sql.MARK_BALANCE_EXHAUSTED, .{ tenant_id, now_ms }));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -109,8 +104,7 @@ pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
 /// `stop` gate is not a one-way door (greptile #3121312916 follow-up).
 pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
     const now_ms = clock.nowMillis();
-    var q = PgQuery.from(try conn.query(
-        sql.CLEAR_BALANCE_EXHAUSTED, .{ tenant_id, now_ms }));
+    var q = PgQuery.from(try conn.query(sql.CLEAR_BALANCE_EXHAUSTED, .{ tenant_id, now_ms }));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -120,8 +114,7 @@ pub fn resolveTenantFromWorkspace(
     alloc: std.mem.Allocator,
     workspace_id: []const u8,
 ) ![]u8 {
-    var q = PgQuery.from(try conn.query(
-        sql.SELECT_TENANT_FOR_WORKSPACE, .{workspace_id}));
+    var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_FOR_WORKSPACE, .{workspace_id}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.WorkspaceNotFound;
     return alloc.dupe(u8, try row.get([]const u8, 0));

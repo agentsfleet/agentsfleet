@@ -50,3 +50,72 @@ pub const SELECT_RUNNER_PAGE_FMT =
     \\SELECT * FROM total_row
     \\ORDER BY count_only ASC, page_ord ASC NULLS LAST
 ;
+
+// ── Operator-plane runner mutations ─────────────────────────────────────────
+
+/// Delete a runner, reporting whether THIS call was the one that removed it.
+///
+/// The `admin_state = $2` guard on the DELETE arm means only a runner in the
+/// expected state is removed, and the UNION returns the pre-existing row when
+/// it was not — so a caller learns "already gone" or "wrong state" without a
+/// separate read, and a live runner cannot be deleted out from under its leases.
+pub const DELETE_RUNNER_IF_IN_STATE =
+    \\WITH current_row AS (
+    \\    SELECT uid, admin_state
+    \\    FROM fleet.runners
+    \\    WHERE id = $1::uuid
+    \\), deleted AS (
+    \\    DELETE FROM fleet.runners r
+    \\    USING current_row c
+    \\    WHERE r.uid = c.uid AND c.admin_state = $2::text
+    \\    RETURNING r.uid::text
+    \\)
+    \\SELECT d.uid, TRUE AS changed
+    \\FROM deleted d
+    \\UNION ALL
+    \\SELECT c.uid::text, FALSE AS changed
+    \\FROM current_row c
+    \\WHERE NOT EXISTS (SELECT 1 FROM deleted)
+    \\LIMIT 1
+;
+
+pub const SELECT_RUNNER_EXISTS =
+    \\SELECT 1 FROM fleet.runners WHERE id = $1::uuid
+;
+
+pub const SELECT_RUNNER_ADMIN_STATE =
+    \\SELECT admin_state FROM fleet.runners WHERE id = $1::uuid
+;
+
+/// Transition a runner's admin state and record the transition atomically.
+///
+/// `FOR UPDATE` serialises concurrent operator PATCHes so the recorded
+/// `from_admin_state` is the true previous value rather than a racing read.
+/// The `c.from_admin_state <> $2` guard makes a no-op transition write nothing
+/// at all — no row, and therefore no event — so the history holds real changes
+/// only.
+pub const PATCH_RUNNER_ADMIN_STATE =
+    \\WITH current_state AS (
+    \\  SELECT id, admin_state AS from_admin_state
+    \\  FROM fleet.runners
+    \\  WHERE id = $1::uuid
+    \\  FOR UPDATE
+    \\), updated AS (
+    \\  UPDATE fleet.runners r
+    \\  SET admin_state = $2::text, updated_at = $3::bigint
+    \\  FROM current_state c
+    \\  WHERE r.id = c.id
+    \\    AND ($4::bool OR c.from_admin_state <> $5)
+    \\    AND c.from_admin_state <> $2::text
+    \\  RETURNING r.id::text, c.from_admin_state
+    \\), event AS (
+    \\  INSERT INTO fleet.runner_events
+    \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+    \\  SELECT $6::uuid, id::uuid, $7::text, $3::bigint,
+    \\         jsonb_build_object($8::text, from_admin_state, $9::text, $2::text),
+    \\         NULL, $3::bigint
+    \\  FROM updated
+    \\  RETURNING id
+    \\)
+    \\SELECT id FROM updated
+;

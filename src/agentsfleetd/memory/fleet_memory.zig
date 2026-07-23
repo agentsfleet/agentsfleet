@@ -184,8 +184,7 @@ pub fn storeEntry(
 ) !void {
     const uid_value = try id_format.generateUuidV7();
     const uid: []const u8 = &uid_value;
-    _ = try conn.exec(
-        sql.UPSERT_ENTRY, .{ uid, id, key, content, category, fleet_id, ts_ms });
+    _ = try conn.exec(sql.UPSERT_ENTRY, .{ uid, id, key, content, category, fleet_id, ts_ms });
 }
 
 /// Evict the entries beyond `max` for `fleet_id` (the per-fleet durable-set cap),
@@ -200,8 +199,7 @@ pub fn storeEntry(
 /// rows-affected); a result carrying no count reports 0 with a warn — eviction is
 /// never blocked on telemetry.
 pub fn enforceCap(conn: *pg.Conn, fleet_id: []const u8, max: usize) !u64 {
-    const affected = try conn.exec(
-        sql.EVICT_PAST_CAP, .{ fleet_id, @as(i64, @intCast(max)), CATEGORY_CORE });
+    const affected = try conn.exec(sql.EVICT_PAST_CAP, .{ fleet_id, @as(i64, @intCast(max)), CATEGORY_CORE });
     const n = affected orelse {
         log.warn("memory_cap_evict_count_unavailable", .{ .fleet_id = fleet_id });
         return 0;
@@ -222,8 +220,7 @@ pub const DAILY_RETENTION_MS: i64 = 72 * std.time.ms_per_hour;
 /// Returns the deleted-row count; a result carrying no count reports 0 with a
 /// warn — expiry is never blocked on telemetry.
 pub fn sweepExpiredDaily(conn: *pg.Conn, fleet_id: []const u8, cutoff_ms: i64) !u64 {
-    const affected = try conn.exec(
-        sql.DELETE_AGED_IN_CATEGORY, .{ fleet_id, CATEGORY_DAILY, cutoff_ms });
+    const affected = try conn.exec(sql.DELETE_AGED_IN_CATEGORY, .{ fleet_id, CATEGORY_DAILY, cutoff_ms });
     const n = affected orelse {
         log.warn("memory_daily_sweep_count_unavailable", .{ .fleet_id = fleet_id });
         return 0;
@@ -238,8 +235,7 @@ pub fn sweepExpiredDaily(conn: *pg.Conn, fleet_id: []const u8, cutoff_ms: i64) !
 /// was not there (the handler answers 404 — a mistyped key is surfaced, not
 /// swallowed).
 pub fn deleteEntry(conn: *pg.Conn, fleet_id: []const u8, key: []const u8) !bool {
-    var q = PgQuery.from(try conn.query(
-        sql.DELETE_ENTRY_BY_KEY, .{ fleet_id, key }));
+    var q = PgQuery.from(try conn.query(sql.DELETE_ENTRY_BY_KEY, .{ fleet_id, key }));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -255,8 +251,7 @@ pub fn listAll(
 ) ![]MemoryDelta {
     var out: std.ArrayList(MemoryDelta) = .empty;
     errdefer out.deinit(alloc);
-    var q = PgQuery.from(try conn.query(
-        sql.SELECT_ALL_FOR_FLEET, .{fleet_id}));
+    var q = PgQuery.from(try conn.query(sql.SELECT_ALL_FOR_FLEET, .{fleet_id}));
     defer q.deinit();
     while (try q.next()) |row| {
         // Copy each row-backed slice before the next next()/drain invalidates it.

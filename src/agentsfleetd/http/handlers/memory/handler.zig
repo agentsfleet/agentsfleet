@@ -20,6 +20,7 @@
 // RULE NSQ: schema-qualified SQL (memory.memory_entries / core.fleets).
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const httpz = @import("httpz");
 const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -100,14 +101,7 @@ pub fn innerListMemories(
             common.internalOperationError(hx.res, S_MEMORY_SEARCH_FAILED, hx.req_id);
             return;
         };
-        var q = PgQuery.from(conn.query(
-            \\SELECT key, content, category, updated_at
-            \\FROM memory.memory_entries
-            \\WHERE fleet_id = $1::uuid
-            \\  AND (key ILIKE $2 ESCAPE '\' OR content ILIKE $2 ESCAPE '\')
-            \\ORDER BY updated_at DESC, id DESC
-            \\LIMIT $3
-        , .{ fleet_scope, like_pat, limit }) catch {
+        var q = PgQuery.from(conn.query(sql.SEARCH_ENTRIES, .{ fleet_scope, like_pat, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory search failed");
             return;
         });
@@ -119,24 +113,14 @@ pub fn innerListMemories(
         // fabricate recall-miss evidence.
         if (clean and entries.items.len == 0) metrics_memory.incSearchZeroHit();
     } else if (category_opt) |cat| {
-        var q = PgQuery.from(conn.query(
-            \\SELECT key, content, category, updated_at
-            \\FROM memory.memory_entries
-            \\WHERE fleet_id = $1::uuid AND category = $2
-            \\ORDER BY updated_at DESC, id DESC LIMIT $3
-        , .{ fleet_scope, cat, limit }) catch {
+        var q = PgQuery.from(conn.query(sql.SELECT_ENTRIES_IN_CATEGORY, .{ fleet_scope, cat, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;
         });
         defer q.deinit();
         _ = h.collectEntries(hx.alloc, &q, &entries);
     } else {
-        var q = PgQuery.from(conn.query(
-            \\SELECT key, content, category, updated_at
-            \\FROM memory.memory_entries
-            \\WHERE fleet_id = $1::uuid
-            \\ORDER BY updated_at DESC, id DESC LIMIT $2
-        , .{ fleet_scope, limit }) catch {
+        var q = PgQuery.from(conn.query(sql.SELECT_RECENT_ENTRIES, .{ fleet_scope, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;
         });

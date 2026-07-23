@@ -17,6 +17,7 @@
 //! the broker's tagged outcome to the wire (`UZ-CRED-*` / `UZ-GH-*`).
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const httpz = @import("httpz");
 const pg = @import("pg");
 
@@ -251,12 +252,7 @@ const LeaseScope = struct {
 /// Mirrors the active-lease predicate the sibling `memory.zig` already enforces.
 /// Also returns the lease's fleet id — the scope the grant-gate checks (the grant gate).
 fn resolveLeaseScope(hx: Hx, conn: *pg.Conn, runner_id: []const u8, lease_id: []const u8) !?LeaseScope {
-    var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text, fleet_id::text
-        \\FROM fleet.runner_leases
-        \\WHERE id = $1::uuid AND runner_id = $2::uuid
-        \\  AND status = $3 AND lease_expires_at > $4
-    , .{ lease_id, runner_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, constants.clock.nowMillis() }));
+    var q = PgQuery.from(try conn.query(sql.SELECT_LEASE_SCOPE_FOR_MINT, .{ lease_id, runner_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, constants.clock.nowMillis() }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     const workspace_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0));

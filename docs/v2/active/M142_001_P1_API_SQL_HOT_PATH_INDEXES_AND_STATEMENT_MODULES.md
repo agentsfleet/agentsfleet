@@ -58,7 +58,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `schema/embed.zig` | EDIT | Register the new slot. This is the ONLY registration edit — see the correction below. |
 | `scripts/check_sql_statement_modules.py` | CREATE | Compute and gate statement-module adoption. |
 | `scripts/check_sql_statement_modules_test.py` | CREATE | Prove the checker's denominator, exclusions, and threshold behaviour. |
-| `make/lint.mk` | EDIT | Wire the adoption checker into repository conformance. |
+| `make/quality.mk` | EDIT | Wire the adoption checker into conformance. Spec said `make/lint.mk`; the lint targets live in `quality.mk`. Also consolidates the script-driven convention gates behind one `lint-governance` target, at Indy's request — `lint-zig` had grown to 14 prerequisites and this workstream would have made it 15. |
 | `src/agentsfleetd/http/handlers/fleet/runners_list.zig` | EDIT | Evaluate the lease-liveness check after pagination, not before. |
 | `src/agentsfleetd/http/handlers/fleets/secret_list.zig` | EDIT | Collapse the per-credential load into one query. |
 | ~~`src/agentsfleetd/http/handlers/api_keys/list.zig`~~ | NO CHANGE | Its sort clauses already match the new indexes; the index was the missing half, not the query. |
@@ -159,10 +159,10 @@ The denominator is the store layer plus handler domains carrying three or more s
 
 **Implementation default:** one module per domain directory rather than per file, matching every existing `sql.zig`, so a domain's statements stay greppable from one place.
 
-- **Dimension 5.1** — the checker reports adoption as a ratio and exits non-zero below the threshold → Test `test_adoption_checker_gates_on_threshold`
-- **Dimension 5.2** — the checker's denominator excludes fixtures, migrations, and the named metering modules → Test `test_adoption_checker_honours_exclusions`
-- **Dimension 5.3** — every statement module is a constant surface with no function and no allocation → Test `test_statement_modules_are_constant_surfaces`
-- **Dimension 5.4** — adoption across the data-access layer is at or above the threshold → Test `test_adoption_meets_threshold`
+- **Dimension 5.1** — the checker reports adoption as a ratio and exits non-zero below the threshold → Test `test_adoption_checker_gates_on_threshold` — **DONE**
+- **Dimension 5.2** — the checker's denominator excludes fixtures, migrations, and the named metering modules → Test `test_adoption_checker_honours_exclusions` — **DONE**, and widened: it also excludes `test` blocks *inside* production modules, which the first cut miscounted as production SQL.
+- **Dimension 5.3** — every statement module is a constant surface with no function and no allocation → Test `test_statement_modules_are_constant_surfaces` — **DONE**
+- **Dimension 5.4** — adoption across the data-access layer is at or above the threshold → Test `test_adoption_meets_threshold` — **DONE** at 189/234 (80.8%), gated in `make lint-governance`.
 
 ## Interfaces
 
