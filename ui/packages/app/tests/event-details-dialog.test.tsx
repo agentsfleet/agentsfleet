@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { EventDetailsDialog } from "@/components/domain/EventDetailsDialog";
 import type { EventRow } from "@/lib/api/events";
+import { GUIDANCE } from "@/lib/events/event-summary";
 
 const COPY_DIAGNOSTIC_LABEL = "Copy diagnostic";
 
@@ -39,6 +40,7 @@ function event(over: Partial<EventRow> = {}): EventRow {
     wall_ms: 10,
     cost_nanos: null,
     failure_label: null,
+    failure_detail: null,
     checkpoint_id: null,
     resumes_event_id: null,
     created_at: now,
@@ -171,18 +173,48 @@ describe("EventDetailsDialog", () => {
     expect(resultIndex).toBeGreaterThanOrEqual(0);
     expect(contextIndex).toBeGreaterThan(resultIndex);
     expect(fixIndex).toBeGreaterThan(contextIndex);
-    expect(screen.getByText(
-      "Nothing specific can be fixed from this event because it did not record which startup check failed.",
-    )).toBeTruthy();
-    expect(screen.getByText(
-      "Retry it once. If it fails again, use the copy icon below and ask a coding agent to inspect the diagnostic.",
-    )).toBeTruthy();
+    // No recorded cause: the guidance still names the actionable surface, and
+    // the older fall-back advice stays because nothing here says WHICH check.
+    expect(screen.getByText(GUIDANCE.STARTUP)).toBeTruthy();
+    expect(screen.getByText(/did not record which check failed/)).toBeTruthy();
     expect(screen.queryByText("Add non-empty instructions in Skill, then save the fleet.")).toBeNull();
     expect(screen.queryByText("Make an active runner available to this workspace.")).toBeNull();
     expect(screen.queryByText("Select an available model and provider credential.")).toBeNull();
     expect(screen.queryByText("What to check")).toBeNull();
     expect(screen.queryByText(/runner logs/i)).toBeNull();
     expect(screen.queryByText("startup_posture")).toBeNull();
+  });
+
+  it("shows the recorded cause in full and drops the no-cause advice", () => {
+    const cause = "startup check 'instructions' failed: no instructions configured";
+    renderDialog(event({ failure_label: "startup_posture", failure_detail: cause }));
+
+    // Inspect is where the whole stored value is readable — sentence AND cause.
+    const content = screen.getByRole("dialog").textContent ?? "";
+    expect(content).toContain("Failed a startup safety check");
+    expect(content).toContain(cause);
+    // The cause names the check, so the "we don't know which check" advice
+    // would now be a lie; only the actionable guidance remains.
+    expect(screen.getByText(GUIDANCE.STARTUP)).toBeTruthy();
+    expect(screen.queryByText(/did not record which check failed/)).toBeNull();
+  });
+
+  it("renders no guidance for a failure class the operator cannot act on", () => {
+    renderDialog(event({ failure_label: "oom_kill", failure_detail: "child exceeded its memory cap" }));
+
+    expect(screen.queryByText(GUIDANCE.STARTUP)).toBeNull();
+    expect(screen.queryByText("Fix")).toBeNull();
+  });
+
+  it("renders no guidance when the fleet recorded a real reply", () => {
+    renderDialog(event({
+      failure_label: "startup_posture",
+      failure_detail: "no instructions configured",
+      response_text: "I recovered and reviewed the pull request.",
+    }));
+
+    // The fleet's own words outrank a canned remediation line.
+    expect(screen.queryByText(GUIDANCE.STARTUP)).toBeNull();
   });
 
   it("does not repeat the coarse event status in the detail body", () => {

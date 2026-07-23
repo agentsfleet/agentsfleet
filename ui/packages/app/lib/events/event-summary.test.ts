@@ -9,6 +9,8 @@ import {
   eventHeadlineFrom,
   failurePresentationFor,
   failureSentenceFor,
+  GUIDANCE,
+  guidanceFor,
   triggerBodyFor,
   replyBodyFor,
   outcomeFor,
@@ -37,6 +39,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
     tokens: null,
     wall_ms: null,
     failure_label: null,
+    failure_detail: null,
     checkpoint_id: null,
     resumes_event_id: null,
     cost_nanos: null,
@@ -140,6 +143,21 @@ describe("failureSentenceFor", () => {
   });
 });
 
+describe("guidanceFor", () => {
+  it("turns the startup guidance token into the line the operator can act on", () => {
+    expect(guidanceFor("startup_posture")).toBe(GUIDANCE.STARTUP);
+  });
+
+  it("stays silent for classes with nothing actionable, and for no failure at all", () => {
+    // A guidance line the operator cannot follow is noise, so these render none.
+    expect(guidanceFor("oom_kill")).toBeNull();
+    expect(guidanceFor("brand_new_class")).toBeNull();
+    expect(guidanceFor(null)).toBeNull();
+    expect(guidanceFor(undefined)).toBeNull();
+    expect(guidanceFor("")).toBeNull();
+  });
+});
+
 describe("outcomeFor", () => {
   it("states in-progress, approval-blocked, failed, and reply-less completion", () => {
     expect(outcomeFor(row({ status: EVENT_STATUS.RECEIVED }))).toBe(OUTCOME.WORKING);
@@ -152,6 +170,30 @@ describe("outcomeFor", () => {
     expect(
       outcomeFor(row({ status: EVENT_STATUS.FLEET_ERROR, failure_label: "timeout_kill" })),
     ).toBe("Timed out");
+  });
+
+  it("appends the recorded cause line after the failure sentence", () => {
+    expect(
+      outcomeFor(
+        row({
+          status: EVENT_STATUS.FLEET_ERROR,
+          failure_label: "startup_posture",
+          failure_detail: "fleet has no instructions configured",
+        }),
+      ),
+    ).toBe("Failed a startup safety check — fleet has no instructions configured");
+  });
+
+  it("does not repeat a cause that merely restates the sentence", () => {
+    expect(
+      outcomeFor(
+        row({
+          status: EVENT_STATUS.FLEET_ERROR,
+          failure_label: "startup_posture",
+          failure_detail: "Failed a startup safety check",
+        }),
+      ),
+    ).toBe("Failed a startup safety check");
   });
 
   it("never returns an empty string for any status", () => {

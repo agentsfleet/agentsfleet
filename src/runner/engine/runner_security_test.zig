@@ -118,8 +118,8 @@ test "execute with api_key in fleet_config and null message fails closed (startu
     var env_map = try common.env.fromPairs(alloc, &.{});
     defer env_map.deinit();
     const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null, &.{}, null);
-    try std.testing.expect(!result.exit_ok);
-    try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+    try std.testing.expect(!result.succeeded());
+    try std.testing.expectEqual(types.FailureClass.startup_posture, result.failureClass().?);
 }
 
 // execute with github_token in fleet_config but null message fails closed.
@@ -132,8 +132,8 @@ test "execute with github_token in fleet_config and null message fails closed (s
     var env_map = try common.env.fromPairs(alloc, &.{});
     defer env_map.deinit();
     const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null, &.{}, null);
-    try std.testing.expect(!result.exit_ok);
-    try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+    try std.testing.expect(!result.succeeded());
+    try std.testing.expectEqual(types.FailureClass.startup_posture, result.failureClass().?);
 }
 
 // composeMessage with 5 unknown keys plus 1 known key.

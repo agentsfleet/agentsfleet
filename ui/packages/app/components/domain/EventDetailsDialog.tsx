@@ -26,7 +26,17 @@ import {
 } from "lucide-react";
 import type { EventRow } from "@/lib/api/events";
 import {
+  copiedRequestContext,
+  formatRequestValue,
+  isRequestContextRecord,
+  parseRequestContext,
+  presentRequestLabel,
+  previewRequestEntries,
+} from "./event-request-context";
+import {
   failurePresentationFor,
+  guidanceFor,
+  outcomeFor,
   SENDER,
   senderLabelFor,
 } from "@/lib/events/event-summary";
@@ -43,34 +53,20 @@ type EventTone = {
 };
 
 const COPY_DIAGNOSTIC_LABEL = "Copy diagnostic";
-const COPIED_REQUEST_CONTEXT_OMITTED =
-  "Omitted from copied diagnostic because webhook data may contain private or secret values.";
 const COPY_EVENT_ID_LABEL = "Copy event ID";
 const CREATED_LABEL = "Created";
 const EVENT_DETAILS_TITLE = "Event details";
 const EVENT_RESULT_MAX_CHARS = 20_000;
 const FIX_TITLE = "Fix";
+// Shown only when the row predates the recorded failure cause — with a cause
+// present the guidance above is already specific enough to act on.
+const NO_CAUSE_ADVICE =
+  "This event did not record which check failed. Retry it once; if it fails again, use the copy icon below and ask a coding agent to inspect the diagnostic.";
 const LOCAL_TIME_FALLBACK = "Local time";
 const NO_RESULT = "No result recorded";
 const NO_REQUEST_CONTEXT = "No request context recorded";
 const REQUEST_CONTEXT_TITLE = "Request context";
-const REQUEST_CONTEXT_MAX_CHARS = 10_000;
-const REQUEST_CONTEXT_MAX_ENTRIES = 100;
 const REQUEST_CONTEXT_OMITTED = "Additional fields not shown";
-const REQUEST_CONTEXT_LABELS: Record<string, string> = {
-  action: "Action",
-  author: "Author",
-  base_ref: "Base branch",
-  draft: "Draft",
-  head_ref: "Head branch",
-  head_sha: "Head commit",
-  number: "Number",
-  pull_request: "Pull request",
-  received_at: "Received",
-  repo: "Repository",
-  state: "State",
-  title: "Title",
-};
 
 const WARNING_TONE: EventTone = {
   alertVariant: "warning",
@@ -110,10 +106,14 @@ export function EventDetailsDialog({ row, onOpenChange }: EventDetailsDialogProp
 function EventDetails({ row }: { row: EventRow }) {
   const response = boundedResponse(row.response_text);
   const failure = row.failure_label ? failurePresentationFor(row.failure_label) : null;
-  const recordedResult = response || failure?.label || NO_RESULT;
+  // Inspect is where the operator comes for the whole story, so a failure
+  // renders its sentence AND its recorded cause — the console row shows one
+  // line, this shows the stored value.
+  const recordedResult = response || (failure ? outcomeFor(row) : "") || NO_RESULT;
   const result = truncateResult(recordedResult);
   const tone = EVENT_TONES[row.status] ?? WARNING_TONE;
   const diagnostic = formatEventDetailsForCopy(row, result, response);
+  const guidance = response ? null : guidanceFor(row.failure_label);
 
   return (
     <>
@@ -121,7 +121,7 @@ function EventDetails({ row }: { row: EventRow }) {
       <div className="space-y-lg pt-lg">
         <EventResult result={result} tone={tone} />
         <RequestContext row={row} />
-        {failure?.guidance === "startup" && !response ? <StartupFix /> : null}
+        {guidance ? <StartupFix guidance={guidance} hasCause={hasCause(row)} /> : null}
         <DialogFooter className="border-t border-border pt-lg">
           <CopyButton value={diagnostic} label={COPY_DIAGNOSTIC_LABEL} />
         </DialogFooter>
@@ -235,18 +235,6 @@ function RequestContextBody({ context, githubSource }: { context: unknown; githu
   );
 }
 
-function previewRequestEntries(context: Record<string, unknown>): {
-  entries: Array<[string, unknown]>;
-  hasMore: boolean;
-} {
-  const entries = Object.entries(context);
-  const hasMore = entries.length > REQUEST_CONTEXT_MAX_ENTRIES;
-  return {
-    entries: entries.slice(0, REQUEST_CONTEXT_MAX_ENTRIES),
-    hasMore,
-  };
-}
-
 function RequestContextFallback({ children }: { children: string }) {
   return (
     <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-lg font-mono text-xs leading-mono text-foreground">
@@ -255,16 +243,28 @@ function RequestContextFallback({ children }: { children: string }) {
   );
 }
 
-function StartupFix() {
+/**
+ * The remediation panel for an actionable failure. A row that recorded its
+ * cause gets the direct instruction; one from a runner too old to report a
+ * cause keeps the older fall-back advice rather than pretending to know which
+ * check failed.
+ */
+function StartupFix({ guidance, hasCause }: { guidance: string; hasCause: boolean }) {
   return (
     <Alert variant="warning" className="block">
       <AlertTitle>{FIX_TITLE}</AlertTitle>
       <AlertDescription className="space-y-md text-foreground">
-        <p>Nothing specific can be fixed from this event because it did not record which startup check failed.</p>
-        <p>Retry it once. If it fails again, use the copy icon below and ask a coding agent to inspect the diagnostic.</p>
+        <p>{guidance}</p>
+        {hasCause ? null : (
+          <p>{NO_CAUSE_ADVICE}</p>
+        )}
       </AlertDescription>
     </Alert>
   );
+}
+
+function hasCause(row: EventRow): boolean {
+  return (row.failure_detail ?? "").trim().length > 0;
 }
 
 function formatCreatedTooltip(created: Date): string {
@@ -300,32 +300,6 @@ function formatEventDetailsForCopy(row: EventRow, result: string, response: stri
   }, null, 2);
 }
 
-function copiedRequestContext(raw: string): string | null {
-  return raw.slice(0, REQUEST_CONTEXT_MAX_CHARS + 1).trim()
-    ? COPIED_REQUEST_CONTEXT_OMITTED
-    : null;
-}
-
-function parseRequestContext(raw: string): unknown {
-  const request = raw.slice(0, REQUEST_CONTEXT_MAX_CHARS).trim();
-  if (!request) return null;
-  try {
-    const parsed: unknown = JSON.parse(request);
-    return parsed;
-  } catch {
-    return request;
-  }
-}
-
-function isRequestContextRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function presentRequestLabel(key: string, githubSource: boolean): string {
-  if (key === "url") return githubSource ? "Pull request" : "URL";
-  return REQUEST_CONTEXT_LABELS[key] ?? key.replaceAll("_", " ");
-}
-
 function truncateResult(value: string): string {
   if (value.length <= EVENT_RESULT_MAX_CHARS) return value;
   return `${value.slice(0, EVENT_RESULT_MAX_CHARS - 1)}…`;
@@ -339,10 +313,3 @@ function boundedResponse(value: string | null): string {
   return `${prefix}…`;
 }
 
-function formatRequestValue(value: unknown): string {
-  if (value === null) return "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "string") return value.slice(0, REQUEST_CONTEXT_MAX_CHARS);
-  if (typeof value === "number") return String(value);
-  return String(JSON.stringify(value)).slice(0, REQUEST_CONTEXT_MAX_CHARS);
-}

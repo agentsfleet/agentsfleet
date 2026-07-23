@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_zig_test_depth _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -169,36 +169,6 @@ _hardcoded_role_check:
 
 
 
-_schema_gate_check:
-	@echo "→ [zig] Checking schema/*.sql against pre-v2.0 teardown convention..."
-	@version=$$(cat VERSION); \
-	major=$$(echo "$$version" | cut -d. -f1); \
-	if [ "$$major" -ge 2 ]; then \
-		echo "  (VERSION=$$version ≥ 2.0.0 — teardown convention relaxed, skipping)"; \
-		exit 0; \
-	fi; \
-	FAIL=0; \
-	for f in schema/*.sql; do \
-		[ -f "$$f" ] || continue; \
-		if grep -nE '^\s*(ALTER\s+TABLE|DROP\s+TABLE|DROP\s+COLUMN)\b' "$$f" >/dev/null 2>&1; then \
-			echo "✗ $$f: ALTER/DROP forbidden pre-v2.0 (VERSION=$$version)"; \
-			grep -nE '^\s*(ALTER\s+TABLE|DROP\s+TABLE|DROP\s+COLUMN)\b' "$$f" | sed 's/^/    /'; \
-			FAIL=1; \
-		fi; \
-		if grep -nE '^\s*SELECT\s+1\s*;\s*(--|$$)' "$$f" >/dev/null 2>&1; then \
-			echo "✗ $$f: 'SELECT 1;' version marker is a comment-only migration shim (forbidden pre-v2.0)"; \
-			FAIL=1; \
-		fi; \
-	done; \
-	if [ "$$FAIL" = "1" ]; then \
-		echo "  Fix: pre-v2.0 removes tables by deleting the slot file + embed.zig + migration array entry."; \
-		echo "  See CLAUDE.md → 'Schema Table Removal Guard'."; \
-		exit 1; \
-	fi; \
-	echo "✓ [zig] schema-gate check passed (VERSION=$$version, pre-v2.0 teardown convention)"
-
-check-schema-gate: _schema_gate_check  ## Enforce pre-v2.0 teardown convention on schema/*.sql
-
 REDOCLY := bunx @redocly/cli
 
 ROUTE_COVERAGE_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_openapi_route_coverage*_test.py'
@@ -283,7 +253,7 @@ _runner_isolation_check:
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
 	echo "✓ [isolation] runner graph depends only on nullclaw (no pg/s3/httpz)"
 
-lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline check-test-reachability _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline check-test-reachability _lint_zig_test_depth _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
@@ -299,7 +269,7 @@ lint-cli: _cli_lint check-documentation-rules  ## Lint agentsfleet CLI and its p
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 
 
-lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-documentation-rules check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check

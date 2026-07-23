@@ -10,6 +10,11 @@
 // strip, and the events table — so the vocabulary cannot drift between them.
 
 import type { EventRow, EventStatusValue } from "@/lib/api/events";
+// Re-exported below so every consumer keeps importing this one module.
+import {
+  eventHeadlineFrom,
+  steerMessageFrom,
+} from "./event-payload";
 
 // ── Actor vocabulary ──────────────────────────────────────────────────────
 // Mirrors what the server writes: `steer:<user_id>` / `steer:api`
@@ -148,6 +153,21 @@ export function failureSentenceFor(tag: string): string {
   return failurePresentationFor(tag).label;
 }
 
+/**
+ * The remediation line shown under a failure sentence. Only classes the
+ * operator can actually act on from the console carry one — a guidance line
+ * that cannot be followed is noise, so an unmapped or unactionable class
+ * returns null and renders nothing.
+ */
+export const GUIDANCE = {
+  STARTUP: "Add this fleet's instructions on its Skill tab — the next delivery picks them up.",
+} as const;
+
+export function guidanceFor(tag: string | null | undefined): string | null {
+  if (!tag) return null;
+  return failurePresentationFor(tag).guidance === "startup" ? GUIDANCE.STARTUP : null;
+}
+
 // ── Outcome sentences ─────────────────────────────────────────────────────
 
 export const OUTCOME = {
@@ -157,14 +177,27 @@ export const OUTCOME = {
   NO_REPLY: "Completed with no reply recorded.",
 } as const;
 
+const CAUSE_SEPARATOR = " — ";
+
 /**
  * What to say about an event that recorded no reply. Never empty — this is the
- * floor that guarantees no rendered row is blank.
+ * floor that guarantees no rendered row is blank. A failure with a recorded
+ * cause line renders it after the plain-language sentence, so the operator
+ * reads WHICH check failed, not only that one did.
  */
-export function outcomeFor(row: Pick<EventRow, "status" | "failure_label">): string {
+export function outcomeFor(
+  row: Pick<EventRow, "status" | "failure_label"> & Partial<Pick<EventRow, "failure_detail">>,
+): string {
   if (row.status === EVENT_STATUS.RECEIVED) return OUTCOME.WORKING;
   if (row.status === EVENT_STATUS.GATE_BLOCKED) return OUTCOME.WAITING_APPROVAL;
-  if (row.failure_label) return failureSentenceFor(row.failure_label);
+  if (row.failure_label) {
+    const sentence = failureSentenceFor(row.failure_label);
+    const detail = (row.failure_detail ?? "").trim();
+    // A detail that merely restates the sentence would read twice; only a
+    // distinct cause earns the second clause.
+    if (detail.length > 0 && detail !== sentence) return `${sentence}${CAUSE_SEPARATOR}${detail}`;
+    return sentence;
+  }
   if (row.status === EVENT_STATUS.FLEET_ERROR) return OUTCOME.FAILED;
   return OUTCOME.NO_REPLY;
 }
@@ -174,94 +207,22 @@ export function outcomeForStatus(status: EventStatusValue): string {
   return outcomeFor({ status, failure_label: null });
 }
 
-// ── Event headlines ───────────────────────────────────────────────────────
-
-export const HEADLINE = {
-  RECEIVED_SUFFIX: "received",
-  EVENT_FALLBACK: "Event received",
-} as const;
-
-const PAYLOAD_MESSAGE_KEY = "message";
-const SEPARATOR = " · ";
-const TITLE_SEPARATOR = " — ";
-
-type Payload = Record<string, unknown>;
-
-/** Parse a stored request payload, tolerating absence and malformed text. */
-export function parsePayload(requestJson: string | null | undefined): Payload | null {
-  if (!requestJson) return null;
-  try {
-    const parsed: unknown = JSON.parse(requestJson);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    return parsed as Payload;
-  } catch {
-    return null;
-  }
-}
-
-function text(payload: Payload, key: string): string {
-  const value = payload[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function count(payload: Payload, key: string): number | null {
-  const value = payload[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 /**
- * The operator's own submitted message, which lives in the stored request
- * payload — the reply field belongs to the fleet, not to the operator.
+ * The floor for a live completion frame, which may carry the failure cause the
+ * durable row will hold — so the chat shows the real sentence without reload.
+ * Empty strings mean "no cause" (the publisher's wire convention).
  */
-export function steerMessageFrom(requestJson: string | null | undefined): string {
-  const payload = parsePayload(requestJson);
-  return payload ? text(payload, PAYLOAD_MESSAGE_KEY) : "";
-}
-
-/**
- * A one-line headline for an event that arrived from an integration, built
- * only from fields the normalized payload actually carries. Two shapes are
- * recognised (a change proposal and a completed run); anything else names the
- * event rather than pretending to summarise it.
- */
-export function eventHeadlineFrom(
-  requestJson: string | null | undefined,
-  eventType: string,
+export function outcomeForCompletion(
+  status: EventStatusValue,
+  failureLabel: string | undefined,
+  failureDetail: string | undefined,
 ): string {
-  const payload = parsePayload(requestJson);
-  if (!payload) return neutralHeadline(eventType);
-  return (
-    changeProposalHeadline(payload) ?? completedRunHeadline(payload) ?? neutralHeadline(eventType)
-  );
-}
-
-function neutralHeadline(eventType: string): string {
-  const kind = eventType.trim();
-  if (kind.length === 0) return HEADLINE.EVENT_FALLBACK;
-  return `${kind} ${HEADLINE.RECEIVED_SUFFIX}`;
-}
-
-// `{action, repo, number, title, …}` — the normalized change-proposal shape.
-function changeProposalHeadline(payload: Payload): string | null {
-  const repo = text(payload, "repo");
-  const number = count(payload, "number");
-  if (repo.length === 0 || number === null) return null;
-  const action = text(payload, "action");
-  const subject = action.length > 0 ? `${action}${SEPARATOR}` : "";
-  const title = text(payload, "title");
-  const suffix = title.length > 0 ? `${TITLE_SEPARATOR}${title}` : "";
-  return `${subject}${repo}#${number}${suffix}`;
-}
-
-// `{workflow_name, conclusion, repo, head_branch, …}` — the completed-run shape.
-function completedRunHeadline(payload: Payload): string | null {
-  const name = text(payload, "workflow_name");
-  const conclusion = text(payload, "conclusion");
-  if (name.length === 0 || conclusion.length === 0) return null;
-  const repo = text(payload, "repo");
-  const branch = text(payload, "head_branch");
-  const where = [repo, branch].filter((part) => part.length > 0).join(SEPARATOR);
-  return where.length > 0 ? `${name} ${conclusion}${SEPARATOR}${where}` : `${name} ${conclusion}`;
+  const label = (failureLabel ?? "").trim();
+  return outcomeFor({
+    status,
+    failure_label: label.length > 0 ? label : null,
+    failure_detail: failureDetail ?? null,
+  });
 }
 
 /**
@@ -290,3 +251,15 @@ export function triggerBodyFor(row: Pick<EventRow, "actor" | "request_json" | "e
 export function replyBodyFor(row: Pick<EventRow, "response_text">): string {
   return (row.response_text ?? "").trim();
 }
+
+// The payload vocabulary is part of this module's public surface — split for
+// file length only. Importing from `event-payload` directly is equally valid;
+// these keep every existing call site working unchanged.
+export {
+  changeProposalActionFrom,
+  eventHeadlineFrom,
+  eventLinkFrom,
+  HEADLINE,
+  parsePayload,
+  steerMessageFrom,
+} from "./event-payload";

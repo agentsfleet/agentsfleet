@@ -257,7 +257,7 @@ test "integration: cgroup pids.max refuses a fork past the cap, attributed resou
     // crash to resource_kill (the PID-cap cause, read via wasPidsExhausted).
     try std.testing.expect(scope_opt.?.wasPidsExhausted());
     const result = supervisor_result.classify(alloc, .{}, .{ .exited = CRASH_EXIT_CODE }, &scope_opt);
-    try std.testing.expectEqual(types.FailureClass.resource_kill, result.failure.?);
+    try std.testing.expectEqual(types.FailureClass.resource_kill, result.failureClass().?);
 }
 
 test "integration: cgroup memory.max OOM-kills an over-budget child, attributed oom_kill" {
@@ -294,5 +294,5 @@ test "integration: cgroup memory.max OOM-kills an over-budget child, attributed 
     // wasOomKilled is checked first in classify, so even a clean exit-0 term is
     // reclassified oom_kill — the cgroup's verdict wins over the exit code.
     const result = supervisor_result.classify(alloc, .{}, .{ .exited = 0 }, &scope_opt);
-    try std.testing.expectEqual(types.FailureClass.oom_kill, result.failure.?);
+    try std.testing.expectEqual(types.FailureClass.oom_kill, result.failureClass().?);
 }

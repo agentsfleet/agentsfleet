@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>M139 variant C — Console Digest</title>
+<style>
+  :root{
+    --bg:#0a0e0d; --panel:#0e1412; --deep:#0b100e; --line:#182220; --line2:#22302c;
+    --fg:#d6e2dd; --mut:#78877f; --dim:#4d5a55; --mint:#4ade9b; --red:#ef6a6a;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--fg);font:13px/1.55 var(--mono);padding:24px}
+  .screen-label{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:26px 0 10px;text-transform:uppercase}
+  .shell{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+  .side{width:180px;border-right:1px solid var(--line);padding:14px 0;background:var(--deep);flex-shrink:0}
+  .side h4{font-size:9px;letter-spacing:.16em;color:var(--dim);padding:10px 16px 4px}
+  .side a{display:block;padding:5px 16px;color:var(--mut);text-decoration:none;font-size:12px}
+  .side a.on{color:var(--mint);background:rgba(74,222,155,.07);border-left:2px solid var(--mint);padding-left:14px}
+  .fnav{width:130px;border-right:1px solid var(--line);padding:14px 0;flex-shrink:0}
+  .fnav a{display:block;padding:6px 16px;color:var(--mut);text-decoration:none;font-size:12px}
+  .fnav a.on{color:var(--fg);background:var(--line)}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .crumb{display:flex;align-items:center;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line);font-size:12px;color:var(--mut)}
+  .crumb b{color:var(--fg);font-weight:600}
+  .crumb .btns{margin-left:auto;display:flex;gap:8px}
+  .btn{border:1px solid var(--line2);border-radius:6px;padding:3px 12px;font-size:11px;color:var(--fg)}
+  .btn.kill{border-color:rgba(239,106,106,.6);color:var(--red);background:rgba(239,106,106,.08)}
+  .phead{display:flex;align-items:center;padding:0 20px;border-bottom:1px solid var(--line)}
+  .ptitle{padding:12px 0;border-bottom:2px solid var(--mint);font-size:13px}
+  .view{margin-left:auto;color:var(--mut);font-size:11px;border:1px solid var(--line2);border-radius:6px;padding:3px 10px}
+  .live{margin-left:14px;color:var(--mint);font-size:11px}
+  .live::before{content:"●";margin-right:6px}
+  /* conversation rows */
+  .row{display:flex;gap:12px;padding:13px 20px;border-bottom:1px solid var(--line)}
+  .chip{width:28px;height:28px;border:1px solid var(--line2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9.5px;flex-shrink:0;background:var(--deep)}
+  .chip.fl{border-color:rgba(74,222,155,.45);color:var(--mint)}
+  .rb{flex:1;min-width:0}
+  .rh{display:flex;align-items:baseline;gap:10px}
+  .rh .s{font-size:12.5px}
+  .rh .s.fl{color:var(--mint)}
+  .rh .t{margin-left:auto;color:var(--dim);font-size:10.5px}
+  .rt{margin-top:2px;font-size:13px}
+  /* folds */
+  .fold{padding:4px 20px;font-size:11px;color:var(--dim);display:flex;gap:8px;align-items:baseline}
+  .fold .car{flex-shrink:0}
+  .fold .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fold .n{color:var(--mut)}
+  .fold.open{color:var(--mut)}
+  .subline{padding:2px 20px 2px 48px;font-size:10.5px;color:var(--dim);display:flex;gap:10px;align-items:baseline}
+  .tag{border:1px solid rgba(239,106,106,.45);color:var(--red);border-radius:3px;padding:0 5px;font-size:8.5px;letter-spacing:.06em}
+  /* system row above composer */
+  .sysrow{border-left:3px solid var(--red);background:rgba(239,106,106,.05);padding:10px 20px;font-size:12px;border-top:1px solid var(--line)}
+  .sysrow b{color:var(--red);font-weight:600}
+  .sysrow .m{color:var(--mut);font-size:11px;margin-top:2px}
+  .sysrow a{color:var(--mint);text-decoration:none}
+  .comp{display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid var(--line);color:var(--dim)}
+  .comp .send{margin-left:auto;border:1px solid rgba(74,222,155,.5);color:var(--mint);border-radius:6px;padding:3px 14px;font-size:11px}
+  /* events table */
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{font-size:9.5px;letter-spacing:.12em;color:var(--dim);text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+  td{padding:10px 14px;border-bottom:1px solid var(--line)}
+  .st{border:1px solid;border-radius:4px;padding:1px 8px;font-size:9.5px;letter-spacing:.06em}
+  .st.ok{border-color:rgba(74,222,155,.5);color:var(--mint);background:rgba(74,222,155,.07)}
+  .foldrow td{color:var(--mut);font-size:11.5px;background:rgba(239,106,106,.03)}
+  .foldrow .err{color:var(--red)}
+  .zero{opacity:.32}
+  .num{text-align:right}
+</style>
+</head>
+<body>
+
+<div class="screen-label">Screen 1 — Chat · variant C “Console Digest”</div>
+<div class="shell">
+  <div class="side">
+    <h4>Automations</h4><a class="on">⛴ Fleets</a><a>◎ Approvals</a><a>∿ Events</a>
+    <h4>Configuration</h4><a>⌘ Models</a><a>⚲ Integrations</a><a>⚿ Secrets</a>
+  </div>
+  <div class="fnav"><a class="on">Chat</a><a>Events</a><a>Memory</a><a>Skill</a><a>Trigger</a></div>
+  <div class="main">
+    <div class="crumb">Fleets / <b>github-pr-reviewer</b>
+      <span class="btns"><span class="btn">Stop</span><span class="btn kill">Kill</span></span></div>
+    <div class="phead">
+      <span class="ptitle">Chat</span>
+      <span class="view">View: All ▾</span>
+      <span class="live">Live</span>
+    </div>
+    <div class="row"><span class="chip">OP</span><div class="rb">
+      <div class="rh"><span class="s">Operator</span><span class="t">11:36 AM</span></div>
+      <div class="rt">deploy the review guidelines update</div></div></div>
+    <div class="fold open"><span class="car">▾</span>
+      <span class="txt"><span class="n">15 identical failures</span> · GitHub App · edited agentsfleet/agentsfleet#541 · 11:38–12:03</span></div>
+    <div class="subline"><span class="tag">FLEET_ERROR</span><span>edited #541 · startup safety check failed</span><span style="margin-left:auto">11:38:53</span></div>
+    <div class="subline"><span class="tag">FLEET_ERROR</span><span>edited #541 · startup safety check failed</span><span style="margin-left:auto">11:40:45</span></div>
+    <div class="subline" style="color:var(--dim)">… 12 more identical deliveries · <span style="text-decoration:underline">show all</span></div>
+    <div class="subline"><span class="tag">FLEET_ERROR</span><span>closed #541 · startup safety check failed</span><span style="margin-left:auto">12:03:33</span></div>
+    <div class="row"><span class="chip">OP</span><div class="rb">
+      <div class="rh"><span class="s">Operator</span><span class="t">12:05 PM</span></div>
+      <div class="rt">why are runs failing?</div></div></div>
+    <div class="row"><span class="chip fl">GP</span><div class="rb">
+      <div class="rh"><span class="s fl">github-pr-reviewer</span><span class="t">12:05 PM</span></div>
+      <div class="rt">The last 15 GitHub deliveries failed my startup safety check — I have no instructions configured. Add instructions in Skill and I’ll pick up the next delivery.</div></div></div>
+    <div style="flex:1"></div>
+    <div class="sysrow"><b>startup safety check failing ×15</b> — fleet has no instructions configured
+      <div class="m">last 12:03 PM · <a>fix: configure instructions in Skill →</a></div></div>
+    <div class="comp">Message this fleet…<span class="send">Send ↵</span></div>
+  </div>
+</div>
+
+<div class="screen-label">Screen 2 — Events · variant C</div>
+<div class="shell">
+  <div class="side">
+    <h4>Automations</h4><a class="on">⛴ Fleets</a><a>◎ Approvals</a><a>∿ Events</a>
+    <h4>Configuration</h4><a>⌘ Models</a><a>⚲ Integrations</a><a>⚿ Secrets</a>
+  </div>
+  <div class="fnav"><a>Chat</a><a class="on">Events</a><a>Memory</a><a>Skill</a><a>Trigger</a></div>
+  <div class="main">
+    <div class="crumb">Fleets / <b>github-pr-reviewer</b>
+      <span class="btns"><span class="btn">Stop</span><span class="btn kill">Kill</span></span></div>
+    <table>
+      <tr><th>Time</th><th>Status</th><th>Actor</th><th>Type</th><th>Result</th><th class="num">Cost</th><th class="num">Tokens</th><th class="num">Duration</th></tr>
+      <tr><td>32 minutes ago</td><td><span class="st ok">PROCESSED</span></td><td>Operator</td><td>chat</td>
+        <td>Replied: cause of the failing runs</td><td class="num">$0.04</td><td class="num">18,204</td><td class="num">41s</td></tr>
+      <tr class="foldrow"><td colspan="5">▸ <span class="err">×15 · FLEET_ERROR</span> · GitHub App · Failed a startup safety check — fleet has no instructions configured · 11:38–12:03</td>
+        <td class="num zero">$0.00</td><td class="num zero">0</td><td class="num zero">0ms</td></tr>
+      <tr><td>3 hours ago</td><td><span class="st ok">PROCESSED</span></td><td>GitHub App</td><td>webhook</td>
+        <td>Reviewed agentsfleet/agentsfleet#540</td><td class="num">$0.11</td><td class="num">52,882</td><td class="num">2m 04s</td></tr>
+    </table>
+  </div>
+</div>
+
+</body>
+</html>

@@ -10,12 +10,14 @@
 //!   * `execution_policy` — the resolved config + inline secrets on the wire.
 //!   * `activity`         — the live-tail progress frame for the `activity` verb.
 //!   * `execution_result` — the terminal stage result (runner produces, report consumes).
+//!   * `report_mapping`   — the one conversion between that result and the report wire.
 
 pub const protocol = @import("protocol.zig");
 pub const event_envelope = @import("event_envelope.zig");
 pub const execution_policy = @import("execution_policy.zig");
 pub const activity = @import("activity.zig");
 pub const execution_result = @import("execution_result.zig");
+pub const report_mapping = @import("report_mapping.zig");
 
 // The contract's own unit tests run via `test-unit-agentsfleet-lib` (the src/lib test
 // aggregator) in this module's own instance, so they can reach the internals
@@ -27,5 +29,6 @@ test {
     // path — RULE UFS); test-only files keep their direct import.
     _ = activity;
     _ = execution_result;
+    _ = report_mapping;
     _ = execution_policy;
 }

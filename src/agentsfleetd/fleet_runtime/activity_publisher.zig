@@ -163,17 +163,28 @@ pub fn publishToolCallCompleted(
     });
 }
 
+/// Why an event completed badly, carried on the completion frame. Both fields
+/// empty on a clean finish — the dashboard reads empty as absent. Named fields
+/// rather than adjacent same-typed arguments, so a swapped pair cannot compile.
+pub const FailureCause = struct {
+    label: []const u8 = "",
+    detail: []const u8 = "",
+};
+
 pub fn publishEventComplete(
     client: *Client,
     scratch: *Scratch,
     fleet_id: []const u8,
     event_id: []const u8,
     status: []const u8,
+    cause: FailureCause,
 ) void {
     encodeAndPublish(client, scratch, fleet_id, KIND_EVENT_COMPLETE, .{
         .kind = KIND_EVENT_COMPLETE,
         .event_id = event_id,
         .status = status,
+        .failure_label = cause.label,
+        .failure_detail = cause.detail,
     });
 }
 

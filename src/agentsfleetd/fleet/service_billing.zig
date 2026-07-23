@@ -64,7 +64,7 @@ pub fn blockEvent(hx: Hx, fleet_id: []const u8, event_id: []const u8, label: []c
     };
     var scratch = activity_publisher.Scratch.init(hx.alloc);
     defer scratch.deinit();
-    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, fleet_id, event_id, rows.STATUS_GATE_BLOCKED);
+    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, fleet_id, event_id, rows.STATUS_GATE_BLOCKED, .{ .label = label });
     redis_fleet.xackFleet(hx.ctx.queue, fleet_id, event_id) catch |err| {
         log.warn("lease_block_xack_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
     };

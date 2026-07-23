@@ -325,9 +325,24 @@ describe("fleets routes", () => {
       }),
     );
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
-    expect(urls).toContainEqual(expect.stringContaining("/fleets/zom_1/events?limit=50"));
+    expect(urls).toContainEqual(expect.stringContaining("/fleets/zom_1/events?limit=25"));
     expect(urls.some((url) => url.includes("since="))).toBe(false);
     expect(markup).toContain('href="/w/ws_1/fleets/zom_1?view=events" aria-current="page"');
+  });
+
+  it("fleet Events view threads the URL cursor into the events fetch", async () => {
+    mockFetchBilling(happyBilling);
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    renderToStaticMarkup(
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        // The cursor rides the same URL as the open view; the server fetches
+        // that page rather than resetting to the newest.
+        searchParams: Promise.resolve({ view: "events", c: "tok_fleet" }),
+      }),
+    );
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls.some((url) => url.includes("cursor=tok_fleet"))).toBe(true);
   });
 
   it("fleet Events view falls back to an empty table when history is unavailable", async () => {

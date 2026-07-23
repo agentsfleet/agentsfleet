@@ -32,10 +32,12 @@ export function hasExternalPaginationNavigation(
 ): boolean {
   if (pagination === false || isClientPagination(pagination)) return false;
   if (pagination.isLoading) return true;
-  if (pagination.kind === PAGINATION_KIND.cursor) return pagination.nextCursor !== null;
-  return pagination.page > 1
-    || pagination.total === undefined
-    || pagination.total > pagination.pageSize;
+  if (pagination.page > 1) return true;
+  // An explicit `hasNext` is authoritative on page one: a cursor feed that
+  // fits in a single page would otherwise render a pager with both buttons
+  // dead, purely because its total is unknowable.
+  if (pagination.hasNext !== undefined) return pagination.hasNext;
+  return pagination.total === undefined || pagination.total > pagination.pageSize;
 }
 
 function buildColumns<T>(columns: DataTableColumn<T>[], externallySorted: boolean): ColumnDef<T>[] {

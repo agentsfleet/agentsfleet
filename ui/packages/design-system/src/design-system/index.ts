@@ -148,7 +148,6 @@ export {
   PAGINATION_KIND,
   Pagination,
   type PaginationProps,
-  type CursorPaginationProps,
   type PagePaginationProps,
 } from "./Pagination";
 export {
