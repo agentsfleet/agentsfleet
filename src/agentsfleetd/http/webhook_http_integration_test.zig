@@ -240,6 +240,35 @@ test "A5: unknown fleet_id → 404 UZ-WH-001" {
     try std.testing.expect(r.bodyContains("UZ-WH-001") or r.bodyContains("UZ-WH-020") or r.bodyContains("UZ-WH-010"));
 }
 
+test "A5b: an uppercase fleet_id is rejected before it can split the dedup key" {
+    const alloc = std.testing.allocator;
+    var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    // The SAME fleet as the happy path, spelled in uppercase. Postgres folds
+    // case on `WHERE id = $1::uuid`, so this used to resolve to the real fleet
+    // — but the Redis dedup key is built from the raw path value, so the same
+    // GitHub delivery under two spellings claimed two slots and was processed
+    // twice. Without the shape guard this returns 202, not 400.
+    var upper_buf: [36]u8 = undefined;
+    const upper = std.ascii.upperString(&upper_buf, s.fx.fleet_id);
+    const url = try std.fmt.allocPrint(alloc, "/v1/webhooks/{s}/github", .{upper});
+    defer alloc.free(url);
+    const sig = try signers.signGithub(alloc, SECRET, FAILURE_BODY);
+    defer sig.deinit(alloc);
+    const r1 = s.h.post(url);
+    const r2 = try r1.header(sig.header_name, sig.header_value);
+    const r3 = try r2.header("x-github-event", "workflow_run");
+    const r4 = try r3.header("x-github-delivery", "del_a5b");
+    const r5 = try r4.json(FAILURE_BODY);
+    const r = try r5.send();
+    defer r.deinit();
+    // Fail-closed either way: the handler's shape guard (400 UZ-UUIDV7-009) or
+    // the middleware refusing a credential lookup it cannot resolve. What must
+    // NOT happen is a 202 accept, which is the double-delivery path.
+    try std.testing.expect(r.status != 202);
+    try std.testing.expect(r.bodyContains("UZ-UUIDV7-009") or r.bodyContains("UZ-WH-020") or r.bodyContains("UZ-WH-010"));
+}
+
 test "A6: paused fleet → 200 ignored fleet_paused, trigger metric unchanged" {
     const metrics_fleet = @import("../observability/metrics_fleet.zig");
     const alloc = std.testing.allocator;
