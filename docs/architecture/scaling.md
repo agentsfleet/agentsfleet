@@ -86,6 +86,25 @@ For a 20-runner fleet at the 1 s default: ~72,000 idle `lease`-scan requests/hou
 
 **The load-bearing shift:** the idle bill now scales with **runner count**, not `(fleets + workers)`. A fleet with many idle fleets but few runners is cheap at idle; the cost follows the pollers, not the population.
 
+#### Which recurring Postgres reads are index-served
+
+The Redis figures above are only half the idle bill. The other half is Postgres, and it used to scale with *accumulated rows* rather than with work — an account that had been running a year cost more at idle than a fresh one, for no reason a user asked for. Schema slot `033` closes that: every recurring control-plane read below is now served by an index, and each index is asserted against the query **plan**, not merely created.
+
+| Recurring read | Was | Now |
+|---|---|---|
+| Liveness sweep — due runners | Sequential scan + top-N sort of `fleet.runners`, every cycle | `idx_runners_updated_at_id`; no sort node. Measured at 20 000 runners: the 200-row batch costs **6 shared buffer hits**. |
+| Liveness sweep — affinity expiry | Full scan of `fleet.runner_affinity`, once **per due runner per cycle** | `idx_runner_affinity_last_runner_id_leased_until`; also covers the unindexed `ON DELETE SET NULL` foreign key |
+| Reclaim — prior active lease | Scan of `fleet.runner_leases` on an unindexed `ON DELETE CASCADE` foreign key | `idx_runner_leases_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
+| Workspace event keyset page | Index scan plus a post-filter on the tiebreak column | `idx_fleet_events_workspace_id_created_at_event_id`; a single seek |
+| Fleet list page | Unserved — the existing index is partial on `status='active'` and the list is not status-filtered | `idx_fleets_workspace_id_created_at_id` |
+| Runner and api-key list sorts | Sort node per request | One index per sort column; `tenant_id`/no leading filter means one btree serves both directions |
+
+**What this bounds:** idle Postgres cost now tracks the *work* an account is doing, not the number of rows it has accumulated. It does not bound cost per unit of work — that is still governed by traffic.
+
+**What it does not cover.** Fleet-memory hydration (`fleet_memory.listAll`) still sorts, and correctly so: it fetches a fleet's entire memory set with no `LIMIT`, and for an unbounded fetch a bitmap scan plus sort is genuinely cheaper than an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
+
+**One anti-pattern this replaced,** worth stating because it reads as an optimisation: the operator runner list resolved each row's lease-liveness in a CTE spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner_leases` table once per request — 6 472 buffer hits against a 200 000-row lease table. Resolving liveness over the surviving page instead costs 79. When per-row work sits above a `LIMIT`, the cost is not "one lookup per row"; it is usually one whole-table build.
+
 ---
 
 ## Tuneup knobs and when to turn them
