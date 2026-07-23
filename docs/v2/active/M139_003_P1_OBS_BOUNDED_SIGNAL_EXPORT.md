@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M139
 **Workstream:** 003
 **Date:** Jul 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — current runner request spans can exceed exporter drain capacity before useful work begins
 **Categories:** API, Observability (OBS)
 **Batch:** B2 — implementation output of the M139_002 signal-routing investigation
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open)
+**Branch:** feat/m139-deadline-scheduler
+**Test Baseline:** unit=2824 integration=376
 **Depends on:** M139_002 — its architecture decision and capacity audit must be DONE before this opens
 **Provenance:** Large Language Model (LLM)-drafted (Codex, Jul 23, 2026) from the M139_002 source audit and Indy's no-log-ingestion decision
 **Canonical architecture:** `docs/architecture/observability.md` §Signal routing decision and §Capacity and loss audit
