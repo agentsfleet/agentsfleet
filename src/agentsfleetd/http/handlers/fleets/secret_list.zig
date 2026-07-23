@@ -54,8 +54,13 @@ fn projectEntry(alloc: std.mem.Allocator, e: crypto_store.WorkspaceSecret) !Secr
     const name = try alloc.dupe(u8, e.key_name);
     errdefer alloc.free(name);
 
-    // Legacy/corrupt body → opaque custom_secret; the list still returns 200.
-    var parsed = parseObject(alloc, e.plaintext) catch {
+    // A row whose envelope would not decrypt arrives with a null plaintext; a
+    // legacy or corrupt body decrypts but fails the object shape gate. Both
+    // degrade to an opaque custom_secret so the list still returns 200 — the
+    // per-row isolation the two-pass path had, preserved across the bulk read.
+    const plaintext = e.plaintext orelse
+        return .{ .name = name, .created_at = e.created_at, .kind = secret_metadata.Kind.custom_secret.wire() };
+    var parsed = parseObject(alloc, plaintext) catch {
         return .{ .name = name, .created_at = e.created_at, .kind = secret_metadata.Kind.custom_secret.wire() };
     };
     defer parsed.deinit();
