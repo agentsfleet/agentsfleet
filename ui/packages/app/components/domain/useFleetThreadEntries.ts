@@ -17,9 +17,19 @@ export const GROUP_META = {
   MEMBERS: "groupMembers",
 } as const;
 
+export const RENDER_KIND_KEY = "renderKind";
+export const RENDER_KIND = {
+  TRIGGER: "trigger",
+  REPLY: "reply",
+} as const;
+
+export type FleetThreadEntry =
+  | ThreadEntry
+  | { kind: "reply"; key: string; event: FleetEvent };
+
 export type FleetThreadEntries = {
-  entries: ThreadEntry[];
-  convertEntry: (entry: ThreadEntry) => ThreadMessageLike;
+  entries: FleetThreadEntry[];
+  convertEntry: (entry: FleetThreadEntry) => ThreadMessageLike;
 };
 
 /**
@@ -34,19 +44,79 @@ export function useFleetThreadEntries(
   // The previous result is fed back in so unchanged runs keep their identity
   // across a streaming frame — see `groupThreadEvents` on why that matters.
   const previous = useRef<ThreadEntry[]>([]);
-  const entries = useMemo(() => {
+  const groupedEntries = useMemo(() => {
     const next = groupThreadEvents(events, previous.current);
     previous.current = next;
     return next;
   }, [events]);
+  const entries = useMemo(
+    () => groupedEntries.flatMap(expandEntry),
+    [groupedEntries],
+  );
   const convertEntry = useCallback(
-    (entry: ThreadEntry): ThreadMessageLike => {
-      if (entry.kind === ENTRY_KIND.SINGLE) return convertEvent(entry.event);
-      return groupMessage(entry.events, entry.key, convertEvent);
+    (entry: FleetThreadEntry): ThreadMessageLike => {
+      if (entry.kind === "reply") {
+        return withRenderKind(convertEvent(entry.event), RENDER_KIND.REPLY);
+      }
+
+      const message =
+        entry.kind === ENTRY_KIND.SINGLE
+          ? convertEvent(entry.event)
+          : groupMessage(entry.events, entry.key, convertEvent);
+
+      return entry.kind === ENTRY_KIND.SINGLE
+        && entry.event.role !== "assistant"
+        && entry.event.reply.trim().length > 0
+        ? withRenderKind(message, RENDER_KIND.TRIGGER)
+        : message;
     },
     [convertEvent],
   );
   return { entries, convertEntry };
+}
+
+function expandEntry(entry: ThreadEntry): FleetThreadEntry[] {
+  if (entry.kind === ENTRY_KIND.GROUP) return [entry];
+
+  const { event } = entry;
+  if (event.role === "assistant" || event.reply.trim().length === 0) {
+    return [entry];
+  }
+
+  return [
+    entry,
+    {
+      kind: "reply",
+      key: `${entry.key}:reply`,
+      event: {
+        ...event,
+        id: `${event.id}:reply`,
+        role: "assistant",
+        actor: "fleet",
+        text: event.reply,
+        reply: event.reply,
+        outcome: "",
+        failureLabel: null,
+        failureDetail: null,
+      },
+    },
+  ];
+}
+
+function withRenderKind(
+  message: ThreadMessageLike,
+  renderKind: (typeof RENDER_KIND)[keyof typeof RENDER_KIND],
+): ThreadMessageLike {
+  return {
+    ...message,
+    metadata: {
+      ...message.metadata,
+      custom: {
+        ...message.metadata?.custom,
+        [RENDER_KIND_KEY]: renderKind,
+      },
+    },
+  };
 }
 
 // A group borrows the shape of its newest member — same role, so assistant-ui

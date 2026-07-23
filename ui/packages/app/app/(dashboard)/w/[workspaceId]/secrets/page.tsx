@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { PageHeader, PageTitle, SectionLabel } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
 import { auth } from "@clerk/nextjs/server";
 import { PROVIDER_MODE } from "@/lib/types";
 import { getTenantProviderCached, listSecretsCached } from "./lib/reads";
@@ -34,21 +34,24 @@ export default async function SecretsPage({
         : null;
 
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader description={SECRETS_PAGE_DESCRIPTION}>
         <PageTitle>{SECRETS_PAGE_TITLE}</PageTitle>
       </PageHeader>
 
-      <div className="flex flex-wrap items-baseline justify-between gap-md">
-        <SectionLabel>Manage secrets</SectionLabel>
-        <AddSecretDialog workspaceId={workspaceId} />
-      </div>
+      <Section asChild>
+        <section aria-label="Secrets">
+          <SectionHeader actions={<AddSecretDialog workspaceId={workspaceId} />}>
+            Manage secrets
+          </SectionHeader>
 
-      <SecretsList
-        workspaceId={workspaceId}
-        secrets={secrets}
-        protectedSecretName={protectedSecretName}
-      />
-    </div>
+          <SecretsList
+            workspaceId={workspaceId}
+            secrets={secrets}
+            protectedSecretName={protectedSecretName}
+          />
+        </section>
+      </Section>
+    </PageLayout>
   );
 }

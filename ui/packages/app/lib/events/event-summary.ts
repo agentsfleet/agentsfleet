@@ -256,9 +256,9 @@ export function replyBodyFor(row: Pick<EventRow, "response_text">): string {
 // file length only. Importing from `event-payload` directly is equally valid;
 // these keep every existing call site working unchanged.
 export {
-  changeProposalActionFrom,
   eventHeadlineFrom,
   eventLinkFrom,
+  eventReferenceFrom,
   HEADLINE,
   parsePayload,
   steerMessageFrom,

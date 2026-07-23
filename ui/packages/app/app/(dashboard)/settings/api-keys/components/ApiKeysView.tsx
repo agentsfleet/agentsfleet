@@ -6,9 +6,10 @@ import {
   AlertDescription,
   AlertTitle,
   PageHeader,
+  PageLayout,
   PageTitle,
   Section,
-  SectionLabel,
+  SectionHeader,
 } from "@agentsfleet/design-system";
 import type { ApiKeyListResponse } from "@/lib/api/api_keys";
 import ApiKeyList, { type ApiKeyListHandle } from "./ApiKeyList";
@@ -27,7 +28,7 @@ type ApiKeysViewProps = {
 export default function ApiKeysView({ initial, operatorOnly }: ApiKeysViewProps) {
   const listRef = useRef<ApiKeyListHandle>(null);
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader description={API_KEYS_DESCRIPTION}>
         <PageTitle>API Keys</PageTitle>
       </PageHeader>
@@ -42,14 +43,13 @@ export default function ApiKeysView({ initial, operatorOnly }: ApiKeysViewProps)
       ) : (
         <Section asChild>
           <section aria-label="API keys">
-            <div className="flex flex-wrap items-baseline justify-between gap-md">
-              <SectionLabel>Manage API keys</SectionLabel>
-              <CreateApiKeyDialogDynamic onCreated={() => listRef.current?.refresh()} />
-            </div>
+            <SectionHeader actions={<CreateApiKeyDialogDynamic onCreated={() => listRef.current?.refresh()} />}>
+              Manage API keys
+            </SectionHeader>
             <ApiKeyList ref={listRef} initial={initial} />
           </section>
         </Section>
       )}
-    </div>
+    </PageLayout>
   );
 }

@@ -32,13 +32,8 @@ export const SAVE_CONFIRM_LABEL = "Save";
 
 // The save dialog's next-wake notice, pinned by its behavior test.
 export const SAVE_NEXT_WAKE_NOTICE =
-  "Takes effect on the next wake. In-flight runs finish on the current source. Memory is kept — same fleet_id.";
+  "Changes apply the next time this fleet handles something. Work already running keeps using the previous version. Its memory stays available.";
 export const SAVE_DIALOG_TITLE = "Save source changes?";
-
-// The "what changes when you save" preview.
-export const DIFF_PANEL_TITLE = "What changes when you save";
-export const DIFF_CURRENT_LABEL = "Current";
-export const DIFF_PENDING_LABEL = "Pending";
 
 // Shown after a 412: another operator saved while this editor was open, so the
 // current source was reloaded while the operator's pending edit was kept.

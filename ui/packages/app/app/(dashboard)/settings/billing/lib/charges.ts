@@ -1,4 +1,5 @@
 import { CHARGE_TYPE, NANOS_PER_USD, type TenantBillingChargesResponse } from "@/lib/types";
+import { deriveFleetIdentity } from "@/app/(dashboard)/w/[workspaceId]/fleets/components/fleetIdentity";
 
 export type ChargeRow = TenantBillingChargesResponse["items"][number];
 
@@ -10,10 +11,34 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 4,
 });
+const AGENT_PREFIX = "Agent";
+const EVENT_RECEIVED_LABEL = "Event received";
+const RUN_LABEL = "Run";
+const NO_TOKEN_USAGE_LABEL = "No token usage recorded";
+const MIN_VISIBLE_DEBIT_NANOS = 50_000;
+const SUBVISIBLE_DEBIT_LABEL = "<$0.0001";
 
 /** Format a nanos amount as a USD string. */
 export function formatDollars(nanos: number): string {
   return USD_FORMATTER.format(nanos / NANOS_PER_USD);
+}
+
+/** Human-readable debit: never render a misleading negative zero. */
+export function formatChargeAmount(nanos: number): string {
+  if (nanos === 0) return formatDollars(0);
+  if (nanos < MIN_VISIBLE_DEBIT_NANOS) return SUBVISIBLE_DEBIT_LABEL;
+  return `−${formatDollars(nanos)}`;
+}
+
+/** Stable fleet identity is available on every telemetry row. */
+export function chargeAgentLabel(row: ChargeRow): string {
+  return `${AGENT_PREFIX} ${deriveFleetIdentity(row.fleet_id).callsign}`;
+}
+
+/** Strip the provider namespace and separators without changing model casing. */
+export function displayModelName(model: string): string {
+  const modelId = model.slice(model.lastIndexOf("/") + 1);
+  return modelId.replaceAll(/[-_]/g, " ");
 }
 
 // recorded_at is epoch **milliseconds** (src/state/tenant_billing.zig `*_at_ms`).
@@ -38,21 +63,21 @@ export function formatChargeTimestamp(recordedAtMs: number): string {
 }
 
 /**
- * Human description for a flat charge row — the telemetry has no free-text
- * field, so synthesise one from the operator-meaningful inputs (model +
- * tokens) and the charge phase. `receive` is the per-event gate-pass; `stage`
- * is the metered run. Keeps the model + token detail the prior grouped table
- * surfaced, now folded into the ledger's description column.
+ * Human activity summary for a flat charge row. A billing record has no
+ * provider action or configured fleet name, so this stays precise about the
+ * information it does have: receipt or run, plus token use when recorded.
  */
 export function describeCharge(row: ChargeRow): string {
   if (row.charge_type === CHARGE_TYPE.receive) {
-    return `${row.model} · event gate-pass`;
+    return EVENT_RECEIVED_LABEL;
   }
-  const tokens =
-    row.token_count_input != null && row.token_count_output != null
-      ? ` · ${row.token_count_input}→${row.token_count_output} tok`
-      : "";
-  return `${row.model} · run${tokens}`;
+  if (row.token_count_input === null || row.token_count_output === null) {
+    return `${RUN_LABEL} · ${NO_TOKEN_USAGE_LABEL}`;
+  }
+  if (row.token_count_input === 0 && row.token_count_output === 0) {
+    return `${RUN_LABEL} · ${NO_TOKEN_USAGE_LABEL}`;
+  }
+  return `${RUN_LABEL} · ${row.token_count_input.toLocaleString()} input tokens · ${row.token_count_output.toLocaleString()} output tokens`;
 }
 
 export type ChargeSummary = {

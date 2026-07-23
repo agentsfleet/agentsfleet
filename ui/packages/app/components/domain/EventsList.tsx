@@ -199,16 +199,14 @@ export function EventsList({ initial, fleetId }: EventsListProps) {
   }, [fleetId, runs]);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col">
       <DataTable
+        className="flex min-h-0 flex-1 flex-col"
         caption={fleetId ? FLEET_EVENTS_LABEL : WORKSPACE_EVENTS_LABEL}
         columns={columns}
         rows={items}
         rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
-        // A page of rows is a screenful, so the table needs no inner scroll
-        // box of its own — the fixed 384px bound only clipped it and left
-        // dead space below.
-        stickyHeader={false}
+        viewportClassName="min-h-0 flex-1 max-h-none"
         pagination={{
           kind: PAGINATION_KIND.page,
           page: feed.page,

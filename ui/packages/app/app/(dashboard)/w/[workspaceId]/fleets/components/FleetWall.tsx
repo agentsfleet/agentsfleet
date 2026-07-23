@@ -8,6 +8,7 @@ import {
   Button,
   cn,
   EYEBROW_CLASS,
+  SectionHeader,
   TooltipButton,
   WakePulse,
 } from "@agentsfleet/design-system";
@@ -65,53 +66,61 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
   }
 
   return (
-    <>
-      <div className="mb-4 flex items-center justify-end gap-3">
-        {liveTotal > 0 ? (
-          <span
-            className={cn(EYEBROW_CLASS, "text-muted-foreground inline-flex items-center gap-2")}
-            aria-label={`${liveTotal} live`}
-          >
-            <WakePulse
-              live
-              className="inline-block w-2 h-2 rounded-full bg-pulse"
-              aria-hidden="true"
-            />
-            {liveTotal} live
-          </span>
+    <div className="grid gap-xl">
+      <SectionHeader
+        actions={
+          <div className="flex items-center gap-3">
+            {liveTotal > 0 ? (
+              <span
+                className={cn(EYEBROW_CLASS, "text-muted-foreground inline-flex items-center gap-2")}
+                aria-label={`${liveTotal} live`}
+              >
+                <WakePulse
+                  live
+                  className="inline-block w-2 h-2 rounded-full bg-pulse"
+                  aria-hidden="true"
+                />
+                {liveTotal} live
+              </span>
+            ) : null}
+            <TooltipButton asChild size="sm" tooltip={INSTALL_FLEET_TOOLTIP}>
+              <Link href={workspacePath(workspaceId, "fleets/new")}>
+                <PlusIcon size={14} /> Install fleet
+              </Link>
+            </TooltipButton>
+          </div>
+        }
+      >
+        Manage fleets
+      </SectionHeader>
+
+      <div>
+        <WorkspaceStreamProvider workspaceId={workspaceId} fleetIds={streamFleetIds}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {fleets.map((z) => (
+              <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
+            ))}
+          </div>
+        </WorkspaceStreamProvider>
+
+        {error ? (
+          <Alert variant="destructive" className="mt-3">{error}</Alert>
         ) : null}
-        <TooltipButton asChild size="sm" tooltip={INSTALL_FLEET_TOOLTIP}>
-          <Link href={workspacePath(workspaceId, "fleets/new")}>
-            <PlusIcon size={14} /> Install fleet
-          </Link>
-        </TooltipButton>
+
+        {cursor ? (
+          <div className="mt-4 flex justify-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => loadMore(cursor)}
+              disabled={pending}
+              aria-busy={pending}
+            >
+              {pending ? "Loading…" : "Load more"}
+            </Button>
+          </div>
+        ) : null}
       </div>
-
-      <WorkspaceStreamProvider workspaceId={workspaceId} fleetIds={streamFleetIds}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {fleets.map((z) => (
-            <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
-          ))}
-        </div>
-      </WorkspaceStreamProvider>
-
-      {error ? (
-        <Alert variant="destructive" className="mt-3">{error}</Alert>
-      ) : null}
-
-      {cursor ? (
-        <div className="mt-4 flex justify-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => loadMore(cursor)}
-            disabled={pending}
-            aria-busy={pending}
-          >
-            {pending ? "Loading…" : "Load more"}
-          </Button>
-        </div>
-      ) : null}
-    </>
+    </div>
   );
 }

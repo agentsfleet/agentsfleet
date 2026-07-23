@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  chargeAgentLabel,
+  displayModelName,
   describeCharge,
+  formatChargeAmount,
   formatChargeTimestamp,
   formatDollars,
   summarizeCharges,
@@ -38,6 +41,14 @@ describe("formatDollars", () => {
   });
 });
 
+describe("formatChargeAmount", () => {
+  it("keeps zero debits honest and exposes a nonzero amount below display precision", () => {
+    expect(formatChargeAmount(0)).toBe("$0.00");
+    expect(formatChargeAmount(1)).toBe("<$0.0001");
+    expect(formatChargeAmount(SAMPLE_CHARGE_NANOS)).toBe("−$0.001");
+  });
+});
+
 describe("formatChargeTimestamp", () => {
   it("formats epoch-ms as 'MMM DD, YYYY · HH:MM' (timezone-agnostic structure)", () => {
     // Exact date/time shift by the runner's TZ; the structure is fixed.
@@ -48,20 +59,34 @@ describe("formatChargeTimestamp", () => {
 });
 
 describe("describeCharge", () => {
-  it("describes a receive charge as the event gate-pass", () => {
+  it("describes a receive charge as an event receipt", () => {
     expect(describeCharge(charge({ charge_type: CHARGE_TYPE.receive }))).toBe(
-      "kimi-k2.6 · event gate-pass",
+      "Event received",
     );
   });
 
-  it("describes a stage charge with model + token counts", () => {
-    expect(describeCharge(charge())).toBe("kimi-k2.6 · run · 820→1040 tok");
+  it("describes a run with explicit input and output token counts", () => {
+    expect(describeCharge(charge())).toBe("Run · 820 input tokens · 1,040 output tokens");
   });
 
-  it("omits tokens when a stage charge has none", () => {
+  it("explains when a run recorded no token usage", () => {
     expect(
       describeCharge(charge({ token_count_input: null, token_count_output: null })),
-    ).toBe("kimi-k2.6 · run");
+    ).toBe("Run · No token usage recorded");
+  });
+
+  it("explains when a run records explicit zero token counts", () => {
+    expect(describeCharge(charge({ token_count_input: 0, token_count_output: 0 }))).toBe(
+      "Run · No token usage recorded",
+    );
+  });
+});
+
+describe("charge identity", () => {
+  it("uses the fleet sigil and a readable model label", () => {
+    expect(chargeAgentLabel(charge())).toMatch(/^Agent [A-Za-z]+-[0-9A-F]{4}$/);
+    expect(displayModelName("deepseek-ai/DeepSeek-V4-Pro")).toBe("DeepSeek V4 Pro");
+    expect(displayModelName("kimi-k2.6")).toBe("kimi k2.6");
   });
 });
 
