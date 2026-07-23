@@ -100,7 +100,8 @@ test "api key auth lookup survives the drop" {
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
     try base.seedTenant(db.conn);
-    defer _ = db.conn.exec("DELETE FROM core.api_keys WHERE key_name LIKE $1", .{KEY_PREFIX ++ "%"}) catch {};
+    defer _ = db.conn.exec("DELETE FROM core.api_keys WHERE key_name LIKE $1", .{KEY_PREFIX ++ "%"}) catch |err|
+        std.log.warn("api key teardown ignored: {s}", .{@errorName(err)});
 
     _ = try db.conn.exec(
         \\INSERT INTO core.api_keys
@@ -126,7 +127,8 @@ test "memory reads relocate onto the composite index" {
     const alloc = std.testing.allocator;
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
-    defer _ = db.conn.exec("DELETE FROM memory.memory_entries WHERE id LIKE $1", .{MEM_ID_PREFIX ++ "%"}) catch {};
+    defer _ = db.conn.exec("DELETE FROM memory.memory_entries WHERE id LIKE $1", .{MEM_ID_PREFIX ++ "%"}) catch |err|
+        std.log.warn("memory teardown ignored: {s}", .{@errorName(err)});
 
     _ = try db.conn.exec(
         \\INSERT INTO memory.memory_entries
