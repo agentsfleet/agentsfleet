@@ -1,4 +1,5 @@
 const std = @import("std");
+const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -25,11 +26,7 @@ pub fn insertIfAbsent(
 ) !void {
     const now_ms = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing
-        \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $4)
-        \\ON CONFLICT (tenant_id) DO NOTHING
-    , .{ tenant_id, balance_nanos, grant_source, now_ms });
+        sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
 }
 
 pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
@@ -53,14 +50,7 @@ pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
     // this in the same UPDATE keeps the transition atomic so the `stop`
     // gate can never see "positive balance AND exhausted_at set".
     var q = PgQuery.from(try conn.query(
-        \\UPDATE billing.tenant_billing
-        \\SET balance_nanos = balance_nanos - $2,
-        \\    balance_exhausted_at = NULL,
-        \\    updated_at = $3
-        \\WHERE tenant_id = $1::uuid
-        \\  AND balance_nanos >= $2
-        \\RETURNING balance_nanos, updated_at
-    , .{ tenant_id, nanos, now_ms }));
+        sql.DEBIT_TENANT_BALANCE, .{ tenant_id, nanos, now_ms }));
     defer q.deinit();
     const row = (try q.next()) orelse {
         if (!try rowExists(conn, tenant_id)) return error.TenantBillingMissing;
@@ -73,8 +63,7 @@ pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
 
 fn rowExists(conn: *pg.Conn, tenant_id: []const u8) !bool {
     var q = PgQuery.from(try conn.query(
-        \\SELECT 1 FROM billing.tenant_billing WHERE tenant_id = $1::uuid LIMIT 1
-    , .{tenant_id}));
+        sql.SELECT_TENANT_BILLING_EXISTS, .{tenant_id}));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -85,11 +74,7 @@ pub fn loadByTenant(
     tenant_id: []const u8,
 ) !?BillingRow {
     var q = PgQuery.from(try conn.query(
-        \\SELECT balance_nanos, grant_source, updated_at, balance_exhausted_at
-        \\FROM billing.tenant_billing
-        \\WHERE tenant_id = $1::uuid
-        \\LIMIT 1
-    , .{tenant_id}));
+        sql.SELECT_TENANT_BALANCE, .{tenant_id}));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     const bal = try row.get(i64, 0);
@@ -111,12 +96,7 @@ pub fn loadByTenant(
 pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
     const now_ms = clock.nowMillis();
     var q = PgQuery.from(try conn.query(
-        \\UPDATE billing.tenant_billing
-        \\SET balance_exhausted_at = $2, updated_at = $2
-        \\WHERE tenant_id = $1::uuid
-        \\  AND balance_exhausted_at IS NULL
-        \\RETURNING balance_exhausted_at
-    , .{ tenant_id, now_ms }));
+        sql.MARK_BALANCE_EXHAUSTED, .{ tenant_id, now_ms }));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -130,12 +110,7 @@ pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
 pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
     const now_ms = clock.nowMillis();
     var q = PgQuery.from(try conn.query(
-        \\UPDATE billing.tenant_billing
-        \\SET balance_exhausted_at = NULL, updated_at = $2
-        \\WHERE tenant_id = $1::uuid
-        \\  AND balance_exhausted_at IS NOT NULL
-        \\RETURNING tenant_id
-    , .{ tenant_id, now_ms }));
+        sql.CLEAR_BALANCE_EXHAUSTED, .{ tenant_id, now_ms }));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -146,11 +121,7 @@ pub fn resolveTenantFromWorkspace(
     workspace_id: []const u8,
 ) ![]u8 {
     var q = PgQuery.from(try conn.query(
-        \\SELECT tenant_id::text
-        \\FROM core.workspaces
-        \\WHERE workspace_id = $1::uuid
-        \\LIMIT 1
-    , .{workspace_id}));
+        sql.SELECT_TENANT_FOR_WORKSPACE, .{workspace_id}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.WorkspaceNotFound;
     return alloc.dupe(u8, try row.get([]const u8, 0));

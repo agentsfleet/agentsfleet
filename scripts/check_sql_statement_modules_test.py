@@ -60,6 +60,24 @@ class DenominatorTest(unittest.TestCase):
         write(self.root, "agentsfleetd/fleet/renewal_settle.zig", STATEMENTS)
         self.assertEqual((0, 0), checker.adoption(checker.survey(self.root)))
 
+    def test_sql_inside_a_test_block_is_not_counted(self) -> None:
+        # A production module may hold its own `test` blocks, and their fixture
+        # SQL is inline by design. Counting it inflates the denominator with text
+        # nobody should extract — and invites someone to "fix" the ratio by
+        # moving fixtures into a production statement module.
+        body = (
+            "pub fn live() void {}\n"
+            f"{STATEMENTS}\n"
+            'test "seeds its own fixtures" {\n'
+            "    _ = conn.exec(\n"
+            "        \\\\INSERT INTO core.tenants (tenant_id) VALUES ($1)\n"
+            "    , .{});\n"
+            "}\n"
+        )
+        write(self.root, "agentsfleetd/state/thing_store.zig", body)
+        extracted, total = checker.adoption(checker.survey(self.root))
+        self.assertEqual((0, 4), (extracted, total))
+
     def test_files_outside_the_data_access_layer_are_not_counted(self) -> None:
         write(self.root, "agentsfleetd/observability/metrics.zig", STATEMENTS)
         self.assertEqual((0, 0), checker.adoption(checker.survey(self.root)))

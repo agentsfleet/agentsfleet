@@ -61,6 +61,10 @@ EXCLUDED_SUFFIXES = (
 # A statement starts a Zig multiline-string line and opens with a SQL verb.
 STATEMENT_RE = re.compile(r"^\s*\\\\\s*(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|WITH)\b", re.IGNORECASE)
 
+# A `test "…" {` / `test {` block inside a production module. Its SQL is fixture
+# text, inline by design, and must not enter the denominator.
+TEST_BLOCK_RE = re.compile(r"^test\b")
+
 # A constant surface holds no function and allocates nothing.
 FUNCTION_RE = re.compile(r"^\s*(pub\s+)?fn\s", re.MULTILINE)
 ALLOC_RE = re.compile(r"\balloc(ator)?\b")
@@ -83,13 +87,38 @@ def in_data_access_layer(path: Path) -> bool:
 
 
 def count_statements(path: Path) -> int:
+    """Production statements in `path`, ignoring any inside a `test` block.
+
+    A production module can hold `test { … }` blocks, and their fixture SQL is
+    inline by design — the same reason `*_test.zig` is excluded wholesale. Left
+    in, it inflates the denominator with text nobody should extract, which makes
+    the ratio understate adoption and, worse, invites someone to "fix" it by
+    moving fixtures into a production statement module.
+    """
     try:
-        with path.open(encoding="utf-8") as handle:
-            return sum(1 for line in handle if STATEMENT_RE.match(line))
+        source = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise CheckError(f"cannot read {path}: {exc}") from exc
     except UnicodeDecodeError as exc:
         raise CheckError(f"{path} is not valid UTF-8: {exc}") from exc
+
+    count = 0
+    depth = 0
+    in_test = False
+    for line in source.splitlines():
+        if not in_test and TEST_BLOCK_RE.match(line):
+            in_test, depth = True, 0
+        if in_test:
+            # Brace depth returning to zero closes the block. Braces inside the
+            # SQL string itself are not Zig syntax, so skip continuation lines.
+            if not line.lstrip().startswith("\\\\"):
+                depth += line.count("{") - line.count("}")
+                if depth <= 0:
+                    in_test = False
+            continue
+        if STATEMENT_RE.match(line):
+            count += 1
+    return count
 
 
 def domain_of(path: Path) -> Path:
