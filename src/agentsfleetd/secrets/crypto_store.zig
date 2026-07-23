@@ -166,13 +166,15 @@ fn decryptRowAt(
     return plaintext_result;
 }
 
-/// One decrypted credential from a workspace-wide read. `plaintext` is
-/// caller-owned and MUST be released through `freeEntries` (or an equivalent
-/// zeroing free) — it is secret material, not ordinary heap.
+/// One credential from a workspace-wide read. `plaintext` is null when THIS
+/// row's envelope could not be decrypted — a damaged or legacy row does not
+/// fail the whole read, matching the per-row degradation the list had before
+/// the bulk path. When non-null it is caller-owned secret material and MUST be
+/// released through `freeEntries` (or an equivalent zeroing free).
 pub const WorkspaceSecret = struct {
     key_name: []const u8,
     created_at: i64,
-    plaintext: []u8,
+    plaintext: ?[]u8,
 };
 
 /// Every credential in a workspace, decrypted, in ONE query and ONE KEK unwrap.
@@ -182,9 +184,13 @@ pub const WorkspaceSecret = struct {
 /// once the row is in hand, so nothing here needs a second statement while the
 /// cursor is open — which is what made the per-row form necessary before.
 ///
-/// Ownership is all-or-nothing: on any error every plaintext already decrypted
-/// is zeroed and freed before returning, so a partial failure never strands
-/// secret material on the heap.
+/// Row isolation is preserved: a single undecryptable envelope degrades to a
+/// null `plaintext` for that row, it does NOT abort the read. The per-key path
+/// this replaced caught a decrypt failure per row and degraded it to an opaque
+/// entry so the list still returned 200; collapsing to one query must not
+/// collapse that isolation. A transport or protocol error (not a per-row
+/// decrypt failure) still propagates, and every plaintext already decrypted is
+/// zeroed and freed before returning so no secret material is stranded.
 pub fn loadAllForWorkspace(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
@@ -204,17 +210,24 @@ pub fn loadAllForWorkspace(
 
     var result = PgQuery.from(try conn.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{workspace_id}));
     defer result.deinit();
+    var undecryptable: usize = 0;
     while (try result.next()) |row| {
         const key_name = try alloc.dupe(u8, try row.get([]const u8, 0));
         errdefer alloc.free(key_name);
         const created_at = try row.get(i64, 1);
         // Ciphertext columns start at index 2 — same block, same order as
-        // SELECT_SECRET, which is why one decrypt routine serves both.
-        const plaintext = try decryptRowAt(alloc, row, workspace_id, key_name, &kek, 2);
-        errdefer secure_memory.freeBytes(alloc, plaintext);
+        // SELECT_SECRET, which is why one decrypt routine serves both. A decrypt
+        // failure degrades THIS row to null rather than failing the workspace;
+        // decryptRowAt has already logged the cause with row context.
+        const plaintext = decryptRowAt(alloc, row, workspace_id, key_name, &kek, 2) catch |err| blk: {
+            if (err == error.OutOfMemory) return err; // not a per-row data fault
+            undecryptable += 1;
+            break :blk null;
+        };
+        errdefer if (plaintext) |p| secure_memory.freeBytes(alloc, p);
         try out.append(alloc, .{ .key_name = key_name, .created_at = created_at, .plaintext = plaintext });
     }
-    log.info("retrieved_workspace", .{ .workspace_id = workspace_id, .count = out.items.len });
+    log.info("retrieved_workspace", .{ .workspace_id = workspace_id, .count = out.items.len, .undecryptable = undecryptable });
     return out.toOwnedSlice(alloc);
 }
 
@@ -229,7 +242,7 @@ pub fn freeEntries(alloc: std.mem.Allocator, entries: []WorkspaceSecret) void {
 /// Zero and release each entry's secret material, leaving the slice alone.
 fn freeEntryContents(alloc: std.mem.Allocator, entries: []WorkspaceSecret) void {
     for (entries) |e| {
-        secure_memory.freeBytes(alloc, e.plaintext);
+        if (e.plaintext) |p| secure_memory.freeBytes(alloc, p);
         alloc.free(e.key_name);
     }
 }

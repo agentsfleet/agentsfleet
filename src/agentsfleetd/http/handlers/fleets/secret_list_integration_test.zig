@@ -130,6 +130,42 @@ test "credential list projects descriptors and never the secret body" {
     try std.testing.expectEqualStrings("probe-key-1", rows[1].name);
 }
 
+test "an undecryptable row degrades without failing the whole list" {
+    // Row isolation: a single damaged envelope must degrade to custom_secret,
+    // exactly as the per-key path did before the bulk read collapsed the list
+    // to one query. Before the fix, one bad row 500'd the entire request.
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    cp.setTestKek();
+    try base.seedTenant(db.conn);
+    defer teardown(db.conn, WS_ONE);
+
+    // One good credential, plus a row whose ciphertext cannot be decrypted with
+    // this KEK — a truncated envelope stands in for a legacy or corrupt row.
+    try seedSecrets(alloc, db.conn, WS_ONE, 1);
+    _ = try db.conn.exec(
+        \\INSERT INTO vault.secrets
+        \\  (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag,
+        \\   nonce, ciphertext, tag, kek_version, created_at, updated_at)
+        \\VALUES (overlay(md5('bad')::uuid::text placing '7' from 15 for 1)::uuid,
+        \\        $1::uuid, 'zz-damaged', '\x00', '\x00', '\x00',
+        \\        '\x00', '\x00', '\x00', 2, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{WS_ONE});
+
+    const rows = try secret_list.fetchSecretListOnConn(db.conn, alloc, WS_ONE);
+    defer freeRows(alloc, rows);
+
+    // Both rows are listed; the request did not fail.
+    try std.testing.expectEqual(@as(usize, 2), rows.len);
+    // Ordered by key_name: the good row first, the damaged one degraded.
+    try std.testing.expectEqualStrings("probe-key-0", rows[0].name);
+    try std.testing.expectEqualStrings("provider_key", rows[0].kind);
+    try std.testing.expectEqualStrings("zz-damaged", rows[1].name);
+    try std.testing.expectEqualStrings("custom_secret", rows[1].kind);
+}
+
 fn freeRows(alloc: std.mem.Allocator, rows: []secret_list.SecretListRow) void {
     for (rows) |r| {
         alloc.free(r.name);
