@@ -297,7 +297,15 @@ test "integration: crypto store frees the unwrapped key after payload failure" {
 test "crypto store source keeps transient key zeroization" {
     const store_source = @embedFile("crypto_store.zig");
     const primitive_source = @embedFile("crypto_primitives.zig");
-    try std.testing.expect(std.mem.count(u8, store_source, "secureZero(u8, &kek)") == 2);
+    // Relational, not a fixed count: EVERY unwrapped Key Encryption Key (KEK) is
+    // zeroed. A pinned number says "there are two of these" and has to be edited
+    // whenever a third caller appears — at which point it proves nothing about
+    // the new one. Tying the zeroing count to the load count means a KEK loaded
+    // without a matching `secureZero` fails here no matter how many exist.
+    try std.testing.expectEqual(
+        std.mem.count(u8, store_source, "cp.loadKek()"),
+        std.mem.count(u8, store_source, "secureZero(u8, &kek)"),
+    );
     try std.testing.expect(std.mem.count(u8, store_source, "secureZero(u8, &dek)") == 2);
     try std.testing.expect(std.mem.indexOf(u8, store_source, "secureZero(u8, dek_plain)") != null);
     try std.testing.expect(std.mem.indexOf(u8, primitive_source, "secureZero(u8, &key)") != null);
