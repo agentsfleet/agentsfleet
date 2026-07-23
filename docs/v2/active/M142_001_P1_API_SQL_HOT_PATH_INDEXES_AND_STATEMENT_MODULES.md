@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M142
 **Workstream:** 001
 **Date:** Jul 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — background sweeps re-scan whole tables on every cycle, so idle database load grows with fleet and runner count while no user is waiting on it
 **Categories:** API
 **Batch:** B1 — single workstream; nothing else in this milestone
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) via `make _lint_zig_test_depth`
+**Branch:** feat/m142-sql-hot-path-indexes
+**Test Baseline:** unit=2827 integration=378
 **Depends on:** none — disjoint from M141_001_P0_API_DOCS_OBS_BOUNDED_RUNNER_LEASE_FANOUT; no file appears in both Files Changed tables, and M141 declares no schema change, so every index here stays unowned by it
 **Provenance:** Large Language Model (LLM)-drafted (Claude Opus 4.8, Jul 23, 2026) from an exhaustive read of all 32 `schema/*.sql` files, the 11 existing `sql.zig` modules, and all 68 inline-Structured Query Language (SQL) production modules at `main` `5f3649947`
 **Canonical architecture:** `docs/architecture/scaling.md` §Per-request volume; `docs/architecture/memory.md` §Storage
@@ -308,7 +308,9 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture: `docs/architecture/scaling.md` §Per-request volume describes recurring read cost and is updated here to state which reads are index-served. Open question for Indy at PLAN: whether §2's index removals are approved, and against which recorded scan-count evidence, since the Schema Table Removal Guard requires an explicit decision per removal.
+- **Consults** — Architecture: `docs/architecture/scaling.md` §Per-request volume describes recurring read cost and is updated here to state which reads are index-served. M141_001 edits the same section for the idle-cost model; the two are textually adjacent but semantically disjoint, so whichever merges second rebases that section.
+- **Owner decision at CHORE(open) — §2 sequencing.** Put to Indy: whether §2's index removals are approved, and against which evidence. Indy chose *"Gather evidence, then decide"* — §1 lands first, the seeded workload runs, and the recorded `pg_stat_user_indexes` scan counts come back to Indy before any `DROP INDEX` is authored. §2 is therefore **not deferred and still in scope**; it is blocked on evidence that does not yet exist. R8 stays ungraded until that decision is taken.
+- **Rules conflict at CHORE(open) — which removal model governs §2.** `dispatch/write_sql.md` keys the Schema Table Removal Guard on `VERSION`: below `2.0.0` it prescribes the teardown-rebuild path (delete the slot file, drop the `@embedFile` constant, drop the migration-array entry). `VERSION` is `0.21.0`, so that branch fires. `docs/SCHEMA_CONVENTIONS.md` §Migration Model records a later owner decision (Jul 22, 2026) making additive migrations the current model, with slots `001`–`031` frozen as bootstrap history. **Additive wins** — it is the newer owner decision, and `write_sql.md` names `SCHEMA_CONVENTIONS.md` as its own source of truth. §2's drops, if approved, land as a new numbered slot; no shipped slot file is edited.
 - **Source finding** — `liveness_sweeper.expireActiveLeaseSlots` filters `fleet.runner_affinity` on `last_runner_id`, which carries no index and is a foreign key with `ON DELETE SET NULL`; the statement runs once per due runner per sweep cycle, so its cost is proportional to fleets times runners times cycles.
 - **Source finding** — `liveness_sweeper.fetchDueRunners` orders `fleet.runners` by `updated_at`, which carries no index; the table has none at all beyond its identity and token-hash uniqueness, so both the sweep and the operator runner list scan and sort it. `reclaim.reclaimPriorActive` likewise filters `fleet.runner_leases` by `fleet_id`, unindexed despite being a foreign key with `ON DELETE CASCADE`, so every reclaim and every fleet delete scans that table.
 - **Source finding** — `memory.memory_entries` carries a single-column index on `fleet_id`, but the hydration read, the eviction pass, and the daily sweep all order by `updated_at`, so each sorts the fleet's full memory set. Separately, `idx_api_keys_key_hash_active` is redundant behind `api_keys_hash_uniq` — the authentication lookup filters on `key_hash` alone and never on `active`.
