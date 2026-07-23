@@ -9,6 +9,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
 const sql = @import("sql.zig");
+const secure_memory = @import("secure_memory.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const logging = @import("log");
 
@@ -91,13 +92,34 @@ pub fn load(
         return cp.SecretError.NotFound;
     };
 
-    const encrypted_dek = try row.get([]u8, 0);
-    const dek_nonce_slice = try row.get([]u8, 1);
-    const dek_tag_slice = try row.get([]u8, 2);
-    const payload_nonce_slice = try row.get([]u8, 3);
-    const payload_ciphertext = try row.get([]u8, 4);
-    const payload_tag_slice = try row.get([]u8, 5);
-    const kek_version = try row.get(i32, 6);
+    var kek = try cp.loadKek();
+    defer std.crypto.secureZero(u8, &kek);
+    return decryptRowAt(alloc, row, workspace_id, key_name, &kek, 0);
+}
+
+/// Decrypt one `vault.secrets` row into plaintext, reading its ciphertext
+/// columns starting at `col`. Caller owns the result and frees it through
+/// `secure_memory.freeBytes`.
+///
+/// Split out of `load` so a workspace-wide read can decrypt many rows against
+/// ONE query and ONE unwrapped Key Encryption Key (KEK). Every row-backed slice
+/// is copied before returning, because the driver invalidates them on the next
+/// `next()` — the caller may advance the cursor immediately after this returns.
+fn decryptRowAt(
+    alloc: std.mem.Allocator,
+    row: anytype,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    kek: *const [KEY_LEN]u8,
+    col: usize,
+) ![]u8 {
+    const encrypted_dek = try row.get([]u8, col);
+    const dek_nonce_slice = try row.get([]u8, col + 1);
+    const dek_tag_slice = try row.get([]u8, col + 2);
+    const payload_nonce_slice = try row.get([]u8, col + 3);
+    const payload_ciphertext = try row.get([]u8, col + 4);
+    const payload_tag_slice = try row.get([]u8, col + 5);
+    const kek_version = try row.get(i32, col + 6);
     if (kek_version != KEK_VERSION_LEGACY and kek_version != KEK_VERSION_AAD_BOUND) {
         log.err("unsupported_kek_version", .{
             .workspace_id = workspace_id,
@@ -117,16 +139,13 @@ pub fn load(
     const dek_copy = try alloc.dupe(u8, encrypted_dek);
     defer alloc.free(dek_copy);
 
-    var kek = try cp.loadKek();
-    defer std.crypto.secureZero(u8, &kek);
-
     const aad = if (kek_version == KEK_VERSION_AAD_BOUND)
         try buildAad(alloc, workspace_id, key_name, kek_version)
     else
         try alloc.dupe(u8, "");
     defer alloc.free(aad);
 
-    const dek_plain = try cp.decrypt(alloc, &dek_nonce, dek_copy, &dek_tag, aad, &kek);
+    const dek_plain = try cp.decrypt(alloc, &dek_nonce, dek_copy, &dek_tag, aad, kek);
     defer {
         std.crypto.secureZero(u8, dek_plain);
         alloc.free(dek_plain);
@@ -145,4 +164,72 @@ pub fn load(
     // info (not debug) by design — security-access visibility, see store() above (§4 exception).
     log.info("retrieved", .{ .workspace_id = workspace_id, .key_name = key_name });
     return plaintext_result;
+}
+
+/// One decrypted credential from a workspace-wide read. `plaintext` is
+/// caller-owned and MUST be released through `freeEntries` (or an equivalent
+/// zeroing free) — it is secret material, not ordinary heap.
+pub const WorkspaceSecret = struct {
+    key_name: []const u8,
+    created_at: i64,
+    plaintext: []u8,
+};
+
+/// Every credential in a workspace, decrypted, in ONE query and ONE KEK unwrap.
+///
+/// The per-key alternative issued a query per credential, so listing a
+/// workspace cost a round trip per stored secret. Decryption is pure computation
+/// once the row is in hand, so nothing here needs a second statement while the
+/// cursor is open — which is what made the per-row form necessary before.
+///
+/// Ownership is all-or-nothing: on any error every plaintext already decrypted
+/// is zeroed and freed before returning, so a partial failure never strands
+/// secret material on the heap.
+pub fn loadAllForWorkspace(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+) ![]WorkspaceSecret {
+    var kek = try cp.loadKek();
+    defer std.crypto.secureZero(u8, &kek);
+
+    var out: std.ArrayList(WorkspaceSecret) = .empty;
+    // Elements only here: `out.items` aliases the list's own buffer, which
+    // `deinit` releases. `freeEntries` additionally frees the slice and is for
+    // the caller, who owns it after `toOwnedSlice`.
+    errdefer {
+        freeEntryContents(alloc, out.items);
+        out.deinit(alloc);
+    }
+
+    var result = PgQuery.from(try conn.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{workspace_id}));
+    defer result.deinit();
+    while (try result.next()) |row| {
+        const key_name = try alloc.dupe(u8, try row.get([]const u8, 0));
+        errdefer alloc.free(key_name);
+        const created_at = try row.get(i64, 1);
+        // Ciphertext columns start at index 2 — same block, same order as
+        // SELECT_SECRET, which is why one decrypt routine serves both.
+        const plaintext = try decryptRowAt(alloc, row, workspace_id, key_name, &kek, 2);
+        errdefer secure_memory.freeBytes(alloc, plaintext);
+        try out.append(alloc, .{ .key_name = key_name, .created_at = created_at, .plaintext = plaintext });
+    }
+    log.info("retrieved_workspace", .{ .workspace_id = workspace_id, .count = out.items.len });
+    return out.toOwnedSlice(alloc);
+}
+
+/// Zero and release every plaintext in `entries`, their key names, and the
+/// slice itself — `loadAllForWorkspace` hands back owned memory at both levels,
+/// so releasing only the elements strands the backing array.
+pub fn freeEntries(alloc: std.mem.Allocator, entries: []WorkspaceSecret) void {
+    freeEntryContents(alloc, entries);
+    alloc.free(entries);
+}
+
+/// Zero and release each entry's secret material, leaving the slice alone.
+fn freeEntryContents(alloc: std.mem.Allocator, entries: []WorkspaceSecret) void {
+    for (entries) |e| {
+        secure_memory.freeBytes(alloc, e.plaintext);
+        alloc.free(e.key_name);
+    }
 }
