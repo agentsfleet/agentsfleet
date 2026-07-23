@@ -10,26 +10,24 @@ import {
   FleetMessageRow,
   ROW_TONE,
   useFleetName,
-  type RowTone,
 } from "./FleetMessageRow";
 import {
   readActor,
   readCustomStatus,
   readFailureLabel,
   readGroupMembers,
-  readGroupRange,
   readOutcome,
   readReply,
   readRequestJson,
   readText,
 } from "./fleetMessageReaders";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
+import { groupSpan } from "@/lib/events/event-grouping";
 import {
   SENDER,
   changeProposalActionFrom,
   eventLinkFrom,
   guidanceFor,
-  roleFor,
   senderLabelFor,
 } from "@/lib/events/event-summary";
 
@@ -69,7 +67,7 @@ function FleetMessage({ message }: { message: MessageState }) {
   const isReplyRow = message.role === "assistant";
   // A run of identical deliveries is one row until the operator opens it.
   const group = readGroupMembers(message);
-  if (group) return <FleetGroupMessage message={message} fleetName={fleetName} members={group} />;
+  if (group) return <FleetGroupMessage fleetName={fleetName} members={group} />;
   // Integration deliveries recede to a one-line tick so the operator's own
   // conversation dominates the column (approved variant B). Order is
   // untouched — activity looks quieter, it never moves.
@@ -82,7 +80,10 @@ function FleetMessage({ message }: { message: MessageState }) {
         <FleetMessageRow
           sender={senderLabelFor(actor, fleetName)}
           createdAt={message.createdAt}
-          tone={toneFor(actor, status)}
+          // The only message that still renders a full trigger row is the
+          // operator's own — system activity is a compact tick with its own
+          // chip — so this row is always operator-toned.
+          tone={ROW_TONE.OPERATOR}
           messageRole={message.role}
           dimmed={optimistic}
           failed={failed}
@@ -153,18 +154,19 @@ function FleetActivityMessage({
  * the operator can check rather than a claim they have to trust.
  */
 function FleetGroupMessage({
-  message,
   fleetName,
   members,
 }: {
-  message: MessageState;
   fleetName: string;
   members: FleetEvent[];
 }) {
   const [expanded, setExpanded] = useState(false);
-  const newest = members[members.length - 1];
-  const range = readGroupRange(message);
-  if (newest === undefined || range === null) return null;
+  // Everything is derived from `members` (guaranteed non-empty by the caller):
+  // `reduce` yields the newest as a definite `FleetEvent`, and the span reads
+  // the members' timestamps. Nothing is re-read from the message metadata, so
+  // there is no "missing metadata" branch to leave uncovered.
+  const newest = members.reduce((_, member) => member);
+  const span = groupSpan(members);
   const failed = newest.status === STATUS_AGENT_ERROR;
   return (
     <FleetGroupRow
@@ -173,8 +175,8 @@ function FleetGroupMessage({
       outcome={newest.reply.length > 0 ? undefined : newest.outcome}
       failed={failed}
       count={members.length}
-      first={range.first}
-      last={range.last}
+      first={span.first}
+      last={span.last}
       expanded={expanded}
       onToggle={() => setExpanded((open) => !open)}
     >
@@ -327,9 +329,4 @@ function PayloadDisclosure({ json }: { json: string }) {
       </pre>
     </details>
   );
-}
-
-function toneFor(actor: string, status: string): RowTone {
-  if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return ROW_TONE.OPERATOR;
-  return roleFor(actor) === "user" ? ROW_TONE.OPERATOR : ROW_TONE.EVENT;
 }

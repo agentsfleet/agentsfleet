@@ -456,6 +456,54 @@ describe("FleetThread — role rendering", () => {
     expect(banner.textContent).toContain(GUIDANCE.STARTUP);
   });
 
+  it("pins a bare banner for a repeat with no cause and no actionable guidance", () => {
+    // The quiet arm of the banner: a class the operator cannot act on
+    // (`oom_kill`), from a runner that recorded no cause. It still pins the
+    // count, but renders neither a cause clause nor a guidance line.
+    mockStream(
+      Array.from({ length: 3 }, (_, i) =>
+        ev({
+          id: `oom_${i}`,
+          role: "system",
+          actor: "webhook:github",
+          text: "edited #541",
+          reply: "",
+          status: "fleet_error",
+          outcome: "Ran out of memory",
+          failureLabel: "oom_kill",
+          failureDetail: null,
+        }),
+      ),
+    );
+    renderThread();
+
+    const banner = screen.getByTestId("fleet-failure-banner");
+    expect(screen.getByTestId("failure-banner-count").textContent).toBe("×3");
+    expect(banner.textContent).toContain("Ran out of memory");
+    expect(banner.textContent).not.toContain(GUIDANCE.STARTUP);
+  });
+
+  it("animates a still-working integration delivery instead of stating an outcome", () => {
+    // A received (streaming) system row has no settled outcome yet, so the
+    // compact tick shows motion, not an outcome clause.
+    mockStream([
+      ev({
+        id: "wk",
+        role: "system",
+        actor: "webhook:github",
+        text: "opened #542",
+        reply: "",
+        status: "received",
+        outcome: OUTCOME.WORKING,
+      }),
+    ]);
+    const { container } = renderThread();
+
+    const tick = container.querySelector('[data-compact="true"]');
+    expect(tick?.textContent).toContain("opened #542");
+    expect(tick?.textContent).not.toContain(OUTCOME.WORKING);
+  });
+
   it("shows no banner for a single failure, and clears it once the fleet recovers", () => {
     const failure = () =>
       ev({
@@ -508,6 +556,105 @@ describe("FleetThread — role rendering", () => {
     const toggle = screen.getByRole("button", { expanded: false });
     await act(async () => { fireEvent.click(toggle); });
     expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(15);
+  });
+
+  it("renders a group whose members carry replies and payloads", async () => {
+    // A run coalesces on actor/headline/outcome, so members can still differ
+    // in reply and payload. The newest here replied; some members carry a
+    // payload disclosure, some do not — exercising both sides of each.
+    const member = (id: string, reply: string, requestJson?: string) =>
+      ev({
+        id,
+        role: "system",
+        actor: "webhook:github",
+        text: "edited #541",
+        reply,
+        status: "processed",
+        outcome: OUTCOME.NO_REPLY,
+        ...(requestJson ? { custom: { requestJson } } : {}),
+      });
+    mockStream([
+      member("g1", "", '{"action":"opened","repo":"o/r","number":1}'),
+      member("g2", "reviewed it", undefined),
+      member("g3", "reviewed it", undefined),
+    ]);
+    const { container } = renderThread();
+
+    // The group's newest replied, so the header row shows no outcome clause.
+    expect(screen.getByTestId("group-count").textContent).toBe("×3");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { expanded: false }));
+    });
+    // Members render: one with a payload disclosure, others with their reply.
+    expect(screen.getByText("▸ payload")).toBeTruthy();
+    expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(3);
+  });
+
+  it("links out from an activity delivery that carries only a run URL", () => {
+    // A completed-run payload has a link but no change-proposal action, so the
+    // annotation renders the link without an action badge.
+    mockStream([
+      ev({
+        id: "run1",
+        role: "system",
+        actor: "webhook:github",
+        text: "ci finished",
+        reply: "",
+        status: "processed",
+        outcome: OUTCOME.NO_REPLY,
+        custom: {
+          requestJson:
+            '{"workflow_name":"ci","conclusion":"success","repo":"o/r","run_url":"https://ci.example.test/1"}',
+        },
+      }),
+    ]);
+    const { container } = renderThread();
+    const link = container.querySelector('a[href^="https://ci.example.test"]');
+    expect(link).toBeTruthy();
+    expect(container.querySelector('[data-slot="badge"]')).toBeNull();
+  });
+
+  it("shows the operator's payload and the failure guidance on a steer that failed startup", () => {
+    // One durable turn: the operator steered, the run failed a startup check.
+    // The trigger row discloses the submitted payload; the reply row states
+    // the outcome and points at the fix.
+    mockStream([
+      ev({
+        id: "steer_fail",
+        role: "user",
+        actor: "steer:user_abc",
+        text: "deploy the review guidelines",
+        reply: "",
+        status: "fleet_error",
+        outcome: "Failed a startup safety check",
+        failureLabel: "startup_posture",
+        custom: { requestJson: '{"message":"deploy the review guidelines"}' },
+      }),
+    ]);
+    renderThread();
+    // The trigger row exposes the operator's own submitted payload.
+    expect(screen.getByText("▸ payload")).toBeTruthy();
+    // The reply row carries the actionable guidance.
+    expect(screen.getByTestId("failure-guidance").textContent).toBe(GUIDANCE.STARTUP);
+  });
+
+  it("streams a fleet reply that has begun but not finished", () => {
+    // A reply mid-stream: status received, partial text already accumulated.
+    // The reply body shows with the streaming cursor, not the working dots.
+    mockStream([
+      ev({
+        id: "sr",
+        role: "assistant",
+        actor: "fleet",
+        text: "",
+        reply: "Half a thought",
+        status: "received",
+        outcome: OUTCOME.WORKING,
+      }),
+    ]);
+    renderThread();
+    expect(screen.getByText(/Half a thought/)).toBeTruthy();
+    expect(screen.getByLabelText("streaming")).toBeTruthy();
   });
 
   it("breaks a group when the operator speaks mid-burst", () => {

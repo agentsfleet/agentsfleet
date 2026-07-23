@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupThreadEvents, groupTimeRange, MIN_GROUP_RUN } from "@/lib/events/event-grouping";
+import { groupSpan, groupThreadEvents, MIN_GROUP_RUN } from "@/lib/events/event-grouping";
 import { OUTCOME } from "@/lib/events/event-summary";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
 
@@ -151,24 +151,20 @@ describe("groupThreadEvents", () => {
   });
 });
 
-describe("groupTimeRange", () => {
-  it("reports the span a group covers, earliest first", () => {
+describe("groupSpan", () => {
+  it("reports the earliest and latest a group covers", () => {
     const early = new Date(Date.UTC(2026, 6, 22, 11, 38, 0));
     const late = new Date(Date.UTC(2026, 6, 22, 12, 3, 0));
-    const range = groupTimeRange([evt({ createdAt: early }), evt({ createdAt: late })]);
-    expect(range?.first).toEqual(early);
-    expect(range?.last).toEqual(late);
+    const span = groupSpan([evt({ createdAt: early }), evt({ createdAt: late })]);
+    expect(span.first).toEqual(early);
+    expect(span.last).toEqual(late);
   });
 
-  it("orders the span even when the array runs newest-first", () => {
+  it("reads the extremes, not the ends, whatever order the members run in", () => {
     const early = new Date(Date.UTC(2026, 6, 22, 11, 38, 0));
     const late = new Date(Date.UTC(2026, 6, 22, 12, 3, 0));
-    const range = groupTimeRange([evt({ createdAt: late }), evt({ createdAt: early })]);
-    expect(range?.first).toEqual(early);
-    expect(range?.last).toEqual(late);
-  });
-
-  it("has no range to report for an empty group", () => {
-    expect(groupTimeRange([])).toBeNull();
+    const span = groupSpan([evt({ createdAt: late }), evt({ createdAt: early })]);
+    expect(span.first).toEqual(early);
+    expect(span.last).toEqual(late);
   });
 });

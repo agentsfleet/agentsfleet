@@ -42,13 +42,6 @@ export function readGroupMembers(message: MessageState): FleetEvent[] | null {
   return Array.isArray(raw) && raw.length > 0 ? (raw as FleetEvent[]) : null;
 }
 
-export function readGroupRange(message: MessageState): { first: Date; last: Date } | null {
-  const first = message.metadata.custom[GROUP_META.FIRST_AT];
-  const last = message.metadata.custom[GROUP_META.LAST_AT];
-  if (!(first instanceof Date) || !(last instanceof Date)) return null;
-  return { first, last };
-}
-
 export function readFailureLabel(message: MessageState): string | null {
   const raw = message.metadata.custom["failureLabel"];
   return typeof raw === "string" && raw.length > 0 ? raw : null;

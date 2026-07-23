@@ -97,6 +97,10 @@ describe("EventsList — the standard workspace events table", () => {
     // The count is a control, not a claim: it opens to the rows it covers.
     await userEvent.click(screen.getByRole("button", { name: /Expand 3 repeated failures/ }));
     expect(screen.getAllByRole("button", { name: /Inspect event/ })).toHaveLength(3);
+
+    // ...and closes again, so the operator can put the wall of repeats away.
+    await userEvent.click(screen.getByRole("button", { name: /Collapse 3 repeated failures/ }));
+    expect(screen.getAllByRole("button", { name: /Inspect event/ })).toHaveLength(1);
   });
 
   it("leaves successes alone however alike they look", () => {
@@ -189,6 +193,29 @@ describe("EventsList — the standard workspace events table", () => {
       fireEvent.click(screen.getByRole("button", { name }));
       expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
     }
+  });
+
+  it("sorts by the Runs column across grouped and single rows", () => {
+    // Exercises the Runs sortValue on both a group lead (a real count) and a
+    // standalone row (no count → 0), so the count/no-count branch is covered.
+    const failure = (id: string) =>
+      row({
+        event_id: id,
+        status: "fleet_error",
+        response_text: null,
+        failure_label: "startup_posture",
+        failure_detail: "no instructions configured",
+      });
+    renderList({
+      items: [
+        failure("g1"),
+        failure("g2"),
+        row({ event_id: "solo", status: "processed", response_text: "done", failure_label: null }),
+      ],
+      next_cursor: null,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+    expect(screen.getByRole("columnheader", { name: "Runs" }).getAttribute("aria-sort")).not.toBe("none");
   });
 
   it("sorts results by the normalized operator-facing summary", () => {
