@@ -9,6 +9,7 @@ const protocol = @import("contract").protocol;
 const Config = @import("../daemon/config.zig");
 const Client = @import("../daemon/control_plane_client.zig");
 const call_deadline = @import("call_deadline");
+const runner_deadline = @import("../daemon/runner_deadline.zig");
 const args = @import("args.zig");
 const output = @import("output.zig");
 const LITERAL = "\n";
@@ -16,7 +17,8 @@ const CHECK_CONTROL_PLANE = "control_plane";
 
 const Check = struct { name: []const u8, ok: bool, detail: []const u8 };
 
-pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator) u8 {
+pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator, deadlines: *runner_deadline.Owned) u8 {
+    const sched = deadlines.start(alloc);
     const a = output.audience(args.has(argv, output.FLAG_JSON));
     const api = args.flagOrEnv(env_map, argv, alloc, "--api", Config.ENV_AGENTSFLEET_API_URL) catch return output.fail(a, alloc, output.ERR_OOM);
     defer if (api) |v| alloc.free(v);
@@ -24,7 +26,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     defer if (token) |v| alloc.free(v);
 
     const env = envChecks(api, token);
-    const checks = [_]Check{ env[0], env[1], reachCheck(io, alloc, api, token) };
+    const checks = [_]Check{ env[0], env[1], reachCheck(io, alloc, sched, api, token) };
     return emit(a, alloc, &checks);
 }
 
@@ -42,9 +44,9 @@ fn envChecks(api: ?[]const u8, token: ?[]const u8) [2]Check {
 
 /// Reachability + token validity in one heartbeat probe (skipped if either
 /// input is unset, so the env checks own that failure).
-fn reachCheck(io: std.Io, alloc: std.mem.Allocator, api: ?[]const u8, token: ?[]const u8) Check {
+fn reachCheck(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.ProcessScheduler, api: ?[]const u8, token: ?[]const u8) Check {
     if (api == null or token == null) return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "skipped — api/token unset" };
-    var client = Client.init(alloc, io, api.?);
+    var client = Client.init(alloc, io, sched, api.?);
     defer client.deinit();
     _ = client.heartbeat(alloc, token.?, call_deadline.DEFAULT_DEADLINE_MS) catch |err|
         return .{

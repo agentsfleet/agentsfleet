@@ -15,6 +15,8 @@ const net = std.Io.net;
 const test_port = @import("../http/test_port.zig");
 const Subscriber = @import("redis_subscriber.zig");
 const redis = @import("redis.zig");
+const call_deadline = @import("call_deadline");
+const redis_config = @import("redis_config.zig");
 
 // Shutdown-loop poll tick for fake servers — fine-grained enough that
 // `stop.store(.release)` is observed within one tick of `shutdown()` but
@@ -429,4 +431,131 @@ test "Subscriber storm: 50 subscribers against a closing broker — no leak, all
 
     try std.testing.expectEqual(@as(u32, 50), ok_count.load(.monotonic));
     try std.testing.expectEqual(@as(u32, 50), fake.accepts.load(.monotonic));
+}
+
+// ── Redis handshake stages share one absolute deadline ──────────────────────
+
+/// Deterministic stall bound: well over scheduler wake latency, well under the
+/// suite timeout — a return near this bound proves the DEADLINE released the
+/// caller, not the peer.
+const SETUP_STALL_DEADLINE_MS: u31 = 250;
+const SETUP_STALL_CEILING_NS: i96 = 5 * std.time.ns_per_s;
+
+/// A broker that completes the TCP handshake and then never speaks RESP: the
+/// AUTH reply the subscriber blocks on never arrives. Exits when the fired
+/// deadline shuts the subscriber's socket down (read returns 0/error).
+const StallBroker = struct {
+    loopback: test_port.Loopback,
+    io: std.Io,
+    thread: ?std.Thread = null,
+
+    fn start(io: std.Io) !StallBroker {
+        return .{ .loopback = try test_port.listenLoopback(io), .io = io };
+    }
+
+    fn serve(self: *StallBroker) !void {
+        self.thread = try std.Thread.spawn(.{}, run, .{self});
+    }
+
+    fn run(self: *StallBroker) void {
+        const conn = self.loopback.server.accept(self.io) catch return;
+        defer conn.close(self.io);
+        var buf: [512]u8 = undefined;
+        // Drain whatever AUTH bytes arrive, reply with nothing. The loop ends
+        // when the deadline's shutdown(2) wakes the peer (n == 0) or errors.
+        while (true) {
+            const n = std.posix.read(conn.socket.handle, &buf) catch return;
+            if (n == 0) return;
+        }
+    }
+
+    fn deinit(self: *StallBroker) void {
+        if (self.thread) |t| t.join();
+        self.loopback.server.deinit(self.io);
+    }
+};
+
+/// The scheduler + owner half of `subscription_hub_wire.connectBounded`,
+/// restated here so the test drives `connectFromConfig` exactly as the hub
+/// does: one absolute budget, owner armed before any stage runs.
+const BoundedAttempt = struct {
+    backend: call_deadline.MonotonicBackend = .{},
+    sched: ?call_deadline.ProcessScheduler = null,
+    owner: call_deadline.SocketOwner = .{},
+    generation: u64 = 0,
+    guard: ?call_deadline.ProcessScheduler.Guard = null,
+
+    fn arm(self: *BoundedAttempt, io: std.Io, deadline_ms: u31) !i96 {
+        self.sched = call_deadline.ProcessScheduler.init(std.testing.allocator, &self.backend);
+        try self.sched.?.start();
+        self.generation = self.owner.beginAttempt();
+        self.guard = try self.sched.?.arm(self.owner.target(self.generation), deadline_ms);
+        return std.Io.Clock.boot.now(io).toNanoseconds() + @as(i96, deadline_ms) * std.time.ns_per_ms;
+    }
+
+    fn deinit(self: *BoundedAttempt) void {
+        self.owner.endAttempt();
+        if (self.guard) |g| _ = g.finish();
+        if (self.sched) |*s| s.deinit();
+    }
+};
+
+test "integration: redis handshake stages are deadline bounded" {
+    // Dimension 3.1 (deterministic stalls, no live Redis): a peer that accepts
+    // and then stalls must release the caller with the CLASSIFIED timeout
+    // within the budget — for the stage with no socket yet (dial refusal on an
+    // exhausted budget) and for a blocked in-stage read (AUTH). The TLS
+    // handshake read blocks on the same owned socket as the AUTH read, so the
+    // same fire→shutdown→classify chain bounds it.
+    const alloc = std.testing.allocator;
+    // The raced dial needs a concurrency-capable Io; common.globalIo() is
+    // statically single-threaded and would refuse `Io.Select`.
+    var threaded: std.Io.Threaded = .init(alloc, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    // Stage: resolve/dial with the budget already spent → refused before any
+    // socket exists, still the classified timeout.
+    {
+        var attempt: BoundedAttempt = .{};
+        defer attempt.deinit();
+        _ = try attempt.arm(io, SETUP_STALL_DEADLINE_MS);
+        const spent_deadline = std.Io.Clock.boot.now(io).toNanoseconds() - 1;
+        const cfg = redis_config.Config{ .host = "127.0.0.1", .port = 1, .password = "pw" };
+        try std.testing.expectError(Subscriber.SetupError.RedisSetupTimedOut, Subscriber.connectFromConfig(
+            io,
+            alloc,
+            cfg,
+            .{ .read_timeout_ms = null },
+            .{ .owner = &attempt.owner, .generation = attempt.generation, .deadline_ns = spent_deadline },
+        ));
+    }
+
+    // Stage: AUTH — the broker never answers; the deadline fire shuts the
+    // owned socket down and the surfaced error is the classified timeout, not
+    // the raw transport failure the shutdown provoked.
+    {
+        var broker = try StallBroker.start(io);
+        defer broker.deinit();
+        try broker.serve();
+
+        var attempt: BoundedAttempt = .{};
+        defer attempt.deinit();
+        const deadline_ns = try attempt.arm(io, SETUP_STALL_DEADLINE_MS);
+        const cfg = redis_config.Config{ .host = "127.0.0.1", .port = broker.loopback.port, .password = "pw" };
+
+        const started_ns = std.Io.Clock.boot.now(io).toNanoseconds();
+        try std.testing.expectError(Subscriber.SetupError.RedisSetupTimedOut, Subscriber.connectFromConfig(
+            io,
+            alloc,
+            cfg,
+            .{ .read_timeout_ms = null },
+            .{ .owner = &attempt.owner, .generation = attempt.generation, .deadline_ns = deadline_ns },
+        ));
+        const elapsed_ns = std.Io.Clock.boot.now(io).toNanoseconds() - started_ns;
+        // Released by the fire, not the suite timeout — and no abandoned
+        // worker: broker.deinit() joins its thread, which exits only because
+        // the shutdown reached its socket.
+        try std.testing.expect(elapsed_ns < SETUP_STALL_CEILING_NS);
+    }
 }

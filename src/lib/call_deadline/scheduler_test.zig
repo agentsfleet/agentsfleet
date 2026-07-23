@@ -241,6 +241,51 @@ test "scheduler arm frees partial allocations on every failure" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, exerciseArmAllocation, .{});
 }
 
+test "test_scheduler_shutdown_is_bounded_and_leak_free" {
+    // Dimension 4.3: shutdown with the full registration mix — pending,
+    // mid-fire, and cancelled — joins the worker inside a hard bound and leaves
+    // the allocator clean. The production backend runs here on purpose: the
+    // bound must hold against the real futex wait, not the fake's manual wake.
+    var backend: scheduler_module.MonotonicBackend = .{};
+    var recorder: Recorder = .{};
+    var blocker: Blocker = .{};
+    var scheduler = ProductionScheduler.init(std.testing.allocator, &backend);
+    try scheduler.start();
+
+    // Cancelled before shutdown: its registration must already be gone.
+    const cancelled = try scheduler.arm(.{ .recorder = &recorder, .value = 9 }, 60_000);
+    try std.testing.expectEqual(ProductionScheduler.FinishOutcome.cancelled, cancelled.finish());
+    // Mid-fire at shutdown: the callback holds the worker at a barrier so stop
+    // provably begins while a target is running.
+    const firing = try scheduler.arm(.{ .recorder = &recorder, .value = 1, .blocker = &blocker }, 1);
+    // Pending at shutdown: a deadline nothing will ever advance to.
+    const pending = try scheduler.arm(.{ .recorder = &recorder, .value = 2 }, 60_000);
+    try blocker.entered.timedWait(TEST_WAIT_NS);
+
+    // StopCall is bound to the fake-backend scheduler type; this test stops the
+    // production one, so it carries its own thread-shaped stop.
+    var stop_call = ProductionStopCall{ .scheduler = &scheduler };
+    const stop_thread = try std.Thread.spawn(.{}, ProductionStopCall.run, .{&stop_call});
+    try stop_call.started.timedWait(TEST_WAIT_NS);
+    blocker.release.set();
+
+    // The bound: stop (drain + callback quiescence) and deinit (worker join)
+    // both complete in test time, nowhere near the 60s pending deadline —
+    // proving shutdown interrupts the parked wait instead of sleeping it out.
+    const started_ns = backend.nowNs();
+    try stop_call.done.timedWait(TEST_WAIT_NS);
+    stop_thread.join();
+    try std.testing.expectEqual(ProductionScheduler.FinishOutcome.fired, firing.finish());
+    try std.testing.expectEqual(ProductionScheduler.FinishOutcome.fired, pending.finish());
+    scheduler.deinit();
+    const elapsed_ns = backend.nowNs() - started_ns;
+    try std.testing.expect(elapsed_ns < TEST_WAIT_NS);
+
+    // Quiescent: exactly the drained targets ran, on the (already joined)
+    // worker; `testing.allocator` fails the test on any leaked registration.
+    try std.testing.expectEqual(@as(usize, 2), recorder.count);
+}
+
 test "scheduler concurrency uses one worker and standard ordered tree" {
     var backend: FakeBackend = .{};
     var recorder: Recorder = .{};
@@ -307,6 +352,19 @@ const StopCall = struct {
     done: common.Event = .{},
 
     fn run(self: *StopCall) void {
+        self.started.set();
+        self.scheduler.stop();
+        self.done.set();
+    }
+};
+
+/// StopCall for the production-backend scheduler (the 4.3 shutdown test).
+const ProductionStopCall = struct {
+    scheduler: *ProductionScheduler,
+    started: common.Event = .{},
+    done: common.Event = .{},
+
+    fn run(self: *ProductionStopCall) void {
         self.started.set();
         self.scheduler.stop();
         self.done.set();

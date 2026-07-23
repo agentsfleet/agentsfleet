@@ -117,7 +117,14 @@ pub fn connectFromConfig(
     if (cfg.use_tls) {
         // SAFETY: written by surrounding init logic before any read of this storage.
         sub.transport = .{ .tls = undefined };
-        try sub.transport.tls.initInPlace(io, alloc, stream, cfg.host, cfg.ca_cert_file);
+        // A handshake failure while our deadline fired IS the timeout: the fire
+        // shut the socket down mid-read, so the raw transport error would
+        // misclassify a stall as a peer failure. Same wrap on every stage that
+        // can block on the owned socket.
+        sub.transport.tls.initInPlace(io, alloc, stream, cfg.host, cfg.ca_cert_file) catch |err| {
+            try checkBudget(budget);
+            return err;
+        };
     } else {
         sub.transport = .{ .plain = try redis_transport.PlainTransport.init(io, alloc, stream) };
     }
@@ -125,12 +132,18 @@ pub fn connectFromConfig(
     try checkBudget(budget);
 
     if (cfg.password) |pwd| {
-        if (cfg.username) |usr| {
-            try sub.sendCommand(&.{ S_AUTH, usr, pwd });
-        } else {
-            try sub.sendCommand(&.{ S_AUTH, pwd });
-        }
-        var auth = try redis_protocol.readRespValue(alloc, sub.transport.reader());
+        const auth_send = if (cfg.username) |usr|
+            sub.sendCommand(&.{ S_AUTH, usr, pwd })
+        else
+            sub.sendCommand(&.{ S_AUTH, pwd });
+        auth_send catch |err| {
+            try checkBudget(budget);
+            return err;
+        };
+        var auth = redis_protocol.readRespValue(alloc, sub.transport.reader()) catch |err| {
+            try checkBudget(budget);
+            return err;
+        };
         defer auth.deinit(alloc);
         try checkBudget(budget);
         try redis_protocol.ensureSimpleOk(auth);
@@ -283,7 +296,7 @@ pub fn installReadTimeout(self: *Self) void {
 /// owner can bound its blocking sends without ever seeing the descriptor.
 /// Returns false when `generation` was already retired.
 pub fn attachTo(self: *Self, owner: *call_deadline.SocketOwner, generation: u64) bool {
-    return owner.attachSocket(generation, self.transport.socketHandle());
+    return self.transport.attachTo(owner, generation);
 }
 
 fn sendCommand(self: *Self, argv: []const []const u8) !void {

@@ -12,6 +12,7 @@ const contract = @import("contract");
 const constants = common;
 
 const Config = @import("config.zig");
+const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
 const client_errors = @import("../engine/client_errors.zig");
 const worker_pool = @import("worker_pool.zig");
@@ -90,8 +91,8 @@ pub var backoff_ms: *const fn (u32) u64 = constants.backoff.ms;
 /// first control-plane contact is always the heartbeat and a boot-time `.stop`
 /// exits before a single lease is taken. Workers each run `pollAndProcess`
 /// concurrently; `cfg.worker_count == 1` is behaviourally today's single daemon.
-pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *const std.process.Environ.Map) LoopExit {
-    var cp = client_mod.init(alloc, io, cfg.control_plane_url);
+pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.ProcessScheduler, cfg: Config, env_map: *const std.process.Environ.Map) LoopExit {
+    var cp = client_mod.init(alloc, io, sched, cfg.control_plane_url);
     defer cp.deinit();
     const runner_token: []const u8 = cfg.runner_token;
     // Reset only `stop_requested` (set solely by this control loop). `drain_requested`
@@ -161,7 +162,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
 
         // First OK heartbeat brings the pool up; later ones are liveness ticks.
         if (pool == null) {
-            pool = worker_pool.spawn(io, alloc, cfg, env_map, &stop_requested, &drain_requested) catch |err| {
+            pool = worker_pool.spawn(io, alloc, sched, cfg, env_map, &stop_requested, &drain_requested) catch |err| {
                 log.err("worker_pool_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
                 return .worker_pool_failed;
             };

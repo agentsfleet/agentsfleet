@@ -228,7 +228,13 @@ pub const HttpClientExchange = struct {
         var head_buffer: [RESPONSE_HEAD_BUFFER_LEN]u8 = undefined;
         var response = req.receiveHead(&head_buffer) catch |err| return mapTransportError(err, &owner);
         var transfer_buffer: [RESPONSE_TRANSFER_BUFFER_LEN]u8 = undefined;
-        const body = try drainCapped(alloc, response.reader(&transfer_buffer));
+        // The body read blocks on the same owned socket as the head read, so a
+        // deadline fire here must classify as a deadline, not a transport
+        // fault; the size cap keeps its own name (it is a policy refusal).
+        const body = drainCapped(alloc, response.reader(&transfer_buffer)) catch |err| switch (err) {
+            error.OutOfMemory, error.ResponseTooLarge => return err,
+            else => return mapTransportError(err, &owner),
+        };
         return .{ .status = @intFromEnum(response.head.status), .body = body };
     }
 };

@@ -13,6 +13,7 @@ const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const logging = @import("log");
+const call_deadline = @import("call_deadline");
 const redis_subscriber = @import("../queue/redis_subscriber.zig");
 const wire = @import("subscription_hub_wire.zig");
 const metrics = @import("../observability/metrics.zig");
@@ -121,6 +122,10 @@ fn reconnect(hub: *Hub) void {
 /// sends — bounded by the send watchdog), then close it unlocked.
 fn dropConn(hub: *Hub) void {
     hub.wire.lockUncancelable(hub.io);
+    // Retire the wire generation BEFORE the socket dies: any armed send
+    // registration is now stale, so a late fire cannot reach the descriptor
+    // number the kernel is about to recycle.
+    wire.retireConnection(hub);
     var dead = hub.conn;
     hub.conn = null;
     hub.wire.unlock(hub.io);
@@ -142,13 +147,43 @@ fn resubscribeAll(hub: *Hub, fresh: redis_subscriber) bool {
         return false; // OOM → treat as a failed attempt; the redial loop retries
     };
     defer freeNames(hub, before);
+    // The sweep's own control block: `conn` is not installed yet, so the hub's
+    // wire owner cannot bound these sends. Every guard is finished and the
+    // generation retired BEFORE `conn` moves into the hub — a Subscriber is
+    // moved by value, so its pre-move storage is never a safe interrupt target.
+    var sweep_owner: call_deadline.SocketOwner = .{};
+    const sweep_generation = sweep_owner.beginAttempt();
+    _ = conn.attachTo(&sweep_owner, sweep_generation);
+    const sched = hub.sched orelse {
+        conn.deinit();
+        return false; // no scheduler → no bounded send; fail the attempt, never send unbounded
+    };
     for (before) |name| {
-        conn.sendSubscribe(name) catch |err| {
+        // Stop is checked BETWEEN sends: each send is individually bounded, so
+        // without this a shutdown racing a large sweep would wait out the
+        // deadline once per channel — multiplying stop latency by channel count.
+        if (hub.stopped.load(.acquire)) {
+            sweep_owner.endAttempt();
+            conn.deinit();
+            return false;
+        }
+        var guard = sched.arm(sweep_owner.target(sweep_generation), hub.send_timeout_ms) catch {
+            sweep_owner.endAttempt();
+            conn.deinit();
+            return false; // arming refused → the attempt fails closed; the redial loop retries
+        };
+        const sent = conn.sendSubscribe(name);
+        _ = guard.finish();
+        sent catch |err| {
             log.warn(S_RESUBSCRIBE_FAILED, .{ .channel = name, .err = @errorName(err) });
+            sweep_owner.endAttempt();
             conn.deinit();
             return false;
         };
     }
+    // Quiescent before the move: every guard above is finished, and retiring
+    // the generation makes any copied target inert.
+    sweep_owner.endAttempt();
     hub.wire.lockUncancelable(hub.io);
     if (hub.stopped.load(.acquire)) { // safe because: pairs with stop()'s release via swap.
         hub.wire.unlock(hub.io);
@@ -156,6 +191,11 @@ fn resubscribeAll(hub: *Hub, fresh: redis_subscriber) bool {
         return false;
     }
     hub.conn = conn;
+    // Rebind the wire owner to the connection that now exists: fresh
+    // generation, fresh socket. Without this, post-reconnect sends would arm
+    // against the RETIRED descriptor — and a fire could shut down whatever
+    // connection the kernel recycled that number onto.
+    wire.adoptConnection(hub);
     hub.wire.unlock(hub.io);
 
     const after = snapshotChannelNames(hub) catch return true; // installed; the next reconnect sweeps
