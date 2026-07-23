@@ -78,6 +78,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/tests.zig` | EDIT | Register the semantic registry tests. |
 | `tests/fixtures/telemetry/otlp_metrics.json` | EDIT | Pin the complete new OTLP metric payload. |
 | `deploy/grafana/agent-observability.json` | EDIT | Query normalized semantic names, seconds, histogram sums, and omission coverage. |
+| `deploy/grafana/agent_run_breakdown.json` | EDIT | Repoint four `agent_*` Prometheus queries that no source family satisfies, so no dashboard is left querying a dead name after the cutover. |
 | `audits/signal-routing.sh` | EDIT | Reject schema drift, legacy live names, workspace metrics, and dashboard mismatch. |
 | `docs/architecture/observability.md` | EDIT | Reconcile cardinality policy, resource identity, exact metric boundaries, and Grafana flow. |
 | `docs/architecture/runner_fleet.md` | EDIT | Update delivery-span correlation keys without inventing runner spans. |
@@ -239,7 +240,7 @@ No public API path, request body, response body, Command-Line Interface (CLI), o
 
 ## Dead Code Sweep
 
-No files are deleted. Grep the four superseded OTLP metric names, private metric keys, old dashboard label selectors, and obsolete resource serializers across non-historical source, fixtures, audits, architecture, and Grafana; every live hit must be replaced in the same commit.
+No files are deleted. Grep the four superseded OTLP metric names, private metric keys, old dashboard label selectors, and obsolete resource serializers across non-historical source, fixtures, audits, architecture, and Grafana; every live hit must be replaced in the same commit. Include the already-dead `agent_*` families in `agent_run_breakdown.json` — every Prometheus expression across BOTH dashboards must resolve to a live descriptor, so a query naming no emitted family fails the sweep exactly like a superseded one.
 
 ## Out of Scope
 
@@ -278,6 +279,7 @@ No files are deleted. Grep the four superseded OTLP metric names, private metric
 - **Source finding** — `ReportTelemetry.wall_ms` bounds one sandboxed NullClaw invocation, so `gen_ai.invoke_agent.duration` is an exact standard metric.
 - **Source finding** — the credit exporter observes receive and final-settle debits but not successful renewal debits; semantic naming requires reconciliation with all committed debit results.
 - **Source finding** — all three OTLP envelopes currently repeat only `service.name`; model is used by `agent-observability.json`, while workspace is absent from that dashboard and remains queryable in Postgres.
+- **Source finding (added Jul 23, 2026 by Indy's direction during the M141 observability scan)** — `agent_run_breakdown.json` is already dead: its four Prometheus panels query `agent_agent_tokens_by_workspace_total`, `agent_runs_completed_by_workspace_total`, `agent_runs_blocked_by_workspace_total`, and `agent_workspace_metrics_overflow_total`, none of which any source family emits. The product rename moved those counters to `fleet_workspace_tokens_total`, `fleet_completed_total`, and `fleet_triggered_total` and the dashboard never followed; `playbooks/operations/observability/002_grafana_setup.md` still documents the dead names too. This is the same prefix-split defect as the finding above, so it lands in this atomic cutover rather than in the M141 lease-fan-out workstream that surfaced it.
 - **Upstream finding** — the GenAI conventions are Development status and pin core `v1.43.0`; the selected commit publishes no GenAI schema URL, so none may be fabricated on the wire.
 - **Metrics review** — this work renames and corrects operational telemetry only; no PostHog event or analytics funnel changes.
 - **Source finding** — the `/metrics` exposition is split between `fleet_*` families in `metrics_render.zig` and `agentsfleet_*` families in `metrics_runner.zig`, `metrics_otel.zig`, and `metrics_trace.zig`. The bounded-signal-export workstream named its new suppression family `agentsfleet_http_trace_suppressed_total` to match its architecture document, which widened the split rather than creating it. Normalizing every family to one prefix belongs in this atomic schema cutover, not in exporter-bounding work.
