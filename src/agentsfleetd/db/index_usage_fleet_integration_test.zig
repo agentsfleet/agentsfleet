@@ -233,6 +233,68 @@ test "workspace event keyset is an index seek" {
     try expectNoSort(plan);
 }
 
+test "runner list liveness is bounded by page size" {
+    // The restructured list evaluates the lease-liveness EXISTS over the page,
+    // not the table. The observable difference is which side of the join the
+    // lease table is read from: the original shape made PostgreSQL hash the
+    // WHOLE of `runner_leases` once per request (a Seq Scan on it, 6 468 buffer
+    // hits against 200k rows), while the page-scoped form does page-size index
+    // lookups (79). Asserting the absence of that seq scan is what pins the fix.
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    defer teardown(db.conn);
+    try seedGraph(db.conn);
+    // A fleet of runners, each holding its own lease. The shared `seedLeases`
+    // fixture points every lease at one runner, which gives the planner no
+    // reason to prefer a per-runner lookup -- correct for that fixture, wrong
+    // for this question.
+    _ = try db.conn.exec(
+        \\INSERT INTO fleet.runners
+        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels,
+        \\   last_seen_at, created_at, updated_at)
+        \\SELECT overlay(md5('lr' || g)::uuid::text placing '7' from 15 for 1)::uuid,
+        \\       $1 || g, $1 || g, 'standard', 'active', '[]'::jsonb, 0, 1750000000000 + g, 0
+        \\FROM generate_series(1, 5000) g
+        \\ON CONFLICT DO NOTHING
+    , .{NAME_PREFIX});
+    _ = try db.conn.exec(
+        \\INSERT INTO fleet.runner_leases
+        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
+        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
+        \\   last_metered_at_ms, fencing_token, lease_expires_at, status,
+        \\   created_at, updated_at)
+        \\SELECT overlay(md5('LL' || g)::uuid::text placing '7' from 15 for 1)::uuid,
+        \\       overlay(md5('lr' || g)::uuid::text placing '7' from 15 for 1)::uuid,
+        \\       $1::uuid, $2::uuid, $3::uuid, 'le' || g, 'a', 'fleet.run', '{}', 0,
+        \\       'standard', 'anthropic', 'claude', 0, 0, 0, 0, g, 9999999999999,
+        \\       'active', 0, 0
+        \\FROM generate_series(1, 5000) g
+        \\ON CONFLICT DO NOTHING
+    , .{ FLEET_PROBE, WS_PROBE, base.TEST_TENANT_ID });
+    _ = try db.conn.exec("ANALYZE fleet.runners", .{});
+    _ = try db.conn.exec("ANALYZE fleet.runner_leases", .{});
+
+    const plan = try planOf(alloc, db.conn,
+        \\WITH page AS (
+        \\    SELECT r.id, r.host_id FROM fleet.runners r
+        \\    ORDER BY r.created_at DESC, r.id DESC LIMIT 25 OFFSET 0
+        \\)
+        \\SELECT p.id, EXISTS (
+        \\    SELECT 1 FROM fleet.runner_leases l
+        \\    WHERE l.runner_id = p.id AND l.status = 'active'
+        \\      AND l.lease_expires_at > 1) AS has_live_lease
+        \\FROM page p
+    );
+    defer alloc.free(plan);
+    try expectIndex(plan, "idx_runner_leases_runner_id_status");
+    if (std.mem.indexOf(u8, plan, "Seq Scan on runner_leases") != null) {
+        std.debug.print("lease table scanned whole, not per page:\n{s}\n", .{plan});
+        return error.LeaseTableScannedWhole;
+    }
+}
+
 test "fleet list page is index-ordered" {
     const alloc = std.testing.allocator;
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
