@@ -1,6 +1,7 @@
 //! Append/read helpers for `fleet.runner_events`.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const logging = @import("log");
 const ec = @import("../errors/error_registry.zig");
@@ -53,37 +54,7 @@ pub fn listForRunner(
     const offset: i64 = @as(i64, page - 1) * @as(i64, page_size);
     const limit: i64 = page_size;
     const event_type = eventTypeName(filter);
-    var q = PgQuery.from(try conn.query(
-        \\WITH filtered AS (
-        \\  SELECT id::text, runner_id::text, event_type, occurred_at, metadata::text
-        \\  FROM fleet.runner_events
-        \\  WHERE runner_id = $1::uuid
-        \\    AND ($2::text IS NULL OR event_type = $2::text)
-        \\    AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
-        \\    AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
-        \\),
-        \\page AS (
-        \\  SELECT id, runner_id, event_type, occurred_at, metadata,
-        \\    COUNT(*) OVER()::bigint AS total,
-        \\    false AS count_only,
-        \\    ROW_NUMBER() OVER (ORDER BY occurred_at DESC, id DESC)::bigint AS page_ord
-        \\  FROM filtered
-        \\  ORDER BY occurred_at DESC, id DESC
-        \\  LIMIT $5::bigint OFFSET $6::bigint
-        \\),
-        \\total_row AS (
-        \\  SELECT NULL::text AS id, NULL::text AS runner_id, NULL::text AS event_type,
-        \\    0::bigint AS occurred_at, NULL::text AS metadata,
-        \\    (SELECT COUNT(*)::bigint FROM filtered) AS total,
-        \\    true AS count_only,
-        \\    NULL::bigint AS page_ord
-        \\  WHERE NOT EXISTS (SELECT 1 FROM page)
-        \\)
-        \\SELECT * FROM page
-        \\UNION ALL
-        \\SELECT * FROM total_row
-        \\ORDER BY count_only ASC, page_ord ASC NULLS LAST
-    , .{ runner_id, event_type, filter.since, filter.until, limit, offset }));
+    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_EVENT_PAGE, .{ runner_id, event_type, filter.since, filter.until, limit, offset }));
     defer q.deinit();
 
     var items: std.ArrayList(protocol.RunnerEventItem) = .empty;
@@ -131,13 +102,7 @@ fn appendLeaseReleased(
     const conn = try pool.acquire();
     defer pool.release(conn);
     const now_ms = clock.nowMillis();
-    _ = try conn.exec(
-        \\INSERT INTO fleet.runner_events
-        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::text, $4::bigint,
-        \\        jsonb_build_object($5::text, $6::text, $7::text, $8::text, $9::text, $10::text),
-        \\        NULL, $4::bigint)
-    , .{
+    _ = try conn.exec(sql.INSERT_RUNNER_EVENT, .{
         event_row_id,
         runner_id,
         @tagName(protocol.RunnerEventType.lease_released),

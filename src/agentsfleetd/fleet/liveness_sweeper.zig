@@ -1,6 +1,7 @@
 //! Runner liveness sweeper.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const constants = @import("common");
 const clock = constants.clock;
 const logging = @import("log");
@@ -104,18 +105,7 @@ fn sweepRunner(
 fn fetchDueRunners(pool: *pg.Pool, alloc: std.mem.Allocator, now_ms: i64) ![]RunnerRef {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = PgQuery.from(try conn.query(
-        \\SELECT r.id::text, r.last_seen_at, r.admin_state
-        \\FROM fleet.runners r
-        \\WHERE (r.last_seen_at <> $1 AND ($2::bigint - r.last_seen_at) > $3)
-        \\   OR r.admin_state = $6
-        \\   OR (r.admin_state <> $4 AND EXISTS (
-        \\        SELECT 1 FROM fleet.runner_leases l
-        \\        WHERE l.runner_id = r.id AND l.status = $5
-        \\      ))
-        \\ORDER BY r.updated_at ASC, r.id ASC
-        \\LIMIT $7
-    , .{
+    var q = PgQuery.from(try conn.query(sql.SELECT_DUE_RUNNERS, .{
         protocol.RUNNER_LAST_SEEN_NEVER,
         now_ms,
         constants.RUNNER_OFFLINE_AFTER_MS,
@@ -182,19 +172,7 @@ fn insertOfflineEvent(
 ) !bool {
     const event_row_id = try id_format.generateRunnerEventId(alloc);
     defer alloc.free(event_row_id);
-    var q = PgQuery.from(try conn.query(
-        \\WITH inserted AS (
-        \\  INSERT INTO fleet.runner_events
-        \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\  VALUES ($1::uuid, $2::uuid, $3::text, $4::bigint,
-        \\          jsonb_build_object($5::text, $6::bigint), $6::bigint, $4::bigint)
-        \\  ON CONFLICT (runner_id, dedup_key)
-        \\    WHERE event_type = 'runner_offline' AND dedup_key IS NOT NULL
-        \\  DO NOTHING
-        \\  RETURNING 1
-        \\)
-        \\SELECT COUNT(*)::bigint FROM inserted
-    , .{
+    var q = PgQuery.from(try conn.query(sql.INSERT_OFFLINE_EVENT, .{
         event_row_id,
         runner_id,
         @tagName(protocol.RunnerEventType.runner_offline),
@@ -215,20 +193,7 @@ fn expireRunnerSlots(pool: *pg.Pool, runner_id: []const u8, now_ms: i64) !i64 {
 
 fn expireActiveLeaseSlots(conn: *pg.Conn, runner_id: []const u8, now_ms: i64) !i64 {
     const expire_at = now_ms - EXPIRE_PAST_DELTA_MS;
-    var q = PgQuery.from(try conn.query(
-        \\WITH expired AS (
-        \\  UPDATE fleet.runner_affinity a
-        \\  SET leased_until = $3, updated_at = $4
-        \\  WHERE a.last_runner_id = $1::uuid
-        \\    AND a.leased_until > $3
-        \\    AND a.fleet_id IN (
-        \\      SELECT l.fleet_id FROM fleet.runner_leases l
-        \\      WHERE l.runner_id = $1::uuid AND l.status = $2
-        \\    )
-        \\  RETURNING 1
-        \\)
-        \\SELECT COUNT(*)::bigint FROM expired
-    , .{ runner_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, expire_at, now_ms }));
+    var q = PgQuery.from(try conn.query(sql.EXPIRE_ACTIVE_LEASE_SLOTS, .{ runner_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, expire_at, now_ms }));
     defer q.deinit();
     const row = (try q.next()) orelse return error.DbRowShape;
     return row.get(i64, 0);
@@ -239,26 +204,7 @@ fn markDrainedIfIdle(pool: *pg.Pool, alloc: std.mem.Allocator, runner_id: []cons
     defer alloc.free(event_row_id);
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = PgQuery.from(try conn.query(
-        \\WITH updated AS (
-        \\  UPDATE fleet.runners r
-        \\  SET admin_state = $2, updated_at = $3
-        \\  WHERE r.id = $1::uuid AND r.admin_state = $4
-        \\    AND NOT EXISTS (
-        \\      SELECT 1 FROM fleet.runner_leases l
-        \\      WHERE l.runner_id = r.id AND l.status = $5
-        \\    )
-        \\  RETURNING r.id
-        \\), inserted AS (
-        \\  INSERT INTO fleet.runner_events
-        \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\  SELECT $6::uuid, id, $7::text, $3::bigint,
-        \\         jsonb_build_object($8::text, $4::text, $9::text, $2::text), NULL, $3::bigint
-        \\  FROM updated
-        \\  RETURNING 1
-        \\)
-        \\SELECT COUNT(*)::bigint FROM inserted
-    , .{
+    var q = PgQuery.from(try conn.query(sql.MARK_DRAINED_IF_IDLE, .{
         runner_id,
         @tagName(protocol.AdminState.drained),
         now_ms,

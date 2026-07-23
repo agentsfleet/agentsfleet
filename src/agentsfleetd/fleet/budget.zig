@@ -29,6 +29,7 @@
 //! fails CLOSED — a ceiling we cannot read is not a ceiling we may ignore.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const pg = @import("pg");
 const logging = @import("log");
 const common = @import("common");
@@ -60,54 +61,6 @@ const ROLLING_DAY_MS: i64 = std.time.ms_per_day;
 /// belong to a run started before `floor - MAX_RUNTIME`, so bounding the stage
 /// scan there drops no slice while keeping the index range small.
 const DRAIN_BACKOFF_MS: i64 = common.MAX_RUNTIME_MS;
-
-/// Windowed spend for one fleet, timed by actual drain. `$1` workspace_id ·
-/// `$2` fleet_id · `$3` day floor · `$4` month floor · `$5` stage label ·
-/// `$6` receive label · `$7` MAX_RUNTIME_MS. See `DRAIN_BACKOFF_MS`.
-const SELECT_SPEND_SQL =
-    \\WITH drains AS (
-    \\  SELECT mp.charged_nanos AS amt, mp.created_at AS ts
-    \\  FROM core.fleet_execution_telemetry t
-    \\  JOIN fleet.metering_periods mp ON mp.event_id = t.event_id
-    \\  WHERE t.workspace_id = $1 AND t.fleet_id = $2 AND t.charge_type = $5
-    \\    AND t.recorded_at >= LEAST($3::bigint, $4::bigint) - $7::bigint
-    \\  UNION ALL
-    \\  SELECT r.credit_deducted_nanos AS amt, r.recorded_at AS ts
-    \\  FROM core.fleet_execution_telemetry r
-    \\  WHERE r.workspace_id = $1 AND r.fleet_id = $2 AND r.charge_type = $6
-    \\    AND r.recorded_at >= LEAST($3::bigint, $4::bigint)
-    \\)
-    \\SELECT
-    \\  COALESCE(SUM(amt) FILTER (WHERE ts >= $3::bigint), 0)::bigint,
-    \\  COALESCE(SUM(amt) FILTER (WHERE ts >= $4::bigint), 0)::bigint
-    \\FROM drains
-;
-
-/// Renew-side: the stored budget subobject + both drain-timed sums in one round
-/// trip. Budget is read live (the lease row carries no config), so lowering a
-/// runaway fleet's ceiling bites at its next renewal, not its next run. `$1`
-/// fleet uuid · `$2` workspace_id · `$3` fleet_id · `$4` day floor · `$5` month
-/// floor · `$6` stage label · `$7` receive label · `$8` MAX_RUNTIME_MS.
-const SELECT_BUDGET_AND_SPEND_SQL =
-    \\WITH drains AS (
-    \\  SELECT mp.charged_nanos AS amt, mp.created_at AS ts
-    \\  FROM core.fleet_execution_telemetry t
-    \\  JOIN fleet.metering_periods mp ON mp.event_id = t.event_id
-    \\  WHERE t.workspace_id = $2 AND t.fleet_id = $3 AND t.charge_type = $6
-    \\    AND t.recorded_at >= LEAST($4::bigint, $5::bigint) - $8::bigint
-    \\  UNION ALL
-    \\  SELECT r.credit_deducted_nanos AS amt, r.recorded_at AS ts
-    \\  FROM core.fleet_execution_telemetry r
-    \\  WHERE r.workspace_id = $2 AND r.fleet_id = $3 AND r.charge_type = $7
-    \\    AND r.recorded_at >= LEAST($4::bigint, $5::bigint)
-    \\)
-    \\SELECT
-    \\  (z.config_json->'x-agentsfleet'->'budget')::text,
-    \\  COALESCE((SELECT SUM(amt) FROM drains WHERE ts >= $4::bigint), 0)::bigint,
-    \\  COALESCE((SELECT SUM(amt) FROM drains WHERE ts >= $5::bigint), 0)::bigint
-    \\FROM core.fleets z
-    \\WHERE z.id = $1::uuid
-;
 
 /// Credit drained by one fleet inside each window, in nanos.
 pub const Spend = struct {
@@ -234,7 +187,7 @@ pub fn spendForFleet(
 /// one from the pool. A fleet with no telemetry rows yet spends zero.
 pub fn spendForFleetOn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, now_ms: i64) !?Spend {
     const floors = windowFloors(now_ms);
-    var q = PgQuery.from(try conn.query(SELECT_SPEND_SQL, .{
+    var q = PgQuery.from(try conn.query(sql.SELECT_BUDGET_DRAIN, .{
         workspace_id,             fleet_id,                   floors.day,       floors.month,
         ChargeType.stage.label(), ChargeType.receive.label(), DRAIN_BACKOFF_MS,
     }));
@@ -283,7 +236,7 @@ pub fn fetchBudgetAndSpend(
     now_ms: i64,
 ) !?BudgetAndSpend {
     const floors = windowFloors(now_ms);
-    var q = PgQuery.from(try conn.query(SELECT_BUDGET_AND_SPEND_SQL, .{
+    var q = PgQuery.from(try conn.query(sql.SELECT_BUDGET_POLICY_AND_DRAIN, .{
         fleet_id,                 workspace_id,               fleet_id,         floors.day, floors.month,
         ChargeType.stage.label(), ChargeType.receive.label(), DRAIN_BACKOFF_MS,
     }));
