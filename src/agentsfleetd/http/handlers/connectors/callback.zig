@@ -75,7 +75,7 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
                     // was unreachable (dial/transport failure) — upstream-call
                     // failures all; no vault write happened (the exchange
                     // precedes it) and the connect is safe to restart.
-                    error.DeadlineExceeded, error.WatchdogUnavailable, error.VendorUnreachable => failFmt(hx, ec.ERR_CONNECTOR_VENDOR_DEADLINE, VENDOR_DEADLINE_FMT, VENDOR_DEADLINE_FALLBACK, spec),
+                    error.DeadlineExceeded, error.SchedulerUnavailable, error.VendorUnreachable => failFmt(hx, ec.ERR_CONNECTOR_VENDOR_DEADLINE, VENDOR_DEADLINE_FMT, VENDOR_DEADLINE_FALLBACK, spec),
                     else => common.internalOperationError(hx.res, "Failed to complete connector connection", hx.req_id),
                 }
                 return;
@@ -119,7 +119,7 @@ fn completeOauth2(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec, o: registr
     var eff_flow = o.flow;
     if (o.resolve_token_endpoint) |resolve| eff_flow.token_endpoint = resolve(location);
     if (hx.ctx.connector_oauth_token_endpoint_override) |ep| eff_flow.token_endpoint = ep;
-    const result = try oauth2.exchange(hx.alloc, hx.ctx.io, eff_flow, creds, code, redirect_uri);
+    const result = try oauth2.exchange(hx.alloc, hx.ctx.io, hx.ctx.deadline_scheduler, eff_flow, creds, code, redirect_uri);
     defer hx.alloc.free(result.body);
     if (result.status != HTTP_OK) return error.ExchangeFailed;
 

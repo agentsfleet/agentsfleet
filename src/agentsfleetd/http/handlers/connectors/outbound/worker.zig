@@ -43,6 +43,7 @@ pub fn run(
     alloc: std.mem.Allocator,
     shutdown: *std.atomic.Value(bool),
     slack_api_base: []const u8,
+    sched: *bounded_fetch.Scheduler,
 ) void {
     // Idempotent — serve already ensured the group at boot, but a worker that
     // starts before that (or after a group loss) self-heals.
@@ -53,26 +54,20 @@ pub fn run(
     const consumer_id = queue_redis.stableConsumerId(&consumer_buf);
     log.debug("outbound_worker_started", .{ .consumer = consumer_id });
 
-    // One watchdog for the worker's lifetime: this loop delivers strictly one
-    // job at a time, so a single armed-call-at-a-time watchdog fits, and its
-    // thread is paid once instead of per post. deinit joins it at shutdown.
-    var wd: bounded_fetch.Watchdog = .{};
-    defer wd.deinit();
-
     while (!shutdown.load(.acquire)) {
         // Pending-first: redeliver anything this consumer was handed but never
         // acked (a restart mid-post). Drain one per loop; a hit `continue`s to
         // check for more before claiming a new read.
         if (readPendingSafe(queue, consumer_id)) |d| {
             var job = d;
-            deliverAndAck(pool, queue, alloc, &wd, &job, slack_api_base);
+            deliverAndAck(pool, queue, alloc, sched, &job, slack_api_base);
             continue;
         }
         // Non-blocking claim; a hit loops straight back (drain a hot stream
         // without pacing), an idle pass sleeps the backoff.
         if (readNextSafe(queue, consumer_id)) |d| {
             var job = d;
-            deliverAndAck(pool, queue, alloc, &wd, &job, slack_api_base);
+            deliverAndAck(pool, queue, alloc, sched, &job, slack_api_base);
             continue;
         }
         constants.sleepNanos(IDLE_POLL_MS * std.time.ns_per_ms);
@@ -97,9 +92,9 @@ fn readNextSafe(queue: *queue_redis.Client, consumer_id: []const u8) ?connector_
 /// Deliver a job (with bounded retry) then XACK it. A delivered or permanently-
 /// failed job is acked; a retry-exhausted job is also acked (dropped, logged) so
 /// it cannot hammer. Only a crash BEFORE the ack leaves it pending for redelivery.
-fn deliverAndAck(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, wd: *bounded_fetch.Watchdog, job: *connector_outbound.Delivery, slack_api_base: []const u8) void {
+fn deliverAndAck(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, sched: *bounded_fetch.Scheduler, job: *connector_outbound.Delivery, slack_api_base: []const u8) void {
     defer job.deinit(alloc);
-    const verdict = deliverWithRetry(pool, alloc, wd, job.*, slack_api_base);
+    const verdict = deliverWithRetry(pool, alloc, sched, job.*, slack_api_base);
     if (verdict == .retryable) {
         log.warn("outbound_delivery_exhausted", .{ .error_code = ec.ERR_SLACK_OUTBOUND_POST_FAILED, .provider = job.provider, .fleet_id = job.fleet_id });
     }
@@ -109,10 +104,10 @@ fn deliverAndAck(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allo
 
 /// Dispatch to the provider poster, retrying a `retryable` verdict up to
 /// `MAX_ATTEMPTS` with exponential backoff. Returns the final verdict.
-fn deliverWithRetry(pool: *pg.Pool, alloc: std.mem.Allocator, wd: *bounded_fetch.Watchdog, job: connector_outbound.Delivery, slack_api_base: []const u8) slack_post.Outcome {
+fn deliverWithRetry(pool: *pg.Pool, alloc: std.mem.Allocator, sched: *bounded_fetch.Scheduler, job: connector_outbound.Delivery, slack_api_base: []const u8) slack_post.Outcome {
     var attempt: u32 = 0;
     while (attempt < MAX_ATTEMPTS) : (attempt += 1) {
-        switch (dispatch(pool, alloc, wd, job, slack_api_base)) {
+        switch (dispatch(pool, alloc, sched, job, slack_api_base)) {
             .delivered => return .delivered,
             .permanent => return .permanent,
             .retryable => if (attempt + 1 < MAX_ATTEMPTS) {
@@ -125,9 +120,9 @@ fn deliverWithRetry(pool: *pg.Pool, alloc: std.mem.Allocator, wd: *bounded_fetch
 
 /// Route one job to its connector poster by `provider`. Adding Grafana/Jira/
 /// Linear is one more arm here + a sibling `post.zig` — never a new worker.
-fn dispatch(pool: *pg.Pool, alloc: std.mem.Allocator, wd: *bounded_fetch.Watchdog, job: connector_outbound.Delivery, slack_api_base: []const u8) slack_post.Outcome {
+fn dispatch(pool: *pg.Pool, alloc: std.mem.Allocator, sched: *bounded_fetch.Scheduler, job: connector_outbound.Delivery, slack_api_base: []const u8) slack_post.Outcome {
     if (std.mem.eql(u8, job.provider, constants.PROVIDER_SLACK)) {
-        return slack_post.deliver(alloc, constants.globalIo(), wd, pool, slack_api_base, job.workspace_id, job.fleet_id, job.event_id, job.answer);
+        return slack_post.deliver(alloc, constants.globalIo(), sched, pool, slack_api_base, job.workspace_id, job.fleet_id, job.event_id, job.answer);
     }
     log.warn("outbound_unknown_provider", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = job.provider });
     return .permanent; // unknown provider → drop (acked), don't redeliver forever

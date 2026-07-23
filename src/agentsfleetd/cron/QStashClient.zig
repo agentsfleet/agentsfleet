@@ -33,7 +33,7 @@ const DRAIN_CHUNK_BYTES: usize = 1024;
 pub const MAX_RESPONSE_BYTES: usize = 16 * 1024;
 pub const DEADLINE_MS: u31 = 10_000;
 
-const Watchdog = call_deadline.Watchdog(null);
+const Scheduler = call_deadline.ProcessScheduler;
 
 exchange: Exchange,
 api_base: []const u8,
@@ -191,6 +191,8 @@ fn isUnreserved(char: u8) bool {
 
 pub const HttpClientExchange = struct {
     io: std.Io,
+    /// Borrowed process scheduler — the exchange owns no deadline thread.
+    sched: *Scheduler,
     deadline_ms: u31 = DEADLINE_MS,
 
     pub fn exchange(self: *HttpClientExchange) Exchange {
@@ -201,34 +203,39 @@ pub const HttpClientExchange = struct {
         const self: *HttpClientExchange = @ptrCast(@alignCast(ptr));
         var client: std.http.Client = .{ .allocator = alloc, .io = self.io };
         defer client.deinit();
+        var owner: call_deadline.SocketOwner = .{};
+        const generation = owner.beginAttempt();
         const handle = http_pin.pinPooledHandle(&client, request.url) orelse return error.TransportFailure;
-        var watchdog: Watchdog = .{};
-        defer watchdog.deinit();
-        if (watchdog.arm(handle, self.deadline_ms) == .watchdog_unavailable) return error.WatchdogUnavailable;
-        defer watchdog.disarm();
+        _ = owner.attachSocket(generation, handle);
+        var guard = self.sched.arm(owner.target(generation), self.deadline_ms) catch
+            return error.SchedulerUnavailable;
+        defer {
+            owner.endAttempt();
+            _ = guard.finish();
+        }
 
         const uri = std.Uri.parse(request.url) catch return error.TransportFailure;
         var req = client.request(request.method, uri, .{
             .redirect_behavior = .unhandled,
             .extra_headers = request.headers,
-        }) catch |err| return mapTransportError(err, &watchdog);
+        }) catch |err| return mapTransportError(err, &owner);
         defer req.deinit();
         if (request.body.len == 0)
-            req.sendBodiless() catch |err| return mapTransportError(err, &watchdog)
+            req.sendBodiless() catch |err| return mapTransportError(err, &owner)
         else
-            req.sendBodyComplete(@constCast(request.body)) catch |err| return mapTransportError(err, &watchdog);
+            req.sendBodyComplete(@constCast(request.body)) catch |err| return mapTransportError(err, &owner);
 
         var head_buffer: [RESPONSE_HEAD_BUFFER_LEN]u8 = undefined;
-        var response = req.receiveHead(&head_buffer) catch |err| return mapTransportError(err, &watchdog);
+        var response = req.receiveHead(&head_buffer) catch |err| return mapTransportError(err, &owner);
         var transfer_buffer: [RESPONSE_TRANSFER_BUFFER_LEN]u8 = undefined;
         const body = try drainCapped(alloc, response.reader(&transfer_buffer));
         return .{ .status = @intFromEnum(response.head.status), .body = body };
     }
 };
 
-fn mapTransportError(err: anyerror, watchdog: *Watchdog) anyerror {
+fn mapTransportError(err: anyerror, owner: *call_deadline.SocketOwner) anyerror {
     if (err == error.OutOfMemory) return error.OutOfMemory;
-    return if (watchdog.deadlineFired()) error.DeadlineExceeded else error.TransportFailure;
+    return if (owner.wasInterrupted()) error.DeadlineExceeded else error.TransportFailure;
 }
 
 fn drainCapped(alloc: std.mem.Allocator, reader: *std.Io.Reader) anyerror![]u8 {

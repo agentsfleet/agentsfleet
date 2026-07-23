@@ -3,7 +3,12 @@
 const std = @import("std");
 const common = @import("common");
 const logging = @import("log");
+const InterruptTarget = @import("InterruptTarget.zig");
 const log = logging.scoped(.call_deadline);
+
+/// The scheduler every production network owner arms against: owner-mediated
+/// interruption plus the boot clock.
+pub const ProcessScheduler = Scheduler(InterruptTarget, MonotonicBackend);
 
 pub const MonotonicBackend = struct {
     epoch: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
@@ -40,8 +45,9 @@ const StdThreadSpawner = struct {
     }
 };
 
-/// `Target.interrupt` executes on the sole worker and must be a bounded,
-/// nonblocking leaf operation. It must not call scheduler barriers.
+/// `Target.interrupt` executes on the sole worker, returns an
+/// `InterruptTarget.Outcome`, and must be a bounded, nonblocking leaf
+/// operation. It must not call scheduler barriers.
 pub fn Scheduler(comptime Target: type, comptime Backend: type) type {
     return SchedulerWithSpawner(Target, Backend, StdThreadSpawner);
 }
@@ -247,8 +253,12 @@ fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime 
         }
 
         fn fire(self: *Self, selected: Fire) void {
-            log.debug("deadline_fired", .{});
-            selected.target.interrupt();
+            // A `stale` outcome is the healthy answer to a late fire: the owner
+            // had already replaced or completed that connection generation and
+            // touched nothing. Logging it keeps that distinguishable from a
+            // real interruption without adding a metric.
+            const outcome = selected.target.interrupt();
+            log.debug("deadline_fired", .{ .outcome = @tagName(outcome) });
             self.mutex.lock();
             defer self.mutex.unlock();
             if (self.registrations.get(selected.id)) |registration| registration.state = .fired;
@@ -284,7 +294,9 @@ const StartFailureBackend = struct {
 };
 
 const StartFailureTarget = struct {
-    fn interrupt(_: StartFailureTarget) void {}
+    fn interrupt(_: StartFailureTarget) InterruptTarget.Outcome {
+        return .stale;
+    }
 };
 
 test "scheduler start failure resets state and remains fail closed" {
