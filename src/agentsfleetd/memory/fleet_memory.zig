@@ -18,6 +18,7 @@ const pg = @import("pg");
 const protocol = @import("contract").protocol;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
+const sql = @import("sql.zig");
 
 const log = logging.scoped(.fleet_memory);
 
@@ -184,14 +185,7 @@ pub fn storeEntry(
     const uid_value = try id_format.generateUuidV7();
     const uid: []const u8 = &uid_value;
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
-        \\ON CONFLICT (key, fleet_id) DO UPDATE
-        \\  SET content = EXCLUDED.content,
-        \\      category = EXCLUDED.category,
-        \\      updated_at = EXCLUDED.updated_at
-    , .{ uid, id, key, content, category, fleet_id, ts_ms });
+        sql.UPSERT_ENTRY, .{ uid, id, key, content, category, fleet_id, ts_ms });
 }
 
 /// Evict the entries beyond `max` for `fleet_id` (the per-fleet durable-set cap),
@@ -207,15 +201,7 @@ pub fn storeEntry(
 /// never blocked on telemetry.
 pub fn enforceCap(conn: *pg.Conn, fleet_id: []const u8, max: usize) !u64 {
     const affected = try conn.exec(
-        \\DELETE FROM memory.memory_entries
-        \\WHERE fleet_id = $1::uuid
-        \\  AND id IN (
-        \\    SELECT id FROM memory.memory_entries
-        \\    WHERE fleet_id = $1::uuid
-        \\    ORDER BY (category = $3) DESC, updated_at DESC, id DESC
-        \\    OFFSET $2
-        \\  )
-    , .{ fleet_id, @as(i64, @intCast(max)), CATEGORY_CORE });
+        sql.EVICT_PAST_CAP, .{ fleet_id, @as(i64, @intCast(max)), CATEGORY_CORE });
     const n = affected orelse {
         log.warn("memory_cap_evict_count_unavailable", .{ .fleet_id = fleet_id });
         return 0;
@@ -237,11 +223,7 @@ pub const DAILY_RETENTION_MS: i64 = 72 * std.time.ms_per_hour;
 /// warn — expiry is never blocked on telemetry.
 pub fn sweepExpiredDaily(conn: *pg.Conn, fleet_id: []const u8, cutoff_ms: i64) !u64 {
     const affected = try conn.exec(
-        \\DELETE FROM memory.memory_entries
-        \\WHERE fleet_id = $1::uuid
-        \\  AND category = $2
-        \\  AND updated_at < $3
-    , .{ fleet_id, CATEGORY_DAILY, cutoff_ms });
+        sql.DELETE_AGED_IN_CATEGORY, .{ fleet_id, CATEGORY_DAILY, cutoff_ms });
     const n = affected orelse {
         log.warn("memory_daily_sweep_count_unavailable", .{ .fleet_id = fleet_id });
         return 0;
@@ -257,10 +239,7 @@ pub fn sweepExpiredDaily(conn: *pg.Conn, fleet_id: []const u8, cutoff_ms: i64) !
 /// swallowed).
 pub fn deleteEntry(conn: *pg.Conn, fleet_id: []const u8, key: []const u8) !bool {
     var q = PgQuery.from(try conn.query(
-        \\DELETE FROM memory.memory_entries
-        \\WHERE fleet_id = $1::uuid AND key = $2
-        \\RETURNING key
-    , .{ fleet_id, key }));
+        sql.DELETE_ENTRY_BY_KEY, .{ fleet_id, key }));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -277,11 +256,7 @@ pub fn listAll(
     var out: std.ArrayList(MemoryDelta) = .empty;
     errdefer out.deinit(alloc);
     var q = PgQuery.from(try conn.query(
-        \\SELECT key, content, category
-        \\FROM memory.memory_entries
-        \\WHERE fleet_id = $1::uuid
-        \\ORDER BY updated_at DESC, id DESC
-    , .{fleet_id}));
+        sql.SELECT_ALL_FOR_FLEET, .{fleet_id}));
     defer q.deinit();
     while (try q.next()) |row| {
         // Copy each row-backed slice before the next next()/drain invalidates it.
