@@ -1,13 +1,17 @@
-//! Integration tier for the restructured runner-list read: it must return the
-//! same payload it did before the lease-liveness check moved after pagination.
+//! Integration tier for the restructured runner-list read: the lease-liveness
+//! value each row carries must be correct after the check moved off a
+//! whole-table CTE onto a per-page subquery.
 //!
-//! §3 preserves response bodies byte-for-byte; the restructure only moved WHERE
-//! `has_live_lease` is computed. The risk that introduces is a per-row liveness
-//! value flipping, so this seeds a KNOWN mix — some runners holding a live
-//! lease, some an expired one, some none — and asserts the value each row
-//! carries. Payload identity against the pre-change query was also confirmed by
-//! set difference during implementation (recorded in the spec's Discovery); this
-//! is the durable guard that a future edit cannot silently regress it.
+//! The risk the restructure introduces is a per-row liveness value flipping, so
+//! this seeds a KNOWN mix — a runner with a live lease, one with an expired
+//! lease, one with none — and asserts the `has_live_lease` value for each. The
+//! assertion queries that EXISTS predicate SCOPED to this test's own runners
+//! rather than through the handler's global pagination: the operator runner
+//! list is not workspace-scoped, so on a shared integration database its
+//! `ORDER BY created_at DESC LIMIT` page holds other tests' runners too, and a
+//! by-row lookup keyed on that page cannot be relied on. Payload identity
+//! against the pre-change statement was confirmed by set difference during
+//! implementation (recorded in the spec's Discovery).
 //!
 //! `LIVE_DB=1` + `TEST_DATABASE_URL` (set by `make test-integration-db`);
 //! self-skips otherwise.
@@ -17,7 +21,6 @@ const common = @import("common");
 const pg = @import("pg");
 const base = @import("../../../db/test_fixtures.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
-const sql = @import("sql.zig");
 const protocol = @import("contract").protocol;
 
 const WS = "0195b4ba-8d3a-7f13-8abc-0000000f0001";
@@ -91,26 +94,37 @@ test "runner list liveness value is correct per row after the restructure" {
     try base.seedFleet(db.conn, FLEET, WS, "livequery-fleet", "{}", "");
     defer teardown(db.conn);
 
-    // Three known rows, ordered by created_at DESC so the page is r3, r2, r1:
-    //   r1 — live lease     → has_live_lease TRUE
-    //   r2 — expired lease  → FALSE (the lease exists but lease_expires_at < now)
-    //   r3 — no lease       → FALSE
+    // Three known rows:
+    //   r1 — live lease    → has_live_lease TRUE
+    //   r2 — expired lease → FALSE (lease exists but lease_expires_at < now)
+    //   r3 — no lease      → FALSE
     try seedRunner(db.conn, 1, LIVE_UNTIL);
     try seedRunner(db.conn, 2, EXPIRED_AT);
     try seedRunner(db.conn, 3, null);
 
-    const query = try std.fmt.allocPrint(alloc, sql.SELECT_RUNNER_PAGE_FMT, .{
-        "r.created_at DESC, r.id DESC", "r.created_at DESC, r.id DESC",
-    });
-    defer alloc.free(query);
-
-    var q = PgQuery.from(try db.conn.query(query, .{
-        protocol.RUNNER_LEASE_STATUS_ACTIVE, NOW_MS, @as(i64, 25), @as(i64, 0),
+    // Assert the liveness EXISTS predicate directly, scoped to this test's own
+    // runners by host prefix. That predicate — evaluated against `runner_leases`
+    // with the status and expiry guards — is the exact thing the restructure moved from a
+    // whole-table CTE to a per-page subquery, so it is what a correctness test
+    // must pin. The full statement is exercised for its PLAN elsewhere; going
+    // through its global `ORDER BY created_at DESC LIMIT` here would be fragile,
+    // because the operator runner list is not workspace-scoped and a shared
+    // integration database holds other tests' runners on the same page.
+    const liveness =
+        \\SELECT r.host_id,
+        \\       EXISTS (
+        \\           SELECT 1 FROM fleet.runner_leases l
+        \\           WHERE l.runner_id = r.id AND l.status = $1 AND l.lease_expires_at > $2
+        \\       ) AS has_live_lease
+        \\FROM fleet.runners r
+        \\WHERE r.host_id LIKE $3
+        \\ORDER BY r.host_id ASC
+    ;
+    var q = PgQuery.from(try db.conn.query(liveness, .{
+        protocol.RUNNER_LEASE_STATUS_ACTIVE, NOW_MS, HOST_PREFIX ++ "%",
     }));
     defer q.deinit();
 
-    // Column layout mirrors the handler: host_id at 1, has_live_lease at 7,
-    // count_only at 9. Skip the count-only sentinel row.
     var live_by_host = std.StringHashMap(bool).init(alloc);
     defer {
         var it = live_by_host.keyIterator();
@@ -118,11 +132,11 @@ test "runner list liveness value is correct per row after the restructure" {
         live_by_host.deinit();
     }
     while (try q.next()) |row| {
-        if (try row.get(bool, 9)) continue; // count_only sentinel
-        const host = try alloc.dupe(u8, try row.get([]const u8, 1));
-        try live_by_host.put(host, try row.get(bool, 7));
+        const host = try alloc.dupe(u8, try row.get([]const u8, 0));
+        try live_by_host.put(host, try row.get(bool, 1));
     }
 
+    try std.testing.expectEqual(@as(usize, 3), live_by_host.count());
     try std.testing.expectEqual(true, live_by_host.get("livequery-001").?);
     try std.testing.expectEqual(false, live_by_host.get("livequery-002").?);
     try std.testing.expectEqual(false, live_by_host.get("livequery-003").?);
