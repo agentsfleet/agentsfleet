@@ -39,4 +39,5 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 30, .sql = @embedFile("030_fleet_activity_counters.sql") },
     .{ .version = 31, .sql = @embedFile("031_fleet_runners_delete_grant.sql") },
     .{ .version = 32, .sql = @embedFile("032_fleet_events_failure_detail.sql") },
+    .{ .version = 33, .sql = @embedFile("033_hot_path_indexes.sql") },
 };
