@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 
-import { groupThreadEvents, groupTimeRange, type ThreadEntry } from "@/lib/events/event-grouping";
+import { ENTRY_KIND, groupThreadEvents, type ThreadEntry } from "@/lib/events/event-grouping";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
 
 // What the thread actually renders: the stream's events with each run of
@@ -11,12 +11,10 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
 // that file is at its length cap and this is a self-contained derivation —
 // events in, render entries out, no component state involved.
 
-/** Custom-metadata keys the renderer reads off a grouped message. */
+/** Custom-metadata key the renderer reads a group's members back off. The
+ * count and time span are derived from the members, not carried separately. */
 export const GROUP_META = {
-  COUNT: "groupCount",
   MEMBERS: "groupMembers",
-  FIRST_AT: "groupFirstAt",
-  LAST_AT: "groupLastAt",
 } as const;
 
 export type FleetThreadEntries = {
@@ -43,7 +41,7 @@ export function useFleetThreadEntries(
   }, [events]);
   const convertEntry = useCallback(
     (entry: ThreadEntry): ThreadMessageLike => {
-      if (entry.kind === "single") return convertEvent(entry.event);
+      if (entry.kind === ENTRY_KIND.SINGLE) return convertEvent(entry.event);
       return groupMessage(entry.events, entry.key, convertEvent);
     },
     [convertEvent],
@@ -51,20 +49,21 @@ export function useFleetThreadEntries(
   return { entries, convertEntry };
 }
 
-// A group borrows the shape of its newest member — same actor, headline and
-// outcome by construction — and adds the count, the span, and the members the
-// row hands back when it expands.
+// A group borrows the shape of its newest member — same role, so assistant-ui
+// routes it the same way — and carries its members through the custom bag. The
+// count and time span are derived from those members at render, not packed
+// here, so there is one source of truth for them.
 function groupMessage(
   members: FleetEvent[],
   key: string,
   convertEvent: (event: FleetEvent) => ThreadMessageLike,
 ): ThreadMessageLike {
-  const newest = members[members.length - 1];
-  // Unreachable in practice: `groupThreadEvents` never emits an empty group.
-  // Falling back beats asserting — a render must not throw over presentation.
-  if (newest === undefined) return { role: "system", id: key, content: [] };
+  // The newest member, typed non-undefined: `reduce` with no seed returns the
+  // last element as a `FleetEvent`. The caller only builds a group from a
+  // non-empty run, so the empty-array throw is unreachable — and, unlike an
+  // index access, it is not a branch that would sit forever uncovered.
+  const newest = members.reduce((_, event) => event);
   const base = convertEvent(newest);
-  const range = groupTimeRange(members);
   return {
     ...base,
     id: key,
@@ -72,10 +71,7 @@ function groupMessage(
       ...base.metadata,
       custom: {
         ...base.metadata?.custom,
-        [GROUP_META.COUNT]: members.length,
         [GROUP_META.MEMBERS]: members,
-        [GROUP_META.FIRST_AT]: range?.first,
-        [GROUP_META.LAST_AT]: range?.last,
       },
     },
   };

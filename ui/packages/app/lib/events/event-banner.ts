@@ -49,9 +49,9 @@ export function failureBannerFor(events: FleetEvent[]): FailureBanner | null {
   let newest: FleetEvent | null = null;
   let label: string | null = null;
 
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (event === undefined) break;
+  // Walk from the newest backwards. `toReversed` yields the elements directly,
+  // so there is no by-index access and no undefined element to guard.
+  for (const event of events.toReversed()) {
     if (!TERMINAL.has(event.status)) continue;
     // The first terminal event walking back decides everything: if it is not
     // a classified failure the fleet is not currently failing, and there is

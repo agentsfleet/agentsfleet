@@ -46,19 +46,23 @@ function sameFailure(a: EventRow, b: EventRow): boolean {
 /** Collapse each run of ≥`MIN_ROW_GROUP` identical consecutive failures. */
 export function groupEventRows(rows: EventRow[]): EventRowEntry[] {
   const entries: EventRowEntry[] = [];
-  let index = 0;
-  while (index < rows.length) {
-    const lead = rows[index];
-    if (lead === undefined) break;
-    let length = 1;
-    while (index + length < rows.length) {
-      const next = rows[index + length];
-      if (next === undefined || !sameFailure(lead, next)) break;
-      length += 1;
+  // Accumulate a run and flush it when the next row breaks it — a single
+  // `for…of` pass, so no by-index access and no undefined element to guard.
+  const flush = (run: EventRow[]): void => {
+    const lead = run[0];
+    if (lead !== undefined) entries.push({ lead, rows: run });
+  };
+  let run: EventRow[] = [];
+  for (const row of rows) {
+    const lead = run[0];
+    if (lead !== undefined && sameFailure(lead, row)) {
+      run.push(row);
+    } else {
+      flush(run);
+      run = [row];
     }
-    entries.push({ lead, rows: rows.slice(index, index + length) });
-    index += length;
   }
+  flush(run);
   return entries;
 }
 

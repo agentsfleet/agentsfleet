@@ -19,9 +19,16 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
  */
 export const MIN_GROUP_RUN = 2;
 
+/** The two shapes a rendered thread entry takes — a lone row, or a collapsed
+ * run. Named so the discriminant is written once, not spelled at each site. */
+export const ENTRY_KIND = {
+  SINGLE: "single",
+  GROUP: "group",
+} as const;
+
 export type ThreadEntry =
-  | { kind: "single"; key: string; event: FleetEvent }
-  | { kind: "group"; key: string; events: FleetEvent[] };
+  | { kind: typeof ENTRY_KIND.SINGLE; key: string; event: FleetEvent }
+  | { kind: typeof ENTRY_KIND.GROUP; key: string; events: FleetEvent[] };
 
 /**
  * Only integration activity ever coalesces. An operator's message and the
@@ -71,19 +78,34 @@ export function groupThreadEvents(
   const reusable = new Map<string, ThreadEntry>();
   for (const entry of previous ?? []) reusable.set(entry.key, entry);
 
-  let index = 0;
-  while (index < events.length) {
-    const event = events[index];
-    if (event === undefined) break;
-    const run = runLengthAt(events, index);
-    const key = run >= MIN_GROUP_RUN ? `group:${event.id}` : event.id;
-    const built: ThreadEntry = run >= MIN_GROUP_RUN
-      ? { kind: "group", key, events: events.slice(index, index + run) }
-      : { kind: "single", key, event };
+  // Accumulate the current run and flush it when the next event breaks it. A
+  // single `for…of` pass, so there is no by-index access and no undefined
+  // element to guard — the lookahead lives in the accumulator, not the array.
+  const flush = (run: FleetEvent[]): void => {
+    const lead = run[0];
+    if (lead === undefined) return;
+    const isGroup = run.length >= MIN_GROUP_RUN;
+    const key = isGroup ? `group:${lead.id}` : lead.id;
+    const built: ThreadEntry = isGroup
+      ? { kind: ENTRY_KIND.GROUP, key, events: run }
+      : { kind: ENTRY_KIND.SINGLE, key, event: lead };
     const prior = reusable.get(key);
     entries.push(prior !== undefined && sameEntry(prior, built) ? prior : built);
-    index += run >= MIN_GROUP_RUN ? run : 1;
+  };
+
+  let run: FleetEvent[] = [];
+  for (const event of events) {
+    const lead = run[0];
+    // Extend only a groupable run of the same delivery; anything else — a
+    // non-groupable lead, a role change, a differing outcome — starts fresh.
+    if (lead !== undefined && groupable(lead) && groupable(event) && sameRun(lead, event)) {
+      run.push(event);
+    } else {
+      flush(run);
+      run = [event];
+    }
   }
+  flush(run);
   return entries;
 }
 
@@ -99,39 +121,28 @@ export function groupThreadEvents(
 // mutation of a FleetEvent (e.g. `event.reply += chunk`) would strand a stale
 // entry here and freeze a row's render. Keep those merges copy-on-write.
 function sameEntry(before: ThreadEntry, after: ThreadEntry): boolean {
-  if (before.kind !== after.kind) return false;
-  if (before.kind === "single" && after.kind === "single") return before.event === after.event;
-  if (before.kind === "group" && after.kind === "group") {
-    return before.events.length === after.events.length
-      && before.events.every((event, i) => event === after.events[i]);
-  }
-  return false;
+  // Compared only for entries at the SAME key, and a key encodes its kind
+  // (`group:` prefix vs the bare event id), so both sides are always the same
+  // kind — no kind comparison, and thus no dead branch. A single's member
+  // list is just its one event; a group's is its run.
+  const beforeMembers = entryMembers(before);
+  const afterMembers = entryMembers(after);
+  return beforeMembers.length === afterMembers.length
+    && beforeMembers.every((event, i) => event === afterMembers[i]);
 }
 
-// How many consecutive events from `start` share its run key. Always ≥1; a
-// non-groupable event is a run of exactly itself, which is what breaks a run
-// when an operator speaks in the middle of a burst.
-function runLengthAt(events: FleetEvent[], start: number): number {
-  const first = events[start];
-  if (first === undefined || !groupable(first)) return 1;
-  let length = 1;
-  while (start + length < events.length) {
-    const next = events[start + length];
-    if (next === undefined || !groupable(next) || !sameRun(first, next)) break;
-    length += 1;
-  }
-  return length;
+function entryMembers(entry: ThreadEntry): readonly FleetEvent[] {
+  return entry.kind === ENTRY_KIND.GROUP ? entry.events : [entry.event];
 }
 
-/** The first and last timestamps a group spans, for its "11:38–12:03" range. */
-export function groupTimeRange(events: FleetEvent[]): { first: Date; last: Date } | null {
-  const first = events[0];
-  const last = events[events.length - 1];
-  if (first === undefined || last === undefined) return null;
-  // The array is newest-last in render order, but a group must read
-  // earliest-first regardless of which end holds which, so compare rather
-  // than assume a direction the caller might change.
-  const a = first.createdAt.getTime();
-  const b = last.createdAt.getTime();
-  return a <= b ? { first: first.createdAt, last: last.createdAt } : { first: last.createdAt, last: first.createdAt };
+/**
+ * The earliest and latest timestamps a group spans, for its "11:38–12:03"
+ * range. Takes a NON-EMPTY run (a group always has ≥`MIN_GROUP_RUN` members),
+ * and reads the extremes rather than the ends, so it does not assume a
+ * direction the caller might change. Min/max over the members means there is
+ * no empty-array branch to leave forever uncovered.
+ */
+export function groupSpan(members: FleetEvent[]): { first: Date; last: Date } {
+  const times = members.map((member) => member.createdAt.getTime());
+  return { first: new Date(Math.min(...times)), last: new Date(Math.max(...times)) };
 }
