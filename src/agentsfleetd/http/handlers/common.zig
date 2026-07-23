@@ -1,5 +1,6 @@
 const std = @import("std");
 const constants = @import("common");
+const call_deadline = @import("call_deadline");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const R2 = @import("s3");
@@ -50,6 +51,10 @@ pub const Context = struct {
     /// dial sockets (SSE subscriber, jwks fetch) borrow it; testable via a
     /// loopback io.
     io: std.Io,
+    /// The ONE process deadline scheduler, threaded the same way as `io`. Every
+    /// outbound network owner arms a guard against this single worker instead
+    /// of spawning a watchdog thread per call site.
+    deadline_scheduler: *call_deadline.ProcessScheduler,
     /// Webhook/backend secrets resolved ONCE at boot from the env snapshot and
     /// owned for the process lifetime — handlers borrow them read-only instead
     /// of re-reading env per request. Null = unset → the handler fails closed.

@@ -43,6 +43,16 @@ comptime {
     std.debug.assert(RENEW_DEADLINE_MS + common.RENEWAL_TICK_MS < common.RENEWAL_WINDOW_MS);
 }
 
+// The owner-safe deadline mechanism. Consumers reach these through the
+// `call_deadline` named module; the leaf files are not relative-importable from
+// another module's tree.
+pub const scheduler = @import("scheduler.zig");
+pub const InterruptTarget = @import("InterruptTarget.zig");
+pub const SocketOwner = @import("SocketOwner.zig");
+/// One per process, owned by the process root and passed to every network owner.
+pub const ProcessScheduler = scheduler.ProcessScheduler;
+pub const MonotonicBackend = scheduler.MonotonicBackend;
+
 /// The resolved per-verb deadlines a runner daemon runs with. Defaults are the
 /// consts above; the runner's `config.zig` overrides them from the environment
 /// (clamped, renew strictly inside the renewal-window relation).
@@ -310,4 +320,6 @@ test "deadlineFired: cleared by arm, survives disarm (the owner reads it post-ve
 
 test {
     _ = @import("scheduler_test.zig");
+    _ = InterruptTarget;
+    _ = SocketOwner;
 }

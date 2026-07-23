@@ -29,9 +29,9 @@ const rs256_sign = @import("../auth/crypto/rs256_sign.zig");
 
 const log = logging.scoped(.credential_broker);
 
-/// Silent per-call watchdog for the outbound token exchange (the broker maps any
+/// Owner-safe deadline for the outbound token exchange (the broker maps any
 /// failure to `mint_failed{transient}`, so it needs the bound, not the taxonomy).
-const Watchdog = call_deadline.Watchdog(null);
+const Scheduler = call_deadline.ProcessScheduler;
 
 /// Deadline for a broker token exchange (installation-token mint or oauth2
 /// refresh) — a rare cold-cache vendor round-trip. Mirrors the connector layer's
@@ -157,8 +157,10 @@ fn loadPlatformSecrets(alloc: std.mem.Allocator, pool: *pg.Pool, admin_ws_id: []
 /// so no lifecycle to leak.
 pub const HttpClientExchange = struct {
     io: std.Io,
+    /// Borrowed process scheduler — the exchange owns no deadline thread.
+    sched: *Scheduler,
     /// Outbound deadline (ms). Defaults to the production bound; a test injects a
-    /// short value to prove the watchdog fires without a 10 s wait.
+    /// short value to prove the deadline fires without a 10 s wait.
     deadline_ms: u31 = MINT_DEADLINE_MS,
 
     pub fn exchange(self: *HttpClientExchange) integration.HttpExchange {
@@ -194,16 +196,21 @@ pub const HttpClientExchange = struct {
             n += 1;
         }
 
-        // Deadline-arm the exchange, fail CLOSED — pin the pooled socket, arm a
-        // per-call watchdog, disarm after. postImpl can run concurrently across
-        // workspaces, so the watchdog is per-call (a shared one would let two
-        // arms clobber each other). A pin/arm failure refuses the call rather
-        // than running unbounded — same discipline as `bounded_fetch`.
+        // Deadline-arm the exchange, fail CLOSED. postImpl runs concurrently
+        // across workspaces; each call owns its own generation, so one call's
+        // deadline can never reach another's socket. A pin/arm failure refuses
+        // the call rather than running unbounded — same discipline as
+        // `bounded_fetch`.
+        var owner: call_deadline.SocketOwner = .{};
+        const generation = owner.beginAttempt();
         const handle = http_pin.pinPooledHandle(&client, req.url) orelse return error.HttpExchangeFailed;
-        var wd: Watchdog = .{};
-        defer wd.deinit();
-        if (wd.arm(handle, self.deadline_ms) == .watchdog_unavailable) return error.HttpExchangeFailed;
-        defer wd.disarm();
+        _ = owner.attachSocket(generation, handle);
+        var guard = self.sched.arm(owner.target(generation), self.deadline_ms) catch
+            return error.HttpExchangeFailed;
+        defer {
+            owner.endAttempt();
+            _ = guard.finish();
+        }
 
         const result = client.fetch(.{
             .location = .{ .url = req.url },

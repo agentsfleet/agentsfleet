@@ -66,6 +66,7 @@ pub const Recent = struct {
 pub fn fetchRecent(
     alloc: std.mem.Allocator,
     io: std.Io,
+    sched: *bounded_fetch.Scheduler,
     token: ?[]const u8,
     api_base: []const u8,
     workspace_id: []const u8,
@@ -80,7 +81,7 @@ pub fn fetchRecent(
         log.debug(EV_REFETCH_DEGRADED, .{ .workspace_id = workspace_id, .err = "missing_bot_token" });
         return .{ .arena = arena, .msgs = &.{} };
     };
-    const msgs = fetchInto(arena.allocator(), alloc, io, tok, api_base, channel, thread_ts) catch |err| {
+    const msgs = fetchInto(arena.allocator(), alloc, io, sched, tok, api_base, channel, thread_ts) catch |err| {
         log.debug(EV_REFETCH_DEGRADED, .{ .workspace_id = workspace_id, .err = @errorName(err) });
         return .{ .arena = arena, .msgs = &.{} };
     };
@@ -94,6 +95,7 @@ fn fetchInto(
     arena: std.mem.Allocator,
     scratch: std.mem.Allocator,
     io: std.Io,
+    sched: *bounded_fetch.Scheduler,
     token: []const u8,
     api_base: []const u8,
     channel: []const u8,
@@ -106,15 +108,10 @@ fn fetchInto(
     const auth = try std.fmt.allocPrint(scratch, "Bearer {s}", .{token});
     defer scratch.free(auth);
 
-    // The mention is the client context — the watchdog is request-scoped (the
-    // ingress handles mentions concurrently; a shared watchdog arms one call
-    // at a time and would clobber under concurrency).
-    var wd: bounded_fetch.Watchdog = .{};
-    defer wd.deinit();
     const headers = [_]std.http.Header{
         .{ .name = "authorization", .value = auth },
     };
-    const res = try bounded_fetch.fetch(scratch, io, &wd, .{
+    const res = try bounded_fetch.fetch(scratch, io, sched, .{
         .url = url,
         .method = .GET,
         .extra_headers = &headers,

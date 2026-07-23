@@ -46,12 +46,12 @@ const SELECT_EVENT_REQUEST_JSON =
 /// Post `answer` to the Slack thread that mention `event_id` arrived on. Resolves
 /// the channel + reply thread from the event's `request_json` and the bot token
 /// from the workspace's `fleet:slack` vault handle. `api_base` is the Slack Web
-/// API root; `wd` is the worker's loop-lived watchdog. Never throws — returns a
+/// API root; `sched` is the process deadline scheduler. Never throws — returns a
 /// verdict; all failures log `UZ-SLK-030`.
 pub fn deliver(
     alloc: std.mem.Allocator,
     io: std.Io,
-    wd: *bounded_fetch.Watchdog,
+    sched: *bounded_fetch.Scheduler,
     pool: *pg.Pool,
     api_base: []const u8,
     workspace_id: []const u8,
@@ -71,7 +71,7 @@ pub fn deliver(
     const channel = strField(robj, RQ_CHANNEL) orelse return .permanent;
     const thread_ts = strField(robj, RQ_THREAD) orelse return .permanent;
 
-    return postMessage(alloc, io, wd, api_base, loaded.token, channel, thread_ts, answer);
+    return postMessage(alloc, io, sched, api_base, loaded.token, channel, thread_ts, answer);
 }
 
 /// Everything the post needs from the database, loaded under ONE short-lived
@@ -147,14 +147,14 @@ pub fn loadBotToken(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []co
 }
 
 /// POST `{channel, thread_ts, text}` to `chat.postMessage` with the bot token,
-/// deadline-armed on the worker's watchdog. Slack returns 200 with
+/// deadline-armed on the process scheduler. Slack returns 200 with
 /// `{ok:true|false}` for app-level outcomes, 429 for rate-limit, 5xx for its
 /// own faults — mapped to the retry verdict; a fired deadline or refused call
 /// is retryable like any transport failure.
 fn postMessage(
     alloc: std.mem.Allocator,
     io: std.Io,
-    wd: *bounded_fetch.Watchdog,
+    sched: *bounded_fetch.Scheduler,
     api_base: []const u8,
     token: []const u8,
     channel: []const u8,
@@ -173,7 +173,7 @@ fn postMessage(
         .{ .name = "authorization", .value = auth },
         .{ .name = "content-type", .value = "application/json; charset=utf-8" },
     };
-    const res = bounded_fetch.fetch(alloc, io, wd, .{
+    const res = bounded_fetch.fetch(alloc, io, sched, .{
         .url = url,
         .method = .POST,
         .payload = body,

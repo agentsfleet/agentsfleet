@@ -1,6 +1,7 @@
 const std = @import("std");
 const common = @import("common");
 const scheduler_module = @import("scheduler.zig");
+const InterruptTarget = @import("InterruptTarget.zig");
 
 const FakeBackend = struct {
     monotonic_ns: std.atomic.Value(i64) = std.atomic.Value(i64).init(0),
@@ -79,13 +80,14 @@ const TestTarget = struct {
     blocker: ?*Blocker = null,
     fired: ?*common.Event = null,
 
-    pub fn interrupt(self: TestTarget) void {
+    pub fn interrupt(self: TestTarget) InterruptTarget.Outcome {
         if (self.blocker) |blocker| {
             blocker.entered.set();
             blocker.release.timedWait(TEST_WAIT_NS) catch @panic("blocked callback release timed out");
         }
         self.recorder.record(self.value);
         if (self.fired) |fired| fired.set();
+        return .interrupted;
     }
 };
 

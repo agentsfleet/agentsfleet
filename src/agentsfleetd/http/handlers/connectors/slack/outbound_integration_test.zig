@@ -18,7 +18,7 @@ const test_port = @import("../../../test_port.zig");
 const test_fixtures = @import("../../../../db/test_fixtures.zig");
 const connector_outbound = @import("../../../../queue/connector_outbound.zig");
 const spec = @import("spec.zig");
-const bounded_fetch = @import("../bounded_fetch.zig");
+const call_deadline = @import("call_deadline");
 const post = @import("post.zig");
 const worker = @import("../outbound/worker.zig");
 
@@ -210,9 +210,12 @@ test "integration: slack_post.deliver posts the answer to the mention's thread (
     var base_buf: [64]u8 = undefined;
     const base = try fake.baseUrl(&base_buf);
 
-    var wd: bounded_fetch.Watchdog = .{};
-    defer wd.deinit();
-    const verdict = post.deliver(alloc, common.globalIo(), &wd, h.pool, base, WS, FLEET_ID, EVENT_ID, ANSWER);
+    // One process scheduler, as the daemon root owns.
+    var backend: call_deadline.MonotonicBackend = .{};
+    var sched = call_deadline.ProcessScheduler.init(alloc, &backend);
+    try sched.start();
+    defer sched.deinit();
+    const verdict = post.deliver(alloc, common.globalIo(), &sched, h.pool, base, WS, FLEET_ID, EVENT_ID, ANSWER);
     try testing.expectEqual(post.Outcome.delivered, verdict);
 
     // The captured chat.postMessage body carries the originating channel + thread
@@ -252,7 +255,7 @@ test "integration: enqueue → worker delivers the answer end-to-end + acks (Dim
 
     // Run the real worker until it drains the job (bounded wait), then stop it.
     var shutdown = std.atomic.Value(bool).init(false);
-    const t = try std.Thread.spawn(.{}, worker.run, .{ h.pool, &h.queue, alloc, &shutdown, base });
+    const t = try std.Thread.spawn(.{}, worker.run, .{ h.pool, &h.queue, alloc, &shutdown, base, &h.deadline_scheduler });
     defer {
         shutdown.store(true, .release);
         t.join();

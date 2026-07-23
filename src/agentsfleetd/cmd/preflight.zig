@@ -3,6 +3,7 @@
 //! exit policy and PostHog tracking.
 
 const std = @import("std");
+const call_deadline = @import("call_deadline");
 const constants = @import("common");
 const posthog = @import("posthog");
 
@@ -303,6 +304,7 @@ fn freeOauthApp(alloc: std.mem.Allocator, app: ?credentials_integration.OauthApp
 pub fn installCredentialBroker(
     alloc: std.mem.Allocator,
     io: std.Io,
+    sched: *call_deadline.ProcessScheduler,
     pool: *db.Pool,
     admin_ws_id: []const u8,
     broker_out: *?*credential_broker,
@@ -313,7 +315,7 @@ pub fn installCredentialBroker(
         log.warn(S_CREDENTIAL_BROKER_INIT_FAILED, .{ .error_code = error_codes.ERR_STARTUP_ENV_ALLOC, .err = "exchange_alloc" });
         return handle;
     };
-    exchange.* = .{ .io = io };
+    exchange.* = .{ .io = io, .sched = sched };
     handle.exchange = exchange;
 
     const built = serve_broker.buildDeps(alloc, pool, exchange, admin_ws_id);
