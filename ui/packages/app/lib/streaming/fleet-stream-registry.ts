@@ -54,6 +54,18 @@ const REGISTRY = new Map<string, Entry>();
 
 const IDLE_RELEASE_MS = 30_000;
 
+// A tab left open on a busy fleet accumulates live events without bound — the
+// array only ever grows, and every streaming frame regroups the whole of it.
+// The live view keeps the newest window; the full history is one tab away in
+// Events, which is paginated. The array is ordered oldest→newest, and every
+// optimistic or not-yet-reconciled row is by construction the newest, so
+// trimming the oldest can never drop a pending send or a reconcile target.
+const MAX_LIVE_EVENTS = 200;
+
+function capEvents(events: FleetEvent[]): FleetEvent[] {
+  return events.length > MAX_LIVE_EVENTS ? events.slice(events.length - MAX_LIVE_EVENTS) : events;
+}
+
 // Module-level, not per-entry: a FailedDelivery (and the tempId it stores)
 // deliberately outlives the stream entry, which is torn down after the idle
 // window and recreated with fresh state. A per-entry counter restarting at 1
@@ -74,7 +86,9 @@ function setEvents(
   entry: Entry,
   next: (prev: FleetEvent[]) => FleetEvent[],
 ): void {
-  entry.snapshot = { ...entry.snapshot, events: next(entry.snapshot.events) };
+  // The one choke point every mutation flows through, so the cap lives here
+  // once rather than at all eight call sites.
+  entry.snapshot = { ...entry.snapshot, events: capEvents(next(entry.snapshot.events)) };
   notify(entry);
 }
 

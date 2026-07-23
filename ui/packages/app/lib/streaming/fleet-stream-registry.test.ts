@@ -113,6 +113,26 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     a();
   });
 
+  it("caps the live view at its newest window and keeps a pending send", () => {
+    // A tab left open on a busy fleet must not grow the array without bound.
+    const seed = Array.from({ length: 260 }, (_, i) =>
+      row({ event_id: `evt_${i}`, created_at: Date.UTC(2026, 4, 15, 12, 0, i) }),
+    );
+    const release = subscribe(WS, Z_A, seed, () => {});
+    // The operator's own in-flight message is the newest row, so the cap must
+    // never be able to drop it.
+    const tempId = appendOptimistic(Z_A, "one more", "steer:pending");
+
+    const events = getSnapshot(Z_A).events;
+    expect(events.length).toBe(200);
+    // Newest kept, oldest dropped: the pending send and the last seed rows
+    // survive, evt_0 does not.
+    expect(events.some((e) => e.id === tempId)).toBe(true);
+    expect(events.some((e) => e.id === "evt_259")).toBe(true);
+    expect(events.some((e) => e.id === "evt_0")).toBe(false);
+    release();
+  });
+
   it("seeds nothing (no client backfill GET) when initial is empty", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     expect(getSnapshot(Z_A).events).toEqual([]);
