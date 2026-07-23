@@ -193,3 +193,112 @@ pub const INSERT_RUNNER_EVENT =
     \\        jsonb_build_object($5::text, $6::text, $7::text, $8::text, $9::text, $10::text),
     \\        NULL, $4::bigint)
 ;
+
+// ── Event rows ──────────────────────────────────────────────────────────────
+
+/// Record an inbound event. `ON CONFLICT DO NOTHING` on `(fleet_id, event_id)`
+/// is the idempotence boundary for redelivery: the same event arriving twice
+/// writes one row, so a retrying producer cannot double-run a fleet.
+pub const INSERT_FLEET_EVENT =
+    \\INSERT INTO core.fleet_events
+    \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,
+    \\   status, request_json, resumes_event_id, created_at, updated_at)
+    \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $10, $7::jsonb, $8, $9, $9)
+    \\ON CONFLICT (fleet_id, event_id) DO NOTHING
+;
+
+/// Move an event to a terminal failure. The trailing `status = $6` is a guard,
+/// not a filter: only an event still in the expected state transitions, so a
+/// late writer cannot overwrite an already-settled outcome.
+pub const UPDATE_FLEET_EVENT_FAILURE =
+    \\UPDATE core.fleet_events
+    \\SET status = $3, failure_label = $4, updated_at = $5
+    \\WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $6
+;
+
+pub const SELECT_FLEET_EVENT_STATUS =
+    \\SELECT status FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2
+;
+
+/// Settle an event with its result. Same state guard as the failure path.
+pub const UPDATE_FLEET_EVENT_RESULT =
+    \\UPDATE core.fleet_events
+    \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8, failure_detail = $10
+    \\WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $9
+;
+
+/// Checkpoint a fleet's session. One row per fleet, replaced in place.
+pub const UPSERT_FLEET_SESSION =
+    \\INSERT INTO core.fleet_sessions (id, fleet_id, context_json, checkpoint_at, created_at, updated_at)
+    \\VALUES ($1, $2, $3, $4, $4, $4)
+    \\ON CONFLICT (fleet_id) DO UPDATE
+    \\  SET context_json = EXCLUDED.context_json,
+    \\      checkpoint_at = EXCLUDED.checkpoint_at,
+    \\      updated_at = EXCLUDED.updated_at
+;
+
+// ── Affinity slot ───────────────────────────────────────────────────────────
+
+/// Claim a fleet's single runner slot, bumping the fencing sequence.
+///
+/// The `WHERE fleet.runner_affinity.leased_until < $5` on the conflict arm is
+/// what makes this a lock rather than an upsert: a live slot is not stolen, and
+/// the returned `fencing_seq` is the token every later write is checked
+/// against, so a superseded holder cannot act on stale authority.
+pub const CLAIM_AFFINITY_SLOT =
+    \\INSERT INTO fleet.runner_affinity
+    \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
+    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+    \\   created_at, updated_at)
+    \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, 0, 0, 0, $5, $5, $5)
+    \\ON CONFLICT (fleet_id) DO UPDATE
+    \\  SET last_runner_id = EXCLUDED.last_runner_id,
+    \\      fencing_seq    = fleet.runner_affinity.fencing_seq + 1,
+    \\      leased_until   = EXCLUDED.leased_until,
+    \\      updated_at     = EXCLUDED.updated_at
+    \\  WHERE fleet.runner_affinity.leased_until < $5
+    \\RETURNING fencing_seq
+;
+
+/// Reset the slot's metering counters at the start of a fresh billing slice.
+pub const RESET_AFFINITY_METERS =
+    \\UPDATE fleet.runner_affinity
+    \\SET metered_input_tokens = 0, metered_cached_tokens = 0,
+    \\    metered_output_tokens = 0, last_metered_at_ms = $2, updated_at = $2,
+    \\    meter_slice_seq = 0
+    \\WHERE fleet_id = $1::uuid
+;
+
+/// Release the slot — fencing-guarded, so only the current holder can free it.
+pub const RELEASE_AFFINITY_SLOT =
+    \\UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2
+    \\WHERE fleet_id = $1::uuid AND fencing_seq = $3
+;
+
+// ── Lease row ───────────────────────────────────────────────────────────────
+
+/// Open a lease and record the event that opened it, atomically. Writing the
+/// lease and its audit trail in one statement means an observer can never see a
+/// lease with no corresponding event, or the reverse.
+pub const INSERT_LEASE_WITH_EVENT =
+    \\WITH inserted AS (
+    \\  INSERT INTO fleet.runner_leases
+    \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id,
+    \\   actor, event_type, request_json, event_created_at,
+    \\   posture, provider, model,
+    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+    \\   fencing_token, lease_expires_at, status,
+    \\   created_at, updated_at)
+    \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
+    \\        $7, $8, $9, $10, $11, $12, $13,
+    \\        0, 0, 0, $17,
+    \\        $14, $15, $16, $17, $17)
+    \\  RETURNING id, runner_id, fleet_id, event_id
+    \\)
+    \\INSERT INTO fleet.runner_events
+    \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+    \\SELECT $18::uuid, runner_id, $19::text, $17::bigint,
+    \\       jsonb_build_object($20::text, id::text, $21::text, fleet_id::text, $22::text, event_id, $23::text, $24::text),
+    \\       NULL, $17::bigint
+    \\FROM inserted
+;

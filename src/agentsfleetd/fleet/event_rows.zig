@@ -13,6 +13,7 @@
 //! deleted finalize); row-equivalence with the direct path is the invariant.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
@@ -92,13 +93,7 @@ pub fn insertReceivedRow(
         break :blk if (v == .string) v.string else null;
     };
 
-    const affected = try conn.exec(
-        \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,
-        \\   status, request_json, resumes_event_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $10, $7::jsonb, $8, $9, $9)
-        \\ON CONFLICT (fleet_id, event_id) DO NOTHING
-    , .{
+    const affected = try conn.exec(sql.INSERT_FLEET_EVENT, .{
         uid,
         session.fleet_id,
         event.event_id,
@@ -127,11 +122,7 @@ pub fn markBlocked(
 ) !i64 {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    const affected = try conn.exec(
-        \\UPDATE core.fleet_events
-        \\SET status = $3, failure_label = $4, updated_at = $5
-        \\WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $6
-    , .{
+    const affected = try conn.exec(sql.UPDATE_FLEET_EVENT_FAILURE, .{
         fleet_id,
         event_id,
         STATUS_GATE_BLOCKED,
@@ -153,9 +144,7 @@ pub const RowClass = enum { absent, received, terminal };
 pub fn classifyStatus(pool: *pg.Pool, fleet_id: []const u8, event_id: []const u8) !RowClass {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = PgQuery.from(try conn.query(
-        \\SELECT status FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2
-    , .{ fleet_id, event_id }));
+    var q = PgQuery.from(try conn.query(sql.SELECT_FLEET_EVENT_STATUS, .{ fleet_id, event_id }));
     defer q.deinit();
     const row = (try q.next()) orelse return .absent;
     const status = try row.get([]const u8, 0);
@@ -194,11 +183,7 @@ pub fn markTerminal(
     // happy path always transitions a single received→terminal; a 0-row write
     // means the row was already terminal (a re-delivery whose XACK was lost)
     // and is logged rather than silently overwriting the settled result.
-    const affected = conn.exec(
-        \\UPDATE core.fleet_events
-        \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8, failure_detail = $10
-        \\WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $9
-    , .{
+    const affected = conn.exec(sql.UPDATE_FLEET_EVENT_RESULT, .{
         fleet_id,
         event_id,
         status_text,
@@ -226,14 +211,7 @@ pub fn checkpointFleetSession(alloc: Allocator, pool: *pg.Pool, fleet_id: []cons
     const now_ms = clock.nowMillis();
     const conn = try pool.acquire();
     defer pool.release(conn);
-    _ = try conn.exec(
-        \\INSERT INTO core.fleet_sessions (id, fleet_id, context_json, checkpoint_at, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $4, $4)
-        \\ON CONFLICT (fleet_id) DO UPDATE
-        \\  SET context_json = EXCLUDED.context_json,
-        \\      checkpoint_at = EXCLUDED.checkpoint_at,
-        \\      updated_at = EXCLUDED.updated_at
-    , .{ row_id, fleet_id, context_json, now_ms });
+    _ = try conn.exec(sql.UPSERT_FLEET_SESSION, .{ row_id, fleet_id, context_json, now_ms });
 }
 
 /// Truncate to `max_len` bytes on a UTF-8 boundary — no split code points, so
