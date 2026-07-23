@@ -294,6 +294,11 @@ pub const ReportRequest = struct {
     /// omits it and the control plane treats absent as "reason unknown". The
     /// coarse `outcome` above stays the binary processed/fleet_error verdict.
     failure_reason: ?FailureClass = null,
+    /// Human-readable cause line from the classification site (which check
+    /// failed, and why). Defaulted empty so an older runner omits it safely;
+    /// persisted only when the outcome is a failure (same trust boundary as
+    /// `failure_reason`).
+    failure_detail: []const u8 = "",
     response_text: []const u8,
     /// Billing token count → `fleet_execution_telemetry.token_count`.
     tokens: u64,

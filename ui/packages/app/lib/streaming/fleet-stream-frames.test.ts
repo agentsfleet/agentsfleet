@@ -40,6 +40,8 @@ function evt(over: Partial<FleetEvent> = {}): FleetEvent {
     text: "x",
     reply: "",
     outcome: OUTCOME.WORKING,
+    failureLabel: null,
+    failureDetail: null,
     createdAt: new Date(2000),
     status: "received",
     ...over,
@@ -201,6 +203,34 @@ describe("applyLiveFrame", () => {
     const seed = [evt({ id: "e9" })];
     const out = applyLiveFrame(seed, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e9", status: "gate_blocked" });
     expect(out[0]?.status).toBe("gate_blocked");
+  });
+
+  it("EVENT_COMPLETE carries the failure cause into the outcome live", () => {
+    const seed = [evt({ id: "e9" })];
+    const out = applyLiveFrame(seed, {
+      kind: FRAME_KIND.EVENT_COMPLETE,
+      event_id: "e9",
+      status: "fleet_error",
+      failure_label: "startup_posture",
+      failure_detail: "fleet has no instructions configured",
+    });
+    // The live merge must name the failing check without a reload.
+    expect(out[0]?.status).toBe("fleet_error");
+    expect(out[0]?.outcome).toBe(
+      "Failed a startup safety check — fleet has no instructions configured",
+    );
+  });
+
+  it("EVENT_COMPLETE with empty failure fields keeps the plain status floor", () => {
+    const seed = [evt({ id: "e9" })];
+    const out = applyLiveFrame(seed, {
+      kind: FRAME_KIND.EVENT_COMPLETE,
+      event_id: "e9",
+      status: "fleet_error",
+      failure_label: "",
+      failure_detail: "",
+    });
+    expect(out[0]?.outcome).toBe("The run failed.");
   });
 
   it("EVENT_COMPLETE falls back to processed when the wire omits status", () => {
@@ -373,6 +403,48 @@ describe("applyLiveFrame", () => {
       args_redacted: {},
     });
     expect(out).toBe(seed);
+  });
+
+  // The merges locate their event once and copy the array once, the
+  // shape `applyToolCall` already used. Reference identity is the observable
+  // proof: a second pass would rebuild every element, not just the target.
+  it("a chunk rebuilds only its own event and leaves every sibling reference intact", () => {
+    const seed = [evt({ id: "a" }), evt({ id: "b", reply: "hi" }), evt({ id: "c" })];
+    const out = applyLiveFrame(seed, { kind: FRAME_KIND.CHUNK, event_id: "b", text: " there" });
+
+    expect(out).not.toBe(seed);
+    expect(out[1]?.reply).toBe("hi there");
+    expect(out[0]).toBe(seed[0]);
+    expect(out[2]).toBe(seed[2]);
+    expect(out[1]).not.toBe(seed[1]);
+  });
+
+  it("a completion rebuilds only its own event and carries the failure class", () => {
+    const seed = [evt({ id: "a" }), evt({ id: "b" }), evt({ id: "c" })];
+    const out = applyLiveFrame(seed, {
+      kind: FRAME_KIND.EVENT_COMPLETE,
+      event_id: "b",
+      status: "fleet_error",
+      failure_label: "startup_posture",
+      failure_detail: "no instructions configured",
+    });
+
+    expect(out[0]).toBe(seed[0]);
+    expect(out[2]).toBe(seed[2]);
+    // The class rides alongside the sentence so guidance can render live.
+    expect(out[1]?.failureLabel).toBe("startup_posture");
+    expect(out[1]?.outcome).toContain("no instructions configured");
+  });
+
+  it("a clean completion carries no failure class", () => {
+    const out = applyLiveFrame([evt({ id: "e1", failureLabel: "startup_posture" })], {
+      kind: FRAME_KIND.EVENT_COMPLETE,
+      event_id: "e1",
+      status: "processed",
+      failure_label: "",
+      failure_detail: "",
+    });
+    expect(out[0]?.failureLabel).toBeNull();
   });
 
   it("a completion carrying no timing does not erase the elapsed a progress frame reported", () => {

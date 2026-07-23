@@ -2,7 +2,6 @@ import type * as React from "react";
 
 import {
   PAGINATION_KIND,
-  type CursorPaginationProps,
   type PagePaginationProps,
 } from "./Pagination";
 
@@ -29,7 +28,6 @@ export type ClientDataTablePagination = {
 export type DataTablePagination =
   | false
   | ClientDataTablePagination
-  | CursorPaginationProps
   | PagePaginationProps;
 
 export interface DataTableProps<T> {

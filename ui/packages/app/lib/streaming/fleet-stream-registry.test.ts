@@ -47,6 +47,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
     wall_ms: 10,
     cost_nanos: null,
     failure_label: null,
+    failure_detail: null,
     checkpoint_id: null,
     resumes_event_id: null,
     created_at: now,
@@ -110,6 +111,45 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     const snap = getSnapshot(Z_A);
     expect(snap.events.map((e) => e.id)).toEqual(["evt_older", "evt_newer"]);
     a();
+  });
+
+  it("caps the live view by shedding the oldest SETTLED rows, never a pending send", () => {
+    // A tab left open on a busy fleet must not grow the array without bound,
+    // but the cap sheds only settled rows — a pending send is live state.
+    const seed = Array.from({ length: 260 }, (_, i) =>
+      row({ event_id: `evt_${i}`, status: "processed", created_at: Date.UTC(2026, 4, 15, 12, 0, i) }),
+    );
+    const release = subscribe(WS, Z_A, seed, () => {});
+    const tempId = appendOptimistic(Z_A, "one more", "steer:pending");
+
+    const events = getSnapshot(Z_A).events;
+    expect(events.length).toBe(200);
+    // Oldest settled dropped, newest settled kept, pending survives.
+    expect(events.some((e) => e.id === tempId)).toBe(true);
+    expect(events.some((e) => e.id === "evt_259")).toBe(true);
+    expect(events.some((e) => e.id === "evt_0")).toBe(false);
+    release();
+  });
+
+  it("keeps a pending row the mergeBackfill sort buried among older settled rows", () => {
+    // The reviewer's skew case: a pending optimistic row carries the client
+    // clock; a backfill sorts it BELOW newer server rows. The cap must still
+    // refuse to evict it, or its reconcile graft finds nothing and the
+    // message blanks until reload.
+    const release = subscribe(WS, Z_A, [], () => {});
+    // Pending row stamped in the past (client clock behind the server).
+    const tempId = appendOptimistic(Z_A, "buried steer", "steer:pending");
+    // A backfill of 260 newer server rows re-sorts the pending row down-array.
+    const backfill = Array.from({ length: 260 }, (_, i) =>
+      row({ event_id: `srv_${i}`, status: "processed", created_at: Date.UTC(2026, 4, 15, 18, 0, i) }),
+    );
+    reconcileServerRows(Z_A, backfill);
+
+    const events = getSnapshot(Z_A).events;
+    // The pending row is not the newest, yet it survives the cap.
+    expect(events.some((e) => e.id === tempId)).toBe(true);
+    expect(events.length).toBeLessThanOrEqual(200 + 1);
+    release();
   });
 
   it("seeds nothing (no client backfill GET) when initial is empty", () => {

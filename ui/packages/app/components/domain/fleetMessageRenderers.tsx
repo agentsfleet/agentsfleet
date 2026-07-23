@@ -1,16 +1,35 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { MessageState } from "@assistant-ui/react";
 import { Badge, cn } from "@agentsfleet/design-system";
 import { readTools, ToolCalls } from "./FleetToolCalls";
 import {
+  FleetActivityRow,
+  FleetGroupRow,
   FleetMessageRow,
   ROW_TONE,
   useFleetName,
-  type RowTone,
 } from "./FleetMessageRow";
-import { SENDER, roleFor, senderLabelFor } from "@/lib/events/event-summary";
+import {
+  readActor,
+  readCustomStatus,
+  readFailureLabel,
+  readGroupMembers,
+  readOutcome,
+  readReply,
+  readRequestJson,
+  readText,
+} from "./fleetMessageReaders";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
+import { groupSpan } from "@/lib/events/event-grouping";
+import {
+  SENDER,
+  changeProposalActionFrom,
+  eventLinkFrom,
+  guidanceFor,
+  senderLabelFor,
+} from "@/lib/events/event-summary";
 
 const SENDER_FLEET = SENDER.FLEET_FALLBACK;
 const STATUS_OPTIMISTIC = "optimistic";
@@ -20,6 +39,11 @@ const STATUS_IN_FLIGHT = "received";
 const SENDING_LABEL = "sending";
 const FAILED_LABEL = "not sent";
 const STREAM_CURSOR = "▍";
+const WORKING_LABEL = "Working";
+// Staggered so the three dots read as one travelling wave rather than three
+// lights blinking in unison.
+const WORKING_DOT_DELAYS = ["0ms", "160ms", "320ms"] as const;
+const OPEN_LINK_LABEL = "open ↗";
 const PAYLOAD_SHOW_LABEL = "▸ payload";
 const PAYLOAD_HIDE_LABEL = "▾ hide payload";
 
@@ -41,13 +65,25 @@ function FleetMessage({ message }: { message: MessageState }) {
   const tools = readTools(message);
   const trigger = readText(message);
   const isReplyRow = message.role === "assistant";
+  // A run of identical deliveries is one row until the operator opens it.
+  const group = readGroupMembers(message);
+  if (group) return <FleetGroupMessage fleetName={fleetName} members={group} />;
+  // Integration deliveries recede to a one-line tick so the operator's own
+  // conversation dominates the column (approved variant B). Order is
+  // untouched — activity looks quieter, it never moves.
+  if (message.role === "system") {
+    return <FleetActivityMessage message={message} fleetName={fleetName} tools={tools} />;
+  }
   return (
     <>
       {isReplyRow ? null : (
         <FleetMessageRow
           sender={senderLabelFor(actor, fleetName)}
           createdAt={message.createdAt}
-          tone={toneFor(actor, status)}
+          // The only message that still renders a full trigger row is the
+          // operator's own — system activity is a compact tick with its own
+          // chip — so this row is always operator-toned.
+          tone={ROW_TONE.OPERATOR}
           messageRole={message.role}
           dimmed={optimistic}
           failed={failed}
@@ -58,6 +94,127 @@ function FleetMessage({ message }: { message: MessageState }) {
         </FleetMessageRow>
       )}
       <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
+    </>
+  );
+}
+
+/**
+ * One integration delivery as a compact rail tick. When the fleet actually
+ * answered, its reply still gets its own full conversation row underneath —
+ * the tick demotes the TRIGGER, never the fleet's words.
+ */
+function FleetActivityMessage({
+  message,
+  fleetName,
+  tools,
+}: {
+  message: MessageState;
+  fleetName: string;
+  tools: ReturnType<typeof readTools>;
+}) {
+  const status = readCustomStatus(message);
+  const reply = readReply(message);
+  const payload = readRequestJson(message);
+  const working = status === STATUS_IN_FLIGHT;
+  const errored = status === STATUS_AGENT_ERROR;
+  // The tick states the outcome itself — a delivery whose only content is its
+  // outcome does not earn a second row. A real reply does.
+  const outcome = working || reply.length > 0 ? undefined : readOutcome(message);
+  const guidance = reply.length > 0 ? null : guidanceFor(readFailureLabel(message));
+  const action = changeProposalActionFrom(payload);
+  const link = eventLinkFrom(payload);
+  return (
+    <>
+      <FleetActivityRow
+        sender={senderLabelFor(readActor(message), fleetName)}
+        createdAt={message.createdAt}
+        headline={readText(message)}
+        outcome={outcome}
+        failed={errored}
+        messageRole={message.role}
+        annotation={<ActivityAnnotation action={action} link={link} />}
+      >
+        {guidance ? (
+          <span className="mt-xs block text-label text-muted-foreground" data-testid="failure-guidance">
+            {guidance}
+          </span>
+        ) : null}
+        {payload ? <PayloadDisclosure json={payload} /> : null}
+      </FleetActivityRow>
+      {reply.length > 0 ? (
+        <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * A run of identical deliveries as one "×N" row. Collapsed by default; opening
+ * it renders every member as its own tick, so the count is always a summary
+ * the operator can check rather than a claim they have to trust.
+ */
+function FleetGroupMessage({
+  fleetName,
+  members,
+}: {
+  fleetName: string;
+  members: FleetEvent[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  // Everything is derived from `members` (guaranteed non-empty by the caller):
+  // `reduce` yields the newest as a definite `FleetEvent`, and the span reads
+  // the members' timestamps. Nothing is re-read from the message metadata, so
+  // there is no "missing metadata" branch to leave uncovered.
+  const newest = members.reduce((_, member) => member);
+  const span = groupSpan(members);
+  const failed = newest.status === STATUS_AGENT_ERROR;
+  return (
+    <FleetGroupRow
+      sender={senderLabelFor(newest.actor, fleetName)}
+      headline={newest.text}
+      outcome={newest.reply.length > 0 ? undefined : newest.outcome}
+      failed={failed}
+      count={members.length}
+      first={span.first}
+      last={span.last}
+      expanded={expanded}
+      onToggle={() => setExpanded((open) => !open)}
+    >
+      {members.map((member) => (
+        <FleetActivityRow
+          key={member.id}
+          sender={senderLabelFor(member.actor, fleetName)}
+          createdAt={member.createdAt}
+          headline={member.text}
+          outcome={member.reply.length > 0 ? member.reply : member.outcome}
+          failed={member.status === STATUS_AGENT_ERROR}
+          messageRole="system"
+        >
+          {member.custom?.requestJson ? <PayloadDisclosure json={member.custom.requestJson} /> : null}
+        </FleetActivityRow>
+      ))}
+    </FleetGroupRow>
+  );
+}
+
+// The action verb as a `Badge`, and the provider's own link when the payload
+// carries one. A payload with neither renders nothing rather than a dead
+// affordance.
+function ActivityAnnotation({ action, link }: { action: string; link: string | null }) {
+  if (action.length === 0 && link === null) return null;
+  return (
+    <>
+      {action.length > 0 ? <Badge variant="evidence">{action}</Badge> : null}
+      {link ? (
+        <a
+          href={link}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="shrink-0 text-label text-muted-foreground underline hover:text-foreground"
+        >
+          {OPEN_LINK_LABEL}
+        </a>
+      ) : null}
     </>
   );
 }
@@ -80,7 +237,15 @@ function FleetReply({
   const errored = status === STATUS_AGENT_ERROR;
   const streaming = status === STATUS_IN_FLIGHT;
   if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return null;
+  // A turn that has started but said nothing yet gets motion, not a sentence.
+  // "Still working." is true and completely inert — it reads the same at one
+  // second and at five minutes, so the operator cannot tell the fleet is alive.
+  const awaitingFirstWord = streaming && reply.length === 0;
   const body = reply.length > 0 ? reply : outcome;
+  // The cause says what broke; the guidance says what to do about it. Only
+  // rendered when the failure sentence is what the operator is reading — a
+  // recorded reply is the fleet's own words and takes precedence.
+  const guidance = reply.length > 0 ? null : guidanceFor(readFailureLabel(message));
   return (
     <FleetMessageRow
       sender={fleetName.length > 0 ? fleetName : SENDER_FLEET}
@@ -90,13 +255,45 @@ function FleetReply({
       annotation={errored ? <Badge variant="destructive">{STATUS_AGENT_ERROR}</Badge> : null}
     >
       <ToolCalls tools={tools} />
-      <span className={cn(errored && "text-destructive")}>{body}</span>
-      {streaming ? (
-        <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
-          {STREAM_CURSOR}
+      {awaitingFirstWord ? (
+        <WorkingIndicator />
+      ) : (
+        <>
+          <span className={cn(errored && "text-destructive")}>{body}</span>
+          {streaming ? (
+            <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
+              {STREAM_CURSOR}
+            </span>
+          ) : null}
+        </>
+      )}
+      {guidance ? (
+        <span className="mt-xs block text-label text-muted-foreground" data-testid="failure-guidance">
+          {guidance}
         </span>
       ) : null}
     </FleetMessageRow>
+  );
+}
+
+// Three dots, staggered, under one live region so a screen reader is told
+// once that the fleet is working rather than on every animation frame.
+function WorkingIndicator() {
+  return (
+    <output
+      className="inline-flex items-baseline gap-xs"
+      aria-label={WORKING_LABEL}
+      data-testid="fleet-working"
+    >
+      {WORKING_DOT_DELAYS.map((delay) => (
+        <span
+          key={delay}
+          aria-hidden="true"
+          className="inline-block size-1 rounded-full bg-pulse motion-safe:animate-pulse"
+          style={{ animationDelay: delay }}
+        />
+      ))}
+    </output>
   );
 }
 
@@ -132,43 +329,4 @@ function PayloadDisclosure({ json }: { json: string }) {
       </pre>
     </details>
   );
-}
-
-function toneFor(actor: string, status: string): RowTone {
-  if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return ROW_TONE.OPERATOR;
-  return roleFor(actor) === "user" ? ROW_TONE.OPERATOR : ROW_TONE.EVENT;
-}
-
-function readText(message: MessageState): string {
-  for (const part of message.content) {
-    if (part.type === "text") return part.text;
-  }
-  return "";
-}
-
-function readActor(message: MessageState): string {
-  const raw = message.metadata.custom["actor"];
-  return typeof raw === "string" ? raw : "";
-}
-
-function readCustomStatus(message: MessageState): string {
-  const raw = message.metadata.custom["status"];
-  return typeof raw === "string" ? raw : "";
-}
-
-function readReply(message: MessageState): string {
-  const raw = message.metadata.custom["reply"];
-  return typeof raw === "string" ? raw : "";
-}
-
-function readOutcome(message: MessageState): string {
-  const raw = message.metadata.custom["outcome"];
-  return typeof raw === "string" ? raw : "";
-}
-
-function readRequestJson(message: MessageState): string | null {
-  const raw = message.metadata.custom["requestJson"];
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  return trimmed.length > 0 && trimmed !== "{}" ? trimmed : null;
 }

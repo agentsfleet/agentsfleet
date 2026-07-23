@@ -11,6 +11,12 @@ import {
 import { ReceiptIcon, CreditCardIcon, WalletIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { getTenantBilling, listTenantBillingCharges } from "@/lib/api/tenant_billing";
+import {
+  BILLING_PAGE_SIZE,
+  CURSOR_TRAIL_PARAM,
+  cursorForTrail,
+  cursorTrailFrom,
+} from "@/lib/pagination/cursor-trail";
 import BillingBalanceCard from "./components/BillingBalanceCard";
 import BillingUsageTab from "./components/BillingUsageTab";
 import { summarizeCharges } from "./lib/charges";
@@ -19,7 +25,13 @@ export const dynamic = "force-dynamic";
 
 const BILLING_DESCRIPTION = "Manage credits and usage.";
 
-export default async function BillingSettingsPage() {
+export default async function BillingSettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
+  const query = searchParams ? await searchParams : {};
+  const cursor = cursorForTrail(cursorTrailFrom(query[CURSOR_TRAIL_PARAM]));
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
@@ -31,7 +43,12 @@ export default async function BillingSettingsPage() {
   // explanatory empty state instead of Next's error page.
   const [billing, chargesResp] = await Promise.all([
     getTenantBilling(token).catch(() => null),
-    listTenantBillingCharges(token, { limit: 50 }).catch(() => ({
+    // The ledger page comes from the URL, so a reload or a shared link opens
+    // the page the operator meant rather than resetting to the newest.
+    listTenantBillingCharges(token, {
+      limit: BILLING_PAGE_SIZE,
+      ...(cursor ? { cursor } : {}),
+    }).catch(() => ({
       items: [],
       next_cursor: null,
     })),

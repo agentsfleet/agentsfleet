@@ -27,7 +27,15 @@ export const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
 
 // ── Module factories (delegated to from each shard's vi.mock call) ──────────
 export function nextNavigationMock() {
-  return { redirect, notFound, usePathname, useRouter: () => ({ push: routerPush, refresh: routerRefresh }) };
+  return {
+    redirect,
+    notFound,
+    usePathname,
+    useRouter: () => ({ push: routerPush, refresh: routerRefresh }),
+    // Paged tables read the cursor trail out of the URL, so every surface
+    // that renders one needs this present even when it is empty.
+    useSearchParams: () => new URLSearchParams(),
+  };
 }
 
 export function nextLinkMock() {

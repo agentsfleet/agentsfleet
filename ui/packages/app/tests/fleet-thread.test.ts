@@ -17,7 +17,7 @@ import {
 } from "@testing-library/react";
 
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { GUIDANCE, OUTCOME, outcomeFor } from "@/lib/events/event-summary";
 import { __resetFleetDeliveryFailuresForTests } from "@/components/domain/useFleetDeliveryFailure";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
@@ -106,6 +106,8 @@ function ev(over: Partial<FleetEvent> & { actor: string; role: FleetEvent["role"
     text: over.text ?? "",
     reply: over.reply ?? "",
     outcome: over.outcome ?? OUTCOME.NO_REPLY,
+    failureLabel: over.failureLabel ?? null,
+    failureDetail: over.failureDetail ?? null,
     createdAt: over.createdAt ?? new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
     status: over.status ?? "processed",
     custom: over.custom,
@@ -125,6 +127,7 @@ function toThreadMessage(e: FleetEvent): ThreadMessageLike {
         status: e.status,
         reply: e.reply,
         outcome: e.outcome,
+        failureLabel: e.failureLabel,
       },
     },
   };
@@ -167,6 +170,15 @@ function appendMessage(text: string): AppendMessage {
   };
 }
 
+function threadElement(initial: EventRow[] = []) {
+  return React.createElement(FleetThread, {
+    workspaceId: WS,
+    fleetId: ZID,
+    fleetName: FLEET_NAME,
+    initial,
+  });
+}
+
 function renderThread() {
   return renderThreadWithInitial([]);
 }
@@ -196,6 +208,7 @@ function serverEvent(over: Partial<EventRow> = {}): EventRow {
     tokens: 1,
     wall_ms: 10,
     failure_label: null,
+    failure_detail: null,
     checkpoint_id: null,
     resumes_event_id: null,
     cost_nanos: 1,
@@ -358,6 +371,443 @@ describe("FleetThread — role rendering", () => {
     // A blocked turn does not render the instruction as if it succeeded — the
     // fleet bubble states the outcome (coding-agent finding #4).
     expect(screen.getByText(OUTCOME.WAITING_APPROVAL)).toBeTruthy();
+  });
+
+  it("shows motion while connecting, and no band above the conversation", () => {
+    mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
+    const { container } = renderThread();
+
+    // The one moment the operator wants a sign of life is while we are
+    // trying, so the dot moves — and a state with no decision attached does
+    // not earn a band above their conversation.
+    expect(container.querySelector('[data-connection="connecting"]')).toBeTruthy();
+    expect(container.querySelector(".animate-pulse")).toBeTruthy();
+    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+    expect(screen.queryByText(/History remains available/i)).toBeNull();
+  });
+
+  it("keeps a band only for a connection that asks the operator to decide", () => {
+    mockStream([], { connectionStatus: CONNECTION_STATUS.RECONNECTING });
+    const reconnecting = renderThread();
+    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+    reconnecting.unmount();
+
+    mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
+    renderThread();
+    // Nothing to wait for and a choice to make — so it speaks, and offers it.
+    expect(screen.getByTestId("fleet-connection-notice")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("announces arrival once, and only when it was actually waiting", async () => {
+    mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
+    const view = renderThread();
+    mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
+    await act(async () => { view.rerender(threadElement()); });
+
+    const indicator = view.container.querySelector('[data-connection="live"]');
+    expect(indicator?.getAttribute("data-arrived")).toBe("true");
+    view.unmount();
+
+    // A surface that mounts already-live announces nothing: there was no
+    // wait to resolve.
+    mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
+    const fresh = renderThread();
+    expect(
+      fresh.container.querySelector('[data-connection="live"]')?.getAttribute("data-arrived"),
+    ).toBeNull();
+  });
+
+  it("animates a turn that has started but not spoken yet", () => {
+    mockStream([
+      ev({ role: "user", actor: "steer:user_abc", text: "Howdy", reply: "", status: "received" }),
+    ]);
+    renderThread();
+
+    // "Still working." reads the same at one second and at five minutes.
+    expect(screen.getByTestId("fleet-working")).toBeTruthy();
+    expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
+  });
+
+  it("pins one banner for a fleet that keeps failing the same way", () => {
+    const cause = "no instructions configured";
+    mockStream(
+      Array.from({ length: 15 }, (_, i) =>
+        ev({
+          id: `fail_${i}`,
+          role: "system",
+          actor: "webhook:github",
+          text: "edited #541",
+          reply: "",
+          status: "fleet_error",
+          outcome: "Failed a startup safety check",
+          failureLabel: "startup_posture",
+          failureDetail: cause,
+        }),
+      ),
+    );
+    renderThread();
+
+    const banner = screen.getByTestId("fleet-failure-banner");
+    // One line carries what fifteen rows were saying: what, why, how often.
+    expect(banner.textContent).toContain("Failed a startup safety check");
+    expect(screen.getByTestId("failure-banner-count").textContent).toBe("×15");
+    expect(banner.textContent).toContain(cause);
+    expect(banner.textContent).toContain(GUIDANCE.STARTUP);
+  });
+
+  it("pins a bare banner for a repeat with no cause and no actionable guidance", () => {
+    // The quiet arm of the banner: a class the operator cannot act on
+    // (`oom_kill`), from a runner that recorded no cause. It still pins the
+    // count, but renders neither a cause clause nor a guidance line.
+    mockStream(
+      Array.from({ length: 3 }, (_, i) =>
+        ev({
+          id: `oom_${i}`,
+          role: "system",
+          actor: "webhook:github",
+          text: "edited #541",
+          reply: "",
+          status: "fleet_error",
+          outcome: "Ran out of memory",
+          failureLabel: "oom_kill",
+          failureDetail: null,
+        }),
+      ),
+    );
+    renderThread();
+
+    const banner = screen.getByTestId("fleet-failure-banner");
+    expect(screen.getByTestId("failure-banner-count").textContent).toBe("×3");
+    expect(banner.textContent).toContain("Ran out of memory");
+    expect(banner.textContent).not.toContain(GUIDANCE.STARTUP);
+  });
+
+  it("animates a still-working integration delivery instead of stating an outcome", () => {
+    // A received (streaming) system row has no settled outcome yet, so the
+    // compact tick shows motion, not an outcome clause.
+    mockStream([
+      ev({
+        id: "wk",
+        role: "system",
+        actor: "webhook:github",
+        text: "opened #542",
+        reply: "",
+        status: "received",
+        outcome: OUTCOME.WORKING,
+      }),
+    ]);
+    const { container } = renderThread();
+
+    const tick = container.querySelector('[data-compact="true"]');
+    expect(tick?.textContent).toContain("opened #542");
+    expect(tick?.textContent).not.toContain(OUTCOME.WORKING);
+  });
+
+  it("shows no banner for a single failure, and clears it once the fleet recovers", () => {
+    const failure = () =>
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "edited #541",
+        reply: "",
+        status: "fleet_error",
+        outcome: "Failed a startup safety check",
+        failureLabel: "startup_posture",
+      });
+
+    mockStream([failure()]);
+    const single = renderThread();
+    expect(screen.queryByTestId("fleet-failure-banner")).toBeNull();
+    single.unmount();
+
+    // Recovery is the case that matters: a banner that outlived it would
+    // report a fleet as broken while it is working.
+    mockStream([
+      failure(),
+      failure(),
+      ev({ role: "system", actor: "webhook:github", text: "edited #542", reply: "", status: "processed" }),
+    ]);
+    renderThread();
+    expect(screen.queryByTestId("fleet-failure-banner")).toBeNull();
+  });
+
+  it("collapses a run of identical deliveries into one row that opens on demand", async () => {
+    const burst = Array.from({ length: 15 }, (_, i) =>
+      ev({
+        id: `burst_${i}`,
+        role: "system",
+        actor: "webhook:github",
+        text: "edited · agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "fleet_error",
+        outcome: "Failed a startup safety check — no instructions configured",
+        failureLabel: "startup_posture",
+      }),
+    );
+    mockStream(burst);
+    const { container } = renderThread();
+
+    // Fifteen deliveries, one row — and the count is stated, not implied.
+    expect(screen.getByTestId("group-count").textContent).toBe("×15");
+    expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(0);
+
+    // The count is a summary the operator can always check.
+    const toggle = screen.getByRole("button", { expanded: false });
+    await act(async () => { fireEvent.click(toggle); });
+    expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(15);
+  });
+
+  it("renders a group whose members carry replies and payloads", async () => {
+    // A run coalesces on actor/headline/outcome, so members can still differ
+    // in reply and payload. The newest here replied; some members carry a
+    // payload disclosure, some do not — exercising both sides of each.
+    const member = (id: string, reply: string, requestJson?: string) =>
+      ev({
+        id,
+        role: "system",
+        actor: "webhook:github",
+        text: "edited #541",
+        reply,
+        status: "processed",
+        outcome: OUTCOME.NO_REPLY,
+        ...(requestJson ? { custom: { requestJson } } : {}),
+      });
+    mockStream([
+      member("g1", "", '{"action":"opened","repo":"o/r","number":1}'),
+      member("g2", "reviewed it", undefined),
+      member("g3", "reviewed it", undefined),
+    ]);
+    const { container } = renderThread();
+
+    // The group's newest replied, so the header row shows no outcome clause.
+    expect(screen.getByTestId("group-count").textContent).toBe("×3");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { expanded: false }));
+    });
+    // Members render: one with a payload disclosure, others with their reply.
+    expect(screen.getByText("▸ payload")).toBeTruthy();
+    expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(3);
+  });
+
+  it("links out from an activity delivery that carries only a run URL", () => {
+    // A completed-run payload has a link but no change-proposal action, so the
+    // annotation renders the link without an action badge.
+    mockStream([
+      ev({
+        id: "run1",
+        role: "system",
+        actor: "webhook:github",
+        text: "ci finished",
+        reply: "",
+        status: "processed",
+        outcome: OUTCOME.NO_REPLY,
+        custom: {
+          requestJson:
+            '{"workflow_name":"ci","conclusion":"success","repo":"o/r","run_url":"https://ci.example.test/1"}',
+        },
+      }),
+    ]);
+    const { container } = renderThread();
+    const link = container.querySelector('a[href^="https://ci.example.test"]');
+    expect(link).toBeTruthy();
+    expect(container.querySelector('[data-slot="badge"]')).toBeNull();
+  });
+
+  it("shows the operator's payload and the failure guidance on a steer that failed startup", () => {
+    // One durable turn: the operator steered, the run failed a startup check.
+    // The trigger row discloses the submitted payload; the reply row states
+    // the outcome and points at the fix.
+    mockStream([
+      ev({
+        id: "steer_fail",
+        role: "user",
+        actor: "steer:user_abc",
+        text: "deploy the review guidelines",
+        reply: "",
+        status: "fleet_error",
+        outcome: "Failed a startup safety check",
+        failureLabel: "startup_posture",
+        custom: { requestJson: '{"message":"deploy the review guidelines"}' },
+      }),
+    ]);
+    renderThread();
+    // The trigger row exposes the operator's own submitted payload.
+    expect(screen.getByText("▸ payload")).toBeTruthy();
+    // The reply row carries the actionable guidance.
+    expect(screen.getByTestId("failure-guidance").textContent).toBe(GUIDANCE.STARTUP);
+  });
+
+  it("streams a fleet reply that has begun but not finished", () => {
+    // A reply mid-stream: status received, partial text already accumulated.
+    // The reply body shows with the streaming cursor, not the working dots.
+    mockStream([
+      ev({
+        id: "sr",
+        role: "assistant",
+        actor: "fleet",
+        text: "",
+        reply: "Half a thought",
+        status: "received",
+        outcome: OUTCOME.WORKING,
+      }),
+    ]);
+    renderThread();
+    expect(screen.getByText(/Half a thought/)).toBeTruthy();
+    expect(screen.getByLabelText("streaming")).toBeTruthy();
+  });
+
+  it("breaks a group when the operator speaks mid-burst", () => {
+    const activity = (id: string) =>
+      ev({ id, role: "system", actor: "webhook:github", text: "edited #541", reply: "", status: "fleet_error" });
+    mockStream([
+      activity("a1"), activity("a2"),
+      ev({ role: "user", actor: "steer:user_abc", text: "what is going on?" }),
+      activity("b1"), activity("b2"),
+    ]);
+    const { container } = renderThread();
+
+    // Two groups, and the operator's question still reads as their own row.
+    expect(container.querySelectorAll('[data-group="true"]')).toHaveLength(2);
+    expect(screen.getByText("what is going on?")).toBeTruthy();
+  });
+
+  it("renders an integration delivery as one compact line, payload still reachable", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "opened · agentsfleet/agentsfleet#541 — Fix routing",
+        reply: "",
+        status: "processed",
+        outcome: OUTCOME.NO_REPLY,
+        custom: { requestJson: '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541}' },
+      }),
+    ]);
+    const { container } = renderThread();
+
+    // One tick, not a full row with a chip plus a second outcome row.
+    const tick = container.querySelector('[data-compact="true"]');
+    expect(tick).toBeTruthy();
+    expect(container.querySelectorAll('[data-role="system"]')).toHaveLength(1);
+    expect(tick?.textContent).toContain("agentsfleet/agentsfleet#541");
+    // The outcome rides the same line rather than earning its own row.
+    expect(tick?.textContent).toContain(OUTCOME.NO_REPLY);
+    // Disclosure survives the demotion — nothing became unreachable.
+    expect(screen.getByText("▸ payload")).toBeTruthy();
+  });
+
+  it("keeps the operator's and the fleet's own rows in the full skeleton", () => {
+    mockStream([
+      ev({ role: "user", actor: "steer:user_abc", text: "deploy staging", reply: "" }),
+      ev({ role: "assistant", actor: "fleet", text: "", reply: "Deployed." }),
+    ]);
+    const { container } = renderThread();
+
+    // Regression guard: demotion applies to activity ONLY. A
+    // conversation row that lost its chip would be the failure this catches.
+    expect(container.querySelector('[data-compact="true"]')).toBeNull();
+    expect(container.querySelectorAll("[data-chip]").length).toBeGreaterThan(0);
+    expect(screen.getByText("deploy staging")).toBeTruthy();
+    expect(screen.getByText("Deployed.")).toBeTruthy();
+  });
+
+  it("badges the action and links out only when the payload carries a URL", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "opened · agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "processed",
+        custom: {
+          requestJson:
+            '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541,"url":"https://github.com/agentsfleet/agentsfleet/pull/541"}',
+        },
+      }),
+    ]);
+    const { container } = renderThread();
+
+    expect(screen.getByText("opened")).toBeTruthy();
+    const link = container.querySelector('a[href^="https://github.com"]');
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute("rel")).toContain("noopener");
+  });
+
+  it("renders no link for a payload whose URL is not an absolute http(s) address", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "opened · agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "processed",
+        // A script URL and a relative path are both refused: one executes,
+        // the other resolves against the console's own origin.
+        custom: {
+          requestJson:
+            '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541,"url":"javascript:alert(1)"}',
+        },
+      }),
+    ]);
+    const { container } = renderThread();
+
+    expect(screen.getByText("opened")).toBeTruthy();
+    expect(container.querySelector("a[href]")).toBeNull();
+  });
+
+  it("names the failing check and what to do about it on a startup failure", () => {
+    const cause = "startup check 'instructions' failed: no instructions configured";
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "edited agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "fleet_error",
+        outcome: outcomeFor({ status: "fleet_error", failure_label: "startup_posture", failure_detail: cause }),
+        failureLabel: "startup_posture",
+      }),
+    ]);
+    renderThread();
+    // The cause reaches the row, not just the class sentence ...
+    expect(screen.getByText(new RegExp(cause))).toBeTruthy();
+    // ... and the operator is told where to fix it.
+    expect(screen.getByText(GUIDANCE.STARTUP)).toBeTruthy();
+  });
+
+  it("offers no guidance for a failure class the operator cannot act on", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "edited agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "fleet_error",
+        outcome: outcomeFor({ status: "fleet_error", failure_label: "oom_kill", failure_detail: null }),
+        failureLabel: "oom_kill",
+      }),
+    ]);
+    renderThread();
+    expect(screen.queryByText(GUIDANCE.STARTUP)).toBeNull();
+    expect(screen.queryByTestId("failure-guidance")).toBeNull();
+  });
+
+  it("lets the fleet's own reply stand instead of canned guidance", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "edited agentsfleet/agentsfleet#541",
+        reply: "I recovered on the retry and reviewed the change.",
+        status: "fleet_error",
+        outcome: OUTCOME.FAILED,
+        failureLabel: "startup_posture",
+      }),
+    ]);
+    renderThread();
+    expect(screen.getByText(/I recovered on the retry/)).toBeTruthy();
+    expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 
   it("labels an operator steer with a word, never the account identifier", () => {
@@ -765,6 +1215,8 @@ describe("FleetThread — robustness against malformed metadata", () => {
       text: "config has non-string actor in custom",
       reply: "",
       outcome: OUTCOME.NO_REPLY,
+      failureLabel: null,
+      failureDetail: null,
       createdAt: new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
       status: "processed",
     };

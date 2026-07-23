@@ -260,8 +260,7 @@ export default function DesignSystemGallery() {
       </Section>
 
       <Section>
-        <h2>Pagination — cursor + page</h2>
-        <Pagination kind="cursor" nextCursor="abc" onNext={() => {}} />
+        <h2>Pagination</h2>
         <Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={() => {}} />
       </Section>
 

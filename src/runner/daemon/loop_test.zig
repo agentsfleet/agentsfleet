@@ -13,6 +13,15 @@ const loop = @import("loop.zig");
 
 const protocol = contract.protocol;
 
+/// Lease identity a report carries beside the verdict — irrelevant to the
+/// projections asserted here, so one fixture serves every case.
+const REPORT_CTX = contract.report_mapping.ReportContext{
+    .lease_id = "lease-1",
+    .event_id = "event-1",
+    .fencing_token = 1,
+    .wall_ms = 0,
+};
+
 /// Scratch buffer for reading the stub control plane's one request line.
 const HEARTBEAT_REQ_BUF_BYTES: usize = 1024;
 
@@ -347,8 +356,10 @@ test "drain signal handler requests a graceful drain" {
 }
 
 test "a failed execution reports fleet_error; a clean one reports processed" {
-    try testing.expectEqual(protocol.Outcome.fleet_error, loop.outcomeFor(false)); // the startup_posture path
-    try testing.expectEqual(protocol.Outcome.processed, loop.outcomeFor(true));
+    // The verdict→wire projection moved onto the conversion pair, which owns
+    // its own round-trip tests; loop keeps only the token-split width policy.
+    try testing.expectEqual(protocol.Outcome.fleet_error, contract.report_mapping.toReport(.{}, REPORT_CTX).outcome);
+    try testing.expectEqual(protocol.Outcome.processed, contract.report_mapping.toReport(contract.execution_result.ExecutionResult.completed(""), REPORT_CTX).outcome);
 }
 
 test "splitFields carries the final result's splits onto the report verbatim, beside the legacy total" {

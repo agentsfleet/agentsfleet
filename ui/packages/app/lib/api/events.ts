@@ -22,6 +22,12 @@ export type EventRow = {
   tokens: number | null;
   wall_ms: number | null;
   failure_label: string | null;
+  /**
+   * Human-readable cause line from the runner's classification site (which
+   * check failed, and why). `null` on success or when an older runner omitted
+   * it — every surface then falls back to the canned `failure_label` sentence.
+   */
+  failure_detail: string | null;
   checkpoint_id: string | null;
   resumes_event_id: string | null;
   /**
@@ -143,7 +149,15 @@ export type ActivityLiveFrame =
     }
   // `status` is optional — the backend can emit a status-less completion
   // frame, which the timeline resolves to "processed".
-  | { kind: typeof FRAME_KIND.EVENT_COMPLETE; event_id: string; status?: string }
+  // Empty-string failure fields mean "no failure cause" (the publisher always
+  // includes them; a processed completion carries them empty).
+  | {
+      kind: typeof FRAME_KIND.EVENT_COMPLETE;
+      event_id: string;
+      status?: string;
+      failure_label?: string;
+      failure_detail?: string;
+    }
   // Install-progression frames carry only their discriminating `kind` (the kind
   // itself names the step). The registry forks these off the chat-event path —
   // they advance the install step, never the message list.

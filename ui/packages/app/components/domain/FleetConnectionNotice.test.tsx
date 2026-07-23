@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { CONNECTION_STATUS } from "./useFleetEventStream";
@@ -10,65 +10,43 @@ afterEach(() => {
 });
 
 describe("FleetConnectionNotice", () => {
-  it("keeps history visible while connecting and reconnecting", () => {
-    const view = render(
-      <FleetConnectionNotice status={CONNECTION_STATUS.CONNECTING} onRetry={vi.fn()} />,
-    );
-    expect(screen.getByText(/History remains available/i)).toBeTruthy();
-    expect(screen.getByRole("status").className).toContain("rounded-md");
-    expect(screen.getByRole("status").className).toContain("mx-xl");
-    expect(screen.getByRole("status").className).not.toContain("border-x-0");
-    view.rerender(
-      <FleetConnectionNotice status={CONNECTION_STATUS.RECONNECTING} onRetry={vi.fn()} />,
-    );
-    expect(screen.getByText(/retry any failed send/i)).toBeTruthy();
+  it("stays silent for every connection state that resolves itself", () => {
+    // Connecting, reconnecting and live all resolve without the operator
+    // doing anything, and the header indicator already shows them with
+    // motion. A band above someone's conversation is for decisions.
+    for (const status of [
+      CONNECTION_STATUS.CONNECTING,
+      CONNECTION_STATUS.RECONNECTING,
+      CONNECTION_STATUS.LIVE,
+    ] as const) {
+      const view = render(<FleetConnectionNotice status={status} onRetry={vi.fn()} />);
+      expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+      view.unmount();
+    }
   });
 
-  it("offers a manual retry when automatic reconnects stop", async () => {
+  it("speaks only when the connection is lost, and offers the way back", async () => {
     const retry = vi.fn();
     render(<FleetConnectionNotice status={CONNECTION_STATUS.OFFLINE} onRetry={retry} />);
+
+    const notice = screen.getByTestId("fleet-connection-notice");
+    // No claim about history: the operator is looking at it.
+    expect(notice.textContent).not.toMatch(/history/i);
+    expect(notice.textContent).toMatch(/Live updates stopped/i);
+
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
-  it("briefly confirms a restored connection", async () => {
-    vi.useFakeTimers();
-    const view = render(
-      <FleetConnectionNotice status={CONNECTION_STATUS.RECONNECTING} onRetry={vi.fn()} />,
-    );
-    view.rerender(
-      <FleetConnectionNotice status={CONNECTION_STATUS.LIVE} onRetry={vi.fn()} />,
-    );
-    expect(screen.getByText("Live connection restored.")).toBeTruthy();
-    await act(async () => vi.advanceTimersByTime(4_000));
-    expect(screen.queryByText("Live connection restored.")).toBeNull();
-  });
-
-  it("confirms a manual recovery after the connecting state", () => {
+  it("clears itself the moment the connection comes back", () => {
     const view = render(
       <FleetConnectionNotice status={CONNECTION_STATUS.OFFLINE} onRetry={vi.fn()} />,
     );
-    view.rerender(
-      <FleetConnectionNotice status={CONNECTION_STATUS.CONNECTING} onRetry={vi.fn()} />,
-    );
-    view.rerender(
-      <FleetConnectionNotice status={CONNECTION_STATUS.LIVE} onRetry={vi.fn()} />,
-    );
-    expect(screen.getByText("Live connection restored.")).toBeTruthy();
-  });
+    expect(screen.getByTestId("fleet-connection-notice")).toBeTruthy();
 
-  it("clears a restored notice when the connection drops again", () => {
-    const view = render(
-      <FleetConnectionNotice status={CONNECTION_STATUS.RECONNECTING} onRetry={vi.fn()} />,
-    );
-    view.rerender(
-      <FleetConnectionNotice status={CONNECTION_STATUS.LIVE} onRetry={vi.fn()} />,
-    );
-    expect(screen.getByText("Live connection restored.")).toBeTruthy();
-    view.rerender(
-      <FleetConnectionNotice status={CONNECTION_STATUS.OFFLINE} onRetry={vi.fn()} />,
-    );
-    expect(screen.queryByText("Live connection restored.")).toBeNull();
-    expect(screen.getByText(/Live updates unavailable/i)).toBeTruthy();
+    view.rerender(<FleetConnectionNotice status={CONNECTION_STATUS.LIVE} onRetry={vi.fn()} />);
+    // Recovery is announced by the indicator's arrival cue, not by a second
+    // band that outstays the news.
+    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
   });
 });

@@ -14,6 +14,7 @@ import {
   type FleetEvent,
 } from "./fleet-stream-frames";
 import { advanceInstallStep, installStepFromKind } from "./install-steps";
+import { capEvents } from "./fleet-stream-cap";
 
 export {
   type FleetEvent,
@@ -74,7 +75,9 @@ function setEvents(
   entry: Entry,
   next: (prev: FleetEvent[]) => FleetEvent[],
 ): void {
-  entry.snapshot = { ...entry.snapshot, events: next(entry.snapshot.events) };
+  // The one choke point every mutation flows through, so the cap lives here
+  // once rather than at all eight call sites.
+  entry.snapshot = { ...entry.snapshot, events: capEvents(next(entry.snapshot.events)) };
   notify(entry);
 }
 
@@ -266,6 +269,8 @@ export function appendOptimistic(
       // yet, so the reply is empty and the outcome floor is set for shape.
       reply: "",
       outcome: outcomeForStatus(STATUS_RECEIVED),
+      failureLabel: null,
+      failureDetail: null,
       createdAt: new Date(),
       status: STATUS_OPTIMISTIC,
     },

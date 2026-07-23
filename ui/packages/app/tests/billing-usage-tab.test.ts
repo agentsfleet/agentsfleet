@@ -10,12 +10,17 @@ vi.mock("lucide-react", () => ({
   ArrowUpDown: () => React.createElement("svg", { "data-icon": "ArrowUpDown" }),
 }));
 
-const { listChargesActionMock } = vi.hoisted(() => ({
-  listChargesActionMock: vi.fn(),
+// Paging is URL state: the pager navigates and the Server Component fetches
+// the page named by the cursor, so there is no client-side fetch to mock.
+const { routerPushMock, searchParamsRef } = vi.hoisted(() => ({
+  routerPushMock: vi.fn(),
+  searchParamsRef: { current: new URLSearchParams() },
 }));
 
-vi.mock("@/app/(dashboard)/settings/billing/actions", () => ({
-  listTenantBillingChargesAction: listChargesActionMock,
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: routerPushMock }),
+  usePathname: () => "/settings/billing",
+  useSearchParams: () => searchParamsRef.current,
 }));
 
 import BillingUsageTab from "@/app/(dashboard)/settings/billing/components/BillingUsageTab";
@@ -47,7 +52,8 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
 }
 
 beforeEach(() => {
-  listChargesActionMock.mockReset();
+  routerPushMock.mockReset();
+  searchParamsRef.current = new URLSearchParams();
 });
 afterEach(() => cleanup());
 
@@ -55,28 +61,13 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
   it("renders the empty-state when there are no charges and no cursor", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: null }));
     expect(screen.getByText("No charges yet")).toBeTruthy();
-    expect(screen.queryByTestId("pagination-cursor")).toBeNull();
+    expect(screen.queryByTestId("pagination-page")).toBeNull();
   });
 
-  it("recovers an empty cursor page through Load more", async () => {
-    let resolveCharges: ((value: ActionResult<TenantBillingChargesResponse>) => void) | undefined;
-    listChargesActionMock.mockImplementation(() => new Promise((resolve) => {
-      resolveCharges = resolve;
-    }));
+  it("offers a way forward when an empty first page carries a cursor", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: "tok_page2" }));
-
-    expect(screen.getByText("No charges loaded")).toBeTruthy();
-    expect(screen.getByText("Load more to continue.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    expect(screen.getByText("No charges loaded")).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Feed pagination" }).getAttribute("aria-busy")).toBe("true");
-    expect(screen.getByText("Loading…")).toBeTruthy();
-
-    resolveCharges?.({ ok: true, data: { items: [charge()], next_cursor: null } });
-
-    await waitFor(() => expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy());
-    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 50, cursor: "tok_page2" });
-    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
+    expect(screen.getByText("No charges yet")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeTruthy();
   });
 
   it("renders a ledger row with date · amount · type · description", () => {
@@ -131,50 +122,25 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     }
   });
 
-  it("hides Load more when there is no cursor", () => {
+  it("shows no pager when the ledger fits one page", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: null }));
-    expect(screen.queryByTestId("pagination-cursor")).toBeNull();
+    expect(screen.queryByTestId("pagination-page")).toBeNull();
   });
 
-  it("fetches and appends the next page on Load more click", async () => {
-    listChargesActionMock.mockResolvedValue({
-      ok: true,
-      data: {
-        items: [charge({ id: "tel_2", event_id: "evt_2", recorded_at: 1_700_000_500_000 })],
-        next_cursor: null,
-      },
-    });
+  it("puts the page turn in the URL so a reload lands on the same page", async () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok_page2" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    await waitFor(() => expect(screen.getAllByText(/kimi-k2\.6/).length).toBe(2));
-    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 50, cursor: "tok_page2" });
-    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    expect(String(routerPushMock.mock.calls[0]?.[0])).toContain("c=tok_page2");
   });
 
-  it("de-dupes by charge id when a page boundary repeats a row", async () => {
-    listChargesActionMock.mockResolvedValue({
-      ok: true,
-      data: { items: [charge({ id: "tel_1" })], next_cursor: null }, // same id as initial
-    });
-    render(React.createElement(BillingUsageTab, { initialCharges: [charge({ id: "tel_1" })], initialCursor: "tok" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
-    expect(screen.getAllByText("−$0.001").length).toBe(1);
-  });
-
-  it("surfaces a 'Not authenticated' alert when the action returns unauthenticated", async () => {
-    listChargesActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
-    render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Not authenticated"));
-  });
-
-  it("surfaces a fetch error inline without losing the previous page", async () => {
-    listChargesActionMock.mockResolvedValue({ ok: false, error: "503 service unavailable" });
-    render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("503 service unavailable"));
-    expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Load more items" })).toBeTruthy();
+  it("walks back down the trail to the first page", async () => {
+    searchParamsRef.current = new URLSearchParams("c=tok_page2");
+    render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: null }));
+    expect(screen.getByText("Page 2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    // Page one carries no cursor, so the trail empties rather than shrinking.
+    expect(String(routerPushMock.mock.calls[0]?.[0])).not.toContain("c=");
   });
 });

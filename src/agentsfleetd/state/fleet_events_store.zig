@@ -43,7 +43,7 @@ const parseCursor = filter_mod.parseCursor;
 const EVENTS_SELECT =
     \\SELECT fleet_id::text, event_id, workspace_id::text, actor, event_type,
     \\       status, request_json::text, response_text, tokens, wall_ms,
-    \\       failure_label, checkpoint_id, resumes_event_id,
+    \\       failure_label, failure_detail, checkpoint_id, resumes_event_id,
     \\       created_at, updated_at,
     \\       (SELECT SUM(te.credit_deducted_nanos)::bigint
     \\          FROM core.fleet_execution_telemetry te
@@ -67,6 +67,9 @@ pub const EventRow = struct {
     tokens: ?i64,
     wall_ms: ?i64,
     failure_label: ?[]u8,
+    /// Human-readable cause line from the runner's classification site; NULL
+    /// on success or when an older runner omitted it.
+    failure_detail: ?[]u8,
     checkpoint_id: ?[]u8,
     resumes_event_id: ?[]u8,
     created_at: i64,
@@ -86,6 +89,7 @@ pub const EventRow = struct {
         alloc.free(self.request_json);
         if (self.response_text) |v| alloc.free(v);
         if (self.failure_label) |v| alloc.free(v);
+        if (self.failure_detail) |v| alloc.free(v);
         if (self.checkpoint_id) |v| alloc.free(v);
         if (self.resumes_event_id) |v| alloc.free(v);
     }
@@ -255,13 +259,15 @@ fn readRow(alloc: std.mem.Allocator, row: pg.Row) !EventRow {
     const wall_ms = try row.get(?i64, 9);
     const failure_label = try dupeOptionalString(alloc, row, 10);
     errdefer if (failure_label) |v| alloc.free(v);
-    const checkpoint_id = try dupeOptionalString(alloc, row, 11);
+    const failure_detail = try dupeOptionalString(alloc, row, 11);
+    errdefer if (failure_detail) |v| alloc.free(v);
+    const checkpoint_id = try dupeOptionalString(alloc, row, 12);
     errdefer if (checkpoint_id) |v| alloc.free(v);
-    const resumes_event_id = try dupeOptionalString(alloc, row, 12);
+    const resumes_event_id = try dupeOptionalString(alloc, row, 13);
     errdefer if (resumes_event_id) |v| alloc.free(v);
-    const created_at = try row.get(i64, 13);
-    const updated_at = try row.get(i64, 14);
-    const cost_nanos = try row.get(?i64, 15);
+    const created_at = try row.get(i64, 14);
+    const updated_at = try row.get(i64, 15);
+    const cost_nanos = try row.get(?i64, 16);
 
     return .{
         .fleet_id = fleet_id,
@@ -275,6 +281,7 @@ fn readRow(alloc: std.mem.Allocator, row: pg.Row) !EventRow {
         .tokens = tokens,
         .wall_ms = wall_ms,
         .failure_label = failure_label,
+        .failure_detail = failure_detail,
         .checkpoint_id = checkpoint_id,
         .resumes_event_id = resumes_event_id,
         .created_at = created_at,

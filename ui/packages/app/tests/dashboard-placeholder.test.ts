@@ -118,6 +118,26 @@ describe("placeholder pages", () => {
     expect(m).toContain("Workspace events");
   });
 
+  it("events page reads the cursor from the URL and threads it into the fetch", async () => {
+    mockAuth({ token: "token_abc" });
+    listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
+    const mod = await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    // The default page awaits searchParams and derives the cursor (the URL
+    // branch); EventsData receives it and asks the API for that page.
+    renderToStaticMarkup(
+      await mod.default({
+        params: Promise.resolve({ workspaceId: "ws_1" }),
+        searchParams: Promise.resolve({ c: "tok_1" }),
+      }),
+    );
+    renderToStaticMarkup(await mod.EventsData({ workspaceId: "ws_1", cursor: "tok_1" }));
+    expect(listWorkspaceEventsMock).toHaveBeenLastCalledWith(
+      "ws_1",
+      "token_abc",
+      expect.objectContaining({ cursor: "tok_1" }),
+    );
+  });
+
   it("models & keys settings page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
@@ -149,6 +169,21 @@ describe("placeholder pages", () => {
     // are wired so Invoices / Payment method are reachable on click.
     expect(m).toContain(">Invoices</button>");
     expect(m).toContain(">Payment method</button>");
+  });
+
+  it("billing settings page threads the URL cursor into the charges fetch", async () => {
+    mockAuth({ token: "token_billing" });
+    getTenantBillingMock.mockResolvedValue({
+      balance_nanos: 1, updated_at: 1, is_exhausted: false, exhausted_at: null,
+    });
+    listTenantBillingChargesMock.mockResolvedValue({ items: [], next_cursor: null });
+    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    // searchParams present (the await branch) with a cursor (the cursor branch).
+    renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ c: "tok_bill" }) }));
+    expect(listTenantBillingChargesMock).toHaveBeenCalledWith(
+      "token_billing",
+      expect.objectContaining({ cursor: "tok_bill" }),
+    );
   });
 
   it("billing settings page tolerates a /charges 5xx by falling back to empty events", async () => {

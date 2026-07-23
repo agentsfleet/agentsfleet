@@ -5,16 +5,23 @@ import userEvent from "@testing-library/user-event";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
-const { listWorkspaceEventsActionMock } = vi.hoisted(() => ({
-  listWorkspaceEventsActionMock: vi.fn(),
+// Paging is URL state now: the pager navigates and the Server Component
+// fetches the page the cursor names, so these assert the URL that gets
+// pushed rather than a client-side fetch.
+const { routerPushMock, searchParamsRef } = vi.hoisted(() => ({
+  routerPushMock: vi.fn(),
+  searchParamsRef: { current: new URLSearchParams() },
 }));
 
-vi.mock("@/app/(dashboard)/w/[workspaceId]/events/actions", () => ({
-  listWorkspaceEventsAction: listWorkspaceEventsActionMock,
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: routerPushMock }),
+  usePathname: () => "/w/ws_1/events",
+  useSearchParams: () => searchParamsRef.current,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  searchParamsRef.current = new URLSearchParams();
 });
 
 afterEach(() => cleanup());
@@ -24,6 +31,7 @@ afterEach(() => cleanup());
 import { EventsList } from "../components/domain/EventsList";
 import { type EventRow, type EventsPage } from "@/lib/api/events";
 import { TooltipProvider } from "@agentsfleet/design-system";
+import { GUIDANCE } from "@/lib/events/event-summary";
 
 function row(over: Partial<EventRow> = {}): EventRow {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);
@@ -40,6 +48,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
     wall_ms: 10,
     cost_nanos: null,
     failure_label: null,
+    failure_detail: null,
     checkpoint_id: null,
     resumes_event_id: null,
     created_at: now,
@@ -53,12 +62,75 @@ function renderList(initial: EventsPage, fleetId?: string) {
     React.createElement(
       TooltipProvider,
       null,
-      React.createElement(EventsList, { workspaceId: "ws_1", initial, fleetId }),
+      React.createElement(EventsList, { initial, fleetId }),
     ),
   );
 }
 
 describe("EventsList — the standard workspace events table", () => {
+  it("lets the event log grow with the page instead of a fixed-height scroll box", () => {
+    // Regression for the dead-space report: the table's default bound is a
+    // constant 384px, so a 50-row first fetch rendered ~8 rows above a screen
+    // of black space and "Load more" appended rows nobody could see.
+    const { container } = renderList({
+      items: [row({ event_id: "evt_grow_1" })],
+      next_cursor: "cursor-1",
+    });
+    expect(container.querySelector(".max-h-96")).toBeNull();
+  });
+
+  it("collapses repeated identical failures into one row that opens on demand", async () => {
+    const failure = (id: string) =>
+      row({
+        event_id: id,
+        status: "fleet_error",
+        response_text: null,
+        failure_label: "startup_posture",
+        failure_detail: "no instructions configured",
+      });
+    renderList({ items: [failure("f1"), failure("f2"), failure("f3")], next_cursor: null });
+
+    // Three deliveries, one row, and the count says so.
+    expect(screen.getByText("×3")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /Inspect event/ })).toHaveLength(1);
+
+    // The count is a control, not a claim: it opens to the rows it covers.
+    await userEvent.click(screen.getByRole("button", { name: /Expand 3 repeated failures/ }));
+    expect(screen.getAllByRole("button", { name: /Inspect event/ })).toHaveLength(3);
+
+    // ...and closes again, so the operator can put the wall of repeats away.
+    await userEvent.click(screen.getByRole("button", { name: /Collapse 3 repeated failures/ }));
+    expect(screen.getAllByRole("button", { name: /Inspect event/ })).toHaveLength(1);
+  });
+
+  it("leaves successes alone however alike they look", () => {
+    renderList({
+      items: [
+        row({ event_id: "s1", status: "processed", response_text: "reviewed #1", failure_label: null }),
+        row({ event_id: "s2", status: "processed", response_text: "reviewed #2", failure_label: null }),
+      ],
+      next_cursor: null,
+    });
+    // Two successful runs are two pieces of work — collapsing them would hide
+    // what the fleet actually did.
+    expect(screen.queryByText(/^×/)).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Inspect event/ })).toHaveLength(2);
+  });
+
+  it("dims a failed run's zero metrics but never a successful run's", () => {
+    const { container } = renderList({
+      items: [
+        row({ event_id: "z1", status: "fleet_error", response_text: null, tokens: 0, wall_ms: 0, cost_nanos: 0 }),
+        row({ event_id: "z2", status: "processed", tokens: 0, wall_ms: 0, cost_nanos: 0, failure_label: null }),
+      ],
+      next_cursor: null,
+    });
+    // A failed run's zero reports that nothing ran; a successful run's zero is
+    // a genuine result and keeps full weight.
+    const dimmed = container.querySelectorAll(".text-muted-foreground\\/50");
+    expect(dimmed.length).toBe(3);
+  });
+
   it("renders default empty state when no items", () => {
     renderList({ items: [], next_cursor: null });
     expect(screen.getByText(/No events yet/i)).toBeTruthy();
@@ -68,12 +140,12 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.queryByRole("button", { name: /load more|next/i })).toBeNull();
   });
 
-  it("still offers Load more when an empty page carries a cursor (no stranded data)", () => {
+  it("still offers a way forward when an empty page carries a cursor (no stranded data)", () => {
     renderList({ items: [], next_cursor: "cur_more" });
     // Compaction between pages can return an empty page with a live cursor —
     // the affordance to keep paging must survive the empty state.
     expect(screen.getByText(/No events yet/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /load more|next/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeTruthy();
   });
 
   it("test_events_page_uses_standard_table — one table row per event with status badge, actor, and summary", () => {
@@ -102,7 +174,8 @@ describe("EventsList — the standard workspace events table", () => {
     const rowC = screen.getAllByRole("row").find((r) => r.textContent?.includes("gate_blocked"));
     expect(rowC).toBeTruthy();
     const cells = Array.from(rowC!.querySelectorAll("td"));
-    const summaryCell = cells[6];
+    // Index 7, not 6: the leading Runs column shifted every cell along.
+    const summaryCell = cells[7];
     expect(summaryCell?.textContent).toBe("No result recorded");
   });
 
@@ -120,6 +193,29 @@ describe("EventsList — the standard workspace events table", () => {
       fireEvent.click(screen.getByRole("button", { name }));
       expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
     }
+  });
+
+  it("sorts by the Runs column across grouped and single rows", () => {
+    // Exercises the Runs sortValue on both a group lead (a real count) and a
+    // standalone row (no count → 0), so the count/no-count branch is covered.
+    const failure = (id: string) =>
+      row({
+        event_id: id,
+        status: "fleet_error",
+        response_text: null,
+        failure_label: "startup_posture",
+        failure_detail: "no instructions configured",
+      });
+    renderList({
+      items: [
+        failure("g1"),
+        failure("g2"),
+        row({ event_id: "solo", status: "processed", response_text: "done", failure_label: null }),
+      ],
+      next_cursor: null,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+    expect(screen.getByRole("columnheader", { name: "Runs" }).getAttribute("aria-sort")).not.toBe("none");
   });
 
   it("sorts results by the normalized operator-facing summary", () => {
@@ -221,6 +317,7 @@ describe("EventsList — the standard workspace events table", () => {
     renderList({ items: [row({ cost_nanos: 20_000_000 })], next_cursor: null }, "zomb_1234567890ab");
     const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
     expect(headers).toEqual([
+      "Runs",
       "Time",
       "Status",
       "Actor",
@@ -257,12 +354,10 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.getByLabelText("Failed event")).toBeTruthy();
     expect(screen.queryByText("No specific reason was recorded for this event.")).toBeNull();
     expect(screen.queryByText("startup_posture")).toBeNull();
-    expect(screen.getByText(
-      "Nothing specific can be fixed from this event because it did not record which startup check failed.",
-    )).toBeTruthy();
-    expect(screen.getByText(
-      "Retry it once. If it fails again, use the copy icon below and ask a coding agent to inspect the diagnostic.",
-    )).toBeTruthy();
+    // No recorded cause on this row: the actionable line still shows, and the
+    // "which check?" fall-back stays because nothing here names the check.
+    expect(screen.getByText(GUIDANCE.STARTUP)).toBeTruthy();
+    expect(screen.getByText(/did not record which check failed/)).toBeTruthy();
     expect(screen.queryByText("Add non-empty instructions in Skill, then save the fleet.")).toBeNull();
     expect(screen.queryByText("Make an active runner available to this workspace.")).toBeNull();
     expect(screen.queryByText("Select an available model and provider credential.")).toBeNull();
@@ -281,17 +376,16 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("fleet-scoped pagination preserves the fleet filter", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { items: [], next_cursor: null },
-    });
+  it("keeps every other query value when turning the page", async () => {
+    // The fleet page carries its open tab in the URL. A page turn that
+    // dropped it would throw the operator back to the Chat tab.
+    searchParamsRef.current = new URLSearchParams("view=events");
     renderList({ items: [row()], next_cursor: "cur_fleet" }, "zomb_1234567890ab");
-    await userEvent.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() => expect(listWorkspaceEventsActionMock).toHaveBeenCalledWith("ws_1", {
-      cursor: "cur_fleet",
-      fleet_id: "zomb_1234567890ab",
-    }));
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    const pushed = new URLSearchParams(String(routerPushMock.mock.calls[0]?.[0]).split("?")[1]);
+    expect(pushed.get("view")).toBe("events");
+    expect(pushed.getAll("c")).toEqual(["cur_fleet"]);
   });
 
   it("renders relative <time> with a standard datetime when created_at is valid; omits when invalid", () => {
@@ -308,65 +402,30 @@ describe("EventsList — the standard workspace events table", () => {
     expect(times[0]!.textContent).toMatch(/ago|^in /i);
   });
 
-  it("test_events_table_paginates_by_cursor — load more appends rows and updates the cursor", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: {
-        items: [row({ event_id: "p2", response_text: "page two" })],
-        next_cursor: null,
-      },
-    });
-    renderList({
-      items: [row({ event_id: "p1", response_text: "page one" })],
-      next_cursor: "cur_1",
-    });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() => expect(listWorkspaceEventsActionMock).toHaveBeenCalled());
-    expect(listWorkspaceEventsActionMock).toHaveBeenCalledWith("ws_1", { cursor: "cur_1" });
-    await waitFor(() => expect(screen.getByText("page two")).toBeTruthy());
-    expect(screen.getByText("page one")).toBeTruthy();
+  it("test_events_table_paginates_by_cursor — the page turn lands in the URL", async () => {
+    renderList({ items: [row({ event_id: "p1", response_text: "page one" })], next_cursor: "cur_1" });
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    // The cursor is appended to the trail, so the server fetches page two and
+    // Back walks the operator to page one.
+    expect(String(routerPushMock.mock.calls[0]?.[0])).toContain("c=cur_1");
   });
 
-  it("loadMore surfaces 'Not authenticated' when the action reports unauth", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: "Not authenticated",
-      status: 401,
-    });
-    renderList({ items: [row()], next_cursor: "cur_x" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
-    );
+  it("walks back down the trail instead of re-asking the server", async () => {
+    searchParamsRef.current = new URLSearchParams("c=cur_1");
+    renderList({ items: [row()], next_cursor: null });
+    expect(screen.getByText("Page 2")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalled());
+    // Dropping the last cursor is page one, which needs no cursor at all.
+    expect(String(routerPushMock.mock.calls[0]?.[0])).not.toContain("c=");
   });
 
-  it("loadMore surfaces error message when the action returns an error", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({ ok: false, error: "backend down" });
-    renderList({ items: [row()], next_cursor: "cur_x" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/backend down/),
-    );
+  it("stops at the end of the feed rather than offering an empty page", () => {
+    renderList({ items: [row()], next_cursor: null });
+    // A single page needs no pager at all.
+    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
   });
-
-  it("loadMore falls back to default message when the action returns an empty error", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
-    renderList({ items: [row()], next_cursor: "cur_x" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more events/),
-    );
-  });
-
-  // ── The event's cost columns ───────────────────────────────────────────────
-  //
-  // tokens and wall_ms ride the wire on every EventRow; the table gives each
-  // its own labelled column, and a row without them renders a dash — an unknown
-  // is never a fabricated zero.
 
   it("renders tokens and duration in their columns on a row that carries them", () => {
     renderList({ items: [row({ tokens: 12480, wall_ms: 3200 })], next_cursor: null });
