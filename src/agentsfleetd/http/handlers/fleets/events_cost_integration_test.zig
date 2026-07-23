@@ -61,8 +61,8 @@ fn seedBase(conn: *pg.Conn, now_ms: i64) !void {
 }
 
 fn insertEvent(conn: *pg.Conn, event_id: []const u8, ts: i64) !void {
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
         \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
@@ -73,8 +73,8 @@ fn insertEvent(conn: *pg.Conn, event_id: []const u8, ts: i64) !void {
 }
 
 fn insertTelemetry(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, charge_type: []const u8, nanos: i64, ts: i64) !void {
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     // `id` is the row's TEXT unique key — (event_id, charge_type) is unique by
     // construction (the telemetry table's own uniqueness axis), so this is stable.
     var id_buf: [64]u8 = undefined;

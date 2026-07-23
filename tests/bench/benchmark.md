@@ -32,12 +32,22 @@ macOS (Apple Silicon).
 | error_registry_lookup    | 1.346 µs       | 1.337 µs   | ≈        |
 | keyset_cursor_roundtrip  | 1.655 ms       | 1.326 ms   | −20%     |
 | json_encode_response     | 35.9 µs        | 22.1 µs    | −38%     |
-| uuid_v7_generate         | 32 µs (p75) ¹  | 14.3 µs    | −54%     |
+| uuid_v7_generate ²       | 32 µs (p75) ¹  | 14.3 µs    | −54%     |
 | webhook_signature_verify | 1.67 µs (p75)¹ | 1.02 µs    | faster   |
 | activity_chunk_encode    | 798 ns         | 502 ns     | −37%     |
 
 ¹ 0.15.2 showed millisecond-scale outliers on these two (σ in ms); p75 is the
 stable central figure. 0.16.0 variance was tight (σ in ns/µs).
+
+² **Both figures above are obsolete and were never measuring the identifier.**
+The row timed `generateWorkspaceId`, which returns heap memory, against the
+bench's `DebugAllocator` — whose 36-byte alloc+free alone measured ~12.7 µs, i.e.
+roughly 90% of the 14.3 µs. An algorithm regression of several times over would
+not have moved the number. The bench now splits `uuid_v7_generate` (by-value,
+allocator-free — the mint itself) from `uuid_v7_alloc` (the same mint plus the
+heap dupe), so the two costs stay legible apart. Re-baseline both on the next
+`make bench`; component costs isolated outside the harness put the mint at
+~250 ns on macOS/arm64 and ~700 ns on linux/arm64, where OS entropy dominates.
 
 ## Redis XADD concurrency — 8 threads × 1000 ops (higher is better)
 

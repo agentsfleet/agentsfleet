@@ -149,8 +149,8 @@ fn seedActiveLease(conn: *pg.Conn, event_id: []const u8) !void {
 // A `received` row — the state the lease verb leaves behind and the only state
 // `markTerminal`'s guarded UPDATE will transition.
 fn seedReceivedEvent(conn: *pg.Conn, event_id: []const u8, ts: i64) !void {
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
         \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,

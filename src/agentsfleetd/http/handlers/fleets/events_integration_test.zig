@@ -83,8 +83,8 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn insertEvent(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, actor: []const u8, event_type: []const u8, ts: i64) !void {
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
         \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,
@@ -380,8 +380,8 @@ fn insertEventWithParent(
     resumes_event_id: ?[]const u8,
     ts: i64,
 ) !void {
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
         \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,

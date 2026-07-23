@@ -181,8 +181,8 @@ pub fn storeEntry(
     category: []const u8,
     ts_ms: i64,
 ) !void {
-    var uid_buf: [36]u8 = undefined;
-    const uid = try id_format.formatUuidV7(&uid_buf);
+    const uid_value = try id_format.generateUuidV7();
+    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
         \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
