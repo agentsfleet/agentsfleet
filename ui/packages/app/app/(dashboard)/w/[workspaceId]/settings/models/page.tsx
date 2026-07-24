@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { PageHeader, PageTitle } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { auth } from "@clerk/nextjs/server";
 import { listSecretsCached, listTenantModelEntriesCached } from "./lib/reads";
 import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
@@ -26,7 +26,7 @@ export default async function ModelsKeysPage({
   ]);
 
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader description={MODELS_PAGE_DESCRIPTION}>
         <PageTitle>{MODELS_PAGE_TITLE}</PageTitle>
       </PageHeader>
@@ -34,6 +34,6 @@ export default async function ModelsKeysPage({
       <ModelCatalogueProvider>
         <ModelsRegistryTable workspaceId={workspaceId} initial={registry} initialSecrets={secretsResp.secrets} />
       </ModelCatalogueProvider>
-    </div>
+    </PageLayout>
   );
 }

@@ -2,18 +2,18 @@
 
 import { ActivityIcon } from "lucide-react";
 import {
-  Badge,
   DataTable,
   EmptyState,
   PAGINATION_KIND,
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { PROVIDER_MODE } from "@/lib/types";
 import {
+  chargeAgentLabel,
+  displayModelName,
   describeCharge,
   formatChargeTimestamp,
-  formatDollars,
+  formatChargeAmount,
   type ChargeRow,
 } from "../lib/charges";
 import { BILLING_PAGE_SIZE } from "@/lib/pagination/cursor-trail";
@@ -25,12 +25,9 @@ export type BillingUsageTabProps = {
 };
 
 /**
- * Read-only Usage ledger — a terminal-native charge history (date · amount ·
- * type · description), newest-first, paged like every other table.
- * Each row is one raw telemetry charge (receive = gate-pass, stage = run); the
- * model + token detail rides the description column. Charges are deductions, so
- * amounts render negative. Pages are fetched by the Server Component above,
- * keyed by the cursor in the URL — this component holds no rows of its own.
+ * Read-only Usage ledger. Each durable row states the agent identity, model,
+ * activity and debit in operator language while retaining the backend's raw
+ * charge granularity and URL-backed paging.
  */
 
 
@@ -51,27 +48,35 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     ),
   },
   {
+    key: "fleet",
+    header: "Fleet and model",
+    sortValue: (c) => chargeAgentLabel(c),
+    cell: (c) => (
+      <div className="flex min-w-48 flex-col">
+        <span className="font-medium text-foreground">{chargeAgentLabel(c)}</span>
+        <span className="text-muted-foreground">{displayModelName(c.model)}</span>
+      </div>
+    ),
+  },
+  {
+    key: "activity",
+    header: "Activity",
+    sortValue: (c) => describeCharge(c),
+    cell: (c) => <span className="text-muted-foreground">{describeCharge(c)}</span>,
+  },
+  {
     key: "amount",
     header: "Amount",
     numeric: true,
     sortValue: (c) => -c.credit_deducted_nanos,
     cell: (c) => (
-      <span className="font-mono tabular-nums text-destructive">−{formatDollars(c.credit_deducted_nanos)}</span>
+      <span
+        className="font-mono tabular-nums text-destructive data-[zero=true]:text-muted-foreground"
+        data-zero={c.credit_deducted_nanos === 0 ? "true" : undefined}
+      >
+        {formatChargeAmount(c.credit_deducted_nanos)}
+      </span>
     ),
-  },
-  {
-    key: "type",
-    header: "Type",
-    sortValue: (c) => c.posture,
-    cell: (c) => (
-      <Badge variant={c.posture === PROVIDER_MODE.self_managed ? "cyan" : "default"}>{c.posture}</Badge>
-    ),
-  },
-  {
-    key: "description",
-    header: "Description",
-    sortValue: (c) => describeCharge(c),
-    cell: (c) => <span className="text-muted-foreground">{describeCharge(c)}</span>,
   },
 ];
 
@@ -88,6 +93,7 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
         rows={charges}
         rowKey={(c) => c.id}
         caption="usage history"
+        viewportClassName="max-h-72"
         empty={(
           <EmptyState
             icon={<ActivityIcon size={28} />}

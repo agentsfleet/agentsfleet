@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PageHeader, PageTitle, Section, SectionLabel } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle, SectionHeader } from "@agentsfleet/design-system";
 import type { AdminModel, AdminModelList, PlatformKey } from "@/lib/api/admin_model_library";
 import CatalogueList from "./CatalogueList";
 import AddModelDialog from "./AddModelDialog";
@@ -26,25 +26,22 @@ export default function ModelsView({
   const [models, setModels] = useState<AdminModel[]>(initial.models);
 
   return (
-    <div className="space-y-8">
+    <PageLayout fullHeight className="h-full overflow-hidden">
       <PageHeader description={MODELS_DESCRIPTION}>
         <PageTitle>Model library</PageTitle>
       </PageHeader>
 
-      <Section asChild>
-        <section aria-label="Model catalogue">
-          <div className="flex flex-wrap items-baseline justify-between gap-md">
-            <SectionLabel>Manage model library</SectionLabel>
-            <AddModelDialog onCreated={(m) => setModels((prev) => [...prev, m])} />
-          </div>
-          <CatalogueList
-            models={models}
-            activeDefault={activeDefault}
-            onDeleted={(uid) => setModels((prev) => prev.filter((m) => m.uid !== uid))}
-            onUpdated={(m) => setModels((prev) => prev.map((x) => (x.uid === m.uid ? m : x)))}
-          />
-        </section>
-      </Section>
-    </div>
+      <div aria-label="Model catalogue" className="flex min-h-0 flex-1 flex-col gap-xl">
+        <SectionHeader actions={<AddModelDialog onCreated={(m) => setModels((prev) => [...prev, m])} />}>
+          Manage model library
+        </SectionHeader>
+        <CatalogueList
+          models={models}
+          activeDefault={activeDefault}
+          onDeleted={(uid) => setModels((prev) => prev.filter((m) => m.uid !== uid))}
+          onUpdated={(m) => setModels((prev) => prev.map((x) => (x.uid === m.uid ? m : x)))}
+        />
+      </div>
+    </PageLayout>
   );
 }

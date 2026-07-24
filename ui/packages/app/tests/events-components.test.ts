@@ -76,7 +76,7 @@ describe("EventsList — the standard workspace events table", () => {
       items: [row({ event_id: "evt_grow_1" })],
       next_cursor: "cursor-1",
     });
-    expect(container.querySelector(".max-h-96")).toBeNull();
+    expect(container.querySelector(".max-h-none")).toBeTruthy();
   });
 
   it("collapses repeated identical failures into one row that opens on demand", async () => {

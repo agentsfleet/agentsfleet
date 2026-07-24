@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import {
   EmptyState,
   PageHeader,
+  PageLayout,
   PageTitle,
   Tabs,
   TabsContent,
@@ -56,7 +57,7 @@ export default async function BillingSettingsPage({
 
   if (!billing) {
     return (
-      <div className="space-y-8">
+      <PageLayout>
         <PageHeader description={BILLING_DESCRIPTION}>
           <PageTitle>Billing</PageTitle>
         </PageHeader>
@@ -65,7 +66,7 @@ export default async function BillingSettingsPage({
           title="Billing isn't ready yet"
           description="Refresh in a moment. Contact support if it stays blocked."
         />
-      </div>
+      </PageLayout>
     );
   }
 
@@ -73,7 +74,7 @@ export default async function BillingSettingsPage({
   const summary = summarizeCharges(charges, billing.balance_nanos);
 
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader description={BILLING_DESCRIPTION}>
         <PageTitle>Billing</PageTitle>
       </PageHeader>
@@ -107,6 +108,6 @@ export default async function BillingSettingsPage({
           />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageLayout>
   );
 }
