@@ -179,12 +179,8 @@ pub fn normalizeProvider(stored: []const u8) ?[]const u8 {
     return null;
 }
 
-/// The posture label pair, sourced from the resolver's own enum so the derived
-/// series budget below can never drift from the values actually emitted.
-pub fn postureLabel(mode: Mode) []const u8 {
-    return mode.label();
-}
-
+/// Counted off the resolver's own enum so the derived series budget below can
+/// never drift from the postures actually emitted.
 const POSTURE_COUNT: usize = @typeInfo(Mode).@"enum".fields.len;
 const TOKEN_TYPE_COUNT: usize = @typeInfo(TokenType).@"enum".fields.len;
 const CHARGE_CLASS_COUNT: usize = @typeInfo(ChargeClass).@"enum".fields.len;
