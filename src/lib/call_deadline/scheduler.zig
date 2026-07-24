@@ -68,6 +68,9 @@ fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime 
         next_id: u64 = 1,
         thread: ?std.Thread = null,
         state: State = .initialized,
+        /// Retired registrations reused so a steady-state arm/finish does no
+        /// allocator work under the mutex. Bounded by peak depth; freed in `deinit`.
+        free_list: ?*Registration = null,
 
         pub const ArmError = error{ SchedulerStopped, IdentifierExhausted, OutOfMemory };
         pub const StartError = std.Thread.SpawnError || error{AlreadyStarted};
@@ -80,6 +83,8 @@ fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime 
             node: DeadlineTree.Node,
             target: Target,
             state: RegistrationState = .pending,
+            /// Reuse-pool link; meaningful only while this node sits in `free_list`.
+            next: ?*Registration = null,
         };
         const Fire = struct { id: u64, target: Target };
         const Next = union(enum) { wait: ?i96, fire: Fire, exit };
@@ -133,9 +138,10 @@ fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime 
             const deadline_ns = self.backend.nowNs() + @as(i96, timeout_ms) * std.time.ns_per_ms;
             const key: DeadlineKey = .{ .deadline_ns = deadline_ns, .id = id };
             const previous_min = self.deadlines.getMin();
-            const registration = try self.alloc.create(Registration);
-            errdefer self.alloc.destroy(registration);
+            const registration = try self.takeRegistration();
+            errdefer self.recycleRegistration(registration);
             // SAFETY: Treap entry insertion initializes every intrusive node link before use.
+            // Whole-struct assignment resets `state`/`next`, so a recycled node is clean.
             registration.* = .{ .node = undefined, .target = target };
             try self.registrations.putNoClobber(self.alloc, id, registration);
             errdefer _ = self.registrations.remove(id);
@@ -204,6 +210,11 @@ fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime 
             while (registrations.next()) |registration| self.alloc.destroy(registration.*);
             self.registrations.deinit(self.alloc);
             self.registrations = .empty;
+            // The reuse pool owns every retired node; this is its only free.
+            while (self.free_list) |registration| {
+                self.free_list = registration.next;
+                self.alloc.destroy(registration);
+            }
             self.state = .deinitialized;
         }
 
@@ -226,8 +237,21 @@ fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime 
                 entry.set(null);
             }
             _ = self.registrations.remove(id);
-            self.alloc.destroy(registration);
+            self.recycleRegistration(registration);
             return outcome;
+        }
+
+        /// Caller holds the mutex. Only a depth never reached before allocates.
+        fn takeRegistration(self: *Self) error{OutOfMemory}!*Registration {
+            const recycled = self.free_list orelse return self.alloc.create(Registration);
+            self.free_list = recycled.next;
+            return recycled;
+        }
+
+        /// Caller holds the mutex. Pools the node so the next arm is pointer work.
+        fn recycleRegistration(self: *Self, registration: *Registration) void {
+            registration.next = self.free_list;
+            self.free_list = registration;
         }
 
         fn workerMain(self: *Self) void {
@@ -264,8 +288,16 @@ fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime 
             // had already replaced or completed that connection generation and
             // touched nothing. Logging it keeps that distinguishable from a
             // real interruption without adding a metric.
+            const started_ns = self.backend.nowNs();
             const outcome = selected.target.interrupt();
+            const elapsed_ns = self.backend.nowNs() - started_ns;
             log.debug("deadline_fired", .{ .outcome = @tagName(outcome) });
+            // Names the callback that broke the bounded-leaf rule — a stall shared
+            // by every deadline in the process otherwise has no obvious suspect.
+            if (InterruptTarget.overranBudget(elapsed_ns)) log.warn("deadline_callback_slow", .{
+                .elapsed_ms = InterruptTarget.elapsedMillis(elapsed_ns),
+                .outcome = @tagName(outcome),
+            });
             self.mutex.lock();
             defer self.mutex.unlock();
             if (self.registrations.get(selected.id)) |registration| registration.state = .fired;

@@ -344,3 +344,35 @@ test "unregister under N concurrent emitters: whole-line emits, no double-free, 
     // land pre-drain, the rest drop), so we assert the safety invariant, not it.
     try std.testing.expectEqual(@as(usize, 0), captured.len % SOAK_LINE.len);
 }
+
+test "an err emitted with no sink installed still reaches the operator" {
+    // Regression: a daemon booted inside a test binary registers no sinks, so
+    // its startup failure reached std.process.exit(1) having printed nothing —
+    // the failure invisible AND its cause invisible. The fallback writes the
+    // record straight to stderr (visible in this test's own output). What is
+    // asserted here is that the path is taken without panicking and leaves the
+    // registry untouched, so a later sink still receives normally.
+    clearSinksForTest();
+    defer clearSinksForTest();
+    emitToSinks(.err, "sinks_test", 0, "event=fallback_visible");
+
+    var bs = BufferedSink.init(std.testing.allocator);
+    defer bs.deinit();
+    registerSink(bs.sink());
+    emitToSinks(.err, "sinks_test", 0, "event=after_fallback");
+
+    const captured = try bs.snapshot();
+    defer std.testing.allocator.free(captured);
+    try std.testing.expect(std.mem.indexOf(u8, captured, "event=after_fallback") != null);
+    // The fallback record went to stderr, never into a sink installed later.
+    try std.testing.expect(std.mem.indexOf(u8, captured, "event=fallback_visible") == null);
+}
+
+test "a non-err emitted with no sink stays silent" {
+    // Only err earns the fallback: info/debug with no sink is ordinary
+    // test-time quiet, and making it loud would drown the signal above.
+    clearSinksForTest();
+    defer clearSinksForTest();
+    emitToSinks(.info, "sinks_test", 0, "event=stays_quiet");
+    emitToSinks(.debug, "sinks_test", 0, "event=stays_quiet");
+}

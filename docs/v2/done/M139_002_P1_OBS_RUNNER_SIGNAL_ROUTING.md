@@ -61,8 +61,8 @@ The eventual Pull Request (PR) for runtime changes will be specified only after 
 | `docs/architecture/runner_fleet.md` | EDIT | Reconcile runner-local logs, bounded fleet verbs, and any chosen trace-context propagation. |
 | `docs/architecture/data_flow.md` | NO CHANGE (reviewed) | Runtime flow does not change: this work selects and documents routing before code. |
 | `docs/v2/pending/M139_003_P1_OBS_BOUNDED_SIGNAL_EXPORT.md` | CREATE | Pin the selected source changes, tests, and rollout without mixing investigation with implementation. |
-| `audits/signal-routing.sh` | CREATE | Turn every completed investigation Dimension into a deterministic source-and-architecture assertion. |
-| `make/quality.mk` | EDIT | Run the signal-routing drift audit from the existing `lint-all` verification lane. |
+| ~~`audits/signal-routing.sh`~~ | RETIRED | Created here, removed in M139_001's review pass: it pinned documentation prose and source literals by exact string match, so ordinary doc edits and constant tuning failed `lint-all` while proving nothing about behavior. The durable invariants it aimed at are enforced by the Zig module boundary (the runner cannot import control-plane observability), `_runner_isolation_check` (build-graph dependencies), and the bounded-export behavior tests. |
+| `make/quality.mk` | EDIT | Wired the drift audit into `lint-all`; unwired again when the audit was retired (see the row above). |
 
 No runtime source, schema, deployment, dashboard, or public API file is in scope. The audit script and its existing-lane verification hook are the only executable artifacts.
 
@@ -168,30 +168,30 @@ This workstream adds no runtime signal. Its observability output is the verified
 
 | Dimension | Tier | Test | Asserts |
 |-----------|------|------|---------|
-| 1.1 | integration | `bash audits/signal-routing.sh inventory` | every claimed producer has a non-test call site; declared-only rows are labelled. |
-| 1.2 | unit | `bash audits/signal-routing.sh volume` | each signal has steady, burst, outage, and growth rows with units. |
-| 1.3 | unit | `bash audits/signal-routing.sh limits` | every capacity and retry value matches a current source symbol. |
-| 2.1 | integration | `bash audits/signal-routing.sh log-route` | architecture contains no runner-log API or activity reuse. |
-| 2.2 | unit | `bash audits/signal-routing.sh collector` | chosen collector row contains all required ownership and loss fields. |
-| 3.1 | integration | `bash audits/signal-routing.sh metric-source` | each chosen metric points to a handled semantic operation. |
-| 3.2 | unit | `bash audits/signal-routing.sh metric-cardinality` | every label lists allowed values, ceiling, and overflow action. |
-| 4.1 | integration | `bash audits/signal-routing.sh trace-map` | lease, renew, activity, report, and HTTP parentage are decided. |
-| 4.2 | unit | `bash audits/signal-routing.sh trace-budget` | spans per run, sample rule, malformed input, and outage are covered. |
-| 5.1 | integration | `bash audits/signal-routing.sh architecture` | observability and runner-fleet documents name the same owners and paths. |
-| 5.2 | integration | `bash audits/signal-routing.sh follow-on` | each action finding maps to the follow-on implementation or an explicit no-change result. |
+| 1.1 | integration | source inspection (retired audit) | every claimed producer has a non-test call site; declared-only rows are labelled. |
+| 1.2 | unit | source inspection (retired audit) | each signal has steady, burst, outage, and growth rows with units. |
+| 1.3 | unit | source inspection (retired audit) | every capacity and retry value matches a current source symbol. |
+| 2.1 | integration | source inspection (retired audit) | architecture contains no runner-log API or activity reuse. |
+| 2.2 | unit | source inspection (retired audit) | chosen collector row contains all required ownership and loss fields. |
+| 3.1 | integration | source inspection (retired audit) | each chosen metric points to a handled semantic operation. |
+| 3.2 | unit | source inspection (retired audit) | every label lists allowed values, ceiling, and overflow action. |
+| 4.1 | integration | source inspection (retired audit) | lease, renew, activity, report, and HTTP parentage are decided. |
+| 4.2 | unit | source inspection (retired audit) | spans per run, sample rule, malformed input, and outage are covered. |
+| 5.1 | integration | source inspection (retired audit) | observability and runner-fleet documents name the same owners and paths. |
+| 5.2 | integration | source inspection (retired audit) | each action finding maps to the follow-on implementation or an explicit no-change result. |
 
 ## Acceptance Rubric (single scoring surface)
 
 | ID | Weight | Criterion | Verify command | Pass condition |
 |----|--------|-----------|----------------|----------------|
-| R1 | 15 | Inventory is production-backed | `bash audits/signal-routing.sh inventory` | source and architecture agree |
-| R2 | 15 | Signal volume model is complete | `bash audits/signal-routing.sh volume` | all four scenarios exist for each route |
-| R3 | 15 | Raw runner logs bypass the control plane | `bash audits/signal-routing.sh log-route` | rejection and chosen path are explicit |
-| R4 | 10 | Volume and loss are bounded | `bash audits/signal-routing.sh limits` | source constants and documented limits agree |
-| R5 | 10 | PostHog truth is reconciled | `bash audits/signal-routing.sh inventory` | installed and called states remain distinct |
-| R6 | 10 | Trace boundaries are decided | `bash audits/signal-routing.sh trace-map` | each boundary has an explicit verdict |
-| R7 | 10 | Failure isolation is explicit | `bash audits/signal-routing.sh architecture` | both architecture documents preserve failure isolation |
-| R8 | 5 | Follow-on scope is deterministic | `bash audits/signal-routing.sh follow-on` | the pending implementation contains every selected decision |
+| R1 | 15 | Inventory is production-backed | source inspection (retired audit) | source and architecture agree |
+| R2 | 15 | Signal volume model is complete | source inspection (retired audit) | all four scenarios exist for each route |
+| R3 | 15 | Raw runner logs bypass the control plane | source inspection (retired audit) | rejection and chosen path are explicit |
+| R4 | 10 | Volume and loss are bounded | source inspection (retired audit) | source constants and documented limits agree |
+| R5 | 10 | PostHog truth is reconciled | source inspection (retired audit) | installed and called states remain distinct |
+| R6 | 10 | Trace boundaries are decided | source inspection (retired audit) | each boundary has an explicit verdict |
+| R7 | 10 | Failure isolation is explicit | source inspection (retired audit) | both architecture documents preserve failure isolation |
+| R8 | 5 | Follow-on scope is deterministic | source inspection (retired audit) | the pending implementation contains every selected decision |
 | S1 | 5 | Documentation checks pass | `make lint-all` | exits 0 |
 | S2 | 5 | Repository tests remain green | `make test-unit-all` | exits 0 |
 
@@ -248,7 +248,7 @@ The audit adds no production symbol and deletes no source surface. `make lint-al
 - **Follow-on:** `M139_003_P1_OBS_BOUNDED_SIGNAL_EXPORT.md` pins route-aware trace policy, multi-batch export draining, Prometheus exporter self-metrics, and once-only completion capture.
 - **Architecture note:** `data_flow.md` was reviewed and remains unchanged because M139_002 changes no runtime byte path.
 - **Metrics review:** no new runtime event is added by this investigation.
-- **`/write-unit-test` audit (Jul 23, 2026):** no runtime function, branch, error, or public symbol changes here. `audits/signal-routing.sh` turns every DONE Dimension into an executable source-and-architecture assertion. M139_003 owns runtime failure, concurrency, and performance tests.
+- **`/write-unit-test` audit (Jul 23, 2026):** no runtime function, branch, error, or public symbol changes here. The DONE Dimensions were originally asserted by `audits/signal-routing.sh`, since retired (see Files Changed). M139_003 owns runtime failure, concurrency, and performance tests.
 - **Verification (Jul 23, 2026):** all R1-R8 source assertions passed; `bash audits/spec-template.sh --staged`, `git diff --cached --check`, `gitleaks protect --staged --redact`, `make lint-all`, and `make test-unit-all` exited zero. Live command-line acceptance tests requiring an HTTPS target remained skipped by their existing environment gate; every local unit lane passed.
 - **Test delta:** baseline remains unit=2824 integration=376. Runtime test growth is zero because behavior is unchanged; the workstream adds one deterministic shell audit with eleven named cases. M139_003 specifies the required runtime test growth.
 - **Native Codex review (Jul 23, 2026):** four adversarial passes corrected inert audit wiring, multiplied shutdown deadlines, OTLP partial-success blindness, missing metric-label dependents, over-broad absence scans, and fail-open scan errors. The final pass reported no actionable defects.

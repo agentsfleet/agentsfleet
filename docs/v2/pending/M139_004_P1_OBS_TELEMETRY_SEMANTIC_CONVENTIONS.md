@@ -79,7 +79,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `tests/fixtures/telemetry/otlp_metrics.json` | EDIT | Pin the complete new OTLP metric payload. |
 | `deploy/grafana/agent-observability.json` | EDIT | Query normalized semantic names, seconds, histogram sums, and omission coverage. |
 | `deploy/grafana/agent_run_breakdown.json` | EDIT | Repoint four `agent_*` Prometheus queries that no source family satisfies, so no dashboard is left querying a dead name after the cutover. |
-| `audits/signal-routing.sh` | EDIT | Reject schema drift, legacy live names, workspace metrics, and dashboard mismatch. |
+| `src/agentsfleetd/observability/semantic_schema_test.zig` | CREATE | Reject schema drift, stale names, workspace metrics, and dashboard mismatch as a real test. The former `audits/signal-routing.sh` was retired for pinning prose and source literals by exact string match; assert the emitted attribute set and its Grafana mapping instead of grepping for text. |
 | `docs/architecture/observability.md` | EDIT | Reconcile cardinality policy, resource identity, exact metric boundaries, and Grafana flow. |
 | `docs/architecture/runner_fleet.md` | EDIT | Update delivery-span correlation keys without inventing runner spans. |
 
@@ -136,7 +136,7 @@ HTTP ingress spans use server kind, route-based names, `http.request.method`, `h
 
 ### §4 — Grafana and drift checks cut over together
 
-Update dashboard queries for Prometheus-normalized dotted names and attribute keys. Token throughput reads the histogram `_sum`; run latency reads seconds buckets; cached input is presented as a subset; credit panels state nanocredits; and model-attribution coverage is visible beside the model selector. Extend the existing signal-routing audit instead of adding another make target.
+Update dashboard queries for Prometheus-normalized dotted names and attribute keys. Token throughput reads the histogram `_sum`; run latency reads seconds buckets; cached input is presented as a subset; credit panels state nanocredits; and model-attribution coverage is visible beside the model selector. Assert this in the semantic-schema test rather than a new make target — and do not reintroduce a prose-pinning shell audit.
 
 The `/metrics` exposition carries two prefixes today: `metrics_render.zig` emits about twenty `fleet_*` families (API in-flight, Server-Sent Events (SSE), Redis pool, signup funnel, worker liveness, trigger totals) while `metrics_runner.zig`, `metrics_otel.zig`, and `metrics_trace.zig` emit `agentsfleet_*`. One process must expose one namespace. Normalize every family to the `agentsfleet_` prefix in the same atomic cutover as the OTLP schema, since both change the names an operator queries and neither has an external consumer before `2.0.0`. No dual emission and no recording-rule alias.
 
@@ -229,7 +229,7 @@ No public API path, request body, response body, Command-Line Interface (CLI), o
 | R3 | Credit metrics reconcile every committed debit (§2) | `make test-integration` | credit reconciliation test passes | P0 | |
 | R4 | Metric attribution is bounded and omissions are visible (§2) | `make test-unit-agentsfleetd` | cardinality and omission tests pass | P0 | |
 | R5 | HTTP and delivery spans use truthful semantic keys (§3) | `make test-integration` | both span integration tests pass | P0 | |
-| R6 | Grafana, fixture, source, and architecture have one schema (§4) | `bash audits/signal-routing.sh semantic-schema` | exit 0 | P0 | |
+| R6 | Grafana, fixture, source, and architecture have one schema (§4) | `zig build test-lib` (semantic-schema test) | pass | P0 | |
 | S1 | Repository conformance passes | `make harness-verify` | exit 0 | P0 | |
 | S2 | Repository unit suites pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Both Linux targets build | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both exit 0 | P0 | |
