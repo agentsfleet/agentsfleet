@@ -171,7 +171,13 @@ describe("dynamic island shims mount their inner component", () => {
     ],
     [
       "CreateWorkspaceDialogDynamic",
-      React.createElement(CreateWorkspaceDialogDynamic, { open: true, onOpenChange: noop }),
+      React.createElement(CreateWorkspaceDialogDynamic, {
+        open: true,
+        pending: false,
+        error: null,
+        onOpenChange: noop,
+        onSubmit: noop,
+      }),
     ],
     [
       "CreateApiKeyDialogDynamic",
