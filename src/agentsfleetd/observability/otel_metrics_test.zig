@@ -388,6 +388,42 @@ test "concurrent attribution stays inside the derived budget" {
     try std.testing.expectEqual(cardinality.ATTRIBUTION_CAP, cardinality.trackedCount());
 }
 
+test "test_attribution_budget_reopens_each_flush_window" {
+    const alloc = std.testing.allocator;
+    cardinality.reset();
+    defer cardinality.reset();
+    health.resetForTest();
+    defer health.resetForTest();
+    otel_metrics.testSetInstalled(TEST_CFG);
+    defer otel_metrics.testClear();
+
+    // Spend the whole budget on pairs that will go idle after this window.
+    var buf: [32]u8 = undefined;
+    var i: usize = 0;
+    while (i < cardinality.ATTRIBUTION_CAP) : (i += 1) {
+        const model = try std.fmt.bufPrint(&buf, MODEL_FIXTURE_FMT, .{i});
+        try std.testing.expect(cardinality.admitModel(PROVIDER, model));
+    }
+    const first = try std.fmt.bufPrint(&buf, MODEL_FIXTURE_FMT, .{0});
+    otel_metrics.recordCreditConsumed(11, .receive, .{ .posture = POSTURE, .provider = PROVIDER, .model = first });
+
+    // Inside one window the budget is a real ceiling.
+    try std.testing.expect(!cardinality.admitModel(PROVIDER, "arrives-later"));
+
+    // The flush drains exactly the samples those admissions governed, so the
+    // window they were charged against is now closed.
+    if (try otel_metrics.testCollectOnce(alloc, TEST_CFG)) |body| alloc.free(body);
+
+    // The ceiling is per-window (the Aggregator is rebuilt each flush), so the
+    // next window starts empty. A model arriving now is attributed rather than
+    // starved by pairs that stopped spending series in the previous window.
+    try std.testing.expectEqual(@as(usize, 0), cardinality.trackedCount());
+    try std.testing.expect(cardinality.admitModel(PROVIDER, "arrives-later"));
+
+    const s = otel_metrics.testPop();
+    try std.testing.expect(s == null);
+}
+
 // ── Exporter lifecycle + flush behaviour ───────────────────────────────────
 
 test "the serialized payload matches the pinned OTLP-JSON fixture" {

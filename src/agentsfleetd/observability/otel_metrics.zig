@@ -187,6 +187,12 @@ fn collectMetrics(
     const now = currentNanos();
     var agg = aggregate.Aggregator.init();
     const drained = drainMetrics(&agg, @min(max_entries, BUFFER_CAPACITY));
+    // Close the attribution window with the sample window it governs. The
+    // series ceiling the budget is derived from is per-flush (the Aggregator is
+    // rebuilt every window), so holding admissions across windows would let
+    // models that have gone idle keep slots they no longer spend, starving the
+    // models actually running now while the window sits under its ceiling.
+    cardinality.reset();
     const total_dropped = droppedSinceLastFlush(agg.dropped);
     health.recordDiscard(.metrics, .aggregate_cap, @intCast(agg.dropped));
     if (agg.count == 0 and total_dropped == 0) {
