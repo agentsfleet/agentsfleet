@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "profile": "agentsfleet",
-  "ruleset_digest": "a5bd70fdfad2fd7eb2b1c15f20dddc1e60cdd5cb2bf74d829131c3bdacd461d4",
+  "ruleset_digest": "5423a6c87053069f7d34a7bc305b24bc64b4ac2d798374b20d9d24214b24831d",
   "files": {
     ".oracle/managed-files.json": "a8077acd771bc52a5ed7088a4519b7ad5eec7393e39e8c45ebd0b802bd15667a",
     ".oracle/profile.json": "360dee28fd43eec625b95a6b5244273634ddf2696ae07782a2463964058622cd",
-    "AGENTS.md": "6ce827c683fc1622ace69f95331cd9f7f251691a6dadc08f00c2588cdae6b0b6",
+    "AGENTS.md": "ba421bcbe21f2f6b18c0ba4820af579331ae6ff904514d2f9b1b6230642238ce",
     "audits/agents-md.md": "44d12903b6252be5a3e340e7e8ac48bb45e043a33b3bc4530cb24dc8c99b34cc",
     "audits/cross-tier-rates.sh": "3672ce3b7972593bddfd691b4b251596b6adadb419df9aec1fdad7477cce18d0",
     "audits/deinit-pairs.sh": "6d3ee2dd3be599c48f2dad5ae48908878a8e504c757a710808ebb8fb7a5340d6",
@@ -33,7 +33,7 @@
     "dispatch/write_sql.sh": "cdbb4d4cd01c940723ac14abca26faabb18c731f7c1df2864b03f5cb32322f1a",
     "dispatch/write_ts_adhere_bun.md": "818c32356f98c298927cd604f726695cc5c4803b7b98ff04a21247ad3237711e",
     "dispatch/write_ts_adhere_bun.sh": "1724ab4d465d29bbdd54f9cf178ec914da9bc262c8dd015ae66f4440945bcdc6",
-    "dispatch/write_zig.md": "6bd039098259aeaa8e8fce98ffa7421682ff0adb6c596fb5caa81a3dd2650dc3",
+    "dispatch/write_zig.md": "94d162abed0fe10116042aaf5837a51bbc9a97e0bab257ea8e91a4faf3d71af9",
     "dispatch/write_zig.sh": "0906a1ffe631f8cf04652d11f94adc377f49374b7ab857c2e6d50c209ae78ec9",
     "docs/CHANGELOG_VOICE.md": "3a9cd7d87dab1f03eba2b5eb04e85bbc8dd19cf86a72d2587a304e1563721013",
     "docs/DOCUMENTATION_RULES.md": "805a6bf0239d07c280d1a1fb1bfe5075108c178d8f42ad9646d0e0b3253f27b6",
@@ -43,7 +43,7 @@
     "docs/LOGGING_STANDARD.md": "0920ab10ad99ee0520f8c90b79daf78e0e9dc593ebd638dd481ed6ef6103bbff",
     "docs/ORLY_ARCHITECTURE.md": "4eb14495ad924736b1f8a8b8941fa54ee9751f9a951f621eb8e7c97a4a703b6c",
     "docs/REST_API_DESIGN_GUIDELINES.md": "e8ec70219f466324de1bbf749570fd879d5fc896a0098f269e8eeedd1240919a",
-    "docs/SCHEMA_CONVENTIONS.md": "6a3642e7acd518c59e2e1dd4e2ddd0abefea5a941fc43b92eef5c19219abdd52",
+    "docs/SCHEMA_CONVENTIONS.md": "a6dde1a7eb1ce0e7703b6c5b83a4d8c4427b1473454525ba8c9a4ebe775d201f",
     "docs/TEMPLATE.md": "db1a8be4442f1e524cb59679aeca6d72aab5005a46a2c17d0bd697563fca41d5",
     "docs/VERIFY_TIERS.md": "d88924fdfdac4a9ea8b48eb6db6984d8d92bae507bb2f600ea11f16d54cc3e67",
     "docs/greptile-learnings/RULES.md": "af0dbdcb70d55b5c513e51f6569894fce7c92bcda9b32b0c04652550ec177baf"
