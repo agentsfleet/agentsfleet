@@ -144,7 +144,7 @@ test "renew extends both the lease row and the affinity slot to the same clamped
     // renewed → both rows advanced to min(now+TTL, created_at+MAX). created_at is
     // recent, so the TTL increment wins and that is the new deadline.
     const want = NOW_MS + constants.LEASE_TTL_MS;
-    try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = want }, outcome);
+    try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = .{ .lease_expires_at = want, .charged_nanos = 0 } }, outcome);
     const after = try readDeadlines(conn);
     try std.testing.expectEqual(want, after.lease);
     try std.testing.expectEqual(want, after.affinity); // the divergence guard
@@ -234,7 +234,7 @@ test "renew clamps the new deadline to the hard cap when TTL would overshoot it"
 
     const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     const want_cap = NOW_MS + cap_offset; // == created + MAX_RUNTIME_MS
-    try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = want_cap }, outcome);
+    try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = .{ .lease_expires_at = want_cap, .charged_nanos = 0 } }, outcome);
     const after = try readDeadlines(conn);
     try std.testing.expectEqual(want_cap, after.lease);
     try std.testing.expectEqual(want_cap, after.affinity);
