@@ -1452,7 +1452,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeNull();
   });
 
-  it("every rendered row carries the frame-enter fade-in classes", () => {
+  it("every rendered row carries the operational 80ms fade-in classes", () => {
     mockStream([
       ev({ role: "user", actor: "steer:k@e2e.com", text: "u" }),
       ev({ role: "assistant", actor: "fleet", text: "a" }),
@@ -1471,7 +1471,8 @@ describe("FleetThread — robustness against malformed metadata", () => {
       const cls = r.className;
       expect(cls).toMatch(/animate-in/);
       expect(cls).toMatch(/fade-in-0/);
-      expect(cls).toMatch(/duration-150/);
+      expect(cls).toMatch(/duration-stream/);
+      expect(cls).not.toMatch(/slide-in/);
     }
   });
 
@@ -1481,7 +1482,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(screen.getByRole("button", { name: /jump to latest/i })).toBeTruthy();
   });
 
-  it("keeps a fleet reply left aligned and its long body within the bubble column", () => {
+  it("keeps a fleet reply left aligned and its long body within the reading column", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();
     const row = container.querySelector('[data-role="assistant"]') as HTMLElement;

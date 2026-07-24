@@ -42,7 +42,7 @@ describe("FleetMessageRow", () => {
     expect(bubble.className).toMatch(/bg-accent/);
   });
 
-  it("anchors a fleet turn to the left in its own quieter bubble", () => {
+  it("keeps a fleet reply open and left aligned", () => {
     const { container } = renderRow({
       tone: ROW_TONE.FLEET,
       sender: "pr-reviewer",
@@ -50,10 +50,34 @@ describe("FleetMessageRow", () => {
     });
     const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
     expect(row.querySelector(".flex-row-reverse")).toBeNull();
-    const bubble = screen.getByText("please review the change");
-    expect(bubble.className).toMatch(/rounded-bl-sm/);
-    expect(bubble.className).toMatch(/bg-secondary/);
-    expect(bubble.className).not.toMatch(/bg-accent/);
+    const reply = screen.getByText("please review the change");
+    expect(reply.className).toMatch(/w-full/);
+    expect(reply.className).not.toMatch(/rounded/);
+    expect(reply.className).not.toMatch(/\bborder\b/);
+    expect(reply.className).not.toMatch(/bg-/);
+    const chip = row.querySelector('[data-chip="fleet"]') as HTMLElement;
+    expect(chip.className).toMatch(/text-muted-foreground/);
+    expect(chip.className).not.toMatch(/text-pulse/);
+  });
+
+  it("spends the pulse color only while a fleet reply is live", () => {
+    const { container } = renderRow({
+      tone: ROW_TONE.FLEET,
+      sender: "pr-reviewer",
+      messageRole: "assistant",
+      live: true,
+    });
+    const chip = container.querySelector('[data-chip="fleet"]') as HTMLElement;
+    expect(chip.getAttribute("data-live")).toBe("true");
+    expect(chip.className).toMatch(/text-pulse/);
+  });
+
+  it("uses the operational opacity-only entry motion", () => {
+    const { container } = renderRow();
+    const row = container.querySelector('[data-role="user"]') as HTMLElement;
+    expect(row.className).toMatch(/motion-safe:fade-in-0/);
+    expect(row.className).toMatch(/motion-safe:duration-stream/);
+    expect(row.className).not.toMatch(/slide-in/);
   });
 
   it("carries the exact instant in the timestamp, whatever the visible format", () => {
