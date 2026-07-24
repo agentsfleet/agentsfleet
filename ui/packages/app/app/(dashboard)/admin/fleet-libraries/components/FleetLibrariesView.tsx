@@ -3,9 +3,10 @@
 import { useState } from "react";
 import {
   PageHeader,
+  PageLayout,
   PageTitle,
   Section,
-  SectionLabel,
+  SectionHeader,
   TooltipButton,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
@@ -44,24 +45,27 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
   }
 
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader description={FLEET_LIBRARIES_DESCRIPTION}>
         <PageTitle>{FLEET_LIBRARY_TITLE}</PageTitle>
       </PageHeader>
 
       <Section aria-label="Platform fleet catalog">
-        <div className="flex flex-wrap items-baseline justify-between gap-md">
-          <SectionLabel>{FLEET_LIBRARY_TITLE}</SectionLabel>
-          <TooltipButton type="button" size="sm" tooltip={ADD_TOOLTIP} onClick={openAdd}>
-            <PlusIcon size={14} />
-            {CREATE_FLEET_LIBRARY}
-          </TooltipButton>
-        </div>
+        <SectionHeader
+          actions={
+            <TooltipButton type="button" size="sm" tooltip={ADD_TOOLTIP} onClick={openAdd}>
+              <PlusIcon size={14} />
+              {CREATE_FLEET_LIBRARY}
+            </TooltipButton>
+          }
+        >
+          {FLEET_LIBRARY_TITLE}
+        </SectionHeader>
 
         <PlatformCatalogTable entries={entries} onFetch={openFetch} />
 
         <AddFleetDialog open={adding} onOpenChange={setAdding} prefillRepo={prefillRepo} prefillRef={prefillRef} />
       </Section>
-    </div>
+    </PageLayout>
   );
 }

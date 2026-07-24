@@ -14,6 +14,10 @@ import {
   type SourceField,
 } from "./console-copy";
 
+const HIDE_SOURCE_LABEL = "Hide source";
+const SERVER_SOURCE_LABEL = "Current server version";
+const UNSAVED_DRAFT_LABEL = "Your unsaved draft";
+
 const saveFleetSourceAction = vi.fn();
 const getFleetDetailAction = vi.fn();
 const captureProductEvent = vi.fn();
@@ -76,21 +80,23 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("SkillEditor", () => {
-  it("renders one collapsed document without internal tabs", () => {
+  it("renders one visible document without internal tabs", () => {
     renderEditor();
-    expect(screen.getByRole("button", { name: VIEW_SOURCE_LABEL })).toBeTruthy();
+    expect(screen.getByRole("button", { name: HIDE_SOURCE_LABEL })).toBeTruthy();
     expect(screen.queryByRole("tab")).toBeNull();
-    expect(screen.queryByLabelText("SKILL.md")).toBeNull();
+    expect(screen.getByLabelText("SKILL.md").textContent).toContain("original");
   });
 
-  it("expands the selected skill document", async () => {
+  it("collapses and restores the selected skill document", async () => {
     renderEditor();
+    await userEvent.click(screen.getByRole("button", { name: HIDE_SOURCE_LABEL }));
+    expect(screen.queryByLabelText("SKILL.md")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: VIEW_SOURCE_LABEL }));
     expect(screen.getByLabelText("SKILL.md").textContent).toContain("original");
     expect(screen.queryByLabelText("TRIGGER.md")).toBeNull();
   });
 
-  it("shows the empty trigger message only on the Trigger view", async () => {
+  it("shows the empty trigger message only on the Trigger view", () => {
     render(
       <SkillEditor
         workspaceId="ws_1"
@@ -101,7 +107,6 @@ describe("SkillEditor", () => {
         etag={'"seed"'}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: VIEW_SOURCE_LABEL }));
     expect(screen.getByText(TRIGGER_DOC_EMPTY)).toBeTruthy();
   });
 
@@ -145,6 +150,12 @@ describe("SkillEditor", () => {
       "value",
       "# SKILL\nmy draft",
     );
+    expect(screen.getByTestId(`source-comparison-${SERVER_SOURCE_LABEL.toLowerCase().replaceAll(" ", "-")}`).textContent).toContain(
+      "# SKILL\nnew server",
+    );
+    expect(screen.getByTestId(`source-comparison-${UNSAVED_DRAFT_LABEL.toLowerCase().replaceAll(" ", "-")}`).textContent).toContain(
+      "# SKILL\nmy draft",
+    );
   });
 
   it("preserves a draft when refreshed props arrive for the same document", async () => {
@@ -185,6 +196,48 @@ describe("SkillEditor", () => {
     );
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
     expect(screen.getByRole("button", { name: VIEW_SOURCE_LABEL })).toBeTruthy();
+  });
+
+  it("places the edit cursor at the beginning of a full-height source editor", async () => {
+    render(
+      <SkillEditor
+        workspaceId="ws_1"
+        fleetId="agt_1"
+        field={SOURCE_FIELD.trigger}
+        sourceMarkdown="# SKILL"
+        triggerMarkdown="# TRIGGER\noriginal"
+        etag={'"seed"'}
+        fillAvailableSpace
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+
+    const editor = screen.getByRole("textbox", { name: "Edit TRIGGER.md" });
+    expect(document.activeElement).toBe(editor);
+    expect(editor).toHaveProperty("selectionStart", 0);
+    expect(editor.className).toContain("min-h-96");
+    expect(editor.className).toContain("flex-1");
+  });
+
+  it("keeps the cursor where the operator places it after refocusing", async () => {
+    render(
+      <SkillEditor
+        workspaceId="ws_1"
+        fleetId="agt_1"
+        field={SOURCE_FIELD.trigger}
+        sourceMarkdown="# SKILL"
+        triggerMarkdown="# TRIGGER\noriginal"
+        etag={'"seed"'}
+        fillAvailableSpace
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+
+    const editor = screen.getByRole("textbox", { name: "Edit TRIGGER.md" }) as HTMLTextAreaElement;
+    editor.setSelectionRange(10, 10);
+    fireEvent.focus(editor);
+
+    expect(editor.selectionStart).toBe(10);
   });
 
   it("cancels an edit and restores the durable document", async () => {

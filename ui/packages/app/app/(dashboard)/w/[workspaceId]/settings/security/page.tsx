@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { EmptyState, PageHeader, PageTitle } from "@agentsfleet/design-system";
+import { EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { ShieldIcon } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export default async function SettingsSecurityPage({
   if (!token) redirect("/sign-in");
 
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader>
         <PageTitle>Security</PageTitle>
       </PageHeader>
@@ -28,6 +28,6 @@ export default async function SettingsSecurityPage({
         title="Security"
         description="Security and access policy for this workspace will live here."
       />
-    </div>
+    </PageLayout>
   );
 }

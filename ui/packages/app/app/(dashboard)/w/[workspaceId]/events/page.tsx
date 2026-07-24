@@ -2,8 +2,9 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import {
   PageHeader,
+  PageLayout,
   PageTitle,
-  Section,
+  SectionHeader,
   Skeleton,
 } from "@agentsfleet/design-system";
 import { auth } from "@clerk/nextjs/server";
@@ -38,7 +39,7 @@ export default async function EventsPage({
 
   // Header streams first; the stream loads inside EventsData under Suspense.
   return (
-    <div>
+    <PageLayout fullHeight className="min-h-full">
       <PageHeader description={EVENTS_DESCRIPTION}>
         <PageTitle>Events</PageTitle>
       </PageHeader>
@@ -48,7 +49,7 @@ export default async function EventsPage({
             skeleton, rather than holding the previous page's rows. */}
         <EventsData key={cursor ?? ""} workspaceId={workspaceId} cursor={cursor} />
       </Suspense>
-    </div>
+    </PageLayout>
   );
 }
 
@@ -74,10 +75,9 @@ export async function EventsData({
   }).catch(() => ({ items: [], next_cursor: null }));
 
   return (
-    <Section asChild>
-      <section aria-label="Workspace events">
-        <EventsList initial={page} />
-      </section>
-    </Section>
+    <div aria-label="Workspace events" className="flex min-h-0 flex-1 flex-col gap-xl">
+      <SectionHeader>Manage events</SectionHeader>
+      <EventsList initial={page} />
+    </div>
   );
 }

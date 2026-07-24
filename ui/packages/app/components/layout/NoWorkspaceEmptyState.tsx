@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, EmptyState, PageHeader, PageTitle } from "@agentsfleet/design-system";
+import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { LayoutDashboardIcon } from "lucide-react";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 
@@ -13,7 +13,7 @@ import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/Cre
 export default function NoWorkspaceEmptyState() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader description="Create your first workspace to install fleets, wire integrations, and store secrets.">
         <PageTitle>Welcome</PageTitle>
       </PageHeader>
@@ -28,6 +28,6 @@ export default function NoWorkspaceEmptyState() {
         }
       />
       <CreateWorkspaceDialogDynamic open={open} onOpenChange={setOpen} />
-    </div>
+    </PageLayout>
   );
 }
