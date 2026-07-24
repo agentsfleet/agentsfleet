@@ -41,11 +41,12 @@ const MEM_ID_PREFIX = "idxprobe-mem-";
 /// indexes only the reads whose cost grows without bound. List sorts over
 /// runners, fleets and api keys are left unindexed at the ~100-runner scale the
 /// slot documents — see its header.
-const SLOT_033_INDEXES = [_][]const u8{
-    "idx_runner_affinity_last_runner_id_leased_until",
-    "idx_runner_leases_fleet_id_status_fencing_token",
-    "idx_fleet_events_workspace_id_created_at_event_id",
-    "idx_memory_entries_fleet_id_updated_at_id",
+const IndexRef = struct { schema: []const u8, name: []const u8 };
+const SLOT_033_INDEXES = [_]IndexRef{
+    .{ .schema = "fleet", .name = "idx_runner_affinity_last_runner_id_leased_until" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_fleet_id_status_fencing_token" },
+    .{ .schema = "core", .name = "idx_fleet_events_workspace_id_created_at_event_id" },
+    .{ .schema = "memory", .name = "idx_memory_entries_fleet_id_updated_at_id" },
 };
 
 /// The registered slot's text, or null when nothing claims that version.
@@ -87,22 +88,17 @@ fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8) ![]u8 {
     return out.toOwnedSlice(alloc);
 }
 
-/// The index exists and indexes exactly `want_columns`, in that order and those
-/// directions — read back from the catalog, so a reorder or a dropped DESC fails.
-fn expectIndexShape(alloc: std.mem.Allocator, conn: *pg.Conn, name: []const u8, want_columns: []const u8) !void {
-    var q = PgQuery.from(try conn.query("SELECT indexdef FROM pg_indexes WHERE indexname = $1", .{name}));
-    defer q.deinit();
-    const row = (try q.next()) orelse {
-        std.debug.print("index {s} does not exist\n", .{name});
-        return error.IndexMissing;
+/// The index exists in `schema` and indexes exactly `want_columns`, in that
+/// order and those directions — read structurally from the catalog (see
+/// `base.indexKeyColumns`), so a reorder or a dropped DESC fails here.
+fn expectIndexShape(alloc: std.mem.Allocator, conn: *pg.Conn, schema_name: []const u8, name: []const u8, want_columns: []const u8) !void {
+    const got = base.indexKeyColumns(alloc, conn, schema_name, name) catch |err| {
+        if (err == error.IndexMissing) std.debug.print("index {s}.{s} does not exist\n", .{ schema_name, name });
+        return err;
     };
-    const def = try alloc.dupe(u8, try row.get([]const u8, 0));
-    defer alloc.free(def);
-    const open = std.mem.lastIndexOfScalar(u8, def, '(') orelse return error.IndexDefUnparsed;
-    const close = std.mem.lastIndexOfScalar(u8, def, ')') orelse return error.IndexDefUnparsed;
-    const got = def[open + 1 .. close];
+    defer alloc.free(got);
     if (!std.mem.eql(u8, got, want_columns)) {
-        std.debug.print("index {s} columns:\n  want: {s}\n  got:  {s}\n", .{ name, want_columns, got });
+        std.debug.print("index {s}.{s} columns:\n  want: {s}\n  got:  {s}\n", .{ schema_name, name, want_columns, got });
         return error.IndexShapeChanged;
     }
 }
@@ -150,16 +146,10 @@ test "slot 033 indexes are applied exactly once" {
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
 
-    for (SLOT_033_INDEXES) |name| {
-        var q = PgQuery.from(try db.conn.query(
-            "SELECT COUNT(*)::bigint FROM pg_indexes WHERE indexname = $1",
-            .{name},
-        ));
-        defer q.deinit();
-        const row = (try q.next()) orelse return error.DbRowShape;
-        const n = try row.get(i64, 0);
+    for (SLOT_033_INDEXES) |entry| {
+        const n = try base.indexCount(db.conn, entry.schema, entry.name);
         if (n != 1) {
-            std.debug.print("index {s} present {d} times, want 1\n", .{ name, n });
+            std.debug.print("index {s}.{s} present {d} times, want 1\n", .{ entry.schema, entry.name, n });
             return error.IndexNotAppliedOnce;
         }
     }
@@ -221,7 +211,7 @@ test "memory composite has the right shape and serves the fleet filter" {
     defer wipeMemory(db.conn);
     try seedMemory(db.conn, MEM_SEED_ROWS);
 
-    try expectIndexShape(alloc, db.conn, "idx_memory_entries_fleet_id_updated_at_id", "fleet_id, updated_at DESC, id DESC");
+    try expectIndexShape(alloc, db.conn, "memory", "idx_memory_entries_fleet_id_updated_at_id", "fleet_id, updated_at DESC, id DESC");
     try expectServesFilter(alloc, db.conn,
         \\SELECT key, content, category
         \\FROM memory.memory_entries
