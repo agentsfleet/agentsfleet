@@ -94,7 +94,7 @@ The eventual Pull Request (PR) is internal reliability work. It changes no publi
 | `src/agentsfleetd/observability/otel_metrics_aggregate_test.zig` | EDIT | Keep model/workspace fixtures in the same-label-set aggregation proof. |
 | `src/agentsfleetd/tests.zig` | EDIT | Register the new integration test. |
 | `docs/v2/pending/M139_004_P1_OBS_TELEMETRY_SEMANTIC_CONVENTIONS.md` | EDIT | Take the Prometheus family-prefix normalization into the semantic-conventions workstream that owns metric naming. |
-| `audits/signal-routing.sh` | EDIT | Replace investigation-state limits and wording with shipped source assertions so the durable audit remains green. |
+| ~~`audits/signal-routing.sh`~~ | RETIRED | Updated here to track the shipped limits, then removed in M139_001's review pass — re-pinning source literals on every tuning change was the maintenance cost that proved the approach wrong. The bounded-export behavior tests in this workstream are the durable assertion. |
 | `docs/architecture/observability.md` | EDIT | Replace follow-on wording with the shipped policy and measured drain result. |
 | `docs/architecture/runner_fleet.md` | EDIT | Mark route filtering and completion capture as implemented. |
 

@@ -36,7 +36,17 @@ pub fn readerMain(hub: *Hub) void {
         // thread (and post-join stop()) ever swaps the field, and the read
         // half (fd poll/read + read keys) is disjoint from the write half the
         // wire lock serializes — see the hub's concurrency model doc.
-        const maybe_msg = hub.conn.?.nextMessage() catch {
+        //
+        // Non-null is guaranteed by an invariant spanning three functions
+        // (`start` installs, `reconnect` only returns with one installed or the
+        // hub stopped, `stop` joins this thread before nulling). Heal instead of
+        // unwrapping: a refactor that breaks that invariant should reconnect,
+        // not crash the daemon on a null dereference.
+        const conn = if (hub.conn) |*c| c else {
+            reconnect(hub);
+            continue;
+        };
+        const maybe_msg = conn.nextMessage() catch {
             reconnect(hub);
             continue;
         };

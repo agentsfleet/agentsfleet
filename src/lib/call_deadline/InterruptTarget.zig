@@ -38,6 +38,29 @@ pub fn interrupt(self: InterruptTarget) Outcome {
     return self.interruptFn(self.ctx, self.generation);
 }
 
+/// How long a conforming `interrupt` may take. A lock plus one `shutdown(2)`
+/// completes in microseconds, so this sits orders of magnitude above any
+/// legitimate run — a breach means the bounded-leaf rule above was broken, not
+/// that the machine was briefly busy.
+pub const CALLBACK_BUDGET_NS: i96 = 250 * std.time.ns_per_ms;
+
+/// The scheduler reports a breach instead of asserting: every deadline in the
+/// process shares one worker, so a blocking callback stalls them all, and the
+/// operator needs the culprit named rather than the stall left as an
+/// unexplained latency mystery. Deliberately not fatal — turning a slow syscall
+/// into a crash would be worse than the stall it reports.
+pub fn overranBudget(elapsed_ns: i96) bool {
+    return elapsed_ns >= CALLBACK_BUDGET_NS;
+}
+
+/// Saturating milliseconds for the breach log — a nonsense clock reading must
+/// not panic the scheduler worker on an `@intCast` while reporting a stall.
+pub fn elapsedMillis(elapsed_ns: i96) i64 {
+    return std.math.cast(i64, @divTrunc(elapsed_ns, std.time.ns_per_ms)) orelse std.math.maxInt(i64);
+}
+
 test {
     _ = @import("InterruptTarget_test.zig");
 }
+
+const std = @import("std");

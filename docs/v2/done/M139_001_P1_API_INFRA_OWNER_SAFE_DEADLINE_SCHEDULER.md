@@ -44,7 +44,27 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Wall time answers “what calendar time is it?” and may jump forward or backward. Monotonic time answers “how much time has elapsed?” and never moves backward. A 30-second network deadline is therefore stored as `boot_now + 30 seconds`; changing the calendar clock has no path into its ordering or expiry.
 
-![Monotonic deadline scheduler flow](../../../diagrams/deadline-scheduler-flow.svg)
+```mermaid
+graph TD
+    A[Network operation] -->|arm 30 s guard| B[Scheduler map]
+    B -->|Identifier to stable registration| C[std.Treap]
+    C -->|earliest boot deadline| D[One scheduler worker]
+    D -->|monotonic timed futex wait| E{Deadline reached?}
+    F[Earlier guard arrives] -->|increment epoch and wake| D
+    E -->|no, recheck tree| C
+    E -->|yes, mark firing| G[Owner callback]
+    G -->|validate generation| H[Interrupt exact transport]
+    D -. mechanism logfmt .-> O{Process sink}
+    O -->|agentsfleetd| P[stderr plus OTLP]
+    O -->|agentsfleet-runner| Q[local stderr plus result reports]
+    G -. owner warning plus error code .-> P
+    P -. product event only .-> R[PostHog]
+    I[Operation finishes early] -->|Guard.finish| J[Remove exact treap node]
+    J --> K[Quiescence barrier returns]
+    H -->|callback completes| K
+    L[Scheduler.stop] -->|wake, drain, join| D
+    M[Wall clock: calendar only] -. no scheduler input .-> C
+```
 
 ## Implementing agent — read these first
 
@@ -61,10 +81,7 @@ Wall time answers “what calendar time is it?” and may jump forward or backwa
 | `src/lib/call_deadline/call_deadline.zig` | EDIT | Replace per-instance wall-clock polling watchdogs with the process-owned monotonic scheduler, generation-bound targets, guards, and lifecycle tests. |
 | `src/lib/call_deadline/scheduler.zig` | CREATE | Own the single scheduler worker, guard lifecycle, registration identity, monotonic backend, and quiescence barriers. |
 | `src/lib/call_deadline/scheduler_test.zig` | CREATE | Prove preemption, lifecycle validation, quiescence, concurrency cardinality, and bounded queue work through injected timing seams. |
-| `diagrams/deadline-scheduler-flow.mmd` | CREATE | Keep the scheduler timing and ownership flow editable as Mermaid source. |
-| `diagrams/deadline-scheduler-flow.excalidraw` | CREATE | Provide an editable visual scene for architecture review. |
-| `diagrams/deadline-scheduler-flow.svg` | CREATE | Embed the scheduler flow in this specification without raster loss. |
-| `diagrams/deadline-scheduler-flow.png` | CREATE | Provide a chat and issue-friendly rendered diagram. |
+| this specification (§Timing picture) | EDIT | Carry the scheduler timing and ownership flow as an inline Mermaid block — one source that renders in place, instead of four exported copies to keep in sync. |
 | `src/lib/common/sync.zig` | EDIT if needed | Supply the wakeable timed wait required to preempt a later scheduled wake when an earlier deadline is armed. |
 | `src/lib/http_pin/http_pin.zig` | EDIT | Return an owner-validating HTTP interruption target instead of exposing a bare pooled socket descriptor. |
 | `src/lib/http_pin/http_pin_test.zig` | EDIT | Prove stale pins and descriptor reuse cannot interrupt a successor HTTP connection. |

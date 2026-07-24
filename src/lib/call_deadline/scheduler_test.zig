@@ -396,3 +396,57 @@ fn exerciseArmAllocation(alloc: std.mem.Allocator) !void {
     _ = guard.finish();
     scheduler.stop();
 }
+
+/// Concurrent registrations held open to force the pool to retain several nodes.
+const REUSE_POOL_DEPTH: usize = 8;
+/// Long enough that no arm in the reuse test can fire before it is cancelled.
+const REUSE_ARM_TIMEOUT_MS: u31 = 60_000;
+/// Enough cycles that any per-arm allocation would be unmistakable.
+const REUSE_CYCLES: usize = 64;
+
+test "steady-state arm and finish reuse registrations without touching the allocator" {
+    // Allocation churn under the one mutex every owner contends for is the
+    // scale trap here: the reuse pool must make a repeated arm/finish pointer
+    // work, so a future per-request caller cannot serialize on the allocator.
+    var counting = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var backend: FakeBackend = .{};
+    var recorder: Recorder = .{};
+    var scheduler = TestScheduler.init(counting.allocator(), &backend);
+    defer scheduler.deinit();
+    try scheduler.start();
+
+    // Warm up: the first arm allocates its registration and sizes the map.
+    var warmup = try scheduler.arm(.{ .recorder = &recorder, .value = 1 }, REUSE_ARM_TIMEOUT_MS);
+    try std.testing.expectEqual(TestScheduler.FinishOutcome.cancelled, warmup.finish());
+    const warmed_allocations = counting.allocations;
+
+    var cycle: usize = 0;
+    while (cycle < REUSE_CYCLES) : (cycle += 1) {
+        var guard = try scheduler.arm(.{ .recorder = &recorder, .value = 2 }, REUSE_ARM_TIMEOUT_MS);
+        try std.testing.expectEqual(TestScheduler.FinishOutcome.cancelled, guard.finish());
+    }
+    // Zero growth: every cycle after the first came from the reuse pool.
+    try std.testing.expectEqual(warmed_allocations, counting.allocations);
+}
+
+test "the reuse pool is freed by deinit, not leaked across arms" {
+    // Concurrent depth forces several registrations to exist at once, so the
+    // pool retains more than one node; testing.allocator fails the test if any
+    // of them outlives deinit.
+    var backend: FakeBackend = .{};
+    var recorder: Recorder = .{};
+    var scheduler = TestScheduler.init(std.testing.allocator, &backend);
+    defer scheduler.deinit();
+    try scheduler.start();
+
+    var guards: [REUSE_POOL_DEPTH]TestScheduler.Guard = undefined;
+    for (&guards, 0..) |*guard, index| {
+        guard.* = try scheduler.arm(.{ .recorder = &recorder, .value = @intCast(index) }, REUSE_ARM_TIMEOUT_MS);
+    }
+    for (&guards) |*guard| _ = guard.finish();
+    // All eight are now pooled; a second round must consume them, not allocate.
+    for (&guards, 0..) |*guard, index| {
+        guard.* = try scheduler.arm(.{ .recorder = &recorder, .value = @intCast(index) }, REUSE_ARM_TIMEOUT_MS);
+    }
+    for (&guards) |*guard| _ = guard.finish();
+}

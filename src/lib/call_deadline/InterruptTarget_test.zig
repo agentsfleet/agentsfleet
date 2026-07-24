@@ -54,3 +54,21 @@ test "a target exposes no descriptor to the scheduler" {
         try std.testing.expect(!named_handle);
     }
 }
+
+test "the callback budget flags a breach of the bounded-leaf rule, not a busy machine" {
+    // A conforming callback is a lock plus one shutdown syscall — microseconds.
+    try std.testing.expect(!InterruptTarget.overranBudget(0));
+    try std.testing.expect(!InterruptTarget.overranBudget(std.time.ns_per_ms));
+    try std.testing.expect(!InterruptTarget.overranBudget(InterruptTarget.CALLBACK_BUDGET_NS - 1));
+    // At the budget and beyond, the contract was broken.
+    try std.testing.expect(InterruptTarget.overranBudget(InterruptTarget.CALLBACK_BUDGET_NS));
+    try std.testing.expect(InterruptTarget.overranBudget(InterruptTarget.CALLBACK_BUDGET_NS * 2));
+}
+
+test "breach reporting saturates instead of panicking the scheduler worker" {
+    try std.testing.expectEqual(@as(i64, 250), InterruptTarget.elapsedMillis(InterruptTarget.CALLBACK_BUDGET_NS));
+    try std.testing.expectEqual(@as(i64, 0), InterruptTarget.elapsedMillis(0));
+    // A nonsense clock reading must not take the process down while it reports
+    // a stall — the worker is already the only thing keeping deadlines alive.
+    try std.testing.expectEqual(@as(i64, std.math.maxInt(i64)), InterruptTarget.elapsedMillis(std.math.maxInt(i96)));
+}
