@@ -35,30 +35,30 @@ test "test_aggregates_sum_per_window: same-labelset sums coalesce to one series"
 
 test "test_aggregates_histogram_per_window: observations merge into one histogram series" {
     var agg = aggregate.Aggregator.init();
-    // Milliseconds against the pinned agent-duration bounds (10, 20, 40, …).
-    agg.add(histSample(7)); // bucket 0 (<=10ms)
-    agg.add(histSample(37)); // bucket 2 ((20, 40]ms)
+    // Milliseconds against the pinned agent-duration bounds (100, 200, 400, …).
+    agg.add(histSample(7)); // bucket 0 (<=100ms)
+    agg.add(histSample(370)); // bucket 2 ((200, 400]ms)
     agg.add(histSample(8)); // bucket 0
 
     try std.testing.expectEqual(@as(usize, 1), agg.count);
     var buf: [aggregate.MAX_SERIES]payload.Series = undefined;
     const series = agg.toSeries(&buf);
     try std.testing.expectEqual(@as(u64, 3), series[0].hist_count);
-    try std.testing.expectEqual(@as(i64, 52), series[0].hist_sum); // 7+37+8
+    try std.testing.expectEqual(@as(i64, 385), series[0].hist_sum); // 7+370+8
     try std.testing.expectEqual(@as(u64, 2), series[0].bucket_counts[0]); // 7, 8
-    try std.testing.expectEqual(@as(u64, 1), series[0].bucket_counts[2]); // 37
+    try std.testing.expectEqual(@as(u64, 1), series[0].bucket_counts[2]); // 370
 }
 
 test "histogram clamps a negative observation to bucket 0 and adds 0 to the sum" {
     var agg = aggregate.Aggregator.init();
     agg.add(histSample(-5)); // e.g. clock-skew wall_ms
-    agg.add(histSample(37)); // bucket 2 ((20, 40]ms)
+    agg.add(histSample(370)); // bucket 2 ((200, 400]ms)
     var buf: [aggregate.MAX_SERIES]payload.Series = undefined;
     const series = agg.toSeries(&buf);
     try std.testing.expectEqual(@as(u64, 2), series[0].hist_count);
-    try std.testing.expectEqual(@as(i64, 37), series[0].hist_sum); // -5 clamped to 0, + 37
+    try std.testing.expectEqual(@as(i64, 370), series[0].hist_sum); // -5 clamped to 0, + 370
     try std.testing.expectEqual(@as(u64, 1), series[0].bucket_counts[0]); // -5 → bucket 0
-    try std.testing.expectEqual(@as(u64, 1), series[0].bucket_counts[2]); // 37 → bucket 2
+    try std.testing.expectEqual(@as(u64, 1), series[0].bucket_counts[2]); // 370 → bucket 2
 }
 
 test "histogram sum saturates instead of trapping on two maxInt observations" {

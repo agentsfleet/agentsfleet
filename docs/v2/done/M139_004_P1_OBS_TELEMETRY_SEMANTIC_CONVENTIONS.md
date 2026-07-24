@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M139
 **Workstream:** 004
 **Date:** Jul 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator queries currently depend on ambiguous private names, incorrect units, and unbounded identity attributes
 **Categories:** Observability (OBS)
 **Batch:** B3 — follows bounded exporter reliability so schema migration cannot hide transport loss
@@ -56,7 +56,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/observability/semconv_test.zig` | CREATE | Prove the registry matches pinned sources and rejects false standard aliases. |
 | `src/agentsfleetd/observability/otlp/config.zig` | EDIT | Carry bounded standard resource attributes with existing OTLP configuration ownership. |
 | `src/agentsfleetd/observability/otel_logs.zig` | EDIT | Serialize the shared resource and instrumentation scope schema. |
-| `src/agentsfleetd/observability/otel_logs_test.zig` | EDIT | Prove resource precedence, escaping, and malformed optional identity handling. |
+| `src/agentsfleetd/observability/otlp/config_test.zig` | EDIT | Prove resource precedence, escaping, and malformed optional identity handling across all three signals — the shared resource serializer lives here, so its proof does too. |
 | `src/agentsfleetd/observability/otel_traces.zig` | EDIT | Serialize shared resources, typed attributes, and correct span kinds. |
 | `src/agentsfleetd/observability/otel_traces_test.zig` | EDIT | Prove standard HTTP and GenAI attribute payloads without sensitive content. |
 | `src/agentsfleetd/observability/otel_metrics_payload.zig` | EDIT | Replace metric descriptors, seconds buckets, and private label keys. |
@@ -87,11 +87,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/fleet/service_renew.zig` | EDIT | Emit every successful renewal debit after its money write commits. |
 | `src/agentsfleetd/fleet/renewal.zig` | EDIT | Return the committed renewal debit needed by service orchestration. |
 | `src/agentsfleetd/fleet/service_report.zig` | EDIT | Pass provider, model, outcome, split tokens, and final committed debit once. |
-| `src/agentsfleetd/fleet/service_token_splits_wire_test.zig` | EDIT | Reconcile emitted token and credit observations with renewal/report money rows. |
+| `src/agentsfleetd/fleet/credit_metric_reconciliation_test.zig` | CREATE | Reconcile emitted credit deltas against the debits Postgres committed, over the real lease/renew/report plane, with the replay, lost-fence, and failed-write zero arms. |
 | `src/agentsfleetd/fleet_runtime/metering.zig` | EDIT | Replace private delivery-span keys with standard GenAI and namespaced product keys. |
+| `src/agentsfleetd/fleet_runtime/metering_test.zig` | EDIT | Prove the delivery span's standard GenAI attributes, typed usage counts, provider omission, and content exclusion. |
 | `src/agentsfleetd/http/server.zig` | EDIT | Emit standard HTTP server span names, kind, and typed attributes. |
-| `src/agentsfleetd/http/route_trace_test.zig` | EDIT | Prove the standard HTTP span shape and raw-URL exclusion. |
-| `src/agentsfleetd/tests.zig` | EDIT | Register the semantic registry tests. |
+| `src/agentsfleetd/http/route_template_test.zig` | CREATE | Prove template resolution is total for every route and never echoes caller-supplied bytes. |
+| `src/agentsfleetd/http/route_trace_integration_test.zig` | EDIT | Prove the standard HTTP span shape and raw-URL exclusion over the live server; carry the shed span onto the route-based name. |
+| `src/agentsfleetd/tests.zig` | EDIT | Register the credit reconciliation suite in the test root. |
 | `tests/fixtures/telemetry/otlp_metrics.json` | EDIT | Pin the complete new OTLP metric payload. |
 | `deploy/grafana/agent-observability.json` | DELETE | Every panel queried a superseded OTLP name. Dashboard authoring moved to its own workstream per Indy's direction, so the artefact is deleted rather than repointed onto a schema this workstream was still rewriting. |
 | `deploy/grafana/agent_run_breakdown.json` | DELETE | Dead end to end: four Prometheus panels named families no source emits, and three PostgreSQL panels queried `billing.usage_ledger`, which no migration creates. |
@@ -146,16 +148,16 @@ Use `gen_ai.invoke_agent.duration` in seconds with the pinned agent-duration his
 
 Provider values normalize only to exact OpenTelemetry well-known names; unknown providers omit the attribute. Exact `gen_ai.request.model` attribution is admitted only while the derived series budget can preserve the 256-series ceiling; overflow omits the attribute instead of fabricating a standard value. Both cases increment `agentsfleet_otel_attribute_omitted_total` under a fixed attribute key. Workspace never enters an OTLP metric.
 
-- **Dimension 2.1** — ✅ **DONE** — metric descriptors, instrument kinds, units, histogram boundaries, and allowed attributes match the table above → Test `test_metric_descriptors_match_semantic_schema`
+- **Dimension 2.1** — ✅ **DONE** — metric descriptors, instrument kinds, units, histogram boundaries (the agent-invocation table, `0.1s .. 409.6s`, not the client-call one), and allowed attributes match the table above → Test `test_metric_descriptors_match_semantic_schema`
 - **Dimension 2.2** — ✅ **DONE** — input includes cached tokens once, output is separate, cached usage remains a subset, and zero values do not create misleading directions → Test `test_invoke_agent_token_usage_never_double_counts_cache`
 - **Dimension 2.3** — ✅ **DONE** — provider/model attribution stays inside the computed series budget; overflow preserves the sample without the attribute and counts the omission exactly → Test `test_metric_attribute_cardinality_is_bounded_and_visible`
-- **Dimension 2.4** — ⏳ **IN_PROGRESS** (no test reconciles emitted credit deltas against committed debits yet) — receive, every successful renewal, and final settlement emit their committed credit delta once; stale, failed, or replayed writes emit none → Test `test_credit_metric_reconciles_committed_debits`
+- **Dimension 2.4** — ✅ **DONE** — receive, every successful renewal, and final settlement emit their committed credit delta once; stale, failed, or replayed writes emit none → Test `test_credit_metric_reconciles_committed_debits`
 
 ### §3 — Spans use standard keys without claiming a runner trace
 
 HTTP ingress spans use server kind, route-based names, `http.request.method`, `http.route`, and typed `http.response.status_code`; query strings, bodies, authorization, and raw caller addresses remain absent. The settled `fleet.delivery` span remains a custom control-plane observation because no runner span or trace context exists. Its attributes become `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id`, `gen_ai.provider.name`, `gen_ai.request.model`, typed `gen_ai.usage.*` counts, and namespaced `agentsfleet.*` correlation keys.
 
-- **Dimension 3.1** — ⏳ **IN_PROGRESS** (no test asserts the standard HTTP span attributes or raw-URL exclusion yet; `route_template.zig` has no tests) — matched HTTP requests serialize the standard server span shape while unmatched, malformed, and sensitive request data never become attributes → Test `test_http_server_span_uses_standard_semantics`
+- **Dimension 3.1** — ✅ **DONE** — matched HTTP requests serialize the standard server span shape while unmatched, malformed, and sensitive request data never become attributes → Test `test_http_server_span_uses_standard_semantics`
 - **Dimension 3.2** — ✅ **DONE** — one accepted report emits one custom delivery span with exact GenAI usage and product correlation keys; replay emits none and no prompt or response content appears → Test `test_delivery_span_uses_semantic_attributes_without_runner_claim`
 
 ### §4 — One namespace, and drift checks that outlive the dashboards
@@ -251,17 +253,17 @@ No public API path, request body, response body, Command-Line Interface (CLI), o
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Three OTLP signals share one standard resource (§1) | `make test-unit-agentsfleetd` | resource identity test passes | P0 |  ✅ `1820 passed; 682 skipped; 0 failed` |
-| R2 | Metric names, units, and token math match the pinned schema (§2) | `make test-unit-agentsfleetd` | descriptor and token tests pass | P0 |  ✅ descriptor + token tests in the 1820 |
-| R3 | Credit metrics reconcile every committed debit (§2) | `make test-integration` | credit reconciliation test passes | P0 |  ✅ `make test-integration` exit 0 |
-| R4 | Metric attribution is bounded and omissions are visible (§2) | `make test-unit-agentsfleetd` | cardinality and omission tests pass | P0 |  ✅ cardinality + omission tests pass |
-| R5 | HTTP and delivery spans use truthful semantic keys (§3) | `make test-integration` | both span integration tests pass | P0 |  ✅ `make test-integration` exit 0 |
-| R6 | Fixture, source, and architecture have one schema, and `/metrics` has one namespace (§4) | `make test-unit-agentsfleetd` | semantic-schema tests pass | P0 |  ✅ 4 semantic-schema tests pass |
-| S1 | Repository conformance passes | `make harness-verify` | exit 0 | P0 |  ✅ `ALL GATES GREEN` (15 files in scope) |
-| S2 | Repository unit suites pass | `make test-unit-all` | exit 0 | P0 |  ✅ `All unit lanes passed` |
-| S3 | Both Linux targets build | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both exit 0 | P0 |  ✅ both exit 0 |
-| S4 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 |  ✅ `no leaks found` (3705 commits) |
-| S5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 |  ✅ 0 of 48 changed paths missing |
+| R1 | Three OTLP signals share one standard resource (§1) | `make test-unit-agentsfleetd` | resource identity test passes | P0 | ✅ `1832 passed; 686 skipped; 0 failed` |
+| R2 | Metric names, units, and token math match the pinned schema (§2) | `make test-unit-agentsfleetd` | descriptor and token tests pass | P0 | ✅ descriptor + token tests in the 1832 |
+| R3 | Credit metrics reconcile every committed debit (§2) | `make test-integration` | credit reconciliation test passes | P0 | ✅ `✓ [agentsfleetd] Full integration suite passed` |
+| R4 | Metric attribution is bounded and omissions are visible (§2) | `make test-unit-agentsfleetd` | cardinality and omission tests pass | P0 | ✅ cardinality + omission tests pass |
+| R5 | HTTP and delivery spans use truthful semantic keys (§3) | `make test-integration` | both span integration tests pass | P0 | ✅ `✓ [agentsfleetd] All integration tests passed` |
+| R6 | Fixture, source, and architecture have one schema, and `/metrics` has one namespace (§4) | `make test-unit-agentsfleetd` | semantic-schema tests pass | P0 | ✅ 4 semantic-schema tests pass |
+| S1 | Repository conformance passes | `make harness-verify` | exit 0 | P0 | ✅ `ALL GATES GREEN` (11 files in scope) |
+| S2 | Repository unit suites pass | `make test-unit-all` | exit 0 | P0 | ✅ `All unit lanes passed` |
+| S3 | Both Linux targets build | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both exit 0 | P0 | ✅ both exit 0 |
+| S4 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 | ✅ `no leaks found` (3712 commits) |
+| S5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 0 of 70 changed paths missing (spec file itself excluded) |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
@@ -328,6 +330,8 @@ An unused-migration sweep ran alongside the dashboard deletion: every table crea
 
   Every dashboard artefact is therefore deleted, `deploy/grafana/` is removed, and §4's Grafana-query dimension is retired in favour of drift properties that hold without dashboard files.
 - **Source finding (Jul 24, 2026)** — the unused-migration sweep Indy asked for found nothing to drop: every table created across all 34 files in `schema/` has at least one non-test production reference under `src/`.
+- **Upstream finding (Jul 25, 2026)** — `gen_ai.invoke_agent.duration` shipped with the **wrong** pinned bucket table. The registry carried `0.01s .. 81.92s`, which is `gen_ai.client.operation.duration`'s table; the pinned commit gives `gen_ai.invoke_agent.duration` its own boundaries of `0.1s .. 409.6s` (13, not 14). Because an agent invocation runs orders of magnitude longer than one provider call, the client table saturated: the reconciliation suite's own 60 s run already exceeds three quarters of it, so p95/p99 were unreadable. Verified by fetching the pinned commit rather than from recall — the metric *name* is correctly upstream (an earlier suspicion that it was invented was wrong). Fixing it required replacing the equal-length assertion on the two bound tables with `MAX_BUCKET_BOUNDS`, since the payload sizes one bucket array for every histogram and upstream's two tables differ in length. Landed with the fixture, the descriptor test, the `bucketIndex` test, and both aggregate tests.
+  > Indy (2026-07-25): "fix it in this PR" — context: the wrong-bucket-table finding above, surfaced before any edit.
 - **Skill-chain outcomes** —
 - **Deferrals** —
   > Indy (2026-07-23 09:27): "Yes create a workstream agree, and move to 139, so the workstream in pending is added in this PR" — context: this Pull Request adds the pending semantic-conventions specification; implementation begins only when M139_004 is opened.

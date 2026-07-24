@@ -62,7 +62,7 @@ fn renderFullBody(alloc: std.mem.Allocator) ![]u8 {
 
 // ── One namespace across the whole exposition ───────────────────────────────
 
-test "prometheus families share one namespace" {
+test "test_prometheus_families_share_one_namespace" {
     const alloc = std.testing.allocator;
 
     const body = try renderFullBody(alloc);
@@ -85,7 +85,7 @@ test "prometheus families share one namespace" {
 // The rendered body cannot see families whose block is gated behind a live
 // dependency (the Redis pool needs a real connection). Reading the renderer
 // sources directly covers those without standing up the dependency.
-test "no renderer source declares a superseded family name" {
+test "test_no_renderer_source_declares_a_superseded_family_name" {
     const RENDERER_SOURCES = [_][]const u8{
         @embedFile("metrics_render.zig"),
         @embedFile("metrics_memory.zig"),
@@ -109,7 +109,7 @@ test "no renderer source declares a superseded family name" {
 
 // ── No superseded OTLP name survives anywhere live ──────────────────────────
 
-test "semantic schema has no live legacy aliases" {
+test "test_semantic_schema_has_no_live_legacy_aliases" {
     const alloc = std.testing.allocator;
 
     const body = try renderFullBody(alloc);
@@ -138,7 +138,7 @@ test "semantic schema has no live legacy aliases" {
     }
 }
 
-test "attribution omissions are visible in the scrape body" {
+test "test_attribution_omissions_are_visible_in_the_scrape_body" {
     const alloc = std.testing.allocator;
     const body = try renderFullBody(alloc);
     defer alloc.free(body);

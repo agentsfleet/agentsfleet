@@ -20,7 +20,7 @@ const ALL_METRICS = [_]payload.MetricId{
     .samples_dropped,
 };
 
-test "semantic registry matches pinned sources" {
+test "test_semantic_registry_matches_pinned_sources" {
     // Only the core schema URL may ship: the pinned GenAI commit publishes none.
     try std.testing.expectEqualStrings("https://opentelemetry.io/schemas/1.43.0", semconv.CORE_SCHEMA_URL); // pin test: literal is the contract
     try std.testing.expectEqualStrings("agentsfleet", semconv.SERVICE_NAMESPACE); // pin test: literal is the contract
@@ -64,9 +64,11 @@ test "duration declares seconds and buckets the pinned agent boundaries" {
     const duration = payload.metaFor(.invoke_agent_duration);
     try std.testing.expectEqualStrings("s", duration.unit); // pin test: literal is the contract
     try std.testing.expect(duration.millis_to_seconds);
-    // Pinned upstream boundaries, expressed in the milliseconds the runner
-    // reports: 0.01s .. 81.92s.
-    const expected = [_]u64{ 10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480, 40960, 81920 }; // pin test: literal is the contract
+    // `gen_ai.invoke_agent.duration`'s OWN pinned boundaries, expressed in the
+    // milliseconds the runner reports: 0.1s .. 409.6s. The client-call table
+    // (0.01s .. 81.92s) belongs to `gen_ai.client.operation.duration` and would
+    // saturate here — a real agent run outlives its top bucket.
+    const expected = [_]u64{ 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400, 204800, 409600 }; // pin test: literal is the contract
     try std.testing.expectEqualSlices(u64, &expected, duration.bounds);
 }
 

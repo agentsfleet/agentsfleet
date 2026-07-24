@@ -120,3 +120,7 @@ pub fn templateFor(route: router.Route) []const u8 {
         .runner_bundle => protocol.PATH_RUNNERS ++ "/me/bundles/{content_hash}",
     };
 }
+
+test {
+    _ = @import("route_template_test.zig");
+}

@@ -225,8 +225,14 @@ pub fn modelAttributionCap(series_ceiling: usize) usize {
 /// runner reports integer `wall_ms` and every pinned bound is a whole multiple
 /// of 10 ms. Integer bucketing therefore stays exact; the serializer divides by
 /// `MILLIS_PER_SECOND` to emit the seconds the `s` unit declares.
+/// Pinned agent-invocation boundaries, in the milliseconds the runner reports.
+/// These are `gen_ai.invoke_agent.duration`'s own table (0.1s .. 409.6s), NOT
+/// `gen_ai.client.operation.duration`'s (0.01s .. 81.92s): an agent invocation
+/// runs orders of magnitude longer than one provider call, so the client table
+/// would pile every real run into its last buckets and lose the tail entirely.
 pub const DURATION_BUCKET_BOUNDS_MS = [_]u64{
-    10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480, 40960, 81920,
+    100,   200,   400,    800,    1600,   3200, 6400, // pin test: literal is the contract
+    12800, 25600, 51200,  102400, 204800, 409600, // pin test: literal is the contract
 };
 
 /// Pinned token-usage boundaries, in tokens.
@@ -237,11 +243,17 @@ pub const TOKEN_BUCKET_BOUNDS = [_]u64{
 
 pub const MILLIS_PER_SECOND: u64 = 1000;
 
+/// Widest pinned bound table. The payload sizes ONE bucket array for every
+/// histogram, so it must be cut to the longest table — upstream gives duration
+/// and token usage different lengths, and sizing to the shorter one would
+/// silently truncate the other metric's counts.
+pub const MAX_BUCKET_BOUNDS = @max(DURATION_BUCKET_BOUNDS_MS.len, TOKEN_BUCKET_BOUNDS.len);
+
 comptime {
-    // Both pinned tables must stay the same length: the payload sizes one
-    // bucket array for every histogram, so a divergent table would silently
-    // truncate one metric's counts.
-    std.debug.assert(DURATION_BUCKET_BOUNDS_MS.len == TOKEN_BUCKET_BOUNDS.len);
+    // Every pinned table must fit the shared array the payload cuts to
+    // `MAX_BUCKET_BOUNDS + 1` (bounds plus the trailing +Inf bucket).
+    std.debug.assert(DURATION_BUCKET_BOUNDS_MS.len <= MAX_BUCKET_BOUNDS);
+    std.debug.assert(TOKEN_BUCKET_BOUNDS.len <= MAX_BUCKET_BOUNDS);
     // Every duration bound must be a whole number of milliseconds that divides
     // evenly into the seconds the unit declares — the premise of integer-ms
     // bucketing against a seconds-unit histogram.
