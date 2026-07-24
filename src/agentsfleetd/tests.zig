@@ -257,6 +257,8 @@ test {
     _ = @import("fleet/concurrency_lease_test.zig");
     _ = @import("fleet/concurrency_renew_test.zig");
     _ = @import("fleet/integration_roundtrip_test.zig");
+    // Emitted credit deltas reconciled against the debits Postgres committed.
+    _ = @import("fleet/credit_metric_reconciliation_test.zig");
     _ = @import("fleet/integration_session_continuation_test.zig");
     _ = @import("fleet/placement_eligibility_test.zig");
     // Its `test { _ = importer; _ = store; }` façade never compiled, so it registered

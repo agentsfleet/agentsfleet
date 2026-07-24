@@ -125,9 +125,9 @@ test "every live attribute key fits the payload key bound" {
 test "bucketIndex maps observations to the right bucket" {
     const duration = payload.metaFor(.invoke_agent_duration).bounds;
     // Milliseconds in, because that is what the runner reports.
-    try std.testing.expectEqual(@as(usize, 0), payload.bucketIndex(5, duration)); // <= first bound (10ms)
-    try std.testing.expectEqual(@as(usize, 0), payload.bucketIndex(10, duration)); // inclusive upper edge
-    try std.testing.expectEqual(@as(usize, 2), payload.bucketIndex(37, duration)); // (20, 40]
+    try std.testing.expectEqual(@as(usize, 0), payload.bucketIndex(5, duration)); // <= first bound (100ms)
+    try std.testing.expectEqual(@as(usize, 0), payload.bucketIndex(100, duration)); // inclusive upper edge
+    try std.testing.expectEqual(@as(usize, 2), payload.bucketIndex(370, duration)); // (200, 400]
     // Past the last bound → the trailing +Inf bucket.
     try std.testing.expectEqual(@as(usize, duration.len), payload.bucketIndex(999_999, duration));
 
@@ -175,9 +175,9 @@ test "test_metric_descriptors_match_semantic_schema" {
     try std.testing.expect(std.mem.indexOf(u8, body, "\"histogram\":{\"aggregationTemporality\":1") != null); // pin test: literal is the contract
 
     // Seconds on the wire from a millisecond observation, with no float math:
-    // 37ms → 0.037s, and the first pinned bound 10ms → 0.010s.
+    // 37ms → 0.037s, and the first pinned agent bound 100ms → 0.100s.
     try std.testing.expect(std.mem.indexOf(u8, body, "\"sum\":0.037") != null); // pin test: literal is the contract
-    try std.testing.expect(std.mem.indexOf(u8, body, "\"explicitBounds\":[0.010,0.020,0.040") != null); // pin test: literal is the contract
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"explicitBounds\":[0.100,0.200,0.400") != null); // pin test: literal is the contract
 
     // Standard attribute keys, and none of the superseded private ones.
     try std.testing.expect(std.mem.indexOf(u8, body, semconv.ATTR_EXECUTION_POSTURE) != null);
@@ -411,9 +411,11 @@ test "the serialized payload matches the pinned OTLP-JSON fixture" {
     _ = payload.addLabel(&s_dur, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
     _ = payload.addLabel(&s_dur, semconv.ATTR_REQUEST_MODEL, MODEL);
 
-    // One 37ms observation → the (20, 40] bucket, index 2.
+    // One 37ms observation → the first bucket (≤ 0.1s), index 0. On the
+    // client-call table this landed at index 2; the agent table starts a decade
+    // later because an agent invocation is not a single provider call.
     var dur_buckets = [_]u64{0} ** payload.N_BUCKETS;
-    dur_buckets[2] = 1;
+    dur_buckets[0] = 1;
     // One 42-token observation → the (16, 64] bucket, index 3.
     var tok_buckets = [_]u64{0} ** payload.N_BUCKETS;
     tok_buckets[3] = 1;

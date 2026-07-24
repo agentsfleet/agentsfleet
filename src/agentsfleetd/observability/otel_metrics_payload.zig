@@ -38,10 +38,10 @@ pub const MetricId = enum {
 
 pub const MetricKind = enum { sum, histogram };
 
-/// Buckets = the widest pinned bound table plus the trailing +Inf bucket. Both
-/// pinned tables are the same length (asserted in semconv), so one array size
-/// serves every histogram.
-pub const N_BUCKETS: usize = semconv.DURATION_BUCKET_BOUNDS_MS.len + 1;
+/// Buckets = the widest pinned bound table plus the trailing +Inf bucket. The
+/// tables differ in length upstream, so this cuts to the longest; each metric is
+/// serialized against its own `meta.bounds.len + 1` slice of the array.
+pub const N_BUCKETS: usize = semconv.MAX_BUCKET_BOUNDS + 1;
 
 pub const Label = struct {
     key: [MAX_LABEL_KEY]u8,
