@@ -14,18 +14,21 @@ const pg = @import("pg");
 const base = @import("test_fixtures.zig");
 const PgQuery = @import("pg_query.zig").PgQuery;
 
+const IndexRef = struct { schema: []const u8, name: []const u8 };
+
 /// Indexes slot 034 retires. All three are defined in shipped slots (010, 012,
 /// 015), so their absence proves the migration ran, not merely that they were
-/// never made.
-const RETIRED_INDEXES = [_][]const u8{
-    "idx_api_keys_key_hash_active",
-    "idx_memory_entries_fleet_id",
-    "idx_fleet_events_workspace_id_created_at",
+/// never made. Schema-qualified so the absence check reads the one object that
+/// owns the name, not a same-named index in another schema.
+const RETIRED_INDEXES = [_]IndexRef{
+    .{ .schema = "core", .name = "idx_api_keys_key_hash_active" },
+    .{ .schema = "memory", .name = "idx_memory_entries_fleet_id" },
+    .{ .schema = "core", .name = "idx_fleet_events_workspace_id_created_at" },
 };
 
 /// Deliberately KEPT: it recorded scans under the workload, so it failed the
 /// zero-scan bar. Pinned here so a later cleanup cannot quietly widen the drop.
-const KEPT_INDEX = "idx_memory_entries_category";
+const KEPT_INDEX = IndexRef{ .schema = "memory", .name = "idx_memory_entries_category" };
 
 const KEY_PREFIX = "rmprobe-key-";
 const MEM_ID_PREFIX = "rmprobe-mem-";
@@ -50,14 +53,8 @@ const TestDb = struct {
     }
 };
 
-fn indexExists(conn: *pg.Conn, name: []const u8) !bool {
-    var q = PgQuery.from(try conn.query(
-        "SELECT COUNT(*)::bigint FROM pg_indexes WHERE indexname = $1",
-        .{name},
-    ));
-    defer q.deinit();
-    const row = (try q.next()) orelse return error.DbRowShape;
-    return (try row.get(i64, 0)) > 0;
+fn indexExists(conn: *pg.Conn, ref: IndexRef) !bool {
+    return (try base.indexCount(conn, ref.schema, ref.name)) > 0;
 }
 
 fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8) ![]u8 {
@@ -74,22 +71,17 @@ fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8) ![]u8 {
     return out.toOwnedSlice(alloc);
 }
 
-/// The index exists and indexes exactly `want_columns` — read back from the
-/// catalog, so a reorder or dropped direction fails here.
-fn expectIndexShape(alloc: std.mem.Allocator, conn: *pg.Conn, name: []const u8, want_columns: []const u8) !void {
-    var q = PgQuery.from(try conn.query("SELECT indexdef FROM pg_indexes WHERE indexname = $1", .{name}));
-    defer q.deinit();
-    const row = (try q.next()) orelse {
-        std.debug.print("index {s} does not exist\n", .{name});
-        return error.IndexMissing;
+/// The index exists in `schema` and indexes exactly `want_columns` — read
+/// structurally from the catalog (see `base.indexKeyColumns`), so a reorder or
+/// dropped direction fails here.
+fn expectIndexShape(alloc: std.mem.Allocator, conn: *pg.Conn, schema: []const u8, name: []const u8, want_columns: []const u8) !void {
+    const got = base.indexKeyColumns(alloc, conn, schema, name) catch |err| {
+        if (err == error.IndexMissing) std.debug.print("index {s}.{s} does not exist\n", .{ schema, name });
+        return err;
     };
-    const def = try alloc.dupe(u8, try row.get([]const u8, 0));
-    defer alloc.free(def);
-    const open = std.mem.lastIndexOfScalar(u8, def, '(') orelse return error.IndexDefUnparsed;
-    const close = std.mem.lastIndexOfScalar(u8, def, ')') orelse return error.IndexDefUnparsed;
-    const got = def[open + 1 .. close];
+    defer alloc.free(got);
     if (!std.mem.eql(u8, got, want_columns)) {
-        std.debug.print("index {s} columns:\n  want: {s}\n  got:  {s}\n", .{ name, want_columns, got });
+        std.debug.print("index {s}.{s} columns:\n  want: {s}\n  got:  {s}\n", .{ schema, name, want_columns, got });
         return error.IndexShapeChanged;
     }
 }
@@ -114,9 +106,9 @@ test "slot 034 retired exactly the three approved indexes" {
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
 
-    for (RETIRED_INDEXES) |name| {
-        if (try indexExists(db.conn, name)) {
-            std.debug.print("index {s} still present after slot 034\n", .{name});
+    for (RETIRED_INDEXES) |ref| {
+        if (try indexExists(db.conn, ref)) {
+            std.debug.print("index {s}.{s} still present after slot 034\n", .{ ref.schema, ref.name });
             return error.IndexNotRetired;
         }
     }
@@ -178,7 +170,7 @@ test "the composite still covers the fleet filter after the drop" {
     // a forced-index plan, both size independent. Whether the planner PREFERS it
     // over a sequential scan for the unbounded `listAll` is a scale-dependent
     // cost-model call (crossover measured near 3%), out of scope for this test.
-    try expectIndexShape(alloc, db.conn, "idx_memory_entries_fleet_id_updated_at_id", "fleet_id, updated_at DESC, id DESC");
+    try expectIndexShape(alloc, db.conn, "memory", "idx_memory_entries_fleet_id_updated_at_id", "fleet_id, updated_at DESC, id DESC");
     try expectServesFilter(alloc, db.conn,
         \\SELECT key, content, category FROM memory.memory_entries
         \\WHERE fleet_id = '0195b4ba-8d3a-7f13-8abc-0000000e0001'::uuid

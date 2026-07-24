@@ -79,26 +79,18 @@ fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8) ![]u8 {
     return out.toOwnedSlice(alloc);
 }
 
-/// The index exists and indexes exactly `want_columns`, in that order and those
-/// directions. Reads the definition back from the catalog, so a reorder or a
-/// dropped DESC fails here rather than silently changing which reads are served.
-fn expectIndexShape(alloc: std.mem.Allocator, conn: *pg.Conn, name: []const u8, want_columns: []const u8) !void {
-    var q = PgQuery.from(try conn.query(
-        "SELECT indexdef FROM pg_indexes WHERE indexname = $1",
-        .{name},
-    ));
-    defer q.deinit();
-    const row = (try q.next()) orelse {
-        std.debug.print("index {s} does not exist\n", .{name});
-        return error.IndexMissing;
+/// The index exists in `schema` and indexes exactly `want_columns`, in that
+/// order and those directions. Reads the KEY columns structurally from the
+/// catalog (see `base.indexKeyColumns`), so a reorder or a dropped DESC fails
+/// here rather than silently changing which reads are served.
+fn expectIndexShape(alloc: std.mem.Allocator, conn: *pg.Conn, schema: []const u8, name: []const u8, want_columns: []const u8) !void {
+    const got = base.indexKeyColumns(alloc, conn, schema, name) catch |err| {
+        if (err == error.IndexMissing) std.debug.print("index {s}.{s} does not exist\n", .{ schema, name });
+        return err;
     };
-    const def = try alloc.dupe(u8, try row.get([]const u8, 0));
-    defer alloc.free(def);
-    const open = std.mem.lastIndexOfScalar(u8, def, '(') orelse return error.IndexDefUnparsed;
-    const close = std.mem.lastIndexOfScalar(u8, def, ')') orelse return error.IndexDefUnparsed;
-    const got = def[open + 1 .. close];
+    defer alloc.free(got);
     if (!std.mem.eql(u8, got, want_columns)) {
-        std.debug.print("index {s} columns:\n  want: {s}\n  got:  {s}\n", .{ name, want_columns, got });
+        std.debug.print("index {s}.{s} columns:\n  want: {s}\n  got:  {s}\n", .{ schema, name, want_columns, got });
         return error.IndexShapeChanged;
     }
 }
@@ -227,7 +219,7 @@ test "affinity expiry sweep is served by its index" {
     try seedLeases(db.conn);
     try seedAffinity(db.conn);
 
-    try expectIndexShape(alloc, db.conn, "idx_runner_affinity_last_runner_id_leased_until", "last_runner_id, leased_until");
+    try expectIndexShape(alloc, db.conn, "fleet", "idx_runner_affinity_last_runner_id_leased_until", "last_runner_id, leased_until");
 
     // The sweep's own filter: this runs once per due runner per cycle, which is
     // why `last_runner_id` needed indexing at all.
@@ -247,7 +239,7 @@ test "reclaim lease lookup is served by its index" {
     try seedGraph(db.conn);
     try seedLeases(db.conn);
 
-    try expectIndexShape(alloc, db.conn, "idx_runner_leases_fleet_id_status_fencing_token", "fleet_id, status, fencing_token DESC");
+    try expectIndexShape(alloc, db.conn, "fleet", "idx_runner_leases_fleet_id_status_fencing_token", "fleet_id, status, fencing_token DESC");
 
     // Filter, ordering and LIMIT 1 in one seek — the trailing fencing_token is
     // what removes the sort, so a Sort node here means the index lost its point.
@@ -267,7 +259,7 @@ test "workspace event keyset is served by its index" {
     try seedGraph(db.conn);
     try seedEvents(db.conn);
 
-    try expectIndexShape(alloc, db.conn, "idx_fleet_events_workspace_id_created_at_event_id", "workspace_id, created_at DESC, event_id DESC");
+    try expectIndexShape(alloc, db.conn, "core", "idx_fleet_events_workspace_id_created_at_event_id", "workspace_id, created_at DESC, event_id DESC");
 
     // The trailing event_id is the keyset tiebreak; without it the cursor
     // comparison becomes a post-filter on every page.
