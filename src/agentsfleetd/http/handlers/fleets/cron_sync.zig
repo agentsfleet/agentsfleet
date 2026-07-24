@@ -6,6 +6,7 @@
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const cron_constants = @import("../../../cron/constants.zig");
+const sql = @import("sql.zig");
 const cron_model = @import("../../../cron/model.zig");
 const QStashClient = @import("../../../cron/QStashClient.zig");
 const Service = @import("../../../cron/Service.zig");
@@ -157,11 +158,7 @@ const StoredFleet = struct { config_json: []const u8, status: fleet_config.Fleet
 fn readStoredFleet(hx: Hx, workspace_id: []const u8, fleet_id: []const u8) !?StoredFleet {
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
-    var query = PgQuery.from(try conn.query(
-        \\SELECT config_json::text, status
-        \\FROM core.fleets
-        \\WHERE id = $1::uuid AND workspace_id = $2::uuid
-    , .{ fleet_id, workspace_id }));
+    var query = PgQuery.from(try conn.query(sql.SELECT_FLEET_CONFIG_AND_STATUS, .{ fleet_id, workspace_id }));
     defer query.deinit();
     const row = (try query.next()) orelse return null;
     const status = fleet_config.FleetStatus.fromSlice(try row.get([]const u8, 1)) orelse return error.InvalidFleetStatus;

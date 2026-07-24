@@ -18,6 +18,7 @@
 //! one binding ever exists per channel.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const pg = @import("pg");
 const constants = @import("common");
 const clock = constants.clock;
@@ -40,22 +41,6 @@ const CHANNEL_REF_PLACEHOLDER = "{channel_ref}";
 /// modest by design; the budget is built here, never parsed from skill.md).
 const RESIDENT_DAILY_DOLLARS = "1.0";
 const DEFAULT_SKILL = @embedFile("channel_bot_skill.md");
-
-const SELECT_BINDING_SQL =
-    \\SELECT fleet_id::text FROM core.connector_channels
-    \\WHERE provider = $1 AND external_account_id = $2 AND external_channel_id = $3
-;
-
-const INSERT_BINDING_SQL =
-    \\INSERT INTO core.connector_channels
-    \\  (uid, provider, external_account_id, external_channel_id, fleet_id, kind, created_at)
-    \\VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7)
-    \\ON CONFLICT (provider, external_account_id, external_channel_id) DO NOTHING
-;
-
-const SELECT_FLEET_BY_NAME_SQL =
-    \\SELECT id::text FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2
-;
 
 /// Resolve the resident fleet for `(team_id, channel_id)`, materializing it on
 /// a binding miss. Returns an owned `channel_fleet_id` (caller frees).
@@ -163,14 +148,14 @@ fn resolveExistingByName(
 }
 
 fn selectBinding(alloc: std.mem.Allocator, conn: *pg.Conn, team_id: []const u8, channel_id: []const u8) !?[]const u8 {
-    var q = PgQuery.from(try conn.query(SELECT_BINDING_SQL, .{ spec.PROVIDER, team_id, channel_id }));
+    var q = PgQuery.from(try conn.query(sql.SELECT_CHANNEL_FLEET, .{ spec.PROVIDER, team_id, channel_id }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     return try alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
 fn selectFleetByName(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8, name: []const u8) !?[]const u8 {
-    var q = PgQuery.from(try conn.query(SELECT_FLEET_BY_NAME_SQL, .{ workspace_id, name }));
+    var q = PgQuery.from(try conn.query(sql.SELECT_FLEET_BY_NAME, .{ workspace_id, name }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     return try alloc.dupe(u8, try row.get([]const u8, 0));
@@ -179,7 +164,7 @@ fn selectFleetByName(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []c
 fn insertBinding(alloc: std.mem.Allocator, conn: *pg.Conn, team_id: []const u8, channel_id: []const u8, fleet_id: []const u8) !void {
     const uid = try id_format.generateConnectorChannelId(alloc);
     defer alloc.free(uid);
-    _ = try conn.exec(INSERT_BINDING_SQL, .{ uid, spec.PROVIDER, team_id, channel_id, fleet_id, KIND_RESIDENT, clock.nowMillis() });
+    _ = try conn.exec(sql.INSERT_CHANNEL_BINDING, .{ uid, spec.PROVIDER, team_id, channel_id, fleet_id, KIND_RESIDENT, clock.nowMillis() });
 }
 
 /// The reactive config (Invariant 2), built in code — one parameterless `api`

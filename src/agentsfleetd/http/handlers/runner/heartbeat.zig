@@ -6,6 +6,7 @@
 //! (liveness is written here, not on every authed call, per docs/AUTH.md).
 
 const constants = @import("common");
+const sql = @import("sql.zig");
 const clock = constants.clock;
 const logging = @import("log");
 const httpz = @import("httpz");
@@ -47,23 +48,7 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
         return;
     };
     defer hx.alloc.free(event_row_id);
-    _ = conn.exec(
-        \\WITH locked AS (
-        \\  SELECT id, last_seen_at FROM fleet.runners WHERE id = $1::uuid FOR UPDATE
-        \\), bumped AS (
-        \\  UPDATE fleet.runners r
-        \\  SET last_seen_at = $2::bigint, updated_at = $2::bigint
-        \\  FROM locked
-        \\  WHERE r.id = locked.id
-        \\  RETURNING locked.last_seen_at
-        \\)
-        \\INSERT INTO fleet.runner_events
-        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\SELECT $3::uuid, $1::uuid, $4::text, $2::bigint,
-        \\       jsonb_build_object($5::text, last_seen_at), NULL, $2::bigint
-        \\FROM bumped
-        \\WHERE last_seen_at = $6::bigint OR ($2::bigint - last_seen_at) > $7::bigint
-    , .{
+    _ = conn.exec(sql.HEARTBEAT_WITH_TRANSITION_EVENT, .{
         runner_id,
         now_ms,
         event_row_id,
@@ -78,9 +63,7 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
 }
 
 fn bumpOnly(conn: anytype, runner_id: []const u8, now_ms: i64) void {
-    _ = conn.exec(
-        \\UPDATE fleet.runners SET last_seen_at = $2, updated_at = $2 WHERE id = $1::uuid
-    , .{ runner_id, now_ms }) catch |err| {
+    _ = conn.exec(sql.TOUCH_RUNNER_LAST_SEEN, .{ runner_id, now_ms }) catch |err| {
         log.warn(LOG_EVENT_HEARTBEAT_BUMP_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .err = @errorName(err) });
     };
 }

@@ -45,6 +45,23 @@ test "globToLike: literal percent and underscore are escaped" {
     try testing.expectEqualStrings("100\\%\\_done", got);
 }
 
+test "globToLike: trailing backslash is escaped, not left dangling" {
+    // A pattern ending in a lone backslash is an unterminated escape sequence.
+    // PostgreSQL rejects it with SQLSTATE 22025, so this reached the caller as a
+    // 500 on an actor filter a user is entitled to type.
+    const got = try filter_mod.globToLike(testing.allocator, "svc\\");
+    defer testing.allocator.free(got);
+    try testing.expectEqualStrings("svc\\\\", got);
+}
+
+test "globToLike: interior backslash matches a literal backslash" {
+    // Before escaping, the backslash consumed the character after it: `a\b`
+    // matched a literal `b` rather than the backslash the user typed.
+    const got = try filter_mod.globToLike(testing.allocator, "domain\\user");
+    defer testing.allocator.free(got);
+    try testing.expectEqualStrings("domain\\\\user", got);
+}
+
 test "globToLike: exact match passes through" {
     const got = try filter_mod.globToLike(testing.allocator, "webhook:github");
     defer testing.allocator.free(got);

@@ -10,6 +10,7 @@
 // and are re-exported here for callers that want a single import.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
@@ -158,28 +159,14 @@ pub const ResolveArgs = struct {
         defer pool.release(conn);
 
         const now_ms = clock.nowMillis();
-        var update_q = PgQuery.from(try conn.query(
-            \\UPDATE core.fleet_approval_gates
-            \\SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
-            \\WHERE action_id = $5 AND status = $6
-            \\  AND ($7::text = '' OR fleet_id::text = $7)
-            \\RETURNING id::text, action_id, workspace_id::text, fleet_id::text,
-            \\          status, COALESCE(updated_at, $4::bigint), resolved_by, detail
-        , .{ self.outcome.toSlice(), self.reason, self.by, now_ms, self.action_id, PENDING_STATUS, self.fleet_id_filter }));
+        var update_q = PgQuery.from(try conn.query(sql.RESOLVE_GATE, .{ self.outcome.toSlice(), self.reason, self.by, now_ms, self.action_id, PENDING_STATUS, self.fleet_id_filter }));
         defer update_q.deinit();
 
         if (try update_q.next()) |row| {
             return .{ .resolved = try readResolvedRow(alloc, row) };
         }
 
-        var select_q = PgQuery.from(try conn.query(
-            \\SELECT id::text, action_id, workspace_id::text, fleet_id::text,
-            \\       status, COALESCE(updated_at, requested_at), resolved_by, detail
-            \\FROM core.fleet_approval_gates
-            \\WHERE action_id = $1
-            \\  AND ($2::text = '' OR fleet_id::text = $2)
-            \\ORDER BY requested_at DESC LIMIT 1
-        , .{ self.action_id, self.fleet_id_filter }));
+        var select_q = PgQuery.from(try conn.query(sql.SELECT_GATE_BY_ACTION, .{ self.action_id, self.fleet_id_filter }));
         defer select_q.deinit();
 
         if (try select_q.next()) |row| {
@@ -199,11 +186,7 @@ pub fn readTerminalDecision(pool: *pg.Pool, action_id: []const u8) !?GateStatus 
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    var q = PgQuery.from(try conn.query(
-        \\SELECT status FROM core.fleet_approval_gates
-        \\WHERE action_id = $1
-        \\ORDER BY requested_at DESC LIMIT 1
-    , .{action_id}));
+    var q = PgQuery.from(try conn.query(sql.SELECT_GATE_STATUS, .{action_id}));
     defer q.deinit();
 
     if (try q.next()) |row| {
@@ -231,13 +214,7 @@ fn insertPendingRow(
 
     const now_ms = clock.nowMillis();
     const timeout_at = now_ms +| detail.timeout_ms;
-    _ = try conn.exec(
-        \\INSERT INTO core.fleet_approval_gates
-        \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-        \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-        \\   resolved_by, status, detail, requested_at, created_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, '', $12, '', $13, $13)
-    , .{
+    _ = try conn.exec(sql.INSERT_GATE, .{
         gate_id,          fleet_id,               workspace_id,         action_id,           detail.tool, detail.action,
         detail.gate_kind, detail.proposed_action, detail.evidence_json, detail.blast_radius, timeout_at,  PENDING_STATUS,
         now_ms,

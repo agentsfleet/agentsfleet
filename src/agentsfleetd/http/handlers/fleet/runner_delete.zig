@@ -21,6 +21,7 @@
 //! uniformly a rejection rather than a bypass.
 
 const pg = @import("pg");
+const sql = @import("sql.zig");
 const logging = @import("log");
 
 const common = @import("../common.zig");
@@ -65,25 +66,7 @@ const Outcome = enum { missing, not_revoked, deleted };
 /// active" — the same CTE idiom as innerDeleteApiKey. Splitting this into a
 /// SELECT-then-DELETE would race an operator revoking concurrently.
 fn deleteRevoked(conn: *pg.Conn, runner_id: []const u8) !Outcome {
-    var q = PgQuery.from(conn.query(
-        \\WITH current_row AS (
-        \\    SELECT uid, admin_state
-        \\    FROM fleet.runners
-        \\    WHERE id = $1::uuid
-        \\), deleted AS (
-        \\    DELETE FROM fleet.runners r
-        \\    USING current_row c
-        \\    WHERE r.uid = c.uid AND c.admin_state = $2::text
-        \\    RETURNING r.uid::text
-        \\)
-        \\SELECT d.uid, TRUE AS changed
-        \\FROM deleted d
-        \\UNION ALL
-        \\SELECT c.uid::text, FALSE AS changed
-        \\FROM current_row c
-        \\WHERE NOT EXISTS (SELECT 1 FROM deleted)
-        \\LIMIT 1
-    , .{ runner_id, @tagName(protocol.AdminState.revoked) }) catch return error.DbError);
+    var q = PgQuery.from(conn.query(sql.DELETE_RUNNER_IF_IN_STATE, .{ runner_id, @tagName(protocol.AdminState.revoked) }) catch return error.DbError);
     defer q.deinit();
 
     const row = q.next() catch return error.DbError;

@@ -7,6 +7,7 @@
 //! the heartbeat handler only, not on every authed call).
 
 const httpz = @import("httpz");
+const sql = @import("sql.zig");
 const pg = @import("pg");
 
 const hx_mod = @import("../hx.zig");
@@ -32,10 +33,7 @@ pub fn innerRunnerSelf(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    var q = PgQuery.from(conn.query(
-        \\SELECT id::text, admin_state, host_id, sandbox_tier, last_seen_at
-        \\FROM fleet.runners WHERE id = $1::uuid
-    , .{runner_id}) catch {
+    var q = PgQuery.from(conn.query(sql.SELECT_RUNNER_SELF, .{runner_id}) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });

@@ -1,6 +1,7 @@
 //! GET /v1/api-keys — paginated, tenant-scoped listing.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const httpz = @import("httpz");
 
 const common = @import("../common.zig");
@@ -82,36 +83,7 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?PageRo
     const offset: i64 = @as(i64, q.page - 1) * @as(i64, q.page_size);
     const limit: i64 = q.page_size;
     // order_sql comes from sortClauseFor's fixed allowlist, never user input.
-    const list_sql = std.fmt.allocPrint(hx.alloc,
-        \\WITH total AS (
-        \\    SELECT COUNT(*)::bigint AS total
-        \\    FROM core.api_keys
-        \\    WHERE tenant_id = $1::uuid
-        \\),
-        \\page AS (
-        \\    SELECT uid, key_name, active, created_at, last_used_at, revoked_at
-        \\    FROM core.api_keys
-        \\    WHERE tenant_id = $1::uuid
-        \\    ORDER BY {s}
-        \\    LIMIT $2 OFFSET $3
-        \\),
-        \\page_rows AS (
-        \\    SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at,
-        \\           (SELECT total FROM total)::bigint AS total, false AS count_only,
-        \\           ROW_NUMBER() OVER (ORDER BY {s})::bigint AS page_ord
-        \\    FROM page
-        \\),
-        \\empty_page AS (
-        \\    SELECT ''::text, ''::text, false, 0::bigint, NULL::bigint, NULL::bigint,
-        \\           total, true, NULL::bigint
-        \\    FROM total
-        \\    WHERE NOT EXISTS (SELECT 1 FROM page)
-        \\)
-        \\SELECT * FROM page_rows
-        \\UNION ALL
-        \\SELECT * FROM empty_page
-        \\ORDER BY count_only ASC, page_ord ASC NULLS LAST
-    , .{ q.order_sql, q.order_sql }) catch {
+    const list_sql = std.fmt.allocPrint(hx.alloc, sql.SELECT_TENANT_KEY_PAGE_FMT, .{ q.order_sql, q.order_sql }) catch {
         common.internalOperationError(hx.res, "Query build failed", hx.req_id);
         return null;
     };

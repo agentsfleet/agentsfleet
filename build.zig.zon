@@ -1,6 +1,6 @@
 .{
     .name = .agentsfleetd,
-    .version = "0.21.0",
+    .version = "0.22.0",
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x263fc42fde813fea,
     .dependencies = .{

@@ -114,8 +114,15 @@ fn daysFromCivil(y_in: i32, m: u8, d: u8) i32 {
 }
 
 /// Translate a client glob (`steer:*`, `webhook:*`, `webhook:github`) to
-/// a SQL LIKE pattern. Escapes `%` and `_` so they do not become
-/// wildcards. `*` becomes `%`.
+/// a SQL LIKE pattern. Escapes `%`, `_` and `\` so they do not become
+/// wildcards or escapes. `*` becomes `%`.
+///
+/// The backslash has to be escaped for the same reason the other two do, and
+/// it is the one whose absence PostgreSQL treats as an error rather than a
+/// wrong match: a pattern ending in a lone `\` is an unterminated escape
+/// sequence (SQLSTATE 22025), which surfaced as a 500 on a filter a user is
+/// entitled to type. An interior `\` was worse than an error -- it silently
+/// escaped the character after it instead of matching a literal backslash.
 ///
 /// Caller owns the returned slice.
 pub fn globToLike(alloc: std.mem.Allocator, glob: []const u8) ![]u8 {
@@ -124,7 +131,7 @@ pub fn globToLike(alloc: std.mem.Allocator, glob: []const u8) ![]u8 {
     for (glob) |b| {
         switch (b) {
             '*' => try out.append(alloc, '%'),
-            '%', '_' => {
+            '%', '_', '\\' => {
                 try out.append(alloc, '\\');
                 try out.append(alloc, b);
             },

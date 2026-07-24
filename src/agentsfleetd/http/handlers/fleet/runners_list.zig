@@ -17,6 +17,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const pagination = @import("../pagination.zig");
+const sql = @import("sql.zig");
 const protocol = @import("contract").protocol;
 const constants = @import("common");
 
@@ -110,37 +111,8 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?PageRows {
     const offset: i64 = @as(i64, q.page - 1) * @as(i64, q.page_size);
     const limit: i64 = q.page_size;
     // order_sql is from sortClauseFor's fixed allowlist, never user input.
-    const list_sql = std.fmt.allocPrint(hx.alloc,
-        \\WITH filtered AS (
-        \\    SELECT r.id, r.host_id, r.sandbox_tier, r.admin_state, r.labels, r.last_seen_at, r.created_at,
-        \\           EXISTS (
-        \\               SELECT 1
-        \\               FROM fleet.runner_leases l
-        \\               WHERE l.runner_id = r.id
-        \\                 AND l.status = $1
-        \\                 AND l.lease_expires_at > $2
-        \\           ) AS has_live_lease
-        \\    FROM fleet.runners r
-        \\),
-        \\page AS (
-        \\    SELECT r.id::text, r.host_id, r.sandbox_tier, r.admin_state, r.labels::text, r.last_seen_at, r.created_at,
-        \\           r.has_live_lease, COUNT(*) OVER()::bigint AS total, false AS count_only,
-        \\           ROW_NUMBER() OVER (ORDER BY {s})::bigint AS page_ord
-        \\    FROM filtered r
-        \\    ORDER BY {s}
-        \\    LIMIT $3 OFFSET $4
-        \\),
-        \\total_row AS (
-        \\    SELECT ''::text, ''::text, ''::text, 'active'::text, '[]'::text, 0::bigint, 0::bigint,
-        \\           false, COUNT(*)::bigint, true, NULL::bigint
-        \\    FROM filtered
-        \\    WHERE NOT EXISTS (SELECT 1 FROM page)
-        \\)
-        \\SELECT * FROM page
-        \\UNION ALL
-        \\SELECT * FROM total_row
-        \\ORDER BY count_only ASC, page_ord ASC NULLS LAST
-    , .{ q.order_sql, q.order_sql }) catch {
+    // Statement text and the reasoning behind its shape live in `sql.zig`.
+    const list_sql = std.fmt.allocPrint(hx.alloc, sql.SELECT_RUNNER_PAGE_FMT, .{ q.order_sql, q.order_sql }) catch {
         common.internalOperationError(hx.res, "Query build failed", hx.req_id);
         return null;
     };
