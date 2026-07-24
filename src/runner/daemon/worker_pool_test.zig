@@ -10,6 +10,7 @@ const std = @import("std");
 const testing = std.testing;
 const Config = @import("config.zig");
 const worker_pool = @import("worker_pool.zig");
+const dts = @import("deadline_test_support.zig");
 
 /// A static daemon Config for the lifecycle tests — `dev_none`, static string
 /// fields (no allocator ownership, so no `deinit`). The workers never reach the
@@ -31,6 +32,8 @@ fn staticCfg(worker_count: u32) Config {
 
 test "pool spawns worker_count threads and joins them all cleanly" {
     const io = @import("common").globalIo();
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
     var env_map: std.process.Environ.Map = .init(testing.allocator);
     defer env_map.deinit();
 
@@ -41,13 +44,15 @@ test "pool spawns worker_count threads and joins them all cleanly" {
     var drain = std.atomic.Value(bool).init(false);
 
     const cfg = staticCfg(4);
-    var pool = try worker_pool.spawn(io, testing.allocator, cfg, &env_map, &stop, &drain);
+    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), cfg, &env_map, &stop, &drain);
     try testing.expectEqual(@as(usize, 4), pool.threads.len); // one handle per worker
     try pool.join(); // must return .ok — a hang is a stuck worker; an error is a leaked worker
 }
 
 test "pool drains via the drain flag as well as stop" {
     const io = @import("common").globalIo();
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
     var env_map: std.process.Environ.Map = .init(testing.allocator);
     defer env_map.deinit();
 
@@ -56,7 +61,7 @@ test "pool drains via the drain flag as well as stop" {
     var stop = std.atomic.Value(bool).init(false);
     var drain = std.atomic.Value(bool).init(true);
 
-    var pool = try worker_pool.spawn(io, testing.allocator, staticCfg(2), &env_map, &stop, &drain);
+    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(2), &env_map, &stop, &drain);
     try testing.expectEqual(@as(usize, 2), pool.threads.len);
     try pool.join();
 }
@@ -65,13 +70,15 @@ test "single-worker pool is the degenerate N=1 case" {
     // Invariant 6: worker_count=1 is one worker thread — today's single-fleet
     // daemon shape. Proves spawn/join holds at the boundary value.
     const io = @import("common").globalIo();
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
     var env_map: std.process.Environ.Map = .init(testing.allocator);
     defer env_map.deinit();
 
     var stop = std.atomic.Value(bool).init(true);
     var drain = std.atomic.Value(bool).init(false);
 
-    var pool = try worker_pool.spawn(io, testing.allocator, staticCfg(1), &env_map, &stop, &drain);
+    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(1), &env_map, &stop, &drain);
     try testing.expectEqual(@as(usize, 1), pool.threads.len);
     try pool.join();
 }

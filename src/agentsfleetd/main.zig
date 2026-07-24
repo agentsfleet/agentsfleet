@@ -1,5 +1,5 @@
 //! agentsfleet — agent delivery control plane.
-//! One Zig binary. Takes a spec. Ships a validated PR.
+//! One Zig binary. Takes a spec. Ships a validated Pull Request (PR).
 //!
 //! Subcommands:
 //!   serve      Start HTTP API server (default)
@@ -12,6 +12,7 @@ const builtin = @import("builtin");
 const logging = @import("log");
 const log_sinks = logging.sinks;
 const otel_logs = @import("observability/otel_logs.zig");
+const otlp_config = @import("observability/otlp/config.zig");
 
 const cli_commands = @import("cli/commands.zig");
 const cmd_serve = @import("cmd/serve.zig");
@@ -25,6 +26,9 @@ const S_INFO = "info";
 const S_DEBUG = "debug";
 const S_ERR = "err";
 const S_WARN = "warn";
+const S_SCOPE_OTEL_LOGS = "otel_logs";
+const S_SCOPE_OTEL_METRICS = "otel_metrics";
+const S_SCOPE_OTEL_TRACES = "otel_traces";
 
 var runtime_log_level = std.atomic.Value(u8).init(@intFromEnum(if (builtin.mode == .Debug) std.log.Level.debug else std.log.Level.info));
 
@@ -115,6 +119,7 @@ fn otlpSinkEmit(
 ) void {
     _ = ctx;
     _ = ts_ms;
+    if (!shouldExportLogScope(scope)) return;
     const level_str = switch (level) {
         .err => S_ERR,
         .warn => S_WARN,
@@ -125,6 +130,12 @@ fn otlpSinkEmit(
     // (`event=<n> key=value …`) from `logging.scoped(.x).<level>`.
     // OTLP receives the body verbatim — exporter splices envelope keys.
     otel_logs.enqueue(level_str, scope, body);
+}
+
+fn shouldExportLogScope(scope: []const u8) bool {
+    return !std.mem.eql(u8, scope, S_SCOPE_OTEL_LOGS) and
+        !std.mem.eql(u8, scope, S_SCOPE_OTEL_METRICS) and
+        !std.mem.eql(u8, scope, S_SCOPE_OTEL_TRACES);
 }
 
 fn registerProductionSinks() void {
@@ -191,7 +202,8 @@ pub fn main(init: std.process.Init) void {
     // Zig 0.16 removed std.posix.isatty; probe the TTY via the threaded io.
     const stderr_is_tty = std.Io.File.stderr().isTty(io) catch false;
     logging.initPrettyMode(eff_env.get("AGENTSFLEET_LOG_PRETTY"), stderr_is_tty);
-    // Production log sinks (stderr + OTLP). Until this call, agentsfleetdLog
+    // Production log sinks (stderr + OpenTelemetry Protocol (OTLP)). Until this
+    // call, agentsfleetdLog
     // falls through to direct stderr write so the env-load logs above
     // still reach the operator. After this, every emit fans out through
     // the registry — same observable behavior, plus a hook for tests.
@@ -236,4 +248,22 @@ test "parseLogLevel accepts common values" {
     try std.testing.expectEqual(@as(?std.log.Level, .warn), parseLogLevel("warning"));
     try std.testing.expectEqual(@as(?std.log.Level, .err), parseLogLevel("error"));
     try std.testing.expectEqual(@as(?std.log.Level, null), parseLogLevel("trace"));
+}
+
+test "test_exporter_failure_scope_bypasses_otlp_log_sink" {
+    const cfg: otlp_config.GrafanaOtlpConfig = .{
+        .endpoint = "http://127.0.0.1:0",
+        .instance_id = "i",
+        .api_key = "k",
+    };
+    otel_logs.testSetInstalled(cfg);
+    defer otel_logs.testClear();
+
+    otlpSinkEmit(log_sinks.statelessCtx(), .warn, S_SCOPE_OTEL_LOGS, 0, "failed");
+    otlpSinkEmit(log_sinks.statelessCtx(), .warn, S_SCOPE_OTEL_METRICS, 0, "failed");
+    otlpSinkEmit(log_sinks.statelessCtx(), .warn, S_SCOPE_OTEL_TRACES, 0, "failed");
+    try std.testing.expectEqual(@as(usize, 0), otel_logs.testPendingCount());
+
+    otlpSinkEmit(log_sinks.statelessCtx(), .warn, "http", 0, "request_failed");
+    try std.testing.expectEqual(@as(usize, 1), otel_logs.testPendingCount());
 }

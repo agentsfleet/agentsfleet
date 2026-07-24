@@ -57,9 +57,19 @@ send_timeout_ms: u31 = HUB_SEND_TIMEOUT_MS,
 /// `stop()`'s bounded wait for closed streams to detach. Default = prod's
 /// `STOP_DRAIN_MAX_MS`; tests lower it to exercise the undrained path.
 stop_drain_max_ms: u64 = STOP_DRAIN_MAX_MS,
-/// Bounds every wire send by shutting the socket down at the deadline.
-/// One instance suffices: `wire` serializes sends, so at most one is armed.
-send_watchdog: SendWatchdog = .{},
+/// Borrowed process deadline scheduler. Null only in fixtures that never dial;
+/// a wire send with no scheduler is refused rather than run unbounded.
+sched: ?*call_deadline.ProcessScheduler = null,
+/// Generation-guarded ownership of the INSTALLED connection's socket. Stable
+/// address (a hub field), so a registration may point at it while `conn` itself
+/// is replaced by a reconnect.
+wire_owner: call_deadline.SocketOwner = .{},
+/// The generation `conn` was installed under. A send armed on an older one is
+/// stale, which is what makes a reconnect race harmless.
+wire_generation: u64 = 0,
+/// One absolute budget for a whole connection attempt (resolve → dial → TLS →
+/// AUTH), so a stall in any stage cannot reset the allowance.
+setup_timeout_ms: u31 = HUB_SETUP_TIMEOUT_MS,
 /// Fan-out snapshot buffer — reader-thread-confined (C5; joined by `stop`
 /// before teardown). Retained across frames so a steady-state fan-out allocates
 /// nothing; lets the reader copy the subscriber set out from under `mutex` and
@@ -71,10 +81,6 @@ const ChannelEntry = struct {
     subscribers: std.ArrayList(*Subscription) = .empty,
 };
 
-/// Silent mechanism (`Watchdog(null)`): fire/refusal logging happens here
-/// where the channel context lives — mirrors the connectors' bounded_fetch.
-const SendWatchdog = call_deadline.Watchdog(null);
-
 /// Default reader wake cadence — bounds stop latency, reconnect detection, and
 /// pickup delay for wire commands behind a quiet socket. The per-instance
 /// `read_timeout_ms` field defaults to this; the test harness overrides it.
@@ -83,6 +89,9 @@ const HUB_READ_TIMEOUT_MS: u32 = 1_000;
 /// this long, never the daemon: the fired watchdog kills the socket and the
 /// reconnect path takes over.
 const HUB_SEND_TIMEOUT_MS: u31 = 5_000;
+/// Whole-attempt setup budget: resolve + dial + TLS + AUTH share it, so a
+/// stalled handshake cannot hold a boot or a reconnect open indefinitely.
+const HUB_SETUP_TIMEOUT_MS: u31 = 10_000;
 /// `stop()` waits (bounded) for closed streams to detach so a late
 /// `unsubscribe` can never touch a deinit'd channel map.
 const STOP_DRAIN_MAX_MS: u64 = 5_000;
@@ -95,13 +104,15 @@ pub fn init(alloc: std.mem.Allocator, io: std.Io) Self {
 /// Dial the shared connection and start the reader thread. Boot path —
 /// failure here is a startup failure, mirroring the queue client connect.
 /// Single-threaded: the reader does not exist yet, so `conn` is set bare.
-pub fn start(self: *Self, cfg: redis_config.Config) !void {
+pub fn start(self: *Self, cfg: redis_config.Config, sched: *call_deadline.ProcessScheduler) !void {
     self.cfg = cfg;
-    var conn = try redis_subscriber.connectFromConfig(self.io, self.alloc, cfg, .{ .read_timeout_ms = self.read_timeout_ms });
+    self.sched = sched;
+    var conn = try hub_wire.connectBounded(self);
     errdefer conn.deinit();
     conn.installReadTimeout();
     self.conn = conn;
     errdefer self.conn = null;
+    hub_wire.adoptConnection(self);
     self.reader_thread = try std.Thread.spawn(.{}, reader.readerMain, .{self});
     log.debug("hub_started", .{ .host = cfg.host, .port = cfg.port });
 }
@@ -133,11 +144,11 @@ pub fn stop(self: *Self) void {
     }
     self.wire.lockUncancelable(self.io);
     if (self.conn) |*c| {
+        hub_wire.retireConnection(self);
         c.deinit();
         self.conn = null;
     }
     self.wire.unlock(self.io);
-    self.send_watchdog.deinit();
 }
 
 /// Frees map storage. Call after `stop()` AND after every stream thread has
@@ -289,46 +300,20 @@ fn channelLive(self: *Self, channel_name: []const u8) bool {
 /// connection is installed (reconnect gap — the post-redial sweep covers it).
 /// pub for the reader's post-install delta pass.
 pub fn wireSendSubscribe(self: *Self, channel_name: []const u8) void {
-    self.wireSend(.subscribe, channel_name);
+    hub_wire.wireSend(self, .subscribe, channel_name);
 }
 
 fn wireSendUnsubscribe(self: *Self, channel_name: []const u8) void {
-    self.wireSend(.unsubscribe, channel_name);
+    hub_wire.wireSend(self, .unsubscribe, channel_name);
 }
 
-const WireVerb = enum { subscribe, unsubscribe };
-
-fn wireSend(self: *Self, verb: WireVerb, channel_name: []const u8) void {
-    self.wire.lockUncancelable(self.io);
-    defer self.wire.unlock(self.io);
-    const conn_ptr = if (self.conn) |*c| c else return;
-    if (self.send_watchdog.arm(conn_ptr.socketHandle(), self.send_timeout_ms) == .watchdog_unavailable) {
-        // No watchdog → an unbounded send is refused outright; the reconnect
-        // sweep re-subscribes from the map once the reader replaces the conn.
-        log.warn("hub_wire_send_refused", .{ .channel = channel_name });
-        return;
-    }
-    defer self.send_watchdog.disarm();
-    const send_result = switch (verb) {
-        .subscribe => conn_ptr.sendSubscribe(channel_name),
-        .unsubscribe => conn_ptr.sendUnsubscribe(channel_name),
-    };
-    send_result catch |err| {
-        // A failed write means the socket is dead (or was shut down by the
-        // deadline below); the reader's next read fails too and the
-        // reconnect sweep re-subscribes from the map.
-        log.warn("hub_wire_send_failed", .{ .verb = @tagName(verb), .channel = channel_name, .err = @errorName(err) });
-    };
-    if (self.send_watchdog.deadlineFired()) {
-        log.warn("hub_wire_write_slowpath", .{ .verb = @tagName(verb), .channel = channel_name, .deadline_ms = self.send_timeout_ms });
-    }
-}
 pub fn testDisconnectConnection(self: *Self) bool {
     self.wire.lockUncancelable(self.io);
     defer self.wire.unlock(self.io);
-    const conn = if (self.conn) |*c| c else return false;
-    call_deadline.shutdownSocket(conn.socketHandle());
-    return true;
+    if (self.conn == null) return false;
+    // Interrupt through the owner, exactly as a fired deadline would — the test
+    // seam cannot reach a descriptor the production path no longer exposes.
+    return self.wire_owner.target(self.wire_generation).interrupt() == .interrupted;
 }
 pub fn testHoldWire(self: *Self) void {
     self.wire.lockUncancelable(self.io);
@@ -344,6 +329,7 @@ const call_deadline = @import("call_deadline");
 const redis_config = @import("../queue/redis_config.zig");
 const redis_subscriber = @import("../queue/redis_subscriber.zig");
 const reader = @import("subscription_hub_reader.zig");
+const hub_wire = @import("subscription_hub_wire.zig");
 const log = logging.scoped(.subscription_hub);
 test {
     _ = @import("subscription_hub_test.zig");

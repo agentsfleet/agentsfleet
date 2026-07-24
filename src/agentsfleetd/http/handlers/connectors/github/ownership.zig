@@ -38,7 +38,7 @@ pub fn verify(hx: hx_mod.Hx, code: []const u8, installation_id: []const u8) anye
 
     var token_spec = TOKEN_SPEC;
     if (hx.ctx.connector_oauth_token_endpoint_override) |endpoint| token_spec.token_endpoint = endpoint;
-    const result = try oauth2.exchange(hx.alloc, hx.ctx.io, token_spec, creds, code, redirect_uri);
+    const result = try oauth2.exchange(hx.alloc, hx.ctx.io, hx.ctx.deadline_scheduler, token_spec, creds, code, redirect_uri);
     defer hx.alloc.free(result.body);
     if (result.status != HTTP_OK) return error.ExchangeFailed;
 
@@ -79,9 +79,7 @@ fn verifyInstallation(hx: hx_mod.Hx, token: []const u8, installation_id: []const
         .{ .name = HEADER_AUTHORIZATION, .value = authorization },
         .{ .name = HEADER_API_VERSION, .value = API_VERSION },
     };
-    var watchdog: bounded_fetch.Watchdog = .{};
-    defer watchdog.deinit();
-    const response = try bounded_fetch.fetch(hx.alloc, hx.ctx.io, &watchdog, .{
+    const response = try bounded_fetch.fetch(hx.alloc, hx.ctx.io, hx.ctx.deadline_scheduler, .{
         .url = endpoint,
         .method = .GET,
         .extra_headers = &headers,

@@ -111,7 +111,7 @@ fn failOwnership(hx: hx_mod.Hx, err: anyerror) bool {
         error.NotConfigured => hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, "GitHub user authorization is not configured"),
         error.ExchangeFailed => hx.fail(ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED, "GitHub user authorization failed"),
         error.OwnershipDenied => hx.fail(ec.ERR_CONNECTOR_INSTALLATION_OWNERSHIP, "GitHub installation ownership could not be verified"),
-        error.DeadlineExceeded, error.WatchdogUnavailable, error.VendorUnreachable => hx.fail(ec.ERR_CONNECTOR_VENDOR_DEADLINE, "GitHub ownership verification did not complete"),
+        error.DeadlineExceeded, error.SchedulerUnavailable, error.VendorUnreachable => hx.fail(ec.ERR_CONNECTOR_VENDOR_DEADLINE, "GitHub ownership verification did not complete"),
         else => common.internalOperationError(hx.res, "Failed to complete GitHub connection", hx.req_id),
     }
     return false;

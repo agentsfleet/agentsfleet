@@ -68,7 +68,7 @@ pub fn removeAll(hx: Hx, fleet_id: []const u8) Result {
         hx.alloc.free(schedules);
     }
     if (schedules.len == 0) return .skipped;
-    var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
+    var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io, .sched = hx.ctx.deadline_scheduler };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = serviceFromContext(hx, &exchange, &destination_buffer) orelse return .unconfigured;
     for (schedules) |schedule| {
@@ -94,7 +94,7 @@ pub fn writeFailure(hx: Hx, result: Result) bool {
 }
 
 fn applySource(hx: Hx, fleet_id: []const u8, trigger: CronTrigger, desired: cron_model.DesiredStatus) Result {
-    var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
+    var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io, .sched = hx.ctx.deadline_scheduler };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = serviceFromContext(hx, &exchange, &destination_buffer) orelse return .unconfigured;
     var outcome = service.upsertSource(hx.alloc, .{
@@ -112,7 +112,7 @@ fn applySource(hx: Hx, fleet_id: []const u8, trigger: CronTrigger, desired: cron
 
 fn pauseSource(hx: Hx, fleet_id: []const u8) Result {
     if (!(sourceScheduleExists(hx, fleet_id) catch return .internal)) return .skipped;
-    var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
+    var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io, .sched = hx.ctx.deadline_scheduler };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = serviceFromContext(hx, &exchange, &destination_buffer) orelse return .unconfigured;
     var outcome = service.setSourceDesired(hx.alloc, fleet_id, SOURCE_KEY, .paused) catch |err| return mapError(err);
@@ -122,7 +122,7 @@ fn pauseSource(hx: Hx, fleet_id: []const u8) Result {
 
 fn removeSource(hx: Hx, fleet_id: []const u8, missing: MissingPolicy) Result {
     if (missing == .missing_ok and !(sourceScheduleExists(hx, fleet_id) catch return .internal)) return .skipped;
-    var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
+    var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io, .sched = hx.ctx.deadline_scheduler };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = serviceFromContext(hx, &exchange, &destination_buffer) orelse return .unconfigured;
     var outcome = service.removeSource(hx.alloc, fleet_id, SOURCE_KEY) catch |err| return mapError(err);
@@ -146,7 +146,7 @@ fn serviceFromContext(
     const qstash = if (hx.ctx.qstash_exchange_override) |override|
         QStashClient.init(override, credentials.url, destination)
     else blk: {
-        exchange.* = .{ .io = hx.ctx.io };
+        exchange.* = .{ .io = hx.ctx.io, .sched = hx.ctx.deadline_scheduler };
         break :blk QStashClient.init(exchange.exchange(), credentials.url, destination);
     };
     return Service.init(Store.init(hx.ctx.pool), qstash, credentials.token);

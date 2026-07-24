@@ -66,9 +66,7 @@ fn resolveResource(hx: hx_mod.Hx, access_token: []const u8) anyerror!Resource {
         .{ .name = HEADER_AUTHORIZATION, .value = auth },
         .{ .name = HEADER_ACCEPT, .value = CONTENT_TYPE_JSON },
     };
-    var wd: bounded_fetch.Watchdog = .{};
-    defer wd.deinit();
-    const resp = try bounded_fetch.fetch(hx.alloc, hx.ctx.io, &wd, .{
+    const resp = try bounded_fetch.fetch(hx.alloc, hx.ctx.io, hx.ctx.deadline_scheduler, .{
         .url = endpoint,
         .method = .GET,
         .extra_headers = &headers,

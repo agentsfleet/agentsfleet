@@ -17,10 +17,11 @@
 //! a strict improvement over the fully-unbounded pre-M108 call. See
 //! docs/architecture/connectors.md §Bounded outbound.
 //!
-//! Callers own watchdog lifetime by context: the outbound worker keeps one
-//! across its loop; the request-scoped paths (OAuth exchange, thread re-read)
-//! hold one per request — a watchdog arms exactly ONE call at a time, so a
-//! shared instance on a concurrent path would let two arms clobber each other.
+//! Every caller shares the ONE process scheduler and owns nothing per call: the
+//! generation-guarded `SocketOwner` is a stack local of `fetch`, so concurrent
+//! callers cannot clobber each other's deadline the way a shared watchdog
+//! instance could. A fire can only ever reach the exact connection generation
+//! that armed it, so a pooled descriptor recycled into a later call is safe.
 
 const std = @import("std");
 const logging = @import("log");
@@ -30,10 +31,10 @@ const ec = @import("../../../errors/error_registry.zig");
 
 const log = logging.scoped(.connectors);
 
-/// Silent mechanism (`Watchdog(null)`): the fire/refusal logging happens here
-/// in `fetch`, which knows the provider + call class the watchdog thread never
-/// sees.
-pub const Watchdog = call_deadline.Watchdog(null);
+/// The process-owned scheduler every connector call arms against. The refusal
+/// logging happens here in `fetch`, which knows the provider and call class the
+/// scheduler worker never sees.
+pub const Scheduler = call_deadline.ProcessScheduler;
 
 // Per-class vendor deadlines — named once, consumed by the call sites.
 /// OAuth token exchange (rare browser round-trip; generous).
@@ -51,9 +52,10 @@ pub const CallClass = enum { token_exchange, installation_verify, outbound_post,
 pub const Response = struct { status: u16, body: []u8 };
 
 pub const FetchError = error{
-    /// The deadline could not be armed (watchdog thread unavailable) — the
-    /// call was refused before any bytes were sent. Never runs unbounded.
-    WatchdogUnavailable,
+    /// The deadline could not be armed (the process scheduler is stopping or
+    /// out of identifiers) — the call was refused before any bytes were sent.
+    /// Never runs unbounded.
+    SchedulerUnavailable,
     /// The armed deadline fired mid-call (vendor accepted, then stalled).
     DeadlineExceeded,
     /// Dial/pin/transport failure without a deadline fire (vendor down, DNS,
@@ -75,20 +77,25 @@ pub const Call = struct {
 };
 
 // Class-neutral event name: warnRefused covers all three UZ-CONN-003 refusal
-// classes (deadline fired, watchdog unavailable, vendor unreachable), so the
+// classes (deadline fired, scheduler unavailable, vendor unreachable), so the
 // name must not imply "deadline" — `reason` carries the per-class distinction.
 const EV_VENDOR_REFUSED = "connector_vendor_call_refused";
 const R_DEADLINE = "deadline";
-const R_WATCHDOG_UNAVAILABLE = "watchdog_unavailable";
+const R_SCHEDULER_UNAVAILABLE = "scheduler_unavailable";
 const R_VENDOR_UNREACHABLE = "vendor_unreachable";
 
-/// Run one deadline-armed vendor call on a fresh per-call client. The caller's
-/// watchdog enforces the bound; on a fire the pooled socket is shut down and
-/// the call surfaces `DeadlineExceeded` (distinguished from an ordinary
-/// transport failure via the watchdog's fired flag).
-pub fn fetch(alloc: std.mem.Allocator, io: std.Io, wd: *Watchdog, call: Call) FetchError!Response {
+/// Run one deadline-armed vendor call on a fresh per-call client. The process
+/// scheduler enforces the bound; on a fire the pinned socket for THIS call's
+/// generation is shut down and the call surfaces `DeadlineExceeded`
+/// (distinguished from an ordinary transport failure via the owner's flag).
+pub fn fetch(alloc: std.mem.Allocator, io: std.Io, sched: *Scheduler, call: Call) FetchError!Response {
     var client: std.http.Client = .{ .allocator = alloc, .io = io };
     defer client.deinit();
+
+    // The control block exists before the connect, and its generation is what a
+    // deadline is armed against — never the descriptor number.
+    var owner: call_deadline.SocketOwner = .{};
+    const generation = owner.beginAttempt();
 
     // Armed or refused: no pin → no call (the runner client falls through to
     // an unarmed fetch here; connectors must not).
@@ -96,11 +103,20 @@ pub fn fetch(alloc: std.mem.Allocator, io: std.Io, wd: *Watchdog, call: Call) Fe
         warnRefused(call, R_VENDOR_UNREACHABLE);
         return FetchError.VendorUnreachable;
     };
-    if (wd.arm(handle, call.deadline_ms) == .watchdog_unavailable) {
-        warnRefused(call, R_WATCHDOG_UNAVAILABLE);
-        return FetchError.WatchdogUnavailable;
+    _ = owner.attachSocket(generation, handle);
+
+    var guard = sched.arm(owner.target(generation), call.deadline_ms) catch {
+        warnRefused(call, R_SCHEDULER_UNAVAILABLE);
+        return FetchError.SchedulerUnavailable;
+    };
+    // Retire the generation, then finish the guard. `finish` is the quiescence
+    // barrier: once it returns no interrupt callback is running or can start,
+    // so `owner` is safe to leave scope. Registered after `client.deinit` so it
+    // runs BEFORE it — the socket must not be torn down under a live callback.
+    defer {
+        owner.endAttempt();
+        _ = guard.finish();
     }
-    defer wd.disarm();
 
     // BUFFER GATE: Allocating writer over an ArrayList(u8) — append-as-you-go,
     // size unknown until the vendor responds; read once via toOwnedSlice.
@@ -114,14 +130,14 @@ pub fn fetch(alloc: std.mem.Allocator, io: std.Io, wd: *Watchdog, call: Call) Fe
         .payload = call.payload,
         .extra_headers = call.extra_headers,
         // A redirect's new leg dials a fresh connection whose read is OUTSIDE
-        // the armed handle (the watchdog holds the first socket) — that would
-        // re-open the unbounded-read window, and a deadline fire mid-redirect
-        // would shutdown() a possibly-recycled fd. Connector vendor endpoints
-        // are direct; treat a 3xx as the response, never chase it.
+        // the armed generation, re-opening the unbounded-read window. Connector
+        // vendor endpoints are direct; treat a 3xx as the response, never chase
+        // it. (The generation guard now makes a mid-redirect fire harmless
+        // rather than a recycled-fd kill, but the read would still be unbounded.)
         .redirect_behavior = .unhandled,
         .response_writer = &aw.writer,
     }) catch {
-        if (wd.deadlineFired()) {
+        if (owner.wasInterrupted()) {
             warnRefused(call, R_DEADLINE);
             return FetchError.DeadlineExceeded;
         }
@@ -171,6 +187,21 @@ const StallProbe = struct {
     const ELAPSED_BOUND_MS: i64 = 2_000;
 };
 
+/// A started process scheduler, as the daemon root owns one.
+const TestScheduler = struct {
+    backend: call_deadline.MonotonicBackend = .{},
+    sched: ?Scheduler = null,
+
+    fn start(self: *TestScheduler) !void {
+        self.sched = Scheduler.init(testing.allocator, &self.backend);
+        try self.sched.?.start();
+    }
+
+    fn deinit(self: *TestScheduler) void {
+        if (self.sched) |*s| s.deinit();
+    }
+};
+
 test "bounded_fetch: deadline fires on a stalled vendor and surfaces DeadlineExceeded" {
     const io = common_lib.globalIo();
     var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
@@ -181,11 +212,12 @@ test "bounded_fetch: deadline fires on a stalled vendor and surfaces DeadlineExc
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
 
-    var wd: Watchdog = .{};
-    defer wd.deinit();
+    var runner: TestScheduler = .{};
+    try runner.start();
+    defer runner.deinit();
 
     const t0 = common_lib.clock.nowMillis();
-    const err = fetch(testing.allocator, io, &wd, .{
+    const err = fetch(testing.allocator, io, &runner.sched.?, .{
         .url = url,
         .method = .POST,
         .payload = "{}",
@@ -195,11 +227,10 @@ test "bounded_fetch: deadline fires on a stalled vendor and surfaces DeadlineExc
     });
     const elapsed = common_lib.clock.nowMillis() - t0;
     try testing.expectError(FetchError.DeadlineExceeded, err);
-    try testing.expect(wd.deadlineFired());
     try testing.expect(elapsed < StallProbe.ELAPSED_BOUND_MS);
 }
 
-test "bounded_fetch: watchdog unavailable refuses the call fail-closed (no unbounded run)" {
+test "bounded_fetch: an unavailable scheduler refuses the call fail-closed (no unbounded run)" {
     const io = common_lib.globalIo();
     var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
     var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
@@ -209,11 +240,14 @@ test "bounded_fetch: watchdog unavailable refuses the call fail-closed (no unbou
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
 
-    var wd: Watchdog = .{ .force_spawn_fail_for_test = true };
-    defer wd.deinit();
+    // Never started: arming is refused, which is the fail-closed path a
+    // stopping process takes.
+    var backend: call_deadline.MonotonicBackend = .{};
+    var sched = Scheduler.init(testing.allocator, &backend);
+    defer sched.deinit();
 
     const t0 = common_lib.clock.nowMillis();
-    const err = fetch(testing.allocator, io, &wd, .{
+    const err = fetch(testing.allocator, io, &sched, .{
         .url = url,
         .method = .GET,
         .deadline_ms = TOKEN_EXCHANGE_DEADLINE_MS,
@@ -221,7 +255,7 @@ test "bounded_fetch: watchdog unavailable refuses the call fail-closed (no unbou
         .class = .token_exchange,
     });
     const elapsed = common_lib.clock.nowMillis() - t0;
-    try testing.expectError(FetchError.WatchdogUnavailable, err);
+    try testing.expectError(FetchError.SchedulerUnavailable, err);
     // Refused BEFORE the request: a stalled vendor cannot have bounded this —
     // only the refusal path returns this fast against a never-answering peer.
     try testing.expect(elapsed < StallProbe.DEADLINE_MS);
@@ -229,15 +263,15 @@ test "bounded_fetch: watchdog unavailable refuses the call fail-closed (no unbou
 
 test "bounded_fetch: unusable URL or dead vendor is refused, never fetched unarmed" {
     const io = common_lib.globalIo();
-    var wd: Watchdog = .{};
-    defer wd.deinit();
+    var runner: TestScheduler = .{};
+    try runner.start();
+    defer runner.deinit();
     // Unparseable / hostless URLs pin-fail → VendorUnreachable.
-    try testing.expectError(FetchError.VendorUnreachable, fetch(testing.allocator, io, &wd, .{
+    try testing.expectError(FetchError.VendorUnreachable, fetch(testing.allocator, io, &runner.sched.?, .{
         .url = "not a url",
         .method = .GET,
         .deadline_ms = OUTBOUND_POST_DEADLINE_MS,
         .provider = "test",
         .class = .outbound_post,
     }));
-    try testing.expect(!wd.deadlineFired());
 }

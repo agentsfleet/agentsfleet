@@ -23,6 +23,13 @@ const MAX_HEADERS = message.MAX_HEADERS;
 fn fakeHarness(alloc: std.mem.Allocator) TestHarness {
     return TestHarness{
         .alloc = alloc,
+        // Never started: this fixture makes no outbound call, and arming
+        // against a stopped scheduler fails closed.
+        .deadline_backend = .{},
+        // SAFETY: test fixture; this harness never starts the hub.
+        .hub_io = undefined,
+        // SAFETY: test fixture; the caller must not drive lifecycle methods.
+        .deadline_scheduler = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .pool = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.

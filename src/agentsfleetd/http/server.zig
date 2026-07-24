@@ -14,6 +14,8 @@ const route_scopes = @import("route_scopes.zig");
 const hx_mod = @import("handlers/hx.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const metrics = @import("../observability/metrics.zig");
+const metrics_trace = @import("../observability/metrics_trace.zig");
+const route_trace = @import("route_trace.zig");
 const ZeroizingAllocator = @import("../secrets/zeroizing_allocator.zig");
 const sensitive_request = @import("sensitive_request.zig");
 const logging = @import("log");
@@ -44,6 +46,14 @@ const HEADER_RATELIMIT_REMAINING = "X-RateLimit-Remaining";
 const HEADER_RATELIMIT_RESET = "X-RateLimit-Reset";
 const FMT_UNSIGNED = "{d}";
 const S_RATELIMIT_REMAINING_NONE = "0";
+const REQUEST_SPAN_NAME = "http.request";
+const ATTR_HTTP_ROUTE = "http.route";
+
+const RequestTrace = struct {
+    context: common.TraceContext,
+    wall_start_ns: u64,
+    boot_start_ns: i96,
+};
 
 pub const ServerConfig = struct {
     port: u16 = 3000,
@@ -149,8 +159,10 @@ fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *
         respondNotFound(res);
         return;
     };
+    const request_trace = beginRequestTrace(ctx.io, req);
+    defer finishRequestTrace(ctx.io, matched, res.status, path, request_trace);
     switch (route_table.classFor(matched)) {
-        .ops, .stream => invokeMatched(ctx, registry, req, res, matched, path),
+        .ops, .stream => dispatchMatchedRoute(ctx, registry, req, res, matched),
         .api => dispatchApi(ctx, registry, req, res, matched, path),
     }
 }
@@ -172,15 +184,29 @@ fn dispatchApi(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req
         respondBackpressureShed(ctx, res, live, path);
         return;
     }
-    invokeMatched(ctx, registry, req, res, matched, path);
+    dispatchMatchedRoute(ctx, registry, req, res, matched);
 }
 
-fn invokeMatched(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, matched: router.Route, path: []const u8) void {
-    // Resolve trace context from inbound traceparent header or generate root.
-    const tctx = common.resolveTraceContext(req);
-    const start_ns: u64 = @intCast(clock.nowNanos());
-    dispatchMatchedRoute(ctx, registry, req, res, matched);
-    emitRequestSpan(tctx, path, start_ns);
+fn beginRequestTrace(io: std.Io, req: *httpz.Request) RequestTrace {
+    return .{
+        .context = common.resolveTraceContext(req),
+        .wall_start_ns = @intCast(clock.nowNanos()),
+        .boot_start_ns = std.Io.Clock.boot.now(io).toNanoseconds(),
+    };
+}
+
+fn finishRequestTrace(io: std.Io, route: router.Route, status: u16, path: []const u8, lifetime: RequestTrace) void {
+    const boot_end_ns = std.Io.Clock.boot.now(io).toNanoseconds();
+    const monotonic_second: u64 = @intCast(@divTrunc(lifetime.boot_start_ns, std.time.ns_per_s));
+    switch (route_trace.decide(route, status, &lifetime.context.span_id, monotonic_second)) {
+        .emit => emitRequestSpan(
+            lifetime.context,
+            path,
+            lifetime.wall_start_ns,
+            route_trace.endEpochNanos(lifetime.wall_start_ns, lifetime.boot_start_ns, boot_end_ns),
+        ),
+        .suppress => |reason| metrics_trace.inc(reason),
+    }
 }
 
 /// 429 shed: problem+json envelope + Retry-After + X-RateLimit-* (instance
@@ -212,10 +238,9 @@ fn headerUint(res: *httpz.Response, name: []const u8, value: u64) void {
     } else |_| {}
 }
 
-fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) void {
-    const end_ns: u64 = @intCast(clock.nowNanos());
-    var span = otel_traces.buildSpan(tctx, "http.request", start_ns, end_ns);
-    _ = otel_traces.addAttr(&span, "http.route", path);
+fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64, end_ns: u64) void {
+    var span = otel_traces.buildSpan(tctx, REQUEST_SPAN_NAME, start_ns, end_ns);
+    _ = otel_traces.addAttr(&span, ATTR_HTTP_ROUTE, path);
     otel_traces.enqueueSpan(span);
 }
 

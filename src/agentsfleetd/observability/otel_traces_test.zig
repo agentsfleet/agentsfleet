@@ -2,6 +2,7 @@ const std = @import("std");
 const trace = @import("trace.zig");
 const otel_traces = @import("otel_traces.zig");
 const otlp_config = @import("otlp/config.zig");
+const health = @import("metrics_otel.zig");
 
 const TEST_CFG: otlp_config.GrafanaOtlpConfig = .{
     .endpoint = "http://127.0.0.1:0",
@@ -147,6 +148,25 @@ test "enqueueSpan is no-op when exporter not installed" {
     enqueueSpan(entry);
 }
 
+test "test_traces_full_ring_records_discard_and_only_accepted_wake" {
+    health.resetForTest();
+    defer health.resetForTest();
+    otel_traces.testSetInstalled(TEST_CFG);
+    defer otel_traces.testClear();
+
+    const entry = buildSpan(trace.TraceContext.generate(), "selected", 0, 1);
+    for (0..BUFFER_CAPACITY - 1) |_| enqueueSpan(entry);
+    enqueueSpan(entry);
+
+    const snapshot = health.snapshot();
+    try std.testing.expectEqual(@as(usize, BUFFER_CAPACITY - 1), otel_traces.testPendingCount());
+    try std.testing.expectEqual(@as(u32, BUFFER_CAPACITY - 1), otel_traces.testAcceptedSinceCycle());
+    try std.testing.expectEqual(
+        @as(u64, 1),
+        snapshot.discarded[@intFromEnum(health.Signal.traces)][@intFromEnum(health.DiscardReason.ring_full)],
+    );
+}
+
 test "collectSpans serializes valid single-quoted JSON (json.fmt double-quote regression)" {
     const alloc = std.testing.allocator;
     otel_traces.testSetInstalled(TEST_CFG);
@@ -248,4 +268,16 @@ test "manual TraceContext with external trace_id produces aligned spans" {
     try std.testing.expectEqualSlices(u8, &root_span.trace_id, &child_span.trace_id);
     try std.testing.expectEqualSlices(u8, &root_span.span_id, &child_span.parent_span_id);
     try std.testing.expectEqualStrings(external_trace_id, &root_span.trace_id);
+}
+
+test "collectSpans frees its envelope when the ring drains empty" {
+    const alloc = std.testing.allocator;
+    otel_traces.testSetInstalled(TEST_CFG);
+    defer otel_traces.testClear();
+
+    // No spans pending: collect writes the resourceSpans prefix, finds nothing
+    // to serialize, and returns empty. The testing allocator's leak check is the
+    // assertion — the early return must release that prefix, and errdefer does
+    // not fire on a successful return.
+    try std.testing.expect((try otel_traces.testCollect(alloc, TEST_CFG)) == null);
 }

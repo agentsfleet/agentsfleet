@@ -4,13 +4,15 @@ const payload = @import("otel_metrics_payload.zig");
 const aggregate = @import("otel_metrics_aggregate.zig");
 const cardinality = @import("otel_metrics_cardinality.zig");
 const otlp_config = @import("otlp/config.zig");
+const health = @import("metrics_otel.zig");
 
 const Ring = otel_metrics.TestRing;
 const BUFFER_CAPACITY = otel_metrics.TEST_BUFFER_CAPACITY;
 
-// Pinned label values reused across tests — literal is the contract.
+// Pinned label values reused across tests — literal is the source of truth.
 const POSTURE = "standard";
 const MODEL = "claude-opus-4-8";
+const WORKSPACE_FIXTURE_FMT = "ws-{d}";
 
 fn sampleWithLabels(id: payload.MetricId, value: i64) payload.Sample {
     var s = payload.newSample(id, value);
@@ -150,7 +152,7 @@ test "test_uninstall_joins_cleanly: install then uninstall completes with no han
         .instance_id = "test-instance",
         .api_key = "test-key",
     };
-    _ = otel_metrics.install(cfg);
+    _ = otel_metrics.install(@import("common").globalIo(), cfg);
     try std.testing.expect(otel_metrics.isInstalled());
     // Empty ring → the flush thread never POSTs; uninstall wakes the tick sleep
     // and joins within one SLEEP_TICK_MS, leaving the exporter disabled.
@@ -215,7 +217,7 @@ test "test_observes_run_latency_histogram: observeRunDuration enqueues a histogr
     try std.testing.expectEqual(payload.MetricId.run_duration, s.id);
     try std.testing.expectEqual(@as(i64, 37), s.value);
     try std.testing.expectEqualStrings(POSTURE, findLabel(&s, payload.LABEL_POSTURE).?);
-    try std.testing.expect(findLabel(&s, payload.LABEL_WORKSPACE) == null); // duration carries no workspace
+    try std.testing.expect(findLabel(&s, payload.LABEL_WORKSPACE) == null);
 }
 
 test "test_dashboard_metric_names_match_constants: every emitted metric name is referenced by the dashboard" {
@@ -263,6 +265,8 @@ test "test_window_resets_after_flush: a flush drains + aggregates the window; th
 
 test "test_samples_dropped_emitted: ring overflow surfaces the samples_dropped self-metric" {
     const alloc = std.testing.allocator;
+    health.resetForTest();
+    defer health.resetForTest();
     otel_metrics.testSetInstalled(TEST_CFG);
     defer otel_metrics.testClear();
 
@@ -275,10 +279,18 @@ test "test_samples_dropped_emitted: ring overflow surfaces the samples_dropped s
     const body = (try otel_metrics.testCollectOnce(alloc, TEST_CFG)) orelse return error.NoBody;
     defer alloc.free(body);
     try std.testing.expect(std.mem.indexOf(u8, body, payload.METRIC_SAMPLES_DROPPED) != null);
+    const snapshot = health.snapshot();
+    try std.testing.expectEqual(@as(u32, otel_metrics.TEST_BUFFER_CAPACITY - 1), otel_metrics.testAcceptedSinceCycle());
+    try std.testing.expectEqual(
+        @as(u64, 9),
+        snapshot.discarded[@intFromEnum(health.Signal.metrics)][@intFromEnum(health.DiscardReason.ring_full)],
+    );
 }
 
 test "test_samples_dropped via the series-cap path (agg.dropped, not ring-full)" {
     const alloc = std.testing.allocator;
+    health.resetForTest();
+    defer health.resetForTest();
     otel_metrics.testSetInstalled(TEST_CFG);
     defer otel_metrics.testClear();
 
@@ -295,6 +307,11 @@ test "test_samples_dropped via the series-cap path (agg.dropped, not ring-full)"
     const body = (try otel_metrics.testCollectOnce(alloc, TEST_CFG)) orelse return error.NoBody;
     defer alloc.free(body);
     try std.testing.expect(std.mem.indexOf(u8, body, payload.METRIC_SAMPLES_DROPPED) != null);
+    const snapshot = health.snapshot();
+    try std.testing.expectEqual(
+        @as(u64, 1),
+        snapshot.discarded[@intFromEnum(health.Signal.metrics)][@intFromEnum(health.DiscardReason.aggregate_cap)],
+    );
 }
 
 test "test_workspace_label_cardinality_capped: distinct workspaces bounded by the cap" {
@@ -304,7 +321,7 @@ test "test_workspace_label_cardinality_capped: distinct workspaces bounded by th
     var buf: [32]u8 = undefined;
     var i: usize = 0;
     while (i < cardinality.WORKSPACE_CARDINALITY_CAP) : (i += 1) {
-        const ws = try std.fmt.bufPrint(&buf, "ws-{d}", .{i});
+        const ws = try std.fmt.bufPrint(&buf, WORKSPACE_FIXTURE_FMT, .{i});
         try std.testing.expect(cardinality.allowWorkspace(ws)); // under cap → retained
     }
     try std.testing.expectEqual(cardinality.WORKSPACE_CARDINALITY_CAP, cardinality.trackedCount());
@@ -312,8 +329,41 @@ test "test_workspace_label_cardinality_capped: distinct workspaces bounded by th
     // A brand-new workspace beyond the cap is dropped...
     try std.testing.expect(!cardinality.allowWorkspace("ws-overflow"));
     // ...but an already-tracked workspace is still retained.
-    const seen = try std.fmt.bufPrint(&buf, "ws-{d}", .{0});
+    const seen = try std.fmt.bufPrint(&buf, WORKSPACE_FIXTURE_FMT, .{0});
     try std.testing.expect(cardinality.allowWorkspace(seen));
     // Count never grows past the cap.
     try std.testing.expectEqual(cardinality.WORKSPACE_CARDINALITY_CAP, cardinality.trackedCount());
+}
+
+test "test_existing_metric_labels_are_preserved" {
+    cardinality.reset();
+    defer cardinality.reset();
+    otel_metrics.testSetInstalled(TEST_CFG);
+    defer otel_metrics.testClear();
+
+    // The exact settlement call the report handler makes. Bounding exporter
+    // volume must not strip the business dimensions Grafana groups by, so this
+    // pins model/workspace to the production record path, not to a fixture.
+    // pin test: literal is the contract
+    otel_metrics.recordRunSettlement(1000, 10, 0, 5, 100, POSTURE, MODEL, "ws-preserved");
+
+    const drain = otel_metrics.testPop() orelse return error.NoSampleEnqueued;
+    try std.testing.expectEqualStrings(MODEL, findLabel(&drain, payload.LABEL_MODEL).?);
+    try std.testing.expectEqualStrings("ws-preserved", findLabel(&drain, payload.LABEL_WORKSPACE).?);
+    while (otel_metrics.testPop()) |s| {
+        try std.testing.expect(findLabel(&s, payload.LABEL_MODEL) != null);
+    }
+
+    // The workspace guard still gates the label rather than having been deleted
+    // along with it: past the cap the sample still emits, just without the
+    // unbounded dimension.
+    var buf: [32]u8 = undefined;
+    var i: usize = cardinality.trackedCount();
+    while (i < cardinality.WORKSPACE_CARDINALITY_CAP) : (i += 1) {
+        _ = cardinality.allowWorkspace(try std.fmt.bufPrint(&buf, WORKSPACE_FIXTURE_FMT, .{i}));
+    }
+    otel_metrics.recordCreditDrain(1, POSTURE, MODEL, "ws-past-cap");
+    const capped = otel_metrics.testPop() orelse return error.NoSampleEnqueued;
+    try std.testing.expectEqualStrings(MODEL, findLabel(&capped, payload.LABEL_MODEL).?);
+    try std.testing.expect(findLabel(&capped, payload.LABEL_WORKSPACE) == null);
 }

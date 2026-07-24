@@ -13,6 +13,7 @@ const contract = @import("contract");
 
 const Config = @import("daemon/config.zig");
 const loop = @import("daemon/loop.zig");
+const runner_deadline = @import("daemon/runner_deadline.zig");
 const child_exec = @import("child_exec.zig");
 const client_errors = @import("engine/client_errors.zig");
 const version_cmd = @import("cmd/version.zig");
@@ -105,10 +106,18 @@ pub fn main(init: std.process.Init) void {
         },
     };
 
+    // The ONE process scheduler every outbound control-plane call arms against.
+    // Registered after `cfg`, so it is torn down FIRST (LIFO): `runLoop` has
+    // already joined every worker by then, so no thread can arm into storage
+    // that is going away — stop → join network users → deinit scheduler.
+    var deadlines: runner_deadline.Owned = .{};
+    defer deadlines.deinit();
+    const sched = deadlines.start(alloc);
+
     // Option B: the env-supplied `agt_r` (prefix-validated in Config.load) IS this
     // runner's identity. No register call — go straight to the loop.
     loop.installDrainHandlers();
-    const exit_reason = loop.runLoop(io, alloc, cfg, env_map);
+    const exit_reason = loop.runLoop(io, alloc, sched, cfg, env_map);
     log.info("server_stopped", .{ .reason = @tagName(exit_reason) });
     // A rejected runner token can never self-heal — exit non-zero so systemd's
     // restart + the deploy health check surface it as a loud, named failure
@@ -129,8 +138,15 @@ fn dispatchCli(argv: []const [:0]const u8, env_map: *const std.process.Environ.M
     // and exit (no daemon loop, no env config). Hot path, checked first.
     if (std.mem.eql(u8, a1, child_exec.SUBCOMMAND)) return child_exec.run(argv, env_map, alloc);
     if (std.mem.eql(u8, a1, "--version") or std.mem.eql(u8, a1, "-V")) return version_cmd.run();
+    // Operator subcommands reach the control plane, so they need the process
+    // scheduler — OWNED here (this branch always returns, so a process still
+    // owns exactly one) but STARTED lazily by the handler that arms it: the
+    // help/unknown/`<cmd> --help` paths never pay a worker spawn, and a spawn
+    // failure can never eat a help request.
+    var deadlines: runner_deadline.Owned = .{};
+    defer deadlines.deinit();
     // register / status / doctor / --help, and unknown → help + non-zero.
-    return registry.dispatch(argv, env_map, io, alloc, a1);
+    return registry.dispatch(argv, env_map, io, alloc, &deadlines, a1);
 }
 
 /// Startup security gate (Invariant 7): a release build refuses the no-isolation
