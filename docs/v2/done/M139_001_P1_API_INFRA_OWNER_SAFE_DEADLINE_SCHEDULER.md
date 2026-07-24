@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M139
 **Workstream:** 001
 **Date:** Jul 22, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — reliability and bounded resource use across every daemon and runner outbound call
 **Categories:** API, INFRA
-**Batch:** B2 — begins only after M133's merged revision passes development acceptance
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
-**Depends on:** M133_001 — PR #542 must be merged, its exact merged revision deployed to development, and its same-revision browser acceptance completed before CHORE(open)
+**Batch:** B2 — begins by explicit Indy direction; independent of M133 acceptance
+**Branch:** feat/m139-deadline-scheduler
+**Test Baseline:** unit=2814 integration=376
+**Depends on:** None — Indy explicitly removed M133 acceptance as a prerequisite for this workstream
 **Provenance:** LLM-drafted (gpt-5.4, Jul 22, 2026) from Indy's approved follow-up to the M133 deadline-watchdog review
 **Canonical architecture:** `docs/architecture/concurrency.md` §Thread map, §Lock-invariant registry, and §Shutdown choreography
 
@@ -38,7 +38,33 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** refactor(deadlines): add owner-safe process scheduler
 - **Intent (one sentence):** Hung network work is cancelled by its owning connection only, with one bounded scheduler worker per process instead of one watchdog worker per caller.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — replace descriptor-based per-instance watchdogs with one injected monotonic scheduler whose guards quiesce callbacks and whose targets can interrupt only the connection generation that armed them. `ASSUMPTIONS I'M MAKING: 1. Section 1 lands the scheduler beside the existing watchdog; callers migrate before the watchdog is removed in Section 4. 2. Zig's boot clock is the production monotonic source; wall time never participates in deadline ordering, and machine suspension counts against a network deadline where the operating system supports it. 3. Guards identify heap-stable registrations by scheduler-issued identity, so copied guards fail harmlessly after the first finish. 4. std.Treap supplies ordered minimum lookup and direct-node removal without a hand-written queue.`
+
+## Timing picture
+
+Wall time answers “what calendar time is it?” and may jump forward or backward. Monotonic time answers “how much time has elapsed?” and never moves backward. A 30-second network deadline is therefore stored as `boot_now + 30 seconds`; changing the calendar clock has no path into its ordering or expiry.
+
+```mermaid
+graph TD
+    A[Network operation] -->|arm 30 s guard| B[Scheduler map]
+    B -->|Identifier to stable registration| C[std.Treap]
+    C -->|earliest boot deadline| D[One scheduler worker]
+    D -->|monotonic timed futex wait| E{Deadline reached?}
+    F[Earlier guard arrives] -->|increment epoch and wake| D
+    E -->|no, recheck tree| C
+    E -->|yes, mark firing| G[Owner callback]
+    G -->|validate generation| H[Interrupt exact transport]
+    D -. mechanism logfmt .-> O{Process sink}
+    O -->|agentsfleetd| P[stderr plus OTLP]
+    O -->|agentsfleet-runner| Q[local stderr plus result reports]
+    G -. owner warning plus error code .-> P
+    P -. product event only .-> R[PostHog]
+    I[Operation finishes early] -->|Guard.finish| J[Remove exact treap node]
+    J --> K[Quiescence barrier returns]
+    H -->|callback completes| K
+    L[Scheduler.stop] -->|wake, drain, join| D
+    M[Wall clock: calendar only] -. no scheduler input .-> C
+```
 
 ## Implementing agent — read these first
 
@@ -53,6 +79,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `src/lib/call_deadline/call_deadline.zig` | EDIT | Replace per-instance wall-clock polling watchdogs with the process-owned monotonic scheduler, generation-bound targets, guards, and lifecycle tests. |
+| `src/lib/call_deadline/scheduler.zig` | CREATE | Own the single scheduler worker, guard lifecycle, registration identity, monotonic backend, and quiescence barriers. |
+| `src/lib/call_deadline/scheduler_test.zig` | CREATE | Prove preemption, lifecycle validation, quiescence, concurrency cardinality, and bounded queue work through injected timing seams. |
+| this specification (§Timing picture) | EDIT | Carry the scheduler timing and ownership flow as an inline Mermaid block — one source that renders in place, instead of four exported copies to keep in sync. |
 | `src/lib/common/sync.zig` | EDIT if needed | Supply the wakeable timed wait required to preempt a later scheduled wake when an earlier deadline is armed. |
 | `src/lib/http_pin/http_pin.zig` | EDIT | Return an owner-validating HTTP interruption target instead of exposing a bare pooled socket descriptor. |
 | `src/lib/http_pin/http_pin_test.zig` | EDIT | Prove stale pins and descriptor reuse cannot interrupt a successor HTTP connection. |
@@ -86,6 +115,29 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/cmd/serve.zig` | EDIT | Own exactly one daemon scheduler and place its shutdown in process lifecycle order. |
 | `src/runner/main.zig` | EDIT | Own exactly one runner scheduler and place its shutdown in process lifecycle order. |
 | `docs/architecture/concurrency.md` | EDIT | Replace the per-call watchdog thread entry with the process scheduler, ownership invariant, and stop ordering. |
+| `src/lib/call_deadline/InterruptTarget.zig` | CREATE | Type-erased owner-mediated interrupt handle — the target type the scheduler stores instead of a descriptor. |
+| `src/lib/call_deadline/InterruptTarget_test.zig` | CREATE | Prove a target exposes a generation and no descriptor. |
+| `src/lib/call_deadline/SocketOwner.zig` | CREATE | Generation-guarded socket control block: begin/attach/end attempt, owner-locked interrupt, private shutdown. |
+| `src/lib/call_deadline/SocketOwner_test.zig` | CREATE | Generation decision proofs plus the real-descriptor reuse integration proof (2.1–2.3). |
+| `src/lib/call_deadline/migration_audit_test.zig` | CREATE | Source audit for 4.1 and the metrics row: no watchdog type, no raw-fd surface, redacted structured events. |
+| `src/agentsfleetd/cmd/serve_deadline.zig` | CREATE | Daemon-root ownership of the one process scheduler (backend + scheduler in one stable value). |
+| `src/agentsfleetd/cmd/serve_background.zig` | EDIT | Thread the root scheduler through background-stack construction. |
+| `src/agentsfleetd/events/subscription_hub_wire.zig` | CREATE | Bounded connection setup and bounded wire writes for the hub (RULE FLL split from `subscription_hub.zig`). |
+| `src/agentsfleetd/http/handlers/common.zig` | EDIT | Carry the scheduler on the daemon request context. |
+| `src/agentsfleetd/http/handlers/connectors/callback.zig` | EDIT | Watchdog-removal fan-out at the shared connector callback boundary. |
+| `src/agentsfleetd/http/handlers/connectors/github/callback.zig` | EDIT | Watchdog-removal fan-out for the GitHub callback. |
+| `src/agentsfleetd/http/handlers/connectors/slack/events.zig` | EDIT | Watchdog-removal fan-out for Slack event ingress. |
+| `src/agentsfleetd/http/handlers/fleets/cron_sync.zig` | EDIT | QStash client construction takes the process scheduler. |
+| `src/agentsfleetd/http/handlers/schedules/api.zig` | EDIT | QStash client construction takes the process scheduler. |
+| `src/agentsfleetd/http/test_harness.zig` | EDIT | Harness `Context` carries a started test scheduler (one of the three Context construction sites). |
+| `src/agentsfleetd/http/test_harness_test.zig` | EDIT | Cover the harness's scheduler ownership. |
+| `src/agentsfleetd/http/handlers/cross_workspace_idor_test.zig` | EDIT | The third Context construction site gains the scheduler. |
+| `src/runner/cmd/registry.zig` | EDIT | Operator-command dispatch hands the root scheduler to every handler. |
+| `src/runner/daemon/runner_deadline.zig` | CREATE | Runner-root ownership of the one process scheduler, twin of `cmd/serve_deadline.zig`. |
+| `src/runner/daemon/control_plane_deadline.zig` | CREATE | Stack-local armed-attempt lifecycle for the runner client (RULE FLL split from `control_plane_client.zig`). |
+| `src/runner/daemon/control_plane_deadline_test.zig` | CREATE | Fail-closed arming, generation-scoped fire, idempotent release. |
+| `src/runner/daemon/deadline_test_support.zig` | CREATE | Shared test fixture owning a started scheduler the way the runner root does. |
+| `src/runner/daemon/worker_pool_test.zig` | EDIT | Pool fixtures borrow one scheduler across workers. |
 
 ## Applicable Rules
 
@@ -107,42 +159,42 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `std.PriorityQueue` plus `src/lib/common/sync.zig` — use the repository's queue primitive and futex-backed mutex/condition lifecycle; diverge from the existing watchdog by sleeping until the earliest monotonic deadline rather than polling each instance.
+- **Reference:** Zig `std.Treap`, Bun `src/runtime/timer/Timer.zig`, Bun `src/threading/Futex.zig`, Ghostty `src/Surface.zig`, and `src/lib/common/sync.zig` — use a standard intrusive ordered tree, one absolute monotonic deadline across spurious wakes, and stop → wake → join → deinit ordering.
 - **Reference:** `src/agentsfleetd/events/subscription_hub.zig` — preserve its one-wire-owner and no-map-lock-during-I/O invariants while moving interruption authority into the subscriber transport.
 
 ## Sections (implementation slices)
 
 ### §1 — One monotonic scheduler owns deadline timing
 
-Each process root owns and explicitly injects one scheduler worker and an earliest-deadline queue. Deadline arithmetic uses an injectable monotonic clock/wait backend. An idle worker blocks without polling, and arming a new earliest deadline preempts its current wait. `Guard.finish()` is a quiescence barrier: after it returns, that target callback is neither running nor eligible to run, so its owner may move or free transport state. `Scheduler.stop()` rejects new arms, interrupts and drains pending registrations rather than merely abandoning blocked operations, and waits for in-flight callbacks; network users then join and finish guards before owner deinit, followed by scheduler storage deinit. **Implementation default:** a single-use guard makes missed completion harder to represent, and invalid transitions fail closed without invoking methods on already-deinitialized Zig values.
+Each process root owns and explicitly injects one scheduler worker and an earliest-deadline queue. Deadline arithmetic uses an injectable monotonic clock/wait backend. An idle worker blocks without polling, and arming a new earliest deadline preempts its current wait. `Guard.finish()` is a quiescence barrier: after it returns, that target callback is neither running nor eligible to run, so its owner may move or free transport state. `Scheduler.stop()` rejects new arms, interrupts and drains pending registrations rather than merely abandoning blocked operations, and waits for in-flight callbacks; network users then join and finish guards before owner deinit, followed by scheduler storage deinit. **Implementation default:** a copy-tolerant identity handle lets the first finish consume the registration and makes later copies harmless. Every thread capable of calling arm, finish, or stop is joined before exclusive scheduler deinit begins.
 
-- **Dimension 1.1** — deadlines fire in monotonic order, a newly earlier arm wakes the worker, and wall-clock changes cannot advance or delay them → Test `test_scheduler_preempts_wait_with_monotonic_deadline_order`
-- **Dimension 1.2** — double finish and arm-after-stop are rejected or harmless according to one explicit guard state model → Test `test_deadline_guard_validates_lifecycle`
-- **Dimension 1.3** — finish/stop racing fire invokes the target at most once and both barriers return only after any callback quiesces → Test `test_deadline_finish_and_stop_are_quiescence_barriers`
+- **Dimension 1.1 — DONE** — deadlines fire in monotonic order, a newly earlier arm wakes the worker, and wall-clock changes cannot advance or delay them → Test `test_scheduler_preempts_wait_with_monotonic_deadline_order`
+- **Dimension 1.2 — DONE** — double finish and arm-after-stop are rejected or harmless according to one explicit guard state model → Test `test_deadline_guard_validates_lifecycle`
+- **Dimension 1.3 — DONE** — finish/stop racing fire invokes the target at most once and both barriers return only after any callback quiesces → Test `test_deadline_finish_and_stop_are_quiescence_barriers`
 
 ### §2 — Cancellation belongs to a transport generation
 
 The scheduler stores no actionable raw descriptor and never points at a movable `Subscriber`/`Transport` value. A stable operation control block outlives its guard and carries process-unique operation identity plus non-repeating connection generation; the owner validates both before touching its current socket. For HTTP, the exclusive client owner creates a unique pin/fetch lease, validates it under the owner lock during interruption, invalidates it at completion, and finishes the guard before another pin/fetch window. For Redis, the attempt control exists before connection setup and owns any socket as soon as one exists; a fresh subscriber cannot move into the hub until its setup guard is quiescent. **Implementation default:** stale interruption is a no-op outcome visible to tests and debug logs, not an attempt against the owner's current socket.
 
-- **Dimension 2.1** — a live registration interrupts only the exact HTTP or Redis connection generation that armed it → Test `test_interrupt_targets_exact_connection_generation`
-- **Dimension 2.2** — descriptor-number reuse followed by a stale deadline leaves the successor connection usable → Test `test_stale_deadline_cannot_interrupt_reused_descriptor`
-- **Dimension 2.3** — owner teardown racing scheduler fire waits for callback quiescence, then completes without use-after-free, double close, or leaked registration → Test `test_interrupt_owner_teardown_waits_for_quiescence`
+- **Dimension 2.1 — DONE** — a live registration interrupts only the exact HTTP or Redis connection generation that armed it → Test `test_interrupt_targets_exact_connection_generation`
+- **Dimension 2.2 — DONE** — descriptor-number reuse followed by a stale deadline leaves the successor connection usable → Test `test_stale_deadline_cannot_interrupt_reused_descriptor`
+- **Dimension 2.3 — DONE** — owner teardown racing scheduler fire waits for callback quiescence, then completes without use-after-free, double close, or leaked registration → Test `test_interrupt_owner_teardown_waits_for_quiescence`
 
 ### §3 — The complete Redis subscriber lifecycle is bounded
 
 Redis name resolution/dial, TLS, authentication, initial subscribe, reconnect, and every resubscribe send use the shared scheduler. DNS is included in the dial budget: setup uses a cancellable resolver/dial seam with deterministic injection tests and never abandons an unjoinable helper after timeout. Each attempt receives one absolute monotonic budget across all setup stages rather than resetting the full allowance at each stage. Resubscribe checks stop between sends so a channel sweep cannot multiply shutdown latency by channel count. Timeout errors remain distinct from authentication and transport failures; reconnect retries remain stop-aware. Existing hub fan-out and map/wire lock ordering do not change.
 
-- **Dimension 3.1** — deterministic stalls in Redis dial/TLS/auth/initial subscribe return their classified timeout within the configured bound → Test `test_redis_handshake_stages_are_deadline_bounded`
-- **Dimension 3.2** — a stalled reconnect or resubscribe is interrupted, retried, and remains promptly stoppable → Test `test_redis_reconnect_and_resubscribe_are_bounded`
-- **Dimension 3.3** — normal hub sends retain first/last-subscriber behavior and recover after an owner-targeted interruption → Test `test_hub_send_deadline_preserves_recovery`
+- **Dimension 3.1 — DONE** — deterministic stalls in Redis dial/TLS/auth/initial subscribe return their classified timeout within the configured bound → Test `test_redis_handshake_stages_are_deadline_bounded`
+- **Dimension 3.2 — DONE** — a stalled reconnect or resubscribe is interrupted, retried, and remains promptly stoppable → Test `test_redis_reconnect_and_resubscribe_are_bounded`
+- **Dimension 3.3 — DONE** — normal hub sends retain first/last-subscriber behavior and recover after an owner-targeted interruption → Test `test_hub_send_deadline_preserves_recovery`
 
 ### §4 — Every caller migrates and resource use stays bounded
 
 HTTP connector, credential-broker, QStash, runner, and Redis hub callers use guards from their process scheduler. Per-instance watchdog workers disappear, and public raw socket shutdown is removed or made private after the final migration. Scheduler tests use high concurrency and deterministic counters rather than timing-only performance claims.
 
-- **Dimension 4.1** — production source has no per-instance watchdog type, public raw socket shutdown, `socketHandle` deadline seam, or caller-owned descriptor arm → Test `test_deadline_migration_has_no_raw_fd_surface`
-- **Dimension 4.2** — at least 100 concurrent registrations use one scheduler worker, preserve earliest-first firing, and keep queue work within logarithmic comparison bounds → Test `test_scheduler_concurrency_has_one_worker_and_bounded_queue_work`
-- **Dimension 4.3** — process shutdown with pending, firing, and cancelled registrations joins the scheduler within the test bound and leaks no memory or threads → Test `test_scheduler_shutdown_is_bounded_and_leak_free`
+- **Dimension 4.1 — DONE** — production source has no per-instance watchdog type, public raw socket shutdown, `socketHandle` deadline seam, or caller-owned descriptor arm → Test `test_deadline_migration_has_no_raw_fd_surface`
+- **Dimension 4.2 — DONE** — at least 100 concurrent registrations use one scheduler worker, preserve earliest-first firing, and use direct-node `std.Treap` insertion/removal without a linear registration scan → Test `test_scheduler_concurrency_has_one_worker_and_bounded_queue_work`
+- **Dimension 4.3 — DONE** — process shutdown with pending, firing, and cancelled registrations joins the scheduler within the test bound and leaks no memory or threads → Test `test_scheduler_shutdown_is_bounded_and_leak_free`
 
 ## Interfaces
 
@@ -155,8 +207,10 @@ Subscriber.interrupt(expected_generation) -> InterruptOutcome
 Process roots explicitly pass *Scheduler to every network owner; there is no
 hidden global scheduler. InterruptTarget points to a stable operation control
 block and identifies one non-repeating owner/connection generation. It never
-exposes a socket descriptor. Guard.finish and Scheduler.stop wait for selected
-callbacks to quiesce before their owner/control-block storage may be freed.
+exposes a socket descriptor. Its interrupt method is a bounded, nonblocking,
+non-reentrant leaf operation and never calls scheduler barriers. Guard.finish
+and Scheduler.stop wait for selected callbacks to quiesce before their
+owner/control-block storage may be freed.
 ```
 
 ## Failure Modes
@@ -185,6 +239,8 @@ callbacks to quiesce before their owner/control-block storage may be freed.
 |----------------|-------|------------|--------------------|---------------|------------|
 | existing deadline/retry events | ops | a deadline fires, a stale target is refused, scheduler setup fails, or Redis recovery retries | operation class, transport kind, generation relation, outcome, duration | no URL credentials, tokens, Redis password, payload, or raw descriptor | `test_deadline_events_are_structured_and_redacted` |
 
+**Signal routing:** the shared scheduler core emits standard logfmt mechanism events in every process: worker-start failure at `err`, plus arm rejection, fire, and stop/drain detail at `debug`. Owning integrations emit the visible warn/error event with their registered error code and safe operation context. In `agentsfleetd`, structured logs fan out through the existing OpenTelemetry Protocol (OTLP) sink; `agentsfleet-runner` emits the same standard locally and reports its existing liveness/results. Deadline mechanics are not new PostHog product-analytics events; product-event capture remains an `agentsfleetd` owner decision, never a scheduler-core side effect.
+
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
@@ -199,7 +255,7 @@ callbacks to quiesce before their owner/control-block storage may be freed.
 | 3.2 | integration | `test_redis_reconnect_and_resubscribe_are_bounded` | stalled recovery and multi-channel sweep with stop signal → interruption/retry occurs and stop is checked between sends. |
 | 3.3 | integration | `test_hub_send_deadline_preserves_recovery` | first/last channel sends plus targeted stall → one connection recovers and fan-out resumes. |
 | 4.1 | unit | `test_deadline_migration_has_no_raw_fd_surface` | source audit after migration → no public raw-fd shutdown or per-instance watchdog production use. |
-| 4.2 | unit | `test_scheduler_concurrency_has_one_worker_and_bounded_queue_work` | 100+ mixed registrations → one worker, correct outcomes, logarithmic comparison ceiling. |
+| 4.2 | unit | `test_scheduler_concurrency_has_one_worker_and_bounded_queue_work` | 100+ parallel arms with concurrent finishes → one worker, correct outcomes, direct-node `std.Treap` removal, and no linear registration scan. |
 | 4.3 | unit | `test_scheduler_shutdown_is_bounded_and_leak_free` | pending/firing/cancelled registrations at shutdown → worker joined, targets quiescent, allocator clean. |
 | metrics | unit | `test_deadline_events_are_structured_and_redacted` | fire/stale/setup-fail/retry branches → named events with no credential or descriptor fields. |
 
@@ -212,12 +268,12 @@ callbacks to quiesce before their owner/control-block storage may be freed.
 | R3 | One scheduler worker handles concurrent registrations (§1, §4) | `zig build test-lib --summary all` | exit 0; 100+ registration concurrency test passes | P0 | |
 | R4 | Raw-descriptor and per-instance watchdog surfaces are gone (§4) | `rg -n 'shutdownSocket|socketHandle\(\)|CallWatchdog|Watchdog\(' src --glob '*.zig'` | 0 production migration leftovers; owner-target type assertions and safety regressions pass under R1 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Lint and unit suites pass | `make lint && make test` | exit 0 | P0 | |
+| S1 | Lint and unit suites pass | `make lint-all && make test-unit-all` | exit 0 | P0 | |
 | S2 | Integration suites pass | `make test-integration` | exit 0 | P0 | |
 | S3 | Memory/leak suite passes | `make memleak` | exit 0 | P0 | |
 | S4 | Both Linux targets compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S6 | No oversize source file or orphan | `make lint && git diff --check` | exit 0 | P0 | |
+| S6 | No oversize source file or orphan | `make lint-all && git diff --check` | exit 0 | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -264,7 +320,14 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: pending; execute only after PR #542 merge, exact merged-revision development deployment, and M133 same-revision browser acceptance.
+- **Consults** — Architecture / Legacy-Design / gate-flag triage: pending; the prior M133 acceptance prerequisite was removed by Indy before CHORE(open).
 - **Metrics review** — pending; no product analytics or funnel change is expected because this is internal reliability work.
-- **Skill-chain outcomes** — pending; record `/write-unit-test`, `/review`, and `kishore-babysit-prs` outcomes during execution.
+- **Skill-chain outcomes** — `/write-unit-test` clean for the scheduler-core slice: deterministic production expiry, parked-worker preemption, lifecycle failures, allocation failures, pending drain, 128 parallel arms, and 64 concurrent finishes are covered. Native `codex review` read the diff twice but returned no final verdict (`Jul 23, 2026: 12:24 AM`); rerun before merge. The gstack `/review` route found and fixed absolute-to-relative timeout drift, unconditional in-lock wakes, missing deterministic barriers/tests, logging ownership, deinit preconditions, and guard wording; final testing, performance, and red-team passes returned no findings. `kishore-babysit-prs` remains pending until push.
 - **Deferrals** — none at creation.
+- **Dependency decision** — > Indy (2026-07-22 23:29): "screw the depenedency - this spec doesnt need that" — context: M133 deployment and browser acceptance do not gate the owner-safe deadline scheduler.
+- **Data-structure decision** — > Indy (2026-07-22): "I prefer to avoid hand woven custom zig concepts and use the standard battle tested ones from ghostty or bun" — context: the hand-written indexed heap was discarded; the scheduler uses Zig `std.Treap`, following Bun timer-node and Ghostty worker-lifecycle patterns.
+- **PLAN surface call** — no OpenAPI, command-line interface behavior, user-facing documentation, release note, version, or schema change in Section 1; `docs/architecture/concurrency.md` changes before closure because the worker topology changes.
+- **Section 1 evidence** — the scheduler core is implemented and verified; the clock backend exposes only Zig's monotonic boot clock, so wall time is structurally absent from deadline arithmetic. Process-root injection is complete in BOTH roots: `agentsfleetd` (`cmd/serve_deadline.zig`) and `agentsfleet-runner` (`daemon/runner_deadline.zig`, wired through `main.zig` → `loop.zig`/`worker_pool.zig` and `cmd/registry.zig` → `status`/`doctor`). Dimensions 1.1–1.3 are DONE with production owners armed from both process roots.
+- **Section 4 evidence (Jul 23, 2026)** — the runner control-plane client migrated to a stack-local generation-guarded attempt (`daemon/control_plane_deadline.zig`); `Watchdog`, `LogSpec`, `ArmOutcome`, and public `shutdownSocket` are deleted from `call_deadline.zig` (325 → 82 lines); the last raw-descriptor seam (`redis_transport.socketHandle()`) became owner-mediated `Transport.attachTo`. The 4.1 source audit + metrics redaction audit (`migration_audit_test.zig`) sweep `src/agentsfleetd`, `src/runner`, and `src/lib` and enforce this stays true. Test-name reconciliation: dimension tests use the repository's prose/tier naming — 2.2's real-descriptor proof is `"integration: a stale deadline fire on a reused descriptor number leaves the successor connection usable"` (lib graph, via `std.posix.system.getsockname`, no libc needed), 2.3 is `test_interrupt_owner_teardown_waits_for_quiescence`, 3.1–3.3 carry the `integration:` prefix in `redis_subscriber_test.zig`/`subscription_hub_test.zig`, 4.3 is `test_scheduler_shutdown_is_bounded_and_leak_free`.
+- **Spec-mandated fixes surfaced by the audits (Jul 23, 2026)** — (1) `resubscribeAll` now checks stop BETWEEN sends (§3 prose: a channel sweep cannot multiply shutdown latency by channel count); (2) a stage failure while the owner was interrupted now classifies as `RedisSetupTimedOut` in `connectFromConfig` instead of leaking the raw transport error (§3: timeout stays distinct from auth/transport failures).
+- **`/write-unit-test` ledger** — `start` success/double-start/spawn-failure retry, `arm` success/stopped/allocation-failure, production absolute expiry, parked-worker preemption, `Guard.finish` pending/firing/fired/already-finished, `stop` before start/running/concurrent/repeated/pending-drain, repeated `deinit`, 128 parallel arm callers, and 64 concurrent finishes are covered. Identifier exhaustion is intentionally not forced through a public test seam: reaching it requires `2^64 - 1` successful arms, and exposing scheduler internals only for that unreachable boundary would weaken the production surface.

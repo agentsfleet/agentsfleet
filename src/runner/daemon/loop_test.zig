@@ -10,6 +10,7 @@ const constants = @import("common");
 const contract = @import("contract");
 const Config = @import("config.zig");
 const loop = @import("loop.zig");
+const dts = @import("deadline_test_support.zig");
 
 const protocol = contract.protocol;
 
@@ -154,7 +155,9 @@ test "runner boots from a agt_r token straight into the lease loop with no regis
     defer env_map.deinit();
     // Returns on the `stop` heartbeat (or on drain if the watchdog fires) — a
     // clean exit either way, never token_rejected/worker_pool_failed here.
-    const exit_reason = loop.runLoop(io, alloc, cfg, &env_map);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    const exit_reason = loop.runLoop(io, alloc, try deadlines.start(alloc), cfg, &env_map);
     try testing.expect(exit_reason == .fleet_stop or exit_reason == .drained);
     wd.done.store(true, .seq_cst);
     server_thread.join();
@@ -268,7 +271,9 @@ fn runRejectedTokenLoop(drop_at: u32) !struct { exit: loop.LoopExit, accepts: u3
     var env_map: std.process.Environ.Map = .init(alloc);
     defer env_map.deinit();
 
-    const exit_reason = loop.runLoop(io, alloc, cfg, &env_map);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    const exit_reason = loop.runLoop(io, alloc, try deadlines.start(alloc), cfg, &env_map);
     // Read before this helper's own defer clears the flag for the next test.
     const drained = loop.drain_requested.load(.seq_cst);
     wd.done.store(true, .seq_cst);
@@ -334,7 +339,9 @@ test "a rejected lease returns to the worker loop after one bounded idle" {
     var env_map: std.process.Environ.Map = .init(alloc);
     defer env_map.deinit();
 
-    var cp = @import("control_plane_client.zig").init(alloc, io, cfg.control_plane_url);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var cp = @import("control_plane_client.zig").init(alloc, io, try deadlines.start(alloc), cfg.control_plane_url);
     defer cp.deinit();
     // A 401 lease must come back to the worker loop after ONE bounded idle —
     // the heartbeat loop owns the process exit; a worker that crashed, spun,

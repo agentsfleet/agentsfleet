@@ -107,6 +107,7 @@ pub fn authorizeUrl(
 pub fn exchange(
     alloc: std.mem.Allocator,
     io: std.Io,
+    sched: *bounded_fetch.Scheduler,
     spec: Spec,
     creds: AppCreds,
     code: []const u8,
@@ -115,16 +116,11 @@ pub fn exchange(
     const body = try buildExchangeForm(alloc, creds, code, redirect_uri);
     defer alloc.free(body);
 
-    // The exchange is a rare, request-scoped browser round-trip — the request
-    // IS the client context, so the watchdog is request-scoped too (a shared
-    // one would let two concurrent callbacks clobber each other's arm).
-    var wd: bounded_fetch.Watchdog = .{};
-    defer wd.deinit();
     const headers = [_]std.http.Header{
         .{ .name = "content-type", .value = "application/x-www-form-urlencoded" },
         .{ .name = "accept", .value = "application/json" },
     };
-    const res = try bounded_fetch.fetch(alloc, io, &wd, .{
+    const res = try bounded_fetch.fetch(alloc, io, sched, .{
         .url = spec.token_endpoint,
         .method = .POST,
         .payload = body,

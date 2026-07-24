@@ -31,6 +31,7 @@ const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const serve_qstash = @import("serve_qstash.zig");
 const serve_redis_timeout = @import("serve_redis_timeout.zig");
+const serve_deadline = @import("serve_deadline.zig");
 
 const log = logging.scoped(.agentsfleetd);
 
@@ -46,7 +47,7 @@ const webhook_sig = auth_mw.webhook_sig_mod;
 const svix_signature = auth_mw.svix_signature_mod;
 
 pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
-    preflight.initOtelExporters(env_map, alloc);
+    preflight.initOtelExporters(io, env_map, alloc);
     defer preflight.deinitOtelExporters();
     log.info("startup.serve_start", .{});
 
@@ -110,6 +111,14 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         std.process.exit(1);
     };
 
+    // The ONE deadline scheduler this process owns. Declared before every
+    // network owner so its defer unwinds LAST: the HTTP server, background
+    // workers, and the subscription hub are all joined before the registration
+    // storage their interrupt targets point into is freed.
+    var deadlines: serve_deadline.Owned = .{};
+    const deadline_scheduler = deadlines.start(alloc);
+    defer deadlines.deinit();
+
     const api_pool = preflight.connectDbPool(io, env_map, alloc, .api) catch std.process.exit(1);
     defer api_pool.deinit();
 
@@ -167,7 +176,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     var hub = subscription_hub.init(alloc, io);
     var fleet_sets = fleet_set_cache.init(alloc, io);
     defer serve_shutdown.deinitStreaming(&hub, &streams, &fleet_sets);
-    hub.start(api_queue.pool.cfg) catch |err| {
+    hub.start(api_queue.pool.cfg, deadline_scheduler) catch |err| {
         log.err("startup.subscription_hub_failed", .{
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
             .err = @errorName(err),
@@ -196,6 +205,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .install_wg = &install_wg,
         .alloc = alloc,
         .io = io,
+        .deadline_scheduler = deadline_scheduler,
         .clerk_webhook_secret = secrets.clerk_webhook_secret,
         .approval_signing_secret = secrets.approval_signing_secret,
         .clerk_secret_key = secrets.clerk_secret_key,
@@ -241,7 +251,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         ctx.oidc = v;
         log.info("startup.oidc_init_ok", .{});
     }
-    var cred_broker = preflight.installCredentialBroker(alloc, io, api_pool, serve_cfg.platform_admin_workspace_id, &ctx.broker, &ctx.github_app_slug); // M102 §3 + §5 slug
+    var cred_broker = preflight.installCredentialBroker(alloc, io, deadline_scheduler, api_pool, serve_cfg.platform_admin_workspace_id, &ctx.broker, &ctx.github_app_slug); // M102 §3 + §5 slug
     defer cred_broker.deinit();
 
     // Build the middleware registry at boot.
@@ -294,7 +304,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     preflight.installSignalHandlers(serve_shutdown.onSignal);
 
     var background = serve_background.Threads.init();
-    try background.start(api_pool, &api_queue, alloc);
+    try background.start(api_pool, &api_queue, alloc, deadline_scheduler);
     defer background.stop();
 
     log.info("http.server_starting", .{

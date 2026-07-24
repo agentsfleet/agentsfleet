@@ -73,7 +73,7 @@ background stack while the server may still come up and briefly serve
 | install worker | `http/handlers/fleets/create_install_steps.worker` (detached) | pool + queue during install | guarded by `install_wg` (`WaitGroup`) | teardown `serve_shutdown.awaitInstallWorkers` before pool/queue deinit — never proceeds under a live worker; each expired round warns with the straggler count |
 | OTLP flush | `observability/otlp/exporter.flushLoop` | the export ring | atomic single-flight claim on `g_running` | flag → loop exits → joined |
 | metrics runners | `observability/metrics_fleet.Runner.run` | metrics snapshot slots | per-runner slot claim | shutdown flag → exit |
-| call-deadline watchdog | `lib/call_deadline` loop | the per-call deadline flag | atomic flag under the call's own lock | fires or the call completes; joined by the caller |
+| deadline scheduler worker | `cmd/serve_deadline.Owned.start` (M139) | the earliest-deadline `std.Treap` + registration map — never a socket | `scheduler.mutex`; interruption reaches a transport only through its owner's generation check | `stop()` refuses new arms, drains pending registrations, waits for in-flight callbacks; `deinit` joins the worker **after** every network user has finished its guards |
 
 ### `agentsfleet-runner` (execution plane)
 
@@ -82,7 +82,8 @@ Rooted at `src/runner/main.zig`, isolated from datastore code (enforced by
 
 | Thread | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
-| execution workers (N) | `runner/daemon/worker_pool.workerLoop` | **no shared mutable state by construction** — each worker owns its lease/child | none needed (C5 by construction) | `stop_requested` / `drain_requested` flags → each drains its child → joined |
+| execution workers (N) | `runner/daemon/worker_pool.workerLoop` | **no shared mutable state by construction** — each worker owns its lease/child; all workers borrow the ONE process scheduler | none needed (C5 by construction); scheduler access is internally locked | `stop_requested` / `drain_requested` flags → each drains its child → joined |
+| deadline scheduler worker | `runner/daemon/runner_deadline.Owned.start` (M139) | the earliest-deadline `std.Treap` + registration map — never a socket | `scheduler.mutex`; interruption reaches a transport only through its owner's generation check | `stop()` refuses new arms, drains, quiesces callbacks; `deinit` joins **after** `runLoop` has joined every worker (LIFO defer in `main.zig`) |
 | netns setup | `runner/network/EgressScope` (`ChildNetnsSetup.run`) | the child's network namespace during setup | scoped to one child launch | joined before the child executes |
 
 ---
@@ -122,10 +123,40 @@ count of invariant comments.
 | `hub.mutex` | `events/subscription_hub.zig` | the `channels → subscribers` map and **nothing else** | never held together with `hub.wire` — acquire one at a time |
 | `hub.wire` | `events/subscription_hub.zig` | the one shared pub/sub connection and **all** wire sends (`SUBSCRIBE`/`UNSUBSCRIBE`) and teardown | never nested with `hub.mutex` |
 | `WaitGroup.mutex` | `lib/common/sync.zig` | the counting barrier's `count`; `start`/`finish`/`wait` are all guarded | leaf — held alone |
+| `scheduler.mutex` | `lib/call_deadline/scheduler.zig` | deadlines, registrations, lifecycle state, worker handle, identifier allocation | released around every target callback — a callback is a bounded, non-reentrant leaf that must never call back into scheduler barriers |
+| `SocketOwner.mutex` | `lib/call_deadline/SocketOwner.zig` | generation, handle, and the interrupted flag together; held across the `shutdown(2)` so a completing attempt cannot swap in a recycled descriptor between check and syscall | leaf — held alone; taken from the scheduler worker inside a callback and from the owning caller, never nested with another lock |
 
 The load-bearing ordering rule (the C3 fix that ended the hub's
-blocking-write-under-the-map-mutex hazard): a wire send is bounded by a watchdog
-and taken under `hub.wire` alone, never while `hub.mutex` is held.
+blocking-write-under-the-map-mutex hazard): a wire send is bounded by a
+scheduler guard and taken under `hub.wire` alone, never while `hub.mutex` is
+held.
+
+### The deadline-ownership invariant (M139)
+
+Each process root owns exactly **one** `ProcessScheduler`
+(`agentsfleetd`: `cmd/serve_deadline.zig`; `agentsfleet-runner`:
+`daemon/runner_deadline.zig`) and passes it explicitly to every network owner —
+there is no hidden global and no per-call watchdog thread. A registration
+targets a `SocketOwner` **connection generation**, never a descriptor number:
+the owner advances the generation before an attempt becomes interruptible and
+validates it under its own lock at fire time, so a late fire against a replaced
+connection returns `stale` and touches nothing. `Guard.finish()` and
+`Scheduler.stop()` are quiescence barriers — after either returns, the selected
+callbacks are neither running nor eligible to run, which is what makes a
+stack-local owner safe to leave scope. Arming is fail-CLOSED everywhere: a
+scheduler that cannot arm refuses the call; no path falls through to an
+unbounded run.
+
+The bounded connection setup adds an **Io precondition**: the dial is raced
+against the budget with `std.Io.Select` (`queue/redis_subscriber.zig`
+`dialWithinBudget`), so the `io` a process root hands its network owners must
+support concurrency. Production always satisfies this — `main.zig` passes the
+process-init Io. `common.globalIo()` does **not** (it is the statically
+single-threaded instance; its first `select.concurrent` fails with
+`ConcurrencyUnavailable`, and fail-CLOSED turns that into a refused boot).
+Any harness that boots `serve.run` or starts the hub must construct its own
+`std.Io.Threaded` — the shape `http/test_harness.zig` (`hub_io`) and the
+serve-lifecycle test both follow.
 
 ---
 
@@ -153,6 +184,14 @@ The stop → join → deinit sequence (C2), including the ordering M126_001 corr
    result never proceeds to free state a straggler could still reach.
 6. **Datastores last.** The Postgres pool and Redis queue deinit after every
    thread that could touch them has joined.
+7. **Deadline scheduler after its users (M139).** `Scheduler.stop()` rejects
+   new arms, interrupts and drains pending registrations, and waits for
+   in-flight callbacks; network users then finish their guards before their
+   owners deinit, and only then does scheduler storage deinit. In both
+   processes the ordering is encoded as a LIFO defer at the root: the scheduler
+   is constructed after — and therefore torn down before — nothing that still
+   arms into it (`serve.run`'s defer chain; `runner/main.zig` deinits it after
+   `runLoop` has joined every worker).
 
 The deterministic test handshake for these sequences is `common.Event`
 (`sync.zig`) — `set()` on one side, bounded `timedWait()` on the other — so

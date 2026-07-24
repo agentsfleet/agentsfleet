@@ -3,6 +3,7 @@
 const std = @import("std");
 const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_render.zig");
+const mot = @import("metrics_otel.zig");
 
 pub const incApiBackpressureRejections = mc.incApiBackpressureRejections;
 pub const setApiInFlightRequests = mc.setApiInFlightRequests;
@@ -11,6 +12,9 @@ pub const setSseInFlightStreams = mc.setSseInFlightStreams;
 pub const incSseDroppedFrames = mc.incSseDroppedFrames;
 pub const incSseHubReconnects = mc.incSseHubReconnects;
 pub const snapshot = mc.snapshot;
+pub const incTraceSuppressed = @import("metrics_trace.zig").inc;
+pub const recordOtlpDiscard = mot.recordDiscard;
+pub const setOtlpQueueDepth = mot.setQueueDepth;
 
 pub const renderPrometheus = mr.renderPrometheus;
 
@@ -108,4 +112,5 @@ test {
     _ = @import("metrics_runner_test.zig");
     _ = @import("metrics_memory_test.zig");
     _ = @import("metrics_sensitive_memory_test.zig");
+    _ = @import("metrics_otel_test.zig");
 }

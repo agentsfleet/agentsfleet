@@ -434,22 +434,36 @@ Three network policies:
 
 The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N fleets and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `agentsfleetd` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `agt_r`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment, shipped) / M85_001 (label placement, shipped) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
-## Observability — runner metrics on `agentsfleetd` `/metrics`
+## Observability — bounded facts to `agentsfleetd`, raw logs to the host
 
-The fleet is observed **without any inbound reach into runners.** A runner may sit behind NAT, on an untrusted or customer host — the most failure-prone tier and exactly the one a scraper cannot reach. So per-runner signal rides **outbound** on the verbs the runner already calls (`report`, `heartbeat`, `lease` grant/release); `agentsfleetd` accumulates it and exposes it on its own `/metrics`. `agentsfleetd` is the only scrape target; the per-runner drill-down is a `runner_id` label.
+The fleet is observed **without any inbound reach into runners.** A runner may sit behind Network Address Translation (NAT), on an untrusted host, or on a customer host. A scraper cannot reliably reach those machines.
 
-Two telemetry planes, opposite directions — do not conflate them:
+Bounded per-runner facts therefore ride outbound on verbs the runner already calls: `report`, `heartbeat`, and lease grant/release. `agentsfleetd` accumulates those facts and exposes them on its own `/metrics`. `agentsfleetd` is the only application scrape target; the per-runner drill-down is a `runner_id` label.
+
+Raw runner logs do not ride those verbs. The runner writes structured stderr to the host supervisor. An operator may attach a standard journald collector that sends logs directly to Loki, but the path bypasses `agentsfleetd`. Activity frames remain user-visible run output and are never reused as a log stream.
+
+Three routes serve three different volume shapes:
 
 ```
-   METRICS  (PULL)                              LOGS / TRACES  (PUSH)
-   ──────────────                               ─────────────────────
-   agentsfleetd :9091 /metrics   ◄── scraped by      agentsfleetd  ──push OTLP──►  Grafana Cloud
-   in-memory render, DB-free     Fly.io's        otel_logs.zig /          Loki (logs)
-   ([[metrics]] in fly.toml)     MANAGED          otel_traces.zig          Tempo (traces)
-                                 PROMETHEUS
-                                 (we run no
-                                  collector)
+ RUNNER FACTS                              RUNNER RAW LOGS
+ ────────────                              ───────────────
+ heartbeat/report/lease ──► agentsfleetd   stderr ──► journald
+                              │                         └─ optional collector ──► Loki
+                              ▼                            (never via agentsfleetd)
+                     :9091 /metrics
+                              ▲
+                              └── Fly.io managed Prometheus scrapes
+
+ CONTROL-PLANE LOGS / TRACES
+ ───────────────────────────
+ agentsfleetd ──bounded OpenTelemetry Protocol (OTLP) exporters──► Loki / Tempo
 ```
+
+`agentsfleet-runner` creates no spans today. Its NullClaw observer returns no trace identifier, so adding a trace field to the runner protocol would move bytes without joining any runner span. The current trace is control-plane-owned: one selected `fleet.delivery` span after accepted settlement, correlated by `event_id`, `fleet_id`, and `workspace_id`.
+
+Successful heartbeat, lease, renew, activity, and report requests are high-rate control traffic, not useful default trace spans. The lease rule covers both an empty poll and a granted lease; useful run work retains the settled `fleet.delivery` span. The shipped route policy removes those successes from the default `http.request` span stream. Trace lifetime begins after route match and before API admission. Status precedence sends every 5xx response only to the fixed four-span-per-monotonic-second server-error budget; matched runner 4xx responses, including an admission-shed 429, enter only the separate four-span rejection budget. Excess errors increment a fixed aggregate suppression counter rather than filling the trace ring. Sampled successes reserve two spans, capping generic request spans at 10 per second. Sampling uses the server-generated span identifier, never caller-controlled trace input. A future runner span producer must define sampling and a fixed span budget before World Wide Web Consortium (W3C) trace context crosses the protocol.
+
+PostHog remains `agentsfleetd` product analytics. It receives selected business events only. It never receives runner logs, heartbeats, renewals, activity frames, or scheduler mechanics. `FleetCompleted` is production-wired and fires after durable report settlement — the fenced claim that authorizes settlement authorizes the capture, so a replayed or superseded report captures nothing.
 
 The scraper is **Fly.io's platform-managed Prometheus** — the four-line `[[metrics]]` block in `deploy/fly/agentsfleetd-prod/fly.toml` is the entire scrape config; there is no Grafana Fleet / Alloy / Vector / OTel-collector for metrics. Fly pulls `:9091/metrics` off each machine over the private 6PN network; the endpoint is not publicly routable (no `[http_service]`; inbound is Cloudflare-Tunnel-only). Grafana reads Fly's Prometheus as a datasource — it scrapes nothing itself.
 
@@ -459,7 +473,7 @@ The scraper is **Fly.io's platform-managed Prometheus** — the four-line `[[met
 agentsfleet_runner_failures_total{runner_id,reason}     counter   reason ∈ FailureClass ∪ {unknown}
 agentsfleet_runner_executions_total{runner_id,outcome}  counter   outcome ∈ {processed, fleet_error}
 agentsfleet_runner_last_seen_seconds{runner_id}         gauge     render-time delta from last report/heartbeat
-agentsfleet_runner_active_leases{runner_id}             gauge     +1 on grant, −1 on release/report
+agentsfleet_runner_active_leases{runner_id}             gauge     +1 on grant, −1 on terminal report
 ```
 
 All four live in a process-global, allocator-free, fixed-capacity (4096-slot) hash table keyed on `runner_id` (`src/agentsfleetd/observability/metrics_runner.zig`, mirroring `metrics_counters.zig`). The render path reads only that in-memory snapshot — **zero Postgres on the scrape path**, so `/metrics` stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore constant (~0.7 MB) regardless of fleet size or uptime; a `agentsfleetd` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).

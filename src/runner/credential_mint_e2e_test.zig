@@ -30,6 +30,7 @@ const credential_request = @import("engine/credential_request.zig");
 const child_supervisor = @import("child_supervisor.zig");
 const secret_substitution = @import("engine/runtime/secret_substitution.zig");
 const cp = @import("daemon/control_plane_client.zig");
+const dts = @import("daemon/deadline_test_support.zig");
 
 const ALLOC = std.testing.allocator;
 const ActivityFrame = contract.activity.ActivityFrame;
@@ -160,7 +161,9 @@ test "test_child_requests_token_via_runner" {
 
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
-    var client = cp.init(ALLOC, io, url);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var client = cp.init(ALLOC, io, try deadlines.start(ALLOC), url);
     defer client.deinit();
     var forwarder = Forwarder{ .client = &client, .lease_id = "lease-e2e-3-1" };
 
@@ -228,7 +231,9 @@ test "test_on_demand_mint_no_trigger" {
 
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
-    var client = cp.init(ALLOC, io, url);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var client = cp.init(ALLOC, io, try deadlines.start(ALLOC), url);
     defer client.deinit();
     var forwarder = Forwarder{ .client = &client, .lease_id = "lease-e2e-3-3" };
 
@@ -281,7 +286,9 @@ test "cp mint forwards lease_id only and fails closed on a non-2xx (§3)" {
 
         var url_buf: [48]u8 = undefined;
         const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
-        var client = cp.init(ALLOC, io, url);
+        var deadlines: dts.TestScheduler = .{};
+        defer deadlines.deinit();
+        var client = cp.init(ALLOC, io, try deadlines.start(ALLOC), url);
         defer client.deinit();
 
         const outcome = client.mint(ALLOC, RUNNER_TOKEN, "lease-ok", "github", null, MINT_DEADLINE_MS);
@@ -306,7 +313,9 @@ test "cp mint forwards lease_id only and fails closed on a non-2xx (§3)" {
 
         var url_buf: [48]u8 = undefined;
         const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
-        var client = cp.init(ALLOC, io, url);
+        var deadlines: dts.TestScheduler = .{};
+        defer deadlines.deinit();
+        var client = cp.init(ALLOC, io, try deadlines.start(ALLOC), url);
         defer client.deinit();
 
         const outcome = client.mint(ALLOC, RUNNER_TOKEN, "lease-fail", "github", null, MINT_DEADLINE_MS);

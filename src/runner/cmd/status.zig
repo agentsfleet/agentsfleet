@@ -8,10 +8,12 @@ const protocol = @import("contract").protocol;
 const Config = @import("../daemon/config.zig");
 const Client = @import("../daemon/control_plane_client.zig");
 const call_deadline = @import("call_deadline");
+const runner_deadline = @import("../daemon/runner_deadline.zig");
 const args = @import("args.zig");
 const output = @import("output.zig");
 
-pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator) u8 {
+pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator, deadlines: *runner_deadline.Owned) u8 {
+    const sched = deadlines.start(alloc);
     const a = output.audience(args.has(argv, output.FLAG_JSON));
     const api = (args.flagOrEnv(env_map, argv, alloc, "--api", Config.ENV_AGENTSFLEET_API_URL) catch return output.fail(a, alloc, output.ERR_OOM)) orelse
         return output.fail(a, alloc, output.ERR_API_URL_UNSET);
@@ -20,7 +22,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
         return output.fail(a, alloc, ERR_NO_TOKEN);
     defer alloc.free(token);
 
-    var client = Client.init(alloc, io, api);
+    var client = Client.init(alloc, io, sched, api);
     defer client.deinit();
     const parsed = client.getSelf(alloc, token, call_deadline.DEFAULT_DEADLINE_MS) catch return output.fail(a, alloc, output.ERR_UNREACHABLE);
     defer parsed.deinit();
