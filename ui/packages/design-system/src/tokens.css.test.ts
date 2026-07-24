@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 // a text-contract pin on the CSS source directly: it fails the moment
 // someone reverts the selector to the bare, presence-only form.
 const TOKENS_CSS_PATH = path.join(__dirname, "tokens.css");
+const THEME_CSS_PATH = path.join(__dirname, "theme.css");
 
 describe("tokens.css — wake-pulse [data-live] selector contract", () => {
   it('only animates the literal [data-live="true"] value', () => {
@@ -26,6 +27,18 @@ describe("tokens.css — wake-pulse [data-live] selector contract", () => {
     // (the `=` after data-live in the real selector keeps this from
     // false-positiving on the correct rule).
     expect(css).not.toMatch(/\[data-live\]\s*\{/);
+  });
+});
+
+describe("operational stream duration token", () => {
+  it("pins the 80ms stream entry duration and exposes its named utility", () => {
+    const tokens = readFileSync(TOKENS_CSS_PATH, "utf8");
+    const theme = readFileSync(THEME_CSS_PATH, "utf8");
+
+    expect(tokens).toContain("--motion-duration-stream: 80ms;");
+    expect(theme).toContain(
+      "--transition-duration-stream: var(--motion-duration-stream);",
+    );
   });
 });
 

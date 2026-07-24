@@ -13,17 +13,16 @@ import {
 } from "@agentsfleet/design-system";
 import { senderInitialsFor } from "@/lib/events/event-summary";
 
-// The conversation row for the two live roles. Operator turns anchor right,
-// fleet turns left, each a compact bubble sized to its content: a one-word
-// steer never wears the full-width chrome the machine log needs, and the
-// side of the column tells the reader who is speaking before they read a
-// word. Integration deliveries keep the shared DashboardRow skeleton
-// (FleetActivityRow) — activity is a log, conversation is not.
+// The conversation row for the two live roles. Operator turns anchor right
+// in a compact surface, while fleet replies stay open on the left so their
+// evidence reads as operational output rather than consumer chat. Integration
+// deliveries keep the shared DashboardRow skeleton (FleetActivityRow) —
+// activity is a log, conversation is not.
 
-const ROW_ENTER = "animate-in fade-in-0 motion-safe:slide-in-from-bottom-1 duration-150";
+const ROW_ENTER = "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream";
 
-// Which side of the conversation a row belongs to. Drives the chip tone and,
-// for conversation rows, which side of the column the bubble anchors to.
+// Which side of the conversation a row belongs to. Drives the chip tone and
+// which side of the column the turn anchors to.
 export const ROW_TONE = {
   OPERATOR: "operator",
   FLEET: "fleet",
@@ -34,7 +33,7 @@ export type RowTone = (typeof ROW_TONE)[keyof typeof ROW_TONE];
 
 const CHIP_TONE: Record<RowTone, string> = {
   [ROW_TONE.OPERATOR]: "border-border-strong text-foreground",
-  [ROW_TONE.FLEET]: "border-pulse/40 text-pulse",
+  [ROW_TONE.FLEET]: "border-border text-muted-foreground",
   [ROW_TONE.EVENT]: "border-border text-muted-foreground",
 };
 
@@ -69,6 +68,7 @@ export type FleetMessageRowProps = {
   messageRole: string;
   dimmed?: boolean;
   failed?: boolean;
+  live?: boolean;
 };
 
 export function FleetMessageRow({
@@ -80,6 +80,7 @@ export function FleetMessageRow({
   messageRole,
   dimmed,
   failed,
+  live,
 }: FleetMessageRowProps) {
   const isOperator = tone === ROW_TONE.OPERATOR;
   return (
@@ -94,7 +95,7 @@ export function FleetMessageRow({
           needed — the reversed axis anchors the pair to its own edge. */}
       <div className={cn("flex w-full gap-sm px-lg py-md", isOperator && "flex-row-reverse")}>
         <span className="flex w-8 flex-none justify-center">
-          <SenderChip sender={sender} tone={tone} />
+          <SenderChip sender={sender} tone={tone} live={live} />
         </span>
         <div
           className={cn(
@@ -110,11 +111,10 @@ export function FleetMessageRow({
           </div>
           <div
             className={cn(
-              "w-fit min-w-0 max-w-full break-words rounded-lg border px-md py-sm",
-              "font-mono text-mono leading-mono text-foreground",
+              "min-w-0 max-w-full break-words font-mono text-mono leading-mono text-foreground",
               isOperator
-                ? "rounded-br-sm border-border-strong bg-accent"
-                : "rounded-bl-sm border-border bg-secondary",
+                ? "w-fit rounded-lg rounded-br-sm border border-border-strong bg-accent px-md py-sm"
+                : "w-full",
             )}
           >
             {children}
@@ -298,16 +298,27 @@ export function FleetGroupRow({
 const RANGE_SEPARATOR = "–";
 const GROUP_VALUE = "group";
 
-function SenderChip({ sender, tone }: { sender: string; tone: RowTone }) {
+function SenderChip({
+  sender,
+  tone,
+  live = false,
+}: {
+  sender: string;
+  tone: RowTone;
+  live?: boolean;
+}) {
+  const liveFleet = tone === ROW_TONE.FLEET && live;
   return (
     <span
       aria-hidden="true"
       data-chip={tone}
+      data-live={liveFleet || undefined}
       className={cn(
         "inline-flex size-7 shrink-0 items-center justify-center",
         "rounded-sm border bg-surface-deep",
         "font-mono text-label tracking-label",
         CHIP_TONE[tone],
+        liveFleet && "border-pulse/40 text-pulse",
       )}
     >
       {senderInitialsFor(sender)}

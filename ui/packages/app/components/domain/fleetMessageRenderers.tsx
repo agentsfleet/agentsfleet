@@ -49,8 +49,8 @@ const SOURCE_LINK_FALLBACK = "View source";
 
 /**
  * Render function passed to the thread message list. Integration activity
- * renders as compact log ticks; operator and fleet turns render as bubbles
- * anchored to their own side of the column (FleetMessageRow).
+ * renders as compact log ticks; operator turns use a right-side surface while
+ * fleet replies stay open on the left (FleetMessageRow).
  */
 export function renderFleetMessage({ message }: { message: MessageState }): ReactNode {
   return (
@@ -266,6 +266,7 @@ function FleetReply({
       createdAt={message.createdAt}
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
+      live={streaming}
     >
       <ToolCalls tools={tools} />
       {awaitingFirstWord ? (
