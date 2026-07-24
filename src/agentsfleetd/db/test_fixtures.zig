@@ -289,3 +289,55 @@ pub fn storeVaultJson(
     defer alloc.free(plaintext);
     try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
 }
+
+// ── Index-catalog assertions (shared by the db/index_*_integration_test suites) ──
+// These read index shape and existence STRUCTURALLY from the system catalog,
+// schema-qualified. The earlier per-suite copies keyed on `pg_indexes.indexname`
+// alone (not unique across schemas) and parsed the final parenthesised segment
+// of the rendered `indexdef` (skewed by INCLUDE columns or a parenthesised
+// predicate). One catalog-truth helper each, used by every suite, closes both.
+
+/// Canonical `"col1, col2 DESC"` for `schema.name`'s KEY columns, in index
+/// order, read from `pg_index`/`pg_attribute` — INCLUDE columns (`indnkeyatts`
+/// bounds the key), a `WHERE` predicate (`indpred`, not `indkey`), and a
+/// same-named index in another schema (`nspname` filter) cannot skew it.
+/// Ascending is implicit; only DESC is suffixed, matching how the suites spell
+/// their expected shape. Caller owns the returned slice; `error.IndexMissing`
+/// when no such index exists in `schema`.
+pub fn indexKeyColumns(alloc: std.mem.Allocator, conn: *pg.Conn, schema: []const u8, name: []const u8) ![]u8 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT a.attname, (idx.indoption[k.i] & 1) = 1 AS is_desc
+        \\FROM pg_index idx
+        \\JOIN pg_class ic ON ic.oid = idx.indexrelid
+        \\JOIN pg_namespace n ON n.oid = ic.relnamespace
+        \\CROSS JOIN generate_subscripts(idx.indkey, 1) AS k(i)
+        \\JOIN pg_attribute a ON a.attrelid = idx.indrelid AND a.attnum = idx.indkey[k.i]
+        \\WHERE ic.relname = $1 AND n.nspname = $2 AND k.i < idx.indnkeyatts
+        \\ORDER BY k.i
+    , .{ name, schema }));
+    defer q.deinit();
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(alloc);
+    var count: usize = 0;
+    while (try q.next()) |row| : (count += 1) {
+        if (count > 0) try out.appendSlice(alloc, ", ");
+        try out.appendSlice(alloc, try row.get([]const u8, 0));
+        if (try row.get(bool, 1)) try out.appendSlice(alloc, " DESC");
+    }
+    if (count == 0) return error.IndexMissing;
+    return out.toOwnedSlice(alloc);
+}
+
+/// Count of indexes named `name` in `schema`. Schema-qualified because
+/// `pg_indexes.indexname` is not unique across schemas — a suite asserting
+/// "applied exactly once" or "removed" needs the count scoped to the one schema
+/// that owns the object, or a same-named index elsewhere flips the result.
+pub fn indexCount(conn: *pg.Conn, schema: []const u8, name: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT COUNT(*)::bigint FROM pg_indexes WHERE indexname = $1 AND schemaname = $2",
+        .{ name, schema },
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.DbRowShape;
+    return try row.get(i64, 0);
+}
