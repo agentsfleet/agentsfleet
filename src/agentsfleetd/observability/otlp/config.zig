@@ -122,3 +122,7 @@ fn appendStringAttr(
         std.json.fmt(value, .{}),
     });
 }
+
+test {
+    _ = @import("config_test.zig");
+}
