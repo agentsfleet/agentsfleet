@@ -12,6 +12,10 @@ const FIRE_MS: u31 = 100;
 /// A deadline no test waits for — proves a path returns without one firing.
 const NEVER_MS: u31 = 60_000;
 const QUIESCE_BOUND_MS: i64 = 5_000;
+/// Poll pacing while waiting on the deadline worker. A bare spin never yields,
+/// so under a serialized thread scheduler (valgrind runs one thread at a time)
+/// the waiter starves the very worker it waits for and the fire lands late.
+const QUIESCE_POLL_NS: u64 = std.time.ns_per_ms;
 
 /// A started process scheduler, as the runner root owns one.
 const TestScheduler = struct {
@@ -100,7 +104,9 @@ test "a fired deadline marks its own attempt interrupted" {
     );
 
     const t0 = common.clock.nowMillis();
-    while (!attempt.wasInterrupted() and common.clock.nowMillis() - t0 < QUIESCE_BOUND_MS) {}
+    while (!attempt.wasInterrupted() and common.clock.nowMillis() - t0 < QUIESCE_BOUND_MS) {
+        common.sleepNanos(QUIESCE_POLL_NS);
+    }
     try testing.expect(attempt.wasInterrupted());
 }
 
