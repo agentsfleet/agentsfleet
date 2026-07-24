@@ -40,12 +40,12 @@
             .url = "git+https://github.com/hendriknielaender/zBench?ref=zig-0.16.0#c24d128bfa80ec6a1b495b84ec827c6a0bec7865",
             .hash = "zbench-0.11.2-YTdc76Q_AQAxonIKZ2-H1PdcESJGwyuYylw6RkPiBqyx",
         },
-        // Fork pin agentsfleet/http.zig over upstream karlseguin/http.zig commit 52eb187,
-        // carrying a shared-injector ThreadPool and matched httpz/websocket worker-mode
-        // wiring (see the fork's CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin once
-        // both patches land upstream.
+        // Fork release agentsfleet/http.zig v0.0.0-af.2 from fork master, containing
+        // upstream karlseguin/http.zig through 52eb187 plus the shared-injector ThreadPool
+        // and matched httpz/websocket worker-mode wiring (see the fork's CHANGES.md).
+        // Drop this pin once both patches land upstream.
         .httpz = .{
-            .url = "git+https://github.com/agentsfleet/http.zig.git?ref=patch/agentsfleet-0.16#deacae7e7bf3abe22d1c315909147f39214beb1a",
+            .url = "git+https://github.com/agentsfleet/http.zig.git?ref=v0.0.0-af.2#82b888f431e8571f6869927af3f2bace0017e216",
             .hash = "httpz-0.0.0-PNVzrEAUCQC4g6ChaPWV5_fZMNDcDwXJqEJmCUAcGFLN",
         },
         // Fork pin agentsfleet/zig-yaml (tag v0.3.0-dev-af.1) over upstream kubkon/zig-yaml
