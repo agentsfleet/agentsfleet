@@ -28,6 +28,7 @@ import RunMetricsStrip from "./components/RunMetricsStrip";
 import { FleetInstallGate } from "./components/FleetInstallGate";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { resolveLastDeliveries } from "./components/last-delivery";
+import { deriveFleetIdentity } from "../components/fleetIdentity";
 import {
   FleetSubnavigation,
   FLEET_VIEW,
@@ -91,7 +92,7 @@ export default async function FleetDetailPage({
   const claimsViewport = view === FLEET_VIEW.chat;
 
   return (
-    <div className={cn("flex flex-col", claimsViewport && "min-h-0 flex-1")}>
+    <div className={cn("flex min-h-full flex-1 flex-col", claimsViewport && "h-full min-h-0 overflow-hidden")}>
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
       <div className="flex min-w-0 flex-col gap-3xl lg:flex-row">
         <div
@@ -113,12 +114,15 @@ export default async function FleetDetailPage({
         fleetId={fleet.id}
         fleetName={fleet.name}
         status={fleet.status}
-        className={cn("flex flex-col", claimsViewport && "min-h-0 flex-1")}
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          claimsViewport && "h-full overflow-hidden",
+        )}
       >
         <div
           className={cn(
-            "flex min-w-0 flex-col gap-3xl lg:flex-row",
-            claimsViewport && "min-h-0 flex-1",
+            "flex min-w-0 flex-1 flex-col gap-3xl lg:flex-row lg:items-stretch",
+            claimsViewport && "h-full min-h-0 flex-1 overflow-hidden",
           )}
         >
           <FleetSubnavigation
@@ -126,7 +130,7 @@ export default async function FleetDetailPage({
             fleetId={fleet.id}
             activeView={view}
           />
-          <div className={cn("flex min-w-0 flex-1 flex-col", claimsViewport && "min-h-0")}>
+          <div className={cn("flex min-w-0 flex-1 flex-col", claimsViewport && "h-full min-h-0 overflow-hidden")}>
             {content}
           </div>
         </div>
@@ -168,7 +172,7 @@ async function loadChatView({ workspaceId, fleet, token }: PageContext) {
   const approvals = approvalsResult ?? { items: [], next_cursor: null };
   const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-lg">
+    <div className="flex min-h-0 flex-1 flex-col gap-md overflow-hidden">
       <div className="shrink-0">
         <RunMetricsStrip
           status={fleet.status}
@@ -183,7 +187,7 @@ async function loadChatView({ workspaceId, fleet, token }: PageContext) {
       <FleetThreadDynamic
         workspaceId={workspaceId}
         fleetId={fleet.id}
-        fleetName={fleet.name}
+        fleetName={`Agent ${deriveFleetIdentity(fleet.id).callsign}`}
         initial={events.items}
       />
     </div>
@@ -213,10 +217,18 @@ async function loadMemoryView({ workspaceId, fleet, token }: PageContext) {
 }
 
 function SourceView({ context, field }: { context: PageContext; field: typeof SOURCE_FIELD.skill }) {
-  return <SourceEditor context={context} field={field} />;
+  return <SourceEditor context={context} field={field} fillAvailableSpace />;
 }
 
-function SourceEditor({ context, field }: { context: PageContext; field: "skill" | "trigger" }) {
+function SourceEditor({
+  context,
+  field,
+  fillAvailableSpace = false,
+}: {
+  context: PageContext;
+  field: "skill" | "trigger";
+  fillAvailableSpace?: boolean;
+}) {
   const { workspaceId, fleet, etag } = context;
   return (
     <SkillEditor
@@ -226,6 +238,7 @@ function SourceEditor({ context, field }: { context: PageContext; field: "skill"
       sourceMarkdown={fleet.source_markdown}
       triggerMarkdown={fleet.trigger_markdown}
       etag={etag}
+      fillAvailableSpace={fillAvailableSpace}
     />
   );
 }
@@ -240,7 +253,7 @@ async function loadTriggerView(context: PageContext) {
     triggers,
   );
   return (
-    <div className="flex flex-col gap-lg">
+    <div className="flex min-h-0 flex-1 flex-col gap-lg">
       <SourceEditor context={context} field={SOURCE_FIELD.trigger} />
       <TriggerPanel triggers={triggers} lastDeliveryByKey={lastDeliveryByKey} />
     </div>

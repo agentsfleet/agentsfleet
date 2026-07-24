@@ -7,7 +7,7 @@
 
 ## Memorable thing
 
-**"It wakes."** A long-lived daemon that wakes on events, runs against a durable replayable log, and posts evidenced answers — never chats. Every visual decision serves this posture.
+**"It wakes."** A long-lived daemon that wakes on events, runs against a durable replayable log, receives operator direction, and posts evidenced answers. Every visual decision serves this posture.
 
 ---
 
@@ -30,7 +30,7 @@
 **"Operational Restraint"** — serious infrastructure brand language with one signature of liveness nobody else owns.
 
 - **Reference vibes:** Anthropic console × Datadog × a single bioluminescent pulse.
-- **Anti-vibes:** Vercel/Linear aurora gradients, purple-to-blue meshes, "magical" hero animations, friendly mascots, chat bubbles, decorative blobs, gradient CTA buttons, bubble-radius everything.
+- **Anti-vibes:** Vercel/Linear aurora gradients, purple-to-blue meshes, "magical" hero animations, friendly mascots, generic consumer-chat bubbles, decorative blobs, gradient CTA buttons, bubble-radius everything.
 - **Decoration level:** minimal. The mono typography + the pulse do all the work. A subtle dot-grid background is permitted on marketing hero only (8% opacity).
 - **Mood:** evidenced, machine-precise, slightly haunted, never decorative. The product feels alive but never performs.
 - **Differentiation strategy:** restraint as the differentiator. Every competitor uses aurora gradients. By having none, the single pulse color owns all attention.
@@ -284,11 +284,13 @@ into the anti-vibes traps the rest of this doc forbids.
 - **Buttons:** mono font, 13px, padding `12px 16px`, border-radius `--r-md` (`9px`). Three variants: `primary` (fills with `--cta` — the pulse in dark, **solid ink in light**; `--cta-foreground` text: dark on mint, white on ink), `default` (surface-2 fill, border-strong outline), `ghost` (transparent, muted text). No gradient buttons. No icon-only buttons larger than 36px square.
 - **Badges:** mono font, 11px, padding `4px 8px`, border-radius `--r-sm`. Status badges (`LIVE`, `degraded`, `failed`) get colored fills; informational badges get muted outlines.
 - **Form fields:** surface-2 background, border on default, pulse-cyan focus ring with `--pulse-glow` shadow. Mono font for input values (they're operational data, not prose).
+- **Fleet transcripts:** a centered reading column makes human, fleet, and external-source turns scannable. Operator turns may align right in a restrained bordered surface; fleet replies stay open and left aligned; integration turns are compact source-context cards with their outcome below. This is a conversation with operational evidence, not a generic consumer chat.
 - **Cards:** surface-1 background, 1px border, `--r-lg` (`14px`) radius. Padding 24px default, 16px in dense data views.
 - **Tables / lists:** prefer flat rows with 1px bottom borders over zebra-striping. Tabular-nums everywhere. Right-align numbers, left-align text.
 - **Sidebars:** surface-2 background. Mono nav items, 12px. Active item gets surface-3 fill, not a colored bar.
 - **Tabs:** one visual — an underline. Inactive triggers read `--text-muted` on a thin `--border` rail; the active trigger lights its 2px bottom-border to `--pulse` (a sanctioned "active" use of the currency) and its label to `--text`. No pill tray, no `bg-background` active fill, no shadow. The in-page Radix tabs and the route-style tab-nav share one style module (`design-system/tab-styles.ts`).
-- **Page header:** the page title sits on its own line; a one-line **description renders directly below it** (muted, body-sm), never beside it. An optional primary action pins top-right — the title + description form a left column, the action aligns to its top. One `PageHeader` primitive carries both the bare and the with-description/action shapes.
+- **Dashboard page rhythm:** `PageLayout` owns the 32px gap between direct page sections. It uses flex gap, never adjacent margins, so standard and full-height pages share the same spacing. `PageHeader` owns title and description only. `SectionHeader` owns the labelled working area and places its primary action on the right when that area has one.
+- **Page header:** the page title sits on its own line; a one-line **description renders directly below it** (muted, body-sm), never beside it. An optional page-level action pins top-right only when it acts on the whole page. The title + description form a left column, and the action aligns to its top.
 - **Usage bars:** a thin (8px) full-width track (`--surface-3`/`bg-accent`) with a `--pulse-dim → --pulse` gradient fill whose width is the consumed fraction; the fill animates `0 → value` on load (`meter-fill`, reduced-motion-gated). A usage bar, not a gauge — an optional label + tabular-nums percentage row sits above, an optional caption below. `UsageBar` (`design-system/UsageBar.tsx`), not a marketing primitive; `globals.css` owns only the animation keyframe. First consumer: Billing's balance card (unlabeled — the dollar headline above it already states the value).
 - **Option cards:** a bordered choice card (icon slot + label + optional one-line description), `data-state="checked"` gets a `--primary`/`--border-strong` ring — the picker idiom for a small (2-5) set of mutually-exclusive choices where a plain dropdown hides the tradeoff. Built on the existing `RadioGroup`/`RadioGroupItem` Radix primitive (`OptionCard`, `design-system/OptionCard.tsx`), not a second radio implementation. First consumer: `AddRunnerDialog`'s isolation-mode field, replacing a `Select` dropdown.
 
@@ -354,6 +356,7 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-07-07 | Formalize `UsageBar` and `OptionCard` as shared primitives | M119 §2, §4. `UsageBar` extracts the bespoke `.app-meter` markup (previously hand-rolled once, in `BillingBalanceCard`) into a reusable component — see "Usage bars" above. `OptionCard` builds the M98 §3-4 "option-card" idiom (until now ad-hoc prose, never extracted into code) on top of the existing, previously-zero-consumer `RadioGroup` primitive — see "Option cards" above. First consumer: `AddRunnerDialog`'s isolation-mode field. |
 | 2026-07-07 | Sanction one non-`--pulse` decorative pattern: the account avatar | M119 §5. The dashboard account avatar (Clerk `UserButton` fallback) rendered every user against the same flat `--surface-2`. Added a deterministic, per-user `repeating-conic-gradient` pinwheel (hue, second hue, and start angle all hashed from the user id) so accounts read as visually distinct — a pattern reads closer to "distinct identity" than a smooth blend, approximating GitHub/Linear-style per-account avatar colour without a pixel-grid identicon (Clerk's `appearance.elements` styling hook accepts CSS values only, not custom child markup — a true identicon is a follow-up, not this patch). Never `--pulse`; two colours only, within the "no three-or-more-stop gradients" rule. |
 | 2026-07-22 | Give each Fleet a deterministic robot sigil and agent callsign | The Fleet wall needed persistent identity without adopting friendly mascots or obscuring functional names. The immutable fleet id seeds mirrored geometry and a stable callsign; live Fleets alone use the existing pulse colour and wake ring. The tile also states that a Fleet is an AI agent and exposes a visible Manage fleet affordance. |
+| 2026-07-23 | Fleet detail supports an operational conversation | Operators can steer a fleet in a centered transcript alongside evidence from GitHub, Slack, Zoho, Grafana, logs, and other sources. Human turns are distinct from source-context cards; fleet replies remain evidence-first and never use generic consumer-chat styling. |
 
 ---
 

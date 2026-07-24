@@ -9,6 +9,7 @@ import {
   DescriptionTerm,
   DescriptionDetails,
   PageHeader,
+  PageLayout,
   PageTitle,
   Section,
   SectionLabel,
@@ -43,7 +44,7 @@ export default async function ApprovalDetailPage({
     : "default";
 
   return (
-    <div>
+    <PageLayout>
       <PageHeader>
         <div className="flex items-center gap-3">
           <PageTitle>{gate.proposed_action || `${gate.tool_name}:${gate.action_name}`}</PageTitle>
@@ -105,7 +106,7 @@ export default async function ApprovalDetailPage({
           </section>
         </Section>
       )}
-    </div>
+    </PageLayout>
   );
 }
 

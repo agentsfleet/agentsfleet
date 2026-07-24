@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { PageHeader, PageTitle, Section, SectionLabel } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
 import type { RunnerListResponse } from "@/lib/api/runners";
 import RunnerList, { type RunnerListHandle } from "./RunnerList";
 import AddRunnerDialogDynamic from "@/components/domain/island-dynamic/AddRunnerDialogDynamic";
@@ -16,20 +16,19 @@ const RUNNERS_DESCRIPTION = "Hosts you enroll to run fleets.";
 export default function RunnersView({ initial }: { initial: RunnerListResponse }) {
   const listRef = useRef<RunnerListHandle>(null);
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader description={RUNNERS_DESCRIPTION}>
         <PageTitle>Runners</PageTitle>
       </PageHeader>
 
       <Section asChild>
         <section aria-label="Runners">
-          <div className="flex flex-wrap items-baseline justify-between gap-md">
-            <SectionLabel>Manage runners</SectionLabel>
-            <AddRunnerDialogDynamic onCreated={() => listRef.current?.refresh()} />
-          </div>
+          <SectionHeader actions={<AddRunnerDialogDynamic onCreated={() => listRef.current?.refresh()} />}>
+            Manage runners
+          </SectionHeader>
           <RunnerList ref={listRef} initial={initial} />
         </section>
       </Section>
-    </div>
+    </PageLayout>
   );
 }

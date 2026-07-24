@@ -244,6 +244,15 @@ describe("DataTable", () => {
     expect(thead.className).toContain("top-0");
   });
 
+  it("uses an explicit viewport height instead of the default cap", () => {
+    const { container } = render(
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} viewportClassName="max-h-72" />,
+    );
+
+    expect(container.querySelector(".max-h-72.overflow-y-auto")).toBeInTheDocument();
+    expect(container.querySelector(".max-h-96")).toBeNull();
+  });
+
   it("stickyHeader=false removes the height bound and pinned header", () => {
     const { container } = render(
       <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader={false} />,

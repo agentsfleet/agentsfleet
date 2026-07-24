@@ -1,5 +1,5 @@
 // What a stored `request_json` payload says — parsing, headlines, and the
-// affordances a recognised shape earns (its action verb, its outbound link).
+// source reference and outbound link a recognised shape earns.
 //
 // Split out of `event-summary.ts` at its length cap, NOT forked from it: this
 // is the same single vocabulary, and `event-summary` re-exports every name
@@ -96,13 +96,12 @@ function completedRunHeadline(payload: Payload): string | null {
   return where.length > 0 ? `${name} ${conclusion}${SEPARATOR}${where}` : `${name} ${conclusion}`;
 }
 
-// ── Change-proposal affordances ───────────────────────────────────────────
+// ── Source reference and link ─────────────────────────────────────────────
 // The two recognised payload shapes carry their own canonical link
 // (`url` on a change proposal, `run_url` on a completed run — both are the
 // provider's `html_url`). A shape without one renders no link rather than a
 // guessed one.
 
-const PAYLOAD_ACTION_KEY = "action";
 const PAYLOAD_LINK_KEYS = ["url", "run_url"] as const;
 // Webhook payloads are third-party input. Only these two schemes may ever
 // reach an href — `javascript:` and `data:` in a rendered link are script
@@ -110,17 +109,16 @@ const PAYLOAD_LINK_KEYS = ["url", "run_url"] as const;
 const SAFE_LINK_SCHEMES = ["https:", "http:"] as const;
 
 /**
- * The action word a change proposal reports (`opened`, `edited`, …), rendered
- * as its own badge so the row's verb is scannable. Empty when the payload is
- * not a recognised change proposal — a completed run has no action verb.
+ * The source reference a recognised change proposal carries. It is shown
+ * once as the outbound link label, so the event headline can stay readable
+ * instead of repeating the same repository and number on the next line.
  */
-export function changeProposalActionFrom(requestJson: string | null | undefined): string {
+export function eventReferenceFrom(requestJson: string | null | undefined): string | null {
   const payload = parsePayload(requestJson);
-  if (!payload) return "";
-  // Gated on the change-proposal shape itself: `action` alone also appears on
-  // payloads this vocabulary does not otherwise recognise.
-  if (changeProposalHeadline(payload) === null) return "";
-  return text(payload, PAYLOAD_ACTION_KEY);
+  if (!payload) return null;
+  const repo = text(payload, "repo");
+  const number = count(payload, "number");
+  return repo.length > 0 && number !== null ? `${repo}#${number}` : null;
 }
 
 /**

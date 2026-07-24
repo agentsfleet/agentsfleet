@@ -103,7 +103,13 @@ function triggerDetail(trigger: FleetTrigger): string {
 
 function LastDelivery({ at }: { at: number | null | undefined }) {
   if (at === undefined) return null;
-  if (at === null) return <Badge variant="default">Never delivered</Badge>;
+  if (at === null) {
+    return (
+      <Badge variant="default" title="No recorded delivery has reached this trigger yet.">
+        No deliveries yet
+      </Badge>
+    );
+  }
   return (
     <Badge variant="default">
       Last delivery&nbsp;

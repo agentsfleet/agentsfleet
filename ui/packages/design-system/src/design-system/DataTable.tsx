@@ -29,6 +29,7 @@ export function DataTable<T>({
   className,
   isLoading,
   stickyHeader = true,
+  viewportClassName,
   sortKey,
   sortDirection,
   onSortChange,
@@ -67,6 +68,7 @@ export function DataTable<T>({
       className={className}
       isLoading={loading}
       stickyHeader={stickyHeader}
+      viewportClassName={viewportClassName}
       onSortChange={onSortChange}
       pagination={pagination}
       totalRows={rows.length}

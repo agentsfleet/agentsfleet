@@ -1,6 +1,6 @@
 import type { MessageState } from "@assistant-ui/react";
 
-import { GROUP_META } from "./useFleetThreadEntries";
+import { GROUP_META, RENDER_KIND_KEY } from "./useFleetThreadEntries";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
 
 // The custom-metadata accessors a rendered message reads. Pure and JSX-free,
@@ -26,6 +26,11 @@ export function readCustomStatus(message: MessageState): string {
   return typeof raw === "string" ? raw : "";
 }
 
+export function readRenderKind(message: MessageState): string | null {
+  const raw = message.metadata.custom[RENDER_KIND_KEY];
+  return typeof raw === "string" ? raw : null;
+}
+
 export function readReply(message: MessageState): string {
   const raw = message.metadata.custom["reply"];
   return typeof raw === "string" ? raw : "";
@@ -44,6 +49,11 @@ export function readGroupMembers(message: MessageState): FleetEvent[] | null {
 
 export function readFailureLabel(message: MessageState): string | null {
   const raw = message.metadata.custom["failureLabel"];
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
+export function readFailureDetail(message: MessageState): string | null {
+  const raw = message.metadata.custom["failureDetail"];
   return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 

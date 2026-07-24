@@ -24,7 +24,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import BillingUsageTab from "@/app/(dashboard)/settings/billing/components/BillingUsageTab";
-import type { ChargeRow } from "@/app/(dashboard)/settings/billing/lib/charges";
+import { chargeAgentLabel, type ChargeRow } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { ActionResult } from "@/lib/actions/with-token";
 import { CHARGE_TYPE, PROVIDER_MODE, type TenantBillingChargesResponse } from "@/lib/types";
 
@@ -70,36 +70,36 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     expect(screen.getByRole("button", { name: "Next page" })).toBeTruthy();
   });
 
-  it("renders a ledger row with date · amount · type · description", () => {
+  it("renders a ledger row with date, fleet identity, activity, and amount", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: null }));
     // amount is a deduction (negative)
     expect(screen.getByText("−$0.001")).toBeTruthy();
-    // type = posture badge
-    expect(screen.getByText(PROVIDER_MODE.platform)).toBeTruthy();
-    // description carries the model + token detail
-    expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy();
+    // fleet identity and model make the debit attributable
+    expect(screen.getByText(chargeAgentLabel(charge()))).toBeTruthy();
+    expect(screen.getByText("kimi k2.6")).toBeTruthy();
+    // activity makes the token counts legible
+    expect(screen.getByText("Run · 820 input tokens · 1,040 output tokens")).toBeTruthy();
     // date column renders the formatted timestamp
     expect(screen.getByText(/\d{4} · \d{2}:\d{2}/)).toBeTruthy();
   });
 
-  it("describes a receive charge as a gate-pass", () => {
+  it("describes a receive charge as an event receipt", () => {
     render(
       React.createElement(BillingUsageTab, {
         initialCharges: [charge({ charge_type: CHARGE_TYPE.receive, token_count_input: null, token_count_output: null })],
         initialCursor: null,
       }),
     );
-    expect(screen.getByText("kimi-k2.6 · event gate-pass")).toBeTruthy();
+    expect(screen.getByText("Event received")).toBeTruthy();
   });
 
-  it("uses the cyan badge variant for self_managed posture", () => {
-    const { container } = render(
-      React.createElement(BillingUsageTab, {
-        initialCharges: [charge({ posture: PROVIDER_MODE.self_managed })],
-        initialCursor: null,
-      }),
-    );
-    expect(container.textContent).toContain(PROVIDER_MODE.self_managed);
+  it("renders a zero debit without a negative sign", () => {
+    render(React.createElement(BillingUsageTab, {
+      initialCharges: [charge({ credit_deducted_nanos: 0 })],
+      initialCursor: null,
+    }));
+    expect(screen.getByText("$0.00")).toBeTruthy();
+    expect(screen.queryByText("−$0.00")).toBeNull();
   });
 
   it("wires DataTable's stickyHeader on the usage ledger (its real consumer)", () => {
@@ -115,7 +115,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       charge({ id: "tel_2", recorded_at: 1_800_000_000_000, credit_deducted_nanos: 5_000_000 }),
     ], initialCursor: null }));
 
-    for (const name of ["Date", "Amount", "Type", "Description"]) {
+    for (const name of ["Date", "Fleet and model", "Activity", "Amount"]) {
       fireEvent.click(screen.getByRole("button", { name }));
       expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
       if (name === "Amount") expect(screen.getAllByRole("row")[1]?.textContent).toContain("−$0.005");

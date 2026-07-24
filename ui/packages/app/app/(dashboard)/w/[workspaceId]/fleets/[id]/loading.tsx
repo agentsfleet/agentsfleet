@@ -1,17 +1,19 @@
-import { PageHeader, PageTitle, Skeleton } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle, Skeleton } from "@agentsfleet/design-system";
 
 export default function FleetDetailLoading() {
   return (
-    <div>
-      <Skeleton className="mb-sm h-4 w-56" />
-      <PageHeader>
-        <div className="flex items-center gap-md">
-          <PageTitle>
-            <Skeleton className="h-6 w-48" />
-          </PageTitle>
-          <Skeleton className="h-4 w-16" />
-        </div>
-      </PageHeader>
+    <PageLayout>
+      <div className="space-y-sm">
+        <Skeleton className="h-4 w-56" />
+        <PageHeader>
+          <div className="flex items-center gap-md">
+            <PageTitle>
+              <Skeleton className="h-6 w-48" />
+            </PageTitle>
+            <Skeleton className="h-4 w-16" />
+          </div>
+        </PageHeader>
+      </div>
       <div className="flex flex-col gap-xl lg:flex-row">
         <div className="flex gap-xs border-b border-border pb-md lg:w-48 lg:flex-col lg:border-b-0 lg:border-r lg:pr-lg">
           {Array.from({ length: 6 }, (_, index) => (
@@ -23,6 +25,6 @@ export default function FleetDetailLoading() {
           <Skeleton className="h-96 w-full rounded-lg" />
         </div>
       </div>
-    </div>
+    </PageLayout>
   );
 }

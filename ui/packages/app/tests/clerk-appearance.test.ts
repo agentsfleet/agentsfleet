@@ -30,6 +30,18 @@ describe("AUTH_APPEARANCE", () => {
     expect(elements.formFieldInput.borderColor).toBe("var(--border-strong)");
   });
 
+  it("keeps segmented email verification inputs visible before focus", () => {
+    expect(elements.otpCodeFieldInput.backgroundColor).toBe(
+      elements.formFieldInput.backgroundColor,
+    );
+    expect(elements.otpCodeFieldInput.borderColor).toBe(
+      elements.formFieldInput.borderColor,
+    );
+    expect(elements.otpCodeFieldInput["&:focus"]).toEqual(
+      elements.formFieldInput["&:focus"],
+    );
+  });
+
   it("themes the UserButton avatar fallback with design tokens, not Clerk's palette", () => {
     // With no uploaded image Clerk renders an initials fallback; pin its fill +
     // text to design tokens so "what you see with no avatar" matches the app.

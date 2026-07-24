@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import {
   PageHeader,
+  PageLayout,
   PageTitle,
   Section,
-  SectionLabel,
+  SectionHeader,
 } from "@agentsfleet/design-system";
 import { auth } from "@clerk/nextjs/server";
 import {
@@ -64,14 +65,14 @@ export default async function IntegrationsPage({
   const catalogError = catalogResult.error;
 
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader description={PAGE_DESCRIPTION}>
         <PageTitle>{PAGE_TITLE}</PageTitle>
       </PageHeader>
 
       <Section asChild>
         <section aria-label="Integrations" data-testid="integrations-page">
-          <SectionLabel>Connectors</SectionLabel>
+          <SectionHeader>Connectors</SectionHeader>
           <IntegrationsConnectors
             workspaceId={workspaceId}
             catalog={catalog}
@@ -82,6 +83,6 @@ export default async function IntegrationsPage({
           />
         </section>
       </Section>
-    </div>
+    </PageLayout>
   );
 }

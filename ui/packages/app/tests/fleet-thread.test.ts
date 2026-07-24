@@ -128,6 +128,7 @@ function toThreadMessage(e: FleetEvent): ThreadMessageLike {
         reply: e.reply,
         outcome: e.outcome,
         failureLabel: e.failureLabel,
+        failureDetail: e.failureDetail,
       },
     },
   };
@@ -251,7 +252,7 @@ describe("FleetThread — header chrome", () => {
     const { container } = renderThread();
     const header = container.querySelector('[data-testid="fleet-chat-header"]');
     expect(header).toBeTruthy();
-    expect(header?.className).toMatch(/items-center/);
+    expect(header?.className).toMatch(/justify-between/);
     expect(screen.getByRole("heading", { name: "Chat" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Steer" })).toBeNull();
     expect(screen.queryByText(/1 events/)).toBeNull();
@@ -270,15 +271,21 @@ describe("FleetThread — header chrome", () => {
       .toMatch(/bg-current/);
   });
 
-  it("renders the transcript and composer as separate matching surfaces", () => {
+  it("keeps the composer in the static transcript footer", () => {
     mockStream([]);
     const { container } = renderThread();
     const transcript = container.querySelector('[aria-label="Fleet chat"]');
     const composer = container.querySelector('[aria-label="Chat composer"]');
     expect(transcript).toBeTruthy();
     expect(composer).toBeTruthy();
-    expect(transcript?.contains(composer)).toBe(false);
+    expect(transcript?.contains(composer)).toBe(true);
     expect(composer?.getAttribute("id")).toBe("fleet-steer-composer");
+    const footer = container.querySelector('[data-testid="fleet-chat-footer"]');
+    expect(footer?.contains(composer)).toBe(true);
+    expect(footer?.className).toMatch(/max-w-6xl/);
+    expect(footer?.className).toMatch(/shrink-0/);
+    expect(container.querySelector('[role="log"]')?.contains(composer)).toBe(false);
+    expect(screen.getByRole("button", { name: /jump to latest/i }).className).toMatch(/absolute/);
   });
 
   it("names each connection state rather than only the live one", () => {
@@ -329,10 +336,10 @@ describe("FleetThread — summary refresh", () => {
 });
 
 describe("FleetThread — role rendering", () => {
-  it("renders an operator steer and the fleet's reply on ONE row as two bubbles", () => {
-    // The durable model: a steer row carries both the operator's message
-    // (request_json) and the fleet's answer (response_text) — the reply
-    // UPDATEs onto the same row. Both must render, attributed correctly.
+  it("renders an operator steer and the fleet's reply as separate conversation turns", () => {
+    // A durable event can contain both the trigger and its response. The
+    // transcript normalizes those into two assistant-ui message roots so
+    // alignment, scrolling, and future actions remain message-scoped.
     mockStream([
       ev({
         role: "user",
@@ -345,11 +352,11 @@ describe("FleetThread — role rendering", () => {
     const { container } = renderThread();
     // The operator's question survives (the old code dropped it for the reply).
     expect(screen.getByText(/please review PR 517/)).toBeTruthy();
-    // The fleet's reply survives too (the new-code bug dropped it for the
-    // question), and it is NOT attributed to the operator.
+    // The fleet's reply survives too, and it is NOT attributed to the operator.
     expect(screen.getByText(/Reviewed\. Two suggestions/)).toBeTruthy();
     expect(screen.getByText("Operator")).toBeTruthy();
-    expect(screen.getByText(FLEET_NAME)).toBeTruthy();
+    expect(screen.getAllByText(FLEET_NAME).length).toBeGreaterThanOrEqual(1);
+    expect(container.querySelectorAll("[data-message-id]")).toHaveLength(2);
     // The reply sits under the fleet's chip, not the operator's.
     const replyRow = screen.getByText(/Reviewed\. Two suggestions/).closest("[data-role]");
     expect(replyRow?.getAttribute("data-role")).toBe("assistant");
@@ -429,7 +436,7 @@ describe("FleetThread — role rendering", () => {
     expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
   });
 
-  it("pins one banner for a fleet that keeps failing the same way", () => {
+  it("keeps repeated startup failures inline in one expandable activity group", () => {
     const cause = "no instructions configured";
     mockStream(
       Array.from({ length: 15 }, (_, i) =>
@@ -448,18 +455,13 @@ describe("FleetThread — role rendering", () => {
     );
     renderThread();
 
-    const banner = screen.getByTestId("fleet-failure-banner");
-    // One line carries what fifteen rows were saying: what, why, how often.
-    expect(banner.textContent).toContain("Failed a startup safety check");
-    expect(screen.getByTestId("failure-banner-count").textContent).toBe("×15");
-    expect(banner.textContent).toContain(cause);
-    expect(banner.textContent).toContain(GUIDANCE.STARTUP);
+    expect(screen.queryByTestId("fleet-failure-banner")).toBeNull();
+    expect(screen.getByTestId("group-count").textContent).toBe("×15");
+    expect(screen.getByText(/This fleet needs instructions before it can respond\./)).toBeTruthy();
+    expect(screen.queryByText(cause)).toBeNull();
   });
 
-  it("pins a bare banner for a repeat with no cause and no actionable guidance", () => {
-    // The quiet arm of the banner: a class the operator cannot act on
-    // (`oom_kill`), from a runner that recorded no cause. It still pins the
-    // count, but renders neither a cause clause nor a guidance line.
+  it("keeps non-actionable repeated failures compact without guidance", () => {
     mockStream(
       Array.from({ length: 3 }, (_, i) =>
         ev({
@@ -477,10 +479,10 @@ describe("FleetThread — role rendering", () => {
     );
     renderThread();
 
-    const banner = screen.getByTestId("fleet-failure-banner");
-    expect(screen.getByTestId("failure-banner-count").textContent).toBe("×3");
-    expect(banner.textContent).toContain("Ran out of memory");
-    expect(banner.textContent).not.toContain(GUIDANCE.STARTUP);
+    expect(screen.queryByTestId("fleet-failure-banner")).toBeNull();
+    expect(screen.getByTestId("group-count").textContent).toBe("×3");
+    expect(screen.getByText("Ran out of memory")).toBeTruthy();
+    expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 
   it("animates a still-working integration delivery instead of stating an outcome", () => {
@@ -558,10 +560,37 @@ describe("FleetThread — role rendering", () => {
     expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(15);
   });
 
-  it("renders a group whose members carry replies and payloads", async () => {
-    // A run coalesces on actor/headline/outcome, so members can still differ
-    // in reply and payload. The newest here replied; some members carry a
-    // payload disclosure, some do not — exercising both sides of each.
+  it("keeps each grouped delivery's payload reachable after expansion", async () => {
+    const payload = '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541}';
+    mockStream([
+      ev({
+        id: "payload_1",
+        role: "system",
+        actor: "webhook:github",
+        text: "opened · agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "processed",
+        custom: { requestJson: payload },
+      }),
+      ev({
+        id: "payload_2",
+        role: "system",
+        actor: "webhook:github",
+        text: "opened · agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "processed",
+        custom: { requestJson: payload },
+      }),
+    ]);
+    renderThread();
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { expanded: false })); });
+    expect(screen.getAllByText("Details")).toHaveLength(2);
+  });
+
+  it("keeps reply-bearing activity as separate conversation turns", async () => {
+    // Reply-bearing events are not grouped: each trigger and response needs
+    // its own assistant-ui root, even when the trigger text is identical.
     const member = (id: string, reply: string, requestJson?: string) =>
       ev({
         id,
@@ -580,19 +609,16 @@ describe("FleetThread — role rendering", () => {
     ]);
     const { container } = renderThread();
 
-    // The group's newest replied, so the header row shows no outcome clause.
-    expect(screen.getByTestId("group-count").textContent).toBe("×3");
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { expanded: false }));
-    });
-    // Members render: one with a payload disclosure, others with their reply.
-    expect(screen.getByText("▸ payload")).toBeTruthy();
+    expect(screen.queryByTestId("group-count")).toBeNull();
     expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(3);
+    expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.getByText(/"repo":\s*"o\/r"/)).toBeTruthy();
   });
 
   it("links out from an activity delivery that carries only a run URL", () => {
-    // A completed-run payload has a link but no change-proposal action, so the
-    // annotation renders the link without an action badge.
+    // A completed-run payload has a link but no repository reference, so the
+    // annotation renders a generic source action.
     mockStream([
       ev({
         id: "run1",
@@ -633,9 +659,10 @@ describe("FleetThread — role rendering", () => {
     ]);
     renderThread();
     // The trigger row exposes the operator's own submitted payload.
-    expect(screen.getByText("▸ payload")).toBeTruthy();
+    expect(screen.getByText("Details")).toBeTruthy();
     // The reply row carries the actionable guidance.
-    expect(screen.getByTestId("failure-guidance").textContent).toBe(GUIDANCE.STARTUP);
+    expect(screen.getByTestId("failure-guidance").textContent).toContain("Tell the fleet what to do in its instructions, then retry.");
+    expect(screen.getByRole("link", { name: "Edit instructions" })).toBeTruthy();
   });
 
   it("streams a fleet reply that has begun but not finished", () => {
@@ -672,7 +699,7 @@ describe("FleetThread — role rendering", () => {
     expect(screen.getByText("what is going on?")).toBeTruthy();
   });
 
-  it("renders an integration delivery as one compact line, payload still reachable", () => {
+  it("renders an integration delivery as a source-context card with reachable payload", () => {
     mockStream([
       ev({
         role: "system",
@@ -686,15 +713,15 @@ describe("FleetThread — role rendering", () => {
     ]);
     const { container } = renderThread();
 
-    // One tick, not a full row with a chip plus a second outcome row.
+    // One integration record, not a duplicated source row plus outcome row.
     const tick = container.querySelector('[data-compact="true"]');
     expect(tick).toBeTruthy();
     expect(container.querySelectorAll('[data-role="system"]')).toHaveLength(1);
     expect(tick?.textContent).toContain("agentsfleet/agentsfleet#541");
-    // The outcome rides the same line rather than earning its own row.
-    expect(tick?.textContent).toContain(OUTCOME.NO_REPLY);
-    // Disclosure survives the demotion — nothing became unreachable.
-    expect(screen.getByText("▸ payload")).toBeTruthy();
+    // The outcome is readable beneath the source context, not another row.
+    expect(screen.getByText(OUTCOME.NO_REPLY).className).toMatch(/text-muted-foreground/);
+    // Disclosure remains reachable beside the source evidence.
+    expect(screen.getByText("Details")).toBeTruthy();
   });
 
   it("keeps the operator's and the fleet's own rows in the full skeleton", () => {
@@ -712,7 +739,7 @@ describe("FleetThread — role rendering", () => {
     expect(screen.getByText("Deployed.")).toBeTruthy();
   });
 
-  it("badges the action and links out only when the payload carries a URL", () => {
+  it("links the repository reference out when the payload carries a URL", () => {
     mockStream([
       ev({
         role: "system",
@@ -728,10 +755,90 @@ describe("FleetThread — role rendering", () => {
     ]);
     const { container } = renderThread();
 
+    expect(screen.getByRole("link", { name: "agentsfleet/agentsfleet#541" })).toBeTruthy();
     expect(screen.getByText("opened")).toBeTruthy();
     const link = container.querySelector('a[href^="https://github.com"]');
     expect(link).toBeTruthy();
     expect(link?.getAttribute("rel")).toContain("noopener");
+  });
+
+  it("keeps an activity headline readable when its linked source reference is removed", () => {
+    mockStream([
+      ev({
+        id: "headline_1",
+        role: "system",
+        actor: "webhook:github",
+        text: "opened agentsfleet/agentsfleet#541 — Fix routing",
+        reply: "",
+        status: "processed",
+        custom: {
+          requestJson:
+            '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541,"url":"https://github.com/agentsfleet/agentsfleet/pull/541"}',
+        },
+      }),
+      ev({
+        id: "headline_2",
+        role: "system",
+        actor: "webhook:github",
+        text: "edited · agentsfleet/agentsfleet#542 — Add evidence",
+        reply: "",
+        status: "processed",
+        custom: {
+          requestJson:
+            '{"action":"edited","repo":"agentsfleet/agentsfleet","number":542,"url":"https://github.com/agentsfleet/agentsfleet/pull/542"}',
+        },
+      }),
+      ev({
+        id: "headline_3",
+        role: "system",
+        actor: "webhook:github",
+        text: "closed agentsfleet/agentsfleet#543 after review",
+        reply: "",
+        status: "processed",
+        custom: {
+          requestJson:
+            '{"action":"closed","repo":"agentsfleet/agentsfleet","number":543,"url":"https://github.com/agentsfleet/agentsfleet/pull/543"}',
+        },
+      }),
+      ev({
+        id: "headline_4",
+        role: "system",
+        actor: "webhook:github",
+        text: "synchronized agentsfleet/agentsfleet#544",
+        reply: "",
+        status: "processed",
+        custom: {
+          requestJson:
+            '{"action":"synchronized","repo":"agentsfleet/agentsfleet","number":544,"url":"https://github.com/agentsfleet/agentsfleet/pull/544"}',
+        },
+      }),
+    ]);
+    renderThread();
+
+    expect(screen.getByText("opened · Fix routing")).toBeTruthy();
+    expect(screen.getByText("edited · Add evidence")).toBeTruthy();
+    expect(screen.getByText("closed after review")).toBeTruthy();
+    expect(screen.getByText("synchronized")).toBeTruthy();
+  });
+
+  it("retains an activity headline that does not repeat its linked reference", () => {
+    mockStream([
+      ev({
+        id: "reference_absent",
+        role: "system",
+        actor: "webhook:github",
+        text: "GitHub delivery received",
+        reply: "",
+        status: "processed",
+        custom: {
+          requestJson:
+            '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541,"url":"https://github.com/agentsfleet/agentsfleet/pull/541"}',
+        },
+      }),
+    ]);
+    renderThread();
+
+    expect(screen.getByText("GitHub delivery received")).toBeTruthy();
   });
 
   it("renders no link for a payload whose URL is not an absolute http(s) address", () => {
@@ -752,7 +859,7 @@ describe("FleetThread — role rendering", () => {
     ]);
     const { container } = renderThread();
 
-    expect(screen.getByText("opened")).toBeTruthy();
+    expect(screen.getByText("opened · agentsfleet/agentsfleet#541")).toBeTruthy();
     expect(container.querySelector("a[href]")).toBeNull();
   });
 
@@ -773,7 +880,8 @@ describe("FleetThread — role rendering", () => {
     // The cause reaches the row, not just the class sentence ...
     expect(screen.getByText(new RegExp(cause))).toBeTruthy();
     // ... and the operator is told where to fix it.
-    expect(screen.getByText(GUIDANCE.STARTUP)).toBeTruthy();
+    expect(screen.getByTestId("failure-guidance").textContent).toContain("Tell the fleet what to do in its instructions, then retry.");
+    expect(screen.getByRole("link", { name: "Edit instructions" })).toBeTruthy();
   });
 
   it("offers no guidance for a failure class the operator cannot act on", () => {
@@ -789,7 +897,7 @@ describe("FleetThread — role rendering", () => {
       }),
     ]);
     renderThread();
-    expect(screen.queryByText(GUIDANCE.STARTUP)).toBeNull();
+    expect(screen.queryByText("Tell the fleet what to do in its instructions, then retry.")).toBeNull();
     expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 
@@ -906,7 +1014,8 @@ describe("FleetThread — role rendering", () => {
     renderThread();
     expect(screen.getByText("GitHub App")).toBeTruthy();
     expect(screen.getByText(/opened · owner\/repo#7/)).toBeTruthy();
-    expect(screen.getByText(/"repo":"owner\/repo"/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.getByText(/"repo":\s*"owner\/repo"/)).toBeTruthy();
   });
 
   it("renders a webhook row with the source tag and collapsible payload", () => {
@@ -921,7 +1030,8 @@ describe("FleetThread — role rendering", () => {
     renderThread();
     expect(screen.getByText("GitHub App")).toBeTruthy();
     expect(screen.getByText(/workflow_run · main · success/)).toBeTruthy();
-    expect(screen.getByText(/"action":"completed"/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.getByText(/"action":\s*"completed"/)).toBeTruthy();
   });
 
   it("uses the canonical outcome when a webhook has no response text", () => {
@@ -932,12 +1042,13 @@ describe("FleetThread — role rendering", () => {
         text: "",
         status: "fleet_error",
         outcome: "Failed a startup safety check",
+        failureLabel: "startup_posture",
         custom: { requestJson: "{}" },
       }),
     ]);
     renderThread();
     expect(screen.getByText("GitHub App")).toBeTruthy();
-    expect(screen.getByText("Failed a startup safety check")).toBeTruthy();
+    expect(screen.getByText("This fleet needs instructions before it can respond.")).toBeTruthy();
   });
 
   it("renders an optimistic user message with the queued badge", () => {
@@ -980,7 +1091,7 @@ describe("FleetThread — role rendering", () => {
       }),
     ]);
     renderThread();
-    expect(screen.getByText(/fleet_error/)).toBeTruthy();
+    expect(screen.queryByText("fleet_error")).toBeNull();
     expect(screen.getByText(/Provider returned 429/)).toBeTruthy();
   });
 });
@@ -1370,12 +1481,12 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(screen.getByRole("button", { name: /jump to latest/i })).toBeTruthy();
   });
 
-  it("separates rows with a hairline and keeps a long body inside its own row", () => {
+  it("keeps a fleet reply left aligned and its long body within the reading column", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();
     const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
     expect(row).toBeTruthy();
-    expect(row.className).toMatch(/border-b/);
+    expect((row.querySelector("[data-dashboard-row]") as HTMLElement).className).toMatch(/max-w-5xl/);
     const body = row.querySelector(".break-words");
     expect(body).toBeTruthy();
   });
@@ -1383,12 +1494,15 @@ describe("FleetThread — robustness against malformed metadata", () => {
   it("scrolls the conversation inside itself so the composer stays on screen", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();
-    const viewport = container.querySelector('[role="log"]') as HTMLElement;
-    expect(viewport).toBeTruthy();
+    const messageLog = container.querySelector('[role="log"]') as HTMLElement;
+    const viewport = messageLog.parentElement?.parentElement as HTMLElement;
+    const composer = container.querySelector('[aria-label="Chat composer"]');
+    expect(messageLog).toBeTruthy();
     // The message list owns the overflow. Without this the card grows to the
     // height of its whole history and pushes the composer off the page.
     expect(viewport.className).toMatch(/overflow-y-auto/);
     expect(viewport.className).toMatch(/min-h-0/);
+    expect(messageLog.contains(composer)).toBe(false);
     const card = container.querySelector('[aria-label="Fleet chat"]') as HTMLElement;
     expect(card.className).toMatch(/flex-col/);
     expect(card.className).toMatch(/min-h-0/);
@@ -1408,5 +1522,24 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(screen.getByText("slack")).toBeTruthy();
     expect(screen.queryByText(/"action":/)).toBeNull();
     expect(screen.queryByText(/payload/i)).toBeNull();
+  });
+
+  it("does not lead an actionless repository title with an activity separator", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "agentsfleet/agentsfleet#541 — Fix routing",
+        custom: {
+          requestJson:
+            '{"repo":"agentsfleet/agentsfleet","number":541,"url":"https://github.com/agentsfleet/agentsfleet/pull/541"}',
+        },
+      }),
+    ]);
+    const { container } = renderThread();
+
+    const tick = container.querySelector('[data-compact="true"]');
+    expect(screen.getByText("Fix routing")).toBeTruthy();
+    expect(tick?.textContent).not.toContain("· Fix routing");
   });
 });
