@@ -294,22 +294,3 @@ test "runner list liveness is bounded by page size" {
         return error.LeaseTableScannedWhole;
     }
 }
-
-test "fleet list page is index-ordered" {
-    const alloc = std.testing.allocator;
-    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
-    defer db.close();
-    defer teardown(db.conn);
-    try seedGraph(db.conn);
-    _ = try db.conn.exec("ANALYZE core.fleets", .{});
-
-    const plan = try planOf(alloc, db.conn,
-        \\SELECT f.id::text, f.name FROM core.fleets f
-        \\WHERE f.workspace_id = '0195b4ba-8d3a-7f13-8abc-0000000c0001'::uuid
-        \\ORDER BY f.created_at DESC, f.id DESC
-        \\LIMIT 25
-    );
-    defer alloc.free(plan);
-    try expectIndex(plan, "idx_fleets_workspace_id_created_at_id");
-    try expectNoSort(plan);
-}

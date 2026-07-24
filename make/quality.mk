@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-governance lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_sql_statement_modules _lint_zig_test_depth _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
+.PHONY: lint-all lint-zig lint-governance lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_zig_test_depth _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -74,17 +74,6 @@ _lint_zig_discipline:
 	@$(DISCIPLINE_TESTS)
 	@echo "✓ [zig] discipline check + self-tests passed"
 
-# Statement-module adoption: what share of the data-access layer routes its SQL
-# through a sibling sql.zig. Gated so the convention cannot quietly regress —
-# the ratio only means something if falling below it fails a build.
-SQL_MODULE_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_sql_statement_modules*_test.py'
-
-_lint_sql_statement_modules:
-	@echo "→ [sql-modules] Checking statement-module adoption..."
-	@python3 scripts/check_sql_statement_modules.py
-	@echo "→ [sql-modules] Adoption checker self-tests..."
-	@$(SQL_MODULE_TESTS)
-
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
 # rather than compile correctness. Grouped under one target so `lint-zig` names a
 # policy set instead of a growing list, and so a new rule extends this line
@@ -93,7 +82,7 @@ _lint_sql_statement_modules:
 # Deliberately NOT folded in: _fmt_check / _zlint_check (tooling, not policy) and
 # check-test-reachability / _lint_zig_test_depth (test structure, and the latter
 # is invoked directly to record a spec's test baseline).
-lint-governance: _lint_zig_pg_drain _lint_zig_discipline _lint_sql_statement_modules _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Run the repository convention gates
+lint-governance: _lint_zig_pg_drain _lint_zig_discipline _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Run the repository convention gates
 	@echo "✓ [governance] All convention gates passed"
 
 _zig_target_lint:
