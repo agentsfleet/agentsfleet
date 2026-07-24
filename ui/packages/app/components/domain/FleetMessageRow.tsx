@@ -13,16 +13,17 @@ import {
 } from "@agentsfleet/design-system";
 import { senderInitialsFor } from "@/lib/events/event-summary";
 
-// The approved conversation row (designs/fleet-workspace-20260721/variant-A):
-// a sender chip, the sender's name, the time on the far right, the body
-// underneath at full width, and a hairline between rows. Every role renders
-// this same shape — an operator message, a fleet reply and an integration
-// event differ in their chip tone and their body, never in their skeleton.
+// The conversation row for the two live roles. Operator turns anchor right,
+// fleet turns left, each a compact bubble sized to its content: a one-word
+// steer never wears the full-width chrome the machine log needs, and the
+// side of the column tells the reader who is speaking before they read a
+// word. Integration deliveries keep the shared DashboardRow skeleton
+// (FleetActivityRow) — activity is a log, conversation is not.
 
 const ROW_ENTER = "animate-in fade-in-0 motion-safe:slide-in-from-bottom-1 duration-150";
 
-// Which side of the conversation a row belongs to. Drives only the chip tone;
-// the layout is identical for all three so the thread reads as one column.
+// Which side of the conversation a row belongs to. Drives the chip tone and,
+// for conversation rows, which side of the column the bubble anchors to.
 export const ROW_TONE = {
   OPERATOR: "operator",
   FLEET: "fleet",
@@ -88,28 +89,38 @@ export function FleetMessageRow({
       data-optimistic={dimmed || undefined}
       data-failed={failed || undefined}
     >
-      <DashboardRow
-        data-dashboard-row=""
-        icon={<SenderChip sender={sender} tone={tone} />}
-        title={
-          <div className="flex min-w-0 items-center gap-sm">
-            <span className="min-w-0 truncate font-mono text-label text-foreground">{sender}</span>
+      {/* Reversing the row puts the operator's chip on the right gutter with
+          its bubble beside it; the fleet stays on the left. No justify-*
+          needed — the reversed axis anchors the pair to its own edge. */}
+      <div className={cn("flex w-full gap-sm px-lg py-md", isOperator && "flex-row-reverse")}>
+        <span className="flex w-8 flex-none justify-center">
+          <SenderChip sender={sender} tone={tone} />
+        </span>
+        <div
+          className={cn(
+            "flex min-w-0 max-w-xl flex-col gap-xs",
+            isOperator ? "items-end" : "items-start",
+          )}
+        >
+          <div className="flex items-baseline gap-sm font-mono text-label tracking-label text-text-subtle">
+            <span className="min-w-0 truncate text-muted-foreground">{sender}</span>
+            <span aria-hidden="true">{TICK_SEPARATOR}</span>
+            <Timestamp createdAt={createdAt} />
             {annotation}
           </div>
-        }
-        description={
-          <div className="min-w-0 break-words font-mono text-mono leading-mono text-foreground">
+          <div
+            className={cn(
+              "w-fit min-w-0 max-w-full break-words rounded-lg border px-md py-sm",
+              "font-mono text-mono leading-mono text-foreground",
+              isOperator
+                ? "rounded-br-sm border-border-strong bg-accent"
+                : "rounded-bl-sm border-border bg-secondary",
+            )}
+          >
             {children}
           </div>
-        }
-        action={<Timestamp createdAt={createdAt} />}
-        className={cn(
-          "min-w-0",
-          isOperator
-            ? "ml-auto w-full max-w-4xl rounded-lg border border-border bg-card"
-            : "w-full max-w-5xl",
-        )}
-      />
+        </div>
+      </div>
     </div>
   );
 }
