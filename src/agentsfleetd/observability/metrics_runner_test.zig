@@ -111,7 +111,7 @@ test "cardinality overflow routes to _other with the reason preserved" {
     try std.testing.expect(contains(text, "agentsfleet_runner_failures_overflow_total 1"));
 }
 
-// The fleet_memory_* family tests moved to metrics_memory_test.zig with the
+// The agentsfleet_memory_* family tests moved to metrics_memory_test.zig with the
 // module split; renderPrometheus still composes those families after the
 // runner ones, pinned there through this same render entry point.
 

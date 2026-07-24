@@ -1,4 +1,4 @@
-//! Global durable-memory telemetry — every `fleet_memory_*` Prometheus family:
+//! Global durable-memory telemetry — every `agentsfleet_memory_*` Prometheus family:
 //! the capture/hydrate loop counters plus the memory-loss counters (hydration
 //! window drops, cap evictions, capture truncations/skips, zero-hit searches).
 //! Split out of metrics_runner.zig (which renders these via renderFamilies) to
@@ -13,23 +13,23 @@
 
 const std = @import("std");
 
-const MEM_CAPTURED_NAME = "fleet_memory_entries_captured_total";
+const MEM_CAPTURED_NAME = "agentsfleet_memory_entries_captured_total";
 const MEM_CAPTURED_HELP = "Durable memory entries persisted via the runner-plane capture push.";
-const MEM_PUSH_FAIL_NAME = "fleet_memory_push_failures_total";
+const MEM_PUSH_FAIL_NAME = "agentsfleet_memory_push_failures_total";
 const MEM_PUSH_FAIL_HELP = "Memory capture pushes that failed to persist (ERR_MEM_UNAVAILABLE).";
-const MEM_HYDRATION_NAME = "fleet_memory_hydration_window_entries";
+const MEM_HYDRATION_NAME = "agentsfleet_memory_hydration_window_entries";
 const MEM_HYDRATION_HELP = "Entry count in the most recent hydration window served to a runner.";
-const HYDRATION_DROPPED_ENTRIES_NAME = "fleet_memory_hydration_dropped_entries_total";
+const HYDRATION_DROPPED_ENTRIES_NAME = "agentsfleet_memory_hydration_dropped_entries_total";
 const HYDRATION_DROPPED_ENTRIES_HELP = "Durable entries dropped from hydration replies by the byte-budget window (cold tail stays in Postgres).";
-const HYDRATION_DROPPED_BYTES_NAME = "fleet_memory_hydration_dropped_bytes_total";
+const HYDRATION_DROPPED_BYTES_NAME = "agentsfleet_memory_hydration_dropped_bytes_total";
 const HYDRATION_DROPPED_BYTES_HELP = "Bytes (key+content+category) dropped from hydration replies by the byte-budget window.";
-const CAP_EVICTIONS_NAME = "fleet_memory_cap_evictions_total";
+const CAP_EVICTIONS_NAME = "agentsfleet_memory_cap_evictions_total";
 const CAP_EVICTIONS_HELP = "Durable entries deleted by the per-fleet cap eviction after a capture push.";
-const CAPTURE_TRUNCATED_NAME = "fleet_memory_capture_truncated_total";
+const CAPTURE_TRUNCATED_NAME = "agentsfleet_memory_capture_truncated_total";
 const CAPTURE_TRUNCATED_HELP = "Capture pushes truncated at the push byte budget (tail deltas not persisted).";
-const CAPTURE_SKIPPED_NAME = "fleet_memory_capture_skipped_total";
+const CAPTURE_SKIPPED_NAME = "agentsfleet_memory_capture_skipped_total";
 const CAPTURE_SKIPPED_HELP = "Capture deltas skipped by validation (oversized or empty key, content, or category).";
-const SEARCH_ZERO_HITS_NAME = "fleet_memory_search_zero_hits_total";
+const SEARCH_ZERO_HITS_NAME = "agentsfleet_memory_search_zero_hits_total";
 const SEARCH_ZERO_HITS_HELP = "Tenant memory searches that returned zero rows (recall-miss signal).";
 
 // Prometheus exposition format strings — single-sourced (RULE UFS); the format

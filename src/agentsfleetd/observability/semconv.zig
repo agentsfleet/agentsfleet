@@ -250,4 +250,5 @@ comptime {
 
 test {
     _ = @import("semconv_test.zig");
+    _ = @import("semantic_schema_test.zig");
 }

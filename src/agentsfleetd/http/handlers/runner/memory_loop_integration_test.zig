@@ -519,10 +519,10 @@ test "test_metrics_render_memory_loss_families_http" {
     const scrape = try env.h.get("/metrics").send();
     defer scrape.deinit();
     try scrape.expectStatus(.ok);
-    try std.testing.expect(scrape.bodyContains("# HELP fleet_memory_hydration_dropped_entries_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP fleet_memory_hydration_dropped_bytes_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP fleet_memory_cap_evictions_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP fleet_memory_capture_truncated_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP fleet_memory_capture_skipped_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP fleet_memory_search_zero_hits_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_hydration_dropped_entries_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_hydration_dropped_bytes_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_cap_evictions_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_capture_truncated_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_capture_skipped_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_search_zero_hits_total "));
 }

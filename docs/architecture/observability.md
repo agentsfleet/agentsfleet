@@ -18,15 +18,25 @@ happens, where does the signal go, and who owns it.*
 All of `agentsfleetd`'s telemetry lives under `src/agentsfleetd/observability/`. Four
 independent signal paths, each with a different consumer:
 
-- **Prometheus metrics (pull).** The `fleet_*` metric families — counters,
+- **Prometheus metrics (pull).** The `agentsfleet_*` metric families — counters,
   histograms, and gauges for API and Server-Sent Events (SSE) backpressure and
   in-flight depth, process Resident Set Size (RSS), aggregate plaintext-erasure
-  bytes and sensitive-write failures, the signup funnel, `fleet_triggered_total`,
-  the runner fleet, and the Redis pool — render at the pull endpoint
-  `GET /metrics` (`src/agentsfleetd/http/handlers/health.zig`, via `metrics_render.zig`).
+  bytes and sensitive-write failures, the signup funnel,
+  `agentsfleet_fleet_triggered_total`, the runner fleet, durable memory, exporter
+  health, and the Redis pool — render at the pull endpoint `GET /metrics`
+  (`src/agentsfleetd/http/handlers/health.zig`, via `metrics_render.zig`).
   Nothing pushes; Prometheus scrapes. The plaintext-erasure families have no
   labels: tenant, workspace, fleet, route, individual secret size, and token
   material never enter telemetry.
+
+  **One process exposes one namespace.** Every family carries the
+  `agentsfleet_` prefix, with no exceptions and no dual emission. The exposition
+  was split between `fleet_*` and `agentsfleet_*` prefixes until the semantic
+  cutover normalized it; `semantic_schema_test.zig` renders the body and fails on
+  any family outside the namespace, so the split cannot reopen. Note that
+  `fleet_id`, log event names, `EventKind` tags, and the Redis consumer group
+  share the old spelling and are **not** metric families — the namespace rule is
+  scoped to what `/metrics` renders, never applied as a textual sweep.
 
 - **OpenTelemetry (OTel) logs + traces — LIVE, exported direct.** `otel_logs.zig`
   and `otel_traces.zig` are real OpenTelemetry Protocol (OTLP) / JSON exporters: a
@@ -34,8 +44,10 @@ independent signal paths, each with a different consumer:
   (logs to Loki, traces to Tempo), gated on the `GRAFANA_OTLP_*` environment. Every
   structured log line fans out to the OTLP sink in addition to stderr. **There is no
   OTel collector** — the app exports straight to Grafana Cloud with no intermediary
-  hop. Dashboards live in `deploy/grafana/`; the scrape/fleet setup is in
-  `playbooks/operations/observability/`.
+  hop. The scrape/fleet setup is in `playbooks/operations/observability/`. No
+  dashboard artefacts live in this repository: `deploy/grafana/` was deleted with
+  the semantic cutover because every panel it held queried a metric family or a
+  table that did not exist. Dashboard authoring is owned by its own workstream.
 
 - **PostHog — product analytics.** A nullable client (see
   [`scaling.md`](./scaling.md) for where it sits in the request path). Present in
@@ -355,36 +367,70 @@ ceiling:
 |---|---|---|
 | `runner_id` | at most 4096 exact values | counters merge into `_other`; gauges drop |
 | runner `reason` and `outcome` | compile-time execution enums plus `unknown` for reason | closed sets; no dynamic overflow value |
-| `workspace` | retained; first 100 distinct values per process | later workspaces emit the sample without the label (`otel_metrics_cardinality.zig`) |
-| `direction` | `input`, `cached`, `output` | closed set; no overflow value |
-| `posture` | `platform`, `self_managed` | closed set; no overflow value |
-| `model` | retained; value truncated at 64 bytes | no per-catalog cap; bounded only by the 256-series flush ceiling |
+| `gen_ai.token.type` | `input`, `output` | closed set; no overflow value |
+| `agentsfleet.execution.posture` | `platform`, `self_managed` | closed set; no overflow value |
+| `agentsfleet.billing.charge.type` | `receive`, `renewal`, `settle` | closed set; no overflow value |
+| `gen_ai.provider.name` | exact OpenTelemetry well-known names only | unmapped provider omits the attribute and counts the omission |
+| `gen_ai.request.model` | exact value, admitted while the derived series budget holds | overflow omits the attribute and counts the omission |
 
-`workspace` and `model` are bounded per process and per flush, which is not the
-same as bounded at the backend: series accumulate across replicas and restarts,
-and neither a 64-byte value ceiling nor a 100-workspace process guard caps that
-total. This is a known open question, not a settled position. Removing either
-label also removes a Grafana grouping operators use today, so the change needs a
-dashboard and migration decision of its own and is deliberately not folded into
-exporter-bounding work. Exporter-health labels are a separate, closed set: fixed
-`signal` and `reason` enums with no caller-provided values.
+**Workspace and tenant identity never reach a metric.** They were previously
+retained under a first-100-distinct-values-per-process guard, which bounded
+series per process but not at the backend — series accumulate across replicas and
+restarts, and a process guard cannot cap that total. Exact workspace-level cost
+is a Postgres query against the authoritative ledger, which is exact rather than
+merely bounded; the metric path carries no tenant dimension at all.
+
+Model attribution survived that removal because it answers a different question
+(which model is slow or expensive, not which customer), and it is bounded by
+construction rather than by a fixed guess. `semconv.zig` derives the admissible
+distinct `(provider, model)` pairs from the fixed attribute sets — postures ×
+error-type slots × token types × charge classes — so adding a posture or a charge
+class automatically tightens the cap instead of silently overrunning the flush
+ceiling. The aggregator passes its own ceiling in, so the two cannot disagree.
+
+Attribution is never faked to stay inside the budget. A provider with no exact
+well-known name, a pair past the budget, and a value past the payload bound all
+**omit the attribute and preserve the measurement**, never truncate it and never
+invent a standard-looking value. Each omission increments
+`agentsfleet_otel_attribute_omitted_total` under a fixed attribute key and
+reason, so a gap in model coverage is visible rather than being misread as an
+idle model. Exporter-health labels are a separate, closed set: fixed `signal` and
+`reason` enums with no caller-provided values.
+
+All three OTLP signals share one resource — `service.name`,
+`service.namespace=agentsfleet`, `service.version`, and `service.instance.id`
+only when a trusted instance identifier exists — and the core schema URL
+`https://opentelemetry.io/schemas/1.43.0`. The pinned Generative Artificial
+Intelligence (GenAI) conventions commit publishes no schema URL of its own, so
+none is fabricated beside it.
 
 The metrics signal lets operators watch credit-drain, token throughput, and run
 latency without any dashboard query touching the control-plane Postgres. Series:
 
-- `agentsfleet.credit.drained_nanos` (sum) — by posture, model, and (capped) workspace
-- `agentsfleet.tokens.processed` (sum) — by direction {input, cached, output}
-- `agentsfleet.run.duration_ms` (histogram)
-- `agentsfleet.telemetry.samples_dropped` (sum) — exporter self-observability
+- `gen_ai.invoke_agent.duration` (histogram, unit `s`) — the runner's reported
+  wall time bounds exactly one sandboxed agent invocation, so the standard GenAI
+  agent-duration name is truthful here.
+- `agentsfleet.invoke_agent.token.usage` (histogram, unit `{token}`) — by
+  `gen_ai.token.type`. Product-namespaced, **not** `gen_ai.client.token.usage`:
+  the report's counts are cumulative across every provider call in the
+  invocation, so claiming a client-call boundary would be false.
+- `agentsfleet.invoke_agent.cache_read.token.usage` (histogram, unit `{token}`) —
+  a non-additive **subset** of the input direction, never a third total. Input
+  already includes cached input.
+- `agentsfleet.billing.credit.consumed` (monotonic delta sum, unit
+  `{nanocredit}`) — by charge class. Nanocredits are a billing quantity; the
+  superseded name declared the time unit `ns` for money.
+- `agentsfleet.telemetry.samples_dropped` (sum) — exporter self-observability.
 
 The emits live in the **service-orchestration layer** (`service_billing` at the
-receive debit, `service_report` at the settle), strictly **after** the money
-transaction commits — never inside `fleet_runtime/metering.zig` or
-`fleet/renewal_settle.zig`. So the exporter can never block or fail a debit, and the
-wallet + ledger + `metering_periods` stay transactional in Postgres. The flush
-coalesces a window's samples into one **DELTA** dataPoint per (metric, labelset); a
-collector with the `deltatocumulative` processor must convert them before Mimir.
-No such collector is provisioned by this repository today. The exporter is called,
-but the dashboard remains a prepared, not operationally proven, path until the
-configured endpoint performs that conversion. Dashboard:
-`deploy/grafana/agent-observability.json`.
+receive debit, `service_renew` at each successful renewal debit, `service_report`
+at the settle), strictly **after** the money transaction commits — never inside
+`fleet_runtime/metering.zig` or `fleet/renewal_settle.zig`. So the exporter can
+never block or fail a debit, and the wallet + ledger + `metering_periods` stay
+transactional in Postgres. Every committed debit emits once; an uncommitted,
+stale-fenced, or replayed operation emits nothing. The flush coalesces a window's
+samples into one **DELTA** dataPoint per (metric, labelset); a collector with the
+`deltatocumulative` processor must convert them before Mimir. No such collector
+is provisioned by this repository today, so the OTLP metric path is prepared
+rather than operationally proven. The scraped `agentsfleet_*` families are
+unaffected by that gap and remain the reliable operator signal.

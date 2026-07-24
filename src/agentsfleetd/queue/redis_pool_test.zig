@@ -772,14 +772,14 @@ test "metrics: registerPool + activity renders all 8 fleet_redis_pool_* lines in
     // Match the metric NAMES (not values) — values drift with timing and
     // the renderer's order; names are the contract scrapers depend on.
     const expected_metric_names = [_][]const u8{
-        "fleet_redis_pool_active",
-        "fleet_redis_pool_idle",
-        "fleet_redis_pool_dials_total",
-        "fleet_redis_pool_overflow_dials_total",
-        "fleet_redis_pool_poisoned_connections_total",
-        "fleet_redis_pool_reconnects_total",
-        "fleet_redis_pool_forced_closes_total",
-        "fleet_redis_pool_acquire_timeouts_total",
+        "agentsfleet_redis_pool_active",
+        "agentsfleet_redis_pool_idle",
+        "agentsfleet_redis_pool_dials_total",
+        "agentsfleet_redis_pool_overflow_dials_total",
+        "agentsfleet_redis_pool_poisoned_connections_total",
+        "agentsfleet_redis_pool_reconnects_total",
+        "agentsfleet_redis_pool_forced_closes_total",
+        "agentsfleet_redis_pool_acquire_timeouts_total",
     };
     inline for (expected_metric_names) |name| {
         if (std.mem.indexOf(u8, text, name) == null) {
@@ -791,8 +791,8 @@ test "metrics: registerPool + activity renders all 8 fleet_redis_pool_* lines in
     // Load-bearing value assertions: prove the snapshot path actually
     // pulls live stats (not zeroed defaults). The first acquire dials;
     // the next two reuse idle, then the poisoned release bumps pathology.
-    try std.testing.expect(std.mem.indexOf(u8, text, "fleet_redis_pool_dials_total 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "fleet_redis_pool_poisoned_connections_total 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "agentsfleet_redis_pool_dials_total 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "agentsfleet_redis_pool_poisoned_connections_total 1") != null);
 }
 
 // ── #28: failover reconnect flood completes under window ───────────────
