@@ -1,15 +1,17 @@
-//! OTLP JSON metric exporter for Grafana Cloud Mimir.
+//! OpenTelemetry Protocol (OTLP) JSON metric exporter for Grafana Cloud Mimir.
 //! The metering service layer pushes samples (credit-drain sum, token sum,
 //! run-latency histogram); the shared otlp.Exporter batches and POSTs to
 //! GRAFANA_OTLP_ENDPOINT/v1/metrics on a background flush thread, fire-and-forget.
 //!
-//! Migrated onto the generic otlp/ substrate. DELTA temporality — a Grafana Cloud
+//! Migrated onto the generic otlp/ substrate. Delta temporality — a Grafana Cloud
 //! OTel Collector (deltatocumulative) converts before Mimir; see
 //! otel_metrics_payload.zig. Flush coalesces the window's samples into one
 //! windowed-delta series per (metric, labelset) — see otel_metrics_aggregate.zig.
 
 const std = @import("std");
-const clock = @import("common").clock;
+const common = @import("common");
+const clock = common.clock;
+const health = @import("metrics_otel.zig");
 const otlp_config = @import("otlp/config.zig");
 const otlp_ring = @import("otlp/ring.zig");
 const otlp_exporter = @import("otlp/exporter.zig");
@@ -30,10 +32,12 @@ var g_window_start_ns: u64 = 0;
 var g_last_ring_dropped: u64 = 0;
 
 const Exporter = otlp_exporter.Exporter(.{
+    .signal = .metrics,
     .path = OTLP_METRICS_PATH,
     .scope = .otel_metrics,
     .collect = collectMetrics,
-    .pending = metricsPending,
+    .pending_count = metricsPendingCount,
+    .wake_threshold = 768,
 });
 
 pub const install = Exporter.install;
@@ -60,7 +64,7 @@ pub fn recordCreditDrain(drained_nanos: i64, posture: []const u8, model: []const
     if (workspace.len > 0 and cardinality.allowWorkspace(workspace)) {
         _ = payload.addLabel(&s, payload.LABEL_WORKSPACE, workspace);
     }
-    _ = g_ring.push(s);
+    enqueueSample(s);
 }
 
 /// Record a token-throughput delta for one direction (input/cached/output).
@@ -71,7 +75,7 @@ pub fn recordTokens(count: i64, direction: []const u8, posture: []const u8, mode
     _ = payload.addLabel(&s, payload.LABEL_DIRECTION, direction);
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
     _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
-    _ = g_ring.push(s);
+    enqueueSample(s);
 }
 
 /// Observe a run's wall-clock duration (ms) into the latency histogram.
@@ -80,7 +84,16 @@ pub fn observeRunDuration(wall_ms: i64, posture: []const u8, model: []const u8) 
     var s = payload.newSample(.run_duration, wall_ms);
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
     _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
-    _ = g_ring.push(s);
+    enqueueSample(s);
+}
+
+fn enqueueSample(sample: Sample) void {
+    if (g_ring.push(sample)) {
+        health.setQueueDepth(.metrics, g_ring.len());
+        Exporter.notifyAccepted();
+    } else {
+        health.recordDiscard(.metrics, .ring_full, 1);
+    }
 }
 
 /// Emit the full metric bundle for one terminal run settlement: the stage
@@ -109,45 +122,71 @@ pub fn recordRunSettlement(
 // Serialization (the exporter's collect hook)
 // ---------------------------------------------------------------------------
 
-fn metricsPending() bool {
-    return g_ring.len() > 0;
+fn metricsPendingCount() usize {
+    return g_ring.len();
 }
 
-fn collectMetrics(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) !?[]const u8 {
+fn collectMetrics(
+    alloc: std.mem.Allocator,
+    cfg: otlp_config.GrafanaOtlpConfig,
+    max_entries: usize,
+) otlp_exporter.CollectResult {
+    if (max_entries == 0) return .empty;
     const now = currentNanos();
-
-    // Drain the window and coalesce same-(metric, labelset) samples into one
-    // series each — 100 same-labelset samples become ONE dataPoint on the wire.
-    // Bound the drain to one ring's worth of samples so producers refilling
-    // mid-drain can't spin this loop unboundedly; the overflow waits for the
-    // next flush (and counts as a ring drop if the ring fills).
     var agg = aggregate.Aggregator.init();
-    var drained: usize = 0;
-    while (drained < BUFFER_CAPACITY) : (drained += 1) {
-        const s = g_ring.pop() orelse break;
-        agg.add(s);
-    }
-
-    // Dropped delta since last flush: ring-full drops (a cumulative counter) plus
-    // this window's series-cap drops.
-    const ring_dropped_now = g_ring.droppedCount();
-    const total_dropped = (ring_dropped_now - g_last_ring_dropped) + agg.dropped;
-    g_last_ring_dropped = ring_dropped_now;
-
+    const drained = drainMetrics(&agg, @min(max_entries, BUFFER_CAPACITY));
+    const total_dropped = droppedSinceLastFlush(agg.dropped);
+    health.recordDiscard(.metrics, .aggregate_cap, @intCast(agg.dropped));
     if (agg.count == 0 and total_dropped == 0) {
         g_window_start_ns = now;
-        return null;
+        return .empty;
     }
 
     const start = if (g_window_start_ns == 0) now else g_window_start_ns;
-    // Advance the window BEFORE serialization so a serialize error can't strand
-    // g_window_start_ns at a stale boundary (the drained samples are already gone).
     g_window_start_ns = now;
+    const serialized = serializeMetrics(alloc, cfg, &agg, total_dropped, start, now) catch {
+        return .{ .serialize_failed = drained };
+    };
+    return .{ .ready = .{
+        .body = serialized.body,
+        .removed_count = drained,
+        .export_count = serialized.export_count,
+    } };
+}
+
+fn drainMetrics(agg: *aggregate.Aggregator, limit: usize) usize {
+    var drained: usize = 0;
+    while (drained < limit) : (drained += 1) {
+        const sample = g_ring.pop() orelse break;
+        agg.add(sample);
+    }
+    return drained;
+}
+
+fn droppedSinceLastFlush(aggregate_dropped: u64) u64 {
+    const ring_dropped_now = g_ring.droppedCount();
+    const total = (ring_dropped_now - g_last_ring_dropped) + aggregate_dropped;
+    g_last_ring_dropped = ring_dropped_now;
+    return total;
+}
+
+const SerializedMetrics = struct {
+    body: []const u8,
+    export_count: usize,
+};
+
+fn serializeMetrics(
+    alloc: std.mem.Allocator,
+    cfg: otlp_config.GrafanaOtlpConfig,
+    agg: *const aggregate.Aggregator,
+    total_dropped: u64,
+    start: u64,
+    now: u64,
+) !SerializedMetrics {
     var series_buf: [aggregate.MAX_SERIES + 1]payload.Series = undefined;
     const base = agg.toSeries(series_buf[0..aggregate.MAX_SERIES]);
     var count = base.len;
     if (total_dropped > 0) {
-        // Self-observability: the exporter's own drop count, as a delta sum.
         series_buf[count] = .{
             .id = .samples_dropped,
             .labels = &[_]payload.Label{},
@@ -158,8 +197,10 @@ fn collectMetrics(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) 
         };
         count += 1;
     }
-
-    return try payload.serializeSeries(alloc, cfg.service_name, series_buf[0..count], start, now);
+    return .{
+        .body = try payload.serializeSeries(alloc, cfg.service_name, series_buf[0..count], start, now),
+        .export_count = count,
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -168,17 +209,19 @@ fn collectMetrics(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) 
 
 /// Test hook: number of samples currently pending in the global ring.
 pub fn testPendingCount() usize {
-    return g_ring.len();
+    return metricsPendingCount();
 }
 
-/// Test hook: mark installed WITHOUT spawning the flush thread (deterministic).
+/// Test hook: mark installed without spawning the flush thread.
 pub fn testSetInstalled(cfg: otlp_config.GrafanaOtlpConfig) void {
-    Exporter.testSetInstalled(cfg);
+    Exporter.testSetInstalled(common.globalIo(), cfg);
 }
 
 /// Test hook: pop one sample from the global ring.
 pub fn testPop() ?Sample {
-    return g_ring.pop();
+    const sample = g_ring.pop();
+    health.setQueueDepth(.metrics, g_ring.len());
+    return sample;
 }
 
 /// Test hook: reset installed state, drain the ring, reset window state.
@@ -187,11 +230,21 @@ pub fn testClear() void {
     while (g_ring.pop()) |_| {}
     g_window_start_ns = 0;
     g_last_ring_dropped = g_ring.droppedCount();
+    health.setQueueDepth(.metrics, 0);
 }
 
 /// Test hook: run one flush collect (drains + aggregates the window).
 pub fn testCollectOnce(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) !?[]const u8 {
-    return collectMetrics(alloc, cfg);
+    return switch (collectMetrics(alloc, cfg, BUFFER_CAPACITY)) {
+        .empty => null,
+        .ready => |batch| batch.body,
+        .serialize_failed => error.SerializationFailed,
+    };
+}
+
+/// Test hook: accepted pushes counted toward the next exporter cycle.
+pub fn testAcceptedSinceCycle() u32 {
+    return Exporter.testAcceptedSinceCycle();
 }
 
 pub const TestRing = RingT;

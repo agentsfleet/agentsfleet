@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const common = @import("common");
+const call_deadline = @import("call_deadline");
 const serve_broker = @import("serve_broker.zig");
 
 const testing = std.testing;
@@ -18,14 +19,22 @@ test "metricsSink emits without dereferencing its opaque ptr" {
 }
 
 test "exchange wires a post boundary over the client" {
-    var ex = HttpClientExchange{ .io = common.globalIo() };
+    var backend: call_deadline.MonotonicBackend = .{};
+    var sched = call_deadline.ProcessScheduler.init(testing.allocator, &backend);
+    try sched.start();
+    defer sched.deinit();
+    var ex = HttpClientExchange{ .io = common.globalIo(), .sched = &sched };
     const boundary = ex.exchange();
     // The boundary points back at the exchange struct (no network here).
     try testing.expect(boundary.ptr == @as(*anyopaque, @ptrCast(&ex)));
 }
 
 test "exchange refuses an unusable URL fail-closed, never fetches unarmed (finding ②)" {
-    var ex = HttpClientExchange{ .io = common.globalIo() };
+    var backend: call_deadline.MonotonicBackend = .{};
+    var sched = call_deadline.ProcessScheduler.init(testing.allocator, &backend);
+    try sched.start();
+    defer sched.deinit();
+    var ex = HttpClientExchange{ .io = common.globalIo(), .sched = &sched };
     const boundary = ex.exchange();
     // pinHandle can't parse this → the call is refused before any bytes are sent.
     const r = boundary.post(testing.allocator, .{ .url = "not a url", .body = "{}" });
@@ -57,7 +66,11 @@ test "exchange deadline fires on a stalled vendor and fails closed within the bo
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
 
     // Inject the short deadline so the fire returns fast (production is 10 s).
-    var ex = HttpClientExchange{ .io = io, .deadline_ms = STALL_DEADLINE_MS };
+    var backend: call_deadline.MonotonicBackend = .{};
+    var sched = call_deadline.ProcessScheduler.init(testing.allocator, &backend);
+    try sched.start();
+    defer sched.deinit();
+    var ex = HttpClientExchange{ .io = io, .sched = &sched, .deadline_ms = STALL_DEADLINE_MS };
     const boundary = ex.exchange();
 
     const t0 = common.clock.nowMillis();

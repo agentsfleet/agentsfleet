@@ -1,122 +1,320 @@
 const std = @import("std");
+const common = @import("common");
 const exporter = @import("exporter.zig");
+const Client = @import("Client.zig");
 const config = @import("config.zig");
-
-// A throwaway Exporter instantiation with a no-op collect — distinct module
-// state from the real signal exporters (one static set per comptime hooks).
-fn testCollect(alloc: std.mem.Allocator, cfg: config.GrafanaOtlpConfig) !?[]const u8 {
-    _ = alloc;
-    _ = cfg;
-    return null; // nothing to send → flush never POSTs
-}
-fn testPending() bool {
-    return false;
-}
-
-const TestExporter = exporter.Exporter(.{
-    .path = "/v1/test",
-    .scope = .otel_metrics,
-    .collect = testCollect,
-    .pending = testPending,
-    .flush_interval_ms = 100,
-});
+const health = @import("../metrics_otel.zig");
 
 const TEST_CFG: config.GrafanaOtlpConfig = .{
     .endpoint = "http://127.0.0.1:0",
     .instance_id = "i",
     .api_key = "k",
 };
+const TEST_BATCH_SIZE: usize = 2;
+/// Mirrors the shipped log/trace wake threshold, so the batching proof runs
+/// against the real coalescing shape rather than a toy value.
+const TEST_WAKE_THRESHOLD: u32 = 50;
+const PRODUCER_THREAD_COUNT: usize = 100;
 
-test "test_exporter_lifecycle: install spawns the flush thread, uninstall joins within a tick" {
-    try std.testing.expect(!TestExporter.isInstalled());
-    try std.testing.expectEqual(TestExporter.InstallOutcome.installed, TestExporter.install(TEST_CFG));
-    try std.testing.expect(TestExporter.isInstalled());
-    // Empty buffer (collect→null) → no POST; uninstall wakes the tick sleep and
-    // joins cleanly, no hang.
-    TestExporter.uninstall();
-    try std.testing.expect(!TestExporter.isInstalled());
+fn emptyCollect(
+    alloc: std.mem.Allocator,
+    cfg: config.GrafanaOtlpConfig,
+    max_entries: usize,
+) exporter.CollectResult {
+    _ = alloc;
+    _ = cfg;
+    _ = max_entries;
+    return .empty;
 }
 
-test "double install loses the claim — single-consumer guard (no orphaned second thread)" {
-    try std.testing.expectEqual(TestExporter.InstallOutcome.installed, TestExporter.install(TEST_CFG));
-    // Second install while running must NOT spawn a second flush thread (two
-    // consumers on one ring would corrupt it, and the overwritten handle
-    // would never be joined).
-    try std.testing.expectEqual(TestExporter.InstallOutcome.already_running, TestExporter.install(TEST_CFG));
-    try std.testing.expect(TestExporter.isInstalled());
-    // uninstall joins the single thread and completes (would hang/leak if a
-    // second orphaned thread existed).
-    TestExporter.uninstall();
-    try std.testing.expect(!TestExporter.isInstalled());
+fn emptyPending() usize {
+    return 0;
 }
 
-/// Racing installer for the atomic-claim test: records its outcome.
+const EmptyExporter = exporter.Exporter(.{
+    .signal = .metrics,
+    .path = "/v1/test-empty",
+    .scope = .otel_metrics,
+    .collect = emptyCollect,
+    .pending_count = emptyPending,
+    .flush_interval_ms = 100,
+    .wake_threshold = 2,
+});
+
+test "test_exporter_lifecycle: install spawns the flush thread and uninstall joins" {
+    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    try std.testing.expect(!EmptyExporter.isInstalled());
+    try std.testing.expectEqual(EmptyExporter.InstallOutcome.installed, EmptyExporter.install(io, TEST_CFG));
+    try std.testing.expect(EmptyExporter.isInstalled());
+    EmptyExporter.uninstall();
+    try std.testing.expect(!EmptyExporter.isInstalled());
+}
+
+test "double install keeps exactly one consumer" {
+    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    try std.testing.expectEqual(EmptyExporter.InstallOutcome.installed, EmptyExporter.install(io, TEST_CFG));
+    try std.testing.expectEqual(EmptyExporter.InstallOutcome.already_running, EmptyExporter.install(io, TEST_CFG));
+    EmptyExporter.uninstall();
+}
+
 const RacingInstall = struct {
-    fn run(outcome: *TestExporter.InstallOutcome) void {
-        outcome.* = TestExporter.install(TEST_CFG);
+    io: std.Io,
+    outcome: EmptyExporter.InstallOutcome = .spawn_failed,
+
+    fn run(self: *RacingInstall) void {
+        self.outcome = EmptyExporter.install(self.io, TEST_CFG);
     }
 };
 
-test "test_exporter_double_install_one_thread: racing installs — exactly one claim wins" {
-    var a = TestExporter.InstallOutcome.spawn_failed;
-    var b = TestExporter.InstallOutcome.spawn_failed;
-    const ta = try std.Thread.spawn(.{}, RacingInstall.run, .{&a});
-    const tb = try std.Thread.spawn(.{}, RacingInstall.run, .{&b});
-    ta.join();
-    tb.join();
-    // Exactly one .installed; the loser observed .already_running — the
-    // pre-fix check-then-act let BOTH through, orphaning a thread handle.
-    const a_won = a == .installed and b == .already_running;
-    const b_won = b == .installed and a == .already_running;
+test "test_exporter_double_install_one_thread: racing installs have one winner" {
+    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+    var a = RacingInstall{ .io = io };
+    var b = RacingInstall{ .io = io };
+    const thread_a = try std.Thread.spawn(.{}, RacingInstall.run, .{&a});
+    const thread_b = try std.Thread.spawn(.{}, RacingInstall.run, .{&b});
+    thread_a.join();
+    thread_b.join();
+
+    const a_won = a.outcome == .installed and b.outcome == .already_running;
+    const b_won = b.outcome == .installed and a.outcome == .already_running;
     try std.testing.expect(a_won or b_won);
-    TestExporter.uninstall();
-    try std.testing.expect(!TestExporter.isInstalled());
+    EmptyExporter.uninstall();
 }
 
-test "test_exporter_testhooks: testSetInstalled/testClear toggle state without a thread" {
-    TestExporter.testSetInstalled(TEST_CFG);
-    try std.testing.expect(TestExporter.isInstalled());
-    TestExporter.testClear();
-    try std.testing.expect(!TestExporter.isInstalled());
+const BatchingExporter = exporter.Exporter(.{
+    .signal = .logs,
+    .path = "/v1/test-batching",
+    .scope = .otel_logs,
+    .collect = emptyCollect,
+    .pending_count = emptyPending,
+    .flush_interval_ms = 100,
+    .wake_threshold = TEST_WAKE_THRESHOLD,
+});
+
+test "test_exporter_preserves_batching_and_coalesces_wakes" {
+    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    BatchingExporter.testSetInstalled(io, TEST_CFG);
+    defer BatchingExporter.testClear();
+
+    // Below the threshold nothing wakes the consumer: low-rate traffic keeps
+    // batching instead of degrading into one HTTP request per entry.
+    for (0..TEST_WAKE_THRESHOLD - 1) |_| BatchingExporter.notifyAccepted();
+    try std.testing.expectEqual(TEST_WAKE_THRESHOLD - 1, BatchingExporter.testAcceptedSinceCycle());
+    try std.testing.expect(!BatchingExporter.testTakeWakeSignal());
+
+    // Crossing the threshold arms the wake exactly once ...
+    BatchingExporter.notifyAccepted();
+    try std.testing.expect(BatchingExporter.testTakeWakeSignal());
+
+    // ... and every push after it folds into that pending wake rather than
+    // re-arming, so a burst costs one wake, not one per entry.
+    BatchingExporter.notifyAccepted();
+    BatchingExporter.notifyAccepted();
+    try std.testing.expect(!BatchingExporter.testTakeWakeSignal());
+
+    // A cycle clears the accepted-push tally so the next threshold is counted
+    // from zero rather than from the drained backlog.
+    BatchingExporter.testFlushCycle();
+    try std.testing.expectEqual(@as(u32, 0), BatchingExporter.testAcceptedSinceCycle());
+
+    // 100 concurrent producers every one of which returns: the accepted-push
+    // path is an atomic add plus an idempotent event set, so no producer waits
+    // on the consumer and no increment is lost.
+    var threads: [PRODUCER_THREAD_COUNT]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, BatchingExporter.notifyAccepted, .{});
+    for (threads) |t| t.join();
+    try std.testing.expectEqual(
+        @as(u32, PRODUCER_THREAD_COUNT),
+        BatchingExporter.testAcceptedSinceCycle(),
+    );
 }
 
-// ── Drain-on-shutdown: uninstall's join runs the flush thread's drain loop
-//    until the ring is empty. This is the one lifecycle leg the tests above did
-//    not pin (they buffer nothing); the other legs — spawn/join, single-thread
-//    claim, racing install — are covered above, so this extends that suite
-//    rather than duplicating it. ──────────────────────────────────────────────
-var g_drain_ring = std.atomic.Value(usize).init(0);
+var g_pending = std.atomic.Value(usize).init(0);
+var g_collect_calls = std.atomic.Value(usize).init(0);
+var g_post_calls = std.atomic.Value(usize).init(0);
+var g_add_during_first_post = std.atomic.Value(usize).init(0);
 
-fn drainCollect(alloc: std.mem.Allocator, cfg: config.GrafanaOtlpConfig) !?[]const u8 {
+fn batchPending() usize {
+    return g_pending.load(.acquire);
+}
+
+fn batchCollect(
+    alloc: std.mem.Allocator,
+    cfg: config.GrafanaOtlpConfig,
+    max_entries: usize,
+) exporter.CollectResult {
     _ = alloc;
     _ = cfg;
-    // A real collect consumes the pending buffer into the body; here we drain
-    // the fake ring and return null so the flush never touches the network.
-    g_drain_ring.store(0, .release);
-    return null;
+    const available = g_pending.load(.acquire);
+    const removed = @min(available, @min(max_entries, TEST_BATCH_SIZE));
+    if (removed == 0) return .empty;
+    g_pending.store(available - removed, .release);
+    _ = g_collect_calls.fetchAdd(1, .monotonic);
+    return .{ .ready = .{
+        .body = "{}",
+        .removed_count = removed,
+        .export_count = removed,
+    } };
 }
-fn drainPending() bool {
-    return g_drain_ring.load(.acquire) > 0;
+
+fn acceptedPost(
+    client: *Client,
+    alloc: std.mem.Allocator,
+    cfg: config.GrafanaOtlpConfig,
+    path: []const u8,
+    body: []const u8,
+    deadline_ns: i96,
+) anyerror!Client.ExportResult {
+    _ = client;
+    _ = alloc;
+    _ = cfg;
+    _ = path;
+    _ = body;
+    _ = deadline_ns;
+    const prior = g_post_calls.fetchAdd(1, .monotonic);
+    if (prior == 0) {
+        _ = g_pending.fetchAdd(g_add_during_first_post.swap(0, .acq_rel), .acq_rel);
+    }
+    return .accepted;
 }
 
 const DrainExporter = exporter.Exporter(.{
-    .path = "/v1/drain",
+    .signal = .traces,
+    .path = "/v1/test-drain",
     .scope = .otel_traces,
-    .collect = drainCollect,
-    .pending = drainPending,
+    .collect = batchCollect,
+    .pending_count = batchPending,
+    .post = acceptedPost,
     .flush_interval_ms = 100,
 });
 
-const DRAIN_PENDING_SEED: usize = 5;
+fn resetBatchState(pending: usize) void {
+    g_pending.store(pending, .release);
+    g_collect_calls.store(0, .release);
+    g_post_calls.store(0, .release);
+    g_add_during_first_post.store(0, .release);
+}
 
-test "exporter uninstall drains the ring before the flush thread joins" {
-    g_drain_ring.store(DRAIN_PENDING_SEED, .release); // buffer pending entries
-    try std.testing.expectEqual(DrainExporter.InstallOutcome.installed, DrainExporter.install(TEST_CFG));
-    // uninstall clears g_running, wakes the tick sleep, and joins the flush
-    // thread — whose shutdown-drain loop runs flushOnce while pending() is true,
-    // so the ring is empty by the time join returns. The join is the barrier, so
-    // the post-join read needs no polling.
+test "test_exporter_drains_cycle_start_backlog" {
+    resetBatchState(5);
+    g_add_during_first_post.store(3, .release);
+    DrainExporter.testSetInstalled(common.globalIo(), TEST_CFG);
+    defer DrainExporter.testClear();
+
+    DrainExporter.testFlushCycle();
+
+    try std.testing.expectEqual(@as(usize, 3), g_pending.load(.acquire));
+    try std.testing.expectEqual(@as(usize, 3), g_collect_calls.load(.acquire));
+    try std.testing.expectEqual(@as(usize, 3), g_post_calls.load(.acquire));
+}
+
+test "test_exporter_stop_wakes_drains_and_joins" {
+    resetBatchState(5);
+    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
+    defer threaded.deinit();
+
+    try std.testing.expectEqual(
+        DrainExporter.InstallOutcome.installed,
+        DrainExporter.install(threaded.io(), TEST_CFG),
+    );
     DrainExporter.uninstall();
-    try std.testing.expectEqual(@as(usize, 0), g_drain_ring.load(.acquire));
-    try std.testing.expect(!DrainExporter.isInstalled());
+
+    try std.testing.expectEqual(@as(usize, 0), g_pending.load(.acquire));
+    try std.testing.expectEqual(@as(usize, 3), g_post_calls.load(.acquire));
+}
+
+fn rejectedPost(
+    client: *Client,
+    alloc: std.mem.Allocator,
+    cfg: config.GrafanaOtlpConfig,
+    path: []const u8,
+    body: []const u8,
+    deadline_ns: i96,
+) anyerror!Client.ExportResult {
+    _ = client;
+    _ = alloc;
+    _ = cfg;
+    _ = path;
+    _ = body;
+    _ = deadline_ns;
+    _ = g_post_calls.fetchAdd(1, .monotonic);
+    return error.OtlpExportRejected;
+}
+
+const RejectingExporter = exporter.Exporter(.{
+    .signal = .logs,
+    .path = "/v1/test-rejected",
+    .scope = .otel_logs,
+    .collect = batchCollect,
+    .pending_count = batchPending,
+    .post = rejectedPost,
+});
+
+test "test_exporter_never_retries_destructive_batch" {
+    health.resetForTest();
+    defer health.resetForTest();
+    resetBatchState(TEST_BATCH_SIZE);
+    RejectingExporter.testSetInstalled(common.globalIo(), TEST_CFG);
+    defer RejectingExporter.testClear();
+
+    RejectingExporter.testFlushCycle();
+
+    const snapshot = health.snapshot();
+    try std.testing.expectEqual(@as(usize, 1), g_post_calls.load(.acquire));
+    try std.testing.expectEqual(@as(usize, 0), g_pending.load(.acquire));
+    try std.testing.expectEqual(
+        @as(u64, TEST_BATCH_SIZE),
+        snapshot.discarded[@intFromEnum(health.Signal.logs)][@intFromEnum(health.DiscardReason.export_rejected)],
+    );
+}
+
+fn serializeFailureCollect(
+    alloc: std.mem.Allocator,
+    cfg: config.GrafanaOtlpConfig,
+    max_entries: usize,
+) exporter.CollectResult {
+    _ = alloc;
+    _ = cfg;
+    const available = g_pending.load(.acquire);
+    const removed = @min(available, max_entries);
+    g_pending.store(available - removed, .release);
+    return .{ .serialize_failed = removed };
+}
+
+const SerializeFailureExporter = exporter.Exporter(.{
+    .signal = .metrics,
+    .path = "/v1/test-serialize",
+    .scope = .otel_metrics,
+    .collect = serializeFailureCollect,
+    .pending_count = batchPending,
+    .post = acceptedPost,
+});
+
+test "test_exporter_serialization_failure_counts_local_discards" {
+    health.resetForTest();
+    defer health.resetForTest();
+    resetBatchState(7);
+    SerializeFailureExporter.testSetInstalled(common.globalIo(), TEST_CFG);
+    defer SerializeFailureExporter.testClear();
+
+    SerializeFailureExporter.testFlushCycle();
+
+    const snapshot = health.snapshot();
+    try std.testing.expectEqual(@as(usize, 0), g_pending.load(.acquire));
+    try std.testing.expectEqual(@as(usize, 0), g_post_calls.load(.acquire));
+    try std.testing.expectEqual(
+        @as(u64, 7),
+        snapshot.discarded[@intFromEnum(health.Signal.metrics)][@intFromEnum(health.DiscardReason.serialize_failed)],
+    );
 }

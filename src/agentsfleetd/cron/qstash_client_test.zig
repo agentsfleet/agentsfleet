@@ -1,5 +1,6 @@
 const std = @import("std");
 const common = @import("common");
+const call_deadline = @import("call_deadline");
 
 const QStashClient = @import("QStashClient.zig");
 const model = @import("model.zig");
@@ -146,7 +147,11 @@ test "qstash client: transport uncertainty makes one attempt and returns unavail
 }
 
 test "qstash client: production transport refuses an unusable URL" {
-    var exchange: QStashClient.HttpClientExchange = .{ .io = common.globalIo() };
+    var backend: call_deadline.MonotonicBackend = .{};
+    var sched = call_deadline.ProcessScheduler.init(std.testing.allocator, &backend);
+    try sched.start();
+    defer sched.deinit();
+    var exchange: QStashClient.HttpClientExchange = .{ .io = common.globalIo(), .sched = &sched };
     const client = QStashClient.init(exchange.exchange(), "not a url", DESTINATION);
     try std.testing.expectEqual(.unavailable, try client.delete(std.testing.allocator, TOKEN, SCHEDULE_ID));
 }
@@ -159,7 +164,11 @@ test "qstash client: production transport deadline cuts off a stalled provider" 
     const port = boundPort(listener.socket.handle) catch return error.SkipZigTest;
     var base_buffer: [48]u8 = undefined;
     const base = try std.fmt.bufPrint(&base_buffer, "http://127.0.0.1:{d}", .{port});
-    var exchange: QStashClient.HttpClientExchange = .{ .io = io, .deadline_ms = STALL_DEADLINE_MS };
+    var backend: call_deadline.MonotonicBackend = .{};
+    var sched = call_deadline.ProcessScheduler.init(std.testing.allocator, &backend);
+    try sched.start();
+    defer sched.deinit();
+    var exchange: QStashClient.HttpClientExchange = .{ .io = io, .sched = &sched, .deadline_ms = STALL_DEADLINE_MS };
     const client = QStashClient.init(exchange.exchange(), base, DESTINATION);
 
     const started_at = common.clock.nowMillis();
@@ -188,7 +197,11 @@ test "qstash client (live): a real qstash dev server accepts the schedule lifecy
     // and exports the two vars below; self-skips when they are unset.
     const base = common.env.testLiveValue(LIVE_URL_ENV) orelse return error.SkipZigTest;
     const token = common.env.testLiveValue(LIVE_TOKEN_ENV) orelse return error.SkipZigTest;
-    var exchange: QStashClient.HttpClientExchange = .{ .io = common.globalIo() };
+    var backend: call_deadline.MonotonicBackend = .{};
+    var sched = call_deadline.ProcessScheduler.init(std.testing.allocator, &backend);
+    try sched.start();
+    defer sched.deinit();
+    var exchange: QStashClient.HttpClientExchange = .{ .io = common.globalIo(), .sched = &sched };
     const client = QStashClient.init(exchange.exchange(), base, LIVE_DESTINATION);
     const created = try client.upsert(std.testing.allocator, token, schedule());
     try std.testing.expectEqual(QStashClient.Outcome.success, created);

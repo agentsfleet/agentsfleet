@@ -9,12 +9,17 @@
 //! persistent `std.http.Client` per owner (keep-alive connection reuse —
 //! a chatty fleet run no longer pays a TCP/TLS handshake per frame).
 //!
-//! Every verb takes a required `deadline_ms`: a per-client watchdog (the
-//! `call_deadline` module) shuts the in-flight pooled socket down at the bound,
+//! Every verb takes a required `deadline_ms`, armed against the ONE process
+//! scheduler the runner root owns (`daemon/runner_deadline.zig`) — no
+//! per-client watchdog thread. A fire shuts the in-flight pooled socket down,
 //! so a hung control plane surfaces as a retryable transport error instead of
 //! wedging the worker (and starving the child's deadline kill). Residual
 //! window: name resolution + TCP connect inside fetch are not armed (the
-//! production control plane is loopback/intra-region).
+//! production control plane is loopback/intra-region). The deadline targets a
+//! connection GENERATION, never a descriptor number (`control_plane_deadline`),
+//! and arming is fail-CLOSED — an unarmable verb is refused, never run
+//! unbounded. `fetch` never follows a redirect (`send`): the new leg would dial
+//! outside the armed generation and re-send the bearer cross-origin.
 
 const LoopbackClient = @This();
 
@@ -30,10 +35,11 @@ http: std.http.Client,
 host: []const u8,
 port: u16,
 tls: bool,
-/// Bounds the in-flight call (lazy thread; joined by deinit).
-watchdog: CallWatchdog = .{},
+/// The process scheduler every call arms against. Borrowed from the runner
+/// root; the client never owns, starts, or stops it.
+sched: *deadline.Scheduler,
 
-pub const ClientError = error{ RequestFailed, BadStatus, Unauthorized, MalformedResponse, WatchdogUnavailable };
+pub const ClientError = error{ RequestFailed, BadStatus, Unauthorized, MalformedResponse, SchedulerUnavailable };
 
 /// Classify a control-plane HTTP status. 401/403 means the runner token was
 /// rejected — a PERMANENT failure that retrying can never fix — so it maps to a
@@ -45,18 +51,13 @@ pub fn checkStatus(status: u16) ClientError!void {
     if (status == 401 or status == 403) return ClientError.Unauthorized;
     if (status < 200 or status >= 300) return ClientError.BadStatus;
 }
-// Watchdog bound to this client's log identity (the shipped `cp_*` events +
-// the runner transport-loss code); deadline policy lives in `call_deadline`.
-const CallWatchdog = call_deadline.Watchdog(.{
-    .scope = .fleet_runner,
-    .fire_event = "cp_call_deadline_fired",
-    .spawn_fail_event = "cp_watchdog_spawn_failed",
-    .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS,
-});
+// The shipped fire event, emitted from this owner (it knows the verb context).
+const EV_DEADLINE_FIRED = "cp_call_deadline_fired";
 
 /// Build a client with a persistent connection pool. `alloc` must outlive the
 /// client (per-worker allocator); call `deinit()` to close pooled connections.
-pub fn init(alloc: Allocator, io: std.Io, base_url: []const u8) LoopbackClient {
+/// `sched` is the runner root's one process scheduler — borrowed, never owned.
+pub fn init(alloc: Allocator, io: std.Io, sched: *deadline.Scheduler, base_url: []const u8) LoopbackClient {
     var host: []const u8 = "";
     var port: u16 = 80;
     var tls = false;
@@ -75,11 +76,11 @@ pub fn init(alloc: Allocator, io: std.Io, base_url: []const u8) LoopbackClient {
         .host = host,
         .port = port,
         .tls = tls,
+        .sched = sched,
     };
 }
 
 pub fn deinit(self: *LoopbackClient) void {
-    self.watchdog.deinit();
     self.http.deinit();
     self.* = undefined;
 }
@@ -249,20 +250,19 @@ pub const PostResult = struct { status: u16, body: []u8 };
 
 /// Pin the pooled connection the next fetch will use (get-or-create, then
 /// release back to the free list so the fetch pops the same one) and return
-/// its socket handle for the watchdog. Null when the connect fails — the
-/// fetch then fails fast on its own connect attempt.
+/// its socket handle for the attempt to arm. Null when the connect fails —
+/// `send` then refuses the verb fail-closed.
 fn pooledHandle(self: *LoopbackClient) ?std.Io.net.Socket.Handle {
-    // A TLS `connect()` reads `client.now` + `client.ca_bundle`, but only
-    // `fetch()` populates them (lazily) — and this pins the pooled socket for
-    // the watchdog BEFORE the fetch in `send`. `http_pin` owns the prime-then-
-    // connect discipline, shared verbatim with the daemon's connector/broker
-    // armed-fetch sites (an unprimed handshake panics on a null `client.now.?`
-    // — the runner never heartbeats → crash-loops).
+    // Pins the socket the deadline is armed against BEFORE `send`'s fetch;
+    // `http_pin` owns the prime-then-connect discipline shared with the
+    // daemon's connector/broker sites (an unprimed handshake panics on a null
+    // `client.now.?` — the runner never heartbeats → crash-loops).
     return http_pin.connectPinned(&self.http, self.host, self.port, self.tls);
 }
 
-/// Shared core of the bearer-authed verbs: arm the deadline watchdog, issue one
-/// `fetch` on the persistent client, and return the status + owned response body.
+/// Shared core of the bearer-authed verbs: arm one scheduler guard against this
+/// attempt's connection generation, issue one `fetch` on the persistent client,
+/// and return the status + owned response body.
 /// `payload == null` sends no body (GET); a non-null payload rides a POST with a
 /// content-type header. The single `errdefer` here releases the partial response
 /// buffer on any mid-stream fetch failure — the success path hands it off via
@@ -276,13 +276,17 @@ fn send(
     payload: ?[]const u8,
     deadline_ms: u31,
 ) !PostResult {
-    // Fail the verb closed if the deadline can't be enforced (M100) — an
-    // unbounded call is the silent hang the watchdog exists to prevent.
-    if (self.pooledHandle()) |handle| {
-        if (self.watchdog.arm(handle, deadline_ms) == .watchdog_unavailable)
-            return ClientError.WatchdogUnavailable;
+    // Stack-local control block, armed by generation rather than descriptor.
+    // Fail the verb closed if the deadline can't be enforced (M100): both
+    // refusal branches return, so no path reaches an unarmed fetch.
+    var attempt: deadline.Attempt = .{};
+    attempt.begin();
+    defer attempt.release();
+    switch (attempt.armPinned(self.sched, self.pooledHandle(), deadline_ms)) {
+        .armed => {},
+        .pin_failed => return ClientError.RequestFailed,
+        .scheduler_unavailable => return ClientError.SchedulerUnavailable,
     }
-    defer self.watchdog.disarm();
 
     const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ self.base_url, path });
     defer alloc.free(url);
@@ -307,8 +311,16 @@ fn send(
         .method = method,
         .payload = payload,
         .extra_headers = headers,
+        .redirect_behavior = .unhandled, // see module doc: never follow (armed-generation + bearer leak)
         .response_writer = &aw.writer,
-    }) catch return ClientError.RequestFailed;
+    }) catch {
+        // The owner's flag is what distinguishes "we cancelled it" from an
+        // ordinary transport failure; both stay `RequestFailed` so the control
+        // loop's retry classification is unchanged.
+        if (attempt.wasInterrupted())
+            log.warn(EV_DEADLINE_FIRED, .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .deadline_ms = deadline_ms });
+        return ClientError.RequestFailed;
+    };
 
     return .{ .status = @intFromEnum(result.status), .body = aw.toOwnedSlice() catch return ClientError.RequestFailed };
 }
@@ -329,7 +341,10 @@ pub fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const call_deadline = @import("call_deadline");
+const logging = @import("log");
+const deadline = @import("control_plane_deadline.zig");
 const http_pin = @import("http_pin");
 const client_errors = @import("../engine/client_errors.zig");
 const protocol = @import("contract").protocol;
+
+const log = logging.scoped(.fleet_runner);

@@ -31,6 +31,7 @@ const pg = @import("pg");
 const logging = @import("log");
 const session_store_redis = @import("../../session/session_store_redis.zig");
 const audit_events = @import("../../auth/audit_events.zig");
+const call_deadline = @import("call_deadline");
 const oidc = @import("../../auth/oidc.zig");
 const queue_redis = @import("../../queue/redis.zig");
 const auth_mw = @import("../../auth/middleware/mod.zig");
@@ -43,6 +44,12 @@ const telemetry_mod = @import("../../observability/telemetry.zig");
 const test_port = @import("../test_port.zig");
 
 const TEST_AUDIT_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
+
+// This suite asserts workspace-scoping on database reads and makes no outbound
+// call, so the scheduler is deliberately never started: arming would fail
+// closed, which is the correct answer if a handler ever started dialling here.
+var idor_backend: call_deadline.MonotonicBackend = .{};
+var idor_scheduler = call_deadline.ProcessScheduler.init(std.heap.page_allocator, &idor_backend);
 const TEST_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 
 const ALLOC = std.testing.allocator;
@@ -238,7 +245,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .io = @import("common").globalIo(), .clerk_webhook_secret = null, .approval_signing_secret = null, .clerk_secret_key = null, .oidc = undefined, .auth_sessions = undefined, .audit_ctx = audit_events.AuditCtx.init(TEST_AUDIT_PEPPER), .app_url = "http://127.0.0.1", .api_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .hub = undefined, .stream_registry = undefined, .fleet_sets = undefined, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
+        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .io = @import("common").globalIo(), .deadline_scheduler = &idor_scheduler, .clerk_webhook_secret = null, .approval_signing_secret = null, .clerk_secret_key = null, .oidc = undefined, .auth_sessions = undefined, .audit_ctx = audit_events.AuditCtx.init(TEST_AUDIT_PEPPER), .app_url = "http://127.0.0.1", .api_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .hub = undefined, .stream_registry = undefined, .fleet_sets = undefined, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .telemetry = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.

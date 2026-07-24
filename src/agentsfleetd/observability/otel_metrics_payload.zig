@@ -1,5 +1,5 @@
 //! OTLP-JSON metric serialization for the Grafana Cloud Mimir exporter.
-//! Holds the metric-name/unit/label UFS constants (the wire contract shared
+//! Holds the metric-name/unit/label UFS constants (the wire schema shared
 //! with the Grafana dashboard JSON), the fixed-size `Sample` input type, the
 //! aggregated `Series` type, and the per-series serializer the flush loop calls.
 //!
@@ -11,7 +11,7 @@
 const std = @import("std");
 
 // ---------------------------------------------------------------------------
-// Wire contract — metric names / units / label keys (UFS named constants).
+// Wire schema — metric names / units / label keys (UFS named constants).
 // Any name here that a Grafana panel references is the single source of truth.
 // ---------------------------------------------------------------------------
 

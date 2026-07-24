@@ -5,6 +5,7 @@ const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const tripwire = @import("tripwire");
+const call_deadline = @import("call_deadline");
 
 /// Zig 0.16 moved sockets under `std.Io.net` (io-threaded Stream/Reader/Writer).
 const net = std.Io.net;
@@ -306,12 +307,18 @@ pub const Transport = union(enum) {
         };
     }
 
-    /// The transport's socket handle — the seam a caller-owned watchdog
-    /// (call_deadline) arms to bound an otherwise-unbounded blocking send.
-    pub fn socketHandle(self: *Self) std.posix.fd_t {
-        return switch (self.*) {
+    /// Publish this connection's socket to a caller-owned control block, which
+    /// is the ONLY way it leaves the transport. There is deliberately no
+    /// descriptor accessor: a caller that could read the handle could arm a
+    /// deadline on a number, and a recycled number names a different
+    /// connection. The owner stores it against `generation` and re-validates
+    /// under its own lock before any interrupt can touch it.
+    /// Returns false when `generation` was already retired.
+    pub fn attachTo(self: *Self, owner: *call_deadline.SocketOwner, generation: u64) bool {
+        const handle: std.posix.fd_t = switch (self.*) {
             .plain => |*p| p.stream_reader.fd,
             .tls => |*t| t.stream_reader.fd,
         };
+        return owner.attachSocket(generation, handle);
     }
 };

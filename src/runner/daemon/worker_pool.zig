@@ -21,6 +21,7 @@ const std = @import("std");
 const logging = @import("log");
 
 const Config = @import("config.zig");
+const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
 const loop = @import("loop.zig");
 
@@ -40,6 +41,10 @@ const WorkerContext = struct {
     io: std.Io,
     index: u32,
     cfg: Config,
+    /// The ONE process scheduler, borrowed from the runner root. Every worker
+    /// arms against it; no worker ever creates its own. The root joins the pool
+    /// before deiniting it, so it outlives every worker that can arm.
+    sched: *call_deadline.ProcessScheduler,
     env_map: *const std.process.Environ.Map,
     stop: *std.atomic.Value(bool),
     drain: *std.atomic.Value(bool),
@@ -90,6 +95,7 @@ pub fn foldWorkerVerdict(leak_flags: []const std.atomic.Value(bool)) std.heap.Ch
 pub fn spawn(
     io: std.Io,
     alloc: std.mem.Allocator,
+    sched: *call_deadline.ProcessScheduler,
     cfg: Config,
     env_map: *const std.process.Environ.Map,
     stop: *std.atomic.Value(bool),
@@ -113,6 +119,7 @@ pub fn spawn(
             .io = io,
             .index = @intCast(spawned),
             .cfg = cfg,
+            .sched = sched,
             .env_map = env_map,
             .stop = stop,
             .drain = drain,
@@ -128,7 +135,8 @@ pub fn spawn(
 /// until `stop`/`drain` is set, each with its OWN allocator scope and client. The
 /// allocator is per-thread so workers never contend on a shared allocator mutex;
 /// the client is per-worker state (persistent keep-alive connection + per-call
-/// socket deadlines), never shared across threads.
+/// deadlines), never shared across threads. The SCHEDULER is the one thing all
+/// workers share — one worker thread bounds every call in the process.
 fn workerLoop(ctx: WorkerContext) void {
     var gpa: std.heap.DebugAllocator(.{}) = .{};
     // Record this worker's leak verdict for the pool to fold at join. Registered
@@ -137,7 +145,7 @@ fn workerLoop(ctx: WorkerContext) void {
     defer ctx.leak_slot.store(gpa.deinit() == .leak, .seq_cst);
     const alloc = gpa.allocator();
 
-    var cp = client_mod.init(alloc, ctx.io, ctx.cfg.control_plane_url);
+    var cp = client_mod.init(alloc, ctx.io, ctx.sched, ctx.cfg.control_plane_url);
     defer cp.deinit();
     log.debug("worker_started", .{ .index = ctx.index });
     while (!ctx.stop.load(.seq_cst) and !ctx.drain.load(.seq_cst)) {
