@@ -1,13 +1,15 @@
 //! Integration tier for schema slot 033: every index it adds must be CHOSEN BY
 //! THE PLANNER for the query that justifies it.
 //!
-//! Asserting the index exists would pass on a merely-created index that the
-//! planner never picks — indistinguishable from a fix, in a green suite. So the
-//! read test here reads an `EXPLAIN` plan and asserts on the node, and seeds
-//! enough rows AND enough distinct key values that an index scan is genuinely
-//! the cheaper plan. Under-seeding is the failure mode to watch: on a small or
-//! single-valued table a sequential scan IS correct, and the test would fail for
-//! the wrong reason.
+//! WHAT IS UNDER TEST is what our code owns: each index's column list and order,
+//! and that the index CAN serve its query. Whether the planner PREFERS it over a
+//! sequential scan, and whether it supplies the ordering without a Sort node, are
+//! scale-dependent cost-model decisions PostgreSQL owns — reproducing them took
+//! tens of thousands of seeded rows per run. So the shape is pinned from the
+//! catalog (free) and fitness is checked with `enable_seqscan = off` (size
+//! independent). The one genuinely scale-sized memory assertion — that a read
+//! relocates onto the composite after slot 034 drops the narrow index — lives in
+//! `index_removal_integration_test.zig`, where the claim is load-bearing.
 //!
 //! The fleet-scoped indexes (affinity, leases, events) are covered by the
 //! sibling `index_usage_fleet_integration_test.zig`, which needs a tenant ->
@@ -22,18 +24,15 @@ const pg = @import("pg");
 const base = @import("test_fixtures.zig");
 const schema = @import("schema");
 const PgQuery = @import("pg_query.zig").PgQuery;
-const protocol = @import("contract").protocol;
 
 /// The migration slot this suite covers.
 const SLOT_VERSION: i32 = 33;
 
-/// Rows that make an index scan cheaper than a sequential scan on these tables.
-const MEM_SEED_ROWS: u32 = 40_000;
-
-/// Rows belonging to the probe fleet — exactly the per-fleet cap production
-/// enforces, so the fixture cannot describe a fleet that could not exist. Small
-/// against MEM_SEED_ROWS, which is what makes the fleet a selective slice.
-const PROBE_FLEET_ROWS: i32 = @intCast(protocol.MAX_MEMORY_ENTRIES_PER_AGENT);
+/// A minimal legible fixture. Fitness is checked with `enable_seqscan = off`, so
+/// it does not depend on the probe fleet being a selective slice of a large
+/// table — a few rows per fleet is enough for the plan to form.
+const MEM_SEED_ROWS: u32 = 200;
+const PROBE_FLEET_ROWS: i32 = 20;
 
 const FLEET_MEM = "0195b4ba-8d3a-7f13-8abc-0000000b0002";
 const MEM_ID_PREFIX = "idxprobe-mem-";
@@ -42,11 +41,12 @@ const MEM_ID_PREFIX = "idxprobe-mem-";
 /// indexes only the reads whose cost grows without bound. List sorts over
 /// runners, fleets and api keys are left unindexed at the ~100-runner scale the
 /// slot documents — see its header.
-const SLOT_033_INDEXES = [_][]const u8{
-    "idx_runner_affinity_last_runner_id_leased_until",
-    "idx_runner_leases_fleet_id_status_fencing_token",
-    "idx_fleet_events_workspace_id_created_at_event_id",
-    "idx_memory_entries_fleet_id_updated_at_id",
+const IndexRef = struct { schema: []const u8, name: []const u8 };
+const SLOT_033_INDEXES = [_]IndexRef{
+    .{ .schema = "fleet", .name = "idx_runner_affinity_last_runner_id_leased_until" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_fleet_id_status_fencing_token" },
+    .{ .schema = "core", .name = "idx_fleet_events_workspace_id_created_at_event_id" },
+    .{ .schema = "memory", .name = "idx_memory_entries_fleet_id_updated_at_id" },
 };
 
 /// The registered slot's text, or null when nothing claims that version.
@@ -88,27 +88,39 @@ fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8) ![]u8 {
     return out.toOwnedSlice(alloc);
 }
 
-/// The planner chose `index_name` — not merely that the index exists.
-fn expectIndex(plan: []const u8, index_name: []const u8) !void {
+/// The index exists in `schema` and indexes exactly `want_columns`, in that
+/// order and those directions — read structurally from the catalog (see
+/// `base.indexKeyColumns`), so a reorder or a dropped DESC fails here.
+fn expectIndexShape(alloc: std.mem.Allocator, conn: *pg.Conn, schema_name: []const u8, name: []const u8, want_columns: []const u8) !void {
+    const got = base.indexKeyColumns(alloc, conn, schema_name, name) catch |err| {
+        if (err == error.IndexMissing) std.debug.print("index {s}.{s} does not exist\n", .{ schema_name, name });
+        return err;
+    };
+    defer alloc.free(got);
+    if (!std.mem.eql(u8, got, want_columns)) {
+        std.debug.print("index {s}.{s} columns:\n  want: {s}\n  got:  {s}\n", .{ schema_name, name, want_columns, got });
+        return error.IndexShapeChanged;
+    }
+}
+
+/// `index_name` CAN serve `sql`'s filter: with sequential scans disabled the
+/// planner reaches for it. Size independent — this asks whether the index fits
+/// the query, not whether the cost model prefers it at some row count.
+fn expectServesFilter(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8, index_name: []const u8) !void {
+    _ = try conn.exec("SET enable_seqscan = off", .{});
+    defer _ = conn.exec("RESET enable_seqscan", .{}) catch |err|
+        std.log.warn("reset enable_seqscan ignored: {s}", .{@errorName(err)});
+    const plan = try planOf(alloc, conn, sql);
+    defer alloc.free(plan);
     if (std.mem.indexOf(u8, plan, index_name) == null) {
         std.debug.print("expected index {s} in plan:\n{s}\n", .{ index_name, plan });
         return error.IndexNotChosen;
     }
 }
 
-/// No Sort node: the index supplied the ordering rather than the executor.
-fn expectNoSort(plan: []const u8) !void {
-    if (std.mem.indexOf(u8, plan, "Sort") != null) {
-        std.debug.print("expected no Sort node in plan:\n{s}\n", .{plan});
-        return error.PlanSorts;
-    }
-}
-
-/// Seed memory across MANY fleets, with the probe fleet a small slice of the
-/// table. A single-fleet seed would be the wrong shape: if every row matches
-/// the filter, a sequential scan really is the cheaper plan and the planner is
-/// right to take it. Hydration is per-fleet on a table holding every fleet, so
-/// the fixture has to reproduce that selectivity to prove anything.
+/// Seed memory across a handful of fleets, the probe fleet among them. Size and
+/// selectivity are not load-bearing here (the fitness check forces the index),
+/// so this stays small.
 fn seedMemory(conn: *pg.Conn, rows: u32) !void {
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
@@ -134,16 +146,10 @@ test "slot 033 indexes are applied exactly once" {
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
 
-    for (SLOT_033_INDEXES) |name| {
-        var q = PgQuery.from(try db.conn.query(
-            "SELECT COUNT(*)::bigint FROM pg_indexes WHERE indexname = $1",
-            .{name},
-        ));
-        defer q.deinit();
-        const row = (try q.next()) orelse return error.DbRowShape;
-        const n = try row.get(i64, 0);
+    for (SLOT_033_INDEXES) |entry| {
+        const n = try base.indexCount(db.conn, entry.schema, entry.name);
         if (n != 1) {
-            std.debug.print("index {s} present {d} times, want 1\n", .{ name, n });
+            std.debug.print("index {s}.{s} present {d} times, want 1\n", .{ entry.schema, entry.name, n });
             return error.IndexNotAppliedOnce;
         }
     }
@@ -185,32 +191,32 @@ test "slot 033 re-applies as a no-op" {
     try std.testing.expectEqual(SLOT_033_INDEXES.len, guarded);
 }
 
-test "bounded memory read is index-ordered" {
-    // The composite index earns its ordering only where the plan can exit early.
-    // `fleet_memory.listAll` fetches a fleet's WHOLE memory set with no LIMIT, and
-    // for an unbounded fetch PostgreSQL correctly prefers bitmap-scan + sort: an
-    // ordered index scan buys nothing when every row is returned anyway, and costs
-    // random heap access. Measured on a 4000-of-40000 fixture, both with and
-    // without the narrow `idx_memory_entries_fleet_id` present.
+test "memory composite has the right shape and serves the fleet filter" {
+    // What our code controls, asserted cheaply. Two things:
+    //   - the index indexes exactly (fleet_id, updated_at DESC, id DESC), so a
+    //     column reorder or a dropped DESC fails here;
+    //   - with sequential scans disabled the planner reaches for it to answer a
+    //     fleet-scoped read, proving the index CAN serve that filter.
     //
-    // So this asserts the bounded shape, which is what the index actually serves.
-    // The unbounded read's own guarantee — that it still reaches the composite
-    // rather than a sequential scan once slot 034 drops the narrow index — is
-    // asserted in `index_removal_integration_test.zig`.
+    // What is deliberately NOT asserted is that the planner supplies the ordering
+    // WITHOUT a Sort node, or that it prefers the index over a scan. Both are
+    // scale-dependent planner behaviour, not properties of our code: the ordered
+    // index scan only beats bitmap-scan-plus-sort once a fleet's rows are a small
+    // enough slice of the table, and the crossover for the unbounded `listAll`
+    // was measured to sit near 3% — reproducing it took a 40 000-row fixture per
+    // run, for a fact PostgreSQL owns rather than we do. See the file header.
     const alloc = std.testing.allocator;
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
     defer wipeMemory(db.conn);
     try seedMemory(db.conn, MEM_SEED_ROWS);
 
-    const plan = try planOf(alloc, db.conn,
+    try expectIndexShape(alloc, db.conn, "memory", "idx_memory_entries_fleet_id_updated_at_id", "fleet_id, updated_at DESC, id DESC");
+    try expectServesFilter(alloc, db.conn,
         \\SELECT key, content, category
         \\FROM memory.memory_entries
         \\WHERE fleet_id = '0195b4ba-8d3a-7f13-8abc-0000000b0002'::uuid
         \\ORDER BY updated_at DESC, id DESC
         \\LIMIT 50
-    );
-    defer alloc.free(plan);
-    try expectIndex(plan, "idx_memory_entries_fleet_id_updated_at_id");
-    try expectNoSort(plan);
+    , "idx_memory_entries_fleet_id_updated_at_id");
 }
