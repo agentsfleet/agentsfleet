@@ -85,47 +85,124 @@ test "test_post_propagates_oversized_auth_formatting_error" {
     );
 }
 
-/// Upper bound on how long the stalling peer holds its accepted connection —
-/// a backstop so a failed test cannot wedge the suite, never the timing under test.
-const STALL_HOLD_TIMEOUT_NS: u64 = 5 * std.time.ns_per_s;
+// The one bound the hotfix keeps: a POST whose cycle deadline is ALREADY spent
+// is refused before any network I/O, cleanly, with `error.OtlpExportTimedOut`.
+// This is the fail-fast pre-check inside postOnce — the only remaining deadline
+// enforcement after the (crash-causing) mid-flight cancellation race was removed.
+// The endpoint is a dead loopback port; a past deadline means the pre-check
+// returns before fetch is even attempted, so it is never contacted (were the
+// pre-check gone, this would instead surface a connect error, not a timeout —
+// which is what makes this a regression guard for the surviving bound). Uses
+// std.testing.allocator, so it doubles as a zero-leak proof of the timeout path
+// (the URL scratch allocated before the check must be freed by its defer).
+test "test_post_refuses_before_network_when_deadline_already_spent" {
+    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+    var client = Client.init(io);
+    defer client.deinit();
 
-const StallServer = struct {
+    const cfg: config.GrafanaOtlpConfig = .{
+        .endpoint = "http://127.0.0.1:1",
+        .instance_id = "test-instance",
+        .api_key = "test-key",
+    };
+
+    // -TEST_TIMEOUT_MS: as far in the PAST as TEST_TIMEOUT_MS is in the future.
+    try std.testing.expectError(
+        error.OtlpExportTimedOut,
+        client.post(std.testing.allocator, cfg, "/v1/metrics", "{}", deadlineAfter(io, -TEST_TIMEOUT_MS)),
+    );
+}
+
+/// Iterations over the fail-fast path; enough that a per-call leak accumulates
+/// into something `std.testing.allocator` cannot miss at test end.
+const LEAK_LOOP_ITERS: usize = 64;
+
+// Cross-request no-growth leak proof for the reused persistent client. Each
+// refused POST allocates its URL scratch and must free it via defer on the
+// early-return path; a persistent-client pool that retained per-call state
+// would show up as a leak accumulated over the loop. std.testing.allocator
+// fails the test on the first unfreed byte, so a clean run over N iterations is
+// the proof the fail-fast path leaks nothing across reuse.
+test "test_post_fail_fast_path_leaks_nothing_across_reuse" {
+    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+    var client = Client.init(io);
+    defer client.deinit();
+
+    const cfg: config.GrafanaOtlpConfig = .{
+        .endpoint = "http://127.0.0.1:1",
+        .instance_id = "test-instance",
+        .api_key = "test-key",
+    };
+
+    var i: usize = 0;
+    while (i < LEAK_LOOP_ITERS) : (i += 1) {
+        try std.testing.expectError(
+            error.OtlpExportTimedOut,
+            client.post(std.testing.allocator, cfg, "/v1/metrics", "{}", deadlineAfter(io, -TEST_TIMEOUT_MS)),
+        );
+    }
+}
+
+// Minimal HTTP/1.1 200 with no body: Content-Length 0 so the client's response
+// read completes without a body. The one response the OTLP happy path expects.
+const OK_RESPONSE = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+const SERVER_READ_BUF: usize = 1024;
+const SERVER_WRITE_BUF: usize = 128;
+
+/// One-shot loopback server: accept, drain the request so the client's send
+/// completes, answer 200, close. `listenLoopback` hands back an already-bound
+/// held listener, so there is no close-and-rebind race (harness hygiene).
+const OkServer = struct {
     io: std.Io,
     listener: *std.Io.net.Server,
-    release: common.Event = .{},
 
-    fn run(self: *StallServer) void {
+    fn run(self: *OkServer) void {
         const stream = self.listener.accept(self.io) catch return;
         defer stream.close(self.io);
-        // Hold the accepted connection open and send nothing, so the client can
-        // only escape via its own deadline. Timing out here means the test
-        // already released us; close the stream either way.
-        self.release.timedWait(STALL_HOLD_TIMEOUT_NS) catch |err| switch (err) {
-            error.Timeout => {},
-        };
+        var rbuf: [SERVER_READ_BUF]u8 = undefined;
+        // Drain the request so the client's send completes; a broken read means
+        // the client already went away, so give up rather than answer nothing.
+        _ = std.posix.read(stream.socket.handle, &rbuf) catch return;
+        var wbuf: [SERVER_WRITE_BUF]u8 = undefined;
+        var w = stream.writer(self.io, &wbuf);
+        w.interface.writeAll(OK_RESPONSE) catch return;
+        w.interface.flush() catch return;
     }
 };
 
-test "integration: test_otlp_post_stall_times_out" {
+// The real-fetch happy path, which the injected `post` seam in exporter_test can
+// never cover: a POST that actually leaves the socket, gets a 200, and parses an
+// empty body into `.accepted`. Exercises real send + real response-head read +
+// parseResponse end to end against a live (loopback) server. Not a crash
+// regression — plain HTTP answering immediately can't reproduce the TLS
+// send-phase timing — but it is the positive scenario-axis case for the fetch
+// path the exporter runs in production. testing.allocator doubles it as a
+// zero-leak proof of the success path (URL + response scratch freed).
+test "integration: test_post_returns_accepted_on_200" {
+    // Skip under valgrind: a successful real fetch spawns a std.Io.Threaded
+    // worker, and glibc's pthread TLS/dtv block for it reads as "possibly lost"
+    // to valgrind — a std/runtime artifact, not a leak in this code (the fix
+    // removed allocations, and the fail-fast/no-growth tests stay valgrind-clean).
+    // This still runs natively in test-unit-agentsfleetd, which is where the
+    // success path is validated; only the valgrind memleak lane skips it.
+    if (std.valgrind.runningOnValgrind() != 0) return error.SkipZigTest;
+
     var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
     defer threaded.deinit();
     const io = threaded.io();
     var loopback = test_port.listenLoopback(io) catch return error.SkipZigTest;
     defer loopback.server.deinit(io);
 
-    var server = StallServer{ .io = io, .listener = &loopback.server };
-    const server_thread = try std.Thread.spawn(.{}, StallServer.run, .{&server});
-    defer {
-        server.release.set();
-        server_thread.join();
-    }
+    var server = OkServer{ .io = io, .listener = &loopback.server };
+    const server_thread = try std.Thread.spawn(.{}, OkServer.run, .{&server});
+    defer server_thread.join();
 
     var endpoint_buf: [64]u8 = undefined;
-    const endpoint = try std.fmt.bufPrint(
-        &endpoint_buf,
-        "http://127.0.0.1:{d}",
-        .{loopback.port},
-    );
+    const endpoint = try std.fmt.bufPrint(&endpoint_buf, "http://127.0.0.1:{d}", .{loopback.port});
     const cfg: config.GrafanaOtlpConfig = .{
         .endpoint = endpoint,
         .instance_id = "test-instance",
@@ -134,17 +211,15 @@ test "integration: test_otlp_post_stall_times_out" {
     var client = Client.init(io);
     defer client.deinit();
 
-    const start = std.Io.Clock.boot.now(io).toNanoseconds();
-    try std.testing.expectError(
-        error.OtlpExportTimedOut,
-        client.post(
-            std.testing.allocator,
-            cfg,
-            "/v1/metrics",
-            "{}",
-            deadlineAfter(io, 100),
-        ),
-    );
-    const elapsed = std.Io.Clock.boot.now(io).toNanoseconds() - start;
-    try std.testing.expect(elapsed < 2 * std.time.ns_per_s);
+    const result = try client.post(std.testing.allocator, cfg, "/v1/metrics", "{}", deadlineAfter(io, TEST_TIMEOUT_MS));
+    try std.testing.expect(result == .accepted);
 }
+
+// A stall-times-out test also lived here. It drove a loopback peer that accepted
+// the connection and sent nothing, and asserted `post` escaped via its deadline —
+// but the mechanism it proved (racing the fetch and canceling it mid-flight) is
+// exactly what crashed the process against a real TLS endpoint, so it was removed
+// with that mechanism. That test stalled on the RESPONSE read, after the send had
+// completed, which is why it never reproduced the send-phase panic even on the
+// buggy code. Restore a stall test alongside the cancel-safe bound (shut the
+// pinned socket down at the deadline) when that lands.

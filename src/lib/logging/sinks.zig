@@ -50,12 +50,6 @@ pub const Sink = struct {
 
 const MAX_SINKS: usize = 4;
 
-/// Sized for a logfmt record; longer bodies degrade to the event name rather
-/// than growing a buffer on a path that is usually mid-failure.
-const FALLBACK_LINE_MAX: usize = 4096;
-/// `std.debug.lockStderr` scratch — the writer needs somewhere to stage bytes.
-const STDERR_LOCK_BUF: usize = 64;
-
 var sinks_buf: [MAX_SINKS]Sink = undefined;
 var sinks_len: usize = 0;
 var sinks_mutex: common.Mutex = .{};
@@ -135,28 +129,6 @@ pub fn unregisterByCtx(ctx: *const anyopaque) void {
     emit_completed[old].store(0, .release);
 }
 
-/// Last-resort render for an `err` emitted with no sink installed. Own writer,
-/// no allocator, no `Io`: this runs on paths that are about to exit, where the
-/// normal envelope machinery may not be available.
-fn writeErrFallback(scope: []const u8, body: []const u8) void {
-    var line: [FALLBACK_LINE_MAX]u8 = undefined;
-    const rendered = std.fmt.bufPrint(&line, "level=error scope={s} {s}\n", .{ scope, body }) catch {
-        // Body too long for the fallback buffer: the event name still beats silence.
-        var head: [FALLBACK_LINE_MAX]u8 = undefined;
-        const clipped = std.fmt.bufPrint(&head, "level=error scope={s} (body truncated)\n", .{scope}) catch return;
-        writeStderr(clipped);
-        return;
-    };
-    writeStderr(rendered);
-}
-
-fn writeStderr(line: []const u8) void {
-    var buf: [STDERR_LOCK_BUF]u8 = undefined;
-    const locked = std.debug.lockStderr(&buf);
-    defer std.debug.unlockStderr();
-    locked.file_writer.interface.writeAll(line) catch {};
-}
-
 pub fn emitToSinks(
     level: std.log.Level,
     scope: []const u8,
@@ -171,13 +143,6 @@ pub fn emitToSinks(
     // would otherwise see a stale non-zero length.
     if (sinks_len == 0) {
         sinks_mutex.unlock();
-        // An `err` with nowhere to go is a diagnostic that never existed. A
-        // daemon booted inside a test binary registers no sinks, so its
-        // startup failure used to reach `std.process.exit(1)` having printed
-        // nothing at all — the failure and the reason for it both invisible.
-        // Straight to stderr, bypassing std.log so a captured record can never
-        // fail an unrelated test the way the default test logFn would.
-        if (level == .err) writeErrFallback(scope, body);
         return;
     }
     var snapshot_arr: [MAX_SINKS]Sink = undefined;
