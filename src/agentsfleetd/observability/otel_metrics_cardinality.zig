@@ -81,7 +81,10 @@ pub fn trackedCount() usize {
     return g_count;
 }
 
-/// Clear the tracked set. Test-only; the budget is process-lifetime in prod.
+/// Clear the tracked set, opening a fresh attribution window. Called by the
+/// metrics flush once it has drained the window this set governed, so the
+/// budget tracks the models active in a window rather than the first ones the
+/// process ever saw.
 pub fn reset() void {
     g_mutex.lock();
     defer g_mutex.unlock();
