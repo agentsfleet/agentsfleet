@@ -1481,12 +1481,13 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(screen.getByRole("button", { name: /jump to latest/i })).toBeTruthy();
   });
 
-  it("keeps a fleet reply left aligned and its long body within the reading column", () => {
+  it("keeps a fleet reply left aligned and its long body within the bubble column", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();
     const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
     expect(row).toBeTruthy();
-    expect((row.querySelector("[data-dashboard-row]") as HTMLElement).className).toMatch(/max-w-5xl/);
+    expect(row.querySelector(".flex-row-reverse")).toBeNull();
+    expect(row.querySelector(".max-w-xl")).toBeTruthy();
     const body = row.querySelector(".break-words");
     expect(body).toBeTruthy();
   });

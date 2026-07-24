@@ -28,29 +28,32 @@ function renderRow(overrides: Partial<Parameters<typeof FleetMessageRow>[0]> = {
 }
 
 describe("FleetMessageRow", () => {
-  it("renders an operator turn in a right-aligned bounded surface", () => {
+  it("anchors an operator turn to the right in a bounded bubble", () => {
     const { container } = renderRow();
     const row = container.querySelector('[data-role="user"]') as HTMLElement;
     expect(row).toBeTruthy();
     expect(row.querySelector('[data-chip="operator"]')?.textContent).toBe("OP");
     expect(screen.getByText("Operator")).toBeTruthy();
-    expect(screen.getByText("please review the change")).toBeTruthy();
-    const surface = row.querySelector("[data-dashboard-row]") as HTMLElement;
-    expect(surface.className).toMatch(/max-w-4xl/);
-    expect(surface.className).toMatch(/rounded-lg/);
-    expect(surface.className).toMatch(/border/);
+    const bubble = screen.getByText("please review the change");
+    expect(row.querySelector(".flex-row-reverse")).toBeTruthy();
+    expect(row.querySelector(".max-w-xl")).toBeTruthy();
+    expect(bubble.className).toMatch(/rounded-lg/);
+    expect(bubble.className).toMatch(/rounded-br-sm/);
+    expect(bubble.className).toMatch(/bg-accent/);
   });
 
-  it("keeps fleet replies left aligned without an operator bubble", () => {
+  it("anchors a fleet turn to the left in its own quieter bubble", () => {
     const { container } = renderRow({
       tone: ROW_TONE.FLEET,
       sender: "pr-reviewer",
       messageRole: "assistant",
     });
     const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
-    const surface = row.querySelector("[data-dashboard-row]") as HTMLElement;
-    expect(surface.className).toMatch(/max-w-5xl/);
-    expect(surface.className).not.toMatch(/rounded-lg/);
+    expect(row.querySelector(".flex-row-reverse")).toBeNull();
+    const bubble = screen.getByText("please review the change");
+    expect(bubble.className).toMatch(/rounded-bl-sm/);
+    expect(bubble.className).toMatch(/bg-secondary/);
+    expect(bubble.className).not.toMatch(/bg-accent/);
   });
 
   it("carries the exact instant in the timestamp, whatever the visible format", () => {
@@ -58,10 +61,11 @@ describe("FleetMessageRow", () => {
     expect(container.querySelector("time")?.getAttribute("dateTime")).toBe(AT.toISOString());
   });
 
-  it("pushes the timestamp to the far edge, away from the sender", () => {
+  it("keeps the timestamp beside the sender in the label row", () => {
     const { container } = renderRow();
-    const header = container.querySelector("time")?.parentElement as HTMLElement;
-    expect(header.className).toMatch(/ml-auto/);
+    const label = container.querySelector("time")?.parentElement as HTMLElement;
+    expect(label.textContent).toContain("Operator");
+    expect(label.className).toMatch(/text-label/);
   });
 
   it("keeps a long body inside its own row rather than widening the page", () => {
@@ -71,7 +75,7 @@ describe("FleetMessageRow", () => {
     expect(body.className).toMatch(/min-w-0/);
   });
 
-  it("tones the chip per role without changing the row's skeleton", () => {
+  it("tones the chip per role across the bubble variants", () => {
     const { container: fleet } = renderRow({ tone: ROW_TONE.FLEET, sender: "pr-reviewer" });
     expect(fleet.querySelector('[data-chip="fleet"]')).toBeTruthy();
     cleanup();
