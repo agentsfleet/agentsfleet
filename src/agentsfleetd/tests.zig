@@ -13,6 +13,11 @@ test {
     _ = @import("db/pg_query.zig");
     _ = @import("db/sql_splitter.zig");
     _ = @import("db/sql_splitter_test.zig");
+    _ = @import("db/index_usage_integration_test.zig");
+    _ = @import("db/index_usage_fleet_integration_test.zig");
+    _ = @import("db/index_removal_integration_test.zig");
+    _ = @import("http/handlers/fleet/runners_list_integration_test.zig");
+    _ = @import("http/handlers/fleets/secret_list_integration_test.zig");
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("config/balance_policy.zig");

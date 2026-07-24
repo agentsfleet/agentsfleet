@@ -1,6 +1,7 @@
 //! GET /v1/fleets/runners/{id}/events — platform-admin runner history.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const httpz = @import("httpz");
 
 const common = @import("../common.zig");
@@ -67,9 +68,7 @@ fn parseListQuery(req: *httpz.Request) ?ListQuery {
 }
 
 fn runnerExists(conn: anytype, runner_id: []const u8) !bool {
-    var q = PgQuery.from(try conn.query(
-        \\SELECT 1 FROM fleet.runners WHERE id = $1::uuid
-    , .{runner_id}));
+    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_EXISTS, .{runner_id}));
     defer q.deinit();
     return (try q.next()) != null;
 }

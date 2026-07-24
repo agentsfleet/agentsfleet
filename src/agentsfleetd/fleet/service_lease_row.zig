@@ -8,6 +8,7 @@ const clock = @import("common").clock;
 const protocol = @import("contract").protocol;
 const assign = @import("assign.zig");
 const affinity = @import("affinity.zig");
+const sql = @import("sql.zig");
 const id_format = @import("../types/id_format.zig");
 const runner_events = @import("runner_events.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
@@ -45,28 +46,7 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
     // metering cursor at issue (Invariant 9 — never read NULL). A reclaimed
     // re-lease carries the dead holder's cursor forward instead (wired with the
     // /renew Δ-charge), so the new holder meters from where it stopped.
-    _ = conn.exec(
-        \\WITH inserted AS (
-        \\  INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id,
-        \\   actor, event_type, request_json, event_created_at,
-        \\   posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
-        \\   fencing_token, lease_expires_at, status,
-        \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-        \\        $7, $8, $9, $10, $11, $12, $13,
-        \\        0, 0, 0, $17,
-        \\        $14, $15, $16, $17, $17)
-        \\  RETURNING id, runner_id, fleet_id, event_id
-        \\)
-        \\INSERT INTO fleet.runner_events
-        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\SELECT $18::uuid, runner_id, $19::text, $17::bigint,
-        \\       jsonb_build_object($20::text, id::text, $21::text, fleet_id::text, $22::text, event_id, $23::text, $24::text),
-        \\       NULL, $17::bigint
-        \\FROM inserted
-    , .{
+    _ = conn.exec(sql.INSERT_LEASE_WITH_EVENT, .{
         lease_id,
         runner_id,
         acq.fleet_id,

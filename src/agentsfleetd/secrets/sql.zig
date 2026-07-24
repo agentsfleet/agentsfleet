@@ -20,3 +20,16 @@ pub const SELECT_SECRET =
     \\  FROM vault.secrets
     \\ WHERE workspace_id = $1 AND key_name = $2
 ;
+
+/// Every credential in a workspace, ciphertext and all, in one read.
+///
+/// Column order deliberately puts `key_name` and `created_at` first so the
+/// ciphertext block that follows keeps the exact shape and offsets
+/// `SELECT_SECRET` uses — one decrypt routine serves both statements.
+pub const SELECT_SECRETS_FOR_WORKSPACE =
+    \\SELECT key_name, created_at,
+    \\       encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version
+    \\  FROM vault.secrets
+    \\ WHERE workspace_id = $1
+    \\ ORDER BY key_name ASC
+;

@@ -17,6 +17,7 @@
 //! PgQuery / conn.exec).
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -57,20 +58,7 @@ pub fn claim(
     defer alloc.free(affinity_id);
     const now_ms = clock.nowMillis();
     const leased_until = now_ms + ttl_ms;
-    var q = PgQuery.from(try conn.query(
-        \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
-        \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, 0, 0, 0, $5, $5, $5)
-        \\ON CONFLICT (fleet_id) DO UPDATE
-        \\  SET last_runner_id = EXCLUDED.last_runner_id,
-        \\      fencing_seq    = fleet.runner_affinity.fencing_seq + 1,
-        \\      leased_until   = EXCLUDED.leased_until,
-        \\      updated_at     = EXCLUDED.updated_at
-        \\  WHERE fleet.runner_affinity.leased_until < $5
-        \\RETURNING fencing_seq
-    , .{ affinity_id, fleet_id, runner_id, leased_until, now_ms }));
+    var q = PgQuery.from(try conn.query(sql.CLAIM_AFFINITY_SLOT, .{ affinity_id, fleet_id, runner_id, leased_until, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return .taken;
     return .{ .won = .{ .token = @intCast(try row.get(i64, 0)), .leased_until = leased_until } };
@@ -86,13 +74,7 @@ pub fn claim(
 /// issue rather than risk an over-charge). `meter_slice_seq` resets too so the
 /// new event's breakdown numbering restarts at 1.
 pub fn resetCursor(conn: *pg.Conn, fleet_id: []const u8, now_ms: i64) !void {
-    _ = conn.exec(
-        \\UPDATE fleet.runner_affinity
-        \\SET metered_input_tokens = 0, metered_cached_tokens = 0,
-        \\    metered_output_tokens = 0, last_metered_at_ms = $2, updated_at = $2,
-        \\    meter_slice_seq = 0
-        \\WHERE fleet_id = $1::uuid
-    , .{ fleet_id, now_ms }) catch return error.AffinityCursorResetFailed;
+    _ = conn.exec(sql.RESET_AFFINITY_METERS, .{ fleet_id, now_ms }) catch return error.AffinityCursorResetFailed;
 }
 
 /// Free the slot (report / abandoned no-work claim) so the fleet's next event
@@ -101,8 +83,5 @@ pub fn resetCursor(conn: *pg.Conn, fleet_id: []const u8, now_ms: i64) !void {
 /// Idempotent: a no-op if the row is gone or the token has been bumped.
 pub fn release(conn: *pg.Conn, fleet_id: []const u8, token: u64) !void {
     const now_ms = clock.nowMillis();
-    _ = conn.exec(
-        \\UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2
-        \\WHERE fleet_id = $1::uuid AND fencing_seq = $3
-    , .{ fleet_id, now_ms, @as(i64, @intCast(token)) }) catch return error.AffinityReleaseFailed;
+    _ = conn.exec(sql.RELEASE_AFFINITY_SLOT, .{ fleet_id, now_ms, @as(i64, @intCast(token)) }) catch return error.AffinityReleaseFailed;
 }

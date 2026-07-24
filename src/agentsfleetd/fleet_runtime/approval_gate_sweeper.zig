@@ -12,6 +12,7 @@
 // the same as `.denied` (safe default for destructive ops).
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const constants = @import("common");
 const clock = constants.clock;
 const pg = @import("pg");
@@ -86,12 +87,7 @@ fn fetchExpired(pool: *pg.Pool, alloc: Allocator) ![][]const u8 {
     defer pool.release(conn);
 
     const now_ms = clock.nowMillis();
-    var q = PgQuery.from(try conn.query(
-        \\SELECT action_id FROM core.fleet_approval_gates
-        \\WHERE status = $1 AND timeout_at <= $2
-        \\ORDER BY timeout_at ASC
-        \\LIMIT $3
-    , .{ PENDING_STATUS, now_ms, @as(i64, @intCast(BATCH_LIMIT)) }));
+    var q = PgQuery.from(try conn.query(sql.SELECT_TIMED_OUT_GATES, .{ PENDING_STATUS, now_ms, @as(i64, @intCast(BATCH_LIMIT)) }));
     defer q.deinit();
 
     var ids: std.ArrayList([]const u8) = .empty;

@@ -17,6 +17,7 @@
 //! Auth: operator-minimum role per RULE BIL — destructive lifecycle action.
 
 const std = @import("std");
+const sql = @import("sql.zig");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -121,11 +122,7 @@ fn purgeFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const 
     // Pre-flight: classify before any DELETE so we return distinct 404 vs 409
     // without partial mutation.
     {
-        var probe = PgQuery.from(try conn.query(
-            \\SELECT status FROM core.fleets
-            \\WHERE id = $1::uuid AND workspace_id = $2::uuid
-            \\LIMIT 1
-        , .{ fleet_id, workspace_id }));
+        var probe = PgQuery.from(try conn.query(sql.SELECT_FLEET_STATUS, .{ fleet_id, workspace_id }));
         defer probe.deinit();
         const row = (try probe.next()) orelse return .not_found;
         const cur_status = try row.get([]const u8, 0);
@@ -166,11 +163,7 @@ fn purgeFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const 
     // result throws ConnectionBusy, which then poisons the pooled connection
     // (left mid-transaction) for the next acquirer.
     const purged = blk: {
-        var del = PgQuery.from(try conn.query(
-            \\DELETE FROM core.fleets
-            \\WHERE id = $1::uuid AND workspace_id = $2::uuid AND status = $3
-            \\RETURNING id
-        , .{ fleet_id, workspace_id, killed }));
+        var del = PgQuery.from(try conn.query(sql.DELETE_FLEET_IN_STATUS, .{ fleet_id, workspace_id, killed }));
         defer del.deinit();
         break :blk (try del.next()) != null;
     };
