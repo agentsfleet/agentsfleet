@@ -16,6 +16,7 @@ const MAX_ATTR_COUNT = otel_traces.TEST_MAX_ATTR_COUNT;
 const MAX_NAME_LEN = otel_traces.TEST_MAX_NAME_LEN;
 const buildSpan = otel_traces.buildSpan;
 const addAttr = otel_traces.addAttr;
+const addIntAttr = otel_traces.addIntAttr;
 const enqueueSpan = otel_traces.enqueueSpan;
 
 test "ring buffer push and pop round-trip" {
@@ -217,6 +218,19 @@ test "addAttr respects max count" {
         try std.testing.expect(addAttr(&entry, "k", "v"));
     }
     try std.testing.expect(!addAttr(&entry, "overflow", "x"));
+    try std.testing.expectEqual(@as(u8, MAX_ATTR_COUNT), entry.attr_count);
+}
+
+test "addIntAttr refuses a slot past max count instead of overwriting" {
+    const ctx = trace.TraceContext.generate();
+    var entry = buildSpan(ctx, "attrs", .internal, 0, 0);
+    var i: u8 = 0;
+    while (i < MAX_ATTR_COUNT) : (i += 1) {
+        try std.testing.expect(addAttr(&entry, "k", "v"));
+    }
+    // Same `claimAttr` contract as addAttr: a full entry must refuse, not
+    // silently drop the numeric attribute or scribble over slot 0.
+    try std.testing.expect(!addIntAttr(&entry, "http.response.status_code", 200));
     try std.testing.expectEqual(@as(u8, MAX_ATTR_COUNT), entry.attr_count);
 }
 
