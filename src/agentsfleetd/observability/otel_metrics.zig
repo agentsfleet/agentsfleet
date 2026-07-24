@@ -18,6 +18,7 @@ const otlp_exporter = @import("otlp/exporter.zig");
 const payload = @import("otel_metrics_payload.zig");
 const aggregate = @import("otel_metrics_aggregate.zig");
 const cardinality = @import("otel_metrics_cardinality.zig");
+const semconv = @import("semconv.zig");
 
 const OTLP_METRICS_PATH = "/v1/metrics";
 const BUFFER_CAPACITY: usize = 1024;
@@ -53,37 +54,85 @@ fn currentNanos() u64 {
 // Callers invoke these AFTER the money transaction commits.
 // ---------------------------------------------------------------------------
 
-/// Record a committed credit-drain delta (nanos) labelled by posture/model and,
-/// when under the cardinality cap, workspace.
-pub fn recordCreditDrain(drained_nanos: i64, posture: []const u8, model: []const u8, workspace: []const u8) void {
-    if (!isInstalled()) return;
-    if (drained_nanos == 0) return;
-    var s = payload.newSample(.credit_drain, drained_nanos);
-    _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
-    _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
-    if (workspace.len > 0 and cardinality.allowWorkspace(workspace)) {
-        _ = payload.addLabel(&s, payload.LABEL_WORKSPACE, workspace);
+/// The identity dimensions every run metric shares. `provider` and `model` are
+/// the raw stored values; this module decides whether either can be exported
+/// as a standard attribute. Workspace and tenant are deliberately absent — they
+/// never reach a metric.
+pub const Attribution = struct {
+    posture: []const u8,
+    provider: []const u8,
+    model: []const u8,
+};
+
+/// Attach `gen_ai.provider.name` and `gen_ai.request.model` when each can be
+/// represented safely, counting every omission. An unrepresentable value is
+/// dropped rather than truncated or coerced: a truncated model name reads as a
+/// different model, and a private provider spelling under a standard key claims
+/// interoperability the value does not have.
+fn appendProviderAndModel(sample: *Sample, attr: Attribution) void {
+    if (semconv.normalizeProvider(attr.provider)) |known| {
+        _ = payload.addLabel(sample, semconv.ATTR_PROVIDER_NAME, known);
+    } else {
+        health.recordAttributeOmission(.provider_name, .unmapped_provider);
     }
+    if (attr.model.len == 0) return;
+    if (!payload.valueFits(attr.model)) {
+        health.recordAttributeOmission(.request_model, .value_too_long);
+        return;
+    }
+    if (!cardinality.admitModel(attr.provider, attr.model)) {
+        health.recordAttributeOmission(.request_model, .budget_exhausted);
+        return;
+    }
+    _ = payload.addLabel(sample, semconv.ATTR_REQUEST_MODEL, attr.model);
+}
+
+/// Record a committed credit debit (nanocredits) under its fixed charge class.
+/// Every caller invokes this strictly after its money write commits, so a
+/// rolled-back, fenced, or replayed operation contributes nothing.
+pub fn recordCreditConsumed(nanos: i64, charge: semconv.ChargeClass, attr: Attribution) void {
+    if (!isInstalled()) return;
+    if (nanos == 0) return;
+    var s = payload.newSample(.credit_consumed, nanos);
+    _ = payload.addLabel(&s, semconv.ATTR_CHARGE_TYPE, charge.label());
+    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
 
-/// Record a token-throughput delta for one direction (input/cached/output).
-pub fn recordTokens(count: i64, direction: []const u8, posture: []const u8, model: []const u8) void {
+/// Observe one direction of an invocation's aggregate token usage. Input
+/// already includes cached input; cached detail is reported by
+/// `observeCacheReadTokens` as a subset, never as a third additive direction.
+pub fn observeTokenUsage(count: i64, token_type: semconv.TokenType, attr: Attribution) void {
     if (!isInstalled()) return;
     if (count == 0) return;
-    var s = payload.newSample(.tokens, count);
-    _ = payload.addLabel(&s, payload.LABEL_DIRECTION, direction);
-    _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
-    _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
+    var s = payload.newSample(.token_usage, count);
+    _ = payload.addLabel(&s, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
+    _ = payload.addLabel(&s, semconv.ATTR_TOKEN_TYPE, token_type.label());
+    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
 
-/// Observe a run's wall-clock duration (ms) into the latency histogram.
-pub fn observeRunDuration(wall_ms: i64, posture: []const u8, model: []const u8) void {
+/// Observe the cached-input subset of the input direction above.
+pub fn observeCacheReadTokens(count: i64, attr: Attribution) void {
     if (!isInstalled()) return;
-    var s = payload.newSample(.run_duration, wall_ms);
-    _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
-    _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
+    if (count == 0) return;
+    var s = payload.newSample(.cache_read_token_usage, count);
+    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    appendProviderAndModel(&s, attr);
+    enqueueSample(s);
+}
+
+/// Observe one agent invocation's wall-clock duration (milliseconds in, seconds
+/// on the wire). `error_type` is null on a clean run and the coarse failure
+/// verdict otherwise.
+pub fn observeInvokeAgentDuration(wall_ms: i64, error_type: ?[]const u8, attr: Attribution) void {
+    if (!isInstalled()) return;
+    var s = payload.newSample(.invoke_agent_duration, wall_ms);
+    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    if (error_type) |value| _ = payload.addLabel(&s, semconv.ATTR_ERROR_TYPE, value);
+    appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
 
@@ -96,26 +145,29 @@ fn enqueueSample(sample: Sample) void {
     }
 }
 
-/// Emit the full metric bundle for one terminal run settlement: the stage
-/// credit drained (final slice), token throughput per direction (the run's
-/// cumulative totals), and the run-latency observation. Called post-commit
-/// from the service layer (`service_report`), never from the money modules.
+/// Emit the full metric bundle for one terminal run settlement: the final
+/// committed credit slice, the invocation's aggregate token usage, and the
+/// duration observation. Called post-commit from the service layer
+/// (`service_report`), never from the money modules.
+///
+/// `input_tokens` and `cached_tokens` arrive as disjoint counts (the metering
+/// CTE prices them at different rates), so the exported input direction is
+/// their sum and the cached count is additionally reported as a subset.
 pub fn recordRunSettlement(
     charged_nanos: i64,
     input_tokens: i64,
     cached_tokens: i64,
     output_tokens: i64,
     wall_ms: i64,
-    posture: []const u8,
-    model: []const u8,
-    workspace: []const u8,
+    error_type: ?[]const u8,
+    attr: Attribution,
 ) void {
     if (!isInstalled()) return;
-    recordCreditDrain(charged_nanos, posture, model, workspace);
-    recordTokens(input_tokens, payload.DIRECTION_INPUT, posture, model);
-    recordTokens(cached_tokens, payload.DIRECTION_CACHED, posture, model);
-    recordTokens(output_tokens, payload.DIRECTION_OUTPUT, posture, model);
-    observeRunDuration(wall_ms, posture, model);
+    recordCreditConsumed(charged_nanos, .settle, attr);
+    observeTokenUsage(input_tokens + cached_tokens, .input, attr);
+    observeTokenUsage(output_tokens, .output, attr);
+    observeCacheReadTokens(cached_tokens, attr);
+    observeInvokeAgentDuration(wall_ms, error_type, attr);
 }
 
 // ---------------------------------------------------------------------------
@@ -198,7 +250,7 @@ fn serializeMetrics(
         count += 1;
     }
     return .{
-        .body = try payload.serializeSeries(alloc, cfg.service_name, series_buf[0..count], start, now),
+        .body = try payload.serializeSeries(alloc, cfg, series_buf[0..count], start, now),
         .export_count = count,
     };
 }
@@ -215,6 +267,13 @@ pub fn testPendingCount() usize {
 /// Test hook: mark installed without spawning the flush thread.
 pub fn testSetInstalled(cfg: otlp_config.GrafanaOtlpConfig) void {
     Exporter.testSetInstalled(common.globalIo(), cfg);
+}
+
+/// Test hook: enqueue a hand-built sample, bypassing attribution. Lets a test
+/// exercise the aggregator's distinct-series cap with label sets the bounded
+/// record API would never produce.
+pub fn testPush(sample: Sample) void {
+    enqueueSample(sample);
 }
 
 /// Test hook: pop one sample from the global ring.

@@ -35,6 +35,7 @@ const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
 const renewal = @import("renewal.zig");
 const metering = @import("../fleet_runtime/metering.zig");
+const otel_metrics = @import("../observability/otel_metrics.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const LEASE_NOT_FOUND_DETAIL = "No lease matches this lease_id for the runner";
 
@@ -141,10 +142,19 @@ fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8, lease: Lea
         return;
     };
     switch (outcome) {
-        .renewed => |until| {
+        .renewed => |renewed| {
             bumpLastSeen(hx, runner_id);
-            log.debug("lease_renewed", .{ .runner_id = runner_id, .lease_id = lease_id, .lease_expires_at = until });
-            hx.ok(.ok, protocol.RenewResponse{ .lease_expires_at = until });
+            // Post-commit, fire-and-forget: the renewal slice is a committed
+            // credit debit like receive and settle, so it carries the same
+            // metric under its own charge class. The fenced statement above
+            // already committed, so a lost or capped renewal emits nothing.
+            otel_metrics.recordCreditConsumed(renewed.charged_nanos, .renewal, .{
+                .posture = parsePosture(lease.posture).label(),
+                .provider = lease.provider,
+                .model = lease.model,
+            });
+            log.debug("lease_renewed", .{ .runner_id = runner_id, .lease_id = lease_id, .lease_expires_at = renewed.lease_expires_at });
+            hx.ok(.ok, protocol.RenewResponse{ .lease_expires_at = renewed.lease_expires_at });
         },
         .max_runtime => |cap| {
             log.warn("renew_max_runtime", .{ .error_code = ec.ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME, .runner_id = runner_id, .lease_id = lease_id, .hard_cap = cap });
