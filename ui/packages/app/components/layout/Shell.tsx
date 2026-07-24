@@ -103,11 +103,11 @@ export default function Shell({
         />
       </aside>
 
-      <main className="app-dashboard-canvas min-h-0 overflow-y-auto px-4 py-6 sm:px-6 md:px-8 md:py-8 2xl:px-12">
+      <main className="app-dashboard-canvas min-h-0 overflow-y-auto px-4 py-6 sm:px-6 md:px-8 md:py-8 2xl:px-12 has-[#fleet-chat-transcript]:overflow-hidden has-[[data-page-layout]]:overflow-hidden">
         {/* `min-h-full` + column flow: ordinary pages grow past the viewport
-            and scroll here, while a page that asks for `flex-1` fills exactly
-            the region and scrolls inside itself instead. */}
-        <div className="flex min-h-full w-full flex-col">{children}</div>
+            and scroll here, while a bounded workspace claims the region and
+            scrolls inside itself instead. */}
+        <div className="flex min-h-full w-full flex-col has-[#fleet-chat-transcript]:h-full has-[#fleet-chat-transcript]:min-h-0 has-[[data-page-layout]]:h-full has-[[data-page-layout]]:min-h-0">{children}</div>
       </main>
     </div>
   );

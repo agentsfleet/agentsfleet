@@ -1,4 +1,4 @@
-import { PageHeader, PageTitle, Spinner } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle, Spinner } from "@agentsfleet/design-system";
 
 import { LoadingVerbLabel } from "./LoadingVerbLabel";
 import { loadingAccessibleName } from "./loading-verbs";
@@ -19,7 +19,7 @@ export default function RouteLoading({
   description?: string;
 }) {
   return (
-    <div>
+    <PageLayout>
       <PageHeader description={description}>
         <PageTitle>{title}</PageTitle>
       </PageHeader>
@@ -29,6 +29,6 @@ export default function RouteLoading({
         aria-label={loadingAccessibleName(title)}
         className="py-16 text-sm"
       />
-    </div>
+    </PageLayout>
   );
 }

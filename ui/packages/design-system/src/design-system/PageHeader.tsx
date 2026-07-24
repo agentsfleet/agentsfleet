@@ -11,8 +11,8 @@ import { cn } from "../utils";
  *     <PageDescription>) and/or `actions` (pinned top-right). The title
  *     (children) + description form a left column; the action aligns to its top.
  *
- * RSC-safe. Pairs with <PageTitle>. Description-below-title per
- * docs/DESIGN_SYSTEM.md (Component principles → Page header).
+ * RSC-safe. Pairs with <PageTitle>. PageLayout owns space after the header,
+ * so every dashboard page gets the same vertical rhythm.
  */
 export type PageHeaderProps = ComponentProps<"div"> & {
   /** Secondary line rendered directly below the title (muted, body-sm). */
@@ -32,13 +32,13 @@ export function PageHeader({
   // Back-compat: no description and no actions → the original bare flex row.
   if (description == null && actions == null) {
     return (
-      <div ref={ref} className={cn("mb-6 flex items-center justify-between", className)} {...props}>
+      <div ref={ref} className={cn("flex items-center justify-between", className)} {...props}>
         {children}
       </div>
     );
   }
   return (
-    <div ref={ref} className={cn("mb-6 flex items-start justify-between gap-6", className)} {...props}>
+    <div ref={ref} className={cn("flex items-start justify-between gap-6", className)} {...props}>
       <div className="min-w-0">
         {children}
         {description != null ? <PageDescription>{description}</PageDescription> : null}

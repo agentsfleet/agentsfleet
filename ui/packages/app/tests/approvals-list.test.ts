@@ -5,6 +5,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 const WORKSPACE_ID = "ws_approvals_001";
 const AGENTSFLEET_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 const AGENTSFLEET_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa702";
+const AGENT_A_DISPLAY_NAME = "Agent Finch-D648";
+const AGENT_B_DISPLAY_NAME = "Agent Finch-DB01";
 const ERR_ALREADY_RESOLVED = "UZ-APPROVAL-006" as const;
 
 // vi.hoisted because vi.mock factories run before module body. The mocks
@@ -95,7 +97,7 @@ describe("ApprovalsList — initial render", () => {
         initialCursor: null,
       }),
     );
-    expect(screen.getByText("approvals-a")).toBeTruthy();
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
     expect(screen.getByText("destructive_action")).toBeTruthy();
     expect(screen.getByRole("button", { name: /^approve$/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^deny$/i })).toBeTruthy();
@@ -119,8 +121,8 @@ describe("ApprovalsList — initial render", () => {
         initialCursor: null,
       }),
     );
-    expect(screen.getByText("approvals-a")).toBeTruthy();
-    expect(screen.getByText("approvals-b")).toBeTruthy();
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
+    expect(screen.getByText(AGENT_B_DISPLAY_NAME)).toBeTruthy();
   });
 });
 
@@ -196,6 +198,22 @@ describe("ApprovalsList — client-side filter", () => {
     expect(screen.getByText(/Open PR titled wire/i)).toBeTruthy();
     expect(screen.queryByText(/Drop production database/i)).toBeNull();
   });
+
+  it("matches the fleet identity shown on each approval", () => {
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ proposed_action: "Restart the worker", fleet_name: "hidden-slug" })],
+        initialCursor: null,
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText(/filter approvals/i), {
+      target: { value: AGENT_A_DISPLAY_NAME },
+    });
+
+    expect(screen.getByText("Restart the worker")).toBeTruthy();
+  });
 });
 
 // ── Approve / Deny — optimistic resolve ───────────────────────────────
@@ -229,7 +247,7 @@ describe("ApprovalsList — resolve actions", () => {
         "01999999-0000-7000-8000-000000000001",
       );
       // Row removed → EmptyState renders
-      expect(screen.queryByText("approvals-a")).toBeNull();
+      expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull();
     });
   });
 
@@ -257,7 +275,7 @@ describe("ApprovalsList — resolve actions", () => {
     fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
     await waitFor(() => {
       expect(denyApprovalActionMock).toHaveBeenCalled();
-      expect(screen.queryByText("approvals-a")).toBeNull();
+      expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull();
     });
   });
 
@@ -412,7 +430,7 @@ describe("ApprovalsList — pagination", () => {
         WORKSPACE_ID,
         expect.objectContaining({ cursor: "cur_abc", limit: 50 }),
       );
-      expect(screen.getByText("approvals-c")).toBeTruthy();
+      expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
       expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
     });
   });
@@ -597,7 +615,7 @@ describe("ApprovalsList — 5s polling effect", () => {
     await vi.advanceTimersByTimeAsync(5_001);
     // Polling absorbs the failure silently — no alert, the existing row stays.
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("approvals-a")).toBeTruthy();
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
   });
 
   it("polling absorbs upstream errors silently (list stays as-is)", async () => {
@@ -611,7 +629,7 @@ describe("ApprovalsList — 5s polling effect", () => {
     );
     await vi.advanceTimersByTimeAsync(5_001);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("approvals-a")).toBeTruthy();
+    expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy();
   });
 
   it("polling no-ops if the component unmounts before the request resolves", async () => {
@@ -671,7 +689,7 @@ describe("ApprovalsList — 5s polling effect", () => {
       },
     });
     await vi.advanceTimersByTimeAsync(5_001);
-    expect(screen.getByText("approvals-c")).toBeTruthy();
+    expect(screen.getAllByText(AGENT_A_DISPLAY_NAME)).toHaveLength(2);
     expect(screen.queryByText("fresh-page-1")).toBeNull();
   });
 });
