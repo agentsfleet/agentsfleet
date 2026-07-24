@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M139
 **Workstream:** 004
 **Date:** Jul 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator queries currently depend on ambiguous private names, incorrect units, and unbounded identity attributes
 **Categories:** Observability (OBS)
 **Batch:** B3 — follows bounded exporter reliability so schema migration cannot hide transport loss
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) via `make _lint_zig_test_depth`
+**Branch:** `feat/m139-telemetry-semantics`
+**Test Baseline:** unit=2913 integration=386
 **Depends on:** M139_003 — exporter drain, deadline, loss accounting, and current-label restoration must be DONE first
 **Provenance:** Large Language Model (LLM)-drafted (Codex, Jul 23, 2026) from Indy's semantic-conventions decision and pinned OpenTelemetry sources
 **Canonical architecture:** `docs/architecture/observability.md` §Metrics: off-Postgres dashboards and §Traces stay on the process that creates spans
