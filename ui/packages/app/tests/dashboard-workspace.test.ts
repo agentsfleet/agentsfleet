@@ -1,21 +1,17 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { routerPush, usePathname } from "./helpers/dashboard-mocks";
+import { routerPush, routerRefresh, usePathname } from "./helpers/dashboard-mocks";
 import { resetDashboardMocks, createWorkspaceActionMock } from "./helpers/dashboard-app-mocks";
 import { EVENTS } from "@/lib/analytics/events";
 
-// WorkspaceSwitcher emits the workspace-switched product event after a
-// successful switch. Keep the real analytics module (its other exports are used
-// transitively) and spy only on captureProductEvent.
 const captureProductEventMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/analytics/posthog", async (orig) => {
   const actual = await orig<typeof import("@/lib/analytics/posthog")>();
   return { ...actual, captureProductEvent: captureProductEventMock };
 });
 
-// Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
 vi.mock("@clerk/nextjs", async () => (await import("./helpers/dashboard-mocks")).clerkMock());
@@ -27,7 +23,6 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
   return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemDropdown() };
 });
 
-// App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
 vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-mocks")).fleetsApiMock());
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
@@ -45,6 +40,7 @@ beforeEach(() => {
   resetDashboardMocks();
 });
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
 });
 
@@ -53,28 +49,50 @@ describe("WorkspaceSwitcher component", () => {
     workspaces?: Array<{ id: string; name: string | null }>;
     activeId?: string | null;
   } = {}) {
-    const { default: WorkspaceSwitcher } = await import(
-      "../components/layout/WorkspaceSwitcher"
-    );
-    render(
-      React.createElement(WorkspaceSwitcher, {
-        workspaces: props.workspaces ?? [
-          { id: "ws_1", name: "Alpha" },
-          { id: "ws_2", name: "Beta" },
-        ],
-        activeId: props.activeId ?? "ws_1",
-      } as never),
+    const [{ default: WorkspaceSwitcher }, { WorkspaceCreationProvider }] =
+      await Promise.all([
+        import("../components/layout/WorkspaceSwitcher"),
+        import("../components/layout/WorkspaceCreationProvider"),
+      ]);
+    return render(
+      React.createElement(
+        WorkspaceCreationProvider,
+        null,
+        React.createElement(WorkspaceSwitcher, {
+          workspaces: props.workspaces ?? [
+            { id: "ws_1", name: "Alpha" },
+            { id: "ws_2", name: "Beta" },
+          ],
+          activeId: props.activeId ?? "ws_1",
+        } as never),
+      ),
     );
   }
 
+  function deferWorkspaceAction() {
+    let resolve: (value: unknown) => void = () => {};
+    createWorkspaceActionMock.mockImplementationOnce(
+      () => new Promise((next) => { resolve = next; }),
+    );
+    return (value: unknown) => act(async () => resolve(value));
+  }
+
   it("still renders with a Create workspace affordance when workspaces is empty", async () => {
+    const [{ default: WorkspaceSwitcher }, { WorkspaceCreationProvider }] =
+      await Promise.all([
+        import("../components/layout/WorkspaceSwitcher"),
+        import("../components/layout/WorkspaceCreationProvider"),
+      ]);
     render(
       React.createElement(
-        (await import("../components/layout/WorkspaceSwitcher")).default,
-        { workspaces: [], activeId: null } as never,
+        WorkspaceCreationProvider,
+        null,
+        React.createElement(
+          WorkspaceSwitcher,
+          { workspaces: [], activeId: null } as never,
+        ),
       ),
     );
-    // The empty case is exactly when create matters most — switcher must show.
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain("No workspace");
     expect(screen.getByTestId("workspace-new")).toBeTruthy();
   });
@@ -91,13 +109,22 @@ describe("WorkspaceSwitcher component", () => {
       id: `ws_${index}`,
       name: `Workspace ${index}`,
     }));
+    const [{ default: WorkspaceSwitcher }, { WorkspaceCreationProvider }] =
+      await Promise.all([
+        import("../components/layout/WorkspaceSwitcher"),
+        import("../components/layout/WorkspaceCreationProvider"),
+      ]);
     const { container } = render(
       React.createElement(
-        (await import("../components/layout/WorkspaceSwitcher")).default,
-        {
-          workspaces: manyWorkspaces,
-          activeId: "ws_0",
-        } as never,
+        WorkspaceCreationProvider,
+        null,
+        React.createElement(
+          WorkspaceSwitcher,
+          {
+            workspaces: manyWorkspaces,
+            activeId: "ws_0",
+          } as never,
+        ),
       ),
     );
     const menu = container.querySelector("[data-dropdown-content]");
@@ -131,16 +158,13 @@ describe("WorkspaceSwitcher component", () => {
 
   it("picking a different workspace navigates to its URL (same sub-path), writes no cookie", async () => {
     const user = userEvent.setup({ delay: null });
-    // Switching preserves the current sub-page: /w/ws_1/fleets → /w/ws_2/fleets.
     usePathname.mockReturnValue("/w/ws_1/fleets");
     await renderSwitcher();
     const items = screen.getAllByRole("menuitem");
-    // Second item = Beta (different from active ws_1)
     await user.click(items[1]!);
     await waitFor(() =>
       expect(routerPush).toHaveBeenCalledWith("/w/ws_2/fleets"),
     );
-    // The product event fires with the picked workspace id after the switch.
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.workspace_switched, { workspace_id: "ws_2" });
     await waitFor(() =>
       expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy(),
@@ -149,8 +173,6 @@ describe("WorkspaceSwitcher component", () => {
 
   it("collapses a resource-detail path to its section on switch (avoids a guaranteed 404)", async () => {
     const user = userEvent.setup({ delay: null });
-    // On /w/ws_1/fleets/fleet_abc the fleet id belongs to ws_1; switching to ws_2
-    // lands on ws_2's fleets list, not /w/ws_2/fleets/fleet_abc (which would 404).
     usePathname.mockReturnValue("/w/ws_1/fleets/fleet_abc");
     await renderSwitcher();
     const items = screen.getAllByRole("menuitem");
@@ -160,12 +182,9 @@ describe("WorkspaceSwitcher component", () => {
 
   it("navigates into the displayed workspace from a tenant page (activeId is only a display fallback)", async () => {
     const user = userEvent.setup({ delay: null });
-    // On /settings/billing there is no /w/ segment, so `activeId` is the fallback
-    // first workspace. Picking it must still navigate (not no-op) into its home.
     usePathname.mockReturnValue("/settings/billing");
     await renderSwitcher({ activeId: "ws_1" });
     const items = screen.getAllByRole("menuitem");
-    // First item = Alpha (the displayed-active fallback)
     await user.click(items[0]!);
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets"));
   });
@@ -186,36 +205,33 @@ describe("WorkspaceSwitcher component", () => {
   });
 
   it("clears the workspace switch toast after the notice timeout", async () => {
-    const user = userEvent.setup({ delay: null });
+    vi.useFakeTimers();
     await renderSwitcher();
     const items = screen.getAllByRole("menuitem");
-    await user.click(items[1]!);
-    await waitFor(() =>
-      expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy(),
-    );
+    fireEvent.click(items[1]!);
+    expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy();
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 2900));
+      await vi.advanceTimersByTimeAsync(2900);
     });
-    await waitFor(() =>
-      expect(screen.queryByText("Workspace changed to Beta.")).toBeNull(),
-    );
+    expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy();
+    expect(screen.getByTestId("workspace-toast").getAttribute("aria-hidden")).toBe("true");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(screen.queryByText("Workspace changed to Beta.")).toBeNull();
   });
 
   it("picking the active workspace is a no-op", async () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitcher();
     const items = screen.getAllByRole("menuitem");
-    // First item = Alpha (same as active)
     await user.click(items[0]!);
-    // Give transition a tick
     await new Promise((r) => setTimeout(r, 10));
     expect(routerPush).not.toHaveBeenCalled();
     expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("has no Manage workspace item — switching/creating are the only actions", async () => {
-    // The dropdown menu is entirely switch-or-create; there's nothing left to
-    // "manage" once workspace identity moved to the API Keys page.
     await renderSwitcher();
     expect(screen.queryByTestId("workspace-manage")).toBeNull();
   });
@@ -228,13 +244,381 @@ describe("WorkspaceSwitcher component", () => {
     });
     await renderSwitcher();
     await user.click(screen.getByTestId("workspace-new"));
-    // findByTestId, not getByTestId — the input mounts on the dropdown item's
-    // state flip, and a sync query races that render under a loaded shuffle run.
     await user.type(await screen.findByTestId("workspace-name-input"), "inline-prod");
     await user.click(screen.getByTestId("workspace-create-submit"));
-    await waitFor(() =>
-      expect(screen.getByText("Workspace created: inline-prod.")).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText("Workspace created: inline-prod.")).toBeTruthy());
     expect(screen.getByRole("menuitem", { name: "inline-prod" })).toBeTruthy();
+    expect(routerPush).toHaveBeenCalledWith("/w/ws_inline/fleets");
+    expect(screen.getByTestId("workspace-new").getAttribute("aria-disabled")).toBe("true");
   });
+
+  it("preserves the attempted name and shows an attached action failure", async () => {
+    const user = userEvent.setup({ delay: null });
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: false,
+      errorCode: "UZ-AUTH-401",
+      error: "Missing tenant context on session",
+    });
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-new"));
+    const input = await screen.findByTestId("workspace-name-input") as HTMLInputElement;
+    await user.type(input, "kept-name");
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() => expect(screen.getByTestId("workspace-create-error")).toBeTruthy());
+    expect(input.value).toBe("kept-name");
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it("turns a rejected action into an attached dialog error", async () => {
+    const user = userEvent.setup({ delay: null });
+    createWorkspaceActionMock.mockRejectedValueOnce(new Error("network unavailable"));
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-new"));
+    await user.click(await screen.findByTestId("workspace-create-submit"));
+    await waitFor(() => expect(screen.getByTestId("workspace-create-error").textContent)
+      .toContain("Couldn't create workspace"));
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it("uses an attempt guard to block same-frame duplicate submissions", async () => {
+    const release = deferWorkspaceAction();
+    const user = userEvent.setup({ delay: null });
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-new"));
+    const form = await screen.findByTestId("workspace-create-form");
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
+    await release({ ok: true, data: { workspace_id: "ws_once", name: "once" } });
+  });
+
+  it("keeps creation running after Hide and does not navigate on late success", async () => {
+    const release = deferWorkspaceAction();
+    const user = userEvent.setup({ delay: null });
+    usePathname.mockReturnValue("/w/ws_1/fleets");
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-new"));
+    await user.click(await screen.findByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect((screen.getByTestId("workspace-create-submit") as HTMLButtonElement).disabled).toBe(true),
+    );
+    await user.click(screen.getByRole("button", { name: "Hide" }));
+    expect(screen.getByText("Workspace creation continues in the background.")).toBeTruthy();
+    expect(screen.queryByTestId("workspace-name-input")).toBeNull();
+    expect(screen.getByTestId("workspace-new").getAttribute("aria-disabled")).toBe("true");
+
+    await release({ ok: true, data: { workspace_id: "ws_background", name: "background" } });
+    await waitFor(() => expect(screen.getByText("Workspace created: background.")).toBeTruthy());
+    expect(screen.getByRole("menuitem", { name: "background" })).toBeTruthy();
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(routerRefresh).toHaveBeenCalledOnce();
+  });
+
+  it("locks both creation surfaces while a hidden first-workspace request is running", async () => {
+    const release = deferWorkspaceAction();
+    const [
+      { default: WorkspaceSwitcher },
+      { default: NoWorkspaceEmptyState },
+      { WorkspaceCreationProvider },
+    ] = await Promise.all([
+      import("../components/layout/WorkspaceSwitcher"),
+      import("../components/layout/NoWorkspaceEmptyState"),
+      import("../components/layout/WorkspaceCreationProvider"),
+    ]);
+    const user = userEvent.setup({ delay: null });
+    render(
+      React.createElement(
+        WorkspaceCreationProvider,
+        null,
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(WorkspaceSwitcher, { workspaces: [], activeId: null }),
+          React.createElement(NoWorkspaceEmptyState),
+        ),
+      ),
+    );
+
+    await user.click(screen.getByTestId("create-first-workspace"));
+    await user.click(await screen.findByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect((screen.getByTestId("workspace-create-submit") as HTMLButtonElement).disabled)
+        .toBe(true),
+    );
+    await user.click(screen.getByRole("button", { name: "Hide" }));
+    expect(screen.getByTestId("workspace-new").getAttribute("aria-disabled")).toBe("true");
+    await user.click(screen.getByTestId("workspace-new"));
+    expect(screen.queryByTestId("workspace-name-input")).toBeNull();
+    expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
+
+    await release({
+      ok: true,
+      data: { workspace_id: "ws_shared", name: "shared" },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("menuitem", { name: "shared" })).toBeTruthy(),
+    );
+    expect(screen.getByTestId("workspace-new").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("create-first-workspace").textContent).toBe("Open workspace");
+    expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("locks the empty-state create path while switcher navigation settles", async () => {
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { workspace_id: "ws_switcher", name: "switcher" },
+    });
+    const [
+      { default: WorkspaceSwitcher },
+      { default: NoWorkspaceEmptyState },
+      { WorkspaceCreationProvider },
+    ] = await Promise.all([
+      import("../components/layout/WorkspaceSwitcher"),
+      import("../components/layout/NoWorkspaceEmptyState"),
+      import("../components/layout/WorkspaceCreationProvider"),
+    ]);
+    const user = userEvent.setup({ delay: null });
+    render(
+      React.createElement(
+        WorkspaceCreationProvider,
+        null,
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(WorkspaceSwitcher, { workspaces: [], activeId: null }),
+          React.createElement(NoWorkspaceEmptyState),
+        ),
+      ),
+    );
+
+    await user.click(screen.getByTestId("workspace-new"));
+    await user.click(await screen.findByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(routerPush).toHaveBeenCalledWith("/w/ws_switcher/fleets"),
+    );
+    expect(screen.getByTestId("workspace-new").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("create-first-workspace").textContent).toBe("Open workspace");
+    await user.click(screen.getByTestId("create-first-workspace"));
+    expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("detaches an unmounted page owner before late completion can navigate", async () => {
+    let resolveAction: (value: unknown) => void = () => {};
+    usePathname.mockReturnValue("/");
+    createWorkspaceActionMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveAction = resolve; }),
+    );
+    const [
+      { default: WorkspaceSwitcher },
+      { default: NoWorkspaceEmptyState },
+      { WorkspaceCreationProvider },
+    ] = await Promise.all([
+      import("../components/layout/WorkspaceSwitcher"),
+      import("../components/layout/NoWorkspaceEmptyState"),
+      import("../components/layout/WorkspaceCreationProvider"),
+    ]);
+    function Tree({ showEmptyState }: { showEmptyState: boolean }) {
+      React.useLayoutEffect(() => {
+        if (!showEmptyState) {
+          resolveAction({
+            ok: true,
+            data: { workspace_id: "ws_after_unmount", name: "after-unmount" },
+          });
+        }
+      }, [showEmptyState]);
+      return React.createElement(
+        WorkspaceCreationProvider,
+        null,
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(WorkspaceSwitcher, { workspaces: [], activeId: null }),
+          showEmptyState ? React.createElement(NoWorkspaceEmptyState) : null,
+        ),
+      );
+    }
+    const user = userEvent.setup({ delay: null });
+    const view = render(React.createElement(Tree, { showEmptyState: true }));
+    await user.click(screen.getByTestId("create-first-workspace"));
+    await user.click(await screen.findByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect((screen.getByTestId("workspace-create-submit") as HTMLButtonElement).disabled)
+        .toBe(true),
+    );
+
+    view.rerender(React.createElement(Tree, { showEmptyState: false }));
+    await waitFor(() =>
+      expect(screen.getByText("Workspace created: after-unmount.")).toBeTruthy(),
+    );
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
+    expect(screen.getByRole("menuitem", { name: "after-unmount" })).toBeTruthy();
+  });
+
+  it("keeps a switcher attempt attached when an empty-state sibling unmounts", async () => {
+    const release = deferWorkspaceAction();
+    const [
+      { default: WorkspaceSwitcher },
+      { default: NoWorkspaceEmptyState },
+      { WorkspaceCreationProvider },
+    ] = await Promise.all([
+      import("../components/layout/WorkspaceSwitcher"),
+      import("../components/layout/NoWorkspaceEmptyState"),
+      import("../components/layout/WorkspaceCreationProvider"),
+    ]);
+    function Tree({ showEmptyState }: { showEmptyState: boolean }) {
+      return React.createElement(
+        WorkspaceCreationProvider,
+        null,
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(WorkspaceSwitcher, { workspaces: [], activeId: null }),
+          showEmptyState ? React.createElement(NoWorkspaceEmptyState) : null,
+        ),
+      );
+    }
+    const user = userEvent.setup({ delay: null });
+    const view = render(React.createElement(Tree, { showEmptyState: true }));
+    await user.click(screen.getByTestId("workspace-new"));
+    await user.click(await screen.findByTestId("workspace-create-submit"));
+    view.rerender(React.createElement(Tree, { showEmptyState: false }));
+
+    await release({
+      ok: true,
+      data: { workspace_id: "ws_owner", name: "owner" },
+    });
+    await waitFor(() =>
+      expect(routerPush).toHaveBeenCalledWith("/w/ws_owner/fleets"),
+    );
+  });
+
+  it("uses the route committed in the same layout before detached completion settles", async () => {
+    let resolveAction: (value: unknown) => void = () => {};
+    usePathname.mockReturnValue("/");
+    createWorkspaceActionMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveAction = resolve; }),
+    );
+    const [
+      { default: WorkspaceSwitcher },
+      { WorkspaceCreationProvider },
+    ] = await Promise.all([
+      import("../components/layout/WorkspaceSwitcher"),
+      import("../components/layout/WorkspaceCreationProvider"),
+    ]);
+    function ReleaseAfterRouteCommit({ release }: { release: boolean }) {
+      React.useLayoutEffect(() => {
+        if (release) {
+          resolveAction({
+            ok: true,
+            data: { workspace_id: "ws_route_commit", name: "route-commit" },
+          });
+        }
+      }, [release]);
+      return null;
+    }
+    function Tree({ release }: { release: boolean }) {
+      return React.createElement(
+        WorkspaceCreationProvider,
+        null,
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(WorkspaceSwitcher, { workspaces: [], activeId: null }),
+          React.createElement(ReleaseAfterRouteCommit, { release }),
+        ),
+      );
+    }
+    const user = userEvent.setup({ delay: null });
+    const view = render(React.createElement(Tree, { release: false }));
+    await user.click(screen.getByTestId("workspace-new"));
+    await user.click(await screen.findByTestId("workspace-create-submit"));
+    await user.click(screen.getByRole("button", { name: "Hide" }));
+
+    usePathname.mockReturnValue("/w/ws_existing/fleets");
+    view.rerender(React.createElement(Tree, { release: true }));
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1));
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it("keeps a late detached failure out of the next dialog session", async () => {
+    const release = deferWorkspaceAction();
+    const user = userEvent.setup({ delay: null });
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-new"));
+    await user.click(await screen.findByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect((screen.getByTestId("workspace-create-submit") as HTMLButtonElement).disabled).toBe(true),
+    );
+    await user.click(screen.getByRole("button", { name: "Hide" }));
+    await user.click(screen.getByTestId("workspace-new"));
+    expect(screen.queryByTestId("workspace-name-input")).toBeNull();
+
+    await release({
+      ok: false,
+      errorCode: "UZ-AUTH-401",
+      error: "Missing tenant context on session",
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-toast").textContent).toContain(
+        "Your session expired",
+      ),
+    );
+    await user.click(screen.getByTestId("workspace-new"));
+    expect(await screen.findByTestId("workspace-name-input")).toBeTruthy();
+    expect(screen.queryByTestId("workspace-create-error")).toBeNull();
+  });
+
+  it("restores focus to the workspace switcher after Cancel", async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderSwitcher();
+    const trigger = screen.getByTestId("workspace-switcher");
+    await user.click(screen.getByTestId("workspace-new"));
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it("invalidates completion as the provider layout unmounts", async () => {
+    let resolveAction: (value: unknown) => void = () => {};
+    createWorkspaceActionMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveAction = resolve; }),
+    );
+    const [
+      { default: WorkspaceSwitcher },
+      { WorkspaceCreationProvider },
+    ] = await Promise.all([
+      import("../components/layout/WorkspaceSwitcher"),
+      import("../components/layout/WorkspaceCreationProvider"),
+    ]);
+    function ReleaseOnLayoutCleanup() {
+      React.useLayoutEffect(
+        () => () => {
+          resolveAction({
+            ok: true,
+            data: { workspace_id: "ws_late", name: "late" },
+          });
+        },
+        [],
+      );
+      return React.createElement(WorkspaceSwitcher, {
+        workspaces: [],
+        activeId: null,
+      } as never);
+    }
+    const user = userEvent.setup({ delay: null });
+    const view = render(
+      React.createElement(
+        WorkspaceCreationProvider,
+        null,
+        React.createElement(ReleaseOnLayoutCleanup),
+      ),
+    );
+    await user.click(screen.getByTestId("workspace-new"));
+    await user.click(await screen.findByTestId("workspace-create-submit"));
+    view.unmount();
+    await act(async () => {});
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
 });
