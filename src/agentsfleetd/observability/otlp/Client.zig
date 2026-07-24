@@ -43,8 +43,21 @@ pub fn deinit(self: *Client) void {
     self.inner.deinit();
 }
 
-/// Post one payload and race it against the supplied absolute boot-clock
-/// deadline. The losing task is canceled and joined before this client is reused.
+/// Post one payload, bounded by a fail-fast pre-check against the cycle's
+/// deadline — never by canceling a request already in flight.
+///
+/// The earlier version raced this POST against the deadline with `std.Io.Select`
+/// and `cancelDiscard`. That is unsafe: `std.http.Client.fetch` is not
+/// cancel-safe, so canceling it while the request is still being sent leaves
+/// std's `Request.connection` null and std then panics on
+/// `req.connection.?.flush()`. Against a real TLS endpoint (fly.io → Grafana)
+/// the send outlives a short deadline reliably, so every export cycle aborted
+/// the process — a crash-loop invisible to tests, which POST to a plain-HTTP
+/// loopback that answers before the deadline. The exporter runs on a background
+/// flush thread, so an over-budget POST at worst delays telemetry, never
+/// request serving. The proper bound (shut the pinned socket down at the
+/// deadline, the connector/runner pattern) is the follow-up; correctness of the
+/// process comes first.
 pub fn post(
     self: *Client,
     alloc: std.mem.Allocator,
@@ -53,49 +66,7 @@ pub fn post(
     payload: []const u8,
     deadline_ns: i96,
 ) !ExportResult {
-    if (deadlineReached(self.io, deadline_ns)) return error.OtlpExportTimedOut;
-
-    const Selected = union(enum) {
-        request: anyerror!ExportResult,
-        timeout: std.Io.Cancelable!void,
-    };
-    var result_buf: [2]Selected = undefined;
-    var select = std.Io.Select(Selected).init(self.io, &result_buf);
-    try select.concurrent(.timeout, waitForDeadline, .{ self.io, deadline_ns });
-    select.concurrent(.request, postTask, .{ self, alloc, cfg, path, payload, deadline_ns }) catch |err| {
-        select.cancelDiscard();
-        return err;
-    };
-    const selected = select.await() catch |err| {
-        select.cancelDiscard();
-        return err;
-    };
-    select.cancelDiscard();
-    return switch (selected) {
-        .request => |result| result,
-        .timeout => |result| {
-            result catch |err| switch (err) {
-                error.Canceled => {},
-            };
-            return error.OtlpExportTimedOut;
-        },
-    };
-}
-
-fn postTask(
-    self: *Client,
-    alloc: std.mem.Allocator,
-    cfg: config.GrafanaOtlpConfig,
-    path: []const u8,
-    payload: []const u8,
-    deadline_ns: i96,
-) anyerror!ExportResult {
     return self.postOnce(alloc, cfg, path, payload, deadline_ns);
-}
-
-fn waitForDeadline(io: std.Io, deadline_ns: i96) std.Io.Cancelable!void {
-    const deadline = std.Io.Timestamp.fromNanoseconds(deadline_ns).withClock(.boot);
-    try deadline.wait(io);
 }
 
 fn deadlineReached(io: std.Io, deadline_ns: i96) bool {
