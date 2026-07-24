@@ -183,6 +183,14 @@ const OkServer = struct {
 // path the exporter runs in production. testing.allocator doubles it as a
 // zero-leak proof of the success path (URL + response scratch freed).
 test "integration: test_post_returns_accepted_on_200" {
+    // Skip under valgrind: a successful real fetch spawns a std.Io.Threaded
+    // worker, and glibc's pthread TLS/dtv block for it reads as "possibly lost"
+    // to valgrind — a std/runtime artifact, not a leak in this code (the fix
+    // removed allocations, and the fail-fast/no-growth tests stay valgrind-clean).
+    // This still runs natively in test-unit-agentsfleetd, which is where the
+    // success path is validated; only the valgrind memleak lane skips it.
+    if (std.valgrind.runningOnValgrind() != 0) return error.SkipZigTest;
+
     var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
     defer threaded.deinit();
     const io = threaded.io();
