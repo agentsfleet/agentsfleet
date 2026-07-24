@@ -220,7 +220,7 @@ fn enqueueMention(hx: Hx, bot_token: ?[]const u8, workspace_id: []const u8, chan
     // still works from durable channel memory + the mention text); dedup on
     // event.ts makes a slow Slack call safe to retry.
     const api_base = hx.ctx.connector_slack_api_base_override orelse post.SLACK_API_BASE_DEFAULT;
-    var recent = thread.fetchRecent(hx.alloc, hx.ctx.io, bot_token, api_base, workspace_id, m.channel, m.thread_ts orelse m.ts);
+    var recent = thread.fetchRecent(hx.alloc, hx.ctx.io, hx.ctx.deadline_scheduler, bot_token, api_base, workspace_id, m.channel, m.thread_ts orelse m.ts);
     defer recent.deinit();
 
     const request_json = buildRequestJson(hx.alloc, m, recent.msgs) catch {

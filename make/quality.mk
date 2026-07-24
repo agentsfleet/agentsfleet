@@ -268,7 +268,6 @@ lint-cli: _cli_lint check-documentation-rules  ## Lint agentsfleet CLI and its p
 
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 
-
 lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 

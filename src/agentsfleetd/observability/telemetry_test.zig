@@ -64,7 +64,16 @@ test "T1: all event types can be captured without error" {
     t.capture(telemetry.AuthLoginCompleted, .{ .distinct_id = "u", .session_id = "s", .request_id = "r" });
     t.capture(telemetry.AuthRejected, .{ .reason = "token_expired", .request_id = "r" });
     t.capture(telemetry.FleetTriggered, .{ .distinct_id = "w", .workspace_id = "w", .fleet_id = "z", .event_id = "e", .source = "webhook" });
-    t.capture(telemetry.FleetCompleted, .{ .distinct_id = "w", .workspace_id = "w", .fleet_id = "z", .event_id = "e", .tokens = 100, .wall_ms = 2000, .exit_status = "processed" });
+    t.capture(telemetry.FleetCompleted, telemetry.FleetCompleted.init(.{
+        .distinct_id = "w",
+        .workspace_id = "w",
+        .fleet_id = "z",
+        .event_id = "e",
+        .tokens = 100,
+        .wall_ms = 2000,
+        .exit_status = "processed",
+        .time_to_first_token_ms = 0,
+    }));
     try telemetry.TestBackend.assertCount(11);
     try telemetry.TestBackend.assertLastEventIs(.fleet_completed);
 }

@@ -2,6 +2,7 @@
 //! Each struct has a `kind` constant and a `properties()` method
 //! that returns a fixed-size array of PostHog properties.
 
+const std = @import("std");
 const posthog = @import("posthog");
 
 const S_REASON = "reason";
@@ -12,6 +13,8 @@ const S_MESSAGE = "message";
 const S_TENANT_ID = "tenant_id";
 const S_FLEET_ID = "fleet_id";
 const S_EVENT_ID = "event_id";
+const S_INSERT_ID = "$insert_id";
+const HASH_SEPARATOR = [_]u8{0};
 
 pub const EventKind = enum {
     entitlement_rejected,
@@ -200,21 +203,60 @@ pub const FleetCompleted = struct {
     exit_status: []const u8,
     /// ms to first token. 0 if the runner did not report.
     time_to_first_token_ms: u64 = 0,
+    insert_id: [64]u8,
 
     pub const kind: EventKind = .fleet_completed;
 
-    pub fn properties(self: @This()) [7]posthog.Property {
+    pub const SettledFacts = struct {
+        distinct_id: []const u8,
+        workspace_id: []const u8,
+        fleet_id: []const u8,
+        event_id: []const u8,
+        tokens: u64,
+        wall_ms: u64,
+        exit_status: []const u8,
+        time_to_first_token_ms: u64,
+    };
+
+    /// Build the event and its deterministic Secure Hash Algorithm 256-bit
+    /// (SHA-256) insertion Identifier (ID) from settled fleet and event IDs.
+    pub fn init(facts: SettledFacts) @This() {
+        var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+        hasher.update(facts.fleet_id);
+        hasher.update(&HASH_SEPARATOR);
+        hasher.update(facts.event_id);
+        var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+        hasher.final(&digest);
+        return .{
+            .distinct_id = facts.distinct_id,
+            .workspace_id = facts.workspace_id,
+            .fleet_id = facts.fleet_id,
+            .event_id = facts.event_id,
+            .tokens = facts.tokens,
+            .wall_ms = facts.wall_ms,
+            .exit_status = facts.exit_status,
+            .time_to_first_token_ms = facts.time_to_first_token_ms,
+            .insert_id = std.fmt.bytesToHex(digest, .lower),
+        };
+    }
+
+    pub fn properties(self: *const @This()) [8]posthog.Property {
         return .{
             .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
             .{ .key = S_FLEET_ID, .value = .{ .string = self.fleet_id } },
             .{ .key = S_EVENT_ID, .value = .{ .string = self.event_id } },
-            .{ .key = "tokens", .value = .{ .integer = @intCast(self.tokens) } },
-            .{ .key = "wall_ms", .value = .{ .integer = @intCast(self.wall_ms) } },
+            .{ .key = "tokens", .value = .{ .integer = saturatingI64(self.tokens) } },
+            .{ .key = "wall_ms", .value = .{ .integer = saturatingI64(self.wall_ms) } },
             .{ .key = "exit_status", .value = .{ .string = self.exit_status } },
-            .{ .key = "time_to_first_token_ms", .value = .{ .integer = @intCast(self.time_to_first_token_ms) } },
+            .{ .key = "time_to_first_token_ms", .value = .{ .integer = saturatingI64(self.time_to_first_token_ms) } },
+            .{ .key = S_INSERT_ID, .value = .{ .string = &self.insert_id } },
         };
     }
 };
+
+fn saturatingI64(value: u64) i64 {
+    return std.math.cast(i64, value) orelse std.math.maxInt(i64);
+}
 
 /// Clerk signup bootstrapped a personal account (or confirmed replay of an
 /// existing one). distinct_id is the OIDC subject so PostHog funnels stitch

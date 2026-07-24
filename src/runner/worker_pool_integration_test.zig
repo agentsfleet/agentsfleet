@@ -20,6 +20,7 @@ const build_options = @import("build_options");
 const protocol = contract.protocol;
 const Config = @import("daemon/config.zig");
 const worker_pool = @import("daemon/worker_pool.zig");
+const dts = @import("daemon/deadline_test_support.zig");
 
 const WORKER_COUNT: u32 = 4;
 /// Hold each lease response briefly so concurrent pollers overlap observably.
@@ -166,7 +167,10 @@ test "worker pool runs N leases concurrently and reports them all, then drains c
     var stop = std.atomic.Value(bool).init(false);
     var drain = std.atomic.Value(bool).init(false);
 
-    var pool = try worker_pool.spawn(io, alloc, cfg, &env_map, &stop, &drain);
+    // The pool borrows the one process scheduler, owned here as main.zig owns it.
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var pool = try worker_pool.spawn(io, alloc, try deadlines.start(alloc), cfg, &env_map, &stop, &drain);
 
     // Wait for all N reports (the pool executed and reported N leases), bounded.
     var waited: u64 = 0;

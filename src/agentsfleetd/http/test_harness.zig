@@ -27,6 +27,7 @@
 
 const std = @import("std");
 const constants = @import("common");
+const call_deadline = @import("call_deadline");
 const pg = @import("pg");
 const session_store_redis = @import("../session/session_store_redis.zig");
 const audit_events = @import("../auth/audit_events.zig");
@@ -95,6 +96,13 @@ pub const TestHarness = struct {
     /// (no Redis) so every Context has a valid pointer; started inside
     /// `connectRedis` once the queue config exists. SSE suites gate on the
     /// Redis env anyway, so a cold hub only ever serves non-SSE routes.
+    /// One deadline scheduler, mirroring serve.zig's single process worker.
+    deadline_backend: call_deadline.MonotonicBackend,
+    deadline_scheduler: call_deadline.ProcessScheduler,
+    /// Concurrency-capable Io for the hub, mirroring the process Io that
+    /// `serve.run` hands it. `globalIo()` is statically single-threaded, so a
+    /// raced dial cannot run on it.
+    hub_io: std.Io.Threaded,
     hub: subscription_hub,
     /// Live-stream owner, mirroring serve.zig. Cheap init, no Redis dependency.
     streams: stream_registry,
@@ -133,7 +141,7 @@ pub const TestHarness = struct {
         // Lower the reader-socket timeout BEFORE start() so the reader thread is
         // created with it — bounds the per-test `deinit()` join (see the const).
         self.hub.read_timeout_ms = TEST_HUB_READ_TIMEOUT_MS;
-        try self.hub.start(self.queue.pool.cfg);
+        try self.hub.start(self.queue.pool.cfg, &self.deadline_scheduler);
         // SessionStore holds a pointer to `self.queue`; safe now that the
         // queue handle is initialized. `ctx.auth_sessions` already points
         // to `&self.session_store`, so the in-place init is observed by
@@ -191,7 +199,10 @@ pub const TestHarness = struct {
             }),
             // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .queue = undefined,
-            .hub = subscription_hub.init(alloc, constants.globalIo()),
+            .hub_io = std.Io.Threaded.init(alloc, .{}),
+            // SAFETY: repointed at the harness-owned Io immediately below, once
+            // `h` has its final address.
+            .hub = undefined,
             .streams = stream_registry.init(alloc, constants.globalIo()),
             .fleet_sets = blk: {
                 var fs = fleet_set_cache.init(alloc, constants.globalIo());
@@ -199,6 +210,10 @@ pub const TestHarness = struct {
                 break :blk fs;
             },
             .telemetry = telemetry_mod.Telemetry.initTest(),
+            .deadline_backend = .{},
+            // SAFETY: replaced with a started scheduler immediately below,
+            // once `h` has its final address (the backend pointer must be stable).
+            .deadline_scheduler = undefined,
             // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .registry = undefined,
             // SAFETY: test fixture; field is populated by the surrounding builder before any read.
@@ -212,6 +227,11 @@ pub const TestHarness = struct {
         };
         // Mirror deinit()'s teardown order from here forward — each
         // resource that gets a deinit there gets an errdefer here.
+        h.hub = subscription_hub.init(alloc, h.hub_io.io());
+        h.deadline_scheduler = call_deadline.ProcessScheduler.init(alloc, &h.deadline_backend);
+        try h.deadline_scheduler.start();
+        errdefer h.deadline_scheduler.deinit();
+
         errdefer h.verifier.deinit();
 
         h.ctx = .{
@@ -221,6 +241,7 @@ pub const TestHarness = struct {
             // Threaded test io seam (sockets, jwks/SSE dials) — mirrors how
             // `serve.run` threads the real io onto the production Context.
             .io = constants.globalIo(),
+            .deadline_scheduler = &h.deadline_scheduler,
             // Boot-resolved secrets default unset; a test that exercises a
             // secret-gated path sets the field on `&h.ctx` before its request
             // (Option-C convention — no `setenv`, which the 0.16 env snapshot
@@ -312,6 +333,10 @@ pub const TestHarness = struct {
         // runner). page/c-allocator-backed job memory is process-stable, so only
         // the queue + pool lifetimes need this barrier.
         self.install_wg.wait();
+        // Every network user is joined above, so no interrupt callback can
+        // still be running against a registration this frees.
+        self.deadline_scheduler.deinit();
+        self.hub_io.deinit();
         // Redis-backed SessionStore is a pure facade — no per-instance
         // teardown. `queue.deinit()` below releases the underlying pool.
         if (self.has_redis) self.queue.deinit();

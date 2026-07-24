@@ -8,6 +8,7 @@ const testing = std.testing;
 const common = @import("common");
 const contract = @import("contract");
 const client_mod = @import("control_plane_client.zig");
+const dts = @import("deadline_test_support.zig");
 const call_deadline = @import("call_deadline");
 const forwarders = @import("forwarders.zig");
 
@@ -28,7 +29,9 @@ fn testForwarder(c: *client_mod) forwarders.ActivityForwarder {
 }
 
 test "frames serialize on arrival and join into one comma-separated batch" {
-    var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
     defer c.deinit();
     var fwd = testForwarder(&c);
     defer fwd.deinit();
@@ -42,7 +45,9 @@ test "frames serialize on arrival and join into one comma-separated batch" {
 }
 
 test "the frame-count cap auto-flushes and resets the batch" {
-    var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
     defer c.deinit();
     var fwd = testForwarder(&c);
     defer fwd.deinit();
@@ -58,7 +63,9 @@ test "the frame-count cap auto-flushes and resets the batch" {
 }
 
 test "the byte cap auto-flushes before the frame cap" {
-    var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
     defer c.deinit();
     var fwd = testForwarder(&c);
     defer fwd.deinit();
@@ -91,7 +98,9 @@ fn testMemoryForwarder(c: *client_mod) forwarders.MemoryForwarder {
 }
 
 test "memory forwarder drops a malformed capture payload without posting" {
-    var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
     defer c.deinit();
     var fwd = testMemoryForwarder(&c);
 
@@ -101,7 +110,9 @@ test "memory forwarder drops a malformed capture payload without posting" {
 }
 
 test "memory forwarder posts a valid delta set best-effort" {
-    var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
     defer c.deinit();
     var fwd = testMemoryForwarder(&c);
 
@@ -111,7 +122,9 @@ test "memory forwarder posts a valid delta set best-effort" {
 }
 
 test "flushIfStale ships a buffered frame once the window passes" {
-    var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
     defer c.deinit();
     var fwd = testForwarder(&c);
     defer fwd.deinit();

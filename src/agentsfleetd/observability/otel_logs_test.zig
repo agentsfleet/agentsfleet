@@ -2,6 +2,7 @@ const std = @import("std");
 const common = @import("common");
 const otel_logs = @import("otel_logs.zig");
 const otlp_config = @import("otlp/config.zig");
+const health = @import("metrics_otel.zig");
 
 const TEST_CFG: otlp_config.GrafanaOtlpConfig = .{
     .endpoint = "http://127.0.0.1:0",
@@ -262,6 +263,24 @@ test "enqueue is no-op when exporter not installed" {
     enqueue("info", "test", "this should not crash");
 }
 
+test "test_logs_full_ring_records_discard_and_only_accepted_wake" {
+    health.resetForTest();
+    defer health.resetForTest();
+    otel_logs.testSetInstalled(TEST_CFG);
+    defer otel_logs.testClear();
+
+    for (0..BUFFER_CAPACITY - 1) |_| enqueue("info", "test", "accepted");
+    enqueue("info", "test", "discarded");
+
+    const snapshot = health.snapshot();
+    try std.testing.expectEqual(@as(usize, BUFFER_CAPACITY - 1), otel_logs.testPendingCount());
+    try std.testing.expectEqual(@as(u32, BUFFER_CAPACITY - 1), otel_logs.testAcceptedSinceCycle());
+    try std.testing.expectEqual(
+        @as(u64, 1),
+        snapshot.discarded[@intFromEnum(health.Signal.logs)][@intFromEnum(health.DiscardReason.ring_full)],
+    );
+}
+
 test "collectLogs serializes valid JSON with an escaped body (json.fmt double-quote regression)" {
     const alloc = std.testing.allocator;
     otel_logs.testSetInstalled(TEST_CFG);
@@ -287,4 +306,16 @@ test "LogEntry truncates oversized fields" {
     entry.scope_len = @intCast(@min(long_scope.len, 32));
     @memcpy(entry.scope[0..entry.scope_len], long_scope[0..entry.scope_len]);
     try std.testing.expectEqual(@as(u8, 32), entry.scope_len);
+}
+
+test "collectLogs frees its envelope when the ring drains empty" {
+    const alloc = std.testing.allocator;
+    otel_logs.testSetInstalled(TEST_CFG);
+    defer otel_logs.testClear();
+
+    // No entries pending: collect writes the resourceLogs prefix, finds nothing
+    // to serialize, and returns empty. The testing allocator's leak check is the
+    // assertion — the early return must release that prefix, and errdefer does
+    // not fire on a successful return.
+    try std.testing.expect((try otel_logs.testCollect(alloc, TEST_CFG)) == null);
 }

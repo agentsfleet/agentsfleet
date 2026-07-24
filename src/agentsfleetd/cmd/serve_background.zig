@@ -7,6 +7,7 @@ const liveness_sweeper = @import("../fleet/liveness_sweeper.zig");
 const reclaim_sweeper = @import("../fleet/reclaim_sweeper.zig");
 const outbound_worker = @import("../http/handlers/connectors/outbound/worker.zig");
 const slack_post = @import("../http/handlers/connectors/slack/post.zig");
+const bounded_fetch = @import("../http/handlers/connectors/bounded_fetch.zig");
 const serve_shutdown = @import("serve_shutdown.zig");
 
 /// Background threads owned by `serve.zig`.
@@ -32,6 +33,7 @@ pub const Threads = struct {
         pool: *pg.Pool,
         queue: *queue_redis.Client,
         alloc: std.mem.Allocator,
+        sched: *bounded_fetch.Scheduler,
     ) !void {
         events_bus.install(&self.event_bus);
         self.installed = true;
@@ -45,7 +47,7 @@ pub const Threads = struct {
         // §4 connector:outbound answer-delivery consumer — provider-routed; uses
         // the real Slack API base in production (a test drives the worker directly
         // with a FakeSlack loopback base instead of going through boot).
-        self.outbound_consumer_thread = try std.Thread.spawn(.{}, outbound_worker.run, .{ pool, queue, alloc, serve_shutdown.flag(), slack_post.SLACK_API_BASE_DEFAULT });
+        self.outbound_consumer_thread = try std.Thread.spawn(.{}, outbound_worker.run, .{ pool, queue, alloc, serve_shutdown.flag(), slack_post.SLACK_API_BASE_DEFAULT, sched });
     }
 
     pub fn stop(self: *Self) void {

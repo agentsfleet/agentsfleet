@@ -6,6 +6,7 @@
 //! command set (Invariant 2).
 
 const std = @import("std");
+const runner_deadline = @import("../daemon/runner_deadline.zig");
 const globalIo = @import("common").globalIo;
 const args = @import("args.zig");
 const help = @import("help.zig");
@@ -16,7 +17,10 @@ const H = "-h";
 
 pub const Command = enum { status, doctor };
 
-const HandlerFn = *const fn ([]const [:0]const u8, *const std.process.Environ.Map, std.Io, std.mem.Allocator) u8;
+// Handlers take the UNSTARTED scheduler ownership and start it themselves:
+// help/unknown dispatch paths must never pay a worker spawn (or exit on a
+// spawn failure) for a command that arms nothing.
+const HandlerFn = *const fn ([]const [:0]const u8, *const std.process.Environ.Map, std.Io, std.mem.Allocator, *runner_deadline.Owned) u8;
 const Spec = struct { handler: HandlerFn, summary: []const u8 };
 
 /// The register table. Summaries are kept short enough that `  <name>  <summary>`
@@ -41,6 +45,7 @@ pub fn dispatch(
     env_map: *const std.process.Environ.Map,
     io: std.Io,
     alloc: std.mem.Allocator,
+    deadlines: *runner_deadline.Owned,
     name: []const u8,
 ) u8 {
     if (std.mem.eql(u8, name, FLAG_HELP) or std.mem.eql(u8, name, H)) return help.run(alloc);
@@ -49,7 +54,7 @@ pub fn dispatch(
     // never perform a live action (mint a token, write the env file) when the
     // operator asked for help.
     if (args.has(argv, FLAG_HELP) or args.has(argv, H)) return help.run(alloc);
-    return specFor(cmd).handler(argv, env_map, io, alloc);
+    return specFor(cmd).handler(argv, env_map, io, alloc, deadlines);
 }
 
 test "every Command has a non-empty summary (no help drift)" {
@@ -64,7 +69,9 @@ test "dispatch resolves --help and rejects an unknown command non-zero" {
     var env_map: std.process.Environ.Map = .init(alloc);
     defer env_map.deinit();
     const argv = &[_][:0]const u8{};
-    try std.testing.expectEqual(@as(u8, 2), dispatch(argv, &env_map, globalIo(), alloc, "bogus-cmd"));
+    var deadlines: runner_deadline.Owned = .{};
+    defer deadlines.deinit();
+    try std.testing.expectEqual(@as(u8, 2), dispatch(argv, &env_map, globalIo(), alloc, &deadlines, "bogus-cmd"));
 }
 
 test "cli rejects the removed register subcommand with unknown-command exit" {
@@ -76,5 +83,7 @@ test "cli rejects the removed register subcommand with unknown-command exit" {
     var env_map: std.process.Environ.Map = .init(alloc);
     defer env_map.deinit();
     const argv = &[_][:0]const u8{};
-    try std.testing.expectEqual(@as(u8, 2), dispatch(argv, &env_map, globalIo(), alloc, "register"));
+    var deadlines: runner_deadline.Owned = .{};
+    defer deadlines.deinit();
+    try std.testing.expectEqual(@as(u8, 2), dispatch(argv, &env_map, globalIo(), alloc, &deadlines, "register"));
 }
