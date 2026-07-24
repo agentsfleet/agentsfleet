@@ -1,4 +1,4 @@
-//! Integration tier for schema slot 034: the two retired indexes are gone, and
+//! Integration tier for schema slot 034: the three retired indexes are gone, and
 //! the queries that used them still plan against an index.
 //!
 //! A removal is only safe if the work relocates rather than disappears, so
@@ -13,12 +13,15 @@ const common = @import("common");
 const pg = @import("pg");
 const base = @import("test_fixtures.zig");
 const PgQuery = @import("pg_query.zig").PgQuery;
+const protocol = @import("contract").protocol;
 
-/// Indexes slot 034 retires. Both are defined in shipped slots (010, 012), so
-/// their absence proves the migration ran, not merely that they were never made.
+/// Indexes slot 034 retires. All three are defined in shipped slots (010, 012,
+/// 015), so their absence proves the migration ran, not merely that they were
+/// never made.
 const RETIRED_INDEXES = [_][]const u8{
     "idx_api_keys_key_hash_active",
     "idx_memory_entries_fleet_id",
+    "idx_fleet_events_workspace_id_created_at",
 };
 
 /// Deliberately KEPT: it recorded scans under the workload, so it failed the
@@ -30,7 +33,11 @@ const MEM_ID_PREFIX = "rmprobe-mem-";
 const FLEET_PROBE = "0195b4ba-8d3a-7f13-8abc-0000000e0001";
 const SEED_ROWS: i32 = 20_000;
 const MEM_SEED_ROWS: i32 = 40_000;
-const PROBE_FLEET_ROWS: i32 = 4_000;
+/// The probe fleet holds exactly what production allows it to. Seeding above
+/// the cap makes the fleet a tenth of the table, and for an UNBOUNDED fetch of
+/// that share PostgreSQL correctly prefers a sequential scan — the fixture, not
+/// the index, would be what failed.
+const PROBE_FLEET_ROWS: i32 = @intCast(protocol.MAX_MEMORY_ENTRIES_PER_AGENT);
 
 const TestDb = struct {
     pool: *pg.Pool,
@@ -79,7 +86,7 @@ fn expectIndex(plan: []const u8, index_name: []const u8) !void {
     }
 }
 
-test "slot 034 retired exactly the two approved indexes" {
+test "slot 034 retired exactly the three approved indexes" {
     const alloc = std.testing.allocator;
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
@@ -90,8 +97,9 @@ test "slot 034 retired exactly the two approved indexes" {
             return error.IndexNotRetired;
         }
     }
-    // The third candidate stays. Its 4 recorded scans failed the zero-scan bar,
-    // and widening the drop on reasoning alone is what the guard exists to stop.
+    // idx_memory_entries_category stays. Its 4 recorded scans failed the
+    // zero-scan bar, and widening the drop on reasoning alone is what the guard
+    // exists to stop.
     try std.testing.expect(try indexExists(db.conn, KEPT_INDEX));
 }
 
