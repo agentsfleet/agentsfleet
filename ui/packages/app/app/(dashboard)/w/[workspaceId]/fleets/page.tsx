@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { PageHeader, PageTitle, Skeleton } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle, Section, Skeleton } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { getOnboarding, statusToInputs } from "@/lib/api/onboarding";
@@ -63,16 +63,20 @@ export async function FleetsData({ workspaceId }: { workspaceId: string }) {
   }
 
   return (
-    <div>
+    <PageLayout>
       <PageHeader description={FLEETS_DESCRIPTION}>
         <PageTitle>Fleets</PageTitle>
       </PageHeader>
       <ExhaustionBanner billing={billing} />
-      <FleetWall
-        workspaceId={workspaceId}
-        initialFleets={page.items}
-        initialCursor={page.cursor}
-      />
-    </div>
+      <Section asChild>
+        <section aria-label="Fleets">
+          <FleetWall
+            workspaceId={workspaceId}
+            initialFleets={page.items}
+            initialCursor={page.cursor}
+          />
+        </section>
+      </Section>
+    </PageLayout>
   );
 }

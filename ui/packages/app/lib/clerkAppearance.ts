@@ -37,6 +37,21 @@ const BORDER_STYLE = `1px solid ${BORDER}`;
 const BORDER_STRONG_STYLE = `1px solid ${BORDER_STRONG}`;
 const FOCUS_RING = `0 0 0 1px ${PULSE}`;
 
+const AUTH_INPUT_APPEARANCE = {
+  backgroundColor: SURFACE_1,
+  border: BORDER_STRONG_STYLE,
+  borderColor: BORDER_STRONG,
+  boxShadow: "none",
+  color: TEXT,
+  "&:hover": {
+    borderColor: PULSE,
+  },
+  "&:focus": {
+    borderColor: PULSE,
+    boxShadow: FOCUS_RING,
+  },
+} as const;
+
 const MENU_ACTION_INTERACTION = {
   backgroundColor: SURFACE_3,
   color: TEXT,
@@ -254,22 +269,15 @@ export const AUTH_APPEARANCE = {
       // invisible until focused. Drop to --surface-1 (one step toward --bg)
       // for an inset well, and use --border-strong so the edge reads as a
       // click target without a focus event.
-      backgroundColor: SURFACE_1,
-      border: BORDER_STRONG_STYLE,
-      borderColor: BORDER_STRONG,
-      boxShadow: "none",
-      color: TEXT,
-      "&:hover": {
-        borderColor: PULSE,
-      },
-      "&:focus": {
-        borderColor: PULSE,
-        boxShadow: FOCUS_RING,
-      },
+      ...AUTH_INPUT_APPEARANCE,
       "&::placeholder": {
         color: TEXT_SUBTLE,
       },
     },
+    // Clerk renders email verification as six segmented inputs under a
+    // separate element key. Reuse the ordinary input treatment so every code
+    // slot remains visible before focus on the dark card.
+    otpCodeFieldInput: AUTH_INPUT_APPEARANCE,
     formButtonPrimary: {
       backgroundColor: PULSE,
       color: BACKGROUND,

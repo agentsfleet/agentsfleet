@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { changeProposalActionFrom, eventLinkFrom } from "./event-payload";
+import { eventLinkFrom, eventReferenceFrom } from "./event-payload";
 
 const proposal = (over: Record<string, unknown> = {}) =>
   JSON.stringify({ action: "opened", repo: "o/r", number: 7, ...over });
@@ -39,13 +39,13 @@ describe("eventLinkFrom", () => {
   });
 });
 
-describe("changeProposalActionFrom", () => {
-  it("reads the action verb off a recognised change proposal", () => {
-    expect(changeProposalActionFrom(proposal({ action: "edited" }))).toBe("edited");
+describe("eventReferenceFrom", () => {
+  it("reads the repository and number from a change proposal", () => {
+    expect(eventReferenceFrom(proposal())).toBe("o/r#7");
   });
 
-  it("is empty for a payload that is not a change proposal", () => {
-    expect(changeProposalActionFrom(JSON.stringify({ action: "opened" }))).toBe("");
-    expect(changeProposalActionFrom(null)).toBe("");
+  it("returns null when the payload has no repository reference", () => {
+    expect(eventReferenceFrom(JSON.stringify({ repo: "o/r" }))).toBeNull();
+    expect(eventReferenceFrom(null)).toBeNull();
   });
 });

@@ -34,7 +34,7 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
 
   return (
     <Card>
-      <CardContent className="space-y-4 p-6">
+      <CardContent className="space-y-3 p-4">
         <div className="flex flex-row items-end justify-between gap-4">
           <div>
             <div className={cn(EYEBROW_CLASS, "text-muted-foreground")}>

@@ -37,7 +37,7 @@ export type ThreadEntry =
  * vanish into a count (Invariant 1).
  */
 function groupable(event: FleetEvent): boolean {
-  return event.role === "system";
+  return event.role === "system" && event.reply.trim().length === 0;
 }
 
 /**
@@ -63,7 +63,7 @@ function sameRun(a: FleetEvent, b: FleetEvent): boolean {
  * Collapse each run of ≥`MIN_GROUP_RUN` identical consecutive activity events
  * into one group entry, leaving everything else untouched and in place.
  *
- * `previous` is the last result, and passing it is a performance contract, not
+ * `previous` is the last result, and passing it is a performance guarantee, not
  * a convenience: a streaming reply regroups the whole thread on every frame,
  * and returning fresh objects for runs that did not change would make every
  * row a new reference, so React re-renders the entire list per chunk. Entries

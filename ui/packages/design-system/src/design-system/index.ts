@@ -156,8 +156,10 @@ export {
 } from "./ConfirmDialog";
 export { Nav, type NavProps } from "./Nav";
 export { PageHeader, PageDescription, type PageHeaderProps } from "./PageHeader";
+export { PageLayout, type PageLayoutProps } from "./PageLayout";
 export { DashboardShellHeader, type DashboardShellHeaderProps } from "./DashboardShellHeader";
 export { PageTitle, type PageTitleProps } from "./PageTitle";
+export { SectionHeader, type SectionHeaderProps } from "./SectionHeader";
 export { SectionLabel, type SectionLabelProps } from "./SectionLabel";
 export { EYEBROW_CLASS } from "./eyebrow";
 export { DisplayXL, DisplayLG, type DisplayXLProps, type DisplayLGProps } from "./Display";

@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { EmptyState, PageHeader, PageTitle } from "@agentsfleet/design-system";
+import { EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { SlidersHorizontalIcon } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export default async function SettingsDefaultsPage({
   if (!token) redirect("/sign-in");
 
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader>
         <PageTitle>Defaults</PageTitle>
       </PageHeader>
@@ -27,6 +27,6 @@ export default async function SettingsDefaultsPage({
         title="Defaults"
         description="Workspace-wide defaults for new Fleets will live here."
       />
-    </div>
+    </PageLayout>
   );
 }

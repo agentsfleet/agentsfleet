@@ -19,6 +19,7 @@ describe("FleetSubnavigation", () => {
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
     expect(screen.getByRole("link", { name: "Memory" }).querySelector("svg")?.getAttribute("class"))
       .toContain("lucide-brain");
+    expect(screen.getByRole("navigation").className).toContain("lg:min-h-full");
   });
 
   it("defaults a missing view to Chat and rejects unknown views", () => {

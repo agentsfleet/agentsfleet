@@ -1,4 +1,4 @@
-import { PageHeader, PageTitle, Section, Skeleton } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle, Section, Skeleton } from "@agentsfleet/design-system";
 
 // Bespoke skeleton on purpose — NOT the shared RouteLoading (title + spinner).
 // The key-list rows preview the real page's layout, which a plain spinner
@@ -6,7 +6,7 @@ import { PageHeader, PageTitle, Section, Skeleton } from "@agentsfleet/design-sy
 // folded into this page), so there is no wrong-title flash.
 export default function ApiKeysLoading() {
   return (
-    <div className="space-y-8">
+    <PageLayout>
       <PageHeader>
         <PageTitle>API Keys</PageTitle>
       </PageHeader>
@@ -23,6 +23,6 @@ export default function ApiKeysLoading() {
           </div>
         </section>
       </Section>
-    </div>
+    </PageLayout>
   );
 }

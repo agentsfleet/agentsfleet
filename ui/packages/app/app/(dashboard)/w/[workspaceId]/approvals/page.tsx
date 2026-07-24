@@ -1,6 +1,13 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { PageHeader, PageTitle, Section, Skeleton } from "@agentsfleet/design-system";
+import {
+  PageHeader,
+  PageLayout,
+  PageTitle,
+  Section,
+  SectionHeader,
+  Skeleton,
+} from "@agentsfleet/design-system";
 
 import { auth } from "@clerk/nextjs/server";
 import { listApprovals } from "@/lib/api/approvals";
@@ -25,7 +32,7 @@ export default async function ApprovalsPage({
 
   // Header streams first; the inbox loads inside ApprovalsData under Suspense.
   return (
-    <div>
+    <PageLayout>
       <PageHeader description={APPROVALS_DESCRIPTION}>
         <PageTitle>Approvals</PageTitle>
       </PageHeader>
@@ -33,7 +40,7 @@ export default async function ApprovalsPage({
       <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
         <ApprovalsData workspaceId={workspaceId} fleetId={fleetId} />
       </Suspense>
-    </div>
+    </PageLayout>
   );
 }
 
@@ -51,6 +58,7 @@ export async function ApprovalsData({ workspaceId, fleetId }: { workspaceId: str
   return (
     <Section asChild>
       <section aria-label="Pending approval gates">
+        <SectionHeader>Review approvals</SectionHeader>
         <ApprovalsList
           workspaceId={workspaceId}
           initialItems={initial.items}

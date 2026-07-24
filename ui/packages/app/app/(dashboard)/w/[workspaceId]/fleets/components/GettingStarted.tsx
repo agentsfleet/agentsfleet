@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, PageHeader, PageTitle } from "@agentsfleet/design-system";
+import { Alert, Button, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import OnboardingRail from "@/components/domain/OnboardingRail";
 import {
   completedRequiredCount,
@@ -66,30 +66,32 @@ export default function GettingStarted({ workspaceId, inputs }: Props) {
   }
 
   return (
-    <div className="max-w-measure">
+    <PageLayout className="max-w-measure">
       <PageHeader description="Install a fleet, connect its credential, watch it run.">
         <PageTitle>Getting started</PageTitle>
       </PageHeader>
 
-      <div className="mt-4 text-body-sm text-muted-foreground" aria-live="polite">
-        {completed}/{steps.filter((s) => s.required).length} done
-      </div>
-
-      <div className="mt-3">
-        <OnboardingRail workspaceId={workspaceId} steps={steps} />
-      </div>
-
-      {!cliTicked ? (
-        <div className="mt-4">
-          <Button variant="ghost" size="sm" onClick={tickCli} disabled={pending}>
-            {pending ? "Saving…" : "I've installed the CLI"}
-          </Button>
+      <div>
+        <div className="text-body-sm text-muted-foreground" aria-live="polite">
+          {completed}/{steps.filter((s) => s.required).length} done
         </div>
-      ) : null}
 
-      {error ? (
-        <Alert variant="destructive" className="mt-3">{error}</Alert>
-      ) : null}
-    </div>
+        <div className="mt-3">
+          <OnboardingRail workspaceId={workspaceId} steps={steps} />
+        </div>
+
+        {!cliTicked ? (
+          <div className="mt-4">
+            <Button variant="ghost" size="sm" onClick={tickCli} disabled={pending}>
+              {pending ? "Saving…" : "I've installed the CLI"}
+            </Button>
+          </div>
+        ) : null}
+
+        {error ? (
+          <Alert variant="destructive" className="mt-3">{error}</Alert>
+        ) : null}
+      </div>
+    </PageLayout>
   );
 }

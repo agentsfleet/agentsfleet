@@ -171,6 +171,7 @@ export function DataTableView<T>({
   className,
   isLoading,
   stickyHeader,
+  viewportClassName,
   onSortChange,
   pagination,
   totalRows,
@@ -182,6 +183,7 @@ export function DataTableView<T>({
   className?: string;
   isLoading?: boolean;
   stickyHeader: boolean;
+  viewportClassName?: string;
   onSortChange?: (key: string) => void;
   pagination: DataTablePagination | undefined;
   totalRows: number;
@@ -219,7 +221,9 @@ export function DataTableView<T>({
         ref={viewportRef}
         className={cn(
           "overflow-x-auto overscroll-contain motion-safe:scroll-smooth focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pulse",
-          stickyHeader && "max-h-96 overflow-y-auto",
+          stickyHeader && "overflow-y-auto",
+          stickyHeader && !viewportClassName && "max-h-96",
+          viewportClassName,
         )}
         tabIndex={0}
         role="region"

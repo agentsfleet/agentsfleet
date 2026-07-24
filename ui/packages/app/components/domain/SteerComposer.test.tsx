@@ -7,8 +7,8 @@ import { SteerComposer } from "./SteerComposer";
 vi.mock("@assistant-ui/react", () => ({
   ComposerPrimitive: {
     Root: ({ children, ...rest }: { children: React.ReactNode }) => <div {...rest}>{children}</div>,
-    Input: ({ children, placeholder }: { children: React.ReactElement; placeholder?: string }) =>
-      React.cloneElement(children, { placeholder } as Record<string, unknown>),
+    Input: ({ children, placeholder, submitMode }: { children: React.ReactElement; placeholder?: string; submitMode?: string }) =>
+      React.cloneElement(children, { placeholder, "data-submit-mode": submitMode } as Record<string, unknown>),
     Send: ({ children }: { children: React.ReactElement }) => children,
   },
 }));
@@ -21,8 +21,9 @@ describe("SteerComposer", () => {
     const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
     expect(textarea.disabled).toBe(false);
     expect(textarea.placeholder).toBe("Message this fleet…");
-    expect(screen.getByText("Enter to send")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Send ↵" })).toBeTruthy();
+    expect(textarea.dataset.submitMode).toBe("enter");
+    expect(screen.queryByText("Enter to send")).toBeNull();
+    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
   });
 
   it("exposes no pending hold — a submitted message is sent, never parked", () => {
