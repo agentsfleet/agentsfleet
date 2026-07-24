@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import type { MessageState } from "@assistant-ui/react";
+import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
 import { Badge, cn } from "@agentsfleet/design-system";
 import { readTools, ToolCalls } from "./FleetToolCalls";
 import {
@@ -11,22 +11,27 @@ import {
   ROW_TONE,
   useFleetName,
 } from "./FleetMessageRow";
+import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
 import {
   readActor,
   readCustomStatus,
   readFailureLabel,
+  readFailureDetail,
   readGroupMembers,
   readOutcome,
   readReply,
+  readRenderKind,
   readRequestJson,
   readText,
 } from "./fleetMessageReaders";
+import { RENDER_KIND } from "./useFleetThreadEntries";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
 import { groupSpan } from "@/lib/events/event-grouping";
 import {
   SENDER,
-  changeProposalActionFrom,
   eventLinkFrom,
+  eventReferenceFrom,
+  failureSentenceFor,
   guidanceFor,
   senderLabelFor,
 } from "@/lib/events/event-summary";
@@ -43,16 +48,23 @@ const WORKING_LABEL = "Working";
 // Staggered so the three dots read as one travelling wave rather than three
 // lights blinking in unison.
 const WORKING_DOT_DELAYS = ["0ms", "160ms", "320ms"] as const;
-const OPEN_LINK_LABEL = "open ↗";
-const PAYLOAD_SHOW_LABEL = "▸ payload";
-const PAYLOAD_HIDE_LABEL = "▾ hide payload";
+const SOURCE_LINK_FALLBACK = "View source";
+const STARTUP_FAILURE_TAG = "startup_posture";
+const SKILL_VIEW_HREF = "?view=skill";
+const CHAT_STARTUP_FAILURE_LABEL = "This fleet needs instructions before it can respond.";
+const CHAT_STARTUP_GUIDANCE = "Tell the fleet what to do in its instructions, then retry.";
+const SKILL_LINK_LABEL = "Edit instructions";
 
 /**
  * Render function passed to the thread message list. Every role uses the same
  * row skeleton; role changes the chip tone, annotation, and body.
  */
 export function renderFleetMessage({ message }: { message: MessageState }): ReactNode {
-  return <FleetMessage message={message} />;
+  return (
+    <MessagePrimitive.Root className="w-full" data-testid="fleet-message">
+      <FleetMessage message={message} />
+    </MessagePrimitive.Root>
+  );
 }
 
 function FleetMessage({ message }: { message: MessageState }) {
@@ -65,6 +77,7 @@ function FleetMessage({ message }: { message: MessageState }) {
   const tools = readTools(message);
   const trigger = readText(message);
   const isReplyRow = message.role === "assistant";
+  const isSplitTrigger = readRenderKind(message) === RENDER_KIND.TRIGGER;
   // A run of identical deliveries is one row until the operator opens it.
   const group = readGroupMembers(message);
   if (group) return <FleetGroupMessage fleetName={fleetName} members={group} />;
@@ -72,7 +85,7 @@ function FleetMessage({ message }: { message: MessageState }) {
   // conversation dominates the column (approved variant B). Order is
   // untouched — activity looks quieter, it never moves.
   if (message.role === "system") {
-    return <FleetActivityMessage message={message} fleetName={fleetName} tools={tools} />;
+    return <FleetActivityMessage message={message} fleetName={fleetName} />;
   }
   return (
     <>
@@ -90,10 +103,12 @@ function FleetMessage({ message }: { message: MessageState }) {
           annotation={<Annotation optimistic={optimistic} failed={failed} />}
         >
           <span>{trigger}</span>
-          {payload ? <PayloadDisclosure json={payload} /> : null}
+          {payload ? <FleetPayloadDisclosure json={payload} /> : null}
         </FleetMessageRow>
       )}
-      <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
+      {isSplitTrigger ? null : (
+        <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
+      )}
     </>
   );
 }
@@ -106,44 +121,39 @@ function FleetMessage({ message }: { message: MessageState }) {
 function FleetActivityMessage({
   message,
   fleetName,
-  tools,
 }: {
   message: MessageState;
   fleetName: string;
-  tools: ReturnType<typeof readTools>;
 }) {
   const status = readCustomStatus(message);
   const reply = readReply(message);
   const payload = readRequestJson(message);
   const working = status === STATUS_IN_FLIGHT;
   const errored = status === STATUS_AGENT_ERROR;
+  const isSplitTrigger = readRenderKind(message) === RENDER_KIND.TRIGGER;
   // The tick states the outcome itself — a delivery whose only content is its
   // outcome does not earn a second row. A real reply does.
-  const outcome = working || reply.length > 0 ? undefined : readOutcome(message);
-  const guidance = reply.length > 0 ? null : guidanceFor(readFailureLabel(message));
-  const action = changeProposalActionFrom(payload);
+  const outcome = working || reply.length > 0 || isSplitTrigger ? undefined : messageOutcome(message);
   const link = eventLinkFrom(payload);
+  const reference = link ? eventReferenceFrom(payload) : null;
   return (
     <>
       <FleetActivityRow
         sender={senderLabelFor(readActor(message), fleetName)}
         createdAt={message.createdAt}
-        headline={readText(message)}
+        headline={activityHeadline(readText(message), reference)}
         outcome={outcome}
         failed={errored}
+        guidance={
+          isSplitTrigger
+            ? undefined
+            : failureGuidanceFor(readFailureLabel(message))
+        }
         messageRole={message.role}
-        annotation={<ActivityAnnotation action={action} link={link} />}
+        annotation={<ActivityAnnotation link={link} label={reference ?? SOURCE_LINK_FALLBACK} />}
       >
-        {guidance ? (
-          <span className="mt-xs block text-label text-muted-foreground" data-testid="failure-guidance">
-            {guidance}
-          </span>
-        ) : null}
-        {payload ? <PayloadDisclosure json={payload} /> : null}
+        {payload ? <FleetPayloadDisclosure json={payload} inline /> : null}
       </FleetActivityRow>
-      {reply.length > 0 ? (
-        <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
-      ) : null}
     </>
   );
 }
@@ -172,7 +182,7 @@ function FleetGroupMessage({
     <FleetGroupRow
       sender={senderLabelFor(newest.actor, fleetName)}
       headline={newest.text}
-      outcome={newest.reply.length > 0 ? undefined : newest.outcome}
+      outcome={eventOutcome(newest)}
       failed={failed}
       count={members.length}
       first={span.first}
@@ -186,37 +196,48 @@ function FleetGroupMessage({
           sender={senderLabelFor(member.actor, fleetName)}
           createdAt={member.createdAt}
           headline={member.text}
-          outcome={member.reply.length > 0 ? member.reply : member.outcome}
+          outcome={eventOutcome(member)}
           failed={member.status === STATUS_AGENT_ERROR}
+          guidance={failureGuidanceFor(member.failureLabel)}
           messageRole="system"
         >
-          {member.custom?.requestJson ? <PayloadDisclosure json={member.custom.requestJson} /> : null}
+          {member.custom?.requestJson ? (
+            <FleetPayloadDisclosure json={member.custom.requestJson} inline />
+          ) : null}
         </FleetActivityRow>
       ))}
     </FleetGroupRow>
   );
 }
 
-// The action verb as a `Badge`, and the provider's own link when the payload
-// carries one. A payload with neither renders nothing rather than a dead
-// affordance.
-function ActivityAnnotation({ action, link }: { action: string; link: string | null }) {
-  if (action.length === 0 && link === null) return null;
+// The provider's source reference is the link label. Unknown payload shapes
+// still get a plain source action rather than an internal "open" affordance.
+function ActivityAnnotation({ link, label }: { link: string | null; label: string }) {
+  if (link === null) return null;
   return (
-    <>
-      {action.length > 0 ? <Badge variant="evidence">{action}</Badge> : null}
-      {link ? (
-        <a
-          href={link}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="shrink-0 text-label text-muted-foreground underline hover:text-foreground"
-        >
-          {OPEN_LINK_LABEL}
-        </a>
-      ) : null}
-    </>
+    <a
+      href={link}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="shrink-0 text-label text-muted-foreground underline hover:text-foreground"
+    >
+      {label}
+    </a>
   );
+}
+
+function activityHeadline(headline: string, reference: string | null): string {
+  if (!reference) return headline;
+  const referenceIndex = headline.indexOf(reference);
+  if (referenceIndex < 0) return headline;
+  const prefix = headline.slice(0, referenceIndex).trimEnd();
+  const suffix = headline.slice(referenceIndex + reference.length).trimStart();
+  if (suffix.startsWith("—")) {
+    if (!prefix) return suffix.slice(1).trimStart();
+    return `${prefix.endsWith("·") ? prefix : `${prefix} ·`} ${suffix.slice(1).trimStart()}`;
+  }
+  if (suffix.length === 0 && prefix.endsWith("·")) return prefix.slice(0, -1).trimEnd();
+  return `${prefix}${suffix.length > 0 ? ` ${suffix}` : ""}`.trim();
 }
 
 // A trigger and its fleet answer are separate rows so a reply never appears
@@ -233,7 +254,7 @@ function FleetReply({
   status: string;
 }) {
   const reply = readReply(message);
-  const outcome = readOutcome(message);
+  const outcome = messageOutcome(message);
   const errored = status === STATUS_AGENT_ERROR;
   const streaming = status === STATUS_IN_FLIGHT;
   if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return null;
@@ -245,14 +266,13 @@ function FleetReply({
   // The cause says what broke; the guidance says what to do about it. Only
   // rendered when the failure sentence is what the operator is reading — a
   // recorded reply is the fleet's own words and takes precedence.
-  const guidance = reply.length > 0 ? null : guidanceFor(readFailureLabel(message));
+  const guidance = reply.length > 0 ? null : failureGuidanceFor(readFailureLabel(message));
   return (
     <FleetMessageRow
       sender={fleetName.length > 0 ? fleetName : SENDER_FLEET}
       createdAt={message.createdAt}
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
-      annotation={errored ? <Badge variant="destructive">{STATUS_AGENT_ERROR}</Badge> : null}
     >
       <ToolCalls tools={tools} />
       {awaitingFirstWord ? (
@@ -267,12 +287,55 @@ function FleetReply({
           ) : null}
         </>
       )}
-      {guidance ? (
-        <span className="mt-xs block text-label text-muted-foreground" data-testid="failure-guidance">
-          {guidance}
-        </span>
-      ) : null}
+      {guidance}
     </FleetMessageRow>
+  );
+}
+
+function messageOutcome(message: MessageState): string {
+  const failureLabel = readFailureLabel(message);
+  const failureDetail = readFailureDetail(message);
+  const rawOutcome = readOutcome(message);
+  if (!failureLabel) return rawOutcome;
+  return formatFailureOutcome(chatFailureSentenceFor(failureLabel), rawOutcome, failureDetail);
+}
+
+function eventOutcome(event: FleetEvent): string {
+  if (!event.failureLabel) return event.outcome;
+  return formatFailureOutcome(
+    chatFailureSentenceFor(event.failureLabel),
+    event.outcome,
+    event.failureDetail,
+  );
+}
+
+function chatFailureSentenceFor(tag: string): string {
+  return tag === STARTUP_FAILURE_TAG ? CHAT_STARTUP_FAILURE_LABEL : failureSentenceFor(tag);
+}
+
+function chatGuidanceFor(tag: string | null): string | null {
+  return tag === STARTUP_FAILURE_TAG ? CHAT_STARTUP_GUIDANCE : guidanceFor(tag);
+}
+
+function failureGuidanceFor(tag: string | null): ReactNode | undefined {
+  const guidance = chatGuidanceFor(tag);
+  return guidance ? <FailureGuidance guidance={guidance} /> : undefined;
+}
+
+function formatFailureOutcome(sentence: string, rawOutcome: string, detail: string | null): string {
+  const embeddedDetail = rawOutcome.split("—").slice(1).join("—").trim();
+  const cause = detail ?? (embeddedDetail.length > 0 ? embeddedDetail : null);
+  return cause ? `${sentence} — ${cause}` : sentence;
+}
+
+function FailureGuidance({ guidance }: { guidance: string }) {
+  return (
+    <span className="mt-xs block text-label text-muted-foreground" data-testid="failure-guidance">
+      {guidance}
+      <a href={SKILL_VIEW_HREF} className="ml-sm underline hover:text-foreground">
+        {SKILL_LINK_LABEL}
+      </a>
+    </span>
   );
 }
 
@@ -305,28 +368,3 @@ function Annotation({ optimistic, failed }: { optimistic: boolean; failed: boole
 
 // Any integration event with a stored payload can reveal it. Restricting this
 // to one actor prefix previously left platform integrations looking blank.
-function PayloadDisclosure({ json }: { json: string }) {
-  return (
-    <details className="group mt-md">
-      <summary
-        className={cn(
-          "cursor-pointer list-none font-mono text-label text-muted-foreground",
-          "hover:text-foreground",
-          "[&::-webkit-details-marker]:hidden",
-        )}
-      >
-        <span className="group-open:hidden">{PAYLOAD_SHOW_LABEL}</span>
-        <span className="hidden group-open:inline">{PAYLOAD_HIDE_LABEL}</span>
-      </summary>
-      <pre
-        className={cn(
-          "mt-xs max-h-64 overflow-auto rounded-sm border border-border",
-          "bg-surface-deep p-lg",
-          "font-mono text-mono leading-mono text-foreground",
-        )}
-      >
-        {json}
-      </pre>
-    </details>
-  );
-}

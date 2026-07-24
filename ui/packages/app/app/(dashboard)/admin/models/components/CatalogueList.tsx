@@ -197,12 +197,14 @@ export default function CatalogueList({
   });
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col">
       <DataTable
+        className="flex min-h-0 flex-1 flex-col"
         columns={columns}
         rows={models}
         rowKey={(m) => m.uid}
         caption="Model library"
+        viewportClassName="min-h-0 flex-1 max-h-none"
         empty={
           <EmptyState
             icon={<CoinsIcon size={28} />}

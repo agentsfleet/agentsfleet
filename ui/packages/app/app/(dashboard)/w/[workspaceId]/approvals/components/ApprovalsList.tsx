@@ -31,8 +31,10 @@ import {
 } from "@/lib/api/approvals";
 import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
+import { deriveFleetIdentity } from "../../fleets/components/fleetIdentity";
 
 const POLL_MS = 5000;
+const AGENT_PREFIX = "Agent";
 
 type Props = {
   workspaceId: string;
@@ -55,6 +57,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     return items.filter(
       (g) =>
         g.fleet_name.toLowerCase().includes(q) ||
+        `${AGENT_PREFIX} ${deriveFleetIdentity(g.fleet_id).callsign}`.toLowerCase().includes(q) ||
         g.tool_name.toLowerCase().includes(q) ||
         g.action_name.toLowerCase().includes(q) ||
         g.gate_kind.toLowerCase().includes(q) ||
@@ -227,7 +230,7 @@ function ApprovalCard({
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <Link href={workspacePath(workspaceId, `fleets/${gate.fleet_id}`)} className="font-medium hover:underline">
-                {gate.fleet_name}
+                {`${AGENT_PREFIX} ${deriveFleetIdentity(gate.fleet_id).callsign}`}
               </Link>
               {gate.gate_kind ? <Badge variant="default">{gate.gate_kind}</Badge> : null}
               <span>requested {ageMin}m ago</span>

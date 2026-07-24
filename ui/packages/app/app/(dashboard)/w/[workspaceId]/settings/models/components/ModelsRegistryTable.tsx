@@ -6,7 +6,7 @@ import {
   DataTable,
   type DataTableColumn,
   Section,
-  SectionLabel,
+  SectionHeader,
 } from "@agentsfleet/design-system";
 import type { Secret } from "@/lib/api/secrets";
 import { presentErrorString } from "@/lib/errors";
@@ -211,10 +211,18 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
   return (
     <Section asChild>
       <section aria-label="Models">
-        <div className="flex flex-wrap items-baseline justify-between gap-md">
-          <SectionLabel>Model registry</SectionLabel>
-          <AddModelEntryDialog workspaceId={workspaceId} secrets={secrets} onCreated={refresh} onSecretsChanged={refreshSecrets} />
-        </div>
+        <SectionHeader
+          actions={
+            <AddModelEntryDialog
+              workspaceId={workspaceId}
+              secrets={secrets}
+              onCreated={refresh}
+              onSecretsChanged={refreshSecrets}
+            />
+          }
+        >
+          Model registry
+        </SectionHeader>
 
         <DataTable
           columns={columns}

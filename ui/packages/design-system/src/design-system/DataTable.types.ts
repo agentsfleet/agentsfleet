@@ -43,6 +43,8 @@ export interface DataTableProps<T> {
   isLoading?: boolean;
   /** Bounds the table and pins its header. Defaults to true. */
   stickyHeader?: boolean;
+  /** Additional classes for the scrollable rows viewport. */
+  viewportClassName?: string;
   /** Key of the column currently driving externally controlled sorting. */
   sortKey?: string;
   sortDirection?: "ascending" | "descending";
