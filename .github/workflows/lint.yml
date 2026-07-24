@@ -17,7 +17,7 @@ jobs:
     container:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     env:
-      ZLINT_VERSION: v0.8.1
+      ZLINT_VERSION: v0.9.0
     steps:
       - uses: actions/checkout@v6
       - name: Install ZLint
