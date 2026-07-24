@@ -4,35 +4,30 @@
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x263fc42fde813fea,
     .dependencies = .{
-        // Fork release agentsfleet/nullclaw v2026.5.29-zmb.3 — upstream tag
-        // v2026.5.29 (b25c6eb) plus two fork commits:
-        //   zmb.2 — cumulative prompt/completion token-split accumulation +
-        //     promptTokensUsed()/completionTokensUsed() accessors beside
-        //     tokensUsed(), plus clearSessionState() zeroing both so /new and
-        //     /reset don't leave by-side metering stale (the runner bills by side).
-        //   zmb.3 — pin the Server-Side Request Forgery (SSRF)-validated address on
-        //     the non-streaming POST dials (curlPostTimed / curlPostFormTimed): they
-        //     built the resolve pin then discarded it to std.http, which re-resolves
-        //     at connect time — a DNS-rebinding Time-Of-Check-To-Time-Of-Use (TOCTOU)
-        //     reachable via a user-supplied base_url. Now routed through the curl
-        //     --resolve path, which keeps credentials off the child argv.
+        // Fork release agentsfleet/nullclaw v2026.5.29-zmb.4 — current upstream
+        // main plus the maintained fork patches, now carried on the fork's main:
+        //   - cumulative prompt/completion token-split accessors with normalization,
+        //     reset, and restoration so the runner's by-side billing stays complete;
+        //   - Server-Side Request Forgery (SSRF)-validated address pinning on the
+        //     non-streaming POST dials, including direct routing past environment
+        //     proxies so proxy-side DNS cannot bypass curl --resolve.
         // We have no push/release rights on upstream nullclaw/nullclaw, so the
         // patches ride our fork. Drop this pin and return to the upstream tag when
         // upstream exposes split accessors AND re-threads the resolve pin.
         .nullclaw = .{
-            .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=v2026.5.29-zmb.3#9403f63dd300980739b0f90be24b2d938cc0d058",
-            .hash = "nullclaw-2026.5.29-wlZZyduURwHCBGe4sW7dHhwfyANddVQJeCiAOKxF-4Wq",
+            .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=v2026.5.29-zmb.4#e00bba78395698dd97a56e5c62feb9cd14a3fef7",
+            .hash = "nullclaw-2026.5.29-wlZZyWeOSAHc7sgCsTFllD7aXThbRkQIOIWIF1bZy7cD",
         },
-        // Fork pin agentsfleet/pg.zig (tag v0.0.0-af.1) over upstream karlseguin/pg.zig
-        // commit 1aa3e3c, patched for a Zig 0.16 pool-acquire regression: upstream
+        // Fork pin agentsfleet/pg.zig over upstream karlseguin/pg.zig commit 52b9f8a,
+        // patched for a Zig 0.16 pool-acquire regression: upstream
         // `Pool.acquire()` waits via `Io.Select.concurrent` — an async combinator that
         // returns `error.ConcurrencyUnavailable` on this project's threaded `Io`, so any
         // pool exhaustion 500s instead of waiting. Patched to bounded-poll the exhaustion
         // branch (see the fork's CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin and
         // return to upstream once it offers a threaded-Io timed wait.
         .pg = .{
-            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=v0.0.0-af.1#86fdb3e5c6a199daae77c59a116f5c987c5329d8",
-            .hash = "pg-0.0.0-Wp_7gZQBBwB5TqMl562eRWWcZGtOeHdgTCAUk1HYmirg",
+            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=patch/agentsfleet-0.16#4749b7dd97ce75a02e316aa054d8aa5845d96359",
+            .hash = "pg-0.0.0-Wp_7gUC1BgDSgdQimbojEOODY3IPYv0ozwwrZinEF-Tv",
         },
         .posthog = .{
             .url = "git+https://github.com/agentsfleet/posthog-zig.git#v0.2.0",
@@ -45,14 +40,13 @@
             .url = "git+https://github.com/hendriknielaender/zBench?ref=zig-0.16.0#c24d128bfa80ec6a1b495b84ec827c6a0bec7865",
             .hash = "zbench-0.11.2-YTdc76Q_AQAxonIKZ2-H1PdcESJGwyuYylw6RkPiBqyx",
         },
-        // Fork pin agentsfleet/http.zig (tag v0.0.0-af.1) over upstream karlseguin/http.zig
-        // commit f39f1ed (master), carrying two patches: (1) non-blocking Worker.deinit
-        // stops the thread pool before freeing the websocket + arena (Linux shutdown UAF),
-        // and (2) a shared-injector ThreadPool replacing per-thread private queues (see the
-        // fork's CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin once they land upstream.
+        // Fork release agentsfleet/http.zig v0.0.0-af.2 from fork master, containing
+        // upstream karlseguin/http.zig through 52eb187 plus the shared-injector ThreadPool
+        // and matched httpz/websocket worker-mode wiring (see the fork's CHANGES.md).
+        // Drop this pin once both patches land upstream.
         .httpz = .{
-            .url = "git+https://github.com/agentsfleet/http.zig.git?ref=v0.0.0-af.1#ab27f0c0c2972dc9bce143b11c29aa0bfbf74bb8",
-            .hash = "httpz-0.0.0-PNVzrO0ACQACbDKnMiq2JfmmPCWykcBgUKQsF4TpdD6f",
+            .url = "git+https://github.com/agentsfleet/http.zig.git?ref=v0.0.0-af.2#82b888f431e8571f6869927af3f2bace0017e216",
+            .hash = "httpz-0.0.0-PNVzrEAUCQC4g6ChaPWV5_fZMNDcDwXJqEJmCUAcGFLN",
         },
         // Fork pin agentsfleet/zig-yaml (tag v0.3.0-dev-af.1) over upstream kubkon/zig-yaml
         // commit 84d747b (0.3.0-dev): the build.zig drops the upstream YAML Test Suite
@@ -65,8 +59,8 @@
             .hash = "zig_yaml-0.3.0-C1161n-rAgDc4O9pSMh-qdZcbCYCyoenayg3WpzM1Z8R",
         },
         .z3 = .{
-            .url = "https://codeberg.org/fellowtraveler/z3/archive/6170f82ac8dbc377167adc818b2ec45b0cd30b9c.tar.gz",
-            .hash = "z3-0.4.0-N25-cCCMAQAJwdfivwRrCFccaGnnVPk7TnWKn4S7U-5a",
+            .url = "https://codeberg.org/fellowtraveler/z3/archive/4553a640ec867ab0355a97e5513ce4ec69a90d49.tar.gz",
+            .hash = "z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS",
         },
         .cache = .{
             .url = "git+https://github.com/karlseguin/cache.zig#51b9d77bec8d9f3717349e9a007ff689959f3479",
