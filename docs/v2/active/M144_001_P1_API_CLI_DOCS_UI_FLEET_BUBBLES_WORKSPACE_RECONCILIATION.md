@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M144
 **Workstream:** 001
 **Date:** Jul 25, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the merged chat no longer matches its approved design, while workspace creation persists replay state the product does not need and reports duplicate names as server errors
 **Categories:** API, CLI, DOCS, UI
 **Batch:** B1 — standalone; one PR because both regressions came from the same merged follow-up and the owner requested one specification
 **Branch:** fix/fleet-bubbles-workspace-reconciliation — the worktree at `~/Projects/agentsfleet-fleet-bubbles-reconciliation` already exists on this branch; do not create a second one
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Test Baseline:** `unit=2958 integration=393` via `make _lint_zig_test_depth`
 **Depends on:** none — PR #556 is merged on `main`; this workstream corrects its final behaviour
 **Provenance:** LLM-drafted (GPT-5, Jul 25, 2026) from Indy's decisions, commit `68ce6a1e7`, the Jul 24 durable mockup, and current `origin/main` at `d3269188d`
 **Canonical architecture:** `docs/architecture/user_flow.md` §8.4
@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** fix: restore fleet bubbles and reconcile workspace creation
 - **Intent (one sentence):** Restore the approved fleet conversation grammar and make workspace-create uncertainty recover through the workspace list rather than request replay state.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — Restore the approved fleet conversation surface and make workspace-create uncertainty resolve through truthful conflict responses and the authoritative workspace list, with no replay state. `ASSUMPTIONS I'M MAKING:` `app-dev` is the only deployed database to reconcile; production never applied migration 35; PlanetScale credentials are available through 1Password; Indy's instruction authorizes removing the migration-35 objects from `app-dev`; and a larger refactor is chosen only if tracing proves it materially improves security, robustness, concurrency, or performance.
 
 ## Implementing agent — read these first
 
