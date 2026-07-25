@@ -131,17 +131,14 @@ test "the lease-poll cost families render with their snapshot values" {
     try std.testing.expectEqual(@as(u64, 2), snap.lease_polls_total);
     try std.testing.expectEqual(@as(u64, 7), snap.lease_poll_candidates_scanned_total);
     try std.testing.expectEqual(@as(u64, 3), snap.lease_poll_db_roundtrips_total);
-    try std.testing.expectEqual(@as(u64, 7), snap.lease_poll_candidates_max);
 
     const output = try render.renderPrometheus(alloc, false);
     defer alloc.free(output);
     for ([_][]const u8{
         mc.LEASE_POLLS_NAME,
         mc.CANDIDATES_SCANNED_NAME,
-        mc.CANDIDATES_MAX_NAME,
         mc.DB_ROUNDTRIPS_NAME,
         mc.READY_DEPTH_NAME,
-        mc.READY_SWEEP_RECOVERIES_NAME,
         mc.READY_WRITE_FAILURES_NAME,
     }) |name| {
         _ = familyBlock(output, name) catch |err| {
@@ -167,24 +164,13 @@ test "an idle poll still contributes a sample" {
     try std.testing.expectEqual(@as(u64, 0), snap.lease_poll_db_roundtrips_total);
 }
 
-test "the candidates high-water mark keeps the peak, not the latest" {
-    // A plain store would let a small poll following a large one erase the peak,
-    // which is the value an operator uses to see whether discovery is scanning
-    // too far.
-    mc.resetLeasePollMetricsForTest();
-    mc.observeLeasePoll(12, 1);
-    mc.observeLeasePoll(3, 1);
-    try std.testing.expectEqual(@as(u64, 12), mc.snapshot().lease_poll_candidates_max);
-}
-
 test "no lease-poll or readiness family carries a per-entity label" {
     const alloc = std.testing.allocator;
     const render = @import("metrics_render.zig");
     mc.resetLeasePollMetricsForTest();
     mc.observeLeasePoll(4, 2);
     mc.setReadyIndexDepth(9);
-    mc.incReadyWriteFailure(.mark);
-    mc.incReadySweepRecovery();
+    mc.incReadyWriteFailure();
 
     const output = try render.renderPrometheus(alloc, false);
     defer alloc.free(output);
@@ -192,43 +178,36 @@ test "no lease-poll or readiness family carries a per-entity label" {
     for ([_][]const u8{
         mc.LEASE_POLLS_NAME,
         mc.CANDIDATES_SCANNED_NAME,
-        mc.CANDIDATES_MAX_NAME,
         mc.DB_ROUNDTRIPS_NAME,
         mc.READY_DEPTH_NAME,
-        mc.READY_SWEEP_RECOVERIES_NAME,
+        mc.READY_WRITE_FAILURES_NAME,
     }) |name| {
         const block = try familyBlock(output, name);
-        // These six are wholly unlabelled, so any brace at all is a leak.
+        // Every one of these is wholly unlabelled, so a brace anywhere in its
+        // block is a cardinality leak — no exceptions to check around.
         try std.testing.expect(std.mem.indexOfScalar(u8, block, '{') == null);
-    }
-
-    // The failure family carries exactly one label, `reason`, and nothing else.
-    const failures = try familyBlock(output, mc.READY_WRITE_FAILURES_NAME);
-    try std.testing.expect(std.mem.indexOf(u8, failures, "reason=\"mark\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, failures, "reason=\"clear\"") != null);
-    for (FORBIDDEN_LABEL_KEYS) |key| {
-        var probe_buf: [64]u8 = undefined;
-        const probe = try std.fmt.bufPrint(&probe_buf, "{s}=\"", .{key});
-        try std.testing.expect(std.mem.indexOf(u8, failures, probe) == null);
+        for (FORBIDDEN_LABEL_KEYS) |key| {
+            var probe_buf: [64]u8 = undefined;
+            const probe = try std.fmt.bufPrint(&probe_buf, "{s}=\"", .{key});
+            try std.testing.expect(std.mem.indexOf(u8, block, probe) == null);
+        }
     }
 }
 
-test "readiness write failures render per reason and move independently" {
+test "readiness write failures render and move with observed state" {
     mc.resetLeasePollMetricsForTest();
-    mc.incReadyWriteFailure(.mark);
-    mc.incReadyWriteFailure(.mark);
-    mc.incReadyWriteFailure(.clear);
-    const snap = mc.snapshot();
-    try std.testing.expectEqual(@as(u64, 2), snap.fleet_ready_write_failures_mark_total);
-    try std.testing.expectEqual(@as(u64, 1), snap.fleet_ready_write_failures_clear_total);
+    mc.incReadyWriteFailure();
+    mc.incReadyWriteFailure();
+    mc.incReadyWriteFailure();
+    try std.testing.expectEqual(@as(u64, 3), mc.snapshot().fleet_ready_write_failures_total);
 
     const alloc = std.testing.allocator;
     const render = @import("metrics_render.zig");
     const output = try render.renderPrometheus(alloc, false);
     defer alloc.free(output);
-    const failures = try familyBlock(output, mc.READY_WRITE_FAILURES_NAME);
-    try std.testing.expect(std.mem.indexOf(u8, failures, "reason=\"mark\"} 2") != null);
-    try std.testing.expect(std.mem.indexOf(u8, failures, "reason=\"clear\"} 1") != null);
+    var line_buf: [160]u8 = undefined;
+    const line = try std.fmt.bufPrint(&line_buf, "{s} 3", .{mc.READY_WRITE_FAILURES_NAME});
+    try std.testing.expect(std.mem.indexOf(u8, output, line) != null);
 }
 
 test "readiness depth is a sample the caller overwrites, never an accumulator" {

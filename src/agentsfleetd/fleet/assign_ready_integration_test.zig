@@ -168,15 +168,14 @@ test "integration: peek returns each fleet with the token stored for it" {
     fleet_ready.mark(&h.queue, FLEET_READY_A);
     fleet_ready.mark(&h.queue, FLEET_READY_B);
 
-    var peeked = try fleet_ready.peek(&h.queue, ALLOC, 16);
-    defer peeked.deinit(ALLOC);
-    try std.testing.expect(peeked == .ready);
-    try std.testing.expectEqual(@as(usize, 2), peeked.ready.len);
+    const peeked = try fleet_ready.peek(&h.queue, ALLOC, 16);
+    defer fleet_ready.freePeeked(ALLOC, peeked);
+    try std.testing.expectEqual(@as(usize, 2), peeked.len);
 
     // Pairing matters: `clear` compares against the token peek reported, so a
     // decoder that mis-associated ids and tokens would make every clear a no-op
     // and let the index grow without bound.
-    for (peeked.ready) |entry| {
+    for (peeked) |entry| {
         const stored = (try storedToken(h, entry.fleet_id)) orelse return error.MarkMissing;
         defer ALLOC.free(stored);
         try std.testing.expectEqualStrings(stored, entry.token);
@@ -201,15 +200,14 @@ test "integration: peek never returns more entries than the bound it was given" 
         resp.deinit(h.queue.alloc);
     }
 
-    var peeked = try fleet_ready.peek(&h.queue, ALLOC, 5);
-    defer peeked.deinit(ALLOC);
-    try std.testing.expect(peeked == .ready);
-    try std.testing.expectEqual(@as(usize, 5), peeked.ready.len);
+    const peeked = try fleet_ready.peek(&h.queue, ALLOC, 5);
+    defer fleet_ready.freePeeked(ALLOC, peeked);
+    try std.testing.expectEqual(@as(usize, 5), peeked.len);
 
     try std.testing.expectEqual(@as(u64, 20), try fleet_ready.depth(&h.queue));
 }
 
-test "integration: an empty index peeks as the empty variant" {
+test "integration: an empty index peeks as no entries" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -218,9 +216,9 @@ test "integration: an empty index peeks as the empty variant" {
     const h = env.h;
     try clearIndex(h);
 
-    var peeked = try fleet_ready.peek(&h.queue, ALLOC, 64);
-    defer peeked.deinit(ALLOC);
-    try std.testing.expect(peeked == .empty);
+    const peeked = try fleet_ready.peek(&h.queue, ALLOC, 64);
+    defer fleet_ready.freePeeked(ALLOC, peeked);
+    try std.testing.expectEqual(@as(usize, 0), peeked.len);
     try std.testing.expectEqual(@as(u64, 0), try fleet_ready.depth(&h.queue));
 }
 

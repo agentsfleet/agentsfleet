@@ -125,18 +125,15 @@ fn selectInner(ctx: *Context, alloc: std.mem.Allocator, runner_id: []const u8, c
     // A failed peek is retryable, never fatal, and never falls back to an
     // unbounded scan: answer no-work with the existing backoff hint and let the
     // runner re-poll (RULE ECL).
-    var peeked = fleet_ready.peek(ctx.queue, alloc, constants.MAX_READY_CANDIDATES_PER_POLL) catch |err| {
+    const ready = fleet_ready.peek(ctx.queue, alloc, constants.MAX_READY_CANDIDATES_PER_POLL) catch |err| {
         log.warn("assign_ready_peek_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .err = @errorName(err) });
         return null;
     };
-    defer peeked.deinit(alloc);
+    defer fleet_ready.freePeeked(alloc, ready);
 
     // The zero-Postgres path. Returning here — above `pool.acquire()` — is what
     // makes idle cost scale with runner count alone instead of runners × fleets.
-    const ready = switch (peeked) {
-        .empty => return null,
-        .ready => |entries| entries,
-    };
+    if (ready.len == 0) return null;
 
     const conn = try ctx.pool.acquire();
     defer ctx.pool.release(conn);
