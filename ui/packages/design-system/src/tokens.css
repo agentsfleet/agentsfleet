@@ -159,6 +159,11 @@
   --easing-snap: ease-out;
   --motion-duration-snap: 50ms;
 
+  /* Stream entry — opacity-only arrival for operational transcript rows.
+   * Kept separate from snap so incoming evidence remains perceptible without
+   * inheriting the slower transient-surface fade. */
+  --motion-duration-stream: 80ms;
+
   /* Fade — perceptible opacity transition for transient surfaces (Toast,
    * inline status). 240ms hits the sweet spot where the eye registers
    * the change as smooth without holding the user up. `ease-out` matches

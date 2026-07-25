@@ -195,6 +195,21 @@ describe("RunnerList component", () => {
     );
   });
 
+  it("should refetch page one with the selected row count", async () => {
+    const user = userEvent.setup();
+    await renderList(listResponse([REGISTERED], 30));
+    const trigger = screen.getByRole("combobox", { name: "Rows per page" });
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("option", { name: "50" }));
+
+    await waitFor(() =>
+      expect(listRunnersActionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1, page_size: 50 }),
+      ),
+    );
+  });
+
   it("Previous re-fetches the prior page", async () => {
     const user = userEvent.setup();
     // Render already on page 2 so Previous is enabled and can't race a
@@ -284,7 +299,7 @@ describe("RunnerList component", () => {
     expect(trigger.querySelector("svg.lucide-plus")).toBeTruthy();
   });
 
-  it("never sends a page_size above the backend max (always the fixed default 25)", async () => {
+  it("never sends a page_size above the backend maximum", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED], 30));
     await user.click(screen.getByRole("button", { name: /^next page$/i }));

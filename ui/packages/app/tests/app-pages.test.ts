@@ -60,6 +60,7 @@ vi.mock("lucide-react", () => ({
   MoonIcon: () => React.createElement("svg", { "data-icon": "MoonIcon" }),
   ChevronDownIcon: () => React.createElement("svg", { "data-icon": "ChevronDownIcon" }),
   ChevronRightIcon: () => React.createElement("svg", { "data-icon": "ChevronRightIcon" }),
+  FolderIcon: () => React.createElement("svg", { "data-icon": "FolderIcon" }),
 }));
 
 // M118: `lib/workspace` is slimmed to a single survivor — the active workspace

@@ -2,9 +2,22 @@
   post:
     operationId: create_workspace
     summary: Create a workspace
-    description: Creates a workspace in the caller's tenant. An empty body uses a server-assigned name.
+    description: >
+      Creates a workspace in the caller's tenant. An empty body uses a
+      server-assigned name. Repeating the same `Idempotency-Key` and request
+      body returns the original result without creating another workspace.
     tags:
-    - Workspaces
+      - Workspaces
+    parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        description: >
+          Client-generated UUID version 7. Scoped to the caller's tenant and
+          retained with the created workspace.
+        schema:
+          type: string
+          format: uuid
     requestBody:
       required: false
       content:
@@ -14,19 +27,20 @@
             properties:
               name:
                 type: string
-                description: Human-readable workspace name. Must be unique within the tenant. If omitted, the
+                description:
+                  Human-readable workspace name. Must be unique within the tenant. If omitted, the
                   server assigns a Heroku-style name (e.g. `jolly-harbor-482`).
     responses:
-      '201':
+      "201":
         description: Workspace created
         content:
           application/json:
             schema:
               type: object
               required:
-              - workspace_id
-              - name
-              - request_id
+                - workspace_id
+                - name
+                - request_id
               properties:
                 workspace_id:
                   type: string
@@ -34,7 +48,8 @@
                   description: Unique workspace identifier
                 name:
                   type: string
-                  description: Human-readable workspace name. Always present — caller-supplied
+                  description:
+                    Human-readable workspace name. Always present — caller-supplied
                     or server-generated Heroku-style.
                 request_id:
                   type: string
@@ -53,57 +68,57 @@
       glob, `since=` (duration or RFC 3339), and a `cursor` mutually
       exclusive with `since`.
     tags:
-    - Workspaces
+      - Workspaces
     parameters:
-    - name: workspace_id
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-    - name: fleet_id
-      in: query
-      required: false
-      description: Drill down to one fleet within the workspace.
-      schema:
-        type: string
-        format: uuid
-    - name: cursor
-      in: query
-      required: false
-      description: Opaque cursor from a prior response. Mutually exclusive with `since`.
-      schema:
-        type: string
-    - name: actor
-      in: query
-      required: false
-      description: Glob filter against actor.
-      schema:
-        type: string
-    - name: since
-      in: query
-      required: false
-      description: Lower bound on `created_at`. Go-style duration or RFC 3339 timestamp.
-      schema:
-        type: string
-    - name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 200
-        default: 50
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: fleet_id
+        in: query
+        required: false
+        description: Drill down to one fleet within the workspace.
+        schema:
+          type: string
+          format: uuid
+      - name: cursor
+        in: query
+        required: false
+        description: Opaque cursor from a prior response. Mutually exclusive with `since`.
+        schema:
+          type: string
+      - name: actor
+        in: query
+        required: false
+        description: Glob filter against actor.
+        schema:
+          type: string
+      - name: since
+        in: query
+        required: false
+        description: Lower bound on `created_at`. Go-style duration or RFC 3339 timestamp.
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
     responses:
-      '200':
+      "200":
         description: OK
         content:
           application/json:
             schema:
               type: object
               required:
-              - items
-              - next_cursor
+                - items
+                - next_cursor
               properties:
                 items:
                   type: array
@@ -143,16 +158,16 @@
       reconnect opens, recover the gap through
       `GET /v1/workspaces/{workspace_id}/events`.
     tags:
-    - Workspaces
+      - Workspaces
     parameters:
-    - name: workspace_id
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     responses:
-      '200':
+      "200":
         description: SSE stream opened.
         content:
           text/event-stream:
@@ -164,7 +179,7 @@
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
     security:
-    - BearerAuth: []
+      - BearerAuth: []
 /v1/workspaces/{workspace_id}/preferences:
   get:
     operationId: get_workspace_preferences
@@ -177,24 +192,24 @@
       Preferences are per user AND per workspace: a second workspace starts
       its onboarding checklist fresh.
     tags:
-    - Workspaces
+      - Workspaces
     parameters:
-    - name: workspace_id
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-      description: Workspace identifier (Universally Unique Identifier version 7)
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Workspace identifier (Universally Unique Identifier version 7)
     responses:
-      '200':
+      "200":
         description: The caller's preference bag for this workspace
         content:
           application/json:
             schema:
               type: object
               required:
-              - prefs
+                - prefs
               properties:
                 prefs:
                   type: object
@@ -218,25 +233,25 @@
       row is written. Concurrent writes to one key are last-write-wins by
       design: a preference is a single toggle, so a lost write costs one click.
     tags:
-    - Workspaces
+      - Workspaces
     parameters:
-    - name: workspace_id
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-      description: Workspace identifier (Universally Unique Identifier version 7)
-    - name: pref_key
-      in: path
-      required: true
-      schema:
-        type: string
-        enum:
-        - getting_started_dismissed
-        - getting_started_collapsed
-        - getting_started_cli_ticked
-      description: The preference to write. Must be a key the dashboard declares.
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Workspace identifier (Universally Unique Identifier version 7)
+      - name: pref_key
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+            - getting_started_dismissed
+            - getting_started_collapsed
+            - getting_started_cli_ticked
+        description: The preference to write. Must be a key the dashboard declares.
     requestBody:
       required: true
       description: The preference value. Any JSON value up to 1 KiB.
@@ -244,14 +259,14 @@
         application/json:
           schema: {}
     responses:
-      '200':
+      "200":
         description: The caller's preference bag, including the written key
         content:
           application/json:
             schema:
               type: object
               required:
-              - prefs
+                - prefs
               properties:
                 prefs:
                   type: object
@@ -271,31 +286,31 @@
       preferences: dismissed, collapsed, and CLI ticked. This replaces six
       separate requests with one.
     tags:
-    - Workspaces
+      - Workspaces
     parameters:
-    - name: workspace_id
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-      description: Workspace identifier (Universally Unique Identifier version 7)
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Workspace identifier (Universally Unique Identifier version 7)
     responses:
-      '200':
+      "200":
         description: The onboarding checklist state for the calling user
         content:
           application/json:
             schema:
               type: object
               required:
-              - model_configured
-              - has_fleet
-              - has_secret
-              - has_processed_event
-              - has_steer_event
-              - cli_ticked
-              - dismissed
-              - collapsed
+                - model_configured
+                - has_fleet
+                - has_secret
+                - has_processed_event
+                - has_steer_event
+                - cli_ticked
+                - dismissed
+                - collapsed
               properties:
                 model_configured: { type: boolean, x-stability: stable }
                 has_fleet: { type: boolean, x-stability: stable }

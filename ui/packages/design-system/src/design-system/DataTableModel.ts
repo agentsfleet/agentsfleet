@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -73,16 +73,29 @@ export function useDataTableModel<T>({
   pagination,
 }: ModelProps<T>) {
   const clientPagination = isClientPagination(pagination);
-  const pageSize = clientPagination ? pagination?.pageSize ?? DEFAULT_PAGE_SIZE : rows.length || DEFAULT_PAGE_SIZE;
+  const initialPageSize = clientPagination
+    ? pagination?.pageSize ?? DEFAULT_PAGE_SIZE
+    : rows.length || DEFAULT_PAGE_SIZE;
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [page, setPage] = useState<PaginationState>({ pageIndex: 0, pageSize });
+  const [page, setPage] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: initialPageSize,
+  });
+  useEffect(() => {
+    if (!clientPagination) return;
+    setPage((current) => (
+      current.pageSize === initialPageSize
+        ? current
+        : { pageIndex: 0, pageSize: initialPageSize }
+    ));
+  }, [clientPagination, initialPageSize]);
   const externallySorted = onSortChange !== undefined;
   const tableColumns = useMemo(() => buildColumns(columns, externallySorted), [columns, externallySorted]);
   const columnsByKey = useMemo(() => new Map(columns.map((column) => [column.key, column])), [columns]);
   const controlledSorting: SortingState = sortKey
     ? [{ id: sortKey, desc: sortDirection === "descending" }]
     : [];
-  const lastClientPage = Math.max(0, Math.ceil(rows.length / pageSize) - 1);
+  const lastClientPage = Math.max(0, Math.ceil(rows.length / page.pageSize) - 1);
   const pageIndex = clientPagination ? Math.min(page.pageIndex, lastClientPage) : page.pageIndex;
 
   // Keep internal state canonical when rows shrink. React immediately retries
@@ -108,7 +121,7 @@ export function useDataTableModel<T>({
     onPaginationChange: setPage,
     state: {
       sorting: externallySorted ? controlledSorting : sorting,
-      pagination: { pageIndex, pageSize },
+      pagination: { pageIndex, pageSize: page.pageSize },
     },
   });
   return { columnsByKey, table };

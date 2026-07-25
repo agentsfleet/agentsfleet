@@ -226,6 +226,21 @@ describe("ApiKeyList component", () => {
     );
   });
 
+  it("should refetch page one with the selected row count", async () => {
+    await renderList(listResponse([ACTIVE], 30));
+    const trigger = screen.getByRole("combobox", { name: "Rows per page" });
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: "50" }));
+
+    await waitFor(() =>
+      expect(listApiKeysActionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1, page_size: 50 }),
+      ),
+    );
+  });
+
   it("Previous re-fetches the prior page", async () => {
     const user = userEvent.setup();
     // Render already on page 2 (Previous enabled, no in-flight transition) so
@@ -342,7 +357,7 @@ describe("ApiKeyList component", () => {
     );
   });
 
-  it("never sends a page_size above the backend max (always the fixed default 25)", async () => {
+  it("never sends a page_size above the backend maximum", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE], 30));
     await user.click(screen.getByRole("button", { name: /^next page$/i }));

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { ChevronDownIcon, FolderIcon, PlusIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -10,34 +10,24 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  Toast,
-  useResettableTimeout,
-  type ToastSeverity,
 } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import {
+  DEFAULT_WORKSPACE_SUBPATH,
   workspaceIdFromPath,
   workspacePath,
   workspaceSubpath,
   workspaceSwitchSubpath,
 } from "@/lib/workspace-routes";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
+import { useWorkspaceCreation } from "@/components/layout/WorkspaceCreationProvider";
 
 type Props = {
   workspaces: TenantWorkspace[];
   activeId: string | null;
 };
-
-const WORKSPACE_NOTICE_MS = 2800;
-
-type Notice = {
-  message: string;
-  severity: ToastSeverity;
-};
-
-type WorkspaceOption = Pick<TenantWorkspace, "id" | "name">;
 
 export default function WorkspaceSwitcher({
   workspaces,
@@ -47,12 +37,19 @@ export default function WorkspaceSwitcher({
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
-  const [createdWorkspaces, setCreatedWorkspaces] = useState<WorkspaceOption[]>([]);
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const noticeTimer = useResettableTimeout();
+  const switcherTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const creation = useWorkspaceCreation({
+    onSuccess: (workspace) => {
+      setCreateOpen(false);
+      startTransition(() => {
+        router.push(workspacePath(workspace.workspace_id, DEFAULT_WORKSPACE_SUBPATH));
+      });
+    },
+  });
   const visibleWorkspaces = [
     ...workspaces,
-    ...createdWorkspaces.filter(
+    ...creation.createdWorkspaces.filter(
       (created) => !workspaces.some((workspace) => workspace.id === created.id),
     ),
   ];
@@ -67,9 +64,19 @@ export default function WorkspaceSwitcher({
     return workspace?.name ?? id;
   }
 
-  function showNotice(severity: ToastSeverity, message: string) {
-    setNotice({ severity, message });
-    noticeTimer.start(() => setNotice(null), WORKSPACE_NOTICE_MS);
+  function setCreateDialogOpen(nextOpen: boolean) {
+    if (nextOpen) {
+      creation.reset();
+      setCreateOpen(true);
+      return;
+    }
+
+    setCreateOpen(false);
+    creation.dismiss();
+  }
+
+  function restoreCreateFocus() {
+    switcherTriggerRef.current?.focus();
   }
 
   // Switching a workspace is a navigation: push `/w/{id}/{section}` so the user
@@ -87,7 +94,7 @@ export default function WorkspaceSwitcher({
     startTransition(() => {
       router.push(workspacePath(id, workspaceSwitchSubpath(workspaceSubpath(pathname))));
     });
-    showNotice("success", `Workspace changed to ${label}.`);
+    creation.showNotice("success", `Workspace changed to ${label}.`);
   }
 
   return (
@@ -95,11 +102,18 @@ export default function WorkspaceSwitcher({
       <div className="inline-flex flex-wrap items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger
+            ref={switcherTriggerRef}
             className="inline-flex items-center gap-2 rounded-md border border-border-strong bg-card px-lg py-md font-mono text-eyebrow text-foreground transition-colors duration-snap ease-snap enabled:hover:bg-secondary disabled:cursor-wait disabled:opacity-60"
             aria-label="Select workspace"
             data-testid="workspace-switcher"
             disabled={pending}
           >
+            <FolderIcon
+              size={14}
+              strokeWidth={1.75}
+              aria-hidden="true"
+              className="text-muted-foreground"
+            />
             <span className="max-w-trim overflow-hidden text-ellipsis whitespace-nowrap">
               {activeLabel}
             </span>
@@ -114,12 +128,23 @@ export default function WorkspaceSwitcher({
                 onSelect={() => pick(workspace.id)}
                 data-active={workspace.id === activeId ? "true" : undefined}
               >
+                <FolderIcon
+                  size={14}
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                  className="text-muted-foreground"
+                />
                 <span className="flex-1">{workspace.name ?? workspace.id}</span>
                 {workspace.id === activeId ? <span aria-hidden="true">✓</span> : null}
               </DropdownMenuItem>
             ))}
             {visibleWorkspaces.length > 0 ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem onSelect={() => setCreateOpen(true)} data-testid="workspace-new">
+            <DropdownMenuItem
+              onSelect={() => setCreateDialogOpen(true)}
+              disabled={creation.locked}
+              aria-disabled={creation.locked || undefined}
+              data-testid="workspace-new"
+            >
               <PlusIcon size={14} aria-hidden="true" />
               <span className="flex-1">Create workspace</span>
             </DropdownMenuItem>
@@ -128,24 +153,12 @@ export default function WorkspaceSwitcher({
       </div>
       <CreateWorkspaceDialogDynamic
         open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={(workspace) => {
-          setCreatedWorkspaces((current) => [
-            ...current,
-            { id: workspace.workspace_id, name: workspace.name },
-          ]);
-          showNotice("success", `Workspace created: ${workspace.name}.`);
-        }}
+        pending={creation.pending}
+        error={creation.error}
+        onOpenChange={setCreateDialogOpen}
+        onSubmit={creation.create}
+        restoreFocus={restoreCreateFocus}
       />
-      <div className="pointer-events-none fixed right-4 top-16 z-50 max-w-sm">
-        <Toast
-          visible={notice !== null}
-          severity={notice?.severity ?? "info"}
-          data-testid="workspace-toast"
-        >
-          {notice?.message ?? ""}
-        </Toast>
-      </div>
     </>
   );
 }

@@ -79,8 +79,8 @@ const LUCIDE_ICONS = [
   "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
   "BotIcon", "PlugIcon", "CheckCircle2Icon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
   "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
-  "BrainIcon",
-  "MessageSquareIcon", "Code2Icon",
+  "BrainIcon", "LayoutDashboardIcon",
+  "MessageSquareIcon", "Code2Icon", "FolderIcon",
   "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUp", "ArrowDown", "ArrowUpDown",
 ] as const;
 
@@ -203,8 +203,8 @@ export function designSystemDropdown() {
       React.createElement("div", { "data-dropdown-content": "1", ...rest }, children),
     DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => React.createElement("div", { "data-dropdown-label": "1" }, children),
     DropdownMenuSeparator: () => React.createElement("hr", { "data-dropdown-separator": "1" }),
-    DropdownMenuItem: ({ children, onSelect, ...rest }: { children: React.ReactNode; onSelect?: () => void } & React.HTMLAttributes<HTMLDivElement>) =>
-      React.createElement("div", { role: "menuitem", onClick: () => onSelect?.(), ...rest }, children),
+    DropdownMenuItem: ({ children, disabled, onSelect, ...rest }: { children: React.ReactNode; disabled?: boolean; onSelect?: () => void } & React.HTMLAttributes<HTMLDivElement>) =>
+      React.createElement("div", { role: "menuitem", "data-disabled": disabled || undefined, onClick: disabled ? undefined : () => onSelect?.(), ...rest }, children),
   };
 }
 

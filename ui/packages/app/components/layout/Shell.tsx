@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
@@ -16,6 +16,7 @@ import { MobileNavigation, SidebarNavigation } from "./SidebarNavigation";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import ThemeToggle from "./ThemeToggle";
 import ClientOnlyAuthUserButton from "./ClientOnlyAuthUserButton";
+import { WorkspaceCreationProvider } from "./WorkspaceCreationProvider";
 
 const SIDEBAR_NAV_ID = "app-sidebar-nav";
 
@@ -33,6 +34,10 @@ export default function Shell({
   const pathname = usePathname();
   const activeWorkspaceId = workspaceIdFromPath(pathname);
   const linkWorkspaceId = activeWorkspaceId ?? workspaces[0]?.id ?? null;
+  const knownWorkspaceIds = useMemo(
+    () => workspaces.map((workspace) => workspace.id),
+    [workspaces],
+  );
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -43,7 +48,8 @@ export default function Shell({
   }, [activeWorkspaceId, workspaces.length]);
 
   return (
-    <div
+    <WorkspaceCreationProvider knownWorkspaceIds={knownWorkspaceIds}>
+      <div
       // A fixed application frame, not a growing document: the header and the
       // navigation rail stay put and the content region below owns the scroll.
       // A page that wants the viewport — the fleet console's chat — then needs
@@ -109,6 +115,7 @@ export default function Shell({
             scrolls inside itself instead. */}
         <div className="flex min-h-full w-full flex-col has-[#fleet-chat-transcript]:h-full has-[#fleet-chat-transcript]:min-h-0 has-[[data-page-layout]]:h-full has-[[data-page-layout]]:min-h-0">{children}</div>
       </main>
-    </div>
+      </div>
+    </WorkspaceCreationProvider>
   );
 }

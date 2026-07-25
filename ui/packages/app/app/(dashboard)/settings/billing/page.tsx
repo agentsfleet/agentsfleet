@@ -11,12 +11,17 @@ import {
 } from "@agentsfleet/design-system";
 import { ReceiptIcon, CreditCardIcon, WalletIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
-import { getTenantBilling, listTenantBillingCharges } from "@/lib/api/tenant_billing";
 import {
-  BILLING_PAGE_SIZE,
+  getTenantBilling,
+  listTenantBillingCharges,
+} from "@/lib/api/tenant_billing";
+import {
+  CURSOR_PAGE_SIZE_PARAM,
   CURSOR_TRAIL_PARAM,
+  PAGE_SIZE_PARAM,
   cursorForTrail,
   cursorTrailFrom,
+  pageSizeFrom,
 } from "@/lib/pagination/cursor-trail";
 import BillingBalanceCard from "./components/BillingBalanceCard";
 import BillingUsageTab from "./components/BillingUsageTab";
@@ -32,7 +37,14 @@ export default async function BillingSettingsPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
   const query = searchParams ? await searchParams : {};
-  const cursor = cursorForTrail(cursorTrailFrom(query[CURSOR_TRAIL_PARAM]));
+  const pageSize = pageSizeFrom(query[PAGE_SIZE_PARAM]);
+  const cursor = cursorForTrail(
+    cursorTrailFrom(
+      query[CURSOR_TRAIL_PARAM],
+      pageSize,
+      query[CURSOR_PAGE_SIZE_PARAM],
+    ),
+  );
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
@@ -47,7 +59,7 @@ export default async function BillingSettingsPage({
     // The ledger page comes from the URL, so a reload or a shared link opens
     // the page the operator meant rather than resetting to the newest.
     listTenantBillingCharges(token, {
-      limit: BILLING_PAGE_SIZE,
+      limit: pageSize,
       ...(cursor ? { cursor } : {}),
     }).catch(() => ({
       items: [],
@@ -89,7 +101,11 @@ export default async function BillingSettingsPage({
         </TabsList>
 
         <TabsContent value="usage" className="mt-4 space-y-6">
-          <BillingUsageTab initialCharges={charges} initialCursor={chargesResp.next_cursor} />
+          <BillingUsageTab
+            initialCharges={charges}
+            initialCursor={chargesResp.next_cursor}
+            pageSize={pageSize}
+          />
         </TabsContent>
 
         <TabsContent value="invoices" className="mt-4">

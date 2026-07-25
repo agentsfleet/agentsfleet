@@ -387,7 +387,9 @@ describe("DataTable", () => {
     expect(screen.getByText("Row 26")).toBeInTheDocument();
 
     rerender(<DataTable columns={COLUMNS} rows={rows.slice(0, 2)} rowKey={(row) => row.id} />);
-    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+    expect(screen.getByText("Page 1 of 1 · 2 items")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
     expect(screen.getByText("Row 1")).toBeInTheDocument();
 
     rerender(<DataTable columns={COLUMNS} rows={rows} rowKey={(row) => row.id} />);
@@ -426,12 +428,15 @@ describe("DataTable", () => {
     expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
   });
 
-  it("omits pagination chrome for one local page", () => {
+  it("should keep one-page table controls visible and disabled", () => {
     render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />);
-    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Pagination" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Rows per page" })).toHaveTextContent("25");
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
-  it("omits pagination chrome at the exact default page-size boundary", () => {
+  it("should keep table controls visible at the exact default page-size boundary", () => {
     const rows = Array.from({ length: 25 }, (_, index) => ({
       id: String(index),
       name: `Row ${index}`,
@@ -439,7 +444,8 @@ describe("DataTable", () => {
     }));
     render(<DataTable columns={COLUMNS} rows={rows} rowKey={(row) => row.id} />);
 
-    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+    expect(screen.getByText("Page 1 of 1 · 25 items")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
   it("honours a custom client page size", () => {
@@ -456,6 +462,47 @@ describe("DataTable", () => {
     expect(screen.queryByText("Bravo")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(screen.getByText("Bravo")).toBeInTheDocument();
+  });
+
+  it("should apply a changed client page size prop and reset to page one", () => {
+    const props = {
+      columns: COLUMNS,
+      rows: ROWS,
+      rowKey: (row: Row) => row.id,
+    };
+    const { rerender } = render(
+      <DataTable {...props} pagination={{ kind: "client", pageSize: 1 }} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("Bravo")).toBeInTheDocument();
+
+    rerender(
+      <DataTable {...props} pagination={{ kind: "client", pageSize: 2 }} />,
+    );
+
+    expect(screen.getByText("Page 1 of 1 · 2 items")).toBeInTheDocument();
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Bravo")).toBeInTheDocument();
+  });
+
+  it("should reset to page one when client page size changes", () => {
+    const rows = Array.from({ length: 26 }, (_, index) => ({
+      id: String(index + 1),
+      name: `Row ${index + 1}`,
+      spend: index,
+    }));
+    render(<DataTable columns={COLUMNS} rows={rows} rowKey={(row) => row.id} />);
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("Row 26")).toBeInTheDocument();
+
+    const trigger = screen.getByRole("combobox", { name: "Rows per page" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: "50" }));
+
+    expect(screen.getByText("Page 1 of 1 · 26 items")).toBeInTheDocument();
+    expect(screen.getByText("Row 1")).toBeInTheDocument();
+    expect(screen.getByText("Row 26")).toBeInTheDocument();
   });
 
   it("renders every row when pagination is explicitly disabled", () => {
@@ -495,7 +542,22 @@ describe("DataTable", () => {
     expect(viewport.scrollTop).toBe(0);
   });
 
-  it("omits server pagination when the first page contains the full result", () => {
+  it("resets the bounded viewport when the server page size changes", () => {
+    const pagination = { kind: "page" as const, page: 1, total: 6, onPageChange: vi.fn() };
+    const { rerender } = render(
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} pagination={{ ...pagination, pageSize: 2 }} />,
+    );
+    const viewport = screen.getByRole("region", { name: "Scrollable table" });
+    viewport.scrollTop = 120;
+
+    rerender(
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} pagination={{ ...pagination, pageSize: 25 }} />,
+    );
+
+    expect(viewport.scrollTop).toBe(0);
+  });
+
+  it("should keep server table controls visible when the first page contains the full result", () => {
     render(
       <DataTable
         columns={COLUMNS}
@@ -505,7 +567,48 @@ describe("DataTable", () => {
       />,
     );
 
+    expect(screen.getByText("Page 1 of 1 · 2 items")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+  });
+
+  it("should hide empty first-page cursor controls when the caller reports no next page", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[]}
+        rowKey={(row) => row.id}
+        pagination={{
+          kind: "page",
+          page: 1,
+          pageSize: 25,
+          hasNext: false,
+          onPageChange: vi.fn(),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Nothing to show yet")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
+  it("should keep empty first-page controls when the total proves another page exists", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[]}
+        rowKey={(row) => row.id}
+        pagination={{
+          kind: "page",
+          page: 1,
+          pageSize: 25,
+          total: 26,
+          onPageChange: vi.fn(),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Nothing to show yet")).toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 2 · 26 items")).toBeInTheDocument();
   });
 
   it("disables sorting while an external page is loading", () => {
@@ -567,8 +670,8 @@ describe("DataTable", () => {
         pagination={{ kind: "page", page: 1, pageSize: 25, hasNext: false, onPageChange }}
       />,
     );
-    // Page 1 of a feed with nothing after it needs no pager at all.
-    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Pagination" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
   it("keeps the pager reachable when an intermediate page comes back empty", () => {

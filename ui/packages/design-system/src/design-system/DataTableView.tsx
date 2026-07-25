@@ -5,12 +5,15 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { cn } from "../utils";
 import { Button } from "./Button";
 import {
-  DEFAULT_PAGE_SIZE,
   hasExternalPaginationNavigation,
   isClientPagination,
 } from "./DataTableModel";
 import type { DataTableColumn, DataTablePagination } from "./DataTable.types";
-import { PAGINATION_KIND, Pagination } from "./Pagination";
+import {
+  DEFAULT_PAGE_SIZE_OPTIONS,
+  PAGINATION_KIND,
+  Pagination,
+} from "./Pagination";
 
 type ColumnMap<T> = Map<string, DataTableColumn<T>>;
 
@@ -90,7 +93,7 @@ function DataTableBody<T>({
   onRowClick?: (row: T) => void;
 }) {
   const state = table.getState();
-  const renderKey = `${state.sorting.map((sort) => `${sort.id}:${sort.desc}`).join("|")}:${state.pagination.pageIndex}`;
+  const renderKey = `${state.sorting.map((sort) => `${sort.id}:${sort.desc}`).join("|")}:${state.pagination.pageIndex}:${state.pagination.pageSize}`;
   return (
     <tbody key={renderKey} className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-snap">
       {table.getRowModel().rows.map((row) => (
@@ -141,8 +144,8 @@ export function DataTableFooter<T>({
 }) {
   if (pagination === false) return null;
   if (isClientPagination(pagination)) {
-    const pageSize = pagination?.pageSize ?? DEFAULT_PAGE_SIZE;
-    if (totalRows <= pageSize) return null;
+    if (totalRows === 0) return null;
+    const pageSize = table.getState().pagination.pageSize;
     return (
       <Pagination
         kind={PAGINATION_KIND.page}
@@ -150,11 +153,16 @@ export function DataTableFooter<T>({
         pageSize={pageSize}
         total={totalRows}
         onPageChange={(page) => table.setPageIndex(page - 1)}
+        pageSizeOptions={pagination?.pageSizeOptions ?? DEFAULT_PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(nextPageSize) => {
+          table.setPageSize(nextPageSize);
+          table.setPageIndex(0);
+        }}
         className="border-t border-border px-3"
       />
     );
   }
-  if (!hasExternalPaginationNavigation(pagination)) return null;
+  if (totalRows === 0 && !hasExternalPaginationNavigation(pagination)) return null;
   return (
     <Pagination
       {...pagination}
@@ -197,6 +205,11 @@ export function DataTableView<T>({
   const sortingSignature = table.getState().sorting
     .map((sort) => `${sort.id}:${sort.desc}`)
     .join("|");
+  const pageSize = isClientPagination(pagination)
+    ? table.getState().pagination.pageSize
+    : pagination === false
+      ? null
+      : pagination.pageSize;
   const handleSortChange = onSortChange
     ? (key: string) => {
         if (isClientPagination(pagination)) table.setPageIndex(0);
@@ -209,7 +222,7 @@ export function DataTableView<T>({
     if (!viewport) return;
     if (typeof viewport.scrollTo === "function") viewport.scrollTo({ top: 0 });
     else viewport.scrollTop = 0;
-  }, [numericPage, sortingSignature]);
+  }, [numericPage, pageSize, sortingSignature]);
 
   return (
     <div

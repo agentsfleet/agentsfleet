@@ -10,6 +10,7 @@ import {
   type ApiKeyRow,
   type ApiKeySort,
 } from "@/lib/api/api_keys";
+import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { presentErrorString } from "@/lib/errors";
 import { listApiKeysAction, revokeApiKeyAction, deleteApiKeyAction } from "../actions";
 import RevokeConfirm, { type ConfirmTarget, type ConfirmTargetActive } from "./RevokeConfirm";
@@ -35,6 +36,7 @@ export default function ApiKeyList({
   const [items, setItems] = useState<ApiKeyRow[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
   const [page, setPage] = useState(initial.page);
+  const [pageSize, setPageSize] = useState(initial.page_size);
   const [sort, setSort] = useState<ApiKeySort>(DEFAULT_SORT);
   const [target, setTarget] = useState<ConfirmTarget>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export default function ApiKeyList({
     setItems(data.items);
     setTotal(data.total);
     setPage(data.page);
+    setPageSize(data.page_size);
     setSort(nextSort);
   }
 
@@ -56,14 +59,24 @@ export default function ApiKeyList({
   // invalid sort/page (UZ-REQ-001) resets to the defaults rather than blanking.
   // `retried` guards the reset: if the backend rejects even the defaults
   // (response drift), self-calling again would loop forever — reset at most once.
-  function loadPage(next: { page: number; sort?: ApiKeySort }, retried = false) {
+  function loadPage(
+    next: { page: number; pageSize?: number; sort?: ApiKeySort },
+    retried = false,
+  ) {
     const nextPage = next.page;
+    const nextPageSize = next.pageSize ?? pageSize;
     const nextSort = next.sort ?? sort;
     startTransition(async () => {
-      const r = await listApiKeysAction({ page: nextPage, page_size: DEFAULT_PAGE_SIZE, sort: nextSort });
+      const r = await listApiKeysAction({
+        page: nextPage,
+        page_size: nextPageSize,
+        sort: nextSort,
+      });
       if (!r.ok) {
         setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "load API keys" }));
-        if (r.errorCode === "UZ-REQ-001" && !retried) loadPage({ page: 1, sort: DEFAULT_SORT }, true);
+        if (r.errorCode === "UZ-REQ-001" && !retried) {
+          loadPage({ page: 1, pageSize: DEFAULT_PAGE_SIZE, sort: DEFAULT_SORT }, true);
+        }
         return;
       }
       setError(null);
@@ -75,7 +88,7 @@ export default function ApiKeyList({
   // clobbering a mutation error the user still needs to read.
   function refresh() {
     startTransition(async () => {
-      const r = await listApiKeysAction({ page, page_size: DEFAULT_PAGE_SIZE, sort });
+      const r = await listApiKeysAction({ page, page_size: pageSize, sort });
       if (r.ok) apply(r.data, sort);
     });
   }
@@ -117,10 +130,12 @@ export default function ApiKeyList({
         pagination={{
           kind: PAGINATION_KIND.page,
           page,
-          pageSize: DEFAULT_PAGE_SIZE,
+          pageSize,
           total,
           totalLabel: "keys",
           onPageChange: (nextPage) => loadPage({ page: nextPage }),
+          pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
+          onPageSizeChange: (nextPageSize) => loadPage({ page: 1, pageSize: nextPageSize }),
           isLoading: pending,
         }}
         empty={

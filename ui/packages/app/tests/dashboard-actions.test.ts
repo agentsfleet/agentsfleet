@@ -18,7 +18,9 @@ const { withTokenMock, createTenantWorkspaceMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
-vi.mock("@/lib/api/workspaces", () => ({ createTenantWorkspace: createTenantWorkspaceMock }));
+vi.mock("@/lib/api/workspaces", () => ({
+  createTenantWorkspace: createTenantWorkspaceMock,
+}));
 
 import { createWorkspaceAction } from "@/app/(dashboard)/actions";
 
@@ -26,23 +28,32 @@ beforeEach(() => {
   vi.clearAllMocks();
   // withToken forwards a resolved token to its callback for the happy path,
   // returning the {ok:true,data} envelope the action threads back to callers.
-  withTokenMock.mockImplementation(async (fn: (t: string) => Promise<unknown>) => ({
-    ok: true,
-    data: await fn("tok"),
-  }));
+  withTokenMock.mockImplementation(
+    async (fn: (t: string) => Promise<unknown>) => ({
+      ok: true,
+      data: await fn("tok"),
+    }),
+  );
 });
 afterEach(() => vi.resetAllMocks());
 
 describe("createWorkspaceAction — forwards create through withToken", () => {
   it("creates the workspace under the resolved token and returns the envelope", async () => {
-    const data = { workspace_id: "ws9", name: "scrappy-otter", request_id: "req-1" };
+    const data = {
+      workspace_id: "ws9",
+      name: "scrappy-otter",
+      request_id: "req-1",
+    };
     createTenantWorkspaceMock.mockResolvedValueOnce(data);
 
-    const body = { name: "scrappy-otter" };
-    const r = await createWorkspaceAction(body);
+    const input = { idempotencyKey: "key-1", name: "scrappy-otter" };
+    const r = await createWorkspaceAction(input);
 
-    // token threaded first, body second — the order the source uses.
-    expect(createTenantWorkspaceMock).toHaveBeenCalledWith("tok", body);
+    expect(createTenantWorkspaceMock).toHaveBeenCalledWith(
+      "tok",
+      { name: "scrappy-otter" },
+      "key-1",
+    );
     expect(r).toEqual({ ok: true, data });
   });
 
@@ -57,7 +68,10 @@ describe("createWorkspaceAction — forwards create through withToken", () => {
     // client never runs, so the action just threads the failure straight back.
     withTokenMock.mockResolvedValueOnce(failure);
 
-    const r = await createWorkspaceAction({ name: "doomed" });
+    const r = await createWorkspaceAction({
+      idempotencyKey: "key-2",
+      name: "doomed",
+    });
 
     expect(r).toEqual(failure);
     expect(createTenantWorkspaceMock).not.toHaveBeenCalled();

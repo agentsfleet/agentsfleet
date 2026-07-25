@@ -63,11 +63,51 @@ describe("Pagination (page variant)", () => {
   });
 
   it("shows visible progress while a numeric page is loading", () => {
-    render(<Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={() => {}} isLoading />);
+    render(
+      <Pagination
+        kind="page"
+        page={2}
+        pageSize={20}
+        total={87}
+        onPageChange={() => {}}
+        onPageSizeChange={vi.fn()}
+        isLoading
+      />,
+    );
     expect(screen.getByText("Page 2 of 5 · 87 items")).toBeInTheDocument();
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Rows per page" })).toBeDisabled();
+  });
+
+  it("should emit a supported page size from the shared selector", () => {
+    const onPageSizeChange = vi.fn();
+    render(
+      <Pagination
+        kind="page"
+        page={1}
+        pageSize={25}
+        total={87}
+        onPageChange={() => {}}
+        onPageSizeChange={onPageSizeChange}
+      />,
+    );
+
+    const trigger = screen.getByRole("combobox", { name: "Rows per page" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: "50" }));
+
+    expect(onPageSizeChange).toHaveBeenCalledWith(50);
+  });
+
+  it("should render a read-only page size when the feed cannot change it", () => {
+    render(<Pagination kind="page" page={1} pageSize={25} total={1} onPageChange={() => {}} />);
+
+    expect(screen.queryByRole("combobox", { name: "Rows per page" })).toBeNull();
+    expect(screen.getByText("Rows per page")).toBeInTheDocument();
+    expect(screen.getByText("25")).toBeInTheDocument();
   });
 
   it("SSR renders with role=navigation", () => {
