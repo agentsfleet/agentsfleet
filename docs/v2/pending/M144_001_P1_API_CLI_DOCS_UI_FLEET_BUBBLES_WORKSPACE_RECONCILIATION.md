@@ -57,7 +57,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/DESIGN_SYSTEM.md` | EDIT | Make the durable transcript rule match the approved Jul 24 fleet bubble rather than the superseded open-reply wording. |
 | `src/agentsfleetd/http/handlers/workspaces/lifecycle.zig`; `provision.zig`; `sql.zig` | EDIT | Remove key parsing, replay lookup/body comparison, stored request reconstruction, and idempotency columns; map duplicate explicit names to conflict. |
 | `src/agentsfleetd/http/handlers/workspaces/create_integration_test.zig` | EDIT | Replace replay tests with conflict, ordinary-create, and no-header contract coverage. |
-| `src/agentsfleetd/errors/error_entries.zig`; `error_registry.zig`; `error_registry_test.zig` | EDIT | Register the workspace-name conflict with dashboard-safe copy and prove its status. |
+| `src/agentsfleetd/errors/error_entries.zig`; `error_registry.zig`; `error_registry_test.zig` | EDIT | Register the workspace-name conflict with dashboard-safe copy and prove its status. **Register it with `eu()`, not `e()`** — the browser create dialog renders it, so it needs a user message, and the registry lint rejects a reachable `e()` entry that lacks one. Prior art is `UZ-AGT-006` "Fleet name already exists" (`error_entries.zig:169`), which is the same shape one namespace over; no `UZ-WS-*` or `UZ-WORKSPACE-*` namespace exists yet, so the implementing agent opens one and records the chosen code in Discovery rather than inventing it at the call site. |
 | `public/openapi/paths/workspaces.yaml`; `public/openapi.json` | EDIT/REGENERATE | Remove the header/replay contract and document the 409 response; regenerate, never hand-edit, the bundle. |
 | `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | Record workspace creation as the owner-approved exception to mandatory POST replay keys: list reconciliation is its recovery contract. |
 | `schema/035_workspace_create_idempotency.sql` | DELETE | Remove the three replay-only columns and tenant/key index from the pre-production migration set. |
@@ -87,7 +87,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File & Function Length (≤350/≤50/≤70) | yes | Simplification must shrink the workspace path; do not fold provisioning back into the handler. |
 | UFS (repeated/semantic literals) | yes | One registered conflict code/copy; no duplicated header or refresh strings. |
 | UI Substitution / DESIGN TOKEN | yes | Exact existing tokens from `68ce6a1e7`; no new color/radius values. |
-| ERROR REGISTRY | yes — new 409 code | Add entry, exported constant, reachability test, OpenAPI response, and zero orphan codes. |
+| ERROR REGISTRY | yes — new 409 code | Add the entry via `eu()` so the dashboard has a user message, plus exported constant, reachability test, OpenAPI response, and zero orphan codes. The code itself is chosen at CHORE(open) in a new workspace namespace and recorded in Discovery; `UZ-AGT-006` is the shape to copy. |
 | SCHEMA | yes — migration deletion | `VERSION=0.22.0`; owner explicitly chose removal. Delete slot 35 + embed entry, add no DROP/compensating migration, and satisfy the rollout precondition before deployment. |
 
 ## Prior-Art / Reference Implementations
