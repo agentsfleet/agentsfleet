@@ -173,7 +173,7 @@ pub fn setup() !Env {
 
 pub fn publishEvent(h: *TestHarness, fleet_id: []const u8) ![]const u8 {
     try redis_fleet.ensureFleetConsumerGroup(&h.queue, fleet_id);
-    return h.queue.xaddFleetEvent(.{
+    return redis_fleet.xaddFleetEvent(&h.queue, .{
         .event_id = "",
         .fleet_id = fleet_id,
         .workspace_id = WORKSPACE_ID,

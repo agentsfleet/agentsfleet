@@ -19,6 +19,7 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const redis_fleet = @import("../../../queue/redis_fleet.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const EventEnvelope = @import("contract").event_envelope;
 
@@ -97,7 +98,7 @@ pub fn innerFleetMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []const
         .created_at = clock.nowMillis(),
     };
 
-    const event_id = hx.ctx.queue.xaddFleetEvent(envelope) catch |err| {
+    const event_id = redis_fleet.xaddFleetEvent(hx.ctx.queue, envelope) catch |err| {
         log.warn("xadd_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .actor = actor, .err = @errorName(err) });
         common.internalOperationError(hx.res, "failed to enqueue chat event", hx.req_id);
         return;
