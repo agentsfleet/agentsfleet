@@ -42,6 +42,7 @@ const ec = @import("../errors/error_registry.zig");
 const log = logging.scoped(.fleet_ready);
 
 const CMD_HSET = "HSET";
+const CMD_HDEL = "HDEL";
 const CMD_HLEN = "HLEN";
 const CMD_HRANDFIELD = "HRANDFIELD";
 const CMD_EVAL = "EVAL";
@@ -118,6 +119,33 @@ pub fn clear(client: *redis_client.Client, fleet_id: []const u8, token: []const 
     var resp = client.command(&.{
         CMD_EVAL,                     CLEAR_IF_TOKEN_MATCHES, EVAL_ONE_KEY,
         queue_consts.ready_index_key, fleet_id,               token,
+    }) catch |err| return writeFailed(WRITE_CLEAR, fleet_id, err);
+    resp.deinit(client.alloc);
+}
+
+/// Remove `fleet_id` unconditionally, with no token compare.
+///
+/// The token guard on `clear` exists to protect LIVE work: a racing ingress mark
+/// means the fleet still holds a deliverable event, so that clear must no-op.
+/// None of that reasoning survives a fleet leaving `active` — deleted, stopped,
+/// killed, or paused, no runner can lease it, so there is no mark worth keeping
+/// and a racing ingress mark is itself already stale.
+///
+/// Call this ONLY from a fleet-lifecycle transition that has already committed
+/// in Postgres, never before it: an unconditional delete ahead of a rolled-back
+/// transaction would erase a live fleet's mark. The poll path must keep using
+/// `clear` — there an unconditional delete strands an event (§3), which is the
+/// race this module was built to close.
+///
+/// Without this, a lifecycle transition leaves a field nothing can ever remove:
+/// the clear at the poll site is reachable only for fleets the candidate query
+/// returns, and that query filters `status = 'active'`.
+///
+/// Best-effort like every write here — a failure leaves a stale field, costing
+/// one wasted candidate check on a later poll.
+pub fn forceClear(client: *redis_client.Client, fleet_id: []const u8) void {
+    var resp = client.command(&.{
+        CMD_HDEL, queue_consts.ready_index_key, fleet_id,
     }) catch |err| return writeFailed(WRITE_CLEAR, fleet_id, err);
     resp.deinit(client.alloc);
 }
