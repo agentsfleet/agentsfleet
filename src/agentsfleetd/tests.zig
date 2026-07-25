@@ -193,6 +193,7 @@ test {
     _ = @import("http/handlers/fleets/events_cost_integration_test.zig");
     _ = @import("http/handlers/fleets/list_aggregate_integration_test.zig");
     _ = @import("http/handlers/fleets/patch_if_match_integration_test.zig");
+    _ = @import("http/handlers/fleets/readiness_lifecycle_integration_test.zig");
     _ = @import("http/handlers/memory/memory_forget_integration_test.zig");
     _ = @import("http/handlers/library/catalog_etag_integration_test.zig");
     _ = @import("http/handlers/library/library_cursor_test.zig");

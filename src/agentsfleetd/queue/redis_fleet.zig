@@ -32,6 +32,7 @@ const REDIS_GROUP_ARG = "GROUP";
 const REDIS_STREAMS_ARG = "STREAMS";
 const REDIS_XREADGROUP_COMMAND = "XREADGROUP";
 const S_XACK_FAILED = "xack_failed";
+const S_DEL = "DEL";
 const S_XADD_FLEET_EVENT_FAILED = "xadd_fleet_event_failed";
 const S_COUNT = "COUNT";
 /// XREADGROUP id reading the consumer's own PEL from the start ("0") instead
@@ -222,4 +223,26 @@ pub fn xackFleet(client: *redis_client.Client, fleet_id: []const u8, event_id: [
 fn xackFailed(fleet_id: []const u8, event_id: []const u8) anyerror {
     log.err(S_XACK_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id });
     return error.RedisXackFailed;
+}
+
+/// Drop every Redis trace of a hard-deleted fleet: its event stream and its
+/// readiness mark. Owned here rather than at the HTTP call site because this
+/// module already owns the stream key and every other fleet-stream command —
+/// the handler's private helper duplicated the key literal instead (RULE UFS).
+///
+/// Call only AFTER the Postgres purge commits. Ordering is the whole safety
+/// argument: with the row gone the fleet can never be a lease candidate again,
+/// so anything left here is inert. Run before the commit, and a rolled-back
+/// delete would have erased a live fleet's stream.
+///
+/// The stream `DEL` propagates its error so the caller can log the orphan; the
+/// readiness clear is best-effort by signature and never fails the delete —
+/// a stale field costs one wasted candidate check, and the deleted fleet's own
+/// `status` filter keeps it from ever being leased.
+pub fn purgeFleetRedisState(client: *redis_client.Client, fleet_id: []const u8) !void {
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const stream_key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
+    var resp = try client.commandAllowError(&.{ S_DEL, stream_key });
+    resp.deinit(client.alloc);
+    fleet_ready.forceClear(client, fleet_id);
 }
