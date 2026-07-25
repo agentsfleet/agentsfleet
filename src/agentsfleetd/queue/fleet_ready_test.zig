@@ -37,39 +37,34 @@ fn flatReply(alloc: std.mem.Allocator, pairs: usize) !redis_protocol.RespValue {
     return .{ .array = items };
 }
 
-test "an empty reply decodes to the empty variant, not a zero-length slice" {
-    // Load-bearing: the lease path's zero-Postgres guarantee is a branch on
-    // `.empty`. If an empty hash decoded to `.ready` with no entries, that
-    // branch would be skipped and the poll would open a pool connection to
-    // query for nothing.
+test "an empty reply decodes to no entries" {
+    // Load-bearing: the lease path's zero-Postgres guarantee is the `len == 0`
+    // early return. An empty hash must never yield entries to iterate.
     const empty_array = redis_protocol.RespValue{ .array = &.{} };
-    var decoded = try fleet_ready.decodePeek(testing.allocator, empty_array);
-    defer decoded.deinit(testing.allocator);
-    try testing.expect(decoded == .empty);
+    const decoded = try fleet_ready.decodePeek(testing.allocator, empty_array);
+    defer fleet_ready.freePeeked(testing.allocator, decoded);
+    try testing.expectEqual(@as(usize, 0), decoded.len);
 
-    var from_nil = try fleet_ready.decodePeek(testing.allocator, .{ .array = null });
-    defer from_nil.deinit(testing.allocator);
-    try testing.expect(from_nil == .empty);
+    const from_nil = try fleet_ready.decodePeek(testing.allocator, .{ .array = null });
+    defer fleet_ready.freePeeked(testing.allocator, from_nil);
+    try testing.expectEqual(@as(usize, 0), from_nil.len);
 }
 
-test "a non-array reply decodes to the empty variant rather than erroring" {
+test "a non-array reply decodes to no entries rather than erroring" {
     // Redis answers a missing key with a nil/empty reply; treating an
     // unexpected scalar as "nothing ready" keeps a degraded datastore from
     // turning every poll into a logged error.
-    var decoded = try fleet_ready.decodePeek(testing.allocator, .{ .integer = 0 });
-    defer decoded.deinit(testing.allocator);
-    try testing.expect(decoded == .empty);
+    const decoded = try fleet_ready.decodePeek(testing.allocator, .{ .integer = 0 });
+    defer fleet_ready.freePeeked(testing.allocator, decoded);
+    try testing.expectEqual(@as(usize, 0), decoded.len);
 }
 
 test "each field is paired with the value that follows it" {
     var reply = try flatReply(testing.allocator, 3);
     defer reply.deinit(testing.allocator);
 
-    var decoded = try fleet_ready.decodePeek(testing.allocator, reply);
-    defer decoded.deinit(testing.allocator);
-
-    try testing.expect(decoded == .ready);
-    const entries = decoded.ready;
+    const entries = try fleet_ready.decodePeek(testing.allocator, reply);
+    defer fleet_ready.freePeeked(testing.allocator, entries);
     try testing.expectEqual(@as(usize, 3), entries.len);
     // Pairing, not merely presence: a decoder that stepped by one, or that read
     // fields and values from separate halves of the array, would still produce
@@ -86,9 +81,9 @@ test "the decoded entry count never exceeds the pairs the reply carried" {
     for ([_]usize{ 1, 2, 8, 64 }) |pairs| {
         var reply = try flatReply(testing.allocator, pairs);
         defer reply.deinit(testing.allocator);
-        var decoded = try fleet_ready.decodePeek(testing.allocator, reply);
-        defer decoded.deinit(testing.allocator);
-        try testing.expectEqual(pairs, decoded.ready.len);
+        const decoded = try fleet_ready.decodePeek(testing.allocator, reply);
+        defer fleet_ready.freePeeked(testing.allocator, decoded);
+        try testing.expectEqual(pairs, decoded.len);
     }
 }
 
@@ -118,8 +113,8 @@ test "a non-string field or value is rejected" {
 }
 
 fn decodeForLeakCheck(alloc: std.mem.Allocator, reply: *const redis_protocol.RespValue) !void {
-    var decoded = try fleet_ready.decodePeek(alloc, reply.*);
-    decoded.deinit(alloc);
+    const decoded = try fleet_ready.decodePeek(alloc, reply.*);
+    fleet_ready.freePeeked(alloc, decoded);
 }
 
 test "decodePeek frees every owned slice when any allocation fails" {
@@ -132,7 +127,6 @@ test "decodePeek frees every owned slice when any allocation fails" {
     try testing.checkAllAllocationFailures(testing.allocator, decodeForLeakCheck, .{&reply});
 }
 
-test "deinit on the empty variant is a no-op" {
-    var decoded = fleet_ready.Peeked{ .empty = {} };
-    decoded.deinit(testing.allocator);
+test "freeing an empty result is a no-op" {
+    fleet_ready.freePeeked(testing.allocator, &.{});
 }

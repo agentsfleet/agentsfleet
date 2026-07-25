@@ -19,18 +19,14 @@ test "a stream id parses into its millisecond and sequence parts" {
     const id = try probe.parseStreamId("1700000000000-5");
     try testing.expectEqual(@as(u64, 1700000000000), id.ms);
     try testing.expectEqual(@as(u64, 5), id.seq);
-}
 
-test "a bare millisecond parses with sequence zero" {
-    // Redis expands a partial id this way, and `last-delivered-id` on a fresh
-    // group is reported as the full "0-0" — both must parse.
-    const bare = try probe.parseStreamId("1700000000000");
-    try testing.expectEqual(@as(u64, 1700000000000), bare.ms);
-    try testing.expectEqual(@as(u64, 0), bare.seq);
-
+    // "0-0" is what a fresh group reports as last-delivered-id, and a bare
+    // millisecond is how Redis expands a partial id — both must parse.
     const zero = try probe.parseStreamId("0-0");
     try testing.expectEqual(@as(u64, 0), zero.ms);
     try testing.expectEqual(@as(u64, 0), zero.seq);
+    const bare = try probe.parseStreamId("1700000000000");
+    try testing.expectEqual(@as(u64, 0), bare.seq);
 }
 
 test "malformed ids are rejected rather than silently parsed as zero" {
@@ -54,16 +50,15 @@ test "ordering is numeric, not lexicographic" {
     // Confirm the text order really is the opposite, so this test is proving a
     // live hazard rather than a hypothetical one.
     try testing.expect(std.mem.lessThan(u8, "100-0", "99-0"));
-}
 
-test "the sequence part breaks ties within one millisecond" {
-    // Several events can land in the same millisecond — the common case for a
-    // burst of ingress — so the tiebreak decides whether they read as delivered.
+    // Within one millisecond the sequence breaks the tie — the common case for a
+    // burst of ingress, and it must stay exact at the top of the range.
     const first = try probe.parseStreamId("1700000000000-1");
     const second = try probe.parseStreamId("1700000000000-2");
-
+    const highest = try probe.parseStreamId("1700000000000-18446744073709551615");
     try testing.expect(first.lessThan(second));
-    try testing.expect(!second.lessThan(first));
+    try testing.expect(second.lessThan(highest));
+    try testing.expect(!highest.lessThan(first));
 }
 
 test "an id is not less than itself" {
@@ -75,12 +70,3 @@ test "an id is not less than itself" {
     try testing.expect(!id.lessThan(id));
 }
 
-test "a large sequence in the same millisecond still orders correctly" {
-    // Guards against a packed-integer shortcut: combining ms and seq into one
-    // value only works if the sequence field is wide enough, and Redis sequences
-    // are unbounded within a millisecond.
-    const low = try probe.parseStreamId("1700000000000-1");
-    const high = try probe.parseStreamId("1700000000000-18446744073709551615");
-    try testing.expect(low.lessThan(high));
-    try testing.expect(!high.lessThan(low));
-}

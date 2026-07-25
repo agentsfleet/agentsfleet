@@ -153,21 +153,16 @@ fn appendSignupFamilies(writer: anytype, s: mc.Snapshot) !void {
     );
 }
 
-/// Lease-poll cost and readiness-index health. Global and unlabelled apart from
-/// the failure family's `reason`, so nothing here can create a series per fleet,
+/// Lease-poll cost and readiness-index health. Every family here is global and
+/// wholly unlabelled, so nothing in this block can create a series per fleet,
 /// workspace, tenant, or runner. Every value comes from the in-memory snapshot —
 /// the readiness depth is the sweeper's sample, never a scrape-time Redis read.
 fn appendLeasePollFamilies(writer: anytype, s: mc.Snapshot) !void {
     try appendMetric(writer, mc.LEASE_POLLS_NAME, S_COUNTER, mc.LEASE_POLLS_HELP, s.lease_polls_total);
     try appendMetric(writer, mc.CANDIDATES_SCANNED_NAME, S_COUNTER, mc.CANDIDATES_SCANNED_HELP, s.lease_poll_candidates_scanned_total);
-    try appendMetric(writer, mc.CANDIDATES_MAX_NAME, S_GAUGE, mc.CANDIDATES_MAX_HELP, s.lease_poll_candidates_max);
     try appendMetric(writer, mc.DB_ROUNDTRIPS_NAME, S_COUNTER, mc.DB_ROUNDTRIPS_HELP, s.lease_poll_db_roundtrips_total);
     try appendMetric(writer, mc.READY_DEPTH_NAME, S_GAUGE, mc.READY_DEPTH_HELP, s.fleet_ready_depth);
-    try appendMetric(writer, mc.READY_SWEEP_RECOVERIES_NAME, S_COUNTER, mc.READY_SWEEP_RECOVERIES_HELP, s.fleet_ready_sweep_recoveries_total);
-    try appendLabeledFamily(writer, mc.READY_WRITE_FAILURES_NAME, S_COUNTER, mc.READY_WRITE_FAILURES_HELP, S_REASON, &.{
-        .{ .label_value = mc.ReadyWrite.mark.label(), .value = s.fleet_ready_write_failures_mark_total },
-        .{ .label_value = mc.ReadyWrite.clear.label(), .value = s.fleet_ready_write_failures_clear_total },
-    });
+    try appendMetric(writer, mc.READY_WRITE_FAILURES_NAME, S_COUNTER, mc.READY_WRITE_FAILURES_HELP, s.fleet_ready_write_failures_total);
 }
 
 /// Redis request-path pool — emitted only when a Pool has been registered

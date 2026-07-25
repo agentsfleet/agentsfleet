@@ -71,31 +71,20 @@ pub const Ready = struct {
     token: []const u8,
 };
 
-/// What one readiness read found.
+/// Release a slice returned by `peek`, using the allocator it was given.
+pub fn freePeeked(alloc: std.mem.Allocator, entries: []const Ready) void {
+    freeItems(alloc, entries);
+    alloc.free(entries);
+}
+
+/// Frees the strings owned by each entry but NOT the backing array.
 ///
-/// A tagged union rather than a possibly-empty slice, so "nothing is ready" is a
-/// variant the compiler makes the caller handle rather than a `.len == 0` check
-/// it can forget. The lease path's zero-Postgres guarantee rests on `.empty`
-/// short-circuiting before any pool acquisition, so that branch should be
-/// impossible to fall through by accident.
-pub const Peeked = union(enum) {
-    empty,
-    ready: []Ready,
-
-    /// Caller passes the same allocator `peek` received.
-    pub fn deinit(self: *Peeked, alloc: std.mem.Allocator) void {
-        switch (self.*) {
-            .empty => {},
-            .ready => |entries| {
-                freeEntries(alloc, entries);
-                alloc.free(entries);
-            },
-        }
-        self.* = undefined;
-    }
-};
-
-fn freeEntries(alloc: std.mem.Allocator, entries: []const Ready) void {
+/// Split out because the partial-failure path inside `decodePeek` must free the
+/// entries built so far while freeing the array exactly once, at its true length.
+/// Handing a sub-slice to `freePeeked` would call `alloc.free` on a view rather
+/// than on the original allocation, which leaks it — the allocation-failure test
+/// is what makes that mistake fail loudly instead of silently.
+fn freeItems(alloc: std.mem.Allocator, entries: []const Ready) void {
     for (entries) |entry| {
         alloc.free(entry.fleet_id);
         alloc.free(entry.token);
@@ -110,10 +99,10 @@ fn freeEntries(alloc: std.mem.Allocator, entries: []const Ready) void {
 /// latency cost for a correctness one. One `HSET` — the minted token needs no
 /// server-side draw, so no script is involved.
 pub fn mark(client: *redis_client.Client, fleet_id: []const u8) void {
-    const token = id_format.generateUuidV7() catch |err| return writeFailed(.mark, fleet_id, err);
+    const token = id_format.generateUuidV7() catch |err| return writeFailed(WRITE_MARK, fleet_id, err);
     var resp = client.command(&.{
         CMD_HSET, queue_consts.ready_index_key, fleet_id, &token,
-    }) catch |err| return writeFailed(.mark, fleet_id, err);
+    }) catch |err| return writeFailed(WRITE_MARK, fleet_id, err);
     resp.deinit(client.alloc);
 }
 
@@ -129,15 +118,21 @@ pub fn clear(client: *redis_client.Client, fleet_id: []const u8, token: []const 
     var resp = client.command(&.{
         CMD_EVAL,                     CLEAR_IF_TOKEN_MATCHES, EVAL_ONE_KEY,
         queue_consts.ready_index_key, fleet_id,               token,
-    }) catch |err| return writeFailed(.clear, fleet_id, err);
+    }) catch |err| return writeFailed(WRITE_CLEAR, fleet_id, err);
     resp.deinit(client.alloc);
 }
 
-fn writeFailed(which: metrics.ReadyWrite, fleet_id: []const u8, err: anyerror) void {
-    metrics.incReadyWriteFailure(which);
+/// Which write failed rides the LOG, not the metric. An operator responds the
+/// same way to either (Redis is unreachable), so splitting the counter would add
+/// a label nobody queries on.
+const WRITE_MARK = "mark";
+const WRITE_CLEAR = "clear";
+
+fn writeFailed(which: []const u8, fleet_id: []const u8, err: anyerror) void {
+    metrics.incReadyWriteFailure();
     log.warn("ready_write_failed", .{
         .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
-        .write = @tagName(which),
+        .write = which,
         .fleet_id = fleet_id,
         .err = @errorName(err),
     });
@@ -153,8 +148,8 @@ fn writeFailed(which: metrics.ReadyWrite, fleet_id: []const u8, err: anyerror) v
 ///
 /// Errors are retryable, never fatal: the caller answers no-work with its
 /// existing backoff hint and never falls back to an unbounded scan.
-pub fn peek(client: *redis_client.Client, alloc: std.mem.Allocator, max: usize) !Peeked {
-    if (max == 0) return .empty;
+pub fn peek(client: *redis_client.Client, alloc: std.mem.Allocator, max: usize) ![]Ready {
+    if (max == 0) return &.{};
     var count_buf: [COUNT_DIGITS]u8 = undefined;
     const count = try std.fmt.bufPrint(&count_buf, "{d}", .{max});
     var resp = try client.command(&.{
@@ -172,10 +167,10 @@ pub fn peek(client: *redis_client.Client, alloc: std.mem.Allocator, max: usize) 
 /// `pub` for `fleet_ready_test.zig`: this is the one piece of the module that is
 /// a pure function of a reply, so it is where the wire-shape assumption and the
 /// allocation-failure unwinding can be proven without a live datastore.
-pub fn decodePeek(alloc: std.mem.Allocator, value: redis_protocol.RespValue) !Peeked {
-    if (value != .array) return .empty;
-    const flat = value.array orelse return .empty;
-    if (flat.len == 0) return .empty;
+pub fn decodePeek(alloc: std.mem.Allocator, value: redis_protocol.RespValue) ![]Ready {
+    if (value != .array) return &.{};
+    const flat = value.array orelse return &.{};
+    if (flat.len == 0) return &.{};
     if (flat.len % 2 != 0) return error.RedisUnexpectedResponse;
 
     const entries = try alloc.alloc(Ready, flat.len / 2);
@@ -183,7 +178,7 @@ pub fn decodePeek(alloc: std.mem.Allocator, value: redis_protocol.RespValue) !Pe
     // Frees only what is already owned, so a dupe failure mid-array leaks
     // nothing — Zig does not unwind earlier iterations for us.
     errdefer {
-        freeEntries(alloc, entries[0..filled]);
+        freeItems(alloc, entries[0..filled]);
         alloc.free(entries);
     }
 
@@ -196,7 +191,7 @@ pub fn decodePeek(alloc: std.mem.Allocator, value: redis_protocol.RespValue) !Pe
         entries[filled] = .{ .fleet_id = owned_id, .token = try alloc.dupe(u8, token) };
         filled += 1;
     }
-    return .{ .ready = entries };
+    return entries;
 }
 
 /// Field count of the shared index. Read by the reclaim sweeper once per pass

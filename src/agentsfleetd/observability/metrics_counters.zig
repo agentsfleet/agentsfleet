@@ -21,28 +21,12 @@ pub const LEASE_POLLS_NAME = "agentsfleet_lease_polls_total";
 pub const LEASE_POLLS_HELP = "Lease polls served, the denominator for the per-poll cost families below.";
 pub const CANDIDATES_SCANNED_NAME = "agentsfleet_lease_poll_candidates_scanned_total";
 pub const CANDIDATES_SCANNED_HELP = "Fleets examined across all lease polls; divide by lease polls for mean fan-out.";
-pub const CANDIDATES_MAX_NAME = "agentsfleet_lease_poll_candidates_max";
-pub const CANDIDATES_MAX_HELP = "Most fleets any single lease poll examined (high-water mark; bounded by the per-poll ceiling).";
 pub const DB_ROUNDTRIPS_NAME = "agentsfleet_lease_poll_db_roundtrips_total";
 pub const DB_ROUNDTRIPS_HELP = "Postgres round-trips issued on the lease path; an idle poll must contribute zero.";
 pub const READY_DEPTH_NAME = "agentsfleet_fleet_ready_depth";
 pub const READY_DEPTH_HELP = "Fleets in the shared readiness index, sampled by the reclaim sweeper. NOT summable across replicas — every replica samples the same index, so use any single series.";
 pub const READY_WRITE_FAILURES_NAME = "agentsfleet_fleet_ready_write_failures_total";
-pub const READY_WRITE_FAILURES_HELP = "Readiness index writes that failed against Redis, labelled by which write.";
-pub const READY_SWEEP_RECOVERIES_NAME = "agentsfleet_fleet_ready_sweep_recoveries_total";
-pub const READY_SWEEP_RECOVERIES_HELP = "Fleets the reclaim sweeper re-marked as ready after the index lost them.";
-
-/// Which readiness write failed. Owned here rather than in `queue/fleet_ready.zig`
-/// because this module owns the metric's label axis, and because the queue module
-/// already imports this one — defining it there would close an import cycle.
-pub const ReadyWrite = enum {
-    mark,
-    clear,
-
-    pub fn label(self: ReadyWrite) []const u8 {
-        return @tagName(self);
-    }
-};
+pub const READY_WRITE_FAILURES_HELP = "Readiness index writes (mark or clear) that failed against Redis. Unlabelled: which of the two failed does not change the operator's response, and the log line carries it.";
 
 pub const Snapshot = struct {
     api_backpressure_rejections_total: u64,
@@ -55,12 +39,9 @@ pub const Snapshot = struct {
     // Lease-poll cost + readiness index.
     lease_polls_total: u64 = 0,
     lease_poll_candidates_scanned_total: u64 = 0,
-    lease_poll_candidates_max: u64 = 0,
     lease_poll_db_roundtrips_total: u64 = 0,
     fleet_ready_depth: u64 = 0,
-    fleet_ready_write_failures_mark_total: u64 = 0,
-    fleet_ready_write_failures_clear_total: u64 = 0,
-    fleet_ready_sweep_recoveries_total: u64 = 0,
+    fleet_ready_write_failures_total: u64 = 0,
     // Signup funnel counters.
     signup_bootstrapped_total: u64 = 0,
     signup_replayed_total: u64 = 0,
@@ -88,12 +69,9 @@ var g_signup_failed_pool_unavailable_total = std.atomic.Value(u64).init(0);
 var g_signup_failed_metadata_writeback_total = std.atomic.Value(u64).init(0);
 var g_lease_polls_total = std.atomic.Value(u64).init(0);
 var g_lease_poll_candidates_scanned_total = std.atomic.Value(u64).init(0);
-var g_lease_poll_candidates_max = std.atomic.Value(u64).init(0);
 var g_lease_poll_db_roundtrips_total = std.atomic.Value(u64).init(0);
 var g_fleet_ready_depth = std.atomic.Value(u64).init(0);
-var g_fleet_ready_write_failures_mark_total = std.atomic.Value(u64).init(0);
-var g_fleet_ready_write_failures_clear_total = std.atomic.Value(u64).init(0);
-var g_fleet_ready_sweep_recoveries_total = std.atomic.Value(u64).init(0);
+var g_fleet_ready_write_failures_total = std.atomic.Value(u64).init(0);
 
 // safe because: every store/load below is an independent stat counter or
 // gauge — readers (the /metrics scrape) tolerate staleness, and no other
@@ -156,12 +134,6 @@ pub fn observeLeasePoll(candidates_scanned: u64, db_roundtrips: u64) void {
     _ = g_lease_polls_total.fetchAdd(1, .monotonic); // safe because: see module note above
     _ = g_lease_poll_candidates_scanned_total.fetchAdd(candidates_scanned, .monotonic); // safe because: see module note above
     _ = g_lease_poll_db_roundtrips_total.fetchAdd(db_roundtrips, .monotonic); // safe because: see module note above
-    // High-water mark via compare-and-swap: a plain store would let a small
-    // concurrent poll overwrite a larger peak and hide the tail.
-    var seen = g_lease_poll_candidates_max.load(.monotonic); // safe because: pure maximum tracking; a lost race retries below
-    while (candidates_scanned > seen) {
-        seen = g_lease_poll_candidates_max.cmpxchgWeak(seen, candidates_scanned, .monotonic, .monotonic) orelse break; // safe because: independent gauge, retry loop converges
-    }
 }
 
 /// Overwrite the readiness-depth sample. A SETTER ONLY, deliberately: the index
@@ -175,16 +147,8 @@ pub fn setReadyIndexDepth(fields: u64) void {
     g_fleet_ready_depth.store(fields, .release); // safe because: see module note above
 }
 
-pub fn incReadyWriteFailure(which: ReadyWrite) void {
-    const slot = switch (which) {
-        .mark => &g_fleet_ready_write_failures_mark_total,
-        .clear => &g_fleet_ready_write_failures_clear_total,
-    };
-    _ = slot.fetchAdd(1, .monotonic); // safe because: see module note above
-}
-
-pub fn incReadySweepRecovery() void {
-    _ = g_fleet_ready_sweep_recoveries_total.fetchAdd(1, .monotonic); // safe because: see module note above
+pub fn incReadyWriteFailure() void {
+    _ = g_fleet_ready_write_failures_total.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 
 fn loadStat(counter: *std.atomic.Value(u64)) u64 {
@@ -211,12 +175,9 @@ pub fn snapshot() Snapshot {
     s.signup_failed_metadata_writeback_total = loadStat(&g_signup_failed_metadata_writeback_total);
     s.lease_polls_total = loadStat(&g_lease_polls_total);
     s.lease_poll_candidates_scanned_total = loadStat(&g_lease_poll_candidates_scanned_total);
-    s.lease_poll_candidates_max = loadStat(&g_lease_poll_candidates_max);
     s.lease_poll_db_roundtrips_total = loadStat(&g_lease_poll_db_roundtrips_total);
     s.fleet_ready_depth = loadStat(&g_fleet_ready_depth);
-    s.fleet_ready_write_failures_mark_total = loadStat(&g_fleet_ready_write_failures_mark_total);
-    s.fleet_ready_write_failures_clear_total = loadStat(&g_fleet_ready_write_failures_clear_total);
-    s.fleet_ready_sweep_recoveries_total = loadStat(&g_fleet_ready_sweep_recoveries_total);
+    s.fleet_ready_write_failures_total = loadStat(&g_fleet_ready_write_failures_total);
     return s;
 }
 
@@ -225,10 +186,7 @@ pub fn snapshot() Snapshot {
 pub fn resetLeasePollMetricsForTest() void {
     g_lease_polls_total.store(0, .release); // safe because: single-threaded test reset
     g_lease_poll_candidates_scanned_total.store(0, .release);
-    g_lease_poll_candidates_max.store(0, .release);
     g_lease_poll_db_roundtrips_total.store(0, .release);
     g_fleet_ready_depth.store(0, .release);
-    g_fleet_ready_write_failures_mark_total.store(0, .release);
-    g_fleet_ready_write_failures_clear_total.store(0, .release);
-    g_fleet_ready_sweep_recoveries_total.store(0, .release);
+    g_fleet_ready_write_failures_total.store(0, .release);
 }

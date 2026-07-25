@@ -143,7 +143,6 @@ pub fn sweepOnce(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allo
 fn remarkIfDeliverable(queue: *queue_redis.Client, fleet_id: []const u8, reclaimed_any: bool) bool {
     if (!reclaimed_any and !fleet_probe.hasDeliverable(queue, fleet_id)) return false;
     fleet_ready.mark(queue, fleet_id);
-    metrics.incReadySweepRecovery();
     log.debug("ready_remarked", .{ .fleet_id = fleet_id, .after_reclaim = reclaimed_any });
     return true;
 }
