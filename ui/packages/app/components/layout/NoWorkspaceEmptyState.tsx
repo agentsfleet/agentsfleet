@@ -9,7 +9,7 @@ import {
   PageLayout,
   PageTitle,
 } from "@agentsfleet/design-system";
-import { LayoutDashboardIcon } from "lucide-react";
+import { FolderIcon } from "lucide-react";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
 import { useWorkspaceCreation } from "@/components/layout/WorkspaceCreationProvider";
@@ -60,7 +60,7 @@ export default function NoWorkspaceEmptyState() {
         <PageTitle>Welcome</PageTitle>
       </PageHeader>
       <EmptyState
-        icon={<LayoutDashboardIcon size={32} />}
+        icon={<FolderIcon size={32} strokeWidth={1.75} />}
         title="No workspace yet"
         description="A workspace isolates your fleets and credentials. Create one to get started."
         action={

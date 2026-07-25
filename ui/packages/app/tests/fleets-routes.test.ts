@@ -3,8 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
-import { fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
-import { listWorkspaceFleetLibraryMock, listSecretsMock } from "./helpers/dashboard-app-mocks";
+import {
+  fetchMock,
+  resetCommonMocks,
+  authMock as auth,
+} from "./helpers/dashboard-mocks";
+import {
+  listWorkspaceFleetLibraryMock,
+  listSecretsMock,
+} from "./helpers/dashboard-app-mocks";
 
 type BillingSnapshot = {
   balance_nanos: number;
@@ -15,18 +22,37 @@ type BillingSnapshot = {
 
 // Shared dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.stubGlobal("fetch", fetchMock);
-vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
-vi.mock("@clerk/nextjs/server", async () => (await import("./helpers/dashboard-mocks")).clerkServerMock());
-vi.mock("@clerk/nextjs", async () => (await import("./helpers/dashboard-mocks")).clerkMock());
-vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
-vi.mock("@/lib/workspace", async () => (await import("./helpers/dashboard-mocks")).workspaceMock());
-vi.mock("lucide-react", async () => (await import("./helpers/dashboard-mocks")).lucideMock());
+vi.mock("next/navigation", async () =>
+  (await import("./helpers/dashboard-mocks")).nextNavigationMock(),
+);
+vi.mock("@clerk/nextjs/server", async () =>
+  (await import("./helpers/dashboard-mocks")).clerkServerMock(),
+);
+vi.mock("@clerk/nextjs", async () =>
+  (await import("./helpers/dashboard-mocks")).clerkMock(),
+);
+vi.mock("next/link", async () =>
+  (await import("./helpers/dashboard-mocks")).nextLinkMock(),
+);
+vi.mock("@/lib/workspace", async () =>
+  (await import("./helpers/dashboard-mocks")).workspaceMock(),
+);
+vi.mock("lucide-react", async () =>
+  (await import("./helpers/dashboard-mocks")).lucideMock(),
+);
 vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
-  return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };
+  return {
+    ...h.designSystemCore(await orig<Record<string, unknown>>()),
+    ...h.designSystemTabs(),
+  };
 });
-vi.mock("@/lib/api/fleet-library", async () => (await import("./helpers/dashboard-app-mocks")).fleetLibraryMock());
-vi.mock("@/lib/api/secrets", async () => (await import("./helpers/dashboard-app-mocks")).secretsApiMock());
+vi.mock("@/lib/api/fleet-library", async () =>
+  (await import("./helpers/dashboard-app-mocks")).fleetLibraryMock(),
+);
+vi.mock("@/lib/api/secrets", async () =>
+  (await import("./helpers/dashboard-app-mocks")).secretsApiMock(),
+);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -98,7 +124,10 @@ describe("fleets routes", () => {
     return {
       ok: true,
       status: 200,
-      headers: { get: (key: string) => (key.toLowerCase() === "etag" ? '"seed-etag"' : null) },
+      headers: {
+        get: (key: string) =>
+          key.toLowerCase() === "etag" ? '"seed-etag"' : null,
+      },
       json: async () => detailBody(over),
     };
   }
@@ -109,13 +138,25 @@ describe("fleets routes", () => {
         return { ok: true, status: 200, json: async () => billing };
       }
       if (url.includes("/approvals")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+        };
       }
       if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       // The single-fleet detail read (M131 §1): `…/fleets/{id}` with a trailing
       // id segment. getFleet reads the fleet object directly (not a list scan); a
@@ -129,17 +170,25 @@ describe("fleets routes", () => {
             ok: false,
             status: 404,
             headers: { get: () => null },
-            json: async () => ({ error_code: "UZ-AGT-009", detail: "Fleet not found" }),
+            json: async () => ({
+              error_code: "UZ-AGT-009",
+              detail: "Fleet not found",
+            }),
           };
         }
         return detailResponse();
       }
-      return { ok: true, status: 200, json: async () => ({ items: [detailBody()], total: 1 }) };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [detailBody()], total: 1 }),
+      };
     });
   }
 
   it("loading.tsx renders a spinner with status role", async () => {
-    const { default: Loading } = await import("../app/(dashboard)/w/[workspaceId]/fleets/loading");
+    const { default: Loading } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/loading");
     render(React.createElement(Loading));
     const el = screen.getByRole("status");
     // Visible copy is a random waiting verb ("Brewing Fleets…"), so assert the
@@ -155,25 +204,30 @@ describe("fleets routes", () => {
 
   it("fleets list page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
-    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow(
-      "redirect:/sign-in",
-    );
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    await expect(
+      Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    ).rejects.toThrow("redirect:/sign-in");
   });
 
   it("fleets list page streams a skeleton before data", async () => {
     // FleetsData is an async child, so renderToStaticMarkup renders the Suspense
     // skeleton in its place; the header now lives inside FleetsData (it adapts to
     // Wall vs. checklist), so it too stays absent until the data streams in.
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
-    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }));
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    );
     expect(markup).toContain("animate-pulse"); // Skeleton fallback
     expect(markup).not.toContain("platform-ops"); // data not yet resolved
   });
 
   it("FleetsData returns null when the token is missing", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { FleetsData } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    const { FleetsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
     expect(await FleetsData({ workspaceId: "ws_1" })).toBeNull();
   });
 
@@ -190,11 +244,23 @@ describe("fleets routes", () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ items: [], total: 0, next_cursor: null, prefs: {} }),
+        json: async () => ({
+          items: [],
+          total: 0,
+          next_cursor: null,
+          prefs: {},
+        }),
       };
     });
-    const { FleetsData } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData({ workspaceId: "ws_1" })));
+    const { FleetsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await FleetsData({ workspaceId: "ws_1" }),
+      ),
+    );
     // With zero fleets the Wall renders the checklist — not the old EmptyState.
     expect(markup).toContain("Getting started");
     expect(markup).toContain("Install a fleet");
@@ -207,9 +273,16 @@ describe("fleets routes", () => {
 
   it("fleets list page renders populated list + exhaustion banner", async () => {
     mockFetchBilling(exhaustedBilling);
-    const { FleetsData } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData({ workspaceId: "ws_1" })));
-    expect(markup).toContain("href=\"/w/ws_1/fleets/zom_1\"");
+    const { FleetsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await FleetsData({ workspaceId: "ws_1" }),
+      ),
+    );
+    expect(markup).toContain('href="/w/ws_1/fleets/zom_1"');
     expect(markup).toContain("platform-ops");
     expect(markup).toContain("credit balance is exhausted");
   });
@@ -218,33 +291,62 @@ describe("fleets routes", () => {
     listSecretsMock.mockResolvedValue({ secrets: [] });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: false, status: 500, statusText: "err", json: async () => ({}) };
+        return {
+          ok: false,
+          status: 500,
+          statusText: "err",
+          json: async () => ({}),
+        };
       }
       return {
         ok: true,
         status: 200,
-        json: async () => ({ items: [], total: 0, next_cursor: null, prefs: {} }),
+        json: async () => ({
+          items: [],
+          total: 0,
+          next_cursor: null,
+          prefs: {},
+        }),
       };
     });
-    const { FleetsData } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData({ workspaceId: "ws_1" })));
+    const { FleetsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await FleetsData({ workspaceId: "ws_1" }),
+      ),
+    );
     expect(markup).toContain("Getting started");
   });
 
   it("fleets new page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
     await expect(
-      Page({ params: Promise.resolve({ workspaceId: "ws_1" }), searchParams: Promise.resolve({}) }),
+      Page({
+        params: Promise.resolve({ workspaceId: "ws_1" }),
+        searchParams: Promise.resolve({}),
+      }),
     ).rejects.toThrow("redirect:/sign-in");
   });
 
   it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
-    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
-    listSecretsMock.mockResolvedValue({ secrets: [{ kind: "custom_secret", name: "github", created_at: 1 }] });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    listWorkspaceFleetLibraryMock.mockResolvedValue({
+      items: SAMPLE_TEMPLATES,
+    });
+    listSecretsMock.mockResolvedValue({
+      secrets: [{ kind: "custom_secret", name: "github", created_at: 1 }],
+    });
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }), searchParams: Promise.resolve({}) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1" }),
+        searchParams: Promise.resolve({}),
+      }),
     );
     expect(markup).toContain("Install fleet"); // page title
     expect(markup).toContain("Fleet library");
@@ -255,9 +357,13 @@ describe("fleets routes", () => {
   it("fleets new page swallows failed template + secret fetches", async () => {
     listWorkspaceFleetLibraryMock.mockRejectedValue(new Error("catalog down"));
     listSecretsMock.mockRejectedValue(new Error("vault down"));
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }), searchParams: Promise.resolve({}) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1" }),
+        searchParams: Promise.resolve({}),
+      }),
     );
     expect(markup).toContain("No prebuilt fleet library found"); // empty gallery
   });
@@ -265,7 +371,8 @@ describe("fleets routes", () => {
   it("fleets new page accepts a ?library= deep link", async () => {
     listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
     listSecretsMock.mockResolvedValue({ secrets: [] });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
     const markup = renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1" }),
@@ -277,7 +384,8 @@ describe("fleets routes", () => {
 
   it("fleets detail page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
       Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     ).rejects.toThrow("redirect:/sign-in");
@@ -285,7 +393,8 @@ describe("fleets routes", () => {
 
   it("fleets detail page notFound when fleet id is not in the list", async () => {
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
       Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "missing" }) }),
     ).rejects.toThrow("notFound");
@@ -298,47 +407,69 @@ describe("fleets routes", () => {
           ok: false,
           status: 500,
           headers: { get: () => null },
-          json: async () => ({ error_code: "UZ-INTERNAL-001", detail: "Fleet read failed" }),
+          json: async () => ({
+            error_code: "UZ-INTERNAL-001",
+            detail: "Fleet read failed",
+          }),
         };
       }
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
       if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+        };
       }
-      return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [], next_cursor: null }),
+      };
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
       Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     ).rejects.toThrow("Fleet read failed");
   });
 
-  it("fleet Events view loads the scoped standard-table window", async () => {
+  it("fleet Events view loads the URL-selected standard-table window", async () => {
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
-        searchParams: Promise.resolve({ view: "events" }),
+        searchParams: Promise.resolve({ view: "events", ps: "50" }),
       }),
     );
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
-    expect(urls).toContainEqual(expect.stringContaining("/fleets/zom_1/events?limit=25"));
+    expect(urls).toContainEqual(
+      expect.stringContaining("/fleets/zom_1/events?limit=50"),
+    );
     expect(urls.some((url) => url.includes("since="))).toBe(false);
-    expect(markup).toContain('href="/w/ws_1/fleets/zom_1?view=events" aria-current="page"');
+    expect(markup).toContain(
+      'href="/w/ws_1/fleets/zom_1?view=events" aria-current="page"',
+    );
   });
 
   it("fleet Events view threads the URL cursor into the events fetch", async () => {
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
         // The cursor rides the same URL as the open view; the server fetches
         // that page rather than resetting to the newest.
-        searchParams: Promise.resolve({ view: "events", c: "tok_fleet" }),
+        searchParams: Promise.resolve({
+          view: "events",
+          c: "tok_fleet",
+          cps: "25",
+        }),
       }),
     );
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
@@ -353,7 +484,8 @@ describe("fleets routes", () => {
       if (url.includes("/events")) throw new Error("history down");
       return detailResponse();
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
@@ -365,7 +497,8 @@ describe("fleets routes", () => {
 
   it("fleet Memory view renders stored entries and a fetch failure separately", async () => {
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const emptyMarkup = renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
@@ -400,9 +533,12 @@ describe("fleets routes", () => {
       }
       return detailResponse();
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
     expect(markup).toContain("Latest outcome");
     expect(markup).toContain("Latest data unavailable.");
@@ -413,9 +549,12 @@ describe("fleets routes", () => {
 
   it("fleets detail page renders panels + exhaustion badge when tenant is exhausted", async () => {
     mockFetchBilling(exhaustedBilling);
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
     expect(markup).toContain("platform-ops");
     expect(markup).toContain("Balance exhausted");
@@ -423,9 +562,12 @@ describe("fleets routes", () => {
 
   it("renders fleet-local navigation with Chat as the focused default", async () => {
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
     expect(markup).toContain('aria-label="Fleet sections"');
     expect(markup).toContain('href="/w/ws_1/fleets/zom_1" aria-current="page"');
@@ -446,16 +588,20 @@ describe("fleets routes", () => {
 
   it("fleets detail page renders without badge when not exhausted", async () => {
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
     expect(markup).not.toContain("Balance exhausted");
   });
 
   it("fleet Skill view isolates the skill source editor", async () => {
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
@@ -472,19 +618,34 @@ describe("fleets routes", () => {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
       if (url.includes("/approvals")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+        };
       }
       if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       return detailResponse({ name: "platform-ops", status: "paused" });
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
     expect(markup).toContain("paused");
     expect(markup).not.toContain("data-live");
@@ -500,29 +661,43 @@ describe("fleets routes", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            items: [{ gate_id: "g1", fleet_id: "zom_1", fleet_name: "platform-ops" }],
+            items: [
+              { gate_id: "g1", fleet_id: "zom_1", fleet_name: "platform-ops" },
+            ],
             next_cursor: "cur_xyz",
           }),
         };
       }
       if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+        };
       }
       if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       return detailResponse({ name: "platform-ops", status: "active" });
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
     expect(markup).toContain("1+ approval waiting");
     expect(markup).toContain('href="/w/ws_1/approvals?fleetId=zom_1"');
   });
 
   it("redirects an obsolete Settings query to the canonical Chat URL", async () => {
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
       Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
@@ -538,19 +713,34 @@ describe("fleets routes", () => {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
       if (url.includes("/approvals")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+        };
       }
       if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       return detailResponse({ status: "killed" });
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
 
     expect(markup).toContain("Delete fleet");
@@ -564,19 +754,34 @@ describe("fleets routes", () => {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
       if (url.includes("/approvals")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+        };
       }
       if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       return detailResponse({ status: "draining" });
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
 
     expect(markup).toContain('aria-label="Fleet status: draining"');
@@ -593,19 +798,34 @@ describe("fleets routes", () => {
         throw new Error("network down");
       }
       if (url.includes("/approvals")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+        };
       }
       if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       return detailResponse();
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
     expect(markup).toContain("platform-ops");
     expect(markup).not.toContain("Balance exhausted");
@@ -621,19 +841,34 @@ describe("fleets routes", () => {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
       if (url.includes("/approvals")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+        };
       }
       if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [], next_cursor: null }),
+        };
       }
       return detailResponse({ name: "fresh-bot", status: "installing" });
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+      }),
     );
     // Header carries the status label + the installing live indicator.
     expect(markup).toContain("installing");
@@ -655,7 +890,8 @@ describe("fleets routes", () => {
       if (url.includes("/events")) throw new Error("events down");
       return detailResponse({ name: "platform-ops", status: "active" });
     });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),

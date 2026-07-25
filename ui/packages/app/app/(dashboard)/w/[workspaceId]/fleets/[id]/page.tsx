@@ -13,10 +13,12 @@ import { listMemories } from "@/lib/api/memory";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import { EventsList } from "@/components/domain/EventsList";
 import {
+  CURSOR_PAGE_SIZE_PARAM,
   CURSOR_TRAIL_PARAM,
-  EVENTS_PAGE_SIZE,
+  PAGE_SIZE_PARAM,
   cursorForTrail,
   cursorTrailFrom,
+  pageSizeFrom,
 } from "@/lib/pagination/cursor-trail";
 import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
 import TriggerPanel from "./components/TriggerPanel";
@@ -51,6 +53,7 @@ type PageContext = {
   token: string;
   /** Cursor of the events page named by the URL; null on the first page. */
   eventsCursor: string | null;
+  eventsPageSize: number;
 };
 
 const LIFECYCLE_ACTION_STATUSES = new Set<string>([
@@ -74,8 +77,17 @@ export default async function FleetDetailPage({
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const view = resolveFleetView(typeof query.view === "string" ? query.view : undefined);
-  const eventsCursor = cursorForTrail(cursorTrailFrom(query[CURSOR_TRAIL_PARAM]));
+  const view = resolveFleetView(
+    typeof query.view === "string" ? query.view : undefined,
+  );
+  const eventsPageSize = pageSizeFrom(query[PAGE_SIZE_PARAM]);
+  const eventsCursor = cursorForTrail(
+    cursorTrailFrom(
+      query[CURSOR_TRAIL_PARAM],
+      eventsPageSize,
+      query[CURSOR_PAGE_SIZE_PARAM],
+    ),
+  );
   if (!view) redirect(workspacePath(workspaceId, `fleets/${id}`));
 
   const [fleetResult, billing] = await Promise.all([
@@ -85,14 +97,26 @@ export default async function FleetDetailPage({
   if (!fleetResult) notFound();
 
   const { fleet, etag } = fleetResult;
-  const content = await loadFleetView(view, { workspaceId, fleet, etag, token, eventsCursor });
+  const content = await loadFleetView(view, {
+    workspaceId,
+    fleet,
+    etag,
+    token,
+    eventsCursor,
+    eventsPageSize,
+  });
   // The chat is a conversation surface, not a document: it claims the frame so
   // its composer stays on screen and only the message list scrolls. Every
   // other view is ordinary page content and scrolls with the page.
   const claimsViewport = view === FLEET_VIEW.chat;
 
   return (
-    <div className={cn("flex min-h-full flex-1 flex-col", claimsViewport && "h-full min-h-0 overflow-hidden")}>
+    <div
+      className={cn(
+        "flex min-h-full flex-1 flex-col",
+        claimsViewport && "h-full min-h-0 overflow-hidden",
+      )}
+    >
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
       <div className="flex min-w-0 flex-col gap-3xl lg:flex-row">
         <div
@@ -104,7 +128,9 @@ export default async function FleetDetailPage({
           <FleetHeader
             workspaceId={workspaceId}
             fleet={fleet}
-            exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined}
+            exhaustedAt={
+              billing?.is_exhausted ? billing.exhausted_at : undefined
+            }
           />
         </div>
       </div>
@@ -130,7 +156,12 @@ export default async function FleetDetailPage({
             fleetId={fleet.id}
             activeView={view}
           />
-          <div className={cn("flex min-w-0 flex-1 flex-col", claimsViewport && "h-full min-h-0 overflow-hidden")}>
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 flex-col",
+              claimsViewport && "h-full min-h-0 overflow-hidden",
+            )}
+          >
             {content}
           </div>
         </div>
@@ -146,7 +177,10 @@ async function loadFleet(workspaceId: string, id: string, token: string) {
   });
 }
 
-async function loadFleetView(view: FleetView, context: PageContext): Promise<ReactNode> {
+async function loadFleetView(
+  view: FleetView,
+  context: PageContext,
+): Promise<ReactNode> {
   switch (view) {
     case FLEET_VIEW.events:
       return loadEventsView(context);
@@ -163,10 +197,12 @@ async function loadFleetView(view: FleetView, context: PageContext): Promise<Rea
 
 async function loadChatView({ workspaceId, fleet, token }: PageContext) {
   const [eventsResult, approvalsResult] = await Promise.all([
-    listFleetEvents(workspaceId, fleet.id, token, { limit: 20 })
-      .catch(() => null),
-    listApprovals(workspaceId, token, { fleetId: fleet.id, limit: 50 })
-      .catch(() => null),
+    listFleetEvents(workspaceId, fleet.id, token, { limit: 20 }).catch(
+      () => null,
+    ),
+    listApprovals(workspaceId, token, { fleetId: fleet.id, limit: 50 }).catch(
+      () => null,
+    ),
   ]);
   const events = eventsResult ?? { items: [], next_cursor: null };
   const approvals = approvalsResult ?? { items: [], next_cursor: null };
@@ -194,19 +230,32 @@ async function loadChatView({ workspaceId, fleet, token }: PageContext) {
   );
 }
 
-async function loadEventsView({ workspaceId, fleet, token, eventsCursor }: PageContext) {
+async function loadEventsView({
+  workspaceId,
+  fleet,
+  token,
+  eventsCursor,
+  eventsPageSize,
+}: PageContext) {
   // Fetched on the server for the cursor the URL names, so a reload or a
   // shared link opens the page the operator was actually looking at.
   const initial = await listFleetEvents(workspaceId, fleet.id, token, {
-    limit: EVENTS_PAGE_SIZE,
+    limit: eventsPageSize,
     ...(eventsCursor ? { cursor: eventsCursor } : {}),
   }).catch(() => ({ items: [], next_cursor: null }));
-  return <EventsList fleetId={fleet.id} initial={initial} />;
+  return (
+    <EventsList
+      fleetId={fleet.id}
+      initial={initial}
+      pageSize={eventsPageSize}
+    />
+  );
 }
 
 async function loadMemoryView({ workspaceId, fleet, token }: PageContext) {
-  const memories = await listMemories(workspaceId, fleet.id, token, { limit: 100 })
-    .catch(() => null);
+  const memories = await listMemories(workspaceId, fleet.id, token, {
+    limit: 100,
+  }).catch(() => null);
   return (
     <MemoryPanel
       workspaceId={workspaceId}
@@ -216,7 +265,13 @@ async function loadMemoryView({ workspaceId, fleet, token }: PageContext) {
   );
 }
 
-function SourceView({ context, field }: { context: PageContext; field: typeof SOURCE_FIELD.skill }) {
+function SourceView({
+  context,
+  field,
+}: {
+  context: PageContext;
+  field: typeof SOURCE_FIELD.skill;
+}) {
   return <SourceEditor context={context} field={field} fillAvailableSpace />;
 }
 
@@ -260,13 +315,22 @@ async function loadTriggerView(context: PageContext) {
   );
 }
 
-function FleetBreadcrumb({ workspaceId, fleetName }: { workspaceId: string; fleetName: string }) {
+function FleetBreadcrumb({
+  workspaceId,
+  fleetName,
+}: {
+  workspaceId: string;
+  fleetName: string;
+}) {
   return (
     <nav
       aria-label={BREADCRUMB_LABEL}
       className="mb-sm shrink-0 font-mono text-sm text-muted-foreground"
     >
-      <Link href={workspacePath(workspaceId, "fleets")} className="hover:text-foreground">
+      <Link
+        href={workspacePath(workspaceId, "fleets")}
+        className="hover:text-foreground"
+      >
         {FLEETS_CRUMB_LABEL}
       </Link>
       <span aria-hidden="true"> / </span>
@@ -296,16 +360,29 @@ function FleetHeader({
     <div className="mb-lg flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">
       <h1 className="sr-only">{fleet.name}</h1>
       <FleetBreadcrumb workspaceId={workspaceId} fleetName={fleet.name} />
-      <div aria-label="Fleet lifecycle actions" className="flex flex-wrap items-center justify-end gap-sm">
-        {exhaustedAt !== undefined ? <ExhaustionBadge exhaustedAt={exhaustedAt} /> : null}
+      <div
+        aria-label="Fleet lifecycle actions"
+        className="flex flex-wrap items-center justify-end gap-sm"
+      >
+        {exhaustedAt !== undefined ? (
+          <ExhaustionBadge exhaustedAt={exhaustedAt} />
+        ) : null}
         {fleet.status === AGENTSFLEET_STATUS.INSTALLING ? (
-          <Badge variant="cyan" aria-label="Fleet status: installing">Installing</Badge>
+          <Badge variant="cyan" aria-label="Fleet status: installing">
+            Installing
+          </Badge>
         ) : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
-          <FleetConfig workspaceId={workspaceId} fleetId={fleet.id} fleetName={fleet.name} />
+          <FleetConfig
+            workspaceId={workspaceId}
+            fleetId={fleet.id}
+            fleetName={fleet.name}
+          />
         ) : LIFECYCLE_ACTION_STATUSES.has(fleet.status) ? (
           <KillSwitch workspaceId={workspaceId} fleet={actionFleet} />
         ) : (
-          <Badge aria-label={`Fleet status: ${fleet.status}`}>{fleet.status}</Badge>
+          <Badge aria-label={`Fleet status: ${fleet.status}`}>
+            {fleet.status}
+          </Badge>
         )}
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useId } from "react";
+import { type FormEvent, useId, useRef } from "react";
 import {
   ActionForm,
   Alert,
@@ -39,11 +39,14 @@ export default function CreateWorkspaceDialog({
   restoreFocus,
 }: Props) {
   const inputId = useId();
+  const openRef = useRef(open);
+  openRef.current = open;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = new FormData(event.currentTarget).get(WORKSPACE_NAME_FIELD);
-    const name = typeof value === "string" ? value.trim() || undefined : undefined;
+    const name =
+      typeof value === "string" ? value.trim() || undefined : undefined;
     void onSubmit(name);
   }
 
@@ -52,10 +55,14 @@ export default function CreateWorkspaceDialog({
       <DialogContent
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          restoreFocus?.();
+          if (!openRef.current) restoreFocus?.();
         }}
       >
-        <ActionForm onSubmit={submit} data-testid={CREATE_FORM_TEST_ID} aria-busy={pending}>
+        <ActionForm
+          onSubmit={submit}
+          data-testid={CREATE_FORM_TEST_ID}
+          aria-busy={pending}
+        >
           <DialogHeader>
             <DialogTitle>Create workspace</DialogTitle>
             <DialogDescription>{WORKSPACE_DESCRIPTION}</DialogDescription>
@@ -72,15 +79,27 @@ export default function CreateWorkspaceDialog({
             />
           </div>
           {error ? (
-            <Alert variant="destructive" className="mt-4 text-xs" data-testid="workspace-create-error">
+            <Alert
+              variant="destructive"
+              className="mt-4 text-xs"
+              data-testid="workspace-create-error"
+            >
               {error}
             </Alert>
           ) : null}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+            >
               {pending ? "Hide" : "Cancel"}
             </Button>
-            <Button type="submit" disabled={pending} data-testid="workspace-create-submit">
+            <Button
+              type="submit"
+              disabled={pending}
+              data-testid="workspace-create-submit"
+            >
               {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
               Create workspace
             </Button>

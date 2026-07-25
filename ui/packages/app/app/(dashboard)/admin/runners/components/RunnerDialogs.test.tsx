@@ -34,6 +34,7 @@ function renderDialog(props: { data: RunnerEventsResponse | null; error?: string
         pending={props.pending ?? false}
         onOpenChange={() => {}}
         onPage={() => {}}
+        onPageSizeChange={() => {}}
       />
     </TooltipProvider>,
   );

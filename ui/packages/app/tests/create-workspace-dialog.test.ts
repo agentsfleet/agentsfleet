@@ -22,9 +22,8 @@ describe("CreateWorkspaceDialog component", () => {
   };
 
   async function renderDialog(overrides: Partial<DialogProps> = {}) {
-    const { default: CreateWorkspaceDialog } = await import(
-      "../components/layout/CreateWorkspaceDialog"
-    );
+    const { default: CreateWorkspaceDialog } =
+      await import("../components/layout/CreateWorkspaceDialog");
     const props: DialogProps = {
       open: true,
       pending: false,
@@ -55,15 +54,20 @@ describe("CreateWorkspaceDialog component", () => {
   it("submits with Enter without a custom key handler", async () => {
     const user = userEvent.setup({ delay: null });
     const { props } = await renderDialog();
-    await user.type(screen.getByLabelText("Name (optional)"), "via-enter{Enter}");
+    await user.type(
+      screen.getByLabelText("Name (optional)"),
+      "via-enter{Enter}",
+    );
     expect(props.onSubmit).toHaveBeenCalledWith("via-enter");
   });
 
   it("explains the workspace boundary and associates its label with the input", async () => {
     await renderDialog();
-    expect(screen.getByText(
-      "Use workspaces to organize fleets, teammates, and credentials within your tenant. Leave the name blank to generate one.",
-    )).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Use workspaces to organize fleets, teammates, and credentials within your tenant. Leave the name blank to generate one.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByLabelText("Name (optional)")).toBeTruthy();
   });
 
@@ -87,9 +91,16 @@ describe("CreateWorkspaceDialog component", () => {
   it("keeps dismissal available while a request is pending", async () => {
     const user = userEvent.setup({ delay: null });
     const { props } = await renderDialog({ pending: true });
-    expect((screen.getByLabelText("Name (optional)") as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByTestId("workspace-create-submit") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("workspace-create-form").getAttribute("aria-busy")).toBe("true");
+    expect(
+      (screen.getByLabelText("Name (optional)") as HTMLInputElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("workspace-create-submit") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      screen.getByTestId("workspace-create-form").getAttribute("aria-busy"),
+    ).toBe("true");
     await user.click(screen.getByRole("button", { name: "Hide" }));
     expect(props.onOpenChange).toHaveBeenCalledWith(false);
   });
@@ -106,17 +117,38 @@ describe("CreateWorkspaceDialog component", () => {
     const user = userEvent.setup({ delay: null });
     const { CreateWorkspaceDialog, props, view } = await renderDialog();
     await user.type(screen.getByLabelText("Name (optional)"), "draft-name");
-    view.rerender(React.createElement(CreateWorkspaceDialog, { ...props, open: false }));
+    view.rerender(
+      React.createElement(CreateWorkspaceDialog, { ...props, open: false }),
+    );
     view.rerender(React.createElement(CreateWorkspaceDialog, props));
-    expect((screen.getByLabelText("Name (optional)") as HTMLInputElement).value).toBe("");
+    expect(
+      (screen.getByLabelText("Name (optional)") as HTMLInputElement).value,
+    ).toBe("");
   });
 
   it("restores focus through the parent callback after closing", async () => {
     const user = userEvent.setup({ delay: null });
     const restoreFocus = vi.fn();
-    const { CreateWorkspaceDialog, props, view } = await renderDialog({ restoreFocus });
+    const { CreateWorkspaceDialog, props, view } = await renderDialog({
+      restoreFocus,
+    });
     await user.click(screen.getByRole("button", { name: "Close" }));
-    view.rerender(React.createElement(CreateWorkspaceDialog, { ...props, open: false }));
+    view.rerender(
+      React.createElement(CreateWorkspaceDialog, { ...props, open: false }),
+    );
     await waitFor(() => expect(restoreFocus).toHaveBeenCalledOnce());
+  });
+
+  it("does not restore stale close focus after the dialog has reopened", async () => {
+    const restoreFocus = vi.fn();
+    const { CreateWorkspaceDialog, props, view } = await renderDialog({
+      restoreFocus,
+    });
+    view.rerender(
+      React.createElement(CreateWorkspaceDialog, { ...props, open: false }),
+    );
+    view.rerender(React.createElement(CreateWorkspaceDialog, props));
+    await Promise.resolve();
+    expect(restoreFocus).not.toHaveBeenCalled();
   });
 });

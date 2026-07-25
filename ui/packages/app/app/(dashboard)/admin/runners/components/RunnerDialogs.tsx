@@ -2,7 +2,6 @@
 
 import {
   Badge,
-  Button,
   ConfirmDialog,
   CopyButton,
   Dialog,
@@ -10,6 +9,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  PAGINATION_KIND,
+  Pagination,
   Skeleton,
   Time,
 } from "@agentsfleet/design-system";
@@ -74,6 +75,7 @@ export function RunnerActivityDialog({
   pending,
   onOpenChange,
   onPage,
+  onPageSizeChange,
 }: {
   runner: RunnerListItem;
   data: RunnerEventsResponse | null;
@@ -81,8 +83,8 @@ export function RunnerActivityDialog({
   pending: boolean;
   onOpenChange: (open: boolean) => void;
   onPage: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
 }) {
-  const lastPage = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1;
   return (
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -111,20 +113,17 @@ export function RunnerActivityDialog({
         <ul className="max-h-96 space-y-3 overflow-y-auto pr-1" aria-label={RUNNER_ACTIVITY_TITLE}>
           {data?.items.map((event) => <ActivityRow key={event.id} event={event} />)}
         </ul>
-        {data && lastPage > 1 ? (
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>
-              Page {data.page} of {lastPage} · {data.total} events
-            </span>
-            <div className="flex gap-2">
-              <Button type="button" variant="ghost" size="sm" disabled={pending || data.page <= 1} onClick={() => onPage(data.page - 1)}>
-                Previous
-              </Button>
-              <Button type="button" variant="ghost" size="sm" disabled={pending || data.page >= lastPage} onClick={() => onPage(data.page + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
+        {data && data.total > 0 ? (
+          <Pagination
+            kind={PAGINATION_KIND.page}
+            page={data.page}
+            pageSize={data.page_size}
+            total={data.total}
+            totalLabel="events"
+            onPageChange={onPage}
+            onPageSizeChange={onPageSizeChange}
+            isLoading={pending}
+          />
         ) : null}
       </DialogContent>
     </Dialog>

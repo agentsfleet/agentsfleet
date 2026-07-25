@@ -1,5 +1,8 @@
 import { request } from "./client";
 
+const CREATE_WORKSPACE_TIMEOUT_MS = 15_000;
+const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
 export type TenantWorkspace = {
   id: string;
   name: string | null;
@@ -35,10 +38,18 @@ export async function listTenantWorkspaces(
 export async function createTenantWorkspace(
   token: string,
   body: { name?: string } = {},
+  idempotencyKey?: string,
 ): Promise<CreateWorkspaceResponse> {
   return request<CreateWorkspaceResponse>(
     "/v1/workspaces",
-    { method: "POST", body: JSON.stringify(body) },
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      ...(idempotencyKey
+        ? { headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } }
+        : {}),
+      signal: AbortSignal.timeout(CREATE_WORKSPACE_TIMEOUT_MS),
+    },
     token,
   );
 }

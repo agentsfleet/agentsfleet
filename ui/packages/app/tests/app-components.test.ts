@@ -38,7 +38,7 @@ vi.mock("lucide-react", () => {
     KeyIcon: icon("KeyIcon"), BookOpenIcon: icon("BookOpenIcon"), ZapIcon: icon("ZapIcon"), ShieldIcon: icon("ShieldIcon"),
     KeyRoundIcon: icon("KeyRoundIcon"), LibraryIcon: icon("LibraryIcon"), PlugIcon: icon("PlugIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
     BrainCircuitIcon: icon("BrainCircuitIcon"), BoxesIcon: icon("BoxesIcon"), CreditCardIcon: icon("CreditCardIcon"), MenuIcon: icon("MenuIcon"),
-    PanelLeftCloseIcon: icon("PanelLeftCloseIcon"), PanelLeftOpenIcon: icon("PanelLeftOpenIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), ChevronRightIcon: icon("ChevronRightIcon"), PlusIcon: icon("PlusIcon"),
+    PanelLeftCloseIcon: icon("PanelLeftCloseIcon"), PanelLeftOpenIcon: icon("PanelLeftOpenIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), ChevronRightIcon: icon("ChevronRightIcon"), PlusIcon: icon("PlusIcon"), FolderIcon: icon("FolderIcon"),
   };
 });
 vi.mock("@/components/layout/ThemeToggle", () => ({ default: () => React.createElement("button") }));

@@ -11,26 +11,61 @@ import {
 } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
-vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
-vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
-vi.mock("@clerk/nextjs", async () => (await import("./helpers/dashboard-mocks")).clerkMock());
-vi.mock("@clerk/nextjs/server", async () => (await import("./helpers/dashboard-mocks")).clerkServerMock());
-vi.mock("@/lib/workspace", async () => (await import("./helpers/dashboard-mocks")).workspaceMock());
-vi.mock("lucide-react", async () => (await import("./helpers/dashboard-mocks")).lucideMock());
+vi.mock("next/navigation", async () =>
+  (await import("./helpers/dashboard-mocks")).nextNavigationMock(),
+);
+vi.mock("next/link", async () =>
+  (await import("./helpers/dashboard-mocks")).nextLinkMock(),
+);
+vi.mock("@clerk/nextjs", async () =>
+  (await import("./helpers/dashboard-mocks")).clerkMock(),
+);
+vi.mock("@clerk/nextjs/server", async () =>
+  (await import("./helpers/dashboard-mocks")).clerkServerMock(),
+);
+vi.mock("@/lib/workspace", async () =>
+  (await import("./helpers/dashboard-mocks")).workspaceMock(),
+);
+vi.mock("lucide-react", async () =>
+  (await import("./helpers/dashboard-mocks")).lucideMock(),
+);
 vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
-  return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemDropdown() };
+  return {
+    ...h.designSystemCore(await orig<Record<string, unknown>>()),
+    ...h.designSystemDropdown(),
+  };
 });
 
 // App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
-vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-mocks")).fleetsApiMock());
-vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
-vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
-vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
-vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", async () => (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock());
-vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
-vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
-vi.mock("@/app/(dashboard)/actions", async () => (await import("./helpers/dashboard-app-mocks")).dashboardActionsMock());
+vi.mock("@/lib/api/fleets", async () =>
+  (await import("./helpers/dashboard-app-mocks")).fleetsApiMock(),
+);
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () =>
+  (await import("./helpers/dashboard-app-mocks")).fleetActionsMock(),
+);
+vi.mock("@/lib/api/tenant_billing", async () =>
+  (await import("./helpers/dashboard-app-mocks")).tenantBillingMock(),
+);
+vi.mock("@/lib/api/tenant_provider", async () =>
+  (await import("./helpers/dashboard-app-mocks")).tenantProviderMock(),
+);
+vi.mock(
+  "@/app/(dashboard)/settings/billing/components/BillingBalanceCard",
+  async () =>
+    (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock(),
+);
+vi.mock(
+  "@/app/(dashboard)/settings/billing/components/BillingUsageTab",
+  async () =>
+    (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock(),
+);
+vi.mock("@/lib/api/events", async () =>
+  (await import("./helpers/dashboard-app-mocks")).eventsMock(),
+);
+vi.mock("@/app/(dashboard)/actions", async () =>
+  (await import("./helpers/dashboard-app-mocks")).dashboardActionsMock(),
+);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -49,34 +84,49 @@ describe("placeholder pages", () => {
 
   it("settings defaults page renders the masked placeholder when authenticated", async () => {
     mockAuth({ token: "tkn" });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/defaults/page");
-    const m = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }));
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/settings/defaults/page");
+    const m = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    );
     expect(m).toContain("Defaults");
   });
 
   it("settings defaults page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/defaults/page");
-    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/settings/defaults/page");
+    await expect(
+      Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    ).rejects.toThrow("redirect:/sign-in");
   });
 
   it("settings security page renders the masked placeholder when authenticated", async () => {
     mockAuth({ token: "tkn" });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/security/page");
-    const m = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }));
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/settings/security/page");
+    const m = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    );
     expect(m).toContain("Security");
   });
 
   it("settings security page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/security/page");
-    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/settings/security/page");
+    await expect(
+      Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    ).rejects.toThrow("redirect:/sign-in");
   });
 
   it("events page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
-    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    await expect(
+      Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    ).rejects.toThrow("redirect:/sign-in");
   });
 
   it("events page shell streams the header + skeleton before data", async () => {
@@ -84,8 +134,11 @@ describe("placeholder pages", () => {
     // skeleton in its place — the events section stays absent until it streams
     // in, but the header title paints immediately.
     mockAuth({ token: "token_abc" });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
-    const m = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }));
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    const m = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    );
     expect(m).toContain("Events"); // PageTitle in the shell
     expect(m).toContain("data-skeleton"); // Skeleton fallback
     expect(m).not.toContain("Workspace events"); // data not yet resolved
@@ -93,7 +146,8 @@ describe("placeholder pages", () => {
 
   it("EventsData returns null when the token is missing", async () => {
     mockAuth({ token: null });
-    const { EventsData } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    const { EventsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/events/page");
     expect(await EventsData({ workspaceId: "ws_1" })).toBeNull();
   });
 
@@ -102,8 +156,10 @@ describe("placeholder pages", () => {
     // no-workspace `notFound()` is gone (the `[workspaceId]` layout guards it).
     mockAuth({ token: "token_abc" });
     listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-    const { EventsData } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
-    const { WORKSPACE_EVENTS_LABEL } = await import("../components/domain/EventsList");
+    const { EventsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    const { WORKSPACE_EVENTS_LABEL } =
+      await import("../components/domain/EventsList");
     const m = renderToStaticMarkup(await EventsData({ workspaceId: "ws_1" }));
     // The page's landmark region and the events table caption share one name —
     // this pin keeps the page's aria-label from drifting off the constant.
@@ -113,12 +169,13 @@ describe("placeholder pages", () => {
   it("events page falls back to empty page when listWorkspaceEvents errors", async () => {
     mockAuth({ token: "token_abc" });
     listWorkspaceEventsMock.mockRejectedValue(new Error("boom"));
-    const { EventsData } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    const { EventsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/events/page");
     const m = renderToStaticMarkup(await EventsData({ workspaceId: "ws_1" }));
     expect(m).toContain("Workspace events");
   });
 
-  it("events page reads the cursor from the URL and threads it into the fetch", async () => {
+  it("events page reads the cursor and page size from the URL", async () => {
     mockAuth({ token: "token_abc" });
     listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
     const mod = await import("../app/(dashboard)/w/[workspaceId]/events/page");
@@ -127,62 +184,94 @@ describe("placeholder pages", () => {
     renderToStaticMarkup(
       await mod.default({
         params: Promise.resolve({ workspaceId: "ws_1" }),
-        searchParams: Promise.resolve({ c: "tok_1" }),
+        searchParams: Promise.resolve({ c: "tok_1", cps: "50", ps: "50" }),
       }),
     );
-    renderToStaticMarkup(await mod.EventsData({ workspaceId: "ws_1", cursor: "tok_1" }));
+    renderToStaticMarkup(
+      await mod.EventsData({
+        workspaceId: "ws_1",
+        cursor: "tok_1",
+        pageSize: 50,
+      }),
+    );
     expect(listWorkspaceEventsMock).toHaveBeenLastCalledWith(
       "ws_1",
       "token_abc",
-      expect.objectContaining({ cursor: "tok_1" }),
+      expect.objectContaining({ cursor: "tok_1", limit: 50 }),
     );
   });
 
   it("models & keys settings page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
-    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } =
+      await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    await expect(
+      Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    ).rejects.toThrow("redirect:/sign-in");
   });
 
   it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {
     mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
       balance_nanos: 4_710_000_000,
-      updated_at: 1, is_exhausted: false, exhausted_at: null,
+      updated_at: 1,
+      is_exhausted: false,
+      exhausted_at: null,
     });
     listTenantBillingChargesMock.mockResolvedValue({
       items: [
         {
-          id: "tel_1", tenant_id: "t", workspace_id: "w", fleet_id: "z",
-          event_id: "evt_1", charge_type: CHARGE_TYPE.receive, posture: PROVIDER_MODE.platform,
-          model: "kimi-k2.6", credit_deducted_nanos: 1,
-          token_count_input: null, token_count_output: null, wall_ms: null, recorded_at: 1,
+          id: "tel_1",
+          tenant_id: "t",
+          workspace_id: "w",
+          fleet_id: "z",
+          event_id: "evt_1",
+          charge_type: CHARGE_TYPE.receive,
+          posture: PROVIDER_MODE.platform,
+          model: "kimi-k2.6",
+          credit_deducted_nanos: 1,
+          token_count_input: null,
+          token_count_output: null,
+          wall_ms: null,
+          recorded_at: 1,
         },
       ],
     });
-    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/settings/billing/page");
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Billing");
-    expect(m).toContain("data-balance-card=\"1\"");
-    expect(m).toContain("data-usage-tab=\"1\"");
+    expect(m).toContain('data-balance-card="1"');
+    expect(m).toContain('data-usage-tab="1"');
     // Radix Tabs only renders the active panel; assert the tab triggers
     // are wired so Invoices / Payment method are reachable on click.
     expect(m).toContain(">Invoices</button>");
     expect(m).toContain(">Payment method</button>");
   });
 
-  it("billing settings page threads the URL cursor into the charges fetch", async () => {
+  it("billing settings page threads the URL cursor and page size into the charges fetch", async () => {
     mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
-      balance_nanos: 1, updated_at: 1, is_exhausted: false, exhausted_at: null,
+      balance_nanos: 1,
+      updated_at: 1,
+      is_exhausted: false,
+      exhausted_at: null,
     });
-    listTenantBillingChargesMock.mockResolvedValue({ items: [], next_cursor: null });
-    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    listTenantBillingChargesMock.mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    });
+    const { default: Page } =
+      await import("../app/(dashboard)/settings/billing/page");
     // searchParams present (the await branch) with a cursor (the cursor branch).
-    renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ c: "tok_bill" }) }));
+    renderToStaticMarkup(
+      await Page({
+        searchParams: Promise.resolve({ c: "tok_bill", cps: "50", ps: "50" }),
+      }),
+    );
     expect(listTenantBillingChargesMock).toHaveBeenCalledWith(
       "token_billing",
-      expect.objectContaining({ cursor: "tok_bill" }),
+      expect.objectContaining({ cursor: "tok_bill", limit: 50 }),
     );
   });
 
@@ -190,30 +279,37 @@ describe("placeholder pages", () => {
     mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
       balance_nanos: 0,
-      updated_at: 1, is_exhausted: true, exhausted_at: 2,
+      updated_at: 1,
+      is_exhausted: true,
+      exhausted_at: 2,
     });
     listTenantBillingChargesMock.mockRejectedValue(new Error("503"));
-    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/settings/billing/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("data-charge-count=\"0\"");
+    expect(m).toContain('data-charge-count="0"');
   });
 
   it("billing settings page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    const { default: Page } =
+      await import("../app/(dashboard)/settings/billing/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("billing settings page shows the not-ready empty state when billing is null", async () => {
     mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue(null);
-    listTenantBillingChargesMock.mockResolvedValue({ items: [], next_cursor: null });
-    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    listTenantBillingChargesMock.mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    });
+    const { default: Page } =
+      await import("../app/(dashboard)/settings/billing/page");
     const m = renderToStaticMarkup(await Page());
     // renderToStaticMarkup escapes the apostrophe in "isn't"; assert on a
     // stable substring of the not-ready empty state instead.
     expect(m).toContain("ready yet");
     expect(m).toContain("Refresh in a moment");
   });
-
 });
