@@ -13,10 +13,13 @@ import { listWorkspaceEvents } from "@/lib/api/events";
 // table caption) — the parity is pinned by the events page test.
 import { EventsList } from "@/components/domain/EventsList";
 import {
+  CURSOR_PAGE_SIZE_PARAM,
   CURSOR_TRAIL_PARAM,
-  EVENTS_PAGE_SIZE,
+  DEFAULT_TABLE_PAGE_SIZE,
+  PAGE_SIZE_PARAM,
   cursorForTrail,
   cursorTrailFrom,
+  pageSizeFrom,
 } from "@/lib/pagination/cursor-trail";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +35,14 @@ export default async function EventsPage({
 }) {
   const { workspaceId } = await params;
   const query = searchParams ? await searchParams : {};
-  const cursor = cursorForTrail(cursorTrailFrom(query[CURSOR_TRAIL_PARAM]));
+  const pageSize = pageSizeFrom(query[PAGE_SIZE_PARAM]);
+  const cursor = cursorForTrail(
+    cursorTrailFrom(
+      query[CURSOR_TRAIL_PARAM],
+      pageSize,
+      query[CURSOR_PAGE_SIZE_PARAM],
+    ),
+  );
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
@@ -47,7 +57,12 @@ export default async function EventsPage({
       <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
         {/* Keyed by cursor so a page turn re-suspends and shows the
             skeleton, rather than holding the previous page's rows. */}
-        <EventsData key={cursor ?? ""} workspaceId={workspaceId} cursor={cursor} />
+        <EventsData
+          key={`${cursor ?? ""}:${pageSize}`}
+          workspaceId={workspaceId}
+          cursor={cursor}
+          pageSize={pageSize}
+        />
       </Suspense>
     </PageLayout>
   );
@@ -58,9 +73,11 @@ export default async function EventsPage({
 export async function EventsData({
   workspaceId,
   cursor,
+  pageSize = DEFAULT_TABLE_PAGE_SIZE,
 }: {
   workspaceId: string;
   cursor?: string | null;
+  pageSize?: number;
 }) {
   const { getToken } = await auth();
   const token = await getToken();
@@ -70,14 +87,17 @@ export async function EventsData({
   // every page turn — no rows travel through a Server Action into a client
   // cache, and a reload lands on the same page.
   const page = await listWorkspaceEvents(workspaceId, token, {
-    limit: EVENTS_PAGE_SIZE,
+    limit: pageSize,
     ...(cursor ? { cursor } : {}),
   }).catch(() => ({ items: [], next_cursor: null }));
 
   return (
-    <div aria-label="Workspace events" className="flex min-h-0 flex-1 flex-col gap-xl">
+    <div
+      aria-label="Workspace events"
+      className="flex min-h-0 flex-1 flex-col gap-xl"
+    >
       <SectionHeader>Manage events</SectionHeader>
-      <EventsList initial={page} />
+      <EventsList initial={page} pageSize={pageSize} />
     </div>
   );
 }

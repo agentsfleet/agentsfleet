@@ -28,29 +28,56 @@ function renderRow(overrides: Partial<Parameters<typeof FleetMessageRow>[0]> = {
 }
 
 describe("FleetMessageRow", () => {
-  it("renders an operator turn in a right-aligned bounded surface", () => {
+  it("anchors an operator turn to the right in a bounded bubble", () => {
     const { container } = renderRow();
     const row = container.querySelector('[data-role="user"]') as HTMLElement;
     expect(row).toBeTruthy();
     expect(row.querySelector('[data-chip="operator"]')?.textContent).toBe("OP");
     expect(screen.getByText("Operator")).toBeTruthy();
-    expect(screen.getByText("please review the change")).toBeTruthy();
-    const surface = row.querySelector("[data-dashboard-row]") as HTMLElement;
-    expect(surface.className).toMatch(/max-w-4xl/);
-    expect(surface.className).toMatch(/rounded-lg/);
-    expect(surface.className).toMatch(/border/);
+    const bubble = screen.getByText("please review the change");
+    expect(row.querySelector(".flex-row-reverse")).toBeTruthy();
+    expect(row.querySelector(".max-w-xl")).toBeTruthy();
+    expect(bubble.className).toMatch(/rounded-lg/);
+    expect(bubble.className).toMatch(/rounded-br-sm/);
+    expect(bubble.className).toMatch(/bg-accent/);
   });
 
-  it("keeps fleet replies left aligned without an operator bubble", () => {
+  it("keeps a fleet reply open and left aligned", () => {
     const { container } = renderRow({
       tone: ROW_TONE.FLEET,
       sender: "pr-reviewer",
       messageRole: "assistant",
     });
     const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
-    const surface = row.querySelector("[data-dashboard-row]") as HTMLElement;
-    expect(surface.className).toMatch(/max-w-5xl/);
-    expect(surface.className).not.toMatch(/rounded-lg/);
+    expect(row.querySelector(".flex-row-reverse")).toBeNull();
+    const reply = screen.getByText("please review the change");
+    expect(reply.className).toMatch(/w-full/);
+    expect(reply.className).not.toMatch(/rounded/);
+    expect(reply.className).not.toMatch(/\bborder\b/);
+    expect(reply.className).not.toMatch(/bg-/);
+    const chip = row.querySelector('[data-chip="fleet"]') as HTMLElement;
+    expect(chip.className).toMatch(/text-muted-foreground/);
+    expect(chip.className).not.toMatch(/text-pulse/);
+  });
+
+  it("spends the pulse color only while a fleet reply is live", () => {
+    const { container } = renderRow({
+      tone: ROW_TONE.FLEET,
+      sender: "pr-reviewer",
+      messageRole: "assistant",
+      live: true,
+    });
+    const chip = container.querySelector('[data-chip="fleet"]') as HTMLElement;
+    expect(chip.getAttribute("data-live")).toBe("true");
+    expect(chip.className).toMatch(/text-pulse/);
+  });
+
+  it("uses the operational opacity-only entry motion", () => {
+    const { container } = renderRow();
+    const row = container.querySelector('[data-role="user"]') as HTMLElement;
+    expect(row.className).toMatch(/motion-safe:fade-in-0/);
+    expect(row.className).toMatch(/motion-safe:duration-stream/);
+    expect(row.className).not.toMatch(/slide-in/);
   });
 
   it("carries the exact instant in the timestamp, whatever the visible format", () => {
@@ -58,10 +85,11 @@ describe("FleetMessageRow", () => {
     expect(container.querySelector("time")?.getAttribute("dateTime")).toBe(AT.toISOString());
   });
 
-  it("pushes the timestamp to the far edge, away from the sender", () => {
+  it("keeps the timestamp beside the sender in the label row", () => {
     const { container } = renderRow();
-    const header = container.querySelector("time")?.parentElement as HTMLElement;
-    expect(header.className).toMatch(/ml-auto/);
+    const label = container.querySelector("time")?.parentElement as HTMLElement;
+    expect(label.textContent).toContain("Operator");
+    expect(label.className).toMatch(/text-label/);
   });
 
   it("keeps a long body inside its own row rather than widening the page", () => {
@@ -71,7 +99,7 @@ describe("FleetMessageRow", () => {
     expect(body.className).toMatch(/min-w-0/);
   });
 
-  it("tones the chip per role without changing the row's skeleton", () => {
+  it("tones the chip per role across the bubble variants", () => {
     const { container: fleet } = renderRow({ tone: ROW_TONE.FLEET, sender: "pr-reviewer" });
     expect(fleet.querySelector('[data-chip="fleet"]')).toBeTruthy();
     cleanup();

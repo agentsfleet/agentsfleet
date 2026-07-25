@@ -20,7 +20,7 @@ import {
   isZeroMetricOnFailure,
   MIN_ROW_GROUP,
 } from "@/lib/events/event-row-grouping";
-import { EVENTS_PAGE_SIZE } from "@/lib/pagination/cursor-trail";
+import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
 import { formatMs } from "@/lib/utils";
 import { EventDetailsDialog } from "./EventDetailsDialog";
@@ -28,6 +28,7 @@ import { EventDetailsDialog } from "./EventDetailsDialog";
 export type EventsListProps = {
   /** The page the Server Component fetched for the cursor in the URL. */
   initial: EventsPage;
+  pageSize: number;
   fleetId?: string;
 };
 
@@ -87,16 +88,27 @@ function createEventColumns(
       header: "Status",
       hideOnMobile: true,
       sortValue: (row) => row.status,
-      cell: (row) => <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>{row.status}</Badge>,
+      cell: (row) => (
+        <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>
+          {row.status}
+        </Badge>
+      ),
     },
     {
       key: "fleet",
       header: "Fleet",
       hideOnMobile: true,
       sortValue: (row) => row.fleet_id,
-      cell: (row) => <span className="font-mono text-xs">{shortId(row.fleet_id)}</span>,
+      cell: (row) => (
+        <span className="font-mono text-xs">{shortId(row.fleet_id)}</span>
+      ),
     },
-    { key: "actor", header: "Actor", sortValue: (row) => senderLabelFor(row.actor), cell: (row) => senderLabelFor(row.actor) },
+    {
+      key: "actor",
+      header: "Actor",
+      sortValue: (row) => senderLabelFor(row.actor),
+      cell: (row) => senderLabelFor(row.actor),
+    },
     {
       key: "details",
       header: "Details",
@@ -114,8 +126,19 @@ function createEventColumns(
         </Button>
       ),
     },
-    { key: "type", header: "Type", hideOnMobile: true, sortValue: (row) => row.event_type, cell: (row) => row.event_type },
-    { key: "result", header: "Result", sortValue: eventSummaryText, cell: (row) => <EventSummaryCell row={row} /> },
+    {
+      key: "type",
+      header: "Type",
+      hideOnMobile: true,
+      sortValue: (row) => row.event_type,
+      cell: (row) => row.event_type,
+    },
+    {
+      key: "result",
+      header: "Result",
+      sortValue: eventSummaryText,
+      cell: (row) => <EventSummaryCell row={row} />,
+    },
     {
       key: "cost",
       header: "Cost",
@@ -124,7 +147,9 @@ function createEventColumns(
       sortValue: (row) => row.cost_nanos ?? NULL_METRIC_SORT_VALUE,
       cell: (row) => (
         <DimmedWhenAbsent row={row} value={row.cost_nanos}>
-          {row.cost_nanos === null ? VALUE_UNKNOWN : formatDollars(row.cost_nanos)}
+          {row.cost_nanos === null
+            ? VALUE_UNKNOWN
+            : formatDollars(row.cost_nanos)}
         </DimmedWhenAbsent>
       ),
     },
@@ -136,7 +161,9 @@ function createEventColumns(
       sortValue: (row) => row.tokens ?? NULL_METRIC_SORT_VALUE,
       cell: (row) => (
         <DimmedWhenAbsent row={row} value={row.tokens}>
-          {row.tokens === null ? VALUE_UNKNOWN : TOKEN_COUNT_FORMAT.format(row.tokens)}
+          {row.tokens === null
+            ? VALUE_UNKNOWN
+            : TOKEN_COUNT_FORMAT.format(row.tokens)}
         </DimmedWhenAbsent>
       ),
     },
@@ -155,14 +182,14 @@ function createEventColumns(
   ];
 }
 
-export function EventsList({ initial, fleetId }: EventsListProps) {
+export function EventsList({ initial, pageSize, fleetId }: EventsListProps) {
   const [selected, setSelected] = useState<EventRow | null>(null);
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
 
   // The page lives in the URL; the Server Component above already fetched it.
   // Nothing is fetched here, so there is no client cache to fall out of sync
   // and no error state of its own — a failed page is the server's to report.
-  const feed = useUrlCursorPages(initial.next_cursor);
+  const feed = useUrlCursorPages(initial.next_cursor, pageSize);
 
   // Runs of the same failure collapse to their first row. Page-local by
   // construction: this only ever sees the rows the server returned.
@@ -179,7 +206,8 @@ export function EventsList({ initial, fleetId }: EventsListProps) {
   const runs = useMemo<RunsColumn>(() => {
     const counts = new Map<string, number>();
     for (const entry of entries) {
-      if (entry.rows.length >= MIN_ROW_GROUP) counts.set(entry.lead.event_id, entry.rows.length);
+      if (entry.rows.length >= MIN_ROW_GROUP)
+        counts.set(entry.lead.event_id, entry.rows.length);
     }
     return {
       countFor: (row) => counts.get(row.event_id) ?? null,
@@ -210,10 +238,12 @@ export function EventsList({ initial, fleetId }: EventsListProps) {
         pagination={{
           kind: PAGINATION_KIND.page,
           page: feed.page,
-          pageSize: EVENTS_PAGE_SIZE,
+          pageSize,
           hasNext: feed.hasNext,
           totalLabel: "events",
           onPageChange: feed.goToPage,
+          pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
+          onPageSizeChange: feed.changePageSize,
           isLoading: feed.isLoading,
         }}
         empty={
@@ -303,7 +333,11 @@ function EventSummaryCell({ row }: { row: EventRow }) {
     );
   }
   if (row.failure_label) {
-    return <span className="text-warning">{failureSentenceFor(row.failure_label)}</span>;
+    return (
+      <span className="text-warning">
+        {failureSentenceFor(row.failure_label)}
+      </span>
+    );
   }
   return <span className="text-muted-foreground">No result recorded</span>;
 }

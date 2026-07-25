@@ -8,7 +8,9 @@ const createTenantWorkspace = vi.fn();
 // writes an active-workspace cookie or revalidates — selection is a client
 // navigation (router.push('/w/<newId>')); the action just proxies
 // createTenantWorkspace and threads the envelope back.
-vi.mock("@clerk/nextjs/server", () => ({ auth: vi.fn(async () => ({ getToken })) }));
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(async () => ({ getToken })),
+}));
 vi.mock("@/lib/api/workspaces", () => ({ createTenantWorkspace }));
 
 beforeEach(() => {
@@ -18,21 +20,33 @@ beforeEach(() => {
 describe("createWorkspaceAction", () => {
   it("creates a workspace and returns the new id envelope on success", async () => {
     getToken.mockResolvedValue("tok_1");
-    createTenantWorkspace.mockResolvedValue({ workspace_id: "ws_new", name: "fresh" });
-    const { createWorkspaceAction } = await import("../app/(dashboard)/actions");
+    createTenantWorkspace.mockResolvedValue({
+      workspace_id: "ws_new",
+      name: "fresh",
+    });
+    const { createWorkspaceAction } =
+      await import("../app/(dashboard)/actions");
 
-    const result = await createWorkspaceAction({ name: "fresh" });
+    const result = await createWorkspaceAction({
+      idempotencyKey: "key-1",
+      name: "fresh",
+    });
 
     expect(result.ok).toBe(true);
     expect(result.ok && result.data.workspace_id).toBe("ws_new");
-    expect(createTenantWorkspace).toHaveBeenCalledWith("tok_1", { name: "fresh" });
+    expect(createTenantWorkspace).toHaveBeenCalledWith(
+      "tok_1",
+      { name: "fresh" },
+      "key-1",
+    );
   });
 
   it("maps a missing token to UZ-AUTH-401 and never calls the client", async () => {
     getToken.mockResolvedValue(null);
-    const { createWorkspaceAction } = await import("../app/(dashboard)/actions");
+    const { createWorkspaceAction } =
+      await import("../app/(dashboard)/actions");
 
-    const result = await createWorkspaceAction({});
+    const result = await createWorkspaceAction({ idempotencyKey: "key-2" });
 
     expect(result.ok).toBe(false);
     expect(!result.ok && result.errorCode).toBe("UZ-AUTH-401");
@@ -43,11 +57,20 @@ describe("createWorkspaceAction", () => {
     getToken.mockResolvedValue("tok_1");
     const { ApiError } = await import("@/lib/api/errors");
     createTenantWorkspace.mockRejectedValue(
-      new ApiError("Missing tenant context on session", 401, "UZ-AUTH-401", "req_1"),
+      new ApiError(
+        "Missing tenant context on session",
+        401,
+        "UZ-AUTH-401",
+        "req_1",
+      ),
     );
-    const { createWorkspaceAction } = await import("../app/(dashboard)/actions");
+    const { createWorkspaceAction } =
+      await import("../app/(dashboard)/actions");
 
-    const result = await createWorkspaceAction({ name: "x" });
+    const result = await createWorkspaceAction({
+      idempotencyKey: "key-3",
+      name: "x",
+    });
 
     expect(result.ok).toBe(false);
     expect(!result.ok && result.errorCode).toBe("UZ-AUTH-401");

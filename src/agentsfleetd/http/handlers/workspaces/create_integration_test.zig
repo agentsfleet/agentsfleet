@@ -15,6 +15,8 @@ const scope_fixtures = @import("../../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const test_fixtures = @import("../../../db/test_fixtures.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -26,6 +28,9 @@ const TEST_ISSUER = scope_fixtures.ISSUER;
 const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 const TEST_JWKS = scope_fixtures.JWKS;
 const TOKEN_USER = scope_fixtures.TENANT_ADMIN;
+const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+const EMPTY_BODY_KEY = "019bb9da-6920-7000-8000-000000000101";
+const NAMED_BODY_KEY = "019bb9da-6920-7000-8000-000000000102";
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -38,15 +43,12 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
     });
 }
 
-fn seedTenant(conn: *pg.Conn, now_ms: i64) !void {
-    _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'CreateWsTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
-    , .{ TEST_TENANT_ID, now_ms });
+fn seedTenant(conn: *pg.Conn, _: i64) !void {
+    try test_fixtures.seedTenantById(conn, TEST_TENANT_ID, "CreateWsTest");
 }
 
 /// Pull `"name":"…"` out of the create response body. Returns null when the
-/// field is absent — the contract under test is that POST /v1/workspaces
+/// field is absent — the rule under test is that POST /v1/workspaces
 /// always returns it, so a null here is a real test failure caller-side.
 fn extractName(alloc: std.mem.Allocator, body: []const u8) !?[]u8 {
     const key = "\"name\":\"";
@@ -168,10 +170,89 @@ test "integration: POST /v1/workspaces rejects duplicate name within tenant" {
     defer r2.deinit();
     // The handler does a single-attempt insert on caller-supplied names;
     // a unique-violation surfaces as the generic create_workspace failure
-    // path (5xx). Pinning to >= 500 catches the contract today AND fails
+    // path (5xx). Pinning to >= 500 catches the behavior today and fails
     // loudly if a tenant-probe / auth path ever masks the real outcome
     // with a 401/422. Tightening to a 409 is a follow-up.
     try std.testing.expect(r2.status >= 500);
+}
+
+fn createWithKey(
+    h: *TestHarness,
+    key: []const u8,
+    body: []const u8,
+) !harness_mod.Response {
+    var request = try h.post("/v1/workspaces").bearer(TOKEN_USER);
+    request = try request.header(IDEMPOTENCY_KEY_HEADER, key);
+    request = try request.json(body);
+    return request.send();
+}
+
+fn countRowsForKey(conn: *pg.Conn, key: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT COUNT(*)::BIGINT
+        \\FROM core.workspaces
+        \\WHERE tenant_id = $1::uuid AND create_idempotency_key = $2::uuid
+    , .{ TEST_TENANT_ID, key }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.MissingCount;
+    return row.get(i64, 0);
+}
+
+test "integration: repeated workspace create key replays one stored result" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedTenant(conn, clock.nowMillis());
+
+    const first = try createWithKey(h, EMPTY_BODY_KEY, "{}");
+    defer first.deinit();
+    try first.expectStatus(.created);
+    const replay = try createWithKey(h, EMPTY_BODY_KEY, "{}");
+    defer replay.deinit();
+    try replay.expectStatus(.created);
+
+    try std.testing.expectEqualStrings(first.body, replay.body);
+    try std.testing.expectEqual(@as(i64, 1), try countRowsForKey(conn, EMPTY_BODY_KEY));
+}
+
+test "integration: workspace create key rejects a changed request body" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedTenant(conn, clock.nowMillis());
+
+    const first = try createWithKey(h, NAMED_BODY_KEY, "{\"name\":\"stable-name\"}");
+    defer first.deinit();
+    try first.expectStatus(.created);
+    const changed = try createWithKey(h, NAMED_BODY_KEY, "{\"name\":\"different-name\"}");
+    defer changed.deinit();
+    try changed.expectStatus(.bad_request);
+    try std.testing.expect(changed.bodyContains("UZ-REQ-001"));
+    try std.testing.expectEqual(@as(i64, 1), try countRowsForKey(conn, NAMED_BODY_KEY));
+}
+
+test "integration: workspace create rejects a malformed idempotency key" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const response = try createWithKey(h, "not-a-uuid", "{}");
+    defer response.deinit();
+    try response.expectStatus(.bad_request);
+    try std.testing.expect(response.bodyContains("UZ-REQ-001"));
 }
 
 test "integration: POST /v1/workspaces without auth returns 401" {

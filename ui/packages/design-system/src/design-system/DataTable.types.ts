@@ -23,6 +23,7 @@ export type DataTableColumn<T> = {
 export type ClientDataTablePagination = {
   kind?: typeof PAGINATION_KIND.client;
   pageSize?: number;
+  pageSizeOptions?: readonly number[];
 };
 
 export type DataTablePagination =

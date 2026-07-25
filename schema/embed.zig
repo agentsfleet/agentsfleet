@@ -41,4 +41,5 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 32, .sql = @embedFile("032_fleet_events_failure_detail.sql") },
     .{ .version = 33, .sql = @embedFile("033_hot_path_indexes.sql") },
     .{ .version = 34, .sql = @embedFile("034_retire_redundant_indexes.sql") },
+    .{ .version = 35, .sql = @embedFile("035_workspace_create_idempotency.sql") },
 };

@@ -12,13 +12,12 @@ import {
   useFleetName,
 } from "./FleetMessageRow";
 import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
+import { eventOutcome, failureGuidanceFor, messageOutcome } from "./fleetFailureCopy";
 import {
   readActor,
   readCustomStatus,
   readFailureLabel,
-  readFailureDetail,
   readGroupMembers,
-  readOutcome,
   readReply,
   readRenderKind,
   readRequestJson,
@@ -31,8 +30,6 @@ import {
   SENDER,
   eventLinkFrom,
   eventReferenceFrom,
-  failureSentenceFor,
-  guidanceFor,
   senderLabelFor,
 } from "@/lib/events/event-summary";
 
@@ -49,15 +46,11 @@ const WORKING_LABEL = "Working";
 // lights blinking in unison.
 const WORKING_DOT_DELAYS = ["0ms", "160ms", "320ms"] as const;
 const SOURCE_LINK_FALLBACK = "View source";
-const STARTUP_FAILURE_TAG = "startup_posture";
-const SKILL_VIEW_HREF = "?view=skill";
-const CHAT_STARTUP_FAILURE_LABEL = "This fleet needs instructions before it can respond.";
-const CHAT_STARTUP_GUIDANCE = "Tell the fleet what to do in its instructions, then retry.";
-const SKILL_LINK_LABEL = "Edit instructions";
 
 /**
- * Render function passed to the thread message list. Every role uses the same
- * row skeleton; role changes the chip tone, annotation, and body.
+ * Render function passed to the thread message list. Integration activity
+ * renders as compact log ticks; operator turns use a right-side surface while
+ * fleet replies stay open on the left (FleetMessageRow).
  */
 export function renderFleetMessage({ message }: { message: MessageState }): ReactNode {
   return (
@@ -273,6 +266,7 @@ function FleetReply({
       createdAt={message.createdAt}
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
+      live={streaming}
     >
       <ToolCalls tools={tools} />
       {awaitingFirstWord ? (
@@ -289,53 +283,6 @@ function FleetReply({
       )}
       {guidance}
     </FleetMessageRow>
-  );
-}
-
-function messageOutcome(message: MessageState): string {
-  const failureLabel = readFailureLabel(message);
-  const failureDetail = readFailureDetail(message);
-  const rawOutcome = readOutcome(message);
-  if (!failureLabel) return rawOutcome;
-  return formatFailureOutcome(chatFailureSentenceFor(failureLabel), rawOutcome, failureDetail);
-}
-
-function eventOutcome(event: FleetEvent): string {
-  if (!event.failureLabel) return event.outcome;
-  return formatFailureOutcome(
-    chatFailureSentenceFor(event.failureLabel),
-    event.outcome,
-    event.failureDetail,
-  );
-}
-
-function chatFailureSentenceFor(tag: string): string {
-  return tag === STARTUP_FAILURE_TAG ? CHAT_STARTUP_FAILURE_LABEL : failureSentenceFor(tag);
-}
-
-function chatGuidanceFor(tag: string | null): string | null {
-  return tag === STARTUP_FAILURE_TAG ? CHAT_STARTUP_GUIDANCE : guidanceFor(tag);
-}
-
-function failureGuidanceFor(tag: string | null): ReactNode | undefined {
-  const guidance = chatGuidanceFor(tag);
-  return guidance ? <FailureGuidance guidance={guidance} /> : undefined;
-}
-
-function formatFailureOutcome(sentence: string, rawOutcome: string, detail: string | null): string {
-  const embeddedDetail = rawOutcome.split("—").slice(1).join("—").trim();
-  const cause = detail ?? (embeddedDetail.length > 0 ? embeddedDetail : null);
-  return cause ? `${sentence} — ${cause}` : sentence;
-}
-
-function FailureGuidance({ guidance }: { guidance: string }) {
-  return (
-    <span className="mt-xs block text-label text-muted-foreground" data-testid="failure-guidance">
-      {guidance}
-      <a href={SKILL_VIEW_HREF} className="ml-sm underline hover:text-foreground">
-        {SKILL_LINK_LABEL}
-      </a>
-    </span>
   );
 }
 

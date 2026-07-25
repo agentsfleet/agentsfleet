@@ -16,12 +16,13 @@ import {
   formatChargeAmount,
   type ChargeRow,
 } from "../lib/charges";
-import { BILLING_PAGE_SIZE } from "@/lib/pagination/cursor-trail";
+import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
 
 export type BillingUsageTabProps = {
   initialCharges: ChargeRow[];
   initialCursor: string | null;
+  pageSize: number;
 };
 
 /**
@@ -29,7 +30,6 @@ export type BillingUsageTabProps = {
  * activity and debit in operator language while retaining the backend's raw
  * charge granularity and URL-backed paging.
  */
-
 
 const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
@@ -53,8 +53,12 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     sortValue: (c) => chargeAgentLabel(c),
     cell: (c) => (
       <div className="flex min-w-48 flex-col">
-        <span className="font-medium text-foreground">{chargeAgentLabel(c)}</span>
-        <span className="text-muted-foreground">{displayModelName(c.model)}</span>
+        <span className="font-medium text-foreground">
+          {chargeAgentLabel(c)}
+        </span>
+        <span className="text-muted-foreground">
+          {displayModelName(c.model)}
+        </span>
       </div>
     ),
   },
@@ -62,7 +66,9 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "activity",
     header: "Activity",
     sortValue: (c) => describeCharge(c),
-    cell: (c) => <span className="text-muted-foreground">{describeCharge(c)}</span>,
+    cell: (c) => (
+      <span className="text-muted-foreground">{describeCharge(c)}</span>
+    ),
   },
   {
     key: "amount",
@@ -80,10 +86,14 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   },
 ];
 
-export default function BillingUsageTab({ initialCharges, initialCursor }: BillingUsageTabProps) {
+export default function BillingUsageTab({
+  initialCharges,
+  initialCursor,
+  pageSize,
+}: BillingUsageTabProps) {
   // The page lives in the URL and the Server Component above already fetched
   // it, so this component holds no rows, no cache, and no fetch state.
-  const feed = useUrlCursorPages(initialCursor);
+  const feed = useUrlCursorPages(initialCursor, pageSize);
   const charges = initialCharges;
 
   return (
@@ -94,20 +104,22 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
         rowKey={(c) => c.id}
         caption="usage history"
         viewportClassName="max-h-72"
-        empty={(
+        empty={
           <EmptyState
             icon={<ActivityIcon size={28} />}
             title="No charges yet"
             description="Charges appear once fleets run."
           />
-        )}
+        }
         pagination={{
           kind: PAGINATION_KIND.page,
           page: feed.page,
-          pageSize: BILLING_PAGE_SIZE,
+          pageSize,
           hasNext: feed.hasNext,
           totalLabel: "charges",
           onPageChange: feed.goToPage,
+          pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
+          onPageSizeChange: feed.changePageSize,
           isLoading: feed.isLoading,
         }}
       />
