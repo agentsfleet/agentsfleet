@@ -160,6 +160,19 @@ pub fn delete(conn: *pg.Conn, tenant_id: []const u8, id: []const u8) !bool {
 /// the write-half of the M121 invariant ("every active selection has a
 /// matching entry"). A duplicate is a clean no-op (ON CONFLICT DO NOTHING),
 /// so repeat activations converge and PUT /provider stays idempotent.
+///
+/// CALLERS MUST ALREADY HOLD THE CREDENTIAL'S REFERENCE LOCK. This creates a
+/// reference to `secret_ref`, so calling it outside a
+/// `state/secret_reference_txn.zig` transaction reopens the orphan race that
+/// module exists to close: a concurrent credential delete lands between the
+/// caller's existence check and this insert, and the entry survives naming a
+/// credential that is gone.
+///
+/// Today the only production caller is `tenant_provider.upsertSelfManaged`,
+/// which takes the lock first. This is not enforced by the type system — Zig
+/// has no way to demand "an open transaction" as a parameter without threading
+/// the handle through purely for its own sake — so it is enforced by there
+/// being exactly one caller, and by this comment for the next one.
 pub fn ensureEntry(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8, model_id: []const u8, secret_ref: []const u8) !void {
     const new_id = try id_format.generateTenantModelEntryId(alloc);
     defer alloc.free(new_id);

@@ -45,27 +45,30 @@ pub const INSERT_SECRET =
 /// A row written before `schema/036` returns NULL metadata. The caller reports
 /// it as an opaque credential; it deliberately does NOT decrypt to heal, because
 /// a heal-on-read path would make "reads never decrypt" conditional on history.
-/// `make backfill-vault-metadata` is the one thing that fills those rows.
+/// `agentsfleetd backfill` is the one thing that fills those rows.
 pub const SELECT_METADATA_FOR_KEYS =
     \\SELECT key_name, meta_kind, meta_provider, meta_base_url, meta_has_key
     \\  FROM vault.secrets
     \\ WHERE workspace_id = $1 AND key_name = ANY($2::text[])
 ;
 
-/// Backfill source: every row across every workspace whose projection predates
-/// `schema/036`. Not workspace-scoped — the backfill is an operator sweep, not a
-/// request path, and the Additional Authenticated Data binding needs each row's
-/// own `workspace_id` to decrypt it.
+/// Backfill work list: every workspace still holding a row whose projection
+/// predates `schema/036`.
 ///
-/// Ordered so a resumed run is deterministic, and the ciphertext block keeps the
-/// exact column order `SELECT_SECRET` uses — `decryptRowAt` reads it at offset 2
-/// with no second mapper.
-pub const SELECT_UNPROJECTED_SECRETS =
-    \\SELECT workspace_id::text, key_name,
-    \\       encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version
+/// Returns WORKSPACES rather than rows, because the backfill decrypts through
+/// the existing `loadAllForWorkspace` — one query and one Key Encryption Key
+/// unwrap per workspace, and no new public decrypt surface for a one-shot
+/// operator command. It re-decrypts a workspace's already-projected rows as a
+/// consequence, which is the right trade for a command that runs once against a
+/// development database: a narrower query would have to expose row-level
+/// decryption to a caller outside `secrets/`.
+///
+/// Ordered so a resumed run is deterministic.
+pub const SELECT_WORKSPACES_NEEDING_PROJECTION =
+    \\SELECT DISTINCT workspace_id::text
     \\  FROM vault.secrets
     \\ WHERE meta_kind IS NULL
-    \\ ORDER BY workspace_id ASC, key_name ASC
+    \\ ORDER BY 1 ASC
 ;
 
 /// Backfill writer: set the projection on one already-stored row without

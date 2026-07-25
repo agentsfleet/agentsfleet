@@ -25,8 +25,8 @@
 --
 -- Nullable, no DEFAULT, no CHECK list (RULE STS -- the kind value set lives in
 -- Zig as secret_metadata.Kind, never as SQL string literals). NULL means the
--- row was written before this migration; `make backfill-vault-metadata` fills
--- them once against a development database. The read path does NOT decrypt a
+-- row was written before this migration; `agentsfleetd backfill` fills them once
+-- against a development database. The read path does NOT decrypt a
 -- NULL row to heal it -- a fallback would make Invariant 5 conditional -- it
 -- reports the row as an opaque custom_secret until the backfill runs.
 
