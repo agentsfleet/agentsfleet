@@ -8,13 +8,27 @@
 
 .PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _ensure-test-bin _memleak-lane _memleak-boot-drain
 
-# Third-party (Zig stdlib) NON-LEAK memcheck patterns only — see the scope rules
-# at the top of the file. Shared by every valgrind invocation below so a lane can
-# never drift onto a different suppression set than the one that was reviewed.
-MEMLEAK_SUPPRESSIONS := tests/valgrind/zig-stdlib.supp
+# One definition shared by every valgrind invocation below, so a lane can never
+# drift onto different flags than the ones that were reviewed.
+#
+# Deliberately NO --suppressions. The boot->drain lane fails intermittently on
+# `Syscall param futex(futex) points to unaddressable byte(s)` inside
+# `std.Io.Threaded`, and that finding is CORRECT. Zig 0.16.0 has the awaiter park
+# on a futex word that lives in its own stack frame (`groupAwait`,
+# Threaded.zig:2297), while the last worker publishes the wake condition and only
+# then dereferences that word:
+#
+#     _ = to_signal.fetchAdd(1, .release);   // awaiter may now return
+#     Thread.futexWake(&to_signal.raw, 1);   // ...and this reads dead stack
+#
+# The awaiter breaks out of its wait the moment it observes the increment
+# (Threaded.zig:2315-2320) and pops the frame, so the wake can land on reclaimed
+# stack. Same shape on the Future path (Threaded.zig:760-762), which is why the
+# reported top frame alternates. Suppressing it would hide a genuine
+# use-after-scope in exactly the shutdown path this lane exists to police.
 VALGRIND_LEAK_GATE := valgrind --quiet --leak-check=full --show-leak-kinds=all \
   --errors-for-leak-kinds=definite,possible --undef-value-errors=no \
-  --suppressions=$(MEMLEAK_SUPPRESSIONS) --error-exitcode=1
+  --error-exitcode=1
 
 # `make memleak` leak-gates all THREE test graphs — daemon (agentsfleetd),
 # runner (build_runner.zig), lib (src/lib, three artifacts). On Linux the
