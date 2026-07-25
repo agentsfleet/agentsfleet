@@ -196,9 +196,9 @@ const CHARGE_CLASS_COUNT: usize = @typeInfo(ChargeClass).@"enum".fields.len;
 /// silently overrunning the flush ceiling.
 pub const SERIES_PER_MODEL_PAIR: usize =
     POSTURE_COUNT * ERROR_TYPE_SLOTS // gen_ai.invoke_agent.duration
-    + POSTURE_COUNT * TOKEN_TYPE_COUNT // agentsfleet.invoke_agent.token.usage
-    + POSTURE_COUNT // agentsfleet.invoke_agent.cache_read.token.usage
-    + POSTURE_COUNT * CHARGE_CLASS_COUNT; // agentsfleet.billing.credit.consumed
++ POSTURE_COUNT * TOKEN_TYPE_COUNT // agentsfleet.invoke_agent.token.usage
++ POSTURE_COUNT // agentsfleet.invoke_agent.cache_read.token.usage
++ POSTURE_COUNT * CHARGE_CLASS_COUNT; // agentsfleet.billing.credit.consumed
 
 /// Series that exist regardless of model attribution: one unattributed copy of
 /// the shape above (samples whose model was omitted still aggregate) plus the
@@ -227,14 +227,14 @@ pub fn modelAttributionCap(series_ceiling: usize) usize {
 /// runs orders of magnitude longer than one provider call, so the client table
 /// would pile every real run into its last buckets and lose the tail entirely.
 pub const DURATION_BUCKET_BOUNDS_MS = [_]u64{
-    100, 200, 400, 800, 1600, 3200, 6400, // pin test: literal is the contract
-    12800, 25600, 51200, 102400, 204800, 409600, // pin test: literal is the contract
+    100,   200,   400,    800,    1600,   3200, 6400, // pin test: literal is the contract
+    12800, 25600, 51200,  102400, 204800, 409600, // pin test: literal is the contract
 };
 
 /// Pinned token-usage boundaries, in tokens.
 pub const TOKEN_BUCKET_BOUNDS = [_]u64{
-    1, 4, 16, 64, 256, 1024, 4096, // pin test: literal is the contract
-    16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864, // pin test: literal is the contract
+    1,     4,      16,     64,      256,     1024,     4096, // pin test: literal is the contract
+    16384, 65536,  262144, 1048576, 4194304, 16777216, 67108864, // pin test: literal is the contract
 };
 
 pub const MILLIS_PER_SECOND: u64 = 1000;

@@ -67,6 +67,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Scope grading.** Rubric R3 compares `git diff --name-only origin/main` against this table. Every cell is an exact path, so the comparison is mechanical. A path that turns out to be genuinely required and is missing here is a spec amendment, recorded in Discovery, not a silent addition.
 
+### Files Changed — amendments (§1 implementation)
+
+Each row below is a path the diff touches that the original table did not name, with the reason it was required. Recorded per the rule above.
+
+| File | Action | Why it was required |
+|------|--------|---------------------|
+| `src/agentsfleetd/secrets/metadata.zig` | CREATE (moved) | Was `http/handlers/fleets/secret_metadata.zig`. The projection became a **write-time** function, so `state/vault.zig` must call it; leaving it under `http/handlers/` would make `state/` import from the HTTP layer. |
+| `src/agentsfleetd/secrets/metadata_backfill.zig`; `cmd/backfill.zig`; `cli/commands.zig`; `main.zig` | CREATE/EDIT | `agentsfleetd backfill`. §1 promotes columns a SQL migration cannot populate (the Key Encryption Key lives in the application), so the sweep needs a command. |
+| `src/agentsfleetd/http/pagination.zig` | CREATE | The shared compound-cursor codec and limit parser. §§1–3 all need one; three bespoke copies is how their canonical forms drift. |
+| `src/agentsfleetd/http/handlers/tenant_model_entries_list.zig`; `http/route_table_invoke.zig` | CREATE/EDIT | Pagination pushed the 4-endpoint handler past the 350-line cap (RULE FLL). Split by question: this file owns asking for entries, the other owns changing them. |
+| `src/agentsfleetd/state/secret_reference_txn.zig` | CREATE | The one lock protocol Dimension 1.2 requires. Spelling it at each of five call sites is how one call site eventually spells it backwards, and reversed lock order is a deadlock rather than a visible bug. |
+| `src/agentsfleetd/errors/error_entries.zig`; `errors/gen_error_codes.zig` | EDIT | Registering `UZ-LIBRARY-001..008` and its public-docs category. The registry rejects an unregistered code at compile time. |
+| `src/agentsfleetd/fleet_runtime/approval_gate_constants.zig` + 11 call sites (`fleet_runtime/approval_gate*.zig`, `fleet_runtime/config_gates.zig`, `fleet/approval_gate.zig`, `http/handlers/webhooks/approval.zig`, and their tests) | CREATE/EDIT | `error_registry.zig` sat exactly on the 350-line cap, and the ERROR REGISTRY harness requires every code to be declared in that file. Its last 19 lines were Redis prefixes, gate timeouts, and event names — no error codes. Moving them was the only way to register the namespace; five of these files imported the registry ONLY for those constants. |
+| `src/agentsfleetd/secrets/crypto_store_test.zig`; `http/webhook_test_fixtures.zig`; `http/handlers/fleets/secret_list.zig`; `tests.zig` | EDIT | Call sites of the changed `crypto_store.store` signature and the moved projection module. Fixtures route through `vault.storeJsonPlaintext` so seeded rows carry the same projection production writes (RULE ITF). |
+| `public/openapi/paths/tenant-models.yaml` | EDIT | The listed `paths/models.yaml` is the **global** catalogue; the tenant registry §1 actually pages lives in this file. Documents `limit`, `starting_after`, `total`, `next_cursor`, and the 400 codes. |
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — GRD, VLT, FLS, CNX, WAUTH, RTM, FLL, UFS, ITF, TNM, NDC, NLR, NLG, ORP.
