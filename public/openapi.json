@@ -3677,13 +3677,36 @@
       "get": {
         "operationId": "list_tenant_model_entries",
         "summary": "List the tenant's model registry",
-        "description": "One entry per configured model; two entries can share a `secret_ref`. Each entry is joined to its secret's non-secret metadata (provider, kind, base_url, has_key) — `api_key` is never serialised. `active` is computed against the tenant's current provider selection (`GET /v1/tenants/me/provider`). Before listing, a pre-registry activation with no matching entry is synthesized idempotently, so the registry self-heals with no separate backfill.\n",
+        "description": "One entry per configured model; two entries can share a `secret_ref`. Each entry is joined to its secret's non-secret metadata (provider, kind, base_url, has_key) — `api_key` is never serialised. `active` is computed against the tenant's current provider selection (`GET /v1/tenants/me/provider`).\n\nThe response is a bounded page ordered by `created_at` descending, then `id` descending. Page forward by sending the response's `next_cursor` back as `starting_after`; a `null` `next_cursor` is the last page. Cursors are bound to the tenant and the `limit` that produced them, so changing `limit` mid-pagination requires starting from the first page again.\n",
         "tags": [
           "Tenant"
         ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Rows per page. An out-of-range value is rejected, never clamped (`UZ-LIBRARY-003`). Clamping would hand back a short page that a caller could mistake for the whole set.\n",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Opaque cursor from the previous page's `next_cursor`. Compose nothing here. A value this endpoint did not issue is rejected (`UZ-LIBRARY-001`). One issued for a different tenant or page size is rejected distinctly (`UZ-LIBRARY-002`). A cursor whose boundary row has since changed is not an error. It continues from that boundary, and may return an empty page.\n",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Model registry",
+            "description": "Model registry page",
             "content": {
               "application/json": {
                 "schema": {
@@ -3691,6 +3714,10 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "`limit` out of range (`UZ-LIBRARY-003`), or `starting_after` is malformed (`UZ-LIBRARY-001`) or issued for a different query (`UZ-LIBRARY-002`). A rejected cursor never falls back to an unpaged read.\n",
+            "$ref": "#/components/responses/Error"
           },
           "default": {
             "$ref": "#/components/responses/Error"
@@ -7541,14 +7568,27 @@
         "type": "object",
         "required": [
           "models",
+          "total",
+          "next_cursor",
           "platform_default_available"
         ],
         "properties": {
           "models": {
             "type": "array",
+            "description": "One page of entries, at most `limit` of them. Named `models` rather than the usual `items` because renaming a shipped v1 field is a breaking change. The pagination keys below were added beside it instead.\n",
             "items": {
               "$ref": "#/components/schemas/TenantModelEntry"
             }
+          },
+          "total": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Always `null` here. Keyset pagination does not count the full set, because that costs the scan the pagination exists to avoid. `null` is the documented \"not computed\" value. The key is always present, so clients need no branch for its absence.\n"
+          },
+          "next_cursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Pass as `starting_after` to fetch the next page. `null` on the last page. Opaque — its encoding is not part of this API and may change.\n"
           },
           "platform_default_available": {
             "type": "boolean",
