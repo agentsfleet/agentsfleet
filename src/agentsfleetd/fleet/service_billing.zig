@@ -189,9 +189,15 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     // paid on its first delivery (the balance debit is not replay-guarded;
     // only the telemetry row is).
     if (first_delivery) switch (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, policy)) {
-        // Post-commit, fire-and-forget OTLP metric: the receive credit drain.
+        // Post-commit, fire-and-forget OTLP metric: the receive credit debit.
         // The debit already committed inside debitReceive; this never blocks it.
-        .deducted => |nanos| otel_metrics.recordCreditDrain(nanos, ctx.posture.label(), ctx.model, ctx.workspace_id),
+        // Workspace identity deliberately does not travel — per-workspace cost
+        // is a Postgres query against the execution-telemetry rows.
+        .deducted => |nanos| otel_metrics.recordCreditConsumed(nanos, .receive, .{
+            .posture = ctx.posture.label(),
+            .provider = ctx.provider,
+            .model = ctx.model,
+        }),
         .exhausted => {
             blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
             return null;

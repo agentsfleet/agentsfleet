@@ -6,10 +6,10 @@
 const std = @import("std");
 const common = @import("common");
 
-pub const METRIC_PROCESS_RESIDENT_MEMORY = "fleet_process_resident_memory_bytes";
-pub const METRIC_REQUEST_ERASED_BYTES = "fleet_sensitive_request_erased_bytes_total";
-pub const METRIC_RESPONSE_ERASED_BYTES = "fleet_sensitive_response_erased_bytes_total";
-pub const METRIC_RESPONSE_WRITE_FAILURES = "fleet_sensitive_response_write_failures_total";
+pub const METRIC_PROCESS_RESIDENT_MEMORY = "agentsfleet_process_resident_memory_bytes";
+pub const METRIC_REQUEST_ERASED_BYTES = "agentsfleet_sensitive_request_erased_bytes_total";
+pub const METRIC_RESPONSE_ERASED_BYTES = "agentsfleet_sensitive_response_erased_bytes_total";
+pub const METRIC_RESPONSE_WRITE_FAILURES = "agentsfleet_sensitive_response_write_failures_total";
 
 const TYPE_GAUGE = "gauge";
 const TYPE_COUNTER = "counter";

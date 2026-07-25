@@ -100,7 +100,8 @@ pub fn connectFromConfig(
 ) !Self {
     // Zig 0.16 dial: resolve host (DNS) + connect via Io.net.HostName. Name
     // resolution has no socket yet, so shutdown cannot interrupt it — the dial
-    // is raced against the budget instead, and the loser is canceled.
+    // is refused before it starts once the budget is spent (see
+    // `dialWithinBudget` for why it is no longer raced).
     const hostname = try std.Io.net.HostName.init(cfg.host);
     const stream = if (budget) |b|
         try dialWithinBudget(io, hostname, cfg.port, b.deadline_ns)
@@ -160,51 +161,37 @@ fn checkBudget(budget: ?SetupBudget) SetupError!void {
     if (b.owner.wasInterrupted()) return SetupError.RedisSetupTimedOut;
 }
 
-/// Race resolve+dial against the shared budget and cancel the loser, so a
-/// black-holed DNS server or a SYN that never completes cannot outlive it.
+/// Refuse the dial once the budget is spent, rather than starting one we cannot
+/// stop. Resolve+connect owns no socket until it returns, so the shutdown
+/// watchdog every later stage uses cannot reach it.
+///
+/// This used to race the dial against the deadline with `std.Io.Select` and
+/// cancel the loser. Awaiting a stdlib group parks on a futex word held in the
+/// awaiter's own stack frame (`std.Io.Threaded`, `groupAwait`), and the waking
+/// worker dereferences that word AFTER publishing the wake — so the awaiter can
+/// return and pop the frame first. Zig 0.16.0 carries that use-after-scope on
+/// both the group and future paths; the boot->drain valgrind lane catches it
+/// intermittently. `observability/otlp/Client.zig` dropped its own `Select` for
+/// a different failure in the same API, leaving this the last call site.
+///
+/// The bound this gives up: a black-holed DNS server or a SYN that never
+/// completes is now capped by the OS connect timeout instead of our deadline.
+/// Restoring a real bound needs a non-blocking connect polled against the
+/// budget, which is the follow-up — the same order `Client.zig:58` chose, and
+/// for the same reason: a correct process first.
 fn dialWithinBudget(
     io: std.Io,
     hostname: std.Io.net.HostName,
     port: u16,
     deadline_ns: i96,
 ) !std.Io.net.Stream {
-    if (std.Io.Clock.boot.now(io).toNanoseconds() >= deadline_ns) return SetupError.RedisSetupTimedOut;
-
-    const Selected = union(enum) {
-        dial: std.Io.net.HostName.ConnectError!std.Io.net.Stream,
-        timeout: std.Io.Cancelable!void,
-    };
-    var result_buf: [2]Selected = undefined;
-    var select = std.Io.Select(Selected).init(io, &result_buf);
-    try select.concurrent(.timeout, waitForDeadline, .{ io, deadline_ns });
-    select.concurrent(.dial, dialTask, .{ io, hostname, port }) catch |err| {
-        select.cancelDiscard();
+    if (call_deadline.reached(io, deadline_ns)) return SetupError.RedisSetupTimedOut;
+    return hostname.connect(io, port, .{ .mode = .stream }) catch |err| {
+        // Losing the budget mid-dial reads as a timeout, not a peer failure:
+        // every other stage classifies it that way via `checkBudget`.
+        if (call_deadline.reached(io, deadline_ns)) return SetupError.RedisSetupTimedOut;
         return err;
     };
-    const selected = select.await() catch |err| {
-        select.cancelDiscard();
-        return err;
-    };
-    // Joins the loser before returning: no dial helper outlives this call.
-    select.cancelDiscard();
-    return switch (selected) {
-        .dial => |result| result,
-        .timeout => |result| {
-            result catch |err| switch (err) {
-                error.Canceled => {},
-            };
-            return SetupError.RedisSetupTimedOut;
-        },
-    };
-}
-
-fn dialTask(io: std.Io, hostname: std.Io.net.HostName, port: u16) std.Io.net.HostName.ConnectError!std.Io.net.Stream {
-    return hostname.connect(io, port, .{ .mode = .stream });
-}
-
-fn waitForDeadline(io: std.Io, deadline_ns: i96) std.Io.Cancelable!void {
-    const deadline = std.Io.Timestamp.fromNanoseconds(deadline_ns).withClock(.boot);
-    try deadline.wait(io);
 }
 
 pub fn deinit(self: *Self) void {
