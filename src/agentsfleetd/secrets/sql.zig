@@ -1,9 +1,22 @@
 //! SQL statements owned by the vault envelope store.
 
+/// Store one credential: the envelope AND its non-secret projection, in one
+/// statement (the metadata promotion).
+///
+/// The `meta_*` columns are here rather than in a follow-up UPDATE precisely so
+/// they cannot disagree with the ciphertext they describe. Both the INSERT arm
+/// and the ON CONFLICT arm carry all four, so an overwrite that changes the
+/// provider or clears the key re-projects in the same atomic write — there is no
+/// interval during which a row's stated provider belongs to its previous body.
+///
+/// Every value comes from one `metadata.project` call over one parse of the
+/// plaintext being stored (`state/vault.zig::storeJsonPlaintext`), so no caller
+/// is in a position to supply a projection of something else.
 pub const INSERT_SECRET =
     \\INSERT INTO vault.secrets
-    \\  (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version, created_at, updated_at)
-    \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+    \\  (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version, created_at, updated_at,
+    \\   meta_kind, meta_provider, meta_base_url, meta_has_key)
+    \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12, $13, $14, $15)
     \\ON CONFLICT (workspace_id, key_name) DO UPDATE
     \\SET encrypted_dek = EXCLUDED.encrypted_dek,
     \\    dek_nonce = EXCLUDED.dek_nonce,
@@ -12,7 +25,56 @@ pub const INSERT_SECRET =
     \\    ciphertext = EXCLUDED.ciphertext,
     \\    tag = EXCLUDED.tag,
     \\    kek_version = EXCLUDED.kek_version,
-    \\    updated_at = EXCLUDED.updated_at
+    \\    updated_at = EXCLUDED.updated_at,
+    \\    meta_kind = EXCLUDED.meta_kind,
+    \\    meta_provider = EXCLUDED.meta_provider,
+    \\    meta_base_url = EXCLUDED.meta_base_url,
+    \\    meta_has_key = EXCLUDED.meta_has_key
+;
+
+/// The non-secret projection for a named set of credentials, in ONE query that
+/// touches no ciphertext column (the never-decrypt invariant).
+///
+/// This is the statement that takes the tenant Models page from up to one
+/// envelope open per row to zero. It is the batch-metadata sibling of
+/// `state/vault.zig::markExisting`: same index, same key set, same single
+/// round-trip — it simply returns the four promoted columns alongside the
+/// presence answer, because a caller that needs the provider label also needed
+/// to know the row exists.
+///
+/// A row written before `schema/036` returns NULL metadata. The caller reports
+/// it as an opaque credential; it deliberately does NOT decrypt to heal, because
+/// a heal-on-read path would make "reads never decrypt" conditional on history.
+/// `make backfill-vault-metadata` is the one thing that fills those rows.
+pub const SELECT_METADATA_FOR_KEYS =
+    \\SELECT key_name, meta_kind, meta_provider, meta_base_url, meta_has_key
+    \\  FROM vault.secrets
+    \\ WHERE workspace_id = $1 AND key_name = ANY($2::text[])
+;
+
+/// Backfill source: every row across every workspace whose projection predates
+/// `schema/036`. Not workspace-scoped — the backfill is an operator sweep, not a
+/// request path, and the Additional Authenticated Data binding needs each row's
+/// own `workspace_id` to decrypt it.
+///
+/// Ordered so a resumed run is deterministic, and the ciphertext block keeps the
+/// exact column order `SELECT_SECRET` uses — `decryptRowAt` reads it at offset 2
+/// with no second mapper.
+pub const SELECT_UNPROJECTED_SECRETS =
+    \\SELECT workspace_id::text, key_name,
+    \\       encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version
+    \\  FROM vault.secrets
+    \\ WHERE meta_kind IS NULL
+    \\ ORDER BY workspace_id ASC, key_name ASC
+;
+
+/// Backfill writer: set the projection on one already-stored row without
+/// touching its envelope. Used ONLY by the one-time backfill — the production
+/// write path goes through `INSERT_SECRET`, which writes both together.
+pub const UPDATE_SECRET_METADATA =
+    \\UPDATE vault.secrets
+    \\   SET meta_kind = $3, meta_provider = $4, meta_base_url = $5, meta_has_key = $6
+    \\ WHERE workspace_id = $1 AND key_name = $2
 ;
 
 pub const SELECT_SECRET =

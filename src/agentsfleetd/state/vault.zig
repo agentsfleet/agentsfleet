@@ -15,6 +15,8 @@ const std = @import("std");
 const pg = @import("pg");
 const logging = @import("log");
 const crypto_store = @import("../secrets/crypto_store.zig");
+const metadata = @import("../secrets/metadata.zig");
+const sql = @import("../secrets/sql.zig");
 const secure_memory = @import("../secrets/secure_memory.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -42,9 +44,26 @@ pub fn validateObject(value: std.json.Value) Error!void {
 
 /// Lower-level form for callers that already hold the canonical-stringified
 /// JSON-object plaintext (e.g. an HTTP handler that stringified once for a
-/// pre-flight size check). Skips `validateObject` and re-stringification on
-/// the hot path; the caller is responsible for ensuring `plaintext` decodes
-/// to a non-empty JSON object.
+/// pre-flight size check). Skips `validateObject` and re-stringification; the
+/// caller is responsible for ensuring `plaintext` decodes to a non-empty JSON
+/// object.
+///
+/// Derives the non-secret projection here and hands it to `crypto_store.store`,
+/// which writes it in the SAME statement as the envelope. This is the only
+/// place a projection is produced on the write path, and it produces it from
+/// the exact bytes being encrypted — so the `meta_*` columns cannot come to
+/// describe a body other than the one stored beside them.
+///
+/// The parse this adds is deliberate. It costs one JSON decode on a cold path
+/// (credential create/update) and buys the read path up to one AES-GCM open per
+/// row on every page view. A caller-supplied projection would skip the parse and
+/// reintroduce exactly the drift this design exists to make impossible.
+///
+/// A body that does not parse is stored and projected as an opaque
+/// `custom_secret` rather than rejected: `storeJsonPlaintext` has always skipped
+/// the shape gate by design (the redaction harness stores non-JSON on purpose),
+/// and failing here would change that behaviour for a reason unrelated to the
+/// metadata promotion.
 pub fn storeJsonPlaintext(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
@@ -52,7 +71,12 @@ pub fn storeJsonPlaintext(
     key_name: []const u8,
     plaintext: []const u8,
 ) !void {
-    try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext);
+    var parsed = std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{}) catch {
+        try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext, .{ .kind = .custom_secret });
+        return;
+    };
+    defer parsed.deinit();
+    try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext, metadata.project(parsed.value));
 }
 
 /// Decrypt and parse the row at (workspace_id, key_name) as a JSON object.
@@ -120,6 +144,110 @@ pub fn markExisting(
             if (std.mem.eql(u8, c, found)) present_out[i] = true;
         }
     }
+}
+
+/// One credential's non-secret projection, read from columns rather than
+/// derived from ciphertext. Strings are owned by the allocator passed to
+/// `loadMetadata`; release through `freeMetadata`.
+///
+/// There is no `api_key` field and no way to add one — the columns behind this
+/// struct hold no key material (`schema/036_vault_secret_metadata.sql`), so the
+/// read path has nothing to leak even if a future projection is careless.
+pub const SecretMetadata = struct {
+    kind: metadata.Kind,
+    provider: ?[]const u8 = null,
+    base_url: ?[]const u8 = null,
+    has_key: bool = false,
+
+    pub fn deinit(self: *const SecretMetadata, alloc: std.mem.Allocator) void {
+        if (self.provider) |p| alloc.free(p);
+        if (self.base_url) |b| alloc.free(b);
+    }
+};
+
+/// The non-secret projection for each of `candidates`, in ONE query that NEVER
+/// decrypts — the metadata sibling of `markExisting` (the never-decrypt invariant).
+///
+/// `out[i]` is set for each `candidates[i]` that has a row and left `null` for
+/// each that does not, so presence is `out[i] != null` and needs no second
+/// query. `out.len` MUST equal `candidates.len`. The caller owns every non-null
+/// entry and releases the set through `freeMetadata`.
+///
+/// Both this and `markExisting` exist on purpose. `markExisting` selects one
+/// column for callers that only ask "is it there?" (the connector catalog's
+/// configured/connected flags); collapsing the two would make every presence
+/// check carry four columns it discards. Two questions, two statements, one
+/// index.
+///
+/// A row written before `schema/036` has NULL metadata and reports as an opaque
+/// `custom_secret` with no key. It is NOT healed by decrypting here: a
+/// heal-on-read path would put an envelope open back on the read path and make
+/// "library reads never decrypt" true only after warm-up. `make
+/// backfill-vault-metadata` is what fills those rows.
+pub fn loadMetadata(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    candidates: []const []const u8,
+    out: []?SecretMetadata,
+) !void {
+    std.debug.assert(out.len == candidates.len);
+    @memset(out, null);
+    if (candidates.len == 0) return;
+    errdefer freeMetadata(alloc, out);
+
+    var q = PgQuery.from(try conn.query(sql.SELECT_METADATA_FOR_KEYS, .{ workspace_id, candidates }));
+    defer q.deinit();
+    while (try q.next()) |row| {
+        const found = try row.get([]const u8, 0);
+        // candidates is bounded by the page limit; a linear match avoids
+        // allocating a set and duping the borrowed row key into it. Mirrors
+        // markExisting. Only the FIRST match is filled: (workspace_id, key_name)
+        // is UNIQUE, so a duplicate is impossible — but a caller passing the
+        // same key twice must not leak the first projection by overwriting it.
+        for (candidates, 0..) |c, i| {
+            if (out[i] == null and std.mem.eql(u8, c, found)) {
+                out[i] = try rowToMetadata(alloc, row);
+                break;
+            }
+        }
+    }
+}
+
+/// Release every projection in `out` and blank the slots, so a double call and a
+/// partially-filled error path are both safe. The slice itself is the caller's.
+pub fn freeMetadata(alloc: std.mem.Allocator, out: []?SecretMetadata) void {
+    for (out) |*slot| {
+        if (slot.*) |*m| m.deinit(alloc);
+        slot.* = null;
+    }
+}
+
+/// Map one `SELECT_METADATA_FOR_KEYS` row. A NULL or unrecognised `meta_kind`
+/// degrades to `custom_secret` rather than failing the read: an un-backfilled
+/// row and a row written by a newer binary are both "we cannot describe this",
+/// and neither is a reason to fail a whole page.
+fn rowToMetadata(alloc: std.mem.Allocator, row: anytype) !SecretMetadata {
+    const kind: metadata.Kind = if (try row.get(?[]const u8, 1)) |text|
+        std.meta.stringToEnum(metadata.Kind, text) orelse .custom_secret
+    else
+        .custom_secret;
+
+    const provider = try dupeOpt(alloc, try row.get(?[]const u8, 2));
+    errdefer if (provider) |p| alloc.free(p);
+    const base_url = try dupeOpt(alloc, try row.get(?[]const u8, 3));
+    errdefer if (base_url) |b| alloc.free(b);
+
+    return .{
+        .kind = kind,
+        .provider = provider,
+        .base_url = base_url,
+        .has_key = (try row.get(?bool, 4)) orelse false,
+    };
+}
+
+fn dupeOpt(alloc: std.mem.Allocator, s: ?[]const u8) !?[]const u8 {
+    return if (s) |v| try alloc.dupe(u8, v) else null;
 }
 
 /// Hard-delete the row at (workspace_id, key_name). Idempotent: `true` if a

@@ -1,13 +1,25 @@
 //! GET /v1/tenants/me/models — list-view construction.
 //!
 //! Joins each `core.tenant_model_entries` row to its secret's non-secret
-//! metadata (provider/kind/base_url/has_key) via `secret_metadata.project`,
-//! computes `active` against the tenant's current `core.tenant_model_selection`
-//! row, and resolves context/rates from the model library cache when known.
-//! Pure read — the "every active selection has a matching entry"
-//! invariant is guaranteed at activation-write time (tenant_provider.zig's
-//! ensureEntryForSelection), never patched up here. Split out of
-//! tenant_model_entries.zig (the 4-endpoint handler) per RULE FLL.
+//! metadata (provider/kind/base_url/has_key), computes `active` against the
+//! tenant's current `core.tenant_model_selection` row, and resolves
+//! context/rates from the model library cache when known. Pure read — the
+//! "every active selection has a matching entry" invariant is guaranteed at
+//! activation-write time (tenant_provider.zig's ensureEntryForSelection), never
+//! patched up here. Split out of tenant_model_entries.zig (the 4-endpoint
+//! handler) per RULE FLL.
+//!
+//! THIS READ DECRYPTS NOTHING (the never-decrypt invariant). Every field it
+//! displays is metadata that now lives in the `meta_*` columns
+//! (`schema/036_vault_secret_metadata.sql`), written beside the ciphertext at
+//! store time. One batch query answers the whole page.
+//!
+//! What that replaced: `projectEntry` called `secret_probe.loadTenantSecretJson`
+//! per row, and each call resolved the primary workspace AND opened an AES-GCM
+//! envelope. A 100-row page cost ~200 statements and 100 decryptions to render
+//! a view whose every field is shown to any authorized caller. Now it costs one
+//! workspace lookup and one metadata query, and no ciphertext is loaded at all —
+//! so there is no plaintext to leak, mishandle, or forget to zero.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -15,10 +27,9 @@ const pg = @import("pg");
 const entries_state = @import("../../state/tenant_model_entries.zig");
 const tenant_provider = @import("../../state/tenant_provider.zig");
 const secret_probe = @import("../../state/secret_probe.zig");
-const secret_metadata = @import("fleets/secret_metadata.zig");
+const vault = @import("../../state/vault.zig");
+const metadata = @import("../../secrets/metadata.zig");
 const model_rate_cache = @import("../../state/model_rate_cache.zig");
-
-const S_API_KEY = "api_key";
 
 /// One wire row for the `models` array. `kind` is a static `@tagName` slice
 /// (never freed); the rest are heap-owned (see `freeView`). No `api_key`
@@ -72,16 +83,32 @@ pub const ListResult = struct {
     }
 };
 
-/// Caller owns the result and must call `.deinit(alloc)`. Fetches the active
-/// selection and the entry list once each — a pure read. Activation
+/// Caller owns the result and must call `.deinit(alloc)`. Activation
 /// (tenant_provider.zig) guarantees the selection always has a matching
 /// entry row, so no synthesize-on-read exists here.
+///
+/// Statement budget, whatever the page size: one selection read, one entry
+/// list, one workspace resolve, one metadata batch, one platform default.
+/// Decryptions: zero.
 pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8) !ListResult {
     var selection = try tenant_provider.activeSelfManagedRef(alloc, conn, tenant_id);
     defer if (selection) |*s| s.deinit(alloc);
 
     const entries = try entries_state.list(alloc, conn, tenant_id);
     defer entries_state.deinitEntryList(entries, alloc);
+
+    const refs = try distinctSecretRefs(alloc, entries);
+    defer alloc.free(refs);
+
+    // One workspace resolve for the whole page, not one per row: the credentials
+    // a tenant's entries reference all live in its primary workspace.
+    const ws_id = try secret_probe.resolvePrimaryWorkspace(alloc, conn, tenant_id);
+    defer alloc.free(ws_id);
+
+    const meta = try alloc.alloc(?vault.SecretMetadata, refs.len);
+    defer alloc.free(meta);
+    try vault.loadMetadata(alloc, conn, ws_id, refs, meta);
+    defer vault.freeMetadata(alloc, meta);
 
     var views: std.ArrayList(EntryView) = .empty;
     errdefer {
@@ -93,16 +120,17 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
             std.mem.eql(u8, e.secret_ref, s.secret_ref) and std.mem.eql(u8, e.model_id, s.model)
         else
             false;
-        const view = try projectEntry(alloc, conn, tenant_id, e, active);
+        const view = try projectEntry(alloc, e, active, lookupMeta(refs, meta, e.secret_ref));
         errdefer freeView(alloc, view);
         try views.append(alloc, view);
     }
 
-    // Sequential reuse of `conn` is safe: every query above (`list`,
-    // `activeSelfManagedRef`, each `loadTenantSecretJson`) fully drains its
-    // own result set before returning — mirrors `fleets/secret_list.zig`.
-    // A failure reading the default degrades to "no default known" rather
-    // than failing the list — the posture the boolean always had.
+    // Sequential reuse of `conn` is safe: every query above
+    // (`activeSelfManagedRef`, `list`, `resolvePrimaryWorkspace`,
+    // `loadMetadata`) fully drains its own result set before returning —
+    // mirrors `fleets/secret_list.zig`. A failure reading the default degrades
+    // to "no default known" rather than failing the list — the posture the
+    // boolean always had.
     var platform_default = platformDefaultView(alloc, conn) catch null;
     errdefer if (platform_default) |*dv| dv.deinit(alloc);
 
@@ -113,10 +141,55 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
     };
 }
 
-/// A vault load failure (secret deleted out-of-band, decrypt error) degrades
-/// the row to an opaque custom_secret with no key — mirrors
-/// `fleets/secret_list.zig`'s resilience so the list still returns 200.
-fn projectEntry(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8, e: entries_state.Entry, active: bool) !EntryView {
+/// The distinct `secret_ref` set across `entries` — one key backs many model
+/// rows, so a 100-row page commonly references far fewer credentials. Slices are
+/// borrowed from `entries`; the caller frees only the returned array.
+///
+/// Linear scan rather than a hash set: the page is capped at 100 rows, so the
+/// worst case is a few thousand pointer comparisons against no allocation and no
+/// hashing. Same reasoning as `vault.markExisting`.
+fn distinctSecretRefs(alloc: std.mem.Allocator, entries: []const entries_state.Entry) ![]const []const u8 {
+    var refs: std.ArrayList([]const u8) = .empty;
+    errdefer refs.deinit(alloc);
+    outer: for (entries) |e| {
+        for (refs.items) |seen| {
+            if (std.mem.eql(u8, seen, e.secret_ref)) continue :outer;
+        }
+        try refs.append(alloc, e.secret_ref);
+    }
+    return refs.toOwnedSlice(alloc);
+}
+
+/// This entry's projection out of the batch result, or null when the credential
+/// has no vault row. `refs` and `meta` are positionally paired by
+/// `vault.loadMetadata`.
+fn lookupMeta(
+    refs: []const []const u8,
+    meta: []const ?vault.SecretMetadata,
+    secret_ref: []const u8,
+) ?vault.SecretMetadata {
+    for (refs, 0..) |r, i| {
+        if (std.mem.eql(u8, r, secret_ref)) return meta[i];
+    }
+    return null;
+}
+
+/// Build one wire row from an entry and its already-read projection.
+///
+/// No database handle and no tenant id: everything this needs was fetched in
+/// bulk by `buildList`. That is the structural half of Invariant 5 — a function
+/// with no connection cannot issue a query, so no future edit can quietly
+/// reintroduce a per-row read here.
+///
+/// A missing credential (deleted out-of-band, or a row not yet backfilled)
+/// degrades to an opaque custom_secret with no key, so the list still returns
+/// 200 — mirroring `fleets/secret_list.zig`'s per-row resilience.
+fn projectEntry(
+    alloc: std.mem.Allocator,
+    e: entries_state.Entry,
+    active: bool,
+    meta: ?vault.SecretMetadata,
+) !EntryView {
     const id = try alloc.dupe(u8, e.id);
     errdefer alloc.free(id);
     const model_id = try alloc.dupe(u8, e.model_id);
@@ -124,34 +197,30 @@ fn projectEntry(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8,
     const secret_ref = try alloc.dupe(u8, e.secret_ref);
     errdefer alloc.free(secret_ref);
 
-    var parsed = secret_probe.loadTenantSecretJson(alloc, conn, tenant_id, e.secret_ref) catch {
-        return .{
-            .id = id,
-            .model_id = model_id,
-            .secret_ref = secret_ref,
-            .kind = secret_metadata.Kind.custom_secret.wire(),
-            .has_key = false,
-            .active = active,
-            .created_at = e.created_at,
-        };
+    const m = meta orelse return .{
+        .id = id,
+        .model_id = model_id,
+        .secret_ref = secret_ref,
+        .kind = metadata.Kind.custom_secret.wire(),
+        .has_key = false,
+        .active = active,
+        .created_at = e.created_at,
     };
-    defer parsed.deinit();
 
-    const p = secret_metadata.project(parsed.value);
-    const provider = try dupeOpt(alloc, p.provider);
+    const provider = try dupeOpt(alloc, m.provider);
     errdefer if (provider) |v| alloc.free(v);
-    const base_url = try dupeOpt(alloc, p.base_url);
+    const base_url = try dupeOpt(alloc, m.base_url);
     errdefer if (base_url) |v| alloc.free(v);
-    const rate = if (p.provider) |prov| lookupModelRate(prov, model_id) else null;
+    const rate = if (m.provider) |prov| lookupModelRate(prov, model_id) else null;
 
     return .{
         .id = id,
         .model_id = model_id,
         .secret_ref = secret_ref,
         .provider = provider,
-        .kind = p.kind.wire(),
+        .kind = m.kind.wire(),
         .base_url = base_url,
-        .has_key = hasNonEmptyApiKey(parsed.value),
+        .has_key = m.has_key,
         .context_cap_tokens = if (rate) |r| r.context_cap_tokens else null,
         .input_nanos_per_mtok = if (rate) |r| r.input_nanos_per_mtok else null,
         .cached_input_nanos_per_mtok = if (rate) |r| r.cached_input_nanos_per_mtok else null,
@@ -159,12 +228,6 @@ fn projectEntry(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8,
         .active = active,
         .created_at = e.created_at,
     };
-}
-
-fn hasNonEmptyApiKey(value: std.json.Value) bool {
-    if (value != .object) return false;
-    const v = value.object.get(S_API_KEY) orelse return false;
-    return v == .string and v.string.len > 0;
 }
 
 fn platformDefaultView(alloc: std.mem.Allocator, conn: *pg.Conn) !?PlatformDefaultView {
