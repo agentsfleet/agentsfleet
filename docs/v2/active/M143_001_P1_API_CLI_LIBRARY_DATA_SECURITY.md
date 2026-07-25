@@ -15,12 +15,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 001
 **Date:** Jul 24, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — library reads repeat database and decrypt work and expose unbounded behavior
 **Categories:** API, CLI
 **Batch:** B1 — establishes interfaces consumed by later workstreams
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m143-library-data-security`
+**Test Baseline:** unit=2958 integration=393
 **Depends on:** none
 **Provenance:** LLM-drafted (Codex, Jul 24, 2026) from Oracle second-pass review
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §§8.2–10 and `docs/architecture/fleet_bundles.md` §Library tiers
