@@ -2,6 +2,7 @@
 //! Depends on crypto_primitives for all crypto operations.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const constants = @import("common");
 const clock = constants.clock;
 const pg = @import("pg");
@@ -9,11 +10,59 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
 const sql = @import("sql.zig");
+const metadata = @import("metadata.zig");
 const secure_memory = @import("secure_memory.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.secrets);
+
+/// Test-only tally of envelope opens (the never-decrypt invariant).
+///
+/// Invariant 5 says the library read paths decrypt exactly zero times. Prose
+/// cannot enforce that — the next handler to reach for `vault.loadJson` on a
+/// read would satisfy every other gate we have. This counter turns the invariant
+/// into an assertion: `test_library_reads_never_decrypt` drives the tenant
+/// registry, global models, Fleet summary, and Fleet detail reads and requires
+/// the tally to still be zero afterwards.
+///
+/// Genuinely compiled out of production. The non-test branch is an empty struct
+/// whose `note` has no body, so release builds carry no counter, no atomic, and
+/// no increment — there is no cardinality surface and nothing to export.
+const DecryptTally = if (builtin.is_test) struct {
+    var value: std.atomic.Value(usize) = .init(0);
+
+    /// Atomic because integration tests exercise handlers concurrently;
+    /// `.monotonic` is sufficient — the assertion reads the total after the
+    /// requests have been joined, never mid-flight.
+    fn note() void {
+        _ = value.fetchAdd(1, .monotonic);
+    }
+    fn read() usize {
+        return value.load(.monotonic);
+    }
+    fn reset() void {
+        value.store(0, .monotonic);
+    }
+} else struct {
+    fn note() void {}
+    fn read() usize {
+        return 0;
+    }
+    fn reset() void {}
+};
+
+/// Envelope opens counted since the last `resetDecryptCountForTest`. Always 0 in
+/// a production build.
+pub fn decryptCountForTest() usize {
+    return DecryptTally.read();
+}
+
+/// Zero the tally. Every test that asserts on it calls this first, so the count
+/// is scoped to the request under test rather than to the whole binary.
+pub fn resetDecryptCountForTest() void {
+    DecryptTally.reset();
+}
 
 const KEY_LEN = cp.KEY_LEN;
 const NONCE_LEN = cp.NONCE_LEN;
@@ -29,13 +78,21 @@ fn buildAad(alloc: std.mem.Allocator, workspace_id: []const u8, key_name: []cons
     return std.fmt.allocPrint(alloc, AAD_FORMAT, .{ canonical_workspace_id, AAD_SEPARATOR, key_name, AAD_SEPARATOR, kek_version });
 }
 
-/// Store encrypted secret in vault.secrets with envelope encryption.
+/// Store encrypted secret in vault.secrets with envelope encryption, together
+/// with the non-secret projection of the body being stored (the metadata promotion).
+///
+/// `projection` is not optional and carries no default. Every caller must have
+/// derived it from THIS `plaintext`, because the two are written by one
+/// statement and a mismatched pair is indistinguishable afterwards from a
+/// correct one. Making it a required parameter is the enforcement: a caller that
+/// has not looked at the body it is storing cannot call this.
 pub fn store(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     workspace_id: []const u8,
     key_name: []const u8,
     plaintext: []const u8,
+    projection: metadata.Projection,
 ) !void {
     var kek = try cp.loadKek();
     defer std.crypto.secureZero(u8, &kek);
@@ -69,6 +126,10 @@ pub fn store(
         encrypted_payload.tag[0..],
         KEK_VERSION_AAD_BOUND,
         now_ms,
+        projection.kind.wire(),
+        projection.provider,
+        projection.base_url,
+        projection.has_key,
     });
     // info (not debug) by design: credential store/retrieve stays visible in default prod logs for
     // security-access monitoring — key_name only, never the secret value. LOGGING_STANDARD §4 exception.
@@ -113,6 +174,13 @@ fn decryptRowAt(
     kek: *const [KEY_LEN]u8,
     col: usize,
 ) ![]u8 {
+    // Counted here because this is the single funnel every envelope open passes
+    // through — `load` and `loadAllForWorkspace` both land here, so no caller can
+    // decrypt without being tallied. Counted on ENTRY, not on success: a read
+    // path that touched ciphertext and failed still touched ciphertext, and
+    // Invariant 5 is about the touching.
+    DecryptTally.note();
+
     const encrypted_dek = try row.get([]u8, col);
     const dek_nonce_slice = try row.get([]u8, col + 1);
     const dek_tag_slice = try row.get([]u8, col + 2);

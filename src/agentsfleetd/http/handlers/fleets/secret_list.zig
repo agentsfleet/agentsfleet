@@ -13,7 +13,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const crypto_store = @import("../../../secrets/crypto_store.zig");
-const secret_metadata = @import("secret_metadata.zig");
+const secret_metadata = @import("../../../secrets/metadata.zig");
 
 /// One wire row. `kind` is a static `@tagName` slice (never freed); `name` and
 /// the descriptors are heap-owned (see `freeRow`). No `api_key` field exists.
