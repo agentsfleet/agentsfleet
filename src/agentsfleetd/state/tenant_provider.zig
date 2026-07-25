@@ -150,7 +150,16 @@ pub fn upsertSelfManaged(
     const ws_id = try secret_probe.resolvePrimaryWorkspace(alloc, conn, tenant_id);
     defer alloc.free(ws_id);
 
-    var txn = try secret_reference_txn.begin(conn, ws_id, secret_ref, tenant_id);
+    // `SecretGone` becomes `SecretMissing`: taking the lock before the probe
+    // moved WHERE a missing credential is discovered, and it must not move what
+    // the caller is told. "Never existed" and "deleted a moment ago" are the
+    // same fact to an activation request, and callers already map SecretMissing
+    // to the right status. The lock adds protection against the concurrent
+    // delete; it does not get to invent a new error for the ordinary case.
+    var txn = secret_reference_txn.begin(conn, ws_id, secret_ref, tenant_id) catch |err| switch (err) {
+        secret_reference_txn.Error.SecretGone => return ResolveError.SecretMissing,
+        else => return err,
+    };
     errdefer txn.abort();
 
     var probe = try secret_probe.probeSelfManagedSecret(alloc, conn, tenant_id, secret_ref);
