@@ -95,6 +95,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Amend the API guideline before route work to permit opaque compound keysets where a resource ID alone cannot preserve a filtered mixed-key order; retain the standard request name `starting_after`, default 50/max 100, and exact list envelope `{items,total,next_cursor}` with `total:null`. `GET /v1/tenants/me/models?limit=50&starting_after=` orders `created_at DESC, id COLLATE "C" DESC`. Its cursor is unpadded base64url of UTF-8 canonical JSON with fixed key order/types `{"v":1,"created_at":int64,"id":string,"tenant_uuid":uuid,"limit":int}`. Malformed/version/tenant/limit mismatch is 400; a valid stale boundary continues and may return empty. Project only the current page and decrypt each distinct page `secret_ref` once.
 
+**Reads decrypt nothing.** The page shows `secret_ref`, provider, kind, base URL, `has_key`, and presence booleans. Every one of those is metadata; not one is the secret value. Presence therefore comes from a single batch existence query — `vault.markExisting`, one `SELECT key_name FROM vault.secrets WHERE workspace_id = $1 AND key_name = ANY($2)` — not from decrypting each row. `http/handlers/connectors/catalog.zig::innerCatalog` already does exactly this and documents the budget: "exactly 2 (one batch existence query per set) — never the ~2·N sequential decrypting `loadJson` reads the naive shape would do."
+
+This changes the tenant registry page from up to 100 decryptions to **zero**. It is the single largest cost on the path, and removing it also removes the exposure: no ciphertext is loaded, no plaintext is derived, so §4's rule that secret values never leave trusted erased memory holds on reads because nothing is ever read.
+
+**Precondition the implementing agent verifies at PLAN.** This holds only while every displayed field lives in a column rather than inside the encrypted blob. Confirm against the vault payload actually written by `tenant_provider.upsertSelfManaged` and model creation. If a displayed field (base URL is the likely one) is stored inside the blob, do not fall back to per-row decryption — promote that field to its own column in `schema/035`, because a value the API displays to any authorized caller is not a secret and should never have been encrypted. Record the finding in Discovery either way.
+
 Every reference producer—POST model creation, provider activation, `tenant_provider.upsertSelfManaged`, and `ensureEntry`—and deletion uses one transaction and exact lock order: `vault.secrets(workspace_id,key_name) FOR UPDATE`; matching `core.tenant_model_entries ORDER BY id FOR UPDATE`; `core.tenant_model_selection FOR UPDATE`; validate/mutate; commit. Producer-first makes delete reject; delete-first makes producer observe absence and roll back.
 
 - **Dimension 1.1** — tenant keyset and current-page projection are exact → Test `test_tenant_registry_page_is_bounded`
@@ -104,13 +110,17 @@ Every reference producer—POST model creation, provider activation, `tenant_pro
 
 The model API has only `q` and provider filters. Normalize `q` with NFKC, trim, whitespace collapse, casefold; normalized empty means absent; reject over 128 UTF-8 bytes. Provider trims ASCII whitespace, lowercases, treats empty as absent, and remains arbitrary catalogue text—an unknown provider is valid and returns no matches. Match a literal substring with escaped SQL LIKE wildcards over normalized `display_name=model_id` and `vendor=provider`. Sort normalized display, normalized vendor, and id ascending, each `COLLATE "C"`. `starting_after` is fixed-key canonical JSON `{"v":1,"display_key":string,"vendor_key":string,"id":string,"q":string|null,"provider":string|null,"limit":int}` encoded as above. Malformed/version/filter/limit mismatch is 400; a stale valid boundary may return empty.
 
-After authentication, every request reads the database catalogue revision before cache selection. A mutation locks the singleton revision row, mutates the catalogue and increments revision in one transaction, builds a candidate tagged with the returned revision, commits, then publishes only when its revision exceeds the process's published generation; rollback/commit failure discards it. Billing uses its existing connection to reconcile revision and atomically copy a rate from the cache generation it observed; rebuild failure fails closed, never bills stale. Revision-read failure returns typed 503 without cached data. The existing top-level catalogue `version` string remains in every 200 page; internal `catalogue_revision` is not exposed.
+After authentication, every request reads the database catalogue revision before cache selection. A mutation locks the singleton revision row, mutates the catalogue and increments revision in one transaction, and commits.
+
+**The revision belongs in the cache key, and that removes the publish protocol.** An earlier draft also kept a process-published generation and allowed a candidate to publish only when its revision exceeded it, with a rule that concurrent publishers must never replace a newer generation with an older one. That protocol is unnecessary once the revision is part of the key, which it already is. A candidate built from revision N lands under a key containing N. Every later request reads revision N+1 first and looks up a different key, so a stale candidate is unreachable rather than dangerous — it simply ages out under LRU and TTL. Ordering between concurrent publishers stops mattering, and with it goes a class of races that is hard to test and easy to get wrong.
+
+Rollback or commit failure discards the candidate, as before. What is deliberately **not** removed is billing reconciliation: the rate cache is keyed by `(provider, model_id)` rather than by revision, so it cannot use this trick and keeps its explicit reconcile-and-copy under the mutex. Billing uses its existing connection to reconcile revision and atomically copy a rate from the cache generation it observed; rebuild failure fails closed, never bills stale. Revision-read failure returns typed 503 without cached data. The existing top-level catalogue `version` string remains in every 200 page; internal `catalogue_revision` is not exposed.
 
 The response cache key is revision plus an unlogged HMAC-SHA-256 digest, under a process-random key, of canonical q/provider/starting_after/limit selectors; no raw selector or credential metadata enters keys. It is true LRU, at most 256 entries and 8 MiB, with a monotonic 60-second TTL.
 
 Byte accounting is defined rather than estimated, because "including allocator metadata" is not observable through a Zig allocator. A tracking allocator wraps the cache and sums the exact `len` of every live allocation it owns — key bytes, value bytes, and node storage — so the number the ceiling compares against is the number the test reads. Allocator-internal padding and bookkeeping are outside the budget by construction, and the ceiling is set with that headroom in mind. Insertion is rejected when admitting an entry would cross either ceiling; rejection is a bypass, never an eviction cascade. It contains only non-secret model responses; Fleet is never cached. Allocation failure or over-budget responses bypass insertion. A strong ETag hashes exact bytes. Both 200/304 send `ETag`, `Cache-Control: private, no-cache`, `Vary: Authorization`; after auth/revision, `If-None-Match: *`, exact, or weak list match returns bodyless 304, otherwise 200.
 
-The billing decision linearizes at its revision read: under the rate-cache mutex, reconcile to that exact generation and copy the selected rate before unlock. A later catalogue commit applies only to later revision reads; concurrent publishers may never replace a newer generation with an older one.
+The billing decision linearizes at its revision read: under the rate-cache mutex, reconcile to that exact generation and copy the selected rate before unlock. A later catalogue commit applies only to later revision reads.
 
 Rate-cache identity is a collision-safe structured `(provider,model_id)` key, never delimiter concatenation. Migration tests include provider/model strings containing the current `0x1f` separator and prove distinct tuples cannot alias or select another rate.
 
@@ -125,7 +135,7 @@ Measured application-data maxima after middleware auth are:
 
 | API path | DB statements | Decryptions | Results | Encoded body | Connections |
 |---|---:|---:|---:|---:|---:|
-| tenant registry page | ≤4 | ≤distinct page refs (≤100) | ≤100 | ≤512 KiB | 1 |
+| tenant registry page | ≤4 | **0** | ≤100 | ≤512 KiB | 1 |
 | global models cache hit / miss | ≤1 / ≤2 | 0 | ≤100 | ≤256 KiB | 1 |
 | Fleet summary | ≤1 | 0 | ≤100 | ≤512 KiB | 1 |
 | Fleet detail | ≤2 | 0 | 1 | ≤1 MiB | 1 |
@@ -187,9 +197,11 @@ Every row is also a Test Specification row. The two tables name the same tests o
 ## Invariants
 
 1. All pages, work, connections, and bodies obey §3 limits; typed builders enforce failure rather than truncation.
-2. One catalogue generation governs response and billing caches; transaction and billing checks enforce it.
+2. One catalogue generation governs response and billing caches. The response cache enforces it structurally by carrying the revision in its key; billing enforces it by reconciling under its mutex.
 3. One lock order governs all reference producers/deletes; transaction helpers enforce it.
 4. Sink-safe metadata types and sentinel scans enforce §4.
+5. No library read path decrypts. Presence is a batch existence query; the read-path decryption counter is asserted at exactly zero.
+6. The global model response cache is shared across tenants, so its payload must be byte-identical for every authorized caller. Any tenant-varying field entering that payload is a cross-tenant leak, and the cache key carries no tenant to catch it.
 
 ## Metrics & Observability
 
@@ -224,6 +236,8 @@ This table is the complete set. Every row is mandatory, including the unit tier 
 | — | integration | `test_projection_failures_are_safe` | decrypt, allocation, and body-ceiling faults return typed errors, zero and free owned memory, and never truncate |
 | — | integration | `test_library_pool_query_failure` | pool acquire and SQL faults return `UZ-LIBRARY-006` with the connection released |
 | — | integration | `test_stale_library_cursors_continue` | a boundary row mutated between pages continues and may end empty, never errors |
+| — | integration | `test_library_reads_never_decrypt` | the read-path decryption counter is exactly zero across tenant registry, global models, Fleet summary, and Fleet detail; presence still resolves correctly for present, absent, and mixed key sets |
+| — | integration | `test_global_cache_payload_is_tenant_invariant` | two different authorized tenants requesting identical selectors at the same revision receive byte-identical payloads, so the tenant-free cache key cannot leak across tenants |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -266,6 +280,13 @@ No file deletion. Removed unpaged helpers, unsupported filter, bare Fleet identi
 - **Chosen shape:** projection, catalogue/cache, Fleet, and sink slices align ownership.
 - **Alternatives considered:** UI-only masking and process-only invalidation leave root failures.
 - **Patch-vs-refactor verdict:** **refactor**, because keysets, generation, locks, identity, and cache ownership change together.
+
+**Directed at CTO review, with reasons, so they are not re-litigated:**
+
+- **Per-row decryption on read paths — removed.** The page displays metadata, never a secret value, and `vault.markExisting` already answers presence with one batch query. `connectors/catalog.zig::innerCatalog` proves the pattern in production. This is the largest single cost on the path and the only reason ciphertext was touched on a read.
+- **The publish-generation protocol — removed.** The response cache key already carries the revision, which makes a stale candidate unreachable rather than dangerous. Keeping a published-generation guard on top of a revision-keyed cache adds an ordering race to defend against a problem the key already solves. Billing keeps its reconciliation because its cache is keyed by `(provider, model_id)` and cannot use the same trick.
+- **Signed cursors — considered and rejected.** An HMAC over the cursor would collapse the shape and identity checks into one signature check and stop a client forging a boundary. Rejected because the key would have to outlive a process and be shared across replicas to avoid breaking pagination on every deploy, and the security gain is small: the cursor already carries the tenant or workspace identity, which is validated against the authenticated principal, so a forged cursor can only seek within data the caller may already read. Revisit only if cursors ever carry something the caller cannot otherwise obtain.
+- **Approximate result counts — not built.** `total:null` is a keyset consequence, and an estimate is worse than an honest absence for a page users act on. Reconsider if a real complaint arrives.
 
 ## Discovery (consult log)
 
