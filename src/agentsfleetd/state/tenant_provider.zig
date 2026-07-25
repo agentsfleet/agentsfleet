@@ -22,15 +22,13 @@
 
 const std = @import("std");
 const clock = @import("common").clock;
-const logging = @import("log");
 const pg = @import("pg");
 const resolver = @import("tenant_provider_resolver.zig");
 const secret_probe = @import("secret_probe.zig");
 const tenant_model_entries = @import("tenant_model_entries.zig");
+const secret_reference_txn = @import("secret_reference_txn.zig");
 const sql = @import("tenant_provider/sql.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-
-const log = logging.scoped(.state_tenant_provider);
 
 pub const Mode = enum {
     const Self = @This();
@@ -137,21 +135,30 @@ pub fn upsertSelfManaged(
     model: []const u8,
     context_cap_tokens: u32,
 ) (ResolveError || anyerror)!void {
+    // The lock comes FIRST, before the credential is even probed. Activation is
+    // a reference producer: it writes both a registry entry and a selection row
+    // naming `secret_ref`, so a concurrent
+    // `DELETE /workspaces/{ws}/secrets/{name}` between the probe and the commit
+    // would leave the tenant's ACTIVE model pointing at a credential that no
+    // longer exists — the worst instance of the orphan, because it breaks every
+    // subsequent run rather than one list row. See state/secret_reference_txn.zig
+    // for the shared order.
+    //
+    // This replaces a bare BEGIN/COMMIT that was atomic but unsynchronized:
+    // atomicity kept the entry and selection consistent with EACH OTHER, and
+    // said nothing about whether the credential they name still existed.
+    const ws_id = try secret_probe.resolvePrimaryWorkspace(alloc, conn, tenant_id);
+    defer alloc.free(ws_id);
+
+    var txn = try secret_reference_txn.begin(conn, ws_id, secret_ref, tenant_id);
+    errdefer txn.abort();
+
     var probe = try secret_probe.probeSelfManagedSecret(alloc, conn, tenant_id, secret_ref);
     defer probe.deinit(alloc);
 
     // M121 registry invariant, enforced HERE so every caller of the selection
     // write gets it: the active (secret_ref, model) pair always has a matching
     // core.tenant_model_entries row, and the GET list path stays a pure read.
-    // Entry + selection commit atomically — no orphan entry row surfaces from
-    // a partial failure. rollback() (not exec("ROLLBACK")) per signup_bootstrap:
-    // exec short-circuits when the connection is in FAIL state.
-    _ = try conn.exec("BEGIN", .{});
-    var tx_open = true;
-    errdefer if (tx_open) {
-        conn.rollback() catch |err| log.warn("rollback_failed", .{ .err = @errorName(err) });
-    };
-
     try tenant_model_entries.ensureEntry(alloc, conn, tenant_id, model, secret_ref);
 
     const now_ms: i64 = clock.nowMillis();
@@ -165,8 +172,7 @@ pub fn upsertSelfManaged(
         now_ms,
     });
 
-    _ = try conn.exec("COMMIT", .{});
-    tx_open = false;
+    try txn.commit();
 }
 
 /// UPSERT an explicit platform-default row for tenant_id. Used by
