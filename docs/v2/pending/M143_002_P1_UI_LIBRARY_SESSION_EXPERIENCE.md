@@ -51,12 +51,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |---|---|---|
 | `ui/packages/app/lib/api/model_library.ts`; `lib/api/fleet-library.ts`; `lib/api/library-types.ts` | EDIT/CREATE | Exact page/detail/error types. |
-| models page/reads/actions/catalogue provider/picker/dialog components and tests | EDIT | Registry page/load-more, current-page projection, intent loading. |
-| route loading and Fleet new/install/card components/tests; `fleets/new/actions.ts` | EDIT/CREATE | Stable summary/detail and `readFleetLibraryDetailAction`. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/page.tsx`; `.../models/actions.ts`; `.../models/loading.tsx`; `.../models/lib/reads.ts`; `.../models/components/ModelCatalogueProvider.tsx`; `.../models/components/ProviderModelSelect.tsx`; `.../models/components/ModelsRegistryTable.tsx`; `.../models/components/AddModelEntryDialog.tsx`; `.../models/components/EditModelEntryDialog.tsx` | EDIT | Registry page/load-more, current-page projection, intent loading. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/page.tsx`; `.../fleets/new/actions.ts`; `.../fleets/new/LibraryCard.tsx`; `.../fleets/new/InstallSourceSelector.tsx`; `.../fleets/new/AddLibraryDialog.tsx`; `.../fleets/new/loading.tsx` | EDIT/CREATE | Stable summary/detail and `readFleetLibraryDetailAction`. |
 | `ui/packages/app/lib/auth/client.ts`; `lib/auth/client.test.tsx`; `app/layout.tsx` | EDIT | Threshold-driven keeper decision. |
 | `ui/packages/app/playwright.acceptance.config.ts`; `make/acceptance.mk`; `scripts/check-session-keeper-canary.ts`; `scripts/capture-session-keeper-canary.ts` | EDIT/CREATE | Three browser lanes, provisioned capture target, verdict. |
 | `tests/e2e/acceptance/settings-models.spec.ts`; `platform-library-onboarding.spec.ts`; `library-session-continuity.spec.ts` | EDIT/CREATE | Authenticated UI/session proof. |
 | `docs/architecture/user_flow.md`; `docs/AUTH.md` | EDIT | Paged UI and keeper verdict truth. |
+
+**Scope grading.** Rubric R4 compares `git diff --name-only origin/main` against this table, so every cell is an exact path. Component test files sit beside their component as `<Name>.test.tsx` and are covered by their component's row. A path that turns out to be genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
 
 ## Applicable Rules
 
@@ -95,9 +97,21 @@ Initial Fleet creation requests one summary page, then load-more retains cards. 
 
 ### §3 — Genuine Clerk canary decides keeper state
 
-Run baseline and candidate against the same Clerk environment in desktop Chromium, Firefox, and WebKit. Each cohort has exactly 20 completed attempts for each of five scenarios per lane (100/lane/cohort): visible continuity through 1h, background expiry, offline/online, focus restoration, and resumed Server Action. Provisioned `make capture-session-keeper-canary BASELINE_REF=origin/main CANDIDATE_REF=HEAD` writes the ignored aggregate JSON; it is not universal CI.
+Run baseline and candidate against the same Clerk environment in desktop Chromium, Firefox, and WebKit. Each cohort has exactly 20 completed attempts for each of five scenarios per lane (100/lane/cohort): session-lifetime continuity, background expiry, offline/online, focus restoration, and resumed Server Action.
 
-Per lane/cohort/scenario record completed attempts, unexpected auth failures, recovery-required attempts/successes, refresh-eligible attempts, and duplicate refreshes. Compare failure=`failures/completed`, recovery=`successes/recovery_required`, duplicate=`duplicates/refresh_eligible`. A zero recovery/refresh denominator is N/A/pass only when its numerator is also zero; otherwise the report is invalid, and thresholds apply only to applicable rates. Remove only when every candidate cell is ≤ baseline failure +1.0 percentage point, recovery ≥99%, and duplicate rate ≤ baseline. The checker accepts `remove` only with zero production keeper references and `retain` only when unchanged. After removal, any breached cell restores the mount; the report records a synthetic threshold-breach rollback check plus source diff evidence.
+**Session lifetime is configuration, not wall clock.** The capture runs against a dedicated Clerk test instance whose session token lifetime is set to the shortest value Clerk permits, and the run records that configured lifetime in report metadata. Every expiry-crossing scenario waits on the configured lifetime, not on a production-length one. This is what makes the matrix runnable at all: 5 scenarios × 20 attempts × 3 browsers × 2 cohorts is 600 attempts, and pinning any expiry scenario to a production-length session makes the capture cost dominated by sleeping rather than testing. Clerk behaviour under test is genuine — real tokens, real refresh, real cookies — only the lifetime is shortened, and the report is invalid if its metadata does not name the instance and lifetime used.
+
+**The decision rule is expressed in counts, because 20 samples cannot resolve a percentage point.** One failure in a 20-attempt cell moves a rate by 5 percentage points, so a "+1.0 percentage point" threshold is finer than the instrument and can never be graded honestly. Per lane/cohort/scenario record completed attempts, unexpected auth failures, recovery-required attempts, recovery successes, refresh-eligible attempts, and duplicate refreshes. `remove` requires, in the candidate cohort, across every lane and scenario:
+
+- **zero** unexpected auth failures, against a baseline that is also zero; if any baseline cell is non-zero the report is invalid and the comparison is abandoned rather than reinterpreted,
+- **every** recovery-required attempt recovered, so 20/20 where the denominator is 20 and no shortfall anywhere,
+- duplicate refreshes **no greater than** the matching baseline cell in absolute count.
+
+A zero recovery or refresh denominator passes only when its numerator is also zero; otherwise the report is invalid. The checker accepts `remove` only with zero production keeper references and `retain` only when the keeper files and mount are unchanged. After removal, any breached cell restores the mount; the report records a synthetic threshold-breach rollback check plus source diff evidence.
+
+`retain` is always available and is not a failure. If the capture cannot be provisioned, the honest outcome is `retain` with the reason recorded, not a weakened threshold.
+
+Provisioned `make capture-session-keeper-canary BASELINE_REF=origin/main CANDIDATE_REF=HEAD` writes the ignored aggregate JSON; it is not universal CI.
 
 - **Dimension 3.1** — all genuine lanes and lifecycle actions meet sample rules → Test `test_clerk_canary_lane_matrix_is_complete`
 - **Dimension 3.2** — checker binds verdict to source state → Test `test_session_keeper_verdict_matches_repository`
@@ -138,14 +152,20 @@ Refresh state: last success plus idle/loading/refreshing/error and typed error.
 
 ## Test Specification (tiered)
 
+This table is the complete set. Every row is mandatory, including the failure rows — an agent that implements only the dimension rows ships an incomplete workstream.
+
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 1.1 | integration | `test_models_registry_retains_pages_without_extra_decrypts` | prior rows retained; current page only projected |
+| 1.1 | integration | `test_models_registry_retains_pages_without_extra_decrypts` | prior rows retained; exactly one page request per load-more, asserted by request spy on the API client, no global catalogue or secret request on an ordinary visit |
 | 1.2 | browser | `test_model_picker_prefetch_policy_and_latest_result` | coarse/Save-Data hover blocked; focus/open allowed; latest wins |
 | 2.1 | integration | `test_fleet_load_more_then_selected_detail` | append summaries; one selected detail; no secret preload |
 | 2.2 | end-to-end | `test_fleet_deep_link_and_typed_states` | server selection and exact statuses/no flash |
-| 3.1 | end-to-end | `test_clerk_canary_lane_matrix_is_complete` | exactly 20 completed attempts per browser/cohort/scenario and valid denominators |
+| 3.1 | end-to-end | `test_clerk_canary_lane_matrix_is_complete` | exactly 20 completed attempts per browser/cohort/scenario, valid denominators, and metadata naming the Clerk instance and configured session lifetime |
 | 3.2 | integration | `test_session_keeper_verdict_matches_repository` | valid retain/remove both pass only with matching source |
+| — | integration | `test_refresh_retains_authorized_content` | a network or 503 fault after a success keeps the last successful rows on screen and offers retry, never falling back to an empty state |
+| — | browser | `test_library_reduced_motion_state` | under `prefers-reduced-motion: reduce` no shimmer or transform runs, and loading remains distinguishable from loaded |
+
+**Decryption is asserted indirectly and deliberately.** Decryption happens server-side and is owned by M143_001. Row 1.1 asserts what this workstream controls — the number and shape of requests the UI issues — and treats "no extra decrypts" as a consequence proven by M143_001's `test_tenant_registry_page_is_bounded`. Naming that split here stops an agent from trying to observe decryption from a browser context.
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -153,11 +173,11 @@ Refresh state: last success plus idle/loading/refreshing/error and typed error.
 |---|---|---|---|---|---|
 | R1 | Lazy paged UI tests pass | `bun --cwd ui/packages/app test` | exit 0 | P0 | |
 | R2 | Acceptance browser paths pass | `bun --cwd ui/packages/app run test:e2e:acceptance` | exit 0 | P0 | |
-| R3 | Captured canary matches thresholds/source | `bun scripts/check-session-keeper-canary.ts --input test-results/session-keeper-canary.json --base origin/main` | exit 0 with source-consistent `decision=remove|retain` and `rollback_check=pass` | P0 | |
+| R3 | Captured canary matches the count rule and source | `bun scripts/check-session-keeper-canary.ts --input test-results/session-keeper-canary.json --base origin/main` | exit 0 with source-consistent `decision=remove\|retain`, `rollback_check=pass`, and metadata naming the Clerk instance and configured session lifetime | P0 | |
 | R4 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | |
 | S1 | Repository gates | `make test-unit-all && make lint-all && make harness-verify && gitleaks detect` | exit 0 | P0 | |
 
-**Grading protocol (VERIFY):** run verbatim; record ✅/❌ and one decisive line. Either source-consistent canary verdict passes.
+**Grading protocol (VERIFY):** run verbatim; record ✅/❌ and one decisive line. Either source-consistent canary verdict passes, and `retain` with a recorded reason is a valid P0 pass — the workstream is not blocked on being allowed to delete the keeper.
 
 ## Dead Code Sweep
 
