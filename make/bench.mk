@@ -8,6 +8,28 @@
 
 .PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _ensure-test-bin _memleak-lane _memleak-boot-drain
 
+# One definition shared by every valgrind invocation below, so a lane can never
+# drift onto different flags than the ones that were reviewed.
+#
+# Deliberately NO --suppressions. The boot->drain lane fails intermittently on
+# `Syscall param futex(futex) points to unaddressable byte(s)` inside
+# `std.Io.Threaded`, and that finding is CORRECT. Zig 0.16.0 has the awaiter park
+# on a futex word that lives in its own stack frame (`groupAwait`,
+# Threaded.zig:2297), while the last worker publishes the wake condition and only
+# then dereferences that word:
+#
+#     _ = to_signal.fetchAdd(1, .release);   // awaiter may now return
+#     Thread.futexWake(&to_signal.raw, 1);   // ...and this reads dead stack
+#
+# The awaiter breaks out of its wait the moment it observes the increment
+# (Threaded.zig:2315-2320) and pops the frame, so the wake can land on reclaimed
+# stack. Same shape on the Future path (Threaded.zig:760-762), which is why the
+# reported top frame alternates. Suppressing it would hide a genuine
+# use-after-scope in exactly the shutdown path this lane exists to police.
+VALGRIND_LEAK_GATE := valgrind --quiet --leak-check=full --show-leak-kinds=all \
+  --errors-for-leak-kinds=definite,possible --undef-value-errors=no \
+  --error-exitcode=1
+
 # `make memleak` leak-gates all THREE test graphs — daemon (agentsfleetd),
 # runner (build_runner.zig), lib (src/lib, three artifacts). On Linux the
 # blocking gate is valgrind (full leak-check, propagates exit code, subsumes the
@@ -41,7 +63,7 @@ _memleak-lane:
 	    zig build $(MEMLEAK_BUILD) -Doptimize=ReleaseSafe $(if $(filter 1,$(MEMLEAK_OPENSSL_OFF)),-Dopenssl=false,) $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) || exit 1; \
 	    for b in $(MEMLEAK_BINS); do \
 	      echo "→ [$(LANE)] valgrind leak gate: $$b..."; \
-	      valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --undef-value-errors=no --error-exitcode=1 zig-out/bin/$$b || exit 1; \
+	      $(VALGRIND_LEAK_GATE) zig-out/bin/$$b || exit 1; \
 	    done;; \
 	  Darwin) \
 	    echo "→ [$(LANE)] Building for the allocator gate..."; \
@@ -77,13 +99,13 @@ _memleak-boot-drain: _ensure-test-infra
 	  Linux) \
 	    command -v valgrind >/dev/null 2>&1 || { echo "✗ valgrind is required on Linux for make memleak"; exit 1; }; \
 	    opt="-Doptimize=ReleaseSafe -Dopenssl=false"; \
-	    runner="valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --undef-value-errors=no --error-exitcode=1";; \
+	    runner="$(VALGRIND_LEAK_GATE)";; \
 	  *) opt="-Dopenssl=false"; runner="";; \
 	esac; \
 	echo "→ [boot-drain] Building the lifecycle test binary (filtered)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" zig build test-bin $$opt -Dtest-filter="$$filter" $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) || exit 1; \
 	echo "→ [boot-drain] Running the lifecycle test under the leak gate (live pg + TLS redis)..."; \
-	out=$$(AGENTSFLEET_LIFECYCLE_ISOLATED=1 TEST_DATABASE_URL="$$db_url" TEST_REDIS_TLS_URL="$$redis_url" REDIS_TLS_CA_CERT_FILE="$$ca" $$runner zig-out/bin/agentsfleetd-tests 2>&1) || { echo "$$out"; echo "✗ [boot-drain] leak gate failed"; exit 1; }; \
+	out=$$(AGENTSFLEET_LIFECYCLE_ISOLATED=1 TEST_DATABASE_URL="$$db_url" TEST_REDIS_TLS_URL="$$redis_url" REDIS_TLS_CA_CERT_FILE="$$ca" $$runner zig-out/bin/agentsfleetd-tests 2>&1) || { echo "$$out"; echo "✗ [boot-drain] valgrind gate failed — check whether the output above is a LEAK SUMMARY or another memcheck class (an invalid read/write or a syscall param); they have different causes and this gate fails on all of them"; exit 1; }; \
 	echo "$$out" | grep -q "$$marker" || { echo "$$out"; echo "✗ [boot-drain] lifecycle test did NOT run (skipped — infra env misconfigured); the leak claim would be vacuous"; exit 1; }; \
 	echo "✓ [boot-drain] boot→SIGTERM→drain ran leak-clean under the gate"
 

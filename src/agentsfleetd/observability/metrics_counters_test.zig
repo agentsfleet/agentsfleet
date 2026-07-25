@@ -34,10 +34,10 @@ test "renderPrometheus carries the SSE hub counter lines with snapshot values" {
     const output = try render.renderPrometheus(alloc, false);
     defer alloc.free(output);
     var dropped_buf: [128]u8 = undefined;
-    const dropped = try std.fmt.bufPrint(&dropped_buf, "fleet_sse_dropped_frames_total {d}", .{snap.sse_dropped_frames_total});
+    const dropped = try std.fmt.bufPrint(&dropped_buf, "agentsfleet_sse_dropped_frames_total {d}", .{snap.sse_dropped_frames_total});
     try std.testing.expect(std.mem.indexOf(u8, output, dropped) != null);
     var reconnects_buf: [128]u8 = undefined;
-    const reconnects = try std.fmt.bufPrint(&reconnects_buf, "fleet_sse_hub_reconnects_total {d}", .{snap.sse_hub_reconnects_total});
+    const reconnects = try std.fmt.bufPrint(&reconnects_buf, "agentsfleet_sse_hub_reconnects_total {d}", .{snap.sse_hub_reconnects_total});
     try std.testing.expect(std.mem.indexOf(u8, output, reconnects) != null);
 }
 
@@ -56,4 +56,36 @@ test "in-flight gauges reflect the last stored value" {
     const snap = mc.snapshot();
     try std.testing.expectEqual(@as(u64, 7), snap.api_in_flight_requests);
     try std.testing.expectEqual(@as(u64, 4), snap.sse_in_flight_streams);
+}
+
+// ── Signup funnel families ──────────────────────────────────────────────
+
+// The signup families had no render coverage, so the namespace normalization
+// could have mangled their names with nothing to catch it. The labelled
+// `failed` family matters most: its six reasons come from separate snapshot
+// fields, and a mis-paired reason would misattribute why signups are failing.
+test "renderPrometheus carries every signup funnel family under one namespace" {
+    const alloc = std.testing.allocator;
+    const render = @import("metrics_render.zig");
+    const output = try render.renderPrometheus(alloc, true);
+    defer alloc.free(output);
+
+    for ([_][]const u8{
+        "# TYPE agentsfleet_signup_bootstrapped_total counter\n",
+        "# TYPE agentsfleet_signup_replayed_total counter\n",
+        "# TYPE agentsfleet_signup_failed_total counter\n",
+    }) |type_line| {
+        try std.testing.expect(std.mem.indexOf(u8, output, type_line) != null);
+    }
+
+    // Each rejection reason renders its own series off its own counter field.
+    for ([_][]const u8{
+        "bad_sig",          "stale_ts",
+        "missing_email",    "db_error",
+        "pool_unavailable", "metadata_writeback",
+    }) |reason| {
+        var buf: [128]u8 = undefined;
+        const series = try std.fmt.bufPrint(&buf, "agentsfleet_signup_failed_total{{reason=\"{s}\"}} ", .{reason});
+        try std.testing.expect(std.mem.indexOf(u8, output, series) != null);
+    }
 }

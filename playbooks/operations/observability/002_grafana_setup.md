@@ -4,44 +4,41 @@
 
 ### 1. Prometheus (Grafana Cloud or self-hosted)
 
-Scrapes `agentsfleetd` at `/metrics`. All `agent_*` counters, histograms, and gauges.
+Scrapes `agentsfleetd` at `/metrics`. Every family the daemon renders carries the
+`agentsfleet_` prefix — one process exposes one namespace, so a scrape config
+targeting `agentsfleetd` needs no per-family allowlist.
+
+Some families render only once their subsystem has been active (per-runner
+counters, durable-memory counters, Redis-pool gauges). Absent series on a fresh
+process are expected; downstream scrapers treat them as zero.
 
 ### 2. Tempo (Grafana Cloud)
 
-Receives OTLP traces from `agentsfleetd` background flush thread.
+Receives OpenTelemetry Protocol (OTLP) traces from the `agentsfleetd` background
+flush thread.
 Config: `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY`.
 
 **Manual / out-of-scope of the automated gate:** no gate verifies Tempo. Set the
 three `GRAFANA_OTLP_*` env vars on the worker and wire the Tempo datasource in the
-Grafana UI by hand; `03_dashboard.sh` checks only the Prometheus + PostgreSQL
-datasources and the dashboard panel counts.
+Grafana UI by hand.
 
-### 3. PostgreSQL
+### 3. OpenTelemetry Collector (for OTLP metrics)
 
-Direct connection to the agent database for `usage_ledger` queries.
+The metric signal is pushed via OTLP with DELTA temporality. Reading it in
+Grafana needs a Collector running the `deltatocumulative` processor, which
+converts to cumulative before Grafana Cloud Mimir. Until that Collector is
+provisioned, the OTLP metric series are not queryable — the scraped
+`agentsfleet_*` families above are unaffected and remain the reliable signal.
 
-**Setup:**
-1. In Grafana, add a PostgreSQL datasource.
-2. Connection: use the same `DATABASE_URL` as the worker (read-only replica preferred).
-3. Name it `agentsfleet-postgres` (the dashboard references this name).
+Provisioning the Collector is infrastructure work, unowned by this playbook.
 
-## Dashboard Import
+## Dashboards
 
-Import `agent_run_breakdown.json` via Grafana UI:
-1. Go to Dashboards > Import.
-2. Upload `deploy/grafana/agent_run_breakdown.json`.
-3. Select datasources when prompted:
-   - `prometheus` → your Prometheus datasource
-   - `agentsfleet-postgres` → your PostgreSQL datasource
-4. Dashboard loads with template variables for `workspace_id` and time range.
+None are provisioned here. The dashboard JSON under `deploy/grafana/` was
+deleted alongside the telemetry semantic-conventions cutover — every panel
+queried either a Prometheus family no source emitted or a `billing.usage_ledger`
+table that no migration ever created. Rather than repoint panels onto a schema
+that was itself being rewritten, dashboard authoring moved to its own
+workstream, which owns reintroducing the JSON artefacts and the import step.
 
-## Panels
-
-| Panel | Source | Query |
-|-------|--------|-------|
-| Token consumption by workspace | Prometheus | `agent_agent_tokens_by_workspace_total` |
-| Run outcomes by workspace | Prometheus | `agent_runs_completed_by_workspace_total` / `blocked` |
-| Score-gated run rate | PostgreSQL | `usage_ledger WHERE lifecycle_event = 'run_not_billable_score_gated'` |
-| Top-N runs by token consumption | PostgreSQL | `usage_ledger ORDER BY token_count DESC LIMIT 10` |
-| Per-stage token breakdown | PostgreSQL | `usage_ledger WHERE source = 'runtime_stage' GROUP BY actor` |
-| Run trace lookup | Tempo | Link to `{run.id="<run_id>"}` trace search |
+Until then, query the `agentsfleet_*` namespace directly in Grafana Explore.

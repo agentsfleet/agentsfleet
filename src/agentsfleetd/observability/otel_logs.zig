@@ -16,6 +16,10 @@ const otlp_ring = @import("otlp/ring.zig");
 const otlp_exporter = @import("otlp/exporter.zig");
 
 const OTLP_LOGS_PATH = "/v1/logs";
+/// The emitting logger scope. Not a standard OTel attribute — the scope is our
+/// own routing tag, so it stays unqualified rather than borrowing a `code.*` key
+/// whose pinned meaning is a source location.
+const ATTR_LOG_SCOPE = "scope";
 const BUFFER_CAPACITY: usize = 2048;
 const FLUSH_BATCH_SIZE: usize = 50;
 const MAX_MSG_LEN: usize = 512;
@@ -106,11 +110,9 @@ fn collectLogsBody(
 ) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
-    try out.print(
-        alloc,
-        "{{\"resourceLogs\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":{f}}}}}]}},\"scopeLogs\":[{{\"scope\":{{\"name\":\"agentsfleetd\"}},\"logRecords\":[",
-        .{std.json.fmt(cfg.service_name, .{})},
-    );
+    // Shared with traces + metrics so all three envelopes carry byte-identical
+    // service identity and the same pinned schema URL.
+    try otlp_config.appendEnvelopePrefix(&out, alloc, cfg, "resourceLogs", "scopeLogs", "logRecords");
 
     var first = true;
     const limit = @min(max_entries, FLUSH_BATCH_SIZE);
@@ -122,14 +124,18 @@ fn collectLogsBody(
 
         // json.fmt emits the surrounding quotes for the body; the format must
         // NOT wrap {f} in its own quotes (that produced invalid ""text"").
+        // Every caller-derived field routes through json.fmt, which supplies the
+        // quotes and escapes control characters — a log body carrying a raw
+        // newline or quote must not be able to break the envelope.
         try out.print(
             alloc,
-            "{{\"timeUnixNano\":\"{d}\",\"severityText\":\"{s}\",\"body\":{{\"stringValue\":{f}}},\"attributes\":[{{\"key\":\"scope\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}}",
+            "{{\"timeUnixNano\":\"{d}\",\"severityText\":{f},\"body\":{{\"stringValue\":{f}}},\"attributes\":[{{\"key\":\"{s}\",\"value\":{{\"stringValue\":{f}}}}}]}}",
             .{
                 entry.timestamp_ns,
-                entry.level[0..entry.level_len],
+                std.json.fmt(entry.level[0..entry.level_len], .{}),
                 std.json.fmt(entry.body[0..entry.body_len], .{}),
-                entry.scope[0..entry.scope_len],
+                ATTR_LOG_SCOPE,
+                std.json.fmt(entry.scope[0..entry.scope_len], .{}),
             },
         );
     }
@@ -142,7 +148,7 @@ fn collectLogsBody(
         return &.{};
     }
 
-    try out.appendSlice(alloc, "]}]}]}");
+    try out.appendSlice(alloc, otlp_config.ENVELOPE_SUFFIX);
     return try out.toOwnedSlice(alloc);
 }
 

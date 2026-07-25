@@ -88,12 +88,22 @@ pub fn buildMeterInputs(
     };
 }
 
+/// A renewal that committed: both rows advanced and the slice was metered.
+pub const Renewed = struct {
+    /// The new `lease_expires_at` (epoch ms) both rows now carry.
+    lease_expires_at: i64,
+    /// Nanocredits this slice actually drained — `LEAST(slice, balance)`, so it
+    /// equals the wallet's real delta even at exhaustion. Returned because the
+    /// service layer emits the credit metric for it *after* this statement
+    /// commits; without it, renewal drain would be invisible to operators while
+    /// receive and settle were not.
+    charged_nanos: i64,
+};
+
 /// The verdict of a renewal attempt. A tagged union so the handler can map each
 /// case to its own wire code without re-deriving context (UFS/type-design rule).
 pub const RenewOutcome = union(enum) {
-    /// Both rows advanced to this `lease_expires_at` (epoch ms); the slice was
-    /// metered + charged.
-    renewed: i64,
+    renewed: Renewed,
     /// Still the live holder, but `created_at + MAX_RUNTIME_MS` is reached — the
     /// run must terminate (UZ-RUN-010). Carries the cap for logging.
     max_runtime: i64,
@@ -161,7 +171,7 @@ const RENEW_METER_SQL =
     \\        metered_output_tokens = GREATEST(l.metered_output_tokens, $9),
     \\        last_metered_at_ms = $6
     \\    FROM guard g WHERE l.id = g.id
-    \\    RETURNING g.capped
+    \\    RETURNING g.capped, g.charged
     \\), ext_aff AS (
     \\    UPDATE fleet.runner_affinity a
     \\    SET leased_until = g.capped, updated_at = $6,
@@ -212,7 +222,8 @@ const RENEW_METER_SQL =
     \\    (SELECT count(*) FROM probe)::bigint        AS probe_found,
     \\    (SELECT capped FROM ext_lease)              AS new_until,
     \\    (SELECT created_at + $4::bigint FROM probe) AS hard_cap,
-    \\    (SELECT count(*) FROM ext_aff)::bigint      AS aff_updated
+    \\    (SELECT count(*) FROM ext_aff)::bigint      AS aff_updated,
+    \\    (SELECT charged FROM ext_lease)             AS charged_nanos
 ;
 
 /// Atomically extend the lease + slot deadline to `min(now + LEASE_TTL_MS,
@@ -254,29 +265,42 @@ pub fn renew(
     }));
     defer q.deinit();
     const row = try q.next() orelse return .lost;
-    return mapOutcome(
-        try row.get(i64, 0),
-        try row.get(?i64, 1),
-        try row.get(?i64, 2),
-        try row.get(i64, 3),
-        now_ms,
-    );
+    return mapOutcome(.{
+        .probe_found = try row.get(i64, 0),
+        .new_until = try row.get(?i64, 1),
+        .hard_cap = try row.get(?i64, 2),
+        .aff_updated = try row.get(i64, 3),
+        .charged_nanos = try row.get(?i64, 4),
+    }, now_ms);
 }
+
+/// The trailing SELECT's five columns, named so `mapOutcome` cannot transpose
+/// two same-typed positional arguments.
+const OutcomeRow = struct {
+    probe_found: i64,
+    new_until: ?i64,
+    hard_cap: ?i64,
+    aff_updated: i64,
+    charged_nanos: ?i64,
+};
 
 /// Translate the trailing SELECT's four columns into the verdict. Both rows must
 /// advance together: if `ext_lease` wrote but `ext_aff` did not (a concurrent
 /// reclaim touched the affinity row between the snapshot and the UPDATE's
 /// EvalPlanQual recheck), the slot can be reclaimed before the deadline we'd
 /// report — so a half-applied renewal is `.lost`, killing the child cleanly.
-fn mapOutcome(probe_found: i64, new_until: ?i64, hard_cap: ?i64, aff_updated: i64, now_ms: i64) RenewOutcome {
-    if (new_until) |until| {
-        if (aff_updated == 1) return .{ .renewed = until };
-        return .lost;
+fn mapOutcome(row: OutcomeRow, now_ms: i64) RenewOutcome {
+    if (row.new_until) |until| {
+        if (row.aff_updated != 1) return .lost;
+        // A guard row always prices a charge, so a null here would mean the
+        // guard survived without `calc` — treat it as zero drain rather than
+        // reporting a debit the wallet never took.
+        return .{ .renewed = .{ .lease_expires_at = until, .charged_nanos = row.charged_nanos orelse 0 } };
     }
-    if (probe_found == 0) return .lost;
+    if (row.probe_found == 0) return .lost;
     // Still ours+active, so the guard failed on the cap (capped <= now) or a
     // stale fence. The cap is the deterministic, reported case; a stale fence
     // means a reclaim already won → also lost.
-    if (hard_cap) |cap| if (cap <= now_ms) return .{ .max_runtime = cap };
+    if (row.hard_cap) |cap| if (cap <= now_ms) return .{ .max_runtime = cap };
     return .lost;
 }
