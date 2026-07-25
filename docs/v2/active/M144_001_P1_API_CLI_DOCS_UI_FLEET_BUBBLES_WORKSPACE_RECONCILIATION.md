@@ -18,12 +18,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Date:** Jul 25, 2026
 **Status:** IN_PROGRESS
 **Priority:** P1 — the merged chat no longer matches its approved design, while workspace creation persists replay state the product does not need and reports duplicate names as server errors
-**Categories:** API, CLI, DOCS, UI
-**Batch:** B1 — standalone; one PR because both regressions came from the same merged follow-up and the owner requested one specification
+**Categories:** API, command-line interface (CLI), documentation (DOCS), user interface (UI)
+**Batch:** B1 — standalone; one Pull Request (PR) because both regressions came from the same merged follow-up and the owner requested one specification
 **Branch:** fix/fleet-bubbles-workspace-reconciliation — the worktree at `~/Projects/agentsfleet-fleet-bubbles-reconciliation` already exists on this branch; do not create a second one
 **Test Baseline:** `unit=2958 integration=393` via `make _lint_zig_test_depth`
 **Depends on:** none — PR #556 is merged on `main`; this workstream corrects its final behaviour
-**Provenance:** LLM-drafted (GPT-5, Jul 25, 2026) from Indy's decisions, commit `68ce6a1e7`, the Jul 24 durable mockup, and current `origin/main` at `d3269188d`
+**Provenance:** drafted by a Large Language Model (LLM), Generative Pre-trained Transformer 5 (GPT-5), on Jul 25, 2026, from Indy's decisions, commit `68ce6a1e7`, the Jul 24 durable mockup, and current `origin/main` at `d3269188d`
 **Canonical architecture:** `docs/architecture/user_flow.md` §8.4
 
 ---
@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** Fleet replies render in the approved quiet left bubble, connecting state is unmistakable while saved history remains usable, and a failed workspace create informs the user then refreshes the authoritative workspace list without replay keys or automatic POST retries.
 **Problem:** The evidence-first follow-up removed the fleet reply container even though the shipped Jul 24 design made fleet and operator turns compact side bubbles and reserved flat full-width rows for integration activity. On chat load, saved history already renders while the live stream connects, but the only explanation is a small header label; users can mistake durable history for a live connection. Separately, workspace creation now stores client replay keys, original request fields, and session attempts to reconstruct a lost POST response. That machinery cannot help a fresh CLI invocation, and it is unnecessary for the browser: the workspace list already exposes a committed workspace after refresh. Duplicate named creates currently fall through as a 5xx instead of the conflict the user can understand.
-**Solution summary:** Restore only the fleet container treatment from `68ce6a1e7`; retain current `main`'s conditional live chip, opacity-only entrance, and reduced-motion behaviour. Add a compact, non-blocking state band above the visible history while connecting or reconnecting; it explicitly says live updates are connecting and the rows below are saved history, then disappears on `Live`. Remove workspace-create idempotency from the API, schema migration set, browser, and CLI. Keep server-assigned IDs and names. Map the existing tenant/name uniqueness constraint to RFC 7807 `409 Conflict`; every browser create failure is shown and followed by `router.refresh()` so a committed-but-unacknowledged workspace appears in the authoritative list before the user decides whether to retry.
+**Solution summary:** Restore only the fleet container treatment from `68ce6a1e7`; retain current `main`'s conditional live chip, opacity-only entrance, and reduced-motion behaviour. Add a compact, non-blocking state band above the visible history while connecting or reconnecting; it explicitly says live updates are connecting and the rows below are saved history, then disappears on `Live`. Remove workspace-create idempotency from the API, schema migration set, browser, and CLI. Keep server-assigned IDs and names. Map the existing tenant/name uniqueness constraint to Request for Comments (RFC) 7807 `409 Conflict`; every browser create failure is shown and followed by `router.refresh()` so a committed-but-unacknowledged workspace appears in the authoritative list before the user decides whether to retry.
 
 ## PR Intent & comprehension handshake
 
@@ -43,7 +43,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Implementing agent — read these first
 
 1. `git show 68ce6a1e7:ui/packages/app/components/domain/FleetMessageRow.tsx` and `~/.gstack/projects/agentsfleet/designs/fleet-chat-turn-bubbles-20260724/fleet-chat-redesign.{html,png}` — exact approved bubble grammar; restore the container, not stale motion.
-2. `ui/packages/app/components/domain/FleetMessageRow.tsx` + its colocated test on current `main` — preserve the later live-only pulse and opacity-only entry contract while reversing the no-bubble assertion.
+2. `ui/packages/app/components/domain/FleetMessageRow.tsx` + its colocated test on current `main` — preserve the later live-only pulse and opacity-only entry behavior while reversing the no-bubble assertion.
 3. `src/agentsfleetd/http/handlers/workspaces/{lifecycle,provision,sql}.zig` + `ui/packages/app/components/layout/{useWorkspaceCreation,WorkspaceCreationProvider}.tsx` — current replay path and browser lifecycle to simplify.
 4. `docs/REST_API_DESIGN_GUIDELINES.md` §§2, 5, 6 and `src/agentsfleetd/http/handlers/problem_response.zig` — document the workspace-create exception and emit the repository-standard conflict envelope.
 5. `dispatch/write_sql.md` + `docs/SCHEMA_CONVENTIONS.md` — schema rules conflict on pre-release slot removal; the explicit owner decision and rollout gate in Discovery govern migration 035 only.
@@ -53,15 +53,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `ui/packages/app/components/domain/FleetMessageRow.tsx`; `FleetMessageRow.test.tsx` | EDIT | Restore the quiet bounded fleet bubble and reverse the evidence-first no-container regression assertions while retaining current pulse/motion tests. |
-| `ui/packages/app/components/domain/FleetThread.tsx`; `FleetConnectionNotice.tsx`; `ui/packages/app/tests/fleet-thread.test.ts` | EDIT | Keep saved history visible but add explicit connecting/reconnecting context above it; preserve Live and Offline behavior. |
+| `ui/packages/app/components/domain/FleetThread.tsx`; `FleetConnectionNotice.tsx`; `FleetConnectionNotice.test.tsx`; `ui/packages/app/tests/fleet-thread.test.ts` | EDIT | Keep saved history visible but add explicit connecting/reconnecting context above it; preserve Live and Offline behavior. |
 | `docs/DESIGN_SYSTEM.md` | EDIT | Make the durable transcript rule match the approved Jul 24 fleet bubble rather than the superseded open-reply wording. |
 | `src/agentsfleetd/http/handlers/workspaces/lifecycle.zig`; `provision.zig`; `sql.zig` | EDIT | Remove key parsing, replay lookup/body comparison, stored request reconstruction, and idempotency columns; map duplicate explicit names to conflict. |
-| `src/agentsfleetd/http/handlers/workspaces/create_integration_test.zig` | EDIT | Replace replay tests with conflict, ordinary-create, and no-header contract coverage. |
+| `src/agentsfleetd/http/handlers/workspaces/create_integration_test.zig` | EDIT | Replace replay tests with conflict, ordinary-create, and no-header coverage. |
 | `src/agentsfleetd/errors/error_entries.zig`; `error_registry.zig`; `error_registry_test.zig` | EDIT | Register the workspace-name conflict with dashboard-safe copy and prove its status. **Register it with `eu()`, not `e()`** — the browser create dialog renders it, so it needs a user message, and the registry lint rejects a reachable `e()` entry that lacks one. Prior art is `UZ-AGT-006` "Fleet name already exists" (`error_entries.zig:169`), which is the same shape one namespace over; no `UZ-WS-*` or `UZ-WORKSPACE-*` namespace exists yet, so the implementing agent opens one and records the chosen code in Discovery rather than inventing it at the call site. |
-| `public/openapi/paths/workspaces.yaml`; `public/openapi.json` | EDIT/REGENERATE | Remove the header/replay contract and document the 409 response; regenerate, never hand-edit, the bundle. |
-| `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | Record workspace creation as the owner-approved exception to mandatory POST replay keys: list reconciliation is its recovery contract. |
+| `public/openapi/paths/workspaces.yaml`; `public/openapi.json` | EDIT/REGENERATE | Remove the header/replay promise and document the 409 response; regenerate, never hand-edit, the bundle. |
+| `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | Record workspace creation as the owner-approved exception to mandatory POST replay keys: list reconciliation is its recovery model. |
 | `schema/035_workspace_create_idempotency.sql` | DELETE | Remove the three replay-only columns and tenant/key index from the pre-production migration set. |
 | `schema/embed.zig` | EDIT | Remove migration version 35; versions 1–34 remain contiguous. |
+| `src/agentsfleetd/cmd/common.zig` | EDIT | Pin startup refusal when a database ledger is ahead of the canonical migration set. |
 | `ui/packages/app/app/(dashboard)/actions.ts`; `ui/packages/app/lib/api/workspaces.ts` | EDIT | Restore the name-only create interface and stop forwarding `Idempotency-Key`. |
 | `ui/packages/app/lib/workspace-create-attempt.ts`; `workspace-create-attempt.test.ts` | DELETE | Remove session-persisted replay attempts and client UUIDv7 generation. |
 | `ui/packages/app/components/layout/useWorkspaceCreation.ts`; `WorkspaceCreationProvider.tsx` | EDIT | Remove recoverable POST state; report failures and refresh/reconcile without automatic replay. |
@@ -71,7 +72,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — ORP (remove every replay reference), NDC/NLR (no compatibility shim or dormant key path), UFS (shared header/error strings disappear or remain named), NSQ (workspace SQL stays schema-qualified), FLS/ITF (real PostgreSQL conflict path drains and is integration-tested), TST-NAM (behavioural test names), XCC (both Linux targets).
+- **`docs/greptile-learnings/RULES.md`** — Orphan sweep (ORP) removes every replay reference; No Dead Code (NDC) and No Legacy Retained (NLR) forbid compatibility shims or dormant key paths; Unified Form for Symbols (UFS) keeps shared header/error strings named; Named constants and Schema-qualified SQL (NSQ) keeps workspace SQL qualified; Flush all Layers (FLS) and Integration Test Fixtures (ITF) require a drained, real-PostgreSQL conflict path; Test Naming (TST-NAM) keeps behavioural names; Cross-Compile (XCC) covers both Linux targets.
 - `dispatch/write_zig.md` — handler/result shape, PostgreSQL drain, error and function-length rules.
 - `dispatch/write_ts_adhere_bun.md` — React lifecycle and token-only UI edits.
 - `dispatch/write_sql.md` + `docs/SCHEMA_CONVENTIONS.md` — migration 035 removal and the explicit owner exception in Discovery.
@@ -83,7 +84,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
 | ZIG GATE | yes — workspace handler changes | Focused unit/integration tests plus both Linux cross-compiles. |
-| PUB / Struct-Shape | yes — create input/outcome simplify | Remove impossible replay variants; keep the public 201 response shape. |
+| Public Surface (PUB) / Struct-Shape | yes — create input/outcome simplify | Remove impossible replay variants; keep the public 201 response shape. |
 | File & Function Length (≤350/≤50/≤70) | yes | Simplification must shrink the workspace path; do not fold provisioning back into the handler. |
 | UFS (repeated/semantic literals) | yes | One registered conflict code/copy; no duplicated header or refresh strings. |
 | UI Substitution / DESIGN TOKEN | yes | Exact existing tokens from `68ce6a1e7`; no new color/radius values. |
@@ -92,7 +93,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Prior-Art / Reference Implementations
 
-- **Fleet UI:** commit `68ce6a1e7` and the Jul 24 durable HTML/PNG — operator right bubble, fleet quiet left bubble, integration rows full-width; current `main` supplies the newer pulse and motion behaviour that stays.
+- **Fleet UI:** commit `68ce6a1e7` and the Jul 24 durable HTML and Portable Network Graphics (PNG) artifacts — operator right bubble, fleet quiet left bubble, integration rows full-width; current `main` supplies the newer pulse and motion behaviour that stays.
 - **Conflict response:** `src/agentsfleetd/http/handlers/problem_response.zig` and existing duplicate-name handlers — registry-owned 409 plus mandatory `current_state`, never raw PostgreSQL error text.
 - **Reconciliation:** the current `WorkspaceCreationProvider` already owns navigation notices, `router.refresh()`, and `knownWorkspaceIds`; extend that source of truth instead of adding another attempt store.
 
@@ -118,9 +119,9 @@ Saved server-rendered history remains visible and scrollable while the live stre
 
 `POST /v1/workspaces` remains a server-ID, optional-name, non-idempotent create. It no longer accepts or stores a replay key. The existing tenant-scoped unique name constraint is authoritative: an explicit duplicate name returns a registered RFC 7807 409, not a generic 5xx. Generated-name collisions continue their bounded server-side regeneration loop.
 
-- **Dimension 3.1** — Ordinary named and unnamed POSTs return 201 with backend-generated `workspace_id`, `name`, and `request_id`, independent of any `Idempotency-Key` header → Test `workspace create ignores no replay contract and assigns server identity`
-- **Dimension 3.2** — A second explicit name in one tenant returns 409, the workspace-name error code, and `current_state: "name_exists"`; it creates no second row and leaks no SQL detail → Test `duplicate workspace name returns conflict`
-- **Dimension 3.3** — The OpenAPI source/bundle and REST guide contain no workspace replay promise/header while documenting list reconciliation; unrelated POST idempotency policy remains intact → Test `workspace create OpenAPI documents reconciliation exception`
+- **Dimension 3.1** — Ordinary named and unnamed POSTs return 201 with backend-generated `workspace_id`, `name`, and `request_id`, independent of any `Idempotency-Key` header → Test `workspace create assigns server identity without replay state`
+- **Dimension 3.2** — One hundred simultaneous creates for the same explicit tenant/name yield exactly one 201 and ninety-nine 409 responses carrying `UZ-WORKSPACE-001` and `current_state: "name_exists"`; one row remains, requests overlap in the server, and no SQL detail leaks → Test `concurrent duplicate workspace names create exactly one row`
+- **Dimension 3.3** — The OpenAPI source/bundle and Representational State Transfer (REST) guide contain no workspace replay promise/header while documenting list reconciliation; unrelated POST idempotency policy remains intact → Test `workspace create OpenAPI documents reconciliation exception`
 
 ### §4 — Reconcile browser failures from the list
 
@@ -128,7 +129,7 @@ The browser owns at most one in-flight create but persists no request attempt an
 
 - **Dimension 4.1** — Create action/client accept only optional `name`; no client ID, replay key, session storage, or recoverable attempt remains → Test `workspace create sends name only`
 - **Dimension 4.2** — 409 displays duplicate-name guidance and refreshes once; the refreshed existing workspace is visible/selectable without another POST → Test `duplicate create refreshes authoritative workspace list`
-- **Dimension 4.3** — A transport/5xx failure displays uncertainty guidance and refreshes once so a DB-committed workspace can appear; retry requires a new user action → Test `uncertain create reconciles before retry`
+- **Dimension 4.3** — A transport/5xx failure displays uncertainty guidance and refreshes once so a database (DB)-committed workspace can appear; retry requires a new user action → Test `uncertain create reconciles before retry`
 - **Dimension 4.4** — Closing the dialog may detach one in-flight request, but failure still produces a notice and refresh; success still settles/navigates once → Test `detached workspace create preserves settlement semantics`
 
 ### §5 — Remove replay storage and callers
@@ -169,7 +170,7 @@ Fleet reply body
 | Unnamed create retried by user | No stable name exists to reconcile semantically | Refresh before enabling a user decision; a later explicit click is a new POST and may create another workspace by documented non-idempotent semantics. |
 | Auth or database failure before commit | Request cannot create a row | Show the safe registered/fallback message and refresh; list remains unchanged. |
 | Dialog closes in flight | Owner detaches while request is pending | Request completes once; success settles globally, failure shows global notice and refreshes. |
-| Migration 35 already applied | Development migration ledger is at 35 | Do not deploy a binary expecting 34 until owner-approved dev reset/reconciliation; leave already-written nullable columns inert until that operation. |
+| Migration 35 already applied | Development migration ledger is at 35 | After replacement-code verification, run the owner-authorized app-dev transaction that removes the replay index, three replay columns, and version-35 ledger row; verify the database ends at version 34 before deployment. |
 | Production deployment status changed | Slot 35 reached production before execution | STOP; do not delete the slot or mutate production. Re-open schema strategy with Indy. |
 
 ## Invariants
@@ -177,7 +178,7 @@ Fleet reply body
 1. Workspace IDs are generated only by the server — action/client types accept no ID and tests inspect the request body.
 2. The browser never automatically repeats a workspace POST — controller test counts one action call across failure + refresh.
 3. The workspace list is authoritative after uncertainty — every failure path invokes one router refresh and renders check-before-retry copy.
-4. Duplicate names create at most one tenant row — database unique index plus integration row-count assertion.
+4. Duplicate names create at most one tenant row under 100-way contention — the database unique index is the sole race arbiter; the integration test asserts one 201, ninety-nine 409 responses, one row, and overlapping server work.
 5. Pulse color marks only a live fleet — component role/live-state test.
 6. Integration/activity rows never use conversation bubble classes — component regression test.
 7. Connecting never hides durable history or masquerades as Live — connection-state component test asserts band + rows coexist and the Live state has no connecting band.
@@ -200,10 +201,10 @@ No new event is added: list refresh is recovery, not a new funnel stage. Existin
 | 1.4 | unit | `keeps evidence bounded without bubbling activity` | Long reply wraps in bounded fit-content bubble; system row has no bubble surface. |
 | 2.1 | unit | `connecting distinguishes saved history from live updates` | Connecting/reconnecting + initial rows → visible context band and history together; composer enabled. |
 | 2.2 | unit | `connection context clears on live and stays actionable offline` | Live → no band; Offline → Retry band; every state has text independent of motion. |
-| 3.1 | integration | `workspace create assigns server identity without replay contract` | Named/empty bodies → distinct backend IDs and 201; no header is required. |
-| 3.2 | integration | `duplicate workspace name returns conflict` | Same tenant/name twice → 201 then 409 + code/state, row count 1, no DB text. |
+| 3.1 | integration | `workspace create assigns server identity without replay state` | Named/empty bodies → distinct backend IDs and 201; no header is required. |
+| 3.2 | integration | `concurrent duplicate workspace names create exactly one row` | One hundred simultaneous same-tenant/name requests → one 201, ninety-nine 409 responses with `UZ-WORKSPACE-001` and `name_exists`, row count 1, server peak in-flight at least 2, and no DB text. |
 | 3.3 | unit | `workspace create OpenAPI documents reconciliation exception` | Bundled operation has no key parameter/replay prose and declares 409 recovery. |
-| 4.1 | unit | `workspace create sends name only` | Action/client body is `{name?}`; no header, UUID generation, or session access. |
+| 4.1 | unit | `workspace create sends name only` | Action/client body is `{name?}`; no header, universally unique identifier (UUID) generation, or session access. |
 | 4.2 | e2e | `duplicate create refreshes authoritative workspace list` | Create name, submit same name → conflict message; refreshed menu contains one selectable row. |
 | 4.3 | unit | `uncertain create reconciles before retry` | Rejected/5xx action → visible check-list message + one refresh + one POST total. |
 | 4.4 | unit | `detached workspace create preserves settlement semantics` | Close pending dialog; failure notice + refresh or success settlement occurs once. |
@@ -251,7 +252,7 @@ No new event is added: list refresh is recovery, not a new funnel stage. Existin
 - Automatic matching/navigation to an unnamed workspace after an uncertain response — the refreshed list is authoritative; the product does not guess which generated row belongs to the failed browser request.
 - A generic idempotency service or removal of idempotency from other side-effecting POST endpoints — only workspace creation receives the documented owner-approved exception.
 - Redesigning the composer, operator bubble, integration rows, evidence hierarchy, live pulse, or stream motion beyond preventing regression.
-- A compensating DROP migration or unapproved shared-database mutation. Development reset/reconciliation is a rollout prerequisite; production application of slot 35 forces a new decision.
+- A compensating DROP migration or any production mutation. Indy authorized direct app-dev reconciliation for slot 35 in this workstream; production application of slot 35 forces a new decision.
 
 ---
 
@@ -264,19 +265,22 @@ No new event is added: list refresh is recovery, not a new funnel stage. Existin
 5. **What we build** — restored fleet container, explicit saved-history connection context, registered duplicate-name conflict, failure notice + refresh, name-only create clients, and complete replay teardown.
 6. **What we do NOT build** — no client IDs, response cache, attempt store, automatic retry, new workspace table, or new chat grammar.
 7. **Fit with existing features** — compounds with the current stream pulse and URL-authoritative workspace navigation; must not destabilize detached creation settlement or integration activity rendering.
-8. **Surface order** — API contract and UI recovery ship together; CLI follows the same simplified request in the same PR so no client keeps a phantom header.
+8. **Surface order** — API behavior and UI recovery ship together; CLI follows the same simplified request in the same PR so no client keeps a phantom header.
 9. **Dashboard restraint** — no new control or persistent status; one actionable failure message and the existing refreshed switcher are sufficient.
 10. **Confused-user next step** — read the refreshed workspace list before retrying; on duplicate name, select the existing workspace or choose another name.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** five slices: restore the visual contract, clarify connection startup without hiding history, make the server failure truthful, reconcile the browser from GET, then remove all replay storage/callers. They ship as one workstream because this is the single corrected chat/create outcome and leaving any replay caller or schema reference behind creates a false contract.
+- **Chosen shape:** five slices: restore the visual rules, clarify connection startup without hiding history, make the server failure truthful, reconcile the browser from GET, then remove all replay storage/callers. They ship as one workstream because this is the single corrected chat/create outcome and leaving any replay caller or schema reference behind creates a false interface promise.
 - **Alternatives considered:** keep migration 35 and replay exact responses — rejected by Indy as overkill when the list exposes committed state; use client-generated IDs/PUT — rejected because it changes identity ownership; auto-retry POST — rejected because unnamed creates are non-idempotent and can duplicate; add migration 36 DROP — rejected for this pre-production `0.22.0` teardown and because production has not been shown to contain slot 35.
 - **Patch-vs-refactor verdict:** this is a **patch**: one rendering regression is reverted to its approved implementation and one recently added replay subsystem is removed back to the simpler established create/list boundary.
 
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: Indy directed one spec on `docs/m143-library-refactor-specs`, restore the fleet bubble while preserving pulse/motion, make connecting unmistakable even though saved history is already visible, remove replay/idempotency in favor of conflict + refresh, and never add client-generated IDs. Current `main` intentionally removed the connecting band in favor of a small animated header label (`11f0e89e9`); Indy's live-use finding supersedes that choice, so the compact band returns with precise saved-history copy while history remains visible. Durable bubble evidence is commit `68ce6a1e7` plus `~/.gstack/projects/agentsfleet/designs/fleet-chat-turn-bubbles-20260724/`; temp OpenCode artifacts are explicitly ignored. Current `main` regression commit `c3e5b6188` tests a flat full-width fleet reply and must be selectively reversed. Migration 35 ran in shared development via deploy run `30147685896`; no production deployment was established. The source policy conflict is explicit: `docs/SCHEMA_CONVENTIONS.md` freezes applied slots, while `dispatch/write_sql.md` requires pre-2.0 removal; Indy's direct decision governs this slot, but deployment remains blocked until migration state is owner-approved/reconciled. If production facts change, STOP.
+- **Chief Technology Officer review** — Focused refactor wins over a workspace-subsystem rewrite: remove replay parsing, lookup, response reconstruction, client key generation, and persisted attempts; retain one server `INSERT`, the existing tenant/name unique index as the concurrency boundary, and exact constraint-name classification. This eliminates up to two replay-path queries without adding an application lock or a time-of-check/time-of-use race. Security stays tenant-derived and server-ID-only; robustness is proved by registered conflict responses, browser list reconciliation, and 100-way real-database contention. A broader service/controller rewrite would widen failure surface without improving those guarantees.
+- **Error namespace** — `UZ-WORKSPACE-001` is the registered duplicate-name conflict. It opens the workspace namespace at 001; the entry uses `eu()` because the dashboard renders its user message.
+- **App-dev inspection** — Read-only inspection through `op://ZMB_CD_DEV/planetscale-dev/migrator-connection-string` found migration 35 recorded, all three replay columns and the replay index present, no migration-35 failure row, and 12 workspace rows containing replay metadata. Indy's instruction authorizes removing that metadata and the version-35 ledger record after replacement-code verification; workspace rows remain intact.
 - **Metrics review** — no event added or funnel changed; successful-create telemetry remains unchanged and failures/reconciliation emit no duplicate success event.
 - **Skill-chain outcomes** — `kishore-spec-new`: repository, mockup, historical commit, current main, API/UI/CLI/schema paths, and rollout consequence reviewed; implementation `/write-unit-test`, `/review`, and `kishore-babysit-prs` outcomes populate at CHORE(close).
 - **Deferrals** — none.
