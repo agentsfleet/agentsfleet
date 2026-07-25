@@ -267,13 +267,15 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
-fn delStream(h: *TestHarness, comptime key: []const u8) void {
-    var resp = h.queue.command(&.{ "DEL", key }) catch return;
-    resp.deinit(h.queue.alloc);
+/// Drop the fleet's stream AND its readiness mark — `fleet:ready` is one shared
+/// key and `peek` is bounded + randomized, so a leftover mark for a deleted
+/// fleet can crowd a sibling suite's fleet out of the sample.
+fn forgetFleet(h: *TestHarness, fleet_id: []const u8) void {
+    redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
-    delStream(h, "fleet:" ++ FLEET_ID ++ ":events");
+    forgetFleet(h, FLEET_ID);
     // The reclaim test settles under this FIXED event id; without this delete
     // the leaked slice makes any rerun collide on
     // uq_metering_periods_event_id_slice_seq (the sibling renewal/concurrency

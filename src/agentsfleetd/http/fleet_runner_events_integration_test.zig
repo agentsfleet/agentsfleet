@@ -215,8 +215,10 @@ fn cleanupRegister(conn: anytype) void {
 }
 
 fn cleanupFleetWork(h: *TestHarness, conn: anytype) void {
-    var resp = h.queue.command(&.{ "DEL", "fleet:" ++ FLEET_ID ++ ":events" }) catch null;
-    if (resp) |*r| r.deinit(h.queue.alloc);
+    // Stream AND readiness mark: `fleet:ready` is one shared key and `peek` is
+    // bounded + randomized, so a mark left for a fleet this teardown deletes can
+    // crowd a sibling suite's fleet out of the sample.
+    redis_fleet.purgeFleetRedisState(&h.queue, FLEET_ID) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err|
         std.log.warn("cleanup runner ignored: {s}", .{@errorName(err)});
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
