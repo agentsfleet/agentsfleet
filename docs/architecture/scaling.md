@@ -75,16 +75,31 @@ sse tier:      1 SubscriptionHub conn per replica         ≈ R
 
 ### Per-request volume (the Upstash bill)
 
-Idle cost is now the runner lease-poll loop, fully idle:
+Idle cost is the runner lease-poll loop, fully idle:
 
 | Source | Requests per hour |
 |---|---|
-| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing one bounded non-blocking `XREADGROUP` scan | `R_runners × 3600` at the 1 s default |
+| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **one** bounded `HRANDFIELD` read of the readiness index and **zero** Postgres round-trips | `R_runners × 3600` at the 1 s default |
 | (No watcher loop, no per-fleet BLOCK loops — both deleted) | 0 |
 
-For a 20-runner fleet at the 1 s default: ~72,000 idle `lease`-scan requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
+For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
 
-**The load-bearing shift:** the idle bill now scales with **runner count**, not `(fleets + workers)`. A fleet with many idle fleets but few runners is cheap at idle; the cost follows the pollers, not the population.
+**The load-bearing shift:** the idle bill scales with **runner count**, not `(fleets + workers)` and not `runners × fleets`. A deployment with many idle fleets but few runners is cheap at idle; the cost follows the pollers, not the population.
+
+> **This figure was wrong before M141, and wrong in the direction that hurts.** The table above previously claimed one bounded scan per idle poll, and the sizing procedure and Upstash estimate below were derived from that number. In reality `assign.listCandidates` carried no `LIMIT` and no workspace scope, so it returned **every active fleet platform-wide**, and because an idle fleet's affinity slot is uncontended the polling runner *won* each one — paying a Postgres claim, a prior-lease probe and a release (3 round-trips) plus a group-create and two stream reads (3 Redis commands) **per fleet, per poll**. Idle cost was therefore proportional to `runners × active_fleets`, and the published sizing understated it by exactly the fleet count. Operators who sized a deployment against the old figure saw Postgres connection pressure and lease latency climb as they added fleets, with no user traffic to explain it. M141 makes the table above true: readiness is recorded at the single ingress producer, and the lease consults it before opening a database connection.
+
+### The per-poll bound, and why cost no longer tracks fleet count
+
+An idle poll reads the readiness index and stops. A **busy** poll takes a randomized, server-bounded slice of that index and restricts the candidate query to it, capped at `MAX_READY_CANDIDATES_PER_POLL` (`src/lib/common/constants.zig`, beside `NO_WORK_RETRY_AFTER_MS` because they trade the same axis).
+
+That ceiling is what makes per-poll cost independent of the population, and it holds **even when the index is wrong**. A stale or over-marked index costs extra candidate checks up to the ceiling and never more, so a hint failure degrades discovery fairness rather than cost. The index is a hint; the streams stay the system of record.
+
+Two consequences worth carrying into a sizing conversation:
+
+- **Fleet count no longer appears in the idle term at all.** It appears only in the *recovery* term — see the readiness recovery bound in [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model", which scales with `active_fleets / sweep batch`.
+- **Randomized sampling interacts with label placement.** The slice is drawn at random and the label gate (`required_tags <@ labels`) filters it in Postgres afterwards, so a runner whose labels match only a small share of ready fleets may need several polls to draw one it can serve. It is a latency effect, never a loss, and it self-corrects across polls; the ceiling is sized generously for exactly this reason. Label-aware placement is M85_001's concern, not a knob here.
+
+Watch `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls_total` for mean fan-out per poll, and `agentsfleet_lease_poll_db_roundtrips_total / agentsfleet_lease_polls_total` for mean database cost per poll. The denominator is not optional: without it a traffic increase and a fan-out regression look identical.
 
 #### Which recurring Postgres reads are index-served
 
@@ -115,6 +130,7 @@ The Redis figures above are only half the idle bill. The other half is Postgres,
 | `REDIS_POOL_EAGER_MIN` | 2 | Cold-boot dial cost (Upstash TLS handshake) | Cold-boot `agentsfleetd` latency p99 is dominated by dial time. |
 | `REDIS_REQUEST_TIMEOUT_MS` | 5000 | Upstash tail-latency tolerance | Upstash p99 round-trip exceeds 4 s under healthy traffic. **Do not raise it** — >5 s is failure, not slowness. |
 | `NO_WORK_RETRY_AFTER_MS` | 1000 | Idle lease-poll request volume (Upstash bill) **and** idle pickup latency. **Not busy-fleet delivery latency.** | Idle request bill is the dominant cost line on PAYG. Raise to 2000–5000 to cut the idle bill proportionally; idle pickup latency rises by the same factor. Single-sourced in `src/lib/common/constants.zig`. |
+| `MAX_READY_CANDIDATES_PER_POLL` | 64 | Per-poll fan-out ceiling: the most fleets one lease poll will examine, and the width of the randomized readiness slice. **Not** an idle-cost knob — an idle poll examines zero regardless. | Compile-time, not env-driven. Lower it only if `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls_total` shows busy polls doing more per-fleet work than the hot path can absorb. Raise it if labelled runners are visibly slow to find their eligible fleets (a narrow slice plus a selective label gate — see §"Per-request volume"). Beside `NO_WORK_RETRY_AFTER_MS` in `src/lib/common/constants.zig` because they trade the same axis: per-poll cost against discovery latency. |
 | `LEASE_TTL_MS` | 30000 | Reclaim latency floor **and** the max single-fleet runtime before reclaim (the renewal gap) | Raise to cover the longest expected fleet runtime until M80_006 lands per-lease renewal (see `runner_fleet.md` Failure Recovery Model). Lower only with a tighter recovery requirement and short fleets. |
 | `API_HTTP_THREADS` | 1 | Concurrent short-lived handlers **per worker** — the httpz handler-pool size. **No handler parks a pool thread anymore**: SSE streams run on dedicated detached threads (`startEventStream`), capped by `SSE_MAX_STREAMS`, not by this knob; the lease is a non-blocking single poll. | Sustained 429 shed (`agentsfleet_api_backpressure_rejections_total`) with idle CPU. Total request concurrency = `API_HTTP_WORKERS × API_HTTP_THREADS`. |
 | `API_HTTP_WORKERS` | 1 | Accept/event-loop threads (epoll/kqueue), each multiplexing up to `API_MAX_CLIENTS` idle connections as fds **and owning its own `API_HTTP_THREADS` handler pool**. | Scale toward core count on a multi-core VM. The accept layer is rarely the wall. |
@@ -211,6 +227,9 @@ Step 4: Emit configuration
 4. **Raise `REDIS_REQUEST_TIMEOUT_MS` above 5000.** Upstash regional p99 is single-digit-ms; >5 s is failure, not slowness.
 5. **Put `SUBSCRIBE` on the request pool.** A subscribed connection can serve nothing else — it lives outside the pool, on the SubscriptionHub, which holds exactly one and fans out in-process.
 6. **Size `API_HTTP_THREADS` to peak concurrent SSE tails.** Streams no longer touch the handler pool (dedicated detached threads, `SSE_MAX_STREAMS` cap); size the pool to request concurrency and the SSE knob to viewer concurrency — they are independent axes.
+7. **Include fleet count in the idle term.** It is not there any more. An idle poll costs one Redis read and no database work regardless of how many fleets exist; fleet count appears only in the readiness *recovery* bound (`runner_fleet.md` §"Failure recovery model"). Sizing an idle deployment by fleet population is the pre-M141 mistake, and it is the reason the idle figure in §"Per-request volume" used to be wrong.
+8. **Reach for a bare `LIMIT` on the candidate scan.** It was considered and rejected: a bare limit caps discovery throughput without removing the per-poll Postgres cost, and it silently starves every fleet past the bound because the scan is ordered, not sampled. The ceiling only works *because* the readiness slice above it is randomized.
+9. **Sum `agentsfleet_fleet_ready_depth` across replicas.** Every replica samples the same shared hash, so the fleet-wide value is any single instance's series. Summing multiplies it by replica count.
 
 ---
 
