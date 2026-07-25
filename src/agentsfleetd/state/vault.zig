@@ -182,8 +182,8 @@ pub const SecretMetadata = struct {
 /// A row written before `schema/036` has NULL metadata and reports as an opaque
 /// `custom_secret` with no key. It is NOT healed by decrypting here: a
 /// heal-on-read path would put an envelope open back on the read path and make
-/// "library reads never decrypt" true only after warm-up. `make
-/// backfill-vault-metadata` is what fills those rows.
+/// "library reads never decrypt" true only after warm-up. `agentsfleetd
+/// backfill` is what fills those rows.
 pub fn loadMetadata(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,

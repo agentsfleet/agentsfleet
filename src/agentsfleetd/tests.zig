@@ -28,6 +28,7 @@ test {
     _ = @import("http/route_matchers.zig");
     _ = @import("http/pagination.zig");
     _ = @import("secrets/metadata.zig");
+    _ = @import("secrets/metadata_backfill.zig");
     _ = @import("fleet_runtime/activity_publisher.zig");
     _ = @import("fleet_runtime/metering.zig");
     _ = @import("util/strings/string_builder.zig");

@@ -5,6 +5,7 @@
 //!   serve      Start HTTP API server (default)
 //!   doctor     Verify Postgres, git, agent config, and critical env
 //!   migrate    Apply schema migrations and exit
+//!   backfill   Fill vault projection columns for pre-schema/036 rows and exit
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -18,6 +19,7 @@ const cli_commands = @import("cli/commands.zig");
 const cmd_serve = @import("cmd/serve.zig");
 const cmd_doctor = @import("cmd/doctor.zig");
 const cmd_migrate = @import("cmd/migrate.zig");
+const cmd_backfill = @import("cmd/backfill.zig");
 const config_load = @import("config/load.zig");
 
 const log = logging.scoped(.agentsfleetd);
@@ -226,7 +228,7 @@ pub fn main(init: std.process.Init) void {
             const bad = if (argv.len > 1) argv[1] else "";
             logging.fatalStderr(
                 "agentsfleetd: unknown subcommand: {s}\n" ++
-                    "usage: agentsfleetd [serve|doctor|migrate]\n",
+                    "usage: agentsfleetd [serve|doctor|migrate|backfill]\n",
                 .{bad},
             );
             std.process.exit(1);
@@ -236,6 +238,7 @@ pub fn main(init: std.process.Init) void {
         .serve => cmd_serve.run(io, eff_env, argv, alloc),
         .doctor => cmd_doctor.run(io, eff_env, argv, alloc),
         .migrate => cmd_migrate.run(io, eff_env, alloc),
+        .backfill => cmd_backfill.run(io, eff_env, alloc),
     }) catch |err| {
         logging.fatalStderr("agentsfleetd: subcommand failed: {}\n", .{err});
         std.process.exit(1);
