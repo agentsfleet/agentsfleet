@@ -97,15 +97,23 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
     const entries = try entries_state.list(alloc, conn, tenant_id);
     defer entries_state.deinitEntryList(entries, alloc);
 
-    const refs = try distinctSecretRefs(alloc, entries);
-    defer alloc.free(refs);
-
     // One workspace resolve for the whole page, not one per row: the credentials
     // a tenant's entries reference all live in its primary workspace.
     const ws_id = try secret_probe.resolvePrimaryWorkspace(alloc, conn, tenant_id);
     defer alloc.free(ws_id);
 
-    const meta = try alloc.alloc(?vault.SecretMetadata, refs.len);
+    // Positional, one slot per entry — deliberately NOT deduplicated. One
+    // credential can back several model rows, so an earlier draft collected the
+    // distinct set and then scanned it per row to match each entry back. That
+    // cost two O(n²) passes and two helpers to save a few repeated key names in
+    // one query parameter. `key_name = ANY($2)` is indifferent to duplicates, so
+    // asking positionally makes `meta[i]` belong to `entries[i]` by construction
+    // and deletes the matching problem instead of solving it.
+    const refs = try alloc.alloc([]const u8, entries.len);
+    defer alloc.free(refs);
+    for (entries, 0..) |e, i| refs[i] = e.secret_ref;
+
+    const meta = try alloc.alloc(?vault.SecretMetadata, entries.len);
     defer alloc.free(meta);
     try vault.loadMetadata(alloc, conn, ws_id, refs, meta);
     defer vault.freeMetadata(alloc, meta);
@@ -115,12 +123,12 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
         for (views.items) |v| freeView(alloc, v);
         views.deinit(alloc);
     }
-    for (entries) |e| {
+    for (entries, 0..) |e, i| {
         const active = if (selection) |s|
             std.mem.eql(u8, e.secret_ref, s.secret_ref) and std.mem.eql(u8, e.model_id, s.model)
         else
             false;
-        const view = try projectEntry(alloc, e, active, lookupMeta(refs, meta, e.secret_ref));
+        const view = try projectEntry(alloc, e, active, meta[i]);
         errdefer freeView(alloc, view);
         try views.append(alloc, view);
     }
@@ -139,39 +147,6 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
         .platform_default_available = platform_default != null,
         .platform_default = platform_default,
     };
-}
-
-/// The distinct `secret_ref` set across `entries` — one key backs many model
-/// rows, so a 100-row page commonly references far fewer credentials. Slices are
-/// borrowed from `entries`; the caller frees only the returned array.
-///
-/// Linear scan rather than a hash set: the page is capped at 100 rows, so the
-/// worst case is a few thousand pointer comparisons against no allocation and no
-/// hashing. Same reasoning as `vault.markExisting`.
-fn distinctSecretRefs(alloc: std.mem.Allocator, entries: []const entries_state.Entry) ![]const []const u8 {
-    var refs: std.ArrayList([]const u8) = .empty;
-    errdefer refs.deinit(alloc);
-    outer: for (entries) |e| {
-        for (refs.items) |seen| {
-            if (std.mem.eql(u8, seen, e.secret_ref)) continue :outer;
-        }
-        try refs.append(alloc, e.secret_ref);
-    }
-    return refs.toOwnedSlice(alloc);
-}
-
-/// This entry's projection out of the batch result, or null when the credential
-/// has no vault row. `refs` and `meta` are positionally paired by
-/// `vault.loadMetadata`.
-fn lookupMeta(
-    refs: []const []const u8,
-    meta: []const ?vault.SecretMetadata,
-    secret_ref: []const u8,
-) ?vault.SecretMetadata {
-    for (refs, 0..) |r, i| {
-        if (std.mem.eql(u8, r, secret_ref)) return meta[i];
-    }
-    return null;
 }
 
 /// Build one wire row from an entry and its already-read projection.

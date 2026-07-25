@@ -7,6 +7,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ec = @import("../errors/error_registry.zig");
+const gate_constants = @import("approval_gate_constants.zig");
 const gate_condition = @import("gate_condition.zig");
 const logging = @import("log");
 const log = logging.scoped(.fleet_config_gates);
@@ -51,15 +52,15 @@ const GateConfigError = error{
 
 pub fn parseGatePolicy(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || GateConfigError)!GatePolicy {
     const timeout_ms: u64 = blk: {
-        const val = obj.get("timeout_ms") orelse break :blk ec.GATE_DEFAULT_TIMEOUT_MS;
+        const val = obj.get("timeout_ms") orelse break :blk gate_constants.GATE_DEFAULT_TIMEOUT_MS;
         break :blk switch (val) {
             .integer => |i| if (i <= 0)
-                ec.GATE_DEFAULT_TIMEOUT_MS
-            else if (i > @as(i64, @intCast(ec.GATE_TIMEOUT_MS_MAX))) clamped: {
-                log.warn("gate_timeout_clamped", .{ .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG, .configured_ms = i, .max_ms = ec.GATE_TIMEOUT_MS_MAX });
-                break :clamped ec.GATE_TIMEOUT_MS_MAX;
+                gate_constants.GATE_DEFAULT_TIMEOUT_MS
+            else if (i > @as(i64, @intCast(gate_constants.GATE_TIMEOUT_MS_MAX))) clamped: {
+                log.warn("gate_timeout_clamped", .{ .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG, .configured_ms = i, .max_ms = gate_constants.GATE_TIMEOUT_MS_MAX });
+                break :clamped gate_constants.GATE_TIMEOUT_MS_MAX;
             } else @intCast(i),
-            else => ec.GATE_DEFAULT_TIMEOUT_MS,
+            else => gate_constants.GATE_DEFAULT_TIMEOUT_MS,
         };
     };
 
@@ -244,7 +245,7 @@ test "parseGatePolicy: timeout above the cap clamps to GATE_TIMEOUT_MS_MAX" {
     defer parsed.deinit();
     const policy = try parseGatePolicy(alloc, parsed.value.object);
     defer freeGatePolicy(alloc, policy);
-    try std.testing.expectEqual(ec.GATE_TIMEOUT_MS_MAX, policy.timeout_ms);
+    try std.testing.expectEqual(gate_constants.GATE_TIMEOUT_MS_MAX, policy.timeout_ms);
 }
 
 test "parseGatePolicy: empty rules defaults" {
@@ -259,7 +260,7 @@ test "parseGatePolicy: empty rules defaults" {
 
     try std.testing.expectEqual(@as(usize, 0), policy.rules.len);
     try std.testing.expectEqual(@as(usize, 0), policy.anomaly_rules.len);
-    try std.testing.expectEqual(ec.GATE_DEFAULT_TIMEOUT_MS, policy.timeout_ms);
+    try std.testing.expectEqual(gate_constants.GATE_DEFAULT_TIMEOUT_MS, policy.timeout_ms);
 }
 
 test "parseGatePolicy: missing tool in rule returns error" {

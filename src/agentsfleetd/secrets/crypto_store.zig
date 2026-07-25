@@ -17,51 +17,36 @@ const logging = @import("log");
 
 const log = logging.scoped(.secrets);
 
-/// Test-only tally of envelope opens (the never-decrypt invariant).
+/// Test-only tally of envelope opens.
 ///
-/// Invariant 5 says the library read paths decrypt exactly zero times. Prose
-/// cannot enforce that — the next handler to reach for `vault.loadJson` on a
-/// read would satisfy every other gate we have. This counter turns the invariant
-/// into an assertion: `test_library_reads_never_decrypt` drives the tenant
-/// registry, global models, Fleet summary, and Fleet detail reads and requires
-/// the tally to still be zero afterwards.
+/// The library read paths must decrypt exactly zero times. Prose cannot enforce
+/// that — the next handler to reach for `vault.loadJson` on a read would satisfy
+/// every other gate we have. This turns the invariant into an assertion:
+/// `test_library_reads_never_decrypt` drives the tenant registry, global models,
+/// Fleet summary, and Fleet detail reads and requires the tally to still read
+/// zero.
 ///
-/// Genuinely compiled out of production. The non-test branch is an empty struct
-/// whose `note` has no body, so release builds carry no counter, no atomic, and
-/// no increment — there is no cardinality surface and nothing to export.
-const DecryptTally = if (builtin.is_test) struct {
-    var value: std.atomic.Value(usize) = .init(0);
+/// Atomic because integration tests exercise handlers concurrently; `.monotonic`
+/// suffices, since assertions read the total after requests are joined, never
+/// mid-flight. In a release build `noteDecrypt` compiles to nothing and this is
+/// eight untouched bytes — not worth a comptime-branched wrapper type to elide.
+var decrypt_tally: std.atomic.Value(usize) = .init(0);
 
-    /// Atomic because integration tests exercise handlers concurrently;
-    /// `.monotonic` is sufficient — the assertion reads the total after the
-    /// requests have been joined, never mid-flight.
-    fn note() void {
-        _ = value.fetchAdd(1, .monotonic);
-    }
-    fn read() usize {
-        return value.load(.monotonic);
-    }
-    fn reset() void {
-        value.store(0, .monotonic);
-    }
-} else struct {
-    fn note() void {}
-    fn read() usize {
-        return 0;
-    }
-    fn reset() void {}
-};
-
-/// Envelope opens counted since the last `resetDecryptCountForTest`. Always 0 in
-/// a production build.
-pub fn decryptCountForTest() usize {
-    return DecryptTally.read();
+inline fn noteDecrypt() void {
+    if (comptime !builtin.is_test) return;
+    _ = decrypt_tally.fetchAdd(1, .monotonic);
 }
 
-/// Zero the tally. Every test that asserts on it calls this first, so the count
-/// is scoped to the request under test rather than to the whole binary.
+/// Envelope opens since the last `resetDecryptCountForTest`. Always 0 in a
+/// release build.
+pub fn decryptCountForTest() usize {
+    return decrypt_tally.load(.monotonic);
+}
+
+/// Zero the tally, so a count is scoped to the request under test rather than to
+/// the whole binary. Every test asserting on it calls this first.
 pub fn resetDecryptCountForTest() void {
-    DecryptTally.reset();
+    decrypt_tally.store(0, .monotonic);
 }
 
 const KEY_LEN = cp.KEY_LEN;
@@ -174,12 +159,11 @@ fn decryptRowAt(
     kek: *const [KEY_LEN]u8,
     col: usize,
 ) ![]u8 {
-    // Counted here because this is the single funnel every envelope open passes
-    // through — `load` and `loadAllForWorkspace` both land here, so no caller can
-    // decrypt without being tallied. Counted on ENTRY, not on success: a read
-    // path that touched ciphertext and failed still touched ciphertext, and
-    // Invariant 5 is about the touching.
-    DecryptTally.note();
+    // The single funnel every envelope open passes through — `load` and
+    // `loadAllForWorkspace` both land here, so no caller decrypts untallied.
+    // Counted on ENTRY, not on success: a read path that touched ciphertext and
+    // then failed still touched ciphertext, and the invariant is about touching.
+    noteDecrypt();
 
     const encrypted_dek = try row.get([]u8, col);
     const dek_nonce_slice = try row.get([]u8, col + 1);

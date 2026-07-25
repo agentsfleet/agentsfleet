@@ -133,6 +133,7 @@ const CATEGORY_COPY = [_]CategoryCopy{
     .{ .token = "GH", .label = "GitHub", .prevention = "Keep the GitHub App installed with required repository access." },
     .{ .token = "GRANT", .label = "Integration grants", .prevention = "Use active integration grants approved for the fleet." },
     .{ .token = "INTERNAL", .label = "Service failures", .prevention = "Clients cannot prevent this failure. Keep retry handling ready." },
+    .{ .token = "LIBRARY", .label = "Library listings", .prevention = "Page with the `next_cursor` returned by the previous page, keep `limit` within 1 to 100, and start over from the first page after changing a filter." },
     .{ .token = "MEM", .label = "Memory", .prevention = "Use an existing fleet and a valid memory category." },
     .{ .token = "MODELS", .label = "Tenant models", .prevention = "Use a model available to the tenant." },
     .{ .token = "PREFS", .label = "Dashboard preferences", .prevention = "Write only preference keys the dashboard declares, with small values." },

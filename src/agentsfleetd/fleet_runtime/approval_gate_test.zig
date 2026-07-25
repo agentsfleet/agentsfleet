@@ -6,11 +6,12 @@ const std = @import("std");
 const approval_gate = @import("approval_gate.zig");
 const config_gates = @import("config_gates.zig");
 const ec = @import("../errors/error_registry.zig");
+const gate_constants = @import("approval_gate_constants.zig");
 
 const GateDecision = approval_gate.GateDecision;
 
 fn makePolicy(rules: []const config_gates.GateRule) config_gates.GatePolicy {
-    return .{ .rules = rules, .anomaly_rules = &.{}, .timeout_ms = ec.GATE_DEFAULT_TIMEOUT_MS };
+    return .{ .rules = rules, .anomaly_rules = &.{}, .timeout_ms = gate_constants.GATE_DEFAULT_TIMEOUT_MS };
 }
 
 // ── T1: Happy path — Spec §1.2: evaluateGate rule matching ──────────────
@@ -309,17 +310,17 @@ test "T10: approval error hints exist and are actionable" {
 // ── T10: Constants — gate event types and decision strings ──────────────
 
 test "T10: gate event type constants are non-empty" {
-    try std.testing.expect(ec.GATE_EVENT_REQUIRED.len > 0);
-    try std.testing.expect(ec.GATE_EVENT_APPROVED.len > 0);
-    try std.testing.expect(ec.GATE_EVENT_DENIED.len > 0);
-    try std.testing.expect(ec.GATE_EVENT_TIMEOUT.len > 0);
-    try std.testing.expect(ec.GATE_EVENT_AUTO_KILL.len > 0);
-    try std.testing.expect(ec.GATE_EVENT_AUTO_APPROVE.len > 0);
+    try std.testing.expect(gate_constants.GATE_EVENT_REQUIRED.len > 0);
+    try std.testing.expect(gate_constants.GATE_EVENT_APPROVED.len > 0);
+    try std.testing.expect(gate_constants.GATE_EVENT_DENIED.len > 0);
+    try std.testing.expect(gate_constants.GATE_EVENT_TIMEOUT.len > 0);
+    try std.testing.expect(gate_constants.GATE_EVENT_AUTO_KILL.len > 0);
+    try std.testing.expect(gate_constants.GATE_EVENT_AUTO_APPROVE.len > 0);
 }
 
 test "T10: gate decision constants match expected values" {
-    try std.testing.expectEqualStrings("approve", ec.GATE_DECISION_APPROVE);
-    try std.testing.expectEqualStrings("deny", ec.GATE_DECISION_DENY);
+    try std.testing.expectEqualStrings("approve", gate_constants.GATE_DECISION_APPROVE);
+    try std.testing.expectEqualStrings("deny", gate_constants.GATE_DECISION_DENY);
 }
 
 // ── T11: Memory safety — leak detection ─────────────────────────────────
