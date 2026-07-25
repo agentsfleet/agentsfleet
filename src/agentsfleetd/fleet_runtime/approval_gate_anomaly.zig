@@ -5,6 +5,7 @@ const std = @import("std");
 const logging = @import("log");
 const queue_redis = @import("../queue/redis_client.zig");
 const ec = @import("../errors/error_registry.zig");
+const gate_constants = @import("approval_gate_constants.zig");
 const config_gates = @import("config_gates.zig");
 
 const log = logging.scoped(.approval_gate_anomaly);
@@ -65,7 +66,7 @@ fn incrAnomalyCounter(
 ) !u32 {
     var key_buf: [256]u8 = undefined;
     const key = std.fmt.bufPrint(&key_buf, "{s}{s}:{s}:{s}", .{
-        ec.GATE_ANOMALY_KEY_PREFIX, fleet_id, tool, action,
+        gate_constants.GATE_ANOMALY_KEY_PREFIX, fleet_id, tool, action,
     }) catch return error.BufferOverflow;
 
     var ttl_buf: [16]u8 = undefined;

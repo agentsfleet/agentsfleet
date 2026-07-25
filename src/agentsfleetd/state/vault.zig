@@ -200,15 +200,19 @@ pub fn loadMetadata(
     defer q.deinit();
     while (try q.next()) |row| {
         const found = try row.get([]const u8, 0);
-        // candidates is bounded by the page limit; a linear match avoids
-        // allocating a set and duping the borrowed row key into it. Mirrors
-        // markExisting. Only the FIRST match is filled: (workspace_id, key_name)
-        // is UNIQUE, so a duplicate is impossible — but a caller passing the
-        // same key twice must not leak the first projection by overwriting it.
+        // EVERY matching slot is filled, not just the first. Callers pass a
+        // positional list rather than a deduplicated set — one credential backs
+        // several model rows, and letting `out[i]` belong to `candidates[i]` by
+        // construction is cheaper than deduplicating and then matching back.
+        // Each duplicate gets its OWN owned copy, so `freeMetadata` releases
+        // them independently and no slot aliases another's strings.
+        //
+        // Linear match, mirroring markExisting: `candidates` is bounded by the
+        // page limit, and comparing is cheaper than allocating a set and duping
+        // the borrowed row key into it.
         for (candidates, 0..) |c, i| {
             if (out[i] == null and std.mem.eql(u8, c, found)) {
                 out[i] = try rowToMetadata(alloc, row);
-                break;
             }
         }
     }

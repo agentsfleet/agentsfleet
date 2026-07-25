@@ -15,6 +15,7 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const queue_redis = @import("../queue/redis_client.zig");
 const ec = @import("../errors/error_registry.zig");
+const gate_constants = @import("approval_gate_constants.zig");
 const id_format = @import("../types/id_format.zig");
 const config_gates = @import("config_gates.zig");
 const gate_condition = @import("gate_condition.zig");
@@ -153,7 +154,7 @@ pub fn requestApproval(
 
     var pending_key_buf: [256]u8 = undefined;
     const pending_key = try std.fmt.bufPrint(&pending_key_buf, "{s}{s}:{s}", .{
-        ec.GATE_PENDING_KEY_PREFIX, fleet_id, action_id,
+        gate_constants.GATE_PENDING_KEY_PREFIX, fleet_id, action_id,
     });
 
     // JSON-escape user-supplied fields to prevent injection (RULES.md #23).
@@ -170,7 +171,7 @@ pub fn requestApproval(
     try dw.writeAll("\"}");
     const detail_json = detail_aw.written();
 
-    try redis.setEx(pending_key, detail_json, ec.GATE_PENDING_TTL_SECONDS);
+    try redis.setEx(pending_key, detail_json, gate_constants.GATE_PENDING_TTL_SECONDS);
 
     log.debug("requested", .{
         .fleet_id = fleet_id,
@@ -192,9 +193,9 @@ pub fn resolveApproval(
 ) !void {
     var response_key_buf: [256]u8 = undefined;
     const response_key = try std.fmt.bufPrint(&response_key_buf, S_S_S, .{
-        ec.GATE_RESPONSE_KEY_PREFIX, action_id,
+        gate_constants.GATE_RESPONSE_KEY_PREFIX, action_id,
     });
-    try redis.setEx(response_key, decision, ec.GATE_PENDING_TTL_SECONDS);
+    try redis.setEx(response_key, decision, gate_constants.GATE_PENDING_TTL_SECONDS);
 
     log.debug("resolved", .{ .action_id = action_id, .decision = decision });
 }
@@ -253,8 +254,8 @@ pub fn resolve(
 
 fn decisionString(status: GateStatus) []const u8 {
     return switch (status) {
-        .approved => ec.GATE_DECISION_APPROVE,
-        .denied, .timed_out, .auto_killed => ec.GATE_DECISION_DENY,
+        .approved => gate_constants.GATE_DECISION_APPROVE,
+        .denied, .timed_out, .auto_killed => gate_constants.GATE_DECISION_DENY,
         .pending => unreachable,
     };
 }
