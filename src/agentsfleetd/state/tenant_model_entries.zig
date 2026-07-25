@@ -73,6 +73,66 @@ pub fn list(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8) ![]
     return rows.toOwnedSlice(alloc);
 }
 
+/// Where a page starts. `null` is the first page; otherwise the exclusive
+/// boundary carried by the caller's cursor.
+pub const PageStart = struct {
+    created_at: i64,
+    id: []const u8,
+};
+
+/// One page of entries plus whether another exists. `has_more` is derived from
+/// an over-fetch of one row rather than a COUNT, so a page costs one statement
+/// regardless of how many entries the tenant has.
+pub const Page = struct {
+    rows: []Entry,
+    has_more: bool,
+};
+
+/// Read one page in `created_at DESC, id DESC` order.
+///
+/// `limit` is the number of rows the caller gets; this asks the database for
+/// one more and drops it. That extra row is the whole "is there a next page?"
+/// answer — without it the alternatives are a second COUNT statement (which
+/// costs a full scan on a keyset read) or returning `next_cursor` unconditionally
+/// and making the client discover the end by fetching an empty page.
+pub fn listPage(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    limit: u32,
+    after: ?PageStart,
+) !Page {
+    const probe: i32 = @intCast(limit + 1);
+    var q = PgQuery.from(if (after) |a|
+        try conn.query(sql.LIST_PAGE_AFTER, .{ tenant_id, a.created_at, a.id, probe })
+    else
+        try conn.query(sql.LIST_PAGE_FIRST, .{ tenant_id, probe }));
+    defer q.deinit();
+
+    var rows: std.ArrayList(Entry) = .empty;
+    errdefer {
+        deinitEntriesOnly(rows.items, alloc);
+        rows.deinit(alloc);
+    }
+    var seen: u32 = 0;
+    var has_more = false;
+    while (try q.next()) |row| {
+        seen += 1;
+        // The probe row is read (the cursor must be drained either way) but not
+        // materialised — it exists to be counted, not returned.
+        if (seen > limit) {
+            has_more = true;
+            continue;
+        }
+        var entry = try rowToEntry(alloc, row);
+        rows.append(alloc, entry) catch |err| {
+            entry.deinit(alloc);
+            return err;
+        };
+    }
+    return .{ .rows = try rows.toOwnedSlice(alloc), .has_more = has_more };
+}
+
 pub fn updateModel(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,

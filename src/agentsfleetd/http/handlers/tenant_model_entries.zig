@@ -28,7 +28,6 @@ const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const entries_state = @import("../../state/tenant_model_entries.zig");
 const tenant_provider = @import("../../state/tenant_provider.zig");
-const view = @import("tenant_model_entries_view.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.http_tenant_model_entries);
@@ -40,41 +39,6 @@ const S_ID_MUST_BE_UUIDV7 = "id must be a valid UUIDv7";
 const S_BODY_REQUIRED = "Request body required";
 const S_MALFORMED_JSON = "Malformed JSON";
 const S_DUPLICATE_DETAIL = "An entry with this model and secret already exists";
-
-// ── GET ─────────────────────────────────────────────────────────────────────
-
-pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
-    _ = req;
-    const tenant_id = hx.principal.tenant_id orelse {
-        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
-        return;
-    };
-
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    var result = view.buildList(hx.alloc, conn, tenant_id) catch |err| {
-        log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer result.deinit(hx.alloc);
-
-    hx.res.status = @intFromEnum(std.http.Status.ok);
-    hx.res.json(
-        .{
-            .models = result.rows,
-            .platform_default_available = result.platform_default_available,
-            .platform_default = result.platform_default,
-        },
-        .{ .emit_null_optional_fields = false },
-    ) catch {
-        common.internalOperationError(hx.res, "Failed to build the models list", hx.req_id);
-    };
-}
 
 // ── POST ────────────────────────────────────────────────────────────────────
 
