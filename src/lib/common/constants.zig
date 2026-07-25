@@ -95,6 +95,25 @@ comptime {
 /// verb is always 200; this rides `retry_after_ms` (no 204).
 pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
 
+/// Hard ceiling on how many fleets one lease poll will examine. Lives beside
+/// `NO_WORK_RETRY_AFTER_MS` because it trades the same axis — per-poll cost
+/// against discovery latency — and an operator tuning either must see both.
+///
+/// This is the bound that makes per-poll cost independent of how many fleets
+/// the platform holds. It stays load-bearing even when the readiness index is
+/// wrong in either direction: a stale or over-marked index costs extra
+/// candidate checks up to this many, never more, so a hint failure degrades
+/// discovery fairness and never per-poll cost.
+///
+/// Sized generously rather than tightly. The readiness peek samples randomly
+/// and the label gate (`required_tags <@ labels`) filters that sample in
+/// Postgres afterwards, so a runner whose labels match only a small share of
+/// ready fleets needs a wide enough slice to draw one of them. A membership
+/// restriction on this many ids is a single index-served query, so the cost of
+/// widening it is far below the cost of a runner repeatedly drawing a slice
+/// that its labels reject.
+pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
+
 // ── Connectors (Slack-resident channel bot, M106) ───────────────────────────
 // Provider + binding-kind identifiers shared across the OAuth connector
 // (spec.zig aliases `PROVIDER_SLACK`), the inbound events ingress, and the

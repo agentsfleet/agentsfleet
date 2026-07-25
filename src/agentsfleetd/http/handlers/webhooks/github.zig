@@ -30,6 +30,7 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const redis_fleet = @import("../../../queue/redis_fleet.zig");
 const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
@@ -215,7 +216,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
         .request_json = request_json,
         .created_at = clock.nowMillis(),
     };
-    const new_event_id = hx.ctx.queue.xaddFleetEvent(envelope) catch |err| {
+    const new_event_id = redis_fleet.xaddFleetEvent(hx.ctx.queue, envelope) catch |err| {
         // Release the slot — GitHub's redelivery of this UUID stays
         // deliverable (loss-proof dedup ordering).
         releaseDedupSlot(hx, fleet_id, dedup_key);

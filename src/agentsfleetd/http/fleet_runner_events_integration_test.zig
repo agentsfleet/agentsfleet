@@ -116,7 +116,7 @@ fn seedFleetWork(conn: anytype) !void {
 
 fn publishFreshEvent(h: *TestHarness) !void {
     try redis_fleet.ensureFleetConsumerGroup(&h.queue, FLEET_ID);
-    const id = try h.queue.xaddFleetEvent(.{
+    const id = try redis_fleet.xaddFleetEvent(&h.queue, .{
         .event_id = "",
         .fleet_id = FLEET_ID,
         .workspace_id = WORKSPACE_ID,

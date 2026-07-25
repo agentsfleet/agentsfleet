@@ -177,6 +177,10 @@ test {
     _ = @import("queue/redis_connection_test.zig");
     _ = @import("queue/redis_errors_test.zig");
     _ = @import("queue/redis_subscriber_test.zig");
+    _ = @import("queue/fleet_ready.zig");
+    _ = @import("queue/fleet_group_memo.zig");
+    _ = @import("queue/redis_fleet_probe.zig");
+    _ = @import("queue/redis_fleet_decode.zig");
     // Persistent Fleet Memory — role isolation + selection policy + adapter write-path tests.
     _ = @import("memory/fleet_memory_role_test.zig");
     _ = @import("memory/fleet_memory_test.zig");
