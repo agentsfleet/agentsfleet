@@ -27,20 +27,39 @@ const MAX_ATTR_COUNT: usize = 12;
 const MAX_ATTR_KEY_LEN: usize = 32;
 const MAX_ATTR_VAL_LEN: usize = 64;
 
+/// OTLP `SpanKind`. Only the two kinds this process actually produces are
+/// modelled: HTTP ingress is a server span; the settled delivery observation is
+/// internal, because no runner span or trace context exists for it to be the
+/// client half of.
+pub const SpanKind = enum(u8) {
+    internal = 1,
+    server = 2,
+};
+
+/// A span attribute value. A tagged union rather than a string buffer plus an
+/// `is_int` flag so the serializer's switch is exhaustive and a status code can
+/// never be emitted as a quoted string.
+const AttrValue = union(enum) {
+    string: struct { buf: [MAX_ATTR_VAL_LEN]u8, len: u8 },
+    int: i64,
+};
+
 const SpanAttr = struct {
     key: [MAX_ATTR_KEY_LEN]u8,
     key_len: u8,
-    val: [MAX_ATTR_VAL_LEN]u8,
-    val_len: u8,
+    value: AttrValue,
 };
 
-const SpanEntry = struct {
+/// One completed span, fixed-size and copied by value into the ring. Public so
+/// emit sites can name it when they split attribute application into helpers.
+pub const SpanEntry = struct {
     trace_id: [trace.TRACE_ID_HEX_LEN]u8,
     span_id: [trace.SPAN_ID_HEX_LEN]u8,
     parent_span_id: [trace.SPAN_ID_HEX_LEN]u8,
     has_parent: bool,
     start_ns: u64,
     end_ns: u64,
+    kind: SpanKind,
     name: [MAX_NAME_LEN]u8,
     name_len: u8,
     attrs: [MAX_ATTR_COUNT]SpanAttr,
@@ -78,10 +97,11 @@ pub fn enqueueSpan(entry: SpanEntry) void {
     }
 }
 
-/// Helper: build a SpanEntry from a TraceContext, name, timing, and attributes.
+/// Helper: build a SpanEntry from a TraceContext, name, kind, and timing.
 pub fn buildSpan(
     ctx: trace.TraceContext,
     name: []const u8,
+    kind: SpanKind,
     start_ns: u64,
     end_ns: u64,
 ) SpanEntry {
@@ -97,21 +117,47 @@ pub fn buildSpan(
     }
     entry.start_ns = start_ns;
     entry.end_ns = end_ns;
+    entry.kind = kind;
     entry.name_len = @intCast(@min(name.len, MAX_NAME_LEN));
     @memcpy(entry.name[0..entry.name_len], name[0..entry.name_len]);
     entry.attr_count = 0;
     return entry;
 }
 
-/// Add a string attribute to a span entry. Returns false if attrs are full.
-pub fn addAttr(entry: *SpanEntry, key: []const u8, val: []const u8) bool {
-    if (entry.attr_count >= MAX_ATTR_COUNT) return false;
-    const idx = entry.attr_count;
-    entry.attrs[idx].key_len = @intCast(@min(key.len, MAX_ATTR_KEY_LEN));
-    @memcpy(entry.attrs[idx].key[0..entry.attrs[idx].key_len], key[0..entry.attrs[idx].key_len]);
-    entry.attrs[idx].val_len = @intCast(@min(val.len, MAX_ATTR_VAL_LEN));
-    @memcpy(entry.attrs[idx].val[0..entry.attrs[idx].val_len], val[0..entry.attrs[idx].val_len]);
+/// Reserve the next attribute slot and write its key. Returns null when the
+/// span is full or the key does not fit — keys are compile-time registry
+/// constants, so a rejection here is a registry/bound mismatch, not input.
+fn claimAttr(entry: *SpanEntry, key: []const u8) ?*SpanAttr {
+    if (entry.attr_count >= MAX_ATTR_COUNT) return null;
+    if (key.len > MAX_ATTR_KEY_LEN) return null;
+    const slot = &entry.attrs[entry.attr_count];
+    slot.key_len = @intCast(key.len);
+    @memcpy(slot.key[0..key.len], key);
     entry.attr_count += 1;
+    return slot;
+}
+
+/// Add a string attribute. Returns false when the span is full or the value
+/// exceeds the fixed bound — the attribute is dropped whole rather than
+/// truncated, because a half-written identifier reads as a different one.
+pub fn addAttr(entry: *SpanEntry, key: []const u8, val: []const u8) bool {
+    if (val.len > MAX_ATTR_VAL_LEN) return false;
+    const slot = claimAttr(entry, key) orelse return false;
+    slot.value = .{ .string = .{
+        // SAFETY: only buf[0..len] is ever read, and it is written immediately below.
+        .buf = undefined,
+        .len = @intCast(val.len),
+    } };
+    @memcpy(slot.value.string.buf[0..val.len], val);
+    return true;
+}
+
+/// Add an integer attribute, serialized as an OTLP `intValue`. Used where the
+/// pinned conventions define a numeric type (status codes, token counts) so
+/// backends can aggregate them instead of parsing strings.
+pub fn addIntAttr(entry: *SpanEntry, key: []const u8, val: i64) bool {
+    const slot = claimAttr(entry, key) orelse return false;
+    slot.value = .{ .int = val };
     return true;
 }
 
@@ -149,11 +195,9 @@ fn collectSpansBody(
 ) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
-    try out.print(
-        alloc,
-        "{{\"resourceSpans\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":{f}}}}}]}},\"scopeSpans\":[{{\"scope\":{{\"name\":\"agentsfleetd\"}},\"spans\":[",
-        .{std.json.fmt(cfg.service_name, .{})},
-    );
+    // Shared with logs + metrics so all three envelopes carry byte-identical
+    // service identity and the same pinned schema URL.
+    try otlp_config.appendEnvelopePrefix(&out, alloc, cfg, "resourceSpans", "scopeSpans", "spans");
 
     var first = true;
     const limit = @min(max_entries, FLUSH_BATCH_SIZE);
@@ -173,7 +217,7 @@ fn collectSpansBody(
         return &.{};
     }
 
-    try out.appendSlice(alloc, "]}]}]}");
+    try out.appendSlice(alloc, otlp_config.ENVELOPE_SUFFIX);
     return try out.toOwnedSlice(alloc);
 }
 
@@ -184,8 +228,8 @@ fn appendSpan(out: *std.ArrayList(u8), alloc: std.mem.Allocator, entry: SpanEntr
     }
     try out.print(
         alloc,
-        ",\"name\":{f},\"kind\":1,\"startTimeUnixNano\":\"{d}\",\"endTimeUnixNano\":\"{d}\"",
-        .{ std.json.fmt(entry.name[0..entry.name_len], .{}), entry.start_ns, entry.end_ns },
+        ",\"name\":{f},\"kind\":{d},\"startTimeUnixNano\":\"{d}\",\"endTimeUnixNano\":\"{d}\"",
+        .{ std.json.fmt(entry.name[0..entry.name_len], .{}), @intFromEnum(entry.kind), entry.start_ns, entry.end_ns },
     );
     if (entry.attr_count > 0) try appendAttributes(out, alloc, entry);
     try out.appendSlice(alloc, "}");
@@ -195,14 +239,15 @@ fn appendAttributes(out: *std.ArrayList(u8), alloc: std.mem.Allocator, entry: Sp
     try out.appendSlice(alloc, ",\"attributes\":[");
     for (entry.attrs[0..entry.attr_count], 0..) |attr, attr_index| {
         if (attr_index > 0) try out.appendSlice(alloc, ",");
-        try out.print(
-            alloc,
-            "{{\"key\":{f},\"value\":{{\"stringValue\":{f}}}}}",
-            .{
-                std.json.fmt(attr.key[0..attr.key_len], .{}),
-                std.json.fmt(attr.val[0..attr.val_len], .{}),
-            },
-        );
+        try out.print(alloc, "{{\"key\":{f},\"value\":", .{std.json.fmt(attr.key[0..attr.key_len], .{})});
+        switch (attr.value) {
+            // json.fmt supplies the quotes and escapes the interior.
+            .string => |s| try out.print(alloc, "{{\"stringValue\":{f}}}", .{std.json.fmt(s.buf[0..s.len], .{})}),
+            // OTLP carries 64-bit ints as JSON strings to survive consumers
+            // whose number type is a double.
+            .int => |v| try out.print(alloc, "{{\"intValue\":\"{d}\"}}", .{v}),
+        }
+        try out.appendSlice(alloc, "}");
     }
     try out.appendSlice(alloc, "]");
 }

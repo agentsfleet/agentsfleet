@@ -167,7 +167,7 @@ const Renewer = struct {
         defer h.releaseConn(conn);
         const outcome = renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{}) catch return;
         switch (outcome) {
-            .renewed => |until| slot.* = .{ .code = 1, .renewed_to = until },
+            .renewed => |r| slot.* = .{ .code = 1, .renewed_to = r.lease_expires_at },
             .lost => slot.* = .{ .code = 2 },
             .max_runtime => slot.* = .{ .code = 3 },
         }
@@ -235,7 +235,7 @@ const MeteredRenewer = struct {
         defer h.releaseConn(conn);
         const outcome = renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, METER) catch return;
         switch (outcome) {
-            .renewed => |until| slot.* = .{ .code = 1, .renewed_to = until },
+            .renewed => |r| slot.* = .{ .code = 1, .renewed_to = r.lease_expires_at },
             .lost => slot.* = .{ .code = 2 },
             .max_runtime => slot.* = .{ .code = 3 },
         }
@@ -448,7 +448,7 @@ const LeaseRenewer = struct {
         defer h.releaseConn(conn);
         const outcome = renewal.renew(conn, lease_id, RUNNER_ID, NOW_MS, METER) catch return;
         switch (outcome) {
-            .renewed => |until| slot.* = .{ .code = 1, .renewed_to = until },
+            .renewed => |r| slot.* = .{ .code = 1, .renewed_to = r.lease_expires_at },
             .lost => slot.* = .{ .code = 2 },
             .max_runtime => slot.* = .{ .code = 3 },
         }

@@ -43,6 +43,7 @@ const tenant_provider = @import("../state/tenant_provider.zig");
 const activity_publisher = @import("../fleet_runtime/activity_publisher.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
 const otel_metrics = @import("../observability/otel_metrics.zig");
+const semconv = @import("../observability/semconv.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const runner_events = @import("runner_events.zig");
 
@@ -97,10 +98,10 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
     }
     log.debug("report_settled", .{ .fleet_id = lease.fleet_id, .event_id = lease.event_id, .charged_nanos = settled.charged_nanos });
 
-    // Post-commit, fire-and-forget OTLP metrics for the settled run: stage
-    // credit drained (final slice) + cumulative token throughput by direction +
-    // run-latency. The claim+settle committed atomically above and the claim
-    // won, so this records once per terminal run and never blocks the report.
+    // Post-commit, fire-and-forget OTLP metrics for the settled run: the final
+    // committed credit slice + the invocation's aggregate token usage + the
+    // duration observation. The claim+settle committed atomically above and the
+    // claim won, so this records once per terminal run and never blocks the report.
     otel_metrics.recordRunSettlement(
         settled.charged_nanos,
         // input/cached/output are u32 → always fit i64. wall_ms is a runner-
@@ -110,9 +111,11 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
         @intCast(body.cached_input_tokens),
         @intCast(body.output_tokens),
         std.math.cast(i64, body.telemetry.wall_ms) orelse std.math.maxInt(i64),
-        parsePosture(lease.posture).label(),
-        lease.model,
-        lease.workspace_id,
+        // The coarse verdict only. The granular failure class stays on the
+        // durable event row and the capped runner-failure Prometheus family;
+        // on this histogram it would multiply the per-model series budget.
+        if (body.outcome == .fleet_error) semconv.ERROR_TYPE_FLEET_ERROR else null,
+        attributionFor(lease),
     );
     captureCompletion(hx, lease, body);
 
@@ -235,6 +238,9 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
     // Emit the delivery span. The final slice was already settled atomically with
     // the report claim (`claimReportAndSettle`, before finalize), so by here the
     // billing is closed and only the OTel span remains. Best-effort.
+    // Split usage, not one opaque total: `gen_ai.usage.input_tokens` and
+    // `gen_ai.usage.output_tokens` are separate pinned facts, and input already
+    // includes the cached portion.
     metering.emitDeliverySpan(lease.tenant_id, .{
         .workspace_id = lease.workspace_id,
         .fleet_id = lease.fleet_id,
@@ -242,7 +248,7 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
         .posture = parsePosture(lease.posture),
         .provider = lease.provider,
         .model = lease.model,
-    }, 0, body.tokens, wall_ms, clock.nowMillis() - (std.math.cast(i64, wall_ms) orelse std.math.maxInt(i64)));
+    }, @as(u64, body.input_tokens) + @as(u64, body.cached_input_tokens), body.output_tokens, wall_ms, clock.nowMillis() - (std.math.cast(i64, wall_ms) orelse std.math.maxInt(i64)));
     event_rows.checkpointFleetSession(alloc, pool, lease.fleet_id, buildContextJson(alloc, body.checkpoint)) catch |err| {
         log.warn("report_checkpoint_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = lease.fleet_id, .err = @errorName(err) });
     };
@@ -263,6 +269,16 @@ fn buildContextJson(alloc: std.mem.Allocator, checkpoint: protocol.ReportCheckpo
         .last_event_id = checkpoint.last_event_id,
         .last_response = event_rows.truncateUtf8(checkpoint.last_response, event_rows.MAX_CHECKPOINT_RESPONSE_BYTES),
     }, .{}) catch "{}";
+}
+
+/// The metric identity for this lease. Workspace and tenant are absent by
+/// design: they never enter an OTLP metric attribute.
+fn attributionFor(lease: Lease) otel_metrics.Attribution {
+    return .{
+        .posture = parsePosture(lease.posture).label(),
+        .provider = lease.provider,
+        .model = lease.model,
+    };
 }
 
 /// Map the stored posture label back to `Mode` for the telemetry span. Keyed on
