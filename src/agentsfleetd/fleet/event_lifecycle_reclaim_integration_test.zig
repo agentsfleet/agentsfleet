@@ -220,7 +220,8 @@ test "reclaim sweep recovers a stranded delivery from a dead consumer and re-lea
     try base.deliverToDeadConsumer(h, base.AGENTSFLEET_STRAND);
     try base.forceIdle(h, base.AGENTSFLEET_STRAND, event_id, base.FORCED_IDLE_MS);
 
-    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, std.testing.allocator);
+    var sweep_cursor = reclaim_sweeper.Cursor{};
+    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, std.testing.allocator, &sweep_cursor);
     try std.testing.expect(stats.reclaimed_entries >= 1);
     try std.testing.expect(try base.pollLease(h));
     try base.expectRow(conn, base.AGENTSFLEET_STRAND, event_id, event_rows.STATUS_RECEIVED, "");
@@ -241,7 +242,8 @@ test "reclaim sweep never touches an entry inside the lease window" {
     defer h.queue.alloc.free(event_id);
     try base.deliverToDeadConsumer(h, base.AGENTSFLEET_STRAND);
 
-    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, std.testing.allocator);
+    var sweep_cursor = reclaim_sweeper.Cursor{};
+    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, std.testing.allocator, &sweep_cursor);
     try std.testing.expectEqual(@as(i64, 0), stats.reclaimed_entries);
     try std.testing.expectEqual(@as(i64, 1), try base.pendingCount(h, base.AGENTSFLEET_STRAND));
 }
