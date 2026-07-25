@@ -64,7 +64,7 @@ fn setRequiredTags(conn: *pg.Conn, fleet_id: []const u8, tags: []const []const u
 
 // ── Ingress marks readiness ─────────────────────────────────────────────────
 
-test "an accepted fleet event leaves its fleet in the readiness index" {
+test "integration: an accepted fleet event leaves its fleet in the readiness index" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -86,7 +86,7 @@ test "an accepted fleet event leaves its fleet in the readiness index" {
     try std.testing.expect(try isMarked(h, FLEET_READY_A));
 }
 
-test "a token is never reused across marks of the same fleet" {
+test "integration: a token is never reused across marks of the same fleet" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -120,7 +120,7 @@ test "a token is never reused across marks of the same fleet" {
     try std.testing.expect(!std.mem.eql(u8, second, third));
 }
 
-test "a clear holding a stale token leaves the newer mark intact" {
+test "integration: a clear holding a stale token leaves the newer mark intact" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -156,7 +156,7 @@ test "a clear holding a stale token leaves the newer mark intact" {
     try std.testing.expect(!try isMarked(h, FLEET_READY_A));
 }
 
-test "peek returns each fleet with the token stored for it" {
+test "integration: peek returns each fleet with the token stored for it" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -183,7 +183,7 @@ test "peek returns each fleet with the token stored for it" {
     }
 }
 
-test "peek never returns more entries than the bound it was given" {
+test "integration: peek never returns more entries than the bound it was given" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -209,7 +209,7 @@ test "peek never returns more entries than the bound it was given" {
     try std.testing.expectEqual(@as(u64, 20), try fleet_ready.depth(&h.queue));
 }
 
-test "an empty index peeks as the empty variant" {
+test "integration: an empty index peeks as the empty variant" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -226,7 +226,7 @@ test "an empty index peeks as the empty variant" {
 
 // ── The lease path ──────────────────────────────────────────────────────────
 
-test "a poll against an empty readiness index performs zero Postgres round-trips" {
+test "integration: a poll against an empty readiness index performs zero Postgres round-trips" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -252,7 +252,7 @@ test "a poll against an empty readiness index performs zero Postgres round-trips
     try std.testing.expectEqual(@as(u64, 0), snap.lease_poll_candidates_scanned_total);
 }
 
-test "a poll against a non-empty index does reach Postgres" {
+test "integration: a poll against a non-empty index does reach Postgres" {
     // The negative of the test above: if the counter read zero in both cases it
     // would be measuring nothing, and the zero-round-trip proof would be vacuous.
     var env = base.setup() catch |err| switch (err) {
@@ -278,7 +278,7 @@ test "a poll against a non-empty index does reach Postgres" {
     try std.testing.expect(snap.lease_poll_candidates_scanned_total > 0);
 }
 
-test "a ready fleet requiring a tag the runner lacks is never leased" {
+test "integration: a ready fleet requiring a tag the runner lacks is never leased" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -311,7 +311,7 @@ test "a ready fleet requiring a tag the runner lacks is never leased" {
     try std.testing.expect(try base.pollLease(h));
 }
 
-test "readiness is cleared once a claim-won poll finds nothing deliverable" {
+test "integration: readiness is cleared once a claim-won poll finds nothing deliverable" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
