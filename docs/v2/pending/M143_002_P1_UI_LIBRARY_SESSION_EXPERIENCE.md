@@ -121,6 +121,8 @@ Provisioned `make capture-session-keeper-canary BASELINE_REF=origin/main CANDIDA
 `TenantModelPages = retained rows + current starting_after; projection scope=current response page only`.
 `FleetSummaryPages`; `FleetDetail(workspace,tier,id)` with 401/403/404/503.
 Deep link: `/w/{workspace}/fleets/new?library_tier=platform|tenant&library_id=<encoded-id>`.
+
+List position survives a reload: the active `starting_after` and `q` are mirrored into the URL as `library_after` and `library_q`, replacing rather than pushing history so load-more does not fill the back stack. A reload, a shared link, or a back navigation from a detail view restores the same page rather than dropping the user at the first one. Absent parameters mean the first page, and an unparseable `library_after` is discarded in favour of the first page rather than surfacing an error — a bad link should still land somewhere useful.
 Refresh state: last success plus idle/loading/refreshing/error and typed error.
 
 ## Failure Modes
@@ -164,6 +166,7 @@ This table is the complete set. Every row is mandatory, including the failure ro
 | 3.2 | integration | `test_session_keeper_verdict_matches_repository` | valid retain/remove both pass only with matching source |
 | — | integration | `test_refresh_retains_authorized_content` | a network or 503 fault after a success keeps the last successful rows on screen and offers retry, never falling back to an empty state |
 | — | browser | `test_library_reduced_motion_state` | under `prefers-reduced-motion: reduce` no shimmer or transform runs, and loading remains distinguishable from loaded |
+| — | end-to-end | `test_library_list_position_survives_reload` | after load-more, a reload restores the same page from `library_after`/`library_q`; back from a detail returns to that page, not the first; an unparseable `library_after` falls back to the first page without an error state |
 
 **Decryption is asserted indirectly and deliberately.** Decryption happens server-side and is owned by M143_001. Row 1.1 asserts what this workstream controls — the number and shape of requests the UI issues — and treats "no extra decrypts" as a consequence proven by M143_001's `test_tenant_registry_page_is_bounded`. Naming that split here stops an agent from trying to observe decryption from a browser context.
 

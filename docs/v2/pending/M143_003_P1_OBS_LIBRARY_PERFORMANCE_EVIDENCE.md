@@ -91,11 +91,13 @@ Propagate valid W3C `traceparent`; malformed input starts a clean trace. Closed 
 
 ### §2 — Deterministic resources and bounded pool progress
 
-Consume M143_001's exact measured application-data maxima after middleware auth verbatim: tenant registry ≤4 statements, ≤100 distinct-page decryptions/results, 512 KiB, one connection; global model hit/miss ≤1/≤2 statements, zero decryptions, ≤100, 256 KiB, one connection; Fleet summary ≤1 statement, zero decryptions, ≤100, 512 KiB, one connection; Fleet detail ≤2 statements, zero decryptions, one result, 1 MiB, one connection. Payload overflow is typed, never truncated.
+Consume M143_001's exact measured application-data maxima after middleware auth verbatim: tenant registry ≤4 statements, **zero decryptions**, ≤100 results, 512 KiB, one connection; global model hit/miss ≤1/≤2 statements, zero decryptions, ≤100, 256 KiB, one connection; Fleet summary ≤1 statement, zero decryptions, ≤100, 512 KiB, one connection; Fleet detail ≤2 statements, zero decryptions, one result, 1 MiB, one connection. Payload overflow is typed, never truncated.
 
 For a controlled occupied slot, releasing it causes at least one queued request to progress. Every waiter either succeeds or receives the configured typed timeout, and all completion/cancellation/failure paths leave zero leaked connections. Do not claim an ordering policy or unbounded scheduler guarantee.
 
-- **Dimension 2.1** — counters enforce every exact maximum → Test `test_library_deterministic_resource_gate`
+**The `secret_project` stage survives the decryption removal, and its meaning narrows.** M143_001 replaced per-row decryption on read paths with one batch presence query, so this stage now times presence resolution and projection rather than decryption. Keep the stage — it still isolates a real cost — and assert its decryption counter at zero rather than deleting the label, so a regression that reintroduces per-row decryption shows up as a stage that suddenly decrypts instead of as a stage that vanished.
+
+- **Dimension 2.1** — counters enforce every exact maximum, including zero read-path decryptions → Test `test_library_deterministic_resource_gate`
 - **Dimension 2.2** — release/timeout/cancel proves bounded progress and zero leaks → Test `test_pool_bounded_progress_and_timeout`
 
 ### §3 — Failure matrix
