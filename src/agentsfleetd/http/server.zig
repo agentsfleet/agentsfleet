@@ -16,6 +16,8 @@ const error_codes = @import("../errors/error_registry.zig");
 const metrics = @import("../observability/metrics.zig");
 const metrics_trace = @import("../observability/metrics_trace.zig");
 const route_trace = @import("route_trace.zig");
+const route_template = @import("route_template.zig");
+const semconv = @import("../observability/semconv.zig");
 const ZeroizingAllocator = @import("../secrets/zeroizing_allocator.zig");
 const sensitive_request = @import("sensitive_request.zig");
 const logging = @import("log");
@@ -46,8 +48,10 @@ const HEADER_RATELIMIT_REMAINING = "X-RateLimit-Remaining";
 const HEADER_RATELIMIT_RESET = "X-RateLimit-Reset";
 const FMT_UNSIGNED = "{d}";
 const S_RATELIMIT_REMAINING_NONE = "0";
-const REQUEST_SPAN_NAME = "http.request";
-const ATTR_HTTP_ROUTE = "http.route";
+/// `{method} {template}` — the pinned server-span name. The longest live
+/// template plus the longest method still fits well inside this.
+const MAX_SPAN_NAME_BYTES: usize = 128;
+const SPAN_NAME_FMT = "{s} {s}";
 
 const RequestTrace = struct {
     context: common.TraceContext,
@@ -160,7 +164,9 @@ fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *
         return;
     };
     const request_trace = beginRequestTrace(ctx.io, req);
-    defer finishRequestTrace(ctx.io, matched, res.status, path, request_trace);
+    // The raw path is deliberately not carried into the span: it holds real
+    // workspace, fleet, and lease identifiers. The matched route's template does.
+    defer finishRequestTrace(ctx.io, matched, req.method, res.status, request_trace);
     switch (route_table.classFor(matched)) {
         .ops, .stream => dispatchMatchedRoute(ctx, registry, req, res, matched),
         .api => dispatchApi(ctx, registry, req, res, matched, path),
@@ -195,13 +201,15 @@ fn beginRequestTrace(io: std.Io, req: *httpz.Request) RequestTrace {
     };
 }
 
-fn finishRequestTrace(io: std.Io, route: router.Route, status: u16, path: []const u8, lifetime: RequestTrace) void {
+fn finishRequestTrace(io: std.Io, route: router.Route, method: httpz.Method, status: u16, lifetime: RequestTrace) void {
     const boot_end_ns = std.Io.Clock.boot.now(io).toNanoseconds();
     const monotonic_second: u64 = @intCast(@divTrunc(lifetime.boot_start_ns, std.time.ns_per_s));
     switch (route_trace.decide(route, status, &lifetime.context.span_id, monotonic_second)) {
         .emit => emitRequestSpan(
             lifetime.context,
-            path,
+            route,
+            method,
+            status,
             lifetime.wall_start_ns,
             route_trace.endEpochNanos(lifetime.wall_start_ns, lifetime.boot_start_ns, boot_end_ns),
         ),
@@ -238,9 +246,28 @@ fn headerUint(res: *httpz.Response, name: []const u8, value: u64) void {
     } else |_| {}
 }
 
-fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64, end_ns: u64) void {
-    var span = otel_traces.buildSpan(tctx, REQUEST_SPAN_NAME, start_ns, end_ns);
-    _ = otel_traces.addAttr(&span, ATTR_HTTP_ROUTE, path);
+/// The standard server span for one matched request: `{method} {route}` name,
+/// SERVER kind, and the three pinned attributes. Query strings, request and
+/// response bodies, authorization headers, and caller addresses are absent by
+/// construction — none of them is read here.
+fn emitRequestSpan(
+    tctx: common.TraceContext,
+    route: router.Route,
+    method: httpz.Method,
+    status: u16,
+    start_ns: u64,
+    end_ns: u64,
+) void {
+    const template = route_template.templateFor(route);
+    const method_name = @tagName(method);
+    var name_buf: [MAX_SPAN_NAME_BYTES]u8 = undefined;
+    // Fall back to the bare template rather than dropping the span: the name is
+    // a display convenience, the attributes below are the queryable facts.
+    const name = std.fmt.bufPrint(&name_buf, SPAN_NAME_FMT, .{ method_name, template }) catch template;
+    var span = otel_traces.buildSpan(tctx, name, .server, start_ns, end_ns);
+    _ = otel_traces.addAttr(&span, semconv.ATTR_HTTP_REQUEST_METHOD, method_name);
+    _ = otel_traces.addAttr(&span, semconv.ATTR_HTTP_ROUTE, template);
+    _ = otel_traces.addIntAttr(&span, semconv.ATTR_HTTP_RESPONSE_STATUS_CODE, status);
     otel_traces.enqueueSpan(span);
 }
 

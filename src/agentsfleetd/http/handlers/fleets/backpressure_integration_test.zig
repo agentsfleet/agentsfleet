@@ -162,7 +162,7 @@ test "integration: api-class requests shed 429 at the ceiling; ops routes and 40
     const scrape = try (h.get("/metrics")).send();
     defer scrape.deinit();
     try scrape.expectStatus(.ok);
-    try std.testing.expect(scrape.bodyContains("fleet_api_in_flight_requests 0"));
+    try std.testing.expect(scrape.bodyContains("agentsfleet_api_in_flight_requests 0"));
 }
 
 test "integration: registry drain closes live streams and rejects new ones" {
@@ -398,7 +398,7 @@ test "integration: SSE streams above the cap shed 503 while healthz stays alive"
     const scrape = try (h.get("/metrics")).send();
     defer scrape.deinit();
     try scrape.expectStatus(.ok);
-    try std.testing.expect(scrape.bodyContains("fleet_sse_in_flight_streams 1"));
+    try std.testing.expect(scrape.bodyContains("agentsfleet_sse_in_flight_streams 1"));
 
     // Closing the parked stream releases its slot: a fresh stream is
     // admitted within the poll budget. Each failed attempt sheds 503 and

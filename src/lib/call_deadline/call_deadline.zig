@@ -75,9 +75,28 @@ comptime {
     std.debug.assert(!builtin.single_threaded);
 }
 
+/// True once `deadline_ns` has passed on the boot clock.
+///
+/// The fail-fast half of the deadline story. The scheduler above bounds work
+/// that CAN be interrupted, by shutting the owned socket down mid-call. Some
+/// work cannot: name resolution owns no socket yet, and `std.http.Client.fetch`
+/// is not cancel-safe. For those, the caller refuses to start once the budget is
+/// spent rather than starting something it has no way to stop.
+///
+/// Callers previously raced such work against the deadline with `std.Io.Select`.
+/// That is worse than it looks: cancelling a non-cancel-safe operation corrupts
+/// it (see `observability/otlp/Client.zig`), and awaiting a stdlib group parks
+/// on a futex word in the awaiter's own stack frame, which the waking worker
+/// dereferences after publishing the wake — a use-after-scope in Zig 0.16.0's
+/// `std.Io.Threaded` that valgrind catches in the boot->drain lane.
+pub fn reached(io: std.Io, deadline_ns: i96) bool {
+    return std.Io.Clock.boot.now(io).toNanoseconds() >= deadline_ns;
+}
+
 test {
     _ = @import("scheduler_test.zig");
     _ = @import("migration_audit_test.zig");
+    _ = @import("deadline_reached_test.zig");
     _ = InterruptTarget;
     _ = SocketOwner;
 }

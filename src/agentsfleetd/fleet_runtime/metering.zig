@@ -29,6 +29,7 @@ const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const fleet_telemetry_store = @import("../state/fleet_telemetry_store.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
+const semconv = @import("../observability/semconv.zig");
 const trace = @import("../observability/trace.zig");
 const balance_policy = @import("../config/balance_policy.zig");
 const COMMIT_FAIL_EVENT = "commit_fail";
@@ -127,11 +128,23 @@ pub fn debitReceive(
     return debitAndInsert(pool, alloc, tenant_id, ctx, .receive, nanos, policy);
 }
 
-/// Emit the `fleet.delivery` OTel span for a finished run, from the same
-/// (fleet_id, workspace_id, tenant_id, event_id, token_count) tuple the
-/// telemetry rows carry. The stage row's nanos + token counts are owned by the
-/// renewal/settle CTE now (accumulated per slice), so this records no DB row —
-/// it is observability only. Fire-and-forget; a non-positive epoch is skipped.
+const NANOS_PER_MILLI: u64 = 1_000_000;
+const NANOS_PER_SECOND: u64 = 1_000_000_000;
+const MILLIS_PER_SECOND: u64 = 1_000;
+/// One week. A runner-reported wall time beyond this is not a believable run
+/// length, and an unbounded end timestamp would corrupt the trace timeline.
+const MAX_SPAN_SECONDS: u64 = 604_800;
+
+/// Emit the `fleet.delivery` span for a finished run. It stays a **custom**
+/// control-plane observation rather than a GenAI client span: the runner
+/// produces no span and propagates no trace context, so this process cannot
+/// honestly claim to be one half of a distributed agent trace. Its attributes
+/// are standard where the fact is standard (operation, agent, provider, model,
+/// usage) and `agentsfleet.*`-namespaced where the fact is ours.
+///
+/// The stage row's nanos + token counts are owned by the renewal/settle CTE now
+/// (accumulated per slice), so this records no DB row — it is observability
+/// only. Fire-and-forget; a non-positive epoch is skipped.
 pub fn emitDeliverySpan(
     tenant_id: []const u8,
     ctx: PreflightContext,
@@ -144,23 +157,44 @@ pub fn emitDeliverySpan(
         log.warn("skip_delivery_span", .{ .reason = "non_positive_epoch", .fleet_id = ctx.fleet_id });
         return;
     }
-
-    const total_tokens: u64 = token_count_input + token_count_output;
-    const start_ns: u64 = @as(u64, @intCast(epoch_wall_time_ms)) * 1_000_000;
-    const wall_seconds_capped: u64 = @min(wall_ms / 1_000, 604_800);
-    const end_ns: u64 = start_ns + wall_seconds_capped * 1_000_000_000;
+    const start_ns: u64 = @as(u64, @intCast(epoch_wall_time_ms)) * NANOS_PER_MILLI;
+    const wall_seconds_capped: u64 = @min(wall_ms / MILLIS_PER_SECOND, MAX_SPAN_SECONDS);
+    const end_ns: u64 = start_ns + wall_seconds_capped * NANOS_PER_SECOND;
     const tctx = trace.TraceContext.generate();
-    var span = otel_traces.buildSpan(tctx, "fleet.delivery", start_ns, end_ns);
-    _ = otel_traces.addAttr(&span, "fleet_id", ctx.fleet_id);
-    _ = otel_traces.addAttr(&span, "workspace_id", ctx.workspace_id);
-    _ = otel_traces.addAttr(&span, "tenant_id", tenant_id);
-    _ = otel_traces.addAttr(&span, "event_id", ctx.event_id);
-    _ = otel_traces.addAttr(&span, "posture", ctx.posture.label());
-    _ = otel_traces.addAttr(&span, "model", ctx.model);
-    var cnt_buf: [24]u8 = undefined;
-    const cnt_str = std.fmt.bufPrint(&cnt_buf, "{d}", .{total_tokens}) catch "0";
-    _ = otel_traces.addAttr(&span, "token_count", cnt_str);
+    var span = otel_traces.buildSpan(tctx, semconv.SPAN_FLEET_DELIVERY, .internal, start_ns, end_ns);
+    appendDeliveryAttrs(&span, tenant_id, ctx, token_count_input, token_count_output);
     otel_traces.enqueueSpan(span);
+}
+
+/// The delivery span's attribute set. Prompt text, response bodies, and
+/// credentials are absent by construction — nothing here reads them.
+fn appendDeliveryAttrs(
+    span: *otel_traces.SpanEntry,
+    tenant_id: []const u8,
+    ctx: PreflightContext,
+    token_count_input: u64,
+    token_count_output: u64,
+) void {
+    _ = otel_traces.addAttr(span, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
+    // The fleet IS the agent in this product — one fleet, one agent identity.
+    _ = otel_traces.addAttr(span, semconv.ATTR_AGENT_ID, ctx.fleet_id);
+    if (semconv.normalizeProvider(ctx.provider)) |known| {
+        _ = otel_traces.addAttr(span, semconv.ATTR_PROVIDER_NAME, known);
+    }
+    _ = otel_traces.addAttr(span, semconv.ATTR_REQUEST_MODEL, ctx.model);
+    _ = otel_traces.addIntAttr(span, semconv.ATTR_USAGE_INPUT_TOKENS, saturatingSigned(token_count_input));
+    _ = otel_traces.addIntAttr(span, semconv.ATTR_USAGE_OUTPUT_TOKENS, saturatingSigned(token_count_output));
+    _ = otel_traces.addAttr(span, semconv.ATTR_EXECUTION_POSTURE, ctx.posture.label());
+    _ = otel_traces.addAttr(span, semconv.ATTR_WORKSPACE_ID, ctx.workspace_id);
+    _ = otel_traces.addAttr(span, semconv.ATTR_TENANT_ID, tenant_id);
+    _ = otel_traces.addAttr(span, semconv.ATTR_EVENT_ID, ctx.event_id);
+}
+
+/// Token counts are runner-controlled `u64`. Saturate rather than `@intCast`,
+/// which traps in ReleaseSafe past `i64::MAX` and would abort the daemon over a
+/// telemetry value.
+fn saturatingSigned(value: u64) i64 {
+    return std.math.cast(i64, value) orelse std.math.maxInt(i64);
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────

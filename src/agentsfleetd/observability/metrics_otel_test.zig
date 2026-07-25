@@ -75,3 +75,37 @@ test "test_otlp_self_metrics_render_fixed_labels" {
         "agentsfleet_otlp_entries_discarded_total{signal=\"metrics\",reason=\"export_uncertain\"} 4\n",
     ));
 }
+
+// The omission renderer walks a two-dimensional counter table. A transposed
+// `[attribute][reason]` index would pair the wrong attribute with the wrong
+// reason, and an operator chasing a gap in model coverage would be sent after
+// the wrong cause. Deliberately distinct per-cell counts make a transposition
+// produce a different body; equal counts would let it through.
+test "test_otlp_attribute_omissions_render_exact_attribute_reason_pairs" {
+    metrics.resetForTest();
+    defer metrics.resetForTest();
+
+    metrics.recordAttributeOmission(.provider_name, .unmapped_provider);
+    for (0..2) |_| metrics.recordAttributeOmission(.request_model, .budget_exhausted);
+    for (0..3) |_| metrics.recordAttributeOmission(.request_model, .value_too_long);
+
+    const body = try metrics_render.renderPrometheus(std.testing.allocator, true);
+    defer std.testing.allocator.free(body);
+
+    // Label VALUES are the wire attribute keys, so the dashboard label reads as
+    // the same string the OTLP payload would have carried.
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "agentsfleet_otel_attribute_omitted_total{attribute=\"gen_ai.provider.name\",reason=\"unmapped_provider\"} 1\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "agentsfleet_otel_attribute_omitted_total{attribute=\"gen_ai.request.model\",reason=\"budget_exhausted\"} 2\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "agentsfleet_otel_attribute_omitted_total{attribute=\"gen_ai.request.model\",reason=\"value_too_long\"} 3\n"));
+
+    // A pair that was never recorded must stay at zero rather than inherit a
+    // neighbouring cell's count — the other half of the transposition guard.
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "agentsfleet_otel_attribute_omitted_total{attribute=\"gen_ai.provider.name\",reason=\"budget_exhausted\"} 0\n"));
+
+    // Every cell renders, so a zeroed counter is still a visible series.
+    const expected_cells = metrics.OMITTED_ATTRIBUTES.len * metrics.OMISSION_REASONS.len;
+    try std.testing.expectEqual(
+        expected_cells + 2, // + the HELP and TYPE lines
+        std.mem.count(u8, body, metrics.ATTRIBUTE_OMITTED_NAME),
+    );
+}

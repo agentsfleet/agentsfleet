@@ -35,7 +35,8 @@ fn matches(acc: *const Accumulator, sample: payload.Sample) bool {
 }
 
 fn accumulate(acc: *Accumulator, sample: payload.Sample) void {
-    if (payload.metaFor(sample.id).kind == .histogram) {
+    const meta = payload.metaFor(sample.id);
+    if (meta.kind == .histogram) {
         // Clamp once: a negative observation (e.g. clock-skew wall_ms) buckets at
         // 0 AND adds 0 to the sum, so hist_sum can never disagree with the bucket
         // counts or go negative.
@@ -45,7 +46,7 @@ fn accumulate(acc: *Accumulator, sample: payload.Sample) void {
         // maxInt(i64), and two such in one window would overflow a plain += and
         // trap in ReleaseSafe. Cap at maxInt instead — telemetry, not money.
         acc.hist_sum +|= clamped;
-        acc.bucket_counts[payload.bucketIndex(@intCast(clamped))] += 1;
+        acc.bucket_counts[payload.bucketIndex(@intCast(clamped), meta.bounds)] += 1;
     } else {
         acc.sum_value +|= sample.value;
     }

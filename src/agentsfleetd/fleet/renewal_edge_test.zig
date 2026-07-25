@@ -150,7 +150,7 @@ test "renew at the exact deadline boundary still extends by a full TTL" {
     const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
 
     const want = NOW_MS + constants.LEASE_TTL_MS;
-    try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = want }, outcome);
+    try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = .{ .lease_expires_at = want, .charged_nanos = 0 } }, outcome);
     const after = try readDeadlines(conn);
     try std.testing.expectEqual(want, after.lease);
     try std.testing.expectEqual(want, after.affinity); // both rows lock to the new deadline
@@ -177,7 +177,7 @@ test "renew one millisecond before the hard cap clamps to the exact cap" {
 
     const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     const want_cap = created + constants.MAX_RUNTIME_MS; // == NOW_MS + 1
-    try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = want_cap }, outcome);
+    try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = .{ .lease_expires_at = want_cap, .charged_nanos = 0 } }, outcome);
     const after = try readDeadlines(conn);
     try std.testing.expectEqual(want_cap, after.lease);
     try std.testing.expectEqual(want_cap, after.affinity); // rows lock to the exact boundary

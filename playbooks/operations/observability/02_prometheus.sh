@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify Prometheus scrapes agent_* metrics.
+# Verify Prometheus scrapes the agentsfleetd metric namespace.
 #
 # Reads the vault, so it carries the same approval + auth gates as every other
 # script under playbooks/operations/ (enforced by `make check-playbooks`).
@@ -28,13 +28,19 @@ if [ -z "$PROM_ID" ]; then
 fi
 echo "  Prometheus datasource ID: $PROM_ID"
 
-# Query a known metric
+# Probe a family the daemon renders unconditionally, so an empty result means
+# "not scraped" rather than "nothing has happened yet". Activity-gated families
+# (runner, durable memory, Redis pool) would make this check ambiguous.
+PROBE_METRIC="agentsfleet_api_in_flight_requests"
+
 RESULT=$(curl -sf -H "Authorization: Bearer $GRAFANA_TOKEN" \
-  "$GRAFANA_URL/api/datasources/proxy/$PROM_ID/api/v1/query?query=agent_runs_created_total" 2>/dev/null || echo "")
+  "$GRAFANA_URL/api/datasources/proxy/$PROM_ID/api/v1/query?query=$PROBE_METRIC" 2>/dev/null || echo "")
 
 if echo "$RESULT" | jq -e '.data.result | length > 0' >/dev/null 2>&1; then
-  echo "PASS: agent_runs_created_total is being scraped"
+  echo "PASS: $PROBE_METRIC is being scraped"
 else
-  echo "WARN: agent_runs_created_total returned no results (may be OK if no runs yet)"
-  echo "  Verify Prometheus scrape config includes agentsfleetd /metrics endpoint"
+  echo "FAIL: $PROBE_METRIC returned no results"
+  echo "  This family renders on every scrape, so an empty result means the"
+  echo "  scrape config does not reach agentsfleetd's /metrics endpoint."
+  exit 1
 fi

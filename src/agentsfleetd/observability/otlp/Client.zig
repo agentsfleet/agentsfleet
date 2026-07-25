@@ -9,6 +9,7 @@
 const Client = @This();
 
 const std = @import("std");
+const call_deadline = @import("call_deadline");
 const config = @import("config.zig");
 
 const AUTH_B64_BUF_BYTES: usize = 1024;
@@ -69,10 +70,6 @@ pub fn post(
     return self.postOnce(alloc, cfg, path, payload, deadline_ns);
 }
 
-fn deadlineReached(io: std.Io, deadline_ns: i96) bool {
-    return std.Io.Clock.boot.now(io).toNanoseconds() >= deadline_ns;
-}
-
 fn postOnce(
     self: *Client,
     alloc: std.mem.Allocator,
@@ -102,7 +99,7 @@ fn postOnce(
         .{ .name = S_AUTHORIZATION, .value = auth_header },
     };
 
-    if (deadlineReached(self.io, deadline_ns)) return error.OtlpExportTimedOut;
+    if (call_deadline.reached(self.io, deadline_ns)) return error.OtlpExportTimedOut;
     const result = try self.inner.fetch(.{
         .location = .{ .url = url },
         .method = .POST,
