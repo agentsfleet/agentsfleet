@@ -144,11 +144,12 @@ fn cleanupRows(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.fleet_events WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
+/// Drop the fleet's stream AND its readiness mark. `fleet:ready` is ONE key
+/// shared by every suite in the binary, and `peek` is bounded + randomized, so a
+/// mark left behind for a fleet this teardown deletes can crowd a sibling's
+/// freshly-marked fleet out of the sample and make its lease return null.
 fn deleteStream(h: *TestHarness, fleet_id: []const u8) void {
-    var key_buf: [128]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id}) catch return;
-    var resp = h.queue.commandAllowError(&.{ "DEL", key }) catch return;
-    resp.deinit(h.queue.alloc);
+    redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 /// Start the harness + seed the canonical fixture set. Skips when DB or

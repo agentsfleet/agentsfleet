@@ -45,9 +45,16 @@ const AGENT2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0f01";
 const SESSION2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1001";
 const ARM_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1101";
 
-const GPU_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "a" ** 64;
-const PLAIN_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "b" ** 64;
-const ARM_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
+// Suite-unique token bodies (this file's `2b3e1e0e` node suffix + filler).
+// `fleet.runners` carries a UNIQUE constraint on `token_hash`, and the seeds
+// below use `ON CONFLICT (id) DO NOTHING`, which does NOT guard it. A bare
+// `"a" ** 64` body is shared with `control_plane_integration_test`'s
+// RUNNER_A_TOKEN, so whenever that suite fails to tear its runner down — a
+// crashed test skips its `defer` — every seed here dies on the unique violation
+// and the whole file fails for a reason that has nothing to do with placement.
+const GPU_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "2b3e1e0e" ++ "a" ** 56;
+const PLAIN_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "2b3e1e0e" ++ "b" ** 56;
+const ARM_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "2b3e1e0e" ++ "c" ** 56;
 
 // Concurrent racers are generated at runtime with this host prefix so cleanup
 // can delete them by LIKE without tracking each id.
@@ -215,14 +222,17 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
-fn delStream(h: *TestHarness, comptime key: []const u8) void {
-    var resp = h.queue.command(&.{ "DEL", key }) catch return;
-    resp.deinit(h.queue.alloc);
+/// Drop the fleet's stream AND its readiness mark. `fleet:ready` is ONE key
+/// shared by every suite, and `peek` is bounded + randomized, so a mark left
+/// for a fleet this teardown deletes can crowd a sibling's fleet out of the
+/// sample and make its lease silently return null.
+fn forgetFleet(h: *TestHarness, fleet_id: []const u8) void {
+    redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
-    delStream(h, "fleet:" ++ FLEET_ID ++ ":events");
-    delStream(h, "fleet:" ++ AGENT2_ID ++ ":events");
+    forgetFleet(h, FLEET_ID);
+    forgetFleet(h, AGENT2_ID);
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ FLEET_ID, AGENT2_ID });
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ FLEET_ID, AGENT2_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid, $3::uuid)", .{ GPU_RUNNER_ID, PLAIN_RUNNER_ID, ARM_RUNNER_ID });
