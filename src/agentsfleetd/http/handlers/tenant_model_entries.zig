@@ -28,6 +28,8 @@ const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const entries_state = @import("../../state/tenant_model_entries.zig");
 const tenant_provider = @import("../../state/tenant_provider.zig");
+const secret_probe = @import("../../state/secret_probe.zig");
+const secret_reference_txn = @import("../../state/secret_reference_txn.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.http_tenant_model_entries);
@@ -39,6 +41,7 @@ const S_ID_MUST_BE_UUIDV7 = "id must be a valid UUIDv7";
 const S_BODY_REQUIRED = "Request body required";
 const S_MALFORMED_JSON = "Malformed JSON";
 const S_DUPLICATE_DETAIL = "An entry with this model and secret already exists";
+const S_SECRET_REF_UNKNOWN = "secret_ref does not name a vault secret in this tenant's workspace";
 
 // ── POST ────────────────────────────────────────────────────────────────────
 
@@ -72,16 +75,37 @@ pub fn innerCreateModelEntry(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const exists = entries_state.secretExistsForTenant(conn, tenant_id, input.secret_ref) catch {
+    // The workspace the credential actually lives in — the reference lock is
+    // taken on (workspace_id, key_name), which is the vault's identity, not the
+    // tenant's.
+    const ws_id = secret_probe.resolvePrimaryWorkspace(hx.alloc, conn, tenant_id) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
-    if (!exists) {
-        hx.fail(ec.ERR_MODELS_SECRET_NOT_FOUND, "secret_ref does not name a vault secret in this tenant's workspace");
-        return;
-    }
+    defer hx.alloc.free(ws_id);
 
-    performCreate(hx, conn, tenant_id, input);
+    // Lock the credential BEFORE deciding it exists, so the decision and the
+    // insert are one atomic act. The previous shape checked existence and then
+    // inserted with nothing held between, which let a concurrent
+    // `DELETE /workspaces/{ws}/secrets/{name}` remove the credential in the gap
+    // and leave this entry pointing at nothing (state/secret_reference_txn.zig).
+    var txn = secret_reference_txn.begin(conn, ws_id, input.secret_ref, tenant_id) catch |err| switch (err) {
+        // Absent covers both "never existed" and "deleted a moment ago". Both
+        // mean the same thing to this caller and neither is retryable by simply
+        // re-sending, so the existing 404 stays the answer rather than the
+        // 409 that a lost race would suggest.
+        secret_reference_txn.Error.SecretGone => {
+            hx.fail(ec.ERR_MODELS_SECRET_NOT_FOUND, S_SECRET_REF_UNKNOWN);
+            return;
+        },
+        else => {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        },
+    };
+    errdefer txn.abort();
+
+    performCreate(hx, conn, tenant_id, input, &txn);
 }
 
 fn validateCreateBody(hx: Hx, input: CreateBody) bool {
@@ -96,8 +120,13 @@ fn validateCreateBody(hx: Hx, input: CreateBody) bool {
     return true;
 }
 
-fn performCreate(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: CreateBody) void {
+/// Insert the entry inside `txn`, which already holds the credential's row
+/// lock. Every exit path either commits or aborts before returning.
+fn performCreate(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: CreateBody, txn: *secret_reference_txn.Txn) void {
+    errdefer txn.abort();
+
     const new_id = id_format.generateTenantModelEntryId(hx.alloc) catch {
+        txn.abort();
         common.internalOperationError(hx.res, "Failed to mint an entry id", hx.req_id);
         return;
     };
@@ -110,16 +139,26 @@ fn performCreate(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: CreateBod
         .secret_ref = input.secret_ref,
     }) catch |err| switch (err) {
         entries_state.StateError.DuplicateEntry => {
+            txn.abort();
             hx.fail(ec.ERR_MODELS_DUPLICATE_ENTRY, S_DUPLICATE_DETAIL);
             return;
         },
         else => {
+            txn.abort();
             log.err("create_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
             common.internalDbUnavailable(hx.res, hx.req_id);
             return;
         },
     };
     defer created.deinit(hx.alloc);
+
+    // Commit BEFORE responding. A 201 whose transaction then fails to commit is
+    // the worst outcome available: the client records an id that does not exist.
+    txn.commit() catch |err| {
+        log.err("create_commit_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
 
     hx.ok(.created, .{
         .id = created.id,
