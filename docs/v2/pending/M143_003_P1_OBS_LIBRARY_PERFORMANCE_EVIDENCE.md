@@ -31,7 +31,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** Operators attribute authenticated library latency and pool pressure using fixed-cardinality traces and sanitized comparable aggregates without timing-based CI failures.
 **Problem:** Stage latency is opaque, pool behavior lacks bounded-progress proof, and evidence can become flaky or identity-bearing.
-**Solution summary:** Extend M139_004 stages, exact M143_001 counters, deterministic failure/pool tests, changed-backend branch coverage, and separate report-validation versus provisioned capture commands.
+**Solution summary:** Extend M139_004 stages, exact M143_001 counters, deterministic failure/pool tests, and separate report-validation versus provisioned capture commands.
 
 ## PR Intent & comprehension handshake
 
@@ -42,7 +42,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Implementing agent — read these first
 
 1. `M143_001_P1_API_CLI_LIBRARY_DATA_SECURITY.md` §3 numeric maxima.
-2. `M139_004_P1_OBS_TELEMETRY_SEMANTIC_CONVENTIONS.md` — binding semantics.
+2. `docs/v2/done/M139_004_P1_OBS_TELEMETRY_SEMANTIC_CONVENTIONS.md` — binding semantics (merged; lives under `done/`).
 3. `src/agentsfleetd/http/server.zig`, `route_trace.zig`, `observability/metrics.zig` — current ownership.
 4. `make/bench.mk`, `make/test-unit.mk`, and `tests/bench/micro.zig` — existing lanes.
 
@@ -54,10 +54,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/observability/metrics.zig`; `metrics_render.zig`; tests; `observability/library_stages.zig` | EDIT/CREATE | Closed schema and privacy allow-list. |
 | `src/agentsfleetd/db/pool.zig`; `db/pool_test.zig`; `db/test_fixtures.zig`; `http/test_harness.zig` | EDIT if seams change | Deterministic release/timeout/failure fixtures only when required. |
 | `ui/packages/app/lib/api/client.ts` | EDIT | Valid traceparent propagation. |
-| `tests/bench/micro.zig`; `make/bench.mk`; `make/test-unit.mk`; root `package.json`; `bun.lock` | EDIT | Deterministic resource/pool lane, capture, branch-probe target/parser. |
-| `src/agentsfleetd/testing/branch_probe.zig`; `scripts/check-changed-backend-branches.ts`; `scripts/report-library-performance.ts` | CREATE | Test-only probes, diff manifest, aggregate validation. |
+| `tests/bench/micro.zig`; `make/bench.mk`; `make/test-unit.mk` | EDIT | Deterministic resource/pool lane and capture target. |
+| `scripts/report-library-performance.ts` | CREATE | Aggregate report validation. |
 | `docs/architecture/observability.md`; `docs/architecture/data_flow.md` | EDIT | Stage, privacy, pool, evidence-command truth. |
-| existing telemetry/privacy tests and fixtures | EDIT | One-to-one failure and artifact proof. |
+| `src/agentsfleetd/observability/metrics_otel_test.zig`; `observability/semantic_schema_test.zig`; `observability/otel_traces_test.zig`; `tests/fixtures/telemetry/otlp_metrics.json` | EDIT | One-to-one failure and artifact proof. |
+
+**Scope grading.** Rubric R4 compares `git diff --name-only origin/main` against this table, so every cell is an exact path. A path that turns out to be genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
 
 ## Applicable Rules
 
@@ -69,7 +71,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | Gate | Fires? | Satisfaction strategy |
 |---|---|---|
 | ZIG GATE / PUB | yes | focused enums/seams, allocator tests, Linux builds |
-| File & Function Length | yes | isolated stages/report/coverage scripts |
+| File & Function Length | yes | isolated stage, report, and fixture modules |
 | UFS | yes | stage/surface/outcome/unit/limit constants |
 | UI Substitution / DESIGN TOKEN | no | no visual UI |
 | LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | logging/lifecycle | typed labels; close spans/buffers/connections |
@@ -96,12 +98,13 @@ For a controlled occupied slot, releasing it causes at least one queued request 
 - **Dimension 2.1** — counters enforce every exact maximum → Test `test_library_deterministic_resource_gate`
 - **Dimension 2.2** — release/timeout/cancel proves bounded progress and zero leaks → Test `test_pool_bounded_progress_and_timeout`
 
-### §3 — Failure matrix and changed-backend branch coverage
+### §3 — Failure matrix
 
-Each failure row below has a unique deterministic fixture case. Because Zig 0.16 cannot emit native source branch mappings, create a supported test-only probe lane instead of claiming LLVM/kcov branch data. A pinned tree-sitter Zig parser enumerates changed executable `if` arms, `switch` prongs, `catch`, and `orelse` edges from `git diff BASE_REF`; each gets stable `file:line:edge` identity. Changed backend code marks executed edges through test-only `branch_probe.zig`; production builds compile probes to no-ops. `make coverage-changed-backend-branches BASE_REF=origin/main` runs tests, rejects changed edges absent from the manifest, writes `test-results/changed-backend-branches.json`, and requires executed edges / enumerated edges >50%. Parser package/version is pinned in the root lockfile; existing kcov line coverage is not proof.
+Each failure row in §Failure Modes has a unique deterministic fixture case, and each one proves that the injected fault leaves zero leaked connections, closed spans, and freed buffers.
+
+Changed-backend branch coverage moved out of this workstream to **M143_004**. It is a coverage tool — a pinned Zig parser, an edge-identity scheme, a probe lane, a manifest checker, and a threshold — not a slice of library performance evidence, and leaving it here would give one agent a performance job and a tooling job on the same branch, where the tooling eats the evidence work. This workstream does not depend on it.
 
 - **Dimension 3.1** — every failure injection cleans all owned resources → Test `test_library_failure_matrix_is_complete`
-- **Dimension 3.2** — changed-backend branch export is reproducible and above threshold → Test `test_changed_backend_branch_checker`
 
 ### §4 — Report validation is separate from provisioned capture
 
@@ -116,7 +119,6 @@ Add the distinct documented provisioned-environment command `make capture-librar
 
 `LibraryObservation={surface:closed,stage:closed,outcome:closed,cache:closed,pool_result:closed,duration_seconds,count?,bytes?}`.
 `traceparent`: W3C input; invalid ignored. Evidence: sanitized aggregate JSON only. No public Server-Timing or new browser real-user monitoring event.
-Changed coverage: `test-results/changed-backend-branches.json` with base ref, changed branches, covered branches, ratio, and pass boolean.
 
 ## Failure Modes
 
@@ -130,14 +132,13 @@ Changed coverage: `test-results/changed-backend-branches.json` with base ref, ch
 | Next cancellation | navigation abort | AbortController fixture | cancelled span; no rejection | `test_library_next_cancel_case` |
 | Incomparable report | metadata differs | mismatched aggregates | nonzero, names field | `test_library_performance_report_validation` |
 | Prohibited artifact | unsafe field/sentinel | sink/report fixture | reject emission/report | `test_library_evidence_is_secret_and_metadata_free` |
-| Coverage below threshold | changed edge uncovered | synthetic diff/probe manifest | nonzero; JSON records ratio | `test_changed_backend_branch_checker` |
 
 ## Invariants
 
 1. Typed builders limit cardinality and reject identifiers/metadata.
 2. Counter tests consume, not reinterpret, M143_001 maxima.
 3. Pool accounting reaches zero and every waiter terminates successfully or by configured timeout.
-4. CI checks report structure/comparability/coverage, never latency values.
+4. CI checks report structure and comparability, never latency values.
 
 ## Metrics & Observability
 
@@ -149,6 +150,8 @@ Changed coverage: `test-results/changed-backend-branches.json` with base ref, ch
 
 ## Test Specification (tiered)
 
+This table is the complete set. Every row is mandatory, including the failure rows — an agent that implements only the dimension rows ships an incomplete workstream.
+
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
 | 1.1 | integration | `test_library_trace_and_stage_schema` | valid/malformed context and enum-only serialization |
@@ -156,16 +159,20 @@ Changed coverage: `test-results/changed-backend-branches.json` with base ref, ch
 | 2.1 | integration | `test_library_deterministic_resource_gate` | every M143_001 maximum and overflow behavior |
 | 2.2 | integration | `test_pool_bounded_progress_and_timeout` | one progresses on release; all terminate; zero leaks |
 | 3.1 | integration | `test_library_failure_matrix_is_complete` | every named fixture executes and cleans up |
-| 3.2 | unit | `test_changed_backend_branch_checker` | export/write/validate and >50% threshold |
 | 4.1 | integration | `test_library_performance_report_validation` | explicit comparable paths; values informational |
 | 4.2 | unit | `test_library_capture_command_is_not_universal_gate` | capture absent from universal CI and value-neutral |
+| — | integration | `test_library_trace_malformed_case` | an invalid `traceparent` starts a clean root and is never echoed back |
+| — | integration | `test_library_metric_rejection_case` | a rejecting recorder leaves the request result unchanged and bounds the loss |
+| — | integration | `test_library_allocation_case` | a failing allocator or encoder returns a typed error with span and buffers closed |
+| — | integration | `test_library_dependency_failure_case` | per-stage SQL, revision, and decrypt failpoints map to their typed outcome and clean up |
+| — | integration | `test_library_next_cancel_case` | a navigation abort produces a `cancelled` span and no unhandled rejection |
+| — | unit | `test_library_stage_enum_is_closed` | every stage, surface, outcome, cache, and pool value is one of the §1 enums, and a free-form string fails to compile or is rejected at the builder |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
 | R1 | Telemetry/resource/pool tests pass | `make test-unit-all && make test-integration` | exit 0 | P0 | |
-| R2 | Changed backend branches exceed threshold | `make coverage-changed-backend-branches BASE_REF=origin/main` | exit 0 and JSON ratio >0.50 | P0 | |
 | R3 | Explicit aggregate report is valid | `bun scripts/report-library-performance.ts --check --baseline test-results/library-performance/baseline.json --candidate test-results/library-performance/candidate.json` | exit 0 and `comparison=valid`; values do not gate | P0 | |
 | R4 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | |
 | S1 | Lint/conform/build | `make lint-all && make harness-verify && zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
@@ -190,7 +197,7 @@ No file deletion. Replaced stage names get root-wide zero-match checks; no alias
 2. **Preserved user behaviour** — HTTP, auth, model/Fleet, CLI, and UI behavior.
 3. **Optimal-way check** — stages plus deterministic resources separate regressions from noise.
 4. **Rebuild-vs-iterate** — extend M139_004 and existing test/bench lanes.
-5. **What we build** — trace schema, sink guard, bounded pool proof, branch coverage, aggregate report.
+5. **What we build** — trace schema, sink guard, bounded pool proof, aggregate report.
 6. **What we do NOT build** — raw requests, IDs, metadata artifacts, timing gates, scheduler guarantees.
 7. **Fit with existing features** — M139_004 semantics and M143_001 counters.
 8. **Surface order** — operator evidence follows API implementation.
@@ -199,7 +206,7 @@ No file deletion. Replaced stage names get root-wide zero-match checks; no alias
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** tracing/privacy, deterministic proof, coverage, and capture/report are separate.
+- **Chosen shape:** tracing/privacy, deterministic proof, and capture/report are separate; branch-coverage tooling is its own workstream (M143_004).
 - **Alternatives considered:** raw identifiers and percentile gates violate privacy/reproducibility.
 - **Patch-vs-refactor verdict:** **refactor** of observability ownership around M139_004.
 
