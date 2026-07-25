@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { ChevronDownIcon, FolderIcon, PlusIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -108,6 +108,12 @@ export default function WorkspaceSwitcher({
             data-testid="workspace-switcher"
             disabled={pending}
           >
+            <FolderIcon
+              size={14}
+              strokeWidth={1.75}
+              aria-hidden="true"
+              className="text-muted-foreground"
+            />
             <span className="max-w-trim overflow-hidden text-ellipsis whitespace-nowrap">
               {activeLabel}
             </span>
@@ -122,6 +128,12 @@ export default function WorkspaceSwitcher({
                 onSelect={() => pick(workspace.id)}
                 data-active={workspace.id === activeId ? "true" : undefined}
               >
+                <FolderIcon
+                  size={14}
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                  className="text-muted-foreground"
+                />
                 <span className="flex-1">{workspace.name ?? workspace.id}</span>
                 {workspace.id === activeId ? <span aria-hidden="true">✓</span> : null}
               </DropdownMenuItem>

@@ -1,6 +1,12 @@
 "use client";
 
-import { type Ref, useImperativeHandle, useRef, useState, useTransition } from "react";
+import {
+  type Ref,
+  useImperativeHandle,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import {
   Badge,
   DataTable,
@@ -19,8 +25,14 @@ import {
   type RunnerAdminAction,
   type RunnerEventsResponse,
 } from "@/lib/api/runners";
+import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { presentErrorString } from "@/lib/errors";
-import { listRunnersAction, listRunnerEventsAction, updateRunnerAdminStateAction, deleteRunnerAction } from "../actions";
+import {
+  listRunnersAction,
+  listRunnerEventsAction,
+  updateRunnerAdminStateAction,
+  deleteRunnerAction,
+} from "../actions";
 import {
   RunnerActionConfirm,
   RunnerActivityDialog,
@@ -28,7 +40,14 @@ import {
   type RunnerConfirmCopy,
   type RunnerDeleteConfirmTarget,
 } from "./RunnerDialogs";
-import { ACTION_CONFIG, DELETE_ACTION_CONFIG, ActionsCell, HostCell, LabelsCell, StatusCell } from "./RunnerListCells";
+import {
+  ACTION_CONFIG,
+  DELETE_ACTION_CONFIG,
+  ActionsCell,
+  HostCell,
+  LabelsCell,
+  StatusCell,
+} from "./RunnerListCells";
 
 export type RunnerListHandle = { refresh: () => void };
 
@@ -52,21 +71,39 @@ function buildColumns({
   onDelete: (runner: RunnerListItem) => void;
 }): DataTableColumn<RunnerListItem>[] {
   return [
-    { key: "host", header: "Host", sortable: true, cell: (r) => <HostCell r={r} /> },
+    {
+      key: "host",
+      header: "Host",
+      sortable: true,
+      cell: (r) => <HostCell r={r} />,
+    },
     { key: "status", header: "Status", cell: (r) => <StatusCell r={r} /> },
     {
       key: "isolation",
       header: "Isolation",
       hideOnMobile: true,
-      cell: (r) => <Badge variant="default">{SANDBOX_TIER_LABELS[r.sandbox_tier]}</Badge>,
+      cell: (r) => (
+        <Badge variant="default">{SANDBOX_TIER_LABELS[r.sandbox_tier]}</Badge>
+      ),
     },
-    { key: "labels", header: "Labels", hideOnMobile: true, cell: (r) => <LabelsCell r={r} /> },
+    {
+      key: "labels",
+      header: "Labels",
+      hideOnMobile: true,
+      cell: (r) => <LabelsCell r={r} />,
+    },
     {
       key: "actions",
       header: "Actions",
       numeric: true,
       cell: (r) => (
-        <ActionsCell r={r} pending={pending} onActivity={onActivity} onAction={onAction} onDelete={onDelete} />
+        <ActionsCell
+          r={r}
+          pending={pending}
+          onActivity={onActivity}
+          onAction={onAction}
+          onDelete={onDelete}
+        />
       ),
     },
   ];
@@ -84,44 +121,88 @@ export default function RunnerList({
   const [items, setItems] = useState<RunnerListItem[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
   const [page, setPage] = useState(initial.page);
+  const [pageSize, setPageSize] = useState(initial.page_size);
   const [sort, setSort] = useState<RunnerSort>(DEFAULT_SORT);
   const [error, setError] = useState<string | null>(null);
-  const [confirmTarget, setConfirmTarget] = useState<RunnerActionConfirmTarget>(null);
-  const [deleteTarget, setDeleteTarget] = useState<RunnerDeleteConfirmTarget>(null);
-  const [activityRunner, setActivityRunner] = useState<RunnerListItem | null>(null);
-  const [activityData, setActivityData] = useState<ActivityDataState | null>(null);
+  const [confirmTarget, setConfirmTarget] =
+    useState<RunnerActionConfirmTarget>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<RunnerDeleteConfirmTarget>(null);
+  const [activityRunner, setActivityRunner] = useState<RunnerListItem | null>(
+    null,
+  );
+  const [activityData, setActivityData] = useState<ActivityDataState | null>(
+    null,
+  );
   const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityPageSize, setActivityPageSize] = useState(DEFAULT_PAGE_SIZE);
   const activityRunnerIdRef = useRef<string | null>(null);
+  const activityRequestGenerationRef = useRef(0);
 
   // The header "Create runner" dialog (rendered by the parent view) calls this
   // via ref on create — a targeted re-fetch of page 1 (newest-first default).
-  useImperativeHandle(ref, () => ({ refresh: () => loadPage(1, false, DEFAULT_SORT) }));
+  useImperativeHandle(ref, () => ({
+    refresh: () => loadPage(1, false, DEFAULT_SORT),
+  }));
 
-  function loadPage(nextPage: number, retried = false, nextSort = sort) {
+  function loadPage(
+    nextPage: number,
+    retried = false,
+    nextSort = sort,
+    nextPageSize = pageSize,
+  ) {
     startTransition(async () => {
-      const r = await listRunnersAction({ page: nextPage, page_size: DEFAULT_PAGE_SIZE, sort: nextSort });
+      const r = await listRunnersAction({
+        page: nextPage,
+        page_size: nextPageSize,
+        sort: nextSort,
+      });
       if (!r.ok) {
-        setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "load runners" }));
-        if (r.errorCode === "UZ-REQ-001" && !retried) loadPage(1, true, DEFAULT_SORT);
+        setError(
+          presentErrorString({
+            errorCode: r.errorCode,
+            message: r.error,
+            action: "load runners",
+          }),
+        );
+        if (r.errorCode === "UZ-REQ-001" && !retried) {
+          loadPage(1, true, DEFAULT_SORT, DEFAULT_PAGE_SIZE);
+        }
         return;
       }
       setError(null);
       setItems(r.data.items);
       setTotal(r.data.total);
       setPage(r.data.page);
+      setPageSize(r.data.page_size);
       setSort(nextSort);
     });
   }
 
   function confirmAction(target: NonNullable<RunnerActionConfirmTarget>) {
     startTransition(async () => {
-      const r = await updateRunnerAdminStateAction(target.runner.id, target.action);
+      const r = await updateRunnerAdminStateAction(
+        target.runner.id,
+        target.action,
+      );
       if (!r.ok) {
-        setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: target.errorAction }));
+        setError(
+          presentErrorString({
+            errorCode: r.errorCode,
+            message: r.error,
+            action: target.errorAction,
+          }),
+        );
         return;
       }
       setError(null);
-      setItems((rows) => rows.map((row) => (row.id === target.runner.id ? { ...row, admin_state: r.data.admin_state } : row)));
+      setItems((rows) =>
+        rows.map((row) =>
+          row.id === target.runner.id
+            ? { ...row, admin_state: r.data.admin_state }
+            : row,
+        ),
+      );
       setConfirmTarget(null);
     });
   }
@@ -130,7 +211,13 @@ export default function RunnerList({
     startTransition(async () => {
       const r = await deleteRunnerAction(target.runner.id);
       if (!r.ok) {
-        setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: target.errorAction }));
+        setError(
+          presentErrorString({
+            errorCode: r.errorCode,
+            message: r.error,
+            action: target.errorAction,
+          }),
+        );
         return;
       }
       setError(null);
@@ -142,16 +229,35 @@ export default function RunnerList({
     });
   }
 
-  function loadEvents(runnerId: string, nextPage = 1) {
+  function loadEvents(
+    runnerId: string,
+    nextPage: number,
+    nextPageSize = activityPageSize,
+  ) {
+    const generation = ++activityRequestGenerationRef.current;
     startActivityTransition(async () => {
-      const r = await listRunnerEventsAction(runnerId, { page: nextPage, page_size: DEFAULT_PAGE_SIZE });
-      if (activityRunnerIdRef.current !== runnerId) return;
+      const r = await listRunnerEventsAction(runnerId, {
+        page: nextPage,
+        page_size: nextPageSize,
+      });
+      if (
+        activityRunnerIdRef.current !== runnerId ||
+        activityRequestGenerationRef.current !== generation
+      )
+        return;
       if (!r.ok) {
-        setActivityError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "load runner activity" }));
+        setActivityError(
+          presentErrorString({
+            errorCode: r.errorCode,
+            message: r.error,
+            action: "load runner activity",
+          }),
+        );
         return;
       }
       setActivityError(null);
       setActivityData({ runnerId, data: r.data });
+      setActivityPageSize(r.data.page_size);
     });
   }
 
@@ -160,10 +266,12 @@ export default function RunnerList({
     setActivityRunner(runner);
     setActivityData(null);
     setActivityError(null);
-    loadEvents(runner.id);
+    setActivityPageSize(DEFAULT_PAGE_SIZE);
+    loadEvents(runner.id, 1, DEFAULT_PAGE_SIZE);
   }
 
   function closeActivity() {
+    activityRequestGenerationRef.current += 1;
     activityRunnerIdRef.current = null;
     setActivityRunner(null);
     setActivityData(null);
@@ -190,20 +298,33 @@ export default function RunnerList({
         rows={items}
         rowKey={(r) => r.id}
         caption="Runners"
-        sortKey={sort === HOST_SORT_ASCENDING || sort === HOST_SORT_DESCENDING ? "host" : undefined}
-        sortDirection={sort === HOST_SORT_DESCENDING ? "descending" : "ascending"}
-        onSortChange={() => loadPage(
-          1,
-          false,
-          sort === HOST_SORT_ASCENDING ? HOST_SORT_DESCENDING : HOST_SORT_ASCENDING,
-        )}
+        sortKey={
+          sort === HOST_SORT_ASCENDING || sort === HOST_SORT_DESCENDING
+            ? "host"
+            : undefined
+        }
+        sortDirection={
+          sort === HOST_SORT_DESCENDING ? "descending" : "ascending"
+        }
+        onSortChange={() =>
+          loadPage(
+            1,
+            false,
+            sort === HOST_SORT_ASCENDING
+              ? HOST_SORT_DESCENDING
+              : HOST_SORT_ASCENDING,
+          )
+        }
         pagination={{
           kind: PAGINATION_KIND.page,
           page,
-          pageSize: DEFAULT_PAGE_SIZE,
+          pageSize,
           total,
           totalLabel: "runners",
           onPageChange: loadPage,
+          pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
+          onPageSizeChange: (nextPageSize) =>
+            loadPage(1, false, sort, nextPageSize),
           isLoading: pending,
         }}
         empty={
@@ -215,18 +336,27 @@ export default function RunnerList({
         }
       />
 
-      {error && !confirmTarget && !deleteTarget ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error && !confirmTarget && !deleteTarget ? (
+        <p className="text-sm text-destructive">{error}</p>
+      ) : null}
 
       {activityRunner ? (
         <RunnerActivityDialog
           runner={activityRunner}
-          data={activityData?.runnerId === activityRunner.id ? activityData.data : null}
+          data={
+            activityData?.runnerId === activityRunner.id
+              ? activityData.data
+              : null
+          }
           error={activityError}
           pending={activityPending}
           onOpenChange={(open) => {
             if (!open) closeActivity();
           }}
           onPage={(nextPage) => loadEvents(activityRunner.id, nextPage)}
+          onPageSizeChange={(nextPageSize) =>
+            loadEvents(activityRunner.id, 1, nextPageSize)
+          }
         />
       ) : null}
       <RunnerActionConfirm

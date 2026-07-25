@@ -13,18 +13,27 @@
 
 /** Query key holding the cursor trail. Short: it rides on every page link. */
 export const CURSOR_TRAIL_PARAM = "c";
+/** Query key binding a cursor trail to the row count that produced it. */
+export const CURSOR_PAGE_SIZE_PARAM = "cps";
+/** Query key holding a non-default row count. */
+export const PAGE_SIZE_PARAM = "ps";
 
 /**
- * Rows per page. One constant per feed so the pager's numbering and the
- * server's fetch boundary can never disagree, kept here rather than on the
- * components so a Server Component can read it without importing a client one.
+ * Shared table density. Kept server-safe so the pager and the server fetch
+ * boundary read the same value without importing a client module.
  */
-export const EVENTS_PAGE_SIZE = 25;
-export const BILLING_PAGE_SIZE = 25;
+export const DEFAULT_TABLE_PAGE_SIZE = 25;
+export const TABLE_PAGE_SIZE_OPTIONS: readonly number[] = [25, 50, 100];
 
-/** Read the trail out of a `searchParams` bag, tolerating every shape it takes. */
-export function cursorTrailFrom(value: string | string[] | undefined): string[] {
+/** Read a trail only when it was produced with the current row count. */
+export function cursorTrailFrom(
+  value: string | string[] | undefined,
+  pageSize: number,
+  boundPageSize: string | string[] | undefined,
+): string[] {
   if (value === undefined) return [];
+  if (Array.isArray(boundPageSize)) return [];
+  if (Number(boundPageSize) !== pageSize) return [];
   const all = Array.isArray(value) ? value : [value];
   return all.filter((entry) => entry.length > 0);
 }
@@ -32,4 +41,13 @@ export function cursorTrailFrom(value: string | string[] | undefined): string[] 
 /** The cursor a page must fetch with, or null for the first page. */
 export function cursorForTrail(trail: string[]): string | null {
   return trail[trail.length - 1] ?? null;
+}
+
+/** Accept only a supported row count; malformed or repeated input fails closed. */
+export function pageSizeFrom(value: string | string[] | undefined): number {
+  if (Array.isArray(value)) return DEFAULT_TABLE_PAGE_SIZE;
+  const parsed = value === undefined ? Number.NaN : Number(value);
+  return TABLE_PAGE_SIZE_OPTIONS.includes(parsed)
+    ? parsed
+    : DEFAULT_TABLE_PAGE_SIZE;
 }

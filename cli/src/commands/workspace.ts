@@ -13,12 +13,17 @@
 //   - state store IO failure              → UnexpectedError (exit 1)
 
 import { Effect } from "effect";
+import { v7 as uuidv7 } from "uuid";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
-import { Workspaces, type WorkspaceItem, type WorkspacesValue } from "../services/workspaces.ts";
+import {
+  Workspaces,
+  type WorkspaceItem,
+  type WorkspacesValue,
+} from "../services/workspaces.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
 import { WORKSPACES_COLLECTION_PATH } from "../lib/api-paths.ts";
 import { validateRequiredId } from "../program/validators.ts";
@@ -37,6 +42,7 @@ import {
 
 const WORKSPACE_ID_FIELD = "workspace_id";
 const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state";
+const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 // The real, registered top-level command group (cli-tree-fleet.ts). One const
 // so the JSON-mode and human-readable redirects can never re-diverge onto a
 // phantom `agentsfleet agent secret` that has no CLI registration.
@@ -53,7 +59,10 @@ const validateWorkspaceId = (
   const check = validateRequiredId(workspaceId, WORKSPACE_ID_FIELD);
   if (!check.ok) {
     return Effect.fail(
-      new ValidationError({ detail: check.message, suggestion: "pass a valid uuidv7" }),
+      new ValidationError({
+        detail: check.message,
+        suggestion: "pass a valid uuidv7",
+      }),
     );
   }
   return Effect.succeed(workspaceId);
@@ -79,6 +88,7 @@ export const workspaceAddEffect = (
       path: WORKSPACES_COLLECTION_PATH,
       method: "POST",
       body,
+      headers: { [IDEMPOTENCY_KEY_HEADER]: uuidv7() },
       token,
     });
     const workspaceId = created.workspace_id;
@@ -90,7 +100,11 @@ export const workspaceAddEffect = (
       ? state.items
       : [
           ...state.items,
-          { workspace_id: workspaceId, name: resolvedName, created_at: Date.now() },
+          {
+            workspace_id: workspaceId,
+            name: resolvedName,
+            created_at: Date.now(),
+          },
         ];
     yield* workspaces.save({ current_workspace_id: workspaceId, items });
 
@@ -105,7 +119,10 @@ export const workspaceAddEffect = (
     });
 
     if (config.jsonMode) {
-      yield* output.printJson({ workspace_id: workspaceId, name: resolvedName });
+      yield* output.printJson({
+        workspace_id: workspaceId,
+        name: resolvedName,
+      });
       return;
     }
     yield* output.printSection("Workspace added");
@@ -188,11 +205,7 @@ const requireDeleteId = (
 export const workspaceUseEffectFromArgs = (
   positional: string | undefined,
   fromOpt: string | undefined,
-): Effect.Effect<
-  void,
-  CliError,
-  Analytics | CliConfig | Output | Workspaces
-> =>
+): Effect.Effect<void, CliError, Analytics | CliConfig | Output | Workspaces> =>
   Effect.gen(function* () {
     const config = yield* CliConfig;
     const output = yield* Output;
@@ -206,7 +219,8 @@ export const workspaceUseEffectFromArgs = (
       return yield* Effect.fail(
         new ConfigError({
           detail: `workspace ${workspaceId} is not in your local list`,
-          suggestion: "run `agentsfleet workspace create` or `agentsfleet workspace list`",
+          suggestion:
+            "run `agentsfleet workspace create` or `agentsfleet workspace list`",
         }),
       );
     }
@@ -223,11 +237,7 @@ export const workspaceUseEffectFromArgs = (
 export const workspaceShowEffectFromArgs = (
   positional: string | undefined,
   fromOpt: string | undefined,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Output | Workspaces
-> =>
+): Effect.Effect<void, CliError, CliConfig | Output | Workspaces> =>
   Effect.gen(function* () {
     const config = yield* CliConfig;
     const output = yield* Output;
@@ -240,11 +250,13 @@ export const workspaceShowEffectFromArgs = (
       return yield* Effect.fail(
         new ConfigError({
           detail: "no active workspace",
-          suggestion: 'run `agentsfleet workspace use <id>` or pass --workspace-id',
+          suggestion:
+            "run `agentsfleet workspace use <id>` or pass --workspace-id",
         }),
       );
     }
-    const known = state.items.find((x) => x.workspace_id === workspaceId) ?? null;
+    const known =
+      state.items.find((x) => x.workspace_id === workspaceId) ?? null;
     const detail = {
       workspace_id: workspaceId,
       active: workspaceId === state.current_workspace_id,
@@ -286,11 +298,7 @@ export const workspaceSecretsEffect: Effect.Effect<
 export const workspaceDeleteEffectFromArgs = (
   positional: string | undefined,
   fromOpt: string | undefined,
-): Effect.Effect<
-  void,
-  CliError,
-  Analytics | CliConfig | Output | Workspaces
-> =>
+): Effect.Effect<void, CliError, Analytics | CliConfig | Output | Workspaces> =>
   Effect.gen(function* () {
     const config = yield* CliConfig;
     const output = yield* Output;
@@ -307,12 +315,16 @@ export const workspaceDeleteEffectFromArgs = (
       next.current_workspace_id = next.items[0]?.workspace_id ?? null;
     }
     yield* workspaces.save(next);
-    yield* analytics.capture(EVT_WORKSPACE_DELETED, { workspace_id: workspaceId });
+    yield* analytics.capture(EVT_WORKSPACE_DELETED, {
+      workspace_id: workspaceId,
+    });
 
     if (config.jsonMode) {
       yield* output.printJson({ [WORKSPACE_LOCAL_REMOVAL_FIELD]: workspaceId });
     } else {
-      yield* output.success(`workspace removed from local state: ${workspaceId}`);
+      yield* output.success(
+        `workspace removed from local state: ${workspaceId}`,
+      );
     }
   });
 const LITERAL = "—" as const;

@@ -80,7 +80,7 @@ const LUCIDE_ICONS = [
   "BotIcon", "PlugIcon", "CheckCircle2Icon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
   "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
   "BrainIcon", "LayoutDashboardIcon",
-  "MessageSquareIcon", "Code2Icon",
+  "MessageSquareIcon", "Code2Icon", "FolderIcon",
   "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUp", "ArrowDown", "ArrowUpDown",
 ] as const;
 

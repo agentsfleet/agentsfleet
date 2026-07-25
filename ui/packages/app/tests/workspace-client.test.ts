@@ -22,7 +22,11 @@ describe("createTenantWorkspace", () => {
       request_id: "req_1",
     });
 
-    const res = await createTenantWorkspace("tok_1", { name: "acme-prod" });
+    const res = await createTenantWorkspace(
+      "tok_1",
+      { name: "acme-prod" },
+      "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99",
+    );
 
     expect(res.workspace_id).toBe("ws_x");
     const [url, init] = fetchSpy.mock.calls[0]!;
@@ -35,10 +39,17 @@ describe("createTenantWorkspace", () => {
     expect(reqInit.method).toBe("POST");
     expect(reqInit.body as string).toContain("acme-prod");
     expect(headers.Authorization).toBe("Bearer tok_1");
+    expect(headers["Idempotency-Key"]).toBe(
+      "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99",
+    );
+    expect(reqInit.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("sends an empty body object when no name is given", async () => {
-    const fetchSpy = mockFetchOnce(201, { workspace_id: "ws_y", name: "auto-name" });
+    const fetchSpy = mockFetchOnce(201, {
+      workspace_id: "ws_y",
+      name: "auto-name",
+    });
 
     await createTenantWorkspace("tok_1");
 

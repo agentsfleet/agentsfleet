@@ -57,6 +57,7 @@ describe("BillingUsageTab charge cell", () => {
       React.createElement(BillingUsageTab, {
         initialCharges: [charge()],
         initialCursor: null,
+        pageSize: 25,
       }),
     );
 

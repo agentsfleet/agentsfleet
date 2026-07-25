@@ -1,9 +1,21 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
-import type { RunnerEventsResponse, RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
+import type {
+  RunnerEventsResponse,
+  RunnerListItem,
+  RunnerListResponse,
+} from "@/lib/api/runners";
 
 const PAGE_SIZE = 25;
 const PAGINATED_TOTAL = 30;
@@ -79,7 +91,11 @@ const OFFLINE: RunnerListItem = {
   created_at: 1_713_000_000_000,
 };
 
-function listResponse(items: RunnerListItem[], total = items.length, page = 1): RunnerListResponse {
+function listResponse(
+  items: RunnerListItem[],
+  total = items.length,
+  page = 1,
+): RunnerListResponse {
   return { items, total, page, page_size: PAGE_SIZE };
 }
 
@@ -120,17 +136,23 @@ function rowFor(hostId: string) {
 }
 
 async function renderList(initial: RunnerListResponse) {
-  const { default: RunnerList } = await import(
-    "../app/(dashboard)/admin/runners/components/RunnerList"
-  );
+  const { default: RunnerList } =
+    await import("../app/(dashboard)/admin/runners/components/RunnerList");
   render(
-    React.createElement(TooltipProvider, null, React.createElement(RunnerList, { initial } as never)),
+    React.createElement(
+      TooltipProvider,
+      null,
+      React.createElement(RunnerList, { initial } as never),
+    ),
   );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listRunnersActionMock.mockResolvedValue({ ok: true, data: listResponse([REGISTERED, ONLINE]) });
+  listRunnersActionMock.mockResolvedValue({
+    ok: true,
+    data: listResponse([REGISTERED, ONLINE]),
+  });
   updateRunnerAdminStateActionMock.mockResolvedValue({
     ok: true,
     data: { id: REGISTERED.id, admin_state: "cordoned" },
@@ -150,9 +172,22 @@ describe("RunnerList row actions", () => {
   it("cordons a runner from the row and updates the admin-state badge", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED, ONLINE]));
-    await user.click(within(rowFor(REGISTERED.host_id)).getByRole("button", { name: /^cordon$/i }));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^cordon$/i }));
-    await waitFor(() => expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(REGISTERED.id, "cordon"));
+    await user.click(
+      within(rowFor(REGISTERED.host_id)).getByRole("button", {
+        name: /^cordon$/i,
+      }),
+    );
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /^cordon$/i,
+      }),
+    );
+    await waitFor(() =>
+      expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(
+        REGISTERED.id,
+        "cordon",
+      ),
+    );
     expect(await screen.findByText("cordoned")).toBeTruthy();
     expect(within(rowFor(ONLINE.host_id)).getByText("active")).toBeTruthy();
     expect(listRunnerEventsActionMock).not.toHaveBeenCalled();
@@ -166,8 +201,17 @@ describe("RunnerList row actions", () => {
     const user = userEvent.setup();
     await renderList(listResponse([CORDONED]));
     await user.click(screen.getByRole("button", { name: /^drain$/i }));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^drain$/i }));
-    await waitFor(() => expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(CORDONED.id, "drain"));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /^drain$/i,
+      }),
+    );
+    await waitFor(() =>
+      expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(
+        CORDONED.id,
+        "drain",
+      ),
+    );
     expect(await screen.findByText("draining")).toBeTruthy();
   });
 
@@ -179,8 +223,17 @@ describe("RunnerList row actions", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ONLINE]));
     await user.click(screen.getByRole("button", { name: /^revoke$/i }));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^revoke$/i }));
-    await waitFor(() => expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(ONLINE.id, "revoke"));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /^revoke$/i,
+      }),
+    );
+    await waitFor(() =>
+      expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(
+        ONLINE.id,
+        "revoke",
+      ),
+    );
     expect(await screen.findByText("revoked")).toBeTruthy();
   });
 
@@ -206,12 +259,25 @@ describe("RunnerList row actions", () => {
     await renderList(listResponse([ONLINE, OFFLINE], 2));
     // The refetch after a successful delete must reflect the row being gone —
     // splicing locally would leave `total` stale and the pagination short.
-    listRunnersActionMock.mockResolvedValueOnce({ ok: true, data: listResponse([ONLINE], 1) });
+    listRunnersActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: listResponse([ONLINE], 1),
+    });
 
-    await user.click(within(rowFor(OFFLINE.host_id)).getByRole("button", { name: /^delete$/i }));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^delete$/i }));
+    await user.click(
+      within(rowFor(OFFLINE.host_id)).getByRole("button", {
+        name: /^delete$/i,
+      }),
+    );
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /^delete$/i,
+      }),
+    );
 
-    await waitFor(() => expect(deleteRunnerActionMock).toHaveBeenCalledWith(OFFLINE.id));
+    await waitFor(() =>
+      expect(deleteRunnerActionMock).toHaveBeenCalledWith(OFFLINE.id),
+    );
     await waitFor(() => expect(screen.queryByText(OFFLINE.host_id)).toBeNull());
     expect(screen.getByText(ONLINE.host_id)).toBeTruthy();
     expect(updateRunnerAdminStateActionMock).not.toHaveBeenCalled();
@@ -223,7 +289,11 @@ describe("RunnerList row actions", () => {
 
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     expect(screen.getByRole("alertdialog")).toBeTruthy();
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /cancel/i }));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /cancel/i,
+      }),
+    );
 
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(deleteRunnerActionMock).not.toHaveBeenCalled();
@@ -240,9 +310,15 @@ describe("RunnerList row actions", () => {
     await renderList(listResponse([OFFLINE]));
 
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^delete$/i }));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /^delete$/i,
+      }),
+    );
 
-    await waitFor(() => expect(deleteRunnerActionMock).toHaveBeenCalledWith(OFFLINE.id));
+    await waitFor(() =>
+      expect(deleteRunnerActionMock).toHaveBeenCalledWith(OFFLINE.id),
+    );
     // Confirmation stays open carrying the error — closing it would strand the
     // operator with a row that silently did not go away.
     expect(screen.getByRole("alertdialog")).toBeTruthy();
@@ -258,8 +334,14 @@ describe("RunnerList row actions", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ONLINE]));
     await user.click(screen.getByRole("button", { name: /^revoke$/i }));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^revoke$/i }));
-    expect(await screen.findByText(/couldn't revoke this runner/i)).toBeTruthy();
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /^revoke$/i,
+      }),
+    );
+    expect(
+      await screen.findByText(/couldn't revoke this runner/i),
+    ).toBeTruthy();
     expect(screen.getByRole("alertdialog")).toBeTruthy();
   });
 
@@ -272,34 +354,98 @@ describe("RunnerList row actions", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ONLINE]));
     await user.click(screen.getByRole("button", { name: /^revoke$/i }));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^revoke$/i }));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /^revoke$/i,
+      }),
+    );
     expect(await screen.findByRole("alert")).toBeTruthy();
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^cancel$/i }));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /^cancel$/i,
+      }),
+    );
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(screen.queryByText(/couldn't revoke this runner/i)).toBeNull();
   });
 
   it("limits row actions by admin state", async () => {
-    await renderList(listResponse([REGISTERED, CORDONED, BUSY, DRAINED, OFFLINE]));
-    expect(within(rowFor(REGISTERED.host_id)).getByRole("button", { name: /^cordon$/i })).toBeTruthy();
-    expect(within(rowFor(REGISTERED.host_id)).getByRole("button", { name: /^drain$/i })).toBeTruthy();
-    expect(within(rowFor(REGISTERED.host_id)).getByRole("button", { name: /^revoke$/i })).toBeTruthy();
+    await renderList(
+      listResponse([REGISTERED, CORDONED, BUSY, DRAINED, OFFLINE]),
+    );
+    expect(
+      within(rowFor(REGISTERED.host_id)).getByRole("button", {
+        name: /^cordon$/i,
+      }),
+    ).toBeTruthy();
+    expect(
+      within(rowFor(REGISTERED.host_id)).getByRole("button", {
+        name: /^drain$/i,
+      }),
+    ).toBeTruthy();
+    expect(
+      within(rowFor(REGISTERED.host_id)).getByRole("button", {
+        name: /^revoke$/i,
+      }),
+    ).toBeTruthy();
 
-    expect(within(rowFor(CORDONED.host_id)).queryByRole("button", { name: /^cordon$/i })).toBeNull();
-    expect(within(rowFor(CORDONED.host_id)).getByRole("button", { name: /^drain$/i })).toBeTruthy();
-    expect(within(rowFor(CORDONED.host_id)).getByRole("button", { name: /^revoke$/i })).toBeTruthy();
+    expect(
+      within(rowFor(CORDONED.host_id)).queryByRole("button", {
+        name: /^cordon$/i,
+      }),
+    ).toBeNull();
+    expect(
+      within(rowFor(CORDONED.host_id)).getByRole("button", {
+        name: /^drain$/i,
+      }),
+    ).toBeTruthy();
+    expect(
+      within(rowFor(CORDONED.host_id)).getByRole("button", {
+        name: /^revoke$/i,
+      }),
+    ).toBeTruthy();
 
-    expect(within(rowFor(BUSY.host_id)).queryByRole("button", { name: /^cordon$/i })).toBeNull();
-    expect(within(rowFor(BUSY.host_id)).queryByRole("button", { name: /^drain$/i })).toBeNull();
-    expect(within(rowFor(BUSY.host_id)).getByRole("button", { name: /^revoke$/i })).toBeTruthy();
+    expect(
+      within(rowFor(BUSY.host_id)).queryByRole("button", { name: /^cordon$/i }),
+    ).toBeNull();
+    expect(
+      within(rowFor(BUSY.host_id)).queryByRole("button", { name: /^drain$/i }),
+    ).toBeNull();
+    expect(
+      within(rowFor(BUSY.host_id)).getByRole("button", { name: /^revoke$/i }),
+    ).toBeTruthy();
 
-    expect(within(rowFor(DRAINED.host_id)).queryByRole("button", { name: /^cordon$/i })).toBeNull();
-    expect(within(rowFor(DRAINED.host_id)).queryByRole("button", { name: /^drain$/i })).toBeNull();
-    expect(within(rowFor(DRAINED.host_id)).getByRole("button", { name: /^revoke$/i })).toBeTruthy();
+    expect(
+      within(rowFor(DRAINED.host_id)).queryByRole("button", {
+        name: /^cordon$/i,
+      }),
+    ).toBeNull();
+    expect(
+      within(rowFor(DRAINED.host_id)).queryByRole("button", {
+        name: /^drain$/i,
+      }),
+    ).toBeNull();
+    expect(
+      within(rowFor(DRAINED.host_id)).getByRole("button", {
+        name: /^revoke$/i,
+      }),
+    ).toBeTruthy();
 
-    expect(within(rowFor(OFFLINE.host_id)).queryByRole("button", { name: /^cordon$/i })).toBeNull();
-    expect(within(rowFor(OFFLINE.host_id)).queryByRole("button", { name: /^drain$/i })).toBeNull();
-    expect(within(rowFor(OFFLINE.host_id)).queryByRole("button", { name: /^revoke$/i })).toBeNull();
+    expect(
+      within(rowFor(OFFLINE.host_id)).queryByRole("button", {
+        name: /^cordon$/i,
+      }),
+    ).toBeNull();
+    expect(
+      within(rowFor(OFFLINE.host_id)).queryByRole("button", {
+        name: /^drain$/i,
+      }),
+    ).toBeNull();
+    expect(
+      within(rowFor(OFFLINE.host_id)).queryByRole("button", {
+        name: /^revoke$/i,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -325,7 +471,12 @@ describe("RunnerList activity dialog", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ONLINE]));
     await user.click(screen.getByRole("button", { name: /activity/i }));
-    await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, { page: 1, page_size: PAGE_SIZE }));
+    await waitFor(() =>
+      expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, {
+        page: 1,
+        page_size: PAGE_SIZE,
+      }),
+    );
     expect(await screen.findByText("runner_online")).toBeTruthy();
     expect(screen.getByText(/last_seen_at/i)).toBeTruthy();
 
@@ -336,7 +487,9 @@ describe("RunnerList activity dialog", () => {
     const dialog = await screen.findByRole("dialog");
     const stamp = dialog.querySelector("time[datetime]");
     expect(stamp).toBeTruthy();
-    expect(stamp?.getAttribute("datetime")).toBe(new Date(1_716_500_000_000).toISOString());
+    expect(stamp?.getAttribute("datetime")).toBe(
+      new Date(1_716_500_000_000).toISOString(),
+    );
   });
 
   it("ignores stale activity responses from a previously selected runner", async () => {
@@ -348,24 +501,85 @@ describe("RunnerList activity dialog", () => {
 
     const user = userEvent.setup();
     await renderList(listResponse([ONLINE, BUSY]));
-    await user.click(within(rowFor(ONLINE.host_id)).getByRole("button", { name: /activity/i }));
-    await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, { page: 1, page_size: PAGE_SIZE }));
+    await user.click(
+      within(rowFor(ONLINE.host_id)).getByRole("button", { name: /activity/i }),
+    );
+    await waitFor(() =>
+      expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, {
+        page: 1,
+        page_size: PAGE_SIZE,
+      }),
+    );
     await user.click(screen.getByRole("button", { name: /^close$/i }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /runner activity/i })).toBeNull());
-    await user.click(within(rowFor(BUSY.host_id)).getByRole("button", { name: /activity/i }));
-    await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(BUSY.id, { page: 1, page_size: PAGE_SIZE }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: /runner activity/i }),
+      ).toBeNull(),
+    );
+    await user.click(
+      within(rowFor(BUSY.host_id)).getByRole("button", { name: /activity/i }),
+    );
+    await waitFor(() =>
+      expect(listRunnerEventsActionMock).toHaveBeenCalledWith(BUSY.id, {
+        page: 1,
+        page_size: PAGE_SIZE,
+      }),
+    );
 
     await act(async () => {
-      busyEvents.resolve({ ok: true, data: eventResponse(BUSY, "runner_draining") });
+      busyEvents.resolve({
+        ok: true,
+        data: eventResponse(BUSY, "runner_draining"),
+      });
     });
     expect(await screen.findByText("runner_draining")).toBeTruthy();
 
     await act(async () => {
-      onlineEvents.resolve({ ok: true, data: eventResponse(ONLINE, "runner_online") });
+      onlineEvents.resolve({
+        ok: true,
+        data: eventResponse(ONLINE, "runner_online"),
+      });
     });
-    const dialog = await screen.findByRole("dialog", { name: /runner activity/i });
+    const dialog = await screen.findByRole("dialog", {
+      name: /runner activity/i,
+    });
     expect(screen.queryByText("runner_online")).toBeNull();
     expect(within(dialog).getByText(BUSY.host_id)).toBeTruthy();
+  });
+
+  it("ignores a stale response after closing and reopening the same runner", async () => {
+    const first = deferredEvents();
+    const reopened = deferredEvents();
+    listRunnerEventsActionMock
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(reopened.promise);
+
+    const user = userEvent.setup();
+    await renderList(listResponse([ONLINE]));
+    await user.click(screen.getByRole("button", { name: /activity/i }));
+    await waitFor(() =>
+      expect(listRunnerEventsActionMock).toHaveBeenCalledTimes(1),
+    );
+    await user.click(screen.getByRole("button", { name: /^close$/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: /activity/i }));
+    await waitFor(() =>
+      expect(listRunnerEventsActionMock).toHaveBeenCalledTimes(2),
+    );
+
+    await act(async () => {
+      reopened.resolve({
+        ok: true,
+        data: eventResponse(ONLINE, "runner_draining"),
+      });
+    });
+    expect(await screen.findByText("runner_draining")).toBeTruthy();
+
+    await act(async () => {
+      first.resolve({ ok: true, data: eventResponse(ONLINE, "runner_online") });
+    });
+    expect(screen.queryByText("runner_online")).toBeNull();
+    expect(screen.getByText("runner_draining")).toBeTruthy();
   });
 
   it("opens runner activity with an empty event list", async () => {
@@ -379,9 +593,15 @@ describe("RunnerList activity dialog", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ONLINE]));
     await user.click(screen.getByRole("button", { name: /activity/i }));
-    expect(await screen.findByRole("dialog", { name: /runner activity/i })).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: /runner activity/i }),
+    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /^close$/i }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /runner activity/i })).toBeNull());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: /runner activity/i }),
+      ).toBeNull(),
+    );
   });
 
   it("surfaces runner activity load errors inside the activity dialog", async () => {
@@ -389,7 +609,8 @@ describe("RunnerList activity dialog", () => {
     // UZ-INTERNAL-001's friendly copy lives in error_entries.zig now.
     listRunnerEventsActionMock.mockResolvedValueOnce({
       ok: false,
-      error: "Something broke on our end. Give it another shot — if it keeps failing, send us the code below.",
+      error:
+        "Something broke on our end. Give it another shot — if it keeps failing, send us the code below.",
       errorCode: "UZ-INTERNAL-001",
     });
     const user = userEvent.setup();
@@ -411,12 +632,19 @@ describe("RunnerList activity dialog", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ONLINE]));
     await user.click(screen.getByRole("button", { name: /activity/i }));
-    const dialog = await screen.findByRole("dialog", { name: /runner activity/i });
+    const dialog = await screen.findByRole("dialog", {
+      name: /runner activity/i,
+    });
     await within(dialog).findByText(/page 1 of 2/i);
-    const next = within(dialog).getByRole("button", { name: /^next$/i });
+    const next = within(dialog).getByRole("button", { name: /^next page$/i });
     await waitFor(() => expect(next.hasAttribute("disabled")).toBe(false));
     await user.click(next);
-    await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, { page: 2, page_size: PAGE_SIZE }));
+    await waitFor(() =>
+      expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, {
+        page: 2,
+        page_size: PAGE_SIZE,
+      }),
+    );
     expect(listRunnersActionMock).not.toHaveBeenCalled();
   });
 
@@ -433,12 +661,56 @@ describe("RunnerList activity dialog", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ONLINE]));
     await user.click(screen.getByRole("button", { name: /activity/i }));
-    const dialog = await screen.findByRole("dialog", { name: /runner activity/i });
+    const dialog = await screen.findByRole("dialog", {
+      name: /runner activity/i,
+    });
     await within(dialog).findByText(/page 2 of 2/i);
-    const previous = within(dialog).getByRole("button", { name: /^previous$/i });
+    const previous = within(dialog).getByRole("button", {
+      name: /^previous page$/i,
+    });
     await waitFor(() => expect(previous.hasAttribute("disabled")).toBe(false));
     await user.click(previous);
-    await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, { page: 1, page_size: PAGE_SIZE }));
+    await waitFor(() =>
+      expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, {
+        page: 1,
+        page_size: PAGE_SIZE,
+      }),
+    );
+  });
+
+  it("changes runner activity page size without reloading the runner list", async () => {
+    listRunnerEventsActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        items: [],
+        total: PAGINATED_TOTAL,
+        page: 1,
+        page_size: PAGE_SIZE,
+      },
+    });
+    const user = userEvent.setup();
+    await renderList(listResponse([ONLINE]));
+    await user.click(screen.getByRole("button", { name: /activity/i }));
+    const dialog = await screen.findByRole("dialog", {
+      name: /runner activity/i,
+    });
+    await within(dialog).findByText(/page 1 of 2/i);
+
+    const trigger = within(dialog).getByRole("combobox", {
+      name: /rows per page/i,
+    });
+    await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("option", { name: "50" }));
+
+    await waitFor(() =>
+      expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, {
+        page: 1,
+        page_size: 50,
+      }),
+    );
+    expect(listRunnersActionMock).not.toHaveBeenCalled();
   });
 
   it("renders empty metadata when event metadata cannot be serialized", async () => {

@@ -133,6 +133,7 @@ export {
   StatusCard,
   type StatusCardProps,
   type StatusCardVariant,
+  DEFAULT_PAGE_SIZE_OPTIONS,
   PAGINATION_KIND,
   Pagination,
   type PaginationProps,
