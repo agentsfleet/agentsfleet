@@ -23,7 +23,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
 **Depends on:** M143_002 — preserve its library states and session-keeper verdict
 **Provenance:** Large Language Model (LLM)-drafted (Codex, Jul 25, 2026) from Orly Chief Technology Officer review and production-build evidence
-**Canonical architecture:** `docs/architecture/user_flow.md` §8.7
+**Canonical architecture:** `docs/architecture/user_flow.md` §8.4; `docs/architecture/product_analytics.md` §Workspace group + person context
 
 ---
 
@@ -42,7 +42,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Implementing agent — read these first
 
 1. `ui/packages/app/app/layout.tsx`, `app/(dashboard)/layout.tsx`, and `components/layout/Shell.tsx` — current provider and client-boundary ownership.
-2. `ui/packages/app/components/domain/island-dynamic/**` — existing intent-loaded island pattern.
+2. `ui/packages/app/components/domain/island-dynamic/**` — existing chunk-splitting wrappers and stable closed-dialog triggers; mounted dynamic wrappers are not yet intent loading.
 3. `M143_002_P1_UI_LIBRARY_SESSION_EXPERIENCE.md`, `docs/AUTH.md`, and `docs/DESIGN_SYSTEM.md` — session verdict, workspace continuity, accessibility, and motion rules.
 4. `~/Projects/oss/supabase/apps/studio` and its UI packages — hidden-tool dynamic loading and package side-effect declarations; do not copy its broad root provider stack.
 
@@ -50,18 +50,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |---|---|---|
-| `ui/packages/app/package.json`; `scripts/check-route-bundles.ts`; `scripts/check-route-bundles.test.ts`; `bundle-budgets.json` | EDIT/CREATE | Production route report, named limits, and fail-closed fixtures. |
+| `ui/packages/app/package.json` | EDIT | Expose the production route report and authenticated bundle gate. |
+| `ui/packages/app/scripts/check-route-bundles.ts`; `ui/packages/app/scripts/check-route-bundles.test.ts`; `ui/packages/app/bundle-budgets.json` | CREATE | Named limits, deterministic report generation, and fail-closed fixtures. |
 | `.github/workflows/test.yml` | EDIT | Run the authenticated bundle gate. **Pre-approved by Indy (Jul 25, 2026)** — the implementing agent does not stop to ask again for this one file and this one purpose. Any other workflow edit still needs its own approval. |
 | `ui/packages/app/app/(dashboard)/layout.tsx` | EDIT | Replace broad client-shell ownership with a server frame and narrow control islands. |
 | `ui/packages/app/components/layout/Shell.tsx` | DELETE | Broad client shell; its structure moves to the server frame and its controls to islands. |
 | `ui/packages/app/components/layout/ShellFrame.tsx`; `ShellControls.tsx` | CREATE | Server-rendered frame and the narrow control island that replaces `Shell.tsx`. |
-| `ui/packages/app/components/layout/SidebarNavigation.tsx`; `WorkspaceSwitcher.tsx`; `ClientOnlyAuthUserButton.tsx`; `WorkspaceCreationProvider.tsx` | EDIT | Narrow each to a control island; `WorkspaceCreationProvider` wraps only consumers, never route children. |
+| `ui/packages/app/components/layout/SidebarNavigation.tsx`; `WorkspaceSwitcher.tsx`; `ClientOnlyAuthUserButton.tsx` | EDIT | Narrow each to a control island without changing its visible behaviour. |
+| `ui/packages/app/components/layout/WorkspaceCreationProvider.tsx` | EDIT | Keep one lightweight client owner shared by the switcher and zero-workspace route while route content passes through as an opaque server-rendered slot. |
 | `ui/packages/app/components/domain/island-dynamic/AddModelDialogDynamic.tsx`; `EditModelDialogDynamic.tsx`; `AddFleetDialogDynamic.tsx`; `EditFleetDialogDynamic.tsx`; `AddLibraryDialogDynamic.tsx` | CREATE | Intent-loaded closed tools with stable triggers and retry. |
 | `ui/packages/app/app/(dashboard)/admin/models/components/ModelsView.tsx`; `CatalogueList.tsx`; `AddModelDialog.tsx`; `EditModelDialog.tsx`; `MakeDefaultDialog.tsx` | EDIT | Keep the visible catalogue eager and detach closed model tools. |
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.tsx`; `PlatformCatalogTable.tsx`; `AddFleetDialog.tsx`; `EditFleetDialog.tsx` | EDIT | Keep the visible library table eager and detach closed Fleet tools. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/InstallFleet.tsx`; `InstallSourceSelector.tsx`; `AddLibraryDialog.tsx` | EDIT | Bound install-route ownership while preserving selection and submit state. |
-| `ui/packages/app/tests/app-shell-navigation.test.ts`; `dashboard-workspace.test.ts`; `app-components.test.ts`; `admin-models-ui.test.ts`; `add-template-dialog.test.tsx`; `fleets-install-flow.test.ts`; `e2e/acceptance/dashboard-performance.spec.ts` | EDIT/CREATE | Boundary, workspace, tool-loading, navigation, and failure proof. |
-| `docs/development.md`; `docs/architecture/user_flow.md`; `docs/AUTH.md` | EDIT | Canonical measurement, shell flow, and provider ownership. |
+| `ui/packages/app/tests/app-shell-navigation.test.ts`; `dashboard-workspace.test.ts`; `app-components.test.ts`; `admin-models-ui.test.ts`; `add-template-dialog.test.tsx`; `fleets-install-flow.test.ts` | EDIT | Boundary, workspace, tool-loading, navigation, and failure proof. |
+| `ui/packages/app/tests/e2e/acceptance/dashboard-performance.spec.ts` | CREATE | Browser proof for fluid navigation, intent loading, and lifecycle preservation. Sits beside every existing acceptance spec under `tests/e2e/acceptance/`; a file outside that directory is not collected by the acceptance config. |
+| `docs/development.md`; `docs/architecture/user_flow.md`; `docs/architecture/product_analytics.md`; `docs/AUTH.md` | EDIT | Canonical measurement, shell flow, analytics binding, and provider ownership. |
 
 **Scope grading.** Rubric R5 compares `git diff --name-only origin/main` against this table. Component tests may sit beside listed components as `<Name>.test.tsx`. Any newly required path is a spec amendment recorded in Discovery before the edit.
 
@@ -75,7 +78,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | Gate | Fires? | Satisfaction strategy |
 |---|---|---|
 | ZIG GATE | no | no Zig files |
-| PUB / Struct-Shape | no | no Zig public surface |
+| Public Surface (PUB) / Struct-Shape | no | no Zig public surface |
 | File & Function Length | yes | split server frame, controls, measurement, and tests by role |
 | UFS | yes | named byte units, route groups, budgets, and intent states |
 | UI Substitution / DESIGN TOKEN | yes | existing primitives and tokens; no visual redesign |
@@ -83,7 +86,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Prior-Art / Reference Implementations
 
-- **`agentsfleet` islands:** `ui/packages/app/components/domain/island-dynamic/**` already proves closed dialogs can leave initial route entries without unstable triggers.
+- **`agentsfleet` islands:** `ui/packages/app/components/domain/island-dynamic/**` proves chunk separation and stable closed-dialog triggers. Because those wrappers mount during hydration, they are prior art only; true intent loading also requires conditional mounting and an explicit cached preload entry.
 - **Supabase Studio:** hidden panels, command tools, and editors load dynamically; its UI packages declare no package side effects. Reuse that narrow-tool pattern, not its broad application provider ownership.
 - **Next App Router:** current `app/layout.tsx` and dashboard layout are already server entry points; the refactor restores their intended ownership rather than inventing a parallel shell.
 
@@ -91,21 +94,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Route bytes become a deterministic release signal
 
-The checker builds a file union from `.next/build-manifest.json` and route client-reference manifests, compresses each emitted file independently, and reports framework, authenticated shared, route incremental, and route total bytes. Missing entries, unreadable chunks, duplicate attribution, or manifest drift fail closed. Generated chunk names are evidence, never pinned source.
+The checker builds a file union from `.next/build-manifest.json` and route client-reference manifests, compresses each emitted file independently, and reports framework, authenticated shared, route incremental, and route total bytes. Missing entries, unreadable chunks, duplicate attribution, a stale build Identifier (ID), or manifest drift fail closed. Generated chunk names are evidence, never pinned source. Continuous Integration (CI) uses the repository's pinned Bun version and frozen lockfile, runs the production build once, and checks that exact `.next` output; the size command never starts a second build or restores a report from cache.
 
 - **Dimension 1.1** — report calculation is deterministic and fail-closed → Test `test_route_bundle_report_is_deterministic_and_fails_closed`
 - **Dimension 1.2** — the production lane enforces every named authenticated budget → Test `test_authenticated_route_budgets_are_enforced`
 
 ### §2 — The dashboard frame returns to server ownership
 
-Static frame, header, sidebar structure, and page container render from the server layout. Collapse, mobile navigation, active route, workspace switch/create, account, theme, and analytics become narrow islands. `WorkspaceCreationProvider` wraps only consumers; it never owns route children. The split preserves the current Document Object Model (DOM), focus order, mobile close behaviour, scroll position, single-flight creation, close/reopen recovery, late-failure handling, and reduced motion.
+Static frame, header, sidebar structure, and page container render from the server layout. Collapse, mobile navigation, active route, workspace switch/create, account, theme, and analytics become narrow islands. One lightweight `WorkspaceCreationProvider` remains above both `WorkspaceSwitcher` and the route slot so `NoWorkspaceEmptyState` shares the same single-flight controller. Server-rendered route content passes through that client provider as an opaque React Server Component slot: the provider does not import route modules or own layout markup. The split preserves the current Document Object Model (DOM), focus order, mobile close behaviour, scroll position, single-flight creation, close/reopen recovery, late-failure handling, and reduced motion.
 
-- **Dimension 2.1** — route content is no longer reachable through the broad client shell/provider → Test `test_dashboard_shell_hydrates_only_interactive_islands`
+- **Dimension 2.1** — route modules and layout markup are no longer owned by the broad client shell → Test `test_dashboard_shell_hydrates_only_interactive_islands`
 - **Dimension 2.2** — navigation and workspace creation retain their complete lifecycle → Test `test_shell_navigation_and_workspace_creation_survive_boundary_split`
 
 ### §3 — Heavy tools load on intent, not on every visit
 
-Visible tables, cards, selectors, and route data remain in the initial render. Only closed editors, add dialogs, and configuration tools leave the initial entry. Eligible hover and focus begin loading before click; coarse-pointer or Save-Data hover does not speculate, while focus and click still work. Ordinary Next links retain prefetching. A fast click loads immediately behind a stable inline trigger and never drops the action.
+Visible tables, cards, selectors, and route data remain in the initial render. Only closed editors, add dialogs, and configuration tools leave the initial entry. Each wrapper owns one cached loader shared by its exported `preload()` function and dynamic component; the parent mounts the component only after open intent. Eligible hover and focus call `preload()` before click; coarse-pointer or Save-Data hover does not speculate, while focus and click still work. Ordinary Next links retain prefetching. A fast click mounts and loads immediately behind a stable inline trigger and never drops the action. A mounted `next/dynamic` wrapper alone does not satisfy this section.
 
 - **Dimension 3.1** — closed heavy tools are absent from initial entries and preload on eligible intent → Test `test_closed_heavy_tools_stay_out_of_initial_entries`
 - **Dimension 3.2** — inner navigation preserves useful content and stays within the route limit → Test `test_inner_navigation_preserves_content_and_prefetch`
@@ -119,24 +122,13 @@ Retain `useTransition` where route and mutation work must not block input. Use `
 
 ## Interfaces
 
-`test-results/app-route-bundles.json`, sorted by route, carrying both exact byte counts and rounded display values:
+`test-results/app-route-bundles.json` is sorted by route and carries exact byte counts plus rounded display values:
 
-```
-{
-  "schema_version": 1,
-  "build_id": string,
-  "compression": "gzip",
-  "framework_bytes": int,
-  "limits": {"auth_total_kib": 225, "cli_auth_total_kib": 240,
-             "dashboard_shared_total_kib": 250, "route_incremental_kib": 100},
-  "shared": [{"entry": string, "bytes": int, "kib": number}],
-  "routes": [{"route": string, "class": "auth"|"cli_auth"|"dashboard",
-              "initial_bytes": int, "incremental_bytes": int,
-              "initial_kib": number, "incremental_kib": number,
-              "limit_kib": number, "pass": boolean}],
-  "pass": boolean
-}
-```
+- Top-level fields are `schema_version: 1`, the non-empty Next `build_id`, `compression: "gzip"`, `framework_bytes`, `limits`, `shared`, `routes`, and `pass`.
+- `limits` contains `auth_total_kib: 225`, `cli_auth_total_kib: 240`, `dashboard_shared_total_kib: 250`, and `route_incremental_kib: 100`.
+- Each `shared` item contains a stable logical `entry`, exact `bytes`, and display `kib`.
+- Each `routes` item contains `route`, `class` (`auth`, `cli_auth`, or `dashboard`), `initial_bytes`, `incremental_bytes`, `initial_kib`, `incremental_kib`, `limit_kib`, and `pass`. Field names are part of the contract, not a suggestion: the checker, the rubric commands, and any future dashboard all read the same keys, so an implementer must not have to guess between `initial_bytes` and `initialBytes`.
+- Top-level `pass` is true only when the report belongs to the current build and every required route and limit verdict is present and passing.
 
 A missing route, a missing framework figure, or a `pass` computed from absent files is a failure, not a zero.
 
@@ -153,6 +145,7 @@ Golden path: sign-in resolves the M143_002 session state; the server layout fetc
 | Mode | Cause | Injection | Handling | Named test |
 |---|---|---|---|---|
 | False-small report | manifest entry missing or renamed | incomplete fixtures | nonzero exit; name missing source | `test_route_bundle_report_is_deterministic_and_fails_closed` |
+| Stale report | report and `.next` output have different build IDs | mismatched build fixtures | nonzero exit; expected and observed build IDs named | `test_route_bundle_report_rejects_stale_build` |
 | Budget regression | shared or route chunk grows | oversized fixture | nonzero exit with route and byte delta | `test_authenticated_route_budgets_are_enforced` |
 | Fast click | tool preload not complete | deferred import | stable pending trigger; action retained | `test_closed_heavy_tools_stay_out_of_initial_entries` |
 | Tool chunk fault | offline or rejected import | rejected loader | trigger remains; explicit retry | `test_lazy_tool_failure_preserves_trigger_and_retry` |
@@ -171,6 +164,7 @@ Golden path: sign-in resolves the M143_002 session state; the server layout fetc
 5. Closed tools may load later; visible tables, cards, and selectors may not.
 6. Route reporting fails closed and never treats missing files as zero bytes.
 7. No new mock server is introduced. Tests use manifest fixtures, existing action seams, and the existing Playwright web server; any contrary need requires an Indy consult before editing.
+8. CI measures one fresh production build under the pinned toolchain; a stale report or second-build substitution cannot pass.
 
 ## Metrics & Observability
 
@@ -186,6 +180,7 @@ Every row is mandatory. Negative rows are not substitutes for Dimension tests.
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
 | 1.1 | unit | `test_route_bundle_report_is_deterministic_and_fails_closed` | independent gzip union is stable; missing or malformed input cannot pass |
+| 1.1 | unit | `test_route_bundle_report_rejects_stale_build` | report build ID must match the current `.next` build |
 | 1.2 | integration | `test_authenticated_route_budgets_are_enforced` | auth, CLI auth, shared dashboard, and every inner route meet named limits |
 | 2.1 | integration | `test_dashboard_shell_hydrates_only_interactive_islands` | server frame owns route children; narrow islands own only controls |
 | 2.2 | end-to-end | `test_shell_navigation_and_workspace_creation_survive_boundary_split` | desktop/mobile navigation, close/reopen, late failure, and single create survive |
@@ -202,11 +197,11 @@ Every row is mandatory. Negative rows are not substitutes for Dimension tests.
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
 | R1 | Route report is honest | `bun --cwd ui/packages/app run build && bun --cwd ui/packages/app run size` | exit 0; framework, shared, every route, and limits printed | P0 | |
-| R2 | Shared authenticated entry is bounded | `bun scripts/check-route-bundles.ts --check test-results/app-route-bundles.json --limit shared` | exit 0; dashboard shared total ≤250 KiB | P0 | |
-| R3 | Inner routes are bounded | `bun scripts/check-route-bundles.ts --check test-results/app-route-bundles.json --limit incremental` | exit 0; every dashboard route incremental ≤100 KiB | P0 | |
+| R2 | Shared authenticated entry is bounded | `bun ui/packages/app/scripts/check-route-bundles.ts --check test-results/app-route-bundles.json --limit shared` | exit 0; dashboard shared total ≤250 KiB | P0 | |
+| R3 | Inner routes are bounded | `bun ui/packages/app/scripts/check-route-bundles.ts --check test-results/app-route-bundles.json --limit incremental` | exit 0; every dashboard route incremental ≤100 KiB | P0 | |
 | R4 | Fluidity acceptance passes | `bun --cwd ui/packages/app run test:e2e:acceptance -- dashboard-performance.spec.ts` | exit 0; no blank route/action loss/duplicate stream | P0 | |
 | R5 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | |
-| S1 | Repository gates pass | `make test-unit-all && make lint-all && make harness-verify && make check-version` | exit 0 | P0 | |
+| S1 | Repository gates pass | `make harness-verify && make test-unit-all && make test-integration && make lint-all && make memleak && make check-version` | exit 0 | P0 | |
 | S2 | Secret scan passes | `gitleaks detect` | exit 0 | P0 | |
 
 **Grading protocol (VERIFY):** run commands verbatim; record ✅/❌ and one decisive output line. A report that omits the framework runtime or an authenticated route is a failure even when every printed number passes.
@@ -244,8 +239,8 @@ Production references to deleted broad shell/provider paths, superseded eager di
 
 ## Discovery (consult log)
 
-- **Consults** — Indy restricted the target to `ui/packages/app`, required fluid inner navigation, prohibited user-experience compromise, and requires consultation before any mock server. Indy pre-approved the single `.github/workflows/test.yml` edit that adds the bundle gate (Jul 25, 2026), so the workstream carries no mid-implementation human gate; every other CI change remains gated.
-- **Batch B4 holds two workstreams** — this one and M143_004. They share a batch but no dependency: M143_004 is INFRA and depends on nothing, this one is UI and depends on M143_002. Either may land first, and neither blocks the other. Orly's production build found about 134 KiB of framework runtime, about 283 KiB for the lightest authenticated route, and about 107–109 KiB of route-owned code on the heaviest admin routes.
+- **Consults** — Indy restricted the target to `ui/packages/app`, required fluid inner navigation, prohibited user-experience compromise, and requires consultation before any mock server. Two separate approvals, kept distinct because one does not imply the other: Indy approved the single `.github/workflows/test.yml` edit that adds the bundle gate (Jul 25, 2026), and separately reconfirmed “keep the preapproved bundle size”, meaning the 250/100 KiB limits stand and are not to be relaxed to make the gate pass. Every other CI change remains gated, and a failing budget is fixed by removing bytes rather than by raising a limit.
+- **Batch B4 holds two workstreams** — this one and M143_004. They share a batch but no dependency: M143_004 is infrastructure and depends on nothing, this one is UI and depends on M143_002. Either may land first, and neither blocks the other. Orly's production build found about 134 KiB of framework runtime, about 283 KiB for the lightest authenticated route, and about 107–109 KiB of route-owned code on the heaviest admin routes.
 - **Metrics review** — build-only aggregate bytes; no product funnel or analytics schema change.
 - **Skill-chain outcomes** — `kishore-spec-new` repository grounding and self-review complete; implementation outcomes populate at CHORE(close).
 - **Deferrals** — none.
