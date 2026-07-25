@@ -116,10 +116,16 @@ fn seedLegacyEnvelope(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []
     const secret_id = try id_format.generateVaultSecretId(alloc);
     defer alloc.free(secret_id);
     const now_ms = common.clock.nowMillis();
+    // The four trailing NULLs are the `meta_*` projection columns, deliberately
+    // left unset: this seeds a row as it existed BEFORE
+    // schema/036_vault_secret_metadata.sql, which is the whole point of the
+    // fixture. A row with no projection is exactly what the backfill has to
+    // find and what the read path must degrade to an opaque credential.
+    const no_projection: ?[]const u8 = null;
     _ = try conn.exec(sql.INSERT_SECRET, .{
         secret_id,    workspace_id,   key_name,           wrapped.ciphertext, &wrapped.nonce,
         &wrapped.tag, &payload.nonce, payload.ciphertext, &payload.tag,       VERSION_LEGACY,
-        now_ms,
+        now_ms,       no_projection,  no_projection,      no_projection,      @as(?bool, null),
     });
 }
 

@@ -103,8 +103,8 @@ This changes the tenant registry page from up to 100 decryptions to **zero**. It
 
 Every reference producer—POST model creation, provider activation, `tenant_provider.upsertSelfManaged`, and `ensureEntry`—and deletion uses one transaction and exact lock order: `vault.secrets(workspace_id,key_name) FOR UPDATE`; matching `core.tenant_model_entries ORDER BY id FOR UPDATE`; `core.tenant_model_selection FOR UPDATE`; validate/mutate; commit. Producer-first makes delete reject; delete-first makes producer observe absence and roll back.
 
-- **Dimension 1.1** — tenant keyset and current-page projection are exact → Test `test_tenant_registry_page_is_bounded`
-- **Dimension 1.2** — all producers and delete serialize safely → Test `test_secret_reference_paths_serialize`
+- **Dimension 1.1** — tenant keyset and current-page projection are exact → Test `test_tenant_registry_page_is_bounded` — **IN_PROGRESS.** Keyset, cursor codec, limit bounds, and the zero-decrypt projection are implemented and unit-tested (`http/pagination.zig`, 12 cases). The named integration test is not yet written.
+- **Dimension 1.2** — all producers and delete serialize safely → Test `test_secret_reference_paths_serialize` — **IN_PROGRESS.** `state/secret_reference_txn.zig` owns the lock order; the credential delete path and two of the reference producers (POST model creation, `upsertSelfManaged`) are on it. `ensureEntry` is covered transitively via `upsertSelfManaged` but has no standalone lock when called directly. The named integration test is not yet written.
 
 ### §2 — Global catalogue generation, search, and caches
 
@@ -124,8 +124,8 @@ The billing decision linearizes at its revision read: under the rate-cache mutex
 
 Rate-cache identity is a collision-safe structured `(provider,model_id)` key, never delimiter concatenation. Migration tests include provider/model strings containing the current `0x1f` separator and prove distinct tuples cannot alias or select another rate.
 
-- **Dimension 2.1** — normalized search/keyset and headers are exact → Test `test_model_page_and_conditional_headers`
-- **Dimension 2.2** — response and billing caches converge or fail closed → Test `test_catalogue_revision_governs_both_caches`
+- **Dimension 2.1** — normalized search/keyset and headers are exact → Test `test_model_page_and_conditional_headers` — **NOT STARTED.**
+- **Dimension 2.2** — response and billing caches converge or fail closed → Test `test_catalogue_revision_governs_both_caches` — **NOT STARTED.**
 
 ### §3 — Fleet keyset, detail, and measured ceilings
 
@@ -142,8 +142,8 @@ Measured application-data maxima after middleware auth are:
 
 Projection returns `UZ-LIBRARY-005` (500) if encoding would exceed its ceiling; it never truncates. With `limit` capped at 100 and per-item projection bounded, the ceiling is unreachable in normal operation, so a production firing is a defect rather than a user-facing outcome.
 
-- **Dimension 3.1** — Fleet matching, seek, identity, and foreign detail status are exact → Test `test_fleet_keyset_and_detail_status`
-- **Dimension 3.2** — every path stays within the numeric table → Test `test_library_read_resource_bounds`
+- **Dimension 3.1** — Fleet matching, seek, identity, and foreign detail status are exact → Test `test_fleet_keyset_and_detail_status` — **NOT STARTED.**
+- **Dimension 3.2** — every path stays within the numeric table → Test `test_library_read_resource_bounds` — **NOT STARTED.**
 
 ### §4 — Metadata sinks and synchronized surfaces
 
@@ -151,8 +151,8 @@ Secret/credential metadata carried by authenticated HTTP/UI is limited to canoni
 
 `route_matchers_library.zig` exports `matchWorkspaceFleetLibraries(Path) ?workspace_id` for the three-segment collection and `matchWorkspaceFleetLibraryDetail(Path) ?{workspace_id,tier,id}` for the five-segment detail; router checks detail before collection. Admin catalogue matching remains in its existing owner. `route_matchers_test.zig` pins segment counts, tier enum, encoded IDs, methods, and near misses.
 
-- **Dimension 4.1** — allowed HTTP metadata and forbidden sinks are enforced → Test `test_library_secret_and_metadata_sink_policy`
-- **Dimension 4.2** — routes and all published/consumer inventories agree → Test `test_library_operation_surfaces_are_synchronized`
+- **Dimension 4.1** — allowed HTTP metadata and forbidden sinks are enforced → Test `test_library_secret_and_metadata_sink_policy` — **NOT STARTED.**
+- **Dimension 4.2** — routes and all published/consumer inventories agree → Test `test_library_operation_surfaces_are_synchronized` — **NOT STARTED.**
 
 ## Interfaces
 
