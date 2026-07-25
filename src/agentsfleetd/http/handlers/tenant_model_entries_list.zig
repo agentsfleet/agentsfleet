@@ -1,0 +1,128 @@
+//! GET /v1/tenants/me/models — the paged list read.
+//!
+//! Split from tenant_model_entries.zig (the POST/PATCH/DELETE writers) per RULE
+//! FLL when keyset pagination pushed that file past 350 lines. The division is
+//! not arbitrary: this file owns everything about ASKING for entries — page
+//! bounds, cursor decode, cursor authorization — while the writers own
+//! everything about CHANGING them. The response projection lives one step
+//! further out, in tenant_model_entries_view.zig.
+//!
+//! The read decrypts nothing and issues a fixed number of statements whatever
+//! the page size; see tenant_model_entries_view.zig for how.
+
+const std = @import("std");
+const logging = @import("log");
+const httpz = @import("httpz");
+
+const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
+const ec = @import("../../errors/error_registry.zig");
+const entries_state = @import("../../state/tenant_model_entries.zig");
+const view = @import("tenant_model_entries_view.zig");
+const pagination = @import("../pagination.zig");
+
+const Hx = hx_mod.Hx;
+const log = logging.scoped(.http_tenant_model_entries);
+
+const S_TENANT_CONTEXT_REQUIRED = "Tenant context required";
+const S_QUERY_UNREADABLE = "Query string could not be parsed";
+const S_LIMIT_RANGE = "limit must be an integer between 1 and 100";
+const S_CURSOR_MALFORMED = "starting_after is not a cursor this endpoint issued";
+const S_CURSOR_MISMATCH = "starting_after was issued for a different tenant or page size";
+
+/// Query parameter names. `starting_after` is the request-side spelling even
+/// though the response field is `next_cursor` — that asymmetry is the Stripe
+/// convention `docs/REST_API_DESIGN_GUIDELINES.md` §3 pins, not a slip.
+const Q_LIMIT = "limit";
+const Q_STARTING_AFTER = "starting_after";
+
+pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
+    const tenant_id = hx.principal.tenant_id orelse {
+        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
+        return;
+    };
+
+    const query = req.query() catch {
+        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_QUERY_UNREADABLE);
+        return;
+    };
+    const limit = pagination.parseLimit(query.get(Q_LIMIT)) catch {
+        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_LIMIT_RANGE);
+        return;
+    };
+    const after = decodeStart(hx, tenant_id, limit, query.get(Q_STARTING_AFTER)) catch return;
+
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    var result = view.buildList(hx.alloc, conn, tenant_id, limit, after) catch |err| {
+        log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer result.deinit(hx.alloc);
+
+    hx.res.status = @intFromEnum(std.http.Status.ok);
+    hx.res.json(
+        .{
+            // `models`, not `items`: renaming a shipped v1 field is what
+            // docs/REST_API_DESIGN_GUIDELINES.md §9 forbids, and the owner
+            // declined the equivalent rename on the Fleet gallery. `total` and
+            // `next_cursor` are ADDED beside it, so the page is navigable
+            // without breaking a client. `total` is always null — counting a
+            // keyset page costs a scan the pagination exists to avoid, and §3
+            // requires the key to be present rather than omitted.
+            .models = result.rows,
+            // `std.json.Value`, not `?T`. §3 requires `total` and `next_cursor`
+            // to be PRESENT on every page, including the last, but the row
+            // projection needs `emit_null_optional_fields = false` so an absent
+            // `provider` or `base_url` is omitted rather than serialized as
+            // null (§3 again, and the shape every client already parses). The
+            // flag is global, so these two carry an explicit JSON null instead
+            // of being Zig optionals, and both rules hold at once.
+            //
+            // `total` is always null: counting a keyset page costs the scan
+            // this pagination exists to avoid, and §3 declares null to mean
+            // "not computed" rather than allowing the key to vanish.
+            .total = std.json.Value{ .null = {} },
+            .next_cursor = if (result.next_cursor) |c|
+                std.json.Value{ .string = c }
+            else
+                std.json.Value{ .null = {} },
+            .platform_default_available = result.platform_default_available,
+            .platform_default = result.platform_default,
+        },
+        .{ .emit_null_optional_fields = false },
+    ) catch {
+        common.internalOperationError(hx.res, "Failed to build the models list", hx.req_id);
+    };
+}
+
+/// Decode and authorize `starting_after`. Returns null for the first page.
+///
+/// Two distinct rejections, and the difference is the point. A cursor that will
+/// not decode is `UZ-LIBRARY-001` — the client did not send something this
+/// endpoint issued. A cursor that decodes but names another tenant or another
+/// page size is `UZ-LIBRARY-002` — it is a real cursor for a different query.
+/// Folding them into one code would hide a cross-tenant replay attempt inside
+/// the same signal as a truncated URL.
+///
+/// Nothing is trusted from the cursor except the sort boundary: the tenant used
+/// for the read is always the authenticated one, never the cursor's.
+fn decodeStart(hx: Hx, tenant_id: []const u8, limit: u32, raw: ?[]const u8) !?entries_state.PageStart {
+    const text = raw orelse return null;
+    if (text.len == 0) return null;
+
+    const cursor = pagination.decode(hx.alloc, view.Cursor, text) catch {
+        hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
+        return error.Rejected;
+    };
+    if (!std.mem.eql(u8, cursor.tenant_uuid, tenant_id) or cursor.limit != limit) {
+        hx.fail(ec.ERR_LIBRARY_CURSOR_MISMATCH, S_CURSOR_MISMATCH);
+        return error.Rejected;
+    }
+    return .{ .created_at = cursor.created_at, .id = cursor.id };
+}

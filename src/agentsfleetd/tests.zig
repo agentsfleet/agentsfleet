@@ -26,6 +26,7 @@ test {
     _ = @import("fleet_runtime/config.zig");
     _ = @import("fleet_runtime/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
+    _ = @import("http/pagination.zig");
     _ = @import("secrets/metadata.zig");
     _ = @import("fleet_runtime/activity_publisher.zig");
     _ = @import("fleet_runtime/metering.zig");

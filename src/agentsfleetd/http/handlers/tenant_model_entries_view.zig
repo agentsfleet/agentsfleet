@@ -30,6 +30,7 @@ const secret_probe = @import("../../state/secret_probe.zig");
 const vault = @import("../../state/vault.zig");
 const metadata = @import("../../secrets/metadata.zig");
 const model_rate_cache = @import("../../state/model_rate_cache.zig");
+const pagination = @import("../pagination.zig");
 
 /// One wire row for the `models` array. `kind` is a static `@tagName` slice
 /// (never freed); the rest are heap-owned (see `freeView`). No `api_key`
@@ -66,8 +67,26 @@ pub const PlatformDefaultView = struct {
     }
 };
 
+/// The cursor payload for this page. Field order IS the canonical JSON key
+/// order (`http/pagination.zig`), so reordering these fields invalidates every
+/// cursor already in flight — bump `CURSOR_VERSION` if that ever happens.
+///
+/// It carries `tenant_uuid` and `limit` as well as the sort key: a cursor is
+/// bound to the query that produced it, so replaying one against a different
+/// tenant or a different page size is rejected rather than silently answered.
+pub const Cursor = struct {
+    v: u8 = pagination.CURSOR_VERSION,
+    created_at: i64,
+    id: []const u8,
+    tenant_uuid: []const u8,
+    limit: u32,
+};
+
 pub const ListResult = struct {
     rows: []EntryView,
+    /// Opaque cursor for the next page, or null on the last one. Owned by the
+    /// same allocator as `rows`.
+    next_cursor: ?[]const u8 = null,
     platform_default_available: bool,
     /// The active platform default's identity — the Models page renders the
     /// Default row's model/context from it. Omitted from the wire
@@ -79,6 +98,7 @@ pub const ListResult = struct {
     pub fn deinit(self: *ListResult, alloc: std.mem.Allocator) void {
         for (self.rows) |r| freeView(alloc, r);
         alloc.free(self.rows);
+        if (self.next_cursor) |c| alloc.free(c);
         if (self.platform_default) |*dv| dv.deinit(alloc);
     }
 };
@@ -88,13 +108,24 @@ pub const ListResult = struct {
 /// entry row, so no synthesize-on-read exists here.
 ///
 /// Statement budget, whatever the page size: one selection read, one entry
-/// list, one workspace resolve, one metadata batch, one platform default.
+/// page, one workspace resolve, one metadata batch, one platform default.
 /// Decryptions: zero.
-pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8) !ListResult {
+///
+/// `after` is the decoded boundary from the caller's cursor, already checked
+/// against the authenticated tenant and the requested limit — this function
+/// trusts it, because only the handler can perform that comparison.
+pub fn buildList(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    limit: u32,
+    after: ?entries_state.PageStart,
+) !ListResult {
     var selection = try tenant_provider.activeSelfManagedRef(alloc, conn, tenant_id);
     defer if (selection) |*s| s.deinit(alloc);
 
-    const entries = try entries_state.list(alloc, conn, tenant_id);
+    const page = try entries_state.listPage(alloc, conn, tenant_id, limit, after);
+    const entries = page.rows;
     defer entries_state.deinitEntryList(entries, alloc);
 
     // One workspace resolve for the whole page, not one per row: the credentials
@@ -142,8 +173,23 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
     var platform_default = platformDefaultView(alloc, conn) catch null;
     errdefer if (platform_default) |*dv| dv.deinit(alloc);
 
+    // The cursor is built from the LAST ENTRY ROW, not from the last view: the
+    // seek predicate compares against `core.tenant_model_entries` columns, and
+    // the view's fields are a projection that may not round-trip them.
+    const next_cursor: ?[]const u8 = if (page.has_more and entries.len > 0)
+        try pagination.encode(alloc, Cursor, .{
+            .created_at = entries[entries.len - 1].created_at,
+            .id = entries[entries.len - 1].id,
+            .tenant_uuid = tenant_id,
+            .limit = limit,
+        })
+    else
+        null;
+    errdefer if (next_cursor) |c| alloc.free(c);
+
     return .{
         .rows = try views.toOwnedSlice(alloc),
+        .next_cursor = next_cursor,
         .platform_default_available = platform_default != null,
         .platform_default = platform_default,
     };
