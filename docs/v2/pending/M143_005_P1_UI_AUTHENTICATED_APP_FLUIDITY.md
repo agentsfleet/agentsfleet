@@ -51,7 +51,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |---|---|---|
 | `ui/packages/app/package.json`; `scripts/check-route-bundles.ts`; `scripts/check-route-bundles.test.ts`; `bundle-budgets.json` | EDIT/CREATE | Production route report, named limits, and fail-closed fixtures. |
-| `.github/workflows/test.yml` | EDIT | Run the authenticated bundle gate after the required in-session approval for this workflow edit. |
+| `.github/workflows/test.yml` | EDIT | Run the authenticated bundle gate. **Pre-approved by Indy (Jul 25, 2026)** — the implementing agent does not stop to ask again for this one file and this one purpose. Any other workflow edit still needs its own approval. |
 | `ui/packages/app/app/(dashboard)/layout.tsx` | EDIT | Replace broad client-shell ownership with a server frame and narrow control islands. |
 | `ui/packages/app/components/layout/Shell.tsx` | DELETE | Broad client shell; its structure moves to the server frame and its controls to islands. |
 | `ui/packages/app/components/layout/ShellFrame.tsx`; `ShellControls.tsx` | CREATE | Server-rendered frame and the narrow control island that replaces `Shell.tsx`. |
@@ -244,7 +244,8 @@ Production references to deleted broad shell/provider paths, superseded eager di
 
 ## Discovery (consult log)
 
-- **Consults** — Indy restricted the target to `ui/packages/app`, required fluid inner navigation, prohibited user-experience compromise, and requires consultation before any mock server. Orly's production build found about 134 KiB of framework runtime, about 283 KiB for the lightest authenticated route, and about 107–109 KiB of route-owned code on the heaviest admin routes.
+- **Consults** — Indy restricted the target to `ui/packages/app`, required fluid inner navigation, prohibited user-experience compromise, and requires consultation before any mock server. Indy pre-approved the single `.github/workflows/test.yml` edit that adds the bundle gate (Jul 25, 2026), so the workstream carries no mid-implementation human gate; every other CI change remains gated.
+- **Batch B4 holds two workstreams** — this one and M143_004. They share a batch but no dependency: M143_004 is INFRA and depends on nothing, this one is UI and depends on M143_002. Either may land first, and neither blocks the other. Orly's production build found about 134 KiB of framework runtime, about 283 KiB for the lightest authenticated route, and about 107–109 KiB of route-owned code on the heaviest admin routes.
 - **Metrics review** — build-only aggregate bytes; no product funnel or analytics schema change.
 - **Skill-chain outcomes** — `kishore-spec-new` repository grounding and self-review complete; implementation outcomes populate at CHORE(close).
 - **Deferrals** — none.

@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P1 — the merged chat no longer matches its approved design, while workspace creation persists replay state the product does not need and reports duplicate names as server errors
 **Categories:** API, CLI, DOCS, UI
 **Batch:** B1 — standalone; one PR because both regressions came from the same merged follow-up and the owner requested one specification
-**Branch:** fix/m144-bubbles-workspace-reconciliation
+**Branch:** fix/fleet-bubbles-workspace-reconciliation — the worktree at `~/Projects/agentsfleet-fleet-bubbles-reconciliation` already exists on this branch; do not create a second one
 **Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
 **Depends on:** none — PR #556 is merged on `main`; this workstream corrects its final behaviour
 **Provenance:** LLM-drafted (GPT-5, Jul 25, 2026) from Indy's decisions, commit `68ce6a1e7`, the Jul 24 durable mockup, and current `origin/main` at `d3269188d`
@@ -138,6 +138,11 @@ Delete migration 035 and every API, UI, and CLI dependency on its fields/header.
 - **Dimension 5.1** — Migration 35, embed entry, replay SQL/variants, and browser attempt module are absent with zero references → Test `dead code sweep`
 - **Dimension 5.2** — CLI create sends no `Idempotency-Key`, persists backend ID/name on 201, and leaves local state unchanged on failure → Test `workspace create uses backend identity without replay header`
 - **Dimension 5.3** — Removing slot 35 leaves canonical migrations contiguous through 34 and a fresh database bootstraps successfully → Test `canonical migrations end contiguously at 34`
+- **Dimension 5.4** — A database already at version 35 is refused rather than silently accepted → Test `a ledger ahead of the binary is refused, not ignored`
+
+**Slot 35 is contested; do not hardcode the next number.** This workstream frees slot 35, and M143_001 separately needs a new migration. Whichever lands second must take the next free slot as it stands at CHORE(open) rather than a number written into a spec weeks earlier. M143_001 now says so explicitly. Two specs both naming `035_*.sql` is exactly how a merge produces two migrations with one version.
+
+**Freeing the slot is not the same as reconciling a database that already used it.** Dimension 5.3 proves a *fresh* database bootstraps cleanly, which is the easy half. The shared development database ran migration 35 in deploy run `30147685896`, so its ledger reads 35 while the new binary registers only 1..34. Dimension 5.4 exists because that mismatch must be *detected* — a binary that boots against an ahead-of-itself ledger and proceeds is worse than one that refuses, since the extra columns are then invisible rather than merely inert. The rollout precondition in the Ship gate stays as written; this adds the proof that the precondition is enforced by code rather than by memory.
 
 ## Interfaces
 
@@ -202,9 +207,10 @@ No new event is added: list refresh is recovery, not a new funnel stage. Existin
 | 4.2 | e2e | `duplicate create refreshes authoritative workspace list` | Create name, submit same name → conflict message; refreshed menu contains one selectable row. |
 | 4.3 | unit | `uncertain create reconciles before retry` | Rejected/5xx action → visible check-list message + one refresh + one POST total. |
 | 4.4 | unit | `detached workspace create preserves settlement semantics` | Close pending dialog; failure notice + refresh or success settlement occurs once. |
-| 5.1 | unit | `dead code sweep` | Repository grep finds zero replay fields/header/client-attempt symbols in workspace-create surfaces. |
+| 5.1 | repo-grep | `dead code sweep` | Repository grep finds zero replay fields/header/client-attempt symbols in workspace-create surfaces. Graded by rubric R3, not by a test runner — it lives in no test file by design. |
 | 5.2 | unit | `workspace create uses backend identity without replay header` | CLI request has no key; 201 persists returned ID/name; failure persists nothing. |
 | 5.3 | integration | `canonical migrations end contiguously at 34` | Fresh schema applies every registered migration with no version gap. |
+| 5.4 | integration | `a ledger ahead of the binary is refused, not ignored` | A database whose `schema_migrations` records version 35 while the binary registers 1..34 is detected at startup and reported; it never boots as if reconciled. This is the case the shared development database is actually in after deploy run `30147685896`, and 5.3 does not cover it. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -218,7 +224,7 @@ No new event is added: list refresh is recovery, not a new funnel stage. Existin
 | S2 | Lint and schema/error guards pass | `make lint-all` | exit 0 | P0 | |
 | S3 | Authenticated UI journeys pass | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts tests/e2e/acceptance/workspace-create.spec.ts tests/e2e/acceptance/fleet-thread.spec.ts` | exit 0 | P0 | |
 | S4 | Zig cross-compiles | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S5 | No secrets or oversize production file | `gitleaks detect && git diff --name-only origin/main \| grep -v '\.md$' \| grep -vE '\.test\.|_test\.' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | exit 0 and no output | P0 | |
+| S5 | No secrets or oversize production file | `gitleaks detect && git diff --name-only origin/main \| grep -v '\.md$' \| grep -vE '\.test\.\|_test\.' \| xargs wc -l 2>/dev/null \| awk '$2!="total" && $1>350 {print; c++} END {exit c?1:0}'` | exit 0 | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅, production confirmed not to have applied migration 35, and development migration state reconciled under explicit owner approval → eligible for CHORE(close); otherwise return to EXECUTE or STOP on the schema gate.
 
