@@ -16,6 +16,22 @@ const CONFIG_STATIC_CRED =
     \\{"name":"runner-cp-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"credentials":["cpstatic"],"budget":{"daily_dollars":5.0}}}
 ;
 const GRANT_CP_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6f02";
+
+/// The lease object, or a named error.
+///
+/// A bare `.?.object` on a null lease does not fail this test — it PANICS the
+/// whole test binary, so every remaining `defer` is skipped, including this
+/// file's `cp.cleanupAll`. The leaked fixtures then break unrelated suites:
+/// `runner-cp-a` survives and collides on `uq_runners_token_hash`, and
+/// `cp.WORKSPACE_ID` survives as the lowest uuid under the shared test tenant,
+/// which is what `resolvePrimaryWorkspace` hands to `tenant_provider`. One
+/// assertion failure became ~26. Returning an error keeps the blast radius to
+/// this test and names what actually went wrong.
+fn expectLease(value: std.json.Value) !std.json.ObjectMap {
+    const lease = value.object.get("lease") orelse return error.LeaseFieldAbsent;
+    if (lease == .null) return error.ExpectedLeaseGotNull;
+    return lease.object;
+}
 const STATIC_SENTINEL = "cp_static_sentinel";
 
 fn seedFleetWithConfig(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, session_id: []const u8, config: []const u8) !void {
@@ -71,7 +87,7 @@ test "integration: test_lease_gates_mintable_on_grant" {
         defer cp.ALLOC.free(body);
         const parsed = try std.json.parseFromSlice(std.json.Value, cp.ALLOC, body, .{});
         defer parsed.deinit();
-        const lease = parsed.value.object.get("lease").?.object;
+        const lease = try expectLease(parsed.value);
         const fleet_id = lease.get("event").?.object.get("fleet_id").?.string;
         const policy = lease.get("policy").?.object;
         const mintable = policy.get("mintable").?.array;
@@ -112,7 +128,7 @@ test "integration: test_static_secrets_unaffected_by_grant_gate" {
     defer cp.ALLOC.free(body);
     const parsed = try std.json.parseFromSlice(std.json.Value, cp.ALLOC, body, .{});
     defer parsed.deinit();
-    const lease = parsed.value.object.get("lease").?.object;
+    const lease = try expectLease(parsed.value);
     const policy = lease.get("policy").?.object;
     try std.testing.expectEqual(@as(usize, 0), policy.get("mintable").?.array.items.len);
     const cpstatic = policy.get("secrets_map").?.object.get("cpstatic").?.object;

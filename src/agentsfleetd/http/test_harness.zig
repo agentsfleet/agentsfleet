@@ -44,6 +44,7 @@ const stream_registry = @import("stream_registry.zig");
 const message = @import("test_http_message.zig");
 const server_bringup = @import("test_harness_server.zig");
 const test_fixtures = @import("../db/test_fixtures.zig");
+const queue_consts = @import("../queue/constants.zig");
 
 const TEST_AUTH_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 const TEST_AUDIT_LOG_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
@@ -304,7 +305,39 @@ pub const TestHarness = struct {
         return h;
     }
 
+    /// Empty the readiness index as this harness goes away.
+    ///
+    /// `fleet:ready` is ONE global Redis key and `peek` reads a bounded (64)
+    /// RANDOMIZED sample of it. Every fleet event any suite publishes marks a
+    /// fleet here — directly through `xaddFleetEvent` or indirectly through any
+    /// ingress route a handler test exercises — while teardown removes fleet
+    /// rows with raw SQL and never travels the lifecycle path that clears the
+    /// mark. Left alone the key grows all run, and once it passes the sample
+    /// bound a sibling's freshly-marked fleet is only PROBABLY sampled: a
+    /// deterministic lease assertion silently becomes a coin flip, and the
+    /// failure count wanders between runs while every suite passes alone.
+    ///
+    /// This belongs at teardown, NOT at start: a test may legitimately publish
+    /// an event and then stand up another harness against it, and clearing on
+    /// the way in would erase a mark that test still needs. By the time a
+    /// harness is torn down its test is finished, so every field left in the
+    /// index is spent — and `deinit` runs last, because `defer h.deinit()` is
+    /// registered before the per-test cleanup defers that must precede it.
+    ///
+    /// Best-effort: a Redis that cannot serve `DEL` cannot serve the test either,
+    /// and that surfaces on a real command rather than here.
+    fn resetReadinessIndex(h: *TestHarness) void {
+        var resp = h.queue.command(&.{ "DEL", queue_consts.ready_index_key }) catch |err| {
+            std.log.warn("readiness index reset ignored: {s}", .{@errorName(err)});
+            return;
+        };
+        resp.deinit(h.queue.alloc);
+    }
+
     pub fn deinit(self: *TestHarness) void {
+        // Before the queue handle goes away — see the fn's note for why this is
+        // teardown-side and not start-side.
+        resetReadinessIndex(self);
         self.server.stop();
         self.thread.join();
         self.server.deinit();
