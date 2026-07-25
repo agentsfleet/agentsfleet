@@ -138,6 +138,7 @@ test {
     _ = @import("state/signup_bootstrap_store.zig");
     _ = @import("state/signup_bootstrap_test.zig");
     _ = @import("state/vault.zig");
+    _ = @import("state/secret_reference_txn.zig");
     _ = @import("state/vault_test.zig");
     _ = @import("secrets/crypto_store.zig");
     _ = @import("secrets/crypto_store_test.zig");
