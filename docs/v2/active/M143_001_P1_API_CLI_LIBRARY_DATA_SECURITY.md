@@ -129,6 +129,12 @@ time. Recorded per the amendment rule; the full verdict chain is in §Discovery.
 |------|--------|---------------------|
 | `src/agentsfleetd/observability/otlp/Client_test.zig`; `src/agentsfleetd/queue/redis_subscriber_test.zig` | EDIT | The only two tests that dialled loopback on a test-local multi-threaded `std.Io.Threaded`. Zig 0.16's `HostName.connect` internally spawns `io.async` futures whose await parks on a stack futex word the worker can wake after the frame pops — the exact finding `make/bench.mk` deliberately refuses to suppress. On `common.globalIo()` the async runs inline, so the race is unrepresentable rather than unlikely. Also removes the otlp 200-test's valgrind skip: its stated reason (worker-spawn thread-local storage blocks) does not exist on the serial io. |
 
+### Files Changed — amendments (§§2–4 implementation)
+
+| File | Action | Why it was required |
+|------|--------|---------------------|
+| `ui/packages/app/lib/api/tenant_model_entries.ts`; `lib/api/tenant_model_entries.test.ts` | EDIT | The §1 half of this workstream gave `GET /v1/tenants/me/models` a 50-row default, and this client sent no `limit` and ignored `next_cursor` — so the dashboard's Models page silently stopped rendering a tenant's entries past the first page the moment #558 merged. The original table lists five UI paths; this client is not among them because §1's pagination was drafted as an API-only change. |
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — GRD, VLT, FLS, CNX, WAUTH, RTM, FLL, UFS, ITF, TNM, NDC, NLR, NLG, ORP.
