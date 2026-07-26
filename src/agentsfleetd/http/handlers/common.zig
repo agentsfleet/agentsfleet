@@ -17,6 +17,7 @@ const balance_policy = @import("../../config/balance_policy.zig");
 const runtime_loader = @import("../../config/runtime_loader.zig");
 const subscription_hub = @import("../../events/subscription_hub.zig");
 const fleet_set_cache = @import("../../events/fleet_set_cache.zig");
+const model_library_cache = @import("../../state/model_library_cache.zig");
 const stream_registry = @import("../stream_registry.zig");
 const CredentialBroker = @import("../../credentials/broker.zig");
 const QStashCredentials = @import("../../cron/Credentials.zig");
@@ -44,6 +45,15 @@ const S_PAYLOAD_TOO_LARGE_MAX_2MB = "Payload too large: max 2MB";
 const S_PUNCT_99914B = "{}";
 
 pub const Context = struct {
+    /// §2's catalogue response cache, owned for the process lifetime.
+    ///
+    /// Optional because a cache is an optimization and its absence must never
+    /// change an answer: null means every catalogue read misses and rebuilds,
+    /// which is slower and identical on the wire. That is what lets the many
+    /// test contexts that never exercise §2 leave it unset instead of each
+    /// constructing one — and it means a boot path that forgot to wire it
+    /// degrades to correct-but-slow rather than serving something wrong.
+    model_library_cache: ?*model_library_cache.Cache = null,
     pool: *pg.Pool,
     queue: *queue_redis.Client,
     alloc: std.mem.Allocator,

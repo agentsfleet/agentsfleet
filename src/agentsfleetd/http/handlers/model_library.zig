@@ -1,85 +1,191 @@
-//! GET /v1/models — the model library catalogue (core.model_library), served
-//! to any authenticated tenant. The dashboard Models page is the only
-//! consumer: its pickers fetch the catalogue once per session through a
-//! token-minting Server Action. The catalogue prices the platform's billing
-//! spine and has no anonymous consumer — reads require an authenticated tenant.
+//! GET /v1/models — the model library catalogue (core.model_library), served to
+//! any authenticated tenant as a bounded, cached, conditionally-revalidated page
+//! (§2). The catalogue prices the platform's billing spine and has no anonymous
+//! consumer — reads require an authenticated tenant.
 //!
 //! Provider hosting is encoded in the model_id itself
 //! (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot;
 //! `claude-*` is Anthropic; etc.). Tenants pick provider via a user-named
 //! credential body and `tenant provider set --credential <name>`.
 //!
-//! Per-token rates (input_nanos_per_mtok / output_nanos_per_mtok) accompany
-//! each row. Rates are charged only under platform-managed posture;
-//! self-managed pays a flat overhead and is billed by the tenant's own
-//! provider account. Models that are self-managed-only at the platform tier
-//! carry zero rates; those zeros never enter the cost path because
-//! self-managed uses the flat overhead.
+//! Per-token rates accompany each row. Rates are charged only under
+//! platform-managed posture; self-managed pays a flat overhead and is billed by
+//! the tenant's own provider account.
+//!
+//! This file owns everything about ASKING for a page — bounds, filters, cursor
+//! decode, cache selection. `model_library_page.zig` owns producing one.
+//!
+//! ## The order of operations is the design
+//!
+//! Inputs are validated before a connection is acquired, so a bad `limit` or
+//! cursor costs no pool slot. Then the revision is read — after authentication
+//! and BEFORE cache selection — so the generation a response is stored under is
+//! the one this request actually observed. That ordering is what makes a stale
+//! candidate unreachable rather than dangerous: it lands under a key containing
+//! its own generation, and the next request reads the next generation and looks
+//! somewhere else.
+//!
+//! It also produces §3's statement budget exactly. A cache hit issues one
+//! statement (the revision); a miss issues two (revision + page). Neither number
+//! is arranged for — they fall out of reading the generation before deciding
+//! whether the page has to be built at all.
 
 const std = @import("std");
-const pg = @import("pg");
+const httpz = @import("httpz");
+const logging = @import("log");
+const common_lib = @import("common");
 
+const revision_state = @import("../../state/model_catalogue_revision.zig");
 const model_library_store = @import("../../state/model_library_store.zig");
-const common = @import("common.zig");
+const counters = @import("../../observability/library_read_counters.zig");
+const ec = @import("../../errors/error_registry.zig");
 const hx_mod = @import("hx.zig");
+const pagination = @import("../pagination.zig");
+const query = @import("library/query.zig");
+const catalogue_key = @import("library/catalogue_key.zig");
+const page_mod = @import("model_library_page.zig");
 
 const Hx = hx_mod.Hx;
+const log = logging.scoped(.http_model_library);
 
 /// Route path — matched by the router and shared verbatim with the TypeScript
 /// client (MODEL_LIBRARY_PATH in ui/packages/app/lib/api/model_library.ts).
 pub const MODEL_LIBRARY_PATH = "/v1/models";
 
-/// The per-model row shape — owned by model_library_store (model_id as `id`,
-/// provider, cap, rates). The store's listForLibrary returns these directly.
-const LibraryModel = model_library_store.LibraryRow;
+/// Query parameter names. `starting_after` is the request-side spelling even
+/// though the response field is `next_cursor` — the Stripe convention
+/// `docs/REST_API_DESIGN_GUIDELINES.md` §3 pins, not a slip.
+const Q_LIMIT = "limit";
+const Q_STARTING_AFTER = "starting_after";
+const Q_SEARCH = "q";
+const Q_PROVIDER = "provider";
 
-const ResponseBody = struct {
-    version: []const u8,
-    models: []const LibraryModel,
-};
+const S_QUERY_UNREADABLE = "Query string could not be parsed";
+const S_LIMIT_RANGE = "limit must be an integer between 1 and 100";
+const S_SEARCH_BOUNDS = "q must be at most 128 bytes once normalized, and valid UTF-8";
+const S_CURSOR_MALFORMED = "starting_after is not a cursor this endpoint issued";
+const S_CURSOR_MISMATCH = "starting_after was issued for different filters or page size";
+const S_REVISION_UNAVAILABLE = "The catalogue revision could not be read";
+const S_PAGE_BUILD_FAILED = "Failed to build the catalogue page";
 
-/// Serve the catalogue. Bearer auth and the GET method check run in the route
-/// table / invoke wrapper before this is reached.
-pub fn innerGetModelLibrary(hx: Hx) void {
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
+pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
+    // Opens §3's measurement window at handler entry — after the middleware
+    // chain, which is exactly the boundary §3 states its numeric table at.
+    counters.beginRead();
+    defer counters.endRead();
+
+    const params = req.query() catch {
+        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_QUERY_UNREADABLE);
         return;
     };
-    defer hx.ctx.pool.release(conn);
+    const limit = pagination.parseLimit(params.get(Q_LIMIT)) catch {
+        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_LIMIT_RANGE);
+        return;
+    };
+    const filters = normalizeFilters(hx, params) catch return;
+    const raw_cursor = params.get(Q_STARTING_AFTER);
+    const after = decodeStart(hx, filters, limit, raw_cursor) catch return;
 
-    const body = buildResponse(hx.alloc, conn) catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
+    var db = hx.db() orelse return;
+    defer db.end();
+    counters.noteConnection();
+
+    const revision = revision_state.read(db.conn) catch |err| {
+        log.err("revision_read_failed", .{
+            .error_code = ec.ERR_LIBRARY_REVISION_UNAVAILABLE,
+            .err = @errorName(err),
+        });
+        // No cached data on this path, ever: serving a page whose generation is
+        // unknown is precisely the drift the revision exists to prevent.
+        hx.fail(ec.ERR_LIBRARY_REVISION_UNAVAILABLE, S_REVISION_UNAVAILABLE);
         return;
     };
 
-    // An empty catalogue is a valid state: the table ships unseeded and
-    // platform admins populate it through /v1/admin/models. Return 200 with an
-    // empty `models` array — the dashboard renders "no models yet" rather than
-    // treating provisioning as broken.
-    hx.ok(.ok, body);
+    const key = catalogue_key.cacheKey(revision, filters.q, filters.provider, raw_cursor, limit);
+    const now_ms = common_lib.clock.monotonicMillis();
+
+    if (cachedBody(hx, key, now_ms)) |cached| {
+        page_mod.respond(hx, req, cached);
+        return;
+    }
+
+    const body = page_mod.build(hx, db.conn, filters, after, limit) catch |err| {
+        log.err("page_build_failed", .{
+            .error_code = ec.ERR_LIBRARY_DB_UNAVAILABLE,
+            .err = @errorName(err),
+        });
+        hx.fail(ec.ERR_LIBRARY_DB_UNAVAILABLE, S_PAGE_BUILD_FAILED);
+        return;
+    };
+
+    storeBody(hx, key, body, now_ms);
+    page_mod.respond(hx, req, body);
 }
 
-fn buildResponse(alloc: std.mem.Allocator, conn: *pg.Conn) !ResponseBody {
-    const catalogue = try model_library_store.listForLibrary(alloc, conn);
-    const version = try formatVersion(alloc, catalogue.max_updated_ms);
-    return .{ .version = version, .models = catalogue.models };
+/// Normalize `q` and `provider`. Both out-of-bounds cases are `UZ-LIBRARY-003`.
+fn normalizeFilters(hx: Hx, params: anytype) !page_mod.Filters {
+    const q = query.normalizeSearch(hx.alloc, params.get(Q_SEARCH)) catch {
+        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_SEARCH_BOUNDS);
+        return error.Rejected;
+    };
+    const provider = query.normalizeProvider(hx.alloc, params.get(Q_PROVIDER)) catch {
+        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_SEARCH_BOUNDS);
+        return error.Rejected;
+    };
+    return .{ .q = q, .provider = provider };
 }
 
-/// Format the maximum updated_at_ms as YYYY-MM-DD (UTC). An empty catalogue
-/// (the table ships unseeded — admins populate it via /admin/models) yields
-/// max_updated_ms = 0 → "1970-01-01"; the handler returns that with a 200 and
-/// an empty `models` array (a valid not-yet-provisioned state), never a 503.
-fn formatVersion(alloc: std.mem.Allocator, max_updated_ms: i64) ![]const u8 {
-    const seconds: i64 = @divTrunc(max_updated_ms, 1000);
-    const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(@max(seconds, 0)) };
-    const epoch_day = epoch_seconds.getEpochDay();
-    const year_day = epoch_day.calculateYearDay();
-    const month_day = year_day.calculateMonthDay();
-    return std.fmt.allocPrint(alloc, "{d:0>4}-{d:0>2}-{d:0>2}", .{
-        year_day.year,
-        @intFromEnum(month_day.month),
-        month_day.day_index + 1,
-    });
+/// Decode and authorize `starting_after`. Null means the first page.
+///
+/// Two distinct rejections, and the difference is the point. A cursor that will
+/// not decode is `UZ-LIBRARY-001` — not something this endpoint issued. A cursor
+/// that decodes but names different filters or a different page size is
+/// `UZ-LIBRARY-002` — a real cursor for a different query. Folding them together
+/// would hide a filter change inside the same signal as a truncated URL.
+///
+/// Nothing is trusted from the cursor except the sort boundary: the filters used
+/// for the read are always the request's, never the cursor's.
+fn decodeStart(
+    hx: Hx,
+    filters: page_mod.Filters,
+    limit: u32,
+    raw: ?[]const u8,
+) !?model_library_store.PageBoundary {
+    const text = raw orelse return null;
+    if (text.len == 0) return null;
+
+    const cursor = pagination.decode(hx.alloc, catalogue_key.Cursor, text) catch {
+        hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
+        return error.Rejected;
+    };
+    if (cursor.limit != limit or
+        !pagination.filterMatches(cursor.q, filters.q) or
+        !pagination.filterMatches(cursor.provider, filters.provider))
+    {
+        hx.fail(ec.ERR_LIBRARY_CURSOR_MISMATCH, S_CURSOR_MISMATCH);
+        return error.Rejected;
+    }
+    return .{
+        .display_key = cursor.display_key,
+        .vendor_key = cursor.vendor_key,
+        .uid = cursor.id,
+    };
+}
+
+/// A cached page for this key, or null on a miss.
+///
+/// A cache fault reads as a miss: the page is rebuildable, so failing the
+/// request over it would turn an optimization into a dependency.
+fn cachedBody(hx: Hx, key: anytype, now_ms: i64) ?[]u8 {
+    const cache = hx.ctx.model_library_cache orelse return null;
+    return cache.fetch(key, now_ms) catch null;
+}
+
+/// Admit the page. A refusal (over budget) and an allocation fault are both
+/// non-events — the response is already built and is served either way.
+fn storeBody(hx: Hx, key: anytype, body: []const u8, now_ms: i64) void {
+    const cache = hx.ctx.model_library_cache orelse return;
+    _ = cache.put(key, body, now_ms) catch return;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
@@ -88,21 +194,4 @@ test "MODEL_LIBRARY_PATH is the versioned models route" {
     // pin test: literal is the contract — the wire path the router and the
     // TypeScript client both key on.
     try std.testing.expectEqualStrings("/v1/models", MODEL_LIBRARY_PATH);
-}
-
-test "formatVersion: epoch ms renders as YYYY-MM-DD UTC" {
-    // 1745884800000 ms = 2025-04-29 00:00 UTC (the seed timestamp)
-    const v = try formatVersion(std.testing.allocator, 1745884800000);
-    defer std.testing.allocator.free(v);
-    try std.testing.expectEqualStrings("2025-04-29", v);
-}
-
-test "formatVersion: zero / negative epoch clamps to 1970-01-01" {
-    const v0 = try formatVersion(std.testing.allocator, 0);
-    defer std.testing.allocator.free(v0);
-    try std.testing.expectEqualStrings("1970-01-01", v0);
-
-    const vn = try formatVersion(std.testing.allocator, -1);
-    defer std.testing.allocator.free(vn);
-    try std.testing.expectEqualStrings("1970-01-01", vn);
 }

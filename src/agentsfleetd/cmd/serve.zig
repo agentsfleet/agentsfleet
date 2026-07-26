@@ -22,6 +22,7 @@ const serve_shutdown = @import("serve_shutdown.zig");
 const serve_background = @import("serve_background.zig");
 const pg = @import("pg");
 const serve_r2 = @import("serve_r2.zig");
+const serve_caches = @import("serve_caches.zig");
 const serve_secrets = @import("serve_secrets.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 const subscription_hub = @import("../events/subscription_hub.zig");
@@ -199,7 +200,9 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     var install_wg: common.WaitGroup = .{};
     defer serve_shutdown.awaitInstallWorkers(&install_wg);
 
+    defer serve_caches.deinit();
     var ctx = http_handler.Context{
+        .model_library_cache = try serve_caches.init(alloc),
         .pool = api_pool,
         .queue = &api_queue,
         .install_wg = &install_wg,

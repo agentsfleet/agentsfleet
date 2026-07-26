@@ -191,6 +191,7 @@ test {
     _ = @import("http/handlers/memory/memory_forget_integration_test.zig");
     _ = @import("http/handlers/library/catalog_etag_integration_test.zig");
     _ = @import("http/handlers/library/library_cursor_test.zig");
+    _ = @import("http/handlers/library/catalogue_key.zig");
     _ = @import("http/handlers/library/query.zig");
     _ = @import("http/handlers/library/library_query_normalization_test.zig");
     _ = @import("http/handlers/library/fleet_keyset.zig");
@@ -238,6 +239,8 @@ test {
     _ = @import("http/handlers/fleet/runners_list_test.zig");
     _ = @import("http/handlers/tenant_billing_integration_test.zig");
     _ = @import("http/handlers/model_library.zig");
+    _ = @import("http/handlers/model_library_page.zig");
+    _ = @import("cmd/serve_caches.zig");
     _ = @import("http/handlers/model_library_integration_test.zig");
     _ = @import("http/handlers/admin/model_library_admin.zig");
     _ = @import("http/handlers/admin/model_library_admin_integration_test.zig");
