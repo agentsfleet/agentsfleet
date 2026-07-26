@@ -10,6 +10,7 @@
 //! test-only hook.
 
 const std = @import("std");
+const common = @import("common");
 const pg = @import("pg");
 const base = @import("event_lifecycle_integration_test.zig");
 const fleet_ready = @import("../queue/fleet_ready.zig");
@@ -31,6 +32,10 @@ const FLEET_MEMO = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e04";
 
 /// Polls the group-memo proof issues after the one real create.
 const LEASE_POLLS: usize = 10;
+
+/// Gap between marks in the token-order proof: wide enough that each mint
+/// lands in a later millisecond, so the leading time field must differ.
+const TOKEN_MINT_GAP_MS: u64 = 2;
 
 const CMD_DEL = "DEL";
 const CMD_HGET = "HGET";
@@ -142,6 +147,7 @@ test "integration: a token is never reused across marks of the same fleet" {
     fleet_ready.clear(&h.queue, FLEET_READY_A, first);
     try std.testing.expect(!try isMarked(h, FLEET_READY_A));
 
+    common.sleepNanos(TOKEN_MINT_GAP_MS * std.time.ns_per_ms);
     fleet_ready.mark(&h.queue, FLEET_READY_A);
     const second = (try storedToken(h, FLEET_READY_A)) orelse return error.MarkMissing;
     defer ALLOC.free(second);
@@ -149,10 +155,18 @@ test "integration: a token is never reused across marks of the same fleet" {
     try std.testing.expect(!std.mem.eql(u8, first, second));
 
     // Successive marks also differ without any clear in between.
+    common.sleepNanos(TOKEN_MINT_GAP_MS * std.time.ns_per_ms);
     fleet_ready.mark(&h.queue, FLEET_READY_A);
     const third = (try storedToken(h, FLEET_READY_A)) orelse return error.MarkMissing;
     defer ALLOC.free(third);
     try std.testing.expect(!std.mem.eql(u8, second, third));
+
+    // Tokens minted in ascending wall-clock order also SORT ascending — the
+    // leading millisecond field of the identifier is big-endian text, so an
+    // operator reading the index sees marks in the order they were issued.
+    // A readability property only: uniqueness above never rested on it.
+    try std.testing.expect(std.mem.order(u8, first, second) == .lt);
+    try std.testing.expect(std.mem.order(u8, second, third) == .lt);
 }
 
 test "integration: a clear holding a stale token leaves the newer mark intact" {
