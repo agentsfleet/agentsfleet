@@ -1,5 +1,6 @@
 /** Fleet detail acceptance: an operator can create and inspect an event. */
 import { expect, test } from "@playwright/test";
+import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
@@ -7,6 +8,10 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const RENDER_TIMEOUT_MS = 15_000;
+
+interface EventPage {
+  items: Array<{ request_json: string }>;
+}
 
 test.describe("fleet detail logs", () => {
   test("an operator can open actionable details for a fleet event", async ({ page }) => {
@@ -29,6 +34,18 @@ test.describe("fleet detail logs", () => {
     await composer.getByRole("button", { name: /send/i }).click();
     await expect(page.getByLabel("Fleet chat").getByText(message)).toBeVisible();
     await persisted;
+    const api = clientFor(FIXTURE_KEY.regular);
+    await expect
+      .poll(
+        async () => {
+          const events = await api.get<EventPage>(
+            `/v1/workspaces/${ws}/fleets/${seeded.id}/events?limit=100`,
+          );
+          return events.items.some((event) => event.request_json.includes(message));
+        },
+        { timeout: RENDER_TIMEOUT_MS },
+      )
+      .toBe(true);
 
     // The chat-first console: the summary strip carries status/outcome/cost
     // figures and the chat card carries the conversation.

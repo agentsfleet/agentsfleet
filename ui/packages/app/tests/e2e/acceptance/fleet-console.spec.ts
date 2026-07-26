@@ -85,10 +85,14 @@ test.describe("fleet console", () => {
     await rail.getByRole("link", { name: "Skill" }).click();
     const source = page.getByLabel("Source");
     await expect(source).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await source.getByRole("button", { name: "View source" }).click();
-    // The Skill view shows one document directly — no tab bar. Expanding
-    // reveals the seeded skill body and flips the disclosure to Hide.
-    await expect(source.getByRole("button", { name: "Hide source" })).toBeVisible();
+    const sourceToggle = source.getByRole("button", { name: /^(View|Hide) source$/ });
+    await expect(sourceToggle).toBeVisible();
+    if ((await sourceToggle.getAttribute("aria-expanded")) !== "true") {
+      await sourceToggle.click();
+    }
+    // The Skill view persists its disclosure state, so it may already be open.
+    // Either path must finish expanded with the seeded body visible.
+    await expect(sourceToggle).toHaveAttribute("aria-expanded", "true");
     await expect(source.getByText("acceptance-seed").first()).toBeVisible();
 
     // The way back to the wall — the breadcrumb's first crumb, scoped to its
