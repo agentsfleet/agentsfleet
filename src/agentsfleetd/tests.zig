@@ -89,6 +89,7 @@ test {
     _ = @import("fleet/budget_gate_integration_test.zig");
     _ = @import("fleet/event_lifecycle_reclaim_integration_test.zig");
     _ = @import("fleet/assign_ready_integration_test.zig");
+    _ = @import("fleet/reclaim_sweeper_readiness_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
     _ = @import("fleet/service_token_splits_wire_test.zig");
@@ -112,6 +113,7 @@ test {
     _ = @import("cli/commands.zig");
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
+    _ = @import("auth/runner_token_cache.zig");
     _ = @import("session/session_store_redis_proto_test.zig");
     _ = @import("session/session_store_redis_integration_test.zig");
     _ = @import("session/session_store_redis_ttl_integration_test.zig");
