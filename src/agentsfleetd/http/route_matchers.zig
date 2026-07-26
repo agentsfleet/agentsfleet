@@ -16,6 +16,7 @@ const fleet = @import("route_matchers_fleet.zig");
 const runner_m = @import("route_matchers_runner.zig");
 const connectors = @import("route_matchers_connectors.zig");
 const workspace = @import("route_matchers_workspace.zig");
+const library = @import("route_matchers_library.zig");
 const schedules = @import("route_matchers_schedules.zig");
 
 const S_APPROVALS = "approvals";
@@ -135,6 +136,10 @@ pub fn matchAuthSessionVerify(p: Path) ?[]const u8 {
 pub const matchAdminPlatformKey = billing.matchAdminPlatformKey;
 pub const matchAdminModel = billing.matchAdminModel;
 pub const matchAdminFleetLibrary = billing.matchAdminFleetLibrary;
+/// Re-exported so `router.zig` reaches the workspace library routes through the
+/// facade it already imports — that file is at its 350-line cap and the spec
+/// requires these matchers land "without growing" it.
+pub const matchFleetLibrary = library.matchFleetLibrary;
 pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;
 pub const matchTenantMeteringPeriods = billing.matchTenantMeteringPeriods;
 pub const matchTenantModelEntryById = billing.matchTenantModelEntryById;

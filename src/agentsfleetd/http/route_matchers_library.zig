@@ -28,6 +28,7 @@
 //! route surface exactly as wide as the enum.
 
 const keyset = @import("handlers/library/fleet_keyset.zig");
+const routes = @import("routes.zig");
 
 const S_WORKSPACES = "workspaces";
 const S_FLEET_LIBRARIES = "fleet-libraries";
@@ -62,4 +63,16 @@ pub fn matchWorkspaceFleetLibraryDetail(p: anytype) ?FleetLibraryDetailRoute {
     const tier = keyset.Tier.fromLabel(tier_label) orelse return null;
 
     return .{ .workspace_id = workspace_id, .tier = tier, .id = id };
+}
+
+/// Both library shapes, resolved to a `Route` in one call.
+///
+/// `router.zig` sits at its 350-line cap and the spec requires these matchers be
+/// exported "without growing" it, so the dispatch lives here rather than as two
+/// more lines and an import over there. Order between the two is irrelevant —
+/// they differ in segment count, so no path matches both (see the module note).
+pub fn matchFleetLibrary(p: anytype) ?routes.Route {
+    if (matchWorkspaceFleetLibraries(p)) |ws_id| return .{ .workspace_fleet_library = ws_id };
+    if (matchWorkspaceFleetLibraryDetail(p)) |detail| return .{ .workspace_fleet_library_detail = detail };
+    return null;
 }
