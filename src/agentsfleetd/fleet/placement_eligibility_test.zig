@@ -1,9 +1,9 @@
 // Label-placement eligibility over the real HTTP lease path + live test DB +
-// Redis. The candidate scan (fleet.assign.listCandidates) admits a fleet for a
-// runner only when the fleet's `required_tags` are a subset of the runner's
-// advertised `labels`. These tests drive the actual `POST /v1/runners/leases`
-// route so the filter, the atomic claim, and the event read are all exercised
-// end-to-end — not a re-implemented SELECT.
+// Redis. The candidate scan (fleet.assign.listReadyCandidates) admits a
+// fleet for a runner only when the fleet's `required_tags` are a subset
+// of the runner's advertised `labels`. These tests drive the actual
+// `POST /v1/runners/leases` route so the filter, the atomic claim, and the
+// event read are all exercised end-to-end — not a re-implemented SELECT.
 //
 // Coverage:
 //   * subset match: a [gpu] fleet leases to a gpu-labelled runner, never to a
