@@ -37,11 +37,20 @@ else
 	@echo "✓ [kernel] Runner integration tests passed (Linux real-process proofs)"
 endif
 
+# Host ports are assigned by Docker (docker-compose.yml maps container ports with
+# no fixed host side), so every worktree gets its own and none can collide. These
+# are resolved lazily with `=` -- NOT `:=` -- because the containers may not be
+# running when this Makefile is first parsed; the shell runs at first use, which
+# is always after _ensure-test-infra.
+COMPOSE_PG_PORT = $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')
+COMPOSE_REDIS_PORT = $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')
+COMPOSE_QSTASH_PORT = $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')
+
 # sslmode=disable: the local docker Postgres has no TLS and parseUrl defaults to
 # `.require` (hosted providers mandate it) — without it every local DB-lane test
 # fails at connect with SSLNotSupportedByServer before it can run.
-TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable
-TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:6379
+TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
+TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:$(COMPOSE_REDIS_PORT)
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
 # at parse time; Redis may not be running yet when the Makefile is first evaluated.
 TEST_REDIS_TLS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
@@ -51,7 +60,7 @@ TEST_REDIS_TLS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
 # choose — and nothing it authenticates to holds real data. Derived here from its
 # two plain parts so no credential-shaped blob is stored in the repo.
 # The opt-in live QStash tests read these vars; unset (or server down) → self-skip.
-QSTASH_DEV_URL_LOCAL ?= http://localhost:8080
+QSTASH_DEV_URL_LOCAL ?= http://localhost:$(COMPOSE_QSTASH_PORT)
 QSTASH_DEV_IDENTITY ?= defaultUser
 QSTASH_DEV_SECRET ?= defaultPassword
 QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QSTASH_DEV_IDENTITY)' '$(QSTASH_DEV_SECRET)' | base64 | tr -d '\n')
@@ -75,23 +84,28 @@ else
 	  echo "✗ Docker daemon is not running — start Docker Desktop / dockerd and retry."; \
 	  exit 1; \
 	fi
-	@# container_name in docker-compose.yml is fixed (agentsfleet-postgres / agentsfleet-redis),
-	@# so another worktree's compose can leave stale containers blocking ours. Remove
-	@# by name if they exist but are NOT owned by this project. Idempotent.
-	@this_project=$$(basename "$(CURDIR)"); \
-	for c in agentsfleet-postgres agentsfleet-redis agentsfleet-qstash; do \
-	  owner=$$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' $$c 2>/dev/null); \
-	  if [ -n "$$owner" ] && [ "$$owner" != "$$this_project" ]; then \
-	    echo "→ [infra] Removing stale $$c (owned by project '$$owner')..."; \
-	    docker rm -f $$c >/dev/null; \
-	  fi; \
-	done
+	@# No stale-container sweep: compose namespaces these services per project, so a
+	@# sibling worktree's containers are simply different containers. The sweep that
+	@# used to live here force-removed them by fixed name, which is what let one
+	@# worktree's test run destroy another's mid-flight.
 	@echo "→ [infra] Starting postgres + redis + qstash (waiting for healthchecks)..."
 	@docker compose up -d --wait postgres redis qstash
 	@mkdir -p "$(CURDIR)/.tmp"
 	@echo "→ [infra] Extracting Redis TLS CA cert..."
-	@docker compose cp redis:/tls/server.crt "$(TEST_REDIS_TLS_CA_CERT)" >/dev/null
+	@# No `>/dev/null`: a failed copy used to be silent, and the `test -s` below
+	@# only proved the file was non-empty — which a STALE cert from a destroyed
+	@# container satisfies. Every TLS connection then failed signature
+	@# verification, which reads as dozens of unrelated Redis test failures.
+	@docker compose cp redis:/tls/server.crt "$(TEST_REDIS_TLS_CA_CERT)"
 	@test -s "$(TEST_REDIS_TLS_CA_CERT)" || { echo "✗ Failed to extract Redis TLS cert"; exit 1; }
+	@# Freshness, not size: the copied cert must be byte-identical to the one the
+	@# server is actually presenting.
+	@container_sha=$$(docker compose exec -T redis sha256sum /tls/server.crt | awk '{print $$1}'); \
+	local_sha=$$(shasum -a 256 "$(TEST_REDIS_TLS_CA_CERT)" | awk '{print $$1}'); \
+	if [ "$$container_sha" != "$$local_sha" ]; then \
+	  echo "✗ [infra] Redis CA cert is stale (container $$container_sha != local $$local_sha)"; \
+	  exit 1; \
+	fi
 	@echo "✓ [infra] postgres + redis ready; Redis CA cert at $(TEST_REDIS_TLS_CA_CERT)"
 endif
 
