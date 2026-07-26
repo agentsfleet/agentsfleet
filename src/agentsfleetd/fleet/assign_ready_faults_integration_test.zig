@@ -1,0 +1,274 @@
+//! Fault-injection proofs for the ready-first lease path, riding
+//! `event_lifecycle_integration_test.zig`'s harness (real schema, real Redis;
+//! self-skips when either datastore is absent) like its sibling
+//! `assign_ready_integration_test.zig`.
+//!
+//! Every test here makes the readiness index or its backing consumer group
+//! MISBEHAVE — an over-full index, a key of the wrong type, a group deleted
+//! out-of-band, a field no producer could have written — and proves the lease
+//! path degrades to a bounded no-work answer plus self-repair instead of
+//! failing a runner, stranding an event, or scanning without bound.
+
+const std = @import("std");
+const common = @import("common");
+const base = @import("event_lifecycle_integration_test.zig");
+const fixtures = @import("../db/test_fixtures.zig");
+const fleet_ready = @import("../queue/fleet_ready.zig");
+const queue_consts = @import("../queue/constants.zig");
+const redis_fleet = @import("../queue/redis_fleet.zig");
+const id_format = @import("../types/id_format.zig");
+const mc = @import("../observability/metrics_counters.zig");
+const TestHarness = @import("../http/test_harness.zig").TestHarness;
+
+const CMD_DEL = "DEL";
+const CMD_SET = "SET";
+const CMD_HSET = "HSET";
+const CMD_HGET = "HGET";
+const CMD_XGROUP = "XGROUP";
+const ARG_DESTROY = "DESTROY";
+
+/// Planted where only canonical fleet ids belong: a field no in-repo producer
+/// could have written (every producer validates ids at ingress), so the peek
+/// must both skip it and delete it.
+const STRAY_FIELD = "stray-operator-hset";
+const STRAY_VALUE = "not-a-token";
+
+/// Fleets owned by this suite. Distinct from the sibling suites' ids so a
+/// shared test database never crosses them.
+const FLEET_FAULT_MARK = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e01";
+const FLEET_MEMO_GONE = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e02";
+const FLEET_HEAL = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e03";
+
+/// Ceiling-proof population: more marked fleets than one poll may examine,
+/// with a named remainder the poll must leave marked. The gap between the two
+/// is what makes both assertions below meaningful.
+const UNEXAMINED_REMAINDER: usize = 10;
+const OVERFULL_FLEETS: usize = common.MAX_READY_CANDIDATES_PER_POLL + UNEXAMINED_REMAINDER;
+
+/// Id template for the ceiling population — version nibble 7, variant 8, the
+/// last four digits the loop index, so every id passes the canonical check and
+/// the schema CHECK while staying disjoint from every named fixture above.
+const OVERFULL_ID_FMT = "0195c9da-1e2a-7f13-8abc-2b3e1e0f{d:0>4}";
+
+fn overfullFleetId(buf: *[id_format.UUID_TEXT_LEN]u8, index: usize) ![]const u8 {
+    return std.fmt.bufPrint(buf, OVERFULL_ID_FMT, .{index});
+}
+
+/// Start from an index this test fully owns — same reasoning as the sibling
+/// suite: the readiness index is ONE key shared by every suite in the binary,
+/// and the whole-index assertions here (depth, examined count) cannot be
+/// established over a sibling's leftovers.
+fn clearWholeIndex(h: *TestHarness) !void {
+    var resp = try h.queue.command(&.{ CMD_DEL, queue_consts.ready_index_key });
+    resp.deinit(h.queue.alloc);
+}
+
+/// Turn the index key into a plain string, so every hash command against it
+/// fails with a type error — the cheapest deterministic stand-in for a Redis
+/// that accepts connections but cannot serve the index.
+fn corruptIndexKey(h: *TestHarness) !void {
+    var resp = try h.queue.command(&.{ CMD_SET, queue_consts.ready_index_key, STRAY_VALUE });
+    resp.deinit(h.queue.alloc);
+}
+
+/// Best-effort undo of `corruptIndexKey`, deferred so a failing assertion can
+/// never leave the shared key poisoned for every suite that follows.
+fn dropIndexKey(h: *TestHarness) void {
+    var resp = h.queue.command(&.{ CMD_DEL, queue_consts.ready_index_key }) catch return;
+    resp.deinit(h.queue.alloc);
+}
+
+fn fieldPresent(h: *TestHarness, field: []const u8) !bool {
+    var resp = try h.queue.command(&.{ CMD_HGET, queue_consts.ready_index_key, field });
+    defer resp.deinit(h.queue.alloc);
+    return switch (resp) {
+        .bulk => |v| v != null,
+        else => false,
+    };
+}
+
+/// Delete the fleet's consumer group out-of-band, as an operator cleanup or a
+/// stream migration would — the state the group memo can only discover by
+/// failing a read.
+fn destroyGroup(h: *TestHarness, fleet_id: []const u8) !void {
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
+    var resp = try h.queue.command(&.{ CMD_XGROUP, ARG_DESTROY, key, queue_consts.fleet_consumer_group });
+    resp.deinit(h.queue.alloc);
+}
+
+fn purgeFleet(h: *TestHarness, fleet_id: []const u8) void {
+    redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+}
+
+// ── The candidate ceiling ───────────────────────────────────────────────────
+
+test "integration: a poll against an over-full index examines exactly the ceiling and leaves the remainder marked" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try clearWholeIndex(h);
+
+    // Real active fleets — the candidate query must return them, or the poll
+    // would examine nothing and the ceiling assertion would be vacuous. No
+    // sessions are seeded because nothing here ever leases: every fleet is
+    // marked without work, so the poll's whole job is examine-and-release.
+    var id_buf: [id_format.UUID_TEXT_LEN]u8 = undefined;
+    var name_buf: [32]u8 = undefined;
+    for (0..OVERFULL_FLEETS) |i| {
+        const id = try overfullFleetId(&id_buf, i);
+        const name = try std.fmt.bufPrint(&name_buf, "fault-ceiling-{d}", .{i});
+        try fixtures.seedFleet(conn, id, base.WORKSPACE_ID, name, base.CONFIG_PLAIN, "# fault fixture");
+        fleet_ready.mark(&h.queue, id);
+    }
+    defer {
+        for (0..OVERFULL_FLEETS) |i| {
+            const id = overfullFleetId(&id_buf, i) catch continue;
+            purgeFleet(h, id);
+        }
+        dropIndexKey(h);
+    }
+    try std.testing.expectEqual(@as(u64, OVERFULL_FLEETS), try fleet_ready.depth(&h.queue));
+
+    mc.resetLeasePollMetricsForTest();
+    try std.testing.expect(!try base.pollLease(h));
+
+    // The poll examined exactly the ceiling — the bound this whole path exists
+    // to impose — and cleared exactly the fleets it proved empty, so the
+    // remainder is still waiting for a later poll rather than lost.
+    const snap = mc.snapshot();
+    try std.testing.expectEqual(@as(u64, 1), snap.lease_polls_total);
+    try std.testing.expectEqual(@as(u64, common.MAX_READY_CANDIDATES_PER_POLL), snap.lease_poll_candidates_scanned_total);
+    try std.testing.expectEqual(@as(u64, UNEXAMINED_REMAINDER), try fleet_ready.depth(&h.queue));
+}
+
+// ── Ingress mark failure ────────────────────────────────────────────────────
+
+test "integration: a readiness write failure still returns the entry id to ingress and is counted" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try base.seedFleetWithConfig(conn, FLEET_FAULT_MARK, "fault-mark", base.CONFIG_PLAIN, "6");
+    try clearWholeIndex(h);
+    defer purgeFleet(h, FLEET_FAULT_MARK);
+
+    // With the index key holding a string, the producer's mark must fail —
+    // while the append itself, on its own key, succeeds.
+    try corruptIndexKey(h);
+    defer dropIndexKey(h);
+
+    mc.resetLeasePollMetricsForTest();
+    const event_id = try base.publishEvent(h, FLEET_FAULT_MARK);
+    defer h.queue.alloc.free(event_id);
+
+    // The caller got its entry id — an accepted event is never failed over a
+    // lost hint — and the loss is visible as exactly one counted failure.
+    try std.testing.expect(event_id.len > 0);
+    try std.testing.expectEqual(@as(u64, 1), mc.snapshot().fleet_ready_write_failures_total);
+}
+
+// ── Peek failure ────────────────────────────────────────────────────────────
+
+test "integration: a failed peek answers no-work with zero Postgres round-trips" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    try clearWholeIndex(h);
+
+    // Same corruption as the mark test, now on the read side: the peek errors,
+    // and the poll must answer no-work WITHOUT falling back to the unbounded
+    // scan this path replaced — zero database round-trips is that proof.
+    try corruptIndexKey(h);
+    defer dropIndexKey(h);
+
+    mc.resetLeasePollMetricsForTest();
+    try std.testing.expect(!try base.pollLease(h));
+
+    const snap = mc.snapshot();
+    try std.testing.expectEqual(@as(u64, 1), snap.lease_polls_total);
+    try std.testing.expectEqual(@as(u64, 0), snap.lease_poll_db_roundtrips_total);
+    try std.testing.expectEqual(@as(u64, 0), snap.lease_poll_candidates_scanned_total);
+}
+
+// ── Group-memo invalidation ─────────────────────────────────────────────────
+
+test "integration: a group deleted out-of-band costs one no-work poll and recovers on the next publish" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try base.seedFleetWithConfig(conn, FLEET_MEMO_GONE, "fault-memo", base.CONFIG_PLAIN, "7");
+    try clearWholeIndex(h);
+    defer purgeFleet(h, FLEET_MEMO_GONE);
+
+    // Publish once: the group is created for real and memoized.
+    const first_event = try base.publishEvent(h, FLEET_MEMO_GONE);
+    defer h.queue.alloc.free(first_event);
+
+    // An operator (or a failover) deletes the group behind the memo's back.
+    try destroyGroup(h, FLEET_MEMO_GONE);
+
+    // The poll's read hits the missing group. That failure must cost exactly
+    // one no-work answer — releasing the claim, keeping the mark, dropping the
+    // memo entry — and never fail this fleet until process restart.
+    try std.testing.expect(!try base.pollLease(h));
+
+    // The next publish takes the real create path again (the memo entry is
+    // gone), so the recreated group — started at "0" — sees the backlog and
+    // the fleet leases on the very next poll.
+    const second_event = try base.publishEvent(h, FLEET_MEMO_GONE);
+    defer h.queue.alloc.free(second_event);
+    try std.testing.expect(try base.pollLease(h));
+}
+
+// ── Peek self-heal ──────────────────────────────────────────────────────────
+
+test "integration: a stray non-canonical index field is healed while the real fleet still leases" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try base.seedFleetWithConfig(conn, FLEET_HEAL, "fault-heal", base.CONFIG_PLAIN, "8");
+    try clearWholeIndex(h);
+    defer purgeFleet(h, FLEET_HEAL);
+    defer dropIndexKey(h);
+
+    // The stray HSET an operator could issue by hand: not a canonical UUIDv7,
+    // so the candidate query could never bind it — unhealed, it would poison
+    // the uuid[] cast for every poll that sampled it, forever.
+    {
+        var resp = try h.queue.command(&.{ CMD_HSET, queue_consts.ready_index_key, STRAY_FIELD, STRAY_VALUE });
+        resp.deinit(h.queue.alloc);
+    }
+
+    const event_id = try base.publishEvent(h, FLEET_HEAL);
+    defer h.queue.alloc.free(event_id);
+
+    // The real fleet leases — the stray field cost it nothing...
+    try std.testing.expect(try base.pollLease(h));
+
+    // ...and the peek deleted the stray on its way through, so the index has
+    // healed itself rather than carrying the poison to the next poll.
+    try std.testing.expect(!try fieldPresent(h, STRAY_FIELD));
+}
