@@ -44,10 +44,30 @@ else
 	@echo "✓ [kernel] Runner integration tests passed (Linux real-process proofs)"
 endif
 
-# Host ports are per-worktree and FIXED, assigned into `.env` by
-# scripts/test-infra-ports.sh (run from _ensure-test-infra, before compose). They
-# are still discovered from the running container rather than recomputed here, so
-# these stay the single source of truth about what is actually bound.
+# Host ports are FIXED. scripts/test-infra-ports.sh decides them: a LINKED
+# worktree gets three ports derived from its project name (so worktrees cannot
+# collide); a primary checkout — which is what CI always has — keeps the
+# conventional 5432/6379/8080.
+#
+# Exported into the environment rather than written to `.env`. Compose reads
+# `.env` automatically, which is why the first attempt used it, but in CI the
+# make target runs inside a container as root: the `.env` it wrote was unreadable
+# by the host runner and moved the published ports out from under the connection
+# strings the workflow had already pinned. An exported variable crosses no
+# ownership boundary.
+#
+# `?=` so an explicit override still wins. Computed once per make invocation.
+TEST_INFRA_PORTS := $(shell bash scripts/test-infra-ports.sh 2>/dev/null)
+AGENTSFLEET_PG_HOST_PORT     ?= $(or $(word 1,$(TEST_INFRA_PORTS)),5432)
+AGENTSFLEET_REDIS_HOST_PORT  ?= $(or $(word 2,$(TEST_INFRA_PORTS)),6379)
+AGENTSFLEET_QSTASH_HOST_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),8080)
+export AGENTSFLEET_PG_HOST_PORT
+export AGENTSFLEET_REDIS_HOST_PORT
+export AGENTSFLEET_QSTASH_HOST_PORT
+
+# The live ports are still discovered from the running container rather than
+# assumed from the values above, so these stay the single source of truth about
+# what is actually bound.
 #
 # Resolved lazily with `=` -- NOT `:=` -- because the containers may not be
 # running when this Makefile is first parsed; the shell runs at first use, which
@@ -103,10 +123,7 @@ else
 	@# sibling worktree's containers are simply different containers. The sweep that
 	@# used to live here force-removed them by fixed name, which is what let one
 	@# worktree's test run destroy another's mid-flight.
-	@# Must precede `docker compose up`: it writes the .env that pins this
-	@# worktree's host ports, and compose reads .env at invocation.
-	@printf '→ [infra] Pinning this worktree'"'"'s host ports: '
-	@bash scripts/test-infra-ports.sh
+	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) redis=$(AGENTSFLEET_REDIS_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT)"
 	@echo "→ [infra] Starting postgres + redis + qstash (waiting for healthchecks)..."
 	@docker compose up -d --wait postgres redis qstash
 	@mkdir -p "$(CURDIR)/.tmp"
