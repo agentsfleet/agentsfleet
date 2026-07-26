@@ -10,18 +10,18 @@
 # the database, and the integration lane starts by dropping every schema, so
 # concurrent agents silently destroyed each other's runs.
 #
-# Their host ports are per-worktree but FIXED, assigned by
-# scripts/test-infra-ports.sh into `.env` (which Compose reads automatically, so
-# a bare `docker compose exec` agrees with the Makefile). Letting Docker assign
-# an ephemeral port instead — the obvious way to keep worktrees apart — is what
-# the script's header documents as broken: an ephemeral published port moves on
-# every container restart, and the Makefile resolves it into a URL exactly once,
-# so a restart mid-run points the whole suite at a dead port.
+# Their host ports are FIXED, and `make` exports the values —
+# scripts/test-infra-ports.sh decides them. Letting Docker assign an ephemeral
+# port instead — the obvious way to keep worktrees apart — is what that script's
+# header documents as broken: an ephemeral published port moves on every
+# container restart, and the Makefile resolves it into a URL exactly once, so a
+# restart mid-run points the whole suite at a dead port.
 #
-# The `:-` defaults keep a bare `docker compose up` working in a fresh clone that
-# has never run `make`. They are the conventional ports, so a single-checkout
-# developer sees exactly the upstream behaviour; only multi-worktree isolation
-# depends on `.env` existing.
+# Only a LINKED git worktree gets pinned per-project ports. The `:-` defaults
+# below are what a primary checkout uses, which is what CI always has, and CI
+# hardcodes localhost:5432/6379 into the connection strings it hands the test
+# container — so these defaults are load-bearing, not decorative. They also mean
+# a bare `docker compose up` in a fresh clone behaves exactly as it always did.
 #
 # `agentsfleetd` deliberately KEEPS its fixed name and port 3000: it is the
 # `make up` dev stack, not test infra, and `localhost:3000` is a documented
