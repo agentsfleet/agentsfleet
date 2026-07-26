@@ -54,6 +54,30 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const log = logging.scoped(.secret_reference_txn);
 
+/// Step 0. Whose entries are at stake.
+///
+/// DERIVED from the workspace, never taken from the caller. The credential
+/// lives in a workspace, `core.workspaces.tenant_id` is `NOT NULL`, and that
+/// tenant's entries are the only ones that can reference it. A caller-supplied
+/// tenant answers a different question — "who is asking" — and the two diverge
+/// exactly where it does the most damage:
+///
+///   - A `workspace:any` operator deleting inside another tenant's workspace
+///     passed its OWN tenant. Step 2 matched nothing, the reference count came
+///     back zero, and the delete proceeded straight over live references it had
+///     never looked at — recreating the orphan this whole module exists to
+///     prevent, with the audit trail saying the operation was authorized.
+///   - A platform principal has no tenant at all. The old signature took
+///     `?[]const u8` and skipped steps 2 and 3 entirely on null, so that caller
+///     took no entry locks and also counted zero.
+///
+/// Both were the same mistake: letting the identity of the REQUESTER decide
+/// which rows to lock, when the rows are a property of the CREDENTIAL.
+const OWNING_TENANT =
+    \\SELECT tenant_id::text FROM core.workspaces
+    \\ WHERE workspace_id = $1
+;
+
 /// Step 1. `SELECT 1 ... FOR UPDATE` rather than a plain read: the row lock is
 /// the entire point, and zero rows means the credential is already gone.
 const LOCK_SECRET =
@@ -88,14 +112,27 @@ pub const Error = error{
     /// vault row first. Nothing has been written; the caller rolls back and
     /// reports `UZ-LIBRARY-008`.
     SecretGone,
+
+    /// The workspace naming this credential has no row. `workspace_id` is a
+    /// `NOT NULL` foreign key on `vault.secrets`' owning workspace, so this is
+    /// a broken invariant rather than a race — and it must fail loudly instead
+    /// of falling back to "no tenant, so no references", which is precisely the
+    /// reasoning that let the delete run blind.
+    WorkspaceUnknown,
 };
 
 /// An open reference transaction holding the locks above.
 ///
-/// Exactly one of `commit` or `abort` must run. The intended shape is
-/// `errdefer txn.abort()` immediately after `begin`, then `try txn.commit()` on
-/// the success path — `abort` is idempotent, so the errdefer firing after a
-/// successful commit is harmless.
+/// Exactly one of `commit` or `abort` must run. `abort` is idempotent, so the
+/// shape is `defer txn.abort()` immediately after `begin`, then `txn.commit()`
+/// on the success path — the deferred abort no-ops once the commit closed the
+/// transaction.
+///
+/// **Not `errdefer`.** Every HTTP handler that opens one of these returns
+/// `void`, and an `errdefer` in a function that cannot return an error never
+/// fires. Two call sites carried exactly that, so their rollback was decoration;
+/// the path it actually mattered on — a COMMIT that fails, leaving `open` true
+/// and returning normally — had no rollback at all.
 pub const Txn = struct {
     const Self = @This();
 
@@ -138,7 +175,6 @@ pub fn begin(
     conn: *pg.Conn,
     workspace_id: []const u8,
     key_name: []const u8,
-    tenant_id: ?[]const u8,
 ) (Error || anyerror)!Txn {
     _ = try conn.exec("BEGIN", .{});
     var txn = Txn{ .conn = conn, .open = true, .reference_count = 0 };
@@ -152,7 +188,20 @@ pub fn begin(
         if ((try q.next()) == null) return Error.SecretGone;
     }
 
-    const tid = tenant_id orelse return txn;
+    // Step 0, issued here because step 1 is the cheaper rejection: no point
+    // resolving an owner for a credential that is already gone. Copied out
+    // before the result is drained — the row's bytes belong to the result set,
+    // and steps 2 and 3 run their own queries on this connection.
+    var tenant_buf: [64]u8 = undefined;
+    const tid = blk: {
+        var q = PgQuery.from(try conn.query(OWNING_TENANT, .{workspace_id}));
+        defer q.deinit();
+        const row = (try q.next()) orelse return Error.WorkspaceUnknown;
+        const t = try row.get([]u8, 0);
+        if (t.len == 0 or t.len > tenant_buf.len) return Error.WorkspaceUnknown;
+        @memcpy(tenant_buf[0..t.len], t);
+        break :blk tenant_buf[0..t.len];
+    };
 
     // Step 2 — every entry naming it, in id order, counted while locked.
     {

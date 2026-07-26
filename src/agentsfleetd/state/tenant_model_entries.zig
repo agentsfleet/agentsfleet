@@ -151,6 +151,15 @@ pub fn updateModel(
     return rowToEntry(alloc, row);
 }
 
+/// One entry by id, or null when the tenant has no such row. Caller owns the
+/// result and must `.deinit(alloc)`.
+pub fn getById(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8, id: []const u8) !?Entry {
+    var q = PgQuery.from(try conn.query(sql.SELECT_BY_ID, .{ id, tenant_id }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return null;
+    return try rowToEntry(alloc, row);
+}
+
 pub fn delete(conn: *pg.Conn, tenant_id: []const u8, id: []const u8) !bool {
     const affected = try conn.exec(sql.DELETE, .{ id, tenant_id });
     return (affected orelse 0) > 0;

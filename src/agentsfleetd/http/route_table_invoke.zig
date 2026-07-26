@@ -20,6 +20,7 @@ const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
 const tenant_provider_h = @import("handlers/tenant_provider.zig");
 const tenant_model_entries_h = @import("handlers/tenant_model_entries.zig");
 const tenant_model_entries_list_h = @import("handlers/tenant_model_entries_list.zig");
+const tenant_model_entries_delete_h = @import("handlers/tenant_model_entries_delete.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
 const admin_models = @import("handlers/admin/model_library_admin.zig");
 const grants = @import("handlers/integration_grants/handler.zig");
@@ -166,7 +167,7 @@ pub fn invokeTenantModelEntryById(hx: *Hx, req: *httpz.Request, route: router.Ro
     const entry_id = route.tenant_model_entry_by_id;
     switch (req.method) {
         .PATCH => tenant_model_entries_h.innerUpdateModelEntry(hx.*, req, entry_id),
-        .DELETE => tenant_model_entries_h.innerDeleteModelEntry(hx.*, req, entry_id),
+        .DELETE => tenant_model_entries_delete_h.innerDeleteModelEntry(hx.*, req, entry_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }

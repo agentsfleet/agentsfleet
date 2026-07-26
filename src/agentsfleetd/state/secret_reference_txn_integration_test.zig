@@ -148,7 +148,7 @@ test "integration: test_secret_reference_paths_serialize: delete first makes the
     // answer UZ-LIBRARY-008 instead of a 500.
     try std.testing.expectError(
         txn.Error.SecretGone,
-        txn.begin(db.a, WORKSPACE, KEY_NAME, TENANT),
+        txn.begin(db.a, WORKSPACE, KEY_NAME),
     );
 
     // And nothing was written on the way to that refusal.
@@ -171,7 +171,7 @@ test "integration: test_secret_reference_paths_serialize: producer first makes t
     try std.testing.expect(try tryLockSecret(db.b));
 
     // Producer opens the protocol and holds all three locks.
-    var t = try txn.begin(db.a, WORKSPACE, KEY_NAME, TENANT);
+    var t = try txn.begin(db.a, WORKSPACE, KEY_NAME);
     errdefer t.abort();
 
     // The delete path's first step cannot proceed while that is open.
@@ -208,12 +208,12 @@ test "integration: test_secret_reference_paths_serialize: the reference count is
     // Step 2 counts the entries it locked, in the same statement that locked
     // them. A caller re-reading the count separately could observe a different
     // set than the one it holds locks on, which is the bug this shape avoids.
-    var t = try txn.begin(db.a, WORKSPACE, KEY_NAME, TENANT);
+    var t = try txn.begin(db.a, WORKSPACE, KEY_NAME);
     defer t.abort();
     try std.testing.expectEqual(@as(usize, 1), t.reference_count);
 }
 
-test "integration: test_secret_reference_paths_serialize: a platform principal skips the tenant-scoped locks" {
+test "integration: test_secret_reference_paths_serialize: a caller with no tenant of its own still counts the workspace's references" {
     const alloc = std.testing.allocator;
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
@@ -222,13 +222,26 @@ test "integration: test_secret_reference_paths_serialize: a platform principal s
     try seed(alloc, db.a);
     defer teardown(db.a);
 
-    // The credential surface is workspace-scoped while the registry is
-    // tenant-scoped, so a principal holding no registry has nothing to lock at
-    // steps 2 and 3. Step 1 still runs — the vault row is the serialization
-    // point for every participant, including this one.
-    var t = try txn.begin(db.a, WORKSPACE, KEY_NAME, null);
+    // This used to assert the opposite, and the opposite was the bug. The
+    // protocol took the tenant from the CALLER, so a principal with none — a
+    // platform operator, or a `workspace:any` holder acting inside someone
+    // else's workspace — skipped steps 2 and 3 entirely and got a reference
+    // count of zero. A delete then proceeded straight over live references it
+    // had never looked at, producing the orphan this module exists to prevent.
+    //
+    // The tenant is now derived from the workspace, so who is asking cannot
+    // change which rows are protected.
+    var pre = try entries_state.create(alloc, db.a, .{
+        .id = ENTRY_ID,
+        .tenant_id = TENANT,
+        .model_id = MODEL_ID,
+        .secret_ref = KEY_NAME,
+    });
+    pre.deinit(alloc);
+
+    var t = try txn.begin(db.a, WORKSPACE, KEY_NAME);
     defer t.abort();
-    try std.testing.expectEqual(@as(usize, 0), t.reference_count);
+    try std.testing.expectEqual(@as(usize, 1), t.reference_count);
 
     // It really is holding the row: a contender must still be excluded.
     try std.testing.expect(!(try tryLockSecret(db.b)));
