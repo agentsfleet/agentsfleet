@@ -132,6 +132,7 @@ test {
     _ = @import("state/workspace_onboarding.zig");
     _ = @import("state/model_rate_cache.zig");
     _ = @import("state/model_rate_cache_integration_test.zig");
+    _ = @import("state/model_rate_cache_key_test.zig");
     _ = @import("state/model_library_seed_integration_test.zig");
     _ = @import("state/account_teardown.zig");
     _ = @import("state/account_teardown_test.zig");
@@ -178,6 +179,8 @@ test {
     _ = @import("http/handlers/memory/memory_forget_integration_test.zig");
     _ = @import("http/handlers/library/catalog_etag_integration_test.zig");
     _ = @import("http/handlers/library/library_cursor_test.zig");
+    _ = @import("http/handlers/library/query.zig");
+    _ = @import("http/handlers/library/library_query_normalization_test.zig");
     _ = @import("http/handlers/fleets/create.zig");
     _ = @import("http/handlers/fleets/create_install_steps.zig");
     _ = @import("http/handlers/fleets/create_install_steps_lifecycle_test.zig");
