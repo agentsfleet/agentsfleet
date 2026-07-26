@@ -75,6 +75,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .admin_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokePlatformFleetLibrary },
         .admin_fleet_library_by_id => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokePlatformFleetLibraryById },
         .workspace_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokeWorkspaceFleetLibrary },
+        .workspace_fleet_library_detail => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokeWorkspaceFleetLibraryDetail },
 
         // Admin platform keys + model catalogue — platform-plane scopes
         // (`platform-key:{read,admin}`, `model:{read,admin}`) resolved per-method

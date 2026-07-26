@@ -40,8 +40,19 @@ pub fn invokePlatformFleetLibraryById(hx: *Hx, req: *httpz.Request, route: route
 pub fn invokeWorkspaceFleetLibrary(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     const workspace_id = route.workspace_fleet_library;
     switch (req.method) {
-        .GET => library.innerGallery(hx.*, workspace_id),
+        .GET => library.innerGallery(hx.*, req, workspace_id),
         .POST => library.innerTenantOnboard(hx.*, req, workspace_id),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
+}
+
+/// GET one gallery entry. Read-only: there is no PATCH/DELETE here, because
+/// mutating a platform row is an operator action on the admin routes above and
+/// mutating a tenant row is not yet a supported operation.
+pub fn invokeWorkspaceFleetLibraryDetail(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const detail = route.workspace_fleet_library_detail;
+    switch (req.method) {
+        .GET => library.innerGalleryDetail(hx.*, detail.workspace_id, detail.tier, detail.id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }

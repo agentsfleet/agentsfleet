@@ -5,6 +5,7 @@ const catalog_patch = @import("catalog_patch.zig");
 pub const innerPlatformOnboard = onboard.innerPlatformOnboard;
 pub const innerTenantOnboard = onboard.innerTenantOnboard;
 pub const innerGallery = @import("gallery.zig").innerGallery;
+pub const innerGalleryDetail = @import("gallery_detail.zig").innerGalleryDetail;
 
 // The operator catalog (M128) — the read, curate, publish, and delete arms of
 // the same resource `onboard.zig` writes.

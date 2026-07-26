@@ -65,10 +65,16 @@
 // mudballs this tripwire would not have seen — and it is exactly what these 2
 // additions would otherwise have hidden behind. A ratchet that is not re-tightened
 // after a removal only measures the high-water mark, never the code.
+//
+// §3's Fleet gallery added 2 more (library/gallery.zig, "Failed to list this
+// workspace's fleet libraries"; library/gallery_detail.zig, "Failed to load this
+// fleet library entry"). Each names what the caller lost in plain English — no
+// schema names, no @errorName, no state-machine language — so they are counted
+// rather than mudball-ok'd (84 -> 86).
 const std = @import("std");
 const common = @import("common");
 
-const BASELINE_CALL_SITE_COUNT: usize = 84;
+const BASELINE_CALL_SITE_COUNT: usize = 86;
 const CALL_SITE_NEEDLE = "internalOperationError(";
 const HANDLERS_DIR_PATH = "src/agentsfleetd/http/handlers";
 // `http/server.zig` sits one level above `http/handlers/` (the dispatcher,

@@ -68,6 +68,10 @@ pub fn templateFor(route: router.Route) []const u8 {
         .qstash_schedule_ingress => "/v1/ingress/qstash/schedules",
 
         .workspace_fleet_library => WORKSPACE ++ "/fleet-libraries",
+        // Both path parameters collapse: `{tier}` is a two-value enum, but a
+        // template that spelled it out would make this label's cardinality a
+        // function of the tier list rather than of the route.
+        .workspace_fleet_library_detail => WORKSPACE ++ "/fleet-libraries/{tier}/{id}",
         .workspace_fleets => WORKSPACE ++ "/fleets",
         .patch_workspace_fleet => WORKSPACE_FLEET,
         .workspace_secrets => WORKSPACE ++ "/secrets",
