@@ -21,6 +21,7 @@ const clock = @import("common").clock;
 const auth_mw = @import("../auth/middleware/mod.zig");
 const oidc = @import("../auth/oidc.zig");
 const api_key = @import("../auth/api_key.zig");
+const token_cache = @import("../auth/runner_token_cache.zig");
 const api_key_lookup = @import("../cmd/api_key_lookup.zig");
 const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
 const error_registry = @import("../errors/error_registry.zig");
@@ -273,6 +274,13 @@ fn setGateRunner(h: *TestHarness, admin_state: []const u8) !void {
         \\VALUES ($1::uuid, 'host-gate-test', $2, 'dev_none', $3, '[]'::jsonb, NULL, 0, 0, 0)
         \\ON CONFLICT (id) DO UPDATE SET admin_state = EXCLUDED.admin_state
     , .{ GATE_RUNNER_ID, hash[0..], admin_state });
+    // This raw write stands in for an operator action, so it owes what the
+    // operator plane owes: `runner_patch.zig` and `runner_delete.zig` both drop
+    // the runner's memoized verdict once their write commits. Without it the
+    // fixture flips admin_state behind the cache's back — a state production
+    // cannot reach — and the 401 below would be waiting out ENTRY_TTL_MS rather
+    // than testing the gate. The assertion itself is unchanged.
+    token_cache.invalidateRunner(GATE_RUNNER_ID);
 }
 
 fn cleanupGate(h: *TestHarness) void {

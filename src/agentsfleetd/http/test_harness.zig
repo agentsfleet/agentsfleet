@@ -45,6 +45,7 @@ const message = @import("test_http_message.zig");
 const server_bringup = @import("test_harness_server.zig");
 const test_fixtures = @import("../db/test_fixtures.zig");
 const runner_token_cache = @import("../auth/runner_token_cache.zig");
+const group_memo = @import("../queue/fleet_group_memo.zig");
 
 const TEST_AUTH_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 const TEST_AUDIT_LOG_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
@@ -189,6 +190,14 @@ pub const TestHarness = struct {
         // second suite to use a body would authenticate as the first one's runner
         // until the entry expired.
         runner_token_cache.resetForTest();
+        // Same reasoning, second process-global memo. `_ensure-test-infra`
+        // flushes Redis once for the whole binary while this memo lives for the
+        // whole binary too, and any teardown that drops a stream by hand takes
+        // its consumer group with it — so a later suite polling that fleet reads
+        // "group ensured", skips the create, and spends its poll on NOGROUP.
+        // Production only reaches that state through `purgeFleetRedisState`,
+        // which clears the memo as it goes.
+        group_memo.resetForTest();
         db_ctx.pool.release(db_ctx.conn);
         // Ownership transfers to h.pool below, but until we successfully
         // return h the pool is THIS function's responsibility — without

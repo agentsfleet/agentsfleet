@@ -15,7 +15,6 @@ pub const clock = @import("clock.zig");
 /// modules (the `test-auth` portability gate). See `cache_table.zig`.
 const cache_table = @import("cache_table.zig");
 pub const CacheTable = cache_table.CacheTable;
-pub const CacheTableOptions = cache_table.Options;
 pub const NEVER_EXPIRES = cache_table.NEVER_EXPIRES;
 
 /// Process-wide blocking sync (`common.Mutex`/`Condition`) + their shared `Io`
