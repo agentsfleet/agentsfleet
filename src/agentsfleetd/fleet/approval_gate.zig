@@ -17,6 +17,7 @@ const approval_gate_async = @import("../fleet_runtime/approval_gate_async.zig");
 const resolver = @import("../fleet_runtime/approval_gate_resolver.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
+const fleet_ready = @import("../queue/fleet_ready.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const gate_constants = @import("../fleet_runtime/approval_gate_constants.zig");
 const FleetSession = @import("fleet_session.zig");
@@ -58,7 +59,7 @@ pub fn checkApprovalGate(
     );
     if (anomaly == .auto_kill) {
         logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_AUTO_KILL, event.event_id);
-        pauseFleet(pool, session.fleet_id);
+        pauseFleet(pool, redis, session.fleet_id);
         return .{ .auto_killed = .anomaly };
     }
 
@@ -79,7 +80,7 @@ pub fn checkApprovalGate(
         },
         .auto_kill => {
             logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_AUTO_KILL, event.event_id);
-            pauseFleet(pool, session.fleet_id);
+            pauseFleet(pool, redis, session.fleet_id);
             return .{ .auto_killed = .policy };
         },
         .requires_approval => {
@@ -219,12 +220,18 @@ fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *FleetSession, eve
     log.debug("gate_event", .{ .fleet_id = session.fleet_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });
 }
 
-fn pauseFleet(pool: *pg.Pool, fleet_id: []const u8) void {
+fn pauseFleet(pool: *pg.Pool, redis: *queue_redis.Client, fleet_id: []const u8) void {
     const conn = pool.acquire() catch return;
     defer pool.release(conn);
     _ = conn.exec(
         \\UPDATE core.fleets SET status = 'paused', updated_at = $1 WHERE id = $2::uuid
-    , .{ clock.nowMillis(), fleet_id }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+    , .{ clock.nowMillis(), fleet_id }) catch |err| return log.warn(logging.EVENT_IGNORED_ERROR, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+    // A paused fleet leaves the candidate query's reach, so the poll-site
+    // clear can never remove its readiness field — clear it here, after the
+    // pause committed, the same discipline as the fleet-status PATCH path.
+    // On a failed UPDATE the clear is skipped: the fleet is still active and
+    // its mark still names live work.
+    fleet_ready.forceClear(redis, fleet_id);
 }
 
 fn cleanupPendingKey(redis: *queue_redis.Client, fleet_id: []const u8, action_id: []const u8) void {
