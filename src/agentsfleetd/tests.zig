@@ -135,6 +135,8 @@ test {
     _ = @import("state/model_rate_cache_key_test.zig");
     _ = @import("state/model_library_cache.zig");
     _ = @import("state/model_library_cache_test.zig");
+    _ = @import("state/model_catalogue_revision.zig");
+    _ = @import("state/model_catalogue_revision_integration_test.zig");
     _ = @import("state/model_library_seed_integration_test.zig");
     _ = @import("state/account_teardown.zig");
     _ = @import("state/account_teardown_test.zig");
