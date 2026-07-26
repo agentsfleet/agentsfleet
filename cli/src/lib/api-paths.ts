@@ -14,6 +14,7 @@ export const WORKSPACES_COLLECTION_PATH = "/v1/workspaces";
 export const TENANT_API_KEYS_PATH = "/v1/api-keys";
 export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
+export const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
 // First-party Fleet library catalog — global (not workspace-scoped),
 // metadata only. Backs `agentsfleet library` (the platform shop-window).
@@ -49,7 +50,10 @@ export const wsFleetEventsPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/events`;
 
 // Workspace-scoped per-fleet SSE live tail.
-export const wsFleetEventsStreamPath = (wsId: string, fleetId: string): string =>
+export const wsFleetEventsStreamPath = (
+  wsId: string,
+  fleetId: string,
+): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/events/stream`;
 
 // Workspace-scoped per-fleet durable-memory entries (read-only).
@@ -63,15 +67,13 @@ export const wsFleetSchedulePath = (
   wsId: string,
   fleetId: string,
   scheduleId: string,
-): string =>
-  `${wsFleetSchedulesPath(wsId, fleetId)}/${enc(scheduleId)}`;
+): string => `${wsFleetSchedulesPath(wsId, fleetId)}/${enc(scheduleId)}`;
 
 export const wsFleetScheduleSyncPath = (
   wsId: string,
   fleetId: string,
   scheduleId: string,
-): string =>
-  `${wsFleetSchedulePath(wsId, fleetId, scheduleId)}:sync`;
+): string => `${wsFleetSchedulePath(wsId, fleetId, scheduleId)}:sync`;
 
 // Workspace-aggregate event history.
 export const wsEventsPath = (wsId: string): string =>

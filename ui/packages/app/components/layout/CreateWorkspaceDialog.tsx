@@ -15,19 +15,29 @@ import {
   Label,
   Spinner,
 } from "@agentsfleet/design-system";
+import {
+  hasWorkspaceNameContent,
+  isWorkspaceNameSafe,
+  trimWorkspaceName,
+  WORKSPACE_NAME_MAX_CODEPOINTS,
+} from "@/lib/api/workspaces";
 
 type Props = {
   open: boolean;
   pending: boolean;
   error: string | null;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (name?: string) => void | Promise<void>;
+  onSubmit: (name: string) => void | Promise<void>;
   restoreFocus?: () => void;
 };
 
 const WORKSPACE_DESCRIPTION =
-  "Use workspaces to organize fleets, teammates, and credentials within your tenant. Leave the name blank to generate one.";
+  "Use workspaces to organize fleets, teammates, and credentials within your tenant.";
 const WORKSPACE_NAME_FIELD = "workspace-name";
+const WORKSPACE_NAME_REQUIRED = "Enter a workspace name.";
+const WORKSPACE_NAME_TOO_LONG = `Use ${WORKSPACE_NAME_MAX_CODEPOINTS} characters or fewer.`;
+const WORKSPACE_NAME_UNSAFE =
+  "Remove control or directional formatting characters.";
 const CREATE_FORM_TEST_ID = "workspace-create-form";
 
 export default function CreateWorkspaceDialog({
@@ -44,9 +54,26 @@ export default function CreateWorkspaceDialog({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const value = new FormData(event.currentTarget).get(WORKSPACE_NAME_FIELD);
-    const name =
-      typeof value === "string" ? value.trim() || undefined : undefined;
+    const input = event.currentTarget.elements.namedItem(
+      WORKSPACE_NAME_FIELD,
+    ) as HTMLInputElement;
+    const name = trimWorkspaceName(input.value);
+    if (!hasWorkspaceNameContent(name)) {
+      input.setCustomValidity(WORKSPACE_NAME_REQUIRED);
+      input.reportValidity();
+      return;
+    }
+    if ([...name].length > WORKSPACE_NAME_MAX_CODEPOINTS) {
+      input.setCustomValidity(WORKSPACE_NAME_TOO_LONG);
+      input.reportValidity();
+      return;
+    }
+    if (!isWorkspaceNameSafe(name)) {
+      input.setCustomValidity(WORKSPACE_NAME_UNSAFE);
+      input.reportValidity();
+      return;
+    }
+    input.setCustomValidity("");
     void onSubmit(name);
   }
 
@@ -68,13 +95,16 @@ export default function CreateWorkspaceDialog({
             <DialogDescription>{WORKSPACE_DESCRIPTION}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor={inputId}>Name (optional)</Label>
+            <Label htmlFor={inputId}>Name</Label>
             <Input
               id={inputId}
               name={WORKSPACE_NAME_FIELD}
               placeholder="acme-prod"
               autoComplete="off"
               disabled={pending}
+              required
+              aria-required="true"
+              onInput={(event) => event.currentTarget.setCustomValidity("")}
               data-testid="workspace-name-input"
             />
           </div>

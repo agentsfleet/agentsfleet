@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
   type ReactNode,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -48,6 +49,7 @@ export function WorkspaceCreationProvider({
   const router = useRouter();
   const { notice, showNotice } = useWorkspaceNotice();
   const [routeSettlement, setRouteSettlement] = useState<CreateWorkspaceResponse | null>(null);
+  const [reconciliationPending, startReconciliation] = useTransition();
 
   const beginRouteSettlement = useCallback((workspace: CreateWorkspaceResponse) => {
     setRouteSettlement(workspace);
@@ -62,6 +64,9 @@ export function WorkspaceCreationProvider({
           router.refresh();
         }
       },
+      onFailure() {
+        startReconciliation(() => router.refresh());
+      },
       onDetachedFailure(message: string) {
         showNotice("destructive", message);
       },
@@ -69,6 +74,18 @@ export function WorkspaceCreationProvider({
     [beginRouteSettlement, pathname, router, showNotice],
   );
   const controller = useWorkspaceCreationController(lifecycle);
+  const controllerCreate = controller.create;
+  const create = useCallback(
+    (
+      name: string,
+      owner: symbol,
+      callbacks: WorkspaceCreationCallbacks,
+    ) => {
+      if (reconciliationPending) return Promise.resolve();
+      return controllerCreate(name, owner, callbacks);
+    },
+    [controllerCreate, reconciliationPending],
+  );
 
   useEffect(() => {
     if (!routeSettlement) return;
@@ -91,12 +108,24 @@ export function WorkspaceCreationProvider({
   const value = useMemo(
     () => ({
       ...controller,
+      create,
       dismiss,
-      locked: controller.pending || routeSettlement !== null,
+      locked:
+        controller.pending ||
+        reconciliationPending ||
+        routeSettlement !== null,
+      pending: controller.pending || reconciliationPending,
       settlingWorkspace: routeSettlement,
       showNotice,
     }),
-    [controller, dismiss, routeSettlement, showNotice],
+    [
+      controller,
+      create,
+      dismiss,
+      reconciliationPending,
+      routeSettlement,
+      showNotice,
+    ],
   );
 
   return (
@@ -127,7 +156,7 @@ export function useWorkspaceCreation(callbacks: WorkspaceCreationCallbacks) {
     [],
   );
   const create = useCallback(
-    (name?: string) => sharedCreate(
+    (name: string) => sharedCreate(
       name,
       ownerRef.current,
       { onSuccess: notifySuccess },

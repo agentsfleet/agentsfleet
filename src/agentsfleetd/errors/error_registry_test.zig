@@ -88,6 +88,13 @@ test "UZ-AGT-009 stays 404 (fleet not found, pinned)" {
     );
 }
 
+test "workspace name conflict stays 409 with dashboard-safe guidance" {
+    const entry = reg.lookup(reg.ERR_WORKSPACE_NAME_EXISTS);
+    try std.testing.expectEqual(std.http.Status.conflict, entry.http_status);
+    const user_message = entry.user_message orelse return error.TestExpectedUserMessage;
+    try std.testing.expect(std.mem.indexOf(u8, user_message, "refreshed list") != null);
+}
+
 test "UNKNOWN and UZ-INTERNAL-001 are distinct (distinguish error classes)" {
     const internal_001 = reg.lookup(reg.ERR_INTERNAL_DB_UNAVAILABLE);
     try std.testing.expect(

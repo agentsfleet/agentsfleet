@@ -4,11 +4,6 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createWorkspaceAction } from "@/app/(dashboard)/actions";
 import type { CreateWorkspaceResponse } from "@/lib/api/workspaces";
 import { presentErrorString } from "@/lib/errors";
-import {
-  acquireWorkspaceCreateAttempt,
-  clearWorkspaceCreateAttempt,
-  type WorkspaceCreateAttempt,
-} from "@/lib/workspace-create-attempt";
 
 export type WorkspaceCreationCallbacks = {
   onSuccess: (workspace: CreateWorkspaceResponse) => void;
@@ -16,6 +11,7 @@ export type WorkspaceCreationCallbacks = {
 
 export type WorkspaceCreationLifecycle = {
   onSuccess: (workspace: CreateWorkspaceResponse, attached: boolean) => void;
+  onFailure: () => void;
   onDetachedFailure: (message: string) => void;
 };
 
@@ -23,10 +19,11 @@ type Attempt = {
   attached: boolean;
   callbacks: WorkspaceCreationCallbacks;
   owner: symbol;
-  request: WorkspaceCreateAttempt;
 };
 
 const CREATE_WORKSPACE_ACTION = "create workspace";
+const RECONCILIATION_GUIDANCE =
+  "Refreshing the workspace list. Check it before retrying.";
 
 export type CreatedWorkspace = {
   id: string;
@@ -43,7 +40,6 @@ export function useWorkspaceCreationController(
   >([]);
   const mountedRef = useRef(true);
   const attemptRef = useRef<Attempt | null>(null);
-  const recoverableAttemptRef = useRef<WorkspaceCreateAttempt | null>(null);
   const lifecycleRef = useRef(lifecycle);
 
   useLayoutEffect(() => {
@@ -99,43 +95,35 @@ export function useWorkspaceCreationController(
   );
 
   const completeFailure = useCallback((attempt: Attempt, message: string) => {
+    lifecycleRef.current.onFailure();
+    const reconciledMessage = `${message} ${RECONCILIATION_GUIDANCE}`;
     if (attempt.attached) {
-      setError(message);
+      setError(reconciledMessage);
     } else {
-      lifecycleRef.current.onDetachedFailure(message);
+      lifecycleRef.current.onDetachedFailure(reconciledMessage);
     }
   }, []);
 
   const create = useCallback(
     async (
-      name: string | undefined,
+      name: string,
       owner: symbol,
       callbacks: WorkspaceCreationCallbacks,
     ) => {
       if (attemptRef.current) return;
 
-      const request = acquireWorkspaceCreateAttempt(
-        name,
-        recoverableAttemptRef.current,
-      );
-      recoverableAttemptRef.current = request;
-      const attempt: Attempt = { attached: true, callbacks, owner, request };
+      const attempt: Attempt = { attached: true, callbacks, owner };
       attemptRef.current = attempt;
       setError(null);
       setPending(true);
 
       try {
-        const result = await createWorkspaceAction({
-          idempotencyKey: request.idempotencyKey,
-          name: request.name,
-        });
+        const result = await createWorkspaceAction({ name });
         if (!mountedRef.current || attemptRef.current !== attempt) return;
 
         attemptRef.current = null;
         setPending(false);
         if (result.ok) {
-          clearWorkspaceCreateAttempt(request);
-          recoverableAttemptRef.current = null;
           recordCreatedWorkspace(result.data);
           lifecycleRef.current.onSuccess(result.data, attempt.attached);
           if (attempt.attached) attempt.callbacks.onSuccess(result.data);

@@ -97,6 +97,8 @@ pub const ENTRIES = [_]Entry{
     // ── REQUEST ──────────────────────────────────────────────────────────────
     eu("UZ-REQ-001", .bad_request, "Invalid request", "The request body or parameters are invalid. Check the API documentation.", "That request wasn't valid. Double-check the values you entered and try again."),
     e("UZ-REQ-002", .payload_too_large, "Payload too large", "Request body exceeds the maximum allowed size."), // reachable: no — CLI/API request-size guard, never a dashboard-fetch path
+    // ── WORKSPACE ────────────────────────────────────────────────────────────
+    eu("UZ-WORKSPACE-001", .conflict, "Workspace name already exists", "A workspace in this tenant already uses that name. Check the refreshed list or choose another name.", "A workspace with that name already exists. Check the refreshed list or choose another name."),
     // ── AUTH ─────────────────────────────────────────────────────────────────
     eu("UZ-AUTH-001", .forbidden, "Forbidden", "Access denied. Check that your API key has the required role.", "You need operator access for that. Ask a tenant operator or admin to manage API keys."),
     e("UZ-AUTH-002", .unauthorized, "Unauthorized", "Authentication required. Provide a valid Bearer token."), // reachable: no — CLI/API-key surface, not fetched by ui/packages/app
@@ -122,7 +124,6 @@ pub const ENTRIES = [_]Entry{
     e("UZ-API-001", .too_many_requests, "Too many requests", "The API is handling its maximum number of requests. Wait for the Retry-After delay, then retry."), // reachable: no — instance-wide backpressure shed, hit before routing; not a rendered dashboard error
     e("UZ-API-002", .service_unavailable, "Activity stream capacity reached", "The API is serving its maximum number of activity streams. Close unused dashboard tabs or retry shortly."), // reachable: no — SSE connect rejection surfaces as a stream-level reconnect, not a rendered problem+json page
 
-    // ── WORKSPACE ────────────────────────────────────────────────────────────
     // ── BILLING ──────────────────────────────────────────────────────────────
     // ── AGENT ────────────────────────────────────────────────────────────────
     e("UZ-FLEETKEY-001", .not_found, "Fleet key not found", "Fleet key not found. Verify the fleet_key_id."), // reachable: no — CLI/API-key surface, not fetched by ui/packages/app

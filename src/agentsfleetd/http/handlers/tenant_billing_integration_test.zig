@@ -291,7 +291,9 @@ test "integration(m11_006): POST /v1/workspaces with a JWT lacking tenant_id ret
     // Signed with the same test RSA key used elsewhere in the suite.
     const TOKEN_NO_TENANT = scope_fixtures.NO_TENANT;
 
-    const r = try (try (try h.post("/v1/workspaces").json("{}")).bearer(TOKEN_NO_TENANT)).send();
+    const r = try (try (try h.post("/v1/workspaces").json(
+        \\{"name":"Missing tenant"}
+    )).bearer(TOKEN_NO_TENANT)).send();
     defer r.deinit();
     // A malformed-signature token already yields 401 from the JWT path,
     // before we reach the handler. The stricter post-M11_006 behavior is

@@ -11,6 +11,8 @@ const Conn = pg.Conn;
 const Migration = types.Migration;
 
 const S_SELECT_APPLIED_VERSIONS = "SELECT version FROM audit.schema_migrations";
+const S_SELECT_FAILED_VERSIONS =
+    "SELECT version FROM audit.schema_migration_failures";
 
 /// Upper bound on the canonical migration list. Sizes the stack buffers that
 /// hold the applied-version set (single-query membership test) and the orphan
@@ -26,6 +28,7 @@ pub const AppliedVersionSet = struct {
 
     buf: [MAX_TRACKED_MIGRATIONS]i32 = [_]i32{0} ** MAX_TRACKED_MIGRATIONS,
     len: usize = 0,
+    has_noncanonical: bool = false,
 
     /// Fetch applied versions once; keep those the canonical list cares about.
     /// The result is fully consumed and drained before returning, so the caller
@@ -36,12 +39,41 @@ pub const AppliedVersionSet = struct {
         defer result.deinit();
         while (try result.next()) |row| {
             const version = try row.get(i32, 0);
-            if (!isCanonical(migrations, version)) continue;
-            if (self.len == self.buf.len) return error.OutOfMemory;
-            self.buf[self.len] = version;
-            self.len += 1;
+            try self.record(migrations, version);
         }
         return self;
+    }
+
+    fn record(self: *Self, migrations: []const Migration, version: i32) !void {
+        if (!isCanonical(migrations, version)) {
+            self.has_noncanonical = true;
+            return;
+        }
+        if (self.len == self.buf.len) return error.OutOfMemory;
+        self.buf[self.len] = version;
+        self.len += 1;
+    }
+
+    /// Refuse every recorded version absent from the canonical migration list.
+    /// Call under the migration lock before any bookkeeping cleanup.
+    pub fn ensureCanonical(conn: *Conn, migrations: []const Migration) !void {
+        try ensureQueryCanonical(conn, migrations, S_SELECT_APPLIED_VERSIONS);
+        try ensureQueryCanonical(conn, migrations, S_SELECT_FAILED_VERSIONS);
+    }
+
+    fn ensureQueryCanonical(
+        conn: *Conn,
+        migrations: []const Migration,
+        sql: []const u8,
+    ) !void {
+        var result = PgQuery.from(try conn.query(sql, .{}));
+        defer result.deinit();
+        while (try result.next()) |row| {
+            const version = try row.get(i32, 0);
+            if (!isCanonical(migrations, version)) {
+                return error.MigrationSchemaAhead;
+            }
+        }
     }
 
     fn isCanonical(migrations: []const Migration, version: i32) bool {
@@ -74,4 +106,17 @@ test "AppliedVersionSet.isCanonical matches the canonical migration list" {
     };
     try std.testing.expect(AppliedVersionSet.isCanonical(&migrations, 4));
     try std.testing.expect(!AppliedVersionSet.isCanonical(&migrations, 2));
+}
+
+test "AppliedVersionSet records noncanonical ledger entries for inspection" {
+    const migrations = [_]Migration{
+        .{ .version = 1, .sql = "" },
+        .{ .version = 4, .sql = "" },
+    };
+    var set = AppliedVersionSet{};
+    try set.record(&migrations, 1);
+    try set.record(&migrations, 2);
+    try set.record(&migrations, 4);
+    try std.testing.expect(set.has_noncanonical);
+    try std.testing.expectEqual(@as(usize, 2), set.len);
 }

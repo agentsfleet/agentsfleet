@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import {
   FleetActivityRow,
   FleetGroupRow,
@@ -11,14 +17,21 @@ import {
 
 const AT = new Date(Date.UTC(2026, 6, 21, 10, 42, 17));
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
-function renderRow(overrides: Partial<Parameters<typeof FleetMessageRow>[0]> = {}) {
+function renderRow(
+  overrides: Partial<Parameters<typeof FleetMessageRow>[0]> = {},
+) {
+  const tone = overrides.tone ?? ROW_TONE.OPERATOR;
+  const sender =
+    overrides.sender ?? (tone === ROW_TONE.FLEET ? "Fleet" : "Operator");
   return render(
     <FleetMessageRow
-      sender="Operator"
-      createdAt={AT}
-      tone={ROW_TONE.OPERATOR}
+      sender={sender}
+      tone={tone}
       messageRole="user"
       {...overrides}
     >
@@ -28,48 +41,45 @@ function renderRow(overrides: Partial<Parameters<typeof FleetMessageRow>[0]> = {
 }
 
 describe("FleetMessageRow", () => {
-  it("anchors an operator turn to the right in a bounded bubble", () => {
+  it("shows only the operator message in a right-aligned bubble", () => {
     const { container } = renderRow();
     const row = container.querySelector('[data-role="user"]') as HTMLElement;
-    expect(row).toBeTruthy();
-    expect(row.querySelector('[data-chip="operator"]')?.textContent).toBe("OP");
-    expect(screen.getByText("Operator")).toBeTruthy();
     const bubble = screen.getByText("please review the change");
-    expect(row.querySelector(".flex-row-reverse")).toBeTruthy();
-    expect(row.querySelector(".max-w-xl")).toBeTruthy();
+
+    expect(row.querySelector(".justify-end")).toBeTruthy();
+    expect(row.querySelector("[data-chip]")).toBeNull();
+    expect(row.querySelector("time")).toBeNull();
     expect(bubble.className).toMatch(/rounded-lg/);
     expect(bubble.className).toMatch(/rounded-br-sm/);
     expect(bubble.className).toMatch(/bg-accent/);
+    expect(
+      screen.getByText("Operator:", { selector: ".sr-only" }),
+    ).toBeTruthy();
   });
 
-  it("keeps a fleet reply open and left aligned", () => {
+  it("retains a non-operator sender for assistive technology", () => {
+    renderRow({ sender: "API" });
+    expect(screen.getByText("API:", { selector: ".sr-only" })).toBeTruthy();
+    expect(screen.queryByText("Operator:", { selector: ".sr-only" })).toBeNull();
+  });
+
+  it("renders a fleet reply as open text without conversation chrome", () => {
     const { container } = renderRow({
       tone: ROW_TONE.FLEET,
-      sender: "pr-reviewer",
       messageRole: "assistant",
     });
-    const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
-    expect(row.querySelector(".flex-row-reverse")).toBeNull();
+    const row = container.querySelector(
+      '[data-role="assistant"]',
+    ) as HTMLElement;
     const reply = screen.getByText("please review the change");
-    expect(reply.className).toMatch(/w-full/);
+
+    expect(row.querySelector(".justify-start")).toBeTruthy();
+    expect(row.querySelector("[data-chip]")).toBeNull();
+    expect(row.querySelector("time")).toBeNull();
     expect(reply.className).not.toMatch(/rounded/);
     expect(reply.className).not.toMatch(/\bborder\b/);
-    expect(reply.className).not.toMatch(/bg-/);
-    const chip = row.querySelector('[data-chip="fleet"]') as HTMLElement;
-    expect(chip.className).toMatch(/text-muted-foreground/);
-    expect(chip.className).not.toMatch(/text-pulse/);
-  });
-
-  it("spends the pulse color only while a fleet reply is live", () => {
-    const { container } = renderRow({
-      tone: ROW_TONE.FLEET,
-      sender: "pr-reviewer",
-      messageRole: "assistant",
-      live: true,
-    });
-    const chip = container.querySelector('[data-chip="fleet"]') as HTMLElement;
-    expect(chip.getAttribute("data-live")).toBe("true");
-    expect(chip.className).toMatch(/text-pulse/);
+    expect(reply.className).not.toMatch(/\bbg-/);
+    expect(screen.getByText("Fleet:", { selector: ".sr-only" })).toBeTruthy();
   });
 
   it("uses the operational opacity-only entry motion", () => {
@@ -80,31 +90,11 @@ describe("FleetMessageRow", () => {
     expect(row.className).not.toMatch(/slide-in/);
   });
 
-  it("carries the exact instant in the timestamp, whatever the visible format", () => {
-    const { container } = renderRow();
-    expect(container.querySelector("time")?.getAttribute("dateTime")).toBe(AT.toISOString());
-  });
-
-  it("keeps the timestamp beside the sender in the label row", () => {
-    const { container } = renderRow();
-    const label = container.querySelector("time")?.parentElement as HTMLElement;
-    expect(label.textContent).toContain("Operator");
-    expect(label.className).toMatch(/text-label/);
-  });
-
   it("keeps a long body inside its own row rather than widening the page", () => {
     const { container } = renderRow({ children: "x".repeat(600) });
     const body = container.querySelector(".break-words") as HTMLElement;
     expect(body).toBeTruthy();
     expect(body.className).toMatch(/min-w-0/);
-  });
-
-  it("tones the chip per role across the bubble variants", () => {
-    const { container: fleet } = renderRow({ tone: ROW_TONE.FLEET, sender: "pr-reviewer" });
-    expect(fleet.querySelector('[data-chip="fleet"]')).toBeTruthy();
-    cleanup();
-    const { container: event } = renderRow({ tone: ROW_TONE.EVENT, sender: "github-app" });
-    expect(event.querySelector('[data-chip="event"]')?.textContent).toBe("GA");
   });
 
   it("dims a sending row and marks a failed one for the renderer", () => {
@@ -115,14 +105,15 @@ describe("FleetMessageRow", () => {
     expect(row.className).toMatch(/opacity-60/);
   });
 
-  it("renders an annotation beside the sender when one is given", () => {
+  it("renders a transient annotation without restoring sender chrome", () => {
     renderRow({ annotation: <span>sending</span> });
     expect(screen.getByText("sending")).toBeTruthy();
+    expect(screen.queryByText("Operator")).toBeNull();
   });
 });
 
 describe("FleetActivityRow", () => {
-  it("keeps integration metadata together and separates a failed outcome", () => {
+  it("keeps integration metadata together and renders a calm destructive failure cue", () => {
     const { container } = render(
       <FleetActivityRow
         sender="GitHub App"
@@ -138,41 +129,77 @@ describe("FleetActivityRow", () => {
     );
     const row = container.querySelector('[data-role="system"]') as HTMLElement;
     const card = row as HTMLElement;
-    const outcome = screen.getByText("This fleet needs instructions before it can respond.");
+    const headline = screen.getByText("agentsfleet/agentsfleet#546 was edited");
+    const outcome = screen
+      .getByText("This fleet needs instructions before it can respond.")
+      .closest("p") as HTMLElement;
+    const details = screen.getByRole("button", { name: "Details" });
+    const time = row.querySelector("time") as HTMLTimeElement;
+    const accessibleTime = screen.getByText(/^Occurred /, {
+      selector: ".sr-only",
+    });
 
     expect(card.className).toMatch(/w-full/);
     expect(card.className).toMatch(/border-b/);
     expect(screen.getByText("EDITED")).toBeTruthy();
-    expect(row.querySelector("time")?.getAttribute("dateTime")).toBe(AT.toISOString());
-    expect(outcome.className).toMatch(/text-destructive/);
-    expect(screen.getByText("Details")).toBeTruthy();
+    expect(time.dateTime).toBe(AT.toISOString());
+    expect(time.getAttribute("aria-hidden")).toBe("true");
+    expect(time.textContent).toMatch(/ago$/);
+    expect(time.title).not.toBe("");
+    expect(accessibleTime.textContent).toContain(time.title);
+    expect(headline.className).toMatch(/text-muted-foreground/);
+    expect(outcome.className).toMatch(/text-foreground/);
+    expect(outcome.className).toMatch(/text-label/);
+    expect(outcome.querySelector("svg")?.getAttribute("class")).toMatch(
+      /text-destructive/,
+    );
+    expect(details.className).toMatch(/w-fit/);
+    expect(details.className).toMatch(/min-h-11/);
+    expect(details.className).toMatch(/sm:min-h-6/);
+    expect(details.querySelectorAll("svg")).toHaveLength(2);
   });
 
-  it("shows guidance even when the integration has no outcome text", () => {
-    render(
-      <FleetActivityRow
-        sender="GitHub App"
-        headline="Webhook received"
-        createdAt={AT}
-        guidance={<span>Connect the source, then retry.</span>}
-        messageRole="system"
-      />,
+  it("refreshes an idle activity timestamp as wall time advances", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(AT.getTime() + 2 * 60_000));
+    const { container } = render(
+      <FleetNameProvider fleetName="github-pr-reviewer">
+        <FleetActivityRow
+          sender="GitHub App"
+          headline="Webhook received"
+          createdAt={AT}
+          messageRole="system"
+        >
+          <span>delivery context</span>
+        </FleetActivityRow>
+      </FleetNameProvider>,
     );
+    const time = container.querySelector("time") as HTMLTimeElement;
+    const accessibleTime = screen.getByText(/^Occurred /, {
+      selector: ".sr-only",
+    });
+    const accessibleText = accessibleTime.textContent;
+    expect(time.textContent).toBe("2 minutes ago");
 
-    expect(screen.getByText("Connect the source, then retry.")).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(time.textContent).toBe("3 minutes ago");
+    expect(accessibleTime.textContent).toBe(accessibleText);
   });
 });
 
 describe("FleetGroupRow", () => {
-  function renderGroup(expanded: boolean, outcome?: string) {
+  function renderGroup(expanded: boolean, outcome?: string, failed = false) {
     const onToggle = vi.fn();
     const view = render(
       <FleetGroupRow
         sender="GitHub App"
         headline="Webhook received"
         outcome={outcome}
+        failed={failed}
         count={2}
-        first={AT}
         last={new Date(AT.getTime() + 60_000)}
         expanded={expanded}
         onToggle={onToggle}
@@ -185,7 +212,11 @@ describe("FleetGroupRow", () => {
 
   it("toggles a collapsed group and omits the outcome when none exists", () => {
     const { onToggle, container } = renderGroup(false);
+    const times = container.querySelectorAll("time");
     expect(container.textContent).not.toContain("No outcome");
+    expect(times).toHaveLength(1);
+    expect(times[0]?.textContent).toMatch(/ago$/);
+    expect(times[0]?.title).not.toBe("");
     fireEvent.click(screen.getByRole("button", { name: /Webhook received/ }));
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
@@ -194,6 +225,15 @@ describe("FleetGroupRow", () => {
     const { onToggle } = renderGroup(true, "No outcome");
     fireEvent.click(screen.getByRole("button", { name: /Webhook received/ }));
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("pairs a destructive repeat count with a neutral failure result", () => {
+    renderGroup(false, "Failed a startup safety check", true);
+
+    const count = screen.getByTestId("group-count");
+    const outcome = screen.getByText("Failed a startup safety check");
+    expect(count.className).toMatch(/text-destructive/);
+    expect(outcome.className).toMatch(/text-foreground/);
   });
 });
 

@@ -9,7 +9,6 @@ import {
   clearCredentials,
   loadCredentials,
   loadWorkspaces,
-  newIdempotencyKey,
   saveCredentials,
   saveWorkspaces,
   type Credentials,
@@ -23,7 +22,11 @@ import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion } from "./program/banner.ts";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
 import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";
-import { DEFAULT_API_URL, normalizeApiUrl, resolveDashboardUrl } from "./util/url.ts";
+import {
+  DEFAULT_API_URL,
+  normalizeApiUrl,
+  resolveDashboardUrl,
+} from "./util/url.ts";
 import { buildProgram } from "./program/cli-tree.ts";
 import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
 import { detectTokenInArgv } from "./lib/argv-redact.ts";
@@ -32,20 +35,25 @@ import type { ProgramState } from "./program/cli-tree-types.ts";
 import type { CommandCtx, CommandDeps } from "./commands/types.ts";
 import type { WritableStreamLike } from "./output/capability.ts";
 
-// VERSION: source-of-truth package.json, read once. `make sync-version`
-// writes package.json + build.zig.zon together; no manual edits here.
-const PKG_JSON_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-const pkgJson = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")) as { version: string };
+// VERSION: package.json source of truth; `make sync-version` updates consumers.
+const PKG_JSON_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "package.json",
+);
+const pkgJson = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")) as {
+  version: string;
+};
 export const VERSION: string = pkgJson.version;
 
-// Only `login` skips the preAction auth-guard. Subcommands of every
-// other root inherit the requirement.
+// Only `login` skips the preAction auth guard; every other root inherits it.
 const AUTH_EXEMPT: ReadonlySet<string> = new Set(["login"]);
 const FLAG = "--" as const;
 const FLAG_API = "--api=" as const;
 const TYPE_STRING = "string" as const;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
+const isString = (value: unknown): value is string =>
+  typeof value === TYPE_STRING;
 
 export interface RunCliIo {
   stdout?: WritableStreamLike;
@@ -89,14 +97,23 @@ function detectJsonMode(argv: readonly string[]): boolean {
   return false;
 }
 
-function resolveGlobalApiUrl(argv: readonly string[], env: NodeJS.ProcessEnv): string | null {
+function resolveGlobalApiUrl(
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv,
+): string | null {
   let api: string | null = null;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) break;
     if (t === FLAG) break;
-    if (t === "--api") { api = argv[i + 1] || null; break; }
-    if (t.startsWith(FLAG_API)) { api = t.slice(FLAG_API.length); break; }
+    if (t === "--api") {
+      api = argv[i + 1] || null;
+      break;
+    }
+    if (t.startsWith(FLAG_API)) {
+      api = t.slice(FLAG_API.length);
+      break;
+    }
   }
   return api || env.AGENTSFLEET_API_URL || null;
 }
@@ -105,7 +122,6 @@ function buildDeps(): CommandDeps {
   return {
     clearCredentials,
     loadCredentials,
-    newIdempotencyKey,
     openUrl,
     printJson,
     printKeyValue,
@@ -119,7 +135,11 @@ function buildDeps(): CommandDeps {
   };
 }
 
-function installPreAction(program: Command, ctx: CommandCtx, state: ProgramState): void {
+function installPreAction(
+  program: Command,
+  ctx: CommandCtx,
+  state: ProgramState,
+): void {
   program.hook("preAction", (thisCommand, actionCommand) => {
     // Carry --no-open / --no-input / --json / --api from commander's
     // globals into ctx so handlers see the operator's intent. Commander
@@ -139,12 +159,17 @@ function installPreAction(program: Command, ctx: CommandCtx, state: ProgramState
 
     // Auth-guard: walk to the top-level command and exempt `login` only.
     let root: Command = actionCommand;
-    while (root.parent && root.parent.name() !== "agentsfleet") root = root.parent;
+    while (root.parent && root.parent.name() !== "agentsfleet")
+      root = root.parent;
     if (AUTH_EXEMPT.has(root.name())) return;
     const auth = requireAuth(ctx);
     if (!auth.ok) {
       state.exitCode = 1;
-      writeError(ctx, "AUTH_REQUIRED", AUTH_FAIL_MESSAGE, { printJson, writeLine, ui });
+      writeError(ctx, "AUTH_REQUIRED", AUTH_FAIL_MESSAGE, {
+        printJson,
+        writeLine,
+        ui,
+      });
       throw new CommanderError(1, "auth.required", AUTH_FAIL_MESSAGE);
     }
   });
@@ -163,8 +188,12 @@ const COMMANDER_USAGE_CODES: ReadonlySet<string> = new Set([
   "commander.excessArguments",
 ]);
 
-function exitFromCommanderError(err: CommanderError, state: ProgramState): number {
-  if (err.code === "commander.help" || err.code === "commander.helpDisplayed") return 0;
+function exitFromCommanderError(
+  err: CommanderError,
+  state: ProgramState,
+): number {
+  if (err.code === "commander.help" || err.code === "commander.helpDisplayed")
+    return 0;
   if (state.exitCode !== 0) return state.exitCode;
   return COMMANDER_USAGE_CODES.has(err.code) ? 2 : err.exitCode;
 }
@@ -185,16 +214,28 @@ function applyOutputToTree(
 ): void {
   cmd.exitOverride();
   cmd.configureOutput({
-    writeOut: (s: string) => { stdout.write(s); },
-    writeErr: (s: string) => { stderr.write(s); },
+    writeOut: (s: string) => {
+      stdout.write(s);
+    },
+    writeErr: (s: string) => {
+      stderr.write(s);
+    },
   });
   for (const sub of cmd.commands) applyOutputToTree(sub, stdout, stderr);
 }
 
-const EMPTY_CREDS: Credentials = { token: null, saved_at: null, session_id: null, api_url: null };
+const EMPTY_CREDS: Credentials = {
+  token: null,
+  saved_at: null,
+  session_id: null,
+  api_url: null,
+};
 const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
 
-export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promise<number> {
+export async function runCli(
+  argv: readonly string[],
+  io: RunCliIo = {},
+): Promise<number> {
   const stdout = (io.stdout ?? process.stdout) as WritableStreamLike;
   const stderr = (io.stderr ?? process.stderr) as WritableStreamLike;
   const env = io.env ?? process.env;
@@ -217,9 +258,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     loadCredentials().catch(() => EMPTY_CREDS),
     loadWorkspaces().catch(() => EMPTY_WORKSPACES),
   ]);
-  // Session identity (`device_id`, `session_id`, `session_last_active`)
-  // is read+bumped inside `resolveIdentity` against `telemetry.json`
-  // (mirrors supabase). No session file maintained here.
+  // Session identity is read and bumped through `telemetry.json`.
   const stdinSrc = io.stdin ?? process.stdin;
   // Two credential slots: the stored login JWT (file slot, from
   // credentials.json) and the service API key (env slot). The api key wins
@@ -230,10 +269,14 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // `Authorization: Bearer`.
   const storedToken = creds.token ?? null;
   const resolvedApiKey = resolveApiKeyFromEnv(env);
-  const resolvedAuthRole = resolvedApiKey ? ROLE_ADMIN : extractRoleFromToken(storedToken);
+  const resolvedAuthRole = resolvedApiKey
+    ? ROLE_ADMIN
+    : extractRoleFromToken(storedToken);
 
   const explicitApi = resolveGlobalApiUrl(argv, env);
-  const apiUrl = normalizeApiUrl(explicitApi || creds.api_url || DEFAULT_API_URL);
+  const apiUrl = normalizeApiUrl(
+    explicitApi || creds.api_url || DEFAULT_API_URL,
+  );
   const ctx: CommandCtx = {
     apiUrl,
     dashboardUrl: resolveDashboardUrl(apiUrl, env.AGENTSFLEET_DASHBOARD_URL),
@@ -281,7 +324,9 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // handler's own withCommandInstrumentation wrap (handlers-bind.ts) has
   // already emitted cli_command_executed. On parse-stage failure, the
   // bridge emits a single cli_command_executed with command "__parse__".
-  const parseResult = await Effect.runPromise(runCommanderParse(program, effectiveArgv));
+  const parseResult = await Effect.runPromise(
+    runCommanderParse(program, effectiveArgv),
+  );
 
   if (!parseResult.ok) {
     const err = parseResult.commanderError ?? parseResult.otherError;

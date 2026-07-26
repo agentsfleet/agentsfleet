@@ -7,7 +7,7 @@
  *
  * Surface confirmed against `src/program/cli-tree.ts` +
  * `src/program/cli-tree-fleet.ts` + `src/commands/workspace.ts`:
- *   - `workspace create [name]`  → POST /v1/workspaces; --json → { workspace_id, name }
+ *   - `workspace create <name>`  → POST /v1/workspaces; --json → { workspace_id, name }
  *   - `workspace list --json` → { current_workspace_id, workspaces: [...] }
  *   - `workspace use <id>`    → --json → { active: <id> } (active carries the id)
  *   - `workspace show --json` → { workspace_id, active: <bool>, name, created_at }
@@ -51,8 +51,8 @@ export const FLAG_JSON = "--json" as const;
 export const FLAG_WORKSPACE_ID = "--workspace-id" as const;
 
 export interface WorkspaceRow {
-  readonly workspace_id?: string;
-  readonly name?: string | null;
+  readonly workspace_id: string;
+  readonly name: string | null;
   readonly [key: string]: unknown;
 }
 
@@ -67,7 +67,7 @@ export interface FleetRow {
 
 export interface AddedWorkspace {
   readonly workspaceId: string;
-  readonly name: string | null;
+  readonly name: string;
 }
 
 function parseJson(result: RunResult, label: string): Record<string, unknown> {
@@ -85,7 +85,8 @@ export async function addWorkspace(env: Env, name: string): Promise<AddedWorkspa
   assert.equal(typeof workspaceId, "string", `workspace create ${name}: missing ${WS_ID_KEY}: ${result.stdout}`);
   assert.ok((workspaceId as string).length > 0, `workspace create ${name}: empty ${WS_ID_KEY}`);
   const rawName = parsed[AGENT_NAME_KEY];
-  return { workspaceId: workspaceId as string, name: typeof rawName === "string" ? rawName : null };
+  assert.equal(rawName, name, `workspace create ${name}: returned name mismatch`);
+  return { workspaceId: workspaceId as string, name };
 }
 
 /** `workspace list --json` → the `workspaces` array (local store view). */

@@ -4,25 +4,40 @@ import userEvent from "@testing-library/user-event";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { CONNECTION_STATUS } from "./useFleetEventStream";
 
+const RECONNECT_LABEL = "Reconnect";
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
 
 describe("FleetConnectionNotice", () => {
-  it("stays silent for every connection state that resolves itself", () => {
-    // Connecting, reconnecting and live all resolve without the operator
-    // doing anything, and the header indicator already shows them with
-    // motion. A band above someone's conversation is for decisions.
-    for (const status of [
-      CONNECTION_STATUS.CONNECTING,
-      CONNECTION_STATUS.RECONNECTING,
-      CONNECTION_STATUS.LIVE,
-    ] as const) {
-      const view = render(<FleetConnectionNotice status={status} onRetry={vi.fn()} />);
-      expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
-      view.unmount();
-    }
+  it("stays silent while connecting or reconnecting", () => {
+    const view = render(
+      <FleetConnectionNotice
+        status={CONNECTION_STATUS.CONNECTING}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+
+    view.rerender(
+      <FleetConnectionNotice
+        status={CONNECTION_STATUS.RECONNECTING}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+  });
+
+  it("stays silent while live", () => {
+    render(
+      <FleetConnectionNotice
+        status={CONNECTION_STATUS.LIVE}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
   });
 
   it("speaks only when the connection is lost, and offers the way back", async () => {
@@ -30,11 +45,10 @@ describe("FleetConnectionNotice", () => {
     render(<FleetConnectionNotice status={CONNECTION_STATUS.OFFLINE} onRetry={retry} />);
 
     const notice = screen.getByTestId("fleet-connection-notice");
-    // No claim about history: the operator is looking at it.
     expect(notice.textContent).not.toMatch(/history/i);
-    expect(notice.textContent).toMatch(/Live updates stopped/i);
+    expect(notice.textContent).toMatch(/Live updates stopped.*resume updates/i);
 
-    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await userEvent.click(screen.getByRole("button", { name: RECONNECT_LABEL }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
 

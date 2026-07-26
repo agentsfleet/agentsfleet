@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createTenantWorkspace } from "@/lib/api/workspaces";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  createTenantWorkspace,
+  listTenantWorkspaces,
+  WORKSPACE_NAME_MAX_CODEPOINTS,
+} from "@/lib/api/workspaces";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -20,13 +26,12 @@ describe("createTenantWorkspace", () => {
       workspace_id: "ws_x",
       name: "acme-prod",
       request_id: "req_1",
+      tenant_id: "tenant_x",
     });
 
-    const res = await createTenantWorkspace(
-      "tok_1",
-      { name: "acme-prod" },
-      "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99",
-    );
+    const res = await createTenantWorkspace("tok_1", {
+      name: "acme-prod",
+    });
 
     expect(res.workspace_id).toBe("ws_x");
     const [url, init] = fetchSpy.mock.calls[0]!;
@@ -39,21 +44,210 @@ describe("createTenantWorkspace", () => {
     expect(reqInit.method).toBe("POST");
     expect(reqInit.body as string).toContain("acme-prod");
     expect(headers.Authorization).toBe("Bearer tok_1");
-    expect(headers["Idempotency-Key"]).toBe(
-      "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99",
-    );
+    expect(Object.keys(headers).sort()).toEqual([
+      "Authorization",
+      "Content-Type",
+    ]);
     expect(reqInit.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it("sends an empty body object when no name is given", async () => {
-    const fetchSpy = mockFetchOnce(201, {
-      workspace_id: "ws_y",
-      name: "auto-name",
+  it.each([
+    null,
+    {},
+    {
+      workspace_id: "ws_x",
+      name: "different",
+      request_id: "req_1",
+      tenant_id: "tenant_x",
+    },
+    {
+      workspace_id: "ws_x",
+      name: "acme-prod",
+      tenant_id: "tenant_x",
+    },
+  ])("rejects a malformed create response %#", async (body) => {
+    mockFetchOnce(201, body);
+
+    await expect(
+      createTenantWorkspace("tok_1", { name: "acme-prod" }),
+    ).rejects.toThrow("workspace create response is invalid");
+  });
+
+  it("pins required-name reconciliation in the bundled OpenAPI operation", () => {
+    const bundlePath = resolve(process.cwd(), "../../../public/openapi.json");
+    const document = JSON.parse(readFileSync(bundlePath, "utf8")) as {
+      paths: Record<string, { post?: Record<string, unknown> }>;
+    };
+    const operation = document.paths["/v1/workspaces"]?.post as {
+      parameters?: Array<{ name?: string }>;
+      requestBody?: {
+        required?: boolean;
+        content?: {
+          "application/json"?: {
+            schema?: {
+              required?: string[];
+              properties?: {
+                name?: { maxLength?: number; pattern?: string };
+              };
+            };
+          };
+        };
+      };
+      responses?: Record<
+        string,
+        {
+          content?: {
+            "application/problem+json"?: {
+              schema?: unknown;
+            };
+          };
+        }
+      >;
+    };
+    const schema = operation.requestBody?.content?.["application/json"]?.schema;
+    expect(operation.requestBody?.required).toBe(true);
+    expect(schema?.required).toContain("name");
+    expect(schema?.properties?.name?.maxLength).toBe(
+      WORKSPACE_NAME_MAX_CODEPOINTS,
+    );
+    expect(schema?.properties?.name?.pattern).toContain("\\u00A0");
+    expect(schema?.properties?.name?.pattern).toContain("\\u009F");
+    expect(schema?.properties?.name?.pattern).toContain("\\u2028-\\u202E");
+    const removedReplayHeader = ["Idempotency", "Key"].join("-");
+    expect(operation.parameters ?? []).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: removedReplayHeader }),
+      ]),
+    );
+    const conflict = JSON.stringify(operation.responses?.["409"]);
+    expect(conflict).toContain("UZ-WORKSPACE-001");
+    expect(conflict).toContain("name_exists");
+  });
+});
+
+describe("listTenantWorkspaces", () => {
+  it("walks every cursor page and returns one complete oldest-first list", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [{ id: "ws_1", name: "one", created_at: 1 }],
+            tenant_id: "tenant_x",
+            total: null,
+            next_cursor: "1:ws_1",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [{ id: "ws_2", name: "two", created_at: 2 }],
+            tenant_id: "tenant_x",
+            total: null,
+            next_cursor: null,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const result = await listTenantWorkspaces("tok_1");
+
+    expect(result).toEqual({
+      items: [
+        { id: "ws_1", name: "one", created_at: 1 },
+        { id: "ws_2", name: "two", created_at: 2 },
+      ],
+      tenant_id: "tenant_x",
+      total: 2,
+      next_cursor: null,
     });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[0]?.[0] as string).toContain(
+      "/v1/tenants/me/workspaces?limit=100",
+    );
+    expect(fetchSpy.mock.calls[1]?.[0] as string).toContain(
+      "limit=100&starting_after=1%3Aws_1",
+    );
+  });
 
-    await createTenantWorkspace("tok_1");
+  it("rejects a repeated cursor instead of looping forever", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [],
+            tenant_id: "tenant_x",
+            total: null,
+            next_cursor: "repeat",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [],
+            tenant_id: "tenant_x",
+            total: null,
+            next_cursor: "repeat",
+          }),
+          { status: 200 },
+        ),
+      );
 
-    const init = fetchSpy.mock.calls[0]![1];
-    expect(init?.body).toBe("{}");
+    await expect(listTenantWorkspaces("tok_1")).rejects.toThrow(
+      "repeated a cursor",
+    );
+  });
+
+  it("pins exact-name filtering and cursor pagination in the bundled OpenAPI", () => {
+    const bundlePath = resolve(process.cwd(), "../../../public/openapi.json");
+    const document = JSON.parse(readFileSync(bundlePath, "utf8")) as {
+      paths: Record<string, { get?: Record<string, unknown> }>;
+    };
+    const operation = document.paths["/v1/tenants/me/workspaces"]?.get as {
+      parameters?: Array<{
+        name?: string;
+        schema?: { maximum?: number; default?: number };
+      }>;
+      responses?: {
+        "200"?: {
+          content?: {
+            "application/json"?: {
+              schema?: {
+                required?: string[];
+                properties?: Record<
+                  string,
+                  {
+                    maxItems?: number;
+                    nullable?: boolean;
+                    "x-stability"?: string;
+                  }
+                >;
+              };
+            };
+          };
+        };
+      };
+    };
+    const parameters = operation.parameters ?? [];
+    expect(parameters.map(({ name }) => name)).toEqual([
+      "name",
+      "starting_after",
+      "limit",
+    ]);
+    expect(parameters.find(({ name }) => name === "limit")?.schema).toEqual(
+      expect.objectContaining({ maximum: 100, default: 50 }),
+    );
+    const schema =
+      operation.responses?.["200"]?.content?.["application/json"]?.schema;
+    expect(schema?.required).toEqual(
+      expect.arrayContaining(["items", "tenant_id", "total", "next_cursor"]),
+    );
+    expect(schema?.properties?.items?.maxItems).toBe(100);
+    expect(schema?.properties?.tenant_id?.["x-stability"]).toBe("stable");
+    expect(schema?.properties?.total?.nullable).toBe(true);
   });
 });

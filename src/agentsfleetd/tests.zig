@@ -80,6 +80,7 @@ test {
     _ = @import("http/handlers/connectors/slack/channel_memory_integration_test.zig");
     _ = @import("auth/crypto/rs256_sign.zig");
     _ = @import("fleet/schema_migration_test.zig");
+    _ = @import("fleet/schema_ahead_migration_test.zig");
     _ = @import("fleet/control_plane_integration_test.zig");
     _ = @import("fleet/control_plane_policy_integration_test.zig");
     _ = @import("fleet/control_plane_grant_integration_test.zig");

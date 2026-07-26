@@ -353,7 +353,8 @@ describe("loginEffect — cancel at the code prompt", () => {
 
 describe("loginEffect — non-interactive direct-token path", () => {
   const BILLING_PATH = "/v1/tenants/me/billing";
-  const WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+  const WORKSPACES_PATH = "/v1/tenants/me/workspaces?limit=100";
+  const DIRECT_TENANT_ID = "tenant_direct";
 
   // Answers the validate (GET billing) + hydrate (GET workspaces) probes;
   // dies on the device-flow POST so any test that fell through to the
@@ -376,7 +377,12 @@ describe("loginEffect — non-interactive direct-token path", () => {
               );
         }
         if (method === "GET" && path === WORKSPACES_PATH) {
-          return Effect.succeed({ items: [] } as T);
+          return Effect.succeed({
+            items: [],
+            tenant_id: DIRECT_TENANT_ID,
+            total: null,
+            next_cursor: null,
+          } as T);
         }
         return Effect.die(`direct-token path must not reach ${method} ${path}`);
       },

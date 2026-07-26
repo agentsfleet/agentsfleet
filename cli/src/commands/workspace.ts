@@ -13,7 +13,6 @@
 //   - state store IO failure              → UnexpectedError (exit 1)
 
 import { Effect } from "effect";
-import { v7 as uuidv7 } from "uuid";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
@@ -24,8 +23,11 @@ import {
   type WorkspaceItem,
   type WorkspacesValue,
 } from "../services/workspaces.ts";
-import { resolveAuthToken } from "./workspace-guards.ts";
-import { WORKSPACES_COLLECTION_PATH } from "../lib/api-paths.ts";
+import {
+  requireCreateName,
+  resolveAuthToken,
+  WORKSPACE_CREATE_USAGE,
+} from "./workspace-guards.ts";
 import { validateRequiredId } from "../program/validators.ts";
 import {
   ConfigError,
@@ -39,19 +41,17 @@ import {
   EVT_WORKSPACE_USED,
   EVT_WORKSPACE_DELETED,
 } from "../constants/analytics-events.ts";
+import {
+  createWorkspaceWithReconciliation,
+  WORKSPACE_CREATE_STATUS,
+} from "./workspace-create-reconcile.ts";
 
 const WORKSPACE_ID_FIELD = "workspace_id";
 const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state";
-const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 // The real, registered top-level command group (cli-tree-fleet.ts). One const
 // so the JSON-mode and human-readable redirects can never re-diverge onto a
 // phantom `agentsfleet agent secret` that has no CLI registration.
 const SECRET_COMMAND = "agentsfleet secret" as const;
-
-interface WorkspaceCreateResponse {
-  readonly workspace_id: string;
-  readonly name?: string | null;
-}
 
 const validateWorkspaceId = (
   workspaceId: string,
@@ -76,6 +76,7 @@ export const workspaceAddEffect = (
   Analytics | CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
+    const name = yield* requireCreateName(nameArg);
     const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
@@ -83,30 +84,30 @@ export const workspaceAddEffect = (
     const workspaces = yield* Workspaces;
     const token = yield* resolveAuthToken;
 
-    const body = nameArg ? { name: nameArg } : {};
-    const created = yield* http.request<WorkspaceCreateResponse>({
-      path: WORKSPACES_COLLECTION_PATH,
-      method: "POST",
-      body,
-      headers: { [IDEMPOTENCY_KEY_HEADER]: uuidv7() },
-      token,
-    });
+    const outcome = yield* createWorkspaceWithReconciliation(http, token, name);
+    const created = outcome.workspace;
     const workspaceId = created.workspace_id;
-    const resolvedName = created.name ?? nameArg ?? null;
+    const resolvedName = created.name;
 
     const state = yield* workspaces.load;
-    const existing = state.items.find((x) => x.workspace_id === workspaceId);
+    const sameTenant = state.tenant_id === created.tenant_id;
+    const tenantItems = sameTenant ? state.items : [];
+    const existing = tenantItems.find((x) => x.workspace_id === workspaceId);
     const items: WorkspaceItem[] = existing
-      ? state.items
+      ? tenantItems
       : [
-          ...state.items,
+          ...tenantItems,
           {
             workspace_id: workspaceId,
             name: resolvedName,
-            created_at: Date.now(),
+            created_at: created.created_at ?? Date.now(),
           },
         ];
-    yield* workspaces.save({ current_workspace_id: workspaceId, items });
+    yield* workspaces.save({
+      tenant_id: created.tenant_id,
+      current_workspace_id: workspaceId,
+      items,
+    });
 
     yield* analytics.capture(EVT_WORKSPACE_ADD_COMPLETED, {
       workspace_id: workspaceId,
@@ -114,9 +115,11 @@ export const workspaceAddEffect = (
     // workspace_created carries just the command tag so PostHog
     // dashboards can pivot on command name (telemetry is opt-OUT
     // default; AGENTSFLEET_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 disables).
-    yield* analytics.capture(EVT_WORKSPACE_CREATED, {
-      command: "workspace.create",
-    });
+    if (outcome.status === WORKSPACE_CREATE_STATUS.created) {
+      yield* analytics.capture(EVT_WORKSPACE_CREATED, {
+        command: "workspace.create",
+      });
+    }
 
     if (config.jsonMode) {
       yield* output.printJson({
@@ -125,7 +128,11 @@ export const workspaceAddEffect = (
       });
       return;
     }
-    yield* output.printSection("Workspace added");
+    yield* output.printSection(
+      outcome.status === WORKSPACE_CREATE_STATUS.created
+        ? "Workspace added"
+        : "Workspace selected",
+    );
     yield* output.printKeyValue({
       workspace_id: workspaceId,
       name: resolvedName ?? LITERAL,
@@ -219,8 +226,7 @@ export const workspaceUseEffectFromArgs = (
       return yield* Effect.fail(
         new ConfigError({
           detail: `workspace ${workspaceId} is not in your local list`,
-          suggestion:
-            "run `agentsfleet workspace create` or `agentsfleet workspace list`",
+          suggestion: `run \`${WORKSPACE_CREATE_USAGE}\` or \`agentsfleet workspace list\``,
         }),
       );
     }
@@ -308,6 +314,7 @@ export const workspaceDeleteEffectFromArgs = (
     const workspaceId = yield* requireDeleteId(positional ?? fromOpt);
     const state = yield* workspaces.load;
     const next: WorkspacesValue = {
+      ...state,
       current_workspace_id: state.current_workspace_id,
       items: state.items.filter((x) => x.workspace_id !== workspaceId),
     };
