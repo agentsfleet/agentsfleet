@@ -88,6 +88,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r2@sha256:40cbacd00584601a4794471e01cb11942ef5319c0531e4185c54d78733285803
+      options: --privileged
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
