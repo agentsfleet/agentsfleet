@@ -63,7 +63,7 @@ pub const Route = union(enum) {
     /// The tier arrives as a validated enum — `route_matchers_library.zig`
     /// refuses to match an unknown one, so this can never carry a caller-supplied
     /// string that a handler would use as a table selector.
-    workspace_fleet_library_detail: matchers_library.FleetLibraryDetailRoute,
+    workspace_fleet_library_detail: matchers_library.FleetLibraryDetailRoute, // GET /v1/workspaces/{ws}/fleet-libraries/{tier}/{id}
     /// POST /v1/webhooks/{fleet_id} — generic per-fleet webhook receiver.
     /// HMAC-only via webhook_sig middleware; secret resolved from the
     /// workspace credential keyed by the matching `triggers[].source`.
