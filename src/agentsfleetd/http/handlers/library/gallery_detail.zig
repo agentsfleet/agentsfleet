@@ -33,12 +33,17 @@ const gallery_sql = @import("../../../fleet_library/gallery_sql.zig");
 const counters = @import("../../../observability/library_read_counters.zig");
 const entry_view = @import("entry_view.zig");
 const keyset = @import("fleet_keyset.zig");
+const response_size = @import("../../response_size.zig");
 
 const Hx = hx_mod.Hx;
 
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
 const S_NOT_FOUND = "No fleet library entry matches this tier and id in this workspace";
 const S_DETAIL_FAILED = "Failed to load this fleet library entry";
+const S_BODY_CEILING = "This fleet library entry is too large to return";
+
+/// MUST match the write below — see the gallery's twin.
+const DETAIL_JSON_OPTIONS: std.json.Stringify.Options = .{};
 
 /// One entry in full. Superset of the gallery card: everything the summary
 /// carries, plus the requirement and support-file detail the install gate needs.
@@ -90,7 +95,27 @@ pub fn innerGalleryDetail(
         return;
     };
     counters.noteResults(1);
-    hx.ok(.ok, entry);
+    respond(hx, entry);
+}
+
+/// Write the entry under §3's 1 MiB detail ceiling. Same refuse-never-truncate
+/// contract as the gallery's `respond`; the ceiling is larger because this
+/// carries the support-file manifest the card sheds.
+fn respond(hx: Hx, entry: DetailEntry) void {
+    const encoded_bytes = response_size.encodedWithinCeiling(
+        entry,
+        DETAIL_JSON_OPTIONS,
+        counters.FLEET_DETAIL_MAX_BODY_BYTES,
+    ) catch |err| {
+        if (err == response_size.CeilingError.BodyCeilingExceeded) {
+            hx.fail(ec.ERR_LIBRARY_BODY_CEILING, S_BODY_CEILING);
+        } else {
+            common.internalOperationError(hx.res, S_DETAIL_FAILED, hx.req_id);
+        }
+        return;
+    };
+    counters.noteEncodedBytes(encoded_bytes);
+    common.writeJson(hx.res, .ok, entry);
 }
 
 fn load(

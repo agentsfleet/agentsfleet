@@ -71,10 +71,15 @@
 // fleet library entry"). Each names what the caller lost in plain English — no
 // schema names, no @errorName, no state-machine language — so they are counted
 // rather than mudball-ok'd (84 -> 86).
+//
+// Wiring §3's encoded-body ceiling into both Fleet reads added 2 more (the
+// non-ceiling arm of each `respond` — an allocation fault while MEASURING the
+// body, distinct from the body being too large, which answers UZ-LIBRARY-005).
+// Same plain-English details as their siblings, so counted (86 -> 88).
 const std = @import("std");
 const common = @import("common");
 
-const BASELINE_CALL_SITE_COUNT: usize = 86;
+const BASELINE_CALL_SITE_COUNT: usize = 88;
 const CALL_SITE_NEEDLE = "internalOperationError(";
 const HANDLERS_DIR_PATH = "src/agentsfleetd/http/handlers";
 // `http/server.zig` sits one level above `http/handlers/` (the dispatcher,
