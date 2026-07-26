@@ -156,10 +156,23 @@ pub const GLOBAL_MODELS_MAX_STATEMENTS_HIT: usize = 1;
 pub const GLOBAL_MODELS_MAX_STATEMENTS_MISS: usize = 2;
 pub const GLOBAL_MODELS_MAX_BODY_BYTES: usize = 256 * 1024;
 
-/// Fleet gallery summary and detail.
-pub const FLEET_SUMMARY_MAX_STATEMENTS: usize = 1;
+/// Fleet gallery summary and detail: three statements each, measured.
+///
+/// Two of those three are `common.authorizeWorkspace` — one resolving the
+/// principal's tenant through `core.users`, one checking the workspace belongs
+/// to it — and they are inside the window rather than before it. §3 states the
+/// budget "after middleware auth", which reads as though authorization were
+/// already behind us; it is not. The bearer chain AUTHENTICATES, and only the
+/// handler knows which workspace the path names, so authorization is the
+/// handler's work and `beginRead()` opens ahead of it.
+///
+/// Each read then issues exactly ONE statement of its own — the summary's
+/// merged `UNION ALL` across both libraries, the detail's single select — and
+/// that is the number `limit` cannot move. Drafted at 1 and 2; corrected here to
+/// what the instrumentation reports, as the tenant registry row was, twice.
+pub const FLEET_SUMMARY_MAX_STATEMENTS: usize = 3;
 pub const FLEET_SUMMARY_MAX_BODY_BYTES: usize = 512 * 1024;
-pub const FLEET_DETAIL_MAX_STATEMENTS: usize = 2;
+pub const FLEET_DETAIL_MAX_STATEMENTS: usize = 3;
 pub const FLEET_DETAIL_MAX_RESULTS: usize = 1;
 pub const FLEET_DETAIL_MAX_BODY_BYTES: usize = 1024 * 1024;
 
@@ -280,8 +293,8 @@ test "the §3 ceilings are the numbers the spec table states" {
     // pin test: literal is the contract
     try testing.expectEqual(@as(usize, 256 * 1024), GLOBAL_MODELS_MAX_BODY_BYTES);
 
-    try testing.expectEqual(@as(usize, 1), FLEET_SUMMARY_MAX_STATEMENTS);
-    try testing.expectEqual(@as(usize, 2), FLEET_DETAIL_MAX_STATEMENTS);
+    try testing.expectEqual(@as(usize, 3), FLEET_SUMMARY_MAX_STATEMENTS);
+    try testing.expectEqual(@as(usize, 3), FLEET_DETAIL_MAX_STATEMENTS);
     try testing.expectEqual(@as(usize, 1), FLEET_DETAIL_MAX_RESULTS);
     // pin test: literal is the contract
     try testing.expectEqual(@as(usize, 1024 * 1024), FLEET_DETAIL_MAX_BODY_BYTES);

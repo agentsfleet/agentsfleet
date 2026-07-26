@@ -201,6 +201,7 @@ test {
     _ = @import("http/handlers/library/fleet_keyset.zig");
     _ = @import("http/handlers/library/library_keyset_test.zig");
     _ = @import("http/handlers/library/library_sink_policy_test.zig");
+    _ = @import("http/handlers/library/library_sink_scan_test.zig");
     _ = @import("http/handlers/fleets/create.zig");
     _ = @import("http/handlers/fleets/create_install_steps.zig");
     _ = @import("http/handlers/fleets/create_install_steps_lifecycle_test.zig");

@@ -55,19 +55,14 @@ const FLEET_ONE = "m143bounds-fleet-1";
 const FLEET_TWO = "m143bounds-fleet-2";
 const CONTENT_HASH = "0000000000000000000000000000000000000000000000000000000000000243";
 
-/// `authorizeWorkspace`: one `core.users` tenant resolve, one workspace check.
-/// Named because it is the term both Fleet rows share, and spelling it twice is
-/// how the two rows drift into disagreeing about the same function.
-const WORKSPACE_AUTHZ_STATEMENTS: usize = 2;
-
-/// Each Fleet read issues exactly ONE statement of its own on top of that pair:
-/// the summary's merged `UNION ALL` across both libraries, and the detail's
-/// single-entry select. Measured — the first draft of this file added
-/// `FLEET_DETAIL_MAX_STATEMENTS` (2) to the authorization pair and expected 4,
-/// where the read is one statement like its sibling. The table's own ≤2 for the
-/// detail row had already folded in an authorization cost of one, which is not
-/// what `authorizeWorkspace` charges.
-const FLEET_READ_STATEMENTS: usize = 1;
+// Both Fleet rows are asserted against `counters.FLEET_*_MAX_STATEMENTS`
+// directly, not against arithmetic spelled here. The first draft of this file
+// did the arithmetic — authorization pair plus the table's own
+// `FLEET_DETAIL_MAX_STATEMENTS` — and expected 4 against a measured 3, because
+// the table's ≤2 had already folded in an authorization cost of one. A number
+// carried out of a table and re-added in a test is not a measurement; it is the
+// same guess twice. The constants now hold the measurement and this file
+// compares against them, which is what that module exists for.
 
 const RATES: model_library_store.Rates = .{
     .context_cap_tokens = 64000,
@@ -245,7 +240,7 @@ test "integration: test_library_read_resource_bounds — both Fleet reads pay fo
         // number §3 actually cares about. The authorization pair is fixed
         // overhead that does not scale with the page.
         try std.testing.expectEqual(
-            WORKSPACE_AUTHZ_STATEMENTS + FLEET_READ_STATEMENTS,
+            counters.FLEET_SUMMARY_MAX_STATEMENTS,
             measured.statements,
         );
         try expectCommon(measured, r.body.len);
@@ -265,7 +260,7 @@ test "integration: test_library_read_resource_bounds — both Fleet reads pay fo
 
         const measured = counters.snapshot();
         try std.testing.expectEqual(
-            WORKSPACE_AUTHZ_STATEMENTS + FLEET_READ_STATEMENTS,
+            counters.FLEET_DETAIL_MAX_STATEMENTS,
             measured.statements,
         );
         try expectCommon(measured, r.body.len);
