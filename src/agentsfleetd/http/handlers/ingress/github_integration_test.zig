@@ -9,6 +9,8 @@ const base_fixtures = @import("../../../db/test_fixtures.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const hs = @import("hmac_sig");
 const verifier = @import("../../../fleet_runtime/webhook_verify.zig");
+const redis_fleet = @import("../../../queue/redis_fleet.zig");
+const queue_consts = @import("../../../queue/constants.zig");
 
 const TestHarness = harness_mod.TestHarness;
 const testing = std.testing;
@@ -56,8 +58,8 @@ fn workflowBody(conclusion: []const u8) ![]const u8 {
 }
 
 fn streamLen(h: *TestHarness, fleet_id: []const u8) !i64 {
-    var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var response = try h.queue.command(&.{ "XLEN", key });
     defer response.deinit(testing.allocator);
     return switch (response) {
@@ -66,12 +68,16 @@ fn streamLen(h: *TestHarness, fleet_id: []const u8) !i64 {
     };
 }
 
+/// Purge the whole Redis footprint — stream AND readiness mark — for every
+/// fleet this suite delivers to. Ingress marks `fleet:ready` on each accepted
+/// delivery, and that hash is ONE key shared by every suite in the binary: a
+/// stream-only DEL here once left ~100 marks squatting in the bounded
+/// randomized peek sample, crowding sibling suites' fleets out of their own
+/// lease polls for the rest of the run.
 fn clearStreams(h: *TestHarness) void {
     const fleets = [_][]const u8{ fixtures.FLEET_PULL_ONE, fixtures.FLEET_PULL_TWO, fixtures.FLEET_WORKFLOW, fixtures.FLEET_WRONG_REPO, fixtures.FLEET_NO_REPOS, fixtures.FLEET_NO_GRANT };
     for (fleets) |fleet_id| {
-        var key_buf: [128]u8 = undefined;
-        const key = std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id}) catch continue;
-        h.queue.del(key) catch |err| std.log.warn("App ingress stream cleanup ignored: {s}", .{@errorName(err)});
+        redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("App ingress redis cleanup ignored: {s}", .{@errorName(err)});
     }
 }
 
@@ -94,17 +100,20 @@ fn clearReplaySlots(h: *TestHarness) void {
 }
 
 fn setStreamFault(h: *TestHarness, fleet_id: []const u8) !void {
-    var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var deleted = try h.queue.commandAllowError(&.{ "DEL", key });
     deleted.deinit(h.queue.alloc);
     var fault = try h.queue.commandAllowError(&.{ "SET", key, "fault" });
     fault.deinit(h.queue.alloc);
 }
 
+/// Mid-test fault RESET only (the stream must be recreatable by the retry) —
+/// end-of-test cleanup goes through `purgeFleetRedisState` instead, which also
+/// drops the readiness mark.
 fn clearStream(h: *TestHarness, fleet_id: []const u8) !void {
-    var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var deleted = try h.queue.commandAllowError(&.{ "DEL", key });
     deleted.deinit(h.queue.alloc);
 }
@@ -135,7 +144,7 @@ fn clearFanoutStreams(h: *TestHarness, count: usize) void {
     for (0..count) |index| {
         var id_buf: [36]u8 = undefined;
         const fleet_id = fanoutId(&id_buf, index, false) catch continue;
-        clearStream(h, fleet_id) catch |err| std.log.warn("App ingress fanout stream cleanup ignored: {s}", .{@errorName(err)});
+        redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("App ingress fanout redis cleanup ignored: {s}", .{@errorName(err)});
     }
 }
 
