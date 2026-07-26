@@ -8,7 +8,22 @@ include make/acceptance.mk
 include make/dry.mk
 include make/bench.mk
 
-ZIG_GLOBAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-global-cache
+# The GLOBAL cache is shared by every worktree on this machine; the LOCAL cache
+# stays per-worktree. That is the split Zig intends: the global cache holds
+# content-addressed build artifacts for the dependency graph (pg.zig, http.zig,
+# nullclaw, ...), which are identical across worktrees of the same repo, while
+# the local cache holds this checkout's own compilation.
+#
+# Pointing the global cache at $(CURDIR) gave each worktree a private copy and
+# defeated it — four checkouts here held four 65-123 MB caches, each recompiling
+# the same dependencies from scratch. Concurrent access is the case the global
+# cache is built for (its default, ~/.cache/zig, is shared by every Zig project
+# on the machine): entries are content-addressed and lock-protected.
+#
+# Both are `?=`, and an environment variable beats `?=`, so CI keeps overriding
+# these to workspace-local paths it can cache between runs — see
+# .github/workflows/test-integration.yml.
+ZIG_GLOBAL_CACHE_DIR ?= $(HOME)/.cache/agentsfleet/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
 AGENTD_COVERAGE_MIN_LINES ?= 35
 BENCH_MODE ?= bench
