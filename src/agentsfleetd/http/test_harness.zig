@@ -44,7 +44,7 @@ const stream_registry = @import("stream_registry.zig");
 const message = @import("test_http_message.zig");
 const server_bringup = @import("test_harness_server.zig");
 const test_fixtures = @import("../db/test_fixtures.zig");
-const queue_consts = @import("../queue/constants.zig");
+const runner_token_cache = @import("../auth/runner_token_cache.zig");
 
 const TEST_AUTH_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 const TEST_AUDIT_LOG_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
@@ -138,6 +138,16 @@ pub const TestHarness = struct {
         var env_map = try constants.env.testLiveSnapshot(self.alloc);
         defer env_map.deinit();
         self.queue = try queue_redis.Client.connectFromEnv(constants.globalIo(), &env_map, self.alloc, .api);
+        // From here the client is THIS function's to release until it returns.
+        // Every step below can fail, and `start` translates that failure into
+        // `error.SkipZigTest` — a path with no handle on the harness, so without
+        // this the pool, its dialled transports, and the parsed config all
+        // strand. That is the 21-allocation leak every Redis-skipping harness
+        // test used to report.
+        errdefer {
+            self.queue.deinit();
+            self.has_redis = false;
+        }
         self.has_redis = true;
         // Lower the reader-socket timeout BEFORE start() so the reader thread is
         // created with it — bounds the per-test `deinit()` join (see the const).
@@ -171,6 +181,14 @@ pub const TestHarness = struct {
         // Clear any fault-injection constraint a killed reclaim run leaked, before
         // this (or any) fleet test touches the shared tables — see the fn's note.
         test_fixtures.dropInjectedFaultConstraints(db_ctx.conn);
+        // A harness IS a fresh agentsfleetd instance, and a fresh instance holds
+        // no memoized token verdicts. Load-bearing rather than tidy: several
+        // suites reuse the same `agt_r` body against DIFFERENT runner rows, which
+        // production forbids (`uq_runners_token_hash`) but a sequential test
+        // binary reaches by seeding and tearing down in turn. Without this, the
+        // second suite to use a body would authenticate as the first one's runner
+        // until the entry expired.
+        runner_token_cache.resetForTest();
         db_ctx.pool.release(db_ctx.conn);
         // Ownership transfers to h.pool below, but until we successfully
         // return h the pool is THIS function's responsibility — without
@@ -299,45 +317,19 @@ pub const TestHarness = struct {
                 if (constants.env.testLiveValue("CI")) |v| {
                     if (v.len > 0) return error.RedisRequiredForTestHarness;
                 }
+                // Name the error. A silent skip here reads exactly like a test
+                // that self-skipped on purpose, so a whole-suite Redis outage
+                // (a stale CA bundle is the usual one) presents as a smaller
+                // run rather than as a fault — which is how a run with 94
+                // un-run tests gets mistaken for a healthier one.
+                std.log.warn("test harness redis unavailable, skipping: {s}", .{@errorName(err)});
                 return error.SkipZigTest;
             },
         };
         return h;
     }
 
-    /// Empty the readiness index as this harness goes away.
-    ///
-    /// `fleet:ready` is ONE global Redis key and `peek` reads a bounded (64)
-    /// RANDOMIZED sample of it. Every fleet event any suite publishes marks a
-    /// fleet here — directly through `xaddFleetEvent` or indirectly through any
-    /// ingress route a handler test exercises — while teardown removes fleet
-    /// rows with raw SQL and never travels the lifecycle path that clears the
-    /// mark. Left alone the key grows all run, and once it passes the sample
-    /// bound a sibling's freshly-marked fleet is only PROBABLY sampled: a
-    /// deterministic lease assertion silently becomes a coin flip, and the
-    /// failure count wanders between runs while every suite passes alone.
-    ///
-    /// This belongs at teardown, NOT at start: a test may legitimately publish
-    /// an event and then stand up another harness against it, and clearing on
-    /// the way in would erase a mark that test still needs. By the time a
-    /// harness is torn down its test is finished, so every field left in the
-    /// index is spent — and `deinit` runs last, because `defer h.deinit()` is
-    /// registered before the per-test cleanup defers that must precede it.
-    ///
-    /// Best-effort: a Redis that cannot serve `DEL` cannot serve the test either,
-    /// and that surfaces on a real command rather than here.
-    fn resetReadinessIndex(h: *TestHarness) void {
-        var resp = h.queue.command(&.{ "DEL", queue_consts.ready_index_key }) catch |err| {
-            std.log.warn("readiness index reset ignored: {s}", .{@errorName(err)});
-            return;
-        };
-        resp.deinit(h.queue.alloc);
-    }
-
     pub fn deinit(self: *TestHarness) void {
-        // Before the queue handle goes away — see the fn's note for why this is
-        // teardown-side and not start-side.
-        resetReadinessIndex(self);
         self.server.stop();
         self.thread.join();
         self.server.deinit();
