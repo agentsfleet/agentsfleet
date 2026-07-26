@@ -60,7 +60,7 @@ pub const CONFIG_PLAIN =
 const CONFIG_GHOST_CRED =
     \\{"name":"lifecycle-cred","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"credentials":["ghost_cred"],"budget":{"daily_dollars":5.0}}}
 ;
-const CONFIG_GATED_ALL =
+pub const CONFIG_GATED_ALL =
     \\{"name":"lifecycle-gated","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0},"gates":{"rules":[{"tool":"*","action":"*","behavior":"approve"}],"timeout_ms":1800000}}}
 ;
 // A 1ms approval deadline so the gate expires deterministically between two
@@ -222,8 +222,8 @@ pub fn expectRow(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, sta
 }
 
 pub fn pendingCount(h: *TestHarness, fleet_id: []const u8) !i64 {
-    var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var resp = try h.queue.command(&.{ "XPENDING", key, queue_consts.fleet_consumer_group });
     defer resp.deinit(h.queue.alloc);
     const arr = resp.array orelse return error.RedisUnexpectedResponse;
@@ -234,8 +234,8 @@ pub fn pendingCount(h: *TestHarness, fleet_id: []const u8) !i64 {
 }
 
 pub fn consumerCount(h: *TestHarness, fleet_id: []const u8) !usize {
-    var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var resp = try h.queue.command(&.{ "XINFO", "CONSUMERS", key, queue_consts.fleet_consumer_group });
     defer resp.deinit(h.queue.alloc);
     const arr = resp.array orelse return error.RedisUnexpectedResponse;
@@ -245,8 +245,8 @@ pub fn consumerCount(h: *TestHarness, fleet_id: []const u8) !usize {
 /// Deliver the stream's next entry to a throwaway consumer name (the retired
 /// per-probe minting), simulating a stranded delivery.
 pub fn deliverToDeadConsumer(h: *TestHarness, fleet_id: []const u8) !void {
-    var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var resp = try h.queue.command(&.{
         "XREADGROUP", "GROUP", queue_consts.fleet_consumer_group, DEAD_CONSUMER,
         "COUNT",      "1",     "STREAMS",                         key,
@@ -258,8 +258,8 @@ pub fn deliverToDeadConsumer(h: *TestHarness, fleet_id: []const u8) !void {
 /// Force an entry's idle clock via XCLAIM IDLE so the reclaim bound is
 /// crossed without waiting wall-clock minutes.
 pub fn forceIdle(h: *TestHarness, fleet_id: []const u8, event_id: []const u8, idle_ms: i64) !void {
-    var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var idle_buf: [24]u8 = undefined;
     const idle = try std.fmt.bufPrint(&idle_buf, "{d}", .{idle_ms});
     var resp = try h.queue.command(&.{
