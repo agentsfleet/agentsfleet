@@ -19,8 +19,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P1 — library reads repeat database and decrypt work and expose unbounded behavior
 **Categories:** API, CLI
 **Batch:** B1 — establishes interfaces consumed by later workstreams
-**Branch:** `feat/m143-library-data-security`
-**Test Baseline:** unit=2958 integration=393
+**Branch:** `feat/m143-library-read-surfaces`
+**Test Baseline:** unit=3051 integration=407
 **Depends on:** none
 **Provenance:** LLM-drafted (Codex, Jul 24, 2026) from Oracle second-pass review
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §§8.2–10 and `docs/architecture/fleet_bundles.md` §Library tiers
@@ -355,7 +355,16 @@ No file deletion. Removed unpaged helpers, unsupported filter, bare Fleet identi
 - **Consults** — Oracle second-pass blockers incorporated exactly.
 - **Metrics review** — production telemetry belongs to M143_003; no funnel change.
 - **Skill-chain outcomes** — populated during implementation.
-- **Deferrals** — none.
+- **Deferrals** — §§2–4 were left `IN_PROGRESS` when §1 merged; see the continuation entry below for the owner ack that authorized it.
+
+### Continuation onto a second branch (§§2–4)
+
+- **§1 shipped alone, by owner decision.** PR #558 merged as `b2ca2afa9` carrying §1, the test-infra isolation work, and the memleak-lane fix, with §§2–4 still `IN_PROGRESS`. Splitting the workstream across two branches rather than holding #558 open was Indy's call:
+
+> Indy (2026-07-26 ~15:45 IST): "give me the /pickup prompt for the next agent to continue, on a new branch" — context: #558 merged with §§2–4 IN_PROGRESS, continued here.
+
+- **Test Baseline reset.** `unit=3051 integration=407`, measured on this branch at its first commit. The VERIFY Test Delta for this branch's PR is graded against that, so #558's tests are not counted twice. The §1 baseline was `unit=2958 integration=393`.
+- **The spec stays in `docs/v2/active/`.** It moves to `done/` at this branch's CHORE(close), when §§2–4 land — not at #558's.
 
 ### §1 preconditions, verified at PLAN
 
