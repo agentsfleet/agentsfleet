@@ -43,4 +43,5 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 34, .sql = @embedFile("034_retire_redundant_indexes.sql") },
     .{ .version = 35, .sql = @embedFile("035_workspace_create_idempotency.sql") },
     .{ .version = 36, .sql = @embedFile("036_vault_secret_metadata.sql") },
+    .{ .version = 37, .sql = @embedFile("037_model_catalogue_revision.sql") },
 };
