@@ -77,9 +77,17 @@ export AGENTSFLEET_QSTASH_HOST_PORT
 # lookup was correct when it ran and wrong afterwards: a container restart moved
 # the port, the URL built from it did not follow, and every Redis test failed at
 # TCP connect against a port nothing was listening on.
-COMPOSE_PG_PORT = $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')
-COMPOSE_REDIS_PORT = $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')
-COMPOSE_QSTASH_PORT = $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')
+#
+# Each falls back to the declared port when the lookup yields nothing. That is
+# not defensive padding — it is the `TEST_INFRA=provided` lane: `make memleak`
+# runs inside a valgrind container that carries NO docker CLI, so
+# `docker compose port` there produces an empty string and the URL built from it
+# became `postgres://…@localhost:/agentsfleetdb`, which the daemon rejects as
+# InvalidDatabaseUrl. The declared port is the right answer in exactly that case,
+# because the caller provisioned the infra itself and told us where it is.
+COMPOSE_PG_PORT = $(or $(strip $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_PG_HOST_PORT))
+COMPOSE_REDIS_PORT = $(or $(strip $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_HOST_PORT))
+COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_QSTASH_HOST_PORT))
 
 # sslmode=disable: the local docker Postgres has no TLS and parseUrl defaults to
 # `.require` (hosted providers mandate it) — without it every local DB-lane test

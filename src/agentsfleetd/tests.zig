@@ -126,6 +126,8 @@ test {
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
+    _ = @import("state/tenant_model_entries_integration_test.zig");
+    _ = @import("state/secret_reference_txn_integration_test.zig");
     _ = @import("state/user_preferences.zig");
     _ = @import("state/workspace_onboarding.zig");
     _ = @import("state/model_rate_cache.zig");
@@ -175,6 +177,7 @@ test {
     _ = @import("http/handlers/fleets/patch_if_match_integration_test.zig");
     _ = @import("http/handlers/memory/memory_forget_integration_test.zig");
     _ = @import("http/handlers/library/catalog_etag_integration_test.zig");
+    _ = @import("http/handlers/library/library_cursor_test.zig");
     _ = @import("http/handlers/fleets/create.zig");
     _ = @import("http/handlers/fleets/create_install_steps.zig");
     _ = @import("http/handlers/fleets/create_install_steps_lifecycle_test.zig");
