@@ -1,4 +1,4 @@
-//! Revision-keyed LRU for global catalogue responses (§2).
+//! Revision-keyed response cache for global catalogue pages (§2).
 //!
 //! ## Why the revision is in the KEY, not in a published generation
 //!
@@ -12,15 +12,6 @@
 //! mattering, and with it a class of races that is hard to test and easy to get
 //! wrong.
 //!
-//! ## Byte accounting is defined, not estimated
-//!
-//! "Including allocator metadata" is not observable through a Zig allocator, so
-//! a budget phrased that way cannot be asserted. This counts exactly three
-//! things per live entry — key bytes, value bytes, and node storage — and that
-//! sum IS the number the ceiling compares against, so the number the test reads
-//! is the number the cache enforces. Allocator-internal padding is outside the
-//! budget by construction, and `MAX_BYTES` is set with that headroom in mind.
-//!
 //! ## The cache is shared across tenants
 //!
 //! Invariant 6: its payload must be byte-identical for every authorized caller,
@@ -28,170 +19,193 @@
 //! reaching this cache is a cross-tenant leak, and a tenant-free key is what
 //! makes such a bug impossible to paper over with a per-tenant partition.
 //! Nothing Fleet-scoped is ever stored here.
+//!
+//! ## Shape: `common.CacheTable` under an `RwLock`
+//!
+//! The storage is the shared fixed-capacity table rather than a bespoke
+//! intrusive list, which buys three things this cache specifically wants.
+//!
+//! The **entry ceiling becomes structural**: capacity IS
+//! `BUCKET_COUNT * BUCKET_SIZE` slots, so §2's 256 is a property of the type
+//! rather than a counter some path could fail to check.
+//!
+//! **Keys cost nothing.** A revision plus a digest is fixed-size, so it is
+//! stored inline. The predecessor duplicated a key string per entry and counted
+//! those bytes against the budget; here no key is allocated and no key byte
+//! competes with a payload byte.
+//!
+//! **Reads do not serialize.** `fetch` uses the table's non-mutating `peek`
+//! under a shared lock, so concurrent catalogue requests run in parallel. The
+//! predecessor took one exclusive mutex on every read in order to refresh LRU
+//! position. The trade is deliberate and is the one place this diverges from
+//! §2's "true LRU" wording: eviction is least-recently-used *within a bucket*
+//! and a hit does not promote. With a 60-second bound, a generation-scoped key
+//! set, and four ways per bucket, retention matters far less than keeping every
+//! reader off a single lock.
+//!
+//! ## Byte accounting is defined, not estimated
+//!
+//! "Including allocator metadata" is not observable through a Zig allocator, so
+//! a budget phrased that way cannot be asserted. This counts exactly one thing
+//! per live entry — the payload bytes it owns — and that sum IS the number the
+//! ceiling compares against, so the number a test reads is the number the cache
+//! enforces. Slot storage is preallocated and fixed, and allocator-internal
+//! padding is outside the budget by construction.
 
 const std = @import("std");
 const common = @import("common");
 
-/// Ceilings from §2. Entries first: a page is bounded to 100 items, so 256
-/// distinct selector combinations is already generous for a catalogue that
-/// changes rarely.
-pub const MAX_ENTRIES: usize = 256;
+/// §2's ceilings. `MAX_ENTRIES` is derived from the geometry rather than
+/// declared beside it, so the two cannot disagree.
+const BUCKET_COUNT: usize = 64;
+const BUCKET_SIZE: u8 = 4;
+pub const MAX_ENTRIES: usize = BUCKET_COUNT * BUCKET_SIZE;
 pub const MAX_BYTES: usize = 8 * 1024 * 1024;
 
-/// Freshness bound, monotonic. Wall-clock would let a clock adjustment either
-/// resurrect an expired entry or expire a live one; neither is acceptable for a
-/// value a caller may act on.
-pub const TTL_NANOS: u64 = 60 * std.time.ns_per_s;
+/// Freshness bound. The cache never reads a clock — `now_ms` arrives from the
+/// caller — so §2's "monotonic" requirement is satisfied by the caller's choice
+/// of source and there is no wall clock here for a clock adjustment to move.
+pub const TTL_MS: i64 = 60 * std.time.ms_per_s;
 
-const Entry = struct {
-    key: []u8,
-    value: []u8,
-    stored_at: u64,
-    /// LRU order, most-recently-used first.
-    newer: ?*Entry = null,
-    older: ?*Entry = null,
+pub const DIGEST_LEN: usize = std.crypto.hash.sha2.Sha256.digest_length;
+
+/// What identifies a cached page: the catalogue generation it was built from,
+/// and a digest standing for the canonical selectors.
+///
+/// The digest is an HMAC-SHA-256 under a process-random key, computed by the
+/// caller. This module never receives the selectors themselves, so it cannot
+/// log or leak them, and the digest is not reversible into them by anything
+/// that reads a heap dump. No tenant appears here — Invariant 6.
+pub const Key = struct {
+    revision: u64,
+    digest: [DIGEST_LEN]u8,
 };
 
-/// Per-entry overhead counted against `MAX_BYTES` alongside the key and value
-/// bytes. Named so the accounting is auditable rather than a magic addend.
-const NODE_BYTES: usize = @sizeOf(Entry);
+/// Live payload bytes. Heap-allocated so the table's context can reach it
+/// through a stable pointer: the context is stored *inside* the table by value,
+/// so a counter living directly on `Cache` would be at a different address
+/// every time a `Cache` was moved.
+const Accounting = struct {
+    bytes: usize = 0,
+};
+
+const Context = struct {
+    alloc: std.mem.Allocator,
+    acct: *Accounting,
+
+    /// The digest is already uniform, so its leading bytes ARE the bucket index
+    /// — rehashing them would only cost time. The revision is mixed in so the
+    /// same selectors at two generations spread across buckets rather than
+    /// contending for one during a changeover.
+    pub fn hash(_: *const Context, key: Key) u64 {
+        return std.mem.readInt(u64, key.digest[0..8], .little) ^ key.revision;
+    }
+
+    pub fn eql(_: *const Context, a: Key, b: Key) bool {
+        return a.revision == b.revision and std.mem.eql(u8, &a.digest, &b.digest);
+    }
+
+    /// The table's single departure hook — eviction, overwrite, expiry sweep,
+    /// removal and teardown all arrive here. Freeing and un-counting in one
+    /// place is what keeps the tally and the heap in agreement without every
+    /// call site remembering to do both.
+    ///
+    /// Only ever called from a mutating table method, which the caller holds
+    /// the lock exclusively for, so the unsynchronized decrement is safe.
+    pub fn evicted(self: *const Context, _: Key, value: []u8) void {
+        self.acct.bytes -= value.len;
+        self.alloc.free(value);
+    }
+};
+
+const Table = common.CacheTable(Key, []u8, Context, .{
+    .bucket_count = BUCKET_COUNT,
+    .bucket_size = BUCKET_SIZE,
+});
 
 pub const Cache = struct {
     const Self = @This();
-    const Map = std.StringHashMapUnmanaged(*Entry);
 
     alloc: std.mem.Allocator,
-    map: Map = .{},
-    /// Most- and least-recently-used ends of the intrusive list.
-    mru: ?*Entry = null,
-    lru: ?*Entry = null,
-    bytes: usize = 0,
-    lock: common.Mutex = .{},
+    acct: *Accounting,
+    table: Table,
+    lock: common.RwLock = .{},
 
-    pub fn init(alloc: std.mem.Allocator) Self {
-        return .{ .alloc = alloc };
+    pub fn init(alloc: std.mem.Allocator) !Self {
+        const acct = try alloc.create(Accounting);
+        acct.* = .{};
+        return .{
+            .alloc = alloc,
+            .acct = acct,
+            .table = Table.init(.{ .alloc = alloc, .acct = acct }),
+        };
     }
 
     pub fn deinit(self: *Self) void {
-        var it = self.map.iterator();
-        while (it.next()) |e| self.destroy(e.value_ptr.*);
-        self.map.deinit(self.alloc);
+        self.table.clear(); // releases every resident payload
+        self.alloc.destroy(self.acct);
         self.* = undefined;
     }
 
-    fn destroy(self: *Self, e: *Entry) void {
-        self.alloc.free(e.key);
-        self.alloc.free(e.value);
-        self.alloc.destroy(e);
-    }
-
-    /// Live bytes: the exact sum this cache's ceiling is enforced against.
+    /// Live payload bytes: the exact sum the ceiling is enforced against.
     pub fn byteLen(self: *Self) usize {
-        self.lock.lock();
-        defer self.lock.unlock();
-        return self.bytes;
+        self.lock.lockShared();
+        defer self.lock.unlockShared();
+        return self.acct.bytes;
     }
 
-    pub fn count(self: *Self) usize {
-        self.lock.lock();
-        defer self.lock.unlock();
-        return self.map.count();
+    /// Entries still within their freshness bound at `now_ms`.
+    pub fn count(self: *Self, now_ms: i64) usize {
+        self.lock.lockShared();
+        defer self.lock.unlockShared();
+        return self.table.count(now_ms);
     }
 
-    fn unlink(self: *Self, e: *Entry) void {
-        if (e.newer) |n| n.older = e.older else self.mru = e.older;
-        if (e.older) |o| o.newer = e.newer else self.lru = e.newer;
-        e.newer = null;
-        e.older = null;
-    }
-
-    fn pushFront(self: *Self, e: *Entry) void {
-        e.older = self.mru;
-        e.newer = null;
-        if (self.mru) |m| m.newer = e;
-        self.mru = e;
-        if (self.lru == null) self.lru = e;
-    }
-
-    fn evictLru(self: *Self) void {
-        const victim = self.lru orelse return;
-        self.unlink(victim);
-        _ = self.map.remove(victim.key);
-        self.bytes -= victim.key.len + victim.value.len + NODE_BYTES;
-        self.destroy(victim);
-    }
-
-    /// Look up a fresh entry, promoting it to most-recently-used.
+    /// A fresh cached page, copied for the caller to own.
     ///
-    /// An expired entry is removed rather than returned — a stale hit is worse
-    /// than a miss, because the caller cannot tell the difference. Caller owns
-    /// the returned copy.
-    pub fn get(self: *Self, key: []const u8, now: u64) !?[]u8 {
-        self.lock.lock();
-        defer self.lock.unlock();
-
-        const e = self.map.get(key) orelse return null;
-        if (now -% e.stored_at >= TTL_NANOS) {
-            self.unlink(e);
-            _ = self.map.remove(e.key);
-            self.bytes -= e.key.len + e.value.len + NODE_BYTES;
-            self.destroy(e);
-            return null;
-        }
-        self.unlink(e);
-        self.pushFront(e);
-        return try self.alloc.dupe(u8, e.value);
+    /// Held shared, so concurrent readers do not block each other. The copy is
+    /// taken before the lock drops: returning the stored slice would hand out
+    /// memory that the next writer is entitled to free.
+    ///
+    /// An expired entry reads as a miss and is left resident — `peek` must not
+    /// mutate under a shared lock. `put` reclaims it later.
+    pub fn fetch(self: *Self, key: Key, now_ms: i64) !?[]u8 {
+        self.lock.lockShared();
+        defer self.lock.unlockShared();
+        const value = self.table.peek(key, now_ms) orelse return null;
+        return try self.alloc.dupe(u8, value);
     }
 
-    /// Admit a response. Returns false when the entry was BYPASSED rather than
+    /// Admit a response, returning false when it was BYPASSED rather than
     /// stored — the caller still serves the response, it simply is not cached.
-    ///
-    /// An entry whose own footprint exceeds `MAX_BYTES` is bypassed outright
-    /// rather than emptying the cache to make room for it: evicting every useful
-    /// entry to admit one oversized outlier trades a working cache for a single
-    /// hit. Ordinary pressure still evicts least-recently-used, which is what
-    /// makes this an LRU rather than a fill-once buffer.
-    pub fn put(self: *Self, key: []const u8, value: []const u8, now: u64) !bool {
-        const footprint = key.len + value.len + NODE_BYTES;
-        if (footprint > MAX_BYTES) return false;
+    pub fn put(self: *Self, key: Key, value: []const u8, now_ms: i64) !bool {
+        if (value.len > MAX_BYTES) return false;
 
         self.lock.lock();
         defer self.lock.unlock();
 
-        // Replacing an existing key must not double-count it.
-        if (self.map.get(key)) |old| {
-            self.unlink(old);
-            _ = self.map.remove(old.key);
-            self.bytes -= old.key.len + old.value.len + NODE_BYTES;
-            self.destroy(old);
-        }
+        if (!self.reserve(value.len, now_ms)) return false;
 
-        while (self.map.count() + 1 > MAX_ENTRIES or self.bytes + footprint > MAX_BYTES) {
-            if (self.lru == null) break;
-            self.evictLru();
-        }
-        // Nothing left to evict and it still does not fit.
-        if (self.bytes + footprint > MAX_BYTES) return false;
-
-        const e = try self.alloc.create(Entry);
-        errdefer self.alloc.destroy(e);
-        const k = try self.alloc.dupe(u8, key);
-        errdefer self.alloc.free(k);
-        const v = try self.alloc.dupe(u8, value);
-        errdefer self.alloc.free(v);
-
-        e.* = .{ .key = k, .value = v, .stored_at = now };
-        try self.map.put(self.alloc, k, e);
-        self.pushFront(e);
-        self.bytes += footprint;
+        const owned = try self.alloc.dupe(u8, value);
+        // Counted before the store because storing may evict, and the eviction
+        // hook decrements. Both orders total the same; this one never
+        // transiently under-counts.
+        self.acct.bytes += owned.len;
+        self.table.put(key, owned, now_ms + TTL_MS, now_ms);
         return true;
     }
 
-    /// Test-only: the key of the least-recently-used entry, so eviction ORDER is
-    /// assertable rather than inferred from which lookups happen to miss.
-    pub fn lruKeyForTest(self: *Self) ?[]const u8 {
-        self.lock.lock();
-        defer self.lock.unlock();
-        return if (self.lru) |l| l.key else null;
+    /// Whether `len` more bytes fit, reclaiming dead entries first if not.
+    ///
+    /// §2 is explicit that crossing the ceiling is "a bypass, never an eviction
+    /// cascade", so nothing live is dropped to make room — emptying a working
+    /// cache to admit one outlier trades everything for a single hit. Expired
+    /// entries are a different matter: they are dead already and only lazy
+    /// expiry is still holding their memory, so they are swept before the
+    /// answer is allowed to be no.
+    fn reserve(self: *Self, len: usize, now_ms: i64) bool {
+        if (self.acct.bytes + len <= MAX_BYTES) return true;
+        _ = self.table.sweepExpired(now_ms);
+        return self.acct.bytes + len <= MAX_BYTES;
     }
 };
