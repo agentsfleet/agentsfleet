@@ -78,7 +78,6 @@ export type ApiResponse = unknown;
 export interface CommandDeps {
   clearCredentials: () => Promise<void> | void;
   loadCredentials: () => Promise<Credentials> | Credentials;
-  newIdempotencyKey: () => string;
   openUrl: (
     url: string,
     opts?: {
@@ -114,9 +113,7 @@ export interface CommandDeps {
     message: string,
     opts?:
       | CommandDeps
-      | Partial<
-          Pick<CommandDeps, "printJson" | "writeLine" | "ui">
-        >,
+      | Partial<Pick<CommandDeps, "printJson" | "writeLine" | "ui">>,
   ) => void;
 }
 

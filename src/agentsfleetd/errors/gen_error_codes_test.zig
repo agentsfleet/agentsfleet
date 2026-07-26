@@ -108,6 +108,7 @@ test "gen_error_codes.render() section headings are friendly labels, not raw nam
     try std.testing.expect(std.mem.indexOf(u8, out, "\n### Webhooks\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "\n### Fleets\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "\n### Tenant models\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "\n### Workspaces\n") != null);
 }
 
 test "gen_error_codes.render() gives webhook failures webhook-specific prevention" {

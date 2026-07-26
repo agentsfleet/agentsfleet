@@ -22,62 +22,37 @@ import {
   EVT_USER_AUTHENTICATED,
 } from "../constants/analytics-events.ts";
 import { extractDistinctIdFromToken } from "../program/auth-token.ts";
+import { TENANT_WORKSPACES_PATH } from "../lib/api-paths.ts";
 import { SIGINT } from "../constants/signals.ts";
+import { decodeWorkspacePage } from "./workspace-response-decoders.ts";
 import {
   InterruptedError,
+  UnexpectedError,
   type CliError,
   type NetworkError,
   type ServerError,
-  type UnexpectedError,
 } from "../errors/index.ts";
 
-const FIELD_CREATED_AT = "created_at" as const;
-const FIELD_ID = "id" as const;
-const FIELD_NAME = "name" as const;
-const TYPE_NUMBER = "number" as const;
-const TYPE_STRING = "string" as const;
 const FIELD_TOKEN = "token" as const;
-const FIELD_WORKSPACE_ID = "workspace_id" as const;
-const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+const SIGN_IN_AGAIN = "sign in again" as const;
 
-const isNumber = (value: unknown): value is number => typeof value === TYPE_NUMBER;
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
-
+const invalidWorkspacePage = (detail: string): UnexpectedError =>
+  new UnexpectedError({ detail, suggestion: SIGN_IN_AGAIN });
 // login_method analytics dimension — distinguishes the interactive browser
 // device flow from a directly-supplied token (--token / env / piped stdin).
 export type LoginMethod = "browser" | typeof FIELD_TOKEN;
-
-const normalizeWorkspaceItem = (
-  raw: unknown,
-  fallbackCreatedAt: number,
-): WorkspaceItem | null => {
-  if (!raw || typeof raw !== "object") return null;
-  const rec = raw as Record<string, unknown>;
-  const workspaceId =
-    isString(rec[FIELD_WORKSPACE_ID])
-      ? rec[FIELD_WORKSPACE_ID]
-      : isString(rec[FIELD_ID])
-        ? rec[FIELD_ID]
-        : null;
-  if (!workspaceId) return null;
-  return {
-    workspace_id: workspaceId,
-    name: isString(rec[FIELD_NAME]) ? rec[FIELD_NAME] : null,
-    created_at:
-      isNumber(rec[FIELD_CREATED_AT]) && Number.isFinite(rec[FIELD_CREATED_AT])
-        ? rec[FIELD_CREATED_AT]
-        : fallbackCreatedAt,
-  };
-};
 
 type HydrationError = NetworkError | ServerError | UnexpectedError;
 
 // Render any underlying error as a single-line stderr warn so login still
 // exits 0 — workspace hydration is best-effort, not a login dependency.
-// The operator can recover by running `agentsfleet workspace list` to
-// re-fetch + persist on demand.
+// The operator can recover by signing in again to repeat hydration.
 const reasonOf = (err: HydrationError): string =>
-  err._tag === "ServerError" ? err.code : err._tag === "NetworkError" ? "network" : "unexpected";
+  err._tag === "ServerError"
+    ? err.code
+    : err._tag === "NetworkError"
+      ? "network"
+      : "unexpected";
 
 const warnHydrationFailure = (
   err: HydrationError,
@@ -85,12 +60,27 @@ const warnHydrationFailure = (
   Effect.gen(function* () {
     const output = yield* Output;
     yield* output.warn(
-      `post-login workspace hydration failed (${reasonOf(err)}) — run \`agentsfleet workspace list\` to retry`,
+      `post-login workspace hydration failed (${reasonOf(err)}) — ${SIGN_IN_AGAIN} to retry`,
     );
   });
 
-type FetchOutcome = { readonly ok: true; readonly value: { items?: unknown[] } } | { readonly ok: false; readonly err: HydrationError };
-type SaveOutcome = { readonly ok: true } | { readonly ok: false; readonly err: HydrationError };
+type FetchOutcome =
+  | {
+      readonly ok: true;
+      readonly value: {
+        items: WorkspaceItem[];
+        tenant_id: string;
+      };
+    }
+  | { readonly ok: false; readonly err: HydrationError };
+type SaveOutcome =
+  { readonly ok: true } | { readonly ok: false; readonly err: HydrationError };
+
+const workspacePagePath = (startingAfter?: string): string => {
+  const query = new URLSearchParams({ limit: "100" });
+  if (startingAfter) query.set("starting_after", startingAfter);
+  return `${TENANT_WORKSPACES_PATH}?${query.toString()}`;
+};
 
 export const hydrateWorkspacesAfterLogin = (
   token: Redacted.Redacted<string>,
@@ -98,8 +88,55 @@ export const hydrateWorkspacesAfterLogin = (
   Effect.gen(function* () {
     const http = yield* HttpClient;
     const workspaces = yield* Workspaces;
-    const response: FetchOutcome = yield* http
-      .request<{ items?: unknown[] }>({ path: TENANT_WORKSPACES_PATH, token })
+    const response: FetchOutcome = yield* Effect.gen(function* () {
+      const items: WorkspaceItem[] = [];
+      const seenCursors = new Set<string>();
+      let tenantId: string | null = null;
+      let startingAfter: string | undefined;
+
+      while (true) {
+        const rawPage = yield* http.request<unknown>({
+          path: workspacePagePath(startingAfter),
+          token,
+        });
+        const page = decodeWorkspacePage(rawPage);
+        if (page === null) {
+          return yield* Effect.fail(
+            invalidWorkspacePage("workspace pagination response is invalid"),
+          );
+        }
+        const pageTenantId = page.tenant_id;
+        if (tenantId !== null && tenantId !== pageTenantId) {
+          return yield* Effect.fail(
+            invalidWorkspacePage(
+              "workspace pagination changed the resolved tenant identifier",
+            ),
+          );
+        }
+        tenantId = pageTenantId;
+        items.push(
+          ...page.items.map((item) => ({
+            workspace_id: item.id,
+            name: item.name,
+            created_at: item.created_at,
+          })),
+        );
+
+        if (page.next_cursor === null) break;
+        if (
+          seenCursors.has(page.next_cursor)
+        ) {
+          return yield* Effect.fail(
+            invalidWorkspacePage(
+              "workspace pagination returned an invalid cursor",
+            ),
+          );
+        }
+        seenCursors.add(page.next_cursor);
+        startingAfter = page.next_cursor;
+      }
+      return { items, tenant_id: tenantId };
+    })
       .pipe(
         Effect.match({
           onSuccess: (value): FetchOutcome => ({ ok: true, value }),
@@ -108,23 +145,47 @@ export const hydrateWorkspacesAfterLogin = (
       );
     if (!response.ok) return yield* warnHydrationFailure(response.err);
 
-    const fallbackCreatedAt = Date.now();
-    const items = (Array.isArray(response.value.items) ? response.value.items : [])
-      .map((item) => normalizeWorkspaceItem(item, fallbackCreatedAt))
-      .filter((x): x is WorkspaceItem => x !== null);
-    if (items.length === 0) return;
-
+    const items = response.value.items;
     const previous = yield* workspaces.load.pipe(
-      Effect.orElseSucceed(() => ({ current_workspace_id: null, items: [] })),
+      Effect.orElseSucceed(() => ({
+        tenant_id: null,
+        current_workspace_id: null,
+        items: [],
+      })),
     );
-    const existingCurrent = items.find(
-      (item) => item.workspace_id === previous.current_workspace_id,
+    const tenantId = response.value.tenant_id;
+    if (items.length === 0) {
+      const saveResult: SaveOutcome = yield* workspaces
+        .save({
+          tenant_id: tenantId,
+          current_workspace_id: null,
+          items: [],
+        })
+        .pipe(
+          Effect.match({
+            onSuccess: (): SaveOutcome => ({ ok: true }),
+            onFailure: (err): SaveOutcome => ({ ok: false, err }),
+          }),
+        );
+      if (!saveResult.ok) return yield* warnHydrationFailure(saveResult.err);
+      return;
+    }
+
+    const sameTenant = previous.tenant_id === tenantId;
+    const persistedItems = items;
+    const existingCurrent = persistedItems.find(
+      (item) =>
+        sameTenant && item.workspace_id === previous.current_workspace_id,
     );
-    const firstItem = items[0];
+    const firstItem = persistedItems[0];
     if (!firstItem) return;
     const current = existingCurrent?.workspace_id ?? firstItem.workspace_id;
     const saveResult: SaveOutcome = yield* workspaces
-      .save({ current_workspace_id: current, items })
+      .save({
+        tenant_id: tenantId,
+        current_workspace_id: current,
+        items: persistedItems,
+      })
       .pipe(
         Effect.match({
           onSuccess: (): SaveOutcome => ({ ok: true }),
@@ -177,11 +238,14 @@ export const captureLoginCompleted = (
       yield* clearDistinctId(configDir);
     }
     yield* analytics.capture(EVT_USER_AUTHENTICATED, { command: "login" });
-    yield* analytics.capture(EVT_LOGIN_COMPLETED, { session_id: sessionId, login_method: method });
+    yield* analytics.capture(EVT_LOGIN_COMPLETED, {
+      session_id: sessionId,
+      login_method: method,
+    });
   });
 
 const trimToUndefined = (value: string | undefined): string | undefined => {
-  if (!isString(value)) return undefined;
+  if (typeof value !== "string") return undefined;
   const t = value.trim();
   return t.length > 0 ? t : undefined;
 };
@@ -217,7 +281,13 @@ export const saveDirectToken = (
 ): Effect.Effect<
   void,
   CliError,
-  Analytics | CliConfig | Credentials | HttpClient | Output | TelemetryRuntime | Workspaces
+  | Analytics
+  | CliConfig
+  | Credentials
+  | HttpClient
+  | Output
+  | TelemetryRuntime
+  | Workspaces
 > =>
   Effect.gen(function* () {
     const config = yield* CliConfig;

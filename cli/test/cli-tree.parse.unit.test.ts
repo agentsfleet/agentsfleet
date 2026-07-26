@@ -48,11 +48,17 @@ test("auth status dispatches the nested status action", async () => {
 
 // ── Workspace tree ──────────────────────────────────────────────────────
 
-test("workspace create [name] captures optional positional", async () => {
+test("workspace create <name> captures required positional", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["workspace", "create", "my-ws"], handlers);
   expect(calls[0]?.name).toBe("workspace.create");
   expect(calls[0]?.frame.parsed.positionals).toEqual(["my-ws"]);
+});
+
+test("workspace create rejects a missing name without dispatch", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await expect(dispatch(["workspace", "create"], handlers)).rejects.toThrow();
+  expect(calls).toHaveLength(0);
 });
 
 test("workspace add is rejected with no dispatch", async () => {

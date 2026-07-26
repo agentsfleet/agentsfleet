@@ -8,6 +8,7 @@ const cross_tenant_audit = @import("../../auth/cross_tenant_audit.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.auth);
+const TENANT_ID_BUFFER_BYTES: usize = 64;
 
 pub fn getFleetWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []const u8) ?[]const u8 {
     var q = PgQuery.from(conn.query(
@@ -20,32 +21,34 @@ pub fn getFleetWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: [
     return alloc.dupe(u8, ws) catch null;
 }
 
-/// Tenant-scoped ownership — UNCHANGED from the pre-scope model (Invariant 3).
-/// Fail closed without a tenant. A null tenant_id must NEVER degrade to an
-/// unscoped existence check — that authorizes the caller against any tenant's
-/// workspace (cross-tenant IDOR). The only null-tenant principals are an
-/// unprovisioned Clerk session (before the user.created metadata writeback
-/// lands) and runner tokens; the former is exactly the attacker, and runners
-/// authorize via runnerBearer against fleet.runners, never through here. Does
-/// NOT consult the cross-tenant override — that is a strictly additive fallback.
-fn ownsWithinTenant(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    const tenant_id = principal.tenant_id orelse return false;
+/// Resolve tenant ownership from the user row for OIDC principals, then verify
+/// the workspace belongs to that tenant. API keys remain claim-bound and runner
+/// principals fail closed. The cross-tenant override stays an additive fallback.
+fn authoritativeWorkspaceTenant(
+    conn: *pg.Conn,
+    principal: AuthPrincipal,
+    workspace_id: []const u8,
+    tenant_buf: []u8,
+) ?[]const u8 {
+    const tenant_id =
+        (resolvePrincipalTenant(conn, principal, tenant_buf) catch return null) orelse return null;
 
     var q = PgQuery.from(conn.query(
         "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 AND tenant_id = $2",
         .{ workspace_id, tenant_id },
-    ) catch return false);
+    ) catch return null);
     defer q.deinit();
-    _ = (q.next() catch return false) orelse return false;
+    _ = (q.next() catch return null) orelse return null;
 
     if (principal.workspace_scope_id) |scoped_workspace_id| {
-        if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return false;
+        if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return null;
     }
-    return true;
+    return tenant_id;
 }
 
 pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    if (ownsWithinTenant(conn, principal, workspace_id)) return true;
+    var tenant_buf: [TENANT_ID_BUFFER_BYTES]u8 = undefined;
+    if (authoritativeWorkspaceTenant(conn, principal, workspace_id, &tenant_buf) != null) return true;
     return crossTenantBypass(conn, principal, workspace_id, .authorize_only);
 }
 
@@ -54,15 +57,46 @@ pub fn setTenantSessionContext(conn: *pg.Conn, tenant_id: []const u8) bool {
     return true;
 }
 
+/// Resolve OIDC users through the authoritative user row when one exists.
+/// Database-backed API keys remain bound to their issuing tenant; runners
+/// carry no tenant authority.
+pub fn resolvePrincipalTenant(
+    conn: *pg.Conn,
+    principal: AuthPrincipal,
+    tenant_buf: []u8,
+) !?[]const u8 {
+    switch (principal.mode) {
+        .api_key => return principal.tenant_id,
+        .runner => return null,
+        .jwt_oidc => {},
+    }
+    if (principal.user_id) |subject| {
+        var q = PgQuery.from(try conn.query(
+            "SELECT tenant_id::text FROM core.users WHERE oidc_subject = $1 LIMIT 1",
+            .{subject},
+        ));
+        defer q.deinit();
+        if (try q.next()) |row| {
+            const tenant_id = try row.get([]const u8, 0);
+            if (tenant_id.len == 0 or tenant_id.len > tenant_buf.len) {
+                return error.InvalidTenantMapping;
+            }
+            @memcpy(tenant_buf[0..tenant_id.len], tenant_id);
+            return tenant_buf[0..tenant_id.len];
+        }
+    }
+    return principal.tenant_id;
+}
+
 pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
     // Authorize BEFORE writing the RLS context, so a denied request never mutates
     // app.current_tenant_id. set_config here is session-level (not transaction-
     // scoped), so writing on the failure path would leak a tenant onto the pooled
     // connection for the next request that reuses it — there is no Postgres RLS
     // backstop today. Context is written only on success.
-    if (ownsWithinTenant(conn, principal, workspace_id)) {
-        // Non-null here: ownsWithinTenant returns false on a null tenant_id.
-        return setTenantSessionContext(conn, principal.tenant_id.?);
+    var tenant_buf: [TENANT_ID_BUFFER_BYTES]u8 = undefined;
+    if (authoritativeWorkspaceTenant(conn, principal, workspace_id, &tenant_buf)) |tenant_id| {
+        return setTenantSessionContext(conn, tenant_id);
     }
     return crossTenantBypass(conn, principal, workspace_id, .set_context);
 }
@@ -82,7 +116,7 @@ fn crossTenantBypass(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []c
 
     // Resolve the target workspace's tenant, copying it out before any write on
     // the same conn (the read must be drained first — RULE DRAIN).
-    var tenant_buf: [64]u8 = undefined;
+    var tenant_buf: [TENANT_ID_BUFFER_BYTES]u8 = undefined;
     const target_tenant = blk: {
         var q = PgQuery.from(conn.query(
             "SELECT tenant_id::text FROM core.workspaces WHERE workspace_id = $1",

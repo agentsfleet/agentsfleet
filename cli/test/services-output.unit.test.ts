@@ -140,6 +140,23 @@ describe("Output service", () => {
     expect(text).toContain("x");
     expect(text).toContain("y");
   });
+  test("printKeyValue strips terminal controls on the command-facing path", async () => {
+    const { stdout, layer } = makeStreams();
+    await provideEffect(
+      Effect.gen(function* () {
+        const o = yield* Output;
+        yield* o.printKeyValue({
+          workspace_id: "ws-safe",
+          name: "line\nbreak\u001b[31m\u0085",
+        });
+      }),
+      layer,
+    );
+    const text = stdout.toString();
+    expect(text).not.toContain("\u001b");
+    expect(text).not.toContain("\u0085");
+    expect(text).toContain("line break [31m ");
+  });
   test("printSection writes a section header", async () => {
     const { stdout, layer } = makeStreams();
     await provideEffect(

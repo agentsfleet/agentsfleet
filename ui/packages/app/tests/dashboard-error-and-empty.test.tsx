@@ -41,7 +41,7 @@ vi.mock(
     }: {
       open: boolean;
       onOpenChange: (open: boolean) => void;
-      onSubmit: (name?: string) => void | Promise<void>;
+      onSubmit: (name: string) => void | Promise<void>;
       restoreFocus: () => void;
     }) =>
       open
@@ -102,6 +102,41 @@ describe("DashboardError boundary", () => {
 });
 
 describe("useWorkspaceCreation", () => {
+  it("does not start a second controller attempt while one is pending", async () => {
+    let release: (value: unknown) => void = () => {};
+    createWorkspaceActionMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const { useWorkspaceCreationController } =
+      await import("../components/layout/useWorkspaceCreation");
+    const hook = renderHook(() =>
+      useWorkspaceCreationController({
+        onSuccess: vi.fn(),
+        onFailure: vi.fn(),
+        onDetachedFailure: vi.fn(),
+      }),
+    );
+    const owner = Symbol("pending-create");
+    const callbacks = { onSuccess: vi.fn() };
+
+    act(() => {
+      void hook.result.current.create("first", owner, callbacks);
+      void hook.result.current.create("second", owner, callbacks);
+    });
+    await waitFor(() => expect(hook.result.current.pending).toBe(true));
+    expect(createWorkspaceActionMock).toHaveBeenCalledOnce();
+
+    await act(async () =>
+      release({
+        ok: true,
+        data: { workspace_id: "ws_first", name: "first" },
+      }),
+    );
+  });
+
   it("requires the shared provider", async () => {
     const { useWorkspaceCreation } =
       await import("../components/layout/WorkspaceCreationProvider");
@@ -129,7 +164,7 @@ describe("useWorkspaceCreation", () => {
       wrapper: WorkspaceCreationProvider,
     });
     act(() => {
-      void hook.result.current.create();
+      void hook.result.current.create("unmounted");
     });
     await waitFor(() => expect(hook.result.current.pending).toBe(true));
     hook.unmount();
@@ -137,13 +172,10 @@ describe("useWorkspaceCreation", () => {
     expect(onSuccess).not.toHaveBeenCalled();
   });
 
-  it("reuses the same create key after an uncertain failure", async () => {
-    createWorkspaceActionMock
-      .mockRejectedValueOnce(new Error("request timed out"))
-      .mockResolvedValueOnce({
-        ok: true,
-        data: { workspace_id: "ws_recovered", name: "recover-me" },
-      });
+  it("refreshes once after an uncertain failure without replaying the create", async () => {
+    createWorkspaceActionMock.mockRejectedValueOnce(
+      new Error("request timed out"),
+    );
     const { useWorkspaceCreation, WorkspaceCreationProvider } =
       await import("../components/layout/WorkspaceCreationProvider");
     const hook = renderHook(
@@ -152,15 +184,53 @@ describe("useWorkspaceCreation", () => {
     );
 
     await act(async () => hook.result.current.create("recover-me"));
-    await act(async () => hook.result.current.create("recover-me"));
 
-    const first = createWorkspaceActionMock.mock.calls[0]?.[0] as {
-      idempotencyKey: string;
-    };
-    const retry = createWorkspaceActionMock.mock.calls[1]?.[0] as {
-      idempotencyKey: string;
-    };
-    expect(retry.idempotencyKey).toBe(first.idempotencyKey);
+    expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
+    expect(createWorkspaceActionMock).toHaveBeenCalledWith({
+      name: "recover-me",
+    });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.error).toMatch(
+      /refreshing the workspace list.*before retrying/i,
+    );
+  });
+
+  it("keeps creation locked until uncertain-response reconciliation settles", async () => {
+    const settledName = "after-refresh";
+    let settleRefresh: () => void = () => {};
+    routerRefresh.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          settleRefresh = resolve;
+        }),
+    );
+    createWorkspaceActionMock
+      .mockRejectedValueOnce(new Error("response lost"))
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { workspace_id: "ws_after_refresh", name: settledName },
+      });
+    const { useWorkspaceCreation, WorkspaceCreationProvider } =
+      await import("../components/layout/WorkspaceCreationProvider");
+    const hook = renderHook(
+      () => useWorkspaceCreation({ onSuccess: vi.fn() }),
+      { wrapper: WorkspaceCreationProvider },
+    );
+
+    act(() => {
+      void hook.result.current.create("possibly-committed");
+    });
+    await waitFor(() => expect(hook.result.current.pending).toBe(true));
+    expect(hook.result.current.locked).toBe(true);
+
+    await act(async () => hook.result.current.create("must-not-run-yet"));
+    expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => settleRefresh());
+    await waitFor(() => expect(hook.result.current.pending).toBe(false));
+
+    await act(async () => hook.result.current.create(settledName));
+    expect(createWorkspaceActionMock).toHaveBeenCalledTimes(2);
   });
 
   it("handles completion after the Strict Mode effect replay", async () => {
@@ -184,7 +254,7 @@ describe("useWorkspaceCreation", () => {
     });
 
     act(() => {
-      void hook.result.current.create();
+      void hook.result.current.create("strict");
     });
     await act(async () => {
       release({
@@ -220,12 +290,12 @@ describe("useWorkspaceCreation", () => {
       { wrapper: WorkspaceCreationProvider },
     );
 
-    await act(async () => hook.result.current.create());
+    await act(async () => hook.result.current.create("first"));
     expect(hook.result.current.createdWorkspaces).toEqual([
       { id: "ws_same", name: "first" },
     ]);
-    await act(async () => hook.result.current.create());
-    await act(async () => hook.result.current.create());
+    await act(async () => hook.result.current.create("other"));
+    await act(async () => hook.result.current.create("renamed"));
     expect(hook.result.current.createdWorkspaces).toEqual([
       { id: "ws_same", name: "renamed" },
       { id: "ws_other", name: "other" },
@@ -246,7 +316,7 @@ describe("useWorkspaceCreation", () => {
         }),
       { wrapper: WorkspaceCreationProvider },
     );
-    await act(async () => hook.result.current.create());
+    await act(async () => hook.result.current.create("new"));
     expect(hook.result.current.locked).toBe(true);
     usePathname.mockReturnValue("/w/ws_new/fleets");
     hook.rerender();
@@ -275,7 +345,7 @@ describe("useWorkspaceCreation", () => {
     );
 
     act(() => {
-      void hook.result.current.create();
+      void hook.result.current.create("late");
     });
     await waitFor(() => expect(hook.result.current.pending).toBe(true));
     usePathname.mockReturnValue("/settings/models");
@@ -313,7 +383,7 @@ describe("useWorkspaceCreation", () => {
         ),
       },
     );
-    await act(async () => hook.result.current.create());
+    await act(async () => hook.result.current.create("confirmed"));
     expect(hook.result.current.locked).toBe(true);
 
     knownWorkspaceIds = ["ws_confirmed"];

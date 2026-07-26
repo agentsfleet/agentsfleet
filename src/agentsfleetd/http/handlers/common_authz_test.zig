@@ -6,6 +6,18 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const http_auth = @import("../../db/test_fixtures_http_auth.zig");
 const constants = @import("common");
 
+const MAPPED_USER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41";
+const MAPPED_SUBJECT = "common-authz-stale-tenant-subject";
+const MAPPED_EMAIL = "common-authz-stale-tenant@test.agentsfleet";
+const MAPPED_CREATED_AT: i64 = 1_700_000_000_000;
+
+fn cleanupMappedUser(conn: *pg.Conn) !void {
+    _ = try conn.exec(
+        "DELETE FROM core.users WHERE user_id = $1::uuid OR oidc_subject = $2",
+        .{ MAPPED_USER_ID, MAPPED_SUBJECT },
+    );
+}
+
 test "integration: workspace:any bypasses the tenant match; a non-holder is tenant-bound" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -36,6 +48,52 @@ test "integration: workspace:any bypasses the tenant match; a non-holder is tena
         .scopes = scopes.parseClaim("fleet:admin"),
     };
     try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, stranger, http_auth.WS_PRIMARY));
+}
+
+test "integration: authoritative OIDC tenant authorizes workspace when token tenant is stale" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    http_auth.cleanup(db_ctx.conn);
+    try cleanupMappedUser(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
+    defer cleanupMappedUser(db_ctx.conn) catch unreachable;
+
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO core.users
+        \\  (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, $5, $5)
+    , .{
+        MAPPED_USER_ID,
+        http_auth.TENANT_ID,
+        MAPPED_SUBJECT,
+        MAPPED_EMAIL,
+        MAPPED_CREATED_AT,
+    });
+
+    const principal = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .user_id = MAPPED_SUBJECT,
+        .tenant_id = http_auth.TENANT_UNRELATED,
+    };
+    try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_PRIMARY));
+    try std.testing.expect(common.authorizeWorkspaceAndSetTenantContext(
+        db_ctx.conn,
+        principal,
+        http_auth.WS_PRIMARY,
+    ));
+
+    var q = PgQuery.from(try db_ctx.conn.query(
+        "SELECT current_setting('app.current_tenant_id', true)",
+        .{},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const current_tenant = try row.get(?[]const u8, 0);
+    try std.testing.expectEqualStrings(http_auth.TENANT_ID, current_tenant.?);
 }
 
 test "integration: oidc workspace scoping blocks cross-workspace access" {

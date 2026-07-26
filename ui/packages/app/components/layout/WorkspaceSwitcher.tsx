@@ -29,10 +29,7 @@ type Props = {
   activeId: string | null;
 };
 
-export default function WorkspaceSwitcher({
-  workspaces,
-  activeId,
-}: Props) {
+export default function WorkspaceSwitcher({ workspaces, activeId }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
@@ -43,7 +40,9 @@ export default function WorkspaceSwitcher({
     onSuccess: (workspace) => {
       setCreateOpen(false);
       startTransition(() => {
-        router.push(workspacePath(workspace.workspace_id, DEFAULT_WORKSPACE_SUBPATH));
+        router.push(
+          workspacePath(workspace.workspace_id, DEFAULT_WORKSPACE_SUBPATH),
+        );
       });
     },
   });
@@ -53,15 +52,29 @@ export default function WorkspaceSwitcher({
       (created) => !workspaces.some((workspace) => workspace.id === created.id),
     ),
   ];
+  const routedWorkspace =
+    activeId !== null &&
+    !visibleWorkspaces.some((workspace) => workspace.id === activeId)
+      ? { id: activeId, name: "Current workspace" }
+      : null;
+  const menuWorkspaces = routedWorkspace
+    ? [routedWorkspace, ...visibleWorkspaces]
+    : visibleWorkspaces;
 
   // Keep creation reachable when signup has not created a workspace yet.
   const active =
-    visibleWorkspaces.find((workspace) => workspace.id === activeId) ?? visibleWorkspaces[0];
-  const activeLabel = active?.name ?? active?.id ?? "No workspace";
+    activeId === null
+      ? visibleWorkspaces[0]
+      : menuWorkspaces.find((workspace) => workspace.id === activeId);
+  const activeLabel = active
+    ? (active.name ?? "Unnamed workspace")
+    : "No workspace";
 
   function workspaceLabel(id: string): string {
-    const workspace = visibleWorkspaces.find((candidate) => candidate.id === id);
-    return workspace?.name ?? id;
+    const workspace = visibleWorkspaces.find(
+      (candidate) => candidate.id === id,
+    );
+    return workspace?.name ?? "Unnamed workspace";
   }
 
   function setCreateDialogOpen(nextOpen: boolean) {
@@ -92,7 +105,9 @@ export default function WorkspaceSwitcher({
     const label = workspaceLabel(id);
     captureProductEvent(EVENTS.workspace_switched, { workspace_id: id });
     startTransition(() => {
-      router.push(workspacePath(id, workspaceSwitchSubpath(workspaceSubpath(pathname))));
+      router.push(
+        workspacePath(id, workspaceSwitchSubpath(workspaceSubpath(pathname))),
+      );
     });
     creation.showNotice("success", `Workspace changed to ${label}.`);
   }
@@ -119,26 +134,41 @@ export default function WorkspaceSwitcher({
             </span>
             <ChevronDownIcon size={14} aria-hidden="true" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-96 overflow-y-auto">
+          <DropdownMenuContent
+            align="start"
+            className="max-w-trim overflow-hidden"
+          >
             <DropdownMenuLabel>Workspace</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {visibleWorkspaces.map((workspace) => (
-              <DropdownMenuItem
-                key={workspace.id}
-                onSelect={() => pick(workspace.id)}
-                data-active={workspace.id === activeId ? "true" : undefined}
-              >
-                <FolderIcon
-                  size={14}
-                  strokeWidth={1.75}
-                  aria-hidden="true"
-                  className="text-muted-foreground"
-                />
-                <span className="flex-1">{workspace.name ?? workspace.id}</span>
-                {workspace.id === activeId ? <span aria-hidden="true">✓</span> : null}
-              </DropdownMenuItem>
-            ))}
-            {visibleWorkspaces.length > 0 ? <DropdownMenuSeparator /> : null}
+            <div
+              className="max-h-80 overflow-y-auto"
+              data-testid="workspace-list-scroll"
+            >
+              {menuWorkspaces.map((workspace) => {
+                const label = workspace.name ?? "Unnamed workspace";
+                return (
+                  <DropdownMenuItem
+                    key={workspace.id}
+                    onSelect={() => pick(workspace.id)}
+                    data-active={workspace.id === activeId ? "true" : undefined}
+                  >
+                    <FolderIcon
+                      size={14}
+                      strokeWidth={1.75}
+                      aria-hidden="true"
+                      className="text-muted-foreground"
+                    />
+                    <span className="min-w-0 flex-1 truncate" title={label}>
+                      {label}
+                    </span>
+                    {workspace.id === activeId ? (
+                      <span aria-hidden="true">✓</span>
+                    ) : null}
+                  </DropdownMenuItem>
+                );
+              })}
+            </div>
+            {menuWorkspaces.length > 0 ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem
               onSelect={() => setCreateDialogOpen(true)}
               disabled={creation.locked}

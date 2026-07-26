@@ -24,8 +24,8 @@ export default async function WorkspaceLayout({
   // not the security boundary — every backend call under this route re-authorizes
   // with `ownsWithinTenant` and 403s an un-owned id regardless. Blanking a
   // possibly-owned workspace to a hard 404 on a list-endpoint blip would be worse
-  // than letting the backend gate. Only a *confirmed* miss (list succeeded, id
-  // absent) renders `notFound()`.
+  // than letting the backend gate. Only a confirmed miss from the complete
+  // cursor walk renders `notFound()`.
   let owned = true;
   try {
     const { items } = await listTenantWorkspacesCached(token);

@@ -47,8 +47,8 @@ describe("requireWorkspaceId", () => {
     const exit = await Effect.runPromiseExit(program);
     const failure = await runFailure(exit);
     expect(failure.detail).toBe(NO_WORKSPACE_DETAIL);
-    expect(failure.suggestion).toContain("workspace create");
-    expect(failure.suggestion).toContain("workspace use");
+    expect(failure.suggestion).toContain("workspace create <name>");
+    expect(failure.suggestion).toContain("agentsfleet workspace use <id>");
   });
 
   test("ConfigError message surfaces the detail and suggestion", async () => {
