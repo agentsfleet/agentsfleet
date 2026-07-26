@@ -6,7 +6,16 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
 const store = @import("crypto_store.zig");
+const metadata = @import("metadata.zig");
 const sql = @import("sql.zig");
+
+/// These tests exercise the ENVELOPE, not the projection: their plaintexts are
+/// opaque byte strings ("secret", "victim-secret"), not credential JSON.
+/// `metadata.project` classifies exactly those as `custom_secret`, so passing it
+/// verbatim keeps every stored row honest without dragging credential shapes
+/// into an encryption test. Projection behaviour is covered in `metadata.zig`'s
+/// own tests and, end to end, by the vault store/read tests.
+const OPAQUE: metadata.Projection = .{ .kind = .custom_secret };
 
 const Scope = struct {
     tenant_id: []const u8,
@@ -107,10 +116,16 @@ fn seedLegacyEnvelope(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []
     const secret_id = try id_format.generateVaultSecretId(alloc);
     defer alloc.free(secret_id);
     const now_ms = common.clock.nowMillis();
+    // The four trailing NULLs are the `meta_*` projection columns, deliberately
+    // left unset: this seeds a row as it existed BEFORE
+    // schema/036_vault_secret_metadata.sql, which is the whole point of the
+    // fixture. A row with no projection is exactly what the backfill has to
+    // find and what the read path must degrade to an opaque credential.
+    const no_projection: ?[]const u8 = null;
     _ = try conn.exec(sql.INSERT_SECRET, .{
         secret_id,    workspace_id,   key_name,           wrapped.ciphertext, &wrapped.nonce,
         &wrapped.tag, &payload.nonce, payload.ciphertext, &payload.tag,       VERSION_LEGACY,
-        now_ms,
+        now_ms,       no_projection,  no_projection,      no_projection,      @as(?bool, null),
     });
 }
 
@@ -126,12 +141,12 @@ test "integration: crypto store canonicalizes workspace id and upserts a fresh e
 
     const uppercase_workspace_id = try std.ascii.allocUpperString(alloc, ROUNDTRIP.workspace_id);
     defer alloc.free(uppercase_workspace_id);
-    try store.store(alloc, handle.conn, uppercase_workspace_id, "roundtrip", "first");
+    try store.store(alloc, handle.conn, uppercase_workspace_id, "roundtrip", "first", OPAQUE);
     const first = try readCiphertext(alloc, handle.conn, ROUNDTRIP.workspace_id, "roundtrip");
     defer first.deinit(alloc);
     try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, ROUNDTRIP.workspace_id, "roundtrip"));
 
-    try store.store(alloc, handle.conn, ROUNDTRIP.workspace_id, "roundtrip", "second");
+    try store.store(alloc, handle.conn, ROUNDTRIP.workspace_id, "roundtrip", "second", OPAQUE);
     const second = try readCiphertext(alloc, handle.conn, ROUNDTRIP.workspace_id, "roundtrip");
     defer second.deinit(alloc);
     const loaded = try store.load(alloc, handle.conn, ROUNDTRIP.workspace_id, "roundtrip");
@@ -151,8 +166,8 @@ test "integration: crypto store rejects an envelope relocated to another key" {
     try seedWorkspace(handle.conn, RELOCATE_KEY);
     defer cleanup(handle.conn, RELOCATE_KEY);
 
-    try store.store(alloc, handle.conn, RELOCATE_KEY.workspace_id, "victim", "victim-secret");
-    try store.store(alloc, handle.conn, RELOCATE_KEY.workspace_id, "attacker", "attacker-secret");
+    try store.store(alloc, handle.conn, RELOCATE_KEY.workspace_id, "victim", "victim-secret", OPAQUE);
+    try store.store(alloc, handle.conn, RELOCATE_KEY.workspace_id, "attacker", "attacker-secret", OPAQUE);
     _ = try handle.conn.exec(RELOCATE_ENVELOPE, .{ RELOCATE_KEY.workspace_id, "attacker", "victim" });
     try std.testing.expectError(
         cp.SecretError.DecryptFailed,
@@ -175,8 +190,8 @@ test "integration: crypto store rejects an envelope relocated to another workspa
         cleanup(handle.conn, RELOCATE_WS);
     }
 
-    try store.store(alloc, handle.conn, RELOCATE_WS.workspace_id, "shared", "victim-secret");
-    try store.store(alloc, handle.conn, RELOCATE_WS_TARGET, "shared", "attacker-secret");
+    try store.store(alloc, handle.conn, RELOCATE_WS.workspace_id, "shared", "victim-secret", OPAQUE);
+    try store.store(alloc, handle.conn, RELOCATE_WS_TARGET, "shared", "attacker-secret", OPAQUE);
     const relocate_cross_workspace =
         \\UPDATE vault.secrets AS target
         \\   SET encrypted_dek = source.encrypted_dek, dek_nonce = source.dek_nonce,
@@ -206,7 +221,7 @@ test "integration: crypto store reads a legacy envelope then rewrites version tw
     try std.testing.expectEqualStrings("old-secret", loaded);
     try std.testing.expectEqual(VERSION_LEGACY, try readVersion(handle.conn, LEGACY.workspace_id, "legacy"));
 
-    try store.store(alloc, handle.conn, LEGACY.workspace_id, "legacy", "new-secret");
+    try store.store(alloc, handle.conn, LEGACY.workspace_id, "legacy", "new-secret", OPAQUE);
     try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, LEGACY.workspace_id, "legacy"));
 }
 
@@ -236,7 +251,7 @@ test "integration: crypto store rejects an unsupported envelope version" {
     try seedWorkspace(handle.conn, UNSUPPORTED);
     defer cleanup(handle.conn, UNSUPPORTED);
 
-    try store.store(alloc, handle.conn, UNSUPPORTED.workspace_id, "unsupported", "secret");
+    try store.store(alloc, handle.conn, UNSUPPORTED.workspace_id, "unsupported", "secret", OPAQUE);
     _ = try handle.conn.exec(SET_VERSION, .{ UNSUPPORTED.workspace_id, "unsupported", VERSION_UNSUPPORTED });
     try std.testing.expectError(
         cp.SecretError.UnsupportedKekVersion,
@@ -254,7 +269,7 @@ test "integration: crypto store binds the envelope version" {
     try seedWorkspace(handle.conn, WRONG_VERSION);
     defer cleanup(handle.conn, WRONG_VERSION);
 
-    try store.store(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version", "secret");
+    try store.store(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version", "secret", OPAQUE);
     _ = try handle.conn.exec(SET_VERSION, .{ WRONG_VERSION.workspace_id, "wrong-version", VERSION_LEGACY });
     try std.testing.expectError(cp.SecretError.DecryptFailed, store.load(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version"));
 }
@@ -269,7 +284,7 @@ test "integration: crypto store rejects a malformed envelope" {
     try seedWorkspace(handle.conn, MALFORMED);
     defer cleanup(handle.conn, MALFORMED);
 
-    try store.store(alloc, handle.conn, MALFORMED.workspace_id, "malformed", "secret");
+    try store.store(alloc, handle.conn, MALFORMED.workspace_id, "malformed", "secret", OPAQUE);
     const short_nonce = [_]u8{ 1, 2, 3, 4 };
     _ = try handle.conn.exec(BREAK_NONCE, .{ MALFORMED.workspace_id, "malformed", &short_nonce });
     try std.testing.expectError(
@@ -288,7 +303,7 @@ test "integration: crypto store frees the unwrapped key after payload failure" {
     try seedWorkspace(handle.conn, PAYLOAD_FAILURE);
     defer cleanup(handle.conn, PAYLOAD_FAILURE);
 
-    try store.store(alloc, handle.conn, PAYLOAD_FAILURE.workspace_id, "payload-failure", "secret");
+    try store.store(alloc, handle.conn, PAYLOAD_FAILURE.workspace_id, "payload-failure", "secret", OPAQUE);
     const wrong_tag = [_]u8{0} ** cp.TAG_LEN;
     _ = try handle.conn.exec(BREAK_PAYLOAD_TAG, .{ PAYLOAD_FAILURE.workspace_id, "payload-failure", &wrong_tag });
     try std.testing.expectError(cp.SecretError.DecryptFailed, store.load(alloc, handle.conn, PAYLOAD_FAILURE.workspace_id, "payload-failure"));
@@ -338,7 +353,7 @@ fn loadForFailCheck(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []co
 }
 
 fn storeForFailCheck(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8, plaintext: []const u8) !void {
-    try store.store(alloc, conn, workspace_id, key_name, plaintext);
+    try store.store(alloc, conn, workspace_id, key_name, plaintext, OPAQUE);
 }
 
 test "integration: crypto store load unwinds leak-free at every allocation-failure point" {
@@ -353,7 +368,7 @@ test "integration: crypto store load unwinds leak-free at every allocation-failu
 
     // A real (version-2, AAD-bound) envelope to load — exercises buildAad on the
     // decrypt path, the widest allocation ladder.
-    try store.store(alloc, handle.conn, ALLOC_FAIL.workspace_id, "afl-load", "top-secret-plaintext-material");
+    try store.store(alloc, handle.conn, ALLOC_FAIL.workspace_id, "afl-load", "top-secret-plaintext-material", OPAQUE);
     try std.testing.checkAllAllocationFailures(alloc, loadForFailCheck, .{ handle.conn, ALLOC_FAIL.workspace_id, @as([]const u8, "afl-load") });
 }
 

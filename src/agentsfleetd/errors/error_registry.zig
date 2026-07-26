@@ -167,6 +167,15 @@ pub const ERR_MODELS_DELETE_ACTIVE = "UZ-MODELS-001";
 pub const ERR_MODELS_SECRET_NOT_FOUND = "UZ-MODELS-002";
 pub const ERR_MODELS_DUPLICATE_ENTRY = "UZ-MODELS-003";
 pub const ERR_MODELS_ENTRY_NOT_FOUND = "UZ-MODELS-004";
+// LIBRARY (bounded library reads — tenant models, catalogue, Fleet gallery)
+pub const ERR_LIBRARY_CURSOR_MALFORMED = "UZ-LIBRARY-001";
+pub const ERR_LIBRARY_CURSOR_MISMATCH = "UZ-LIBRARY-002";
+pub const ERR_LIBRARY_INPUT_OUT_OF_BOUNDS = "UZ-LIBRARY-003";
+pub const ERR_LIBRARY_REVISION_UNAVAILABLE = "UZ-LIBRARY-004";
+pub const ERR_LIBRARY_BODY_CEILING = "UZ-LIBRARY-005";
+pub const ERR_LIBRARY_DB_UNAVAILABLE = "UZ-LIBRARY-006";
+pub const ERR_LIBRARY_ENTRY_NOT_FOUND = "UZ-LIBRARY-007";
+pub const ERR_LIBRARY_REFERENCE_RACE = "UZ-LIBRARY-008";
 // PREFS (per-user dashboard UI prefs — /v1/workspaces/{workspace_id}/preferences)
 pub const ERR_PREF_KEY_UNKNOWN = "UZ-PREFS-001";
 pub const ERR_PREF_VALUE_TOO_LARGE = "UZ-PREFS-002";
@@ -296,25 +305,10 @@ pub const SLACK_SIG_VERSION = "v0";
 pub const SLACK_SIG_HEADER = "x-slack-signature";
 pub const SLACK_TS_HEADER = "x-slack-request-timestamp";
 pub const SLACK_MAX_TS_DRIFT_SECONDS: i64 = 300;
-// Gate constants
-pub const GATE_DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
-/// Upper bound for a configured gate timeout — larger values clamp + warn.
-pub const GATE_TIMEOUT_MS_MAX: u64 = 86_400_000;
-pub const GATE_ANOMALY_KEY_PREFIX = "fleet:anomaly:";
-pub const GATE_PENDING_KEY_PREFIX = "fleet:gate:pending:";
-pub const GATE_RESPONSE_KEY_PREFIX = "fleet:gate:response:";
-/// event_id → "action_id|deadline_ms" ref the async lease-path gate check reads.
-pub const GATE_EVENT_REF_KEY_PREFIX = "fleet:gate:byevent:";
-pub const GATE_PENDING_TTL_SECONDS: u32 = 7200;
-pub const GATE_DECISION_APPROVE = "approve";
-pub const GATE_DECISION_DENY = "deny";
-// Gate activity event types
-pub const GATE_EVENT_REQUIRED = "gate_approval_required";
-pub const GATE_EVENT_APPROVED = "gate_approved";
-pub const GATE_EVENT_DENIED = "gate_denied";
-pub const GATE_EVENT_TIMEOUT = "gate_timeout";
-pub const GATE_EVENT_AUTO_KILL = "gate_auto_kill";
-pub const GATE_EVENT_AUTO_APPROVE = "gate_auto_approve";
+// Approval-gate constants (Redis prefixes, timeouts, decision verbs, event
+// names) moved to fleet_runtime/approval_gate_constants.zig — none of them was
+// an error code, and they were what left this file with no room for a new
+// namespace.
 
 // ── Comptime self-check: every ERR_* constant exists in REGISTRY ───────────
 comptime {

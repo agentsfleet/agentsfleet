@@ -27,6 +27,7 @@ const httpz = @import("httpz");
 const common = @import("../common.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
+const model_identity = @import("../../../types/model_identity.zig");
 const model_rate_cache = @import("../../../state/model_rate_cache.zig");
 const model_library_store = @import("../../../state/model_library_store.zig");
 const hx_mod = @import("../hx.zig");
@@ -35,8 +36,10 @@ const log = logging.scoped(.http);
 
 pub const Context = common.Context;
 
-const PROVIDER_MAX = 64;
-const MODEL_ID_MAX = 256;
+// Shared with the tenant registry write path — see types/model_identity.zig for
+// why one home matters. The two routes bound the same field and used to disagree.
+const PROVIDER_MAX = model_identity.PROVIDER_MAX;
+const MODEL_ID_MAX = model_identity.MODEL_ID_MAX;
 const S_PROVIDER_LEN = "provider must be 1–64 chars";
 const S_MODEL_ID_LEN = "model_id must be 1–256 chars";
 const S_CAP_POSITIVE = "context_cap_tokens must be > 0";

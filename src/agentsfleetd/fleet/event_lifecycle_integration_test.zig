@@ -26,7 +26,7 @@ const harness_mod = @import("../http/test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
-const ec = @import("../errors/error_registry.zig");
+const gate_constants = @import("../fleet_runtime/approval_gate_constants.zig");
 const queue_consts = @import("../queue/constants.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const approval_gate_async = @import("../fleet_runtime/approval_gate_async.zig");
@@ -342,8 +342,8 @@ test "approval denial writes the terminal row: gate_blocked + approval_denied + 
     const maybe_ref = try approval_gate_async.lookupEventGateRef(&h.queue, AGENTSFLEET_GATED, event_id);
     const ref = maybe_ref orelse return error.GateRefMissing;
     var key_buf: [256]u8 = undefined;
-    const decision_key = try std.fmt.bufPrint(&key_buf, "{s}{s}", .{ ec.GATE_RESPONSE_KEY_PREFIX, ref.actionId() });
-    try h.queue.setEx(decision_key, ec.GATE_DECISION_DENY, 60);
+    const decision_key = try std.fmt.bufPrint(&key_buf, "{s}{s}", .{ gate_constants.GATE_RESPONSE_KEY_PREFIX, ref.actionId() });
+    try h.queue.setEx(decision_key, gate_constants.GATE_DECISION_DENY, 60);
 
     // Poll 2: the PEL re-delivers, the recorded gate resolves denied →
     // terminal row + XACK (the async-gate outcome, persisted as a row).

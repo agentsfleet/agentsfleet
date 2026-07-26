@@ -18,6 +18,7 @@ const logging = @import("log");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const gate_constants = @import("../../../fleet_runtime/approval_gate_constants.zig");
 const approval_gate = @import("../../../fleet_runtime/approval_gate.zig");
 const resolver = @import("../../../fleet_runtime/approval_gate_resolver.zig");
 
@@ -37,8 +38,8 @@ const ApprovalDecision = enum {
 
     fn toConstString(self: Self) []const u8 {
         return switch (self) {
-            .approve => ec.GATE_DECISION_APPROVE,
-            .deny => ec.GATE_DECISION_DENY,
+            .approve => gate_constants.GATE_DECISION_APPROVE,
+            .deny => gate_constants.GATE_DECISION_DENY,
         };
     }
 };
@@ -148,9 +149,9 @@ fn parseApprovalBody(hx: Hx, req: *httpz.Request) ?ApprovalPayload {
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY);
         return null;
     }
-    const decision: ApprovalDecision = if (std.mem.eql(u8, raw.decision, ec.GATE_DECISION_APPROVE))
+    const decision: ApprovalDecision = if (std.mem.eql(u8, raw.decision, gate_constants.GATE_DECISION_APPROVE))
         .approve
-    else if (std.mem.eql(u8, raw.decision, ec.GATE_DECISION_DENY))
+    else if (std.mem.eql(u8, raw.decision, gate_constants.GATE_DECISION_DENY))
         .deny
     else {
         log.warn("invalid_decision", .{
