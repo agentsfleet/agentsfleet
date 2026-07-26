@@ -69,4 +69,3 @@ test "an id is not less than itself" {
     const id = try probe.parseStreamId("1700000000000-7");
     try testing.expect(!id.lessThan(id));
 }
-

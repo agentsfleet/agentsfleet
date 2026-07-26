@@ -176,4 +176,3 @@ fn purgeFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const 
     _ = try conn.exec("COMMIT", .{});
     return .purged;
 }
-
