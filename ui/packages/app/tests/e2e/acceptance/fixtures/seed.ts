@@ -175,6 +175,7 @@ export async function listFleets(handle: ClientHandle, workspaceId: string): Pro
 export async function listWorkspaces(key: FixtureKey): Promise<Workspace[]> {
   const c = clientFor(key);
   const workspaces: Workspace[] = [];
+  const seenCursors = new Set<string>();
   let startingAfter: string | null = null;
   do {
     const query = new URLSearchParams({ limit: "100" });
@@ -184,6 +185,10 @@ export async function listWorkspaces(key: FixtureKey): Promise<Workspace[]> {
     );
     workspaces.push(...page.items);
     startingAfter = page.next_cursor ?? null;
+    if (startingAfter !== null && seenCursors.has(startingAfter)) {
+      throw new Error("Workspace pagination repeated a cursor");
+    }
+    if (startingAfter !== null) seenCursors.add(startingAfter);
   } while (startingAfter !== null);
   return workspaces;
 }
