@@ -1,9 +1,22 @@
 # agentsfleet local dev — Postgres + Redis + agentsfleetd API
 # `make up` prepares the matching local linux binary in `dist/` and passes
 # `TARGETARCH` to docker compose. CI does not use this path.
+#
+# The three test-infra services (postgres, redis, qstash) carry NO
+# `container_name` and NO fixed host port, so several git worktrees can run
+# `make test-integration` at once. Compose namespaces containers and volumes by
+# project, and the project name defaults to the directory basename — already
+# unique per worktree. Pinning either one collapses every worktree onto one
+# container: whichever ran last owned the database, and the integration lane
+# starts by dropping every schema, so concurrent agents silently destroyed each
+# other's runs.
+#
+# `agentsfleetd` deliberately KEEPS its fixed name and port 3000: it is the
+# `make up` dev stack, not test infra, and `localhost:3000` is a documented
+# entry point. Two worktrees running `make up` at once still collide — that is
+# a real but separate concern, and it is not what the test lane needs.
 services:
   postgres:
-    container_name: agentsfleet-postgres
     image: mirror.gcr.io/library/postgres:18-alpine
     command:
       - sh
@@ -19,7 +32,9 @@ services:
       # requirement without restructuring the volume.
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5432:5432"
+      # Host port assigned by Docker; make/test-integration.mk discovers it via
+      # `docker compose port`. A fixed mapping means only one worktree can bind it.
+      - "5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -29,7 +44,6 @@ services:
       retries: 20
 
   redis:
-    container_name: agentsfleet-redis
     image: mirror.gcr.io/library/redis:7-alpine
     command:
       - sh
@@ -42,7 +56,8 @@ services:
         fi &&
         redis-server --tls-port 6379 --port 0 --tls-cert-file /tls/server.crt --tls-key-file /tls/server.key --tls-ca-cert-file /tls/server.crt --tls-auth-clients no --requirepass agentsfleet
     ports:
-      - "6379:6379"
+      # Host port assigned by Docker -- see the postgres service above.
+      - "6379"
     volumes:
       - redis-tls:/tls
       - redis-data:/data
@@ -53,7 +68,6 @@ services:
       retries: 20
 
   qstash:
-    container_name: agentsfleet-qstash
     # Upstash's official QStash local dev server, run via Bun. Ships deterministic
     # credentials (fixed token + signing keys), so integration tests point at it
     # with a committed fixture token — no per-run secret. Used by the opt-in live
@@ -72,7 +86,8 @@ services:
         bun node_modules/@upstash/qstash-cli/install.js
         exec node_modules/@upstash/qstash-cli/bin/qstash dev -port 8080
     ports:
-      - "8080:8080"
+      # Host port assigned by Docker -- see the postgres service above.
+      - "8080"
     healthcheck:
       # Unauthenticated requests 401, which still proves the server is accepting
       # connections; fetch resolves on any HTTP response and rejects only on a
