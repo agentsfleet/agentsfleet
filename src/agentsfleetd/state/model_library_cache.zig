@@ -161,19 +161,25 @@ pub const Cache = struct {
         return self.table.count(now_ms);
     }
 
-    /// A fresh cached page, copied for the caller to own.
+    /// A fresh cached page, copied into `dest` for the caller to own.
     ///
     /// Held shared, so concurrent readers do not block each other. The copy is
     /// taken before the lock drops: returning the stored slice would hand out
     /// memory that the next writer is entitled to free.
     ///
+    /// The copy goes to a CALLER-supplied allocator rather than the cache's own.
+    /// The cache's allocator is process-lifetime, so duping into it would give
+    /// every hit a permanent allocation no one owns — a leak that grows with
+    /// traffic. The caller passes the arena its response is written from, which
+    /// both frees the copy and puts it somewhere that outlives the handler.
+    ///
     /// An expired entry reads as a miss and is left resident — `peek` must not
     /// mutate under a shared lock. `put` reclaims it later.
-    pub fn fetch(self: *Self, key: Key, now_ms: i64) !?[]u8 {
+    pub fn fetch(self: *Self, dest: std.mem.Allocator, key: Key, now_ms: i64) !?[]u8 {
         self.lock.lockShared();
         defer self.lock.unlockShared();
         const value = self.table.peek(key, now_ms) orelse return null;
-        return try self.alloc.dupe(u8, value);
+        return try dest.dupe(u8, value);
     }
 
     /// Admit a response, returning false when it was BYPASSED rather than

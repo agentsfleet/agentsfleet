@@ -51,14 +51,18 @@ fn putOk(c: *cache_mod.Cache, key: cache_mod.Key, value: []const u8, now_ms: i64
     try testing.expect(try c.put(key, value, now_ms));
 }
 
+// Every fetch below copies into `testing.allocator` — the caller's allocator,
+// not the cache's. Freeing it here is what proves the copy is genuinely the
+// caller's to own: if `fetch` ever went back to duping into the cache's own
+// allocator, these frees would be cross-allocator and the leak check would fail.
 fn expectHit(c: *cache_mod.Cache, key: cache_mod.Key, want: []const u8, now_ms: i64) !void {
-    const got = (try c.fetch(key, now_ms)) orelse return error.ExpectedHit;
+    const got = (try c.fetch(testing.allocator, key, now_ms)) orelse return error.ExpectedHit;
     defer testing.allocator.free(got);
     try testing.expectEqualStrings(want, got);
 }
 
 fn expectMiss(c: *cache_mod.Cache, key: cache_mod.Key, now_ms: i64) !void {
-    const got = try c.fetch(key, now_ms);
+    const got = try c.fetch(testing.allocator, key, now_ms);
     if (got) |g| {
         testing.allocator.free(g);
         return error.ExpectedMiss;
@@ -139,7 +143,7 @@ test "test_response_cache_accounting_and_lru: retention is near-total below capa
     var resident: usize = 0;
     i = 0;
     while (i < population) : (i += 1) {
-        if (try c.fetch(keyOf(1, i), ORIGIN_MS)) |v| {
+        if (try c.fetch(testing.allocator, keyOf(1, i), ORIGIN_MS)) |v| {
             testing.allocator.free(v);
             resident += 1;
         }
