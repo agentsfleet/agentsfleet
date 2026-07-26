@@ -29,6 +29,8 @@ test {
     _ = @import("http/route_matchers_library.zig");
     _ = @import("http/route_matchers_library_test.zig");
     _ = @import("http/pagination.zig");
+    _ = @import("http/response_size.zig");
+    _ = @import("types/model_identity.zig");
     _ = @import("secrets/metadata.zig");
     _ = @import("secrets/metadata_backfill.zig");
     _ = @import("fleet_runtime/activity_publisher.zig");
@@ -95,6 +97,7 @@ test {
     _ = @import("http/route_trace_integration_test.zig");
     _ = @import("http/secrets_json_metadata_integration_test.zig");
     _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
+    _ = @import("http/library_read_bounds_integration_test.zig");
     _ = @import("http/tenant_model_entries_integration_test.zig");
     _ = @import("http/user_preferences_integration_test.zig");
     _ = @import("http/workspace_onboarding_integration_test.zig");

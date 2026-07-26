@@ -20,10 +20,17 @@
 //!
 //! ## Why counting, rather than reading the source
 //!
-//! "This handler issues at most four statements" is a claim about a call graph,
+//! "This handler issues at most five statements" is a claim about a call graph,
 //! and a call graph changes without anyone noticing that a helper it now calls
 //! opens a connection. Reviewing for it works exactly until it doesn't. Counting
 //! the real work makes a regression fail a test instead of a code review.
+//!
+//! That is also why the statement tally is fed from `db/pg_query.zig` — the one
+//! point every row-returning query in the process passes through — rather than
+//! from the handlers. A tally the handler increments counts the statements the
+//! author remembered; a tally the query layer increments counts the statements
+//! that ran. The difference is the whole point, and it is exactly the helper
+//! added next quarter that a hand-placed counter misses.
 //!
 //! Decryptions are counted separately, in `secrets/crypto_store.zig` — that
 //! tally predates this module, is asserted by Invariant 5 as well as by 3.2, and
@@ -40,9 +47,41 @@ var results: std.atomic.Value(usize) = .init(0);
 var encoded_bytes: std.atomic.Value(usize) = .init(0);
 var connections: std.atomic.Value(usize) = .init(0);
 
+/// Whether a measured library read is in flight.
+///
+/// The window is what keeps the `db/pg_query.zig` hook honest. It opens at
+/// handler entry — after the middleware chain has run — which is precisely the
+/// boundary §3 states its table at ("measured application-data maxima **after
+/// middleware auth**"). Statements the bearer chain issues to validate a token
+/// fall outside it and are not this endpoint's budget.
+///
+/// One flag for the process, so it assumes one measured read at a time. That
+/// holds because it exists only under `builtin.is_test` and the integration
+/// tests drive one request per assertion; a test that fires concurrent requests
+/// and then reads a tally is measuring their sum, and should not.
+var armed: std.atomic.Value(bool) = .init(false);
+
 inline fn bump(counter: *std.atomic.Value(usize), by: usize) void {
     if (comptime !builtin.is_test) return;
+    if (!armed.load(.monotonic)) return;
     _ = counter.fetchAdd(by, .monotonic);
+}
+
+/// Open a measured window: zero every tally, then start counting.
+///
+/// Pair with `defer endRead()`. Leaving the window open would attribute the
+/// NEXT request's statements to this one, which reads as a budget regression in
+/// a test that has nothing to do with the change that caused it.
+pub fn beginRead() void {
+    if (comptime !builtin.is_test) return;
+    reset();
+    armed.store(true, .monotonic);
+}
+
+/// Close the window, freezing the tallies for the assertion that follows.
+pub fn endRead() void {
+    if (comptime !builtin.is_test) return;
+    armed.store(false, .monotonic);
 }
 
 /// One database statement issued on a library read path.
@@ -122,12 +161,39 @@ pub const FLEET_DETAIL_MAX_BODY_BYTES: usize = 1024 * 1024;
 /// load — two requests each holding one and waiting for another.
 pub const MAX_CONNECTIONS_PER_READ: usize = 1;
 
+/// Test-only override of the tenant registry's body ceiling.
+///
+/// Bounding `model_id` (see `types/model_identity.zig`) made the real ceiling
+/// arithmetically unreachable through the API — a full page of maximal rows is
+/// ~66 KB against a 512 KiB ceiling. That is the correct outcome, and it costs
+/// the integration tier its only way to reach the refusal: with no input that
+/// can breach the ceiling, nothing proves the handler maps
+/// `BodyCeilingExceeded` onto `UZ-LIBRARY-005` rather than a bare 500.
+///
+/// Lowering the ceiling under test restores that proof without weakening the
+/// production bound — the constant above is untouched, and a separate unit test
+/// pins it. Mirrors `model_rate_cache.setBackingAllocatorForTest`.
+var body_ceiling_override: ?usize = null;
+
+/// Set (or clear, with null) the ceiling this endpoint enforces. Test-only:
+/// compiles to nothing elsewhere, so production always reads the constant.
+pub fn setTenantRegistryBodyCeilingForTest(bytes: ?usize) void {
+    if (comptime !builtin.is_test) return;
+    body_ceiling_override = bytes;
+}
+
+/// The ceiling the handler enforces. The constant, unless a test lowered it.
+pub fn tenantRegistryBodyCeiling() usize {
+    return body_ceiling_override orelse TENANT_REGISTRY_MAX_BODY_BYTES;
+}
+
 // ── tests ───────────────────────────────────────────────────────────────────
 
 const testing = std.testing;
 
 test "counters start at zero and reset returns them there" {
-    reset();
+    beginRead();
+    defer endRead();
     const empty = snapshot();
     try testing.expectEqual(@as(usize, 0), empty.statements);
     try testing.expectEqual(@as(usize, 0), empty.results);
@@ -148,6 +214,47 @@ test "counters start at zero and reset returns them there" {
     // Scoping is the whole point: without a reset, one test's measurement is
     // every earlier test's total.
     reset();
+    try testing.expectEqual(@as(usize, 0), snapshot().statements);
+}
+
+test "outside a measured window nothing is counted" {
+    // The statement tally is fed from db/pg_query.zig, which every query in the
+    // process passes through. Without this gate the tenant registry's budget
+    // would include whatever the bearer middleware, a fixture, or an unrelated
+    // test issued — and §3 states its table AFTER middleware auth.
+    endRead();
+    reset();
+    noteStatement();
+    noteResults(9);
+    noteEncodedBytes(64);
+    noteConnection();
+
+    const idle = snapshot();
+    try testing.expectEqual(@as(usize, 0), idle.statements);
+    try testing.expectEqual(@as(usize, 0), idle.results);
+    try testing.expectEqual(@as(usize, 0), idle.encoded_bytes);
+    try testing.expectEqual(@as(usize, 0), idle.connections);
+
+    // And the same calls land once the window opens, so the gate is what
+    // distinguishes them rather than the counters being inert.
+    beginRead();
+    defer endRead();
+    noteStatement();
+    try testing.expectEqual(@as(usize, 1), snapshot().statements);
+}
+
+test "beginRead zeroes a previous window's tallies" {
+    // Two reads measured in one test binary must not accumulate: the second
+    // request's budget is its own, and a leftover count reads as a regression
+    // in whichever assertion happens to run second.
+    beginRead();
+    noteStatement();
+    noteStatement();
+    try testing.expectEqual(@as(usize, 2), snapshot().statements);
+    endRead();
+
+    beginRead();
+    defer endRead();
     try testing.expectEqual(@as(usize, 0), snapshot().statements);
 }
 
