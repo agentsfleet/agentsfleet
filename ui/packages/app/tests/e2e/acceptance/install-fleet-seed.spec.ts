@@ -41,7 +41,9 @@ test.describe("install-fleet-seed", () => {
     const row = page.locator(`a[href="${workspaceHref(ws, `fleets/${seeded.id}`)}"]`);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("data-state", "live");
-    await expect(row).toHaveAccessibleName(`${name} — active — ${seeded.id}`);
+    await expect(row).toHaveAccessibleName(
+      new RegExp(`^Manage fleet: ${name} — Agent .+ — active$`),
+    );
   });
 
   test.afterEach(async () => {

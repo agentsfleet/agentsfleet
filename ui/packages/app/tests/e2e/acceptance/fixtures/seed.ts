@@ -29,6 +29,7 @@ export interface Fleet {
 interface ListResp<T> {
   items: T[];
   total: number;
+  next_cursor?: string | null;
 }
 
 function handleLabel(handle: ClientHandle): string {
@@ -173,8 +174,18 @@ export async function listFleets(handle: ClientHandle, workspaceId: string): Pro
 
 export async function listWorkspaces(key: FixtureKey): Promise<Workspace[]> {
   const c = clientFor(key);
-  const res = await c.get<ListResp<Workspace>>("/v1/tenants/me/workspaces");
-  return res.items;
+  const workspaces: Workspace[] = [];
+  let startingAfter: string | null = null;
+  do {
+    const query = new URLSearchParams({ limit: "100" });
+    if (startingAfter) query.set("starting_after", startingAfter);
+    const page = await c.get<ListResp<Workspace>>(
+      `/v1/tenants/me/workspaces?${query.toString()}`,
+    );
+    workspaces.push(...page.items);
+    startingAfter = page.next_cursor ?? null;
+  } while (startingAfter !== null);
+  return workspaces;
 }
 
 interface CreateWorkspaceResp {
