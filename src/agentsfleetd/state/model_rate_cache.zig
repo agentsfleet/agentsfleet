@@ -31,24 +31,52 @@ pub const ModelRate = struct {
     context_cap_tokens: u32,
 };
 
-const RatesMap = std.StringHashMapUnmanaged(ModelRate);
+/// Rate-cache identity: the (provider, model) pair itself, held as two fields.
+///
+/// It used to be `provider ++ 0x1f ++ model` in a `StringHashMap`. The
+/// separator was chosen because "it never appears in a provider name or
+/// model_id" — but that is an assumption about catalogue data, not a property
+/// of the encoding, and nothing validates it. A provider or model carrying a
+/// `0x1f` byte makes two DIFFERENT tuples produce the SAME key:
+///
+///     ("a",     "b\x1fc")  ->  "a\x1fb\x1fc"
+///     ("a\x1fb", "c")      ->  "a\x1fb\x1fc"
+///
+/// Both then select whichever rate was loaded last, and `contextCapForModel`
+/// split on the FIRST separator, so it read one of the two as a model named
+/// `b\x1fc`. Billing a request at another model's price is the worst failure
+/// this module has, and it was one unusual catalogue row away.
+///
+/// Keeping the fields apart makes the collision unrepresentable rather than
+/// unlikely: there is no byte string for two tuples to agree on. It also drops
+/// the old 512-byte key buffer, which silently skipped any pair that overflowed
+/// it — at load time AND at lookup, so a long pair was a permanent miss.
+pub const RateKey = struct {
+    provider: []const u8,
+    model: []const u8,
+};
 
-/// Map-key separator joining (provider, model_id) into a single lookup key.
-/// ASCII unit-separator — never appears in a provider name or model_id, so it
-/// cannot collide a key boundary. The same model_id under two providers
-/// (claude-opus-4-8 on anthropic vs pioneer) maps to two distinct keys.
-const KEY_SEP: u8 = 0x1f;
+const RateKeyContext = struct {
+    /// Lengths are folded in before their bytes, so ("ab","c") and ("a","bc")
+    /// hash differently even though their concatenations match. Without the
+    /// length prefix the hash reintroduces exactly the ambiguity the struct
+    /// removes — `eql` would still be correct, but every such pair would
+    /// collide into one bucket.
+    pub fn hash(_: RateKeyContext, k: RateKey) u64 {
+        var h = std.hash.Wyhash.init(0);
+        h.update(std.mem.asBytes(&@as(u64, k.provider.len)));
+        h.update(k.provider);
+        h.update(std.mem.asBytes(&@as(u64, k.model.len)));
+        h.update(k.model);
+        return h.final();
+    }
 
-/// Write the composite (provider, model) lookup key into `buf`. Returns null
-/// if the pair does not fit — caller treats that as a cache miss (loud at
-/// billing), never a silent wrong-rate.
-fn writeKey(buf: []u8, provider: []const u8, model: []const u8) ?[]const u8 {
-    if (provider.len + model.len + 1 > buf.len) return null;
-    @memcpy(buf[0..provider.len], provider);
-    buf[provider.len] = KEY_SEP;
-    @memcpy(buf[provider.len + 1 ..][0..model.len], model);
-    return buf[0 .. provider.len + 1 + model.len];
-}
+    pub fn eql(_: RateKeyContext, a: RateKey, b: RateKey) bool {
+        return std.mem.eql(u8, a.provider, b.provider) and std.mem.eql(u8, a.model, b.model);
+    }
+};
+
+const RatesMap = std.HashMapUnmanaged(RateKey, ModelRate, RateKeyContext, std.hash_map.default_max_load_percentage);
 
 pub const Cache = struct {
     const Self = @This();
@@ -71,9 +99,10 @@ pub const Cache = struct {
             const in_rate = try row.get(i64, 3);
             const cached_rate = try row.get(i64, 4);
             const out_rate = try row.get(i64, 5);
-            var key_buf: [512]u8 = undefined;
-            const key_src = writeKey(&key_buf, provider, model_id) orelse continue;
-            const key = try arena_alloc.dupe(u8, key_src);
+            const key = RateKey{
+                .provider = try arena_alloc.dupe(u8, provider),
+                .model = try arena_alloc.dupe(u8, model_id),
+            };
             try rates.put(arena_alloc, key, .{
                 .input_nanos_per_mtok = in_rate,
                 .cached_input_nanos_per_mtok = cached_rate,
@@ -89,10 +118,27 @@ pub const Cache = struct {
         self.* = undefined;
     }
 
+    /// Test-only: an empty cache owning its own arena, so the key-identity tests
+    /// can assert on lookup behaviour without a database. The alternative —
+    /// seeding a catalogue and rebuilding — would put a live connection between
+    /// the test and the property it is checking, which is pure key semantics.
+    pub fn emptyForTest(alloc: std.mem.Allocator) Cache {
+        return .{ .arena = std.heap.ArenaAllocator.init(alloc), .rates = .{} };
+    }
+
+    /// Test-only: insert one identity, duplicating the key bytes into the arena
+    /// exactly as `initFromConn` does — so the tests exercise the same ownership
+    /// the production path produces, not borrowed literals.
+    pub fn putForTest(self: *Self, provider: []const u8, model: []const u8, r: ModelRate) !void {
+        const a = self.arena.allocator();
+        try self.rates.put(a, .{
+            .provider = try a.dupe(u8, provider),
+            .model = try a.dupe(u8, model),
+        }, r);
+    }
+
     pub fn lookup(self: *const Self, provider: []const u8, model: []const u8) ?ModelRate {
-        var key_buf: [512]u8 = undefined;
-        const key = writeKey(&key_buf, provider, model) orelse return null;
-        return self.rates.get(key);
+        return self.rates.get(.{ .provider = provider, .model = model });
     }
 
     /// Context cap for a model under ANY provider.
@@ -114,9 +160,10 @@ pub const Cache = struct {
         var min_cap: ?u32 = null;
         var it = self.rates.iterator();
         while (it.next()) |entry| {
-            const key = entry.key_ptr.*;
-            const sep = std.mem.indexOfScalar(u8, key, KEY_SEP) orelse continue;
-            if (!std.mem.eql(u8, key[sep + 1 ..], model)) continue;
+            // Compares the model FIELD. The previous form split the composite
+            // key on its first separator, so a provider containing that byte
+            // made this read part of the provider as the model name.
+            if (!std.mem.eql(u8, entry.key_ptr.model, model)) continue;
             const cap = entry.value_ptr.context_cap_tokens;
             min_cap = if (min_cap) |m| @min(m, cap) else cap;
         }
@@ -191,19 +238,35 @@ pub fn deinit() void {
 
 // ── Tests (pure — no DB) ────────────────────────────────────────────────────
 
-test "writeKey: the same model under two providers yields distinct keys" {
-    // The cross-provider collision guard: claude-opus-4-8 on anthropic must NOT
-    // map to the same rate-cache key as on pioneer (different rates).
-    var a: [512]u8 = undefined;
-    var b: [512]u8 = undefined;
-    const ka = writeKey(&a, "anthropic", "claude-opus-4-8").?;
-    const kb = writeKey(&b, "pioneer", "claude-opus-4-8").?;
-    try std.testing.expect(!std.mem.eql(u8, ka, kb));
-    // And the separator is the unit-separator, never a byte a provider/model carries.
-    try std.testing.expectEqual(@as(usize, "anthropic".len), std.mem.indexOfScalar(u8, ka, KEY_SEP).?);
+test "RateKey: the same model under two providers stays distinct" {
+    // The cross-provider guard: claude-opus-4-8 on anthropic must not select
+    // the pioneer rate, which is a different price for the same model name.
+    const ctx = RateKeyContext{};
+    const a = RateKey{ .provider = "anthropic", .model = "claude-opus-4-8" };
+    const b = RateKey{ .provider = "pioneer", .model = "claude-opus-4-8" };
+    try std.testing.expect(!ctx.eql(a, b));
+    try std.testing.expect(ctx.hash(a) != ctx.hash(b));
 }
 
-test "writeKey: returns null (cache miss, never wrong rate) when the pair overflows" {
-    var small: [4]u8 = undefined;
-    try std.testing.expect(writeKey(&small, "anthropic", "claude-opus-4-8") == null);
+test "RateKey: a pair too long for the old 512-byte buffer still resolves" {
+    // The previous key encoding skipped any pair that overflowed its buffer —
+    // at load AND at lookup — so a long provider/model was a permanent miss
+    // that billing saw as "no rate" rather than as an error.
+    const alloc = std.testing.allocator;
+    const long_provider = try alloc.alloc(u8, 600);
+    defer alloc.free(long_provider);
+    @memset(long_provider, 'p');
+
+    var rates: RatesMap = .{};
+    defer rates.deinit(alloc);
+    try rates.put(alloc, .{ .provider = long_provider, .model = "m" }, .{
+        .input_nanos_per_mtok = 7,
+        .cached_input_nanos_per_mtok = 0,
+        .output_nanos_per_mtok = 0,
+        .context_cap_tokens = 1,
+    });
+
+    const got = rates.get(.{ .provider = long_provider, .model = "m" });
+    try std.testing.expect(got != null);
+    try std.testing.expectEqual(@as(i64, 7), got.?.input_nanos_per_mtok);
 }

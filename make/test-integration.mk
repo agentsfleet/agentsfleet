@@ -25,8 +25,15 @@ RUNNER_CI_IMAGE ?= ghcr.io/agentsfleet/ci-zig-alpine:0.16.0
 test-integration-kernel:  ## Run the runner's real-process kernel integration tests (env/kill-tree + seccomp/Landlock/cgroup); native on Linux, auto-containerized on macOS
 ifeq ($(shell uname),Darwin)
 	@echo "→ [kernel] macOS host has no Linux kernel — running the lane in a disposable privileged Linux container..."
+	@# Cache dirs are forced back into the repo here: only $(CURDIR) is mounted, so
+	@# the shared $(HOME) global cache does not exist inside the container and
+	@# would be rebuilt from scratch and discarded on every run. It must stay
+	@# separate from the host's cache regardless — this is a Linux target built
+	@# against a different libc.
 	@docker run --rm --privileged --cgroupns=private --platform "linux/$(shell uname -m | sed 's/x86_64/amd64/')" \
 	  -v "$(CURDIR)":"$(CURDIR)" -w "$(CURDIR)" \
+	  -e ZIG_GLOBAL_CACHE_DIR="$(CURDIR)/.tmp/zig-kernel-global-cache" \
+	  -e ZIG_LOCAL_CACHE_DIR="$(CURDIR)/.tmp/zig-kernel-local-cache" \
 	  "$(RUNNER_CI_IMAGE)" sh -c 'sh scripts/cgroup-delegate.sh && make test-integration-kernel'
 else
 	@echo "→ [kernel] Running runner integration tests via build_runner.zig (env filter + kill-tree + seccomp/Landlock/cgroup)..."
@@ -37,11 +44,56 @@ else
 	@echo "✓ [kernel] Runner integration tests passed (Linux real-process proofs)"
 endif
 
+# Host ports are FIXED. scripts/test-infra-ports.sh decides them: a LINKED
+# worktree gets three ports derived from its project name (so worktrees cannot
+# collide); a primary checkout — which is what CI always has — keeps the
+# conventional 5432/6379/8080.
+#
+# Exported into the environment rather than written to `.env`. Compose reads
+# `.env` automatically, which is why the first attempt used it, but in CI the
+# make target runs inside a container as root: the `.env` it wrote was unreadable
+# by the host runner and moved the published ports out from under the connection
+# strings the workflow had already pinned. An exported variable crosses no
+# ownership boundary.
+#
+# `?=` so an explicit override still wins. Computed once per make invocation.
+TEST_INFRA_PORTS := $(shell bash scripts/test-infra-ports.sh 2>/dev/null)
+AGENTSFLEET_PG_HOST_PORT     ?= $(or $(word 1,$(TEST_INFRA_PORTS)),5432)
+AGENTSFLEET_REDIS_HOST_PORT  ?= $(or $(word 2,$(TEST_INFRA_PORTS)),6379)
+AGENTSFLEET_QSTASH_HOST_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),8080)
+export AGENTSFLEET_PG_HOST_PORT
+export AGENTSFLEET_REDIS_HOST_PORT
+export AGENTSFLEET_QSTASH_HOST_PORT
+
+# The live ports are still discovered from the running container rather than
+# assumed from the values above, so these stay the single source of truth about
+# what is actually bound.
+#
+# Resolved lazily with `=` -- NOT `:=` -- because the containers may not be
+# running when this Makefile is first parsed; the shell runs at first use, which
+# is always after _ensure-test-infra.
+#
+# The pinning is what makes that safe. While the host side was ephemeral, this
+# lookup was correct when it ran and wrong afterwards: a container restart moved
+# the port, the URL built from it did not follow, and every Redis test failed at
+# TCP connect against a port nothing was listening on.
+#
+# Each falls back to the declared port when the lookup yields nothing. That is
+# not defensive padding — it is the `TEST_INFRA=provided` lane: `make memleak`
+# runs inside a valgrind container that carries NO docker CLI, so
+# `docker compose port` there produces an empty string and the URL built from it
+# became `postgres://…@localhost:/agentsfleetdb`, which the daemon rejects as
+# InvalidDatabaseUrl. The declared port is the right answer in exactly that case,
+# because the caller provisioned the infra itself and told us where it is.
+COMPOSE_PG_PORT = $(or $(strip $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_PG_HOST_PORT))
+COMPOSE_REDIS_PORT = $(or $(strip $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_HOST_PORT))
+COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_QSTASH_HOST_PORT))
+
 # sslmode=disable: the local docker Postgres has no TLS and parseUrl defaults to
 # `.require` (hosted providers mandate it) — without it every local DB-lane test
 # fails at connect with SSLNotSupportedByServer before it can run.
-TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable
-TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:6379
+TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
+TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:$(COMPOSE_REDIS_PORT)
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
 # at parse time; Redis may not be running yet when the Makefile is first evaluated.
 TEST_REDIS_TLS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
@@ -51,7 +103,7 @@ TEST_REDIS_TLS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
 # choose — and nothing it authenticates to holds real data. Derived here from its
 # two plain parts so no credential-shaped blob is stored in the repo.
 # The opt-in live QStash tests read these vars; unset (or server down) → self-skip.
-QSTASH_DEV_URL_LOCAL ?= http://localhost:8080
+QSTASH_DEV_URL_LOCAL ?= http://localhost:$(COMPOSE_QSTASH_PORT)
 QSTASH_DEV_IDENTITY ?= defaultUser
 QSTASH_DEV_SECRET ?= defaultPassword
 QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QSTASH_DEV_IDENTITY)' '$(QSTASH_DEV_SECRET)' | base64 | tr -d '\n')
@@ -75,23 +127,29 @@ else
 	  echo "✗ Docker daemon is not running — start Docker Desktop / dockerd and retry."; \
 	  exit 1; \
 	fi
-	@# container_name in docker-compose.yml is fixed (agentsfleet-postgres / agentsfleet-redis),
-	@# so another worktree's compose can leave stale containers blocking ours. Remove
-	@# by name if they exist but are NOT owned by this project. Idempotent.
-	@this_project=$$(basename "$(CURDIR)"); \
-	for c in agentsfleet-postgres agentsfleet-redis agentsfleet-qstash; do \
-	  owner=$$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' $$c 2>/dev/null); \
-	  if [ -n "$$owner" ] && [ "$$owner" != "$$this_project" ]; then \
-	    echo "→ [infra] Removing stale $$c (owned by project '$$owner')..."; \
-	    docker rm -f $$c >/dev/null; \
-	  fi; \
-	done
+	@# No stale-container sweep: compose namespaces these services per project, so a
+	@# sibling worktree's containers are simply different containers. The sweep that
+	@# used to live here force-removed them by fixed name, which is what let one
+	@# worktree's test run destroy another's mid-flight.
+	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) redis=$(AGENTSFLEET_REDIS_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT)"
 	@echo "→ [infra] Starting postgres + redis + qstash (waiting for healthchecks)..."
 	@docker compose up -d --wait postgres redis qstash
 	@mkdir -p "$(CURDIR)/.tmp"
 	@echo "→ [infra] Extracting Redis TLS CA cert..."
-	@docker compose cp redis:/tls/server.crt "$(TEST_REDIS_TLS_CA_CERT)" >/dev/null
+	@# No `>/dev/null`: a failed copy used to be silent, and the `test -s` below
+	@# only proved the file was non-empty — which a STALE cert from a destroyed
+	@# container satisfies. Every TLS connection then failed signature
+	@# verification, which reads as dozens of unrelated Redis test failures.
+	@docker compose cp redis:/tls/server.crt "$(TEST_REDIS_TLS_CA_CERT)"
 	@test -s "$(TEST_REDIS_TLS_CA_CERT)" || { echo "✗ Failed to extract Redis TLS cert"; exit 1; }
+	@# Freshness, not size: the copied cert must be byte-identical to the one the
+	@# server is actually presenting.
+	@container_sha=$$(docker compose exec -T redis sha256sum /tls/server.crt | awk '{print $$1}'); \
+	local_sha=$$(shasum -a 256 "$(TEST_REDIS_TLS_CA_CERT)" | awk '{print $$1}'); \
+	if [ "$$container_sha" != "$$local_sha" ]; then \
+	  echo "✗ [infra] Redis CA cert is stale (container $$container_sha != local $$local_sha)"; \
+	  exit 1; \
+	fi
 	@echo "✓ [infra] postgres + redis ready; Redis CA cert at $(TEST_REDIS_TLS_CA_CERT)"
 endif
 

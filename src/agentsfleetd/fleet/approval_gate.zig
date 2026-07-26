@@ -18,6 +18,7 @@ const resolver = @import("../fleet_runtime/approval_gate_resolver.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const gate_constants = @import("../fleet_runtime/approval_gate_constants.zig");
 const FleetSession = @import("fleet_session.zig");
 const logging = @import("log");
 
@@ -56,7 +57,7 @@ pub fn checkApprovalGate(
         gates.anomaly_rules,
     );
     if (anomaly == .auto_kill) {
-        logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_AUTO_KILL, event.event_id);
+        logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_AUTO_KILL, event.event_id);
         pauseFleet(pool, session.fleet_id);
         return .{ .auto_killed = .anomaly };
     }
@@ -77,7 +78,7 @@ pub fn checkApprovalGate(
             return .{ .passed = {} };
         },
         .auto_kill => {
-            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_AUTO_KILL, event.event_id);
+            logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_AUTO_KILL, event.event_id);
             pauseFleet(pool, session.fleet_id);
             return .{ .auto_killed = .policy };
         },
@@ -134,12 +135,12 @@ fn requestNewGate(
         // Redis unavailable — fail closed (default-deny). Surface the registry
         // code so operators can trace the default-deny back to gate-service loss.
         log.warn("gate_redis_unavailable", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .error_code = error_codes.ERR_APPROVAL_REDIS_UNAVAILABLE, .err = @errorName(err) });
-        logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_DENIED, "gate_unavailable");
+        logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_DENIED, "gate_unavailable");
         return .{ .blocked = .unavailable };
     };
     defer alloc.free(action_id);
 
-    logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_REQUIRED, action_id);
+    logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_REQUIRED, action_id);
     const slack_msg = approval_gate.buildSlackApprovalMessage(
         alloc,
         session.config.name,
@@ -190,15 +191,15 @@ fn evaluatePendingGate(
     };
     switch (eval) {
         .approved => {
-            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_APPROVED, ref.actionId());
+            logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_APPROVED, ref.actionId());
             return .{ .passed = {} };
         },
         .denied => {
-            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_DENIED, ref.actionId());
+            logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_DENIED, ref.actionId());
             return .{ .blocked = .approval_denied };
         },
         .expired => {
-            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_TIMEOUT, ref.actionId());
+            logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_TIMEOUT, ref.actionId());
             // Attribution must be the canonical "system:timeout" string the
             // sweeper also writes (resolve() dedups whichever lands first).
             approval_gate.resolveGateDecision(pool, ref.actionId(), .timed_out, resolver.SYSTEM_TIMEOUT, "", std.heap.page_allocator);
@@ -229,7 +230,7 @@ fn pauseFleet(pool: *pg.Pool, fleet_id: []const u8) void {
 fn cleanupPendingKey(redis: *queue_redis.Client, fleet_id: []const u8, action_id: []const u8) void {
     var key_buf: [256]u8 = undefined;
     const key = std.fmt.bufPrint(&key_buf, "{s}{s}:{s}", .{
-        error_codes.GATE_PENDING_KEY_PREFIX, fleet_id, action_id,
+        gate_constants.GATE_PENDING_KEY_PREFIX, fleet_id, action_id,
     }) catch return;
     var resp = redis.commandAllowError(&.{ "DEL", key }) catch return;
     resp.deinit(redis.alloc);
@@ -240,7 +241,7 @@ fn storeNotificationPayload(redis: *queue_redis.Client, fleet_id: []const u8, ac
     const key = std.fmt.bufPrint(&key_buf, "fleet:gate:notify:{s}:{s}", .{
         fleet_id, action_id,
     }) catch return;
-    redis.setEx(key, payload, error_codes.GATE_PENDING_TTL_SECONDS) catch |err| {
+    redis.setEx(key, payload, gate_constants.GATE_PENDING_TTL_SECONDS) catch |err| {
         log.warn("notify_store_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     };
 }

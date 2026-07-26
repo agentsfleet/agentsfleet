@@ -6,7 +6,7 @@ const common = @import("common");
 const clock = common.clock;
 const ag_async = @import("approval_gate_async.zig");
 const approval_gate = @import("approval_gate.zig");
-const ec = @import("../errors/error_registry.zig");
+const gate_constants = @import("approval_gate_constants.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 
 const REDIS_URL_ENV = "REDIS_URL";
@@ -24,9 +24,9 @@ fn delKey(client: *queue_redis.Client, key: []const u8) void {
 
 fn cleanupGateKeys(client: *queue_redis.Client, fleet_id: []const u8, event_id: []const u8, action_id: []const u8) void {
     var buf_a: [256]u8 = undefined;
-    if (std.fmt.bufPrint(&buf_a, "{s}{s}:{s}", .{ ec.GATE_EVENT_REF_KEY_PREFIX, fleet_id, event_id })) |k| delKey(client, k) else |_| {}
+    if (std.fmt.bufPrint(&buf_a, "{s}{s}:{s}", .{ gate_constants.GATE_EVENT_REF_KEY_PREFIX, fleet_id, event_id })) |k| delKey(client, k) else |_| {}
     var buf_b: [256]u8 = undefined;
-    if (std.fmt.bufPrint(&buf_b, "{s}{s}", .{ ec.GATE_RESPONSE_KEY_PREFIX, action_id })) |k| delKey(client, k) else |_| {}
+    if (std.fmt.bufPrint(&buf_b, "{s}{s}", .{ gate_constants.GATE_RESPONSE_KEY_PREFIX, action_id })) |k| delKey(client, k) else |_| {}
 }
 
 test "gate ref: pending until approved — the next poll proceeds" {
@@ -49,7 +49,7 @@ test "gate ref: pending until approved — the next poll proceeds" {
     try std.testing.expectEqual(ag_async.PendingEval.pending, try ag_async.evaluateRef(&client, null, &ref, clock.nowMillis()));
 
     // Human approves → the next poll proceeds.
-    try approval_gate.resolveApproval(&client, action_id, ec.GATE_DECISION_APPROVE);
+    try approval_gate.resolveApproval(&client, action_id, gate_constants.GATE_DECISION_APPROVE);
     try std.testing.expectEqual(ag_async.PendingEval.approved, try ag_async.evaluateRef(&client, null, &ref, clock.nowMillis()));
 }
 
@@ -63,7 +63,7 @@ test "gate ref: deny decision blocks" {
     defer cleanupGateKeys(&client, fleet_id, event_id, action_id);
 
     try ag_async.recordEventGateRef(&client, fleet_id, event_id, action_id, clock.nowMillis() + 60_000);
-    try approval_gate.resolveApproval(&client, action_id, ec.GATE_DECISION_DENY);
+    try approval_gate.resolveApproval(&client, action_id, gate_constants.GATE_DECISION_DENY);
 
     const ref = (try ag_async.lookupEventGateRef(&client, fleet_id, event_id)).?;
     try std.testing.expectEqual(ag_async.PendingEval.denied, try ag_async.evaluateRef(&client, null, &ref, clock.nowMillis()));

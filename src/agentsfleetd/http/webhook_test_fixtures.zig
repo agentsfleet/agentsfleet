@@ -8,7 +8,7 @@
 const std = @import("std");
 const clock = @import("common").clock;
 const pg = @import("pg");
-const crypto_store = @import("../secrets/crypto_store.zig");
+const vault = @import("../state/vault.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const IGNORED_ERROR_FMT = "ignored: {s}";
 
@@ -58,6 +58,11 @@ pub fn insertFleet(
 
 /// Insert a vault secret that `crypto_store.load(workspace_id, key_name)` can retrieve.
 /// Requires `setTestEncryptionKey()` to have been called.
+///
+/// Goes through `vault.storeJsonPlaintext`, not `crypto_store.store` directly,
+/// so the row carries the same `meta_*` projection production writes (RULE ITF —
+/// a fixture that wrote the envelope alone would seed rows the read path reports
+/// as opaque, and every metadata assertion would pass against a lie).
 pub fn insertVaultSecret(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
@@ -65,7 +70,7 @@ pub fn insertVaultSecret(
     key_name: []const u8,
     plaintext: []const u8,
 ) !void {
-    try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext);
+    try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
 }
 
 /// Insert a workspace credential at `<credential_name>` containing
@@ -88,7 +93,7 @@ pub fn insertWebhookCredential(
         .{},
     );
     defer alloc.free(json);
-    try crypto_store.store(alloc, conn, workspace_id, credential_name, json);
+    try vault.storeJsonPlaintext(alloc, conn, workspace_id, credential_name, json);
 }
 
 /// Delete all rows this test created. Idempotent.

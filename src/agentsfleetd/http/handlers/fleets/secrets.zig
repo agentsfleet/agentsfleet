@@ -17,7 +17,7 @@ const id_format = @import("../../../types/id_format.zig");
 const vault = @import("../../../state/vault.zig");
 const secure_memory = @import("../../../secrets/secure_memory.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
-const tenant_model_entries = @import("../../../state/tenant_model_entries.zig");
+const secret_reference_txn = @import("../../../state/secret_reference_txn.zig");
 
 const log = logging.scoped(.fleet_secrets_api);
 
@@ -135,32 +135,59 @@ pub fn innerDeleteSecret(
     const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.principal, workspace_id) orelse return;
     defer access.deinit(hx.alloc);
 
-    if (!checkNotReferencedByModelEntries(hx, conn, secret_name)) return;
+    deleteReferencedSecret(hx, conn, workspace_id, secret_name) catch return;
+    hx.res.status = 204;
+}
+
+/// Delete the credential under the shared reference lock protocol.
+///
+/// The referenced-entry check and the DELETE now happen inside ONE transaction
+/// holding the vault row lock. They used to be two unsynchronized statements,
+/// which let a concurrent `POST /tenants/me/models` slip an entry in between
+/// them — the entry survived, naming a credential that no longer existed, and
+/// nothing noticed until a fleet tried to run (see state/secret_reference_txn.zig).
+///
+/// `SecretGone` is success here, not failure: another transaction already
+/// removed the row, which is exactly what this request wanted. DELETE stays
+/// idempotent 204, matching the behaviour before the lock existed.
+fn deleteReferencedSecret(
+    hx: hx_mod.Hx,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    secret_name: []const u8,
+) !void {
+    // The tenant whose entries matter is the WORKSPACE's owner, not the
+    // caller's. Passing `hx.principal.tenant_id` here meant a `workspace:any`
+    // operator deleting inside another tenant's workspace counted references
+    // against its own tenant, matched none, and deleted a credential that the
+    // victim's registry entries still named.
+    var txn = secret_reference_txn.begin(conn, workspace_id, secret_name) catch |err| switch (err) {
+        secret_reference_txn.Error.SecretGone => return,
+        else => {
+            log.err("delete_lock_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .name = secret_name, .req_id = hx.req_id });
+            common.internalDbError(hx.res, hx.req_id);
+            return err;
+        },
+    };
+    errdefer txn.abort();
+
+    // The count came from the same statement that took the entry locks, so no
+    // entry can appear or vanish between deciding and deleting.
+    if (txn.reference_count > 0) {
+        const n = txn.reference_count;
+        const detail = std.fmt.allocPrint(hx.alloc, "Secret is referenced by {d} model registry entr{s}", .{ n, if (n == 1) "y" else "ies" }) catch "Secret is referenced by model registry entries";
+        hx.fail(ec.ERR_SECRET_REFERENCED_BY_MODEL_ENTRIES, detail);
+        txn.abort();
+        return error.StillReferenced;
+    }
 
     const removed = vault.deleteCredential(conn, workspace_id, secret_name) catch |err| {
         log.err("delete_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .name = secret_name, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
-        return;
+        return err;
     };
+    try txn.commit();
     log.info("deleted", .{ .name = secret_name, .workspace = workspace_id, .removed = removed });
-    hx.res.status = 204;
-}
-
-/// M121 guard: refuse the delete when a tenant model registry entry still
-/// points at this secret_ref, naming the count. Bootstrap/platform principals
-/// (no tenant_id) carry no registry, so the check is a no-op for them —
-/// deletion proceeds as before this guard existed.
-fn checkNotReferencedByModelEntries(hx: hx_mod.Hx, conn: *pg.Conn, secret_name: []const u8) bool {
-    const tenant_id = hx.principal.tenant_id orelse return true;
-    const count = tenant_model_entries.referencedSecretCount(conn, tenant_id, secret_name) catch |err| {
-        log.err("referenced_count_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .name = secret_name, .req_id = hx.req_id });
-        common.internalDbError(hx.res, hx.req_id);
-        return false;
-    };
-    if (count == 0) return true;
-    const detail = std.fmt.allocPrint(hx.alloc, "Secret is referenced by {d} model registry entr{s}", .{ count, if (count == 1) "y" else "ies" }) catch "Secret is referenced by model registry entries";
-    hx.fail(ec.ERR_SECRET_REFERENCED_BY_MODEL_ENTRIES, detail);
-    return false;
 }
 
 // ── List Secrets ──────────────────────────────────────────────────
