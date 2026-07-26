@@ -508,11 +508,16 @@ test "integration: redis handshake stages are deadline bounded" {
     // handshake read blocks on the same owned socket as the AUTH read, so the
     // same fire→shutdown→classify chain bounds it.
     const alloc = std.testing.allocator;
-    // The raced dial needs a concurrency-capable Io; common.globalIo() is
-    // statically single-threaded and would refuse `Io.Select`.
-    var threaded: std.Io.Threaded = .init(alloc, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
+    // globalIo(): the serial io makes `std.Io.net.HostName.connect`'s internal
+    // `io.async` run inline, so no worker thread exists to lose Zig 0.16's
+    // futex wake-after-return race (std.Io.Threaded: the worker publishes the
+    // wake condition, then hands a futex word on the awaiter's already-popped
+    // stack frame to futex(2); Threaded.zig:760-762) — the race the valgrind
+    // memleak lane flags, deliberately unsuppressed in `make/bench.mk`. This
+    // test needs no io concurrency: the deadline releases a blocked read from
+    // its own scheduler thread by shutting the owned socket down, and the
+    // stalling peer runs on its own std.Thread.
+    const io = common.globalIo();
 
     // Stage: resolve/dial with the budget already spent → refused before any
     // socket exists, still the classified timeout.
