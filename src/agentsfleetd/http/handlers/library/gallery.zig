@@ -58,6 +58,7 @@ const counters = @import("../../../observability/library_read_counters.zig");
 const pagination = @import("../../pagination.zig");
 const query = @import("query.zig");
 const keyset = @import("fleet_keyset.zig");
+const response_size = @import("../../response_size.zig");
 const entry_view = @import("entry_view.zig");
 
 const Hx = hx_mod.Hx;
@@ -73,6 +74,13 @@ const S_CURSOR_MALFORMED = "starting_after is not a cursor this endpoint issued"
 const S_CURSOR_MISMATCH = "starting_after was issued for a different workspace, filter or page size";
 const S_PAGE_FAILED = "Failed to list this workspace's fleet libraries";
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
+const S_BODY_CEILING = "This page of fleet libraries is too large to return";
+
+/// MUST match the options the write below uses, or the ceiling compares one
+/// body's size against a different body. Nulls are EMITTED: `total` and
+/// `next_cursor` are required keys on the envelope, so omitting them when null
+/// would make a client distinguish "no more pages" from "this server is old".
+const GALLERY_JSON_OPTIONS: std.json.Stringify.Options = .{};
 
 /// One gallery card. Everything here is rendered; see the module note for the
 /// one field deliberately absent.
@@ -133,7 +141,35 @@ pub fn innerGallery(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void 
         common.internalOperationError(hx.res, S_PAGE_FAILED, hx.req_id);
         return;
     };
-    hx.ok(.ok, page);
+    respond(hx, page);
+}
+
+/// Write the page, refusing one that would exceed §3's encoded-body ceiling.
+///
+/// The size is measured BEFORE the bytes exist (`Io.Writer.Discarding` counts
+/// what the formatter would emit), so a rejected page is never built. It
+/// refuses rather than truncates: a caller cannot tell a short page from a
+/// complete one, so truncation converts a server fault into missing data the
+/// client acts on.
+///
+/// Measuring here is also what makes the §3 bound checkable at all — the tally
+/// has to be the bytes the client actually receives, and a handler that hands a
+/// struct to a generic writer never learns that number.
+fn respond(hx: Hx, page: Page) void {
+    const encoded_bytes = response_size.encodedWithinCeiling(
+        page,
+        GALLERY_JSON_OPTIONS,
+        counters.FLEET_SUMMARY_MAX_BODY_BYTES,
+    ) catch |err| {
+        if (err == response_size.CeilingError.BodyCeilingExceeded) {
+            hx.fail(ec.ERR_LIBRARY_BODY_CEILING, S_BODY_CEILING);
+        } else {
+            common.internalOperationError(hx.res, S_PAGE_FAILED, hx.req_id);
+        }
+        return;
+    };
+    counters.noteEncodedBytes(encoded_bytes);
+    common.writeJson(hx.res, .ok, page);
 }
 
 /// Decode and authorize `starting_after`. Null means the first page.
