@@ -48,6 +48,13 @@ pub const Stats = struct {
     /// as opaque `custom_secret`, matching what `vault.storeJsonPlaintext` does
     /// for the same input on the write path.
     opaque_bodies: usize = 0,
+    /// Rows that gained metadata between this sweep's decrypt and its write —
+    /// i.e. were rotated underneath it. Left alone: the rotation wrote its
+    /// projection in the same statement as its ciphertext, so it describes the
+    /// current body and this run's projection describes a body that is gone.
+    /// Counted rather than silent, because a non-zero value here is the
+    /// operator's signal that the sweep raced live traffic.
+    rotated_midway: usize = 0,
 };
 
 /// Walk every workspace still holding an unprojected credential and fill in the
@@ -106,14 +113,20 @@ fn projectWorkspace(
         // row written by `vault.storeJsonPlaintext` are indistinguishable.
         var parsed = std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{}) catch {
             stats.opaque_bodies += 1;
-            try write(conn, workspace_id, entry.key_name, .{ .kind = .custom_secret });
-            stats.projected += 1;
+            if (try write(conn, workspace_id, entry.key_name, .{ .kind = .custom_secret })) {
+                stats.projected += 1;
+            } else {
+                stats.rotated_midway += 1;
+            }
             continue;
         };
         defer parsed.deinit();
 
-        try write(conn, workspace_id, entry.key_name, metadata.project(parsed.value));
-        stats.projected += 1;
+        if (try write(conn, workspace_id, entry.key_name, metadata.project(parsed.value))) {
+            stats.projected += 1;
+        } else {
+            stats.rotated_midway += 1;
+        }
     }
 }
 
@@ -123,13 +136,17 @@ fn projectWorkspace(
 /// No log line here, and none anywhere in this file naming a projected value:
 /// provider and base URL are non-secret but still credential metadata, which
 /// section 4 keeps out of logs regardless.
+/// Returns whether the row was actually filled. False means it gained metadata
+/// between this sweep's decrypt and this write — a rotation — and the UPDATE's
+/// `meta_kind IS NULL` guard correctly declined to overwrite fresher data with
+/// this run's stale projection.
 fn write(
     conn: *pg.Conn,
     workspace_id: []const u8,
     key_name: []const u8,
     projection: metadata.Projection,
-) !void {
-    _ = try conn.exec(sql.UPDATE_SECRET_METADATA, .{
+) !bool {
+    const affected = try conn.exec(sql.UPDATE_SECRET_METADATA, .{
         workspace_id,
         key_name,
         projection.kind.wire(),
@@ -137,11 +154,22 @@ fn write(
         projection.base_url,
         projection.has_key,
     });
+    return (affected orelse 0) > 0;
 }
 
 // ── tests ───────────────────────────────────────────────────────────────────
 
 const testing = std.testing;
+
+test "the UPDATE refuses to overwrite a row that gained metadata mid-sweep" {
+    // The sweep decrypts a whole workspace, then writes each projection some
+    // time later. Without this predicate a credential rotated in that window —
+    // new ciphertext AND new metadata, written atomically — would be described
+    // by the projection of the plaintext this run read BEFORE the rotation.
+    // The guard is in the statement rather than in the loop because a check in
+    // the loop is a second read with the same gap underneath it.
+    try testing.expect(std.mem.indexOf(u8, sql.UPDATE_SECRET_METADATA, "meta_kind IS NULL") != null);
+}
 
 test "the work list selects only unprojected rows, so a re-run is a no-op" {
     // Idempotence is the whole safety story for a command an operator may run

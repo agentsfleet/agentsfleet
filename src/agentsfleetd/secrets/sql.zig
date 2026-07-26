@@ -74,10 +74,26 @@ pub const SELECT_WORKSPACES_NEEDING_PROJECTION =
 /// Backfill writer: set the projection on one already-stored row without
 /// touching its envelope. Used ONLY by the one-time backfill — the production
 /// write path goes through `INSERT_SECRET`, which writes both together.
+/// Fill the `meta_*` columns for a row that has none.
+///
+/// `meta_kind IS NULL` is the load-bearing clause, not a filter for speed. The
+/// backfill decrypts a whole workspace up front and writes each projection some
+/// time later; without the predicate, a credential ROTATED in that window — one
+/// atomic write of new ciphertext AND new metadata, via
+/// `vault.storeJsonPlaintext` — would then be overwritten with the projection of
+/// the plaintext the sweep read before the rotation. The `meta_*` columns would
+/// describe a body that no longer exists, which is precisely the drift the
+/// write path makes unrepresentable by projecting in the same statement as the
+/// ciphertext.
+///
+/// Every production writer sets `meta_kind` non-null, so a non-null value means
+/// "already described by someone who saw the current body" and this sweep has
+/// nothing to add. The command exists for pre-`schema/036` rows, and those are
+/// exactly the rows where it is null.
 pub const UPDATE_SECRET_METADATA =
     \\UPDATE vault.secrets
     \\   SET meta_kind = $3, meta_provider = $4, meta_base_url = $5, meta_has_key = $6
-    \\ WHERE workspace_id = $1 AND key_name = $2
+    \\ WHERE workspace_id = $1 AND key_name = $2 AND meta_kind IS NULL
 ;
 
 pub const SELECT_SECRET =

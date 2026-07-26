@@ -156,7 +156,12 @@ fn deleteReferencedSecret(
     workspace_id: []const u8,
     secret_name: []const u8,
 ) !void {
-    var txn = secret_reference_txn.begin(conn, workspace_id, secret_name, hx.principal.tenant_id) catch |err| switch (err) {
+    // The tenant whose entries matter is the WORKSPACE's owner, not the
+    // caller's. Passing `hx.principal.tenant_id` here meant a `workspace:any`
+    // operator deleting inside another tenant's workspace counted references
+    // against its own tenant, matched none, and deleted a credential that the
+    // victim's registry entries still named.
+    var txn = secret_reference_txn.begin(conn, workspace_id, secret_name) catch |err| switch (err) {
         secret_reference_txn.Error.SecretGone => return,
         else => {
             log.err("delete_lock_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .name = secret_name, .req_id = hx.req_id });

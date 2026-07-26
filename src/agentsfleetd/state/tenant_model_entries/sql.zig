@@ -41,9 +41,13 @@ pub const INSERT_IF_ABSENT =
 /// `SELECT <fields> FROM <table> WHERE tenant_id = $1` — the opening every
 /// tenant-scoped read shares. One spelling, so the projection and the tenant
 /// predicate cannot drift between the full list and the two page statements.
+/// `SELECT <fields> FROM <table>` — the projection every read shares, named so
+/// the column list and the table cannot drift between the tenant-scoped reads
+/// and the by-id read.
+const SELECT_PROJECTION = "SELECT " ++ SELECT_FIELDS ++ " FROM " ++ TABLE;
+
 const SELECT_FOR_TENANT =
-    "SELECT " ++ SELECT_FIELDS ++ " FROM " ++ TABLE ++
-    WHERE ++ F_TENANT_ID ++ " = $1::uuid";
+    SELECT_PROJECTION ++ WHERE ++ F_TENANT_ID ++ " = $1::uuid";
 
 pub const LIST = SELECT_FOR_TENANT ++ " " ++ ORDER_BY_KEYSET;
 
@@ -87,6 +91,11 @@ pub const UPDATE_MODEL =
 
 pub const DELETE =
     "DELETE FROM " ++ TABLE ++ WHERE ++ MATCH_ID_TENANT;
+
+/// One entry by id. The delete path needs the row's `secret_ref` BEFORE it can
+/// open the reference transaction — the shared lock order is keyed on the
+/// credential, so the credential has to be named first.
+pub const SELECT_BY_ID = SELECT_PROJECTION ++ WHERE ++ MATCH_ID_TENANT;
 
 pub const EXISTS_SECRET_IN_PRIMARY_WORKSPACE =
     \\SELECT 1

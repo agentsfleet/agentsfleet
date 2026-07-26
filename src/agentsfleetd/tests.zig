@@ -32,6 +32,7 @@ test {
     _ = @import("http/response_size.zig");
     _ = @import("types/model_identity.zig");
     _ = @import("secrets/metadata.zig");
+    _ = @import("http/handlers/tenant_model_entries_delete.zig");
     _ = @import("secrets/metadata_backfill.zig");
     _ = @import("fleet_runtime/activity_publisher.zig");
     _ = @import("fleet_runtime/metering.zig");

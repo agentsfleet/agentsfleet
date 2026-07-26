@@ -156,7 +156,10 @@ pub fn upsertSelfManaged(
     // same fact to an activation request, and callers already map SecretMissing
     // to the right status. The lock adds protection against the concurrent
     // delete; it does not get to invent a new error for the ordinary case.
-    var txn = secret_reference_txn.begin(conn, ws_id, secret_ref, tenant_id) catch |err| switch (err) {
+    // No tenant argument: the protocol derives it from the workspace. Identical
+    // here (ws_id was resolved FROM tenant_id), and correct on the delete path
+    // where a cross-tenant operator's own tenant is not the workspace's.
+    var txn = secret_reference_txn.begin(conn, ws_id, secret_ref) catch |err| switch (err) {
         secret_reference_txn.Error.SecretGone => return ResolveError.SecretMissing,
         else => return err,
     };

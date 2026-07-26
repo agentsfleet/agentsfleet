@@ -66,6 +66,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
         .projected = stats.projected,
         .undecryptable = stats.undecryptable,
         .opaque_bodies = stats.opaque_bodies,
+        .rotated_midway = stats.rotated_midway,
     });
 
     // Undecryptable rows are reported, not fatal: they keep reporting as opaque

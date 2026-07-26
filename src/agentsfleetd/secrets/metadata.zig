@@ -100,10 +100,41 @@ pub fn project(value: std.json.Value) Projection {
             .kind = kind,
             .provider = optString(value, S_PROVIDER),
             .model = optString(value, S_MODEL),
-            .base_url = optString(value, S_BASE_URL),
+            .base_url = displayableBaseUrl(optString(value, S_BASE_URL)),
             .has_key = has_key,
         },
     };
+}
+
+/// The `base_url` as it may be persisted IN PLAINTEXT and shown to callers, or
+/// null when it may not be.
+///
+/// `schema/036` moved this value out of the AES-GCM envelope into a column, on
+/// the reasoning that every projected field is metadata any authorized caller
+/// already sees. That holds for a scheme, host, port and path. It does not hold
+/// for `https://user:pw@host/v1` — `state/base_url_guard.zig` validates the
+/// HOST and deliberately accepts userinfo (its own test asserts that
+/// `https://user:pw@gw.example.com:8443/v1` is `.ok`), so a credential can carry
+/// a password inside its URL. Promoting that string verbatim converts a
+/// KEK-protected secret into one any database reader can `SELECT`, which is the
+/// opposite of what the promotion was argued on.
+///
+/// Omitted rather than rewritten. Stripping `user:pw@` from the middle of a URL
+/// produces a string that is not a subslice of the input, and this projector is
+/// deliberately allocation-free so that one parse of one body yields every
+/// persisted value. A credential-bearing `base_url` is a misconfiguration; a
+/// page showing no endpoint for it is a better outcome than a page — and a
+/// column — showing the password.
+fn displayableBaseUrl(raw: ?[]const u8) ?[]const u8 {
+    const url = raw orelse return null;
+    const sep = std.mem.indexOf(u8, url, "://") orelse return url;
+    const after_scheme = url[sep + 3 ..];
+    // Only the AUTHORITY is examined. A `@` after the authority is an ordinary
+    // path or query byte, and dropping those URLs would hide legitimate
+    // endpoints for no gain.
+    const authority_end = std.mem.indexOfAny(u8, after_scheme, "/?#") orelse after_scheme.len;
+    if (std.mem.indexOfScalar(u8, after_scheme[0..authority_end], '@') != null) return null;
+    return url;
 }
 
 /// Whether the body carries a non-empty `api_key` string. The value is compared
@@ -124,192 +155,6 @@ fn optString(value: std.json.Value, field: []const u8) ?[]const u8 {
 
 // ── tests ───────────────────────────────────────────────────────────────────
 
-const testing = std.testing;
-
-fn parse(json: []const u8) !std.json.Parsed(std.json.Value) {
-    return std.json.parseFromSlice(std.json.Value, testing.allocator, json, .{});
-}
-
-test "classify keys on the provider field, not the credential name" {
-    // A named provider id → provider_key, regardless of the (user-chosen) name.
-    {
-        const p = try parse(
-            \\{"provider":"anthropic","api_key":"sk-x","model":"claude-sonnet-4-6"}
-        );
-        defer p.deinit();
-        try testing.expectEqual(Kind.provider_key, classify(p.value));
-    }
-    // The openai-compatible sentinel → custom_endpoint.
-    {
-        const p = try parse(
-            \\{"provider":"openai-compatible","base_url":"https://h/v1","model":"m","api_key":"k"}
-        );
-        defer p.deinit();
-        try testing.expectEqual(Kind.custom_endpoint, classify(p.value));
-    }
-    // No provider field → opaque custom_secret.
-    {
-        const p = try parse(
-            \\{"host":"api.machines.dev","api_token":"t"}
-        );
-        defer p.deinit();
-        try testing.expectEqual(Kind.custom_secret, classify(p.value));
-    }
-    // A non-string provider is not a classification signal → custom_secret.
-    {
-        const p = try parse(
-            \\{"provider":123,"model":"m"}
-        );
-        defer p.deinit();
-        try testing.expectEqual(Kind.custom_secret, classify(p.value));
-    }
-    // A non-object body (legacy/corrupt) degrades to custom_secret.
-    {
-        const p = try parse(
-            \\["not","an","object"]
-        );
-        defer p.deinit();
-        try testing.expectEqual(Kind.custom_secret, classify(p.value));
-    }
-}
-
-test "project extracts the kind's non-secret descriptors and never the api_key" {
-    // provider_key: provider + model, never a base_url.
-    {
-        const p = try parse(
-            \\{"provider":"anthropic","api_key":"sk-secret","model":"claude-sonnet-4-6"}
-        );
-        defer p.deinit();
-        const got = project(p.value);
-        try testing.expectEqual(Kind.provider_key, got.kind);
-        try testing.expectEqualStrings("anthropic", got.provider.?);
-        try testing.expectEqualStrings("claude-sonnet-4-6", got.model.?);
-        try testing.expect(got.base_url == null);
-        // Projection has no api_key field — the secret cannot be carried out.
-        try testing.expect(!@hasField(Projection, "api_key"));
-    }
-    // custom_endpoint: provider + model + base_url.
-    {
-        const p = try parse(
-            \\{"provider":"openai-compatible","base_url":"https://gw/v1","model":"kimi","api_key":"k"}
-        );
-        defer p.deinit();
-        const got = project(p.value);
-        try testing.expectEqual(Kind.custom_endpoint, got.kind);
-        try testing.expectEqualStrings("openai-compatible", got.provider.?);
-        try testing.expectEqualStrings("kimi", got.model.?);
-        try testing.expectEqualStrings("https://gw/v1", got.base_url.?);
-    }
-    // custom_secret: no descriptors at all.
-    {
-        const p = try parse(
-            \\{"host":"h","api_token":"t"}
-        );
-        defer p.deinit();
-        const got = project(p.value);
-        try testing.expectEqual(Kind.custom_secret, got.kind);
-        try testing.expect(got.provider == null);
-        try testing.expect(got.model == null);
-        try testing.expect(got.base_url == null);
-    }
-    // A provider_key missing its model degrades that one field to null, not the kind.
-    {
-        const p = try parse(
-            \\{"provider":"openai","api_key":"k"}
-        );
-        defer p.deinit();
-        const got = project(p.value);
-        try testing.expectEqual(Kind.provider_key, got.kind);
-        try testing.expectEqualStrings("openai", got.provider.?);
-        try testing.expect(got.model == null);
-    }
-}
-
-test "wire value matches the enum tag verbatim (TS union parity)" {
-    try testing.expectEqualStrings("provider_key", Kind.provider_key.wire());
-    try testing.expectEqualStrings("custom_endpoint", Kind.custom_endpoint.wire());
-    try testing.expectEqualStrings("custom_secret", Kind.custom_secret.wire());
-}
-
-test "has_key reports presence for every kind, never the key itself" {
-    // A named provider with a key.
-    {
-        const p = try parse(
-            \\{"provider":"anthropic","api_key":"sk-live-abcdef"}
-        );
-        defer p.deinit();
-        const got = project(p.value);
-        try testing.expectEqual(Kind.provider_key, got.kind);
-        try testing.expect(got.has_key);
-    }
-    // A keyless openai-compatible gateway is valid and must report false rather
-    // than being treated as malformed — the optional-key design.
-    {
-        const p = try parse(
-            \\{"provider":"openai-compatible","base_url":"https://h/v1"}
-        );
-        defer p.deinit();
-        const got = project(p.value);
-        try testing.expectEqual(Kind.custom_endpoint, got.kind);
-        try testing.expect(!got.has_key);
-    }
-    // An opaque credential still answers presence: `custom_secret` is a
-    // classification, not an exemption from the question.
-    {
-        const p = try parse(
-            \\{"host":"api.machines.dev","api_key":"tok"}
-        );
-        defer p.deinit();
-        const got = project(p.value);
-        try testing.expectEqual(Kind.custom_secret, got.kind);
-        try testing.expect(got.has_key);
-    }
-}
-
-test "has_key is false for empty, absent, and non-string keys" {
-    // Empty string is "no key", not "a key of length zero" — an operator who
-    // cleared the field must not see the row claim a key is configured.
-    {
-        const p = try parse(
-            \\{"provider":"openai","api_key":""}
-        );
-        defer p.deinit();
-        try testing.expect(!project(p.value).has_key);
-    }
-    // Absent entirely.
-    {
-        const p = try parse(
-            \\{"provider":"openai"}
-        );
-        defer p.deinit();
-        try testing.expect(!project(p.value).has_key);
-    }
-    // A non-string api_key is malformed input, not a present key. Reporting
-    // `true` here would tell the dashboard a key is set that nothing can use.
-    {
-        const p = try parse(
-            \\{"provider":"openai","api_key":12345}
-        );
-        defer p.deinit();
-        try testing.expect(!project(p.value).has_key);
-    }
-    // A non-object body cannot carry a key at all.
-    {
-        const p = try parse("\"just-a-string\"");
-        defer p.deinit();
-        try testing.expect(!project(p.value).has_key);
-        try testing.expectEqual(Kind.custom_secret, project(p.value).kind);
-    }
-}
-
-test "the projection has no field capable of carrying the key value" {
-    // Structural, not behavioural: this is the guarantee the `meta_*` columns
-    // inherit. If someone adds an `api_key` field to Projection, this fails at
-    // COMPILE time via the field-name scan below rather than waiting for a
-    // reviewer to notice a leak.
-    inline for (@typeInfo(Projection).@"struct".fields) |f| {
-        try testing.expect(!std.mem.eql(u8, f.name, "api_key"));
-        try testing.expect(!std.mem.eql(u8, f.name, "secret"));
-        try testing.expect(!std.mem.eql(u8, f.name, "token"));
-    }
+test {
+    _ = @import("metadata_test.zig");
 }
