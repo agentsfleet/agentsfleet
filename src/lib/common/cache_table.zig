@@ -155,14 +155,23 @@ pub fn CacheTable(
             const len = self.lengths[idx];
             const entry: Entry = .{ .key = key, .value = value, .expires_at_ms = expires_at_ms };
 
-            for (self.buckets[idx][0..len], 0..) |*slot, i| {
-                const reusable = self.context.eql(key, slot.key) or now_ms >= slot.expires_at_ms;
-                if (!reusable) continue;
+            // The key's own entry MUST win over an expired stranger: reusing an
+            // expired slot that sits earlier in the bucket would leave the key's
+            // live entry alive behind it — two entries for one key, and a later
+            // `remove` (which drops the first match) could keep the stale one
+            // answering after an invalidation.
+            var expired_idx: ?usize = null;
+            const reuse: ?usize = for (self.buckets[idx][0..len], 0..) |*slot, i| {
+                if (self.context.eql(key, slot.key)) break i;
+                if (expired_idx == null and now_ms >= slot.expires_at_ms) expired_idx = i;
+            } else expired_idx;
+
+            if (reuse) |i| {
                 // The occupant is dropped here, not overwritten silently: for a
                 // value that owns memory, refreshing a key would otherwise leak
                 // its previous body on every single write.
-                self.release(slot.*);
-                slot.* = entry;
+                self.release(self.buckets[idx][i]);
+                self.buckets[idx][i] = entry;
                 rotateOnce(self.buckets[idx][i..len]);
                 return null;
             }

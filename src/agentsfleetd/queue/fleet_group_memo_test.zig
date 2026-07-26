@@ -1,11 +1,12 @@
 //! Unit tests for the consumer-group memo.
 //!
 //! The memo needs no datastore, so every property is provable here. Note what is
-//! deliberately NOT tested: concurrent races. The table is direct-mapped with no
-//! claim protocol precisely because every racing outcome is benign — writers store
-//! the same value or overwrite one index, and a reader that loses either way pays
-//! at most one redundant Redis command. A test asserting a particular interleaving
-//! would be pinning behaviour the design does not promise.
+//! deliberately NOT tested: concurrent races. The set-associative table sits
+//! behind an `RwLock` — reads share the lock, writes serialize — and every
+//! racing outcome is benign: writers store the same value or evict one bucket
+//! entry, and a reader that loses either way pays at most one redundant Redis
+//! command. A test asserting a particular interleaving would be pinning
+//! behaviour the design does not promise.
 //!
 //! Every test resets the process-global table first — these are globals shared
 //! across the whole test binary, and Zig runs tests sequentially in one process.

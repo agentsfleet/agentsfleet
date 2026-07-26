@@ -118,6 +118,25 @@ test "put overwrites the same key in place rather than adding a second entry" {
     try std.testing.expectEqual(@as(usize, 1), t.count(BASE_MS));
 }
 
+test "put prefers the key's own live entry over an expired stranger earlier in the bucket" {
+    // The intersection the two tests around this one miss: an EXPIRED foreign
+    // entry sits at a lower index than the key's own LIVE entry. Taking the
+    // first reusable slot would write the fresh value into the stranger's slot
+    // and leave TWO entries for one key — and a later `remove` would drop only
+    // one of them, leaving a stale duplicate answering after an invalidation.
+    var t = newTable();
+    _ = t.put(KEY_A_COLLIDES, 9, BASE_MS + 1, BASE_MS); // dies at BASE_MS+1, index 0
+    _ = t.put(KEY_A, 1, NEVER, BASE_MS); // lives forever, index 1
+
+    const later = BASE_MS + 10; // the stranger is now expired
+    _ = t.put(KEY_A, 2, NEVER, later);
+
+    try std.testing.expectEqual(@as(?u64, 2), t.get(KEY_A, later));
+    try std.testing.expect(t.remove(KEY_A));
+    // ONE remove fully removes: no stale duplicate may keep answering.
+    try std.testing.expect(t.get(KEY_A, later) == null);
+}
+
 test "an expired entry is reused before a live one is evicted" {
     var t = newTable();
     // Fill the bucket: one that dies early, one that lives.

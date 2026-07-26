@@ -58,6 +58,12 @@ const BUCKET_KEY_BYTES: usize = 4;
 /// against a machine that did not serve the operator's request, and bounding it
 /// by one heartbeat means such a runner is stopped inside the same interval the
 /// platform already uses to decide a host is gone.
+///
+/// The window rides the WALL clock (`clock.nowMillis`), matching the platform's
+/// timing posture everywhere else — so a backwards clock step on a sibling
+/// machine extends a revoked runner's window by the step size. The serving
+/// machine is unaffected (it drops the entry directly). A monotonic-clock expiry
+/// is the hardening if multi-machine revocation ever needs to survive NTP steps.
 pub const ENTRY_TTL_MS: i64 = constants.HEARTBEAT_INTERVAL_MS;
 
 const TokenHash = [TOKEN_HASH_HEX_LEN]u8;
@@ -174,6 +180,12 @@ const RunnerMatch = struct {
 /// Drop every entry for `runner_id`. Called by the operator-plane writes that
 /// change what a verdict should say — the admin-state transition and the record
 /// delete — after their Postgres write commits.
+///
+/// EVERY future writer of `fleet.runners.token_hash` carries the same
+/// obligation: a rotation handler that swaps the hash without invalidating
+/// leaves the OLD token's memoized verdict authenticating for up to
+/// `ENTRY_TTL_MS` on the very machine that served the rotation — and rotation
+/// is the credential-compromise response where immediacy matters most.
 ///
 /// Keyed by runner id and not by token hash because those call sites hold the
 /// id and must never hold the token. That makes this a scan of the table rather

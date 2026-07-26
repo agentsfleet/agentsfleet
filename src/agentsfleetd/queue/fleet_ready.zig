@@ -184,7 +184,27 @@ pub fn peek(client: *redis_client.Client, alloc: std.mem.Allocator, max: usize) 
         CMD_HRANDFIELD, queue_consts.ready_index_key, count, ARG_WITHVALUES,
     });
     defer resp.deinit(client.alloc);
+    healNoncanonicalFields(client, resp);
     return decodePeek(alloc, resp);
+}
+
+/// HDEL any sampled field that is not a canonical UUIDv7, so the index heals
+/// instead of poisoning every poll. The candidate query binds peeked ids into a
+/// `uuid[]` cast; one malformed field (an operator's stray `HSET` — every
+/// in-repo producer validates ids at ingress) would error the whole query on
+/// every replica forever, presenting as a healthy-looking idle system. Deleting
+/// is safe for the same reason `forceClear` is: a field no producer could have
+/// written can never name live work.
+fn healNoncanonicalFields(client: *redis_client.Client, value: redis_protocol.RespValue) void {
+    if (value != .array) return;
+    const flat = value.array orelse return;
+    var i: usize = 0;
+    while (i + 1 < flat.len) : (i += 2) {
+        const field = redis_protocol.valueAsString(flat[i]) orelse continue;
+        if (id_format.isUuidV7(field)) continue;
+        log.warn("ready_index_noncanonical_field", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .field_len = field.len });
+        forceClear(client, field);
+    }
 }
 
 /// RESP2 renders `HRANDFIELD … WITHVALUES` as ONE flat array alternating field
@@ -201,7 +221,19 @@ pub fn decodePeek(alloc: std.mem.Allocator, value: redis_protocol.RespValue) ![]
     if (flat.len == 0) return &.{};
     if (flat.len % 2 != 0) return error.RedisUnexpectedResponse;
 
-    const entries = try alloc.alloc(Ready, flat.len / 2);
+    // Count the canonical fields first and allocate exactly that many: a
+    // non-canonical field costs one skipped entry, never the poll — and the
+    // returned slice stays exactly the allocation, which `freePeeked` requires.
+    var valid: usize = 0;
+    var scan: usize = 0;
+    while (scan < flat.len) : (scan += 2) {
+        const field = redis_protocol.valueAsString(flat[scan]) orelse return error.RedisUnexpectedResponse;
+        _ = redis_protocol.valueAsString(flat[scan + 1]) orelse return error.RedisUnexpectedResponse;
+        if (id_format.isUuidV7(field)) valid += 1;
+    }
+    if (valid == 0) return &.{};
+
+    const entries = try alloc.alloc(Ready, valid);
     var filled: usize = 0;
     // Frees only what is already owned, so a dupe failure mid-array leaks
     // nothing — Zig does not unwind earlier iterations for us.
@@ -214,6 +246,7 @@ pub fn decodePeek(alloc: std.mem.Allocator, value: redis_protocol.RespValue) ![]
     while (i < flat.len) : (i += 2) {
         const field = redis_protocol.valueAsString(flat[i]) orelse return error.RedisUnexpectedResponse;
         const token = redis_protocol.valueAsString(flat[i + 1]) orelse return error.RedisUnexpectedResponse;
+        if (!id_format.isUuidV7(field)) continue;
         const owned_id = try alloc.dupe(u8, field);
         errdefer alloc.free(owned_id);
         entries[filled] = .{ .fleet_id = owned_id, .token = try alloc.dupe(u8, token) };

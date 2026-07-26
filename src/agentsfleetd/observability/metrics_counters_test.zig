@@ -122,8 +122,8 @@ test "the lease-poll cost families render with their snapshot values" {
     const render = @import("metrics_render.zig");
     mc.resetLeasePollMetricsForTest();
 
-    // Two polls of different widths, so the totals and the high-water mark are
-    // distinguishable from each other and from the poll count.
+    // Two polls of different widths, so the totals are distinguishable from
+    // each other and from the poll count.
     mc.observeLeasePoll(0, 0); // the idle shape: examined nothing, touched no database
     mc.observeLeasePoll(7, 3);
 
