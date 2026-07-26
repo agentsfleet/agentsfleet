@@ -26,6 +26,8 @@ test {
     _ = @import("fleet_runtime/config.zig");
     _ = @import("fleet_runtime/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
+    _ = @import("http/route_matchers_library.zig");
+    _ = @import("http/route_matchers_library_test.zig");
     _ = @import("http/pagination.zig");
     _ = @import("secrets/metadata.zig");
     _ = @import("secrets/metadata_backfill.zig");
