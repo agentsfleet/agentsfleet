@@ -14,7 +14,54 @@ import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveToken } from "../services/http-client.ts";
-import { ConfigError, type UnexpectedError } from "../errors/index.ts";
+import {
+  ConfigError,
+  ValidationError,
+  type UnexpectedError,
+} from "../errors/index.ts";
+
+export const WORKSPACE_CREATE_USAGE =
+  "agentsfleet workspace create <name>" as const;
+const WORKSPACE_NAME_MAX_CODEPOINTS = 128;
+const ASCII_EDGE_WHITESPACE_PATTERN =
+  /^[\u0009-\u000d\u0020]+|[\u0009-\u000d\u0020]+$/gu;
+const UNICODE_WHITESPACE_ONLY_PATTERN =
+  /^[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]*$/u;
+const WORKSPACE_NAME_UNSAFE_PATTERN =
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200e-\u200f\u2028-\u202e\u2066-\u2069]/u;
+const WORKSPACE_NAME_UNSAFE_DETAIL =
+  "workspace name contains unsupported control or directional formatting characters";
+
+export const requireCreateName = (
+  name: string | undefined,
+): Effect.Effect<string, ValidationError> => {
+  const trimmed = name?.replace(ASCII_EDGE_WHITESPACE_PATTERN, "");
+  if (!trimmed || UNICODE_WHITESPACE_ONLY_PATTERN.test(trimmed)) {
+    return Effect.fail(
+      new ValidationError({
+        detail: "workspace create requires <name>",
+        suggestion: `usage: ${WORKSPACE_CREATE_USAGE}`,
+      }),
+    );
+  }
+  if ([...trimmed].length > WORKSPACE_NAME_MAX_CODEPOINTS) {
+    return Effect.fail(
+      new ValidationError({
+        detail: `workspace name must be ${WORKSPACE_NAME_MAX_CODEPOINTS} characters or fewer`,
+        suggestion: `usage: ${WORKSPACE_CREATE_USAGE}`,
+      }),
+    );
+  }
+  if (WORKSPACE_NAME_UNSAFE_PATTERN.test(trimmed)) {
+    return Effect.fail(
+      new ValidationError({
+        detail: WORKSPACE_NAME_UNSAFE_DETAIL,
+        suggestion: `usage: ${WORKSPACE_CREATE_USAGE}`,
+      }),
+    );
+  }
+  return Effect.succeed(trimmed);
+};
 
 export const requireWorkspaceId: Effect.Effect<
   string,
@@ -27,7 +74,7 @@ export const requireWorkspaceId: Effect.Effect<
     return yield* Effect.fail(
       new ConfigError({
         detail: "no workspace selected",
-        suggestion: "run `agentsfleet workspace create` or `workspace use <id>`",
+        suggestion: `run \`${WORKSPACE_CREATE_USAGE}\` or \`agentsfleet workspace use <id>\``,
       }),
     );
   }

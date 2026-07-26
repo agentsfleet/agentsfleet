@@ -35,7 +35,6 @@ comptime {
         }
     }
 }
-
 const LOOKUP = blk: {
     @setEvalBranchQuota(REGISTRY.len * REGISTRY.len * 20);
     var kvs: [REGISTRY.len]struct { []const u8, usize } = undefined;
@@ -54,7 +53,6 @@ pub fn lookup(code: []const u8) Entry {
 pub fn hint(code: []const u8) []const u8 {
     return lookup(code).hint;
 }
-
 // UUIDV7
 pub const ERR_UUIDV7_INVALID_ID_SHAPE = "UZ-UUIDV7-009";
 // INTERNAL
@@ -64,6 +62,8 @@ pub const ERR_INTERNAL_OPERATION_FAILED = "UZ-INTERNAL-003";
 // REQUEST
 pub const ERR_INVALID_REQUEST = "UZ-REQ-001";
 pub const ERR_PAYLOAD_TOO_LARGE = "UZ-REQ-002";
+// WORKSPACE
+pub const ERR_WORKSPACE_NAME_EXISTS = "UZ-WORKSPACE-001";
 // AUTH
 pub const ERR_FORBIDDEN = "UZ-AUTH-001";
 pub const ERR_UNAUTHORIZED = "UZ-AUTH-002";

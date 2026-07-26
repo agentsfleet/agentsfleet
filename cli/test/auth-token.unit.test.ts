@@ -2,12 +2,21 @@ import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { decodeTokenPayload, extractDistinctIdFromToken, extractRoleFromToken } from "../src/program/auth-token.ts";
+import {
+  decodeTokenPayload,
+  extractDistinctIdFromToken,
+  extractRoleFromToken,
+} from "../src/program/auth-token.ts";
 
-const AUTH_TOKEN_SOURCE = readFileSync(join(import.meta.dir, "..", "src", "program", "auth-token.ts"), "utf8");
+const AUTH_TOKEN_SOURCE = readFileSync(
+  join(import.meta.dir, "..", "src", "program", "auth-token.ts"),
+  "utf8",
+);
 
 function makeToken(payload: Record<string, unknown>): string {
-  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+  const header = Buffer.from(
+    JSON.stringify({ alg: "none", typ: "JWT" }),
+  ).toString("base64url");
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${header}.${body}.sig`;
 }
@@ -38,25 +47,54 @@ test("extractDistinctIdFromToken returns null when sub is missing or blank", () 
 
 test("extractRoleFromToken reads supported role claims", () => {
   assert.equal(extractRoleFromToken(makeToken({ role: "admin" })), "admin");
-  assert.equal(extractRoleFromToken(makeToken({ metadata: { role: "operator" } })), "operator");
-  assert.equal(extractRoleFromToken(makeToken({ custom_claims: { role: "user" } })), "user");
+  assert.equal(
+    extractRoleFromToken(makeToken({ metadata: { role: "operator" } })),
+    "operator",
+  );
+  assert.equal(
+    extractRoleFromToken(makeToken({ custom_claims: { role: "user" } })),
+    "user",
+  );
 });
 
 test("extractRoleFromToken normalizes namespaced and invalid claims", () => {
-  assert.equal(extractRoleFromToken(makeToken({ "https://agentsfleet.net/role": "ADMIN" })), "admin");
+  assert.equal(
+    extractRoleFromToken(
+      makeToken({ "https://agentsfleet.net/role": "ADMIN" }),
+    ),
+    "admin",
+  );
   assert.equal(extractRoleFromToken(makeToken({ role: "owner" })), null);
   assert.equal(extractRoleFromToken("bad-token"), null);
 });
 
 test("extractRoleFromToken reads agentsfleet.net namespace claim", () => {
-  assert.equal(extractRoleFromToken(makeToken({ "https://agentsfleet.net/role": "operator" })), "operator");
+  assert.equal(
+    extractRoleFromToken(
+      makeToken({ "https://agentsfleet.net/role": "operator" }),
+    ),
+    "operator",
+  );
 });
 
 test("extractRoleFromToken returns first valid role in priority order", () => {
   // top-level role wins over metadata.role
-  assert.equal(extractRoleFromToken(makeToken({ role: "admin", metadata: { role: "user" } })), "admin");
+  assert.equal(
+    extractRoleFromToken(
+      makeToken({ role: "admin", metadata: { role: "user" } }),
+    ),
+    "admin",
+  );
   // metadata.role wins when top-level is absent
-  assert.equal(extractRoleFromToken(makeToken({ metadata: { role: "user" }, custom_claims: { role: "admin" } })), "user");
+  assert.equal(
+    extractRoleFromToken(
+      makeToken({
+        metadata: { role: "user" },
+        custom_claims: { role: "admin" },
+      }),
+    ),
+    "user",
+  );
 });
 
 test("extractRoleFromToken returns null for empty or whitespace-only role", () => {
@@ -77,17 +115,27 @@ test("extractRoleFromToken returns null for null/undefined token", () => {
 });
 
 test("extractRoleFromToken reads app_metadata.role", () => {
-  assert.equal(extractRoleFromToken(makeToken({ app_metadata: { role: "operator" } })), "operator");
-  assert.equal(extractRoleFromToken(makeToken({ app_metadata: { role: "Admin" } })), "admin");
+  assert.equal(
+    extractRoleFromToken(makeToken({ app_metadata: { role: "operator" } })),
+    "operator",
+  );
+  assert.equal(
+    extractRoleFromToken(makeToken({ app_metadata: { role: "Admin" } })),
+    "admin",
+  );
 });
 
 test("extractRoleFromToken reads namespaced metadata claims", () => {
   assert.equal(
-    extractRoleFromToken(makeToken({ metadata: { "https://agentsfleet.net/role": "operator" } })),
+    extractRoleFromToken(
+      makeToken({ metadata: { "https://agentsfleet.net/role": "operator" } }),
+    ),
     "operator",
   );
   assert.equal(
-    extractRoleFromToken(makeToken({ metadata: { "https://agentsfleet.net/role": "Admin" } })),
+    extractRoleFromToken(
+      makeToken({ metadata: { "https://agentsfleet.net/role": "Admin" } }),
+    ),
     "admin",
   );
 });
@@ -97,7 +145,9 @@ test("extractRoleFromToken reads namespaced metadata claims", () => {
 // candidate list was a no-op. Role resolution never changes if a duplicate
 // creeps back, so only source inspection can catch the regression.
 test("auth-token source declares exactly one role-namespace constant", () => {
-  const declared = [...AUTH_TOKEN_SOURCE.matchAll(/const\s+(\w*ROLE_NAMESPACE\w*)\s*=/g)].map((m) => m[1]);
+  const declared = [
+    ...AUTH_TOKEN_SOURCE.matchAll(/const\s+(\w*ROLE_NAMESPACE\w*)\s*=/g),
+  ].map((m) => m[1]);
   assert.deepEqual(declared, ["ROLE_NAMESPACE"]);
   assert.equal(/ROLE_NAMESPACE_(?:DEV|COM)/.test(AUTH_TOKEN_SOURCE), false);
 });

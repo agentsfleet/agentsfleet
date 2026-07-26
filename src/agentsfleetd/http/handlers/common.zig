@@ -295,6 +295,7 @@ test "requireUuidV7Id rejects SQL injection payload" {
 pub const getFleetWorkspaceId = authz.getFleetWorkspaceId;
 pub const authorizeWorkspace = authz.authorizeWorkspace;
 pub const setTenantSessionContext = authz.setTenantSessionContext;
+pub const resolvePrincipalTenant = authz.resolvePrincipalTenant;
 pub const authorizeWorkspaceAndSetTenantContext = authz.authorizeWorkspaceAndSetTenantContext;
 pub const openHandlerTestConn = authz.openHandlerTestConn;
 

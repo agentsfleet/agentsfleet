@@ -1,12 +1,5 @@
 import React from "react";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
   cleanup,
@@ -28,17 +21,18 @@ const {
   useFleetEventStreamMock,
   capturedOnNew,
   capturedRetry,
-} =
-  vi.hoisted(() => ({
-    routerRefreshMock: vi.fn(),
-    steerFleetActionMock: vi.fn(),
-    useFleetEventStreamMock: vi.fn(),
-    // Capture the `onNew` callback wired into the external-store runtime so a
-    // test can drive it with content the composer UI never emits (e.g. an
-    // image-only append) to reach `extractMessageText`'s no-text-part path.
-    capturedOnNew: { current: null as ((msg: AppendMessage) => Promise<void>) | null },
-    capturedRetry: { current: null as (() => void) | null },
-  }));
+} = vi.hoisted(() => ({
+  routerRefreshMock: vi.fn(),
+  steerFleetActionMock: vi.fn(),
+  useFleetEventStreamMock: vi.fn(),
+  // Capture the `onNew` callback wired into the external-store runtime so a
+  // test can drive it with content the composer UI never emits (e.g. an
+  // image-only append) to reach `extractMessageText`'s no-text-part path.
+  capturedOnNew: {
+    current: null as ((msg: AppendMessage) => Promise<void>) | null,
+  },
+  capturedRetry: { current: null as (() => void) | null },
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefreshMock }),
@@ -54,7 +48,9 @@ vi.mock("@assistant-ui/react", async () => {
   );
   return {
     ...actual,
-    useExternalStoreRuntime: (cfg: Parameters<typeof actual.useExternalStoreRuntime>[0]) => {
+    useExternalStoreRuntime: (
+      cfg: Parameters<typeof actual.useExternalStoreRuntime>[0],
+    ) => {
       capturedOnNew.current = cfg.onNew ?? null;
       return actual.useExternalStoreRuntime(cfg);
     },
@@ -72,12 +68,14 @@ vi.mock("@/components/domain/useFleetEventStream", async () => {
 });
 
 vi.mock("@/components/domain/SteerComposer", async () => {
-  const actual = await vi.importActual<typeof import("@/components/domain/SteerComposer")>(
-    "@/components/domain/SteerComposer",
-  );
+  const actual = await vi.importActual<
+    typeof import("@/components/domain/SteerComposer")
+  >("@/components/domain/SteerComposer");
   return {
     ...actual,
-    SteerComposer: (props: React.ComponentProps<typeof actual.SteerComposer>) => {
+    SteerComposer: (
+      props: React.ComponentProps<typeof actual.SteerComposer>,
+    ) => {
       capturedRetry.current = props.onRetry;
       return React.createElement(actual.SteerComposer, props);
     },
@@ -98,7 +96,9 @@ const WS = "ws_test";
 const ZID = "zomb_test";
 const FLEET_NAME = "github-pr-reviewer";
 
-function ev(over: Partial<FleetEvent> & { actor: string; role: FleetEvent["role"] }): FleetEvent {
+function ev(
+  over: Partial<FleetEvent> & { actor: string; role: FleetEvent["role"] },
+): FleetEvent {
   return {
     id: over.id ?? `e_${Math.random().toString(36).slice(2, 8)}`,
     role: over.role,
@@ -145,12 +145,16 @@ type StreamMockOverrides = {
   retryConnection?: ReturnType<typeof vi.fn>;
 };
 
-function mockStream(events: FleetEvent[], opts?: Omit<StreamMockOverrides, "events">) {
+function mockStream(
+  events: FleetEvent[],
+  opts?: Omit<StreamMockOverrides, "events">,
+) {
   useFleetEventStreamMock.mockReturnValue({
     events,
     connectionStatus: opts?.connectionStatus ?? CONNECTION_STATUS.LIVE,
     isRunning: opts?.isRunning ?? false,
-    appendOptimistic: opts?.appendOptimistic ?? vi.fn().mockReturnValue("temp_1"),
+    appendOptimistic:
+      opts?.appendOptimistic ?? vi.fn().mockReturnValue("temp_1"),
     reconcileOptimistic: opts?.reconcileOptimistic ?? vi.fn(),
     markOptimisticFailed: opts?.markOptimisticFailed ?? vi.fn(),
     discardOptimistic: opts?.discardOptimistic ?? vi.fn(),
@@ -239,7 +243,9 @@ describe("FleetThread — empty state", () => {
   it("renders the waiting-for-activity hint when no events", () => {
     mockStream([]);
     renderThread();
-    expect(screen.getByText(/Message this fleet or wait for its next trigger/i)).toBeTruthy();
+    expect(
+      screen.getByText(/Message this fleet or wait for its next trigger/i),
+    ).toBeTruthy();
     expect(screen.queryByText(/0 events/i)).toBeNull();
   });
 });
@@ -258,8 +264,9 @@ describe("FleetThread — header chrome", () => {
     expect(screen.queryByText(/1 events/)).toBeNull();
     const liveStatus = screen.getByLabelText("Connection status: Live");
     expect(liveStatus.className).toMatch(/text-pulse/);
-    expect(liveStatus.querySelector('[aria-hidden="true"]')?.className)
-      .toMatch(/bg-current/);
+    expect(liveStatus.querySelector('[aria-hidden="true"]')?.className).toMatch(
+      /bg-current/,
+    );
   });
 
   it("uses one destructive colour for the Offline label and dot", () => {
@@ -267,8 +274,9 @@ describe("FleetThread — header chrome", () => {
     renderThread();
     const offlineStatus = screen.getByLabelText("Connection status: Not live");
     expect(offlineStatus.className).toMatch(/text-destructive/);
-    expect(offlineStatus.querySelector('[aria-hidden="true"]')?.className)
-      .toMatch(/bg-current/);
+    expect(
+      offlineStatus.querySelector('[aria-hidden="true"]')?.className,
+    ).toMatch(/bg-current/);
   });
 
   it("keeps the composer in the static transcript footer", () => {
@@ -284,8 +292,12 @@ describe("FleetThread — header chrome", () => {
     expect(footer?.contains(composer)).toBe(true);
     expect(footer?.className).toMatch(/max-w-6xl/);
     expect(footer?.className).toMatch(/shrink-0/);
-    expect(container.querySelector('[role="log"]')?.contains(composer)).toBe(false);
-    expect(screen.getByRole("button", { name: /jump to latest/i }).className).toMatch(/absolute/);
+    expect(container.querySelector('[role="log"]')?.contains(composer)).toBe(
+      false,
+    );
+    expect(
+      screen.getByRole("button", { name: /jump to latest/i }).className,
+    ).toMatch(/absolute/);
   });
 
   it("names each connection state rather than only the live one", () => {
@@ -298,7 +310,9 @@ describe("FleetThread — header chrome", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
     renderThread();
     expect(screen.getByText(/^Not live$/)).toBeTruthy();
-    const input = screen.getByPlaceholderText(/message this fleet/i) as HTMLTextAreaElement;
+    const input = screen.getByPlaceholderText(
+      /message this fleet/i,
+    ) as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
   });
 });
@@ -324,12 +338,22 @@ describe("FleetThread — summary refresh", () => {
 
     mockStream([{ ...received, status: "processed" }]);
     view.rerender(
-      React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, fleetName: FLEET_NAME, initial: [] }),
+      React.createElement(FleetThread, {
+        workspaceId: WS,
+        fleetId: ZID,
+        fleetName: FLEET_NAME,
+        initial: [],
+      }),
     );
 
     await waitFor(() => expect(routerRefreshMock).toHaveBeenCalledTimes(1));
     view.rerender(
-      React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, fleetName: FLEET_NAME, initial: [] }),
+      React.createElement(FleetThread, {
+        workspaceId: WS,
+        fleetId: ZID,
+        fleetName: FLEET_NAME,
+        initial: [],
+      }),
     );
     expect(routerRefreshMock).toHaveBeenCalledTimes(1);
   });
@@ -345,21 +369,43 @@ describe("FleetThread — role rendering", () => {
         role: "user",
         actor: "steer:user_abc",
         text: "please review PR 517",
-        reply: "Reviewed. Two suggestions, Continuous Integration (CI) passing.",
+        reply:
+          "Reviewed. Two suggestions, Continuous Integration (CI) passing.",
         status: "processed",
       }),
     ]);
     const { container } = renderThread();
     // The operator's question survives (the old code dropped it for the reply).
     expect(screen.getByText(/please review PR 517/)).toBeTruthy();
-    // The fleet's reply survives too, and it is NOT attributed to the operator.
+    // The fleet's reply survives too without repeating sender chrome.
     expect(screen.getByText(/Reviewed\. Two suggestions/)).toBeTruthy();
-    expect(screen.getByText("Operator")).toBeTruthy();
-    expect(screen.getAllByText(FLEET_NAME).length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByText("Operator:", { selector: ".sr-only" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(`${FLEET_NAME}:`, { selector: ".sr-only" }),
+    ).toBeTruthy();
     expect(container.querySelectorAll("[data-message-id]")).toHaveLength(2);
-    // The reply sits under the fleet's chip, not the operator's.
-    const replyRow = screen.getByText(/Reviewed\. Two suggestions/).closest("[data-role]");
+    const replyRow = screen
+      .getByText(/Reviewed\. Two suggestions/)
+      .closest("[data-role]");
     expect(replyRow?.getAttribute("data-role")).toBe("assistant");
+  });
+
+  it("announces an API steer with its real sender", () => {
+    mockStream([
+      ev({
+        role: "user",
+        actor: "steer:api",
+        text: "review from automation",
+      }),
+    ]);
+    renderThread();
+
+    expect(screen.getByText("API:", { selector: ".sr-only" })).toBeTruthy();
+    expect(
+      screen.queryByText("Operator:", { selector: ".sr-only" }),
+    ).toBeNull();
   });
 
   it("shows the outcome as the fleet's bubble when a turn completes with no reply", () => {
@@ -380,37 +426,53 @@ describe("FleetThread — role rendering", () => {
     expect(screen.getByText(OUTCOME.WAITING_APPROVAL)).toBeTruthy();
   });
 
-  it("shows motion while connecting, and no band above the conversation", () => {
+  it("shows motion but no saved-history band while connecting to an empty thread", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
     const { container } = renderThread();
 
-    // The one moment the operator wants a sign of life is while we are
-    // trying, so the dot moves — and a state with no decision attached does
-    // not earn a band above their conversation.
-    expect(container.querySelector('[data-connection="connecting"]')).toBeTruthy();
+    expect(
+      container.querySelector('[data-connection="connecting"]'),
+    ).toBeTruthy();
     expect(container.querySelector(".animate-pulse")).toBeTruthy();
     expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
-    expect(screen.queryByText(/History remains available/i)).toBeNull();
+    expect(screen.queryByText(/saved history/i)).toBeNull();
   });
 
-  it("keeps a band only for a connection that asks the operator to decide", () => {
-    mockStream([], { connectionStatus: CONNECTION_STATUS.RECONNECTING });
+  it("keeps saved history visible without adding a connection band", () => {
+    const history = [
+      ev({
+        role: "assistant",
+        actor: "fleet",
+        reply: "Saved reply",
+      }),
+    ];
+    mockStream(history, { connectionStatus: CONNECTION_STATUS.CONNECTING });
+    const connecting = renderThread();
+    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+    expect(screen.getByText("Saved reply")).toBeTruthy();
+    connecting.unmount();
+
+    mockStream(history, { connectionStatus: CONNECTION_STATUS.RECONNECTING });
     const reconnecting = renderThread();
     expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+    expect(screen.getByText("Saved reply")).toBeTruthy();
     reconnecting.unmount();
+  });
 
+  it("offers Reconnect only after live updates stop", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
     renderThread();
-    // Nothing to wait for and a choice to make — so it speaks, and offers it.
     expect(screen.getByTestId("fleet-connection-notice")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
   });
 
   it("announces arrival once, and only when it was actually waiting", async () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
     const view = renderThread();
     mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
-    await act(async () => { view.rerender(threadElement()); });
+    await act(async () => {
+      view.rerender(threadElement());
+    });
 
     const indicator = view.container.querySelector('[data-connection="live"]');
     expect(indicator?.getAttribute("data-arrived")).toBe("true");
@@ -421,13 +483,21 @@ describe("FleetThread — role rendering", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
     const fresh = renderThread();
     expect(
-      fresh.container.querySelector('[data-connection="live"]')?.getAttribute("data-arrived"),
+      fresh.container
+        .querySelector('[data-connection="live"]')
+        ?.getAttribute("data-arrived"),
     ).toBeNull();
   });
 
   it("animates a turn that has started but not spoken yet", () => {
     mockStream([
-      ev({ role: "user", actor: "steer:user_abc", text: "Howdy", reply: "", status: "received" }),
+      ev({
+        role: "user",
+        actor: "steer:user_abc",
+        text: "Howdy",
+        reply: "",
+        status: "received",
+      }),
     ]);
     renderThread();
 
@@ -457,7 +527,10 @@ describe("FleetThread — role rendering", () => {
 
     expect(screen.queryByTestId("fleet-failure-banner")).toBeNull();
     expect(screen.getByTestId("group-count").textContent).toBe("×15");
-    expect(screen.getByText(/This fleet needs instructions before it can respond\./)).toBeTruthy();
+    expect(
+      screen.getByText(/This fleet needs instructions before it can respond\./),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("failure-guidance")).toBeNull();
     expect(screen.queryByText(cause)).toBeNull();
   });
 
@@ -528,7 +601,13 @@ describe("FleetThread — role rendering", () => {
     mockStream([
       failure(),
       failure(),
-      ev({ role: "system", actor: "webhook:github", text: "edited #542", reply: "", status: "processed" }),
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "edited #542",
+        reply: "",
+        status: "processed",
+      }),
     ]);
     renderThread();
     expect(screen.queryByTestId("fleet-failure-banner")).toBeNull();
@@ -556,12 +635,18 @@ describe("FleetThread — role rendering", () => {
 
     // The count is a summary the operator can always check.
     const toggle = screen.getByRole("button", { expanded: false });
-    await act(async () => { fireEvent.click(toggle); });
-    expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(15);
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(
+      15,
+    );
+    expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 
   it("keeps each grouped delivery's payload reachable after expansion", async () => {
-    const payload = '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541}';
+    const payload =
+      '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541}';
     mockStream([
       ev({
         id: "payload_1",
@@ -584,7 +669,9 @@ describe("FleetThread — role rendering", () => {
     ]);
     renderThread();
 
-    await act(async () => { fireEvent.click(screen.getByRole("button", { expanded: false })); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { expanded: false }));
+    });
     expect(screen.getAllByText("Details")).toHaveLength(2);
   });
 
@@ -611,7 +698,9 @@ describe("FleetThread — role rendering", () => {
 
     expect(screen.queryByTestId("group-count")).toBeNull();
     expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(3);
-    expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(
+      2,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(screen.getByText(/"repo":\s*"o\/r"/)).toBeTruthy();
   });
@@ -640,10 +729,9 @@ describe("FleetThread — role rendering", () => {
     expect(container.querySelector('[data-slot="badge"]')).toBeNull();
   });
 
-  it("shows the operator's payload and the failure guidance on a steer that failed startup", () => {
+  it("shows a startup failure without duplicating the operator payload", () => {
     // One durable turn: the operator steered, the run failed a startup check.
-    // The trigger row discloses the submitted payload; the reply row states
-    // the outcome and points at the fix.
+    // The reply states the outcome and points at the fix.
     mockStream([
       ev({
         id: "steer_fail",
@@ -658,11 +746,16 @@ describe("FleetThread — role rendering", () => {
       }),
     ]);
     renderThread();
-    // The trigger row exposes the operator's own submitted payload.
-    expect(screen.getByText("Details")).toBeTruthy();
-    // The reply row carries the actionable guidance.
-    expect(screen.getByTestId("failure-guidance").textContent).toContain("Tell the fleet what to do in its instructions, then retry.");
-    expect(screen.getByRole("link", { name: "Edit instructions" })).toBeTruthy();
+    expect(screen.queryByText("Details")).toBeNull();
+    const failure = screen.getByText(
+      /This fleet needs instructions before it can respond/,
+    );
+    expect(failure.className).toMatch(/text-label/);
+    expect(failure.className).toMatch(/font-medium/);
+    expect(failure.className).toMatch(/leading-label/);
+    expect(failure.className).toMatch(/text-foreground/);
+    expect(failure.className).not.toMatch(/text-warning/);
+    expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 
   it("streams a fleet reply that has begun but not finished", () => {
@@ -686,11 +779,20 @@ describe("FleetThread — role rendering", () => {
 
   it("breaks a group when the operator speaks mid-burst", () => {
     const activity = (id: string) =>
-      ev({ id, role: "system", actor: "webhook:github", text: "edited #541", reply: "", status: "fleet_error" });
+      ev({
+        id,
+        role: "system",
+        actor: "webhook:github",
+        text: "edited #541",
+        reply: "",
+        status: "fleet_error",
+      });
     mockStream([
-      activity("a1"), activity("a2"),
+      activity("a1"),
+      activity("a2"),
       ev({ role: "user", actor: "steer:user_abc", text: "what is going on?" }),
-      activity("b1"), activity("b2"),
+      activity("b1"),
+      activity("b2"),
     ]);
     const { container } = renderThread();
 
@@ -699,7 +801,7 @@ describe("FleetThread — role rendering", () => {
     expect(screen.getByText("what is going on?")).toBeTruthy();
   });
 
-  it("renders an integration delivery as a source-context card with reachable payload", () => {
+  it("renders an integration delivery as a flat trace with reachable payload", () => {
     mockStream([
       ev({
         role: "system",
@@ -708,7 +810,10 @@ describe("FleetThread — role rendering", () => {
         reply: "",
         status: "processed",
         outcome: OUTCOME.NO_REPLY,
-        custom: { requestJson: '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541}' },
+        custom: {
+          requestJson:
+            '{"action":"opened","repo":"agentsfleet/agentsfleet","number":541}',
+        },
       }),
     ]);
     const { container } = renderThread();
@@ -719,22 +824,27 @@ describe("FleetThread — role rendering", () => {
     expect(container.querySelectorAll('[data-role="system"]')).toHaveLength(1);
     expect(tick?.textContent).toContain("agentsfleet/agentsfleet#541");
     // The outcome is readable beneath the source context, not another row.
-    expect(screen.getByText(OUTCOME.NO_REPLY).className).toMatch(/text-muted-foreground/);
+    expect(screen.getByText(OUTCOME.NO_REPLY).className).toMatch(
+      /text-muted-foreground/,
+    );
     // Disclosure remains reachable beside the source evidence.
     expect(screen.getByText("Details")).toBeTruthy();
   });
 
-  it("keeps the operator's and the fleet's own rows in the full skeleton", () => {
+  it("keeps conversation rows distinct without sender chrome", () => {
     mockStream([
-      ev({ role: "user", actor: "steer:user_abc", text: "deploy staging", reply: "" }),
+      ev({
+        role: "user",
+        actor: "steer:user_abc",
+        text: "deploy staging",
+        reply: "",
+      }),
       ev({ role: "assistant", actor: "fleet", text: "", reply: "Deployed." }),
     ]);
     const { container } = renderThread();
 
-    // Regression guard: demotion applies to activity ONLY. A
-    // conversation row that lost its chip would be the failure this catches.
     expect(container.querySelector('[data-compact="true"]')).toBeNull();
-    expect(container.querySelectorAll("[data-chip]").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll("[data-chip]")).toHaveLength(0);
     expect(screen.getByText("deploy staging")).toBeTruthy();
     expect(screen.getByText("Deployed.")).toBeTruthy();
   });
@@ -755,11 +865,15 @@ describe("FleetThread — role rendering", () => {
     ]);
     const { container } = renderThread();
 
-    expect(screen.getByRole("link", { name: "agentsfleet/agentsfleet#541" })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "agentsfleet/agentsfleet#541" }),
+    ).toBeTruthy();
     expect(screen.getByText("opened")).toBeTruthy();
     const link = container.querySelector('a[href^="https://github.com"]');
     expect(link).toBeTruthy();
     expect(link?.getAttribute("rel")).toContain("noopener");
+    expect(link?.className).toMatch(/\bmin-h-11\b/);
+    expect(link?.className).toMatch(/\bsm:min-h-6\b/);
   });
 
   it("keeps an activity headline readable when its linked source reference is removed", () => {
@@ -859,12 +973,15 @@ describe("FleetThread — role rendering", () => {
     ]);
     const { container } = renderThread();
 
-    expect(screen.getByText("opened · agentsfleet/agentsfleet#541")).toBeTruthy();
+    expect(
+      screen.getByText("opened · agentsfleet/agentsfleet#541"),
+    ).toBeTruthy();
     expect(container.querySelector("a[href]")).toBeNull();
   });
 
   it("names the failing check and what to do about it on a startup failure", () => {
-    const cause = "startup check 'instructions' failed: no instructions configured";
+    const cause =
+      "startup check 'instructions' failed: no instructions configured";
     mockStream([
       ev({
         role: "system",
@@ -872,16 +989,19 @@ describe("FleetThread — role rendering", () => {
         text: "edited agentsfleet/agentsfleet#541",
         reply: "",
         status: "fleet_error",
-        outcome: outcomeFor({ status: "fleet_error", failure_label: "startup_posture", failure_detail: cause }),
+        outcome: outcomeFor({
+          status: "fleet_error",
+          failure_label: "startup_posture",
+          failure_detail: cause,
+        }),
         failureLabel: "startup_posture",
       }),
     ]);
     renderThread();
     // The cause reaches the row, not just the class sentence ...
     expect(screen.getByText(new RegExp(cause))).toBeTruthy();
-    // ... and the operator is told where to fix it.
-    expect(screen.getByTestId("failure-guidance").textContent).toContain("Tell the fleet what to do in its instructions, then retry.");
-    expect(screen.getByRole("link", { name: "Edit instructions" })).toBeTruthy();
+    // ... without repeating repair guidance in the transcript.
+    expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 
   it("offers no guidance for a failure class the operator cannot act on", () => {
@@ -892,12 +1012,20 @@ describe("FleetThread — role rendering", () => {
         text: "edited agentsfleet/agentsfleet#541",
         reply: "",
         status: "fleet_error",
-        outcome: outcomeFor({ status: "fleet_error", failure_label: "oom_kill", failure_detail: null }),
+        outcome: outcomeFor({
+          status: "fleet_error",
+          failure_label: "oom_kill",
+          failure_detail: null,
+        }),
         failureLabel: "oom_kill",
       }),
     ]);
     renderThread();
-    expect(screen.queryByText("Tell the fleet what to do in its instructions, then retry.")).toBeNull();
+    expect(
+      screen.queryByText(
+        "Tell the fleet what to do in its instructions, then retry.",
+      ),
+    ).toBeNull();
     expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 
@@ -918,7 +1046,7 @@ describe("FleetThread — role rendering", () => {
     expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 
-  it("labels an operator steer with a word, never the account identifier", () => {
+  it("never leaks the operator account identifier into the transcript", () => {
     const accountId = "user_3gkbgxjnujsxbdxttcwcslpc87k";
     mockStream([
       ev({
@@ -929,21 +1057,24 @@ describe("FleetThread — role rendering", () => {
     ]);
     const { container } = renderThread();
     expect(screen.getByText(/morning health check/)).toBeTruthy();
-    expect(screen.getByText("Operator")).toBeTruthy();
-    expect(screen.getByText("OP")).toBeTruthy();
+    expect(screen.queryByText("Operator")).toBeNull();
+    expect(screen.queryByText("OP")).toBeNull();
     expect(container.textContent).not.toContain(accountId);
   });
 
-  it("labels a fleet reply with the fleet's own name", () => {
-    mockStream([ev({ role: "assistant", actor: "fleet", reply: "reviewed it" })]);
+  it("does not repeat the fleet name beside a reply", () => {
+    mockStream([
+      ev({ role: "assistant", actor: "fleet", reply: "reviewed it" }),
+    ]);
     renderThread();
-    expect(screen.getByText(FLEET_NAME)).toBeTruthy();
+    expect(screen.queryByText(FLEET_NAME)).toBeNull();
     expect(screen.getByText("reviewed it")).toBeTruthy();
   });
 
-  it("falls back to 'Fleet' for the reply when no fleet name is known", () => {
-    mockStream([ev({ role: "assistant", actor: "fleet", reply: "reviewed it" })]);
-    // A console that never learned the fleet's name still labels the reply.
+  it("does not add a fallback sender label when no fleet name is known", () => {
+    mockStream([
+      ev({ role: "assistant", actor: "fleet", reply: "reviewed it" }),
+    ]);
     render(
       React.createElement(FleetThread, {
         workspaceId: WS,
@@ -952,17 +1083,17 @@ describe("FleetThread — role rendering", () => {
         initial: [],
       }),
     );
-    expect(screen.getByText("Fleet")).toBeTruthy();
+    expect(screen.queryByText("Fleet")).toBeNull();
+    expect(screen.getByText("reviewed it")).toBeTruthy();
   });
 
-  it("gives every row a sender chip and a machine-readable timestamp", () => {
-    mockStream([ev({ role: "assistant", actor: "fleet", text: "reviewed it" })]);
+  it("keeps conversation rows free of sender and timestamp chrome", () => {
+    mockStream([
+      ev({ role: "assistant", actor: "fleet", text: "reviewed it" }),
+    ]);
     const { container } = renderThread();
-    expect(container.querySelector('[data-chip="fleet"]')).toBeTruthy();
-    const stamp = container.querySelector("time");
-    expect(stamp?.getAttribute("dateTime")).toBe(
-      new Date(Date.UTC(2026, 4, 15, 9, 0, 0)).toISOString(),
-    );
+    expect(container.querySelector("[data-chip]")).toBeNull();
+    expect(container.querySelector("time")).toBeNull();
   });
 
   it("renders an assistant reply", () => {
@@ -987,14 +1118,22 @@ describe("FleetThread — role rendering", () => {
   });
 
   it("renders a continuation system row with its chip label", () => {
-    mockStream([ev({ role: "system", actor: "continuation", text: "resumed after gate" })]);
+    mockStream([
+      ev({ role: "system", actor: "continuation", text: "resumed after gate" }),
+    ]);
     renderThread();
     expect(screen.getByText("Continuation")).toBeTruthy();
     expect(screen.getByText(/resumed after gate/)).toBeTruthy();
   });
 
   it("renders a gate_blocked system row with its chip label", () => {
-    mockStream([ev({ role: "system", actor: "gate_blocked", text: "blocked on approval" })]);
+    mockStream([
+      ev({
+        role: "system",
+        actor: "gate_blocked",
+        text: "blocked on approval",
+      }),
+    ]);
     renderThread();
     expect(screen.getByText("Approval gate")).toBeTruthy();
     expect(screen.getByText(/blocked on approval/)).toBeTruthy();
@@ -1048,7 +1187,9 @@ describe("FleetThread — role rendering", () => {
     ]);
     renderThread();
     expect(screen.getByText("GitHub App")).toBeTruthy();
-    expect(screen.getByText("This fleet needs instructions before it can respond.")).toBeTruthy();
+    expect(
+      screen.getByText("This fleet needs instructions before it can respond."),
+    ).toBeTruthy();
   });
 
   it("renders an optimistic user message with the queued badge", () => {
@@ -1099,11 +1240,20 @@ describe("FleetThread — role rendering", () => {
 describe("FleetThread — fluid composer", () => {
   it("keeps the message field and its send action available while running", () => {
     mockStream(
-      [ev({ role: "assistant", actor: "fleet", text: "streaming…", status: "received" })],
+      [
+        ev({
+          role: "assistant",
+          actor: "fleet",
+          text: "streaming…",
+          status: "received",
+        }),
+      ],
       { isRunning: true },
     );
     renderThread();
-    const input = screen.getByPlaceholderText(/message this fleet/i) as HTMLTextAreaElement;
+    const input = screen.getByPlaceholderText(
+      /message this fleet/i,
+    ) as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
     // A working fleet is not a reason to park a message in the browser: the
     // send action stays live and nothing announces a queue.
@@ -1143,10 +1293,12 @@ describe("FleetThread — steer submission", () => {
           };
         }),
     );
-    steerFleetActionMock.mockImplementationOnce((_ws: string, _z: string, text: string) => {
-      order.push(text);
-      return Promise.resolve({ ok: true, data: { event_id: "evt_2" } });
-    });
+    steerFleetActionMock.mockImplementationOnce(
+      (_ws: string, _z: string, text: string) => {
+        order.push(text);
+        return Promise.resolve({ ok: true, data: { event_id: "evt_2" } });
+      },
+    );
     renderThread();
 
     const first = capturedOnNew.current!(appendMessage("deploy"));
@@ -1167,7 +1319,11 @@ describe("FleetThread — steer submission", () => {
     const appendOptimistic = vi.fn().mockReturnValue("temp_42");
     const reconcileOptimistic = vi.fn();
     const markOptimisticFailed = vi.fn();
-    mockStream([], { appendOptimistic, reconcileOptimistic, markOptimisticFailed });
+    mockStream([], {
+      appendOptimistic,
+      reconcileOptimistic,
+      markOptimisticFailed,
+    });
     steerFleetActionMock.mockResolvedValueOnce({
       ok: true,
       data: { event_id: "evt_real_42" },
@@ -1212,7 +1368,11 @@ describe("FleetThread — steer submission", () => {
     const appendOptimistic = vi.fn().mockReturnValue("temp_99");
     const reconcileOptimistic = vi.fn();
     const markOptimisticFailed = vi.fn();
-    mockStream([], { appendOptimistic, reconcileOptimistic, markOptimisticFailed });
+    mockStream([], {
+      appendOptimistic,
+      reconcileOptimistic,
+      markOptimisticFailed,
+    });
     steerFleetActionMock.mockResolvedValueOnce({
       ok: false,
       error: "Not authenticated",
@@ -1237,7 +1397,11 @@ describe("FleetThread — steer submission", () => {
     const markOptimisticFailed = vi.fn();
     const appendOptimistic = vi.fn().mockReturnValue("temp_fail_1");
     const discardOptimistic = vi.fn();
-    mockStream([], { appendOptimistic, markOptimisticFailed, discardOptimistic });
+    mockStream([], {
+      appendOptimistic,
+      markOptimisticFailed,
+      discardOptimistic,
+    });
     steerFleetActionMock
       .mockResolvedValueOnce({
         ok: false,
@@ -1248,7 +1412,9 @@ describe("FleetThread — steer submission", () => {
       .mockResolvedValueOnce({ ok: true, data: { event_id: "evt_retry_ok" } });
     renderThread();
     await capturedOnNew.current!(appendMessage("retry this send"));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
     expect(markOptimisticFailed).toHaveBeenCalledTimes(1);
@@ -1263,8 +1429,14 @@ describe("FleetThread — steer submission", () => {
     const appendOptimistic = vi.fn().mockReturnValue("temp_t");
     const reconcileOptimistic = vi.fn();
     const markOptimisticFailed = vi.fn();
-    mockStream([], { appendOptimistic, reconcileOptimistic, markOptimisticFailed });
-    steerFleetActionMock.mockRejectedValueOnce(new Error("Server Component transport failed"));
+    mockStream([], {
+      appendOptimistic,
+      reconcileOptimistic,
+      markOptimisticFailed,
+    });
+    steerFleetActionMock.mockRejectedValueOnce(
+      new Error("Server Component transport failed"),
+    );
     renderThread();
     await capturedOnNew.current!(appendMessage("offline send"));
     await waitFor(() =>
@@ -1361,7 +1533,11 @@ describe("FleetThread — robustness against malformed metadata", () => {
     // `readCustomStatus` reads metadata.custom.status; a frame whose converter
     // emits a non-string status (numeric here) must fall through to "" so the
     // user row is treated as settled — no optimistic "queued" / "failed" badge.
-    const e = ev({ role: "user", actor: "steer:kishore@e2e.com", text: "non-string status" });
+    const e = ev({
+      role: "user",
+      actor: "steer:kishore@e2e.com",
+      text: "non-string status",
+    });
     useFleetEventStreamMock.mockReturnValue({
       events: [e],
       connectionStatus: CONNECTION_STATUS.LIVE,
@@ -1374,7 +1550,9 @@ describe("FleetThread — robustness against malformed metadata", () => {
         id: m.id,
         createdAt: m.createdAt,
         content: [{ type: "text" as const, text: m.text }],
-        metadata: { custom: { actor: m.actor, status: 7 as unknown as string } },
+        metadata: {
+          custom: { actor: m.actor, status: 7 as unknown as string },
+        },
       }),
     });
     const { container } = renderThread();
@@ -1403,15 +1581,18 @@ describe("FleetThread — robustness against malformed metadata", () => {
         role: m.role,
         id: m.id,
         createdAt: m.createdAt,
-        content: [{ type: "image" as const, image: "data:image/png;base64,xx" }],
+        content: [
+          { type: "image" as const, image: "data:image/png;base64,xx" },
+        ],
         metadata: { custom: { actor: m.actor, status: m.status } },
       }),
     });
     const { container } = renderThread();
     const row = container.querySelector('[data-role="user"]');
     expect(row).toBeTruthy();
-    expect(row?.textContent).toContain("Operator");
-    expect(row?.querySelector("time")).toBeTruthy();
+    expect(row?.textContent).toBe("Operator: ");
+    expect(row?.querySelector(".sr-only")?.textContent).toBe("Operator: ");
+    expect(row?.querySelector("time")).toBeNull();
   });
 
   it("viewport carries role=log, aria-live=polite, aria-label", () => {
@@ -1426,30 +1607,44 @@ describe("FleetThread — robustness against malformed metadata", () => {
   it("renders the backfill skeleton when CONNECTING with no events", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
     const { container } = renderThread();
-    expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeTruthy();
-    expect(screen.queryByText(/Message this fleet or wait for its next trigger/i)).toBeNull();
+    expect(
+      container.querySelector('[data-testid="backfill-skeleton"]'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(/Message this fleet or wait for its next trigger/i),
+    ).toBeNull();
   });
 
   it("renders the backfill skeleton when RECONNECTING with no events", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.RECONNECTING });
     const { container } = renderThread();
-    expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeTruthy();
+    expect(
+      container.querySelector('[data-testid="backfill-skeleton"]'),
+    ).toBeTruthy();
   });
 
   it("shows the idle empty-state hint (not skeleton) when LIVE with no events", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
     const { container } = renderThread();
-    expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeNull();
-    expect(screen.getByText(/Message this fleet or wait for its next trigger/i)).toBeTruthy();
+    expect(
+      container.querySelector('[data-testid="backfill-skeleton"]'),
+    ).toBeNull();
+    expect(
+      screen.getByText(/Message this fleet or wait for its next trigger/i),
+    ).toBeTruthy();
   });
 
   it("never renders the skeleton once any event is present", () => {
     mockStream(
       [ev({ role: "assistant", actor: "fleet", text: "first frame" })],
-      { connectionStatus: CONNECTION_STATUS.CONNECTING },
+      {
+        connectionStatus: CONNECTION_STATUS.CONNECTING,
+      },
     );
     const { container } = renderThread();
-    expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="backfill-skeleton"]'),
+    ).toBeNull();
   });
 
   it("every rendered row carries the operational 80ms fade-in classes", () => {
@@ -1465,7 +1660,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
       }),
     ]);
     const { container } = renderThread();
-    const rows = container.querySelectorAll('[data-role]');
+    const rows = container.querySelectorAll("[data-role]");
     expect(rows.length).toBeGreaterThanOrEqual(4);
     for (const r of rows) {
       const cls = r.className;
@@ -1479,16 +1674,20 @@ describe("FleetThread — robustness against malformed metadata", () => {
   it("renders the jump-to-latest scroll button", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     renderThread();
-    expect(screen.getByRole("button", { name: /jump to latest/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /jump to latest/i }),
+    ).toBeTruthy();
   });
 
   it("keeps a fleet reply left aligned and its long body within the reading column", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();
-    const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
+    const row = container.querySelector(
+      '[data-role="assistant"]',
+    ) as HTMLElement;
     expect(row).toBeTruthy();
     expect(row.querySelector(".flex-row-reverse")).toBeNull();
-    expect(row.querySelector(".max-w-xl")).toBeTruthy();
+    expect(row.querySelector(".max-w-prose")).toBeTruthy();
     const body = row.querySelector(".break-words");
     expect(body).toBeTruthy();
   });
@@ -1505,7 +1704,9 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(viewport.className).toMatch(/overflow-y-auto/);
     expect(viewport.className).toMatch(/min-h-0/);
     expect(messageLog.contains(composer)).toBe(false);
-    const card = container.querySelector('[aria-label="Fleet chat"]') as HTMLElement;
+    const card = container.querySelector(
+      '[aria-label="Fleet chat"]',
+    ) as HTMLElement;
     expect(card.className).toMatch(/flex-col/);
     expect(card.className).toMatch(/min-h-0/);
   });

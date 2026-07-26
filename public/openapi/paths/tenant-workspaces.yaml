@@ -1,49 +1,86 @@
 /v1/tenants/me/workspaces:
   get:
     operationId: list_tenant_workspaces
-    summary: List every workspace the caller's tenant owns
+    summary: List the tenant's workspaces
     description: >
-      Returns the full set of workspaces owned by the caller's tenant. Backs
-      the dashboard workspace switcher: a user can switch to any workspace in
-      this list without re-issuing the JWT, because workspace authorisation is
-      tenant-scoped. No pagination — a tenant's workspace count is bounded and
-      small in practice.
+      Returns a stable oldest-first cursor page of workspaces owned by the
+      caller's authoritative tenant. Pass `starting_after` from `next_cursor`
+      to continue. The optional `name` filter uses exact equality and supports
+      reconciliation after an uncertain workspace-create response.
     tags:
-    - Workspaces
+      - Workspaces
+    parameters:
+      - name: name
+        in: query
+        required: false
+        description: Exact tenant-scoped workspace name.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+      - name: starting_after
+        in: query
+        required: false
+        description: Cursor returned as `next_cursor` by the previous page.
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
     responses:
-      '200':
+      "200":
         description: OK
         content:
           application/json:
             schema:
               type: object
               required:
-              - items
-              - total
+                - items
+                - tenant_id
+                - total
+                - next_cursor
               properties:
                 items:
                   type: array
+                  maxItems: 100
                   items:
                     type: object
                     required:
-                    - id
-                    - name
-                    - created_at
+                      - id
+                      - name
+                      - created_at
                     properties:
                       id:
                         type: string
                         format: uuid
-                        description: UUIDv7 of the workspace.
+                        description: Universally Unique Identifier version 7 (UUIDv7) of the workspace.
                       name:
                         type: string
                         nullable: true
-                        description: Human-readable workspace name. Nullable — pre-rename workspaces may not have one.
+                        description: Human-readable workspace name. Nullable for workspaces created before names were required.
                       created_at:
                         type: integer
                         format: int64
-                        description: Workspace creation time (epoch ms).
+                        description: Workspace creation time in epoch milliseconds.
+                tenant_id:
+                  type: string
+                  format: uuid
+                  x-stability: stable
+                  description: Tenant identifier resolved by the server.
                 total:
                   type: integer
-                  description: Count of items returned.
+                  nullable: true
+                  minimum: 0
+                  description: Total matching workspaces, or null when not computed. This endpoint returns null.
+                next_cursor:
+                  type: string
+                  nullable: true
+                  x-stability: stable
+                  description: Cursor for the next page, or null when this is the final page.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error

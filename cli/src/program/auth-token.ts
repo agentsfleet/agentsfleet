@@ -10,7 +10,8 @@ const OPERATOR = "operator" as const;
 const TYPE_STRING = "string" as const;
 const USER = "user" as const;
 
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
+const isString = (value: unknown): value is string =>
+  typeof value === TYPE_STRING;
 
 export type RoleClaim = typeof USER | typeof OPERATOR | typeof ADMIN;
 
@@ -52,7 +53,9 @@ export function decodeTokenPayload(token: unknown): JwtClaims | null {
   try {
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const padded = base64 + "===".slice((base64.length + 3) % 4);
-    return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as JwtClaims;
+    return JSON.parse(
+      Buffer.from(padded, "base64").toString("utf8"),
+    ) as JwtClaims;
   } catch {
     return null;
   }

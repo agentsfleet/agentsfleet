@@ -15,7 +15,10 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
-import { resolveAuthToken } from "./workspace-guards.ts";
+import {
+  resolveAuthToken,
+  WORKSPACE_CREATE_USAGE,
+} from "./workspace-guards.ts";
 import {
   wsFleetsPath,
   HEALTHZ_PATH,
@@ -114,7 +117,8 @@ const runBindingCheck = (
             detail: `token bound to ${wsId}`,
           }),
           onFailure: (err): DoctorCheckResult => {
-            const code = err._tag === SERVER_ERROR_TAG ? err.code : REQUEST_FAILED;
+            const code =
+              err._tag === SERVER_ERROR_TAG ? err.code : REQUEST_FAILED;
             return {
               name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
               ok: false,
@@ -167,7 +171,7 @@ export const doctorEffect: Effect.Effect<
     ok: wsSelected,
     detail: wsSelected
       ? String(wsId)
-      : "no workspace selected. Run: agentsfleet workspace create",
+      : `no workspace selected. Run: ${WORKSPACE_CREATE_USAGE}`,
   };
 
   const bindingCheck: DoctorCheckResult = wsId

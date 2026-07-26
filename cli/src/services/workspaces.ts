@@ -2,8 +2,9 @@
 //
 // Login hydrates this after credentials land so the operator has an
 // active workspace from the first command. The shape mirrors the
-// Workspaces record from lib/state.ts verbatim (current_workspace_id +
-// items[]) — same JSON on disk, just exposed as an Effect surface.
+// Workspaces record from lib/state.ts verbatim (tenant_id,
+// current_workspace_id, and items[]) — same JSON on disk, just exposed
+// as an Effect surface.
 
 import { Effect, Layer, Context } from "effect";
 import {
@@ -19,7 +20,9 @@ export type WorkspacesValue = WorkspacesRecord;
 
 export interface WorkspacesShape {
   readonly load: Effect.Effect<WorkspacesValue, UnexpectedError>;
-  readonly save: (next: WorkspacesValue) => Effect.Effect<void, UnexpectedError>;
+  readonly save: (
+    next: WorkspacesValue,
+  ) => Effect.Effect<void, UnexpectedError>;
 }
 
 export type Workspaces = WorkspacesShape;
@@ -27,7 +30,8 @@ export const Workspaces = Context.Service<Workspaces>(
   "agentsfleet/state/Workspaces",
 );
 
-const unexpected = (op: string) =>
+const unexpected =
+  (op: string) =>
   (cause: unknown): UnexpectedError =>
     new UnexpectedError({
       detail: `workspaces ${op} failed: ${cause instanceof Error ? cause.message : String(cause)}`,

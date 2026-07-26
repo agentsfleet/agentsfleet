@@ -3,8 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
 
-import { newIdempotencyKey, loadCredentials, saveCredentials, clearCredentials, loadWorkspaces, saveWorkspaces } from "../src/lib/state.ts";
-import { printSection, printKeyValue, printTable } from "../src/output/index.ts";
+import {
+  loadCredentials,
+  saveCredentials,
+  clearCredentials,
+  loadWorkspaces,
+  saveWorkspaces,
+} from "../src/lib/state.ts";
+import {
+  printSection,
+  printKeyValue,
+  printTable,
+} from "../src/output/index.ts";
 import {
   wsFleetsPath,
   wsFleetPath,
@@ -19,27 +29,39 @@ import {
 } from "../src/lib/api-paths.ts";
 
 function tmpDir() {
-  return path.join(os.tmpdir(), `zctl-cov-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  return path.join(
+    os.tmpdir(),
+    `zctl-cov-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  );
 }
 
-function captureStream(): { write: (s: string) => void; readonly text: string } {
+function captureStream(): {
+  write: (s: string) => void;
+  readonly text: string;
+} {
   const chunks: string[] = [];
-  return { write(s: string) { chunks.push(s); }, get text() { return chunks.join(""); } };
+  return {
+    write(s: string) {
+      chunks.push(s);
+    },
+    get text() {
+      return chunks.join("");
+    },
+  };
 }
 
 // ── state.js ────────────────────────────────────────────────────────────
-
-test("newIdempotencyKey returns a 24-char hex string", () => {
-  const k = newIdempotencyKey();
-  expect(k).toMatch(/^[0-9a-f]{24}$/);
-  expect(newIdempotencyKey()).not.toBe(k);
-});
 
 test("save/load/clear Credentials roundtrip writes mode 0600 and clears to nulls", async () => {
   const dir = tmpDir();
   process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
-    await saveCredentials({ token: "tok_abc", saved_at: 1, session_id: "sess", api_url: "https://api.example" });
+    await saveCredentials({
+      token: "tok_abc",
+      saved_at: 1,
+      session_id: "sess",
+      api_url: "https://api.example",
+    });
     const after = await loadCredentials();
     expect(after.token).toBe("tok_abc");
     const stat = await fs.stat(path.join(dir, "credentials.json"));
@@ -58,7 +80,10 @@ test("save/load Workspaces roundtrip persists current_workspace_id + items[]", a
   const dir = tmpDir();
   process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
-    await saveWorkspaces({ current_workspace_id: "ws_1", items: [{ workspace_id: "ws_1", name: "main", created_at: null }] });
+    await saveWorkspaces({
+      current_workspace_id: "ws_1",
+      items: [{ workspace_id: "ws_1", name: "main", created_at: null }],
+    });
     const after = await loadWorkspaces();
     expect(after.current_workspace_id).toBe("ws_1");
     expect(after.items).toHaveLength(1);
@@ -73,7 +98,12 @@ test("loadCredentials returns the default shape when no file exists", async () =
   process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
     const c = await loadCredentials();
-    expect(c).toEqual({ token: null, saved_at: null, session_id: null, api_url: null });
+    expect(c).toEqual({
+      token: null,
+      saved_at: null,
+      session_id: null,
+      api_url: null,
+    });
   } finally {
     delete process.env.AGENTSFLEET_STATE_DIR;
   }
@@ -103,8 +133,14 @@ test("printTable writes columns and rows", () => {
   const s = captureStream();
   printTable(
     s,
-    [{ label: "name", key: "name" }, { label: "status", key: "status" }],
-    [{ name: "alpha", status: "live" }, { name: "beta", status: "stopped" }],
+    [
+      { label: "name", key: "name" },
+      { label: "status", key: "status" },
+    ],
+    [
+      { name: "alpha", status: "live" },
+      { name: "beta", status: "stopped" },
+    ],
   );
   expect(s.text).toContain("alpha");
   expect(s.text).toContain("stopped");
@@ -116,13 +152,27 @@ test("path helpers URL-encode workspace id and fleet id components", () => {
   const ws = "ws/with slash";
   const z = "agt spaces";
   expect(wsFleetsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets");
-  expect(wsFleetPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces");
-  expect(wsFleetMessagesPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/messages");
-  expect(wsFleetEventsPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/events");
-  expect(wsFleetEventsStreamPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/events/stream");
+  expect(wsFleetPath(ws, z)).toBe(
+    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces",
+  );
+  expect(wsFleetMessagesPath(ws, z)).toBe(
+    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/messages",
+  );
+  expect(wsFleetEventsPath(ws, z)).toBe(
+    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/events",
+  );
+  expect(wsFleetEventsStreamPath(ws, z)).toBe(
+    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/events/stream",
+  );
   expect(wsEventsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/events");
   expect(wsSecretsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/secrets");
-  expect(wsSecretPath(ws, "github_token")).toBe("/v1/workspaces/ws%2Fwith%20slash/secrets/github_token");
-  expect(wsGrantsListPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/integration-grants");
-  expect(wsGrantPath(ws, z, "grant_x")).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/integration-grants/grant_x");
+  expect(wsSecretPath(ws, "github_token")).toBe(
+    "/v1/workspaces/ws%2Fwith%20slash/secrets/github_token",
+  );
+  expect(wsGrantsListPath(ws, z)).toBe(
+    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/integration-grants",
+  );
+  expect(wsGrantPath(ws, z, "grant_x")).toBe(
+    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/integration-grants/grant_x",
+  );
 });

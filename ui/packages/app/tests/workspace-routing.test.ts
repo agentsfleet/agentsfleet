@@ -21,7 +21,8 @@ vi.mock("@/lib/workspace", () => ({ listTenantWorkspacesCached }));
 // The zero-workspace entry state is a client island — stub it so the server
 // component test stays synchronous and doesn't pull the dynamic dialog chunk.
 vi.mock("@/components/layout/NoWorkspaceEmptyState", () => ({
-  default: () => React.createElement("div", { "data-testid": "no-workspace-empty-state" }),
+  default: () =>
+    React.createElement("div", { "data-testid": "no-workspace-empty-state" }),
 }));
 
 const OWNED = {
@@ -85,7 +86,9 @@ describe("workspace ownership guard layout", () => {
     // The guard is UX/defence-in-depth; blanking a possibly-owned workspace to a
     // hard 404 on a list-endpoint blip is worse than letting `ownsWithinTenant`
     // gate the actual data calls. So a list error must NOT notFound.
-    listTenantWorkspacesCached.mockRejectedValue(new Error("list endpoint down"));
+    listTenantWorkspacesCached.mockRejectedValue(
+      new Error("list endpoint down"),
+    );
     const Layout = await importLayout();
     const el = await Layout({
       children: React.createElement("div", null, "still renders"),
@@ -94,6 +97,21 @@ describe("workspace ownership guard layout", () => {
     const markup = renderToStaticMarkup(el as React.ReactElement);
     expect(markup).toContain("still renders");
     expect(notFound).not.toHaveBeenCalled();
+  });
+
+  it("a miss in the complete cursor walk cannot fail open from a stale total", async () => {
+    listTenantWorkspacesCached.mockResolvedValue({
+      items: OWNED.items,
+      total: OWNED.items.length + 1,
+    });
+    const Layout = await importLayout();
+    await expect(
+      Layout({
+        children: React.createElement("div", null, "complete result"),
+        params: Promise.resolve({ workspaceId: "ws_omitted" }),
+      }),
+    ).rejects.toThrow("notFound");
+    expect(notFound).toHaveBeenCalledOnce();
   });
 
   it("redirects to /sign-in without a token", async () => {
@@ -133,7 +151,9 @@ describe("dashboard entry page", () => {
     // Symmetric with the guard's fail-open: an operator who owns workspaces must
     // never be shown "create a workspace" on a blip (→ duplicate). The error
     // propagates to (dashboard)/error.tsx instead.
-    listTenantWorkspacesCached.mockRejectedValue(new Error("list endpoint down"));
+    listTenantWorkspacesCached.mockRejectedValue(
+      new Error("list endpoint down"),
+    );
     const Page = await importEntry();
     await expect(Page()).rejects.toThrow("list endpoint down");
   });

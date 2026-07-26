@@ -1,46 +1,42 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { BracesIcon, CircleXIcon } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-  DashboardRow,
-  DashboardRowGroup,
+  Badge,
   Time,
   cn,
+  formatTimeAbsolute,
+  formatTimeRelative,
 } from "@agentsfleet/design-system";
-import { senderInitialsFor } from "@/lib/events/event-summary";
 
-// The conversation row for the two live roles. Operator turns anchor right
-// in a compact surface, while fleet replies stay open on the left so their
-// evidence reads as operational output rather than consumer chat. Integration
-// deliveries keep the shared DashboardRow skeleton (FleetActivityRow) —
-// activity is a log, conversation is not.
+const ROW_ENTER =
+  "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream";
+const RELATIVE_TIME_REFRESH_MS = 30_000;
 
-const ROW_ENTER = "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream";
-
-// Which side of the conversation a row belongs to. Drives the chip tone and
-// which side of the column the turn anchors to.
 export const ROW_TONE = {
   OPERATOR: "operator",
   FLEET: "fleet",
-  EVENT: "event",
 } as const;
 
 export type RowTone = (typeof ROW_TONE)[keyof typeof ROW_TONE];
-
-const CHIP_TONE: Record<RowTone, string> = {
-  [ROW_TONE.OPERATOR]: "border-border-strong text-foreground",
-  [ROW_TONE.FLEET]: "border-border text-muted-foreground",
-  [ROW_TONE.EVENT]: "border-border text-muted-foreground",
-};
 
 // The console's own fleet, so a fleet reply is labelled with the fleet's name
 // rather than the word "fleet". Rows are rendered by a callback the thread
 // primitive owns, so the name reaches them through context rather than props.
 const FleetNameContext = createContext<string>("");
+const RelativeNowContext = createContext<Date | null>(null);
 
 export function FleetNameProvider({
   fleetName,
@@ -49,7 +45,23 @@ export function FleetNameProvider({
   fleetName: string;
   children: ReactNode;
 }) {
-  return <FleetNameContext.Provider value={fleetName}>{children}</FleetNameContext.Provider>;
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setNow(new Date()),
+      RELATIVE_TIME_REFRESH_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <FleetNameContext.Provider value={fleetName}>
+      <RelativeNowContext.Provider value={now}>
+        {children}
+      </RelativeNowContext.Provider>
+    </FleetNameContext.Provider>
+  );
 }
 
 export function useFleetName(): string {
@@ -57,30 +69,27 @@ export function useFleetName(): string {
 }
 
 export type FleetMessageRowProps = {
+  /** Accessible sender label retained when visible conversation chrome is absent. */
   sender: string;
-  createdAt: Date;
   tone: RowTone;
   children: ReactNode;
-  /** Rendered on the header line, right of the sender — status, chips. */
+  /** Transient delivery state rendered above the operator bubble. */
   annotation?: ReactNode;
   /** The message's conversational role. Named apart from the ARIA `role`
    * attribute it would otherwise be mistaken for; it lands on `data-role`. */
   messageRole: string;
   dimmed?: boolean;
   failed?: boolean;
-  live?: boolean;
 };
 
 export function FleetMessageRow({
   sender,
-  createdAt,
   tone,
   children,
   annotation,
   messageRole,
   dimmed,
   failed,
-  live,
 }: FleetMessageRowProps) {
   const isOperator = tone === ROW_TONE.OPERATOR;
   return (
@@ -90,25 +99,23 @@ export function FleetMessageRow({
       data-optimistic={dimmed || undefined}
       data-failed={failed || undefined}
     >
-      {/* Reversing the row puts the operator's chip on the right gutter with
-          its bubble beside it; the fleet stays on the left. No justify-*
-          needed — the reversed axis anchors the pair to its own edge. */}
-      <div className={cn("flex w-full gap-sm px-lg py-md", isOperator && "flex-row-reverse")}>
-        <span className="flex w-8 flex-none justify-center">
-          <SenderChip sender={sender} tone={tone} live={live} />
-        </span>
+      <div
+        className={cn(
+          "flex w-full px-lg py-md",
+          isOperator ? "justify-end" : "justify-start",
+        )}
+      >
         <div
           className={cn(
-            "flex min-w-0 max-w-xl flex-col gap-xs",
-            isOperator ? "items-end" : "items-start",
+            "flex min-w-0 max-w-prose flex-col gap-xs",
+            isOperator ? "items-end" : "w-full items-start",
           )}
         >
-          <div className="flex items-baseline gap-sm font-mono text-label tracking-label text-text-subtle">
-            <span className="min-w-0 truncate text-muted-foreground">{sender}</span>
-            <span aria-hidden="true">{TICK_SEPARATOR}</span>
-            <Timestamp createdAt={createdAt} />
-            {annotation}
-          </div>
+          {annotation ? (
+            <div className="font-mono text-label text-muted-foreground">
+              {annotation}
+            </div>
+          ) : null}
           <div
             className={cn(
               "min-w-0 max-w-full break-words font-mono text-mono leading-mono text-foreground",
@@ -117,6 +124,7 @@ export function FleetMessageRow({
                 : "w-full",
             )}
           >
+            <span className="sr-only">{sender}: </span>
             {children}
           </div>
         </div>
@@ -135,8 +143,6 @@ export type FleetActivityRowProps = {
   outcome?: string;
   /** True when the outcome is a failure, which is the one thing that shouts. */
   failed?: boolean;
-  /** Remediation shown directly below a failure, outside the details disclosure. */
-  guidance?: ReactNode;
   /** Rendered inline after the headline — an action `Badge`, a link. */
   annotation?: ReactNode;
   /** Disclosure and any expansion, rendered under the tick line. */
@@ -144,73 +150,82 @@ export type FleetActivityRowProps = {
   messageRole: string;
 };
 
-/**
- * A compact evidence line for an integration delivery. It stays in the same
- * chronological column as conversation turns, while verbose guidance and
- * payloads remain available behind one disclosure.
- */
 export function FleetActivityRow({
   sender,
   createdAt,
   headline,
   outcome,
   failed,
-  guidance,
   annotation,
   children,
   messageRole,
 }: FleetActivityRowProps) {
   return (
-    <DashboardRow
-      data-dashboard-row=""
+    <div
       data-role={messageRole}
       data-compact="true"
       data-failed={failed || undefined}
-      icon={<SenderChip sender={sender} tone={ROW_TONE.EVENT} />}
-      title={
-        <div className="min-w-0 font-mono leading-mono">
-          <div className="flex min-w-0 items-center gap-sm text-label text-muted-foreground">
-            <span className="shrink-0">{sender}</span>
-            {annotation}
-          </div>
-          <div className="mt-xs min-w-0 break-words text-mono text-foreground" title={headline}>
-            {headline}
-          </div>
-        </div>
-      }
-      description={
-        outcome || guidance ? (
-          <div>
-            {outcome ? (
-          <p
-            className={cn(
-              "font-mono text-mono leading-mono",
-              failed ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {outcome}
-          </p>
-            ) : null}
-            {guidance}
-          </div>
-        ) : undefined
-      }
-      meta={
-        children ? (
-          <Accordion type="single" collapsible>
-            <AccordionItem value={DETAILS_VALUE} className="border-0">
-              <AccordionTrigger className="py-xs font-mono text-label text-muted-foreground hover:no-underline">
-                {DETAILS_LABEL}
-              </AccordionTrigger>
-              <AccordionContent>{children}</AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        ) : undefined
-      }
-      action={<Timestamp createdAt={createdAt} />}
-      className={cn("w-full", ROW_ENTER)}
+      className={cn("w-full border-b border-border", ROW_ENTER)}
     >
-    </DashboardRow>
+      <div className="flex min-w-0 items-start gap-md px-lg py-md">
+        <div className="min-w-0 flex-1 font-mono leading-mono">
+          <div className="flex min-w-0 flex-wrap items-center gap-sm text-label">
+            <span className="shrink-0 text-muted-foreground">{sender}</span>
+            {annotation}
+            <span aria-hidden="true" className="text-muted-foreground">
+              {TICK_SEPARATOR}
+            </span>
+            <span
+              className="min-w-0 break-words text-muted-foreground"
+              title={headline}
+            >
+              {headline}
+            </span>
+          </div>
+          {outcome ? (
+            <div className="mt-xs">
+              <p
+                className={cn(
+                  "font-mono",
+                  failed
+                    ? "flex min-h-6 items-start gap-xs text-label font-medium leading-label text-foreground"
+                    : "text-mono leading-mono text-muted-foreground",
+                )}
+              >
+                {failed ? (
+                  <>
+                    <span className="flex size-4 shrink-0 items-center justify-center">
+                      <CircleXIcon
+                        size={12}
+                        className="text-destructive"
+                        aria-hidden="true"
+                      />
+                    </span>
+                    <span>{outcome}</span>
+                  </>
+                ) : (
+                  outcome
+                )}
+              </p>
+            </div>
+          ) : null}
+          {children ? (
+            <Accordion type="single" collapsible className="w-fit">
+              <AccordionItem value={DETAILS_VALUE} className="border-0">
+                <AccordionTrigger className="min-h-11 w-fit flex-none gap-xs py-0 font-mono text-label leading-none text-muted-foreground hover:no-underline sm:min-h-6 [&>svg]:ml-0 [&>svg]:size-3">
+                  <span className="flex size-4 shrink-0 items-center justify-center">
+                    <BracesIcon size={12} aria-hidden="true" />
+                  </span>
+                  {DETAILS_LABEL}
+                </AccordionTrigger>
+                <AccordionContent>{children}</AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          ) : null}
+        </div>
+        <Timestamp createdAt={createdAt} />
+      </div>
+    </div>
   );
 }
 
@@ -225,8 +240,7 @@ export type FleetGroupRowProps = {
   failed?: boolean;
   /** How many deliveries this row stands for — always ≥ 2. */
   count: number;
-  /** The span the run covers, rendered as "11:38–12:03". */
-  first: Date;
+  /** The newest delivery represented by the group. */
   last: Date;
   expanded: boolean;
   onToggle: () => void;
@@ -235,7 +249,7 @@ export type FleetGroupRowProps = {
 };
 
 /**
- * A run of identical deliveries as one row: "headline ×N · first–last".
+ * A run of identical deliveries as one row: "headline ×N · newest time".
  * Collapsed by default and expandable in place, so the count is a summary the
  * operator can always open — never a replacement for the events themselves.
  */
@@ -245,97 +259,86 @@ export function FleetGroupRow({
   outcome,
   failed,
   count,
-  first,
   last,
   expanded,
   onToggle,
   children,
 }: FleetGroupRowProps) {
   return (
-    <div className={cn("w-full", ROW_ENTER)} data-role="system" data-group="true">
-      <DashboardRowGroup>
-        <Accordion
-          type="single"
-          collapsible
-          value={expanded ? GROUP_VALUE : ""}
-          onValueChange={onToggle}
-        >
-          <AccordionItem value={GROUP_VALUE} className="border-0">
-            <AccordionTrigger className="px-lg py-md font-mono text-label leading-mono text-muted-foreground hover:no-underline">
-              <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-sm text-left">
-                <span
-                  className="shrink-0 rounded-sm border border-border px-xs text-foreground tabular-nums"
-                  data-testid="group-count"
-                >
-                  ×{count}
-                </span>
-                <span className="shrink-0">{sender}</span>
-                <span aria-hidden="true">{TICK_SEPARATOR}</span>
-                <span className="min-w-0 break-words text-foreground">{headline}</span>
-                {outcome ? (
-                  <>
-                    <span aria-hidden="true">{TICK_SEPARATOR}</span>
-                    <span className={cn("min-w-0 break-words", failed && "text-destructive")}>
-                      {outcome}
-                    </span>
-                  </>
-                ) : null}
-                <span className="ml-auto shrink-0 tabular-nums">
-                  <Time value={first} format="clock" className="font-mono text-label text-muted-foreground" />
-                  {RANGE_SEPARATOR}
-                  <Time value={last} format="clock" className="font-mono text-label text-muted-foreground" />
-                </span>
+    <div
+      className={cn("w-full border-b border-border", ROW_ENTER)}
+      data-role="system"
+      data-group="true"
+      data-failed={failed || undefined}
+    >
+      <Accordion
+        type="single"
+        collapsible
+        value={expanded ? GROUP_VALUE : ""}
+        onValueChange={onToggle}
+      >
+        <AccordionItem value={GROUP_VALUE} className="border-0">
+          <AccordionTrigger className="px-lg py-md font-mono text-label leading-mono text-muted-foreground hover:no-underline">
+            <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-sm text-left">
+              <Badge
+                variant={failed ? "destructive" : "default"}
+                className="shrink-0 tabular-nums"
+                data-testid="group-count"
+              >
+                ×{count}
+              </Badge>
+              <span className="shrink-0">{sender}</span>
+              <span aria-hidden="true">{TICK_SEPARATOR}</span>
+              <span className="min-w-0 break-words text-foreground">
+                {headline}
               </span>
-            </AccordionTrigger>
-            <AccordionContent className="px-lg">{children}</AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      </DashboardRowGroup>
+              {outcome ? (
+                <>
+                  <span aria-hidden="true">{TICK_SEPARATOR}</span>
+                  <span
+                    className={cn(
+                      "min-w-0 break-words",
+                      failed && "text-foreground",
+                    )}
+                  >
+                    {outcome}
+                  </span>
+                </>
+              ) : null}
+              <span className="ml-auto shrink-0 tabular-nums">
+                <Timestamp createdAt={last} />
+              </span>
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="border-t border-border">
+            {children}
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </div>
   );
 }
 
-const RANGE_SEPARATOR = "–";
 const GROUP_VALUE = "group";
 
-function SenderChip({
-  sender,
-  tone,
-  live = false,
-}: {
-  sender: string;
-  tone: RowTone;
-  live?: boolean;
-}) {
-  const liveFleet = tone === ROW_TONE.FLEET && live;
-  return (
-    <span
-      aria-hidden="true"
-      data-chip={tone}
-      data-live={liveFleet || undefined}
-      className={cn(
-        "inline-flex size-7 shrink-0 items-center justify-center",
-        "rounded-sm border bg-surface-deep",
-        "font-mono text-label tracking-label",
-        CHIP_TONE[tone],
-        liveFleet && "border-pulse/40 text-pulse",
-      )}
-    >
-      {senderInitialsFor(sender)}
-    </span>
-  );
-}
-
-// Time of day alone: every row in a conversation shares its day, so the date
-// would be repeated noise. The canonical instant still rides the `datetime`
-// attribute. No tooltip — one Radix instance per message is a real cost on a
-// long thread, and the exact moment is already in the markup.
+// Relative time stays visual-only so the 30-second refresh cannot repeatedly
+// announce the live region. Assistive technology gets one stable exact instant.
 function Timestamp({ createdAt }: { createdAt: Date }) {
+  const now = useContext(RelativeNowContext);
+  const absolute = useMemo(() => formatTimeAbsolute(createdAt), [createdAt]);
+
   return (
-    <Time
-      value={createdAt}
-      format="clock"
-      className="shrink-0 font-mono text-label leading-mono text-muted-foreground tabular-nums"
-    />
+    <>
+      <Time
+        aria-hidden="true"
+        value={createdAt}
+        format="relative"
+        label={now ? formatTimeRelative(createdAt, now) : undefined}
+        tooltip={false}
+        title={absolute}
+        className="shrink-0 font-mono text-label leading-mono text-muted-foreground tabular-nums"
+      />
+      <span className="sr-only">Occurred {absolute}</span>
+    </>
   );
 }

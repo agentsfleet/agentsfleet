@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -30,20 +29,22 @@ export interface Credentials {
 
 export interface WorkspaceItem {
   workspace_id: string;
-  // Server can return name=null on the create-response path
-  // (workspaceShow / workspaceList tolerate this with `name ?? "—"`).
-  // Tightening to non-null here would force every caller to coerce.
+  // Older persisted rows and list responses may carry a missing name.
+  // Display callers tolerate this with `name ?? "—"`.
   name: string | null;
   created_at: number | null;
 }
 
 export interface Workspaces {
+  readonly tenant_id?: string | null;
   current_workspace_id: string | null;
   items: WorkspaceItem[];
 }
 
 function resolveStatePaths(): StatePaths {
-  const baseDir = process.env.AGENTSFLEET_STATE_DIR || path.join(os.homedir(), ".config", "agentsfleet");
+  const baseDir =
+    process.env.AGENTSFLEET_STATE_DIR ||
+    path.join(os.homedir(), ".config", "agentsfleet");
   return {
     baseDir,
     credentialsPath: path.join(baseDir, "credentials.json"),
@@ -75,10 +76,6 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, body, { mode: STATE_FILE_MODE });
 }
 
-export function newIdempotencyKey(): string {
-  return randomBytes(12).toString("hex");
-}
-
 export async function loadCredentials(): Promise<Credentials> {
   const { credentialsPath } = resolveStatePaths();
   return readJson<Credentials>(credentialsPath, {
@@ -106,7 +103,11 @@ export async function clearCredentials(): Promise<void> {
 
 export async function loadWorkspaces(): Promise<Workspaces> {
   const { workspacesPath } = resolveStatePaths();
-  return readJson<Workspaces>(workspacesPath, { current_workspace_id: null, items: [] });
+  return readJson<Workspaces>(workspacesPath, {
+    tenant_id: null,
+    current_workspace_id: null,
+    items: [],
+  });
 }
 
 export async function saveWorkspaces(next: Workspaces): Promise<void> {

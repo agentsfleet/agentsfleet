@@ -151,8 +151,16 @@ const httpLayer = (
           } as T;
         });
       }
-      if (method === "GET" && path === "/v1/tenants/me/workspaces") {
-        return Effect.succeed({ items: [] } as T);
+      if (
+        method === "GET" &&
+        path.startsWith("/v1/tenants/me/workspaces?")
+      ) {
+        return Effect.succeed({
+          items: [],
+          tenant_id: "tenant_login_fixture",
+          total: null,
+          next_cursor: null,
+        } as T);
       }
       if (method === "GET" && path === "/v1/tenants/me/billing") {
         // Stand-in for the post-login token-validation ping (`pingMe`

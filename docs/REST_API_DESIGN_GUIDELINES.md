@@ -25,7 +25,7 @@ Run this checklist as part of `CHORE(close)` (per `~/.claude/CLAUDE.md` lifecycl
 
 - [ ] **URL design** — plural noun resource, hierarchical path, no verbs (§1); operation-style `:verb` declared as one of the three allowed categories (§1)
 - [ ] **Path params + trailing slash** — `{resource_id}` matches body field name; no trailing slash (§1)
-- [ ] **HTTP method** chosen by semantics; PATCH idempotency contract stated; `Idempotency-Key` honored if applicable (§2)
+- [ ] **HTTP method** chosen by semantics; PATCH idempotency guarantee stated; `Idempotency-Key` honored if applicable (§2)
 - [ ] **Long-running ops** use the canonical `202 + /v1/operations/{id}` shape (§2)
 - [ ] **Request body shape** matches the path (no path-param IDs in body) (§3)
 - [ ] **Pagination** uses Stripe-style `?starting_after=&limit=` with `next_cursor` response field; default 50, max 100 (§3)
@@ -91,7 +91,7 @@ Nested paths express the containment relationship. Don't flatten — `/agents?wo
 
 Anything else MUST be modeled as `PATCH /resource/{id}` with a state field. "Convenience" is not a category. If you can't pick one of the three in one sentence, you don't have an operation.
 
-**Collision check** — before adding `POST /v1/.../{id}:verb`, grep the same resource's schema in `public/openapi/components/schemas.yaml` for an existing state field (`status`, `state`, `phase`, `lifecycle_state`). If one exists AND the new `:verb` would set it to a value that field can already hold, the operation is forbidden — use `PATCH /resource/{id}` body `{status: "<verb>"}` instead. Adding `:approve` when `status` already has an `approved` value is the canonical anti-pattern. The PR description MUST state the result of this grep ("no `status` field on `Approval`" or "`Approval.status` exists but `approved` is not a settable value via PATCH because <reason>").
+**Collision check** — before adding `POST /v1/.../{id}:verb`, grep the same resource's schema in `public/openapi/components/schemas.yaml` for an existing lifecycle field (`status`, `state`, `stage`, `lifecycle_state`). If one exists AND the new `:verb` would set it to a value that field can already hold, the operation is forbidden — use `PATCH /resource/{id}` body `{status: "<verb>"}` instead. Adding `:approve` when `status` already has an `approved` value is the canonical anti-pattern. The PR description MUST state the result of this grep ("no `status` field on `Approval`" or "`Approval.status` exists but `approved` is not a settable value via PATCH because <reason>").
 
 ### Path-param naming consistency
 
@@ -135,12 +135,20 @@ If the parent ID is in the path, never repeat it in the body.
 | `GET` | Retrieve resource(s) | Yes |
 | `POST` | Create new resource (server assigns ID) OR operation-style endpoint | No |
 | `PUT` | Replace a resource fully (or upsert when client supplies the ID) | Yes |
-| `PATCH` | Partially update a resource | Default: yes. State the contract in the spec. |
+| `PATCH` | Partially update a resource | Default: yes. State the guarantee in the spec. |
 | `DELETE` | Remove a resource | Yes (idempotent: 204 on already-deleted) |
 
-**PATCH idempotency contract** — PATCH MUST be idempotent unless the spec's "Failure Modes" section explicitly declares otherwise with a reason. Idempotent PATCH means: issuing the same body twice in succession produces identical row state and identical 200 responses. A negative test that issues the same PATCH twice and asserts equality is required (§10).
+**PATCH idempotency guarantee** — PATCH MUST be idempotent unless the spec's "Failure Modes" section explicitly declares otherwise with a reason. Idempotent PATCH means: issuing the same body twice in succession produces identical row state and identical 200 responses. A negative test that issues the same PATCH twice and asserts equality is required (§10).
 
 **Idempotency keys for non-idempotent POSTs.** Any POST that creates a billable, externally-visible, or side-effecting resource MUST accept an `Idempotency-Key` request header (UUIDv7 from the client). The server stores `(workspace_id, key) → response` for at least 24 hours and replays the prior response on duplicate. Endpoints exempt: pure RPC reads, internal-only POSTs. List which endpoints honor the key in the OpenAPI description.
+
+**Owner-approved workspace exception.** `POST /v1/workspaces` accepts no replay
+key. It requires a tenant-unique name and performs one tenant-scoped insert with
+a server-assigned ID. After an uncertain browser response, the dashboard
+refreshes every cursor page from `GET /v1/tenants/me/workspaces`; the
+command-line interface performs one exact-name GET and does not retry the POST.
+A deliberate same-name retry returns 409 and cannot create a second row. Do not
+generalize this exception to other POST endpoints.
 
 **When in doubt:** if the client supplies the ID and the body fully describes the resource, use PUT. If the server assigns the ID, use POST. If only some fields change, use PATCH.
 
@@ -173,6 +181,11 @@ If you need a different shape, amend this doc first. Do not invent a parallel po
 ```
 
 The exact key set is `items`, `total`, `next_cursor` — no synonyms. `results`, `data`, `entries`, `nodes`, `records` are forbidden.
+
+Security-bound exception: `GET /v1/tenants/me/workspaces` also returns the
+authoritative `tenant_id`. Browser and command-line clients persist that value
+with the workspace list so a refreshed identity cannot mix local state from
+two tenants.
 
 - `items` — always present, always an array. Empty result is `200 {"items": []}` — never `204`.
 - `total` — always present as an `integer | null` field. `null` means "not computed" (page-bounded count would have been too expensive). The OpenAPI schema MUST declare `nullable: true`. Removing the field entirely is forbidden — it forces SDK consumers into branches.
@@ -560,7 +573,7 @@ When in doubt, mirror an existing handler:
 
 ---
 
-## §8 — Handler signature contract
+## §8 — Handler signature rule
 
 Every HTTP handler in `agentsfleetd` follows this shape. Enforced by `make lint-zig` and by the dispatcher in `src/agentsfleetd/http/server.zig::dispatchMatchedRoute()`, which builds the per-request arena, runs the middleware chain, constructs `Hx`, and calls the route's invoke shim (§7) — a handler never constructs any of this itself.
 
@@ -590,7 +603,7 @@ pub fn innerMyEndpoint(hx: Hx, req: *httpz.Request, ...path_params) void {
 
 ### `Hx` struct reference
 
-`Hx` is defined in `src/agentsfleetd/http/handlers/hx.zig`. Five fields, passed by value; three methods, each wrapping a distinct wire contract:
+`Hx` is defined in `src/agentsfleetd/http/handlers/hx.zig`. Five fields, passed by value; three methods, each wrapping a distinct wire shape:
 
 ```zig
 pub const Hx = struct {
@@ -666,7 +679,7 @@ When deprecating an endpoint or field:
 3. Add a `Link: <docs-url>; rel="deprecation"` header pointing to the migration guide.
 4. Document the deprecation in the OpenAPI YAML with `deprecated: true` AND a one-line migration hint in the description.
 
-No silent removals. No removals that skip the `Deprecation` header phase.
+No silent removals. No removals that skip the `Deprecation` header period.
 
 ### Response field stability classes
 

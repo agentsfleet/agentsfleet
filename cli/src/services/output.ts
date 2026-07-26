@@ -12,6 +12,7 @@
 import { Effect, Layer, Context } from "effect";
 import {
   ui as defaultUi,
+  printKeyValue as printKeyValueRaw,
   printSection as printSectionRaw,
   printTable as printTableRaw,
   type TableColumn,
@@ -70,10 +71,10 @@ export const makeStdioOutput = ({ stdout, stderr }: StreamPair): OutputShape => 
     Effect.sync(() => writeLine(stderr, JSON.stringify(payload, null, JSON_INDENT))),
   printKeyValue: (record) =>
     Effect.sync(() => {
-      const keyWidth = Object.keys(record).reduce((m, k) => Math.max(m, k.length), 0);
-      for (const [key, value] of Object.entries(record)) {
-        writeLine(stdout, `  ${key.padEnd(keyWidth)}  ${value}`);
-      }
+      printKeyValueRaw(
+        stdout as unknown as Parameters<typeof printKeyValueRaw>[0],
+        record,
+      );
     }),
   printSection: (title) =>
     Effect.sync(() => {

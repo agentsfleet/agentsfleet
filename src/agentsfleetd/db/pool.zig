@@ -1,9 +1,9 @@
 //! Database connection pool — wraps pg.zig Pool.
 //! Owns the pool and provides helpers for common queries.
 //!
-//! Migration plumbing (versioned schema runner + state inspector) lives in
-//! `pool_migrations.zig` and is re-exported here so callers continue using
-//! `pool.runMigrations(...)` / `pool.inspectMigrationState(...)`.
+//! Migration plumbing is split between `pool_migrations.zig` (runner) and
+//! `pool_migration_state.zig` (inspector), then re-exported through
+//! `pool_migrations.zig` so callers keep using the `pool` entry points.
 
 const std = @import("std");
 const common = @import("common");
@@ -73,6 +73,7 @@ pub const MigrationState = pool_types.MigrationState;
 
 pub const inspectMigrationState = pool_migrations.inspectMigrationState;
 pub const runMigrations = pool_migrations.runMigrations;
+pub const runMigrationsRefusingNewer = pool_migrations.runMigrationsRefusingNewer;
 
 /// Parse a Postgres connection URL into pg.Pool.Opts.
 /// URL format: postgres://user:pass@host:port/dbname[?query]

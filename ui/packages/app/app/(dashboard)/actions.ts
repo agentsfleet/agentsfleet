@@ -11,11 +11,7 @@ import {
 // — this action no longer writes an active-workspace cookie or revalidates; the
 // URL is authoritative.
 export async function createWorkspaceAction(
-  input: { idempotencyKey: string; name?: string },
+  input: { name: string },
 ): Promise<ActionResult<CreateWorkspaceResponse>> {
-  return withToken((token) => createTenantWorkspace(
-    token,
-    { name: input.name },
-    input.idempotencyKey,
-  ));
+  return withToken((token) => createTenantWorkspace(token, input));
 }
