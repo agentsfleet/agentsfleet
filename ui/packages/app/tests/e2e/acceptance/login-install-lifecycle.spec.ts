@@ -30,9 +30,10 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const FLOW_TIMEOUT_MS = 120_000;
+const FLEET_PREFIX = "login-lifecycle-";
 
 function uniqueName(): string {
-  return `lifecycle-${crypto.randomBytes(4).toString("hex")}`;
+  return `${FLEET_PREFIX}${crypto.randomBytes(4).toString("hex")}`;
 }
 
 test.describe("login → install → lifecycle", () => {
@@ -40,7 +41,7 @@ test.describe("login → install → lifecycle", () => {
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "lifecycle-");
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, FLEET_PREFIX);
   });
 
   test("test_user_installs_platform_library_fleet", async ({ page }) => {
