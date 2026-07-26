@@ -11,6 +11,7 @@
 
 const std = @import("std");
 const common = @import("common");
+const pg = @import("pg");
 const base = @import("event_lifecycle_integration_test.zig");
 const fixtures = @import("../db/test_fixtures.zig");
 const fleet_ready = @import("../queue/fleet_ready.zig");
@@ -18,6 +19,7 @@ const queue_consts = @import("../queue/constants.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const id_format = @import("../types/id_format.zig");
 const mc = @import("../observability/metrics_counters.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const TestHarness = @import("../http/test_harness.zig").TestHarness;
 
 const CMD_DEL = "DEL";
@@ -38,6 +40,13 @@ const STRAY_VALUE = "not-a-token";
 const FLEET_FAULT_MARK = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e01";
 const FLEET_MEMO_GONE = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e02";
 const FLEET_HEAL = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e03";
+const FLEET_KILLED = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e04";
+
+/// Every action auto-kills: the deterministic path to the gate's automatic
+/// pause, which must clear readiness the way the operator-facing PATCH does.
+const CONFIG_GATED_KILL =
+    \\{"name":"fault-kill","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0},"gates":{"rules":[{"tool":"*","action":"*","behavior":"auto_kill"}],"timeout_ms":1800000}}}
+;
 
 /// Ceiling-proof population: more marked fleets than one poll may examine,
 /// with a named remainder the poll must leave marked. The gap between the two
@@ -99,6 +108,16 @@ fn destroyGroup(h: *TestHarness, fleet_id: []const u8) !void {
 
 fn purgeFleet(h: *TestHarness, fleet_id: []const u8) void {
     redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+}
+
+fn fleetIsPaused(conn: *pg.Conn, fleet_id: []const u8) !bool {
+    var q = PgQuery.from(try conn.query(
+        "SELECT COUNT(*) FROM core.fleets WHERE id = $1::uuid AND status = 'paused'",
+        .{fleet_id},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return false;
+    return (try row.get(i64, 0)) == 1;
 }
 
 // ── The candidate ceiling ───────────────────────────────────────────────────
@@ -271,4 +290,35 @@ test "integration: a stray non-canonical index field is healed while the real fl
     // ...and the peek deleted the stray on its way through, so the index has
     // healed itself rather than carrying the poison to the next poll.
     try std.testing.expect(!try fieldPresent(h, STRAY_FIELD));
+}
+
+// ── The gate's automatic pause ──────────────────────────────────────────────
+
+test "integration: a gate auto-kill pauses the fleet and clears its readiness mark" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try base.seedFleetWithConfig(conn, FLEET_KILLED, "fault-kill", CONFIG_GATED_KILL, "9");
+    try clearWholeIndex(h);
+    defer purgeFleet(h, FLEET_KILLED);
+
+    const event_id = try base.publishEvent(h, FLEET_KILLED);
+    defer h.queue.alloc.free(event_id);
+    try std.testing.expect(try fieldPresent(h, FLEET_KILLED));
+
+    // The poll reads the event, the kill-all policy fires, and the gate
+    // pauses the fleet — no lease is issued.
+    try std.testing.expect(!try base.pollLease(h));
+    try std.testing.expect(try fleetIsPaused(conn, FLEET_KILLED));
+
+    // The automatic pause writes `core.fleets` directly, bypassing the status
+    // PATCH handler — so it must clear readiness itself. A paused fleet never
+    // re-enters the candidate query, and an uncleared field would squat in the
+    // bounded peek sample for the whole pause.
+    try std.testing.expect(!try fieldPresent(h, FLEET_KILLED));
 }
