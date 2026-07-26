@@ -28,6 +28,7 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const token_cache = @import("../../../auth/runner_token_cache.zig");
 const protocol = @import("contract").protocol;
 
 const Hx = hx_mod.Hx;
@@ -54,6 +55,12 @@ pub fn innerDeleteFleetRunner(hx: Hx, runner_id: []const u8) void {
         .missing => hx.fail(ec.ERR_RUNNER_NOT_FOUND, S_RUNNER_NOT_FOUND),
         .not_revoked => hx.fail(ec.ERR_RUNNER_MUST_REVOKE_FIRST, S_MUST_REVOKE_FIRST),
         .deleted => {
+            // The row is gone, so a memoized verdict for it would outlive the
+            // runner it names. Only reachable for an already-revoked row, so
+            // this is belt-and-braces over the PATCH that revoked it — cheap,
+            // and it keeps "the record is gone" and "the token stops working"
+            // from drifting apart.
+            token_cache.invalidateRunner(runner_id);
             log.debug("runner_deleted", .{ .runner_id = runner_id });
             hx.noContent();
         },
