@@ -8,10 +8,21 @@
 /// it as `@import("common").clock` — see `clock.zig`.
 pub const clock = @import("clock.zig");
 
+/// Fixed-capacity, allocator-free associative cache (`common.CacheTable`) —
+/// set-associative buckets with per-entry expiry, unsynchronized so each
+/// consumer picks its own lock. Reached through `common` rather than a
+/// domain-local path because `src/agentsfleetd/auth/**` may only import named
+/// modules (the `test-auth` portability gate). See `cache_table.zig`.
+const cache_table = @import("cache_table.zig");
+pub const CacheTable = cache_table.CacheTable;
+pub const CacheTableOptions = cache_table.Options;
+pub const NEVER_EXPIRES = cache_table.NEVER_EXPIRES;
+
 /// Process-wide blocking sync (`common.Mutex`/`Condition`) + their shared `Io`
 /// accessor — Zig 0.16's replacement for `std.Thread.Mutex`. See `sync.zig`.
 const sync = @import("sync.zig");
 pub const Mutex = sync.Mutex;
+pub const RwLock = sync.RwLock;
 pub const Condition = sync.Condition;
 pub const WaitGroup = sync.WaitGroup;
 pub const Event = sync.Event;

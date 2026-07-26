@@ -24,32 +24,32 @@
 //! secret's blast radius: an attacker who can read this process's memory can
 //! already read the pool credentials next to it.
 //!
-//! **Shape.** A direct-mapped table of fixed-size rows, no allocator, sized for
-//! far more runners than a deployment enrolls. Two token hashes landing on one
-//! slot simply evict each other, and an eviction costs exactly one Postgres read
-//! — the same thing a cold process pays. Unlike `queue/fleet_group_memo.zig`,
-//! which can be lock-free because a wrong answer there costs a redundant Redis
-//! command, a wrong answer HERE is an authentication verdict, so the table is
-//! mutex-guarded and every read is exact.
+//! **Shape.** `common.CacheTable` — allocator-free, fixed capacity, entries
+//! expiring on their own. Every read here is an authentication verdict, so the
+//! table is under an exclusive mutex and every hit is an exact match; the
+//! lock-free tolerance `queue/fleet_group_memo.zig` enjoys does not transfer.
 
 const std = @import("std");
 const constants = @import("common");
-
-/// Runners tracked per process, sized by COLLISION rate rather than by runner
-/// count. A direct-mapped table has no probing, so two live tokens landing on
-/// one slot evict each other on every interleaved request and both fall back to
-/// Postgres permanently — the memo would be worst at exactly the scale it
-/// matters. Birthday math is the sizing input: at the ~100 runners
-/// `schema/033_hot_path_indexes.sql` assumes, 128 slots put ~30 runners in a
-/// shared slot; 4096 puts ~1. Matches `queue/fleet_group_memo.zig`'s table for
-/// the same reason. ~112 bytes a row, so ~448 KiB, static and allocator-free.
-pub const MAX_SLOTS: usize = 4096;
 
 /// SHA-256 rendered as hex, which is what `fleet.runners.token_hash` stores.
 pub const TOKEN_HASH_HEX_LEN: usize = 64;
 
 /// Canonical UUID text — the widest `runner_id` a row can carry.
 pub const RUNNER_ID_MAX_LEN: usize = 36;
+
+/// Buckets, each holding `ENTRIES_PER_BUCKET` tokens. Set-associative rather
+/// than direct-mapped: colliding tokens coexist instead of evicting each other
+/// on every interleaved request, which is what made a direct-mapped table worst
+/// at the scale it exists for. At the ~100 runners
+/// `schema/033_hot_path_indexes.sql` assumes, 1024 buckets leave collisions rare
+/// and 4-deep buckets absorb the ones that happen, so a live token is
+/// effectively never evicted by another live token.
+const BUCKET_COUNT: usize = 1024;
+const ENTRIES_PER_BUCKET: u8 = 4;
+
+/// Leading digest bytes used as the bucket index.
+const BUCKET_KEY_BYTES: usize = 4;
 
 /// How long a verdict is trusted without re-reading Postgres.
 ///
@@ -60,14 +60,7 @@ pub const RUNNER_ID_MAX_LEN: usize = 36;
 /// platform already uses to decide a host is gone.
 pub const ENTRY_TTL_MS: i64 = constants.HEARTBEAT_INTERVAL_MS;
 
-const Slot = struct {
-    occupied: bool = false,
-    token_hash: [TOKEN_HASH_HEX_LEN]u8 = [_]u8{0} ** TOKEN_HASH_HEX_LEN,
-    runner_id: [RUNNER_ID_MAX_LEN]u8 = [_]u8{0} ** RUNNER_ID_MAX_LEN,
-    runner_id_len: usize = 0,
-    active: bool = false,
-    expires_at_ms: i64 = 0,
-};
+const TokenHash = [TOKEN_HASH_HEX_LEN]u8;
 
 /// A verdict copied OUT of the table. Returned by value rather than as a slice
 /// into a slot, so the caller can never read a row a later `put` has recycled.
@@ -81,8 +74,35 @@ pub const Hit = struct {
     }
 };
 
+const TokenContext = struct {
+    /// SHA-256 output is uniformly distributed, so its leading bytes are already
+    /// a perfect bucket index and re-hashing the key would cost more than it
+    /// buys (the observation is Bun's `SSLContextCache`). The hex is DECODED
+    /// rather than read as raw bytes because ASCII hex characters are not
+    /// uniform in their low bits — which is exactly where the bucket mask looks.
+    pub fn hash(_: *const TokenContext, key: TokenHash) u64 {
+        var raw: [BUCKET_KEY_BYTES]u8 = undefined;
+        _ = std.fmt.hexToBytes(&raw, key[0 .. BUCKET_KEY_BYTES * 2]) catch return 0;
+        return std.mem.readInt(u32, &raw, .little);
+    }
+
+    /// Compared in constant time to match the posture of the `fleet.runners`
+    /// lookup this stands in front of. Not load-bearing on its own — an attacker
+    /// cannot steer the compared bytes without inverting SHA-256 — but a hash
+    /// comparison in the auth plane should not be the one place that
+    /// short-circuits.
+    pub fn eql(_: *const TokenContext, a: TokenHash, b: TokenHash) bool {
+        return std.crypto.timing_safe.eql(TokenHash, a, b);
+    }
+};
+
+const TokenTable = constants.CacheTable(TokenHash, Hit, TokenContext, .{
+    .bucket_count = BUCKET_COUNT,
+    .bucket_size = ENTRIES_PER_BUCKET,
+});
+
 var g_mutex: constants.Mutex = .{};
-var g_slots: [MAX_SLOTS]Slot = [_]Slot{.{}} ** MAX_SLOTS;
+var g_table: TokenTable = TokenTable.init(.{});
 /// Bumped by every invalidation. A caller reads it BEFORE its Postgres lookup
 /// and hands it back to `put`, which refuses to store a verdict the operator
 /// plane already invalidated mid-flight. Without it the lookup path loses that
@@ -99,23 +119,9 @@ pub fn generation() u64 {
     return g_generation;
 }
 
-fn slotIndex(token_hash_hex: []const u8) usize {
-    var h = std.hash.Wyhash.init(0);
-    h.update(token_hash_hex);
-    return @intCast(h.final() % MAX_SLOTS);
-}
-
-/// Compared in constant time to match the posture of the `fleet.runners` lookup
-/// this stands in front of. Not load-bearing on its own — an attacker cannot
-/// steer the compared bytes without inverting SHA-256 — but a hash comparison in
-/// the auth plane should not be the one place that short-circuits.
-fn hashMatches(slot: *const Slot, token_hash_hex: []const u8) bool {
-    if (token_hash_hex.len != TOKEN_HASH_HEX_LEN) return false;
-    return std.crypto.timing_safe.eql(
-        [TOKEN_HASH_HEX_LEN]u8,
-        slot.token_hash,
-        token_hash_hex[0..TOKEN_HASH_HEX_LEN].*,
-    );
+fn asKey(token_hash_hex: []const u8) ?TokenHash {
+    if (token_hash_hex.len != TOKEN_HASH_HEX_LEN) return null;
+    return token_hash_hex[0..TOKEN_HASH_HEX_LEN].*;
 }
 
 /// The stored verdict for `token_hash_hex`, or null when absent or expired.
@@ -123,25 +129,12 @@ fn hashMatches(slot: *const Slot, token_hash_hex: []const u8) bool {
 /// `now_ms` is a parameter rather than a clock read so the expiry boundary is
 /// provable without sleeping.
 pub fn get(token_hash_hex: []const u8, now_ms: i64) ?Hit {
-    if (token_hash_hex.len != TOKEN_HASH_HEX_LEN) return null;
+    const key = asKey(token_hash_hex) orelse return null;
     g_mutex.lock();
     defer g_mutex.unlock();
-
-    const slot = &g_slots[slotIndex(token_hash_hex)];
-    if (!slot.occupied) return null;
-    if (!hashMatches(slot, token_hash_hex)) return null;
-    // Expiry is checked BEFORE the verdict is handed back, and the stale row is
-    // dropped rather than left to be re-read: a revoked runner must not keep a
-    // slot answering for it.
-    if (now_ms >= slot.expires_at_ms) {
-        slot.* = .{};
-        return null;
-    }
-    return .{
-        .runner_id_buf = slot.runner_id,
-        .runner_id_len = slot.runner_id_len,
-        .active = slot.active,
-    };
+    // The mutating reader, so an expired row is dropped rather than left to be
+    // re-read: a revoked runner must not keep a slot answering for it.
+    return g_table.get(key, now_ms);
 }
 
 /// Remember `token_hash_hex`'s verdict until `now_ms + ENTRY_TTL_MS`.
@@ -154,23 +147,29 @@ pub fn get(token_hash_hex: []const u8, now_ms: i64) ?Hit {
 /// Postgres. If an invalidation landed since, the row the caller is holding may
 /// predate it, so the write is dropped and the next request re-reads.
 pub fn put(token_hash_hex: []const u8, runner_id: []const u8, active: bool, now_ms: i64, seen_generation: u64) void {
-    if (token_hash_hex.len != TOKEN_HASH_HEX_LEN) return;
+    const key = asKey(token_hash_hex) orelse return;
     if (runner_id.len == 0 or runner_id.len > RUNNER_ID_MAX_LEN) return;
+
+    var hit: Hit = .{
+        .runner_id_buf = @splat(0),
+        .runner_id_len = runner_id.len,
+        .active = active,
+    };
+    @memcpy(hit.runner_id_buf[0..runner_id.len], runner_id);
 
     g_mutex.lock();
     defer g_mutex.unlock();
     if (g_generation != seen_generation) return;
-
-    const slot = &g_slots[slotIndex(token_hash_hex)];
-    slot.* = .{
-        .occupied = true,
-        .runner_id_len = runner_id.len,
-        .active = active,
-        .expires_at_ms = now_ms + ENTRY_TTL_MS,
-    };
-    @memcpy(slot.token_hash[0..], token_hash_hex[0..TOKEN_HASH_HEX_LEN]);
-    @memcpy(slot.runner_id[0..runner_id.len], runner_id);
+    _ = g_table.put(key, hit, now_ms + ENTRY_TTL_MS, now_ms);
 }
+
+const RunnerMatch = struct {
+    runner_id: []const u8,
+
+    pub fn match(self: RunnerMatch, _: TokenHash, hit: Hit) bool {
+        return std.mem.eql(u8, hit.runner_id_buf[0..hit.runner_id_len], self.runner_id);
+    }
+};
 
 /// Drop every entry for `runner_id`. Called by the operator-plane writes that
 /// change what a verdict should say — the admin-state transition and the record
@@ -188,12 +187,7 @@ pub fn invalidateRunner(runner_id: []const u8) void {
     // nothing. An empty table is exactly the state a racing lookup is about to
     // fill, and that write is the one this counter has to refuse.
     g_generation +%= 1;
-
-    for (&g_slots) |*slot| {
-        if (!slot.occupied) continue;
-        if (!std.mem.eql(u8, slot.runner_id[0..slot.runner_id_len], runner_id)) continue;
-        slot.* = .{};
-    }
+    _ = g_table.removeMatching(RunnerMatch{ .runner_id = runner_id });
 }
 
 /// Empty the table. Tests only — the process never needs a full flush, because
@@ -201,7 +195,7 @@ pub fn invalidateRunner(runner_id: []const u8) void {
 pub fn resetForTest() void {
     g_mutex.lock();
     defer g_mutex.unlock();
-    g_slots = [_]Slot{.{}} ** MAX_SLOTS;
+    g_table.clear();
     g_generation = 0;
 }
 

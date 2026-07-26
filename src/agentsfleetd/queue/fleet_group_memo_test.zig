@@ -76,8 +76,8 @@ test "invalidating an unrecorded fleet is a no-op" {
 }
 
 test "invalidating one fleet leaves an unrelated fleet ensured" {
-    // `invalidate` compares before clearing, so it can only ever clear its own
-    // entry — never one that has since taken the same index.
+    // `invalidate` matches on the stored fleet id, so it can only ever clear its
+    // own entry — never one that happens to share a bucket.
     memo.resetForTest();
     memo.recordEnsured(FLEET_A);
     memo.recordEnsured(FLEET_B);
@@ -87,12 +87,12 @@ test "invalidating one fleet leaves an unrelated fleet ensured" {
 }
 
 test "the table holds many distinct fleets at once" {
-    // Direct-mapped, so some ids will collide and evict each other. What must
-    // hold is that the common case works at scale: the great majority of a
-    // realistic fleet population stays ensured, and nothing crashes or wedges.
+    // Set-associative, so a bucket absorbs several colliding ids before evicting
+    // any. What must hold is that the common case works at scale: a realistic
+    // fleet population stays ensured, and nothing crashes or wedges.
     memo.resetForTest();
     var id_buf: [40]u8 = undefined;
-    const population: usize = memo.MAX_SLOTS / 2;
+    const population: usize = memo.CAPACITY / 2;
     for (0..population) |i| {
         const id = try std.fmt.bufPrint(&id_buf, "fill-{d}", .{i});
         memo.recordEnsured(id);
@@ -102,23 +102,34 @@ test "the table holds many distinct fleets at once" {
         const id = try std.fmt.bufPrint(&id_buf, "fill-{d}", .{i});
         if (memo.isEnsured(id)) still_ensured += 1;
     }
-    // Birthday collisions at half load cost a minority of entries; each one is a
-    // single redundant command, never a wrong answer.
-    try testing.expect(still_ensured > population / 2);
+    // At half load a 4-deep bucket absorbs essentially every collision, so
+    // retention is near-total rather than the bare majority a direct-mapped
+    // table could promise. Each loss is one redundant command, never a wrong
+    // answer.
+    try testing.expect(still_ensured > population * 9 / 10);
 }
 
 test "a fleet evicted by a collision simply reads as not ensured" {
-    // The eviction path stated plainly: whatever loses an index reads false and
+    // The eviction path stated plainly: whatever loses its slot reads false and
     // issues a real create. It never reads as ensured-when-it-is-not, which is
     // the only outcome that would matter.
     memo.resetForTest();
     var id_buf: [40]u8 = undefined;
-    for (0..memo.MAX_SLOTS * 2) |i| {
+    for (0..memo.CAPACITY * 2) |i| {
         const id = try std.fmt.bufPrint(&id_buf, "churn-{d}", .{i});
         memo.recordEnsured(id);
     }
     // The last one recorded is definitely present; earlier ones may not be, and
     // that is the designed behaviour rather than a defect.
-    const last = try std.fmt.bufPrint(&id_buf, "churn-{d}", .{memo.MAX_SLOTS * 2 - 1});
+    const last = try std.fmt.bufPrint(&id_buf, "churn-{d}", .{memo.CAPACITY * 2 - 1});
     try testing.expect(memo.isEnsured(last));
+}
+
+test "an id too long to store is never reported ensured" {
+    // Degrades to the cold-memo cost — one redundant create per poll — rather
+    // than storing a truncated id, which could match the wrong fleet.
+    memo.resetForTest();
+    const overlong = "f" ** 64;
+    memo.recordEnsured(overlong);
+    try testing.expect(!memo.isEnsured(overlong));
 }
