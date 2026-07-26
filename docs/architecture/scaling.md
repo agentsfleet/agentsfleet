@@ -82,6 +82,8 @@ Idle cost is the runner lease-poll loop, fully idle:
 | Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **one** bounded `HRANDFIELD` read of the readiness index and **zero** Postgres round-trips | `R_runners × 3600` at the 1 s default |
 | (No watcher loop, no per-fleet BLOCK loops — both deleted) | 0 |
 
+"Zero Postgres round-trips" includes authentication. The `agt_r` verdict (`sha256(token)` → runner row) was the one Postgres read left on an idle poll after the candidate scan moved to the readiness index; it is now memoized per process for at most `HEARTBEAT_INTERVAL_MS` (`auth/runner_token_cache.zig` — the staleness bound and its invalidation sites are documented in [`../AUTH.md`](../AUTH.md) §Runner token). Steady-state, a runner re-pays that read about once per heartbeat interval per `agentsfleetd` machine — not once per poll.
+
 For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
 
 **The load-bearing shift:** the idle bill scales with **runner count**, not `(fleets + workers)` and not `runners × fleets`. A deployment with many idle fleets but few runners is cheap at idle; the cost follows the pollers, not the population.

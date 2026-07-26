@@ -508,7 +508,7 @@ The four per-runner families live in a process-global, allocator-free, fixed-cap
 
 ### Multi-replica (`agentsfleetd` N>1) — correctness is an *aggregation* property
 
-Prod runs a single `agentsfleetd` machine today, so the in-memory values are correct as-is. When the control plane scales out, a runner's verbs load-balance across replicas, so each replica holds only the slice of that runner's event stream it served. Fly's Prometheus scrapes each replica as a **distinct target** and stamps every series with that machine's `instance` label — so fleet-wide truth is reconstructed by the query, not by shared state:
+Prod is sized for **2–3 `agentsfleetd` machines** (the single-machine wording that previously opened this section is retired — the machine count is set by `flyctl scale`, and the sections below are written for N>1 as the operating shape, not the contingency). A runner's verbs load-balance across replicas, so each replica holds only the slice of that runner's event stream it served. Fly's Prometheus scrapes each replica as a **distinct target** and stamps every series with that machine's `instance` label — so fleet-wide truth is reconstructed by the query, not by shared state:
 
 | Series | Cross-replica query | Exact under N>1? |
 |--------|---------------------|------------------|

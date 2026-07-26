@@ -12,6 +12,8 @@ const pg = @import("pg");
 const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const runner_bearer = @import("../auth/middleware/runner_bearer.zig");
+const token_cache = @import("../auth/runner_token_cache.zig");
+const clock = @import("common").clock;
 const protocol = @import("contract").protocol;
 
 pub const LookupResult = runner_bearer.LookupResult;
@@ -31,6 +33,16 @@ pub fn lookup(
     token_hash_hex: []const u8,
 ) anyerror!?LookupResult {
     const self: *Ctx = @ptrCast(@alignCast(host));
+    const now_ms = clock.nowMillis();
+    // The steady state: an idle runner heartbeating and polling costs no
+    // Postgres read at all. The entry expires within one heartbeat interval and
+    // the operator plane drops it outright on an admin-state change or a delete,
+    // so a runner taken out of service stops authenticating without waiting for
+    // the pool. See `auth/runner_token_cache.zig` for the window this trades.
+    if (token_cache.get(token_hash_hex, now_ms)) |hit| {
+        return .{ .runner_id = try alloc.dupe(u8, hit.runnerId()), .active = hit.active };
+    }
+
     const conn = self.pool.acquire() catch return error.DbUnavailable;
     defer self.pool.release(conn);
 
@@ -42,8 +54,15 @@ pub fn lookup(
     , .{token_hash_hex}) catch return error.DbQueryFailed);
     defer q.deinit();
 
+    // A miss is deliberately NOT memoized. Nothing is gained — a token minted
+    // later is freshly random and was never asked about — and memoizing would
+    // hand an unauthenticated caller a way to evict live runners from the table
+    // by presenting garbage. Unknown tokens keep costing exactly what they cost
+    // today.
     const row = (q.next() catch return error.DbQueryFailed) orelse return null;
-    return try copyRow(alloc, row);
+    const result = try copyRow(alloc, row);
+    token_cache.put(token_hash_hex, result.runner_id, result.active, now_ms);
+    return result;
 }
 
 fn copyRow(alloc: std.mem.Allocator, row: pg.Row) !LookupResult {
