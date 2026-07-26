@@ -5227,7 +5227,7 @@
       "get": {
         "operationId": "list_workspace_fleet_library",
         "summary": "List the workspace Fleet library gallery",
-        "description": "Returns the union of the platform Fleet library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements, and support-file summaries; never an object-store key.",
+        "description": "Returns the union of the platform Fleet library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements and per-credential reason copy; never an object-store key.\n\nA bounded keyset page ordered by `created_at DESC, tier ASC, id DESC` across BOTH catalogs. Follow `next_cursor` to read the whole gallery; a client that reads only the first page silently loses every entry past it. Support-file summaries are served by the detail route below.",
         "tags": [
           "Fleet library"
         ],
@@ -5241,17 +5241,50 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Rows per page, 1..100. Defaults to 50.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Opaque cursor from a previous page's `next_cursor`. Bound to the workspace, filter and page size that produced it; a mismatch is `UZ-LIBRARY-002` rather than a silently different page.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Case- and accent-insensitive substring over id, name and description. At most 128 bytes once normalized; `%` and `_` match literally.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "The workspace Fleet library gallery.",
+            "description": "One page of the workspace Fleet library gallery.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
-                    "items"
+                    "items",
+                    "total",
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -5259,6 +5292,16 @@
                       "items": {
                         "$ref": "#/components/schemas/FleetLibraryGalleryEntry"
                       }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Always null. Counting a keyset page costs the scan this pagination exists to avoid. The key is present rather than omitted, so no client need special-case its absence."
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page, or null on the last."
                     }
                   }
                 }
@@ -5335,6 +5378,74 @@
             "$ref": "#/components/responses/Error"
           },
           "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleet-libraries/{tier}/{id}": {
+      "get": {
+        "operationId": "get_workspace_fleet_library_entry",
+        "summary": "Get one Fleet library entry",
+        "description": "Returns a single gallery entry in full, including the support-file manifest the paged gallery does not carry.\n\nAn entry that does not exist and one that exists in ANOTHER workspace both answer `404` with `UZ-LIBRARY-007`. Distinguishing them would confirm that an id exists somewhere, to a caller authorized for neither. That makes the route an enumeration oracle over every other workspace's library.",
+        "tags": [
+          "Fleet library"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tier",
+            "in": "path",
+            "required": true,
+            "description": "Which catalog the entry belongs to. A value outside this set does not route at all — the tier is validated at the router, never passed to a handler as a selector.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "platform",
+                "tenant"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The entry id: a slug for `platform`, a UUIDv7 for `tenant`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Fleet library entry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetLibraryDetailEntry"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           },
           "default": {
@@ -8295,7 +8406,7 @@
       },
       "FleetLibraryGalleryEntry": {
         "type": "object",
-        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements, per-credential reason copy, and support-file summaries; never an object-store key or support-file content.",
+        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements and per-credential reason copy; never an object-store key or support-file content.\n\nCarries no `support_files`. That manifest is bounded at 32 files by 160-char paths. It therefore dominated a 100-row page — roughly 630 KB against this endpoint's 512 KiB ceiling — while no client rendered it. The detail route serves it instead. Runners never read it either — they materialize support-file bytes from object storage via the lease's bundle hash.",
         "required": [
           "id",
           "name",
@@ -8303,8 +8414,7 @@
           "visibility",
           "source_ref",
           "requirements",
-          "required_credentials_reasons",
-          "support_files"
+          "required_credentials_reasons"
         ],
         "properties": {
           "id": {
@@ -8327,6 +8437,11 @@
           },
           "source_ref": {
             "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds; the primary key of the page's sort order."
           },
           "requirements": {
             "type": "object",
@@ -8366,14 +8481,39 @@
             "additionalProperties": {
               "type": "string"
             }
-          },
-          "support_files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
-            }
           }
         }
+      },
+      "FleetLibraryDetailEntry": {
+        "type": "object",
+        "description": "One Fleet library entry in full — every gallery field plus the support-file manifest the gallery card does not carry. Still never an object-store key, bundle markdown, or support-file content.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "visibility",
+          "source_ref",
+          "created_at",
+          "requirements",
+          "required_credentials_reasons",
+          "support_files"
+        ],
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FleetLibraryGalleryEntry"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "support_files": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
+                }
+              }
+            }
+          }
+        ]
       },
       "FleetDetail": {
         "allOf": [

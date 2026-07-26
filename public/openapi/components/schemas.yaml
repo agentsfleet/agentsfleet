@@ -490,8 +490,15 @@ components:
       type: object
       description: >-
         One gallery row — a platform or tenant Fleet library entry. Carries identity,
-        description, source, derived requirements, per-credential reason copy, and
-        support-file summaries; never an object-store key or support-file content.
+        description, source, derived requirements and per-credential reason copy;
+        never an object-store key or support-file content.
+
+
+        Carries no `support_files`. That manifest is bounded at 32 files by
+        160-char paths. It therefore dominated a 100-row page — roughly 630 KB
+        against this endpoint's 512 KiB ceiling — while no client rendered it.
+        The detail route serves it instead. Runners never read it either — they materialize
+        support-file bytes from object storage via the lease's bundle hash.
       required:
       - id
       - name
@@ -500,7 +507,6 @@ components:
       - source_ref
       - requirements
       - required_credentials_reasons
-      - support_files
       properties:
         id:
           type: string
@@ -520,6 +526,10 @@ components:
           - tenant
         source_ref:
           type: string
+        created_at:
+          type: integer
+          format: int64
+          description: Epoch milliseconds; the primary key of the page's sort order.
         requirements:
           type: object
           required:
@@ -550,10 +560,30 @@ components:
             surface an empty object (the importer derives no per-credential copy).
           additionalProperties:
             type: string
-        support_files:
-          type: array
-          items:
-            $ref: '#/components/schemas/FleetBundleSupportFileSummary'
+    FleetLibraryDetailEntry:
+      type: object
+      description: >-
+        One Fleet library entry in full — every gallery field plus the
+        support-file manifest the gallery card does not carry. Still never an
+        object-store key, bundle markdown, or support-file content.
+      required:
+      - id
+      - name
+      - description
+      - visibility
+      - source_ref
+      - created_at
+      - requirements
+      - required_credentials_reasons
+      - support_files
+      allOf:
+      - $ref: '#/components/schemas/FleetLibraryGalleryEntry'
+      - type: object
+        properties:
+          support_files:
+            type: array
+            items:
+              $ref: '#/components/schemas/FleetBundleSupportFileSummary'
     FleetLibraryCatalogEntry:
       type: object
       description: >-
