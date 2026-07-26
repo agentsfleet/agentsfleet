@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — starts after the development runner is online
 **Branch:** set at CHORE(open)
 **Test Baseline:** set at CHORE(open) via `make _lint_zig_test_depth`
-**Depends on:** M135_002 (online runner with advancing heartbeat); M135_001 (provider bags, callback routes, and registration grants)
+**Depends on:** M135_002 (online runner with advancing heartbeat); M135_001 (provider bags, callback routes, and registration grants); M133_001 (workspace-multiplexed Live Wall, visually accepted with exhaustive deployed proof delegated here)
 **Provenance:** human-directed successor to M135_001 after the Jul 20, 2026 scope decision
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list
 
@@ -30,9 +30,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A real Slack mention succeeds and one signed GitHub delivery creates exactly one reviewer event and review while replay creates neither again.
-**Problem:** Provider applications and callbacks are deployment-ready, but Slack workspace authorization and the real repository reviewer path lack release-grade evidence, and the development runner must be online before the fleet can execute.
-**Solution summary:** After M135_002 proves runner liveness, complete the existing browser-mediated Slack and GitHub authorization flows, prove Slack independently at workspace level, run `github-pr-reviewer` against the dedicated proof repository, and replay the exact GitHub delivery. Keep provider material in vaulted handles and record only redacted identifiers and counts.
+**Goal (testable):** A real Slack mention succeeds and one signed GitHub delivery creates exactly one reviewer event and review while replay creates neither again; the same run proves the Live Wall counter and the `github-pr-reviewer` tile update over one workspace stream.
+**Problem:** Provider applications and callbacks are deployment-ready, but Slack workspace authorization and the real repository reviewer path lack release-grade evidence, and the development runner must be online before the fleet can execute. M133's wall was visually accepted after deployed artifacts showed live Fleet tiles, but its automated `live-counter` and `pulse-wall` projects were not scheduled because earlier acceptance journeys failed first.
+**Solution summary:** After M135_002 proves runner liveness, complete the existing browser-mediated Slack and GitHub authorization flows, prove Slack independently at workspace level, run `github-pr-reviewer` against the dedicated proof repository, and replay the exact GitHub delivery. During that real run, observe the wall before install, after activation, during delivery, and after reconnect: the live count changes exactly once, one workspace stream remains open, the reviewer tile alone shows the new activity, and replay does not add another event or pulse. Keep provider material in vaulted handles and record only redacted identifiers and counts.
 
 ## PR Intent & comprehension handshake
 
@@ -47,6 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 3. `docs/architecture/runner_fleet.md` — online heartbeat prerequisite and execution boundary.
 4. `tests/fixtures/fleetbundle/github-pr-reviewer/TRIGGER.md` — GitHub-only provider dependency.
 5. `playbooks/operations/slack_app_registration/001_playbook.md` — workspace OAuth and signed event verification.
+6. `docs/architecture/data_flow.md` — one workspace stream, Fleet-tagged frames, reconnect backfill, and wall routing contract.
 
 ## Files Changed (blast radius)
 
@@ -100,6 +101,15 @@ Replay the exact delivery only after recording original event and review identif
 - **Dimension 4.1** — replay creates no second fleet event → Test `test_github_replay_no_event`
 - **Dimension 4.2** — replay creates no second review and only then closes the architecture marker → Test `test_github_replay_no_review`
 
+### §5 — The real reviewer proves the Live Wall
+
+Use the same `github-pr-reviewer` Fleet and delivery from §3 rather than synthetic wall-only data. Record the workspace's live count before installation, after the reviewer becomes active, after the first delivery, and after replay.
+
+- **Dimension 5.1** — activating `github-pr-reviewer` increases the exact `{N} live` wall counter by one; stopping it decreases the counter by one; resuming it restores the count → Test `test_live_counter_tracks_real_reviewer_lifecycle`
+- **Dimension 5.2** — with the reviewer and at least one control Fleet visible, the wall opens exactly one workspace events stream and no per-tile Fleet streams → Test `test_wall_uses_one_workspace_stream_for_multiple_fleets`
+- **Dimension 5.3** — the signed GitHub delivery updates/pulses the `github-pr-reviewer` tile while the control Fleet does not show that delivery → Test `test_reviewer_delivery_routes_to_only_its_tile`
+- **Dimension 5.4** — disconnect/reconnect keeps last-known tiles visible, backfills the reviewer event, and does not duplicate its activity; replay also leaves the event/review counts and tile activity unchanged → Test `test_wall_reconnect_and_replay_do_not_duplicate_reviewer_activity`
+
 ## Interfaces
 
 ```text
@@ -146,6 +156,10 @@ Evidence records redacted resource identifiers, delivery identifiers, and counts
 | 3.2 | integration | `test_reviewer_declared_connectors_only` | reviewer has GitHub but no undeclared Slack grant |
 | 4.1 | end-to-end | `test_github_replay_no_event` | replay leaves event count unchanged |
 | 4.2 | end-to-end | `test_github_replay_no_review` | replay leaves review count unchanged before marker closes |
+| 5.1 | end-to-end | `test_live_counter_tracks_real_reviewer_lifecycle` | reviewer active changes `{N} live` to `{N+1} live`; stop returns it to `{N}`; resume restores `{N+1}` |
+| 5.2 | end-to-end | `test_wall_uses_one_workspace_stream_for_multiple_fleets` | reviewer plus control Fleet produce one `/workspaces/{ws}/events/stream` connection and zero wall-owned `/fleets/{id}/events/stream` connections |
+| 5.3 | end-to-end | `test_reviewer_delivery_routes_to_only_its_tile` | one signed delivery changes the reviewer tile once and leaves the control tile unchanged |
+| 5.4 | end-to-end | `test_wall_reconnect_and_replay_do_not_duplicate_reviewer_activity` | reconnect restores the reviewer event exactly once; replay changes neither provider counts nor wall activity |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -155,6 +169,9 @@ Evidence records redacted resource identifiers, delivery identifiers, and counts
 | R2 | Slack workspace is connected | `agentsfleet connector list --workspace "$WORKSPACE_ID" --json | jq -e '.[] | select(.provider == "slack" and .status == "connected")'` | exit 0 plus one redacted mention event id | P0 | |
 | R3 | Real Pull Request is reviewed exactly once | `gh pr view "$PROOF_PR" --json reviews,comments` | exactly one fleet-authored review | P0 | |
 | R4 | Replay is idempotent and architecture proof closes | `rg -n 'External .github-pr-reviewer. repository test.*✅' docs/architecture/scenarios/github-pr-reviewer.md` | one match after unchanged event and review counts | P0 | |
+| R5 | Live counter tracks the real reviewer lifecycle | browser evidence for the proof workspace before activation, active, stopped, and resumed | exact sequence `{N} live` → `{N+1} live` → `{N} live` → `{N+1} live` | P0 | |
+| R6 | Multiple Fleet tiles use one workspace stream | browser network evidence filtered to `/events/stream` with reviewer and control Fleet visible | exactly one workspace stream; zero wall-owned per-Fleet streams | P0 | |
+| R7 | Real delivery routes once to the reviewer tile | side-by-side wall evidence before delivery, after delivery, after reconnect, and after replay | reviewer changes once; control Fleet unchanged; reconnect/replay add no duplicate | P0 | |
 | S1 | Repository checks pass | `make lint-all` | exit 0 | P0 | |
 | S2 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 | |
 | S3 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
@@ -171,6 +188,7 @@ N/A — no files deleted.
 - Adding Slack to the GitHub reviewer bundle when it is not declared.
 - Merging the proof Pull Request or changing unrelated repositories.
 - Production deployment, release, or tag creation.
+- Reopening M133 implementation work unless the real reviewer proof demonstrates a reproducible wall defect.
 
 ---
 
@@ -200,3 +218,4 @@ N/A — no files deleted.
 - **Skill-chain outcomes** —
 - **Deferrals** —
   > Indy (2026-07-20 22:23): "And move th 2,3,4 to the next milestone and read and move this milestone to done?" — context: live Slack authorization/signed mention and real GitHub review/replay proof move from M135_001 to this successor; runner activation remains M135_002 and is this workstream's prerequisite.
+  > Indy (2026-07-26): "I think move this to DONE. I have eyeballed it, on fleets getting added, i will do an exhaustive check in M136_001" — context: M133 closes on direct visual acceptance; M136 inherits the unrun deployed `live-counter` and `pulse-wall` proof and must exercise them with the real `github-pr-reviewer` Fleet.
