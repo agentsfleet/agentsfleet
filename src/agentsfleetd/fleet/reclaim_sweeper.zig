@@ -44,7 +44,9 @@ const fleet_config = @import("../fleet_runtime/config.zig");
 
 const log = logging.scoped(.reclaim_sweeper);
 
-const SWEEP_BATCH_LIMIT: i64 = 100;
+/// Active fleets one pass reaches. `pub` because the scan-advance proof has to
+/// seed more fleets than a pass can cover and must not restate the number.
+pub const SWEEP_BATCH_LIMIT: i64 = 100;
 /// Per-fleet per-sweep claim bound — keeps one pathological stream from
 /// monopolizing a sweep pass; the next pass continues where this one stopped.
 const SWEEP_CLAIM_LIMIT: usize = 10;
