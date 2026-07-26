@@ -123,6 +123,7 @@ test {
     _ = @import("observability/otel_metrics_payload.zig");
     _ = @import("observability/otel_metrics_aggregate.zig");
     _ = @import("observability/otel_metrics_cardinality.zig");
+    _ = @import("observability/library_read_counters.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
