@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { signUpAs } from "./fixtures/signup";
 import { workspaceHref } from "./fixtures/nav";
@@ -57,7 +57,7 @@ test.describe("workspace create", () => {
 
     const dialog = page.getByRole("dialog", { name: "Create workspace" });
     await expect(dialog).toBeVisible();
-    await dialog.getByLabel("Name (optional)").fill(workspaceName);
+    await dialog.getByLabel("Name").fill(workspaceName);
     await dialog.getByRole("button", { name: "Create workspace" }).click();
     await expect(dialog).toBeHidden({ timeout: WORKSPACE_CREATE_TIMEOUT_MS });
 
@@ -66,5 +66,68 @@ test.describe("workspace create", () => {
     });
     await switcher.click();
     await expect(page.getByRole("menuitem", { name: workspaceName })).toBeVisible();
+
+    await page.getByTestId("workspace-new").click();
+    const duplicateDialog = page.getByRole("dialog", {
+      name: "Create workspace",
+    });
+    await duplicateDialog.getByLabel("Name").fill(workspaceName);
+    let duplicateActionPosts = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.headers()["next-action"]) {
+        duplicateActionPosts += 1;
+      }
+    });
+    await duplicateDialog
+      .getByRole("button", { name: "Create workspace" })
+      .click();
+
+    await expect(duplicateDialog.getByTestId("workspace-create-error"))
+      .toContainText(/already exists.*refreshing the workspace list/i);
+    expect(duplicateActionPosts).toBe(1);
+    await duplicateDialog.getByRole("button", { name: "Cancel" }).click();
+    await switcher.click();
+    await expect(page.getByRole("menuitem", { name: workspaceName }))
+      .toHaveCount(1);
+
+    const committedName = uniqueWorkspaceName();
+    await page.getByTestId("workspace-new").click();
+    const uncertainDialog = page.getByRole("dialog", {
+      name: "Create workspace",
+    });
+    await uncertainDialog.getByLabel("Name").fill(committedName);
+    let uncertainActionPosts = 0;
+    const loseCommittedResponse = async (route: Route) => {
+      const request = route.request();
+      const isCreateAction =
+        request.method() === "POST" && Boolean(request.headers()["next-action"]);
+      if (!isCreateAction) {
+        await route.continue();
+        return;
+      }
+      uncertainActionPosts += 1;
+      if (uncertainActionPosts > 1) {
+        await route.continue();
+        return;
+      }
+      await route.fetch();
+      await route.abort("connectionreset");
+    };
+    await page.route("**/*", loseCommittedResponse);
+    await uncertainDialog
+      .getByRole("button", { name: "Create workspace" })
+      .click();
+
+    await expect(uncertainDialog.getByTestId("workspace-create-error"))
+      .toContainText(/refreshing the workspace list.*before retrying/i);
+    // Losing the response also loses the created workspace identifier. The
+    // refresh can expose it in the menu, but must not silently change routes.
+    await expect(switcher).toContainText(workspaceName);
+    expect(uncertainActionPosts).toBe(1);
+    await page.unroute("**/*", loseCommittedResponse);
+    await uncertainDialog.getByRole("button", { name: "Cancel" }).click();
+    await switcher.click();
+    await expect(page.getByRole("menuitem", { name: committedName }))
+      .toHaveCount(1);
   });
 });

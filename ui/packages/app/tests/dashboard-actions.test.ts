@@ -46,14 +46,12 @@ describe("createWorkspaceAction — forwards create through withToken", () => {
     };
     createTenantWorkspaceMock.mockResolvedValueOnce(data);
 
-    const input = { idempotencyKey: "key-1", name: "scrappy-otter" };
+    const input = { name: "scrappy-otter" };
     const r = await createWorkspaceAction(input);
 
-    expect(createTenantWorkspaceMock).toHaveBeenCalledWith(
-      "tok",
-      { name: "scrappy-otter" },
-      "key-1",
-    );
+    expect(createTenantWorkspaceMock).toHaveBeenCalledWith("tok", {
+      name: "scrappy-otter",
+    });
     expect(r).toEqual({ ok: true, data });
   });
 
@@ -68,10 +66,7 @@ describe("createWorkspaceAction — forwards create through withToken", () => {
     // client never runs, so the action just threads the failure straight back.
     withTokenMock.mockResolvedValueOnce(failure);
 
-    const r = await createWorkspaceAction({
-      idempotencyKey: "key-2",
-      name: "doomed",
-    });
+    const r = await createWorkspaceAction({ name: "doomed" });
 
     expect(r).toEqual(failure);
     expect(createTenantWorkspaceMock).not.toHaveBeenCalled();

@@ -6,7 +6,7 @@ Read this when you want to know how a real human gets from "I want a Fleet" to "
 
 The initial user assumption is simple:
 
-- the user is already working inside Claude (or Amp, Codex CLI, OpenCode — any coding fleet that can read SKILL.md)
+- the user is already working inside Claude (or Amp, Codex command-line interface (CLI), OpenCode — any coding fleet that can read SKILL.md)
 - the user is already working on their own project or infrastructure
 - the user wants operational work to continue without babysitting an endless terminal loop
 
@@ -158,7 +158,8 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:
 
 - The **Trigger panel** renders one card per declared trigger. A GitHub App card shows connector state plus repository/event subscriptions and routes a disconnected workspace to Connect GitHub. Custom providers retain registration guidance and copyable per-fleet URLs. The dashboard never asks for or stores a user's provider PAT.
-- The **chat surface** (composed via `@assistant-ui/react`) shows webhook / cron / continuation events as system chips, fleet reasoning as streaming assistant bubbles, and the steer composer at the bottom turns user input into an event on the fleet's stream.
+- The **chat surface** (composed via `@assistant-ui/react`) shows webhook / cron / continuation events as system chips, fleet reasoning as quiet open text on the left, and the steer composer at the bottom turns user input into an event on the fleet's stream. Saved history remains usable while the live stream connects, with explicit connection context above it.
+- The **workspace switcher** requires a name while the server owns workspace identity. The browser never automatically repeats a failed POST. It reports the failure and walks the tenant workspace endpoint's stable cursor pages to refresh the complete list. The CLI handles an uncertain response or registered name conflict with one encoded exact-name GET, then selects the authoritative match without replaying the POST. For login tokens, both create and list resolve the database subject mapping before a stale signed tenant claim and return that tenant identifier. Tenant API keys instead remain bound to the tenant recorded on the key, even if the creator's user mapping later changes. These rules prevent local state from mixing tenants without letting an API key cross its issuing boundary. A deliberate same-name retry cannot create another row because the tenant/name unique index returns a registered `409 Conflict`.
 
 This matters because the fleet is not replacing Claude. It extends Claude from an interactive assistant into a durable operational worker — and the dashboard mirrors the same primitives so a user who lives in the browser sees an equivalent surface.
 

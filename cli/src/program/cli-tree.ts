@@ -155,7 +155,7 @@ function buildWorkspaceTree(program: Command, handlers: Handlers, state: Program
     .command("workspace")
     .description("Manage workspaces");
 
-  ws.command("create [name]")
+  ws.command("create <name>")
     .description("Create a new workspace")
     .action(actionFor("workspace.create", (frame) => runHandler(state, frame, handlers.workspace.create)));
 

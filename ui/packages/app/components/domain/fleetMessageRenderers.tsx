@@ -2,7 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
-import { Badge, cn } from "@agentsfleet/design-system";
+import { Badge } from "@agentsfleet/design-system";
+import { GitPullRequestIcon } from "lucide-react";
 import { readTools, ToolCalls } from "./FleetToolCalls";
 import {
   FleetActivityRow,
@@ -12,11 +13,10 @@ import {
   useFleetName,
 } from "./FleetMessageRow";
 import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
-import { eventOutcome, failureGuidanceFor, messageOutcome } from "./fleetFailureCopy";
+import { eventOutcome, messageOutcome } from "./fleetFailureCopy";
 import {
   readActor,
   readCustomStatus,
-  readFailureLabel,
   readGroupMembers,
   readReply,
   readRenderKind,
@@ -27,13 +27,11 @@ import { RENDER_KIND } from "./useFleetThreadEntries";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-frames";
 import { groupSpan } from "@/lib/events/event-grouping";
 import {
-  SENDER,
   eventLinkFrom,
   eventReferenceFrom,
   senderLabelFor,
 } from "@/lib/events/event-summary";
 
-const SENDER_FLEET = SENDER.FLEET_FALLBACK;
 const STATUS_OPTIMISTIC = "optimistic";
 const STATUS_FAILED = "failed";
 const STATUS_AGENT_ERROR = "fleet_error";
@@ -49,7 +47,7 @@ const SOURCE_LINK_FALLBACK = "View source";
 
 /**
  * Render function passed to the thread message list. Integration activity
- * renders as compact log ticks; operator turns use a right-side surface while
+ * renders as flat activity traces; operator turns use a right-side surface while
  * fleet replies stay open on the left (FleetMessageRow).
  */
 export function renderFleetMessage({ message }: { message: MessageState }): ReactNode {
@@ -62,11 +60,10 @@ export function renderFleetMessage({ message }: { message: MessageState }): Reac
 
 function FleetMessage({ message }: { message: MessageState }) {
   const fleetName = useFleetName();
-  const actor = readActor(message);
+  const sender = senderLabelFor(readActor(message), fleetName);
   const status = readCustomStatus(message);
   const optimistic = status === STATUS_OPTIMISTIC;
   const failed = status === STATUS_FAILED;
-  const payload = readRequestJson(message);
   const tools = readTools(message);
   const trigger = readText(message);
   const isReplyRow = message.role === "assistant";
@@ -74,9 +71,8 @@ function FleetMessage({ message }: { message: MessageState }) {
   // A run of identical deliveries is one row until the operator opens it.
   const group = readGroupMembers(message);
   if (group) return <FleetGroupMessage fleetName={fleetName} members={group} />;
-  // Integration deliveries recede to a one-line tick so the operator's own
-  // conversation dominates the column (approved variant B). Order is
-  // untouched — activity looks quieter, it never moves.
+  // Integration deliveries recede to a flat trace so the operator's own
+  // conversation dominates the column. Order is untouched.
   if (message.role === "system") {
     return <FleetActivityMessage message={message} fleetName={fleetName} />;
   }
@@ -84,11 +80,7 @@ function FleetMessage({ message }: { message: MessageState }) {
     <>
       {isReplyRow ? null : (
         <FleetMessageRow
-          sender={senderLabelFor(actor, fleetName)}
-          createdAt={message.createdAt}
-          // The only message that still renders a full trigger row is the
-          // operator's own — system activity is a compact tick with its own
-          // chip — so this row is always operator-toned.
+          sender={sender}
           tone={ROW_TONE.OPERATOR}
           messageRole={message.role}
           dimmed={optimistic}
@@ -96,11 +88,15 @@ function FleetMessage({ message }: { message: MessageState }) {
           annotation={<Annotation optimistic={optimistic} failed={failed} />}
         >
           <span>{trigger}</span>
-          {payload ? <FleetPayloadDisclosure json={payload} /> : null}
         </FleetMessageRow>
       )}
       {isSplitTrigger ? null : (
-        <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
+        <FleetReply
+          message={message}
+          fleetName={fleetName}
+          tools={tools}
+          status={status}
+        />
       )}
     </>
   );
@@ -126,7 +122,8 @@ function FleetActivityMessage({
   const isSplitTrigger = readRenderKind(message) === RENDER_KIND.TRIGGER;
   // The tick states the outcome itself — a delivery whose only content is its
   // outcome does not earn a second row. A real reply does.
-  const outcome = working || reply.length > 0 || isSplitTrigger ? undefined : messageOutcome(message);
+  const outcome =
+    working || reply.length > 0 || isSplitTrigger ? undefined : messageOutcome(message);
   const link = eventLinkFrom(payload);
   const reference = link ? eventReferenceFrom(payload) : null;
   return (
@@ -137,13 +134,14 @@ function FleetActivityMessage({
         headline={activityHeadline(readText(message), reference)}
         outcome={outcome}
         failed={errored}
-        guidance={
-          isSplitTrigger
-            ? undefined
-            : failureGuidanceFor(readFailureLabel(message))
-        }
         messageRole={message.role}
-        annotation={<ActivityAnnotation link={link} label={reference ?? SOURCE_LINK_FALLBACK} />}
+        annotation={
+          <ActivityAnnotation
+            link={link}
+            label={reference ?? SOURCE_LINK_FALLBACK}
+            repositoryReference={reference !== null}
+          />
+        }
       >
         {payload ? <FleetPayloadDisclosure json={payload} inline /> : null}
       </FleetActivityRow>
@@ -156,13 +154,7 @@ function FleetActivityMessage({
  * it renders every member as its own tick, so the count is always a summary
  * the operator can check rather than a claim they have to trust.
  */
-function FleetGroupMessage({
-  fleetName,
-  members,
-}: {
-  fleetName: string;
-  members: FleetEvent[];
-}) {
+function FleetGroupMessage({ fleetName, members }: { fleetName: string; members: FleetEvent[] }) {
   const [expanded, setExpanded] = useState(false);
   // Everything is derived from `members` (guaranteed non-empty by the caller):
   // `reduce` yields the newest as a definite `FleetEvent`, and the span reads
@@ -178,42 +170,53 @@ function FleetGroupMessage({
       outcome={eventOutcome(newest)}
       failed={failed}
       count={members.length}
-      first={span.first}
       last={span.last}
       expanded={expanded}
       onToggle={() => setExpanded((open) => !open)}
     >
-      {members.map((member) => (
-        <FleetActivityRow
-          key={member.id}
-          sender={senderLabelFor(member.actor, fleetName)}
-          createdAt={member.createdAt}
-          headline={member.text}
-          outcome={eventOutcome(member)}
-          failed={member.status === STATUS_AGENT_ERROR}
-          guidance={failureGuidanceFor(member.failureLabel)}
-          messageRole="system"
-        >
-          {member.custom?.requestJson ? (
-            <FleetPayloadDisclosure json={member.custom.requestJson} inline />
-          ) : null}
-        </FleetActivityRow>
-      ))}
+      {expanded
+        ? members.map((member) => (
+            <FleetActivityRow
+              key={member.id}
+              sender={senderLabelFor(member.actor, fleetName)}
+              createdAt={member.createdAt}
+              headline={member.text}
+              outcome={eventOutcome(member)}
+              failed={member.status === STATUS_AGENT_ERROR}
+              messageRole="system"
+            >
+              {member.custom?.requestJson ? (
+                <FleetPayloadDisclosure json={member.custom.requestJson} inline />
+              ) : null}
+            </FleetActivityRow>
+          ))
+        : null}
     </FleetGroupRow>
   );
 }
 
 // The provider's source reference is the link label. Unknown payload shapes
 // still get a plain source action rather than an internal "open" affordance.
-function ActivityAnnotation({ link, label }: { link: string | null; label: string }) {
+function ActivityAnnotation({
+  link,
+  label,
+  repositoryReference,
+}: {
+  link: string | null;
+  label: string;
+  repositoryReference: boolean;
+}) {
   if (link === null) return null;
   return (
     <a
       href={link}
       target="_blank"
       rel="noreferrer noopener"
-      className="shrink-0 text-label text-muted-foreground underline hover:text-foreground"
+      className="inline-flex min-h-11 shrink-0 items-center gap-xs rounded-sm text-label font-medium text-foreground underline decoration-border-strong underline-offset-2 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-6"
     >
+      {repositoryReference ? (
+        <GitPullRequestIcon size={14} aria-hidden="true" />
+      ) : null}
       {label}
     </a>
   );
@@ -256,24 +259,23 @@ function FleetReply({
   // second and at five minutes, so the operator cannot tell the fleet is alive.
   const awaitingFirstWord = streaming && reply.length === 0;
   const body = reply.length > 0 ? reply : outcome;
-  // The cause says what broke; the guidance says what to do about it. Only
-  // rendered when the failure sentence is what the operator is reading — a
-  // recorded reply is the fleet's own words and takes precedence.
-  const guidance = reply.length > 0 ? null : failureGuidanceFor(readFailureLabel(message));
   return (
     <FleetMessageRow
-      sender={fleetName.length > 0 ? fleetName : SENDER_FLEET}
-      createdAt={message.createdAt}
+      sender={fleetName || "Fleet"}
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
-      live={streaming}
+      failed={errored}
     >
       <ToolCalls tools={tools} />
       {awaitingFirstWord ? (
         <WorkingIndicator />
       ) : (
         <>
-          <span className={cn(errored && "text-destructive")}>{body}</span>
+          <span
+            className={errored ? "text-label font-medium leading-label text-foreground" : undefined}
+          >
+            {body}
+          </span>
           {streaming ? (
             <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
               {STREAM_CURSOR}
@@ -281,7 +283,6 @@ function FleetReply({
           ) : null}
         </>
       )}
-      {guidance}
     </FleetMessageRow>
   );
 }

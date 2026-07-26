@@ -19,18 +19,22 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
+fn refuseNewerSchema(state: db.MigrationState) MigrationGuardError!void {
+    if (state.has_newer_schema_version) return MigrationGuardError.MigrationSchemaAhead;
+}
+
 const schema_mod = @import("schema");
 const schema_migrations = schema_mod.migrations;
 
-/// `runMigrations` applies the array in order and records each version, so the
-/// list must start at 1 and step by exactly 1: a gap would record a version whose
-/// schema never ran, and a repeat would re-apply one. Nothing in `schema/embed.zig`
-/// enforces that, so the assertions below derive it rather than restate a literal.
+/// `runMigrations` applies the array in order and records each version. The list
+/// starts at 1 and must increase strictly; an owner-removed migration may leave
+/// a gap, while repeats or reordering could skip or re-apply schema work.
 const FIRST_MIGRATION_VERSION: i32 = 1;
 /// The two migrations whose presence the connector-install and channel surfaces
 /// depend on. Named because a bare `25`/`26` in an assertion reads as an index.
 const V_CONNECTOR_INSTALLS: i32 = 25;
 const V_CHANNEL_TABLES: i32 = 26;
+const V_REMOVED_WORKSPACE_CREATE_REPLAY: i32 = 35;
 
 pub fn canonicalMigrations() [schema_migrations.len]db.Migration {
     var result: [schema_migrations.len]db.Migration = undefined;
@@ -56,7 +60,7 @@ fn decideServeMigrationPolicy(
     state: db.MigrationState,
     migrate_on_start: bool,
 ) MigrationGuardError!ServeMigrationDecision {
-    if (state.has_newer_schema_version) return MigrationGuardError.MigrationSchemaAhead;
+    try refuseNewerSchema(state);
     if (state.has_failed_migrations) return MigrationGuardError.MigrationFailed;
 
     if (state.applied_versions < state.expected_versions) {
@@ -102,7 +106,7 @@ pub fn enforceServeMigrationSafety(
             // transaction pooler (:6432). See MIGRATION_RUN_ROLE.
             const migrator_pool = try db.initFromEnvForRole(io, env_map, alloc, MIGRATION_RUN_ROLE);
             defer migrator_pool.deinit();
-            try db.runMigrations(migrator_pool, &migrations);
+            try db.runMigrationsRefusingNewer(migrator_pool, &migrations);
 
             const post = try db.inspectMigrationState(pool, &migrations);
             if (post.has_newer_schema_version) return MigrationGuardError.MigrationSchemaAhead;
@@ -114,14 +118,16 @@ pub fn enforceServeMigrationSafety(
 
 pub fn runCanonicalMigrations(pool: *db.Pool) !void {
     const migrations = canonicalMigrations();
-    try db.runMigrations(pool, &migrations);
+    try db.runMigrationsRefusingNewer(pool, &migrations);
 }
 
-/// True when versions run 1, 2, 3, … with no gap, repeat, or reordering.
-fn versionsContiguousFromFirst(migrations: []const db.Migration) bool {
+fn versionsIncreaseFromFirst(migrations: []const db.Migration) bool {
     for (migrations, 0..) |m, i| {
-        const expected: i32 = FIRST_MIGRATION_VERSION + @as(i32, @intCast(i));
-        if (m.version != expected) return false;
+        if (i == 0) {
+            if (m.version != FIRST_MIGRATION_VERSION) return false;
+            continue;
+        }
+        if (m.version <= migrations[i - 1].version) return false;
     }
     return true;
 }
@@ -139,44 +145,43 @@ test "canonical migrations: connector install + channel tables registered" {
     try std.testing.expect(has_channels);
 }
 
-test "canonical migrations: versions are contiguous and strictly increasing" {
+test "canonical migrations: versions start at one and strictly increase" {
     const migrations = canonicalMigrations();
-    try std.testing.expect(versionsContiguousFromFirst(&migrations));
+    try std.testing.expect(versionsIncreaseFromFirst(&migrations));
 }
 
-test "canonical migrations: a gapped or duplicated version is rejected" {
+test "canonical migrations: an intentional gap is accepted but a duplicate is rejected" {
     const gapped = [_]db.Migration{
         .{ .version = 1, .sql = "" },
         .{ .version = 3, .sql = "" },
     };
-    try std.testing.expect(!versionsContiguousFromFirst(&gapped));
+    try std.testing.expect(versionsIncreaseFromFirst(&gapped));
 
     const duplicated = [_]db.Migration{
         .{ .version = 1, .sql = "" },
         .{ .version = 1, .sql = "" },
     };
-    try std.testing.expect(!versionsContiguousFromFirst(&duplicated));
+    try std.testing.expect(!versionsIncreaseFromFirst(&duplicated));
 }
 
 test "canonical migrations: a list not starting at version 1, or running backwards, is rejected" {
-    // `runMigrations` records versions by array position, so an off-by-one start or a
-    // reversed pair would mark schema applied that never ran.
+    // An off-by-one start or reversed pair would make schema history ambiguous.
     const zero_based = [_]db.Migration{
         .{ .version = 0, .sql = "" },
         .{ .version = 1, .sql = "" },
     };
-    try std.testing.expect(!versionsContiguousFromFirst(&zero_based));
+    try std.testing.expect(!versionsIncreaseFromFirst(&zero_based));
 
     const descending = [_]db.Migration{
         .{ .version = 2, .sql = "" },
         .{ .version = 1, .sql = "" },
     };
-    try std.testing.expect(!versionsContiguousFromFirst(&descending));
+    try std.testing.expect(!versionsIncreaseFromFirst(&descending));
 
-    // Vacuously contiguous: the embedded list is asserted non-empty separately, so an
+    // Vacuously ordered: the embedded list is asserted non-empty separately, so an
     // empty slice never reaches a caller that would misread `true` as "migrations ran".
     const empty: []const db.Migration = &.{};
-    try std.testing.expect(versionsContiguousFromFirst(empty));
+    try std.testing.expect(versionsIncreaseFromFirst(empty));
 }
 
 test "migrateOnStartEnabledFromEnv parses known values" {
@@ -209,6 +214,20 @@ test "unit: migration guard allows startup when schema is clean" {
         .has_newer_schema_version = false,
     }, false);
     try std.testing.expectEqual(.allow_without_running, decision);
+}
+
+test "unit: migration guard refuses a schema newer than the binary" {
+    const canonical_version = schema_migrations[schema_migrations.len - 1].version;
+    const ahead_version = canonical_version + 1;
+    try std.testing.expectError(MigrationGuardError.MigrationSchemaAhead, decideServeMigrationPolicy(.{
+        .expected_versions = schema_migrations.len,
+        .applied_versions = schema_migrations.len,
+        .latest_expected_version = canonical_version,
+        .latest_applied_version = ahead_version,
+        .has_failed_migrations = false,
+        .lock_available = true,
+        .has_newer_schema_version = true,
+    }, true));
 }
 
 test "unit: serve auto-migrate runs over the session-scoped migrator role, never the pooled api" {
@@ -282,11 +301,12 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap: last version equals the registered count" {
+test "canonical schema bootstrap: removed replay slot stays absent" {
     const migrations = canonicalMigrations();
     try std.testing.expect(migrations.len > 0);
-    const last = migrations[migrations.len - 1].version;
-    try std.testing.expectEqual(@as(i32, @intCast(migrations.len)), last);
+    for (migrations) |migration| {
+        try std.testing.expect(migration.version != V_REMOVED_WORKSPACE_CREATE_REPLAY);
+    }
 }
 
 test "every migration splits into structurally complete statements" {

@@ -27,18 +27,13 @@ describe("createWorkspaceAction", () => {
     const { createWorkspaceAction } =
       await import("../app/(dashboard)/actions");
 
-    const result = await createWorkspaceAction({
-      idempotencyKey: "key-1",
-      name: "fresh",
-    });
+    const result = await createWorkspaceAction({ name: "fresh" });
 
     expect(result.ok).toBe(true);
     expect(result.ok && result.data.workspace_id).toBe("ws_new");
-    expect(createTenantWorkspace).toHaveBeenCalledWith(
-      "tok_1",
-      { name: "fresh" },
-      "key-1",
-    );
+    expect(createTenantWorkspace).toHaveBeenCalledWith("tok_1", {
+      name: "fresh",
+    });
   });
 
   it("maps a missing token to UZ-AUTH-401 and never calls the client", async () => {
@@ -46,7 +41,7 @@ describe("createWorkspaceAction", () => {
     const { createWorkspaceAction } =
       await import("../app/(dashboard)/actions");
 
-    const result = await createWorkspaceAction({ idempotencyKey: "key-2" });
+    const result = await createWorkspaceAction({ name: "not-sent" });
 
     expect(result.ok).toBe(false);
     expect(!result.ok && result.errorCode).toBe("UZ-AUTH-401");
@@ -67,10 +62,7 @@ describe("createWorkspaceAction", () => {
     const { createWorkspaceAction } =
       await import("../app/(dashboard)/actions");
 
-    const result = await createWorkspaceAction({
-      idempotencyKey: "key-3",
-      name: "x",
-    });
+    const result = await createWorkspaceAction({ name: "x" });
 
     expect(result.ok).toBe(false);
     expect(!result.ok && result.errorCode).toBe("UZ-AUTH-401");

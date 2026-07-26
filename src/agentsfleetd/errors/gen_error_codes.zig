@@ -148,6 +148,7 @@ const CATEGORY_COPY = [_]CategoryCopy{
     .{ .token = "UUIDV7", .label = "Identifiers", .prevention = "Use identifiers returned by agentsfleet." },
     .{ .token = "VAULT", .label = "Secrets", .prevention = "Use a valid workspace secret name and value." },
     .{ .token = "WH", .label = "Webhooks", .prevention = "Keep webhook signing secrets matched and service clocks synchronized." },
+    .{ .token = "WORKSPACE", .label = "Workspaces", .prevention = "Use a unique workspace name within the current tenant." },
 };
 
 fn categoryCopy(cat: []const u8) CategoryCopy {

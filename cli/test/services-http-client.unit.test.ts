@@ -7,7 +7,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { CliConfig } from "../src/services/config.ts";
-import { HttpClient, httpClientLayer, resolveToken } from "../src/services/http-client.ts";
+import {
+  HttpClient,
+  httpClientLayer,
+  resolveToken,
+} from "../src/services/http-client.ts";
 
 const configLayer = (apiUrl: string): Layer.Layer<CliConfig> =>
   Layer.succeed(CliConfig, {
@@ -39,7 +43,12 @@ const setFetch = (impl: typeof globalThis.fetch) => {
 
 describe("HttpClient", () => {
   test("request succeeds when fetch returns 200", async () => {
-    setFetch((async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as unknown as typeof globalThis.fetch);
+    setFetch(
+      (async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+        })) as unknown as typeof globalThis.fetch,
+    );
     const result = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {
@@ -52,15 +61,25 @@ describe("HttpClient", () => {
     expect(result.ok).toBe(true);
   });
   test("ServerError with login hint when fetch returns 401", async () => {
-    setFetch((async () =>
-      new Response(JSON.stringify({ error: { code: "UZ-AUTH-002", message: "unauthorized" } }), {
-        status: 401,
-      })) as unknown as typeof globalThis.fetch);
+    setFetch(
+      (async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: "UZ-AUTH-002", message: "unauthorized" },
+          }),
+          {
+            status: 401,
+          },
+        )) as unknown as typeof globalThis.fetch,
+    );
     const exit = await Effect.runPromiseExit(
       Effect.provide(
         Effect.gen(function* () {
           const http = yield* HttpClient;
-          return yield* http.request({ path: "/v1/x", retry: { maxAttempts: 1 } });
+          return yield* http.request({
+            path: "/v1/x",
+            retry: { maxAttempts: 1 },
+          });
         }),
         SUITE_LAYER("https://api.test.local"),
       ),
@@ -74,15 +93,25 @@ describe("HttpClient", () => {
     }
   });
   test("ServerError carries 5xx hint", async () => {
-    setFetch((async () =>
-      new Response(JSON.stringify({ error: { code: "UZ-INTERNAL-001", message: "db down" } }), {
-        status: 500,
-      })) as unknown as typeof globalThis.fetch);
+    setFetch(
+      (async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: "UZ-INTERNAL-001", message: "db down" },
+          }),
+          {
+            status: 500,
+          },
+        )) as unknown as typeof globalThis.fetch,
+    );
     const exit = await Effect.runPromiseExit(
       Effect.provide(
         Effect.gen(function* () {
           const http = yield* HttpClient;
-          return yield* http.request({ path: "/v1/x", retry: { maxAttempts: 1 } });
+          return yield* http.request({
+            path: "/v1/x",
+            retry: { maxAttempts: 1 },
+          });
         }),
         SUITE_LAYER("https://api.test.local"),
       ),
@@ -95,18 +124,27 @@ describe("HttpClient", () => {
     }
   });
   test("ServerError lists missing Fleet Bundle secrets from RFC 7807", async () => {
-    setFetch((async () =>
-      new Response(JSON.stringify({
-        error_code: "UZ-BUNDLE-003",
-        detail: "Fleet Bundle requires workspace secrets that are not present",
-        request_id: "req_bundle",
-        missing_secrets: ["fly", "upstash", "slack", "github"],
-      }), { status: 424 })) as unknown as typeof globalThis.fetch);
+    setFetch(
+      (async () =>
+        new Response(
+          JSON.stringify({
+            error_code: "UZ-BUNDLE-003",
+            detail:
+              "Fleet Bundle requires workspace secrets that are not present",
+            request_id: "req_bundle",
+            missing_secrets: ["fly", "upstash", "slack", "github"],
+          }),
+          { status: 424 },
+        )) as unknown as typeof globalThis.fetch,
+    );
     const exit = await Effect.runPromiseExit(
       Effect.provide(
         Effect.gen(function* () {
           const http = yield* HttpClient;
-          return yield* http.request({ path: "/v1/x", retry: { maxAttempts: 1 } });
+          return yield* http.request({
+            path: "/v1/x",
+            retry: { maxAttempts: 1 },
+          });
         }),
         SUITE_LAYER("https://api.test.local"),
       ),
@@ -122,15 +160,55 @@ describe("HttpClient", () => {
       });
     }
   });
-  test("NetworkError when fetch throws fetch-failed", async () => {
-    setFetch(((async () => {
-      throw new TypeError("fetch failed");
-    }) as unknown) as unknown as typeof globalThis.fetch);
+  test("workspace conflict suggests a distinct name", async () => {
+    setFetch(
+      (async () =>
+        new Response(
+          JSON.stringify({
+            error_code: "UZ-WORKSPACE-001",
+            detail: "A workspace with this name already exists",
+            request_id: "req_workspace",
+          }),
+          { status: 409 },
+        )) as unknown as typeof globalThis.fetch,
+    );
     const exit = await Effect.runPromiseExit(
       Effect.provide(
         Effect.gen(function* () {
           const http = yield* HttpClient;
-          return yield* http.request({ path: "/v1/x", retry: { maxAttempts: 1 } });
+          return yield* http.request({
+            path: "/v1/workspaces",
+            retry: { maxAttempts: 1 },
+          });
+        }),
+        SUITE_LAYER("https://api.test.local"),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
+      expect(fail).toMatchObject({
+        _tag: "ServerError",
+        code: "UZ-WORKSPACE-001",
+        requestId: "req_workspace",
+        suggestion:
+          "run `agentsfleet workspace list`, then `agentsfleet workspace use <workspace_id>`, or choose another name",
+      });
+      expect(fail?.message).not.toContain("retry");
+    }
+  });
+  test("NetworkError when fetch throws fetch-failed", async () => {
+    setFetch((async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as unknown as typeof globalThis.fetch);
+    const exit = await Effect.runPromiseExit(
+      Effect.provide(
+        Effect.gen(function* () {
+          const http = yield* HttpClient;
+          return yield* http.request({
+            path: "/v1/x",
+            retry: { maxAttempts: 1 },
+          });
         }),
         SUITE_LAYER("https://api.test.local"),
       ),
@@ -145,14 +223,17 @@ describe("HttpClient", () => {
     // A plain Error that is neither an ApiError nor a TypeError carrying
     // "fetch failed" falls through to the final generic NetworkError
     // branch (http-client.ts:78-82), embedding the raw message.
-    setFetch(((async () => {
+    setFetch((async () => {
       throw new Error("socket hang up");
-    }) as unknown) as unknown as typeof globalThis.fetch);
+    }) as unknown as unknown as typeof globalThis.fetch);
     const exit = await Effect.runPromiseExit(
       Effect.provide(
         Effect.gen(function* () {
           const http = yield* HttpClient;
-          return yield* http.request({ path: "/v1/x", retry: { maxAttempts: 1 } });
+          return yield* http.request({
+            path: "/v1/x",
+            retry: { maxAttempts: 1 },
+          });
         }),
         SUITE_LAYER("https://api.test.local"),
       ),
@@ -167,15 +248,18 @@ describe("HttpClient", () => {
   test("NetworkError (generic branch) coerces a non-Error throw via String()", async () => {
     // Hits the `String(cause)` arm of the generic branch when the thrown
     // value isn't an Error instance.
-    setFetch(((async () => {
+    setFetch((async () => {
       // oxlint-disable-next-line no-throw-literal -- fixture: non-Error throw exercises the String(cause) arm
       throw "plain-string-failure";
-    }) as unknown) as unknown as typeof globalThis.fetch);
+    }) as unknown as unknown as typeof globalThis.fetch);
     const exit = await Effect.runPromiseExit(
       Effect.provide(
         Effect.gen(function* () {
           const http = yield* HttpClient;
-          return yield* http.request({ path: "/v1/x", retry: { maxAttempts: 1 } });
+          return yield* http.request({
+            path: "/v1/x",
+            retry: { maxAttempts: 1 },
+          });
         }),
         SUITE_LAYER("https://api.test.local"),
       ),
@@ -230,7 +314,7 @@ describe("HttpClient", () => {
         SUITE_LAYER("https://api.test.local"),
       ),
     );
-    expect(captured.body).toContain("\"hello\"");
+    expect(captured.body).toContain('"hello"');
   });
 });
 
@@ -242,14 +326,16 @@ describe("resolveToken helper", () => {
     const stored = Option.some(Redacted.make("stored-token"));
     const result = resolveToken(env, stored);
     expect(Option.isSome(result)).toBe(true);
-    if (Option.isSome(result)) expect(Redacted.value(result.value)).toBe("env-token");
+    if (Option.isSome(result))
+      expect(Redacted.value(result.value)).toBe("env-token");
   });
   test("falls back to stored when env is none", () => {
     const env = Option.none<Redacted.Redacted<string>>();
     const stored = Option.some(Redacted.make("stored-token"));
     const result = resolveToken(env, stored);
     expect(Option.isSome(result)).toBe(true);
-    if (Option.isSome(result)) expect(Redacted.value(result.value)).toBe("stored-token");
+    if (Option.isSome(result))
+      expect(Redacted.value(result.value)).toBe("stored-token");
   });
   test("returns none when both unset", () => {
     const result = resolveToken(Option.none(), Option.none());

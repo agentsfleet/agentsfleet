@@ -70,8 +70,10 @@ test("doctor --json: all checks pass → ok=true, exit 0, 3 named checks", async
     const out = bufferStream();
     const err = bufferStream();
     const fetchImpl = asFetchOverride(async (url) => {
-      if (url.endsWith("/healthz")) return jsonResponse({ status: "ok", service: "agentsfleetd" });
-      if (url.includes("/v1/workspaces/ws_test/fleets")) return jsonResponse({ items: [] });
+      if (url.endsWith("/healthz"))
+        return jsonResponse({ status: "ok", service: "agentsfleetd" });
+      if (url.includes("/v1/workspaces/ws_test/fleets"))
+        return jsonResponse({ items: [] });
       return jsonResponse({ error: { code: "NOT_FOUND" } }, 404);
     });
     const code = await runCli(["--json", "doctor"], {
@@ -85,8 +87,15 @@ test("doctor --json: all checks pass → ok=true, exit 0, 3 named checks", async
     assert.equal(parsed.ok, true);
     assert.equal(typeof parsed.api_url, "string");
     const names = parsed.checks.map((c) => c.name);
-    assert.deepEqual(names, ["server_reachable", "workspace_selected", "workspace_binding_valid"]);
-    assert.equal(parsed.checks.every((c) => c.ok === true), true);
+    assert.deepEqual(names, [
+      "server_reachable",
+      "workspace_selected",
+      "workspace_binding_valid",
+    ]);
+    assert.equal(
+      parsed.checks.every((c) => c.ok === true),
+      true,
+    );
   });
 });
 
@@ -129,8 +138,11 @@ test("doctor --json: no workspace selected → workspace_selected false, binding
     assert.equal(code, 1);
     const parsed = JSON.parse(out.read()) as DoctorResult;
     const selected = parsed.checks.find((c) => c.name === "workspace_selected");
-    const binding = parsed.checks.find((c) => c.name === "workspace_binding_valid");
+    const binding = parsed.checks.find(
+      (c) => c.name === "workspace_binding_valid",
+    );
     assert.equal(selected?.ok, false);
+    assert.match(selected?.detail ?? "", /workspace create <name>/);
     assert.equal(binding?.ok, false);
     assert.match(binding?.detail ?? "", /skipped/);
   });
@@ -143,7 +155,10 @@ test("doctor --json: token bound to wrong workspace → binding false, exit 1", 
     const fetchImpl = asFetchOverride(async (url) => {
       if (url.endsWith("/healthz")) return jsonResponse({ status: "ok" });
       if (url.includes("/v1/workspaces/ws_test/fleets")) {
-        return jsonResponse({ error: { code: "FORBIDDEN", message: "Workspace access denied" } }, 403);
+        return jsonResponse(
+          { error: { code: "FORBIDDEN", message: "Workspace access denied" } },
+          403,
+        );
       }
       throw new Error("unexpected request: " + url);
     });
@@ -155,7 +170,9 @@ test("doctor --json: token bound to wrong workspace → binding false, exit 1", 
     });
     assert.equal(code, 1);
     const parsed = JSON.parse(out.read()) as DoctorResult;
-    const binding = parsed.checks.find((c) => c.name === "workspace_binding_valid");
+    const binding = parsed.checks.find(
+      (c) => c.name === "workspace_binding_valid",
+    );
     assert.equal(binding?.ok, false);
     assert.match(binding?.detail ?? "", /workspace list/);
   });

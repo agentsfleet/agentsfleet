@@ -24,6 +24,9 @@ const TENANT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const WORKSPACE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const PATCH_CONCURRENT_TENANT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f01";
 const PATCH_CONCURRENT_WORKSPACE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f11";
+const WORKSPACE_RECONCILIATION_TENANT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6f01";
+const WORKSPACE_RECONCILIATION_WORKSPACE =
+  "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6f11";
 
 // Stable, throwaway TEST signing key (RSA-2048, PKCS8 DER, base64). NOT a real
 // credential — it only signs offline fixtures verified by the test JWKS below.
@@ -49,7 +52,10 @@ const PERSONAS = {
   VIEWER: { sub: "user_test", scopes: "fleet:read schedule:read" },
   // Mid-tier: can write fleets + read secrets, but not manage secrets
   // or tenant admin. Exercises the read/write/admin ladder (rbac suite).
-  OPERATOR: { sub: "user_test", scopes: "fleet:write schedule:write secret:read" },
+  OPERATOR: {
+    sub: "user_test",
+    scopes: "fleet:write schedule:write secret:read",
+  },
   // Full tenant grant — every tenant-plane capability.
   TENANT_ADMIN: {
     sub: "user_test",
@@ -63,6 +69,16 @@ const PERSONAS = {
     sub: "user_patch_concurrent",
     tenant: PATCH_CONCURRENT_TENANT,
     workspace: PATCH_CONCURRENT_WORKSPACE,
+    scopes:
+      "fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
+  },
+  // Private identity for the workspace-list reconciliation test. The
+  // database mapping intentionally overrides this claim without mutating the
+  // shared user_test identity used by other parallel integration suites.
+  WORKSPACE_RECONCILIATION_ADMIN: {
+    sub: "user_workspace_reconciliation",
+    tenant: WORKSPACE_RECONCILIATION_TENANT,
+    workspace: WORKSPACE_RECONCILIATION_WORKSPACE,
     scopes:
       "fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
   },
@@ -86,68 +102,163 @@ const PERSONAS = {
 // Keyed by the path tail under agentsfleetd/. The const keeps its file-local
 // name (call sites unchanged); only its definition becomes a persona alias.
 const ALIASES = {
-  "http/secrets_json_integration_test.zig": { TOKEN_USER: "VIEWER", TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/fleet_operator_integration_test.zig": { PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN", TENANT_ADMIN_TOKEN: "TENANT_ADMIN" },
-  "http/fleet_runner_events_integration_test.zig": { PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN" },
-  "http/rbac_http_integration_test.zig": { TEST_USER_TOKEN: "VIEWER", TEST_OPERATOR_TOKEN: "OPERATOR", TEST_ADMIN_TOKEN: "TENANT_ADMIN" },
-  "http/runner_enrollment_integration_test.zig": { OPERATOR_TOKEN: "PLATFORM_ADMIN", TENANT_TOKEN: "TENANT_ADMIN" },
-  "http/handlers/cross_workspace_idor_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/handlers/tenant_billing_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN", TOKEN_NO_TENANT: "NO_TENANT" },
-  "http/handlers/tenant_workspaces_integration_test.zig": { TOKEN_USER: "TENANT_ADMIN" },
-  "http/handlers/workspaces/create_integration_test.zig": { TOKEN_USER: "TENANT_ADMIN" },
-  "http/handlers/workspaces/dashboard_integration_test.zig": { TOKEN_USER: "VIEWER", TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/handlers/memory/memories_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/handlers/fleets/api_integration_test.zig": { TOKEN_USER: "TENANT_ADMIN" },
-  "http/handlers/fleets/events_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/handlers/fleets/messages_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/handlers/fleets/patch_body_fields_integration_test.zig": { TOKEN_USER: "TENANT_ADMIN" },
-  "http/handlers/fleets/patch_concurrent_integration_test.zig": { TOKEN_OPERATOR: "PATCH_CONCURRENT_ADMIN" },
-  "http/handlers/fleets/sse_test_fixtures.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/handlers/fleet_bundles/api_integration_test.zig": { TOKEN_USER: "TENANT_ADMIN" },
-  "http/handlers/approvals/inbox_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/handlers/api_keys/tenant_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/handlers/admin/model_library_admin_integration_test.zig": { PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN", TENANT_ADMIN_TOKEN: "TENANT_ADMIN" },
+  "http/secrets_json_integration_test.zig": {
+    TOKEN_USER: "VIEWER",
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+  },
+  "http/fleet_operator_integration_test.zig": {
+    PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN",
+    TENANT_ADMIN_TOKEN: "TENANT_ADMIN",
+  },
+  "http/fleet_runner_events_integration_test.zig": {
+    PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN",
+  },
+  "http/rbac_http_integration_test.zig": {
+    TEST_USER_TOKEN: "VIEWER",
+    TEST_OPERATOR_TOKEN: "OPERATOR",
+    TEST_ADMIN_TOKEN: "TENANT_ADMIN",
+  },
+  "http/runner_enrollment_integration_test.zig": {
+    OPERATOR_TOKEN: "PLATFORM_ADMIN",
+    TENANT_TOKEN: "TENANT_ADMIN",
+  },
+  "http/handlers/cross_workspace_idor_test.zig": {
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+  },
+  "http/handlers/tenant_billing_integration_test.zig": {
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+    TOKEN_NO_TENANT: "NO_TENANT",
+  },
+  "http/handlers/tenant_workspaces_integration_test.zig": {
+    TOKEN_USER: "WORKSPACE_RECONCILIATION_ADMIN",
+  },
+  "http/handlers/workspaces/create_integration_test.zig": {
+    TOKEN_USER: "TENANT_ADMIN",
+  },
+  "http/handlers/workspaces/dashboard_integration_test.zig": {
+    TOKEN_USER: "VIEWER",
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+  },
+  "http/handlers/memory/memories_integration_test.zig": {
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+  },
+  "http/handlers/fleets/api_integration_test.zig": {
+    TOKEN_USER: "TENANT_ADMIN",
+  },
+  "http/handlers/fleets/events_integration_test.zig": {
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+  },
+  "http/handlers/fleets/messages_integration_test.zig": {
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+  },
+  "http/handlers/fleets/patch_body_fields_integration_test.zig": {
+    TOKEN_USER: "TENANT_ADMIN",
+  },
+  "http/handlers/fleets/patch_concurrent_integration_test.zig": {
+    TOKEN_OPERATOR: "PATCH_CONCURRENT_ADMIN",
+  },
+  "http/handlers/fleets/sse_test_fixtures.zig": {
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+  },
+  "http/handlers/fleet_bundles/api_integration_test.zig": {
+    TOKEN_USER: "TENANT_ADMIN",
+  },
+  "http/handlers/approvals/inbox_integration_test.zig": {
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+  },
+  "http/handlers/api_keys/tenant_integration_test.zig": {
+    TOKEN_OPERATOR: "TENANT_ADMIN",
+  },
+  "http/handlers/admin/model_library_admin_integration_test.zig": {
+    PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN",
+    TENANT_ADMIN_TOKEN: "TENANT_ADMIN",
+  },
 };
 
 // ── Mint ──
 function mint(p) {
-  const md = p.noTenant ? {} : { tenant_id: p.tenant ?? TENANT, workspace_id: p.workspace ?? WORKSPACE };
-  const payload = { sub: p.sub, iss: ISSUER, aud: AUDIENCE, exp: EXP, scopes: p.scopes, metadata: md };
+  const md = p.noTenant
+    ? {}
+    : { tenant_id: p.tenant ?? TENANT, workspace_id: p.workspace ?? WORKSPACE };
+  const payload = {
+    sub: p.sub,
+    iss: ISSUER,
+    aud: AUDIENCE,
+    exp: EXP,
+    scopes: p.scopes,
+    metadata: md,
+  };
   const hdr = { alg: "RS256", typ: "JWT", kid: KID };
   const si = `${b64u(JSON.stringify(hdr))}.${b64u(JSON.stringify(payload))}`;
   const sig = crypto.createSign("RSA-SHA256").update(si).sign(privateKey);
   return `${si}.${b64u(sig)}`;
 }
 
-const tokens = Object.fromEntries(Object.entries(PERSONAS).map(([n, p]) => [n, mint(p)]));
+const tokens = Object.fromEntries(
+  Object.entries(PERSONAS).map(([n, p]) => [n, mint(p)]),
+);
 for (const [n, p] of Object.entries(PERSONAS))
-  console.log(`  ${n.padEnd(15)} sub=${p.sub.padEnd(14)} scopes=[${p.scopes.split(" ").length}] ${p.noTenant ? "(no tenant claim)" : ""}`);
+  console.log(
+    `  ${n.padEnd(15)} sub=${p.sub.padEnd(14)} scopes=[${p.scopes.split(" ").length}] ${p.noTenant ? "(no tenant claim)" : ""}`,
+  );
 
 // ── Verify every aliased file/const exists and maps to a known persona. ──
 const SHARED = "src/agentsfleetd/http/test_scope_tokens.zig";
 let problems = 0;
-const CONST_RE = (name) => new RegExp(`const\\s+${name}\\s*=\\s*\\n?\\s*("eyJ[^"]+"|scope_fixtures\\.[A-Z_]+)\\s*;`);
+const CONST_RE = (name) =>
+  new RegExp(
+    `const\\s+${name}\\s*=\\s*\\n?\\s*("eyJ[^"]+"|scope_fixtures\\.[A-Z_]+)\\s*;`,
+  );
 for (const [tail, map] of Object.entries(ALIASES)) {
   const f = `src/agentsfleetd/${tail}`;
   let txt;
-  try { txt = readFileSync(f, "utf8"); } catch { console.log(`  !! missing file ${tail}`); problems++; continue; }
+  try {
+    txt = readFileSync(f, "utf8");
+  } catch {
+    console.log(`  !! missing file ${tail}`);
+    problems++;
+    continue;
+  }
   for (const [cname, persona] of Object.entries(map)) {
-    if (!tokens[persona]) { console.log(`  !! ${tail}:${cname} -> unknown persona ${persona}`); problems++; }
-    if (!CONST_RE(cname).test(txt)) { console.log(`  !! ${tail}: const ${cname} not found (token-or-alias form)`); problems++; }
+    if (!tokens[persona]) {
+      console.log(`  !! ${tail}:${cname} -> unknown persona ${persona}`);
+      problems++;
+    }
+    if (!CONST_RE(cname).test(txt)) {
+      console.log(
+        `  !! ${tail}: const ${cname} not found (token-or-alias form)`,
+      );
+      problems++;
+    }
   }
 }
-console.log(`\n${Object.keys(PERSONAS).length} personas · ${Object.keys(ALIASES).length} files · ${Object.values(ALIASES).reduce((a, m) => a + Object.keys(m).length, 0)} aliased consts · problems=${problems}`);
+console.log(
+  `\n${Object.keys(PERSONAS).length} personas · ${Object.keys(ALIASES).length} files · ${Object.values(ALIASES).reduce((a, m) => a + Object.keys(m).length, 0)} aliased consts · problems=${problems}`,
+);
 
-if (!APPLY) { console.log("DRY RUN — re-run with --apply to write."); process.exit(problems ? 1 : 0); }
-if (problems) { console.log("Refusing to apply with problems above."); process.exit(1); }
+if (!APPLY) {
+  console.log("DRY RUN — re-run with --apply to write.");
+  process.exit(problems ? 1 : 0);
+}
+if (problems) {
+  console.log("Refusing to apply with problems above.");
+  process.exit(1);
+}
 
 // ── Write the shared persona module. ──
-const SHARED_JWKS = JSON.stringify({ keys: [{ kty: "RSA", n: JWK_N, e: JWK_E, kid: KID, use: "sig", alg: "RS256" }] });
+const SHARED_JWKS = JSON.stringify({
+  keys: [
+    { kty: "RSA", n: JWK_N, e: JWK_E, kid: KID, use: "sig", alg: "RS256" },
+  ],
+});
 const personaDoc = Object.entries(PERSONAS)
   .map(([n, p]) => `//!   ${n.padEnd(15)} ${p.scopes}`)
   .join("\n");
 const personaConsts = Object.entries(tokens)
-  .map(([n, t]) => `/// Persona — see scopes in the module header. Minted by scripts/mint-scope-personas.mjs.\npub const ${n} =\n    "${t}";`)
+  .map(
+    ([n, t]) =>
+      `/// Persona — see scopes in the module header. Minted by scripts/mint-scope-personas.mjs.\npub const ${n} =\n    "${t}";`,
+  )
   .join("\n");
 const MODULE = `//! Shared offline auth fixtures for the integration suite — ONE committed
 //! keypair + a fixed set of PERSONAS, so the JWKS can't drift per-file and a
@@ -176,8 +287,15 @@ for (const [tail, map] of Object.entries(ALIASES)) {
   let txt = readFileSync(f, "utf8");
   const orig = txt;
   for (const [cname, persona] of Object.entries(map)) {
-    txt = txt.replace(CONST_RE(cname), `const ${cname} = scope_fixtures.${persona};`);
+    txt = txt.replace(
+      CONST_RE(cname),
+      `const ${cname} = scope_fixtures.${persona};`,
+    );
   }
-  if (txt !== orig) { writeFileSync(f, txt); edits++; console.log(`  wrote ${tail}`); }
+  if (txt !== orig) {
+    writeFileSync(f, txt);
+    edits++;
+    console.log(`  wrote ${tail}`);
+  }
 }
 console.log(`\nApplied to ${edits} files.`);
