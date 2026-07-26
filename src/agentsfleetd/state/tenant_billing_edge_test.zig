@@ -14,6 +14,7 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 
 const tenant_billing = @import("tenant_billing.zig");
+const billing_rates = @import("tenant_billing_rates.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
@@ -66,7 +67,7 @@ test "should charge the run fee for platform runtime with zero token counts post
     if (try trialActive(db_ctx.conn)) return error.SkipZigTest;
 
     const elapsed_ms: i64 = 10_000;
-    const charge = tenant_billing.computeStageCharge("anthropic", .platform, "claude-sonnet-4-6", elapsed_ms, 0, 0, 0);
+    const charge = try billing_rates.computeStageCharge(db_ctx.conn, "anthropic", .platform, "claude-sonnet-4-6", elapsed_ms, 0, 0, 0);
     // Replicate runFee via the pinned per-second rate (runFee is private).
     const expected_run_fee = @divTrunc(elapsed_ms * tenant_billing.RUN_NANOS_PER_SEC, 1000);
     try std.testing.expectEqual(expected_run_fee, charge);
@@ -87,7 +88,7 @@ test "should not overflow when platform token counts approach u32 max" {
     // Near-u32-max token counts plus an hour of runtime: rate math widens to
     // i64 internally, so the result must be a finite positive i64, no overflow.
     const big: u32 = std.math.maxInt(u32) - 1;
-    const charge = tenant_billing.computeStageCharge("anthropic", .platform, "claude-sonnet-4-6", 3_600_000, big, big, big);
+    const charge = try billing_rates.computeStageCharge(db_ctx.conn, "anthropic", .platform, "claude-sonnet-4-6", 3_600_000, big, big, big);
     try std.testing.expect(charge > 0);
     try std.testing.expect(charge < std.math.maxInt(i64));
 }

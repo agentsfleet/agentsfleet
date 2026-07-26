@@ -53,10 +53,22 @@
 // The catalog row's If-Match verdict added 1 more (library/catalog_patch.zig,
 // "Failed to check this entry's version") — same shape, plain English, so
 // bumped too (84 -> 85).
+//
+// M143 §2's catalogue page added 2 (model_library_page.zig x2, "Failed to build
+// the catalogue page" — one when the ETag will not compute, one when its
+// validators will not attach). Plain English, no schema names, no @errorName,
+// so they are counted rather than mudball-ok'd.
+//
+// The baseline is set to the MEASURED count (84), not bumped to 87. #559 removed
+// 4 sites from workspaces/provision.zig without lowering this constant, leaving
+// main at 82 against a baseline of 85. Three units of slack is three future
+// mudballs this tripwire would not have seen — and it is exactly what these 2
+// additions would otherwise have hidden behind. A ratchet that is not re-tightened
+// after a removal only measures the high-water mark, never the code.
 const std = @import("std");
 const common = @import("common");
 
-const BASELINE_CALL_SITE_COUNT: usize = 85;
+const BASELINE_CALL_SITE_COUNT: usize = 84;
 const CALL_SITE_NEEDLE = "internalOperationError(";
 const HANDLERS_DIR_PATH = "src/agentsfleetd/http/handlers";
 // `http/server.zig` sits one level above `http/handlers/` (the dispatcher,

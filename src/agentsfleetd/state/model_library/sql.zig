@@ -1,15 +1,47 @@
-//! Centralised SQL for the model library catalogue (core.model_library).
-//! Every production query against the table lives here so the table name is
-//! grepable from one place and the store module stays focused on row mapping,
+//! Centralised SQL for the model library catalogue — `core.model_library` and
+//! the generation counter that versions it, `core.model_catalogue_revision`.
+//! Every production query against either table lives here so the table names are
+//! grepable from one place and the store modules stay focused on row mapping,
 //! allocator ownership, and error translation (tests keep their setup/teardown
 //! SQL inline per the SQL Statement Modules rule). Mirrors state/tenant_model_entries/sql.zig.
+//!
+//! The two tables share a module because they are one domain and one read: the
+//! rate loader below projects a row and the generation it was read at in a single
+//! statement, which needs both names. Splitting them would put half of that
+//! statement in another file.
 
 /// The catalogue table — single source for every core.model_library reference.
 pub const TABLE = "core.model_library";
 
-const RATE_COLUMNS =
-    "context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok";
-const FROM_TABLE = "\n  FROM " ++ TABLE;
+/// The generation table — single source for every core.model_catalogue_revision
+/// reference.
+pub const REVISION_TABLE = "core.model_catalogue_revision";
+
+/// The four rate columns, optionally table-qualified.
+///
+/// A joined read cannot reuse the unqualified list: `core.model_library` and
+/// `core.model_catalogue_revision` both carry `updated_at_ms`, so an unqualified
+/// projection across the two is one added column away from an ambiguity error.
+/// Generating both spellings from one source keeps the qualified variant from
+/// drifting when a rate column is added.
+fn rateColumns(comptime prefix: []const u8) []const u8 {
+    return prefix ++ "context_cap_tokens, " ++
+        prefix ++ "input_nanos_per_mtok, " ++
+        prefix ++ "cached_input_nanos_per_mtok, " ++
+        prefix ++ "output_nanos_per_mtok";
+}
+
+const RATE_COLUMNS = rateColumns("");
+const RATE_COLUMNS_JOINED = rateColumns("m.");
+/// `FROM` with the leading newline and indent every statement here uses.
+/// Named because the joined reads below need it against a DIFFERENT table,
+/// and two spellings of one clause is how their formatting drifts apart.
+const FROM_CLAUSE = "\n  FROM ";
+
+/// `UPDATE `, shared by the catalogue row write and the generation bump. Two
+/// tables, one verb — named for the same reason as `FROM_CLAUSE`.
+const UPDATE_CLAUSE = "UPDATE ";
+const FROM_TABLE = FROM_CLAUSE ++ TABLE;
 
 /// The wire columns every authenticated library read projects, shared by the
 /// unpaged list and the §2 page so their column indices cannot drift apart.
@@ -137,7 +169,7 @@ pub const INSERT_ROW =
 /// Update caps/rates of the row identified by uid. Affected 0 → no such uid
 /// (caller → 404).
 pub const UPDATE_RATES =
-    "UPDATE " ++ TABLE ++
+    UPDATE_CLAUSE ++ TABLE ++
     \\
     \\   SET context_cap_tokens = $2, input_nanos_per_mtok = $3,
     \\       cached_input_nanos_per_mtok = $4, output_nanos_per_mtok = $5,
@@ -149,8 +181,62 @@ pub const UPDATE_RATES =
 pub const DELETE_BY_UID =
     "DELETE FROM " ++ TABLE ++ " WHERE uid = $1::uuid";
 
-/// Full rate projection for the in-memory rate cache (model_rate_cache.zig) —
-/// keyed by (provider, model_id) at load time. Column order follows
-/// RATE_COLUMNS (cap first), matching the cache populator's indices.
-pub const LIST_RATES_FOR_CACHE =
-    "SELECT provider, model_id, " ++ RATE_COLUMNS ++ FROM_TABLE;
+/// One model's rate PLUS the catalogue generation it is read at, in ONE
+/// statement (model_rate_cache.zig).
+///
+/// One statement is one snapshot, so the generation and the row are consistent
+/// by construction — there is no window for the counter to advance between
+/// reading it and reading the rate. Two statements would need an explicit
+/// transaction to claim as much, and a caller that forgot one would cache a rate
+/// under a generation it does not belong to. That is the whole failure this
+/// column exists to prevent, so it is not left to a caller to get right.
+///
+/// The join is driven FROM the singleton, not from the catalogue: a LEFT JOIN
+/// this way round still yields the revision on one row when the model is absent,
+/// where an inner join would return nothing and leave the caller unable to tell
+/// "no such model" from "could not read the generation". Those two answers get
+/// different treatment — one is null, the other fails closed.
+pub const LOAD_RATE_WITH_REVISION =
+    "SELECT r.revision, " ++ RATE_COLUMNS_JOINED ++
+    FROM_CLAUSE ++ REVISION_TABLE ++ " r" ++
+    "\n  LEFT JOIN " ++ TABLE ++ " m" ++
+    "\n    ON m.provider = $1 AND m.model_id = $2" ++
+    "\n WHERE r.id = 1";
+
+/// Smallest context window any provider publishes for `model_id`.
+///
+/// A catalogue-wide aggregate, deliberately answered by the database rather than
+/// by scanning the rate cache. The cache is bounded, so a scan of it answers
+/// "the minimum among the rows that happen to be resident" — which is not the
+/// question, and is a larger number than the truth whenever the true minimum was
+/// the evicted row. A context budget above the real window fails the request
+/// mid-run at the provider.
+pub const MIN_CONTEXT_CAP_FOR_MODEL =
+    "SELECT MIN(context_cap_tokens)::int" ++ FROM_TABLE ++ "\n WHERE model_id = $1";
+
+// ── The catalogue generation (core.model_catalogue_revision) ────────────────
+//
+// The table is CHECK-constrained to a single row, but every statement still
+// addresses it explicitly: a statement that leaned on the constraint would pass
+// today and become a full-table write the moment anyone widened the table.
+
+const WHERE_SINGLETON = " WHERE id = 1";
+
+/// Hot-path read. Deliberately NO lock — a reader needs *a* consistent
+/// generation, not the newest one, and locking here would serialize every
+/// catalogue read behind the occasional admin write for no correctness gain.
+pub const SELECT_REVISION = "SELECT revision FROM " ++ REVISION_TABLE ++ WHERE_SINGLETON;
+
+/// Mutation path. `FOR UPDATE` is the serialization point between concurrent
+/// admin writers: two of them must not both read N and both write N+1, which
+/// would leave two different catalogue states sharing one generation.
+pub const LOCK_REVISION = SELECT_REVISION ++ " FOR UPDATE";
+
+/// `revision = revision + 1` is computed by the database under the row lock. A
+/// caller-supplied next value would be a read-modify-write across the
+/// application boundary — exactly the lost update the lock prevents.
+pub const BUMP_REVISION =
+    UPDATE_CLAUSE ++ REVISION_TABLE ++
+    "\n   SET revision = revision + 1, updated_at_ms = $1" ++
+    "\n" ++ WHERE_SINGLETON ++
+    "\nRETURNING revision";

@@ -264,8 +264,15 @@ fn platformDefaultView(alloc: std.mem.Allocator, conn: *pg.Conn) !?PlatformDefau
     };
 }
 
+/// Display-only rate lookup: resident entries only, never a database read.
+///
+/// Every rate field this view projects is already nullable, so a miss renders a
+/// blank cell rather than a wrong number. That is the whole reason this page may
+/// use the non-loading reader: §3 pins this read at five statements, and a
+/// per-row load would make the statement count a function of page size — the
+/// exact unbounded shape the workstream exists to remove.
 fn lookupModelRate(provider: []const u8, model_id: []const u8) ?model_rate_cache.ModelRate {
-    return model_rate_cache.lookup_model_rate(provider, model_id);
+    return model_rate_cache.cachedRate(provider, model_id);
 }
 
 fn dupeOpt(alloc: std.mem.Allocator, s: ?[]const u8) !?[]const u8 {
