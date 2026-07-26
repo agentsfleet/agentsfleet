@@ -116,6 +116,22 @@ pub fn identityMatches(cursor_owner: []const u8, request_owner: []const u8, curs
     return std.mem.eql(u8, cursor_owner, request_owner) and cursor_limit == request_limit;
 }
 
+/// Do a cursor's filter and the request's filter agree?
+///
+/// Absent matches absent; absent never matches present. Extracted for the same
+/// reason as `identityMatches`: §2's catalogue binds its cursor to `q` and
+/// `provider`, §3's Fleet gallery binds its own to `q`, and a rule spelled at
+/// three call sites is one that eventually differs at one of them.
+///
+/// A mismatch is `UZ-LIBRARY-002`, not `001`: the cursor is well-formed and was
+/// issued by this service — it simply describes a different query, and resuming
+/// it would silently paginate a set the caller did not ask for.
+pub fn filterMatches(cursor_filter: ?[]const u8, request_filter: ?[]const u8) bool {
+    const a = cursor_filter orelse return request_filter == null;
+    const b = request_filter orelse return false;
+    return std.mem.eql(u8, a, b);
+}
+
 /// Parse a `limit=` query value. Absent or empty yields `DEFAULT_LIMIT`; a
 /// non-numeric value, zero, or anything above `MAX_LIMIT` is rejected so the
 /// caller can answer `UZ-LIBRARY-003`.
@@ -242,6 +258,21 @@ test "rejects malformed base64, non-JSON, and truncated input" {
     try testing.expectError(Error.Malformed, decode(a, TestCursor, not_json));
     // Empty input carries no boundary.
     try testing.expectError(Error.Malformed, decode(a, TestCursor, "eyJ2IjoxLA"));
+}
+
+test "filterMatches: absent agrees with absent, never with present" {
+    try testing.expect(filterMatches(null, null));
+    try testing.expect(!filterMatches(null, "claude"));
+    try testing.expect(!filterMatches("claude", null));
+}
+
+test "filterMatches: equal filters agree, different ones do not" {
+    try testing.expect(filterMatches("claude", "claude"));
+    try testing.expect(!filterMatches("claude", "gpt"));
+    // An empty filter should never reach here — normalization maps it to absent
+    // — but if one did it must not read as "no filter".
+    try testing.expect(!filterMatches("", null));
+    try testing.expect(filterMatches("", ""));
 }
 
 test "parseLimit: absent and empty both mean the default" {
