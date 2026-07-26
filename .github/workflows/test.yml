@@ -13,6 +13,7 @@ on:
       - 'build.zig'
       - 'build.zig.zon'
       - 'build_runner.zig'
+      - 'make/**'
       - 'schema/**'
       - '.github/workflows/test.yml'
   pull_request:
@@ -82,6 +83,46 @@ jobs:
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-
       - name: Test shared src/lib (Zig units)
         run: make test-unit-agentsfleet-lib
+
+  test-coverage-zig:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r2@sha256:40cbacd00584601a4794471e01cb11942ef5319c0531e4185c54d78733285803
+    steps:
+      - uses: actions/checkout@v6
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-
+      - name: Gate merged Zig line coverage
+        run: make test-coverage-zig
+      - name: Publish Zig coverage summary
+        if: always()
+        run: |
+          test -s .tmp/zig-coverage.txt || exit 0
+          coverage="$(sed -n 's/^zig_line_coverage_pct=//p' .tmp/zig-coverage.txt)"
+          minimum="$(sed -n 's/^zig_line_coverage_min_pct=//p' .tmp/zig-coverage.txt)"
+          {
+            echo "## Zig coverage"
+            echo
+            echo "| Measured | Required |"
+            echo "| ---: | ---: |"
+            echo "| ${coverage}% | ${minimum}% |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Zig coverage report
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: zig-coverage-html
+          path: coverage/zig/merged
+          if-no-files-found: error
+          retention-days: 14
 
   test-unit-cli:
     runs-on: ubuntu-latest

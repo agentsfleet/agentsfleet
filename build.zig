@@ -14,9 +14,7 @@ const S_ZBENCH = "zbench";
 const S_BUILD_OPTIONS = "build_options";
 const S_SCHEMA = "schema";
 const S_SRC_MAIN_ZIG = "src/agentsfleetd/main.zig";
-const S_AGENTSFLEETD_TESTS_ROOT = "src/agentsfleetd/tests.zig";
 const S_NULLCLAW = "nullclaw";
-const S_AGENTSFLEETD_TESTS = "agentsfleetd-tests";
 const S_LOG = "log";
 const S_HMAC_SIG = "hmac_sig";
 const S_AUTH_CODES = "auth_codes";
@@ -29,10 +27,6 @@ const S_HTTP_PIN = "http_pin";
 const S_TRIPWIRE = "tripwire";
 const S_S3 = "s3";
 const S_GEN_ERROR_CODES = "gen-error-codes";
-// Directory the daemon test root is rooted at. Zig names a registered test after
-// its source path relative to this directory, so `list-tests` echoes it for the
-// reachability checker (`scripts/check_zig_test_reachability.py`).
-const S_AGENTSFLEETD_TESTS_ROOT_DIR = "src/agentsfleetd";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -230,39 +224,25 @@ pub fn build(b: *std.Build) void {
     const run_gen_error_codes = b.addRunArtifact(gen_error_codes);
     b.step(S_GEN_ERROR_CODES, "Render error-codes.mdx from the registry to stdout").dependOn(&run_gen_error_codes.step);
 
-    // ── Test step ─────────────────────────────────────────────────────────────
-    const tests = b.addTest(.{
-        .name = S_AGENTSFLEETD_TESTS,
-        .root_module = b.createModule(.{
-            .root_source_file = b.path(S_AGENTSFLEETD_TESTS_ROOT),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = S_HTTPZ, .module = httpz_mod },
-                .{ .name = S_CACHE, .module = cache_mod },
-                .{ .name = S_PG, .module = pg_mod },
-                .{ .name = S_POSTHOG, .module = posthog_mod },
-                .{ .name = S_SCHEMA, .module = schema_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
-                .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
-                .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
-                .{ .name = S_LOG, .module = log_mod },
-                .{ .name = S_CONTRACT, .module = contract_mod },
-                .{ .name = S_COMMON, .module = common_mod },
-                .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
-                .{ .name = S_HTTP_PIN, .module = deps.http_pin },
-                .{ .name = S_TRIPWIRE, .module = deps.tripwire },
-                .{ .name = S_YAML, .module = yaml_mod },
-                .{ .name = S_S3, .module = s3_mod },
-            },
-        }),
-        .filters = test_filters,
-    });
-    buildpkg.fixtures.addDaemon(b, tests.root_module);
-    const run_tests = b.addRunArtifact(tests);
-    b.step("test", "Run unit tests").dependOn(&run_tests.step);
-    buildpkg.test_list.addLane(b, list_step, S_AGENTSFLEETD_TESTS, tests.root_module, S_AGENTSFLEETD_TESTS_ROOT_DIR);
+    buildpkg.daemon_tests.addTestSteps(b, target, optimize, test_filters, &.{
+        .{ .name = S_NULLCLAW, .module = nullclaw_mod },
+        .{ .name = S_HTTPZ, .module = httpz_mod },
+        .{ .name = S_CACHE, .module = cache_mod },
+        .{ .name = S_PG, .module = pg_mod },
+        .{ .name = S_POSTHOG, .module = posthog_mod },
+        .{ .name = S_SCHEMA, .module = schema_mod },
+        .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
+        .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
+        .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
+        .{ .name = S_LOG, .module = log_mod },
+        .{ .name = S_CONTRACT, .module = contract_mod },
+        .{ .name = S_COMMON, .module = common_mod },
+        .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+        .{ .name = S_HTTP_PIN, .module = deps.http_pin },
+        .{ .name = S_TRIPWIRE, .module = deps.tripwire },
+        .{ .name = S_YAML, .module = yaml_mod },
+        .{ .name = S_S3, .module = s3_mod },
+    }, list_step);
 
     // `test-auth`: the src/agentsfleetd/auth/** portability gate (src/build/auth_tests.zig).
     buildpkg.auth_tests.addTestStep(b, target, optimize, test_filters, &.{
@@ -340,10 +320,4 @@ pub fn build(b: *std.Build) void {
         if (b.args) |args| run_bench_redis.addArgs(args);
         b.step("bench-redis", "Run Redis XADD concurrency bench (BENCH_REDIS=1)").dependOn(&run_bench_redis.step);
     }
-
-    // Installable backend test binary for coverage tooling (kcov/codecov).
-    const install_tests = b.addInstallArtifact(tests, .{
-        .dest_sub_path = S_AGENTSFLEETD_TESTS,
-    });
-    b.step("test-bin", "Build/install backend test binary for coverage").dependOn(&install_tests.step);
 }
