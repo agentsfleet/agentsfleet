@@ -4,6 +4,17 @@ const Client = @import("Client.zig");
 const config = @import("config.zig");
 const test_port = @import("../../http/test_port.zig");
 
+// Every test here runs on common.globalIo(), the statically single-threaded io.
+// On it `io.async` — which `std.Io.net.HostName.connect` uses internally for
+// the dial — executes inline and returns no future, so no worker thread exists
+// to lose Zig 0.16's futex wake-after-return race (std.Io.Threaded: the worker
+// publishes the wake condition, then hands a futex word on the awaiter's
+// already-popped stack frame to futex(2); Threaded.zig:760-762). The valgrind
+// memleak lane flags that race, and `make/bench.mk` deliberately carries no
+// suppression for it because the finding is genuine. No test needs io
+// concurrency: the fail-fast paths never reach the network, and the 200-path's
+// loopback peer runs on its own std.Thread.
+
 const TEST_TIMEOUT_MS: i96 = 1_000;
 
 fn deadlineAfter(io: std.Io, timeout_ms: i96) i96 {
@@ -34,9 +45,7 @@ test "test_persistent_client_lifecycle: construct and tear down without crash" {
 test "test_post_propagates_transport_error_to_exporter_log" {
     const alloc = std.testing.allocator;
 
-    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
+    const io = common.globalIo();
     var client = Client.init(io);
     defer client.deinit();
 
@@ -66,9 +75,7 @@ test "test_post_propagates_transport_error_to_exporter_log" {
 test "test_post_propagates_oversized_auth_formatting_error" {
     const alloc = std.testing.allocator;
 
-    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
+    const io = common.globalIo();
     var client = Client.init(io);
     defer client.deinit();
 
@@ -96,9 +103,7 @@ test "test_post_propagates_oversized_auth_formatting_error" {
 // std.testing.allocator, so it doubles as a zero-leak proof of the timeout path
 // (the URL scratch allocated before the check must be freed by its defer).
 test "test_post_refuses_before_network_when_deadline_already_spent" {
-    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
+    const io = common.globalIo();
     var client = Client.init(io);
     defer client.deinit();
 
@@ -126,9 +131,7 @@ const LEAK_LOOP_ITERS: usize = 64;
 // fails the test on the first unfreed byte, so a clean run over N iterations is
 // the proof the fail-fast path leaks nothing across reuse.
 test "test_post_fail_fast_path_leaks_nothing_across_reuse" {
-    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
+    const io = common.globalIo();
     var client = Client.init(io);
     defer client.deinit();
 
@@ -183,17 +186,11 @@ const OkServer = struct {
 // path the exporter runs in production. testing.allocator doubles it as a
 // zero-leak proof of the success path (URL + response scratch freed).
 test "integration: test_post_returns_accepted_on_200" {
-    // Skip under valgrind: a successful real fetch spawns a std.Io.Threaded
-    // worker, and glibc's pthread TLS/dtv block for it reads as "possibly lost"
-    // to valgrind — a std/runtime artifact, not a leak in this code (the fix
-    // removed allocations, and the fail-fast/no-growth tests stay valgrind-clean).
-    // This still runs natively in test-unit-agentsfleetd, which is where the
-    // success path is validated; only the valgrind memleak lane skips it.
-    if (std.valgrind.runningOnValgrind() != 0) return error.SkipZigTest;
-
-    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
-    defer threaded.deinit();
-    const io = threaded.io();
+    // Runs under valgrind: on globalIo() the fetch spawns no std.Io.Threaded
+    // worker (io.async runs inline), so no glibc pthread TLS/dtv block exists
+    // to read as "possibly lost" — the success path is leak-audited under the
+    // memleak lane like every other test here.
+    const io = common.globalIo();
     var loopback = test_port.listenLoopback(io) catch return error.SkipZigTest;
     defer loopback.server.deinit(io);
 

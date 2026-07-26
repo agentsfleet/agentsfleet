@@ -15,7 +15,7 @@ const std = @import("std");
 const pg = @import("pg");
 const clock = @import("common").clock;
 const queue_redis = @import("../queue/redis_client.zig");
-const ec = @import("../errors/error_registry.zig");
+const gate_constants = @import("approval_gate_constants.zig");
 const approval_gate = @import("approval_gate.zig");
 const approval_gate_db = @import("approval_gate_db.zig");
 const logging = @import("log");
@@ -66,11 +66,11 @@ pub fn recordEventGateRef(
     deadline_ms: i64,
 ) !void {
     var key_buf: [256]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, REF_KEY_FMT, .{ ec.GATE_EVENT_REF_KEY_PREFIX, fleet_id, event_id });
+    const key = try std.fmt.bufPrint(&key_buf, REF_KEY_FMT, .{ gate_constants.GATE_EVENT_REF_KEY_PREFIX, fleet_id, event_id });
     var val_buf: [64]u8 = undefined;
     const val = try std.fmt.bufPrint(&val_buf, "{s}" ++ REF_SEPARATOR ++ "{d}", .{ action_id, deadline_ms });
     const remaining_s = @divTrunc(deadline_ms - clock.nowMillis(), std.time.ms_per_s) + REF_TTL_GRACE_SECONDS;
-    const ttl: u32 = @intCast(@max(@as(i64, ec.GATE_PENDING_TTL_SECONDS), remaining_s));
+    const ttl: u32 = @intCast(@max(@as(i64, gate_constants.GATE_PENDING_TTL_SECONDS), remaining_s));
     try redis.setEx(key, val, ttl);
 }
 
@@ -80,7 +80,7 @@ pub fn lookupEventGateRef(
     event_id: []const u8,
 ) !?EventGateRef {
     var key_buf: [256]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, REF_KEY_FMT, .{ ec.GATE_EVENT_REF_KEY_PREFIX, fleet_id, event_id });
+    const key = try std.fmt.bufPrint(&key_buf, REF_KEY_FMT, .{ gate_constants.GATE_EVENT_REF_KEY_PREFIX, fleet_id, event_id });
     var resp = try redis.commandAllowError(&.{ S_GET, key });
     defer resp.deinit(redis.alloc);
     const raw = switch (resp) {
@@ -103,7 +103,7 @@ fn parseRef(raw: []const u8) ?EventGateRef {
 
 pub fn readDecision(redis: *queue_redis.Client, action_id: []const u8) !?StoredDecision {
     var key_buf: [256]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "{s}{s}", .{ ec.GATE_RESPONSE_KEY_PREFIX, action_id });
+    const key = try std.fmt.bufPrint(&key_buf, "{s}{s}", .{ gate_constants.GATE_RESPONSE_KEY_PREFIX, action_id });
     var resp = try redis.commandAllowError(&.{ S_GET, key });
     defer resp.deinit(redis.alloc);
     const val = switch (resp) {
@@ -111,8 +111,8 @@ pub fn readDecision(redis: *queue_redis.Client, action_id: []const u8) !?StoredD
         .simple => |s| s,
         else => return null,
     };
-    if (std.mem.eql(u8, val, ec.GATE_DECISION_APPROVE)) return .approved;
-    if (std.mem.eql(u8, val, ec.GATE_DECISION_DENY)) return .denied;
+    if (std.mem.eql(u8, val, gate_constants.GATE_DECISION_APPROVE)) return .approved;
+    if (std.mem.eql(u8, val, gate_constants.GATE_DECISION_DENY)) return .denied;
     return null;
 }
 

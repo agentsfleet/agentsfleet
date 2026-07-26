@@ -20,6 +20,8 @@ const std = @import("std");
 const pg = @import("pg");
 
 const logging = @import("log");
+const library_counters = @import("../observability/library_read_counters.zig");
+
 const log = logging.scoped(.pg_query);
 pub const PgQuery = struct {
     const Self = @This();
@@ -33,6 +35,13 @@ pub const PgQuery = struct {
 
     /// Wrap a *pg.Result returned by conn.query(). Use defer deinit() immediately.
     pub fn from(result: *pg.Result) PgQuery {
+        // §3's statement budget is counted here, not in the handlers. Every
+        // row-returning query in the process passes through this constructor —
+        // the pg-drain gate is what guarantees that — so a helper added to a
+        // library read path later is counted without anyone remembering to
+        // count it. Outside a measured read the tally is not armed, and in a
+        // release build the call compiles to nothing.
+        library_counters.noteStatement();
         return .{ .inner = result };
     }
 

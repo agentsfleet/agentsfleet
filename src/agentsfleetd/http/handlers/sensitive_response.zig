@@ -7,13 +7,18 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const common = @import("common.zig");
+const response_size = @import("../response_size.zig");
 const metrics = @import("../../observability/metrics_sensitive_memory.zig");
+
+/// This boundary serializes with std.json's defaults, and the size must be
+/// measured under the same options it is written with — see response_size.zig.
+const JSON_OPTIONS: std.json.Stringify.Options = .{};
 
 pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) void {
     eraseBuffered(res);
     res.clearWriter();
 
-    const size = serializedSize(value) catch {
+    const size = response_size.encoded(value, JSON_OPTIONS) catch {
         serializationFailed(res);
         return;
     };
@@ -26,7 +31,7 @@ pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) 
     // write still leaves every touched byte visible to serializationFailed.
     res.buffer.writer.end = size;
     var fixed = std.Io.Writer.fixed(res.buffer.writer.buffered());
-    std.json.fmt(value, .{}).format(&fixed) catch {
+    std.json.fmt(value, JSON_OPTIONS).format(&fixed) catch {
         serializationFailed(res);
         return;
     };
@@ -42,13 +47,6 @@ pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) 
         res.conn.handover = .close;
     };
     eraseBuffered(res);
-}
-
-fn serializedSize(value: anytype) !usize {
-    var empty: [0]u8 = .{};
-    var counter = std.Io.Writer.Discarding.init(&empty);
-    try std.json.fmt(value, .{}).format(&counter.writer);
-    return std.math.cast(usize, counter.fullCount()) orelse error.OutOfMemory;
 }
 
 fn serializationFailed(res: *httpz.Response) void {
