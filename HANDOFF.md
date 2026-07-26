@@ -1,180 +1,148 @@
-# HANDOFF — M141_001, bounded runner lease fan-out
+# HANDOFF — M141_001, bounded runner lease fan-out (close-out session 2)
 
 **Ephemeral.** Delete at CHORE(close); it briefs the next agent and never ships in the PR.
 
-Written: Jul 26, 2026, ~8:00 PM. Branch `feat/m141-lease-fanout`, **27 commits ahead of
-`origin/main` (e1ec00be2), not pushed, no PR.** Rebased onto current main this session —
-zero conflicts, version synced at 0.22.1, `make check-version` green.
+Written: Jul 26, 2026, ~9:05 PM. Branch `feat/m141-lease-fanout`, **30 commits ahead of
+`origin/main` (e1ec00be2), not pushed, no PR.** Working tree clean except untracked
+`itest.sh`. Docs worktree `/tmp/docs-m141` on `chore/m141-lease-fanout-changelog`,
+2 commits, PUSHED, no PR.
 
 ---
 
-## READ THIS FIRST — the suite is GREEN; what remains is tests-the-spec-demands + close
+## READ THIS FIRST — everything is implemented; what remains is gates → rubric → close
 
-The 15-failure saga is OVER. Three root causes, all test-side, all fixed and committed:
+The prior session's mandate is complete through item 5 of 6:
 
-1. **Index crowding** — the GitHub App ingress suite published events for ~100 fleets
-   (each marks `fleet:ready`) and tore down streams only. ~100 leaked marks crowded the
-   bounded (64) randomized peek for every seed-shuffled test that ran after it
-   (~37% miss per poll at depth ~101). That was the ENTIRE rotating/passes-alone family.
-   Fixed: teardown purges via `purgeFleetRedisState` (commit `a012d7e15`).
-   Measured live with a 2s `HKEYS` sampler — pre-fix 101 foreign marks resident ~75s;
-   post-fix zero. The "mystery janitor" that sometimes hid the leak at run end is
-   `assign_ready_integration_test.zig`'s `clearWholeIndex` (DELs the whole key at each
-   of its tests' starts — position seed-dependent, hence the wandering counts).
-2. **Pre-M141 discovery assumptions** — roundtrip pair + consumer-identity seeded
-   Postgres state no poll can discover under ready-first. Rebuilt production-shaped
-   (publish → lease → affinity-expiry → reclaim), assertions kept (`faf7eb70d`).
-3. **subscription_hub flake** (`expected 10, found 9`) — publish raced the viewer's
-   SUBSCRIBE registration; every sibling test settles with `expectNumsub(ch,1)` first,
-   this one didn't. Fixed (`a642f5dcf`). Pre-existing (failed in integ3, prior session).
+1. ✅ **Seven review-demanded test additions** — committed `052fbe570`, each run green
+   via the focused runner. New `fleet/assign_ready_faults_integration_test.zig`
+   (ceiling / mark-failure / peek-failure / memo-invalidate / heal — now also the
+   gate auto-kill pause test, see item 3), registered in `tests.zig`; 100-way HTTP
+   single-winner in `concurrency_lease_test.zig`; memo-hit-skips-Postgres in
+   `runner_enrollment_integration_test.zig`; token ascending-sort in
+   `assign_ready_integration_test.zig`.
+2. ✅ **Spec row reconciliations** — same commit (Dim 1.3, 3.6, 1.2 tier, 2.2
+   enrichment, regression-row equivalences, R8 note, Files-Changed rows).
+3. ✅ **Two recovered Codex findings FIXED** — committed `56bf3d15c` on Indy's
+   explicit in-session ruling (he chose fix-in-PR for BOTH when offered
+   fix/register/follow-up): the raw Codex log (session scratchpad
+   `6b9c028f-…/scratchpad/codex_review.log`, tail) held 5 findings; 3 were in the
+   fix commit `565ed027a`, 2 had been dropped from the digest:
+   - `cron/FireQueue.zig` (the SECOND stream producer — atomic dedup Lua) never
+     marked `fleet:ready` → scheduled fires waited out sweeper reach. Now marks
+     after a successful append; duplicate arm proven to mark nothing
+     (`fire_queue_integration_test.zig`, whose fleet ids also became minted
+     UUIDv7s + teardown drops marks — they'd otherwise leak junk into the shared
+     index, the crowding class from the 15-failure saga).
+   - `fleet/approval_gate.pauseFleet` bypassed the PATCH-site readiness clear.
+     Now takes the redis client (both call sites had it in scope) and
+     force-clears after the pause UPDATE commits; skipped on UPDATE failure.
+     Proven end to end in the faults suite (paused + mark cleared + no lease).
+   - Spec: Files-Changed rows for all three files, §1 one-producer premise
+     corrected, Dim 1.1/3.7 rows updated, Discovery entry records the ruling.
+4. ✅ **Docs** — the HANDOFF-claimed `UZ-UUIDV7-009` gap was FALSE (row shipped
+   Jul 12, docs `ee22c03`); verified, no page change needed. Changelog `<Update>`
+   amended instead (scheduled-fires bullet + auto-pause added to the
+   stop/delete bullet), committed `9a1e6f0`, pushed. Discovery for later
+   (recorded in Session Notes): `zig build gen-error-codes` raw output has
+   drifted from the hand-curated page and fails the docs repo's version pin
+   (`EXPECTED_VERSION 0.17.0` in `scripts/check-documentation.py`) and DOC-05
+   banned words coming from registry prose — docs-tooling reconciliation, NOT
+   owned by M141.
+5. ✅ **Cheap rubric rows pre-graded on the final tree** (see §Rubric below).
+6. ⏳ **Final gate battery** — RUNNING in background at handoff time. See next.
 
-**Run ledger** (full `make test-integration`, per-worktree infra):
-integ5 = 2659/16/10 (pre-fix baseline, sampler on) → integ6 = 2668/16/1 (hub flake) →
-**integ7 = MAKE_RC=0** (canonical green, pre-rebase tree). Read pass+skip+fail together;
-skips steady at 16. integ8 does not exist as evidence — see §What I got wrong.
+## The gate battery — check it FIRST
 
-## The review army ran; its fixes are committed (`565ed027a`)
+Script + logs (absolute paths, previous session's scratchpad — readable across sessions):
 
-gstack `/review` (4 specialists + Claude adversarial + Codex adversarial + Codex
-structured) is DONE. Everything that survived verification is fixed and committed:
-CacheTable.put duplicate-entry, decodePeek canonical-id hardening + peek self-heal,
-purge ordering, mark-before-dupe, decode free-before-assign leak, lookup double-mutex,
-metrics-doc trim (two documented families didn't exist), stale comments, wall-clock +
-rotation-obligation docs. All focused suites + lib lanes green after.
+- Script: `/private/tmp/claude-501/-Users-kishore-Projects-agentsfleet/b9732de8-61f3-4ea0-9f77-e2f2a7b79376/scratchpad/final_gates.sh`
+- Results ledger: same dir `…/scratchpad/gates/RESULTS.txt` (one `<lane> RC=<n>` line per lane; ends with `ALL DONE`)
+- Per-lane logs: `…/scratchpad/gates/<lane>.log`
 
-## NOT done — in order for the next session
+Lanes, in order: `test-integration`, `test-unit-all`, `memleak`, `harness-verify`,
+`gitleaks`, `xcompile-x86`, `xcompile-aarch64`, `r10-lib` (`make
+test-unit-agentsfleet-lib`), `r10-auth` (`zig build test-auth`).
 
-1. **Seven test additions the review demands (spec ship-gate items).** Shapes are
-   settled; implement:
-   - NEW `src/agentsfleetd/fleet/assign_ready_faults_integration_test.zig` (register in
-     `tests.zig`, add Files-Changed row): (a) Dim 2.2 ceiling — `fleet_ready.mark` 74
-     active fleets (`fixtures.seedFleet`, NO sessions needed — they never lease; ids
-     `0195c9da-1e2a-7f13-8abc-2b3e1e0f{d:0>4}`), one `pollLease`, assert
-     `snap.lease_poll_candidates_scanned_total == MAX_READY_CANDIDATES_PER_POLL` and
-     HLEN == 10 after (64 examined-empty get cleared); defer whole-index DEL.
-     (b) Dim 1.2 mark-failure — `SET fleet:ready junk` → `publishEvent` returns id +
-     `fleet_ready_write_failures_total` delta 1 → DEL key. (c) peek-failure — same
-     SET → `pollLease` false (200, lease null), db_roundtrips delta 0 → DEL.
-     (d) Dim 4.3 memo — publish (group memoized) → `XGROUP DESTROY` → poll false
-     (invalidate) → publish ev2 → poll true. (e) heal — HSET junk field + publish real
-     fleet → poll leases it + junk field HDEL'd by peek.
-   - `concurrency_lease_test.zig` (129 lines, room): 100-way SINGLE-WINNER through the
-     full HTTP lease path (mirror roundtrip's registry wiring + github ingress test's
-     100-thread barrier pattern; token `"c" ** 64`; needs tenant/workspace/provider/
-     balance/fleet+session/publish; count exactly 1 non-null lease, 100× status 200).
-   - `runner_enrollment_integration_test.zig` (318 lines): memo-hit-skips-Postgres —
-     authenticated poll (memoized) → `DELETE FROM fleet.runners` row → poll again
-     inside TTL → still 200 (a PG read would 401). Deterministic, no counters needed.
-   - `assign_ready_integration_test.zig` token test: add ascending-sort assertion
-     (sleep 2ms between marks, `std.mem.order(u8, first, second) == .lt`).
-2. **Spec row amendments** (reconciliations, not deferrals — say so in Session Notes):
-   Dim 1.3 row (concurrent-marks distinctness is unobservable through the public API —
-   mark mints internally and the hash keeps only the last write; sequential
-   distinct + canonical + ascending is what's provable), Dim 3.6 row (proof is
-   two-layer: module-level stale-token no-op test + `clearReadiness` threading the
-   peeked token — a poll-level interleave needs a production seam; note the option),
-   regression rows (`test_reclaim_and_fencing_unchanged` ≙ the rebuilt roundtrip
-   monotonic test; `test_concurrent_runners_single_winner` ≙ claim-layer 100-way +
-   the new HTTP 100-way), R8's "two unnamed" note (now: spec + HANDOFF, both at close).
-3. **Final gates on the FINAL tree** (the review commit touched production code, so
-   everything re-earns): `make test-integration` (Indy's post-review sequencing; run
-   once, count-compare vs integ7), `make test-unit-all`, `make memleak`,
-   `make harness-verify`, `gitleaks detect --no-banner`, both cross-compiles,
-   R10 verbatim (`make test-unit-agentsfleet-lib && zig build test-auth`).
-   **Reset the DB first if migrate refuses**: main retired migration 35, so a stale
-   local DB triggers `MigrationSchemaAhead` — `make _reset-test-db` fixes it (memleak
-   hit this; CI never does because the canonical lane resets).
-4. **Rubric re-grade — every row, from the final tree's runs.** R10's Graded cell is
-   EMPTY (ship gate blocks on it). Evidence already in hand for R10: both commands
-   exit 0 + `runner_token_cache_test.zig` touched only by §6 commits (`d83ac6a85`,
-   `29e7ddbf0`), not by the §7 refactor (`0b192aa69`, `8f0c5fc9c`). The env-caveat
-   paragraph and Dead-Code-Sweep row are already rewritten for per-worktree infra.
-5. **Docs**: changelog `<Update>` exists and is accurate (docs repo `/tmp/docs-m141`,
-   branch `chore/m141-lease-fanout-changelog`, commit 4de4347, pushed, NO PR).
-   **Gap found: `api-reference/error-codes.mdx` needs the new `UZ-UUIDV7-009` row** —
-   the branch added it to the registry; regenerate via `zig build gen-error-codes`
-   into the docs worktree and amend/commit on that branch before opening the docs PR.
-6. **CHORE(close)**: spec `active/` → `done/` + `Status: DONE`, PR `## Session notes`
-   (seed content below), DELETE this file and `itest.sh` (technique preserved in
-   Session Notes), orphan sweep, `git status` empty post-commit, then `gh pr create`,
-   docs PR, `kishore-babysit-prs`.
+- If `RESULTS.txt` ends `ALL DONE` with every `RC=0` → grade the rubric and close.
+- If the battery died mid-run (session end can kill it): re-run
+  `bash <script>` — it restarts from the top; or run remaining lanes by hand
+  (they're plain `make`/`zig build` commands, see the script).
+- If `migrate` refuses with `MigrationSchemaAhead`: `make _reset-test-db` first
+  (main retired migration 35; stale local DBs trip it).
+- Compare integ counts vs the ledger: integ7 (pre-additions) = 2668 pass / 16 skip.
+  The final tree adds 9 integration tests (7 additions incl. the split heal/kill
+  cases + 2 cron assertions ride existing tests) — expect pass ≈ 2677±, skips
+  pinned at 16. Read pass+skip+fail TOGETHER.
 
-## Session Notes seed (paste-and-trim into the PR)
+## Rubric state (spec `docs/v2/active/M141_….md` §Acceptance Rubric)
 
-- Root-cause narrative + run ledger: §READ THIS FIRST above, verbatim.
-- Review army disposition: fixed-in-`565ed027a` list above, plus this
-  **design-risk register** (surfaced, not silently accepted — Indy should eyeball):
-  - **Cross-tenant sample flooding (Codex, critical-rated)**: a tenant minting many
-    active fleets with unmatchable `required_tags` + one event each dominates the
-    64-field random sample; victim pickup probability decays with attacker fleet
-    count. Spec's known-limitation entry + Failure-Modes row cover the benign skew
-    case; the ADVERSARIAL case is scheduler-scope (per-tenant mark caps / stratified
-    peek). Pre-M141 had no starvation (unbounded scan) but O(fleets) cost — this is
-    the trade the milestone made, now named.
-  - **Redis-brownout PG-conn pinning (Codex)**: poll holds one PG conn across ≤64
-    candidates' Redis ops; brownout = 64 serial timeout windows per conn. Strictly
-    better than pre-M141 (unbounded), same shape. Follow-up: consecutive-Redis-error
-    bailout in the candidate loop.
-  - **Wall-clock revocation expiry** (documented in code): NTP step extends a revoked
-    runner's window on sibling machines. Monotonic-clock swap is the hardening.
-  - **Resume-to-active doesn't re-mark** (spec-deliberate): retained work waits for
-    sweeper reach; cheap option if wanted: unconditional mark on resume (false
-    positive costs one wasted check).
-  - **Probe fails closed silently** (Codex): sweeper's undelivered probe errors →
-    `false` + warn, no counter; a metric needs a semantic-registry name (M139).
-  - **Sweeper keyset scan unindexed** (perf specialist): `(status, updated_at, id)`
-    btree in a future schema slot; pre-existing shape, background cadence.
-  - **forgetFleet ×9 DRY** (maintainability): hoist onto TestHarness — follow-up.
-  - Declined: EVALSHA for clear (call frequency doesn't justify untested fallback);
-    `FLEET_ID_MAX_LEN` dedupe (locality + symmetry with the auth twin).
-- **Test-vs-design call made under the no-deferral mandate**: consumer-identity test
-  rewritten to a parked-gated-event probe loop (== 1 assertion kept, strictly
-  stronger). Recorded in spec Discovery with rationale.
-- **/write-unit-test ledger**: session delta was test-files-only pre-review; the
-  review commit's production edits are each pinned (cache duplicate-entry test,
-  decodePeek skip test) or covered by unchanged suites (lookup reorder → test-auth
-  63/63; purge reorder + mark reorder → readiness/ready suites 82+116 green).
-  Red-green: the three discovery tests failed on the pre-fix tree in real runs
-  (integ4/5 logs) and pass post-fix; the hub guard's red is integ3/integ6.
-- **Focused-runner recipe** (itest.sh, deleted at close): ports from
-  `docker port agentsfleet-m141-lease-fanout-{postgres,redis,qstash}-1`, then
-  `TEST_DATABASE_URL=... TEST_REDIS_TLS_URL=... REDIS_URL_API=...
-  REDIS_TLS_CA_CERT_FILE=$PWD/.tmp/redis-ca.crt AGENTSFLEET_QSTASH_LIVE_URL=...
-  zig build test -Dtest-filter="..."` — cert refreshed from the container first.
-  **Never use it for full-suite evidence** (no LIVE_DB → 68 skips).
-- The single highest-value diagnostic remains:
-  `docker exec agentsfleet-m141-lease-fanout-redis-1 sh -c 'redis-cli --tls --insecure -a agentsfleet --no-auth-warning HKEYS fleet:ready'` — empty after a clean run.
+Pre-graded this session on the FINAL tree (evidence in hand, cells not yet edited):
 
-## What I got wrong this session — so it doesn't cost you
+- **R7** ✅ `runner_fleet.md` +30/−2, `scaling.md` +29/−4 (both non-empty).
+- **R8** ✅ 69 changed paths; only unnamed = the spec itself (pending/active pair)
+  and `HANDOFF.md`, both handled at close. (Verified by scripted diff-vs-table compare.)
+- **S6** ✅ `make _zig_line_limit_check` → "All new Zig files within 350-line limit".
+- **R10 provenance** (the empty cell that blocks the ship gate): §7 refactor commits
+  `0b192aa69`/`8f0c5fc9c` carry ZERO diff on `runner_token_cache_test.zig`.
+  IMPORTANT correction to the prior handoff's evidence: `565ed027a` DID touch that
+  file — but comment-only (3+/2−, the stale direct-mapped-era comment reworded;
+  assertions byte-identical), which still honors Dim 7.2. Grade R10 from
+  `r10-lib` + `r10-auth` RC=0 plus exactly this provenance statement.
+- Everything else (R1, R3, R4, R5, R6, R9, S1, S3, S4, S5): grade from the
+  battery's lane logs — decisive line + RC per row. EVERY row re-earns from the
+  final tree; don't carry the old cells' run ids forward.
 
-1. **Ran a full-suite question through the per-suite tool** (integ8 via itest.sh):
-   no `LIVE_DB=1` → 68 skips (= suites not running), and I rebased MID-COMPILE so it
-   built a mixed tree against an unmigrated DB. Discarded. `make test-integration`
-   is the only full-run lane.
-2. **Chased `MigrationSchemaAhead` as corruption** — it was main retiring migration
-   35 (canonical set {1..34,36,37,38}) vs a stale local DB holding 35. Reset fixes.
-3. **Treated zig's `failed command:` stderr line as a failure signal** — it prints on
-   fully-green runs too (observed on a 116/116 pass). Build Summary + exit code are
-   the truth.
+## CHORE(close) — the remaining mechanics, in order
+
+1. Fill every rubric Graded cell (above), `Status: DONE`, move spec
+   `docs/v2/active/` → `docs/v2/done/` (git mv).
+2. PR `## Session notes`: the COMPLETE drafted seed is at
+   `/private/tmp/claude-501/-Users-kishore-Projects-agentsfleet/b9732de8-61f3-4ea0-9f77-e2f2a7b79376/scratchpad/session_notes.md`
+   — one `<!-- FILL FROM gates/RESULTS.txt -->` marker awaits the battery
+   numbers. Keep the design-risk register intact (Indy reads it in the PR;
+   cross-tenant sample flooding stays at the top).
+3. DELETE `HANDOFF.md` (this file) and `itest.sh` (recipe preserved in the notes).
+4. `git status -uall` empty post-commit; `make check-version` (VERSION untouched
+   this session — should pass trivially).
+5. `gh pr create` (title per spec: "feat(runner): bound the lease-poll fan-out to
+   ready fleets"), body = intent + Session Notes.
+6. Docs PR: `/tmp/docs-m141`, branch `chore/m141-lease-fanout-changelog` (2
+   commits, pushed) — `gh pr create` there too.
+7. `kishore-babysit-prs` on both.
+
+## Traps (carried + new this session)
+
+- **itest.sh for full runs** — 68 skips = suites not running. Focused only.
+- **Focused-run pass counts lie**: the summary counts container `test {}` blocks
+  (baseline 47 with a no-match filter; a fleet-file filter reads "69"). Judge by
+  RC + count DELTA, not the absolute. Live side-effect sampling
+  (`HLEN fleet:ready` during the ceiling test) is the positive-evidence trick.
+- **zig's `failed command:` line prints on GREEN runs** — Build Summary + exit
+  code are the truth.
+- **`-Dtest-filter` accepts ONE value** — repeat invocations, not repeated flags.
+- **Warn-level logs are suppressed by the test runner** — absence of `log.warn`
+  lines in a green run's output proves nothing.
+- **`readiness_lifecycle_integration_test.zig:1` carries a pre-existing
+  milestone-ID header comment** (`M141 §3, Dimension 3.7`) — if you edit that
+  file for any reason, the MSID gate makes you strip it in the same diff.
+  Untouched this session on purpose (no other reason to open it).
 
 ## Decisions settled — do not re-litigate (carried + new)
 
-- CI failures fixed in-PR (Indy, verbatim in spec Discovery); auth cache shape +
-  10s heartbeat TTL; prod 2–3 machines; RwLock trade; cache_table std-only/liftable;
-  UUIDv7 token; sweep bound 100; scheduler knobs are placeholders; ghostty threaded
-  sweeper dropped; colima duplicate-stack investigation dropped (per-worktree infra).
-- **This session**: metrics doc trimmed to shipped families (no minting names outside
-  M139's registry); test-file teardown SQL stays inline (RULE SQLMOD is
-  production-scoped — Indy asked, answered, accepted); `fleet_set_cache` stays its
-  own struct (refcount+single-flight+versioning don't fit CacheTable; "set" = the
-  noun, M133 surface).
+- All prior-session items (metrics-doc trim, inline test SQL, `fleet_set_cache`
+  its own struct, sweep bound 100, cold-start deferral with Indy's ack quote in
+  spec Discovery).
+- **This session (Indy, in-session, via structured ask):** cron P1 → fix in this
+  PR; pause P2 → fix in this PR. Both landed (`56bf3d15c`); neither is a deferral.
+- Docs `error-codes.mdx`: NO regeneration — page is hand-curated under the docs
+  repo's 0.17.0 version pin; the generator's raw output must not replace it.
 
 ## Environment right now
 
 - Worktree `/Users/kishore/Projects/agentsfleet-m141-lease-fanout`, clean except
-  untracked `itest.sh`. Containers up (ports 28025/26/27), DB reset+migrated at
-  memleak re-run, `HLEN fleet:ready` = 0.
-- Docs worktree `/tmp/docs-m141` on `chore/m141-lease-fanout-changelog`, pushed, no PR.
-- `agentsfleet-m143-read-surfaces` depends on `src/lib/common/cache_table.zig` from
-  this branch — landing unblocks them; the put-priority fix this session is one their
-  heap-owned consumer needed.
+  untracked `itest.sh`. Containers up (per-worktree compose), DB migrated.
+- Gate battery possibly still running (started 20:51) — check `RESULTS.txt`.
+- Raw Codex review: `…/6b9c028f-e46f-4c81-9faf-6d39ff651a08/scratchpad/codex_review.log`
+  (verdict at tail; now fully dispositioned).
+- `agentsfleet-m143-read-surfaces` depends on `src/lib/common/cache_table.zig`
+  from this branch — landing unblocks them.
