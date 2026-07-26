@@ -1,9 +1,15 @@
 //! Per-model token rates, cached in front of `core.model_library`.
 //!
-//! Read by `tenant_billing` when it prices a slice, by provider activation when
-//! it validates that a model is catalogued, and by the tenant registry page when
-//! it displays rates. The catalogue is the authority; this is a cache in front of
-//! it, on the shared `common.CacheTable` primitive.
+//! Read by `tenant_billing` when it prices a slice and by provider activation
+//! when it validates that a model is catalogued. The catalogue is the authority;
+//! this is a cache in front of it, on the shared `common.CacheTable` primitive.
+//!
+//! NOT read by the tenant registry page. That page displays a rate beside every
+//! row, and it used to take whatever was resident here — which answered null for
+//! every row until some unrelated charge happened to load that exact pair, so
+//! after a restart it rendered blank rates indefinitely. It now asks the
+//! database directly through `model_rate_batch.zig`, one statement for the whole
+//! page, and populates nothing here.
 //!
 //! ## A miss is a question for the database, not an answer
 //!
@@ -36,10 +42,10 @@
 //!
 //!   - `rateAtRevision` — billing and activation. Never returns a rate older
 //!     than the generation the caller observed. Fails closed.
-//!   - `cachedRate` — the registry page's display fields, which are already
-//!     nullable. Takes whatever is resident and never issues a statement, because
-//!     that page has a measured statement budget (§3) that a per-row load would
-//!     blow.
+//!   - `cachedRate` — residency, without loading. No production caller: it is
+//!     how the revision suite observes that a charge's load-on-miss actually
+//!     admitted the row, which is a claim about `rateAtRevision` that nothing
+//!     else can see from outside.
 //!
 //! ## Identity
 //!
@@ -199,9 +205,12 @@ pub fn rateAtRevision(
 
 /// Whatever rate is resident, at any generation, without touching the database.
 ///
-/// For display only. The tenant registry page renders every rate field as
-/// nullable already, so a miss costs a blank cell — and that page's statement
-/// budget is measured and pinned (§3), which a per-row load would breach.
+/// A RESIDENCY probe, not a lookup — no production path calls it, and none
+/// should. Its one use is the revision suite asserting that a charge's
+/// load-on-miss admitted the row it read, which is a property of
+/// `rateAtRevision` with no other external witness. Answering a display read
+/// from it is what left the registry page blank after every restart; that page
+/// now asks `model_rate_batch.zig` instead.
 pub fn cachedRate(provider: []const u8, model: []const u8) ?ModelRate {
     const cached = peek(provider, model) orelse return null;
     return cached.rate;
