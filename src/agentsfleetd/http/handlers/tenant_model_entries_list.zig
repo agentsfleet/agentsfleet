@@ -120,7 +120,7 @@ fn decodeStart(hx: Hx, tenant_id: []const u8, limit: u32, raw: ?[]const u8) !?en
         hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
         return error.Rejected;
     };
-    if (!std.mem.eql(u8, cursor.tenant_uuid, tenant_id) or cursor.limit != limit) {
+    if (!pagination.identityMatches(cursor.tenant_uuid, tenant_id, cursor.limit, limit)) {
         hx.fail(ec.ERR_LIBRARY_CURSOR_MISMATCH, S_CURSOR_MISMATCH);
         return error.Rejected;
     }

@@ -101,6 +101,21 @@ pub fn decode(alloc: std.mem.Allocator, comptime T: type, raw: []const u8) (Erro
     return parsed;
 }
 
+/// Does a decoded cursor describe the request now being served?
+///
+/// A cursor is bound to the query that produced it. `decode` proves only that
+/// the bytes are one this service issued; it cannot know the authenticated
+/// principal or the active page size, so this is the second half of the check
+/// and the difference between `UZ-LIBRARY-001` and `UZ-LIBRARY-002`.
+///
+/// A free function rather than a method on each payload because every list read
+/// applies the identical rule to a differently-shaped cursor, and because a rule
+/// spelled at each call site is one that eventually differs at one of them.
+/// Extracted so the mapping is unit-testable without an HTTP context.
+pub fn identityMatches(cursor_owner: []const u8, request_owner: []const u8, cursor_limit: u32, request_limit: u32) bool {
+    return std.mem.eql(u8, cursor_owner, request_owner) and cursor_limit == request_limit;
+}
+
 /// Parse a `limit=` query value. Absent or empty yields `DEFAULT_LIMIT`; a
 /// non-numeric value, zero, or anything above `MAX_LIMIT` is rejected so the
 /// caller can answer `UZ-LIBRARY-003`.
