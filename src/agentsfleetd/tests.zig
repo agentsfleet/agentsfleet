@@ -100,6 +100,10 @@ test {
     _ = @import("http/secrets_json_metadata_integration_test.zig");
     _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
     _ = @import("http/library_read_bounds_integration_test.zig");
+    _ = @import("http/library_body_ceiling_integration_test.zig");
+    _ = @import("http/library_page_bounds_integration_test.zig");
+    _ = @import("http/handlers/model_library_page_integration_test.zig");
+    _ = @import("http/handlers/library/gallery_keyset_integration_test.zig");
     _ = @import("http/tenant_model_entries_integration_test.zig");
     _ = @import("http/user_preferences_integration_test.zig");
     _ = @import("http/workspace_onboarding_integration_test.zig");
