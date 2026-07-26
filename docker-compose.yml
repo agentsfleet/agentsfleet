@@ -3,13 +3,25 @@
 # `TARGETARCH` to docker compose. CI does not use this path.
 #
 # The three test-infra services (postgres, redis, qstash) carry NO
-# `container_name` and NO fixed host port, so several git worktrees can run
-# `make test-integration` at once. Compose namespaces containers and volumes by
-# project, and the project name defaults to the directory basename — already
-# unique per worktree. Pinning either one collapses every worktree onto one
-# container: whichever ran last owned the database, and the integration lane
-# starts by dropping every schema, so concurrent agents silently destroyed each
-# other's runs.
+# `container_name`, so several git worktrees can run `make test-integration` at
+# once. Compose namespaces containers and volumes by project, and the project
+# name defaults to the directory basename — already unique per worktree. Pinning
+# the name collapses every worktree onto one container: whichever ran last owned
+# the database, and the integration lane starts by dropping every schema, so
+# concurrent agents silently destroyed each other's runs.
+#
+# Their host ports are per-worktree but FIXED, assigned by
+# scripts/test-infra-ports.sh into `.env` (which Compose reads automatically, so
+# a bare `docker compose exec` agrees with the Makefile). Letting Docker assign
+# an ephemeral port instead — the obvious way to keep worktrees apart — is what
+# the script's header documents as broken: an ephemeral published port moves on
+# every container restart, and the Makefile resolves it into a URL exactly once,
+# so a restart mid-run points the whole suite at a dead port.
+#
+# The `:-` defaults keep a bare `docker compose up` working in a fresh clone that
+# has never run `make`. They are the conventional ports, so a single-checkout
+# developer sees exactly the upstream behaviour; only multi-worktree isolation
+# depends on `.env` existing.
 #
 # `agentsfleetd` deliberately KEEPS its fixed name and port 3000: it is the
 # `make up` dev stack, not test infra, and `localhost:3000` is a documented
@@ -32,9 +44,10 @@ services:
       # requirement without restructuring the volume.
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      # Host port assigned by Docker; make/test-integration.mk discovers it via
-      # `docker compose port`. A fixed mapping means only one worktree can bind it.
-      - "5432"
+      # Per-worktree but fixed — see the header. scripts/test-infra-ports.sh
+      # writes the value; make/test-integration.mk still discovers the live port
+      # via `docker compose port`, which now cannot disagree with the container.
+      - "${AGENTSFLEET_PG_HOST_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -49,15 +62,20 @@ services:
       - sh
       - -c
       - |
-        apk add --no-cache openssl &&
         mkdir -p /tls &&
         if [ ! -s /tls/server.crt ] || [ ! -s /tls/server.key ]; then
+          # `apk add` lives INSIDE the branch on purpose: the cert persists in
+          # the redis-tls volume, so it is generated once, but this ran on every
+          # container start — an Alpine CDN fetch in front of every `make
+          # test-integration`, and a hard dependency on the network for a file
+          # that already existed.
+          apk add --no-cache openssl &&
           openssl req -x509 -newkey rsa:2048 -nodes -keyout /tls/server.key -out /tls/server.crt -days 3650 -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,DNS:redis,IP:127.0.0.1" 2>/dev/null
         fi &&
         redis-server --tls-port 6379 --port 0 --tls-cert-file /tls/server.crt --tls-key-file /tls/server.key --tls-ca-cert-file /tls/server.crt --tls-auth-clients no --requirepass agentsfleet
     ports:
-      # Host port assigned by Docker -- see the postgres service above.
-      - "6379"
+      # Per-worktree but fixed -- see the postgres service above.
+      - "${AGENTSFLEET_REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis-tls:/tls
       - redis-data:/data
@@ -86,8 +104,8 @@ services:
         bun node_modules/@upstash/qstash-cli/install.js
         exec node_modules/@upstash/qstash-cli/bin/qstash dev -port 8080
     ports:
-      # Host port assigned by Docker -- see the postgres service above.
-      - "8080"
+      # Per-worktree but fixed -- see the postgres service above.
+      - "${AGENTSFLEET_QSTASH_HOST_PORT:-8080}:8080"
     healthcheck:
       # Unauthenticated requests 401, which still proves the server is accepting
       # connections; fetch resolves on any HTTP response and rejects only on a

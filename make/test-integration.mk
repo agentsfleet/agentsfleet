@@ -25,8 +25,15 @@ RUNNER_CI_IMAGE ?= ghcr.io/agentsfleet/ci-zig-alpine:0.16.0
 test-integration-kernel:  ## Run the runner's real-process kernel integration tests (env/kill-tree + seccomp/Landlock/cgroup); native on Linux, auto-containerized on macOS
 ifeq ($(shell uname),Darwin)
 	@echo "→ [kernel] macOS host has no Linux kernel — running the lane in a disposable privileged Linux container..."
+	@# Cache dirs are forced back into the repo here: only $(CURDIR) is mounted, so
+	@# the shared $(HOME) global cache does not exist inside the container and
+	@# would be rebuilt from scratch and discarded on every run. It must stay
+	@# separate from the host's cache regardless — this is a Linux target built
+	@# against a different libc.
 	@docker run --rm --privileged --cgroupns=private --platform "linux/$(shell uname -m | sed 's/x86_64/amd64/')" \
 	  -v "$(CURDIR)":"$(CURDIR)" -w "$(CURDIR)" \
+	  -e ZIG_GLOBAL_CACHE_DIR="$(CURDIR)/.tmp/zig-kernel-global-cache" \
+	  -e ZIG_LOCAL_CACHE_DIR="$(CURDIR)/.tmp/zig-kernel-local-cache" \
 	  "$(RUNNER_CI_IMAGE)" sh -c 'sh scripts/cgroup-delegate.sh && make test-integration-kernel'
 else
 	@echo "→ [kernel] Running runner integration tests via build_runner.zig (env filter + kill-tree + seccomp/Landlock/cgroup)..."
@@ -37,11 +44,19 @@ else
 	@echo "✓ [kernel] Runner integration tests passed (Linux real-process proofs)"
 endif
 
-# Host ports are assigned by Docker (docker-compose.yml maps container ports with
-# no fixed host side), so every worktree gets its own and none can collide. These
-# are resolved lazily with `=` -- NOT `:=` -- because the containers may not be
+# Host ports are per-worktree and FIXED, assigned into `.env` by
+# scripts/test-infra-ports.sh (run from _ensure-test-infra, before compose). They
+# are still discovered from the running container rather than recomputed here, so
+# these stay the single source of truth about what is actually bound.
+#
+# Resolved lazily with `=` -- NOT `:=` -- because the containers may not be
 # running when this Makefile is first parsed; the shell runs at first use, which
 # is always after _ensure-test-infra.
+#
+# The pinning is what makes that safe. While the host side was ephemeral, this
+# lookup was correct when it ran and wrong afterwards: a container restart moved
+# the port, the URL built from it did not follow, and every Redis test failed at
+# TCP connect against a port nothing was listening on.
 COMPOSE_PG_PORT = $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')
 COMPOSE_REDIS_PORT = $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')
 COMPOSE_QSTASH_PORT = $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')
@@ -88,6 +103,10 @@ else
 	@# sibling worktree's containers are simply different containers. The sweep that
 	@# used to live here force-removed them by fixed name, which is what let one
 	@# worktree's test run destroy another's mid-flight.
+	@# Must precede `docker compose up`: it writes the .env that pins this
+	@# worktree's host ports, and compose reads .env at invocation.
+	@printf '→ [infra] Pinning this worktree'"'"'s host ports: '
+	@bash scripts/test-infra-ports.sh
 	@echo "→ [infra] Starting postgres + redis + qstash (waiting for healthchecks)..."
 	@docker compose up -d --wait postgres redis qstash
 	@mkdir -p "$(CURDIR)/.tmp"
