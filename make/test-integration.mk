@@ -89,6 +89,21 @@ COMPOSE_PG_PORT = $(or $(strip $(shell docker compose port postgres 5432 2>/dev/
 COMPOSE_REDIS_PORT = $(or $(strip $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_HOST_PORT))
 COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_QSTASH_HOST_PORT))
 
+# Optional narrowing, for studying ONE failure without the rest of the lane's
+# cascade noise:  make test-integration TEST_FILTER='integration(model_library)'
+#
+# Exposes build.zig's existing `-Dtest-filter` on the existing targets rather
+# than adding a parallel one, because everything BUT the test selection has to
+# stay identical: the schema reset, the migrate, the `docker compose port`
+# discovery, and the CA-freshness check are the parts a hand-rolled `zig build
+# test` gets wrong. §Discovery's "why the lane was lying" is what that costs —
+# a suite dialling a dead port, read as behaviour. Skipping the reset is the
+# other half: a second run against un-reset state goes 457/0 → 447/10.
+#
+# Empty by default, so the R1-graded invocation is always the full suite.
+TEST_FILTER ?=
+ZIG_TEST_FILTER_ARG = $(if $(strip $(TEST_FILTER)),-Dtest-filter="$(TEST_FILTER)",)
+
 # sslmode=disable: the local docker Postgres has no TLS and parseUrl defaults to
 # `.require` (hosted providers mandate it) — without it every local DB-lane test
 # fails at connect with SSLNotSupportedByServer before it can run.
@@ -177,7 +192,7 @@ _test-integration-agentsfleetd:
 	@env -u TEST_DATABASE_URL -u TEST_REDIS_TLS_URL -u LIVE_DB \
 	 ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test
+	 zig build test $(ZIG_TEST_FILTER_ARG)
 
 _test-integration-db: _reset-test-db
 	@db_url="$$TEST_DATABASE_URL"; \
@@ -204,7 +219,7 @@ _test-integration-db: _reset-test-db
 	TEST_DATABASE_URL="$$db_url" \
 	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
 	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
-	zig build test
+	zig build test $(ZIG_TEST_FILTER_ARG)
 	@echo "✓ [agentsfleetd] DB-backed integration tests passed"
 
 _test-integration-redis: _reset-test-db
@@ -223,7 +238,7 @@ _test-integration-redis: _reset-test-db
 	  TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
 	  REDIS_URL_API="$$redis_tls_test_url" \
 	  REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
-	  zig build test
+	  zig build test $(ZIG_TEST_FILTER_ARG)
 	@echo "✓ [agentsfleetd] Redis integration tests passed"
 
 _test-integration-full: _reset-test-db
@@ -273,7 +288,7 @@ _test-integration-full: _reset-test-db
 	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
 	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
 	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
-	zig build test
+	zig build test $(ZIG_TEST_FILTER_ARG)
 	@echo "✓ [agentsfleetd] Full integration suite passed"
 
 test-integration-db: _test-integration-db  ## Run real DB-backed integration suite only
