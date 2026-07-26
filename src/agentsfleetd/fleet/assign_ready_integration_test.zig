@@ -15,6 +15,8 @@ const base = @import("event_lifecycle_integration_test.zig");
 const fleet_ready = @import("../queue/fleet_ready.zig");
 const queue_consts = @import("../queue/constants.zig");
 const id_format = @import("../types/id_format.zig");
+const redis_fleet = @import("../queue/redis_fleet.zig");
+const redis_protocol = @import("../queue/redis_protocol.zig");
 const mc = @import("../observability/metrics_counters.zig");
 const TestHarness = @import("../http/test_harness.zig").TestHarness;
 
@@ -25,6 +27,10 @@ const ALLOC = std.testing.allocator;
 const FLEET_READY_A = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e01";
 const FLEET_READY_B = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e02";
 const FLEET_TAGGED = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e03";
+const FLEET_MEMO = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e04";
+
+/// Polls the group-memo proof issues after the one real create.
+const LEASE_POLLS: usize = 10;
 
 const CMD_DEL = "DEL";
 const CMD_HGET = "HGET";
@@ -354,6 +360,55 @@ test "integration: a ready fleet requiring a tag the runner lacks is never lease
     // refusal was the tag and not some unrelated ineligibility.
     try setRequiredTags(conn, FLEET_TAGGED, &.{});
     try std.testing.expect(try base.pollLease(h));
+}
+
+/// `XGROUP CREATE` calls Redis has served, from `INFO commandstats`.
+///
+/// The server's own counter, not the memo's opinion of itself: asserting
+/// `group_memo.isEnsured` would prove the memo remembers, which is what its unit
+/// tests already cover. What needs proving here is that remembering actually
+/// removes the round-trip.
+fn xgroupCreateCalls(h: *TestHarness) !u64 {
+    var resp = try h.queue.command(&.{ "INFO", "commandstats" });
+    defer resp.deinit(h.queue.alloc);
+    const text = redis_protocol.valueAsString(resp) orelse return 0;
+    const line = std.mem.indexOf(u8, text, "cmdstat_xgroup|create:calls=") orelse return 0;
+    const digits = text[line + "cmdstat_xgroup|create:calls=".len ..];
+    const end = std.mem.indexOfAny(u8, digits, ",\r\n") orelse digits.len;
+    return std.fmt.parseInt(u64, digits[0..end], 10) catch 0;
+}
+
+test "integration: repeated leases against one fleet create its consumer group once" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try base.seedFleetWithConfig(conn, FLEET_MEMO, "ready-memo", base.CONFIG_PLAIN, "5");
+    defer redis_fleet.purgeFleetRedisState(&h.queue, FLEET_MEMO) catch {};
+    // Only this fleet may be a candidate, or another fleet's ensure would be
+    // counted against this one's budget.
+    try clearWholeIndex(h);
+
+    // A fleet this process has never touched, so the memo cannot already hold
+    // it and the one real create below is genuinely the first.
+    const event_id = try base.publishEvent(h, FLEET_MEMO);
+    defer h.queue.alloc.free(event_id);
+
+    const after_first = try xgroupCreateCalls(h);
+    // Guards the vacuous pass: if the INFO parse ever returned 0 for both reads
+    // the equality below would hold while measuring nothing at all.
+    try std.testing.expect(after_first > 0);
+    var i: usize = 0;
+    while (i < LEASE_POLLS) : (i += 1) _ = try base.pollLease(h);
+
+    // Zero further creates across ten polls. Before the memo this cost one
+    // Redis round-trip per candidate per poll, forever, using the BUSYGROUP
+    // error reply as its steady state.
+    try std.testing.expectEqual(after_first, try xgroupCreateCalls(h));
 }
 
 test "integration: readiness is cleared once a claim-won poll finds nothing deliverable" {
