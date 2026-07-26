@@ -239,10 +239,20 @@ fn xackFailed(fleet_id: []const u8, event_id: []const u8) anyerror {
 /// readiness clear is best-effort by signature and never fails the delete —
 /// a stale field costs one wasted candidate check, and the deleted fleet's own
 /// `status` filter keeps it from ever being leased.
+///
+/// The group memo is dropped here too, because deleting a stream deletes the
+/// consumer groups on it. The memo is an in-process claim about exactly the
+/// state this call destroys, so leaving it would have the cache contradicting
+/// its own store: the next `ensureFleetConsumerGroup` short-circuits on a group
+/// that is gone, and the read behind it spends a whole poll discovering
+/// `NOGROUP` before the read-error path invalidates the entry. That recovery is
+/// the backstop for an out-of-band delete, not a licence to hand it a stale
+/// entry we created ourselves.
 pub fn purgeFleetRedisState(client: *redis_client.Client, fleet_id: []const u8) !void {
     var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
     const stream_key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var resp = try client.commandAllowError(&.{ S_DEL, stream_key });
     resp.deinit(client.alloc);
+    group_memo.invalidate(fleet_id);
     fleet_ready.forceClear(client, fleet_id);
 }
