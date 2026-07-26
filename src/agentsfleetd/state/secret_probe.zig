@@ -10,6 +10,7 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const vault = @import("vault.zig");
+const metadata = @import("../secrets/metadata.zig");
 
 const tenant_provider = @import("tenant_provider.zig");
 const base_url_guard = @import("base_url_guard.zig");
@@ -19,11 +20,11 @@ const S_PROVIDER = "provider";
 const S_MODEL = "model";
 const S_API_KEY = "api_key";
 const S_BASE_URL = "base_url";
-/// Provider id in the self-managed credential JSON that opts the credential into
-/// a custom OpenAI-compatible endpoint — the `base_url` field is required iff
-/// the provider equals this, and forbidden otherwise (RULE UFS; the runner uses
-/// the distinct `custom:<url>` wire name, never this id, when dialing nullclaw).
-pub const OPENAI_COMPATIBLE_PROVIDER: []const u8 = "openai-compatible";
+/// Re-export — the canonical definition moved to `secrets/metadata.zig` in
+/// the metadata promotion, beside the `classify` that is the reason it exists. Kept here so
+/// the `tenant_provider` re-export chain and its consumers are untouched, and so
+/// this file's own three comparisons read against a local name.
+pub const OPENAI_COMPATIBLE_PROVIDER = metadata.OPENAI_COMPATIBLE_PROVIDER;
 
 pub const ProbedSecret = struct {
     const Self = @This();
@@ -54,7 +55,12 @@ pub const ProbedSecret = struct {
 /// Multi-workspace tenants point self-managed credentials at the first signup-time
 /// workspace; v3 may add an explicit `vault_workspace_id` column to
 /// tenant_model_selection so users can pin a different workspace.
-fn resolvePrimaryWorkspace(
+/// Pub since the metadata promotion: the Models list resolves the workspace ONCE per
+/// request and then reads every credential's metadata in one batch query. The
+/// per-row path it replaced called this once per entry through
+/// `loadTenantSecretJson`, so a 100-row page issued 100 of these lookups on top
+/// of 100 decrypts.
+pub fn resolvePrimaryWorkspace(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     tenant_id: []const u8,

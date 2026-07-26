@@ -143,11 +143,13 @@ fn claimAttr(entry: *SpanEntry, key: []const u8) ?*SpanAttr {
 pub fn addAttr(entry: *SpanEntry, key: []const u8, val: []const u8) bool {
     if (val.len > MAX_ATTR_VAL_LEN) return false;
     const slot = claimAttr(entry, key) orelse return false;
-    slot.value = .{ .string = .{
-        // SAFETY: only buf[0..len] is ever read, and it is written immediately below.
-        .buf = undefined,
-        .len = @intCast(val.len),
-    } };
+    slot.value = .{
+        .string = .{
+            // SAFETY: only buf[0..len] is ever read, and it is written immediately below.
+            .buf = undefined,
+            .len = @intCast(val.len),
+        },
+    };
     @memcpy(slot.value.string.buf[0..val.len], val);
     return true;
 }

@@ -11,8 +11,8 @@
 //!        409 UZ-MODELS-003 (duplicate).
 //! PATCH  {model_id} — model change only; secret_ref is immutable here.
 //!        404 UZ-MODELS-004 when the id doesn't resolve for this tenant.
-//! DELETE refuses the active entry (409 UZ-MODELS-001); otherwise idempotent
-//!        204, matching fleets/secrets.zig's innerDeleteSecret convention.
+//! DELETE lives in tenant_model_entries_delete.zig — removal took on the shared
+//!        reference-lock protocol and pushed this file past RULE FLL.
 //!
 //! Activation is NOT new surface — PUT /v1/tenants/me/provider (unchanged)
 //! remains the only path that flips the tenant's active selection.
@@ -27,54 +27,37 @@ const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const entries_state = @import("../../state/tenant_model_entries.zig");
-const tenant_provider = @import("../../state/tenant_provider.zig");
-const view = @import("tenant_model_entries_view.zig");
+const secret_probe = @import("../../state/secret_probe.zig");
+const secret_reference_txn = @import("../../state/secret_reference_txn.zig");
+const model_identity = @import("../../types/model_identity.zig");
+
+/// One rule, two call sites (POST and PATCH), so the bound cannot hold on one
+/// verb and not the other — which is exactly how `model_id` ended up bounded on
+/// the catalogue route and unbounded here.
+fn modelIdRejected(hx: Hx, model_id: []const u8) bool {
+    if (model_id.len == 0) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_MODEL_ID_REQUIRED);
+        return true;
+    }
+    if (model_id.len > model_identity.MODEL_ID_MAX) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_MODEL_ID_TOO_LONG);
+        return true;
+    }
+    return false;
+}
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.http_tenant_model_entries);
 
 const S_TENANT_CONTEXT_REQUIRED = "Tenant context required";
 const S_MODEL_ID_REQUIRED = "model_id is required";
+const S_MODEL_ID_TOO_LONG = "model_id must be at most 256 chars";
 const S_SECRET_REF_REQUIRED = "secret_ref is required";
 const S_ID_MUST_BE_UUIDV7 = "id must be a valid UUIDv7";
 const S_BODY_REQUIRED = "Request body required";
 const S_MALFORMED_JSON = "Malformed JSON";
 const S_DUPLICATE_DETAIL = "An entry with this model and secret already exists";
-
-// ── GET ─────────────────────────────────────────────────────────────────────
-
-pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
-    _ = req;
-    const tenant_id = hx.principal.tenant_id orelse {
-        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
-        return;
-    };
-
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    var result = view.buildList(hx.alloc, conn, tenant_id) catch |err| {
-        log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer result.deinit(hx.alloc);
-
-    hx.res.status = @intFromEnum(std.http.Status.ok);
-    hx.res.json(
-        .{
-            .models = result.rows,
-            .platform_default_available = result.platform_default_available,
-            .platform_default = result.platform_default,
-        },
-        .{ .emit_null_optional_fields = false },
-    ) catch {
-        common.internalOperationError(hx.res, "Failed to build the models list", hx.req_id);
-    };
-}
+const S_SECRET_REF_UNKNOWN = "secret_ref does not name a vault secret in this tenant's workspace";
 
 // ── POST ────────────────────────────────────────────────────────────────────
 
@@ -108,23 +91,46 @@ pub fn innerCreateModelEntry(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const exists = entries_state.secretExistsForTenant(conn, tenant_id, input.secret_ref) catch {
+    // The workspace the credential actually lives in — the reference lock is
+    // taken on (workspace_id, key_name), which is the vault's identity, not the
+    // tenant's.
+    const ws_id = secret_probe.resolvePrimaryWorkspace(hx.alloc, conn, tenant_id) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
-    if (!exists) {
-        hx.fail(ec.ERR_MODELS_SECRET_NOT_FOUND, "secret_ref does not name a vault secret in this tenant's workspace");
-        return;
-    }
+    defer hx.alloc.free(ws_id);
 
-    performCreate(hx, conn, tenant_id, input);
+    // Lock the credential BEFORE deciding it exists, so the decision and the
+    // insert are one atomic act. The previous shape checked existence and then
+    // inserted with nothing held between, which let a concurrent
+    // `DELETE /workspaces/{ws}/secrets/{name}` remove the credential in the gap
+    // and leave this entry pointing at nothing (state/secret_reference_txn.zig).
+    var txn = secret_reference_txn.begin(conn, ws_id, input.secret_ref) catch |err| switch (err) {
+        // Absent covers both "never existed" and "deleted a moment ago". Both
+        // mean the same thing to this caller and neither is retryable by simply
+        // re-sending, so the existing 404 stays the answer rather than the
+        // 409 that a lost race would suggest.
+        secret_reference_txn.Error.SecretGone => {
+            hx.fail(ec.ERR_MODELS_SECRET_NOT_FOUND, S_SECRET_REF_UNKNOWN);
+            return;
+        },
+        else => {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        },
+    };
+    // `defer`, not `errdefer`. This function returns `void`, so an `errdefer`
+    // here could never fire — the rollback everyone reads as present has never
+    // once run. `abort` no-ops once `commit` has closed the transaction, so an
+    // unconditional defer is correct on both paths and is the only shape that
+    // survives a handler signature that cannot carry an error.
+    defer txn.abort();
+
+    performCreate(hx, conn, tenant_id, input, &txn);
 }
 
 fn validateCreateBody(hx: Hx, input: CreateBody) bool {
-    if (input.model_id.len == 0) {
-        hx.fail(ec.ERR_INVALID_REQUEST, S_MODEL_ID_REQUIRED);
-        return false;
-    }
+    if (modelIdRejected(hx, input.model_id)) return false;
     if (input.secret_ref.len == 0) {
         hx.fail(ec.ERR_INVALID_REQUEST, S_SECRET_REF_REQUIRED);
         return false;
@@ -132,8 +138,19 @@ fn validateCreateBody(hx: Hx, input: CreateBody) bool {
     return true;
 }
 
-fn performCreate(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: CreateBody) void {
+/// Insert the entry inside `txn`, which already holds the credential's row
+/// lock. Every exit path either commits or aborts before returning.
+///
+/// The explicit `txn.abort()` calls below stay: they release the row locks at
+/// the point of failure rather than after the error response has been
+/// serialized. The `defer` is the backstop that catches the path they miss —
+/// notably a failed COMMIT, which left the transaction open and returned
+/// normally, so no rollback ran at all.
+fn performCreate(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: CreateBody, txn: *secret_reference_txn.Txn) void {
+    defer txn.abort();
+
     const new_id = id_format.generateTenantModelEntryId(hx.alloc) catch {
+        txn.abort();
         common.internalOperationError(hx.res, "Failed to mint an entry id", hx.req_id);
         return;
     };
@@ -146,16 +163,26 @@ fn performCreate(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: CreateBod
         .secret_ref = input.secret_ref,
     }) catch |err| switch (err) {
         entries_state.StateError.DuplicateEntry => {
+            txn.abort();
             hx.fail(ec.ERR_MODELS_DUPLICATE_ENTRY, S_DUPLICATE_DETAIL);
             return;
         },
         else => {
+            txn.abort();
             log.err("create_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
             common.internalDbUnavailable(hx.res, hx.req_id);
             return;
         },
     };
     defer created.deinit(hx.alloc);
+
+    // Commit BEFORE responding. A 201 whose transaction then fails to commit is
+    // the worst outcome available: the client records an id that does not exist.
+    txn.commit() catch |err| {
+        log.err("create_commit_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
 
     hx.ok(.created, .{
         .id = created.id,
@@ -191,10 +218,7 @@ pub fn innerUpdateModelEntry(hx: Hx, req: *httpz.Request, entry_id: []const u8) 
         return;
     };
     defer parsed.deinit();
-    if (parsed.value.model_id.len == 0) {
-        hx.fail(ec.ERR_INVALID_REQUEST, S_MODEL_ID_REQUIRED);
-        return;
-    }
+    if (modelIdRejected(hx, parsed.value.model_id)) return;
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -225,58 +249,4 @@ pub fn innerUpdateModelEntry(hx: Hx, req: *httpz.Request, entry_id: []const u8) 
         .secret_ref = updated.secret_ref,
         .created_at = updated.created_at,
     });
-}
-
-// ── DELETE ──────────────────────────────────────────────────────────────────
-
-pub fn innerDeleteModelEntry(hx: Hx, req: *httpz.Request, entry_id: []const u8) void {
-    _ = req;
-    const tenant_id = hx.principal.tenant_id orelse {
-        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
-        return;
-    };
-    if (!id_format.isUuidV7(entry_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, S_ID_MUST_BE_UUIDV7);
-        return;
-    }
-
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    const is_active = isActiveEntry(hx.alloc, conn, tenant_id, entry_id) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-    if (is_active) {
-        hx.fail(ec.ERR_MODELS_DELETE_ACTIVE, "This entry is the tenant's active selection; switch to another entry first");
-        return;
-    }
-
-    // Idempotent — a missing id (already deleted, or never existed) still 204s,
-    // matching fleets/secrets.zig's innerDeleteSecret.
-    _ = entries_state.delete(conn, tenant_id, entry_id) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-    hx.noContent();
-}
-
-/// Whether `entry_id` is the entry backing the tenant's current self-managed
-/// selection. No `active` column exists on the row — the comparison is by
-/// (secret_ref, model_id) against `core.tenant_model_selection`, same as the
-/// list view's `active` flag.
-fn isActiveEntry(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8, entry_id: []const u8) !bool {
-    var selection = (try tenant_provider.activeSelfManagedRef(alloc, conn, tenant_id)) orelse return false;
-    defer selection.deinit(alloc);
-
-    const entries = try entries_state.list(alloc, conn, tenant_id);
-    defer entries_state.deinitEntryList(entries, alloc);
-    for (entries) |e| {
-        if (!std.mem.eql(u8, e.id, entry_id)) continue;
-        return std.mem.eql(u8, e.secret_ref, selection.secret_ref) and std.mem.eql(u8, e.model_id, selection.model);
-    }
-    return false;
 }

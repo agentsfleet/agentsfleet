@@ -21,7 +21,7 @@ const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
 const approval_gate_sweeper = @import("../../../fleet_runtime/approval_gate_sweeper.zig");
 const approval_gate_async = @import("../../../fleet_runtime/approval_gate_async.zig");
 const queue_redis = @import("../../../queue/redis_client.zig");
-const ec = @import("../../../errors/error_registry.zig");
+const gate_constants = @import("../../../fleet_runtime/approval_gate_constants.zig");
 
 const ALLOC = std.testing.allocator;
 const MS_PER_SECOND = 1000;
@@ -406,7 +406,7 @@ test "integration: anomaly EVAL atomically sets TTL on first INCR" {
 
     var key_buf: [256]u8 = undefined;
     const key = try std.fmt.bufPrint(&key_buf, "{s}{s}:{s}:{s}", .{
-        ec.GATE_ANOMALY_KEY_PREFIX, test_agent, tool, action,
+        gate_constants.GATE_ANOMALY_KEY_PREFIX, test_agent, tool, action,
     });
     var del_resp = try h.queue.command(&.{ "DEL", key });
     del_resp.deinit(h.queue.alloc);
@@ -710,12 +710,12 @@ fn delRedisKey(q: *queue_redis.Client, key: []const u8) void {
 
 fn delDecisionKey(q: *queue_redis.Client, action_id: []const u8) void {
     var buf: [256]u8 = undefined;
-    if (std.fmt.bufPrint(&buf, "{s}{s}", .{ ec.GATE_RESPONSE_KEY_PREFIX, action_id })) |k| delRedisKey(q, k) else |_| {}
+    if (std.fmt.bufPrint(&buf, "{s}{s}", .{ gate_constants.GATE_RESPONSE_KEY_PREFIX, action_id })) |k| delRedisKey(q, k) else |_| {}
 }
 
 fn cleanupGateRedis(q: *queue_redis.Client, fleet_id: []const u8, event_id: []const u8, action_id: []const u8) void {
     var buf_a: [256]u8 = undefined;
-    if (std.fmt.bufPrint(&buf_a, "{s}{s}:{s}", .{ ec.GATE_EVENT_REF_KEY_PREFIX, fleet_id, event_id })) |k| delRedisKey(q, k) else |_| {}
+    if (std.fmt.bufPrint(&buf_a, "{s}{s}:{s}", .{ gate_constants.GATE_EVENT_REF_KEY_PREFIX, fleet_id, event_id })) |k| delRedisKey(q, k) else |_| {}
     delDecisionKey(q, action_id);
 }
 

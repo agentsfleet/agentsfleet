@@ -4,6 +4,10 @@ const Subcommand = enum {
     serve,
     doctor,
     migrate,
+    /// One-shot sweep filling the vault's non-secret projection columns for
+    /// credentials stored before schema/036. Separate from `migrate` because it
+    /// needs the Key Encryption Key, which no schema migration holds.
+    backfill,
 };
 
 /// Returns null for unknown tokens so the caller can fail loudly.
@@ -27,6 +31,7 @@ test "parseSubcommandName returns known subcommands" {
     try std.testing.expectEqual(@as(?Subcommand, .serve), parseSubcommandName("serve"));
     try std.testing.expectEqual(@as(?Subcommand, .doctor), parseSubcommandName("doctor"));
     try std.testing.expectEqual(@as(?Subcommand, .migrate), parseSubcommandName("migrate"));
+    try std.testing.expectEqual(@as(?Subcommand, .backfill), parseSubcommandName("backfill"));
 }
 
 test "parseSubcommandName returns null for unknown values" {
@@ -51,6 +56,7 @@ test "parseSubcommandFromArgv resolves each known subcommand" {
         .{ .arg = "serve", .expected = .serve },
         .{ .arg = "doctor", .expected = .doctor },
         .{ .arg = "migrate", .expected = .migrate },
+        .{ .arg = "backfill", .expected = .backfill },
     };
     for (cases) |c| {
         try std.testing.expectEqual(c.expected, try parseSubcommandFromArgv(&.{ "agentsfleetd", c.arg }));
@@ -101,5 +107,5 @@ test "Subcommand enum has no removed variants" {
     try std.testing.expect(!has_run);
     try std.testing.expect(!has_reconcile);
     try std.testing.expect(!has_spec_validate);
-    try std.testing.expectEqual(@as(usize, 3), fields.len);
+    try std.testing.expectEqual(@as(usize, 4), fields.len);
 }

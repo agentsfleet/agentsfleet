@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-governance lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_zig_test_depth _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
+.PHONY: lint-all lint-zig lint-governance lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_zig_test_depth _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -21,13 +21,18 @@ check-documentation-rules:  ## Check public API and command help text
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
 
+# `zig fmt src`, not `find … -exec zig fmt {} \;`. The find form spawned one
+# compiler process per file — 800+ of them, 72s of an 87s lint, 83% of the whole
+# thing — and, worse, could not fail: `find` exits 0 whatever `-exec` returns, so
+# a misformatted file passed the gate silently. Both bugs die with the loop; zig
+# takes a directory and reports its own exit code.
 _fmt:
 	@echo "→ [zig] Formatting Zig code..."
-	@find src -name '*.zig' -exec zig fmt {} \;
+	@zig fmt src
 
 _fmt_check:
 	@echo "→ [zig] Checking Zig formatting..."
-	@find src -name '*.zig' -exec zig fmt --check {} \;
+	@zig fmt --check src
 
 _zlint_check:
 	@echo "→ [zig] Running ZLint..."
@@ -35,24 +40,24 @@ _zlint_check:
 	@$(ZLINT) --deny-warnings
 	@echo "✓ [zig] ZLint passed"
 
-_website_lint:
+lint-website:  ## Lint website only (Oxlint + tsc)
 	@echo "→ [website] Running Oxlint + TypeScript check..."
 	@cd ui/packages/website && bun run lint
 	@cd ui/packages/website && bun run typecheck
 	@echo "✓ [website] Lint passed"
 
-_app_lint:
+lint-app:  ## Lint ui/packages/app only (Oxlint + tsc)
 	@echo "→ [app] Running Oxlint + TypeScript check..."
 	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
 	@echo "✓ [app] Lint passed"
 
-_design_system_lint:
+lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsc)
 	@echo "→ [design-system] Running Oxlint + TypeScript check..."
 	@cd ui/packages/design-system && bun run lint
 	@echo "✓ [design-system] Lint passed"
 
-_cli_lint:
+lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsc..."
 	@cd cli && bun run lint
 	@echo "✓ [agentsfleet] Lint passed"
@@ -90,37 +95,25 @@ _zig_target_lint:
 	@FAIL=0; \
 	for f in .github/workflows/*.yml; do \
 		[ -f "$$f" ] || continue; \
-		if grep -nE -- '-Dtarget=\S+-gnu\b' "$$f" >/dev/null 2>&1; then \
-			echo "✗ $$f: found -gnu suffix (causes GLIBC mismatch):"; \
-			grep -nE -- '-Dtarget=\S+-gnu\b' "$$f" | sed 's/^/    /'; \
+ if grep -nE -- '-Dtarget=\S+-gnu\b' "$$f" >/dev/null 2>&1; then \
+ echo "✗ $$f: found -gnu suffix (causes GLIBC mismatch):"; \
+ grep -nE -- '-Dtarget=\S+-gnu\b' "$$f" | sed 's/^/    /'; \
 			FAIL=1; \
-		fi; \
+ fi; \
 	done; \
 	if [ "$$FAIL" = "1" ]; then \
-		echo "  Fix: use -Dtarget=x86_64-linux (not x86_64-linux-gnu)."; \
-		echo "  Why: explicit -gnu makes Zig target GLIBC 2.17; system libssl needs 2.34+."; \
-		exit 1; \
+ echo "  Fix: use -Dtarget=x86_64-linux (not x86_64-linux-gnu)."; \
+ echo "  Why: explicit -gnu makes Zig target GLIBC 2.17; system libssl needs 2.34+."; \
+ exit 1; \
 	fi; \
 	echo "✓ [ci] No -gnu suffixes in Zig target triples"
 
-# Files that already exceed 350 lines before this gate was tightened.
-# Do NOT add new entries — shrink this list over time.
+# No allowlist. There was one — 14 files granted an exemption "before this gate
+# was tightened", with a note to shrink it over time. It shrank to zero: every
+# entry named a pre-src/agentsfleetd/ path, so not one could ever match, and the
+# gate spent an O(files x 14) comparison per file proving it. No Zig file needs
+# an exemption today, and re-introducing the list is how that stops being true.
 # Policy: RULE FLL in docs/greptile-learnings/RULES.md
-ZIG_LINE_LIMIT_ALLOWLIST := \
-	src/config/runtime.zig \
-	src/db/pool.zig \
-	src/git/pr.zig \
-	src/git/repo.zig \
-	src/http/workspace_guards.zig \
-	src/observability/metrics_counters.zig \
-	src/observability/posthog_events.zig \
-	src/queue/redis_client.zig \
-	src/state/entitlements.zig \
-	src/state/topology.zig \
-	src/types.zig \
-	src/types/id_format.zig \
-	src/agent/approval_gate.zig \
-	src/agent/config.zig
 
 ZIG_LINE_LIMIT_EXCLUDE_DIRS := (^|/)(vendor|third_party|\.zig-cache)/
 ZIG_LINE_LIMIT_TEST_PATTERN := (^|/)(tests?)/|_test\.zig$$|_test_.*\.zig$$|tests\.zig$$|.*test.*\.zig$$
@@ -135,25 +128,19 @@ _zig_line_limit_check:
 	@FAIL=0; \
 	files=$$(git -c safe.directory='*' ls-files '*.zig' | grep -vE '$(ZIG_LINE_LIMIT_EXCLUDE_DIRS)' | grep -vE '$(ZIG_LINE_LIMIT_TEST_PATTERN)' | sort); \
 	if [ -z "$$files" ]; then \
-		echo "✗ [zig] line-limit gate listed zero Zig files — git failed, so this gate proved nothing"; \
-		exit 1; \
+ echo "✗ [zig] line-limit gate listed zero Zig files — git failed, so this gate proved nothing"; \
+ exit 1; \
 	fi; \
 	for f in $$files; do \
-		lines=$$(wc -l < "$$f"); \
-		if [ "$$lines" -gt 350 ]; then \
-			allowed=0; \
-			for a in $(ZIG_LINE_LIMIT_ALLOWLIST); do \
-				[ "$$f" = "$$a" ] && allowed=1 && break; \
-			done; \
-			if [ "$$allowed" = "0" ]; then \
-				echo "✗ $$f: $$lines lines (limit 350 — RULE FLL)"; \
-				FAIL=1; \
-			fi; \
-		fi; \
+ lines=$$(wc -l < "$$f"); \
+ if [ "$$lines" -gt 350 ]; then \
+ echo "✗ $$f: $$lines lines (limit 350 — RULE FLL)"; \
+			FAIL=1; \
+ fi; \
 	done; \
 	if [ "$$FAIL" = "1" ]; then \
-		echo "  Fix: split the file into focused modules under 350 lines."; \
-		exit 1; \
+ echo "  Fix: split the file into focused modules under 350 lines."; \
+ exit 1; \
 	fi; \
 	echo "✓ [zig] All new Zig files within 350-line limit"
 
@@ -161,18 +148,18 @@ _hardcoded_role_check:
 	@echo "→ [zig] Checking for banned hardcoded role constants..."
 	@FAIL=0; \
 	if grep -rn 'ROLE_SCOUT\|ROLE_ECHO\|ROLE_WARDEN' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
-		echo "✗ Banned role constants found (ROLE_SCOUT/ROLE_ECHO/ROLE_WARDEN). Remove them — roles are loaded from config."; \
-		grep -rn 'ROLE_SCOUT\|ROLE_ECHO\|ROLE_WARDEN' src/ --include='*.zig' | grep -v '_test\.zig'; \
+ echo "✗ Banned role constants found (ROLE_SCOUT/ROLE_ECHO/ROLE_WARDEN). Remove them — roles are loaded from config."; \
+ grep -rn 'ROLE_SCOUT\|ROLE_ECHO\|ROLE_WARDEN' src/ --include='*.zig' | grep -v '_test\.zig'; \
 		FAIL=1; \
 	fi; \
 	if grep -rn 'eqlIgnoreCase.*"echo"\|eqlIgnoreCase.*"scout"\|eqlIgnoreCase.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
-		echo "✗ Hardcoded role string comparison found. Use the active profile skill list instead."; \
-		grep -rn 'eqlIgnoreCase.*"echo"\|eqlIgnoreCase.*"scout"\|eqlIgnoreCase.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig'; \
+ echo "✗ Hardcoded role string comparison found. Use the active profile skill list instead."; \
+ grep -rn 'eqlIgnoreCase.*"echo"\|eqlIgnoreCase.*"scout"\|eqlIgnoreCase.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig'; \
 		FAIL=1; \
 	fi; \
 	if grep -rn 'mem\.eql.*"echo"\|mem\.eql.*"scout"\|mem\.eql.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
-		echo "✗ Hardcoded role string comparison (mem.eql) found. Use the active profile skill list instead."; \
-		grep -rn 'mem\.eql.*"echo"\|mem\.eql.*"scout"\|mem\.eql.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig'; \
+ echo "✗ Hardcoded role string comparison (mem.eql) found. Use the active profile skill list instead."; \
+ grep -rn 'mem\.eql.*"echo"\|mem\.eql.*"scout"\|mem\.eql.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig'; \
 		FAIL=1; \
 	fi; \
 	if [ "$$FAIL" = "1" ]; then exit 1; fi; \
@@ -205,7 +192,7 @@ check-route-registration-doc:  ## REST guide §7 route-registration facts stay f
 
 SHELLCHECK ?= shellcheck
 
-_shell_lint:
+lint-shell:  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 	@echo "→ [shell] Running shellcheck on scripts/*.sh..."
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@# `--severity=error` is the floor: catches genuine breakage (syntax,
@@ -223,8 +210,8 @@ _legacy_symbols_check:
 	HITS=$$(grep -rEn "$$PATTERNS" src/ --include='*.zig' \
 	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
 	if [ -n "$$HITS" ]; then \
-		echo "✗ Legacy event-substrate symbols found in active code (RULE ORP). Strip or replace — these were removed in slice 1/8 of the unified event substrate:"; \
-		echo "$$HITS"; \
+ echo "✗ Legacy event-substrate symbols found in active code (RULE ORP). Strip or replace — these were removed in slice 1/8 of the unified event substrate:"; \
+ echo "$$HITS"; \
 		FAIL=1; \
 	fi; \
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
@@ -237,8 +224,8 @@ _legacy_noun_check:
 	HITS=$$(grep -rEn "$$NOUN_PATTERNS" src/ schema/ --include='*.zig' --include='*.sql' \
 	         | grep -vE '^[^:]+:[0-9]+:[ \t]*(//|--)' || true); \
 	if [ -n "$$HITS" ]; then \
-		echo "✗ Retired entity identifier (zombie_id/zmb_id) found in active code — the product noun is 'fleet'; use fleet_id:"; \
-		echo "$$HITS"; \
+ echo "✗ Retired entity identifier (zombie_id/zmb_id) found in active code — the product noun is 'fleet'; use fleet_id:"; \
+ echo "$$HITS"; \
 		FAIL=1; \
 	fi; \
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
@@ -255,7 +242,7 @@ _runner_isolation_check:
 	IMPORT_HITS=$$(grep -En '@import\("([^"]*/)?(pg|s3)\.zig"\)' build_runner.zig src/build/shared.zig \
 	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
 	if [ -n "$$DEP_HITS$$HELPER_HITS$$IMPORT_HITS" ]; then \
-		echo "✗ Runner isolation breach — the runner graph may depend ONLY on nullclaw (no pg/s3/httpz; no direct @import of the daemon-only helpers). Offending lines:"; \
+ echo "✗ Runner isolation breach — the runner graph may depend ONLY on nullclaw (no pg/s3/httpz; no direct @import of the daemon-only helpers). Offending lines:"; \
 		[ -n "$$DEP_HITS" ] && echo "$$DEP_HITS"; \
 		[ -n "$$HELPER_HITS" ] && echo "$$HELPER_HITS"; \
 		[ -n "$$IMPORT_HITS" ] && echo "$$IMPORT_HITS"; \
@@ -267,17 +254,13 @@ _runner_isolation_check:
 lint-zig: _fmt_check _zlint_check lint-governance check-test-reachability _lint_zig_test_depth _zig_target_lint  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
 
-lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
 
-lint-apps-ds-ctl: _app_lint _design_system_lint _cli_lint  ## Lint app + design-system + agentsfleet
+lint-apps-ds-ctl: lint-app lint-design-system lint-cli  ## Lint app + design-system + agentsfleet
 
-lint-app: _app_lint  ## Lint ui/packages/app only (Oxlint + tsc)
 
-lint-design-system: _design_system_lint  ## Lint ui/packages/design-system only (Oxlint + tsc)
 
-lint-cli: _cli_lint check-documentation-rules  ## Lint agentsfleet CLI and its public text
 
-lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
+
 
 lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
@@ -304,14 +287,14 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@FAIL=0; \
 	TGTS=$$( \
 	  { grep -hoE 'run:[[:space:]]*make[[:space:]]+[A-Za-z0-9_./-]+' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; \
-	    grep -hoE '^[[:space:]]+make[[:space:]]+[A-Za-z0-9_./-]+' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; \
+ grep -hoE '^[[:space:]]+make[[:space:]]+[A-Za-z0-9_./-]+' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; \
 	  } | awk '{print $$NF}' | grep -v '^check-gh-actions-valid$$' | sort -u); \
 	for tgt in $$TGTS; do \
-	  err=$$($(MAKE) -n "$$tgt" 2>&1 >/dev/null || true); \
-	  if echo "$$err" | grep -qE "No rule to make target [\`']?$$tgt[\`']?"; then \
-	    echo "✗ '.github/workflows/' references 'make $$tgt' which is not a known target"; \
+ err=$$($(MAKE) -n "$$tgt" 2>&1 >/dev/null || true); \
+ if echo "$$err" | grep -qE "No rule to make target [\`']?$$tgt[\`']?"; then \
+ echo "✗ '.github/workflows/' references 'make $$tgt' which is not a known target"; \
 	    FAIL=1; \
-	  fi; \
+ fi; \
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ workflow target reference check failed"; exit 1; fi; \
 	echo "✓ [gh-actions] actionlint + make-target refs all green"
@@ -338,9 +321,9 @@ check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate 
 	@FAIL=0; seen=""; \
 	for d in $$(find playbooks/founding playbooks/operations -type d); do \
 	  [ -f "$$d/001_playbook.md" ] || continue; \
-	  base=$$(basename "$$d"); \
-	  case " $$seen " in *" $$base "*) echo "✗ duplicate playbook basename '$$base' — README parity is basename-matched (tree shows leaf names) and cannot disambiguate: $$d"; FAIL=1 ;; *) seen="$$seen $$base" ;; esac; \
-	  grep -q "$$base/" playbooks/README.md || { echo "✗ playbook dir absent from README tree: $$d"; FAIL=1; }; \
+ base=$$(basename "$$d"); \
+ case " $$seen " in *" $$base "*) echo "✗ duplicate playbook basename '$$base' — README parity is basename-matched (tree shows leaf names) and cannot disambiguate: $$d"; FAIL=1 ;; *) seen="$$seen $$base" ;; esac; \
+ grep -q "$$base/" playbooks/README.md || { echo "✗ playbook dir absent from README tree: $$d"; FAIL=1; }; \
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] README/tree parity failed"; exit 1; fi; \
 	echo "✓ [playbooks] README documents every playbook dir"
