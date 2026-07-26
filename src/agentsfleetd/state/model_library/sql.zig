@@ -203,6 +203,28 @@ pub const LOAD_RATE_WITH_REVISION =
     "\n    ON m.provider = $1 AND m.model_id = $2" ++
     "\n WHERE r.id = 1";
 
+/// Rates for a SET of `(provider, model_id)` pairs — ONE statement, whatever the
+/// page size.
+///
+/// The tenant registry page renders a rate beside every row plus one for the
+/// platform default. Resolving those one at a time would make its statement
+/// count a function of `limit`, which is the unbounded shape §3's budget exists
+/// to forbid; a resident-only cache read costs nothing but answers null for
+/// every row until some unrelated billing charge happens to load that exact
+/// pair, so the page renders blank rates indefinitely after a restart.
+///
+/// Two parallel text arrays rather than a generated `IN (($1,$2),($3,$4),…)`
+/// list: the statement text is then constant, so it plans once and is not a new
+/// prepared statement per distinct page size.
+///
+/// `(provider, model_id)` is unique in this table, so each pair matches at most
+/// one row. The identity is projected back so the caller can fill its positional
+/// slots — the same shape `vault.loadMetadata` uses, and for the same reason.
+pub const LOAD_RATES_FOR_PAIRS =
+    "SELECT provider, model_id, " ++ RATE_COLUMNS ++
+    FROM_TABLE ++
+    "\n WHERE (provider, model_id) IN (SELECT p, m FROM unnest($1::text[], $2::text[]) AS u(p, m))";
+
 /// Smallest context window any provider publishes for `model_id`.
 ///
 /// A catalogue-wide aggregate, deliberately answered by the database rather than

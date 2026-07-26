@@ -137,9 +137,16 @@ pub fn reset() void {
 // and a ceiling cannot be quietly relaxed in one test while another still
 // enforces it.
 
-/// Tenant registry page: five statements, zero decryptions, at most one page of
-/// rows, one connection (§1 Discovery records the measurement).
-pub const TENANT_REGISTRY_MAX_STATEMENTS: usize = 5;
+/// Tenant registry page: six statements, zero decryptions, at most one page of
+/// rows, one connection (§Discovery records each measurement and why it moved).
+///
+/// Six, not five: the rate batch. The page renders a rate beside every row, and
+/// the read that used to answer those from resident cache alone returned null
+/// for every row after a restart. This number is the MEASUREMENT, raised when
+/// the read changed — the same correction §3 already applied going from four to
+/// five. What the budget actually pins is that the count does not vary with
+/// `limit`; both batches are set-oriented, so it does not.
+pub const TENANT_REGISTRY_MAX_STATEMENTS: usize = 6;
 pub const TENANT_REGISTRY_MAX_RESULTS: usize = 100;
 pub const TENANT_REGISTRY_MAX_BODY_BYTES: usize = 512 * 1024;
 
@@ -263,7 +270,7 @@ test "the §3 ceilings are the numbers the spec table states" {
     // live, so a relaxed ceiling has to be changed here — visibly, in one
     // place — rather than drifting in whichever test happened to assert it.
     reset();
-    try testing.expectEqual(@as(usize, 5), TENANT_REGISTRY_MAX_STATEMENTS);
+    try testing.expectEqual(@as(usize, 6), TENANT_REGISTRY_MAX_STATEMENTS);
     try testing.expectEqual(@as(usize, 100), TENANT_REGISTRY_MAX_RESULTS);
     // pin test: literal is the contract
     try testing.expectEqual(@as(usize, 512 * 1024), TENANT_REGISTRY_MAX_BODY_BYTES);

@@ -29,7 +29,7 @@ const tenant_provider = @import("../../state/tenant_provider.zig");
 const secret_probe = @import("../../state/secret_probe.zig");
 const vault = @import("../../state/vault.zig");
 const metadata = @import("../../secrets/metadata.zig");
-const model_rate_cache = @import("../../state/model_rate_cache.zig");
+const model_rate_batch = @import("../../state/model_rate_batch.zig");
 const pagination = @import("../pagination.zig");
 
 /// One wire row for the `models` array. `kind` is a static `@tagName` slice
@@ -108,8 +108,10 @@ pub const ListResult = struct {
 /// entry row, so no synthesize-on-read exists here.
 ///
 /// Statement budget, whatever the page size: one selection read, one entry
-/// page, one workspace resolve, one metadata batch, one platform default.
-/// Decryptions: zero.
+/// page, one workspace resolve, one metadata batch, one platform default, one
+/// rate batch. Decryptions: zero. Both batches are set-oriented, so the count
+/// is independent of `limit` — that independence is the property §3 pins, not
+/// the number itself.
 ///
 /// `after` is the decoded boundary from the caller's cursor, already checked
 /// against the authenticated tenant and the requested limit — this function
@@ -149,6 +151,21 @@ pub fn buildList(
     try vault.loadMetadata(alloc, conn, ws_id, refs, meta);
     defer vault.freeMetadata(alloc, meta);
 
+    // Resolved BEFORE the rates, so the default's `(provider, model)` rides in
+    // the same statement as the page's rather than costing a second one.
+    //
+    // Sequential reuse of `conn` is safe: every query above
+    // (`activeSelfManagedRef`, `list`, `resolvePrimaryWorkspace`,
+    // `loadMetadata`) fully drains its own result set before returning —
+    // mirrors `fleets/secret_list.zig`. A failure reading the default degrades
+    // to "no default known" rather than failing the list — the posture the
+    // boolean always had.
+    var source_default = tenant_provider.platformDefaultView(alloc, conn) catch null;
+    errdefer if (source_default) |*d| d.deinit(alloc);
+
+    var rates = try PageRates.load(alloc, conn, entries, meta, source_default);
+    defer rates.deinit(alloc);
+
     var views: std.ArrayList(EntryView) = .empty;
     errdefer {
         for (views.items) |v| freeView(alloc, v);
@@ -159,18 +176,21 @@ pub fn buildList(
             std.mem.eql(u8, e.secret_ref, s.secret_ref) and std.mem.eql(u8, e.model_id, s.model)
         else
             false;
-        const view = try projectEntry(alloc, e, active, meta[i]);
+        const view = try projectEntry(alloc, e, active, meta[i], rates.slots[i]);
         errdefer freeView(alloc, view);
         try views.append(alloc, view);
     }
 
-    // Sequential reuse of `conn` is safe: every query above
-    // (`activeSelfManagedRef`, `list`, `resolvePrimaryWorkspace`,
-    // `loadMetadata`) fully drains its own result set before returning —
-    // mirrors `fleets/secret_list.zig`. A failure reading the default degrades
-    // to "no default known" rather than failing the list — the posture the
-    // boolean always had.
-    var platform_default = platformDefaultView(alloc, conn) catch null;
+    // Takes ownership of the resolved default's strings — no dupe, so nothing
+    // frees them twice.
+    var platform_default: ?PlatformDefaultView = if (source_default) |d| .{
+        .provider = d.provider,
+        .model = d.model,
+        .context_cap_tokens = d.context_cap_tokens,
+        .input_nanos_per_mtok = if (rates.forDefault()) |r| r.input_nanos_per_mtok else null,
+        .cached_input_nanos_per_mtok = if (rates.forDefault()) |r| r.cached_input_nanos_per_mtok else null,
+        .output_nanos_per_mtok = if (rates.forDefault()) |r| r.output_nanos_per_mtok else null,
+    } else null;
     errdefer if (platform_default) |*dv| dv.deinit(alloc);
 
     // The cursor is built from the LAST ENTRY ROW, not from the last view: the
@@ -195,6 +215,67 @@ pub fn buildList(
     };
 }
 
+/// The page's rate lookups, answered in ONE statement whatever the page size.
+///
+/// Positional, exactly like the `meta` batch above and for the same reason:
+/// `slots[i]` belongs to `entries[i]` by construction, and the platform default —
+/// when there is one — takes the slot after the last entry. Folding the default
+/// in here rather than resolving it on its own is what keeps the whole page at
+/// one rate statement instead of two.
+///
+/// What this replaced: a resident-only cache read. It cost no statement, but it
+/// answered null for every row until some unrelated billing charge happened to
+/// load that exact `(provider, model)` — so after a restart the Models page
+/// showed blank rates indefinitely. Nothing filled the cache for display any
+/// more once the boot warm and the fixture `populate()` were removed.
+const PageRates = struct {
+    const Self = @This();
+
+    slots: []?model_rate_batch.ModelRate,
+    has_default: bool,
+
+    fn load(
+        alloc: std.mem.Allocator,
+        conn: *pg.Conn,
+        entries: []const entries_state.Entry,
+        meta: []const ?vault.SecretMetadata,
+        default: ?tenant_provider.PlatformDefaultView,
+    ) !Self {
+        const count = entries.len + @intFromBool(default != null);
+        const providers = try alloc.alloc([]const u8, count);
+        defer alloc.free(providers);
+        const models = try alloc.alloc([]const u8, count);
+        defer alloc.free(models);
+
+        for (entries, 0..) |e, i| {
+            // A row whose credential is gone (or not yet backfilled) carries no
+            // provider, so it has no catalogue identity to ask about. The empty
+            // pair matches nothing and leaves the slot null — the same blank
+            // cell that row already renders for every other metadata field.
+            providers[i] = if (meta[i]) |m| (m.provider orelse "") else "";
+            models[i] = e.model_id;
+        }
+        if (default) |d| {
+            providers[count - 1] = d.provider;
+            models[count - 1] = d.model;
+        }
+
+        const slots = try alloc.alloc(?model_rate_batch.ModelRate, count);
+        errdefer alloc.free(slots);
+        try model_rate_batch.loadRatesForPairs(conn, providers, models, slots);
+        return .{ .slots = slots, .has_default = default != null };
+    }
+
+    fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+        alloc.free(self.slots);
+    }
+
+    fn forDefault(self: Self) ?model_rate_batch.ModelRate {
+        if (!self.has_default) return null;
+        return self.slots[self.slots.len - 1];
+    }
+};
+
 /// Build one wire row from an entry and its already-read projection.
 ///
 /// No database handle and no tenant id: everything this needs was fetched in
@@ -210,6 +291,7 @@ fn projectEntry(
     e: entries_state.Entry,
     active: bool,
     meta: ?vault.SecretMetadata,
+    rate: ?model_rate_batch.ModelRate,
 ) !EntryView {
     const id = try alloc.dupe(u8, e.id);
     errdefer alloc.free(id);
@@ -232,7 +314,6 @@ fn projectEntry(
     errdefer if (provider) |v| alloc.free(v);
     const base_url = try dupeOpt(alloc, m.base_url);
     errdefer if (base_url) |v| alloc.free(v);
-    const rate = if (m.provider) |prov| lookupModelRate(prov, model_id) else null;
 
     return .{
         .id = id,
@@ -249,30 +330,6 @@ fn projectEntry(
         .active = active,
         .created_at = e.created_at,
     };
-}
-
-fn platformDefaultView(alloc: std.mem.Allocator, conn: *pg.Conn) !?PlatformDefaultView {
-    const source = (try tenant_provider.platformDefaultView(alloc, conn)) orelse return null;
-    const rate = lookupModelRate(source.provider, source.model);
-    return .{
-        .provider = source.provider,
-        .model = source.model,
-        .context_cap_tokens = source.context_cap_tokens,
-        .input_nanos_per_mtok = if (rate) |r| r.input_nanos_per_mtok else null,
-        .cached_input_nanos_per_mtok = if (rate) |r| r.cached_input_nanos_per_mtok else null,
-        .output_nanos_per_mtok = if (rate) |r| r.output_nanos_per_mtok else null,
-    };
-}
-
-/// Display-only rate lookup: resident entries only, never a database read.
-///
-/// Every rate field this view projects is already nullable, so a miss renders a
-/// blank cell rather than a wrong number. That is the whole reason this page may
-/// use the non-loading reader: §3 pins this read at five statements, and a
-/// per-row load would make the statement count a function of page size — the
-/// exact unbounded shape the workstream exists to remove.
-fn lookupModelRate(provider: []const u8, model_id: []const u8) ?model_rate_cache.ModelRate {
-    return model_rate_cache.cachedRate(provider, model_id);
 }
 
 fn dupeOpt(alloc: std.mem.Allocator, s: ?[]const u8) !?[]const u8 {
