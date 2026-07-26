@@ -97,6 +97,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/e2e/acceptance/install-fleet-seed.spec.ts` | EDIT | Assert the M132 wall tile's overlay link through its accessible name rather than searching for sibling display text inside the link. |
 | `ui/packages/app/tests/e2e/acceptance/multi-fleet.spec.ts` | EDIT | Keep the dedicated workspace-stream walk scoped to its seeded tiles after the overlay link gained a descriptive accessible-name prefix and agent callsign. |
 | `ui/packages/app/tests/e2e/acceptance/fleet-console.spec.ts` | EDIT | Accept the Skill source's current persisted disclosure state so an already-expanded document does not block the journey before it returns to the wall. |
+| `ui/packages/app/tests/e2e/acceptance/login-install-lifecycle.spec.ts` | EDIT | Give the parallel lifecycle journeys disjoint teardown prefixes so one test cannot kill the other's Fleet. |
+| `ui/packages/app/tests/e2e/acceptance/logs-detail.spec.ts` | EDIT | Wait for the submitted message to reach the durable event list before navigating away from the optimistic chat surface. |
 
 <!-- G3-v2 rollup endpoint files are intentionally NOT listed here — that Section
 is optional (§5) and its blast radius is added only if its trigger fires. -->
