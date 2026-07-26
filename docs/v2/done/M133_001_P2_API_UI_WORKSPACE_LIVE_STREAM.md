@@ -373,7 +373,7 @@ GET /v1/workspaces/{ws}/events/rollup?window=7d&fleet_id=<id>  (§5 — OPTIONAL
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean (incl. route-registration doc) | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes (HTTP/Redis/schema touched) | `make test-integration` | exit 0 | P0 | |
-| S4 | e2e walks the wall path | `make acceptance-e2e` | exit 0 | P0 | ✅ Operator visually accepted Fleet additions on the deployed wall; unrun exhaustive `live-counter` / `pulse-wall` automation is explicitly delegated to M136_001. |
+| S4 | e2e walks the wall path | `make acceptance-e2e` | exit 0 | P0 | ⚠️ OPERATOR OVERRIDE — visual Fleet-addition evidence accepted for M133 closure; the command did not pass because `live-counter` / `pulse-wall` were not scheduled. Exhaustive automation is delegated to M136_001, not graded ✅ here. |
 | S5 | No leaks (multi-subscription job wiring) | `make memleak` | exit 0 | P0 | |
 | S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
