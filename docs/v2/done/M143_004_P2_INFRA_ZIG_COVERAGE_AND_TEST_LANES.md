@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 004
 **Date:** Jul 26, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — test infrastructure improves every Zig workstream without blocking product behavior
 **Categories:** Infrastructure (INFRA)
 **Batch:** B4 — repository tooling
@@ -59,16 +59,19 @@ This workstream's Pull Request (PR) keeps the corrected intent explicit:
 |---|---|---|
 | `docs/v2/active/M143_004_P2_INFRA_ZIG_COVERAGE_AND_TEST_LANES.md` | MOVE + EDIT | Open the corrected workstream and record its baseline. |
 | `build.zig` | EDIT | Expose distinct installable daemon unit and integration test binaries. |
-| `build_runner.zig` | EDIT | Keep runner unit and integration binaries independently selectable. |
+| `src/build/main.zig` | EDIT | Export the daemon test registration helper. |
+| `src/build/daemon_tests.zig` | CREATE | Register daemon unit and integration graphs without growing `build.zig` past its file limit. |
 | `src/agentsfleetd/tests.zig` | EDIT | Retain only unit-reachable daemon tests. |
 | `src/agentsfleetd/integration_tests.zig` | CREATE | Own the live PostgreSQL, Redis, and QStash daemon integration imports. |
 | `make/test-unit.mk` | EDIT | Add public Zig coverage and component binary execution. |
 | `make/test-integration.mk` | EDIT | Run component integration binaries and remove one-line underscore wrappers. |
 | `make/bench.mk` | EDIT | Reuse component binaries, correct cache propagation, and preflight advisory tooling. |
 | `make/test.mk` | EDIT | Declare shared coverage and lane configuration. |
+| `make/check-test-reachability.mk` | EDIT | Run the lane orchestration self-tests beside reachability self-tests. |
 | `Makefile` | EDIT | Describe the corrected public target surface. |
-| `scripts/check_zig_test_reachability.py` | EDIT | Count the split daemon roots without losing reachability coverage. |
-| `scripts/test_check_zig_test_reachability.py` | EDIT | Pin unit and integration classification across roots. |
+| `.github/workflows/test.yml` | EDIT | Run Zig coverage as an independent CI job in the kcov-enabled immutable image. |
+| `scripts/run-zig-memleak-lane.sh` | CREATE | Keep platform leak behavior directly testable without invoking private Make targets. |
+| `scripts/check_zig_test_lanes_test.py` | CREATE | Failure-inject coverage, integration, and memory-lane orchestration. |
 | `docs/architecture/testing.md` | CREATE | Record component ownership and future component registration. |
 | `docs/architecture/README.md` | EDIT | Link the testing architecture page. |
 | `docs/VERIFY_TIERS.md` | EDIT | Describe the new coverage, integration, and memory-leak evidence. |
@@ -119,11 +122,12 @@ Split daemon unit imports from live-service integration imports. Keep runner uni
 
 ### §3 — Real Zig line coverage
 
-`make test-coverage-zig` builds installable test binaries for daemon, runner, and shared libraries, runs them under kcov, merges the component output, writes Cobertura XML and HTML, and enforces one repository line floor. `make test-coverage-all` includes this Zig lane beside the existing JavaScript and TypeScript coverage lanes.
+`make test-coverage-zig` builds installable test binaries for daemon, runner, and shared libraries, runs them under kcov, merges the component output, writes Cobertura XML and HTML, and enforces a 60% repository line floor against the measured 61.40% baseline. `make test-coverage-all` includes this Zig lane beside the existing JavaScript and TypeScript coverage lanes.
 
 - **Dimension 3.1** — each registered component contributes a non-empty kcov result → coverage artifact test.
 - **Dimension 3.2** — merged coverage enforces the named repository floor → below-floor injection test.
 - **Dimension 3.3** — missing kcov fails with a direct install hint → tool-absence test.
+- **Dimension 3.4** — the CI check publishes the measured percentage and merged HTML report → workflow validation.
 
 ### §4 — Faster integration orchestration
 
@@ -135,7 +139,7 @@ The aggregate starts isolated infrastructure once, resets schemas once, and runs
 
 ### §5 — Faster memory-leak verification
 
-The memory-leak aggregate builds each component binary once with exported repository caches. The Zig testing allocator remains the blocking leak proof on macOS. The advisory `leaks` pass runs only after a lightweight preflight proves process inspection works, avoiding a second complete suite when inspection is unavailable. Linux Valgrind behavior remains blocking.
+The memory-leak aggregate builds each component binary once with exported repository caches and runs the three component lanes concurrently. The Zig testing allocator remains the blocking leak proof on macOS. The advisory `leaks` pass runs only after a lightweight preflight proves process inspection works, avoiding a second complete suite when inspection is unavailable. Linux Valgrind behavior remains blocking. The boot-to-drain proof runs after the component lanes converge.
 
 - **Dimension 5.1** — child Zig builds receive both repository cache paths → fake-tool environment test.
 - **Dimension 5.2** — failed macOS inspection preflight skips advisory reruns but not allocator execution → fake-tool call-count test.
@@ -189,7 +193,7 @@ The memory-leak aggregate builds each component binary once with exported reposi
 |---|---|---|
 | 1.1–1.2 | unit | Make graph self-test proves public recipes and shared private helper shape |
 | 2.1–2.3 | unit | reachability classifier and public reachability gate |
-| 3.1–3.3 | integration | kcov component reports, merged floor, and missing-tool failure |
+| 3.1–3.4 | integration | kcov component reports, merged floor, missing-tool failure, and CI report publication |
 | 4.1–4.3 | integration | execution log, reset counter, and existing Compose isolation tests |
 | 5.1–5.3 | unit + integration | fake-tool shell tests plus real `make memleak` |
 
@@ -197,16 +201,16 @@ The memory-leak aggregate builds each component binary once with exported reposi
 
 | # | Criterion | Verify | Expected | Graded |
 |---|---|---|---|---|
-| R1 | underscore cleanup | `rg -n '^_(test-integration-(db|redis|full)):' make` | no hits | |
-| R2 | Zig coverage | `make test-coverage-zig` | merged report exists and floor passes | |
-| R3 | unit graphs | `make test-unit-all` | exit 0 | |
-| R4 | integration graph | `make test-integration` | exit 0 and no daemon unit rerun | |
-| R5 | memory graph | `make memleak` | exit 0 without unavailable advisory reruns | |
-| S1 | conformance | `make harness-verify` | exit 0 | |
-| S2 | lint | `make lint-all` | exit 0 | |
-| S3 | Linux builds | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both exit 0 | |
-| S4 | version | `make check-version` | exit 0 | |
-| S5 | secrets | `gitleaks detect` | exit 0 | |
+| R1 | underscore cleanup | `rg -n '^_(test-integration-(db|redis|full)):' make` | no hits | ✅ no hits |
+| R2 | Zig coverage | `make test-coverage-zig` | merged report exists, floor passes, and CI publishes the summary and HTML artifact | ✅ 61.40% ≥ 60%; image verified |
+| R3 | unit graphs | `make test-unit-all` | exit 0 | ✅ 2,202 daemon; 379 runner; 121 library; package coverage green |
+| R4 | integration graph | `make test-integration` | exit 0 and no daemon unit rerun | ✅ exit 0; 7.73-minute run |
+| R5 | memory graph | `make memleak` | exit 0 without unavailable advisory reruns | ✅ allocator, runner, library, boot-drain green |
+| S1 | conformance | `make harness-verify` | exit 0 | ✅ all gates green |
+| S2 | lint | `make lint-all` | exit 0 | ✅ all lint checks passed |
+| S3 | Linux builds | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both exit 0 | ✅ both targets passed |
+| S4 | version | `make check-version` | exit 0 | ✅ versions match 0.22.1 |
+| S5 | secrets | `gitleaks detect` | exit 0 | ✅ no leaks found |
 
 ## Dead Code Sweep
 
@@ -216,8 +220,8 @@ Remove the orphan daemon-only coverage recipe, the changed-branch-probe design, 
 
 - Source-level Zig branch mapping, custom probes, or a parser for changed branches.
 - Changing product runtime behavior, API behavior, SQL schema, or deployment configuration.
-- Editing Continuous Integration configuration without Indy's explicit approval.
-- Setting a coverage floor higher than the repository's existing backend floor.
+- Continuous Integration configuration beyond the Indy-approved dedicated coverage job.
+- Requiring immediate 100% Zig line coverage; the floor starts at 60% and ratchets upward with production-path tests.
 
 ## Product Clarity
 
@@ -243,4 +247,5 @@ Remove the orphan daemon-only coverage recipe, the changed-branch-probe design, 
 - Memory-leak recipes assign cache variables without exporting them to child Zig builds.
 - Docker Compose isolation is already current on `main`; this workstream does not revisit collision handling.
 - Architecture testing topology was silent; `docs/architecture/testing.md` will land with the implementation.
+- The first merged run measured 61.40% Zig line coverage; the blocking floor starts at 60% to prevent material regression.
 - **Deferrals:** none.

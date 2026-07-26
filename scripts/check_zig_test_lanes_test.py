@@ -1,0 +1,201 @@
+import os
+from pathlib import Path
+import stat
+import subprocess
+import tempfile
+import textwrap
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MEMLEAK_RUNNER = ROOT / "scripts" / "run-zig-memleak-lane.sh"
+
+
+def write_executable(path: Path, body: str) -> None:
+    path.write_text(textwrap.dedent(body), encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+class TestLaneGraph(unittest.TestCase):
+    def test_daemon_roots_are_disjoint(self) -> None:
+        unit_root = (ROOT / "src/agentsfleetd/tests.zig").read_text()
+        integration_root = (ROOT / "src/agentsfleetd/integration_tests.zig").read_text()
+        build_graph = (ROOT / "src/build/daemon_tests.zig").read_text()
+        self.assertNotIn("_integration_test.zig", unit_root)
+        self.assertIn("_integration_test.zig", integration_root)
+        self.assertNotIn('@import("main.zig")', integration_root)
+        self.assertIn('S_INTEGRATION_FILE_FILTER = "_integration_test"', build_graph)
+        self.assertIn('S_INTEGRATION_NAME_FILTER = "integration:"', build_graph)
+        self.assertIn('@import("cron/fire_queue_integration_test.zig")', integration_root)
+
+    def test_public_integration_targets_run_integration_graph(self) -> None:
+        makefile = (ROOT / "make/test-integration.mk").read_text()
+        self.assertEqual(makefile.count("zig build test-integration"), 3)
+        self.assertNotIn("zig build test\n", makefile)
+        self.assertIn("test-integration: _reset-test-db", makefile)
+
+    def test_private_memleak_helper_has_three_callers(self) -> None:
+        makefile = (ROOT / "make/bench.mk").read_text()
+        self.assertEqual(makefile.count("$(MAKE) _memleak-lane"), 3)
+        self.assertIn("& daemon_pid=$$!", makefile)
+        self.assertIn("& runner_pid=$$!", makefile)
+        self.assertIn("& lib_pid=$$!", makefile)
+        self.assertIn('wait "$$daemon_pid"', makefile)
+        self.assertIn('wait "$$runner_pid"', makefile)
+        self.assertIn('wait "$$lib_pid"', makefile)
+
+    def test_boot_drain_uses_integration_binary(self) -> None:
+        makefile = (ROOT / "make/bench.mk").read_text()
+        self.assertIn("zig build test-integration-bin", makefile)
+        self.assertIn("zig-out/bin/agentsfleetd-integration-tests", makefile)
+        self.assertNotIn("zig build test-bin $$opt -Dtest-filter", makefile)
+
+
+class TestCoverageLane(unittest.TestCase):
+    def run_coverage(self, kcov_body: str, minimum: str = "60") -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as raw:
+            temp = Path(raw)
+            tool_dir = temp / "bin"
+            tool_dir.mkdir()
+            write_executable(tool_dir / "zig", "#!/bin/sh\nexit 0\n")
+            write_executable(tool_dir / "kcov", kcov_body)
+            env = os.environ.copy()
+            env["PATH"] = f"{tool_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            return subprocess.run(
+                [
+                    "make",
+                    "test-coverage-zig",
+                    f"ZIG_COVERAGE_DIR={temp / 'coverage'}",
+                    f"ZIG_GLOBAL_CACHE_DIR={temp / 'global'}",
+                    f"ZIG_LOCAL_CACHE_DIR={temp / 'local'}",
+                    f"ZIG_COVERAGE_MIN_LINES={minimum}",
+                ],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+    def test_below_floor_fails(self) -> None:
+        result = self.run_coverage(
+            """\
+            #!/bin/sh
+            if [ "$1" = "--merge" ]; then out=$2; else
+              for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
+            fi
+            mkdir -p "$out"
+            printf '<coverage line-rate="0.10"/>\\n' > "$out/cobertura.xml"
+            : > "$out/index.html"
+            """,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("below threshold", result.stdout + result.stderr)
+
+    def test_missing_component_report_fails(self) -> None:
+        result = self.run_coverage(
+            """\
+            #!/bin/sh
+            for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
+            case "$out" in */runner) exit 0;; esac
+            mkdir -p "$out"
+            printf '<coverage line-rate="0.50"/>\\n' > "$out/cobertura.xml"
+            """,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("component runner produced no Cobertura report", result.stdout + result.stderr)
+
+    def test_missing_kcov_names_install_hint(self) -> None:
+        env = os.environ.copy()
+        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        result = subprocess.run(
+            ["make", "test-coverage-zig"],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("install: brew install kcov", result.stdout + result.stderr)
+
+
+class TestMemleakLane(unittest.TestCase):
+    def run_lane(
+        self,
+        platform: str,
+        leaks_supported: str = "0",
+        valgrind_exit: str = "0",
+    ) -> tuple[subprocess.CompletedProcess[str], str]:
+        with tempfile.TemporaryDirectory() as raw:
+            temp = Path(raw)
+            tool_dir = temp / "bin"
+            tool_dir.mkdir()
+            log = temp / "calls.log"
+            write_executable(
+                tool_dir / "uname",
+                f"#!/bin/sh\nprintf '%s\\n' {platform}\n",
+            )
+            write_executable(
+                tool_dir / "zig",
+                """\
+                #!/bin/sh
+                printf 'zig global=%s local=%s\\n' "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" >> "$CALL_LOG"
+                exit 0
+                """,
+            )
+            write_executable(
+                tool_dir / "leaks",
+                "#!/bin/sh\nprintf 'leaks\\n' >> \"$CALL_LOG\"\nexit 0\n",
+            )
+            write_executable(
+                tool_dir / "valgrind",
+                f"#!/bin/sh\nprintf 'valgrind\\n' >> \"$CALL_LOG\"\nexit {valgrind_exit}\n",
+            )
+            binary = temp / "zig-out/bin/sample-tests"
+            binary.parent.mkdir(parents=True)
+            write_executable(
+                binary,
+                "#!/bin/sh\nprintf 'binary\\n' >> \"$CALL_LOG\"\nexit 0\n",
+            )
+            env = os.environ.copy()
+            env.update(
+                {
+                    "PATH": f"{tool_dir}:/usr/bin:/bin",
+                    "UNAME_BIN": str(tool_dir / "uname"),
+                    "CALL_LOG": str(log),
+                    "ZIG_GLOBAL_CACHE_DIR": str(temp / "global"),
+                    "ZIG_LOCAL_CACHE_DIR": str(temp / "local"),
+                    "MACOS_LEAKS_SUPPORTED": leaks_supported,
+                }
+            )
+            result = subprocess.run(
+                [str(MEMLEAK_RUNNER), "sample", "-", "test-bin", "1", "sample-tests"],
+                cwd=temp,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            return result, log.read_text(encoding="utf-8")
+
+    def test_macos_failed_preflight_skips_advisory_rerun(self) -> None:
+        result, calls = self.run_lane("Darwin")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls.count("binary"), 1)
+        self.assertNotIn("leaks", calls)
+        self.assertIn("global=", calls)
+
+    def test_macos_supported_inspection_runs_advisory(self) -> None:
+        result, calls = self.run_lane("Darwin", leaks_supported="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("leaks", calls)
+
+    def test_linux_valgrind_failure_propagates(self) -> None:
+        result, calls = self.run_lane("Linux", valgrind_exit="9")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("valgrind", calls)
+
+
+if __name__ == "__main__":
+    unittest.main()
