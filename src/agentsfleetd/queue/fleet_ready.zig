@@ -65,8 +65,8 @@ const CLEAR_IF_TOKEN_MATCHES =
 ;
 
 /// One ready fleet plus the token naming this generation of its mark. Both
-/// slices are owned by the allocator `peek` received; release via
-/// `Peeked.deinit`, passing that same allocator.
+/// slices are owned by the allocator `peek` received; release via `freePeeked`,
+/// passing that same allocator.
 pub const Ready = struct {
     fleet_id: []const u8,
     token: []const u8,

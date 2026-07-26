@@ -34,6 +34,10 @@ pub fn lookup(
 ) anyerror!?LookupResult {
     const self: *Ctx = @ptrCast(@alignCast(host));
     const now_ms = clock.nowMillis();
+    // Read BEFORE the lookup: if an operator invalidates this runner while the
+    // query below is in flight, the row in hand predates the change and `put`
+    // must refuse it rather than resurrect a revoked verdict for a full window.
+    const seen_generation = token_cache.generation();
     // The steady state: an idle runner heartbeating and polling costs no
     // Postgres read at all. The entry expires within one heartbeat interval and
     // the operator plane drops it outright on an admin-state change or a delete,
@@ -61,7 +65,7 @@ pub fn lookup(
     // today.
     const row = (q.next() catch return error.DbQueryFailed) orelse return null;
     const result = try copyRow(alloc, row);
-    token_cache.put(token_hash_hex, result.runner_id, result.active, now_ms);
+    token_cache.put(token_hash_hex, result.runner_id, result.active, now_ms, seen_generation);
     return result;
 }
 

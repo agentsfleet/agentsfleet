@@ -35,10 +35,15 @@
 const std = @import("std");
 const constants = @import("common");
 
-/// Runners tracked per process. Each row is ~112 bytes, so the whole table is
-/// ~14 KiB — small enough to be a static global and large enough that a
-//  deployment reaches its Postgres ceiling long before it evicts.
-pub const MAX_SLOTS: usize = 128;
+/// Runners tracked per process, sized by COLLISION rate rather than by runner
+/// count. A direct-mapped table has no probing, so two live tokens landing on
+/// one slot evict each other on every interleaved request and both fall back to
+/// Postgres permanently — the memo would be worst at exactly the scale it
+/// matters. Birthday math is the sizing input: at the ~100 runners
+/// `schema/033_hot_path_indexes.sql` assumes, 128 slots put ~30 runners in a
+/// shared slot; 4096 puts ~1. Matches `queue/fleet_group_memo.zig`'s table for
+/// the same reason. ~112 bytes a row, so ~448 KiB, static and allocator-free.
+pub const MAX_SLOTS: usize = 4096;
 
 /// SHA-256 rendered as hex, which is what `fleet.runners.token_hash` stores.
 pub const TOKEN_HASH_HEX_LEN: usize = 64;
@@ -78,6 +83,21 @@ pub const Hit = struct {
 
 var g_mutex: constants.Mutex = .{};
 var g_slots: [MAX_SLOTS]Slot = [_]Slot{.{}} ** MAX_SLOTS;
+/// Bumped by every invalidation. A caller reads it BEFORE its Postgres lookup
+/// and hands it back to `put`, which refuses to store a verdict the operator
+/// plane already invalidated mid-flight. Without it the lookup path loses that
+/// race in the one direction that matters: a revoke lands and clears an empty
+/// table, then the in-flight read stores the pre-revoke `active` verdict and the
+/// revoked runner keeps authenticating for a full expiry window — on the very
+/// machine that served the revoke.
+var g_generation: u64 = 0;
+
+/// The invalidation counter as of now. Read before a lookup, passed to `put`.
+pub fn generation() u64 {
+    g_mutex.lock();
+    defer g_mutex.unlock();
+    return g_generation;
+}
 
 fn slotIndex(token_hash_hex: []const u8) usize {
     var h = std.hash.Wyhash.init(0);
@@ -129,12 +149,17 @@ pub fn get(token_hash_hex: []const u8, now_ms: i64) ?Hit {
 /// A `runner_id` wider than a canonical UUID is not stored rather than
 /// truncated — a truncated id would authenticate the wrong runner, and skipping
 /// the memo only costs the read this exists to avoid.
-pub fn put(token_hash_hex: []const u8, runner_id: []const u8, active: bool, now_ms: i64) void {
+///
+/// `seen_generation` is the value `generation()` returned before the caller read
+/// Postgres. If an invalidation landed since, the row the caller is holding may
+/// predate it, so the write is dropped and the next request re-reads.
+pub fn put(token_hash_hex: []const u8, runner_id: []const u8, active: bool, now_ms: i64, seen_generation: u64) void {
     if (token_hash_hex.len != TOKEN_HASH_HEX_LEN) return;
     if (runner_id.len == 0 or runner_id.len > RUNNER_ID_MAX_LEN) return;
 
     g_mutex.lock();
     defer g_mutex.unlock();
+    if (g_generation != seen_generation) return;
 
     const slot = &g_slots[slotIndex(token_hash_hex)];
     slot.* = .{
@@ -159,6 +184,10 @@ pub fn invalidateRunner(runner_id: []const u8) void {
     if (runner_id.len == 0 or runner_id.len > RUNNER_ID_MAX_LEN) return;
     g_mutex.lock();
     defer g_mutex.unlock();
+    // Bump FIRST and unconditionally — including when the scan below finds
+    // nothing. An empty table is exactly the state a racing lookup is about to
+    // fill, and that write is the one this counter has to refuse.
+    g_generation +%= 1;
 
     for (&g_slots) |*slot| {
         if (!slot.occupied) continue;
@@ -173,6 +202,7 @@ pub fn resetForTest() void {
     g_mutex.lock();
     defer g_mutex.unlock();
     g_slots = [_]Slot{.{}} ** MAX_SLOTS;
+    g_generation = 0;
 }
 
 test {

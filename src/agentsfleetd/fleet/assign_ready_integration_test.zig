@@ -234,7 +234,6 @@ test "integration: peek never returns more entries than the bound it was given" 
     // peek, and since the peek is bounded and randomized they could crowd out the
     // one fleet a sibling test had just marked — a lease failure with no visible
     // cause in the suite that suffered it.
-    try clearWholeIndex(h);
     var synthetic: [SYNTHETIC_FLEETS][id_format.UUID_TEXT_LEN]u8 = undefined;
     for (&synthetic) |*slot| slot.* = try id_format.generateUuidV7();
     defer {

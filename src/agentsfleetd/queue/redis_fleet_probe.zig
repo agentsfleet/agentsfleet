@@ -26,9 +26,13 @@
 //! away afterwards.
 
 const std = @import("std");
+const logging = @import("log");
 const queue_consts = @import("constants.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_client = @import("redis_client.zig");
+const ec = @import("../errors/error_registry.zig");
+
+const log = logging.scoped(.redis_fleet_probe);
 
 const CMD_XINFO = "XINFO";
 const ARG_GROUPS = "GROUPS";
@@ -78,13 +82,13 @@ pub fn parseStreamId(text: []const u8) !StreamId {
 /// for a genuinely absent stream — there is nothing there to strand.
 pub fn hasDeliverable(client: *redis_client.Client, fleet_id: []const u8) bool {
     var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
-    const stream_key = queue_consts.fleetStreamKey(&key_buf, fleet_id) catch return false;
+    const stream_key = queue_consts.fleetStreamKey(&key_buf, fleet_id) catch |err| return probeFailed(fleet_id, err);
 
-    const stream = readStreamState(client, stream_key) catch return false;
+    const stream = readStreamState(client, stream_key) catch |err| return probeFailed(fleet_id, err);
     // No entries ever generated ⇒ nothing to deliver, whatever the group says.
     if (stream.length == 0) return false;
 
-    const group = readGroupState(client, stream_key) catch return false;
+    const group = readGroupState(client, stream_key) catch |err| return probeFailed(fleet_id, err);
     const delivered = group orelse {
         // No consumer group yet ⇒ no runner has ever read this fleet, so every
         // entry present is undelivered.
@@ -92,6 +96,21 @@ pub fn hasDeliverable(client: *redis_client.Client, fleet_id: []const u8) bool {
     };
     if (delivered.pending > 0) return true;
     return delivered.last_delivered.lessThan(stream.last_generated);
+}
+
+/// A probe that cannot answer says "nothing to recover", which is the safe
+/// direction for a caller that only ever re-marks — but it is indistinguishable
+/// from a healthy idle fleet, and this probe IS the backstop for a lost mark.
+/// Silently answering false for every fleet (a restricted `XINFO`, a transport
+/// fault) would leave `remarked_fleets` at zero and the whole recovery path
+/// inert while looking exactly like an idle system. So it is loud (RULE OBS).
+fn probeFailed(fleet_id: []const u8, err: anyerror) bool {
+    log.warn("deliverable_probe_failed", .{
+        .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+        .fleet_id = fleet_id,
+        .err = @errorName(err),
+    });
+    return false;
 }
 
 const StreamState = struct {

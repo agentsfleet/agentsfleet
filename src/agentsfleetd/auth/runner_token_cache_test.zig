@@ -22,7 +22,7 @@ test "a cold table answers nothing" {
 
 test "a stored verdict is returned before it expires" {
     cache.resetForTest();
-    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
 
     const hit = cache.get(HASH_A, EPOCH_MS + cache.ENTRY_TTL_MS - 1) orelse return error.ExpectedHit;
     try std.testing.expectEqualStrings(RUNNER_A, hit.runnerId());
@@ -31,7 +31,7 @@ test "a stored verdict is returned before it expires" {
 
 test "a verdict stops answering the instant it expires" {
     cache.resetForTest();
-    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
 
     // The boundary is exclusive: at exactly now + TTL the entry is already gone,
     // so the window a revoked runner survives can never exceed one TTL.
@@ -41,7 +41,7 @@ test "a verdict stops answering the instant it expires" {
 
 test "an expired read drops the row rather than leaving it to answer later" {
     cache.resetForTest();
-    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
     _ = cache.get(HASH_A, EPOCH_MS + cache.ENTRY_TTL_MS);
 
     // Reading with a clock BEFORE the original expiry must still miss: the row
@@ -51,7 +51,7 @@ test "an expired read drops the row rather than leaving it to answer later" {
 
 test "a non-active verdict is remembered as non-active" {
     cache.resetForTest();
-    cache.put(HASH_A, RUNNER_A, false, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, false, EPOCH_MS, cache.generation());
 
     const hit = cache.get(HASH_A, EPOCH_MS + 1) orelse return error.ExpectedHit;
     try std.testing.expect(!hit.active);
@@ -59,14 +59,14 @@ test "a non-active verdict is remembered as non-active" {
 
 test "an unknown token hash never reads another runner's verdict" {
     cache.resetForTest();
-    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
     try std.testing.expect(cache.get(HASH_B, EPOCH_MS + 1) == null);
 }
 
 test "a recycled slot reads as absent, never as the runner it replaced" {
     cache.resetForTest();
-    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS);
-    cache.put(HASH_B, RUNNER_B, true, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
+    cache.put(HASH_B, RUNNER_B, true, EPOCH_MS, cache.generation());
 
     // The table is direct-mapped, so whether these two share a slot depends on
     // the hash. Either way the invariant holds: the most recent write is always
@@ -78,7 +78,7 @@ test "a recycled slot reads as absent, never as the runner it replaced" {
 
 test "invalidating a runner drops its verdict at once" {
     cache.resetForTest();
-    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
     cache.invalidateRunner(RUNNER_A);
 
     // Well inside the TTL — the drop is what stops it, not the clock.
@@ -87,8 +87,8 @@ test "invalidating a runner drops its verdict at once" {
 
 test "invalidating one runner leaves an unrelated runner's verdict intact" {
     cache.resetForTest();
-    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS);
-    cache.put(HASH_B, RUNNER_B, true, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
+    cache.put(HASH_B, RUNNER_B, true, EPOCH_MS, cache.generation());
     cache.invalidateRunner(RUNNER_A);
 
     if (cache.get(HASH_B, EPOCH_MS + 1)) |b| {
@@ -102,7 +102,7 @@ test "invalidating one runner leaves an unrelated runner's verdict intact" {
 
 test "invalidating a runner that was never stored is a no-op" {
     cache.resetForTest();
-    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
     cache.invalidateRunner(RUNNER_B);
 
     const hit = cache.get(HASH_A, EPOCH_MS + 1) orelse return error.ExpectedHit;
@@ -111,17 +111,17 @@ test "invalidating a runner that was never stored is a no-op" {
 
 test "a token hash of the wrong width is neither stored nor answered" {
     cache.resetForTest();
-    cache.put("deadbeef", RUNNER_A, true, EPOCH_MS);
+    cache.put("deadbeef", RUNNER_A, true, EPOCH_MS, cache.generation());
     try std.testing.expect(cache.get("deadbeef", EPOCH_MS + 1) == null);
     // And a short prefix of a real hash must not match a stored full-width one.
-    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
     try std.testing.expect(cache.get(HASH_A[0..32], EPOCH_MS + 1) == null);
 }
 
 test "an oversized runner id is skipped rather than truncated" {
     cache.resetForTest();
     const too_long = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7a01-overflow";
-    cache.put(HASH_A, too_long, true, EPOCH_MS);
+    cache.put(HASH_A, too_long, true, EPOCH_MS, cache.generation());
 
     // Storing a truncated id would authenticate a DIFFERENT runner; refusing the
     // memo only costs the Postgres read it exists to save.
@@ -130,8 +130,38 @@ test "an oversized runner id is skipped rather than truncated" {
 
 test "an empty runner id is refused" {
     cache.resetForTest();
-    cache.put(HASH_A, "", true, EPOCH_MS);
+    cache.put(HASH_A, "", true, EPOCH_MS, cache.generation());
     try std.testing.expect(cache.get(HASH_A, EPOCH_MS + 1) == null);
+}
+
+test "an invalidation mid-lookup refuses the verdict that lookup was about to store" {
+    cache.resetForTest();
+    // The exact interleaving: a request reads the generation, its Postgres read
+    // is in flight, the operator revokes (invalidating an EMPTY table), and only
+    // then does the request try to store what it read. Storing it would put a
+    // pre-revoke `active` verdict back for a full window on the very machine
+    // that served the revoke.
+    const seen = cache.generation();
+    cache.invalidateRunner(RUNNER_A);
+    cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, seen);
+
+    try std.testing.expect(cache.get(HASH_A, EPOCH_MS + 1) == null);
+}
+
+test "an invalidation for one runner does not refuse another runner's in-flight store" {
+    cache.resetForTest();
+    // The counter is global, so a bump refuses every in-flight store, not just
+    // the invalidated runner's. That costs one extra Postgres read and is the
+    // safe direction — but the store must succeed once re-read against the
+    // current generation, or the memo would never refill under churn.
+    const stale = cache.generation();
+    cache.invalidateRunner(RUNNER_A);
+    cache.put(HASH_B, RUNNER_B, true, EPOCH_MS, stale);
+    try std.testing.expect(cache.get(HASH_B, EPOCH_MS + 1) == null);
+
+    cache.put(HASH_B, RUNNER_B, true, EPOCH_MS, cache.generation());
+    const hit = cache.get(HASH_B, EPOCH_MS + 1) orelse return error.ExpectedHit;
+    try std.testing.expectEqualStrings(RUNNER_B, hit.runnerId());
 }
 
 test "the trusted window is one runner heartbeat" {
