@@ -140,13 +140,20 @@ fn parseEventFields(alloc: std.mem.Allocator, fields: []const redis_protocol.Res
         const key = redis_protocol.valueAsString(fields[i]) orelse continue;
         const val = redis_protocol.valueAsString(fields[i + 1]) orelse continue;
 
+        // Free-before-assign on every dupe: a duplicated key in a crafted or
+        // buggy producer entry would otherwise leak the first copy on every
+        // delivery, forever, on the lease hot path.
         if (std.mem.eql(u8, key, queue_consts.fleet_field_type)) {
+            if (out.event_type) |old| alloc.free(old);
             out.event_type = try alloc.dupe(u8, val);
         } else if (std.mem.eql(u8, key, queue_consts.fleet_field_actor)) {
+            if (out.actor) |old| alloc.free(old);
             out.actor = try alloc.dupe(u8, val);
         } else if (std.mem.eql(u8, key, queue_consts.fleet_field_workspace_id)) {
+            if (out.workspace_id) |old| alloc.free(old);
             out.workspace_id = try alloc.dupe(u8, val);
         } else if (std.mem.eql(u8, key, queue_consts.fleet_field_request)) {
+            if (out.request_json) |old| alloc.free(old);
             out.request_json = try alloc.dupe(u8, val);
         } else if (std.mem.eql(u8, key, queue_consts.fleet_field_created_at)) {
             out.created_at_ms = std.fmt.parseInt(i64, val, 10) catch 0;

@@ -68,8 +68,9 @@ test "a recycled slot reads as absent, never as the runner it replaced" {
     cache.put(HASH_A, RUNNER_A, true, EPOCH_MS, cache.generation());
     cache.put(HASH_B, RUNNER_B, true, EPOCH_MS, cache.generation());
 
-    // The table is direct-mapped, so whether these two share a slot depends on
-    // the hash. Either way the invariant holds: the most recent write is always
+    // The table is set-associative with 4-deep buckets, so these two coexist
+    // even on a bucket collision (eviction needs 4+ colliding live keys). The
+    // invariant this pins survives any depth: the most recent write is always
     // readable, and the other is EITHER itself OR gone — never the other's id.
     const b = cache.get(HASH_B, EPOCH_MS + 1) orelse return error.ExpectedHit;
     try std.testing.expectEqualStrings(RUNNER_B, b.runnerId());

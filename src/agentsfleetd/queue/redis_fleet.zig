@@ -92,8 +92,12 @@ pub fn xaddFleetEvent(client: *redis_client.Client, envelope: EventEnvelope) ![]
         .bulk => |v| v orelse return xaddFailed(envelope),
         else => return xaddFailed(envelope),
     };
-    const owned_id = try client.alloc.dupe(u8, id_str);
+    // Mark BEFORE the id dupe: the append is already durable, so an OOM on the
+    // dupe must not also cost the readiness hint — the caller fails the request
+    // and the sender retries, but this event is in the stream either way and
+    // only the mark makes it promptly leasable.
     fleet_ready.mark(client, envelope.fleet_id);
+    const owned_id = try client.alloc.dupe(u8, id_str);
     log.debug("xadd_fleet_event", .{ .fleet_id = envelope.fleet_id, .event_id = owned_id, .actor = envelope.actor, .type = envelope.event_type.toSlice() });
     return owned_id;
 }
@@ -252,13 +256,15 @@ fn xackFailed(fleet_id: []const u8, event_id: []const u8) anyerror {
 /// the backstop for an out-of-band delete, not a licence to hand it a stale
 /// entry we created ourselves.
 pub fn purgeFleetRedisState(client: *redis_client.Client, fleet_id: []const u8) !void {
+    // Memo and mark FIRST: they are independent of the stream delete, and a
+    // transport failure on the `try` below must not leave the fleet's field
+    // squatting in the shared readiness sample — the fleet is gone from
+    // Postgres, so a surviving entry can only ever be wrong.
+    group_memo.invalidate(fleet_id);
+    fleet_ready.forceClear(client, fleet_id);
     var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
     const stream_key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var resp = try client.commandAllowError(&.{ S_DEL, stream_key });
     defer resp.deinit(client.alloc);
-    // The memo and the mark are dropped either way: the fleet is gone from
-    // Postgres, so a surviving entry can only ever be wrong.
-    group_memo.invalidate(fleet_id);
-    fleet_ready.forceClear(client, fleet_id);
     if (resp == .err) return error.RedisStreamPurgeFailed;
 }

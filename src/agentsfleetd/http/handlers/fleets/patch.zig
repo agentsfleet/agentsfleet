@@ -139,9 +139,6 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
     }
 }
 
-/// Every refusal writes its own response and yields null; the success arm hands
-/// the committed revision and tag to the caller, which attaches the tag before
-/// writing the response.
 /// True when this PATCH set a status that makes the fleet unleasable. Absent
 /// status (a config-only edit) leaves readiness alone, and so does a transition
 /// back to `active` — that fleet is a candidate again, and its mark is restored
@@ -151,6 +148,9 @@ fn statusLeavesActive(status: ?[]const u8) bool {
     return !std.mem.eql(u8, s, fleet_config.FleetStatus.active.toSlice());
 }
 
+/// Every refusal writes its own response and yields null; the success arm hands
+/// the committed revision and tag to the caller, which attaches the tag before
+/// writing the response.
 fn resolveOutcome(hx: Hx, fleet_id: []const u8, outcome: patch_txn.TxnOutcome) ?patch_txn.Updated {
     switch (outcome) {
         .updated => |u| return u,

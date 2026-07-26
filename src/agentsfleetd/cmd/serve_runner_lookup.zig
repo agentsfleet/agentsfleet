@@ -34,10 +34,6 @@ pub fn lookup(
 ) anyerror!?LookupResult {
     const self: *Ctx = @ptrCast(@alignCast(host));
     const now_ms = clock.nowMillis();
-    // Read BEFORE the lookup: if an operator invalidates this runner while the
-    // query below is in flight, the row in hand predates the change and `put`
-    // must refuse it rather than resurrect a revoked verdict for a full window.
-    const seen_generation = token_cache.generation();
     // The steady state: an idle runner heartbeating and polling costs no
     // Postgres read at all. The entry expires within one heartbeat interval and
     // the operator plane drops it outright on an admin-state change or a delete,
@@ -47,6 +43,13 @@ pub fn lookup(
         return .{ .runner_id = try alloc.dupe(u8, hit.runnerId()), .active = hit.active };
     }
 
+    // Read BEFORE the Postgres lookup: if an operator invalidates this runner
+    // while the query below is in flight, the row in hand predates the change
+    // and `put` must refuse it rather than resurrect a revoked verdict for a
+    // full window. Read AFTER the hit check above, where it is never consumed —
+    // the hit path is every steady-state request, and a generation read there
+    // was a second acquisition of the same mutex for nothing.
+    const seen_generation = token_cache.generation();
     const conn = self.pool.acquire() catch return error.DbUnavailable;
     defer self.pool.release(conn);
 

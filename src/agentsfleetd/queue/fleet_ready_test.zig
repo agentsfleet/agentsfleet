@@ -24,14 +24,21 @@ fn bulk(alloc: std.mem.Allocator, s: []const u8) !redis_protocol.RespValue {
     return .{ .bulk = try alloc.dupe(u8, s) };
 }
 
+/// A canonical UUIDv7 fleet id for pair `i` — the only field shape `decodePeek`
+/// keeps now that it validates ids before binding them anywhere near the
+/// candidate query's `uuid[]` cast.
+fn fleetId(buf: *[36]u8, i: usize) ![]const u8 {
+    return std.fmt.bufPrint(buf, "0195c9da-1e2a-7f13-8abc-{d:0>12}", .{i});
+}
+
 /// A RESP2 `HRANDFIELD … WITHVALUES` reply carrying `pairs` fleets, each with a
 /// distinct token, in the flat `[f, v, f, v, …]` layout.
 fn flatReply(alloc: std.mem.Allocator, pairs: usize) !redis_protocol.RespValue {
     const items = try alloc.alloc(redis_protocol.RespValue, pairs * 2);
     for (0..pairs) |i| {
-        var id_buf: [32]u8 = undefined;
+        var id_buf: [36]u8 = undefined;
         var token_buf: [32]u8 = undefined;
-        items[i * 2] = try bulk(alloc, try std.fmt.bufPrint(&id_buf, "fleet-{d}", .{i}));
+        items[i * 2] = try bulk(alloc, try fleetId(&id_buf, i));
         items[i * 2 + 1] = try bulk(alloc, try std.fmt.bufPrint(&token_buf, "token-{d}", .{i}));
     }
     return .{ .array = items };
@@ -69,10 +76,32 @@ test "each field is paired with the value that follows it" {
     // Pairing, not merely presence: a decoder that stepped by one, or that read
     // fields and values from separate halves of the array, would still produce
     // three entries but mis-associate every token.
-    try testing.expectEqualStrings("fleet-0", entries[0].fleet_id);
+    try testing.expectEqualStrings("0195c9da-1e2a-7f13-8abc-000000000000", entries[0].fleet_id);
     try testing.expectEqualStrings("token-0", entries[0].token);
-    try testing.expectEqualStrings("fleet-2", entries[2].fleet_id);
+    try testing.expectEqualStrings("0195c9da-1e2a-7f13-8abc-000000000002", entries[2].fleet_id);
     try testing.expectEqualStrings("token-2", entries[2].token);
+}
+
+test "a non-canonical field is skipped, never decoded into a candidate" {
+    // One malformed field in the shared hash (an operator's stray HSET) bound
+    // into the candidate query's uuid[] cast would error the WHOLE query on
+    // every replica, presenting as a healthy-looking idle system. The decoder
+    // therefore keeps only canonical UUIDv7 ids; `peek` heals the stray field
+    // server-side (proven in the integration tier).
+    const items = try testing.allocator.alloc(redis_protocol.RespValue, 4);
+    items[0] = try bulk(testing.allocator, "not-a-uuid");
+    items[1] = try bulk(testing.allocator, "token-junk");
+    var id_buf: [36]u8 = undefined;
+    items[2] = try bulk(testing.allocator, try fleetId(&id_buf, 7));
+    items[3] = try bulk(testing.allocator, "token-7");
+    var reply = redis_protocol.RespValue{ .array = items };
+    defer reply.deinit(testing.allocator);
+
+    const entries = try fleet_ready.decodePeek(testing.allocator, reply);
+    defer fleet_ready.freePeeked(testing.allocator, entries);
+    try testing.expectEqual(@as(usize, 1), entries.len);
+    try testing.expectEqualStrings("0195c9da-1e2a-7f13-8abc-000000000007", entries[0].fleet_id);
+    try testing.expectEqualStrings("token-7", entries[0].token);
 }
 
 test "the decoded entry count never exceeds the pairs the reply carried" {

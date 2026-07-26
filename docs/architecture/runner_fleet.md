@@ -493,12 +493,12 @@ Alongside them, and deliberately **not** in that table, are the global unlabelle
 ```
 agentsfleet_lease_polls_total                          counter  the denominator for the two below
 agentsfleet_lease_poll_candidates_scanned_total        counter  fleets examined across all polls
-agentsfleet_lease_poll_candidates_max                 gauge    widest single poll (high-water)
 agentsfleet_lease_poll_db_roundtrips_total            counter  Postgres trips on the lease path
 agentsfleet_fleet_ready_depth                         gauge    sampled by the sweeper; NOT summable
-agentsfleet_fleet_ready_write_failures_total{reason}  counter  reason ∈ {mark, clear}
-agentsfleet_fleet_ready_sweep_recoveries_total        counter  fleets the sweep re-marked
+agentsfleet_fleet_ready_write_failures_total          counter  unlabelled: mark and clear failures share it
 ```
+
+The write-failure counter is deliberately unlabelled — which of the two writes failed does not change the operator's response, and a `reason` label would double the series for no decision. Sweep re-marks are visible today as the `remarked_fleets` field on the sweeper's cycle log line, not as a counter family; promoting them to a metric needs a name from the pinned semantic registry first.
 
 They carry no fleet, workspace, tenant, event, lease, or runner label — they describe the control plane, not any one entity, so a per-entity label here would be pure cardinality. `lease_polls_total` exists as a denominator: mean fan-out per poll is a ratio, and shipping only the numerators would make a traffic increase indistinguishable from a fan-out regression. An idle poll contributes a sample of zero rather than no sample at all, because the idle case is the one the fan-out defect lived in.
 
