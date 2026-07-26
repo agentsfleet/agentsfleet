@@ -42,10 +42,16 @@
 //! ref key_name (if spilled) has no harm here since the attacker will not know
 //! the secret value, can be logged."*
 //!
-//! ## It passes today
+//! ## What it found on its first real run
 //!
-//! Nothing in the daemon currently emits a denied field, so this is a
-//! regression tripwire rather than a fix. The one near-miss is
+//! Five sites emitting `api_key_id` — the API key's uuid ROW id, never its key
+//! material. That is the identifier category above, so it joined the allow list
+//! rather than being scrubbed: it is what says WHICH key authenticated or was
+//! rejected, and removing it would leave `auth_rejected reason=revoked` unable
+//! to name the credential. No site emits a secret VALUE, so the scan is a
+//! regression tripwire rather than a fix.
+//!
+//! The near-miss it correctly did NOT flag is
 //! `fleet/service_endpoint.zig`, which logs `hostFromUrl(base_url)` — the host,
 //! with userinfo deliberately stripped (`execution_policy.zig`: *"Strip optional
 //! userinfo@ — a hostname carries none"*). The scan matches FIELD NAMES rather
@@ -93,6 +99,13 @@ const FORBIDDEN_SINK_SUBSTRINGS = [_][]const u8{
 const ALLOWED_SINK_FIELDS = [_][]const u8{
     "key_name",
     "secret_ref",
+    // The API key's ROW id — a uuid, never the key material. It is what says
+    // WHICH key authenticated or was rejected, so denying it would leave
+    // `auth_rejected reason=revoked` with no way to tell which credential was
+    // revoked. Found by this scan on its first real run, at five sites in
+    // `auth/middleware/tenant_api_key.zig` and `cmd/api_key_lookup.zig`; kept
+    // for the same reason `key_name` is.
+    "api_key_id",
     "provider",
     "kind",
     "has_key",
@@ -157,6 +170,11 @@ fn matchingParen(content: []const u8, open: usize) usize {
 }
 
 /// Every forbidden field name emitted in `content`, appended to `out`.
+///
+/// Each name is DUPED into `alloc`, and the caller frees them. The names are
+/// slices INTO `content`, and a caller that reads one file at a time frees that
+/// buffer before it reports — so borrowing here would hand back dangling
+/// pointers, which is a segfault at print time rather than a wrong answer.
 pub fn scanContent(alloc: std.mem.Allocator, content: []const u8, out: *std.ArrayList([]const u8)) !void {
     for (EMITTERS) |emitter| {
         var idx: usize = 0;
@@ -171,7 +189,7 @@ pub fn scanContent(alloc: std.mem.Allocator, content: []const u8, out: *std.Arra
                 const name = fieldNameAt(args, dot) orelse continue;
                 if (eqlAny(name, &ALLOWED_SINK_FIELDS)) continue;
                 if (!containsAny(name, &FORBIDDEN_SINK_SUBSTRINGS)) continue;
-                try out.append(alloc, name);
+                try out.append(alloc, try alloc.dupe(u8, name));
             }
             idx = hit + emitter.len;
         }
@@ -189,7 +207,10 @@ test "test_library_secret_and_metadata_sink_policy: no secret value reaches a lo
     defer walker.deinit();
 
     var findings: std.ArrayList([]const u8) = .empty;
-    defer findings.deinit(alloc);
+    defer {
+        for (findings.items) |name| alloc.free(name);
+        findings.deinit(alloc);
+    }
 
     while (try walker.next(io)) |entry| {
         if (entry.kind != .file) continue;
@@ -204,9 +225,12 @@ test "test_library_secret_and_metadata_sink_policy: no secret value reaches a lo
         try scanContent(alloc, content, &findings);
     }
 
+    // `std.debug.print`, not `std.log.err`: this repo fails a test that emits an
+    // error-level log, so reporting findings that way turns a legible list of
+    // violations into a crash that names none of them.
     if (findings.items.len != 0) {
         for (findings.items) |name| {
-            std.log.err("sink scan: forbidden field '{s}' reaches a log/trace/metric", .{name});
+            std.debug.print("sink scan: forbidden field '{s}' reaches a log/trace/metric\n", .{name});
         }
     }
     try testing.expectEqual(@as(usize, 0), findings.items.len);
@@ -219,7 +243,10 @@ test "test_library_secret_and_metadata_sink_policy: the sink matcher actually ma
     const alloc = testing.allocator;
 
     var caught: std.ArrayList([]const u8) = .empty;
-    defer caught.deinit(alloc);
+    defer {
+        for (caught.items) |item| alloc.free(item);
+        caught.deinit(alloc);
+    }
     try scanContent(alloc, "log.err(\"x\", .{ .api_key = k });", &caught);
     try testing.expectEqual(@as(usize, 1), caught.items.len);
     try testing.expectEqualStrings("api_key", caught.items[0]);
@@ -227,20 +254,29 @@ test "test_library_secret_and_metadata_sink_policy: the sink matcher actually ma
     // The near-miss that must NOT fire: the word appears, but as a VALUE the
     // host has already been extracted from, under an honest field name.
     var clean: std.ArrayList([]const u8) = .empty;
-    defer clean.deinit(alloc);
+    defer {
+        for (clean.items) |item| alloc.free(item);
+        clean.deinit(alloc);
+    }
     try scanContent(alloc, "log.warn(\"x\", .{ .inference_host = hostFromUrl(base_url) });", &clean);
     try testing.expectEqual(@as(usize, 0), clean.items.len);
 
     // The allowance that must NOT fire: an identifier, not a value.
     var allowed: std.ArrayList([]const u8) = .empty;
-    defer allowed.deinit(alloc);
+    defer {
+        for (allowed.items) |item| alloc.free(item);
+        allowed.deinit(alloc);
+    }
     try scanContent(alloc, "log.info(\"stored\", .{ .key_name = n, .secret_ref = r });", &allowed);
     try testing.expectEqual(@as(usize, 0), allowed.items.len);
 
     // Field ACCESS is not a field label — `self.base_url = x` is an assignment
     // that happens to sit inside an emitter's argument span.
     var access: std.ArrayList([]const u8) = .empty;
-    defer access.deinit(alloc);
+    defer {
+        for (access.items) |item| alloc.free(item);
+        access.deinit(alloc);
+    }
     try scanContent(alloc, "log.err(\"x\", .{ .n = blk: { self.base_url = y; break :blk 1; } });", &access);
     try testing.expectEqual(@as(usize, 0), access.items.len);
 }
