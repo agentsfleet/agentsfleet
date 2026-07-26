@@ -235,7 +235,10 @@ fn xackFailed(fleet_id: []const u8, event_id: []const u8) anyerror {
 /// so anything left here is inert. Run before the commit, and a rolled-back
 /// delete would have erased a live fleet's stream.
 ///
-/// The stream `DEL` propagates its error so the caller can log the orphan; the
+/// The stream `DEL` propagates its error so the caller can log the orphan —
+/// including a server-side error REPLY (a `READONLY` after a failover), which
+/// `commandAllowError` hands back as a value rather than an error and which
+/// would otherwise be indistinguishable from a successful purge. The
 /// readiness clear is best-effort by signature and never fails the delete —
 /// a stale field costs one wasted candidate check, and the deleted fleet's own
 /// `status` filter keeps it from ever being leased.
@@ -252,7 +255,10 @@ pub fn purgeFleetRedisState(client: *redis_client.Client, fleet_id: []const u8) 
     var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
     const stream_key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var resp = try client.commandAllowError(&.{ S_DEL, stream_key });
-    resp.deinit(client.alloc);
+    defer resp.deinit(client.alloc);
+    // The memo and the mark are dropped either way: the fleet is gone from
+    // Postgres, so a surviving entry can only ever be wrong.
     group_memo.invalidate(fleet_id);
     fleet_ready.forceClear(client, fleet_id);
+    if (resp == .err) return error.RedisStreamPurgeFailed;
 }

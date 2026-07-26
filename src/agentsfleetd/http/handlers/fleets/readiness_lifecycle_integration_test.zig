@@ -25,7 +25,6 @@ const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const queue_consts = @import("../../../queue/constants.zig");
 const redis_fleet = @import("../../../queue/redis_fleet.zig");
-const fleet_ready = @import("../../../queue/fleet_ready.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -138,14 +137,14 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     for ([_][]const u8{ FLEET_DELETED, FLEET_STOPPED }) |fid| {
-        fleet_ready.forceClear(&h.queue, fid);
-        var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
-        if (queue_consts.fleetStreamKey(&key_buf, fid)) |key| {
-            if (h.queue.command(&.{ "DEL", key })) |*resp| {
-                var r = resp.*;
-                r.deinit(h.queue.alloc);
-            } else |_| {}
-        } else |_| {}
+        // The production purge, not a hand-rolled DEL: deleting a stream also
+        // deletes its consumer group, and only `purgeFleetRedisState` drops the
+        // process-global group memo alongside it. A raw DEL leaves the memo
+        // claiming a group that no longer exists, which costs the next suite to
+        // reuse this fleet id a whole poll spent discovering `NOGROUP`.
+        redis_fleet.purgeFleetRedisState(&h.queue, fid) catch |err| {
+            std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+        };
         execIgnore(conn, "DELETE FROM core.fleet_sessions WHERE fleet_id = $1::uuid", .{fid});
         execIgnore(conn, "DELETE FROM core.fleets WHERE id = $1::uuid", .{fid});
     }

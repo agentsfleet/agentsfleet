@@ -116,17 +116,17 @@ pub const Env = struct {
             base.teardownWorkspace(conn, WORKSPACE_ID);
             _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
         } else |_| {}
-        deleteStream(self.h, AGENTSFLEET_CRED);
-        deleteStream(self.h, AGENTSFLEET_PROVIDER);
-        deleteStream(self.h, AGENTSFLEET_GATED);
-        deleteStream(self.h, FLEET_IDLE);
-        deleteStream(self.h, AGENTSFLEET_STRAND);
-        deleteStream(self.h, AGENTSFLEET_ROW);
-        deleteStream(self.h, AGENTSFLEET_REACK);
-        deleteStream(self.h, AGENTSFLEET_GATED_EXP);
-        deleteStream(self.h, AGENTSFLEET_RECLAIM_FAIL);
-        deleteStream(self.h, AGENTSFLEET_FRESH_FAIL);
-        deleteStream(self.h, AGENTSFLEET_RELEASE_FAIL);
+        forgetFleet(self.h, AGENTSFLEET_CRED);
+        forgetFleet(self.h, AGENTSFLEET_PROVIDER);
+        forgetFleet(self.h, AGENTSFLEET_GATED);
+        forgetFleet(self.h, FLEET_IDLE);
+        forgetFleet(self.h, AGENTSFLEET_STRAND);
+        forgetFleet(self.h, AGENTSFLEET_ROW);
+        forgetFleet(self.h, AGENTSFLEET_REACK);
+        forgetFleet(self.h, AGENTSFLEET_GATED_EXP);
+        forgetFleet(self.h, AGENTSFLEET_RECLAIM_FAIL);
+        forgetFleet(self.h, AGENTSFLEET_FRESH_FAIL);
+        forgetFleet(self.h, AGENTSFLEET_RELEASE_FAIL);
         self.h.deinit();
     }
 };
@@ -148,7 +148,7 @@ fn cleanupRows(conn: *pg.Conn) void {
 /// shared by every suite in the binary, and `peek` is bounded + randomized, so a
 /// mark left behind for a fleet this teardown deletes can crowd a sibling's
 /// freshly-marked fleet out of the sample and make its lease return null.
-fn deleteStream(h: *TestHarness, fleet_id: []const u8) void {
+fn forgetFleet(h: *TestHarness, fleet_id: []const u8) void {
     redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 

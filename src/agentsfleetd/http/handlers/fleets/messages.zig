@@ -36,6 +36,16 @@ const MessageBody = struct {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 pub fn innerFleetMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_id: []const u8) void {
+    // Canonical spelling or nothing. Postgres normalizes `$1::uuid`, so an
+    // uppercase, brace-wrapped, or dash-free variant matches the row and passes
+    // every ownership check — but the RAW path text is what reaches the stream
+    // key and the readiness mark. That variant would open its own
+    // `fleet:{VARIANT}:events` stream no poll ever reads (a 202 whose message is
+    // never delivered) and leave an index field nothing can remove: the clear
+    // matches the peeked field against the query's canonical `id::text`, so it
+    // never fires for a variant. This guard is what every sibling fleet handler
+    // already does.
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, fleet_id, "fleet_id")) return;
     const body_raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
         return;
