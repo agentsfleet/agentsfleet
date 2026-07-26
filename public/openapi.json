@@ -3719,6 +3719,10 @@
             "description": "`limit` out of range (`UZ-LIBRARY-003`), or `starting_after` is malformed (`UZ-LIBRARY-001`) or issued for a different query (`UZ-LIBRARY-002`). A rejected cursor never falls back to an unpaged read.\n",
             "$ref": "#/components/responses/Error"
           },
+          "500": {
+            "description": "The page would have exceeded its encoded-body ceiling (`UZ-LIBRARY-005`). The endpoint refuses rather than truncating, because a caller cannot distinguish a short page from a complete one. Retrying is pointless without changing the request — this reports a server-side invariant breach, not a transient fault.\n",
+            "$ref": "#/components/responses/Error"
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -3744,7 +3748,8 @@
                 "properties": {
                   "model_id": {
                     "type": "string",
-                    "description": "Provider-namespaced model string."
+                    "maxLength": 256,
+                    "description": "Provider-namespaced model string, 1–256 characters. The same bound the admin catalogue applies to this field.\n"
                   },
                   "secret_ref": {
                     "type": "string",
@@ -3765,6 +3770,10 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "`model_id` is empty or longer than 256 characters, or `secret_ref` is empty (`UZ-REQ-001`).\n",
+            "$ref": "#/components/responses/Error"
           },
           "404": {
             "description": "secret_ref does not name a vault secret (`UZ-MODELS-002`).",
@@ -3811,7 +3820,8 @@
                 ],
                 "properties": {
                   "model_id": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 256
                   }
                 }
               }
@@ -3828,6 +3838,10 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "`model_id` is empty or longer than 256 characters (`UZ-REQ-001`).\n",
+            "$ref": "#/components/responses/Error"
           },
           "404": {
             "description": "No entry with this id for the calling tenant (`UZ-MODELS-004`).",

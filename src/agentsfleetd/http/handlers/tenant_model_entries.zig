@@ -30,12 +30,29 @@ const entries_state = @import("../../state/tenant_model_entries.zig");
 const tenant_provider = @import("../../state/tenant_provider.zig");
 const secret_probe = @import("../../state/secret_probe.zig");
 const secret_reference_txn = @import("../../state/secret_reference_txn.zig");
+const model_identity = @import("../../types/model_identity.zig");
+
+/// One rule, two call sites (POST and PATCH), so the bound cannot hold on one
+/// verb and not the other — which is exactly how `model_id` ended up bounded on
+/// the catalogue route and unbounded here.
+fn modelIdRejected(hx: Hx, model_id: []const u8) bool {
+    if (model_id.len == 0) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_MODEL_ID_REQUIRED);
+        return true;
+    }
+    if (model_id.len > model_identity.MODEL_ID_MAX) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_MODEL_ID_TOO_LONG);
+        return true;
+    }
+    return false;
+}
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.http_tenant_model_entries);
 
 const S_TENANT_CONTEXT_REQUIRED = "Tenant context required";
 const S_MODEL_ID_REQUIRED = "model_id is required";
+const S_MODEL_ID_TOO_LONG = "model_id must be at most 256 chars";
 const S_SECRET_REF_REQUIRED = "secret_ref is required";
 const S_ID_MUST_BE_UUIDV7 = "id must be a valid UUIDv7";
 const S_BODY_REQUIRED = "Request body required";
@@ -109,10 +126,7 @@ pub fn innerCreateModelEntry(hx: Hx, req: *httpz.Request) void {
 }
 
 fn validateCreateBody(hx: Hx, input: CreateBody) bool {
-    if (input.model_id.len == 0) {
-        hx.fail(ec.ERR_INVALID_REQUEST, S_MODEL_ID_REQUIRED);
-        return false;
-    }
+    if (modelIdRejected(hx, input.model_id)) return false;
     if (input.secret_ref.len == 0) {
         hx.fail(ec.ERR_INVALID_REQUEST, S_SECRET_REF_REQUIRED);
         return false;
@@ -194,10 +208,7 @@ pub fn innerUpdateModelEntry(hx: Hx, req: *httpz.Request, entry_id: []const u8) 
         return;
     };
     defer parsed.deinit();
-    if (parsed.value.model_id.len == 0) {
-        hx.fail(ec.ERR_INVALID_REQUEST, S_MODEL_ID_REQUIRED);
-        return;
-    }
+    if (modelIdRejected(hx, parsed.value.model_id)) return;
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
