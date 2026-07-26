@@ -118,6 +118,91 @@ pub fn listForLibrary(alloc: std.mem.Allocator, conn: *pg.Conn) !LibraryList {
     return .{ .models = try rows.toOwnedSlice(alloc), .max_updated_ms = max_updated_ms };
 }
 
+/// A row's position in the §2 keyset: the two normalized sort keys plus the uid
+/// tiebreak. Rides the cursor opaquely and never reaches `LibraryRow` — the uid
+/// is admin-plane identity, and normalization is many-to-one so the
+/// (provider, model_id) pair is not unique once folded.
+pub const PageBoundary = struct {
+    display_key: []const u8,
+    vendor_key: []const u8,
+    uid: []const u8,
+};
+
+/// Active search filters. Both absent means the whole catalogue. `like` is a
+/// pattern already wrapped and escaped by `handlers/library/query.zig`.
+pub const PageFilters = struct {
+    like: ?[]const u8 = null,
+    provider: ?[]const u8 = null,
+};
+
+/// One page of the catalogue, plus what the next cursor needs.
+pub const LibraryPage = struct {
+    models: []LibraryRow,
+    max_updated_ms: i64,
+    /// The last served row's position; null for an empty page.
+    boundary: ?PageBoundary,
+    /// Whether a further page exists, proven by the over-fetched row.
+    has_more: bool,
+};
+
+/// One bounded page of the catalogue in §2's normalized order.
+///
+/// Over-fetches by one row to answer "is there another page?" without a second
+/// COUNT. That extra row is drained rather than broken out of: abandoning a
+/// result set mid-iteration leaves the connection un-drained, which is what
+/// `make check-pg-drain` exists to catch.
+pub fn listLibraryPage(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    filters: PageFilters,
+    after: ?PageBoundary,
+    limit: u32,
+) !LibraryPage {
+    const over_fetch: i64 = @as(i64, limit) + 1;
+
+    var q = if (after) |a| PgQuery.from(try conn.query(sql.LIST_LIBRARY_PAGE_AFTER, .{
+        filters.like, filters.provider, a.display_key, a.vendor_key, a.uid, over_fetch,
+    })) else PgQuery.from(try conn.query(sql.LIST_LIBRARY_PAGE_FIRST, .{
+        filters.like, filters.provider, over_fetch,
+    }));
+    defer q.deinit();
+
+    var rows: std.ArrayList(LibraryRow) = .empty;
+    errdefer rows.deinit(alloc);
+    var max_updated_ms: i64 = 0;
+    var boundary: ?PageBoundary = null;
+    var seen: u32 = 0;
+
+    while (try q.next()) |row| {
+        seen += 1;
+        if (seen > limit) continue; // the proof-of-more row: drained, never served
+
+        try rows.append(alloc, .{
+            .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
+            .provider = try alloc.dupe(u8, try row.get([]const u8, 1)),
+            .context_cap_tokens = try row.get(i32, 2),
+            .input_nanos_per_mtok = try row.get(i64, 3),
+            .cached_input_nanos_per_mtok = try row.get(i64, 4),
+            .output_nanos_per_mtok = try row.get(i64, 5),
+        });
+        const updated = try row.get(i64, 6);
+        if (updated > max_updated_ms) max_updated_ms = updated;
+
+        boundary = .{
+            .uid = try alloc.dupe(u8, try row.get([]const u8, 7)),
+            .display_key = try alloc.dupe(u8, try row.get([]const u8, 8)),
+            .vendor_key = try alloc.dupe(u8, try row.get([]const u8, 9)),
+        };
+    }
+
+    return .{
+        .models = try rows.toOwnedSlice(alloc),
+        .max_updated_ms = max_updated_ms,
+        .boundary = boundary,
+        .has_more = seen > limit,
+    };
+}
+
 /// context_cap_tokens of the priced (provider, model_id) row, or null when the
 /// pair is uncatalogued. Used by the platform-default PUT to snapshot the cap.
 pub fn capFor(conn: anytype, provider: []const u8, model: []const u8) ?i32 {
