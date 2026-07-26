@@ -14,12 +14,14 @@ pub const clock = @import("clock.zig");
 /// domain-local path because `src/agentsfleetd/auth/**` may only import named
 /// modules (the `test-auth` portability gate). See `cache_table.zig`.
 ///
-/// Only the type is re-exported. `Options` is reached by coercion from an
-/// anonymous literal at every instantiation, and `NEVER_EXPIRES` has no
-/// consumer that stores an entry without a deadline — a re-export nobody names
-/// is dead code (RULE NDC), so each earns its line when its first caller lands.
+/// `Options` is reached by coercion from an anonymous literal at every
+/// instantiation, so it stays unexported — a re-export nobody names is dead code
+/// (RULE NDC). `NEVER_EXPIRES` earned its line when `state/model_rate_cache.zig`
+/// landed: rate entries are invalidated by the catalogue generation stored with
+/// them, not by a deadline, so that consumer stores every entry without one.
 const cache_table = @import("cache_table.zig");
 pub const CacheTable = cache_table.CacheTable;
+pub const NEVER_EXPIRES = cache_table.NEVER_EXPIRES;
 
 /// Process-wide blocking sync (`common.Mutex`/`Condition`) + their shared `Io`
 /// accessor — Zig 0.16's replacement for `std.Thread.Mutex`. See `sync.zig`.

@@ -43,16 +43,14 @@ const ALIAS_A_MODEL = "b" ++ OLD_SEPARATOR ++ "c";
 const ALIAS_B_PROVIDER = "a" ++ OLD_SEPARATOR ++ "b";
 const ALIAS_B_MODEL = "c";
 
-const RATE_A: i64 = 1_000;
-const RATE_B: i64 = 9_999;
+/// The key policy under test. `hash` and `eql` ARE the collision guarantee — the
+/// table only ever distinguishes two keys through them — so these assert against
+/// the policy directly rather than through cache hits. A behavioural test would
+/// only ever sample the pairs it thought to insert; this covers the rule itself.
+const ctx = rate_cache.RateKeyContext{};
 
-fn rate(input: i64) rate_cache.ModelRate {
-    return .{
-        .input_nanos_per_mtok = input,
-        .cached_input_nanos_per_mtok = 0,
-        .output_nanos_per_mtok = 0,
-        .context_cap_tokens = 100,
-    };
+fn key(provider: []const u8, model: []const u8) rate_cache.RateKey {
+    return .{ .provider = provider, .model = model };
 }
 
 test "test_rate_cache_key_is_collision_safe" {
@@ -67,67 +65,54 @@ test "test_rate_cache_key_is_collision_safe" {
     defer alloc.free(joined_b);
     try testing.expectEqualStrings(joined_a, joined_b);
 
-    // Under the structured key they are two different entries holding two
-    // different rates — the aliasing is gone, not merely improbable.
-    var cache = rate_cache.Cache.emptyForTest(alloc);
-    defer cache.deinit();
+    // Under the structured key they are two different keys. `eql` is the
+    // load-bearing one — it is what the table consults to decide whether a
+    // lookup has found its entry — so a false here is the whole guarantee.
+    const a = key(ALIAS_A_PROVIDER, ALIAS_A_MODEL);
+    const b = key(ALIAS_B_PROVIDER, ALIAS_B_MODEL);
+    try testing.expect(!ctx.eql(a, b));
 
-    try cache.putForTest(ALIAS_A_PROVIDER, ALIAS_A_MODEL, rate(RATE_A));
-    try cache.putForTest(ALIAS_B_PROVIDER, ALIAS_B_MODEL, rate(RATE_B));
-
-    const got_a = cache.lookup(ALIAS_A_PROVIDER, ALIAS_A_MODEL);
-    const got_b = cache.lookup(ALIAS_B_PROVIDER, ALIAS_B_MODEL);
-    try testing.expect(got_a != null);
-    try testing.expect(got_b != null);
-
-    // The load-bearing assertion: each tuple selects ITS OWN rate. Under the
-    // retired encoding the second put overwrote the first, and both of these
-    // returned RATE_B.
-    try testing.expectEqual(RATE_A, got_a.?.input_nanos_per_mtok);
-    try testing.expectEqual(RATE_B, got_b.?.input_nanos_per_mtok);
+    // And they land in different buckets, so neither displaces the other under
+    // capacity pressure. Equality alone would keep them correct but co-located.
+    try testing.expect(ctx.hash(a) != ctx.hash(b));
 }
 
-test "test_rate_cache_key_is_collision_safe: neither tuple can select the other's rate" {
-    const alloc = testing.allocator;
-    var cache = rate_cache.Cache.emptyForTest(alloc);
-    defer cache.deinit();
-
-    // Only ONE of the aliasing pair is present. A concatenating key would find
-    // it under the other's identity too, which is the "selects another rate"
-    // half of the spec's requirement.
-    try cache.putForTest(ALIAS_A_PROVIDER, ALIAS_A_MODEL, rate(RATE_A));
-
-    try testing.expect(cache.lookup(ALIAS_A_PROVIDER, ALIAS_A_MODEL) != null);
-    try testing.expect(cache.lookup(ALIAS_B_PROVIDER, ALIAS_B_MODEL) == null);
+test "test_rate_cache_key_is_collision_safe: the length prefix separates equal concatenations" {
+    // ("ab","c") and ("a","bc") concatenate to the same bytes. Folding each
+    // field's LENGTH in before its bytes is what keeps them apart in the hash;
+    // without it `eql` would still be correct, but every such pair would collide
+    // into one four-entry bucket and evict each other on every access.
+    const ab_c = key("ab", "c");
+    const a_bc = key("a", "bc");
+    try testing.expect(!ctx.eql(ab_c, a_bc));
+    try testing.expect(ctx.hash(ab_c) != ctx.hash(a_bc));
 }
 
-test "test_rate_cache_key_is_collision_safe: the context-cap scan matches the model field only" {
-    const alloc = testing.allocator;
-    var cache = rate_cache.Cache.emptyForTest(alloc);
-    defer cache.deinit();
-
-    // `contextCapForModel` used to locate the model by splitting the composite
-    // key at its first separator. For provider `a\x1fb` that yielded a "model"
-    // of `b\x1fc`, so a lookup for the real model `c` missed while a lookup for
-    // a model that never existed hit.
-    try cache.putForTest(ALIAS_B_PROVIDER, ALIAS_B_MODEL, rate(RATE_B));
-
-    try testing.expectEqual(@as(?u32, 100), cache.contextCapForModel(ALIAS_B_MODEL));
-    try testing.expectEqual(@as(?u32, null), cache.contextCapForModel(ALIAS_A_MODEL));
+test "test_rate_cache_key_is_collision_safe: the same model under two providers stays distinct" {
+    // The ordinary case the old separator existed to provide, and which the
+    // structured key must not regress: claude-opus-4-8 on anthropic must not
+    // select the pioneer rate, which is a different price for the same name.
+    const anthropic = key("anthropic", "claude-opus-4-8");
+    const pioneer = key("pioneer", "claude-opus-4-8");
+    try testing.expect(!ctx.eql(anthropic, pioneer));
+    try testing.expect(ctx.hash(anthropic) != ctx.hash(pioneer));
+    // Identity is reflexive on equal bytes held in DIFFERENT slices — the table
+    // compares content, never slice addresses.
+    var owned: [9]u8 = "anthropic".*;
+    try testing.expect(ctx.eql(anthropic, key(&owned, "claude-opus-4-8")));
 }
 
-test "test_rate_cache_key_is_collision_safe: a separator-free pair is unaffected" {
+test "test_rate_cache_key_is_collision_safe: a pair too long for the retired buffer still resolves" {
+    // The previous encoding built its key in a 512-byte buffer and SKIPPED any
+    // pair that overflowed it — at load and at lookup — so a long provider or
+    // model was a permanent miss that billing read as "no rate". A structured
+    // key has no buffer to overflow.
     const alloc = testing.allocator;
-    var cache = rate_cache.Cache.emptyForTest(alloc);
-    defer cache.deinit();
+    const long_provider = try alloc.alloc(u8, 600);
+    defer alloc.free(long_provider);
+    @memset(long_provider, 'p');
 
-    // The ordinary case still behaves: same model name under two providers is
-    // two rates, which is the property the old separator existed to provide and
-    // which the structured key must not regress.
-    try cache.putForTest("anthropic", "claude-opus-4-8", rate(RATE_A));
-    try cache.putForTest("pioneer", "claude-opus-4-8", rate(RATE_B));
-
-    try testing.expectEqual(RATE_A, cache.lookup("anthropic", "claude-opus-4-8").?.input_nanos_per_mtok);
-    try testing.expectEqual(RATE_B, cache.lookup("pioneer", "claude-opus-4-8").?.input_nanos_per_mtok);
-    try testing.expect(cache.lookup("moonshot", "claude-opus-4-8") == null);
+    const long = key(long_provider, "m");
+    try testing.expect(ctx.eql(long, key(long_provider, "m")));
+    try testing.expect(!ctx.eql(long, key(long_provider, "n")));
 }

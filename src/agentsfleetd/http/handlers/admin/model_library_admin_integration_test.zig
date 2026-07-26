@@ -14,6 +14,7 @@ const clock = @import("common").clock;
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const error_registry = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const revision_state = @import("../../../state/model_catalogue_revision.zig");
 const model_rate_cache = @import("../../../state/model_rate_cache.zig");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -330,33 +331,52 @@ test "platform default: standing a provider down NULLs its model, freeing its ca
 // pair so a parallel sibling test never mutates the row this one asserts on.
 const UID_CACHE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9101";
 
-test "admin models: catalogue mutations repopulate the rate cache (patch then delete)" {
+test "admin models: a catalogue mutation bumps the generation and the next read sees it" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     defer cleanup(h);
-    // Direct seed (no cache touch); the HTTP mutations below drive the repopulate
-    // path. This is the exact path that use-after-freed the process-global cache
-    // before populate() began owning its own page_allocator memory — exercising it
-    // across two mutations is the regression guard.
     try seedModel(h, UID_CACHE, "m100test", "cache-probe-1");
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    // Read the pair BEFORE the mutation so it is genuinely resident. Without
+    // this the assertions below would pass on an empty cache — a load-on-miss
+    // read is correct whether or not invalidation works, so the stale entry has
+    // to exist for its removal to prove anything.
+    const before_revision = try revision_state.read(conn);
+    const seeded = (try model_rate_cache.rateAtRevision(conn, before_revision, "m100test", "cache-probe-1")) orelse
+        return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(i64, 1), seeded.input_nanos_per_mtok);
 
     const patch = try (try (try h.request(.PATCH, "/v1/admin/models/" ++ UID_CACHE).bearer(PLATFORM_ADMIN_TOKEN))
         .json("{\"context_cap_tokens\":321000,\"input_nanos_per_mtok\":424242,\"cached_input_nanos_per_mtok\":0,\"output_nanos_per_mtok\":7}")).send();
     defer patch.deinit();
     try patch.expectStatus(.ok);
 
-    // The PATCH repopulated the global cache from the mutated row. The lookup is
-    // race-robust under the parallel runner: any concurrent repopulate rebuilds
-    // from the same committed row, so the rate is stable.
-    const after_patch = model_rate_cache.lookup_model_rate("m100test", "cache-probe-1") orelse return error.TestUnexpectedResult;
+    // The mutation committed its row change and its generation increment in one
+    // transaction, so the generation strictly advanced.
+    const after_revision = try revision_state.read(conn);
+    try std.testing.expect(after_revision > before_revision);
+
+    // And a read at the NEW generation returns the mutated rate. This is the
+    // property that matters across replicas: the sibling that never ran
+    // `invalidateRates` still cannot serve the pre-PATCH rate, because its entry
+    // carries `before_revision` and this read demands `after_revision`.
+    const after_patch = (try model_rate_cache.rateAtRevision(conn, after_revision, "m100test", "cache-probe-1")) orelse
+        return error.TestUnexpectedResult;
     try std.testing.expectEqual(@as(i64, 424242), after_patch.input_nanos_per_mtok);
     try std.testing.expectEqual(@as(u32, 321000), after_patch.context_cap_tokens);
 
     const del = try (try h.delete("/v1/admin/models/" ++ UID_CACHE).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer del.deinit();
     try del.expectStatus(.no_content);
-    // DELETE repopulated again; the pair must fall out of the cache.
-    try std.testing.expect(model_rate_cache.lookup_model_rate("m100test", "cache-probe-1") == null);
+
+    // A deleted row is absent, not stale: the read reports null rather than the
+    // rate it was holding a moment ago.
+    const deleted_revision = try revision_state.read(conn);
+    try std.testing.expect(deleted_revision > after_revision);
+    try std.testing.expect((try model_rate_cache.rateAtRevision(conn, deleted_revision, "m100test", "cache-probe-1")) == null);
 }
 
 test "admin models: POST rejects invalid rates, non-positive cap, and malformed JSON 400" {

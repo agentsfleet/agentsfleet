@@ -22,6 +22,7 @@
 //! Allocator: per-request arena (`hx.alloc`).
 
 const std = @import("std");
+const pg = @import("pg");
 const clock = @import("common").clock;
 const logging = @import("log");
 const httpz = @import("httpz");
@@ -122,8 +123,9 @@ fn parseMeterBody(hx: Hx, req: *httpz.Request) protocol.RenewRequest {
 /// cumulative token counts. Delegates to `renewal.buildMeterInputs`, the shared
 /// source `service_report`'s settle uses too, so renew and settle meter at the
 /// identical rates.
-fn buildMeter(lease: Lease, body: protocol.RenewRequest, now_ms: i64) renewal.MeterInputs {
+fn buildMeter(conn: *pg.Conn, lease: Lease, body: protocol.RenewRequest, now_ms: i64) renewal.MeterInputs {
     return renewal.buildMeterInputs(
+        conn,
         lease.provider,
         parsePosture(lease.posture),
         lease.model,
@@ -169,9 +171,12 @@ fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8, lease: Lea
 
 fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8, lease: Lease, body: protocol.RenewRequest) !renewal.RenewOutcome {
     const now_ms = clock.nowMillis();
-    const meter = buildMeter(lease, body, now_ms);
+    // The connection is acquired BEFORE the meter is built: pricing the platform
+    // branch now reads the catalogue generation off this same connection, so the
+    // rate and the renewal it feeds observe one database session.
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
+    const meter = buildMeter(conn, lease, body, now_ms);
     return renewal.renew(conn, lease_id, runner_id, now_ms, meter);
 }
 
