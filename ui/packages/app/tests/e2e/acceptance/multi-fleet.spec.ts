@@ -44,7 +44,7 @@ test.describe("multi-fleet wall", () => {
       const hrefPrefix = workspaceHref(ws, "fleets/");
       // Scope to this spec's own tiles: parallel specs seed into the same
       // workspace, so unqualified counts see foreign fleets.
-      const own = `a[href^="${hrefPrefix}"][aria-label^="pulse-${tag}"]`;
+      const own = `a[href^="${hrefPrefix}"][aria-label^="Manage fleet: pulse-${tag}"]`;
       const rows = page.locator(`${own}[data-state]`);
       await expect(rows).toHaveCount(SEED_COUNT, { timeout: RENDER_TIMEOUT_MS });
 
