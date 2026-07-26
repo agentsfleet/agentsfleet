@@ -294,6 +294,57 @@ const SpyTable = cache_table.CacheTable(u64, u64, EvictionSpy, .{
     .bucket_size = BUCKET_SIZE,
 });
 
+test "every path that drops an entry hands it to the eviction hook" {
+    // A value type that owns memory leaks through any drop path the table
+    // forgets to route through the hook. These are the four that are not
+    // "bucket overflowed", and each one was silently dropping its occupant.
+    const cases = [_]struct {
+        name: []const u8,
+        run: *const fn (*SpyTable) void,
+    }{
+        .{ .name = "put refreshing an existing key releases the old value", .run = struct {
+            fn f(t: *SpyTable) void {
+                _ = t.put(KEY_A, 1, NEVER, BASE_MS);
+                _ = t.put(KEY_A, 2, NEVER, BASE_MS);
+            }
+        }.f },
+        .{ .name = "put reusing an expired slot releases its occupant", .run = struct {
+            fn f(t: *SpyTable) void {
+                _ = t.put(KEY_A, 1, BASE_MS + 1, BASE_MS);
+                _ = t.put(KEY_A_COLLIDES, 2, NEVER, BASE_MS + 5_000);
+            }
+        }.f },
+        .{ .name = "get dropping an expired entry releases it", .run = struct {
+            fn f(t: *SpyTable) void {
+                _ = t.put(KEY_A, 1, BASE_MS + 1, BASE_MS);
+                _ = t.get(KEY_A, BASE_MS + 1);
+            }
+        }.f },
+        .{ .name = "remove releases the entry", .run = struct {
+            fn f(t: *SpyTable) void {
+                _ = t.put(KEY_A, 1, NEVER, BASE_MS);
+                _ = t.remove(KEY_A);
+            }
+        }.f },
+        .{ .name = "removeMatching releases each entry it drops", .run = struct {
+            fn f(t: *SpyTable) void {
+                _ = t.put(KEY_A, 7, NEVER, BASE_MS);
+                _ = t.removeMatching(ValuePredicate{ .wanted = 7 });
+            }
+        }.f },
+    };
+
+    for (cases) |case| {
+        EvictionSpy.reset();
+        var t: SpyTable = SpyTable.init(.{});
+        case.run(&t);
+        std.testing.expectEqual(@as(usize, 1), EvictionSpy.seen_count) catch |err| {
+            std.debug.print("leaked drop path: {s}\n", .{case.name});
+            return err;
+        };
+    }
+}
+
 test "the eviction hook fires on overflow and on clear" {
     EvictionSpy.reset();
     var t: SpyTable = SpyTable.init(.{});

@@ -19,6 +19,7 @@ const harness_mod = @import("test_harness.zig");
 const fx_mod = @import("webhook_test_fixtures.zig");
 const signers = @import("webhook_test_signers.zig");
 const ec = @import("../errors/error_registry.zig");
+const redis_fleet = @import("../queue/redis_fleet.zig");
 const clock = @import("common").clock;
 
 const TestHarness = harness_mod.TestHarness;
@@ -348,11 +349,20 @@ fn dedupTtl(h: *TestHarness, alloc: std.mem.Allocator, fleet_id: []const u8, del
     return (try redisInt(h, &.{ "TTL", key })) orelse -2;
 }
 
+/// Drop the fleet's whole Redis footprint the way production does when a fleet
+/// stops being leasable. Teardown only — the `DEL`/`SET` pairs inside the C1 and
+/// B7 tests are deliberate WRONGTYPE fault injection and must stay as they are.
+fn forgetFleet(h: *TestHarness, fleet_id: []const u8) void {
+    redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err|
+        std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+}
+
 fn cleanupRedis(h: *TestHarness, alloc: std.mem.Allocator, fleet_id: []const u8, deliveries: []const []const u8) void {
-    const stream = std.fmt.allocPrint(alloc, "fleet:{s}:events", .{fleet_id}) catch return;
-    defer alloc.free(stream);
-    var v = h.queue.command(&.{ "DEL", stream }) catch return;
-    v.deinit(alloc);
+    // Stream, readiness mark, and group memo together. A bare stream DEL leaves
+    // the mark stranded in the one deployment-wide index, where a later suite's
+    // poll can draw this fleet out of the random sample instead of its own. The
+    // dedup keys below are this suite's alone and are not part of that state.
+    forgetFleet(h, fleet_id);
     for (deliveries) |d| {
         const k = std.fmt.allocPrint(alloc, "webhook:dedup:{s}:gh:{s}", .{ fleet_id, d }) catch continue;
         defer alloc.free(k);
@@ -636,10 +646,7 @@ fn postSignedLinear(alloc: std.mem.Allocator, s: *Setup, body: []const u8) !harn
 
 // Generic-route dedup key carries no provider segment: webhook:dedup:{zid}:{event_id}.
 fn cleanupLinearRedis(h: *TestHarness, alloc: std.mem.Allocator) void {
-    const stream = std.fmt.allocPrint(alloc, "fleet:{s}:events", .{AGENTSFLEET_LINEAR}) catch return;
-    defer alloc.free(stream);
-    var v = h.queue.commandAllowError(&.{ "DEL", stream }) catch return;
-    v.deinit(h.queue.alloc);
+    forgetFleet(h, AGENTSFLEET_LINEAR);
     const k = std.fmt.allocPrint(alloc, "{s}{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, AGENTSFLEET_LINEAR, LINEAR_EVENT_ID }) catch return;
     defer alloc.free(k);
     var v2 = h.queue.commandAllowError(&.{ "DEL", k }) catch return;

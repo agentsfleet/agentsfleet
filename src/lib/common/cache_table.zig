@@ -145,6 +145,11 @@ pub fn CacheTable(
         ///
         /// Reuses the key's own entry, then any expired one, before evicting
         /// anything live — so an expired entry never costs a live one its slot.
+        ///
+        /// The displaced entry — whether it was this key's previous value, an
+        /// expired neighbour, or the evicted least-recently-used one — is passed
+        /// to `Context.evicted` if declared. A returned entry has therefore
+        /// already been released: read its `key`, never its `value`.
         pub fn put(self: *Self, key: K, value: V, expires_at_ms: i64, now_ms: i64) ?Entry {
             const idx = self.bucketIndex(key);
             const len = self.lengths[idx];
@@ -153,6 +158,10 @@ pub fn CacheTable(
             for (self.buckets[idx][0..len], 0..) |*slot, i| {
                 const reusable = self.context.eql(key, slot.key) or now_ms >= slot.expires_at_ms;
                 if (!reusable) continue;
+                // The occupant is dropped here, not overwritten silently: for a
+                // value that owns memory, refreshing a key would otherwise leak
+                // its previous body on every single write.
+                self.release(slot.*);
                 slot.* = entry;
                 rotateOnce(self.buckets[idx][i..len]);
                 return null;
@@ -165,9 +174,7 @@ pub fn CacheTable(
             }
 
             const evicted = rotateIn(&self.buckets[idx], entry);
-            if (comptime @hasDecl(Context, EVICTION_HOOK)) {
-                self.context.evicted(evicted.key, evicted.value);
-            }
+            self.release(evicted);
             return evicted;
         }
 
@@ -207,10 +214,8 @@ pub fn CacheTable(
 
         /// Drop everything. Fires `Context.evicted` for each entry if declared.
         pub fn clear(self: *Self) void {
-            if (comptime @hasDecl(Context, EVICTION_HOOK)) {
-                for (self.buckets, self.lengths) |bucket, len| {
-                    for (bucket[0..len]) |entry| self.context.evicted(entry.key, entry.value);
-                }
+            for (self.buckets, self.lengths) |bucket, len| {
+                for (bucket[0..len]) |entry| self.release(entry);
             }
             self.lengths = @splat(0);
         }
@@ -235,12 +240,23 @@ pub fn CacheTable(
         /// moved into the gap.
         fn removeAt(self: *Self, idx: usize, i: usize) void {
             const len = self.lengths[idx];
+            self.release(self.buckets[idx][i]);
             std.mem.copyForwards(
                 Entry,
                 self.buckets[idx][i .. len - 1],
                 self.buckets[idx][i + 1 .. len],
             );
             self.lengths[idx] = len - 1;
+        }
+
+        /// The single exit an entry can leave by. Every drop, overwrite, and
+        /// eviction routes here, so a `Context` whose values own heap memory has
+        /// exactly one place to free them and cannot leak through a path the
+        /// table forgot to wire up.
+        fn release(self: *Self, entry: Entry) void {
+            if (comptime @hasDecl(Context, EVICTION_HOOK)) {
+                self.context.evicted(entry.key, entry.value);
+            }
         }
     };
 }
