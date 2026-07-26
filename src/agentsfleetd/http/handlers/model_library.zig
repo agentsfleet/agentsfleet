@@ -176,9 +176,13 @@ fn decodeStart(
 ///
 /// A cache fault reads as a miss: the page is rebuildable, so failing the
 /// request over it would turn an optimization into a dependency.
+///
+/// The copy is taken from `res.arena`, not `hx.alloc`: a hit and a miss must
+/// hand `respond` memory with the same lifetime, and only the response arena
+/// survives the handler's return (see `model_library_page.zig`).
 fn cachedBody(hx: Hx, key: anytype, now_ms: i64) ?[]u8 {
     const cache = hx.ctx.model_library_cache orelse return null;
-    return cache.fetch(key, now_ms) catch null;
+    return cache.fetch(hx.res.arena, key, now_ms) catch null;
 }
 
 /// Admit the page. A refusal (over budget) and an allocation fault are both

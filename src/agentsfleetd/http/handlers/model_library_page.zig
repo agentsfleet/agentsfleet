@@ -10,6 +10,17 @@
 //! The page is serialized ONCE. Those bytes are what gets cached, what the ETag
 //! hashes, and what the response writes, so a cache hit and a cache miss cannot
 //! disagree about a page's identity by formatting it differently.
+//!
+//! ## The body belongs to the RESPONSE arena, not the handler's
+//!
+//! `hx.alloc` is the per-dispatch arena `server.zig` builds and `deinit`s when
+//! `dispatchMatchedRoute` returns — which is BEFORE httpz writes the response.
+//! Anything still referenced by `res` at that moment is read after free: a
+//! scrubbed body on a small allocation, an unmapped page and a `writev` EFAULT
+//! on a large one. `etag.attach` already dupes the tag into `res.arena` for
+//! exactly this reason; the body needs the same home, so `build` serializes
+//! straight into `res.arena` and `respond` only ever receives memory that
+//! outlives the handler.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -53,6 +64,10 @@ pub const Filters = struct {
 };
 
 /// Build and serialize one page.
+///
+/// Intermediates (the LIKE pattern, the rows, the cursor) come from `hx.alloc`
+/// and die with the dispatch arena. Only the serialized body is allocated from
+/// `res.arena`, because only it is still referenced once the handler returns.
 pub fn build(
     hx: Hx,
     conn: *pg.Conn,
@@ -85,7 +100,7 @@ pub fn build(
         else
             std.json.Value{ .null = {} },
     };
-    return try std.json.Stringify.valueAlloc(hx.alloc, payload, PAGE_JSON_OPTIONS);
+    return try std.json.Stringify.valueAlloc(hx.res.arena, payload, PAGE_JSON_OPTIONS);
 }
 
 /// The cursor resuming after this page, or null when it is the last.
