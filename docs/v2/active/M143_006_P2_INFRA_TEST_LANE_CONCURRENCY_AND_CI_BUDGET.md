@@ -58,7 +58,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/build/daemon_tests.zig` | EDIT | Attach the shard runner to the installed daemon unit and integration artifacts. |
 | `src/build/lib_tests.zig` | EDIT | Same attachment for the shared-library binaries. |
 | `build_runner.zig` | EDIT | Same attachment for the runner graph's installed test artifacts. |
-| `scripts/gen_test_roots.py` | CREATE | Generates the four test roots from the on-disk filename conventions. |
+| `scripts/gen_test_roots.py` | CREATE | Registers each test file at the level that owns it — production sibling, else the owning root. |
 | `scripts/gen_test_roots_test.py` | CREATE | Self-test for the generator's classification and waiver handling. |
 | `src/agentsfleetd/tests.zig` | EDIT | Becomes generated output; content unchanged in meaning. |
 | `src/agentsfleetd/integration_tests.zig` | EDIT | Becomes generated output. |
@@ -125,11 +125,14 @@ Eight roots exist across the two build graphs, of which five are hand-maintained
 
 **Implementation default:** generate only the five aggregate roots. The logging and call-deadline roots are production module files whose own `test` block doubles as the lane root, and the runner's integration root is a test file that force-imports three siblings — none is an aggregate list, so generating them would rewrite production imports to satisfy a test-wiring concern.
 
-- **Dimension 2.1** — the generator classifies a file by the conventions already in use: `*_integration_test.zig` to the integration root, other `*_test.zig` and production files carrying `test` blocks to the unit root → Test `test_generator_classifies_by_convention`
+**Implementation default:** register each test file at the level that already owns it, not by flattening every file into a root. Reachability is transitive: 75 production modules force-import their own `_test.zig` partner, and 229 of 536 candidate files reach the compiler that way rather than through any root. So a file with a production sibling is registered in that sibling, and only a file with no sibling — integration suites, cross-cutting tests — is registered in a root. Flattening instead would replace per-module ownership with one shared list and risk pulling a file into a module shape whose imports it does not resolve against.
+
+- **Dimension 2.1** — the generator registers a test file in its production sibling when one exists, and in the owning root only when none does → Test `test_generator_registers_at_the_owning_level`
 - **Dimension 2.2** — a file carrying the existing `// no-test-root:` waiver marker is excluded from every root → Test `test_generator_honours_waiver_marker`
 - **Dimension 2.3** — regenerating over the committed roots is a no-op, and `lint-zig` fails when it is not → Test `test_generated_roots_are_fresh`
 - **Dimension 2.5** — the generator refuses to rewrite a root it does not own, so the two named-module roots and the runner integration root stay hand-authored → Test `test_generator_leaves_non_aggregate_roots_alone`
-- **Dimension 2.4** — a newly added test file appears in its root with no hand edit, and the reachability gate stays green → Test `test_new_test_file_registers_itself`
+- **Dimension 2.4** — a newly added test file is registered with no hand edit, and the reachability gate stays green → Test `test_new_test_file_registers_itself`
+- **Dimension 2.6** — running the generator against the current tree is a no-op, proving it encodes the existing ownership rather than imposing a new one → Test `test_generator_is_a_no_op_on_the_current_tree`
 
 ### §3 — Shard-aware test runner
 
@@ -309,6 +312,7 @@ Generated roots:
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - Baseline measurements taken before authoring, primary checkout, macOS, with a sibling worktree competing for cores: `make test-integration` 11:18 wall clock; the integration binary alone 614 registered tests, 606 passed, 8 skipped, 375.6s; per-test median 0.522s, p90 1.257s, p99 7.473s, max 21.834s, slowest decile carrying 43.3% of total. Daemon unit binary 2958 registered tests. CI: `memleak` 14 min on a branch's first push against 6 min on later pushes; `test-integration` 6–8 min; Actions cache 54 entries totalling 9.96 GB against a 10 GB limit, with no `memleak` entry under `refs/heads/main`.
   - Gate-flag triage pending: the shard runner replaces the upstream runner's leak detection. Indy approved the structural depth; the FILE SHAPE DECISION and the leak-equivalence evidence are due at PLAN and VERIFY respectively.
+  - Architecture consult during EXECUTE: the roots are the top of a per-module ownership tree, not a flat catalogue — 75 production modules force-import their own `_test.zig` partner, and 229 of 536 candidate files are reachable only transitively through one. Generating flat root lists (the shape this section was originally specified with) would have discarded that structure and risked pulling files into module shapes their imports do not resolve against. Section amended to register at the owning level instead.
   - Architecture consult during EXECUTE: `docs/architecture/testing.md` named `src/runner/integration_tests.zig` as the runner's integration root. That file does not exist — the real root is `src/runner/sandbox_integration_test.zig`, a test file that force-imports three siblings. The doc also listed three roots where eight exist, omitting the auth portability root and both named-module roots. Corrected in this workstream; the omission is why this section was originally scoped to four roots rather than five aggregate plus three hand-authored.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
