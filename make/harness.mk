@@ -35,8 +35,10 @@
 #   function — pre-commit `HEAD` is the prior commit, so a `BASE...HEAD`
 #   check was blind to a fix the agent staged but had not yet committed.
 #
-# Gate scripts resolve from the dotfiles checkout (ORLY_ROOT) — this repo
-# carries no copies. Repo-native gates keep living under audits/.
+# Shared gate scripts resolve from the dotfiles checkout — this repo carries
+# no copies. Repo-native gates keep living under audits/. Override the path
+# when your checkout lives elsewhere:
+#   make harness-verify ORLY_ROOT=/path/to/dotfiles
 ORLY_ROOT ?= $(HOME)/Projects/dotfiles
 
 # Adding a gate:
@@ -73,7 +75,18 @@ else \
 fi
 endef
 
+define ORLY_PREFLIGHT
+@test -d "$(ORLY_ROOT)/audits" || { \
+  printf "\n  $(C_RED)✗$(C_RESET) shared gate scripts not found at $(C_BOLD)$(ORLY_ROOT)$(C_RESET)\n"; \
+  printf "    They live in the dotfiles repository, not here.\n"; \
+  printf "    Clone it, or point at your checkout:\n"; \
+  printf "      $(C_BOLD)make $@ ORLY_ROOT=/path/to/dotfiles$(C_RESET)\n\n"; \
+  exit 1; \
+}
+endef
+
 harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIFY layer; staged scope — pre-commit lens)
+	$(ORLY_PREFLIGHT)
 	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · staged scope (pre-commit lens)$(C_RESET)\n"
 	$(call HARNESS_RUN,UFS,$(ORLY_ROOT)/audits/ufs.sh --staged)
 	$(call HARNESS_RUN,GITLEAKS CONFIG,audits/gitleaks-config.sh)
@@ -87,6 +100,7 @@ harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIF
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── ready for VERIFY$(C_RESET)\n\n"
 
 harness-verify-all:  ## Whole-worktree variant for periodic deep audits
+	$(ORLY_PREFLIGHT)
 	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · whole worktree$(C_RESET)\n"
 	# After M70 every audit defaults to full-codebase, so harness-verify-all
 	# differs from harness-verify only in the COMBINED check's scope:
