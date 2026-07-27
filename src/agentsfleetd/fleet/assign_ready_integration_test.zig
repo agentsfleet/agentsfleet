@@ -29,6 +29,7 @@ const FLEET_READY_A = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e01";
 const FLEET_READY_B = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e02";
 const FLEET_TAGGED = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e03";
 const FLEET_MEMO = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e04";
+const FLEET_REPAIR = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7e05";
 
 /// Polls the group-memo proof issues after the one real create.
 const LEASE_POLLS: usize = 10;
@@ -38,6 +39,8 @@ const LEASE_POLLS: usize = 10;
 const TOKEN_MINT_GAP_MS: u64 = 2;
 
 const CMD_DEL = "DEL";
+const CMD_XGROUP = "XGROUP";
+const CMD_DESTROY = "DESTROY";
 const CMD_HGET = "HGET";
 const CMD_HSET = "HSET";
 const CMD_HDEL = "HDEL";
@@ -378,10 +381,9 @@ test "integration: a ready fleet requiring a tag the runner lacks is never lease
 
 /// `XGROUP CREATE` calls Redis has served, from `INFO commandstats`.
 ///
-/// The server's own counter, not the memo's opinion of itself: asserting
-/// `group_memo.isEnsured` would prove the memo remembers, which is what its unit
-/// tests already cover. What needs proving here is that remembering actually
-/// removes the round-trip.
+/// The server's own counter, which is the only witness that can distinguish
+/// "the poll path does not issue this command" from "something remembered that it
+/// need not". Nothing in-process is asked for its opinion.
 fn xgroupCreateCalls(h: *TestHarness) !u64 {
     var resp = try h.queue.command(&.{ "INFO", "commandstats" });
     defer resp.deinit(h.queue.alloc);
@@ -390,6 +392,54 @@ fn xgroupCreateCalls(h: *TestHarness) !u64 {
     const digits = text[line + "cmdstat_xgroup|create:calls=".len ..];
     const end = std.mem.indexOfAny(u8, digits, ",\r\n") orelse digits.len;
     return std.fmt.parseInt(u64, digits[0..end], 10) catch 0;
+}
+
+/// `XGROUP DESTROY` on a fleet's consumer group, leaving the stream and its
+/// entries intact. Reproduces the states the poll path must survive without any
+/// in-process claim to consult: a group deleted out of band, a Redis restart
+/// without persistence, a failover to an empty replica, or a fleet whose stream
+/// predates the create-on-write path.
+fn destroyGroup(h: *TestHarness, fleet_id: []const u8) !void {
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const stream_key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
+    var resp = try h.queue.command(&.{
+        CMD_XGROUP, CMD_DESTROY, stream_key, queue_consts.fleet_consumer_group,
+    });
+    defer resp.deinit(h.queue.alloc);
+}
+
+test "integration: a consumer group deleted out of band is repaired by the next poll" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try base.seedFleetWithConfig(conn, FLEET_REPAIR, "ready-repair", base.CONFIG_PLAIN, "5");
+    defer redis_fleet.purgeFleetRedisState(&h.queue, FLEET_REPAIR) catch {};
+    try clearWholeIndex(h);
+
+    // Stream, group, and one undelivered event.
+    const event_id = try base.publishEvent(h, FLEET_REPAIR);
+    defer h.queue.alloc.free(event_id);
+
+    // Take the group away, leaving the event stranded in a stream nothing can
+    // read. Nothing in the process knows this happened — which is the point: the
+    // poll path is TOLD by Redis rather than predicting it.
+    try destroyGroup(h, FLEET_REPAIR);
+
+    // One poll, and the event is leased. The repair is transparent: the read hits
+    // NOGROUP, recreates the group from id `0`, reads again, and returns what it
+    // would have returned had the group never gone — so the entry already in the
+    // stream is delivered rather than lost, and the fleet costs no idle poll.
+    //
+    // Transparency is load-bearing, not a nicety. Reporting a fault here would
+    // trip `PollCost.noteRedisFailure`, whose accumulation ends the candidate loop
+    // early — one fleet with a missing group would starve every fleet behind it in
+    // the same poll. See `redis_fleet.readGroup`.
+    try std.testing.expect(try base.pollLease(h));
 }
 
 test "integration: repeated leases against one fleet create its consumer group once" {
@@ -419,9 +469,11 @@ test "integration: repeated leases against one fleet create its consumer group o
     var i: usize = 0;
     while (i < LEASE_POLLS) : (i += 1) _ = try base.pollLease(h);
 
-    // Zero further creates across ten polls. Before the memo this cost one
-    // Redis round-trip per candidate per poll, forever, using the BUSYGROUP
-    // error reply as its steady state.
+    // Zero further creates across ten polls, because the group is created on the
+    // fleet's WRITE path and the poll path never asserts it. This once cost one
+    // Redis round-trip per candidate per poll — using the BUSYGROUP error reply as
+    // its steady state — which a per-process memo then existed to hide; both the
+    // round-trip and the memo are gone, and this is what proves the first one is.
     try std.testing.expectEqual(after_first, try xgroupCreateCalls(h));
 }
 

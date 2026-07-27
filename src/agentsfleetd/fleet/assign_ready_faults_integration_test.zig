@@ -295,9 +295,9 @@ test "integration: a failed peek answers no-work with zero Postgres round-trips"
     try std.testing.expectEqual(@as(u64, 0), snap.lease_poll_candidates_scanned_total);
 }
 
-// ── Group-memo invalidation ─────────────────────────────────────────────────
+// ── Consumer-group repair ───────────────────────────────────────────────────
 
-test "integration: a group deleted out-of-band costs one no-work poll and recovers on the next publish" {
+test "integration: a group deleted out-of-band is repaired in place and its backlog still leases" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -310,24 +310,32 @@ test "integration: a group deleted out-of-band costs one no-work poll and recove
     try clearWholeIndex(h);
     defer purgeFleet(h, FLEET_MEMO_GONE);
 
-    // Publish once: the group is created for real and memoized.
+    // Publish once: the group is created for real.
     const first_event = try base.publishEvent(h, FLEET_MEMO_GONE);
     defer h.queue.alloc.free(first_event);
 
-    // An operator (or a failover) deletes the group behind the memo's back.
+    // An operator (or a failover) deletes the group out from under the fleet.
     try destroyGroup(h, FLEET_MEMO_GONE);
 
-    // The poll's read hits the missing group. That failure must cost exactly
-    // one no-work answer — releasing the claim, keeping the mark, dropping the
-    // memo entry — and never fail this fleet until process restart.
-    try std.testing.expect(!try base.pollLease(h));
-
-    // The next publish takes the real create path again (the memo entry is
-    // gone), so the recreated group — started at "0" — sees the backlog and
-    // the fleet leases on the very next poll.
-    const second_event = try base.publishEvent(h, FLEET_MEMO_GONE);
-    defer h.queue.alloc.free(second_event);
+    // This poll now LEASES rather than costing one no-work answer. Under the
+    // group memo, the read simply failed and the memo drop was the recovery, so
+    // the fleet lost a poll. `redis_fleet.readGroup` now recreates the group
+    // and reads again in place, so the repairing poll itself can lease.
+    //
+    // The old "exactly one no-work answer" was a consequence of the mechanism, not
+    // a safety property: the invariant it protected is that a read which did NOT
+    // succeed must never be read as an empty PEL, and after a successful repair the
+    // retry genuinely succeeds. Reporting a fault instead would trip the Redis
+    // brownout bailout (the test below), starving every candidate behind this one.
     try std.testing.expect(try base.pollLease(h));
+
+    // The test used to publish a SECOND event here and poll again, because under
+    // the old mechanism the poll above could not lease and recovery needed its own
+    // proof. It no longer can: `pollLease` never completes the lease it takes, so
+    // the fleet's slot is now occupied by the backlog event this poll leased, and a
+    // second poll would answer null for that reason rather than for the group's.
+    // The assertion above is the recovery proof, so the second half is not lost
+    // coverage — it is a step whose purpose moved one line up.
 }
 
 // ── Peek self-heal ──────────────────────────────────────────────────────────
