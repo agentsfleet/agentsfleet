@@ -50,9 +50,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |---|---|---|
-| `ui/packages/app/lib/api/model_library.ts`; `lib/api/fleet-library.ts`; `lib/api/library-types.ts` | EDIT/CREATE | Exact page/detail/error types. |
+| `ui/packages/app/lib/api/model_library.ts`; `lib/api/fleet-library.ts`; `lib/api/library-types.ts` | EDIT/CREATE | Exact page/error types; replace the gallery's exhaustive walk with retained paging. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/page.tsx`; `.../models/actions.ts`; `.../models/loading.tsx`; `.../models/lib/reads.ts`; `.../models/components/ModelCatalogueProvider.tsx`; `.../models/components/ProviderModelSelect.tsx`; `.../models/components/ModelsRegistryTable.tsx`; `.../models/components/AddModelEntryDialog.tsx`; `.../models/components/EditModelEntryDialog.tsx` | EDIT | Registry page/load-more, current-page projection, intent loading. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/page.tsx`; `.../fleets/new/actions.ts`; `.../fleets/new/LibraryCard.tsx`; `.../fleets/new/InstallSourceSelector.tsx`; `.../fleets/new/AddLibraryDialog.tsx`; `.../fleets/new/loading.tsx` | EDIT/CREATE | Stable summary/detail and `readFleetLibraryDetailAction`. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/page.tsx`; `.../fleets/new/actions.ts`; `.../fleets/new/LibraryCard.tsx`; `.../fleets/new/InstallSourceSelector.tsx`; `.../fleets/new/AddLibraryDialog.tsx`; `.../fleets/new/loading.tsx`; `.../fleets/new/InstallFleet.tsx`; `.../fleets/new/InstallStates.tsx` | EDIT/CREATE | Retained gallery paging, server-resolved selection from the held summary, and typed selection states. `InstallFleet.tsx`/`InstallStates.tsx` amended in at PLAN (see Discovery) — they own deep-link initialization and the selection/ConnectGate states §2 now renders from the summary. |
 | `ui/packages/app/lib/auth/client.ts`; `lib/auth/client.test.tsx`; `app/layout.tsx` | EDIT | Threshold-driven keeper decision. |
 | `ui/packages/app/playwright.acceptance.config.ts`; `make/acceptance.mk`; `scripts/check-session-keeper-canary.ts`; `scripts/capture-session-keeper-canary.ts` | EDIT/CREATE | Three browser lanes, provisioned capture target, verdict. |
 | `tests/e2e/acceptance/settings-models.spec.ts`; `platform-library-onboarding.spec.ts`; `library-session-continuity.spec.ts` | EDIT/CREATE | Authenticated UI/session proof. |
@@ -88,12 +88,21 @@ Ordinary Models requests only the first tenant registry page: no global catalogu
 - **Dimension 1.1** — ordinary/load-more requests and projection are page-bounded → Test `test_models_registry_retains_pages_without_extra_decrypts`
 - **Dimension 1.2** — intent prefetch honors pointer/data policy and request ordering → Test `test_model_picker_prefetch_policy_and_latest_result`
 
-### §2 — Fleet summary/detail and failures are progressive
+### §2 — Fleet summary paging and failures are progressive
 
-Initial Fleet creation requests one summary page, then load-more retains cards. Selection calls server-only `readFleetLibraryDetailAction(workspaceId,tier,id)`, which mints the JWT and returns M143_001 detail/presence; no initial secret list/decrypt and no token reaches the client. Server-resolved links include tier/id and avoid gallery flash. After valid workspace auth, foreign detail is 404; unauthenticated is 401 and denied workspace is 403. Stable skeletons, stale refresh content, retry, empty, 401, 403, and 404 remain distinct and reduced-motion safe.
+Initial Fleet creation requests one gallery page, then load-more appends and retains prior cards. Selection renders from the summary already held — it issues no second request, because the retained summary carries every field the install screen reads. Server-resolved links include visibility/id and avoid gallery flash. Unauthenticated is 401 and a denied workspace is 403; a `library_id` absent from the gallery resolves to a not-found selection state that neither enumerates nor errors the page. Stable skeletons, stale refresh content, retry, empty, 401, 403, and not-found remain distinct and reduced-motion safe.
 
-- **Dimension 2.1** — summaries append and only selection loads detail → Test `test_fleet_load_more_then_selected_detail`
+**Amended at PLAN — reconciled to the mechanism M143_001 shipped.** This section was drafted against a server-only `readFleetLibraryDetailAction(workspaceId,tier,id)` returning a separate `FleetDetail`. That route no longer exists: M143_001 satisfied the parent spec's compactness goal by *trimming the summary* rather than by *adding a detail route*, and retired `handlers/library/gallery_detail.zig`, the `workspace_fleet_library_detail` variant, `UZ-LIBRARY-007`, and the OpenAPI operation with it. `router.zig` now asserts the former URL is unrouted and `gallery_keyset_integration_test.zig` pins it to 404 even for a resident entry.
+
+Nothing user-visible is lost, and this was verified rather than assumed. The summary **retains** `requirements` and `required_credentials_reasons` — the two fields that drive the card's credential chips and the ConnectGate copy. `support_files` was the only field detail added over summary, and no component renders it anywhere on any plane. Credential presence does not come from the library payload at all: `InstallStates.tsx:126` passes a `unmet` list resolved against the workspace's connected credentials.
+
+**Consequently `tier` becomes `visibility` throughout this workstream**, matching the shape M143_001 actually serves and the existing `fleet-library.ts` comment ("Each entry carries `visibility`, so the install flow keys the create body off the chosen tier").
+
+**Load-more replaces an exhaustive walk, so it must not silently truncate.** Today `fleet-library.ts` follows `next_cursor` to exhaustion precisely because reading one page "would drop every entry past the server's page size *silently*". Paging the gallery reintroduces that hazard, so the retained-count and remaining-state must be visible to the user rather than implied by a button.
+
+- **Dimension 2.1** — gallery pages append, are retained, and selection issues no further request → Test `test_fleet_load_more_then_selected_summary`
 - **Dimension 2.2** — deep-link/status/loading semantics are exact → Test `test_fleet_deep_link_and_typed_states`
+- **Dimension 2.3** — a paged gallery never silently hides entries past the loaded page → Test `test_fleet_gallery_paging_discloses_remaining`
 
 ### §3 — Genuine Clerk canary decides keeper state
 
@@ -119,8 +128,8 @@ Provisioned `make capture-session-keeper-canary BASELINE_REF=origin/main CANDIDA
 ## Interfaces
 
 `TenantModelPages = retained rows + current starting_after; projection scope=current response page only`.
-`FleetSummaryPages`; `FleetDetail(workspace,tier,id)` with 401/403/404/503.
-Deep link: `/w/{workspace}/fleets/new?library_tier=platform|tenant&library_id=<encoded-id>`.
+`FleetSummaryPages = retained items + current next_cursor + remaining disclosure`. Each item is the M143_001 gallery row: `{visibility:"platform"|"tenant",id,name,description,created_at,requirements,required_credentials_reasons}`. There is no separate detail resource — see §2's amendment.
+Deep link: `/w/{workspace}/fleets/new?library_visibility=platform|tenant&library_id=<encoded-id>`.
 
 List position survives a reload: the active `starting_after` and `q` are mirrored into the URL as `library_after` and `library_q`, replacing rather than pushing history so load-more does not fill the back stack. A reload, a shared link, or a back navigation from a detail view restores the same page rather than dropping the user at the first one. Absent parameters mean the first page, and an unparseable `library_after` is discarded in favour of the first page rather than surfacing an error — a bad link should still land somewhere useful.
 Refresh state: last success plus idle/loading/refreshing/error and typed error.
@@ -130,8 +139,9 @@ Refresh state: last success plus idle/loading/refreshing/error and typed error.
 | Mode | Cause | Injection | Handling | Named test |
 |---|---|---|---|---|
 | Stale search | older request resolves last | deferred promises | ignore stale; retain rows | `test_model_picker_prefetch_policy_and_latest_result` |
-| Typed status | 401/403/404 | response fixtures | distinct action/state | `test_fleet_deep_link_and_typed_states` |
-| Foreign detail | valid workspace auth, foreign entry | foreign fixture | 404, no enumeration | `test_fleet_deep_link_and_typed_states` |
+| Typed status | 401/403 on the gallery read | response fixtures | distinct action/state | `test_fleet_deep_link_and_typed_states` |
+| Unknown selection | `library_id` absent from the gallery | foreign/absent fixture | not-found selection state; no enumeration, page still usable | `test_fleet_deep_link_and_typed_states` |
+| Hidden remainder | entries exist past the loaded page | multi-page fixture | remaining count disclosed, never silently dropped | `test_fleet_gallery_paging_discloses_remaining` |
 | Refresh fault | network/503 after success | rejected fetch | stale content + retry | `test_refresh_retains_authorized_content` |
 | Offline/background | cookie expiry | genuine clock/network lane | recover or explicit sign-in | `test_clerk_canary_lane_matrix_is_complete` |
 | Resumed action | stale auth on mutation | genuine resumed submission | preserve form; no duplicate | `test_clerk_canary_lane_matrix_is_complete` |
@@ -141,9 +151,10 @@ Refresh state: last success plus idle/loading/refreshing/error and typed error.
 ## Invariants
 
 1. Request spies enforce no ordinary global catalogue/secret request and current-page-only decryption.
-2. Discriminated types enforce `(tier,id)` everywhere.
+2. Discriminated types enforce `(visibility,id)` everywhere.
 3. Reducer tests enforce retained authorized data until successful replacement.
 4. Canary checker enforces lane counts and verdict/source consistency.
+5. A paged gallery discloses what it has not loaded; truncation is never silent.
 
 ## Metrics & Observability
 
@@ -160,8 +171,9 @@ This table is the complete set. Every row is mandatory, including the failure ro
 |---|---|---|---|
 | 1.1 | integration | `test_models_registry_retains_pages_without_extra_decrypts` | prior rows retained; exactly one page request per load-more, asserted by request spy on the API client, no global catalogue or secret request on an ordinary visit |
 | 1.2 | browser | `test_model_picker_prefetch_policy_and_latest_result` | coarse/Save-Data hover blocked; focus/open allowed; latest wins |
-| 2.1 | integration | `test_fleet_load_more_then_selected_detail` | append summaries; one selected detail; no secret preload |
-| 2.2 | end-to-end | `test_fleet_deep_link_and_typed_states` | server selection and exact statuses/no flash |
+| 2.1 | integration | `test_fleet_load_more_then_selected_summary` | append summaries; selection issues no further request; no secret preload |
+| 2.2 | end-to-end | `test_fleet_deep_link_and_typed_states` | server selection, exact 401/403/not-found states, no flash |
+| 2.3 | integration | `test_fleet_gallery_paging_discloses_remaining` | with entries past the loaded page, the retained count and remaining state are rendered; no entry is dropped without disclosure |
 | 3.1 | end-to-end | `test_clerk_canary_lane_matrix_is_complete` | exactly 20 completed attempts per browser/cohort/scenario, valid denominators, and metadata naming the Clerk instance and configured session lifetime |
 | 3.2 | integration | `test_session_keeper_verdict_matches_repository` | valid retain/remove both pass only with matching source |
 | — | integration | `test_refresh_retains_authorized_content` | a network or 503 fault after a success keeps the last successful rows on screen and offers retry, never falling back to an empty state |
@@ -215,6 +227,19 @@ For `remove`, root-wide production `AuthSessionKeeper` references are zero. For 
 ## Discovery (consult log)
 
 - **Consults** — Oracle second-pass blockers incorporated exactly.
+
+- **Amendment A1 (PLAN) — §2 reconciled to the shipped mechanism; `tier` → `visibility`.** This workstream was carved out of a single parent spec, `M143_001_P1_API_OBS_UI_FLUID_LIBRARY_READS.md`, by `660811e2f docs(m143): split fluid library refactor spec` (Jul 25, 2026: 02:11 AM). That parent held **both halves** of the Fleet detail route: the producer (`handlers/library/gallery_detail.zig` CREATE, "Add the typed detail route", router matching, OpenAPI registration) and the consumer (`fleet-library.ts` "Expose paged summaries and selected details", `InstallFleet.tsx` "fetch selected detail"). The split sent the producer to M143_001 and the consumer here.
+
+  M143_001 then shipped first, asked "who calls this?", and correctly saw nobody — the caller was sitting unstarted in `pending/` as this workstream. It retired the route, `UZ-LIBRARY-007`, the `FLEET_DETAIL_MAX_*` budgets, and the OpenAPI operation; `router.zig` now asserts the former URL is unrouted and `gallery_keyset_integration_test.zig` pins it to 404 for a resident entry.
+
+  **The deletion nonetheless stands, because M143_001 met the parent's actual goal by another mechanism.** The parent wanted summary/detail separation for page compactness; M143_001 achieved that by *trimming the summary* (shedding only `support_files`, the field breaching the 512 KiB ceiling at ~630 KB/page) while retaining `requirements` and `required_credentials_reasons`. Verified, not assumed: no component renders `support_files` on any plane — every `.tsx` occurrence is a test fixture — and credential presence never came from the library payload, `InstallStates.tsx:126` resolving `unmet` against the workspace's connected credentials. §2 is therefore reconciled to the gallery, and `tier` becomes `visibility` to match what M143_001 serves (`fleet-library.ts`: "Each entry carries `visibility`, so the install flow keys the create body off the chosen tier").
+
+- **Amendment A2 (PLAN) — new Dimension 2.3, remaining-count disclosure.** §2 replaces an exhaustive `next_cursor` walk that exists specifically because a single-page read "would drop every entry past the server's page size *silently*". Paging reintroduces that hazard, so the amendment adds Invariant 5 and Dimension 2.3 rather than removing the protection unreplaced.
+
+- **Amendment A3 (PLAN) — Files Changed gains `InstallFleet.tsx` and `InstallStates.tsx`.** They own deep-link initialization and the selection/ConnectGate states that §2 now renders from the held summary. Recorded here per the Scope-grading rule rather than added silently.
+
+- **Out of scope, recorded so it is not lost — the `support_files_json` manifest read path is dead weight.** Distinct from support-file *bytes*, which are fully load-bearing: `importer.zig` validates paths and hashes content, and `runner/bundle_extract.zig` untars them into the workspace at execution. The persisted *manifest* is different — SELECTed at four sites (`fleet_library/sql.zig:103,116,242`, `gallery_sql.zig:154`), decoded by `entry_view.decodeSummaries`, projected into the admin catalog response by `catalog.zig:130`, and then rendered by nothing. The code documents its own redundancy: *"The per-file hash stays internal — it is a handle to stored bytes, and no reader needs it"* and *"`sha256` is read and dropped"*. The runner never reads it (`gallery_sql.zig:103` — bytes come from object storage by `content_hash`). Retiring it is a Zig + SQL + response-schema change that would breach this workstream's User Interface (UI)-only scope and collide with M143_003's surface, and it carries an open question (does `sha256` stay as durable provenance, or should the admin screen render a file list instead?). Flagged to Indy; awaiting a decision on whether it becomes its own workstream.
+
 - **Metrics review** — privacy-safe aggregate only; funnel unchanged.
 - **Skill-chain outcomes** — populated during implementation.
 - **Deferrals** — none.
