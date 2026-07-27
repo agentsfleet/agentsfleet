@@ -418,7 +418,7 @@ GET /v1/models            (Bearer — any authenticated tenant; no capability sc
 }
 ```
 
-The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is an admin row append. Operators don't need to know the row contents — `tenant provider create` validates membership server-side, the API server caches all rates at boot, and this doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
+The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is an admin row append. Operators don't need to know the row contents — `tenant provider create` validates membership server-side, the API server caches rates on first use at the generation each read observes (there is no boot warm), and this doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
 
 The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Users pick their provider via their self-managed credential body, not via this catalogue.
 

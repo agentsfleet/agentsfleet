@@ -142,3 +142,7 @@ pub const Condition = struct {
         self.inner.broadcast(globalIo());
     }
 };
+
+test {
+    _ = @import("sync_test.zig");
+}
