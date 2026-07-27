@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 001
 **Date:** Jul 24, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — library reads repeat database and decrypt work and expose unbounded behavior
 **Categories:** API, CLI
 **Batch:** B1 — establishes interfaces consumed by later workstreams
@@ -202,6 +202,7 @@ blast radius when the gap was flagged. They are in scope now — see §Discovery
 | File | Action | Why it was required |
 |------|--------|---------------------|
 | `src/agentsfleetd/integration_tests.zig` | EDIT | `origin/main` (#562) split the daemon test root — `tests.zig` keeps unit tests and prod modules, this file owns every `*_integration_test.zig`, and a lane gate asserts the two stay disjoint. §§2–4's four new integration suites (`library_body_ceiling`, `library_page_bounds`, `model_library_page`, `gallery_keyset`) move here so the integration lane actually runs them; leaving them in the unit root would have made them skip for want of a database and turned four graded Dimensions into vacuous passes. `library_sink_scan_test.zig` deliberately stays in the unit root — it is a static source scan and needs no live service. |
+| `ui/packages/app/tests/fleet-library-api.test.ts` | EDIT | The paged gallery client's walk. Its unbounded-walk guard had no test, so `lib/api/fleet-library.ts` sat at 88% statements and 50% branches and pulled the app's global coverage under its 100% threshold — `make test-unit-all` (S1) was red on exactly that. One test per half: the resume asserts the FIRST request carries no `starting_after` and the second carries the cursor the first returned (a client paging from the wrong cursor still produces two pages of rows, so row count alone would not catch it), and the bound asserts both the throw and that `fetch` ran exactly `GALLERY_MAX_PAGES` times, so "bounded" is checked rather than "eventually stops". |
 | `VERSION`; `build.zig.zon`; `cli/package.json` | EDIT | 0.22.1 → 0.23.0 via `make sync-version`. The release template's matrix puts a feature milestone at a minor bump, and pre-`1.0` breaking changes at a minor bump as well; this workstream is both, since `GET /v1/models` and the workspace gallery each change from an unbounded list to a bounded page. `cli.js` reads the version at runtime and needs no edit. |
 
 ## Applicable Rules
@@ -387,13 +388,41 @@ This table is the complete set. Every row is mandatory, including the unit tier 
 
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | Data/security tests pass | `make test-integration` | exit 0 | P0 | |
-| R2 | OpenAPI and CLI agree | `make check-openapi && make test-unit-cli` | exit 0 | P0 | |
-| R3 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | |
-| S1 | Unit/lint/conform | `make test-unit-all && make lint-all && make harness-verify` | exit 0 | P0 | |
-| S2 | Memory/build/secrets | `make memleak && zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux && gitleaks detect` | exit 0 | P0 | |
+| R1 | Data/security tests pass | `make test-integration` | exit 0 | P0 | ✅ exit 0. Graded on the post-merge tree, with all five library integration suites registered in `integration_tests.zig` and none in the unit root — the lane gate pins that split, so none of them can silently skip. |
+| R2 | OpenAPI and CLI agree | `make check-openapi && make test-unit-cli` | exit 0 | P0 | ✅ exit 0. Bundle + redocly lint + error-schema + URL shape + 78-route coverage green; CLI 1367 pass, 15 skip, 0 fail. |
+| R3 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | ✅ 0 unlisted across 100 changed paths, after four amendment tables recorded the paths the original blast radius did not name. |
+| S1 | Unit/lint/conform | `make test-unit-all && make lint-all && make harness-verify` | exit 0 | P0 | ✅ exit 0 — but only on the second run. The first was RED: the paged gallery client's unbounded-walk guard had no test, so `lib/api/fleet-library.ts` sat at 88% statements / 50% branches and pulled the app under its 100% coverage threshold. Covered, then 100% on all four metrics. |
+| S2 | Memory/build/secrets | `make memleak && zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux && gitleaks detect` | exit 0 | P0 | ✅ exit 0 on all four. All four memleak lanes clean (`agentsfleetd`, `runner`, `lib`, `boot→drain`); both Linux targets cross-compile; no leaks found. |
 
 **Grading protocol (VERIFY):** run verbatim; record ✅/❌ and one decisive line. Every P0 must pass.
+
+**Graded VERIFY block (§§2–4).**
+
+```
+Test Delta: unit 3051→3133 (+82) · integration 407→418 (+11) vs CHORE(open) baseline
+Lacking:    none — every changed surface gained coverage. The two that were bare
+            when this branch was picked up are now covered: the requirement
+            ceilings (11 boundary tests plus two handler-level refusals driven
+            through the real PATCH route) and the gallery client's walk (its
+            resume and its bound).
+```
+
+`make memleak` evidence, verbatim:
+
+```
+✓ [agentsfleetd] memleak lane passed
+✓ [runner] memleak lane passed
+✓ [lib] memleak lane passed
+✓ [boot-drain] boot→SIGTERM→drain ran leak-clean under the gate
+✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)
+```
+
+**One artifact worth not mistaking for a failure.** A passing `zig build test`
+prints `failed command: …agentsfleetd-tests` in this Zig version even when
+nothing failed — the same run reports `Build Summary: 34/34 steps succeeded;
+1944/2235 tests passed`. It cost real time here on the assumption that make and
+Zig were disagreeing about an exit code. They were not: read the Build Summary
+and make's own line gating, not that string.
 
 ## Dead Code Sweep
 
