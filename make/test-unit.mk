@@ -84,19 +84,37 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage for daemon, runner,
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build test-lib-bin
+	@# The five components are independent kcov runs over already-built binaries
+	@# writing to disjoint output directories, so they run concurrently and only
+	@# the merge below needs them all. Each records its own exit status to a file
+	@# rather than being tracked by process id: the status is what decides the
+	@# gate, and a file maps it back to the component name without the shell
+	@# gymnastics of pairing a pid list against a name list.
 	@set -eu; \
 	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests"; \
-	 inputs=""; \
+	 inputs=""; names=""; \
 	 for component in $$components; do \
 	   name=$${component%%:*}; binary=$${component#*:}; output="$(ZIG_COVERAGE_DIR)/$$name"; \
 	   echo "→ [zig] kcov component=$$name binary=$$binary"; \
 	   mkdir -p "$$output"; \
-	   log=".tmp/kcov-$$name.log"; \
-	   kcov --clean --include-pattern="$(CURDIR)/src" "$$output" "zig-out/bin/$$binary" >"$$log" 2>&1 || { tail -n 40 "$$log"; exit 1; }; \
-	   report=$$(find "$$output" -name cobertura.xml -type f -size +0c -print -quit); \
-	   test -n "$$report" || { echo "✗ Zig coverage component $$name produced no Cobertura report"; exit 1; }; \
+	   rm -f ".tmp/kcov-$$name.rc"; \
+	   ( set +e; kcov --clean --include-pattern="$(CURDIR)/src" "$$output" "zig-out/bin/$$binary" \
+	       >".tmp/kcov-$$name.log" 2>&1; echo $$? >".tmp/kcov-$$name.rc" ) & \
+	   names="$$names $$name"; \
 	   inputs="$$inputs $$output"; \
 	 done; \
+	 wait; \
+	 failed=0; \
+	 for name in $$names; do \
+	   rc=$$(cat ".tmp/kcov-$$name.rc" 2>/dev/null || echo 1); \
+	   case "$$rc" in ''|*[!0-9]*) rc=1;; esac; \
+	   if [ "$$rc" -ne 0 ]; then \
+	     echo "✗ Zig coverage component $$name exited $$rc"; tail -n 40 ".tmp/kcov-$$name.log"; failed=1; continue; \
+	   fi; \
+	   report=$$(find "$(ZIG_COVERAGE_DIR)/$$name" -name cobertura.xml -type f -size +0c -print -quit); \
+	   test -n "$$report" || { echo "✗ Zig coverage component $$name produced no Cobertura report"; failed=1; }; \
+	 done; \
+	 [ "$$failed" -eq 0 ] || exit 1; \
 	 merged="$(ZIG_COVERAGE_DIR)/merged"; \
 	 kcov --merge "$$merged" $$inputs >/dev/null; \
 	 merged_report=$$(find "$$merged" -name cobertura.xml -type f -size +0c -print -quit); \

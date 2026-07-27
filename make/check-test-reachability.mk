@@ -23,7 +23,12 @@ check-test-reachability:  ## Every Zig `test` block compiles from a test root, o
 	@echo "→ [zig] Checking every test block is reachable from a test root..."
 	@$(REACHABILITY_TESTS) >/dev/null 2>&1 || \
 	  { echo "✗ [zig] reachability checker self-tests failed"; $(REACHABILITY_TESTS); exit 1; }
-	@python3 scripts/check_zig_test_reachability.py --check --counts-out $(REACHABLE_COUNTS)
+	@# The checker shells out to `zig build list-tests`. Without these the
+	# compile lands in Zig's default .zig-cache instead of the configured
+	# directory, so nothing that caches the configured path ever warms it.
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 python3 scripts/check_zig_test_reachability.py --check --counts-out $(REACHABLE_COUNTS)
 
 # Counts come from the compiler-registered set, never a textual scan: a `test` block
 # no test root force-imports never compiles, and crediting it would let VERIFY's Test
