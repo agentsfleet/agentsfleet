@@ -27,6 +27,7 @@ const TestHarness = harness_mod.TestHarness;
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const billing_rates = @import("../state/tenant_billing_rates.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 
 const ALLOC = std.testing.allocator;
@@ -144,7 +145,6 @@ fn seedModelRates(conn: *pg.Conn) !void {
         \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
         \\   updated_at_ms = EXCLUDED.updated_at_ms
     , .{ MODEL_LIBRARY_UID, MODEL, PROVIDER, MODEL_CONTEXT_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
-    try model_rate_cache.populate(conn);
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
@@ -157,11 +157,12 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
-    // Drop this suite's catalogue row and reseat the process-global cache so
-    // later suites in the same run never see the private pair.
+    // Drop this suite's catalogue row and clear the process-global cache so
+    // later suites in the same run never see the private pair. The clear is what
+    // makes the drop immediate; without it the entry survives until its
+    // generation check fails.
     execIgnore(conn, "DELETE FROM core.model_library WHERE provider = $1 AND model_id = $2", .{ PROVIDER, MODEL });
-    model_rate_cache.populate(conn) catch |err|
-        std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    model_rate_cache.clear();
     base.teardownTenant(conn);
     base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -206,21 +207,22 @@ fn freeTrialActive(conn: *pg.Conn) !bool {
 // The pure token term of a slice, priced via the SAME registry resolution the
 // handlers use (zero rates inside the free trial, registry rates after) —
 // sliceCharge with no elapsed run time isolates the token component.
-fn expectedTokenCost(d_in: i64, d_cached: i64, d_out: i64) i64 {
-    const rates = tenant_billing.resolveRenewSliceRates(PROVIDER, .platform, MODEL, clock.nowMillis()) orelse
-        tenant_billing.SliceRates{
+fn expectedTokenCost(conn: *pg.Conn, d_in: i64, d_cached: i64, d_out: i64) i64 {
+    const resolved = billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL, clock.nowMillis()) catch null;
+    const rates = resolved orelse
+        billing_rates.SliceRates{
             .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC,
             .input_nanos_per_mtok = 0,
             .cached_input_nanos_per_mtok = 0,
             .output_nanos_per_mtok = 0,
         };
-    const token_only = tenant_billing.SliceRates{
+    const token_only = billing_rates.SliceRates{
         .run_nanos_per_sec = 0,
         .input_nanos_per_mtok = rates.input_nanos_per_mtok,
         .cached_input_nanos_per_mtok = rates.cached_input_nanos_per_mtok,
         .output_nanos_per_mtok = rates.output_nanos_per_mtok,
     };
-    return tenant_billing.sliceCharge(token_only, 0, d_in, d_cached, d_out);
+    return billing_rates.sliceCharge(token_only, 0, d_in, d_cached, d_out);
 }
 
 const SliceRow = struct { d_in: i64, d_cached: i64, d_out: i64, token_cost: i64, charged: i64, run_fee: i64 };
@@ -293,7 +295,7 @@ test "integration: wire renew bills the body's splits, advances the cursor, and 
     try std.testing.expectEqual(@as(i64, CUM_IN), slice1.d_in);
     try std.testing.expectEqual(@as(i64, CUM_CACHED), slice1.d_cached);
     try std.testing.expectEqual(@as(i64, CUM_OUT), slice1.d_out);
-    try std.testing.expectEqual(expectedTokenCost(CUM_IN, CUM_CACHED, CUM_OUT), slice1.token_cost);
+    try std.testing.expectEqual(expectedTokenCost(s.conn, CUM_IN, CUM_CACHED, CUM_OUT), slice1.token_cost);
     try std.testing.expectEqual(slice1.run_fee + slice1.token_cost, slice1.charged); // no clamp at BIG_BALANCE
     // Post-trial the registry prices these deltas non-zero — the spec's wire
     // proof arm, armed automatically once the free-trial window closes.
@@ -351,7 +353,7 @@ test "integration: wire report settles the final slice from the body's splits an
     try std.testing.expectEqual(@as(i64, SETTLE_D_IN), settle.d_in);
     try std.testing.expectEqual(@as(i64, SETTLE_D_CACHED), settle.d_cached);
     try std.testing.expectEqual(@as(i64, SETTLE_D_OUT), settle.d_out);
-    try std.testing.expectEqual(expectedTokenCost(SETTLE_D_IN, SETTLE_D_CACHED, SETTLE_D_OUT), settle.token_cost);
+    try std.testing.expectEqual(expectedTokenCost(s.conn, SETTLE_D_IN, SETTLE_D_CACHED, SETTLE_D_OUT), settle.token_cost);
     if (!trial_active) try std.testing.expect(settle.token_cost > 0);
 
     // The claim flipped the lease under the fence — the run is settled exactly once.

@@ -1,13 +1,23 @@
-//! Unit tier for §2 Dimension 2.2 — response-cache accounting and LRU.
+//! Unit tier for §2 Dimension 2.2 — the catalogue response cache.
 //!
 //! Spec row: *"byte accounting per §2, 256-entry and 8 MiB ceilings, true LRU
-//! eviction order, 60-second monotonic TTL, over-budget bypass."*
+//! eviction order, 60-second monotonic TTL, over-budget bypass."* Three of those
+//! five no longer exist, and the spec is amended to match rather than these tests
+//! being written to a claim the code does not make:
 //!
-//! Time is injected rather than read from a clock. A TTL test that sleeps is
-//! either slow or flaky, and a 60-second bound cannot be waited out at all — so
-//! `now` is a parameter and the tests step it directly. That also lets the
-//! monotonic requirement be asserted honestly: the cache never consults a wall
-//! clock, so there is no clock for a test to have to control.
+//!   - **Eviction is by bucket, not global LRU.** A read does not promote, so the
+//!     entry ceiling is asserted as "never more than `MAX_ENTRIES`, with
+//!     near-total retention below capacity" rather than by naming a victim.
+//!   - **The entry ceiling is structural.** Capacity IS the slot count, so the
+//!     assertion is about the type's geometry, not a counter's discipline.
+//!   - **There is no TTL, no byte ceiling, and no bypass.** Freshness comes from
+//!     the revision in the KEY — a superseded page is unreachable, not stale — and
+//!     the bound is the slot count. A `LibraryRow` is 188 bytes at the median of
+//!     the shipped fixture ids, so 256 full pages is ≈2.3 MiB and the old 8 MiB
+//!     byte total could never fire. See the module header.
+//!
+//! Nothing here reads or injects a clock, because the cache has no clock to
+//! control.
 
 const std = @import("std");
 
@@ -15,180 +25,180 @@ const cache_mod = @import("model_library_cache.zig");
 
 const testing = std.testing;
 
-/// Any monotonic origin will do; a non-zero one is used deliberately so a bug
-/// that treats `stored_at == 0` as "unset" cannot pass.
-const ORIGIN_NANOS: u64 = 1_000_000_000;
-
-fn putOk(c: *cache_mod.Cache, key: []const u8, value: []const u8, now: u64) !void {
-    try testing.expect(try c.put(key, value, now));
+/// A key standing for one set of canonical selectors at one generation. The
+/// production digest is an HMAC under a process-random key; only distinctness
+/// and fixed width matter to the cache, which is all this reproduces.
+fn keyOf(revision: u64, seed: u64) cache_mod.Key {
+    // SAFETY: `final` below writes every byte of `digest` before the key is
+    // returned, so no caller can observe it uninitialized.
+    var key: cache_mod.Key = .{ .revision = revision, .digest = undefined };
+    var h = std.crypto.hash.sha2.Sha256.init(.{});
+    h.update(std.mem.asBytes(&seed));
+    h.final(&key.digest);
+    return key;
 }
 
-fn expectHit(c: *cache_mod.Cache, key: []const u8, want: []const u8, now: u64) !void {
-    const got = (try c.get(key, now)) orelse return error.ExpectedHit;
+// Every fetch below copies into `testing.allocator` — the caller's allocator,
+// not the cache's. Freeing it here is what proves the copy is genuinely the
+// caller's to own: if `fetch` ever went back to duping into the cache's own
+// allocator, these frees would be cross-allocator and the leak check would fail.
+fn expectHit(c: *cache_mod.Cache, key: cache_mod.Key, want: []const u8) !void {
+    const got = (try c.fetch(testing.allocator, key)) orelse return error.ExpectedHit;
     defer testing.allocator.free(got);
     try testing.expectEqualStrings(want, got);
 }
 
-fn expectMiss(c: *cache_mod.Cache, key: []const u8, now: u64) !void {
-    const got = try c.get(key, now);
+fn expectMiss(c: *cache_mod.Cache, key: cache_mod.Key) !void {
+    const got = try c.fetch(testing.allocator, key);
     if (got) |g| {
         testing.allocator.free(g);
         return error.ExpectedMiss;
     }
 }
 
-test "test_response_cache_accounting_and_lru" {
+test "a stored page is returned, and an absent one reads as a miss" {
     var c = cache_mod.Cache.init(testing.allocator);
     defer c.deinit();
 
-    // Empty means zero — not "roughly zero".
-    try testing.expectEqual(@as(usize, 0), c.byteLen());
-    try testing.expectEqual(@as(usize, 0), c.count());
-
-    try putOk(&c, "rev1|a", "payload-a", ORIGIN_NANOS);
-    try expectHit(&c, "rev1|a", "payload-a", ORIGIN_NANOS);
-
-    // Accounting is exactly key + value + node storage, which is the same sum
-    // the ceiling is enforced against. Computed here from the same three terms
-    // so the assertion states the rule rather than a magic total.
-    const expect_one = "rev1|a".len + "payload-a".len + nodeBytes();
-    try testing.expectEqual(expect_one, c.byteLen());
+    try expectMiss(&c, keyOf(1, 1));
+    try c.put(keyOf(1, 1), "payload-a");
+    try expectHit(&c, keyOf(1, 1), "payload-a");
     try testing.expectEqual(@as(usize, 1), c.count());
+}
 
-    // Replacing a key must not double-count it.
-    try putOk(&c, "rev1|a", "payload-a", ORIGIN_NANOS);
-    try testing.expectEqual(expect_one, c.byteLen());
-    try testing.expectEqual(@as(usize, 1), c.count());
+test "a key never returns another key's page" {
+    var c = cache_mod.Cache.init(testing.allocator);
+    defer c.deinit();
 
-    // Removing everything returns the tally to zero — a leak in the accounting
-    // shows up here even when no memory leaks, because the two are tracked
-    // separately.
-    var i: usize = 0;
-    while (i < cache_mod.MAX_ENTRIES) : (i += 1) {
+    // The one failure a cache cannot recover from. Distinct seeds, so distinct
+    // digests, and the pages must not cross even under bucket collision.
+    var seed: u64 = 0;
+    while (seed < 64) : (seed += 1) {
         var buf: [32]u8 = undefined;
-        const k = try std.fmt.bufPrint(&buf, "rev1|fill-{d}", .{i});
-        try putOk(&c, k, "v", ORIGIN_NANOS);
+        const body = try std.fmt.bufPrint(&buf, "page-{d}", .{seed});
+        try c.put(keyOf(7, seed), body);
     }
-    try testing.expectEqual(cache_mod.MAX_ENTRIES, c.count());
-}
-
-/// The per-entry overhead the cache counts. Mirrors the module's own constant
-/// via the public byte tally rather than re-deriving `@sizeOf`, so this test
-/// cannot drift from the implementation silently.
-fn nodeBytes() usize {
-    var probe = cache_mod.Cache.init(testing.allocator);
-    defer probe.deinit();
-    _ = probe.put("k", "v", ORIGIN_NANOS) catch return 0;
-    return probe.byteLen() - 2;
-}
-
-test "test_response_cache_accounting_and_lru: the entry ceiling evicts least-recently-used first" {
-    var c = cache_mod.Cache.init(testing.allocator);
-    defer c.deinit();
-
-    // Fill to exactly the ceiling.
-    var i: usize = 0;
-    while (i < cache_mod.MAX_ENTRIES) : (i += 1) {
+    seed = 0;
+    while (seed < 64) : (seed += 1) {
         var buf: [32]u8 = undefined;
-        const k = try std.fmt.bufPrint(&buf, "k{d}", .{i});
-        try putOk(&c, k, "v", ORIGIN_NANOS);
+        const want = try std.fmt.bufPrint(&buf, "page-{d}", .{seed});
+        // A page may have been evicted — that is a cache's prerogative — but
+        // whatever answers MUST be this key's own.
+        if (try c.fetch(testing.allocator, keyOf(7, seed))) |got| {
+            defer testing.allocator.free(got);
+            try testing.expectEqualStrings(want, got);
+        }
     }
-    try testing.expectEqual(cache_mod.MAX_ENTRIES, c.count());
-
-    // `k0` is the least-recently-used. Touch it, and `k1` becomes the victim
-    // instead — this is the difference between LRU and insertion-order FIFO,
-    // and a FIFO passes every count-based assertion above.
-    try testing.expectEqualStrings("k0", c.lruKeyForTest().?);
-    try expectHit(&c, "k0", "v", ORIGIN_NANOS);
-    try testing.expectEqualStrings("k1", c.lruKeyForTest().?);
-
-    try putOk(&c, "new", "v", ORIGIN_NANOS);
-    try testing.expectEqual(cache_mod.MAX_ENTRIES, c.count());
-    try expectMiss(&c, "k1", ORIGIN_NANOS); // evicted
-    try expectHit(&c, "k0", "v", ORIGIN_NANOS); // survived because it was touched
-    try expectHit(&c, "new", "v", ORIGIN_NANOS);
 }
 
-test "test_response_cache_accounting_and_lru: the TTL is 60s and monotonic" {
+test "capacity is structural and never exceeded" {
     var c = cache_mod.Cache.init(testing.allocator);
     defer c.deinit();
 
-    try putOk(&c, "rev1|a", "payload", ORIGIN_NANOS);
-
-    // One nanosecond before the bound is still fresh.
-    try expectHit(&c, "rev1|a", "payload", ORIGIN_NANOS + cache_mod.TTL_NANOS - 1);
-
-    // At the bound it is expired — and the expired entry is DROPPED, not merely
-    // hidden, so the tally returns to zero.
-    try putOk(&c, "rev1|a", "payload", ORIGIN_NANOS);
-    try expectMiss(&c, "rev1|a", ORIGIN_NANOS + cache_mod.TTL_NANOS);
-    try testing.expectEqual(@as(usize, 0), c.count());
-    try testing.expectEqual(@as(usize, 0), c.byteLen());
-
-    try testing.expectEqual(@as(u64, 60 * std.time.ns_per_s), cache_mod.TTL_NANOS);
-}
-
-test "test_response_cache_accounting_and_lru: an oversized entry is bypassed, not an eviction cascade" {
-    var c = cache_mod.Cache.init(testing.allocator);
-    defer c.deinit();
-
-    try putOk(&c, "keep-me", "v", ORIGIN_NANOS);
-    const before = c.byteLen();
-
-    // One value larger than the whole budget. Admitting it would mean emptying
-    // the cache to hold a single outlier — trading a working cache for one hit.
-    // It is refused instead, and `put` reports false so the caller knows to
-    // serve the response uncached rather than assume it was stored.
-    const huge = try testing.allocator.alloc(u8, cache_mod.MAX_BYTES + 1);
-    defer testing.allocator.free(huge);
-    @memset(huge, 'x');
-    try testing.expect(!(try c.put("huge", huge, ORIGIN_NANOS)));
-
-    // The bypass left the existing contents completely untouched.
-    try testing.expectEqual(before, c.byteLen());
-    try testing.expectEqual(@as(usize, 1), c.count());
-    try expectHit(&c, "keep-me", "v", ORIGIN_NANOS);
-    try expectMiss(&c, "huge", ORIGIN_NANOS);
-}
-
-test "test_response_cache_accounting_and_lru: the byte ceiling is enforced, not just the entry count" {
-    var c = cache_mod.Cache.init(testing.allocator);
-    defer c.deinit();
-
-    // Values big enough that the BYTE ceiling binds long before 256 entries do.
-    const chunk = cache_mod.MAX_BYTES / 8;
-    const value = try testing.allocator.alloc(u8, chunk);
-    defer testing.allocator.free(value);
-    @memset(value, 'y');
-
-    var i: usize = 0;
-    while (i < 24) : (i += 1) {
-        var buf: [32]u8 = undefined;
-        const k = try std.fmt.bufPrint(&buf, "big{d}", .{i});
-        _ = try c.put(k, value, ORIGIN_NANOS);
-        // The invariant that matters on every single insert.
-        try testing.expect(c.byteLen() <= cache_mod.MAX_BYTES);
+    // Far more distinct keys than slots. The ceiling is the geometry, so this
+    // cannot be exceeded by any sequence of writes.
+    var seed: u64 = 0;
+    while (seed < cache_mod.MAX_ENTRIES * 4) : (seed += 1) {
+        try c.put(keyOf(1, seed), "page");
         try testing.expect(c.count() <= cache_mod.MAX_ENTRIES);
     }
-
-    // It held far fewer than the entry ceiling, so the bound that stopped it was
-    // the byte one.
-    try testing.expect(c.count() < cache_mod.MAX_ENTRIES);
-    try testing.expect(c.count() > 0);
 }
 
-test "test_response_cache_accounting_and_lru: the revision in the key isolates generations" {
+test "retention is near-total below capacity" {
     var c = cache_mod.Cache.init(testing.allocator);
     defer c.deinit();
 
-    // The same selectors at two revisions are two keys. This is what makes a
-    // stale candidate unreachable rather than dangerous: a request that has read
-    // revision 2 never looks under the revision-1 key, so publish ordering
-    // between concurrent builders stops mattering.
-    try putOk(&c, "rev1|q=claude", "page-at-rev-1", ORIGIN_NANOS);
-    try putOk(&c, "rev2|q=claude", "page-at-rev-2", ORIGIN_NANOS);
+    // At half load the bucket distribution should keep nearly everything. Not
+    // "everything": four ways per bucket means an unlucky digest cluster may
+    // still evict, and pinning exact retention would pin the hash function.
+    const written: u64 = cache_mod.MAX_ENTRIES / 2;
+    var seed: u64 = 0;
+    while (seed < written) : (seed += 1) try c.put(keyOf(1, seed), "page");
 
-    try expectHit(&c, "rev1|q=claude", "page-at-rev-1", ORIGIN_NANOS);
-    try expectHit(&c, "rev2|q=claude", "page-at-rev-2", ORIGIN_NANOS);
-    try testing.expectEqual(@as(usize, 2), c.count());
+    var hits: usize = 0;
+    seed = 0;
+    while (seed < written) : (seed += 1) {
+        if (try c.fetch(testing.allocator, keyOf(1, seed))) |got| {
+            testing.allocator.free(got);
+            hits += 1;
+        }
+    }
+    try testing.expect(hits * 10 >= written * 9); // ≥90% retained
+}
+
+test "the revision in the key isolates generations" {
+    var c = cache_mod.Cache.init(testing.allocator);
+    defer c.deinit();
+
+    try c.put(keyOf(1, 1), "page-at-rev-1");
+    // Same selectors, next generation: a DIFFERENT key, so the older page is
+    // unreachable rather than stale. This is what replaces a freshness deadline.
+    try expectMiss(&c, keyOf(2, 1));
+
+    try c.put(keyOf(2, 1), "page-at-rev-2");
+    try expectHit(&c, keyOf(2, 1), "page-at-rev-2");
+    // The rev-1 page is still resident and still correct for anyone asking at
+    // rev 1 — it ages out under bucket pressure, and nothing serves it to a
+    // caller who has observed rev 2.
+    try expectHit(&c, keyOf(1, 1), "page-at-rev-1");
+}
+
+test "a re-put of the same key is answered by the newer page" {
+    var c = cache_mod.Cache.init(testing.allocator);
+    defer c.deinit();
+
+    // Two concurrent misses can both build and both admit. The table appends
+    // rather than replacing, so both are resident and the newest must answer.
+    try c.put(keyOf(1, 1), "first-build");
+    try c.put(keyOf(1, 1), "second-build");
+    try expectHit(&c, keyOf(1, 1), "second-build");
+}
+
+test "eviction frees the displaced payload" {
+    // `testing.allocator` is the instrument: a departure path that skipped
+    // `Context.evicted` would leak here, and one that called it twice would
+    // double-free. Neither is visible from the outside any other way.
+    var c = cache_mod.Cache.init(testing.allocator);
+    defer c.deinit();
+
+    var seed: u64 = 0;
+    while (seed < cache_mod.MAX_ENTRIES * 4) : (seed += 1) {
+        try c.put(keyOf(1, seed), "a payload long enough to notice if it leaks");
+    }
+    // Every page displaced along the way was freed by the hook; the deferred
+    // deinit frees what is still resident.
+}
+
+test "teardown frees every resident payload" {
+    var c = cache_mod.Cache.init(testing.allocator);
+
+    var seed: u64 = 0;
+    while (seed < 16) : (seed += 1) try c.put(keyOf(1, seed), "resident-at-teardown");
+    try testing.expect(c.count() > 0);
+
+    c.deinit(); // leak-checked by testing.allocator
+}
+
+test "clear empties the table, frees every payload, and leaves the cache usable" {
+    var c = cache_mod.Cache.init(testing.allocator);
+    defer c.deinit();
+
+    // Pages across two generations — exactly the state after a revision bump,
+    // where the superseded generation is unreachable but still resident.
+    var seed: u64 = 0;
+    while (seed < 16) : (seed += 1) {
+        try c.put(keyOf(1, seed), "superseded-page");
+        try c.put(keyOf(2, seed), "current-page");
+    }
+    try testing.expect(c.count() > 0);
+
+    // The admin mutation path's reclamation: everything goes, freed through the
+    // `evicted` hook (a leak or double-free would trip testing.allocator).
+    c.clear();
+    try testing.expectEqual(@as(usize, 0), c.count());
+    try expectMiss(&c, keyOf(2, 1));
+
+    // A cleared cache admits and serves again — clear is reclamation, not teardown.
+    try c.put(keyOf(3, 1), "post-clear-page");
+    try expectHit(&c, keyOf(3, 1), "post-clear-page");
 }

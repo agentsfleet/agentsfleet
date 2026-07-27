@@ -89,6 +89,28 @@ COMPOSE_PG_PORT = $(or $(strip $(shell docker compose port postgres 5432 2>/dev/
 COMPOSE_REDIS_PORT = $(or $(strip $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_HOST_PORT))
 COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_QSTASH_HOST_PORT))
 
+# Optional narrowing, for studying ONE failure without the rest of the lane's
+# cascade noise:  make test-integration TEST_FILTER='integration(model_library)'
+#
+# Exposes build.zig's existing `-Dtest-filter` on the existing targets rather
+# than adding a parallel one, because everything BUT the test selection has to
+# stay identical: the schema reset, the migrate, the `docker compose port`
+# discovery, and the CA-freshness check are the parts a hand-rolled `zig build
+# test-integration` gets wrong. §Discovery's "why the lane was lying" is what
+# that costs — a suite dialling a dead port, read as behaviour. Skipping the
+# reset is the other half: a second run against un-reset state goes 457/0 →
+# 447/10.
+#
+# NOTE: a filter REPLACES the integration graph's own default filters (the
+# `_integration_test` file filter and the `integration:` name filter), so a
+# narrowed run selects across the whole integration root rather than within
+# those. Check your filter actually matches something — a filter that matches
+# nothing exits 0 and reads as a pass.
+#
+# Empty by default, so the R1-graded invocation is always the full suite.
+TEST_FILTER ?=
+ZIG_TEST_FILTER_ARG = $(if $(strip $(TEST_FILTER)),-Dtest-filter="$(TEST_FILTER)",)
+
 # sslmode=disable: the local docker Postgres has no TLS and parseUrl defaults to
 # `.require` (hosted providers mandate it) — without it every local DB-lane test
 # fails at connect with SSLNotSupportedByServer before it can run.
@@ -206,7 +228,7 @@ test-integration-db: $(TEST_STATE_DEP)  ## Run real DB-backed integration suite 
 	TEST_DATABASE_URL="$$db_url" \
 	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
 	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
-	zig build test-integration
+	zig build test-integration $(ZIG_TEST_FILTER_ARG)
 	@echo "✓ [agentsfleetd] DB-backed integration tests passed"
 
 test-integration-redis: $(TEST_STATE_DEP)  ## Run Redis-backed integration suite only
@@ -225,7 +247,7 @@ test-integration-redis: $(TEST_STATE_DEP)  ## Run Redis-backed integration suite
 	  TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
 	  REDIS_URL_API="$$redis_tls_test_url" \
 	  REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
-	  zig build test-integration
+	  zig build test-integration $(ZIG_TEST_FILTER_ARG)
 	@echo "✓ [agentsfleetd] Redis integration tests passed"
 
 test-integration: $(TEST_STATE_DEP)  ## Run worker integration tests against real DB + Redis
@@ -275,6 +297,6 @@ test-integration: $(TEST_STATE_DEP)  ## Run worker integration tests against rea
 	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
 	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
 	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
-	zig build test-integration $(if $(SEED),--seed $(SEED),)
+	zig build test-integration $(ZIG_TEST_FILTER_ARG) $(if $(SEED),--seed $(SEED),)
 	@echo "✓ [agentsfleetd] Full integration suite passed"
 	@echo "✓ [agentsfleetd] All integration tests passed"

@@ -47,7 +47,6 @@ const TEMPLATE_GH: FleetLibraryGalleryEntry = {
     trigger_present: true,
   },
   required_credentials_reasons: { github: "review your pull requests" },
-  support_files: [],
 };
 const TEMPLATE_TENANT: FleetLibraryGalleryEntry = {
   id: "01932d4e-7c10-7a3a-9f00-000000000001",
@@ -57,7 +56,6 @@ const TEMPLATE_TENANT: FleetLibraryGalleryEntry = {
   source_ref: "tenant/01932d4e",
   requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
   required_credentials_reasons: {},
-  support_files: [],
 };
 
 function stubStream(installStep: string | null) {

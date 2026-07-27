@@ -12,6 +12,7 @@ const pg = @import("pg");
 
 const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const billing_rates = @import("../state/tenant_billing_rates.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
@@ -53,7 +54,8 @@ test "should pass the stop gate for self_managed at zero balance (no upfront cha
     // run fee is metered per renewal and refused at the next renewal once credit
     // runs out.
     const est_total = tenant_billing.computeReceiveCharge(.self_managed) +
-        tenant_billing.computeStageCharge(
+        try billing_rates.computeStageCharge(
+            db_ctx.conn,
             "self-managed-test",
             .self_managed,
             "any-model-self-managed",
@@ -92,7 +94,8 @@ test "should block the stop gate when balance is one nano below the estimate pos
     defer base.teardownPlatformProvider(db_ctx.conn, WS_GATE_UNDER);
 
     const est_total = tenant_billing.computeReceiveCharge(.platform) +
-        tenant_billing.computeStageCharge(
+        try billing_rates.computeStageCharge(
+            db_ctx.conn,
             "anthropic",
             .platform,
             "claude-sonnet-4-6",

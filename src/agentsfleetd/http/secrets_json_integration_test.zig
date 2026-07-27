@@ -18,7 +18,6 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const model_rate_cache = @import("../state/model_rate_cache.zig");
 
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 
@@ -67,7 +66,6 @@ fn setupSeedData(conn: *pg.Conn) !void {
         \\        256000, 3000000000, 300000000, 15000000000, $1, $1)
         \\ON CONFLICT (provider, model_id) DO NOTHING
     , .{now_ms});
-    try model_rate_cache.populate(conn);
     _ = try conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID});
     _ = try conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID});
     _ = try conn.exec(

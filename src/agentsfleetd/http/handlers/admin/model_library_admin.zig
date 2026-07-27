@@ -15,10 +15,19 @@
 //! contain '/' (e.g. accounts/fireworks/models/kimi-k2.6), which a path segment
 //! cannot carry. uid is a uuidv7 — opaque, slash-free, SQL-injection-checked.
 //!
-//! Every successful mutation calls model_rate_cache.populate(conn) so a rate
-//! change is live with no restart. The cache owns its process-lifetime memory
-//! internally (page_allocator); the handler passes only the connection, so no
-//! request-scoped allocator can ever back the process-global cache.
+//! Every mutation runs inside the catalogue-generation transaction
+//! (`state/model_catalogue_revision.zig`): it takes the singleton generation row
+//! FOR UPDATE, changes the catalogue, increments the generation, and commits —
+//! so the new rows and the generation describing them become visible together.
+//! That generation is what the response cache keys on and what billing
+//! reconciles against, so a mutation that skipped it would leave every replica
+//! serving a page and pricing a slice from a catalogue state that no longer
+//! exists, with nothing to detect the drift.
+//!
+//! The local rate cache and the catalogue page cache are then cleared. That is
+//! prompt reclamation only: a sibling replica clears nothing and stays correct
+//! because rate entries carry the old generation (every billing read compares
+//! it) and page keys carry the old revision (every catalogue read misses them).
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -30,6 +39,7 @@ const id_format = @import("../../../types/id_format.zig");
 const model_identity = @import("../../../types/model_identity.zig");
 const model_rate_cache = @import("../../../state/model_rate_cache.zig");
 const model_library_store = @import("../../../state/model_library_store.zig");
+const revision_state = @import("../../../state/model_catalogue_revision.zig");
 const hx_mod = @import("../hx.zig");
 
 const log = logging.scoped(.http);
@@ -75,13 +85,14 @@ fn ratesValid(hx: hx_mod.Hx, r: RatesInput) bool {
     return true;
 }
 
-/// Rebuild the process-global rate cache from the now-mutated table. Logged, not
-/// fatal: the row is already committed, so a transient cache-rebuild failure must
-/// not 500 a successful write — the next mutation (or a boot) reconciles it.
-fn repopulateCache(conn: anytype) void {
-    model_rate_cache.populate(conn) catch |err| {
-        log.warn("model_rate_cache_repopulate_failed", .{ .err = @errorName(err) });
-    };
+/// Drop this replica's cached rates and catalogue pages after a committed
+/// mutation, so the next charge reloads and the next catalogue read rebuilds
+/// rather than waiting for a generation check or bucket pressure. Cannot fail
+/// and reads nothing: correctness comes from the generation stored with each
+/// rate entry and the revision carried in each page key, not from this call.
+fn invalidateCaches(hx: hx_mod.Hx) void {
+    model_rate_cache.clear();
+    if (hx.ctx.model_library_cache) |cache| cache.clear();
 }
 
 // ── GET /v1/admin/models ─────────────────────────────────────────────────────
@@ -143,9 +154,16 @@ pub fn innerPostAdminModel(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
+    var txn = revision_state.beginMutation(conn) catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer txn.abort();
+
     // ON CONFLICT DO NOTHING + affected-row count distinguishes create (1) from
     // a duplicate (provider, model_id) attempt (0) → 409, without inspecting the
-    // driver's unique-violation error.
+    // driver's unique-violation error. A 409 returns through the deferred abort,
+    // so a rejected create leaves the generation untouched.
     const affected = model_library_store.create(conn, .{
         .uid = uid,
         .provider = in.provider,
@@ -165,7 +183,11 @@ pub fn innerPostAdminModel(hx: hx_mod.Hx, req: *httpz.Request) void {
         return;
     }
 
-    repopulateCache(conn);
+    _ = txn.commitBumped(now_ms) catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    invalidateCaches(hx);
     log.debug("admin_model_created", .{ .provider = in.provider, .model_id = in.model_id });
 
     hx.ok(.created, .{
@@ -203,7 +225,14 @@ pub fn innerPatchAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8)
     };
     defer hx.ctx.pool.release(conn);
 
-    const affected = model_library_store.updateRates(conn, uid, in, clock.nowMillis()) catch {
+    const now_ms = clock.nowMillis();
+    var txn = revision_state.beginMutation(conn) catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer txn.abort();
+
+    const affected = model_library_store.updateRates(conn, uid, in, now_ms) catch {
         common.internalOperationError(hx.res, "Failed to update catalogue model", hx.req_id);
         return;
     };
@@ -212,7 +241,11 @@ pub fn innerPatchAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8)
         return;
     }
 
-    repopulateCache(conn);
+    _ = txn.commitBumped(now_ms) catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    invalidateCaches(hx);
     log.debug("admin_model_updated", .{ .uid = uid });
 
     hx.ok(.ok, .{ .uid = uid, .updated = true, .request_id = hx.req_id });
@@ -236,6 +269,12 @@ pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8
     // closes). The default must be repointed first. A DB fault during this check
     // fails CLOSED (block the delete, respond internal-error) rather than
     // collapsing to "not referenced" and letting the live default be removed.
+    var txn = revision_state.beginMutation(conn) catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer txn.abort();
+
     const referenced = model_library_store.isReferencedByActiveDefault(conn, uid) catch {
         common.internalOperationError(hx.res, "Failed to verify model reference", hx.req_id);
         return;
@@ -254,7 +293,11 @@ pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8
         return;
     }
 
-    repopulateCache(conn);
+    _ = txn.commitBumped(clock.nowMillis()) catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    invalidateCaches(hx);
     log.debug("admin_model_deleted", .{ .uid = uid });
 
     hx.noContent();

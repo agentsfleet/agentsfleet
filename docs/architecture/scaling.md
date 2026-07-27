@@ -79,10 +79,28 @@ Idle cost is the runner lease-poll loop, fully idle:
 
 | Source | Requests per hour |
 |---|---|
-| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **one** bounded `HRANDFIELD` read of the readiness index and **zero** Postgres round-trips | `R_runners × 3600` at the 1 s default |
+| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **one** bounded `HRANDFIELD` read of the readiness index and **one** indexed `fleet.runners` auth read (M143_001 removed the memo — see below) | `R_runners × 3600` at the 1 s default |
 | (No watcher loop, no per-fleet BLOCK loops — both deleted) | 0 |
 
-"Zero Postgres round-trips" includes authentication. The `agt_r` verdict (`sha256(token)` → runner row) was the one Postgres read left on an idle poll after the candidate scan moved to the readiness index; it is now memoized per process for at most `HEARTBEAT_INTERVAL_MS` (`auth/runner_token_cache.zig` — the staleness bound and its invalidation sites are documented in [`../AUTH.md`](../AUTH.md) §Runner token). Steady-state, a runner re-pays that read about once per heartbeat interval per `agentsfleetd` machine — not once per poll.
+"Zero Postgres round-trips" is about the CANDIDATE SCAN, not authentication. The
+`agt_r` verdict (`sha256(token)` → runner row) is the one Postgres read left on an
+idle poll after the candidate scan moved to the readiness index, and M143_001
+removed the per-process memo that used to amortize it — so **every runner request
+pays one indexed single-row read**, not one per heartbeat interval.
+
+That was a deliberate trade, and the reasoning is in
+[`../AUTH.md`](../AUTH.md) §Runner token: admin-state transitions have no delivery
+channel other than auth rejection, so a per-process memo made revocation
+deterministic only on the machine that served the operator's write. Reading the row
+every time makes a cordon, drain, revoke, or delete effective fleet-wide the moment
+it commits.
+
+Sizing consequence: at the 1 s default the auth read tracks the lease-poll rate
+above (`R_runners × 3600` per hour), against a `fleet.runners` table whose pages
+stay resident. At the ~100 runners `schema/033_hot_path_indexes.sql` assumes that is
+a few hundred index probes a second. Revisit when runner count or poll rate makes
+that measurable — AUTH.md records the replacement design (a short-lived signed
+credential verified locally) and the condition it must meet.
 
 For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
 

@@ -30,6 +30,7 @@ const http_auth = @import("../../../db/test_fixtures_http_auth.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
+const limits = @import("../../../fleet_library/requirement_limits.zig");
 
 const TEST_ISSUER = scope_fixtures.ISSUER;
 const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
@@ -567,4 +568,74 @@ test "integration: publishing a row whose bundle this same request discards is r
     defer freeRow(alloc, after);
     try std.testing.expectEqualStrings("draft", after.visibility);
     try std.testing.expectEqualStrings(PROBE_REPO, after.source_repo);
+}
+
+// `required_credentials_reasons` is operator-written text that the amended Fleet
+// summary carries on every gallery card, so its size is part of the page's size.
+// Both halves of the ceiling get a test, and both assert the HANDLER refuses —
+// requirement_limits_test.zig already proves the predicate, including the
+// at-limit case, so what is unproven here is the wiring.
+test "integration: reason copy past its entry ceiling is refused" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+    try addProbe(h, alloc);
+
+    var body: std.ArrayList(u8) = .empty;
+    defer body.deinit(alloc);
+    try body.appendSlice(alloc, "{\"required_credentials_reasons\":{");
+    for (0..limits.MAX_REASON_ENTRIES + 1) |i| {
+        if (i != 0) try body.append(alloc, ',');
+        const entry = try std.fmt.allocPrint(alloc, "\"CRED_{d}\":\"why\"", .{i});
+        defer alloc.free(entry);
+        try body.appendSlice(alloc, entry);
+    }
+    try body.appendSlice(alloc, "}}");
+
+    const res = try patchEntry(h, alloc, PROBE_ID, body.items);
+    defer res.deinit();
+    try res.expectStatus(.bad_request);
+}
+
+test "integration: one over-long reason is refused" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+    try addProbe(h, alloc);
+
+    const long = try alloc.alloc(u8, limits.MAX_REASON_LEN + 1);
+    defer alloc.free(long);
+    @memset(long, 'x');
+    const body = try std.json.Stringify.valueAlloc(alloc, .{
+        .required_credentials_reasons = .{ .GITHUB_TOKEN = long },
+    }, .{});
+    defer alloc.free(body);
+
+    const res = try patchEntry(h, alloc, PROBE_ID, body);
+    defer res.deinit();
+    try res.expectStatus(.bad_request);
+
+    // A single entry of legal length on the same door still succeeds, so the
+    // refusal above is the LENGTH rule and not the field being rejected outright.
+    const ok_body = try std.json.Stringify.valueAlloc(alloc, .{
+        .required_credentials_reasons = .{ .GITHUB_TOKEN = "to read your pull requests" },
+    }, .{});
+    defer alloc.free(ok_body);
+    const ok_res = try patchEntry(h, alloc, PROBE_ID, ok_body);
+    defer ok_res.deinit();
+    try ok_res.expectStatus(.ok);
 }

@@ -76,7 +76,7 @@ pub fn invokeMetrics(hx: *Hx, req: *httpz.Request, route: router.Route) void {
 pub fn invokeModelLibrary(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (!common.requireMethod(hx.res, req.method, .GET)) return;
-    model_library_h.innerGetModelLibrary(hx.*);
+    model_library_h.innerGetModelLibrary(hx.*, req);
 }
 
 // ── Auth sessions ─────────────────────────────────────────────────────────

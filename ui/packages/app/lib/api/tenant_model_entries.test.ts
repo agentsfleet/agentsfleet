@@ -10,15 +10,68 @@ function jsonResponse(body: unknown) {
 }
 
 describe("listTenantModelEntries", () => {
-  it("GETs /v1/tenants/me/models with bearer", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ models: [], platform_default_available: true }));
+  it("GETs /v1/tenants/me/models with bearer, asking for a full page", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ models: [], platform_default_available: true, total: null, next_cursor: null }),
+    );
     const { listTenantModelEntries } = await import("./tenant_model_entries");
     const res = await listTenantModelEntries("tok");
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/v1/tenants/me/models"),
       expect.objectContaining({ method: "GET", headers: expect.objectContaining({ Authorization: "Bearer tok" }) }),
     );
+    // The endpoint pages at 50 unless asked otherwise, so the limit is not
+    // decoration: without it a tenant's 51st entry never reaches the page.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("limit=100");
+    expect(url).not.toContain("starting_after");
     expect(res.platform_default_available).toBe(true);
+  });
+
+  it("follows next_cursor to exhaustion so entries past the first page survive", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          models: [{ id: "e1" }, { id: "e2" }],
+          platform_default_available: false,
+          total: null,
+          next_cursor: "cur_2",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          models: [{ id: "e3" }],
+          platform_default_available: true,
+          total: null,
+          next_cursor: null,
+        }),
+      );
+    const { listTenantModelEntries } = await import("./tenant_model_entries");
+    const res = await listTenantModelEntries("tok");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]![0] as string).not.toContain("starting_after");
+    expect(fetchMock.mock.calls[1]![0] as string).toContain("starting_after=cur_2");
+    // Concatenated in page order, not just the first page's two rows.
+    expect(res.models.map((m) => m.id)).toEqual(["e1", "e2", "e3"]);
+    // Tenant-wide, so it comes from the page that ended the walk.
+    expect(res.platform_default_available).toBe(true);
+  });
+
+  it("throws instead of returning duplicates when the cursor never advances", async () => {
+    // A server that repeats a cursor would otherwise have its one page
+    // collected 50 times and rendered as 50 distinct registry entries.
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        models: [{ id: "e1" }],
+        platform_default_available: false,
+        total: null,
+        next_cursor: "stuck",
+      }),
+    );
+    const { listTenantModelEntries } = await import("./tenant_model_entries");
+    await expect(listTenantModelEntries("tok")).rejects.toThrow(/did not terminate/);
   });
 });
 

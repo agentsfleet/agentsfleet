@@ -155,7 +155,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
     // ── Workspace + suffix collections ────────────────────────────────────
     if (matchers.matchWorkspaceSuffix(p, S_FLEETS)) |ws_id| return .{ .workspace_fleets = ws_id };
-    if (matchers.matchWorkspaceSuffix(p, "fleet-libraries")) |ws_id| return .{ .workspace_fleet_library = ws_id };
+    if (matchers.matchFleetLibrary(p)) |route| return route;
     if (matchers.matchWorkspaceSuffix(p, "secrets")) |ws_id| return .{ .workspace_secrets = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "fleet-keys")) |ws_id| return .{ .fleet_keys = ws_id };
     if (matchers.matchWorkspaceSuffix(p, S_EVENTS)) |ws_id| return .{ .workspace_events = ws_id };

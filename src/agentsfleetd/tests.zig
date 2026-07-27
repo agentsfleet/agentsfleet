@@ -76,7 +76,6 @@ test {
     _ = @import("cli/commands.zig");
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
-    _ = @import("auth/runner_token_cache.zig");
     _ = @import("session/session_store_redis_proto_test.zig");
     _ = @import("events/bus.zig");
     _ = @import("events/subscription_hub.zig");
@@ -137,7 +136,6 @@ test {
     _ = @import("queue/redis_errors_test.zig");
     _ = @import("queue/redis_subscriber_test.zig");
     _ = @import("queue/fleet_ready.zig");
-    _ = @import("queue/fleet_group_memo.zig");
     _ = @import("queue/redis_fleet_probe.zig");
     _ = @import("queue/redis_fleet_decode.zig");
     // Persistent Fleet Memory — role isolation + selection policy + adapter write-path tests.
@@ -146,11 +144,13 @@ test {
     // Fleet CRUD, activity, router
     _ = @import("http/handlers/fleets/api.zig");
     _ = @import("http/handlers/library/library_cursor_test.zig");
+    _ = @import("http/handlers/library/catalogue_key.zig");
     _ = @import("http/handlers/library/query.zig");
     _ = @import("http/handlers/library/library_query_normalization_test.zig");
     _ = @import("http/handlers/library/fleet_keyset.zig");
     _ = @import("http/handlers/library/library_keyset_test.zig");
     _ = @import("http/handlers/library/library_sink_policy_test.zig");
+    _ = @import("http/handlers/library/library_sink_scan_test.zig");
     _ = @import("http/handlers/fleets/create.zig");
     _ = @import("http/handlers/fleets/create_install_steps.zig");
     _ = @import("http/handlers/fleets/create_install_steps_lifecycle_test.zig");
@@ -165,6 +165,7 @@ test {
     _ = @import("http/handlers/library/entry_view.zig");
     _ = @import("fleet_library/library_store.zig");
     _ = @import("fleet_library/importer.zig");
+    _ = @import("fleet_library/requirement_limits.zig");
     _ = @import("fleet_library/github_source.zig");
     _ = @import("fleet_library/github_net.zig");
     // Fleet execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)
@@ -181,6 +182,8 @@ test {
     _ = @import("http/handlers/fleet/runners_list.zig");
     _ = @import("http/handlers/fleet/runners_list_test.zig");
     _ = @import("http/handlers/model_library.zig");
+    _ = @import("http/handlers/model_library_page.zig");
+    _ = @import("cmd/serve_caches.zig");
     _ = @import("http/handlers/admin/model_library_admin.zig");
     _ = @import("http/handlers/admin/model_library_admin_delete_guard_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");

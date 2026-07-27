@@ -54,7 +54,6 @@ const TEMPLATE_GH: FleetLibraryGalleryEntry = {
     trigger_present: true,
   },
   required_credentials_reasons: { github: "review your pull requests" },
-  support_files: [],
 };
 
 // A tenant gallery entry — installs by UUID (`tenant_library_id`), carries no
@@ -67,7 +66,6 @@ const TEMPLATE_TENANT: FleetLibraryGalleryEntry = {
   source_ref: "tenant/01932d4e",
   requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: false },
   required_credentials_reasons: {},
-  support_files: [],
 };
 
 // Build a gallery entry with the given requirements overrides on the platform base.

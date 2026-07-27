@@ -40,10 +40,6 @@ const std = @import("std");
 /// bound, not a throttle — the caller maps this to `UZ-LIBRARY-003`.
 pub const MAX_QUERY_BYTES: usize = 128;
 
-/// The `ESCAPE` character paired with every `LIKE` built from `escapeLike`. The
-/// SQL side must spell `LIKE $n ESCAPE '\'` or the escaping here is inert.
-pub const LIKE_ESCAPE: u8 = '\\';
-
 pub const Error = error{
     /// Normalized term exceeds `MAX_QUERY_BYTES`, or the input is not
     /// well-formed UTF-8. Both are `UZ-LIBRARY-003`: the first because it is an
@@ -127,21 +123,9 @@ pub fn normalizeProvider(alloc: std.mem.Allocator, raw: ?[]const u8) (Error || s
     return squeezed;
 }
 
-/// Wrap a normalized term as a literal-substring `LIKE` pattern: `%term%` with
-/// every wildcard in `term` escaped.
-///
-/// The escape character itself is escaped FIRST — doing it after would also
-/// escape the backslashes this function just introduced, turning `%` into a
-/// literal backslash followed by a live wildcard.
-pub fn likeContains(alloc: std.mem.Allocator, term: []const u8) ![]u8 {
-    var out = try std.ArrayList(u8).initCapacity(alloc, term.len + 2);
-    errdefer out.deinit(alloc);
-
-    try out.append(alloc, '%');
-    for (term) |c| {
-        if (c == LIKE_ESCAPE or c == '%' or c == '_') try out.append(alloc, LIKE_ESCAPE);
-        try out.append(alloc, c);
-    }
-    try out.append(alloc, '%');
-    return try out.toOwnedSlice(alloc);
-}
+// LIKE-escaping used to live here (`likeContains`) and ran BEFORE the SQL-side
+// NFKC fold — a hole, because NFKC maps compatibility characters (fullwidth ％,
+// ﹪, ＿, ﹍﹎﹏, ＼) INTO live `%`/`_`/`\` after the escape pass had run. The
+// pattern is now built entirely in SQL, after the fold: `model_library/sql.zig`
+// `FOLDED_NEEDLE` and `gallery_sql.zig` `foldedLike`. This module keeps only
+// normalization; it never sees a metacharacter's fate.

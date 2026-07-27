@@ -23,7 +23,8 @@ const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const tenant_provider = @import("../../state/tenant_provider.zig");
-const model_rate_cache = @import("../../state/model_rate_cache.zig");
+const provider_sql = @import("../../state/tenant_provider/sql.zig");
+const provider_cap = @import("tenant_provider_cap.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -31,15 +32,6 @@ const log = logging.scoped(.http_tenant_provider);
 
 const S_PLATFORM = "platform";
 const S_TENANT_CONTEXT_REQUIRED = "Tenant context required";
-
-/// Context-cap persisted for a custom (openai-compatible) self-managed endpoint.
-/// A custom endpoint bills provider-direct — self_managed posture charges a
-/// run-fee only and never reads the per-token rate cache — so its user-hosted
-/// model is absent from core.model_library by design and there is no platform rate
-/// to catalogue. The activation gate stores this "unknown/auto" sentinel instead
-/// of a catalogue lookup; execution_policy.autoToolWindow + the per-fleet
-/// frontmatter overlay resolve the effective context window at run time.
-const CUSTOM_ENDPOINT_CAP_UNKNOWN: u32 = 0;
 
 const PutInput = struct {
     mode: []const u8,
@@ -167,7 +159,7 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
 
     // Effective model: caller's --model override OR the credential's stored model.
     const effective_model: []const u8 = input.model orelse probed.model;
-    const context_cap_tokens = resolveSelfManagedCap(probed.provider, effective_model) orelse {
+    const context_cap_tokens = provider_cap.resolveSelfManagedCap(conn, probed.provider, effective_model) orelse {
         hx.fail(ec.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE, "model not in cached caps catalogue");
         return;
     };
@@ -217,38 +209,6 @@ fn probeSelfManagedOrFail(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, secret_
     };
 }
 
-/// Resolve the context-window cap to persist for a self-managed activation.
-/// A custom (openai-compatible) endpoint is provider-direct billing: its
-/// user-hosted model is absent from the platform rate catalogue by design, so it
-/// bypasses the gate and takes the unknown/auto sentinel. A named provider must
-/// resolve a catalogued rate row (whose cap we store) — `null` means the model is
-/// not in the catalogue, and the caller fails it (UZ-PROVIDER-004). The rate row
-/// is keyed by (provider, model): the credential's provider is the authority for
-/// which provider hosts the model.
-///
-/// A blank, whitespace-only, OR whitespace-padded effective model returns `null`
-/// for EVERY provider — the credential no longer guarantees a model (M121: it
-/// lives on the registry entry / PUT body), so this is the boundary that
-/// re-establishes "an activation must name a usable model." Without it a bare PUT
-/// for an openai-compatible secret takes the sentinel path and persists a blank or
-/// whitespace-padded model the endpoint can't dial (named providers already miss
-/// the catalogue lookup). Rejecting padded input — rather than silently trimming
-/// it — keeps both provider kinds consistent and surfaces the typo to the caller.
-fn resolveSelfManagedCap(provider: []const u8, model: []const u8) ?u32 {
-    const trimmed = std.mem.trim(u8, model, &std.ascii.whitespace);
-    if (trimmed.len == 0 or trimmed.len != model.len) return null;
-    if (std.mem.eql(u8, provider, tenant_provider.OPENAI_COMPATIBLE_PROVIDER)) {
-        // A custom endpoint still names a real model, and a context window is a
-        // property of the MODEL, not the host serving it — so borrow the
-        // catalogue's cap when it knows one (never the rate: self-managed is
-        // billed by the tenant's own provider). The sentinel fallback keeps a
-        // genuinely unknown model activating exactly as before.
-        return model_rate_cache.lookup_context_cap(trimmed) orelse CUSTOM_ENDPOINT_CAP_UNKNOWN;
-    }
-    const entry = model_rate_cache.lookup_model_rate(provider, model) orelse return null;
-    return entry.context_cap_tokens;
-}
-
 const ProviderView = struct {
     mode: []const u8,
     provider: []const u8,
@@ -282,11 +242,7 @@ fn readProviderView(
     tenant_id: []const u8,
     platform_default_available: bool,
 ) !ProviderView {
-    var q = PgQuery.from(try conn.query(
-        \\SELECT mode, provider, model, context_cap_tokens, secret_ref
-        \\FROM core.tenant_model_selection
-        \\WHERE tenant_id = $1::uuid
-    , .{tenant_id}));
+    var q = PgQuery.from(try conn.query(provider_sql.SELECT_PROVIDER_VIEW, .{tenant_id}));
     defer q.deinit();
     if (try q.next()) |row| {
         const mode = try alloc.dupe(u8, try row.get([]const u8, 0));
