@@ -70,6 +70,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `handlers/fleets/create.zig`; `fleet_bundles/list.zig`; `library/onboard.zig`; `library/catalog_patch.zig`; `library/catalog.zig`; `schedules/api.zig` | EDIT | Mechanical consequence of the line above: `orelse <ret>` → `catch <ret>`, one line each, no behaviour change. Ten call sites that do not care about the distinction. |
 | `src/agentsfleetd/http/handlers/model_library.zig` | EDIT | The global catalogue surface — stage instrumentation. Not foreseen because §Files-Changed named `server.zig` and `route_trace.zig` for the trace half, but the stages are per-handler. |
 | `src/agentsfleetd/tests.zig` | EDIT | Test-root reachability for the two new modules. |
+| `src/agentsfleetd/http/handlers/tenant_model_entries_projection.zig` | CREATE | `tenant_model_entries_view.zig` sat exactly AT the 350-line cap and the gate covers every tracked file, so the `secret_project` stage boundary §2 requires could not be added without splitting it (RULE FLL). Seam is rows-into-views. |
+| `src/agentsfleetd/db/pool_bounded_progress_integration_test.zig` | CREATE | §2 Dimension 2.2. `db/pool.zig` needed no seam change after all — a size-1 pool saturates deterministically from outside, so the vendored `pg.zig` fork is untouched. |
+| `scripts/check_library_performance_report_test.py` | CREATE | §4's two named tests. Lands in the auto-discovered `check_*_test.py` suite so no new `make` target is needed, and drives the real `bun` command R3 grades. |
+| `tests/fixtures/library-performance/{baseline,candidate}.json` | CREATE | R3's inputs. See Discovery — the drafted R3 pointed at gitignored capture output. |
+| `src/agentsfleetd/integration_tests.zig` | EDIT | Integration-root reachability for the pool proof. |
 
 ## Applicable Rules
 
@@ -187,7 +192,7 @@ This table is the complete set. Every row is mandatory, including the failure ro
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
 | R1 | Telemetry/resource/pool tests pass | `make test-unit-all && make test-integration` | exit 0 | P0 | |
-| R3 | Explicit aggregate report is valid | `bun scripts/report-library-performance.ts --check --baseline test-results/library-performance/baseline.json --candidate test-results/library-performance/candidate.json` | exit 0 and `comparison=valid`; values do not gate | P0 | |
+| R3 | Explicit aggregate report is valid | `bun scripts/report-library-performance.ts --check --baseline tests/fixtures/library-performance/baseline.json --candidate tests/fixtures/library-performance/candidate.json` | exit 0 and `comparison=valid`; values do not gate | P0 | |
 | R4 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | |
 | S1 | Lint/conform/build | `make lint-all && make harness-verify && zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S2 | Memory/secrets | `make memleak && gitleaks detect` | exit 0 | P0 | |
@@ -290,6 +295,28 @@ and the release discipline lives in one place again.
 Proof is deferred to §2's `test_pool_bounded_progress_and_timeout`, which is the
 only tier that can saturate a real pool; a unit test cannot produce
 `error.Timeout` from `pg.Pool` without one.
+
+### R3 pointed at gitignored paths, so it could never have passed
+
+`test-results/` is in `.gitignore` (line 32), and the two files R3 named are
+CAPTURE OUTPUT. As drafted, R3 was a P0 acceptance criterion whose inputs cannot
+exist on a fresh checkout — it would have failed at VERIFY for every grader, and
+the only way to make it pass would have been to run the provisioned capture that
+§4 explicitly puts outside universal CI.
+
+R3 now points at `tests/fixtures/library-performance/{baseline,candidate}.json`,
+committed. The command shape is unchanged; only the paths move, from capture
+output to a canonical pair. What R3 grades is the VALIDATOR, and a validator
+needs deterministic input to be graded at all.
+
+The committed pair is not a rubber stamp. Its candidate is **37% slower on every
+single row** than its baseline, and identical in metadata and in aggregate keys.
+So the fixture that proves R3 green is itself the demonstration that timing does
+not gate — a threshold anywhere in this path would fail on this exact pair.
+
+`make capture-library-performance` still writes to
+`test-results/library-performance/`, which is where real provisioned runs land
+and why that directory is ignored.
 
 ### Stage timings are metrics, not spans — the span budget decides it
 
