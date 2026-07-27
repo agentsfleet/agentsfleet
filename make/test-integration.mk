@@ -171,7 +171,17 @@ _reset-test-db: _ensure-test-infra
 	@docker compose exec -T redis redis-cli --tls --cacert /tls/server.crt -a agentsfleet --no-auth-warning FLUSHALL >/dev/null
 	@echo "✓ [infra] Redis flushed"
 
-test-integration-db: _reset-test-db  ## Run real DB-backed integration suite only
+# Every integration target starts by dropping schemas and flushing Redis,
+# because several suites leave fixture rows behind that break the next run. That
+# is the right default for a gate and the wrong one for an edit-run-edit loop,
+# where the reset plus re-migrate dominates a narrow `-Dtest-filter` run.
+#
+# KEEP_TEST_STATE=1 swaps the reset for a plain infra check. It is deliberately
+# opt-in and never set by CI: a green run under it proves nothing about a clean
+# checkout, which is exactly what the third verification tier exists to check.
+TEST_STATE_DEP := $(if $(KEEP_TEST_STATE),_ensure-test-infra,_reset-test-db)
+
+test-integration-db: $(TEST_STATE_DEP)  ## Run real DB-backed integration suite only
 	@db_url="$$TEST_DATABASE_URL"; \
 	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
 	case "$$db_url" in \
@@ -199,7 +209,7 @@ test-integration-db: _reset-test-db  ## Run real DB-backed integration suite onl
 	zig build test-integration
 	@echo "✓ [agentsfleetd] DB-backed integration tests passed"
 
-test-integration-redis: _reset-test-db  ## Run Redis-backed integration suite only
+test-integration-redis: $(TEST_STATE_DEP)  ## Run Redis-backed integration suite only
 	@redis_tls_test_url="$$TEST_REDIS_TLS_URL"; \
 	if [ -z "$$redis_tls_test_url" ] && [ -n "$$REDIS_URL" ]; then \
 	  case "$$REDIS_URL" in \
@@ -218,7 +228,7 @@ test-integration-redis: _reset-test-db  ## Run Redis-backed integration suite on
 	  zig build test-integration
 	@echo "✓ [agentsfleetd] Redis integration tests passed"
 
-test-integration: _reset-test-db  ## Run worker integration tests against real DB + Redis
+test-integration: $(TEST_STATE_DEP)  ## Run worker integration tests against real DB + Redis
 	@db_url="$$TEST_DATABASE_URL"; \
 	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
 	case "$$db_url" in \
