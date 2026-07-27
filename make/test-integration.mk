@@ -287,6 +287,6 @@ test-integration: _reset-test-db  ## Run worker integration tests against real D
 	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
 	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
 	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
-	zig build test-integration $(ZIG_TEST_FILTER_ARG)
+	zig build test-integration $(ZIG_TEST_FILTER_ARG) $(if $(SEED),--seed $(SEED),)
 	@echo "✓ [agentsfleetd] Full integration suite passed"
 	@echo "✓ [agentsfleetd] All integration tests passed"

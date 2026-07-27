@@ -284,7 +284,10 @@ fn store(revision: i64, provider: []const u8, model: []const u8, rate: ModelRate
     };
     lock.lock();
     defer lock.unlock();
-    table.put(
+    // The displaced entry is discarded, never read: `evicted` above has already
+    // freed its identity strings, so touching the returned key would be a use
+    // after free. `evicted` is this cache's only release path by design.
+    _ = table.put(
         .{ .provider = p, .model = m },
         .{ .revision = revision, .rate = rate },
         common.NEVER_EXPIRES,

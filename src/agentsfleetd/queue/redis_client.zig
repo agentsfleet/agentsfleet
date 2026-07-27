@@ -22,28 +22,6 @@ const S_EX = "EX";
 const S_D = "{d}";
 const S_PING = "PING";
 const S_OK = "OK";
-const S_XADD_AGENTSFLEET_EVENT_FAILED = "xadd_fleet_event_failed";
-
-// XADD argv slots for `xaddFleetEvent` — lifted to file scope so the
-// compile-folded prefix is a single comptime slice instead of six slot
-// assignments at runtime. The `MAXLEN ~ 10000` triplet caps the
-// fleet:{id}:events stream's retention (~10k approximate trim); `*`
-// asks Redis to generate the stream entry id (which IS the event_id).
-const XADD_VERB: []const u8 = "XADD";
-const XADD_MAXLEN_KEYWORD: []const u8 = "MAXLEN";
-const XADD_MAXLEN_APPROX: []const u8 = "~";
-const XADD_MAXLEN_AGENTSFLEET_EVENTS: []const u8 = "10000";
-const XADD_AUTO_ID: []const u8 = "*";
-
-/// Compile-folded tail for `XADD fleet:{id}:events MAXLEN ~ 10000 * …`.
-/// Slot 0 = `XADD`, slot 1 = stream key (runtime), slots 2..6 = this slice.
-const XADD_AGENTSFLEET_TRIM_TAIL: []const []const u8 = &.{
-    XADD_MAXLEN_KEYWORD,
-    XADD_MAXLEN_APPROX,
-    XADD_MAXLEN_AGENTSFLEET_EVENTS,
-    XADD_AUTO_ID,
-};
-const XADD_AGENTSFLEET_PREFIX_LEN: usize = 2 + XADD_AGENTSFLEET_TRIM_TAIL.len;
 
 /// Per spec retry contract: pool-path operations get 2 attempts total
 /// before the error surfaces to the caller. No backoff at this layer —
@@ -187,45 +165,6 @@ pub fn setNx(self: *Self, key: []const u8, value: []const u8, ttl_seconds: u32) 
     };
 }
 
-/// XADD an EventEnvelope onto `fleet:{envelope.fleet_id}:events`. The Redis
-/// stream entry id IS the canonical event_id; this function returns it
-/// allocated via `self.alloc` so the caller (e.g. `POST /messages`) can
-/// surface it in the response body for SSE correlation.
-///
-/// Stream is trimmed approximately to MAXLEN 10000 entries.
-/// Caller must free the returned entry id.
-pub fn xaddFleetEvent(self: *Self, envelope: EventEnvelope) ![]u8 {
-    var stream_key_buf: [128]u8 = undefined;
-    const stream_key = try std.fmt.bufPrint(&stream_key_buf, "fleet:{s}:events", .{envelope.fleet_id});
-
-    const payload_argv = try envelope.encodeForXAdd(self.alloc);
-    defer EventEnvelope.freeXAddArgv(self.alloc, payload_argv);
-
-    var argv = try self.alloc.alloc([]const u8, XADD_AGENTSFLEET_PREFIX_LEN + payload_argv.len);
-    defer self.alloc.free(argv);
-    argv[0] = XADD_VERB;
-    argv[1] = stream_key;
-    @memcpy(argv[2..XADD_AGENTSFLEET_PREFIX_LEN], XADD_AGENTSFLEET_TRIM_TAIL);
-    @memcpy(argv[XADD_AGENTSFLEET_PREFIX_LEN..], payload_argv);
-
-    var resp = try self.command(argv);
-    defer resp.deinit(self.alloc);
-
-    const id_str = switch (resp) {
-        .bulk => |v| v orelse {
-            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = envelope.fleet_id, .actor = envelope.actor });
-            return error.RedisXaddFailed;
-        },
-        else => {
-            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = envelope.fleet_id, .actor = envelope.actor });
-            return error.RedisXaddFailed;
-        },
-    };
-    const owned_id = try self.alloc.dupe(u8, id_str);
-    log.debug("xadd_fleet_event", .{ .fleet_id = envelope.fleet_id, .event_id = owned_id, .actor = envelope.actor, .type = envelope.event_type.toSlice() });
-    return owned_id;
-}
-
 /// Pool-backed: acquire → run command → release. Transport errors retry
 /// up to MAX_ATTEMPTS with a fresh dial; server-side `.err` replies are
 /// resumable (no retry) and surface to the caller.
@@ -328,5 +267,4 @@ const redis_protocol = @import("redis_protocol.zig");
 const redis_errors = @import("redis_errors.zig");
 const Pool = @import("redis_pool.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const EventEnvelope = @import("contract").event_envelope;
 const log = logging.scoped(.redis_queue);

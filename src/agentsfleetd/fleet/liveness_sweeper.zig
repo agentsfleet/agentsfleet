@@ -11,6 +11,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const protocol = @import("contract").protocol;
 const runner_events = @import("runner_events.zig");
+const token_cache = @import("../auth/runner_token_cache.zig");
 const tripwire = @import("tripwire");
 
 const log = logging.scoped(.runner_liveness_sweeper);
@@ -98,6 +99,12 @@ fn sweepRunner(
     }
     if (runner.admin_state != .active) stats.expired_slots += try expireRunnerSlots(pool, runner.id, now_ms);
     if (runner.admin_state == .draining and try markDrainedIfIdle(pool, alloc, runner.id, now_ms)) {
+        // Same obligation the operator-plane writers carry: this machine just
+        // made the runner non-active, so it must stop answering `active` from
+        // memory instead of waiting out `ENTRY_TTL_MS`. Sibling machines still
+        // expire on their own within one heartbeat, which is the documented
+        // bound — but the machine that performed the write is exact at once.
+        token_cache.invalidateRunner(runner.id);
         stats.drained_runners += 1;
     }
 }
