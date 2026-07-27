@@ -29,6 +29,18 @@ pub const DbAcquireError = error{
     PoolUnavailable,
 };
 
+/// Map a pool acquire failure onto the operator-facing distinction.
+///
+/// Extracted from `db()` so BOTH arms are provable at unit tier. The timeout arm
+/// has an integration proof (a real saturated pool), but the other arm needs a
+/// pool that fails for a non-timeout reason at acquire time — which the vendored
+/// pool only produces from a poisoned connection, and which no test can stage
+/// deterministically. A pure function over the error is testable without any of
+/// that, and the branch is the whole content of the decision.
+pub fn classifyAcquireError(err: anyerror) DbAcquireError {
+    return if (err == error.Timeout) error.PoolTimeout else error.PoolUnavailable;
+}
+
 pub const DbScope = struct {
     conn: *pg.Conn,
     pool: *pg.Pool,
@@ -65,7 +77,7 @@ pub const Hx = struct {
     pub fn db(self: Self) DbAcquireError!DbScope {
         const conn = self.ctx.pool.acquire() catch |err| {
             common.internalDbUnavailable(self.res, self.req_id);
-            return if (err == error.Timeout) error.PoolTimeout else error.PoolUnavailable;
+            return classifyAcquireError(err);
         };
         return .{ .conn = conn, .pool = self.ctx.pool };
     }

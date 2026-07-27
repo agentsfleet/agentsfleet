@@ -38,6 +38,7 @@ OK_LINE = "comparison=valid"
 
 EXIT_OK = 0
 EXIT_INVALID = 3
+EXIT_USAGE = 2
 
 BASELINE_COMMIT = "1111111111111111111111111111111111111111"
 CANDIDATE_COMMIT = "2222222222222222222222222222222222222222"
@@ -204,6 +205,134 @@ class LibraryPerformanceReportValidation(unittest.TestCase):
         result = self._run(_report(BASELINE_COMMIT), candidate)
         self.assertEqual(result.returncode, EXIT_INVALID)
         self.assertIn("duplicate aggregate key", result.stderr)
+
+
+@unittest.skipIf(shutil.which("bun") is None, "bun is not installed")
+class LibraryPerformanceReportInvocation(unittest.TestCase):
+    """The argument and IO paths — every way the command can be MISUSED.
+
+    Separate from the validation cases above because these never reach the
+    parser: they decide whether the caller gets a usage error they can act on or
+    a stack trace. `EXIT_USAGE` is distinct from `EXIT_INVALID` on purpose, so a
+    CI step can tell "you invoked it wrong" from "the reports disagree".
+    """
+
+    def _run(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["bun", str(VALIDATOR), *args],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+    def test_without_check_flag_reports_usage_not_success(self):
+        result = self._run()
+        self.assertEqual(result.returncode, EXIT_USAGE)
+        self.assertIn("--check", result.stderr)
+
+    def test_missing_baseline_flag_reports_usage(self):
+        result = self._run("--check", "--candidate", "x.json")
+        self.assertEqual(result.returncode, EXIT_USAGE)
+        self.assertIn("--baseline", result.stderr)
+
+    def test_missing_candidate_flag_reports_usage(self):
+        result = self._run("--check", "--baseline", "x.json")
+        self.assertEqual(result.returncode, EXIT_USAGE)
+        self.assertIn("--candidate", result.stderr)
+
+    def test_flag_without_a_value_reports_usage_rather_than_reading_the_next_flag(self):
+        """`--baseline --candidate x` must not silently treat `--candidate` as
+        the baseline PATH — that would report a confusing file-not-found for a
+        filename the caller never typed."""
+        result = self._run("--check", "--baseline", "--candidate")
+        self.assertEqual(result.returncode, EXIT_USAGE)
+
+    def test_absent_report_file_names_the_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            present = pathlib.Path(tmp) / "baseline.json"
+            present.write_text(json.dumps(_report(BASELINE_COMMIT)))
+            absent = pathlib.Path(tmp) / "nope.json"
+            result = self._run(
+                "--check", "--baseline", str(present), "--candidate", str(absent)
+            )
+        self.assertEqual(result.returncode, EXIT_INVALID)
+        self.assertIn("nope.json", result.stderr)
+        self.assertIn("candidate", result.stderr)
+
+    def test_malformed_json_is_reported_as_such_not_as_a_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            good = pathlib.Path(tmp) / "baseline.json"
+            good.write_text(json.dumps(_report(BASELINE_COMMIT)))
+            bad = pathlib.Path(tmp) / "candidate.json"
+            bad.write_text("{ not json at all")
+            result = self._run(
+                "--check", "--baseline", str(good), "--candidate", str(bad)
+            )
+        self.assertEqual(result.returncode, EXIT_INVALID)
+        self.assertIn("not valid JSON", result.stderr)
+
+    def test_a_json_array_is_rejected_rather_than_indexed(self):
+        """`[]` is valid JSON and is not a report. Without the object check it
+        would reach the field reads and produce `undefined` everywhere."""
+        with tempfile.TemporaryDirectory() as tmp:
+            good = pathlib.Path(tmp) / "baseline.json"
+            good.write_text(json.dumps(_report(BASELINE_COMMIT)))
+            arr = pathlib.Path(tmp) / "candidate.json"
+            arr.write_text("[]")
+            result = self._run(
+                "--check", "--baseline", str(good), "--candidate", str(arr)
+            )
+        self.assertEqual(result.returncode, EXIT_INVALID)
+        self.assertIn("JSON object", result.stderr)
+
+    def test_wrong_schema_version_is_rejected(self):
+        candidate = _report(CANDIDATE_COMMIT)
+        candidate["schema_version"] = 2
+        with tempfile.TemporaryDirectory() as tmp:
+            good = pathlib.Path(tmp) / "baseline.json"
+            good.write_text(json.dumps(_report(BASELINE_COMMIT)))
+            bad = pathlib.Path(tmp) / "candidate.json"
+            bad.write_text(json.dumps(candidate))
+            result = self._run(
+                "--check", "--baseline", str(good), "--candidate", str(bad)
+            )
+        self.assertEqual(result.returncode, EXIT_INVALID)
+        self.assertIn("schema_version", result.stderr)
+
+    def test_empty_aggregates_is_rejected_as_vacuous(self):
+        """A report with no aggregates compares equal to any other report with
+        no aggregates — it would pass comparability while proving nothing."""
+        candidate = _report(CANDIDATE_COMMIT)
+        candidate["aggregates"] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            good = pathlib.Path(tmp) / "baseline.json"
+            good.write_text(json.dumps(_report(BASELINE_COMMIT)))
+            bad = pathlib.Path(tmp) / "candidate.json"
+            bad.write_text(json.dumps(candidate))
+            result = self._run(
+                "--check", "--baseline", str(good), "--candidate", str(bad)
+            )
+        self.assertEqual(result.returncode, EXIT_INVALID)
+        self.assertIn("must not be empty", result.stderr)
+
+    def test_nan_percentile_is_rejected(self):
+        """`typeof NaN === "number"` passes a naive type check, and every
+        comparison against NaN is false — so an unguarded NaN would sail through
+        the ordering check as "consistent"."""
+        with tempfile.TemporaryDirectory() as tmp:
+            good = pathlib.Path(tmp) / "baseline.json"
+            good.write_text(json.dumps(_report(BASELINE_COMMIT)))
+            bad = pathlib.Path(tmp) / "candidate.json"
+            # json.dumps emits bare NaN, which Bun's JSON.parse rejects; write
+            # the literal the way a hand-rolled emitter would.
+            bad.write_text(
+                json.dumps(_report(CANDIDATE_COMMIT)).replace('"p95_seconds": 0.02', '"p95_seconds": 1e999', 1)
+            )
+            result = self._run(
+                "--check", "--baseline", str(good), "--candidate", str(bad)
+            )
+        self.assertEqual(result.returncode, EXIT_INVALID)
 
 
 class LibraryCaptureCommandIsNotUniversalGate(unittest.TestCase):
