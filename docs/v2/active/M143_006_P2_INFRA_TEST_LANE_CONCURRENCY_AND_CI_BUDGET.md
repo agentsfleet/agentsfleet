@@ -181,20 +181,20 @@ scripts/select-prunable-caches.sh <pr-state-file> <retain-per-family> < caches.t
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Every CI lane defect is corrected (§1) | `make check-gh-actions-valid && python3 scripts/check_ci_lane_config_test.py` | exit 0 | P0 | |
-| R2 | Every Zig test block still reaches a root | `make check-test-reachability` | exit 0 | P0 | |
-| R3 | Lane concurrency preserves attribution and verdict (§5) | `python3 scripts/check_lane_concurrency_test.py` | exit 0 | P0 | |
-| R4 | Leak gate stays green | `make memleak` | exit 0 | P0 | |
-| R5 | Unit lanes stay green | `make test-unit-all` | exit 0 | P0 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | Every CI lane defect is corrected (§1) | `make check-gh-actions-valid && python3 scripts/check_ci_lane_config_test.py` | exit 0 | P0 | ✅ exit 0 — actionlint + make-target refs green, 11 lane-config tests pass |
+| R2 | Every Zig test block still reaches a root | `make check-test-reachability` | exit 0 | P0 | ✅ `test-root reachability: 536 file(s) reachable` |
+| R3 | Lane concurrency preserves attribution and verdict (§5) | `python3 scripts/check_lane_concurrency_test.py` | exit 0 | P0 | ✅ `Ran 9 tests … OK` |
+| R4 | Leak gate stays green | `make memleak` | exit 0 | P0 | ✅ `memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` |
+| R5 | Unit lanes stay green | `make test-unit-all` | exit 0 | P0 | ✅ `All unit lanes passed` |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 25 files, all in the Files Changed table |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `All unit lanes passed` |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `All lint checks passed` |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `All integration tests passed` |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ exit 0 |
+| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ exit 0 — x86_64-linux and aarch64-linux |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` |
+| S8 | No oversize source file | `git diff --name-only main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output when scoped `main...HEAD`; repo gate `All new Zig files within 350-line limit` |
+| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ 0 matches — `_ensure-test-bin`, `_fmt`, and both deleted scripts have no live references |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -260,5 +260,10 @@ scripts/select-prunable-caches.sh <pr-state-file> <retain-per-family> < caches.t
   - Architecture consult during EXECUTE: the roots are the top of a per-module ownership tree, not a flat catalogue — 75 production modules force-import their own `_test.zig` partner, and 229 of 536 candidate files are reachable only transitively through one. Generating flat root lists (the shape this section was originally specified with) would have discarded that structure and risked pulling files into module shapes their imports do not resolve against. Section amended to register at the owning level instead.
   - Architecture consult during EXECUTE: `docs/architecture/testing.md` named `src/runner/integration_tests.zig` as the runner's integration root. That file does not exist — the real root is `src/runner/sandbox_integration_test.zig`, a test file that force-imports three siblings. The doc also listed three roots where eight exist, omitting the auth portability root and both named-module roots. Corrected in this workstream; the omission is why this section was originally scoped to four roots rather than five aggregate plus three hand-authored.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
+- **Skill-chain outcomes**
+  - `/write-unit-test` — 43 tests added across four files, covering every changed surface: Continuous Integration lane configuration, cache-selection rules including the unresolvable-state case, lane concurrency asserted from recorded start/end intervals rather than a wall-clock bound, and the integration reset default asserted from the resolved make graph rather than the literal prerequisite.
+  - VERIFY — all fourteen rubric rows graded green against commands run verbatim. `make memleak` and `make test-integration` were re-run after the shard-runner removal and the target rename, since both touched the lanes.
+  - Test Delta: unit 3056 → 3056 · integration 405 → 405 vs the CHORE(open) baseline. Zero growth is correct here and not a gap: the diff adds no Zig, and the surfaces it does change — workflows, make fragments, shell — are covered by the 43 tests above, which the Zig reachability counter does not measure.
+  - `/review` — run pre-push; an independent adversarial pass examined whether a failing unit's exit status can be lost in the new concurrent paths, whether the cache selector can pick a restorable entry, and whether the rename left a dangling reference.
+  - `kishore-babysit-prs` — follows the final push.
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
