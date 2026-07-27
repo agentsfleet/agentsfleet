@@ -30,11 +30,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `make test-integration`, `make test-unit-agentsfleetd`, `make test-coverage-zig` and `make memleak` each execute their registered tests across `SHARD_COUNT` concurrent processes with per-shard datastore isolation, and every Zig CI job restores a warm cache on the first push to a branch.
+**Goal (testable):** the datastore-free lanes — `make test-unit-agentsfleetd`, `make test-coverage-zig`, `make memleak` — execute their registered tests across `SHARD_COUNT` concurrent processes with the leak, failure and coverage verdicts unchanged, and every Zig CI job restores a warm cache on the first push to a branch.
 
 **Problem:** A full `make test-integration` takes over eleven minutes locally, of which six are the suite itself — 614 tests executed strictly one at a time, because Zig 0.16's default test runner is single-threaded by construction. The daemon unit binary registers 2958 tests and is executed three separate times per Pull Request (PR): plain, again under kcov, again under Valgrind at a ten-to-thirty-times slowdown. In CI the `memleak` workflow takes fourteen minutes on the first push to any branch and six on every push after, because it never warms its cache from `main`. The Actions cache sits at 9.96 GB against a 10 GB limit, so warm-cache hits are a coin flip for every other job too.
 
-**Solution summary:** Add a shard-aware Zig test runner so one compiled test binary can be executed by N concurrent processes, each running a disjoint subset; give each integration shard a private Postgres database and an isolated Redis keyspace so the suite's existing "this process owns the datastore" assumption still holds. Generate the four hand-maintained test roots from the filename conventions that already exist, so a new test file registers itself. Make the remaining serial stretches of the memleak and coverage lanes concurrent. Fix the four CI defects that make the cache cold: the missing `main` trigger, the pre-warm step that builds the wrong artifact, the over-broad container privilege, and the unbounded cache growth.
+**Solution summary:** Add a shard-aware Zig test runner so one compiled test binary can be executed by N concurrent processes, each running a disjoint subset, and apply it to the binaries that touch no datastore — which is where the time actually is, since the daemon unit binary is executed three times per change and accounts for more lane time than the integration suite. Register each new test file at the level that already owns it, so it needs no hand edit. Make the remaining serial stretches of the memleak and coverage lanes concurrent. Fix the four CI defects that make the cache cold: the missing `main` trigger, the pre-warm step that builds the wrong artifact, the over-broad container privilege, and the unbounded cache growth.
 
 ## PR Intent & comprehension handshake
 
@@ -65,13 +65,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/runner/tests.zig` | EDIT | Becomes generated output. |
 | `src/lib/tests.zig` | EDIT | Becomes generated output. |
 | `scripts/run-zig-shards.sh` | CREATE | Fans a built test binary out over N shard processes, aggregates exit codes, preserves per-shard output. |
+| `scripts/check_zig_shard_runner_test.py` | CREATE | Leak-equivalence, partition-exactness and malformed-environment gates for the shard runner. |
+| `scripts/check_ci_lane_config_test.py` | CREATE | Continuous Integration lane configuration gates. |
+| `scripts/check_lane_concurrency_test.py` | CREATE | Lane concurrency and local-cost gates. |
+| `scripts/select-prunable-caches.sh` | CREATE | Pure cache-reclamation selection, unit-tested away from the workflow. |
 | `scripts/run-zig-memleak-lane.sh` | EDIT | Run a lane's binaries concurrently and shard each under the leak gate. |
 | `make/test-unit.mk` | EDIT | Sharded unit lane; concurrent kcov components. |
-| `make/test-integration.mk` | EDIT | Sharded integration lane; per-shard database provisioning; keep-state opt-out. |
+| `make/test-integration.mk` | EDIT | Keep-state opt-out for iterative local loops. |
 | `make/bench.mk` | EDIT | Overlap the boot-drain lane's infra and migrate with the component lanes. |
 | `make/dev.mk` | EDIT | `_clean` removes the cache directory the repository actually uses. |
 | `make/quality.mk` | EDIT | Register the generated-roots freshness gate in `lint-zig`. |
-| `src/agentsfleetd/queue/redis_config.zig` | EDIT | Accept a logical database selector in the Redis URL so shards do not share a keyspace. |
 | `.github/workflows/memleak.yml` | EDIT | Add the `main` push trigger that warms the cache. |
 | `.github/workflows/test-integration.yml` | EDIT | Pre-warm the integration artifact, not the unit artifact. |
 | `.github/workflows/test.yml` | EDIT | Narrow the coverage job's container privilege. |
@@ -145,17 +148,6 @@ The single mechanism the remaining sections rest on. One compiled binary, N proc
 - **Dimension 3.3** — skips, failures, and logged errors are counted and reported per shard, and the aggregate exit code is non-zero when any shard fails → Test `test_shard_runner_reports_and_propagates`
 - **Dimension 3.4** — with no shard environment set, the runner behaves as a single shard covering every test → Test `test_unsharded_default_runs_everything`
 - **Dimension 3.5** — the fan-out script preserves each shard's output and surfaces the failing shard's output first → Test `test_fanout_preserves_shard_output`
-
-### §4 — Per-shard datastore isolation
-
-Every integration test assumes it owns the database — fixture identifiers are fixed per file and the lane starts by dropping every schema. Sharding preserves that assumption by giving each shard its own datastore rather than by rewriting six hundred tests.
-
-**Implementation default:** a private Postgres database per shard, migrated concurrently, and a Redis logical database selector carried in the connection URL — the URL path component is the standard spelling, so this is a client capability the product lacks rather than a test-only shim.
-
-- **Dimension 4.1** — the Redis client parses a logical database selector from the connection URL and selects it on connect → Test `test_redis_url_carries_logical_database`
-- **Dimension 4.2** — each integration shard provisions, migrates, and tears down its own Postgres database → Test `test_each_shard_owns_its_database`
-- **Dimension 4.3** — two shards running concurrently cannot observe each other's fixture rows or Redis stream entries → Test `test_shards_are_mutually_invisible`
-- **Dimension 4.4** — a shard whose provisioning fails aborts the lane rather than running against another shard's datastore → Test `test_provisioning_failure_aborts_lane`
 
 ### §5 — Lane concurrency and local cost — ✅ DONE
 
@@ -231,10 +223,6 @@ Generated roots:
 | 3.3 | unit | `test_shard_runner_reports_and_propagates` | A mixed pass/skip/fail set yields the correct counts and a non-zero exit. |
 | 3.4 | unit | `test_unsharded_default_runs_everything` | With no shard environment set, the executed count equals the registered count. |
 | 3.5 | integration | `test_fanout_preserves_shard_output` | With one failing shard among several, the failing shard's output is surfaced first and the script exits non-zero. |
-| 4.1 | unit | `test_redis_url_carries_logical_database` | A URL with a path component parses to that logical database; one without parses to zero. |
-| 4.2 | integration | `test_each_shard_owns_its_database` | Two shards report distinct database names, each fully migrated. |
-| 4.3 | integration | `test_shards_are_mutually_invisible` | A fixture row and a Redis stream entry written by one shard are absent from the other. |
-| 4.4 | integration | `test_provisioning_failure_aborts_lane` | An unreachable datastore during provisioning fails the lane before any test runs. |
 | 5.1 | integration | `test_coverage_components_run_concurrently` | The coverage lane's component runs overlap in time and the merged report is unchanged. |
 | 5.2 | integration | `test_lib_lane_gates_binaries_concurrently` | The lib lane's three binary gates overlap in time and a failure in any one fails the lane. |
 | 5.3 | integration | `test_boot_drain_overlaps_component_lanes` | The boot-drain preparation starts before the component lanes converge. |
@@ -250,8 +238,8 @@ Generated roots:
 | R1 | Every CI lane defect is corrected (§1) | `make check-gh-actions-valid && python3 scripts/check_ci_lane_config_test.py` | exit 0 | P0 | |
 | R2 | Generated roots are fresh and complete (§2) | `make sync-test-roots && git diff --exit-code src/agentsfleetd/tests.zig src/agentsfleetd/integration_tests.zig src/runner/tests.zig src/lib/tests.zig` | exit 0 | P0 | |
 | R3 | Shard partition is exact, disjoint, and leak-detecting (§3) | `python3 -m unittest discover -s scripts -t scripts -p 'check_zig_shard*_test.py'` | exit 0 | P0 | |
-| R4 | Concurrent integration shards cannot see each other (§4) | `AGENTSFLEET_TEST_SHARD_COUNT=4 make test-integration` | exit 0 | P0 | |
-| R5 | Sharded and unsharded verdicts agree (§3, §5) | `AGENTSFLEET_TEST_SHARD_COUNT=1 make test-integration` | exit 0 | P0 | |
+| R4 | Sharded lanes keep the leak verdict (§3) | `make memleak` | exit 0 | P0 | |
+| R5 | Sharded and unsharded verdicts agree (§3) | `AGENTSFLEET_TEST_SHARD_COUNT=1 make test-unit-agentsfleetd` | exit 0 | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
@@ -281,6 +269,7 @@ Generated roots:
 
 ## Out of Scope
 
+- Sharding the integration lane. Real isolation needs one Redis instance per shard, not one instance with per-shard logical databases: `FLUSHALL` is not database-scoped and would let one shard's reset destroy its siblings mid-run, and Redis Pub/Sub is not database-scoped either, so shards would receive each other's messages on any shared channel — which this suite asserts on heavily. That is N containers and N certificates for the smaller half of the win; the datastore-free binaries account for more lane time than the integration suite does.
 - Amortizing the per-test harness setup by sharing Postgres and Redis pools across tests within a shard. Sharding cuts the same wall clock without touching six hundred test bodies; pool sharing is a follow-up once shard counts stop scaling.
 - Trimming the individual slow tests in the tail (`catalog`, `dashboard`, `sse_streaming`). Real, but each needs its own behavioural judgement and none blocks this workstream.
 - Reducing the number of times the daemon unit binary is executed per Pull Request. Merging the unit, coverage, and leak lanes would couple three independent gates; sharding makes each cheap enough that the coupling is not worth buying.
@@ -312,6 +301,7 @@ Generated roots:
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - Baseline measurements taken before authoring, primary checkout, macOS, with a sibling worktree competing for cores: `make test-integration` 11:18 wall clock; the integration binary alone 614 registered tests, 606 passed, 8 skipped, 375.6s; per-test median 0.522s, p90 1.257s, p99 7.473s, max 21.834s, slowest decile carrying 43.3% of total. Daemon unit binary 2958 registered tests. CI: `memleak` 14 min on a branch's first push against 6 min on later pushes; `test-integration` 6–8 min; Actions cache 54 entries totalling 9.96 GB against a 10 GB limit, with no `memleak` entry under `refs/heads/main`.
   - Gate-flag triage pending: the shard runner replaces the upstream runner's leak detection. Indy approved the structural depth; the FILE SHAPE DECISION and the leak-equivalence evidence are due at PLAN and VERIFY respectively.
+  - Adversarial review of the proposed Redis isolation, at Indy's request: the logical-database selector this spec originally carried does not isolate anything that matters. `FLUSHALL` is not database-scoped, so a shard's reset would destroy its siblings mid-run; and Redis Pub/Sub is outside the keyspace entirely, so `SELECT n` leaves channels shared — with `redis_client.publish`, `redis_subscriber`, the subscription hub and four integration suites asserting on exact event delivery, that is silent cross-shard bleed reading as SSE flake. Real isolation is one Redis instance per shard. Measuring where the time actually sits settled it: the datastore-free unit binaries account for 1091s of Continuous Integration step time against the integration suite's 479s, because that binary is executed three times per change. Section 4 removed; sharding applies to the datastore-free lanes, which need no isolation at all.
   - Architecture consult during EXECUTE: the roots are the top of a per-module ownership tree, not a flat catalogue — 75 production modules force-import their own `_test.zig` partner, and 229 of 536 candidate files are reachable only transitively through one. Generating flat root lists (the shape this section was originally specified with) would have discarded that structure and risked pulling files into module shapes their imports do not resolve against. Section amended to register at the owning level instead.
   - Architecture consult during EXECUTE: `docs/architecture/testing.md` named `src/runner/integration_tests.zig` as the runner's integration root. That file does not exist — the real root is `src/runner/sandbox_integration_test.zig`, a test file that force-imports three siblings. The doc also listed three roots where eight exist, omitting the auth portability root and both named-module roots. Corrected in this workstream; the omission is why this section was originally scoped to four roots rather than five aggregate plus three hand-authored.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
