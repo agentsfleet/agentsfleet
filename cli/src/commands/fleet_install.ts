@@ -47,6 +47,7 @@ import {
   VISIBILITY_TENANT,
   withName,
   type CreateFleetBody,
+  type FleetLibraryGalleryEntry,
   type FleetLibraryGalleryResponse,
   type InstallResponse,
   type UpdateResponse,
@@ -82,6 +83,50 @@ export const loadBundle = (
   });
 
 // POST the create + render the install result. Shared by both sources so the
+// Rows per request, and the ceiling on how many requests one lookup will make.
+// The gallery pages at 50 by default and rejects a `limit` above 100
+// (`UZ-LIBRARY-003`), so asking for the maximum halves the round-trips.
+const GALLERY_PAGE_LIMIT = 100;
+const GALLERY_MAX_PAGES = 50;
+
+/** One wire page: `items` is that page alone, `next_cursor` null on the last. */
+type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
+  readonly next_cursor?: string | null;
+};
+
+// Find one gallery entry by id, following `next_cursor` to exhaustion.
+//
+// Reading only the first page would report `library entry '<id>' is not in this
+// workspace's gallery` for any entry past the server's page size — a FALSE error
+// that blocks a valid install, which is worse than the silent truncation the
+// same bug causes in a list view. Stops at the match, so the common case stays
+// one request.
+const findGalleryEntry = (
+  wsId: string,
+  token: Redacted.Redacted<string>,
+  libraryId: string,
+): Effect.Effect<FleetLibraryGalleryEntry | undefined, CliError, HttpClient> =>
+  Effect.gen(function* () {
+    const http = yield* HttpClient;
+    let cursor: string | null = null;
+
+    for (let page = 0; page < GALLERY_MAX_PAGES; page += 1) {
+      const params = new URLSearchParams({ limit: String(GALLERY_PAGE_LIMIT) });
+      if (cursor !== null) params.set("starting_after", cursor);
+
+      const body = yield* http.request<FleetLibraryGalleryPage>({
+        path: `${wsFleetLibrariesPath(wsId)}?${params.toString()}`,
+        method: METHOD_GET,
+        token,
+      });
+      const hit = (body.items ?? []).find((e) => e.id === libraryId);
+      if (hit) return hit;
+      if (!body.next_cursor) return undefined;
+      cursor = body.next_cursor;
+    }
+    return undefined;
+  });
+
 // success / JSON output stays identical whether the bundle came from a path or
 // a library entry snapshot.
 const createAndRender = (
@@ -140,7 +185,6 @@ export const installEffectFromFlags = (
 > =>
   Effect.gen(function* () {
     const config = yield* CliConfig;
-    const http = yield* HttpClient;
 
     const libraryId = yield* requireLibraryId(flags.libraryId);
     const wsId = yield* requireWorkspaceId;
@@ -150,12 +194,7 @@ export const installEffectFromFlags = (
     // entry carries its tier + declared requirements; the create body keys off
     // `visibility` (M103 §4). No snapshot import — the server reads SKILL/TRIGGER
     // from the onboarded library entry row.
-    const gallery = yield* http.request<FleetLibraryGalleryResponse>({
-      path: wsFleetLibrariesPath(wsId),
-      method: METHOD_GET,
-      token,
-    });
-    const entry = (gallery.items ?? []).find((e) => e.id === libraryId);
+    const entry = yield* findGalleryEntry(wsId, token, libraryId);
     if (!entry) {
       return yield* Effect.fail(
         new ConfigError({

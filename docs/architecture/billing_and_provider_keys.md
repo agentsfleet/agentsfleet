@@ -131,6 +131,7 @@ Function shape (M80_010) — **deltas** in, run fee + three-tier token cost out;
 
 ```zig
 pub fn computeStageCharge(
+    conn:       *pg.Conn,      // the caller's already-acquired connection (M143 §2.2)
     provider:   []const u8,    // composite-key half — "anthropic", "pioneer", … (§9)
     posture:    Posture,
     model:      []const u8,    // "accounts/fireworks/models/kimi-k2.6", "kimi-k2.6", …
@@ -138,22 +139,16 @@ pub fn computeStageCharge(
     d_input:    u32,           // per-slice token deltas (CTE-computed max(0, cumulative − metered))
     d_cached:   u32,
     d_output:   u32,
-) i64 {
+) !i64 {
+    // Free-trial and self_managed price with NO statement at all. Only the
+    // platform branch consults the catalogue, and it prices against the
+    // generation `conn` observes.
+    const rates = (try resolveRenewSliceRates(conn, provider, posture, model, clock.nowMillis())) orelse
+        std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in the priced catalogue", .{ model, provider });
     // ms-precision: divide AFTER multiplying, so a 20_500 ms slice bills the full
     // 20.5 s, not a second-truncated 20 s (the per-slice debits then sum to the
     // real runtime × rate — never under-bill across N renewals).
-    const run = @divTrunc(elapsed_ms * RUN_NANOS_PER_SEC, 1000);   // both postures
-    return switch (posture) {
-        .platform => blk: {
-            const rate = model_rate_cache.lookup_model_rate(provider, model) orelse
-                std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in cached caps catalogue", .{ model, provider });
-            const in_n     = @divTrunc(rate.input_nanos_per_mtok        * @as(i64, d_input),  1_000_000);
-            const cached_n = @divTrunc(rate.cached_input_nanos_per_mtok * @as(i64, d_cached), 1_000_000);
-            const out_n    = @divTrunc(rate.output_nanos_per_mtok       * @as(i64, d_output), 1_000_000);
-            break :blk run + in_n + cached_n + out_n;
-        },
-        .self_managed => run,   // tokens recorded by the caller, not charged
-    };
+    return sliceCharge(rates, elapsed_ms, d_input, d_cached, d_output);
 }
 ```
 
@@ -161,7 +156,13 @@ One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/agentsfle
 
 Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `cli/src/constants/billing.ts`) by `audits/cross-tier-rates.sh` so a bump surfaces immediately.
 
-`lookup_model_rate` reads from a process-local cache populated from `core.model_library` on API server start (and re-populated after every admin catalogue mutation). The table is the single source of truth; the API server caches it to keep `computeStageCharge` synchronous and free of network calls in the hot path.
+Rates come from a process-local cache in front of `core.model_library` (`state/model_rate_cache.zig`), on the shared `common.CacheTable` primitive. The table is the single source of truth; the cache exists to keep the charge path off it in the common case.
+
+**A miss loads, it does not answer (M143 §2.2).** The cache is fixed-capacity and evicts, so it cannot promise completeness — and a charge path must never read "evicted" as "this model is not in the catalogue". It used to: an absent entry panicked the issue-time estimate and silently dropped renewal to run-fee-only, which is the revenue leak this milestone closes. So a miss loads the one row it asked about, and "not catalogued" is now a database answer.
+
+**Freshness is the catalogue generation, not a deadline.** Each entry stores the `core.model_catalogue_revision` value it was read at. A charge reads the generation on its own connection and accepts a cached entry only at that generation or later; otherwise it reloads. So a warm charge path costs one statement (the generation) and a cold one costs two. That is the price of the guarantee that no slice is ever priced against a catalogue state the platform has moved past — a guarantee a boot-time snapshot could not make, because nothing told a replica its snapshot had aged.
+
+Every admin mutation runs inside the generation transaction: lock the singleton row `FOR UPDATE`, change the catalogue, increment the generation, commit. The rows and the generation describing them therefore become visible together, and a replica that never saw the mutation still cannot serve the old rate — its entry carries the old generation and every charge compares it.
 
 `std.debug.panic` under platform is correct: a model that's not in the catalogue should never reach the lease path's billing — it would have been rejected at `tenant provider create` time (`400 model_not_in_caps_catalogue`) or when the bundle's frontmatter was authored. Reaching `computeStageCharge` with an unknown model is an internal inconsistency; we want `agentsfleetd` to fail the lease loudly, alert, and investigate, not silently use a default.
 
@@ -394,7 +395,7 @@ The OpenAI-compatible client routes the call to `https://api.fireworks.ai/infere
 
 The single source of truth for model context caps **and per-model token rates** is the `core.model_library` table, managed by platform admins through `POST/PATCH/DELETE /v1/admin/models` and read by tenants through the bearer-authed **`GET /v1/models`**. The install-time vs trigger-time resolution flow — which posture reads what, when, and how the frontmatter overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the library *is* and how it is served.
 
-For billing specifically: the API server populates a process-local rate cache from `core.model_library` at boot and re-populates it after every admin catalogue mutation; `computeStageCharge` consults the cached per-model token rates — never makes a network or database call on the hot path.
+For billing specifically: `computeStageCharge` prices platform-posture slices from a process-local rate cache in front of `core.model_library`, validated against the catalogue generation the caller's own connection observes (see §4.2). It makes no network call; it does read the generation on a connection it already holds, which is what keeps a slice from being priced against a catalogue state that has since changed.
 
 Read shape. **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific nanos-per-million figures change as upstream provider pricing moves and the admin-fleet reconciles. Do not hardcode them in code or paraphrase them in docs.
 
@@ -417,7 +418,7 @@ GET /v1/models            (Bearer — any authenticated tenant; no capability sc
 }
 ```
 
-The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is an admin row append. Operators don't need to know the row contents — `tenant provider create` validates membership server-side, the API server caches all rates at boot, and this doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
+The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is an admin row append. Operators don't need to know the row contents — `tenant provider create` validates membership server-side, the API server caches rates on first use at the generation each read observes (there is no boot warm), and this doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
 
 The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Users pick their provider via their self-managed credential body, not via this catalogue.
 
@@ -427,7 +428,7 @@ Properties:
 - **Pricing is no longer world-readable.** The old "public-but-unguessable" trade-off — anyone with the URL could read our per-token margins — is closed: reading the rates now requires an authenticated tenant. This resolves the §10 pricing-visibility caveat the M86 design accepted.
 - **The global `rates`/`billing` block retired with the endpoint.** It had zero consumers — the dashboard discarded it, the CLI pins `cli/src/constants/billing.ts`, the website pins `rates.ts`. The billing constants stay pinned in `src/agentsfleetd/state/tenant_billing.zig` and its cross-tier twins.
 - **Consumed per-session, not cached at the edge.** The dashboard fetches the library once per session; the payload is small and the read is no longer a Content Delivery Network (CDN) concern.
-- **Resolved at install or provider-set time, never at trigger time.** The context cap is pinned in either `tenant_model_selection` (self-managed) or the synth-default constant (platform). The token-rate cache is re-populated at boot and after admin mutations; the hot path never makes a network call.
+- **Resolved at install or provider-set time, never at trigger time.** The context cap is pinned in either `tenant_model_selection` (self-managed) or the synth-default constant (platform). Token rates load into the process cache on first use and are invalidated by the catalogue generation stored with them; the hot path never makes a network call. There is deliberately **no boot-time warm** — a bulk preload would be a second way to fill one cache, and the two would drift.
 
 ---
 

@@ -2,6 +2,7 @@ const std = @import("std");
 
 const fleet_config = @import("../fleet_runtime/config.zig");
 const markdown_limits = @import("../fleet_runtime/markdown_limits.zig");
+const requirement_limits = @import("requirement_limits.zig");
 
 pub const SOURCE_KIND_TEMPLATE = "template";
 pub const SOURCE_KIND_UPLOAD = "upload";
@@ -168,6 +169,9 @@ fn buildRequirementsJson(
         defer parsed.deinit(alloc);
         if (!std.mem.eql(u8, skill_name, parsed.config.name)) return ImportError.NameMismatch;
         const hosts = if (parsed.config.network) |net| net.allow else &.{};
+        // Collapsed onto TooLarge (413), the answer every other size cap here gives.
+        requirement_limits.validateRequirements(parsed.config.credentials, parsed.config.tools, hosts) catch
+            return ImportError.TooLarge;
         return std.json.Stringify.valueAlloc(alloc, Requirements{
             .credentials = parsed.config.credentials,
             .tools = parsed.config.tools,

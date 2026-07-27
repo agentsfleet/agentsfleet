@@ -32,3 +32,13 @@ pub const SELECT_ACTIVE_SELF_MANAGED_REF =
     \\FROM core.tenant_model_selection
     \\WHERE tenant_id = $1::uuid AND mode = $2 AND secret_ref IS NOT NULL
 ;
+
+/// The tenant's persisted provider selection, as `GET /v1/tenants/me/provider`
+/// projects it. Lived inline in `http/handlers/tenant_provider.zig` until this
+/// module became its home — a handler holding its own SQL is the one place the
+/// table name stops being grepable from here.
+pub const SELECT_PROVIDER_VIEW =
+    \\SELECT mode, provider, model, context_cap_tokens, secret_ref
+    \\FROM core.tenant_model_selection
+    \\WHERE tenant_id = $1::uuid
+;

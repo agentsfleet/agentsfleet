@@ -65,12 +65,11 @@ pub fn seedPlatformProviderWithKey(
 
     const tenant_billing = @import("../state/tenant_billing.zig");
     const id_format = @import("../types/id_format.zig");
-    const model_rate_cache = @import("../state/model_rate_cache.zig");
 
     // The catalogue row the platform default points at — required by
     // fk_platform_provider_defaults_model. Zero token rates keep the lease run-fee-only
     // (cache resolves run-fee + 0 token nanos), matching the pre-FK MISS path.
-    // Seeded BEFORE populate() so the cache picks it up (no lease-issue panic).
+    // No cache warm needed: rates load on first use straight from this row.
     const caps_uid = try id_format.generateFleetId(alloc);
     defer alloc.free(caps_uid);
     _ = try conn.exec(
@@ -81,13 +80,6 @@ pub fn seedPlatformProviderWithKey(
         \\VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, $5, $5)
         \\ON CONFLICT (provider, model_id) DO NOTHING
     , .{ caps_uid, TEST_PLATFORM_MODEL, TEST_PROVIDER_NAME, TEST_PLATFORM_CAP_TOKENS, clock.nowMillis() });
-
-    // Populate the process-global model rate cache from core.model_library so
-    // computeStageCharge() can resolve the platform default model. The
-    // production server boots this from serve.zig; integration tests don't
-    // hit that path. populate() owns the cache's process-lifetime memory
-    // internally and deinits any prior cache before reseating.
-    try model_rate_cache.populate(conn);
 
     // Vault credential at (workspace_id, TEST_PROVIDER_NAME).
     var obj: std.json.ObjectMap = .empty;

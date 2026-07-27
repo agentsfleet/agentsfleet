@@ -1,4 +1,4 @@
-//! Revision-keyed LRU for global catalogue responses (§2).
+//! Revision-keyed response cache for global catalogue pages (§2).
 //!
 //! ## Why the revision is in the KEY, not in a published generation
 //!
@@ -12,15 +12,6 @@
 //! mattering, and with it a class of races that is hard to test and easy to get
 //! wrong.
 //!
-//! ## Byte accounting is defined, not estimated
-//!
-//! "Including allocator metadata" is not observable through a Zig allocator, so
-//! a budget phrased that way cannot be asserted. This counts exactly three
-//! things per live entry — key bytes, value bytes, and node storage — and that
-//! sum IS the number the ceiling compares against, so the number the test reads
-//! is the number the cache enforces. Allocator-internal padding is outside the
-//! budget by construction, and `MAX_BYTES` is set with that headroom in mind.
-//!
 //! ## The cache is shared across tenants
 //!
 //! Invariant 6: its payload must be byte-identical for every authorized caller,
@@ -28,170 +19,193 @@
 //! reaching this cache is a cross-tenant leak, and a tenant-free key is what
 //! makes such a bug impossible to paper over with a per-tenant partition.
 //! Nothing Fleet-scoped is ever stored here.
+//!
+//! ## Shape: `common.CacheTable` under an `RwLock`
+//!
+//! The storage is the shared fixed-capacity table rather than a bespoke
+//! intrusive list, which buys three things this cache specifically wants.
+//!
+//! The **entry ceiling becomes structural**: capacity IS
+//! `BUCKET_COUNT * BUCKET_SIZE` slots, so §2's 256 is a property of the type
+//! rather than a counter some path could fail to check.
+//!
+//! **Keys cost nothing.** A revision plus a digest is fixed-size, so it is
+//! stored inline. The predecessor duplicated a key string per entry and counted
+//! those bytes against the budget; here no key is allocated and no key byte
+//! competes with a payload byte.
+//!
+//! **Reads do not serialize.** `fetch` uses the table's non-mutating `peek`
+//! under a shared lock, so concurrent catalogue requests run in parallel. The
+//! predecessor took one exclusive mutex on every read in order to refresh LRU
+//! position. The trade is deliberate and is the one place this diverges from
+//! §2's "true LRU" wording: eviction drops a bucket's oldest entry and a hit
+//! does not promote. With revision-scoped keys and four ways per bucket,
+//! retention matters far less than keeping every reader off a single lock.
+//!
+//! ## Nothing here reads a clock
+//!
+//! An earlier shape gave each entry a 60-second deadline. It was never a
+//! freshness bound: the revision in the key already makes a superseded page
+//! unreachable. Its real job was reclaiming those unreachable payloads, and
+//! `clear` now does that without a deadline to tune: the admin mutation path
+//! (`http/handlers/admin/model_library_admin.zig`) clears this cache in the
+//! same post-commit step that clears the rate cache. That reclaims promptly on
+//! the replica that served the mutation; a sibling replica clears nothing —
+//! its superseded pages are unreachable (the revision is in the key) and age
+//! out under bucket pressure.
+//!
+//! ## Byte accounting is defined, not estimated
+//!
+//! The bound is the SLOT COUNT, and it is the only bound.
+//!
+//! §2 also named an 8 MiB byte ceiling, enforced by a running total with a bypass
+//! above it. That total is gone in favour of the geometry plus clear-on-mutation.
+//! The honest worst case: a `model_library_store.LibraryRow` is six fields — id,
+//! provider, context cap, three prices — whose identity pair maxes at
+//! `model_identity.MODEL_ID_MAX` + `PROVIDER_MAX` bytes, so a row serializes to
+//! ~450 bytes and a full `pagination.MAX_LIMIT` = 100 page to ~45 KB. 256 slots
+//! of those is ~11.5 MiB resident; at the shipped fixtures' median (~9.2 KB a
+//! page) it is ~2.3 MiB. A running byte total would improve neither number: it
+//! could only refuse admission once the table already held its worst case, and
+//! clear-on-mutation means nothing stays resident that the current revision
+//! cannot reach again.
+//!
+//! The tripwire if a row ever grows is
+//! `observability/library_read_counters.GLOBAL_MODELS_MAX_BODY_BYTES`
+//! (256 KiB), which the read-bounds suites assert every page against — a page
+//! approaching that ceiling would put 256 slots at 64 MiB, the point at which
+//! this reasoning needs redoing.
+//!
+//! ## No recency, on purpose
+//!
+//! The table evicts a bucket's oldest INSERTED entry; a read does not promote.
+//! Ghostty's original refreshes recency on a hit, which retains hot entries
+//! better — but that read mutates, so it needs an exclusive lock, and every
+//! catalogue request would serialize behind one mutex. The trade is right only
+//! because this table is heavily over-provisioned against its working set: 256
+//! slots for the handful of query shapes that are hot at one revision, so
+//! eviction essentially never fires and retention is moot. If that stops being
+//! true, the fix is Ghostty's promoting read and an exclusive lock — a decision,
+//! not a rediscovery.
 
 const std = @import("std");
 const common = @import("common");
 
-/// Ceilings from §2. Entries first: a page is bounded to 100 items, so 256
-/// distinct selector combinations is already generous for a catalogue that
-/// changes rarely.
-pub const MAX_ENTRIES: usize = 256;
-pub const MAX_BYTES: usize = 8 * 1024 * 1024;
+/// §2's entry ceiling, derived from the geometry rather than declared beside it,
+/// so the two cannot disagree. It is the cache's only bound (see the module note).
+const BUCKET_COUNT: usize = 64;
+const BUCKET_SIZE: u8 = 4;
+pub const MAX_ENTRIES: usize = BUCKET_COUNT * BUCKET_SIZE;
 
-/// Freshness bound, monotonic. Wall-clock would let a clock adjustment either
-/// resurrect an expired entry or expire a live one; neither is acceptable for a
-/// value a caller may act on.
-pub const TTL_NANOS: u64 = 60 * std.time.ns_per_s;
+pub const DIGEST_LEN: usize = std.crypto.hash.sha2.Sha256.digest_length;
 
-const Entry = struct {
-    key: []u8,
-    value: []u8,
-    stored_at: u64,
-    /// LRU order, most-recently-used first.
-    newer: ?*Entry = null,
-    older: ?*Entry = null,
+/// What identifies a cached page: the catalogue generation it was built from,
+/// and a digest standing for the canonical selectors.
+///
+/// The digest is an HMAC-SHA-256 under a process-random key, computed by the
+/// caller. This module never receives the selectors themselves, so it cannot
+/// log or leak them, and the digest is not reversible into them by anything
+/// that reads a heap dump. No tenant appears here — Invariant 6.
+pub const Key = struct {
+    revision: u64,
+    digest: [DIGEST_LEN]u8,
 };
 
-/// Per-entry overhead counted against `MAX_BYTES` alongside the key and value
-/// bytes. Named so the accounting is auditable rather than a magic addend.
-const NODE_BYTES: usize = @sizeOf(Entry);
+const Context = struct {
+    alloc: std.mem.Allocator,
+
+    /// The digest is already uniform, so its leading bytes ARE the bucket index
+    /// — rehashing them would only cost time. The revision is mixed in so the
+    /// same selectors at two generations spread across buckets rather than
+    /// contending for one during a changeover.
+    pub fn hash(_: *const Context, key: Key) u64 {
+        return std.mem.readInt(u64, key.digest[0..8], .little) ^ key.revision;
+    }
+
+    pub fn eql(_: *const Context, a: Key, b: Key) bool {
+        return a.revision == b.revision and std.mem.eql(u8, &a.digest, &b.digest);
+    }
+
+    /// The table's single departure hook — bucket eviction and `clear` are its
+    /// only two exits, and both arrive here, so a payload is freed in exactly one
+    /// place and cannot leak through a path the table forgot to wire up.
+    pub fn evicted(self: *const Context, _: Key, value: []u8) void {
+        self.alloc.free(value);
+    }
+};
+
+const Table = common.CacheTable(Key, []u8, Context, .{
+    .bucket_count = BUCKET_COUNT,
+    .bucket_size = BUCKET_SIZE,
+});
 
 pub const Cache = struct {
     const Self = @This();
-    const Map = std.StringHashMapUnmanaged(*Entry);
 
     alloc: std.mem.Allocator,
-    map: Map = .{},
-    /// Most- and least-recently-used ends of the intrusive list.
-    mru: ?*Entry = null,
-    lru: ?*Entry = null,
-    bytes: usize = 0,
-    lock: common.Mutex = .{},
+    table: Table,
+    lock: common.RwLock = .{},
 
     pub fn init(alloc: std.mem.Allocator) Self {
-        return .{ .alloc = alloc };
+        return .{ .alloc = alloc, .table = Table.init(.{ .alloc = alloc }) };
     }
 
     pub fn deinit(self: *Self) void {
-        var it = self.map.iterator();
-        while (it.next()) |e| self.destroy(e.value_ptr.*);
-        self.map.deinit(self.alloc);
+        self.table.clear(); // releases every resident payload
         self.* = undefined;
     }
 
-    fn destroy(self: *Self, e: *Entry) void {
-        self.alloc.free(e.key);
-        self.alloc.free(e.value);
-        self.alloc.destroy(e);
-    }
-
-    /// Live bytes: the exact sum this cache's ceiling is enforced against.
-    pub fn byteLen(self: *Self) usize {
-        self.lock.lock();
-        defer self.lock.unlock();
-        return self.bytes;
-    }
-
+    /// Resident entries. Mixed generations are possible on a replica that did
+    /// not serve the last mutation — superseded pages are unreachable, not
+    /// evicted; on the mutating replica `clear` empties the table.
     pub fn count(self: *Self) usize {
-        self.lock.lock();
-        defer self.lock.unlock();
-        return self.map.count();
+        self.lock.lockShared();
+        defer self.lock.unlockShared();
+        return self.table.count();
     }
 
-    fn unlink(self: *Self, e: *Entry) void {
-        if (e.newer) |n| n.older = e.older else self.mru = e.older;
-        if (e.older) |o| o.newer = e.newer else self.lru = e.newer;
-        e.newer = null;
-        e.older = null;
-    }
-
-    fn pushFront(self: *Self, e: *Entry) void {
-        e.older = self.mru;
-        e.newer = null;
-        if (self.mru) |m| m.newer = e;
-        self.mru = e;
-        if (self.lru == null) self.lru = e;
-    }
-
-    fn evictLru(self: *Self) void {
-        const victim = self.lru orelse return;
-        self.unlink(victim);
-        _ = self.map.remove(victim.key);
-        self.bytes -= victim.key.len + victim.value.len + NODE_BYTES;
-        self.destroy(victim);
-    }
-
-    /// Look up a fresh entry, promoting it to most-recently-used.
+    /// A fresh cached page, copied into `dest` for the caller to own.
     ///
-    /// An expired entry is removed rather than returned — a stale hit is worse
-    /// than a miss, because the caller cannot tell the difference. Caller owns
-    /// the returned copy.
-    pub fn get(self: *Self, key: []const u8, now: u64) !?[]u8 {
-        self.lock.lock();
-        defer self.lock.unlock();
-
-        const e = self.map.get(key) orelse return null;
-        if (now -% e.stored_at >= TTL_NANOS) {
-            self.unlink(e);
-            _ = self.map.remove(e.key);
-            self.bytes -= e.key.len + e.value.len + NODE_BYTES;
-            self.destroy(e);
-            return null;
-        }
-        self.unlink(e);
-        self.pushFront(e);
-        return try self.alloc.dupe(u8, e.value);
-    }
-
-    /// Admit a response. Returns false when the entry was BYPASSED rather than
-    /// stored — the caller still serves the response, it simply is not cached.
+    /// Held shared, so concurrent readers do not block each other. The copy is
+    /// taken before the lock drops: returning the stored slice would hand out
+    /// memory that the next writer is entitled to free.
     ///
-    /// An entry whose own footprint exceeds `MAX_BYTES` is bypassed outright
-    /// rather than emptying the cache to make room for it: evicting every useful
-    /// entry to admit one oversized outlier trades a working cache for a single
-    /// hit. Ordinary pressure still evicts least-recently-used, which is what
-    /// makes this an LRU rather than a fill-once buffer.
-    pub fn put(self: *Self, key: []const u8, value: []const u8, now: u64) !bool {
-        const footprint = key.len + value.len + NODE_BYTES;
-        if (footprint > MAX_BYTES) return false;
-
-        self.lock.lock();
-        defer self.lock.unlock();
-
-        // Replacing an existing key must not double-count it.
-        if (self.map.get(key)) |old| {
-            self.unlink(old);
-            _ = self.map.remove(old.key);
-            self.bytes -= old.key.len + old.value.len + NODE_BYTES;
-            self.destroy(old);
-        }
-
-        while (self.map.count() + 1 > MAX_ENTRIES or self.bytes + footprint > MAX_BYTES) {
-            if (self.lru == null) break;
-            self.evictLru();
-        }
-        // Nothing left to evict and it still does not fit.
-        if (self.bytes + footprint > MAX_BYTES) return false;
-
-        const e = try self.alloc.create(Entry);
-        errdefer self.alloc.destroy(e);
-        const k = try self.alloc.dupe(u8, key);
-        errdefer self.alloc.free(k);
-        const v = try self.alloc.dupe(u8, value);
-        errdefer self.alloc.free(v);
-
-        e.* = .{ .key = k, .value = v, .stored_at = now };
-        try self.map.put(self.alloc, k, e);
-        self.pushFront(e);
-        self.bytes += footprint;
-        return true;
+    /// The copy goes to a CALLER-supplied allocator rather than the cache's own.
+    /// The cache's allocator is process-lifetime, so duping into it would give
+    /// every hit a permanent allocation no one owns — a leak that grows with
+    /// traffic. The caller passes the arena its response is written from, which
+    /// both frees the copy and puts it somewhere that outlives the handler.
+    ///
+    /// A page cached under a superseded revision cannot be reached from here at
+    /// all: the revision is part of the key, so a caller that has observed a
+    /// newer one looks up a different key and misses.
+    pub fn fetch(self: *Self, dest: std.mem.Allocator, key: Key) !?[]u8 {
+        self.lock.lockShared();
+        defer self.lock.unlockShared();
+        const value = self.table.peek(key) orelse return null;
+        return try dest.dupe(u8, value);
     }
 
-    /// Test-only: the key of the least-recently-used entry, so eviction ORDER is
-    /// assertable rather than inferred from which lookups happen to miss.
-    pub fn lruKeyForTest(self: *Self) ?[]const u8 {
+    /// Admit a response. The only failure is an allocation fault; the caller
+    /// serves the page either way, so a refusal is a non-event.
+    ///
+    /// Admission is unconditional because the geometry is the bound: this may
+    /// displace a page from the key's bucket, and `evicted` frees it.
+    pub fn put(self: *Self, key: Key, value: []const u8) !void {
+        const owned = try self.alloc.dupe(u8, value);
         self.lock.lock();
         defer self.lock.unlock();
-        return if (self.lru) |l| l.key else null;
+        self.table.put(key, owned);
+    }
+
+    /// Drop every resident page, releasing each payload through the table's
+    /// `evicted` hook. The admin mutation path calls this after a committed
+    /// catalogue change, in the same step that clears the rate cache — prompt
+    /// reclamation on this replica; siblings rely on the revision-in-key
+    /// making superseded pages unreachable.
+    pub fn clear(self: *Self) void {
+        self.lock.lock();
+        defer self.lock.unlock();
+        self.table.clear();
     }
 };

@@ -16,6 +16,7 @@ const renewal = @import("renewal.zig");
 const renewal_settle = @import("renewal_settle.zig");
 const affinity = @import("affinity.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const billing_rates = @import("../state/tenant_billing_rates.zig");
 const fleet_metering_store = @import("../state/fleet_metering_store.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const ONE_MILLION = 1_000_000;
@@ -47,7 +48,7 @@ const BIG_BALANCE: i64 = 1_000_000_000; // ample so no clamp unless a test wants
 
 // A realistic platform rate set (run fee + three token tiers, all per the
 // production units). Reused across tests + as the SQL==Zig reference input.
-const RATES = tenant_billing.SliceRates{
+const RATES = billing_rates.SliceRates{
     .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC,
     .input_nanos_per_mtok = 3_000_000,
     .cached_input_nanos_per_mtok = 300_000,
@@ -195,7 +196,7 @@ test "renew charges run fee + token delta == sliceCharge (SQL==Zig pin)" {
 
     // Δt = NOW - ISSUE = 60_000ms; deltas off a zero cursor = the cumulatives.
     const meter = meterOf(1000, 500, 800);
-    const expected = tenant_billing.sliceCharge(RATES, NOW_MS - ISSUE_MS, 1000, 500, 800);
+    const expected = billing_rates.sliceCharge(RATES, NOW_MS - ISSUE_MS, 1000, 500, 800);
 
     const outcome = try renewal.renew(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meter);
     try std.testing.expect(outcome == .renewed);
@@ -224,7 +225,7 @@ test "renews + settle sum to the real total (ms-precision, non-second-aligned)" 
     _ = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, t3, meterOf(TEST_TOKEN_COUNT, 500, 800));
 
     // Per-slice debits telescope to one slice over the full run (elapsed t3-ISSUE, final cumulatives).
-    const total = tenant_billing.sliceCharge(RATES, t3 - ISSUE_MS, 1000, 500, 800);
+    const total = billing_rates.sliceCharge(RATES, t3 - ISSUE_MS, 1000, 500, 800);
     try std.testing.expectEqual(BIG_BALANCE - total, try readBalance(s.conn));
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
     try std.testing.expectEqual(total, stage.charged);
@@ -244,7 +245,7 @@ test "a re-sent renewal with the same cumulatives double-bills only the run fee 
     _ = try renewal.renew(s.conn, LEASE_ID, RUNNER_ID, ISSUE_MS + 30_005, meterOf(900, 300, 600));
     const retry_charge = after_first - try readBalance(s.conn);
 
-    try std.testing.expectEqual(tenant_billing.sliceCharge(RATES, 5, 0, 0, 0), retry_charge);
+    try std.testing.expectEqual(billing_rates.sliceCharge(RATES, 5, 0, 0, 0), retry_charge);
     try std.testing.expect(retry_charge < tenant_billing.RUN_NANOS_PER_SEC); // ≈0, sub-second run fee
 }
 
@@ -286,7 +287,7 @@ test "claim+settle on a never-renewed run flips reported + charges the whole sli
     // finished inside one renewal window, so it was never /renew'd).
 
     const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(400, 0, 350));
-    const expected = tenant_billing.sliceCharge(RATES, NOW_MS - ISSUE_MS, 400, 0, 350);
+    const expected = billing_rates.sliceCharge(RATES, NOW_MS - ISSUE_MS, 400, 0, 350);
 
     try std.testing.expect(out.claimed); // the active→reported flip won the fence
     try std.testing.expectEqual(expected, out.charged_nanos);

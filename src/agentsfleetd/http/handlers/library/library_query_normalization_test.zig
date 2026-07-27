@@ -147,37 +147,9 @@ test "test_library_query_normalization: provider lowercases and stays open-vocab
     }
 }
 
-test "test_library_query_normalization: LIKE wildcards are escaped so % and _ match literally" {
-    const alloc = testing.allocator;
-
-    // `_` is the dangerous one: it matches ANY single character, so an
-    // unescaped `gpt_4` returns `gpt-4` and `gpt 4` as if the user had asked
-    // for them.
-    {
-        const got = try query.likeContains(alloc, "gpt_4");
-        defer alloc.free(got);
-        try testing.expectEqualStrings("%gpt\\_4%", got);
-    }
-
-    {
-        const got = try query.likeContains(alloc, "50%");
-        defer alloc.free(got);
-        try testing.expectEqualStrings("%50\\%%", got);
-    }
-
-    // The escape character itself must be escaped, and escaped FIRST. Doing it
-    // afterwards would also escape the backslashes the function introduced,
-    // leaving a literal backslash in front of a still-live wildcard.
-    {
-        const got = try query.likeContains(alloc, "a\\_b");
-        defer alloc.free(got);
-        try testing.expectEqualStrings("%a\\\\\\_b%", got);
-    }
-
-    // An ordinary term is wrapped for substring matching and otherwise untouched.
-    {
-        const got = try query.likeContains(alloc, "claude opus");
-        defer alloc.free(got);
-        try testing.expectEqualStrings("%claude opus%", got);
-    }
-}
+// LIKE-escaping moved out of Zig entirely: the pattern is built in SQL AFTER
+// the NFKC fold (`model_library/sql.zig` `FOLDED_NEEDLE`), because escaping
+// before the fold missed compatibility characters that fold INTO wildcards.
+// Its contract — `%`, `_`, `\`, and their fullwidth lookalikes match
+// literally — is pinned at the integration tier, where the real fold runs:
+// `model_library_page_integration_test.zig` (literal `%`, fullwidth `％`).

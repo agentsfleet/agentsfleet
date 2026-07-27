@@ -217,13 +217,10 @@ fn tryCandidate(ctx: *Context, conn: *pg.Conn, alloc: std.mem.Allocator, runner_
 /// other runners) are not blocked, and return null.
 fn acquireFresh(ctx: *Context, conn: *pg.Conn, alloc: std.mem.Allocator, candidate: Candidate, won: affinity.Won, cost: *PollCost) !?Acquired {
     const fleet_id = candidate.fleet_id;
-    redis_fleet.ensureFleetConsumerGroup(ctx.queue, fleet_id) catch |err| {
-        log.warn("assign_group_ensure_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
-        cost.countDb(1);
-        cost.noteRedisFailure();
-        try affinity.release(conn, fleet_id, won.token);
-        return null;
-    };
+    // No group-ensure here. The group is created on the fleet's write path and is
+    // durable, so asserting it per candidate per poll bought one Redis round-trip
+    // apiece to re-learn something already true. If it is genuinely gone, the read
+    // below answers `NOGROUP` and repairs itself — see `redis_fleet.readGroup`.
     var consumer_buf: [queue_redis.CONSUMER_ID_BUF_LEN]u8 = undefined;
     const consumer_id = queue_redis.stableConsumerId(&consumer_buf);
     // A failed PEL read cannot prove the PEL is empty, so it must NOT fall

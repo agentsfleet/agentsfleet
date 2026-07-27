@@ -5227,7 +5227,7 @@
       "get": {
         "operationId": "list_workspace_fleet_library",
         "summary": "List the workspace Fleet library gallery",
-        "description": "Returns the union of the platform Fleet library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements, and support-file summaries; never an object-store key.",
+        "description": "Returns the union of the platform Fleet library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements and per-credential reason copy; never an object-store key.\n\nA bounded keyset page ordered by `created_at DESC, tier ASC, id DESC` across BOTH catalogs. Follow `next_cursor` to read the whole gallery; a client that reads only the first page silently loses every entry past it. Support-file summaries are served by the detail route below.",
         "tags": [
           "Fleet library"
         ],
@@ -5241,17 +5241,50 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Rows per page, 1..100. Defaults to 50.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Opaque cursor from a previous page's `next_cursor`. Bound to the workspace, filter and page size that produced it; a mismatch is `UZ-LIBRARY-002` rather than a silently different page.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Case- and accent-insensitive substring over id, name and description. At most 128 bytes once normalized; `%` and `_` match literally.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "The workspace Fleet library gallery.",
+            "description": "One page of the workspace Fleet library gallery.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
-                    "items"
+                    "items",
+                    "total",
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -5259,6 +5292,16 @@
                       "items": {
                         "$ref": "#/components/schemas/FleetLibraryGalleryEntry"
                       }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Always null. Counting a keyset page costs the scan this pagination exists to avoid. The key is present rather than omitted, so no client need special-case its absence."
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page, or null on the last."
                     }
                   }
                 }
@@ -7136,20 +7179,85 @@
       "get": {
         "operationId": "get_model_library",
         "summary": "List available models",
-        "description": "Returns models available to the tenant. Each item includes its provider, context limit, and usage fields. An empty library returns an empty array.\n",
+        "description": "Returns models available to the tenant. Each item includes its provider, context limit, and usage fields. An empty library returns an empty array.\n\nA bounded keyset page ordered by normalized `model_id`, then normalized `provider`, then an opaque row identity. Every comparison runs under `COLLATE \"C\"`, so the order is byte-wise and stable across locales. Follow `next_cursor` to read the whole catalogue; a client that reads only the first page silently loses every model past it.\n\nThe response is conditionally revalidated. Every answer carries an `ETag` over the exact bytes served, plus `Cache-Control: private, no-cache` and `Vary: Authorization`. Send the tag back as `If-None-Match` and a match answers `304` with no body and the same headers. `private` is what stops a shared proxy handing one tenant's response to another even though the payload is identical for every authorized caller.\n",
         "tags": [
           "Model Library"
         ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Rows per page, 1..100. Defaults to 50.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Opaque cursor from a previous page's `next_cursor`. Bound to the filters and page size that produced it. A cursor this endpoint never issued is `UZ-LIBRARY-001`. A real cursor carrying different filters or a different page size is `UZ-LIBRARY-002`, rather than a silently different page. Only the sort boundary is read from it — the filters applied are always the request's.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Case- and accent-insensitive substring over the model id and the provider. At most 128 bytes once normalized; `%` and `_` match literally. Empty after normalization is treated as absent.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "description": "Exact match on the normalized provider. At most 128 bytes once normalized; empty after normalization is treated as absent.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "The model library catalogue.",
+            "description": "One page of the model library catalogue.",
+            "headers": {
+              "ETag": {
+                "description": "Strong validator over the exact bytes served.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache` — store, but revalidate before reuse.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Vary": {
+                "description": "Always `Authorization`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
                     "version",
-                    "models"
+                    "models",
+                    "total",
+                    "next_cursor"
                   ],
                   "properties": {
                     "version": {
@@ -7158,6 +7266,7 @@
                     },
                     "models": {
                       "type": "array",
+                      "description": "The page's rows. Named `models` rather than `items` because renaming a shipped `/v1` field is a breaking change. `total` and `next_cursor` are added beside it, so the page is navigable without breaking an existing client.",
                       "items": {
                         "type": "object",
                         "required": [
@@ -7194,11 +7303,53 @@
                           }
                         }
                       }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Always null. Counting a keyset page costs the scan this pagination exists to avoid. The key is present rather than omitted, so no client need special-case its absence."
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page, or null on the last."
                     }
                   }
                 }
               }
             }
+          },
+          "304": {
+            "description": "The caller's `If-None-Match` matched the current tag. No body. Carries the same `ETag`, `Cache-Control` and `Vary` as the `200`. A `304` that omitted them would tell a cache to stop revalidating the very response it is holding.",
+            "headers": {
+              "ETag": {
+                "description": "Strong validator over the bytes the caller already holds.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `private, no-cache`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Vary": {
+                "description": "Always `Authorization`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
           },
           "default": {
             "$ref": "#/components/responses/Error"
@@ -8295,7 +8446,7 @@
       },
       "FleetLibraryGalleryEntry": {
         "type": "object",
-        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements, per-credential reason copy, and support-file summaries; never an object-store key or support-file content.",
+        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements and per-credential reason copy; never an object-store key or support-file content.\n\nCarries no `support_files`. That manifest is bounded at 32 files by 160-char paths. It therefore dominated a 100-row page — roughly 630 KB against this endpoint's 512 KiB ceiling — while no client rendered it. The detail route serves it instead. Runners never read it either — they materialize support-file bytes from object storage via the lease's bundle hash.",
         "required": [
           "id",
           "name",
@@ -8303,8 +8454,7 @@
           "visibility",
           "source_ref",
           "requirements",
-          "required_credentials_reasons",
-          "support_files"
+          "required_credentials_reasons"
         ],
         "properties": {
           "id": {
@@ -8327,6 +8477,11 @@
           },
           "source_ref": {
             "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds; the primary key of the page's sort order."
           },
           "requirements": {
             "type": "object",
@@ -8365,12 +8520,6 @@
             "description": "Display-only {credential_name: reason} map driving the install gate's purpose copy. Platform rows surface their curated reasons; tenant rows surface an empty object (the importer derives no per-credential copy).",
             "additionalProperties": {
               "type": "string"
-            }
-          },
-          "support_files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
             }
           }
         }

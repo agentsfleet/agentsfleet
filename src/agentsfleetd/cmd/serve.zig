@@ -22,6 +22,7 @@ const serve_shutdown = @import("serve_shutdown.zig");
 const serve_background = @import("serve_background.zig");
 const pg = @import("pg");
 const serve_r2 = @import("serve_r2.zig");
+const serve_caches = @import("serve_caches.zig");
 const serve_secrets = @import("serve_secrets.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 const subscription_hub = @import("../events/subscription_hub.zig");
@@ -38,7 +39,6 @@ const log = logging.scoped(.agentsfleetd);
 const EnvMap = common.env.Map;
 
 const S_STARTUP_CONFIG_LOAD_FAILED = "startup.config_load_failed";
-const S_STARTUP_MODEL_RATE_CACHE_FAILED = "startup.model_rate_cache_failed";
 const S_STARTUP_ARGS_PARSE_FAILED = "startup.args_parse_failed";
 const S_STARTUP_ENV_CHECK_FAILED = "startup.env_check_failed";
 const S_API = "api";
@@ -145,20 +145,12 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     const migrate_on_start = preflight.parseMigrateOnStart(env_map, alloc) catch std.process.exit(1);
     preflight.checkMigrations(io, env_map, alloc, api_pool, migrate_on_start) catch std.process.exit(1);
 
-    log.info("startup.model_rate_cache_start", .{});
-    {
-        const cache_conn = api_pool.acquire() catch |err| {
-            log.err(S_STARTUP_MODEL_RATE_CACHE_FAILED, .{ .err = @errorName(err) });
-            std.process.exit(1);
-        };
-        defer api_pool.release(cache_conn);
-        model_rate_cache.populate(cache_conn) catch |err| {
-            log.err(S_STARTUP_MODEL_RATE_CACHE_FAILED, .{ .err = @errorName(err) });
-            std.process.exit(1);
-        };
-    }
+    // No rate-cache warm at boot. Rates load on first use and are invalidated by
+    // the catalogue generation stored with them, so a bulk preload would be a
+    // second way to fill one cache — and the two would drift. It also removes a
+    // startup dependency: the daemon no longer refuses to boot because the
+    // catalogue was briefly unreadable.
     defer model_rate_cache.deinit();
-    log.info("startup.model_rate_cache_ok", .{});
 
     var qstash_credentials = serve_qstash.load(alloc, api_pool, serve_cfg.platform_admin_workspace_id);
     defer if (qstash_credentials) |*credentials| credentials.deinit(alloc);
@@ -199,7 +191,9 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     var install_wg: common.WaitGroup = .{};
     defer serve_shutdown.awaitInstallWorkers(&install_wg);
 
+    defer serve_caches.deinit();
     var ctx = http_handler.Context{
+        .model_library_cache = serve_caches.init(alloc),
         .pool = api_pool,
         .queue = &api_queue,
         .install_wg = &install_wg,

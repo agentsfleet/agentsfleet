@@ -29,14 +29,53 @@ const platformEntryPath = (id: string) =>
 // entry carries `visibility`, so the install flow keys the create body off the
 // chosen tier (platform_library_id vs tenant_library_id). Metadata only — the
 // canonical bundle bytes live in R2, never in the response.
+// Rows per request, and the ceiling on how many requests one walk will make.
+// The endpoint pages at 50 by default and rejects a `limit` above 100
+// (`UZ-LIBRARY-003`), so asking for the maximum halves the round-trips a large
+// gallery costs.
+const GALLERY_PAGE_LIMIT = 100;
+const GALLERY_MAX_PAGES = 50;
+
+/** One wire page: `items` is that page alone, `next_cursor` null on the last. */
+type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
+  total: number | null;
+  next_cursor: string | null;
+};
+
+// The gallery renders every entry a workspace can install, so this follows
+// `next_cursor` to exhaustion instead of returning page one. Reading a single
+// page would drop every entry past the server's page size *silently* — the
+// cards simply would not render, with nothing to tell the user they exist.
+// Same failure the tenant model registry had the moment its endpoint gained a
+// default page size; see `tenant_model_entries.ts`.
 export async function listWorkspaceFleetLibrary(
   workspaceId: string,
   token: string,
 ): Promise<FleetLibraryGalleryResponse> {
-  return request<FleetLibraryGalleryResponse>(
-    workspaceFleetLibrariesPath(workspaceId),
-    { method: "GET" },
-    token,
+  const items: FleetLibraryGalleryResponse["items"] = [];
+  let cursor: string | null = null;
+
+  for (let page = 0; page < GALLERY_MAX_PAGES; page += 1) {
+    const params = new URLSearchParams({ limit: String(GALLERY_PAGE_LIMIT) });
+    if (cursor !== null) params.set("starting_after", cursor);
+
+    const body = await request<FleetLibraryGalleryPage>(
+      `${workspaceFleetLibrariesPath(workspaceId)}?${params.toString()}`,
+      { method: "GET" },
+      token,
+    );
+    items.push(...body.items);
+
+    if (!body.next_cursor) return { items };
+    cursor = body.next_cursor;
+  }
+
+  // Throw rather than return the rows collected so far. A walk reaches this
+  // bound only if the server stopped advancing its cursor, and then `items`
+  // holds one page repeated — rendering duplicate cards as though they were
+  // distinct library entries is worse than an error.
+  throw new Error(
+    `workspace fleet library did not terminate within ${GALLERY_MAX_PAGES} pages`,
   );
 }
 

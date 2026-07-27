@@ -25,6 +25,7 @@ const constants = @import("common");
 const renewal = @import("renewal.zig");
 const renewal_settle = @import("renewal_settle.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const billing_rates = @import("../state/tenant_billing_rates.zig");
 
 const EVENT_ID = "evt-conc-renew-1";
 
@@ -33,7 +34,7 @@ const ALLOC = std.testing.allocator;
 // A realistic platform rate set + a 20s cursor baseline for the no-double-charge
 // race. METER carries the runner's cumulative token counts (identical across all
 // 100 threads — the cumulative-diff is the idempotency key).
-const RATES = tenant_billing.SliceRates{
+const RATES = billing_rates.SliceRates{
     .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC,
     .input_nanos_per_mtok = 3_000_000,
     .cached_input_nanos_per_mtok = 300_000,
@@ -274,7 +275,7 @@ test "100 concurrent metered renews on one lease charge the slice exactly once (
     for (threads) |t| t.join();
 
     // Exactly ONE slice left the wallet across the 100-way race.
-    const one_slice = tenant_billing.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
+    const one_slice = billing_rates.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
     const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
     try std.testing.expectEqual(one_slice, balance - remaining);
 }
@@ -343,7 +344,7 @@ test "claim+settle racing a reclaim never reports without charging the final sli
     const reported = try leaseReported(c);
     const debited = balance - try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
     const slices = try readBigint(c, "SELECT count(*)::bigint FROM fleet.metering_periods WHERE event_id = $1", EVENT_ID);
-    const one_slice = tenant_billing.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
+    const one_slice = billing_rates.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
 
     // The fold's invariant: the active→reported flip and the slice debit are ONE
     // atomic outcome. Either the claim won the fence (reported + charged + 1 slice)
@@ -491,7 +492,7 @@ test "integration: two same-tenant renews at exhaustion record audit rows summin
     // Each lease prices the same slice off the 20s cursor. Fund only 1.5 slices,
     // so the two concurrent renews exhaust the balance: the loser must charge
     // the remaining half, not a second full slice.
-    const slice = tenant_billing.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
+    const slice = billing_rates.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
     const balance: i64 = slice + @divTrunc(slice, 2);
     try seedBalance(c, balance);
 
@@ -545,7 +546,7 @@ test "integration: two same-tenant settles at exhaustion record audit rows summi
     defer teardown(c);
     defer teardownSecond(c);
 
-    const slice = tenant_billing.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
+    const slice = billing_rates.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
     const balance: i64 = slice + @divTrunc(slice, 2);
     try seedBalance(c, balance);
 

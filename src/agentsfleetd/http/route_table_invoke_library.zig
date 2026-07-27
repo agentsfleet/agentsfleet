@@ -40,7 +40,7 @@ pub fn invokePlatformFleetLibraryById(hx: *Hx, req: *httpz.Request, route: route
 pub fn invokeWorkspaceFleetLibrary(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     const workspace_id = route.workspace_fleet_library;
     switch (req.method) {
-        .GET => library.innerGallery(hx.*, workspace_id),
+        .GET => library.innerGallery(hx.*, req, workspace_id),
         .POST => library.innerTenantOnboard(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }

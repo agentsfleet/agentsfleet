@@ -58,6 +58,17 @@ pub const Tier = enum(u8) {
         return null;
     }
 
+    /// Map a persisted sort rank back to its tier. Returns null for anything
+    /// outside the enum — a rank the projection cannot name must fail the read
+    /// rather than reach a response body as a bare number.
+    pub fn fromRank(value: i32) ?Tier {
+        return switch (value) {
+            0 => .platform,
+            1 => .tenant,
+            else => null,
+        };
+    }
+
     pub fn label(self: Tier) []const u8 {
         return switch (self) {
             .platform => LABEL_PLATFORM,

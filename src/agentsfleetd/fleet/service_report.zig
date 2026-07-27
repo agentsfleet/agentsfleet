@@ -156,7 +156,12 @@ fn captureCompletion(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
 /// retryable; an uncommitted attempt leaves the lease `active` to re-claim).
 fn claimReportAndSettle(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRequest) !renewal_settle.SettleOutcome {
     const now_ms = clock.nowMillis();
+    // Acquired before metering so the settle slice prices against the catalogue
+    // generation this same connection observes — see service_renew's twin.
+    const conn = try hx.ctx.pool.acquire();
+    defer hx.ctx.pool.release(conn);
     const meter = renewal.buildMeterInputs(
+        conn,
         lease.provider,
         parsePosture(lease.posture),
         lease.model,
@@ -165,8 +170,6 @@ fn claimReportAndSettle(hx: Hx, runner_id: []const u8, lease: Lease, body: proto
         body.cached_input_tokens,
         body.output_tokens,
     );
-    const conn = try hx.ctx.pool.acquire();
-    defer hx.ctx.pool.release(conn);
     return renewal_settle.claimAndSettle(conn, body.lease_id, runner_id, now_ms, meter);
 }
 

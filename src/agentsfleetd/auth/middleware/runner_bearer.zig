@@ -212,6 +212,29 @@ test "runner_bearer rejects unknown token with UZ-RUN-001" {
     try testing.expect(ctx.principal == null);
 }
 
+test "runner_bearer maps a lookup failure to UZ-AUTH-004, never an auth reject" {
+    // The property the DB-read auth plane rests on: a Postgres outage must
+    // surface as "authentication service unavailable" (503 via the error
+    // registry), never as UZ-RUN-001 — the runner client counts only auth
+    // rejects toward its consecutive-reject shutdown ceiling and resets that
+    // counter on transport-class failures, so a misclassification here would
+    // let a database blip walk a healthy fleet's runner to self-termination.
+    test_fixtures.reset();
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    ht.header("authorization", "Bearer agt_r" ++ "c" ** 64);
+
+    var mock = MockLookup{ .return_err = error.Unexpected };
+    var mw = RunnerBearer{ .host = &mock, .lookup = MockLookup.fn_ };
+    var ctx = makeCtx(ht.res);
+    const outcome = try mw.execute(&ctx, ht.req);
+
+    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
+    try testing.expectEqualStrings(errors.ERR_AUTH_UNAVAILABLE, test_fixtures.last_code);
+    try testing.expectEqual(@as(usize, 1), mock.call_count);
+    try testing.expect(ctx.principal == null);
+}
+
 test "runner_bearer rejects revoked runner with UZ-RUN-009 and frees the row" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});

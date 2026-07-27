@@ -26,7 +26,6 @@ const PLATFORM_ENTRY: InstallSource = {
     trigger_present: true,
   },
   required_credentials_reasons: { github: "review pull requests" },
-  support_files: [],
 };
 
 describe("requirementsOf — normalises the gallery entry", () => {
@@ -60,7 +59,6 @@ describe("requirementsOf — normalises the gallery entry", () => {
       source_ref: "tenant/01932d4e",
       requirements: { credentials: ["github"], tools: [], network_hosts: [], trigger_present: true },
       required_credentials_reasons: {},
-      support_files: [],
     });
     expect(r.credentialReasons).toEqual({});
   });

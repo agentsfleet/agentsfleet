@@ -41,6 +41,7 @@ const FLEET_FAULT_MARK = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e01";
 const FLEET_MEMO_GONE = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e02";
 const FLEET_HEAL = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e03";
 const FLEET_KILLED = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e04";
+const FLEET_WRONGTYPE = "0195c9da-1e2a-7f13-8abc-2b3e1e0e7e05";
 
 /// Every action auto-kills: the deterministic path to the gate's automatic
 /// pause, which must clear readiness the way the operator-facing PATCH does.
@@ -295,9 +296,9 @@ test "integration: a failed peek answers no-work with zero Postgres round-trips"
     try std.testing.expectEqual(@as(u64, 0), snap.lease_poll_candidates_scanned_total);
 }
 
-// ── Group-memo invalidation ─────────────────────────────────────────────────
+// ── Consumer-group repair ───────────────────────────────────────────────────
 
-test "integration: a group deleted out-of-band costs one no-work poll and recovers on the next publish" {
+test "integration: a group deleted out-of-band is repaired exactly once, at the stream's end" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -310,24 +311,68 @@ test "integration: a group deleted out-of-band costs one no-work poll and recove
     try clearWholeIndex(h);
     defer purgeFleet(h, FLEET_MEMO_GONE);
 
-    // Publish once: the group is created for real and memoized.
+    // Publish once: the group is created for real, and the stream now holds one
+    // entry that will be stranded below.
     const first_event = try base.publishEvent(h, FLEET_MEMO_GONE);
     defer h.queue.alloc.free(first_event);
 
-    // An operator (or a failover) deletes the group behind the memo's back.
+    // An operator (or a failover) deletes the group out from under the fleet.
     try destroyGroup(h, FLEET_MEMO_GONE);
 
-    // The poll's read hits the missing group. That failure must cost exactly
-    // one no-work answer — releasing the claim, keeping the mark, dropping the
-    // memo entry — and never fail this fleet until process restart.
+    // The repairing poll answers "no work": it hits NOGROUP, recreates the group
+    // at the stream's END, reads again, and the read genuinely succeeds against
+    // an empty group. The stranded entry is skipped BY DESIGN — a group
+    // recreated at the beginning would also re-deliver every already-executed
+    // entry still resident (the stream trims at ~10k and XACK does not delete),
+    // re-running history with real provider spend. Reporting a fault instead
+    // would trip the Redis brownout bailout (the test below), starving every
+    // candidate behind this one.
+    const before_repair = try base.xgroupCreateCalls(h);
+    try std.testing.expect(before_repair > 0); // vacuous-parse guard
     try std.testing.expect(!try base.pollLease(h));
+    try std.testing.expectEqual(before_repair + 1, try base.xgroupCreateCalls(h));
 
-    // The next publish takes the real create path again (the memo entry is
-    // gone), so the recreated group — started at "0" — sees the backlog and
-    // the fleet leases on the very next poll.
-    const second_event = try base.publishEvent(h, FLEET_MEMO_GONE);
-    defer h.queue.alloc.free(second_event);
+    // Steady state, not a loop: a further poll issues no create. A repair that
+    // re-fired on every poll would pass the assertion above and fail this one.
+    try std.testing.expect(!try base.pollLease(h));
+    try std.testing.expectEqual(before_repair + 1, try base.xgroupCreateCalls(h));
+
+    // And the repaired group DELIVERS: an event published after the repair is
+    // leased on the next poll, so the fleet is live again rather than wedged.
+    const post_repair_event = try base.publishEvent(h, FLEET_MEMO_GONE);
+    defer h.queue.alloc.free(post_repair_event);
     try std.testing.expect(try base.pollLease(h));
+}
+
+test "integration: a non-NOGROUP read error propagates unrepaired — no create loop" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    defer purgeFleet(h, FLEET_WRONGTYPE);
+
+    // Poison the fleet's stream key with a STRING, so XREADGROUP answers
+    // WRONGTYPE — the same fault shape the webhook suite injects. Every Redis
+    // error reply now routes through the substring classifier in
+    // `redis_fleet.readGroupOnce`, and this is the case it must NOT treat as
+    // repairable: an XGROUP CREATE against a string key can never succeed, so
+    // "repairing" here would retry the create on every poll, forever.
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const stream_key = try queue_consts.fleetStreamKey(&key_buf, FLEET_WRONGTYPE);
+    var set_resp = try h.queue.command(&.{ "SET", stream_key, "not-a-stream" });
+    defer set_resp.deinit(h.queue.alloc);
+
+    const before = try base.xgroupCreateCalls(h);
+    try std.testing.expect(before > 0); // vacuous-parse guard
+    try std.testing.expectError(
+        error.RedisXreadgroupFailed,
+        redis_fleet.xreadgroupFleetOnce(&h.queue, FLEET_WRONGTYPE, "classifier-probe"),
+    );
+    // The classifier refused to create: the error propagated as a fault rather
+    // than being read as a missing group.
+    try std.testing.expectEqual(before, try base.xgroupCreateCalls(h));
 }
 
 // ── Peek self-heal ──────────────────────────────────────────────────────────

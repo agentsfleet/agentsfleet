@@ -26,6 +26,7 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
 const tenant_billing = @import("../state/tenant_billing.zig");
+const billing_rates = @import("../state/tenant_billing_rates.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const fleet_telemetry_store = @import("../state/fleet_telemetry_store.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
@@ -101,7 +102,15 @@ pub fn balanceCoversEstimate(
     defer alloc.free(@constCast(billing.grant_source));
 
     const receive = tenant_billing.computeReceiveCharge(posture);
-    const stage = tenant_billing.computeStageCharge(
+    // Prices the estimate on the connection this gate already holds, so the
+    // floor is sized against the live catalogue generation. A failure here — a
+    // DB fault like the two above it, or `error.ModelNotPriced` when the
+    // catalogue no longer carries the fleet's model — takes the same fail-OPEN
+    // answer this gate documents: an ESTIMATE is not a charge, so an
+    // unpriceable rate must not turn it into a lease refusal. The charge itself
+    // is priced later, at renew/settle, where it fails closed instead.
+    const stage = billing_rates.computeStageCharge(
+        conn,
         provider,
         posture,
         model,
@@ -110,7 +119,10 @@ pub fn balanceCoversEstimate(
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
         0,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
-    );
+    ) catch |err| {
+        log.warn("gate_stage_estimate_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .tenant_id = tenant_id, .err = @errorName(err) });
+        return true;
+    };
     return billing.balance_nanos >= (receive + stage);
 }
 

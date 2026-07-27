@@ -41,6 +41,8 @@ test {
     _ = @import("http/secrets_json_metadata_integration_test.zig");
     _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
     _ = @import("http/library_read_bounds_integration_test.zig");
+    _ = @import("http/library_body_ceiling_integration_test.zig");
+    _ = @import("http/library_page_bounds_integration_test.zig");
     _ = @import("http/tenant_model_entries_integration_test.zig");
     _ = @import("http/user_preferences_integration_test.zig");
     _ = @import("http/workspace_onboarding_integration_test.zig");
@@ -73,6 +75,8 @@ test {
     _ = @import("http/handlers/api_keys/tenant_integration_test.zig");
     _ = @import("http/handlers/tenant_billing_integration_test.zig");
     _ = @import("http/handlers/model_library_integration_test.zig");
+    _ = @import("http/handlers/model_library_page_integration_test.zig");
+    _ = @import("http/handlers/library/gallery_keyset_integration_test.zig");
     _ = @import("http/handlers/admin/model_library_admin_integration_test.zig");
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
     _ = @import("http/handlers/fleets/messages_integration_test.zig");

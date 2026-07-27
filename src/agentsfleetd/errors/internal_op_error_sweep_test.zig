@@ -53,10 +53,37 @@
 // The catalog row's If-Match verdict added 1 more (library/catalog_patch.zig,
 // "Failed to check this entry's version") — same shape, plain English, so
 // bumped too (84 -> 85).
+//
+// M143 §2's catalogue page added 2 (model_library_page.zig x2, "Failed to build
+// the catalogue page" — one when the ETag will not compute, one when its
+// validators will not attach). Plain English, no schema names, no @errorName,
+// so they are counted rather than mudball-ok'd.
+//
+// The baseline is set to the MEASURED count (84), not bumped to 87. #559 removed
+// 4 sites from workspaces/provision.zig without lowering this constant, leaving
+// main at 82 against a baseline of 85. Three units of slack is three future
+// mudballs this tripwire would not have seen — and it is exactly what these 2
+// additions would otherwise have hidden behind. A ratchet that is not re-tightened
+// after a removal only measures the high-water mark, never the code.
+//
+// §3's Fleet gallery added 2 more (library/gallery.zig, "Failed to list this
+// workspace's fleet libraries"; library/gallery_detail.zig, "Failed to load this
+// fleet library entry"). Each names what the caller lost in plain English — no
+// schema names, no @errorName, no state-machine language — so they are counted
+// rather than mudball-ok'd (84 -> 86).
+//
+// Wiring §3's encoded-body ceiling into both Fleet reads added 2 more (the
+// non-ceiling arm of each `respond` — an allocation fault while MEASURING the
+// body, distinct from the body being too large, which answers UZ-LIBRARY-005).
+// Same plain-English details as their siblings, so counted (86 -> 88).
+//
+// Stripping the workspace fleet-library detail route (no product caller was
+// ever built) removed gallery_detail.zig and its 2 sites. Re-tightened
+// immediately (88 -> 86) — the ratchet's own doctrine above.
 const std = @import("std");
 const common = @import("common");
 
-const BASELINE_CALL_SITE_COUNT: usize = 85;
+const BASELINE_CALL_SITE_COUNT: usize = 86;
 const CALL_SITE_NEEDLE = "internalOperationError(";
 const HANDLERS_DIR_PATH = "src/agentsfleetd/http/handlers";
 // `http/server.zig` sits one level above `http/handlers/` (the dispatcher,

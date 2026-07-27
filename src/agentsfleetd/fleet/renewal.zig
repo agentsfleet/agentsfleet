@@ -22,7 +22,7 @@
 //! a lost/capped renewal writes none of them. The Δ is computed off the AFFINITY
 //! cursor (the durable per-fleet anchor that survives reclaim), so a re-sent
 //! renewal charges ≈0 (cumulative-diff idempotency). The four per-unit rates are
-//! resolved in Zig (`tenant_billing.resolveRenewSliceRates`) and passed in, so
+//! resolved in Zig (`tenant_billing_rates.resolveRenewSliceRates`) and passed in, so
 //! the slice math here is the SAME as `computeStageCharge` — SQL==Zig by
 //! construction (free-trial / self_managed / platform are all encoded as rates).
 //!
@@ -37,6 +37,7 @@ const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
 const telemetry = @import("../state/fleet_telemetry_store.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const billing_rates = @import("../state/tenant_billing_rates.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 
 const log = logging.scoped(.fleet_metering);
@@ -60,11 +61,18 @@ pub const MeterInputs = struct {
 
 /// Resolve the four slice rates (free-trial / posture aware) and pair them with
 /// the runner's cumulative token counts. Shared by `renew` (service_renew) and
-/// `settle` (service_report) so both meter at the identical rates. A platform
-/// model absent from the rate cache (a cache-eviction edge — a lease could not
-/// have issued for an uncatalogued platform model) meters run-fee-only + logs;
-/// the live renew/report path never panics.
+/// `settle` (service_report) so both meter at the identical rates.
+///
+/// Takes the caller's already-acquired connection: the platform branch prices
+/// against the catalogue generation that connection observes, so a slice
+/// can never be metered at a rate the catalogue has moved past. Free-trial and
+/// self-managed slices issue no statement — they never reach the catalogue.
+///
+/// Never panics and never propagates: both a generation that cannot be verified
+/// and a model the catalogue does not carry meter run-fee-only and log. See the
+/// body for why those two are logged apart.
 pub fn buildMeterInputs(
+    conn: *pg.Conn,
     provider: []const u8,
     posture: tenant_provider.Mode,
     model: []const u8,
@@ -73,9 +81,27 @@ pub fn buildMeterInputs(
     cum_cached: u32,
     cum_output: u32,
 ) MeterInputs {
-    const rates = tenant_billing.resolveRenewSliceRates(provider, posture, model, now_ms) orelse blk: {
+    // Two distinct failures, deliberately kept apart. An ERROR means the
+    // catalogue generation could not be established, so no rate here is known to
+    // be current — metering the token tiers from anything would be pricing a
+    // slice against an unverified generation, which is the one thing that must
+    // never happen. A NULL means the catalogue authoritatively has no such
+    // row. Both land on run-fee-only, but they are logged apart because one is a
+    // database fault to page on and the other is a catalogue gap to fix.
+    //
+    // Run-fee-only is the fail-closed answer HERE, not a fallback: the token
+    // component is dropped rather than guessed, and the run keeps going. The
+    // alternative — refusing the renewal — kills a live agent mid-run over a
+    // transient database fault, which is the posture `budgetRefusal` already
+    // rejected for exactly this trade.
+    const resolved: ?billing_rates.SliceRates =
+        billing_rates.resolveRenewSliceRates(conn, provider, posture, model, now_ms) catch |err| unverified: {
+            log.warn("meter_rate_generation_unverified_run_fee_only", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = provider, .model = model, .err = @errorName(err) });
+            break :unverified null;
+        };
+    const rates = resolved orelse blk: {
         log.warn("meter_rate_missing_run_fee_only", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = provider, .model = model });
-        break :blk tenant_billing.SliceRates{ .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 };
+        break :blk billing_rates.SliceRates{ .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 };
     };
     return .{
         .cumulative_input = @intCast(cum_input),

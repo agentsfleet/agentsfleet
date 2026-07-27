@@ -44,8 +44,6 @@ const stream_registry = @import("stream_registry.zig");
 const message = @import("test_http_message.zig");
 const server_bringup = @import("test_harness_server.zig");
 const test_fixtures = @import("../db/test_fixtures.zig");
-const runner_token_cache = @import("../auth/runner_token_cache.zig");
-const group_memo = @import("../queue/fleet_group_memo.zig");
 
 const TEST_AUTH_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 const TEST_AUDIT_LOG_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
@@ -182,22 +180,13 @@ pub const TestHarness = struct {
         // Clear any fault-injection constraint a killed reclaim run leaked, before
         // this (or any) fleet test touches the shared tables — see the fn's note.
         test_fixtures.dropInjectedFaultConstraints(db_ctx.conn);
-        // A harness IS a fresh agentsfleetd instance, and a fresh instance holds
-        // no memoized token verdicts. Load-bearing rather than tidy: several
-        // suites reuse the same `agt_r` body against DIFFERENT runner rows, which
-        // production forbids (`uq_runners_token_hash`) but a sequential test
-        // binary reaches by seeding and tearing down in turn. Without this, the
-        // second suite to use a body would authenticate as the first one's runner
-        // until the entry expired.
-        runner_token_cache.resetForTest();
-        // Same reasoning, second process-global memo. `_ensure-test-infra`
-        // flushes Redis once for the whole binary while this memo lives for the
-        // whole binary too, and any teardown that drops a stream by hand takes
-        // its consumer group with it — so a later suite polling that fleet reads
-        // "group ensured", skips the create, and spends its poll on NOGROUP.
-        // Production only reaches that state through `purgeFleetRedisState`,
-        // which clears the memo as it goes.
-        group_memo.resetForTest();
+        // Two process-global memos used to be reset here — the runner token
+        // verdict cache and the fleet consumer-group memo. Both are gone, and with
+        // them the whole class of cross-suite contamination they created: a suite
+        // reusing an `agt_r` body against a DIFFERENT runner row now reads
+        // Postgres and gets that row's real verdict, and a suite polling a fleet
+        // whose stream a previous teardown dropped now gets `NOGROUP` and repairs
+        // the group in place. Nothing to reset means nothing to forget to reset.
         db_ctx.pool.release(db_ctx.conn);
         // Ownership transfers to h.pool below, but until we successfully
         // return h the pool is THIS function's responsibility — without
