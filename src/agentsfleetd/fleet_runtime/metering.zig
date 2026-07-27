@@ -103,11 +103,12 @@ pub fn balanceCoversEstimate(
 
     const receive = tenant_billing.computeReceiveCharge(posture);
     // Prices the estimate on the connection this gate already holds, so the
-    // floor is sized against the live catalogue generation. A failure here is a
-    // DB fault like the two above it, and takes the same fail-OPEN answer this
-    // gate documents — an ESTIMATE is not a charge, so an unverifiable rate must
-    // not turn a metering outage into a lease refusal. The charge itself is
-    // priced later, at renew/settle, where it fails closed instead.
+    // floor is sized against the live catalogue generation. A failure here — a
+    // DB fault like the two above it, or `error.ModelNotPriced` when the
+    // catalogue no longer carries the fleet's model — takes the same fail-OPEN
+    // answer this gate documents: an ESTIMATE is not a charge, so an
+    // unpriceable rate must not turn it into a lease refusal. The charge itself
+    // is priced later, at renew/settle, where it fails closed instead.
     const stage = billing_rates.computeStageCharge(
         conn,
         provider,

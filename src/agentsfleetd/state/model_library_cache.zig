@@ -39,43 +39,42 @@
 //! predecessor took one exclusive mutex on every read in order to refresh LRU
 //! position. The trade is deliberate and is the one place this diverges from
 //! §2's "true LRU" wording: eviction drops a bucket's oldest entry and a hit
-//! does not promote. With a generation-scoped key set — every resident entry is
-//! current-revision, because a bump clears the table — and four ways per bucket,
+//! does not promote. With revision-scoped keys and four ways per bucket,
 //! retention matters far less than keeping every reader off a single lock.
 //!
 //! ## Nothing here reads a clock
 //!
 //! An earlier shape gave each entry a 60-second deadline. It was never a
 //! freshness bound: the revision in the key already makes a superseded page
-//! unreachable. Its real job was reclaiming those unreachable payloads before
-//! they starved the byte ceiling — which `clear` on a revision bump does exactly,
-//! immediately, and without a deadline to tune — the bump path in
-//! `state/model_catalogue_revision.zig` is what changes the key, and the entries
-//! under the old one age out under bucket pressure.
+//! unreachable. Its real job was reclaiming those unreachable payloads, and
+//! `clear` now does that without a deadline to tune: the admin mutation path
+//! (`http/handlers/admin/model_library_admin.zig`) clears this cache in the
+//! same post-commit step that clears the rate cache. That reclaims promptly on
+//! the replica that served the mutation; a sibling replica clears nothing —
+//! its superseded pages are unreachable (the revision is in the key) and age
+//! out under bucket pressure.
 //!
 //! ## Byte accounting is defined, not estimated
 //!
 //! The bound is the SLOT COUNT, and it is the only bound.
 //!
 //! §2 also named an 8 MiB byte ceiling, enforced by a running total with a bypass
-//! above it. That total is gone, because the geometry already binds well under
-//! it. A `model_library_store.LibraryRow` is six fields — id, provider, context
-//! cap, three prices — and serializes to 188 bytes at the median of the shipped
-//! fixture ids (180–217). A full `limit` = 50 page is therefore ≈9.2 KB, and 256
-//! slots of full pages ≈2.3 MiB: under a third of the ceiling, so the byte total
-//! could never fire.
+//! above it. That total is gone in favour of the geometry plus clear-on-mutation.
+//! The honest worst case: a `model_library_store.LibraryRow` is six fields — id,
+//! provider, context cap, three prices — whose identity pair maxes at
+//! `model_identity.MODEL_ID_MAX` + `PROVIDER_MAX` bytes, so a row serializes to
+//! ~450 bytes and a full `pagination.MAX_LIMIT` = 100 page to ~45 KB. 256 slots
+//! of those is ~11.5 MiB resident; at the shipped fixtures' median (~9.2 KB a
+//! page) it is ~2.3 MiB. A running byte total would improve neither number: it
+//! could only refuse admission once the table already held its worst case, and
+//! clear-on-mutation means nothing stays resident that the current revision
+//! cannot reach again.
 //!
-//! Keeping it would have cost a reclamation policy for no bound at all. With no
-//! clock in the table, nothing drops the superseded payloads still holding
-//! budget, so a byte ceiling would eventually wedge — resident on stale pages,
-//! bypassing every new one — which is what the deleted expiry sweep existed to
-//! prevent. Removing the ceiling removes the need for the sweep.
-//!
-//! So memory here is `MAX_ENTRIES` × page size. The tripwire if a row ever grows
-//! is `observability/library_read_counters.GLOBAL_MODELS_MAX_BODY_BYTES`
-//! (256 KiB), which the read-bounds suites assert every page against — at that
-//! ceiling 256 slots would be 64 MiB, so a row shape that grows 27× is the point
-//! at which this reasoning needs redoing.
+//! The tripwire if a row ever grows is
+//! `observability/library_read_counters.GLOBAL_MODELS_MAX_BODY_BYTES`
+//! (256 KiB), which the read-bounds suites assert every page against — a page
+//! approaching that ceiling would put 256 slots at 64 MiB, the point at which
+//! this reasoning needs redoing.
 //!
 //! ## No recency, on purpose
 //!
@@ -156,7 +155,9 @@ pub const Cache = struct {
         self.* = undefined;
     }
 
-    /// Resident entries. All of them are current-revision (see `put`).
+    /// Resident entries. Mixed generations are possible on a replica that did
+    /// not serve the last mutation — superseded pages are unreachable, not
+    /// evicted; on the mutating replica `clear` empties the table.
     pub fn count(self: *Self) usize {
         self.lock.lockShared();
         defer self.lock.unlockShared();
@@ -195,5 +196,16 @@ pub const Cache = struct {
         self.lock.lock();
         defer self.lock.unlock();
         self.table.put(key, owned);
+    }
+
+    /// Drop every resident page, releasing each payload through the table's
+    /// `evicted` hook. The admin mutation path calls this after a committed
+    /// catalogue change, in the same step that clears the rate cache — prompt
+    /// reclamation on this replica; siblings rely on the revision-in-key
+    /// making superseded pages unreachable.
+    pub fn clear(self: *Self) void {
+        self.lock.lock();
+        defer self.lock.unlock();
+        self.table.clear();
     }
 };

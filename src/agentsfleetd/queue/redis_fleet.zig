@@ -41,6 +41,13 @@ const NEW_ENTRIES_ID = ">";
 const S_OK = "OK";
 const S_BUSYGROUP = "BUSYGROUP";
 const S_NOGROUP = "NOGROUP";
+/// XGROUP CREATE start-id for the WRITE path: the stream is brand-new and
+/// empty, so "deliver from the beginning" and "deliver from now" coincide.
+const GROUP_START_STREAM_BEGIN = "0";
+/// XGROUP CREATE start-id for the REPAIR path: the stream's newest entry at
+/// create time, so nothing already resident — almost all of it delivered and
+/// XACKed under the vanished group — is handed out again.
+const GROUP_START_STREAM_END = "$";
 const S_GROUP_MISSING_REPAIRED = "fleet_consumer_group_missing_repaired";
 const S_GROUP_REPAIR_FAILED = "fleet_consumer_group_repair_failed";
 
@@ -109,22 +116,29 @@ fn xaddFailed(envelope: EventEnvelope) anyerror {
     return error.RedisXaddFailed;
 }
 
-/// XGROUP CREATE on a fleet's event stream (MKSTREAM, idempotent).
+/// XGROUP CREATE on a fleet's event stream (MKSTREAM, idempotent), delivering
+/// from the stream's beginning.
 ///
 /// Called on the WRITE path — once, when a fleet's stream is created
 /// (`handlers/fleets/create_stream.zig`, which retries and rolls the Postgres row
-/// back if it never succeeds) — and on the repair path in `readGroup` below. It
-/// is deliberately NOT on the lease poll: re-asserting a durable invariant on
-/// every candidate of every poll cost one Redis round-trip apiece and used the
-/// `BUSYGROUP` error reply as its steady state, which is what a per-process memo
-/// then existed to hide. A group that goes missing announces itself as `NOGROUP`
-/// on the very next read, so the poll path can stop guessing and be told.
+/// back if it never succeeds), where the stream is brand-new and there is no
+/// history to re-deliver. It is deliberately NOT on the lease poll: re-asserting
+/// a durable invariant on every candidate of every poll cost one Redis
+/// round-trip apiece and used the `BUSYGROUP` error reply as its steady state,
+/// which is what a per-process memo then existed to hide. A group that goes
+/// missing announces itself as `NOGROUP` on the very next read, so the poll path
+/// can stop guessing and be told — and its repair in `readGroup` below creates
+/// at the stream's END, not here.
 pub fn ensureFleetConsumerGroup(client: *redis_client.Client, fleet_id: []const u8) !void {
+    return createFleetConsumerGroup(client, fleet_id, GROUP_START_STREAM_BEGIN);
+}
+
+fn createFleetConsumerGroup(client: *redis_client.Client, fleet_id: []const u8, start_id: []const u8) !void {
     var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
     const stream_key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
     var resp = try client.commandAllowError(&.{
         "XGROUP",                          "CREATE", stream_key,
-        queue_consts.fleet_consumer_group, "0",      "MKSTREAM",
+        queue_consts.fleet_consumer_group, start_id, "MKSTREAM",
     });
     defer resp.deinit(client.alloc);
     switch (resp) {
@@ -173,19 +187,27 @@ pub fn xreadgroupFleetOnce(
 /// predates the create-on-write path — and every one of those surfaces the same
 /// way: Redis answers this read with `NOGROUP`. Nothing has to predict it.
 ///
-/// So a `NOGROUP` reply creates the group — from id `0`, so anything already in
-/// the stream is delivered rather than lost — and then READS AGAIN, exactly once.
-/// The repair is transparent: the caller sees the answer it would have got had
-/// the group never been missing.
+/// So a `NOGROUP` reply recreates the group and READS AGAIN, exactly once. The
+/// group is recreated at the stream's newest entry (`$`), not at `0`: the stream
+/// retains up to its trim length (~10k) of entries that were already delivered
+/// and XACKed under the vanished group, and a group recreated at `0` would hand
+/// every one of them out again — historical agent runs re-executing with real
+/// provider spend and real connector writes. Recreated at `$`, nothing
+/// historical re-runs; the cost is that entries appended while the group was
+/// missing are skipped rather than delivered. That loss is bounded by the
+/// groupless window and repairable by re-submission; a re-executed run cannot
+/// be un-spent. The write path keeps the beginning, where the stream is
+/// brand-new and the two spellings coincide.
 ///
-/// Transparency is the whole point, and the alternatives are both wrong. Reporting
-/// "no event" would tell `fleet/assign.zig` the PEL is empty, which it is explicit
-/// must never be inferred from a read that did not succeed. Reporting an ERROR
-/// trips `PollCost.noteRedisFailure`, and a run of those ends the candidate loop
-/// early (`assign_ready_faults_integration_test`) — so one fleet whose group went
-/// missing would starve every remaining candidate on every poll, turning a routine
-/// self-heal into a fleet-wide stall. A repair is not a fault and must not be
-/// counted as one.
+/// The caller's answer comes from a read that genuinely SUCCEEDED against the
+/// repaired group — the two shortcuts are both wrong. Returning "no event"
+/// WITHOUT the re-read would tell `fleet/assign.zig` the PEL is empty, which it
+/// is explicit must never be inferred from a read that did not succeed.
+/// Reporting an ERROR trips `PollCost.noteRedisFailure`, and a run of those
+/// ends the candidate loop early (`assign_ready_faults_integration_test`) — so
+/// one fleet whose group went missing would starve every remaining candidate on
+/// every poll, turning a routine self-heal into a fleet-wide stall. A repair is
+/// not a fault and must not be counted as one.
 ///
 /// A SECOND `NOGROUP` is a real fault and propagates: the create reported success,
 /// so the group existing is no longer something this code can be wrong about. That
@@ -209,7 +231,7 @@ fn readGroup(
     // it here would emit a successful-repair signal on a create that failed or a
     // group that is somehow still missing, while leasing stays stalled — the one
     // state an operator most needs to see distinguished from a self-heal.
-    try ensureFleetConsumerGroup(client, fleet_id);
+    try createFleetConsumerGroup(client, fleet_id, GROUP_START_STREAM_END);
     switch (try readGroupOnce(client, stream_key, consumer_id, read_id)) {
         .read => |event| {
             log.warn(S_GROUP_MISSING_REPAIRED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id });

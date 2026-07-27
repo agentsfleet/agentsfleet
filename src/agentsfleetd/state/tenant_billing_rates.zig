@@ -43,11 +43,16 @@ fn runFee(elapsed_ms: i64) i64 {
 /// no statement at all. An error means the rate could not be established — the
 /// caller decides its own posture for that and must not substitute a guess.
 ///
-/// Panics under platform when the catalogue authoritatively has no such model:
-/// that is an internal inconsistency (the tenant-provider PUT validator and the
-/// install-skill frontmatter check both reject an uncatalogued model upstream),
-/// and it is now a DATABASE answer rather than a cache miss — which is precisely
-/// why panicking on it is defensible where panicking on a miss was not.
+/// `error.ModelNotPriced` under platform when the catalogue authoritatively has
+/// no such model. The upstream validators (the tenant-provider PUT and the
+/// install-skill frontmatter check) reject an uncatalogued model, but the
+/// catalogue can move after they ran: an admin DELETE of a non-default row
+/// leaves any tenant still naming that model reaching this resolve and getting
+/// a database answer of "no row". That is an operational state, not a
+/// programmer bug — a panic here aborted the whole replica for one fleet's
+/// stale model, on every replica that picked the fleet up. The error lets each
+/// caller take its documented posture: the lease-estimate gate fails OPEN (an
+/// estimate is not a charge), renew/settle fails CLOSED.
 pub fn computeStageCharge(
     conn: *pg.Conn,
     provider: []const u8,
@@ -58,8 +63,26 @@ pub fn computeStageCharge(
     cached_input_tokens: u32,
     output_tokens: u32,
 ) !i64 {
-    const rates = (try resolveRenewSliceRates(conn, provider, posture, model, clock.nowMillis())) orelse
-        std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in the priced catalogue", .{ model, provider });
+    return computeStageChargeAt(conn, provider, posture, model, elapsed_ms, input_tokens, cached_input_tokens, output_tokens, clock.nowMillis());
+}
+
+/// `computeStageCharge` at an injected clock — pub so the DB-backed sibling
+/// suite (`tenant_billing_edge_test.zig`) can price post-trial states, the
+/// uncatalogued-model refusal included, while the promotional window is still
+/// open on the real clock.
+pub fn computeStageChargeAt(
+    conn: *pg.Conn,
+    provider: []const u8,
+    posture: Posture,
+    model: []const u8,
+    elapsed_ms: i64,
+    input_tokens: u32,
+    cached_input_tokens: u32,
+    output_tokens: u32,
+    now_ms: i64,
+) !i64 {
+    const rates = (try resolveRenewSliceRates(conn, provider, posture, model, now_ms)) orelse
+        return error.ModelNotPriced;
     return sliceCharge(rates, elapsed_ms, @as(i64, input_tokens), @as(i64, cached_input_tokens), @as(i64, output_tokens));
 }
 

@@ -29,6 +29,7 @@ const base = @import("../db/test_fixtures.zig");
 const gate_constants = @import("../fleet_runtime/approval_gate_constants.zig");
 const queue_consts = @import("../queue/constants.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
+const redis_protocol = @import("../queue/redis_protocol.zig");
 const approval_gate_async = @import("../fleet_runtime/approval_gate_async.zig");
 const event_rows = @import("event_rows.zig");
 
@@ -183,6 +184,24 @@ pub fn publishEvent(h: *TestHarness, fleet_id: []const u8) ![]const u8 {
         .request_json = "{\"message\":\"ping\"}",
         .created_at = clock.nowMillis(),
     });
+}
+
+/// `XGROUP CREATE` calls Redis has served, from `INFO commandstats`.
+///
+/// The server's own counter, which is the only witness that can distinguish
+/// "the poll path does not issue this command" from "something remembered that it
+/// need not". Nothing in-process is asked for its opinion. Shared by the
+/// group-repair suites: `publishEvent` above bumps it (its ensure counts as a
+/// call even when it answers `BUSYGROUP`), so sample it only across spans with
+/// no interleaved publish.
+pub fn xgroupCreateCalls(h: *TestHarness) !u64 {
+    var resp = try h.queue.command(&.{ "INFO", "commandstats" });
+    defer resp.deinit(h.queue.alloc);
+    const text = redis_protocol.valueAsString(resp) orelse return 0;
+    const line = std.mem.indexOf(u8, text, "cmdstat_xgroup|create:calls=") orelse return 0;
+    const digits = text[line + "cmdstat_xgroup|create:calls=".len ..];
+    const end = std.mem.indexOfAny(u8, digits, ",\r\n") orelse digits.len;
+    return std.fmt.parseInt(u64, digits[0..end], 10) catch 0;
 }
 
 /// One lease poll; returns true when a lease was issued.
