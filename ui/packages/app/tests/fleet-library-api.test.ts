@@ -146,4 +146,48 @@ describe("lib/api/fleet-library", () => {
     expect(init).toMatchObject({ method: "DELETE" });
     expect(init.headers).toMatchObject({ Authorization: "Bearer operator-tkn" });
   });
+  // The gallery is a keyset page, so the client walks it. Both halves of that walk
+  // need a test: the resume (a second request carrying starting_after) and the
+  // bound, which is the only path that throws.
+  it("follows next_cursor across pages and concatenates the rows", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [{ id: "a" }], total: null, next_cursor: "cur-1" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [{ id: "b" }], total: null, next_cursor: null }),
+      });
+    const mod = await import("../lib/api/fleet-library");
+    const res = await mod.listWorkspaceFleetLibrary("ws_1", "tkn");
+
+    expect(res.items.map((i) => i.id)).toEqual(["a", "b"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The FIRST request must not carry a cursor and the second must carry the one
+    // the first returned — a client that sent starting_after on page one, or
+    // re-sent the same cursor, would still produce two pages of rows here.
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain("starting_after");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("starting_after=cur-1");
+  });
+
+  // A server that keeps handing back a cursor without advancing would otherwise
+  // have the client return one page repeated, rendering duplicate cards as
+  // though they were distinct entries. The bound throws instead.
+  it("throws rather than return duplicates when the walk never terminates", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [{ id: "stuck" }], total: null, next_cursor: "same" }),
+    });
+    const mod = await import("../lib/api/fleet-library");
+
+    await expect(mod.listWorkspaceFleetLibrary("ws_1", "tkn")).rejects.toThrow(
+      /did not terminate within 50 pages/,
+    );
+    // Bounded, not unbounded: it stops at the ceiling rather than looping forever.
+    expect(fetchMock).toHaveBeenCalledTimes(50);
+  });
 });
