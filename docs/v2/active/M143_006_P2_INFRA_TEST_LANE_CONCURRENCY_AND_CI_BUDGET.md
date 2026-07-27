@@ -119,13 +119,16 @@ The four CI defects that make every branch pay for a cold cache. Independent of 
 
 ### §2 — Generated test roots
 
-The four roots are hand-maintained `test { _ = @import(…); }` lists totalling 396 lines. Forgetting an entry is caught by the reachability gate, but the edit is still manual and every branch appends to the same lines. Generation removes the edit and makes conflicts resolve mechanically.
+Eight roots exist across the two build graphs, of which five are hand-maintained `test { _ = @import(…); }` aggregate lists: the daemon unit and integration roots, the auth portability root, the shared-library barrel, and the runner unit root. Forgetting an entry is caught by the reachability gate, but the edit is still manual and every branch appends to the same lines. Generation removes the edit and makes conflicts resolve mechanically.
 
 **Implementation default:** generate into the source tree and commit the result, gated by regenerate-and-diff, because a root generated into the build cache cannot resolve its own relative imports — Zig resolves `@import` against the importing file and enforces module-root boundaries.
+
+**Implementation default:** generate only the five aggregate roots. The logging and call-deadline roots are production module files whose own `test` block doubles as the lane root, and the runner's integration root is a test file that force-imports three siblings — none is an aggregate list, so generating them would rewrite production imports to satisfy a test-wiring concern.
 
 - **Dimension 2.1** — the generator classifies a file by the conventions already in use: `*_integration_test.zig` to the integration root, other `*_test.zig` and production files carrying `test` blocks to the unit root → Test `test_generator_classifies_by_convention`
 - **Dimension 2.2** — a file carrying the existing `// no-test-root:` waiver marker is excluded from every root → Test `test_generator_honours_waiver_marker`
 - **Dimension 2.3** — regenerating over the committed roots is a no-op, and `lint-zig` fails when it is not → Test `test_generated_roots_are_fresh`
+- **Dimension 2.5** — the generator refuses to rewrite a root it does not own, so the two named-module roots and the runner integration root stay hand-authored → Test `test_generator_leaves_non_aggregate_roots_alone`
 - **Dimension 2.4** — a newly added test file appears in its root with no hand edit, and the reachability gate stays green → Test `test_new_test_file_registers_itself`
 
 ### §3 — Shard-aware test runner
@@ -306,6 +309,7 @@ Generated roots:
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - Baseline measurements taken before authoring, primary checkout, macOS, with a sibling worktree competing for cores: `make test-integration` 11:18 wall clock; the integration binary alone 614 registered tests, 606 passed, 8 skipped, 375.6s; per-test median 0.522s, p90 1.257s, p99 7.473s, max 21.834s, slowest decile carrying 43.3% of total. Daemon unit binary 2958 registered tests. CI: `memleak` 14 min on a branch's first push against 6 min on later pushes; `test-integration` 6–8 min; Actions cache 54 entries totalling 9.96 GB against a 10 GB limit, with no `memleak` entry under `refs/heads/main`.
   - Gate-flag triage pending: the shard runner replaces the upstream runner's leak detection. Indy approved the structural depth; the FILE SHAPE DECISION and the leak-equivalence evidence are due at PLAN and VERIFY respectively.
+  - Architecture consult during EXECUTE: `docs/architecture/testing.md` named `src/runner/integration_tests.zig` as the runner's integration root. That file does not exist — the real root is `src/runner/sandbox_integration_test.zig`, a test file that force-imports three siblings. The doc also listed three roots where eight exist, omitting the auth portability root and both named-module roots. Corrected in this workstream; the omission is why this section was originally scoped to four roots rather than five aggregate plus three hand-authored.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
