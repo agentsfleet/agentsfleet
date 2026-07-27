@@ -560,30 +560,6 @@ components:
             surface an empty object (the importer derives no per-credential copy).
           additionalProperties:
             type: string
-    FleetLibraryDetailEntry:
-      type: object
-      description: >-
-        One Fleet library entry in full — every gallery field plus the
-        support-file manifest the gallery card does not carry. Still never an
-        object-store key, bundle markdown, or support-file content.
-      required:
-      - id
-      - name
-      - description
-      - visibility
-      - source_ref
-      - created_at
-      - requirements
-      - required_credentials_reasons
-      - support_files
-      allOf:
-      - $ref: '#/components/schemas/FleetLibraryGalleryEntry'
-      - type: object
-        properties:
-          support_files:
-            type: array
-            items:
-              $ref: '#/components/schemas/FleetBundleSupportFileSummary'
     FleetLibraryCatalogEntry:
       type: object
       description: >-

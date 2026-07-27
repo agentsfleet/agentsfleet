@@ -30,7 +30,6 @@ pub fn classFor(route: router.Route) RouteClass {
         .admin_fleet_library,
         .admin_fleet_library_by_id,
         .workspace_fleet_library,
-        .workspace_fleet_library_detail,
         .receive_webhook,
         .receive_svix_webhook,
         .auth_identity_event_clerk,

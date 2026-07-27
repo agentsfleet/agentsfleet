@@ -131,9 +131,11 @@ export type FleetLibraryGalleryEntry = {
   required_credentials_reasons?: Record<string, string>;
   // No `support_files`. The gallery card never rendered the manifest, and it was
   // the single largest thing on a row (32 files x 160-char paths), so the server
-  // stopped projecting it — it lives on the detail route instead. The runner
-  // never read it either: it materializes real support-file bytes from object
-  // storage via the lease's bundle hash.
+  // stopped projecting it — on the workspace plane it is gone entirely (the
+  // per-entry detail route that briefly carried it was removed unconsumed); the
+  // admin catalog still serves it. The runner never read it either: it
+  // materializes real support-file bytes from object storage via the lease's
+  // bundle hash.
 };
 
 export type FleetLibraryGalleryResponse = { items: FleetLibraryGalleryEntry[] };
