@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 003
 **Date:** Jul 24, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — read improvements need attributable, cardinality-safe evidence and deterministic gates
 **Categories:** Observability (OBS)
 **Batch:** B3 — instruments M143_001 under M139_004 semantics
@@ -101,8 +101,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Propagate valid W3C `traceparent`; malformed input starts a clean trace. Closed stages are `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup`. Closed surfaces are `tenant_models`, `global_models`, `fleet_summary` (**amended — §Discovery: `fleet_detail` is retired with the route M143_001 stripped**); outcomes are `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `cancelled`, `dependency_error`, `internal_error`; cache values are `hit`, `miss`, `bypass`, `stale`, `not_applicable`; pool results are `acquired`, `timeout`, `cancelled`, `error`. Permit only these enums and numeric duration/count/bytes. Prohibit authorization material, SQL/raw URL/query, free-form errors, identifiers, all M143_001 response metadata, secret values, API keys, and ciphertext in telemetry, observable cache keys, or evidence artifacts; M143_001's unlogged keyed selector digest remains permitted internally.
 
-- **Dimension 1.1** — context and closed schema are exact → Test `test_library_trace_and_stage_schema`
-- **Dimension 1.2** — labels/artifacts obey sink policy on every path → Test `test_library_evidence_is_secret_and_metadata_free`
+- **Dimension 1.1** — context and closed schema are exact → Test `test_library_trace_and_stage_schema` — **DONE.** `observability/library_stages.zig` owns the five closed enums and `LibraryObservation`; no entry point accepts a string, so the label space cannot widen without editing the schema. The context half was **verified, not built**: `handlers/common.zig` `resolveTraceContext` already parsed W3C, took `.child()` on a valid header, and fell back to `.generate()` on a malformed one. The browser client now mints a fresh root per request (`lib/api/client.ts`), asserted for SHAPE rather than presence — a traceparent the server cannot parse is silently ignored and costs the correlation without failing anything.
+- **Dimension 1.2** — labels/artifacts obey sink policy on every path → Test `test_library_evidence_is_secret_and_metadata_free` — **DONE.** The test renders the WHOLE scrape and checks every label on every `agentsfleet_library_*` line against an ALLOW list. A deny list of secret-shaped substrings cannot decide this surface: `stage="sql"` and `stage="secret_project"` are legitimate closed values containing "sql" and "secret", so a substring scan either false-fires on them or gets watered down until it catches nothing. Requiring each key to be one of §1's five and each value to be a member of that key's enum is the property §1 actually states, and it rejects a free-form value no deny list would have thought to spell.
 
 ### §2 — Deterministic resources and bounded pool progress
 
@@ -114,8 +114,8 @@ For a controlled occupied slot, releasing it causes at least one queued request 
 
 **The `secret_project` stage survives the decryption removal, and its meaning narrows.** M143_001 replaced per-row decryption on read paths with one batch presence query, so this stage now times presence resolution and projection rather than decryption. Keep the stage — it still isolates a real cost — and assert its decryption counter at zero rather than deleting the label, so a regression that reintroduces per-row decryption shows up as a stage that suddenly decrypts instead of as a stage that vanished.
 
-- **Dimension 2.1** — counters enforce every exact maximum, including zero read-path decryptions → Test `test_library_deterministic_resource_gate`
-- **Dimension 2.2** — release/timeout/cancel proves bounded progress and zero leaks → Test `test_pool_bounded_progress_and_timeout`
+- **Dimension 2.1** — counters enforce every exact maximum, including zero read-path decryptions → Test `test_library_deterministic_resource_gate` — **DONE.** `http/library_stage_bounds_integration_test.zig` drives the real route and IMPORTS every maximum from `library_read_counters.zig` rather than retyping one (Invariant 2). It adds what the existing bounds suite cannot see: that the work the table counts is attributed to the stages that did it. `secret_project` both RAN and spent zero decryptions — the two halves together are the claim, and either alone is satisfiable by a regression. The stage table states each stage's EXACT observation count, and `sql` is 2: the read issues its page statements, resolves secret presence, then issues the default and rate batches, so SQL lands on both sides of `secret_project`. A third case drains the pool and proves the timeout path end to end.
+- **Dimension 2.2** — release/timeout/cancel proves bounded progress and zero leaks → Test `test_pool_bounded_progress_and_timeout` — **DONE.** Three arms against a live size-1 pool: every waiter on a held pool receives the typed timeout and TERMINATES (a waiter that blocked forever would hang the join rather than reach the assertion); releasing the slot lets at least one queued waiter progress; the pool is whole on every path. Deliberately NOT asserted: which waiter wins. The vendored fork wakes waiters from a 2 ms poll loop rather than a queue, so any ordering observed would be a scheduling coincidence a future `Io` with a real timed wait would break — "at least one progresses" is the strongest true statement available. `db/pool.zig` needed no seam change: a size-1 pool saturates deterministically from outside, so the fork is untouched.
 
 ### §3 — Failure matrix
 
@@ -123,7 +123,7 @@ Each failure row in §Failure Modes has a unique deterministic fixture case, and
 
 Changed-backend branch coverage moved out of this workstream to **M143_004**. It is a coverage tool — a pinned Zig parser, an edge-identity scheme, a probe lane, a manifest checker, and a threshold — not a slice of library performance evidence, and leaving it here would give one agent a performance job and a tooling job on the same branch, where the tooling eats the evidence work. This workstream does not depend on it.
 
-- **Dimension 3.1** — every failure injection cleans all owned resources → Test `test_library_failure_matrix_is_complete`
+- **Dimension 3.1** — every failure injection cleans all owned resources → Test `test_library_failure_matrix_is_complete` — **DONE.** `observability/library_failure_matrix_test.zig` injects every fault this tier can produce and asserts the property each §Failure Modes row actually claims: exactly ONE terminal outcome, of the right kind, on the stage that failed, with stages past the fault recording nothing. Two are structural rather than value-driven. `test_library_trace_malformed_case` asserts no byte of a rejected header survives into the fresh root — a parser salvaging the well-formed PREFIX would still produce a usable context while letting caller-controlled bytes choose this process's trace identity, which a "returns non-null" assertion would miss. `test_library_metric_rejection_case` asserts over the FUNCTION TYPES that recording returns `void`: there is no rejection path to build a fake for, so no handler can branch on one. `test_library_next_cancel_case` lands in `lib/api/client.ts` — an abort now raises `RequestCancelledError`, deliberately not an `ApiError`, because nothing failed and a cancel must not reach the user as a request that went wrong.
 
 ### §4 — Report validation is separate from provisioned capture
 
@@ -131,8 +131,8 @@ Required report check: `bun scripts/report-library-performance.ts --check --base
 
 Add the distinct documented provisioned-environment command `make capture-library-performance BASELINE_REF=origin/main CANDIDATE_REF=HEAD` outside universal CI. Capture may fail for setup, execution, schema, sanitization, or output correctness, never because p50/p95/p99 changed. The generic benchmark target is not P0 evidence.
 
-- **Dimension 4.1** — explicit aggregates validate comparability without value thresholds → Test `test_library_performance_report_validation`
-- **Dimension 4.2** — capture command is provisioned-only and value-neutral → Test `test_library_capture_command_is_not_universal_gate`
+- **Dimension 4.1** — explicit aggregates validate comparability without value thresholds → Test `test_library_performance_report_validation` — **DONE.** `scripts/report-library-performance.ts` decides structure and comparability only. Percentile ordering is an INTERNAL-CONSISTENCY check — whether three numbers can describe one distribution, never whether that distribution is fast enough. The property is asserted positively in both directions: a candidate 100x slower and one that is all zeroes are both valid. The committed fixture pair is itself the demonstration — its candidate is 37% slower on every row, so a threshold anywhere in this path would fail the very fixture that proves R3 green.
+- **Dimension 4.2** — capture command is provisioned-only and value-neutral → Test `test_library_capture_command_is_not_universal_gate` — **DONE.** `make capture-library-performance` is `.PHONY`, requires both refs, appears in no CI workflow, and is a prerequisite of no aggregate target. Three separate tests enforce that, because "absent from CI" alone would miss a target reachable through `make lint-all`. A fourth reads the recipe body and rejects any reference to a percentile. No new make target was added for the tests themselves — the auto-discovered `check_*_test.py` suite already had a caller.
 
 ## Interfaces
 
