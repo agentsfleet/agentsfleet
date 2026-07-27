@@ -12,7 +12,6 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const id_format = @import("../../../types/id_format.zig");
-const token_cache = @import("../../../auth/runner_token_cache.zig");
 const protocol = @import("contract").protocol;
 const runner_events = @import("../../../fleet/runner_events.zig");
 
@@ -60,13 +59,9 @@ pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8)
         return;
     };
 
-    // After the write commits, never before: a rolled-back transition that had
-    // already dropped the memo would send the next poll to Postgres for the same
-    // answer, which is harmless — but dropping it early on a transition that then
-    // FAILS would be the only way this call site could mislead, so it stays here.
-    // This machine is now exact; a sibling machine keeps answering from its own
-    // memo until that entry expires.
-    token_cache.invalidateRunner(runner_id);
+    // No cache to invalidate: the committed `admin_state` IS the verdict every
+    // machine reads on the runner's next request (`cmd/serve_runner_lookup.zig`),
+    // so this transition takes effect fleet-wide the moment it commits.
     log.debug("runner_admin_state_changed", .{ .runner_id = runner_id, .admin_state = @tagName(target) });
     writeResponse(hx, runner_id, target);
 }
