@@ -61,7 +61,7 @@ jobs:
       - name: Run website lint gate
         run: make lint-website
 
-  lint-apps-ds-ctl:
+  lint-apps-designsystem-cli:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -75,7 +75,7 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: cli
       - name: Run app + design-system + agentsfleet lint gate
-        run: make lint-apps-ds-ctl
+        run: make lint-apps-designsystem-cli
 
   lint-agentsfleet-sh:
     runs-on: ubuntu-latest
@@ -170,7 +170,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    needs: [lint-zig, lint-website, lint-apps-ds-ctl, lint-agentsfleet-sh, check-gh-actions-valid, check-openapi, safety-gates]
+    needs: [lint-zig, lint-website, lint-apps-designsystem-cli, lint-agentsfleet-sh, check-gh-actions-valid, check-openapi, safety-gates]
     steps:
       - name: Preserve legacy lint check name
         run: echo "All lint lanes passed"
