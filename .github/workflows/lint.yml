@@ -18,8 +18,30 @@ jobs:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     env:
       ZLINT_VERSION: v0.9.0
+      # Point Zig at the directories the cache step below actually persists.
+      # The Makefile defaults the GLOBAL cache to $HOME/.cache/agentsfleet, so
+      # without these a workflow can cache `.tmp/zig-global-cache` and store an
+      # empty directory — see the note in the cache step.
+      ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-global-cache
+      ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-local-cache
     steps:
       - uses: actions/checkout@v6
+      # `make lint-zig` is not a text-only lint: check-test-reachability runs
+      # `zig build list-tests`, which compiles every test binary a second time
+      # to ask the compiler which test blocks actually registered. Without a
+      # cache that was a cold build of all of them on every run — the one Zig
+      # job in the repository that was paying it. Same key shape as the sibling
+      # Zig jobs, scoped to this job so it never collides with theirs.
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
       - name: Install ZLint
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
@@ -141,6 +163,13 @@ jobs:
         run: make check-architecture-doc
       - name: Deploy version/lock safety
         run: make check-deploy-safety
+      # A documented pre-Pull-Request gate that no job ran, so a VERSION out of
+      # step with build.zig.zon or cli/package.json could merge green and only
+      # surface at release. Lands here rather than in a job of its own: this is
+      # the existing home for static repository-hygiene gates that need no
+      # toolchain, and it already runs on every Pull Request.
+      - name: Version manifests match VERSION
+        run: make check-version
       - name: Route-registration checker logic (self-test; guide case skips in CI)
         run: python3 scripts/check_route_registration_doc_test.py
 
