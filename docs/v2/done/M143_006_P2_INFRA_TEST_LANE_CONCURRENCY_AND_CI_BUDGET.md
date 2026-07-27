@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 006
 **Date:** Jul 27, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — tooling; no product surface changes, but every branch pays the current cost on every push.
 **Categories:** INFRA
 **Batch:** B1 — independent of the M143 product workstreams; touches only test wiring and Continuous Integration (CI).
