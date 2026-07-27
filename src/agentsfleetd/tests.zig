@@ -95,6 +95,7 @@ test {
     _ = @import("observability/otel_metrics_cardinality.zig");
     _ = @import("observability/library_read_counters.zig");
     _ = @import("observability/library_stages.zig");
+    _ = @import("observability/library_read_scope.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
