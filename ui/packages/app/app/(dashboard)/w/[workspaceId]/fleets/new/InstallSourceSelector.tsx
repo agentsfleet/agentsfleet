@@ -1,9 +1,13 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { Button, EmptyState, SectionLabel } from "@agentsfleet/design-system";
 import { LayoutTemplateIcon } from "lucide-react";
+import type { FleetLibraryPageResult } from "@/lib/api/fleet-library";
+import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import AddLibraryDialog from "./AddLibraryDialog";
+import { readFleetLibraryPageAction } from "./actions";
 import {
   LibraryDocsLink,
   FLEET_LIBRARY_EMPTY_DESCRIPTION,
@@ -14,12 +18,38 @@ import { LibraryCard } from "./LibraryCard";
 
 type Props = {
   workspaceId: string;
-  entries: FleetLibraryGalleryEntry[];
+  /** First gallery page, or null when the read failed — see `initialError`. */
+  initialPage: FleetLibraryPageResult | null;
+  /** Typed read failure. Distinct from an empty library, and never both. */
+  initialError: LibraryError | null;
+  /** A `library_id` was deep-linked and is not on the loaded page. */
+  selectionNotFound?: boolean;
   onUseLibraryEntry: (entry: FleetLibraryGalleryEntry) => void;
   canAddLibraryEntry?: boolean;
   /** Open the add-library-entry dialog on first render (?create=1 deep link). */
   initialCreateOpen?: boolean;
 };
+
+const NOT_FOUND_COPY =
+  "That library entry is not on this page. It may have been removed, or it may be further down the library.";
+
+/**
+ * Pure — user-facing copy for a typed gallery failure. Separate strings per
+ * kind because "sign in", "ask for access" and "try again" are different
+ * instructions, and an empty gallery communicated none of them.
+ */
+export function galleryErrorCopy(error: LibraryError): string {
+  switch (error.kind) {
+    case LIBRARY_ERROR_KIND.unauthenticated:
+      return "Your session expired. Sign in to browse the fleet library.";
+    case LIBRARY_ERROR_KIND.forbidden:
+      return "You do not have access to this workspace's fleet library.";
+    case LIBRARY_ERROR_KIND.unavailable:
+      return "The fleet library is temporarily unavailable.";
+    default:
+      return "Could not load the fleet library.";
+  }
+}
 
 // Library gallery picker: the workspace's library entries (platform ∪ tenant)
 // are the install surface. Picking one proceeds inline to the live install
@@ -28,35 +58,91 @@ type Props = {
 // title/description already frame it, so no wrapping panel and no side guide.
 export function InstallSourceSelector({
   workspaceId,
-  entries,
+  initialPage,
+  initialError,
+  selectionNotFound = false,
   onUseLibraryEntry,
   canAddLibraryEntry = false,
   initialCreateOpen = false,
 }: Props) {
+  const [pending, startTransition] = useTransition();
+  const [entries, setEntries] = useState<FleetLibraryGalleryEntry[]>(initialPage?.items ?? []);
+  // Invariant 5: the cursor and total say what has NOT been loaded. Both are
+  // rendered rather than implied by whether a button happens to be present.
+  const [nextCursor, setNextCursor] = useState<string | null>(initialPage?.next_cursor ?? null);
+  const [total, setTotal] = useState<number | null>(initialPage?.total ?? null);
+  const [error, setError] = useState<LibraryError | null>(initialError);
+
+  // Append the next page, retaining every card already loaded. Exactly one
+  // request per invocation — the walk this replaced issued as many as the
+  // library had pages, on every visit to this screen.
+  function loadMore() {
+    if (nextCursor === null) return;
+    startTransition(async () => {
+      const r = await readFleetLibraryPageAction(workspaceId, nextCursor);
+      if (!r.ok) {
+        // A failed load-more keeps the cards already on screen and offers
+        // another go; it never blanks the gallery.
+        setError({ kind: LIBRARY_ERROR_KIND.unknown, detail: r.error });
+        return;
+      }
+      setError(null);
+      setEntries((prior) => [...prior, ...r.data.items]);
+      setNextCursor(r.data.next_cursor);
+      setTotal(r.data.total);
+    });
+  }
+
   const showAddLibraryEntry = canAddLibraryEntry;
+  // Cards on screen are worth rendering even mid-failure, so the empty state
+  // fires only on a genuinely empty, genuinely successful read.
+  const hasEntries = entries.length > 0;
+
   return (
     <div className="space-y-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-md">
         <SectionLabel>Fleet library</SectionLabel>
-        {showAddLibraryEntry && entries.length > 0 ? (
+        {showAddLibraryEntry && hasEntries ? (
           <AddLibraryDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
         ) : null}
       </div>
-      {entries.length > 0 ? (
-        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
-          {entries.map((entry) => (
-            <LibraryCard
-              key={entry.id}
-              entry={entry}
-              action={
-                <Button type="button" onClick={() => onUseLibraryEntry(entry)}>
-                  Use entry
-                </Button>
-              }
-            />
-          ))}
-        </div>
-      ) : (
+
+      {/* `<output>` carries an implicit status role, so it announces without
+          the explicit attribute the a11y lint (correctly) rejects. */}
+      {selectionNotFound ? (
+        <output className="block text-sm text-muted-foreground">{NOT_FOUND_COPY}</output>
+      ) : null}
+
+      {hasEntries ? (
+        <>
+          <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
+            {entries.map((entry) => (
+              <LibraryCard
+                key={`${entry.visibility}:${entry.id}`}
+                entry={entry}
+                action={
+                  <Button type="button" onClick={() => onUseLibraryEntry(entry)}>
+                    Use entry
+                  </Button>
+                }
+              />
+            ))}
+          </div>
+
+          {nextCursor !== null ? (
+            <div className="flex items-center gap-3">
+              <Button type="button" variant="secondary" onClick={loadMore} disabled={pending}>
+                {pending ? "Loading…" : "Load more"}
+              </Button>
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                {total !== null
+                  ? `Showing ${entries.length} of ${total} entries`
+                  : `Showing ${entries.length} entries — more available`}
+              </p>
+            </div>
+          ) : null}
+        </>
+      ) : error === null ? (
         <EmptyState
           icon={<LayoutTemplateIcon size={28} />}
           title={FLEET_LIBRARY_EMPTY_TITLE}
@@ -70,7 +156,16 @@ export function InstallSourceSelector({
             </div>
           }
         />
-      )}
+      ) : null}
+
+      {error ? (
+        <div role="alert" className="flex items-center gap-3">
+          <p className="text-sm text-destructive">{galleryErrorCopy(error)}</p>
+          <Button type="button" variant="secondary" onClick={loadMore} disabled={pending || nextCursor === null}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

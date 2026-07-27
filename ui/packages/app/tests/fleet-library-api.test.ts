@@ -149,45 +149,52 @@ describe("lib/api/fleet-library", () => {
   // The gallery is a keyset page, so the client walks it. Both halves of that walk
   // need a test: the resume (a second request carrying starting_after) and the
   // bound, which is the only path that throws.
-  it("follows next_cursor across pages and concatenates the rows", async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [{ id: "a" }], total: null, next_cursor: "cur-1" }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [{ id: "b" }], total: null, next_cursor: null }),
-      });
-    const mod = await import("../lib/api/fleet-library");
-    const res = await mod.listWorkspaceFleetLibrary("ws_1", "tkn");
-
-    expect(res.items.map((i) => i.id)).toEqual(["a", "b"]);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    // The FIRST request must not carry a cursor and the second must carry the one
-    // the first returned — a client that sent starting_after on page one, or
-    // re-sent the same cursor, would still produce two pages of rows here.
-    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain("starting_after");
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("starting_after=cur-1");
-  });
-
-  // A server that keeps handing back a cursor without advancing would otherwise
-  // have the client return one page repeated, rendering duplicate cards as
-  // though they were distinct entries. The bound throws instead.
-  it("throws rather than return duplicates when the walk never terminates", async () => {
+  // The exhaustive walk was replaced by one page per call. These three cases
+  // pin what replaced it: a single request, the cursor forwarded verbatim, and
+  // the disclosure fields surfaced rather than swallowed — the last is what
+  // keeps paging from hiding entries the way a bare single-page read would.
+  it("issues exactly one request per call and does not follow next_cursor", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ items: [{ id: "stuck" }], total: null, next_cursor: "same" }),
+      json: async () => ({ items: [{ id: "a" }], total: 7, next_cursor: "cur-1" }),
     });
     const mod = await import("../lib/api/fleet-library");
+    const res = await mod.listWorkspaceFleetLibrary("ws_1", "tkn");
 
-    await expect(mod.listWorkspaceFleetLibrary("ws_1", "tkn")).rejects.toThrow(
-      /did not terminate within 50 pages/,
-    );
-    // Bounded, not unbounded: it stops at the ceiling rather than looping forever.
-    expect(fetchMock).toHaveBeenCalledTimes(50);
+    // The walk would have issued a second request on seeing "cur-1".
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(res.items.map((i) => i.id)).toEqual(["a"]);
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain("starting_after");
+  });
+
+  it("returns next_cursor and total so the caller can disclose what it has not loaded", async () => {
+    // Invariant 5. Without these a gallery could render one card and have no
+    // way to say seven entries exist — the silent truncation the walk existed
+    // to prevent, reintroduced by the fix for it.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [{ id: "a" }], total: 7, next_cursor: "cur-1" }),
+    });
+    const mod = await import("../lib/api/fleet-library");
+    const res = await mod.listWorkspaceFleetLibrary("ws_1", "tkn");
+
+    expect(res.next_cursor).toBe("cur-1");
+    expect(res.total).toBe(7);
+  });
+
+  it("forwards starting_after when asked for a later page", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [{ id: "b" }], total: 7, next_cursor: null }),
+    });
+    const mod = await import("../lib/api/fleet-library");
+    const res = await mod.listWorkspaceFleetLibrary("ws_1", "tkn", "cur-1");
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("starting_after=cur-1");
+    // A null next_cursor is the server saying this is the last page.
+    expect(res.next_cursor).toBeNull();
   });
 });

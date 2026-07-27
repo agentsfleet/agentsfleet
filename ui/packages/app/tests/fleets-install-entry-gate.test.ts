@@ -60,7 +60,10 @@ afterEach(() => cleanup());
 describe("InstallEntry", () => {
   it("renders the library-entry grid with a deep link", () => {
     const m = renderToStaticMarkup(React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [TEMPLATE] }));
-    expect(m).toContain('href="/w/ws_1/fleets/new?library=github-pr-reviewer"');
+    // Tier-qualified: a bare ?library=<id> could not tell a platform entry
+    // from a tenant entry sharing the id, and the create body keys off tier.
+    expect(m).toContain("library_visibility=platform");
+    expect(m).toContain("library_id=github-pr-reviewer");
     expect(m).toContain("GitHub PR reviewer");
   });
 
@@ -89,7 +92,7 @@ describe("InstallEntry", () => {
     expect(m).toContain("Write your own fleet library");
     expect(m).toContain("Create fleet library");
     expect(m).toContain("Learn more");
-    expect(m).not.toContain("?library=");
+    expect(m).not.toContain("library_id=");
   });
 
   it("omits Create-fleet-library (and its copy) when library:write is absent — matches InstallSourceSelector's own gate", () => {
@@ -119,7 +122,8 @@ describe("InstallSourceSelector", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        entries: [TEMPLATE],
+        initialPage: { items: [TEMPLATE], next_cursor: null, total: 1 },
+        initialError: null,
         onUseLibraryEntry,
         canAddLibraryEntry: true,
       }),
@@ -134,7 +138,8 @@ describe("InstallSourceSelector", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        entries: [],
+        initialPage: { items: [], next_cursor: null, total: 0 },
+        initialError: null,
         onUseLibraryEntry: vi.fn(),
         canAddLibraryEntry: false,
       }),
@@ -149,7 +154,8 @@ describe("InstallSourceSelector", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        entries: [],
+        initialPage: { items: [], next_cursor: null, total: 0 },
+        initialError: null,
         onUseLibraryEntry: vi.fn(),
       }),
     );
@@ -162,7 +168,8 @@ describe("InstallSourceSelector", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        entries: [],
+        initialPage: { items: [], next_cursor: null, total: 0 },
+        initialError: null,
         onUseLibraryEntry: vi.fn(),
         canAddLibraryEntry: true,
       }),

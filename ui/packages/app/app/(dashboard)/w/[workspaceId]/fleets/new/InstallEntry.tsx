@@ -12,6 +12,19 @@ import {
 } from "./library-docs";
 import { LibraryCard } from "./LibraryCard";
 
+/**
+ * Pure — the tier-qualified install deep link. Kept as one function so the
+ * parameter names live in a single place: the install page parses exactly
+ * these, and a drift between producer and parser is a silently dead link.
+ */
+export function deepLinkHref(workspaceId: string, entry: FleetLibraryGalleryEntry): string {
+  const params = new URLSearchParams({
+    library_visibility: entry.visibility,
+    library_id: entry.id,
+  });
+  return `${workspacePath(workspaceId, "fleets/new")}?${params.toString()}`;
+}
+
 type Props = {
   workspaceId: string;
   entries: FleetLibraryGalleryEntry[];
@@ -67,12 +80,17 @@ export function InstallEntry({
       <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
         {visibleEntries.map((entry) => (
           <LibraryCard
-            key={entry.id}
+            key={`${entry.visibility}:${entry.id}`}
             entry={entry}
             compact={compact}
             action={
               <Button asChild>
-                <Link href={`${workspacePath(workspaceId, "fleets/new")}?library=${entry.id}`}>Use entry</Link>
+                {/*
+                  Tier-qualified deep link. A bare `?library=<id>` could not
+                  distinguish a platform entry from a tenant entry sharing the
+                  id, and the install flow keys its create body off that tier.
+                */}
+                <Link href={deepLinkHref(workspaceId, entry)}>Use entry</Link>
               </Button>
             }
           />
