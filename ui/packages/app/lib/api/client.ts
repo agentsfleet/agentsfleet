@@ -1,4 +1,4 @@
-import { ApiError } from "./errors";
+import { ApiError, RequestCancelledError } from "./errors";
 import { recordWorkspaceFetchForAcceptance } from "../acceptance/workspace-fetch-audit";
 
 // Full backend origin — used for display URLs (webhooks) and server-side fetches.
@@ -30,6 +30,52 @@ export const BASE = typeof window === "undefined" ? API_ORIGIN : "/backend";
  * backoff). Mirrors the CLI parser at `cli/src/lib/http.js`.
  */
 const MS_PER_SECOND = 1000;
+
+// W3C Trace Context field widths, in hex characters. The server parses exactly
+// this shape (`observability/trace.zig`); anything else is ignored and it
+// starts a fresh root, so a malformed value here silently costs correlation
+// rather than breaking the request.
+const TRACE_ID_HEX_LEN = 32;
+const SPAN_ID_HEX_LEN = 16;
+const TRACEPARENT_VERSION = "00";
+const TRACEPARENT_SAMPLED = "01";
+const HEADER_TRACEPARENT = "traceparent";
+
+const HEX_ALPHABET = "0123456789abcdef";
+
+function randomHex(length: number): string {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (const byte of bytes) out += HEX_ALPHABET[byte % HEX_ALPHABET.length];
+  return out;
+}
+
+/**
+ * A fresh W3C `traceparent` for one request, so a slow page can be attributed
+ * to the server-side stages that produced it.
+ *
+ * Always a new ROOT rather than a continuation: the browser holds no span this
+ * request is a child of, and inventing a parent id would attach the server's
+ * span to something that never existed.
+ */
+export function newTraceparent(): string {
+  return [
+    TRACEPARENT_VERSION,
+    randomHex(TRACE_ID_HEX_LEN),
+    randomHex(SPAN_ID_HEX_LEN),
+    TRACEPARENT_SAMPLED,
+  ].join("-");
+}
+
+/**
+ * True for the abort a caller asked for. `fetch` rejects with a DOMException
+ * whose `name` is `AbortError`; some runtimes and test doubles surface a plain
+ * Error instead, so the name is what is checked rather than the class.
+ */
+function isAbort(cause: unknown): boolean {
+  return cause instanceof Error && cause.name === "AbortError";
+}
 
 export function parseRetryAfterHeaderValue(headerVal: string | null): number | null {
   if (!headerVal) return null;
@@ -75,14 +121,26 @@ export async function requestWithEtag<T>(
     recordWorkspaceFetchForAcceptance(path);
   }
 
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...init.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        // Placed BEFORE the caller spread so an explicit traceparent wins —
+        // a caller continuing an existing trace knows better than this default.
+        [HEADER_TRACEPARENT]: newTraceparent(),
+        ...init.headers,
+      },
+    });
+  } catch (cause) {
+    // A navigation abort is not a failure. Rethrowing the raw DOMException
+    // leaves every caller to recognise it, and the ones that do not turn a
+    // page the user already left into an unhandled rejection.
+    if (isAbort(cause)) throw new RequestCancelledError(path);
+    throw cause;
+  }
 
   const etag = etagFrom(res);
 
