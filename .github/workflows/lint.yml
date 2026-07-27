@@ -42,10 +42,11 @@ jobs:
           curl -fsSL "https://github.com/DonIsaac/zlint/releases/download/${ZLINT_VERSION}/zlint-linux-x86_64" -o "$RUNNER_TEMP/bin/zlint"
           chmod +x "$RUNNER_TEMP/bin/zlint"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      # `make lint-zig` already runs the pg-drain checker via
+      # lint-governance -> _lint_zig_pg_drain; a second invocation here was
+      # duplicate work and a drift hazard if the two ever diverged.
       - name: Run Zig lint gate
         run: make lint-zig
-      - name: Run pg-drain check
-        run: python3 lint-zig.py src
 
   lint-website:
     runs-on: ubuntu-latest

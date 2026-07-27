@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M143_006: Zig test lanes run sharded and concurrent, and Continuous Integration stops paying for a cold cache
+# M143_006: Zig test lanes run concurrently, and Continuous Integration stops paying for a cold cache
 
 **Prototype:** v2.0.0
 **Milestone:** M143
@@ -30,77 +30,72 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** the datastore-free lanes — `make test-unit-agentsfleetd`, `make test-coverage-zig`, `make memleak` — execute their registered tests across `SHARD_COUNT` concurrent processes with the leak, failure and coverage verdicts unchanged, and every Zig CI job restores a warm cache on the first push to a branch.
+**Goal (testable):** `make memleak` completes materially faster with every lane verdict unchanged, and every Zig CI job restores a warm cache on the first push to a branch instead of rebuilding cold.
 
 **Problem:** A full `make test-integration` takes over eleven minutes locally, of which six are the suite itself — 614 tests executed strictly one at a time, because Zig 0.16's default test runner is single-threaded by construction. The daemon unit binary registers 2958 tests and is executed three separate times per Pull Request (PR): plain, again under kcov, again under Valgrind at a ten-to-thirty-times slowdown. In CI the `memleak` workflow takes fourteen minutes on the first push to any branch and six on every push after, because it never warms its cache from `main`. The Actions cache sits at 9.96 GB against a 10 GB limit, so warm-cache hits are a coin flip for every other job too.
 
-**Solution summary:** Add a shard-aware Zig test runner so one compiled test binary can be executed by N concurrent processes, each running a disjoint subset, and apply it to the binaries that touch no datastore — which is where the time actually is, since the daemon unit binary is executed three times per change and accounts for more lane time than the integration suite. Register each new test file at the level that already owns it, so it needs no hand edit. Make the remaining serial stretches of the memleak and coverage lanes concurrent. Fix the four CI defects that make the cache cold: the missing `main` trigger, the pre-warm step that builds the wrong artifact, the over-broad container privilege, and the unbounded cache growth.
+**Solution summary:** Make every serial stretch of the memleak and coverage lanes concurrent — the coverage lane's five kcov components, the memleak lane's per-binary gates, and the boot-drain lane's infra bring-up, which depends on nothing the component lanes produce. Fix the Continuous Integration defects that keep every branch on a cold cache: the missing `main` trigger, the pre-warm step that builds the wrong artifact, the over-broad container privilege, the unbounded cache growth, an uncached lint lane, and a cached path nothing writes. Close a merge-gate hole where the coverage job's verdict was not consumed, and stop cancelling the `main` runs whose only purpose is to warm the cache.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** `perf(m143): shard Zig test lanes and fix CI cache budget`
+- **PR title (eventual):** `perf(m143): make Zig test lanes concurrent and fix CI cache budget`
 - **Intent (one sentence):** Every Zig test lane finishes in a fraction of its current wall clock, locally and in CI, without weakening any correctness, leak, or coverage gate.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
 
 ## Implementing agent — read these first
 
-1. `src/build/test_runner_list.zig` — the existing custom `.simple` test runner. The shard runner is its sibling: same `builtin.test_functions` walk, but it executes rather than lists. Mirror its allocator discipline and its stance on best-effort output.
-2. `$(zig env | grep lib_dir)/compiler/test_runner.zig` `mainTerminal` — the upstream runner the shard runner must remain behaviourally equivalent to, including per-test allocator reset, `Io` instance lifecycle, leak detection, skip/fail accounting and exit code.
-3. `src/build/test_list.zig` — how a custom runner is attached to a `Compile` without disturbing the default-runner lanes; explains why the executing lanes were deliberately left on the default runner.
-4. `docs/architecture/testing.md` — the component ownership and lane topology this workstream extends. Update it in the same PR.
+1. `scripts/run-zig-memleak-lane.sh` — the extracted lane script this workstream makes concurrent. Its sibling test drives it with stub tools and asserts overlap from recorded timestamps; that is the pattern any further extraction should follow.
+2. `make/bench.mk` — how the three component lanes are dispatched and their verdicts aggregated. Concurrency here must not lose which lane failed.
+3. `docs/architecture/testing.md` — the component ownership and lane topology this workstream extends. Update it in the same PR.
 
 ## Files Changed (blast radius)
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/build/test_runner_shard.zig` | CREATE | Shard-aware executing test runner; the one new mechanism this workstream rests on. |
-| `src/build/daemon_tests.zig` | EDIT | Attach the shard runner to the installed daemon unit and integration artifacts. |
-| `src/build/lib_tests.zig` | EDIT | Same attachment for the shared-library binaries. |
-| `build_runner.zig` | EDIT | Same attachment for the runner graph's installed test artifacts. |
-| `scripts/run-zig-shards.sh` | CREATE | Fans a built test binary out over N shard processes, aggregates exit codes, preserves per-shard output. |
-| `scripts/check_zig_shard_runner_test.py` | CREATE | Leak-equivalence, partition-exactness and malformed-environment gates for the shard runner. |
 | `scripts/check_ci_lane_config_test.py` | CREATE | Continuous Integration lane configuration gates. |
 | `scripts/check_lane_concurrency_test.py` | CREATE | Lane concurrency and local-cost gates. |
 | `scripts/select-prunable-caches.sh` | CREATE | Pure cache-reclamation selection, unit-tested away from the workflow. |
 | `scripts/run-zig-memleak-lane.sh` | EDIT | Gate a lane's binaries concurrently. |
 | `scripts/check_zig_test_reachability.py` | EDIT | Failure message names the file that should own the registration. |
-| `make/test-unit.mk` | EDIT | Sharded unit lane; concurrent kcov components. |
+| `make/test-unit.mk` | EDIT | Concurrent kcov components with per-component exit status. |
 | `make/test-integration.mk` | EDIT | Keep-state opt-out for iterative local loops. |
 | `make/bench.mk` | EDIT | Overlap the boot-drain lane's infra and migrate with the component lanes. |
 | `make/dev.mk` | EDIT | `_clean` removes the cache directory the repository actually uses. |
-| `.github/workflows/lint.yml` | EDIT | Cache Zig for the lint job; enforce `check-version`. |
+| `.github/workflows/lint.yml` | EDIT | Cache Zig for the lint job; enforce `check-version`; drop the duplicate pg-drain step. |
+| `.github/workflows/bench.yml` | EDIT | Artifact glob matches the extension the bench actually writes. |
+| `.github/workflows/cross-compile.yml` | EDIT | Stop cancelling `main` cache-warm runs. |
+| `make/harness.mk` | EDIT | Correct references to a `make lint` target that does not exist. |
+| `make/quality.mk` | EDIT | Reconcile `.PHONY` with the targets actually defined. |
+| `make/build.mk` | EDIT | Declare `_docker_login` in `.PHONY`. |
 | `scripts/check_readme_hero_sync.sh` | DELETE | Checker with no caller — enforcement in appearance only. |
 | `scripts/regen-integration-jwts.mjs` | DELETE | One-off regeneration tool, called by nothing. |
 | `.github/workflows/memleak.yml` | EDIT | Add the `main` push trigger that warms the cache. |
 | `.github/workflows/test-integration.yml` | EDIT | Pre-warm the integration artifact, not the unit artifact; drop the inert global-cache path from the kernel job. |
 | `.github/workflows/test.yml` | EDIT | Narrow the coverage job's container privilege; drop the inert global-cache path from four jobs. |
 | `.github/workflows/cache-prune.yml` | CREATE | Scheduled reclamation of closed-PR and superseded cache entries. |
-| `docs/architecture/testing.md` | EDIT | Document sharding, generated roots, and per-shard isolation. |
-| `docs/VERIFY_TIERS.md` | EDIT | Record the sharded lane commands and the shard environment variables. |
+| `docs/architecture/testing.md` | EDIT | Correct the test-root topology. |
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — **UFS** (shard/lane identifiers and the shard environment variable names become named constants shared verbatim across the Zig runner, the shell fan-out, and the Makefile), **FLL** (the new runner and the generator both stay inside the file and function length caps), **NDC** (the hand-maintained root import lists are replaced, not left beside their generated successors), **ORP** (removing the hand-maintained roots and any superseded lane helper requires a cross-layer sweep), **XCC** (Zig changes cross-compile to both Linux targets before commit), **TST-NAM** (no milestone identifiers in the new test names), **NSQ** (the per-shard database provisioning uses named constants and schema-qualified statements).
-- `dispatch/write_zig.md` — the shard runner is new Zig: memory safety, `errdefer` placement, pub-surface shape verdict, and the length caps all apply.
-- `dispatch/write_shell.md` — `scripts/run-zig-shards.sh` and the edited lane script: quoted expansions, array arguments, temporary-file cleanup.
-- `dispatch/write_python.md` — the root generator: standard-library only, context-managed file handles, specific exceptions.
+- **`docs/greptile-learnings/RULES.md`** — **NDC** (no dead code: the sweep removes orphaned targets and scripts rather than leaving them beside their replacements), **ORP** (removing a target or script requires a cross-layer sweep of every caller, doc, and `.PHONY` line), **FLL** (the edited lane scripts stay inside the length caps), **TST-NAM** (no milestone identifiers in the new test names).
+- `dispatch/write_shell.md` — the edited lane script and the new cache selector: quoted expansions, array arguments, temporary-file cleanup.
+- `dispatch/write_python.md` — the new gate tests: standard-library only, context-managed file handles, specific exceptions.
 - `docs/VERIFY_TIERS.md` — the lane commands this workstream changes are the canonical verification surface; the doc moves with them.
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | yes — new and edited `*.zig` | Cross-compile both Linux targets; tagged-union results in the runner's outcome accounting; `errdefer` on every allocation in the shard runner. |
-| PUB / Struct-Shape | yes — `src/build/test_runner_shard.zig` is a new file with a public entry point | File Shape Decision recorded at PLAN; the runner is operations-over-value like its `test_runner_list.zig` sibling. |
-| File & Function Length (≤350/≤50/≤70) | yes | The runner splits its shard selection, its per-test execution, and its result reporting into separate functions; the generator splits discovery from emission. |
-| UFS (repeated/semantic literals) | yes | Shard environment variable names, the lane names, and the generated-root banner are named constants; the Zig runner and the shell fan-out share the identifier spelling verbatim. |
+| ZIG GATE | no — no `*.zig` changes remain in the diff | N/A. |
+| PUB / Struct-Shape | no | No new Zig surface. |
+| File & Function Length (≤350/≤50/≤70) | yes — edited shell and Python | Each stays well inside the caps. |
+| UFS (repeated/semantic literals) | yes | Lane names and the cache-selection reasons are named constants in the scripts that emit them. |
 | UI Substitution / DESIGN TOKEN | no | No UI surface is touched. |
-| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LIFECYCLE yes; others no | The shard runner owns an allocator and an `Io` instance per test and must pair every init with its deinit exactly as the upstream runner does. No schema migration, no new error registry code, no product logging. |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no | No product code, no schema, no allocator lifecycle. |
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `src/build/test_runner_list.zig` — the in-repository proof that a custom runner attaches cleanly to a `Compile` and reads `builtin.test_functions`. The shard runner diverges only in executing the functions and in replicating the upstream runner's accounting.
-- **Reference:** upstream `lib/compiler/test_runner.zig` `mainTerminal` — the behavioural contract for leak detection, skip/fail counting, and exit code. Divergence from it is a weakened gate, not a design choice.
+- **Reference:** `scripts/run-zig-memleak-lane.sh` and its test — the in-repository pattern for lane logic that lives in a script so a test can drive it with stub tools rather than grep the Makefile.
 - **Reference:** `.github/workflows/lint.yml` `check-openapi` — regenerate, then `git diff --exit-code`. The generated test roots reuse this exact shape rather than inventing a freshness mechanism.
 
 ## Sections (implementation slices)
@@ -116,18 +111,6 @@ The four CI defects that make every branch pay for a cold cache. Independent of 
 - **Dimension 1.3** — ✅ DONE — the coverage job runs kcov under the narrowest container option set that works, not `--privileged` → Test `test_coverage_job_is_not_privileged`
 - **Dimension 1.4** — ✅ DONE — a scheduled workflow reclaims cache entries for closed Pull Requests and superseded key generations, keeping total usage under the limit → Test `test_cache_prune_workflow_targets_closed_and_superseded`
 
-### §3 — Shard-aware test runner — IN_PROGRESS (mechanism DONE; coverage + memleak lanes not yet wired)
-
-The single mechanism the remaining sections rest on. One compiled binary, N processes, disjoint test subsets, aggregated verdict.
-
-**Implementation default:** shard assignment is by index modulo count over the compiler-registered order, and the fan-out assigns the longest-known tests first where a prior timing record exists, because the integration suite's slowest ten percent carry forty-three percent of its runtime and a naive split leaves one shard running alone.
-
-- **Dimension 3.1** — ✅ DONE — the runner executes exactly the tests whose index satisfies the shard predicate, and the union across all shards is the full registered set with no overlap → Test `test_shard_partition_is_exact_and_disjoint`
-- **Dimension 3.2** — ✅ DONE — the runner detects a `std.testing.allocator` leak and exits non-zero, matching the upstream runner → Test `test_shard_runner_fails_on_leak`
-- **Dimension 3.3** — ✅ DONE — skips, failures, and logged errors are counted and reported per shard, and the aggregate exit code is non-zero when any shard fails → Test `test_shard_runner_reports_and_propagates`
-- **Dimension 3.4** — ✅ DONE — with no shard environment set, the runner behaves as a single shard covering every test → Test `test_unsharded_default_runs_everything`
-- **Dimension 3.5** — ✅ DONE — the fan-out script preserves each shard's output and surfaces the failing shard's output first → Test `test_fanout_preserves_shard_output`
-
 ### §5 — Lane concurrency and local cost — ✅ DONE
 
 The remaining serial stretches, plus the local costs the lanes impose outside CI.
@@ -141,41 +124,35 @@ The remaining serial stretches, plus the local costs the lanes impose outside CI
 ## Interfaces
 
 ```
-Shard selection (read by src/build/test_runner_shard.zig, set by scripts/run-zig-shards.sh):
-  AGENTSFLEET_TEST_SHARD_INDEX   0-based; absent or empty => single-shard mode
-  AGENTSFLEET_TEST_SHARD_COUNT   >=1; absent or empty => 1
+KEEP_TEST_STATE=1 make test-integration
+    Skip the teardown-and-migrate preamble for an iterative local loop.
+    Opt-in only; unset (the default, and always in CI) performs the full reset.
 
-Fan-out:
-  scripts/run-zig-shards.sh <shard-count> <binary-path> [runner-prefix...]
-    exit 0 iff every shard exits 0; otherwise the first failing shard's code.
-
-Redis connection URL (src/agentsfleetd/queue/redis_config.zig):
-  rediss://[:password@]host[:port][/<logical-db>]
-    absent path component => logical database 0 (today's behaviour, unchanged)
-
-Generated roots:
+scripts/select-prunable-caches.sh <pr-state-file> <retain-per-family> < caches.tsv
+    stdin  TSV: id, ref, key, created_at, size_in_bytes
+    stdout TSV: id, ref, key, size_in_bytes, reason  (closed-pr | superseded)
+    Pure: no network, no deletion. The workflow owns the GitHub input/output.
 ```
 
 ## Failure Modes
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Shard count exceeds registered tests | Caller asks for more shards than there are tests | High-index shards run zero tests and exit 0; the aggregate verdict is unaffected. |
-| Shard environment is malformed | Non-numeric or negative shard index or count | The runner exits non-zero with a message naming the variable and its value; it never silently degrades to running everything. |
-| One shard crashes without reporting | Segmentation fault or abort inside a test process | The fan-out treats a missing verdict as failure, surfaces that shard's captured output first, and exits non-zero. |
-| Shard database provisioning collides | A prior aborted run left a shard database behind | Provisioning drops and recreates the shard database; a failure to do so aborts the lane rather than reusing unknown state. |
-| Redis selector unsupported by server | A deployment points at a Redis that rejects logical database selection | Connection fails with the server's error surfaced verbatim; no silent fallback to database 0, which would merge shard keyspaces. |
-| Generated root drifts from disk | A test file is added without regenerating | `lint-zig` fails with the diff between committed and regenerated roots and the command to fix it. |
-| Cache prune deletes a live cache | The prune workflow's selection is too broad | Prune only targets closed-Pull-Request refs and key generations older than the newest retained per prefix; a dry-run mode is the default for manual invocation. |
-| Leak detection lost in a shard | The shard runner omits the upstream allocator check | Dimension 3.2's test injects a deliberate leak and requires a non-zero exit; the gate fails closed. |
+| A concurrent lane binary leaks | Any gated binary trips the allocator or Valgrind check | Its lane exits non-zero and the aggregate status propagates. Concurrency never converts a failure into a pass. |
+| Concurrent output interleaves | Several binaries write Valgrind reports to one stream | Each binary's output is captured and replayed in list order after the wait, so a report stays readable. |
+| Infra bring-up fails while lanes run | Docker unavailable, healthcheck timeout, cert extraction fails | The backgrounded bring-up is waited on separately; a failure aborts before boot-drain rather than running it against datastores that never came up. |
+| A kcov component fails | A binary exits non-zero under kcov, or produces no report | Its exit status is recorded per component, the failing component named, its log tail printed, and the lane exits non-zero. |
+| Cache prune targets a live entry | The selector's rules are too broad | Only closed-Pull-Request refs and generations beyond the retain count are selected; an unresolvable state is left alone rather than guessed at. |
+| Cache entry vanishes mid-prune | A concurrent run evicted it first | Reported as already-gone and skipped — that outcome is the job's own goal, so it is never fatal. |
+| `KEEP_TEST_STATE` hides state pollution | A developer reads the opt-out as a clean-checkout pass | Opt-in only and never set by CI, so the gate a Pull Request must clear always performs the full reset. |
 
 ## Invariants
 
-1. The union of every shard's executed test set equals the full registered set, with no test executed twice — enforced by Dimension 3.1's test asserting partition exactness against `list-tests` output.
-2. A leak, failure, or logged error in any shard produces a non-zero lane exit — enforced by the fan-out's exit-code aggregation and Dimension 3.2/3.3 tests, not by reading output.
-3. No two concurrent integration shards share a Postgres database or a Redis keyspace — enforced by per-shard provisioning that derives names from the shard index and by Dimension 4.3's mutual-invisibility test.
-4. Every Zig `test` block reachable on disk appears in exactly one generated root or carries a waiver — enforced by the existing reachability checker plus the regenerate-and-diff gate.
-5. An unset shard environment yields today's behaviour exactly — enforced by Dimension 3.4's test, so any lane not yet migrated is unaffected.
+1. Concurrency never weakens a verdict — every concurrent lane records a per-unit exit status that the aggregate propagates; enforced by tests that fail a single binary and require a non-zero lane exit.
+2. A failing unit's output stays readable and attributable — enforced by tests asserting per-binary replay order and per-component failure naming.
+3. The cache prune never selects a restorable entry — enforced by the selector's unit tests, including the unresolvable-state case.
+4. The integration gate always resets state unless explicitly opted out — enforced by a test asserting the resolved make graph, not the literal prerequisite.
+5. Every Zig test block still reaches a root — enforced by the pre-existing compiler-backed reachability gate, unchanged here.
 
 ## Metrics & Observability
 
@@ -191,17 +168,12 @@ Generated roots:
 | 1.2 | unit | `test_integration_workflow_prewarms_integration_binary` | The integration workflow's pre-warm step names the integration artifact and no longer names the unit artifact. |
 | 1.3 | unit | `test_coverage_job_is_not_privileged` | The coverage job's container options contain no `--privileged`. |
 | 1.4 | unit | `test_cache_prune_workflow_targets_closed_and_superseded` | Given a cache listing with open-Pull-Request, closed-Pull-Request and superseded entries, only the latter two are selected. |
-| 3.1 | unit | `test_shard_partition_is_exact_and_disjoint` | Across every shard index for a given count, each registered test executes exactly once. |
-| 3.2 | integration | `test_shard_runner_fails_on_leak` | A binary containing one deliberately leaking test exits non-zero under the shard runner. |
-| 3.3 | unit | `test_shard_runner_reports_and_propagates` | A mixed pass/skip/fail set yields the correct counts and a non-zero exit. |
-| 3.4 | unit | `test_unsharded_default_runs_everything` | With no shard environment set, the executed count equals the registered count. |
-| 3.5 | integration | `test_fanout_preserves_shard_output` | With one failing shard among several, the failing shard's output is surfaced first and the script exits non-zero. |
 | 5.1 | integration | `test_coverage_components_run_concurrently` | The coverage lane's component runs overlap in time and the merged report is unchanged. |
 | 5.2 | integration | `test_lib_lane_gates_binaries_concurrently` | The lib lane's three binary gates overlap in time and a failure in any one fails the lane. |
 | 5.3 | integration | `test_boot_drain_overlaps_component_lanes` | The boot-drain preparation starts before the component lanes converge. |
 | 5.4 | unit | `test_clean_removes_configured_cache` | After `_clean`, the configured local cache directory is absent. |
 | 5.5 | integration | `test_integration_keep_state_opt_out` | The opt-out skips teardown and migration; the default still performs both. |
-| regression | integration | `test_lane_verdicts_unchanged_unsharded` | Every lane run with a shard count of one produces the same pass/skip/fail totals as before this workstream. |
+| regression | integration | `test_lane_verdicts_unchanged` | Every lane produces the same pass/skip/fail totals as before this workstream. |
 | regression | integration | `test_reachability_counts_do_not_regress` | The reachability checker's unit and integration counts are greater than or equal to the CHORE(open) baseline. |
 
 ## Acceptance Rubric (single scoring surface)
@@ -210,9 +182,9 @@ Generated roots:
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Every CI lane defect is corrected (§1) | `make check-gh-actions-valid && python3 scripts/check_ci_lane_config_test.py` | exit 0 | P0 | |
 | R2 | Every Zig test block still reaches a root | `make check-test-reachability` | exit 0 | P0 | |
-| R3 | Shard partition is exact, disjoint, and leak-detecting (§3) | `python3 -m unittest discover -s scripts -t scripts -p 'check_zig_shard*_test.py'` | exit 0 | P0 | |
-| R4 | Sharded lanes keep the leak verdict (§3) | `make memleak` | exit 0 | P0 | |
-| R5 | Sharded and unsharded verdicts agree (§3) | `AGENTSFLEET_TEST_SHARD_COUNT=1 make test-unit-agentsfleetd` | exit 0 | P0 | |
+| R3 | Lane concurrency preserves attribution and verdict (§5) | `python3 scripts/check_lane_concurrency_test.py` | exit 0 | P0 | |
+| R4 | Leak gate stays green | `make memleak` | exit 0 | P0 | |
+| R5 | Unit lanes stay green | `make test-unit-all` | exit 0 | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
@@ -246,10 +218,11 @@ Generated roots:
 ## Out of Scope
 
 - Generating test-file registration. The reachability gate already detects an unregistered file, names it, and now names the file that should own it; a generator would save one `_ = @import(…)` line, at the cost of a script that writes into production source. The premise that motivated it — a shared import list every branch appends to — did not survive measurement: 75 production modules already own their test partners, so most new test files never touch a shared root.
+- Sharding any test lane. A shard-aware runner was built, proven leak-equivalent, and wired to the daemon unit binary — then removed, because measurement did not support it: 1.44x on the unit lane (17 seconds, floored by one 48s test), no gain available on coverage, and the memleak lane's 14-to-8-minute improvement came entirely from lane concurrency without it. Roughly 300 lines replacing the standard library's leak detector, for 17 seconds, is the wrong trade at these numbers. It becomes the right one only once that one test is addressed; the implementation is in this branch's history.
 - Sharding the integration lane. Real isolation needs one Redis instance per shard, not one instance with per-shard logical databases: `FLUSHALL` is not database-scoped and would let one shard's reset destroy its siblings mid-run, and Redis Pub/Sub is not database-scoped either, so shards would receive each other's messages on any shared channel — which this suite asserts on heavily. That is N containers and N certificates for the smaller half of the win; the datastore-free binaries account for more lane time than the integration suite does.
-- Amortizing the per-test harness setup by sharing Postgres and Redis pools across tests within a shard. Sharding cuts the same wall clock without touching six hundred test bodies; pool sharing is a follow-up once shard counts stop scaling.
-- Trimming the individual slow tests in the tail (`catalog`, `dashboard`, `sse_streaming`). Real, but each needs its own behavioural judgement and none blocks this workstream.
-- Reducing the number of times the daemon unit binary is executed per Pull Request. Merging the unit, coverage, and leak lanes would couple three independent gates; sharding makes each cheap enough that the coupling is not worth buying.
+- Amortizing the integration suite's per-test harness setup by sharing Postgres and Redis pools across tests. The suite's cost is a flat ~0.5s floor per test plus a real tail; both are real, and both need their own measurement before anyone touches six hundred test bodies.
+- Trimming the slow tests: the integration tail (`catalog`, `dashboard`, `sse_streaming`) and, in the unit lane, `workspace_stream_soak_test`'s concurrent churn at 48.1s — roughly 85% of that lane's wall clock and also run under Valgrind. Every way of making it cheaper weakens a concurrency soak, so it needs an explicit decision and its own measurement, not a bundled change.
+- Reducing the number of times the daemon unit binary is executed per Pull Request. Merging the unit, coverage, and leak lanes would couple three independent gates into one verdict, which costs more than it saves.
 - Any change to the `cross-compile` workflow beyond what the cache-prune workflow reclaims.
 
 ---
@@ -278,6 +251,7 @@ Generated roots:
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - Baseline measurements taken before authoring, primary checkout, macOS, with a sibling worktree competing for cores: `make test-integration` 11:18 wall clock; the integration binary alone 614 registered tests, 606 passed, 8 skipped, 375.6s; per-test median 0.522s, p90 1.257s, p99 7.473s, max 21.834s, slowest decile carrying 43.3% of total. Daemon unit binary 2958 registered tests. CI: `memleak` 14 min on a branch's first push against 6 min on later pushes; `test-integration` 6–8 min; Actions cache 54 entries totalling 9.96 GB against a 10 GB limit, with no `memleak` entry under `refs/heads/main`.
   - Gate-flag triage pending: the shard runner replaces the upstream runner's leak detection. Indy approved the structural depth; the FILE SHAPE DECISION and the leak-equivalence evidence are due at PLAN and VERIFY respectively.
+  - Advisory review (Fable, read-only) over every make target, script and workflow. Verified ten of its claims against the files; all held. Acted on here: the `test` aggregator omitted `test-coverage-zig` from its `needs`, so the coverage gate's verdict blocked nothing; four workflows cancelled their own `main` cache-warm runs; `lint.yml` ran the pg-drain checker twice; `bench.yml` uploaded a `.json` glob against a bench that writes `.csv`; `make lint` was referenced in three places and does not exist; `.PHONY` had a duplicate and two omissions. Two of its claims were wrong on inspection and left alone: `build-linux-alpine` is called by two workflows (not orphaned), and `build-dev` is referenced by a founding playbook — though `build-dev` does invoke a `Dockerfile.dev` that does not exist, so it is broken either way and needs a decision rather than a silent delete. Deferred as separate work: the retired `ctl` noun in `lint-apps-ds-ctl`, unfiltered Pull Request triggers on three Zig workflows, the make-target reference sweep's blind spot for `make X` inside `sh -c` strings, `release.yml` having no concurrency group at all, and auto-generating `help` from the `##` comments it already duplicates.
   - Measured before fixing the cached-but-unset global cache path: with a warm local cache, a build against a freshly created global cache directory leaves it at 0 bytes and takes the same wall clock (1.5s against 1.9s, inside noise). Zig puts this build graph's output entirely in the local cache. So the fix is to stop listing the inert path, not to set the environment variable and cache an empty directory — five jobs were listing a directory their make targets never create. The three jobs that do set the variable are left as they are: self-consistent, and only the unit build graph was measured.
   - Orphan audit at Indy's request, across all 80 make targets and 30 scripts (excluding self-definitions, `.PHONY` lines, `make help` echo text, and the checkers that scan every target name generically): four dead entries, all pre-existing. `_ensure-test-bin` was orphaned by M143_004's own refactor — extracting the memleak lane to a script moved the build inline and left the helper uncalled. `_fmt` survives only in closed-spec prose and as a string literal in a checker's test fixture, which is why a naive grep reads it as live. `scripts/check_readme_hero_sync.sh` is a checker with no caller — enforcement in appearance only. `scripts/regen-integration-jwts.mjs` is a one-off tool from a closed milestone. `scripts/scopes.admin` was also flagged; Indy chose to keep it. One false positive: `reachability_test_support.py` is imported without its extension by two test files.
   - Indy, on the proposed registration generator and on Makefile surface: dropped both. The generator's motivating premise did not survive measurement — 75 production modules already own their test partners, so the shared-import-list conflict it was solving is rare — and it would have written into production source to save one line the reachability gate already spells out. Its first implementation modelled reachability with a static import walk and rewrote 38 files before the no-op check caught it, which is the shape of risk it carried. A `sync-test-roots` make target was added and then removed: its only caller was a developer typing it, which the repository's own rule forbids. Net make-target count for this workstream is zero.
