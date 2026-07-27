@@ -32,7 +32,24 @@ class TestLaneGraph(unittest.TestCase):
         makefile = (ROOT / "make/test-integration.mk").read_text()
         self.assertEqual(makefile.count("zig build test-integration"), 3)
         self.assertNotIn("zig build test\n", makefile)
-        self.assertIn("test-integration: _reset-test-db", makefile)
+        self.assertIn("test-integration: $(TEST_STATE_DEP)", makefile)
+
+    def test_integration_reset_is_the_default_dependency(self) -> None:
+        # The reset dependency became a variable so an iterative local loop can
+        # opt out of it. The gate default must still be the full reset, so this
+        # asserts the resolved graph rather than the literal prerequisite: the
+        # indirection is only safe if it resolves the way the old literal read.
+        plan = subprocess.run(
+            ["make", "-n", "test-integration"],
+            cwd=ROOT, capture_output=True, text=True,
+        ).stdout
+        self.assertIn("teardown.sql", plan, "the default integration lane must still reset the database")
+
+        opted_out = subprocess.run(
+            ["make", "-n", "test-integration", "KEEP_TEST_STATE=1"],
+            cwd=ROOT, capture_output=True, text=True,
+        ).stdout
+        self.assertNotIn("teardown.sql", opted_out, "KEEP_TEST_STATE=1 must skip the reset")
 
     def test_private_memleak_helper_has_three_callers(self) -> None:
         makefile = (ROOT / "make/bench.mk").read_text()
