@@ -88,7 +88,14 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r2@sha256:40cbacd00584601a4794471e01cb11942ef5319c0531e4185c54d78733285803
-      options: --privileged
+      # kcov needs exactly two things the default container posture denies, and
+      # nothing else: it calls personality(ADDR_NO_RANDOMIZE) to pin addresses
+      # across runs — a value Docker's default seccomp profile does not carry in
+      # its personality allow-list, so the call returns EPERM — and it drives the
+      # binary under ptrace. `--privileged` bought both by handing the container
+      # every capability plus host device access, which is far more than a job
+      # that checks out branch code should hold.
+      options: --security-opt seccomp=unconfined --cap-add=SYS_PTRACE
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
