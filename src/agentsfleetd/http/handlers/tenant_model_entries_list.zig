@@ -101,7 +101,7 @@ pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
     counters.noteConnection();
     scope.endStageWith(.pool_wait, .{ .pool_result = .acquired });
 
-    var result = view.buildList(hx.alloc, db.conn, tenant_id, limit, after) catch |err| {
+    var result = view.buildList(hx.alloc, db.conn, tenant_id, limit, after, &scope) catch |err| {
         scope.classify(.dependency_error);
         scope.endStage(.sql);
         log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
@@ -109,7 +109,10 @@ pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
         return;
     };
     defer result.deinit(hx.alloc);
-    scope.endStage(.sql);
+    // No stage mark here: `buildList` owns its own internal staging (sql,
+    // secret_project, sql, map) and its last mark closes `map` immediately
+    // before it returns. Marking again would record a near-zero `sql`
+    // observation on every successful read and inflate that stage's count.
 
     respond(hx, &scope, result);
 }
