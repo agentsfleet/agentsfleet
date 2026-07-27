@@ -23,6 +23,7 @@ from __future__ import annotations
 import copy
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -399,6 +400,91 @@ class LibraryCaptureCommandIsNotUniversalGate(unittest.TestCase):
         recipe = text[start:].split("\n\n")[0]
         self.assertIn("BASELINE_REF", recipe)
         self.assertIn("CANDIDATE_REF", recipe)
+
+
+class ClosedEnumsAgreeAcrossRuntimes(unittest.TestCase):
+    """The validator's closed enums must match the Zig schema they mirror.
+
+    This is the one check neither runtime can perform on itself. `library_stages.zig`
+    derives its label arrays from the enums at comptime, so a new member is
+    rendered automatically and every Zig test keeps passing. The validator's
+    lists are hand-maintained TypeScript. Drift is therefore SILENT in both
+    directions until a captured report carries the new value and the validator
+    rejects it — at which point `make capture-library-performance` fails with
+    "stage must be one of ...", and the operator cannot tell whether the capture
+    is broken or the code is.
+
+    Same rule the cross-runtime constant discipline states: a value that exists
+    in two runtimes is named once and verified, never assumed.
+    """
+
+    ZIG_SCHEMA = REPO_ROOT / "src" / "agentsfleetd" / "observability" / "library_stages.zig"
+    VALIDATOR_TS = VALIDATOR
+
+    # Zig enum name -> validator const name.
+    PAIRS = (
+        ("Surface", "SURFACES"),
+        ("Stage", "STAGES"),
+        ("Outcome", "OUTCOMES"),
+        ("Cache", "CACHE_VALUES"),
+        ("PoolResult", "POOL_RESULTS"),
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.zig = cls.ZIG_SCHEMA.read_text()
+        cls.ts = cls.VALIDATOR_TS.read_text()
+
+    def _zig_members(self, enum_name: str) -> set[str]:
+        # Matches both the single-line and multi-line enum forms.
+        match = re.search(
+            rf"pub const {enum_name} = enum \{{(.*?)\}};", self.zig, re.S
+        )
+        self.assertIsNotNone(match, f"Zig enum {enum_name} not found — did it move or get renamed?")
+        body = match.group(1)
+        # `@"error"` is the keyword-escaped member; its tag name is `error`.
+        members = re.findall(r'@?"?([a-z_]+)"?\s*(?:,|$)', body, re.M)
+        return {m for m in members if m}
+
+    def _ts_members(self, const_name: str) -> set[str]:
+        match = re.search(
+            rf"const {const_name} = \[(.*?)\] as const;", self.ts, re.S
+        )
+        self.assertIsNotNone(match, f"validator const {const_name} not found")
+        body = match.group(1)
+        quoted = set(re.findall(r'"([a-z_]+)"', body))
+        # Members referenced through a shared const (V_TIMEOUT / V_CANCELLED)
+        # resolve to their literal, declared once at the top of the file.
+        for ident in re.findall(r"\bV_([A-Z_]+)\b", body):
+            decl = re.search(rf'const V_{ident} = "([a-z_]+)";', self.ts)
+            self.assertIsNotNone(decl, f"V_{ident} referenced but not declared")
+            quoted.add(decl.group(1))
+        return quoted
+
+    def test_every_closed_enum_matches_the_zig_schema(self):
+        for enum_name, const_name in self.PAIRS:
+            with self.subTest(enum=enum_name):
+                zig = self._zig_members(enum_name)
+                ts = self._ts_members(const_name)
+                self.assertEqual(
+                    zig,
+                    ts,
+                    f"{enum_name} (Zig) and {const_name} (validator) disagree. "
+                    f"Only in Zig: {sorted(zig - ts)}. Only in validator: {sorted(ts - zig)}. "
+                    f"A report carrying the missing value would be rejected as malformed.",
+                )
+
+    def test_the_parity_check_can_actually_fail(self):
+        """Guards the guard: the parsers must find real members, or the test
+        above would compare two empty sets and pass forever."""
+        for enum_name, const_name in self.PAIRS:
+            self.assertTrue(self._zig_members(enum_name), f"parsed no Zig members for {enum_name}")
+            self.assertTrue(self._ts_members(const_name), f"parsed no validator members for {const_name}")
+        # Spot-check a known member so a parser that returns garbage is caught.
+        self.assertIn("secret_project", self._zig_members("Stage"))
+        self.assertIn("secret_project", self._ts_members("STAGES"))
+        self.assertIn("error", self._zig_members("PoolResult"))
+        self.assertIn("error", self._ts_members("POOL_RESULTS"))
 
 
 if __name__ == "__main__":
