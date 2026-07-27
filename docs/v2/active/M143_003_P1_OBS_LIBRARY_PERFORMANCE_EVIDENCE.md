@@ -15,12 +15,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 003
 **Date:** Jul 24, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — read improvements need attributable, cardinality-safe evidence and deterministic gates
 **Categories:** Observability (OBS)
 **Batch:** B3 — instruments M143_001 under M139_004 semantics
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m143-library-performance-evidence`
+**Test Baseline:** unit=3172 integration=446
 **Depends on:** M143_001 — exact resource maxima. (M139_004 supplied the telemetry names, units, resources, and cardinality rules this workstream binds to; it merged in #555 and sits in `docs/v2/done/`, so it constrains the work without blocking it. M143_001 is the only live dependency.)
 **Provenance:** LLM-drafted (Codex, Jul 24, 2026) from Oracle second-pass review
 **Canonical architecture:** `docs/architecture/observability.md` §Traces and §Metrics
