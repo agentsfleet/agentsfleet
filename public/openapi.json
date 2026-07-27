@@ -5386,74 +5386,6 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/fleet-libraries/{tier}/{id}": {
-      "get": {
-        "operationId": "get_workspace_fleet_library_entry",
-        "summary": "Get one Fleet library entry",
-        "description": "Returns a single gallery entry in full, including the support-file manifest the paged gallery does not carry.\n\nAn entry that does not exist and one that exists in ANOTHER workspace both answer `404` with `UZ-LIBRARY-007`. Distinguishing them would confirm that an id exists somewhere, to a caller authorized for neither. That makes the route an enumeration oracle over every other workspace's library.",
-        "tags": [
-          "Fleet library"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "tier",
-            "in": "path",
-            "required": true,
-            "description": "Which catalog the entry belongs to. A value outside this set does not route at all — the tier is validated at the router, never passed to a handler as a selector.",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "platform",
-                "tenant"
-              ]
-            }
-          },
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The entry id: a slug for `platform`, a UUIDv7 for `tenant`.",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The Fleet library entry.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FleetLibraryDetailEntry"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}": {
       "get": {
         "operationId": "get_fleet",
@@ -8591,37 +8523,6 @@
             }
           }
         }
-      },
-      "FleetLibraryDetailEntry": {
-        "type": "object",
-        "description": "One Fleet library entry in full — every gallery field plus the support-file manifest the gallery card does not carry. Still never an object-store key, bundle markdown, or support-file content.",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "visibility",
-          "source_ref",
-          "created_at",
-          "requirements",
-          "required_credentials_reasons",
-          "support_files"
-        ],
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/FleetLibraryGalleryEntry"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "support_files": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
-                }
-              }
-            }
-          }
-        ]
       },
       "FleetDetail": {
         "allOf": [
