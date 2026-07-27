@@ -98,7 +98,7 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage for daemon, runner,
 	   echo "→ [zig] kcov component=$$name binary=$$binary"; \
 	   mkdir -p "$$output"; \
 	   rm -f ".tmp/kcov-$$name.rc"; \
-	   ( kcov --clean --include-pattern="$(CURDIR)/src" "$$output" "zig-out/bin/$$binary" \
+	   ( set +e; kcov --clean --include-pattern="$(CURDIR)/src" "$$output" "zig-out/bin/$$binary" \
 	       >".tmp/kcov-$$name.log" 2>&1; echo $$? >".tmp/kcov-$$name.rc" ) & \
 	   names="$$names $$name"; \
 	   inputs="$$inputs $$output"; \
@@ -107,6 +107,7 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage for daemon, runner,
 	 failed=0; \
 	 for name in $$names; do \
 	   rc=$$(cat ".tmp/kcov-$$name.rc" 2>/dev/null || echo 1); \
+	   case "$$rc" in ''|*[!0-9]*) rc=1;; esac; \
 	   if [ "$$rc" -ne 0 ]; then \
 	     echo "✗ Zig coverage component $$name exited $$rc"; tail -n 40 ".tmp/kcov-$$name.log"; failed=1; continue; \
 	   fi; \

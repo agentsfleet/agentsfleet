@@ -66,13 +66,16 @@ _lint_zig_pg_drain:
 # Roster-scoped ghostty-derived discipline (A5 poison + ownership phrase blocking
 # inside audits/zig-discipline-roster.txt; A2 errdefer heuristic advisory), plus
 # the fixture-driven self-tests that prove each check bites in/out of the roster.
-DISCIPLINE_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_zig_discipline*_test.py'
+# Every checker's self-test, not a hand-listed prefix: a narrow pattern meant a
+# new gate's tests sat on disk unrun, which is the same 'enforcement in
+# appearance only' defect this repository deletes dead checkers for.
+SCRIPT_SELF_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_*_test.py'
 
 _lint_zig_discipline:
 	@echo "→ [zig] Checking ghostty-derived A5/A2 discipline (roster-scoped)..."
 	@python3 lint-zig.py --discipline --roster audits/zig-discipline-roster.txt src
 	@echo "→ [zig] Discipline lint self-tests..."
-	@$(DISCIPLINE_TESTS)
+	@$(SCRIPT_SELF_TESTS)
 	@echo "✓ [zig] discipline check + self-tests passed"
 
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
@@ -83,7 +86,7 @@ _lint_zig_discipline:
 # Deliberately NOT folded in: _fmt_check / _zlint_check (tooling, not policy) and
 # check-test-reachability / _lint_zig_test_depth (test structure, and the latter
 # is invoked directly to record a spec's test baseline).
-lint-governance: _lint_zig_pg_drain _lint_zig_discipline _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check _legacy_noun_check _runner_isolation_check  ## Run the repository convention gates
+lint-governance: _lint_zig_pg_drain _lint_zig_discipline _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Run the repository convention gates
 	@echo "✓ [governance] All convention gates passed"
 
 _zig_target_lint:
