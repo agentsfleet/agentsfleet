@@ -154,15 +154,15 @@ Every integration test assumes it owns the database — fixture identifiers are 
 - **Dimension 4.3** — two shards running concurrently cannot observe each other's fixture rows or Redis stream entries → Test `test_shards_are_mutually_invisible`
 - **Dimension 4.4** — a shard whose provisioning fails aborts the lane rather than running against another shard's datastore → Test `test_provisioning_failure_aborts_lane`
 
-### §5 — Lane concurrency and local cost
+### §5 — Lane concurrency and local cost — ✅ DONE
 
 The remaining serial stretches, plus the local costs the lanes impose outside CI.
 
-- **Dimension 5.1** — the coverage lane runs its component binaries under kcov concurrently and merges as before → Test `test_coverage_components_run_concurrently`
-- **Dimension 5.2** — the memleak `lib` lane gates its three binaries concurrently → Test `test_lib_lane_gates_binaries_concurrently`
-- **Dimension 5.3** — the boot-drain lane's infra preparation and migration overlap the component lanes instead of following them → Test `test_boot_drain_overlaps_component_lanes`
-- **Dimension 5.4** — `_clean` removes the cache directory the repository configures, not the ones it abandoned → Test `test_clean_removes_configured_cache`
-- **Dimension 5.5** — the integration lane offers a documented opt-out from the teardown-and-migrate preamble for iterative local loops, defaulting to the current behaviour → Test `test_integration_keep_state_opt_out`
+- **Dimension 5.1** — ✅ DONE — the coverage lane runs its component binaries under kcov concurrently and merges as before → Test `test_coverage_components_run_concurrently`
+- **Dimension 5.2** — ✅ DONE — the memleak `lib` lane gates its three binaries concurrently → Test `test_lib_lane_gates_binaries_concurrently`
+- **Dimension 5.3** — ✅ DONE — the boot-drain lane's infra preparation and migration overlap the component lanes instead of following them → Test `test_boot_drain_overlaps_component_lanes`
+- **Dimension 5.4** — ✅ DONE — `_clean` removes the cache directory the repository configures, not the ones it abandoned → Test `test_clean_removes_configured_cache`
+- **Dimension 5.5** — ✅ DONE — the integration lane offers a documented opt-out from the teardown-and-migrate preamble for iterative local loops, defaulting to the current behaviour → Test `test_integration_keep_state_opt_out`
 
 ## Interfaces
 
