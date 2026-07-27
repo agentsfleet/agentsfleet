@@ -13,12 +13,6 @@ test {
     _ = @import("db/pg_query.zig");
     _ = @import("db/sql_splitter.zig");
     _ = @import("db/sql_splitter_test.zig");
-    _ = @import("db/index_usage_integration_test.zig");
-    _ = @import("db/index_usage_fleet_integration_test.zig");
-    _ = @import("db/index_removal_integration_test.zig");
-    _ = @import("http/handlers/fleet/runners_list_integration_test.zig");
-    _ = @import("db/runner_list_liveness_integration_test.zig");
-    _ = @import("http/handlers/fleets/secret_list_integration_test.zig");
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("config/balance_policy.zig");
@@ -62,51 +56,17 @@ test {
     _ = @import("http/handlers/connectors/oauth2.zig");
     _ = @import("http/handlers/connectors/oauth_status.zig");
     _ = @import("http/handlers/connectors/registry.zig");
-    _ = @import("http/handlers/connectors/registry_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/callback.zig");
     _ = @import("http/handlers/connectors/oauth_refresh.zig");
     _ = @import("http/handlers/connectors/zoho/callback.zig");
     _ = @import("http/handlers/connectors/jira/callback.zig");
     _ = @import("http/handlers/connectors/linear/callback.zig");
     _ = @import("http/handlers/connectors/github/callback.zig");
-    _ = @import("http/handlers/connectors/github/callback_integration_test.zig");
-    _ = @import("http/handlers/connectors/oauth_providers_integration_test.zig");
-    _ = @import("http/handlers/connectors/slack/oauth_callback_integration_test.zig");
-    _ = @import("http/handlers/connectors/slack/events_integration_test.zig");
-    _ = @import("http/handlers/ingress/github_integration_test.zig");
-    _ = @import("http/handlers/ingress/qstash_integration_test.zig");
-    _ = @import("http/handlers/connectors/slack/outbound_integration_test.zig");
-    _ = @import("http/handlers/connectors/slack/thread_refetch_integration_test.zig");
-    _ = @import("http/handlers/connectors/slack/channel_memory_integration_test.zig");
     _ = @import("auth/crypto/rs256_sign.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/schema_ahead_migration_test.zig");
-    _ = @import("fleet/control_plane_integration_test.zig");
-    _ = @import("fleet/control_plane_policy_integration_test.zig");
-    _ = @import("fleet/control_plane_grant_integration_test.zig");
-    _ = @import("fleet/event_lifecycle_integration_test.zig");
-    _ = @import("fleet/budget_integration_test.zig");
-    _ = @import("fleet/budget_gate_integration_test.zig");
-    _ = @import("fleet/event_lifecycle_reclaim_integration_test.zig");
-    _ = @import("fleet/renewal_integration_test.zig");
-    _ = @import("fleet/service_renew_integration_test.zig");
     _ = @import("fleet/service_token_splits_wire_test.zig");
-    _ = @import("fleet/liveness_sweeper_integration_test.zig");
-    _ = @import("http/fleet_operator_integration_test.zig");
     _ = @import("http/stream_registry.zig");
-    _ = @import("http/fleet_runner_events_integration_test.zig");
-    _ = @import("http/runner_enrollment_integration_test.zig");
-    _ = @import("http/route_trace_integration_test.zig");
-    _ = @import("http/secrets_json_metadata_integration_test.zig");
-    _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
-    _ = @import("http/library_read_bounds_integration_test.zig");
-    _ = @import("http/library_body_ceiling_integration_test.zig");
-    _ = @import("http/library_page_bounds_integration_test.zig");
-    _ = @import("http/handlers/model_library_page_integration_test.zig");
-    _ = @import("http/handlers/library/gallery_keyset_integration_test.zig");
-    _ = @import("http/tenant_model_entries_integration_test.zig");
-    _ = @import("http/user_preferences_integration_test.zig");
-    _ = @import("http/workspace_onboarding_integration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("fleet_runtime/webhook_verify.zig");
@@ -116,8 +76,6 @@ test {
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
     _ = @import("session/session_store_redis_proto_test.zig");
-    _ = @import("session/session_store_redis_integration_test.zig");
-    _ = @import("session/session_store_redis_ttl_integration_test.zig");
     _ = @import("events/bus.zig");
     _ = @import("events/subscription_hub.zig");
     _ = @import("events/activity_channel.zig");
@@ -138,18 +96,13 @@ test {
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
-    _ = @import("state/tenant_model_entries_integration_test.zig");
-    _ = @import("state/secret_reference_txn_integration_test.zig");
     _ = @import("state/user_preferences.zig");
     _ = @import("state/workspace_onboarding.zig");
     _ = @import("state/model_rate_cache.zig");
-    _ = @import("state/model_rate_cache_integration_test.zig");
     _ = @import("state/model_rate_cache_key_test.zig");
     _ = @import("state/model_library_cache.zig");
     _ = @import("state/model_library_cache_test.zig");
     _ = @import("state/model_catalogue_revision.zig");
-    _ = @import("state/model_catalogue_revision_integration_test.zig");
-    _ = @import("state/model_library_seed_integration_test.zig");
     _ = @import("state/account_teardown.zig");
     _ = @import("state/account_teardown_test.zig");
     _ = @import("state/heroku_names.zig");
@@ -184,16 +137,8 @@ test {
     // Persistent Fleet Memory — role isolation + selection policy + adapter write-path tests.
     _ = @import("memory/fleet_memory_role_test.zig");
     _ = @import("memory/fleet_memory_test.zig");
-    _ = @import("memory/fleet_memory_integration_test.zig");
     // Fleet CRUD, activity, router
     _ = @import("http/handlers/fleets/api.zig");
-    _ = @import("http/handlers/fleets/api_integration_test.zig");
-    _ = @import("http/handlers/fleets/get_integration_test.zig");
-    _ = @import("http/handlers/fleets/events_cost_integration_test.zig");
-    _ = @import("http/handlers/fleets/list_aggregate_integration_test.zig");
-    _ = @import("http/handlers/fleets/patch_if_match_integration_test.zig");
-    _ = @import("http/handlers/memory/memory_forget_integration_test.zig");
-    _ = @import("http/handlers/library/catalog_etag_integration_test.zig");
     _ = @import("http/handlers/library/library_cursor_test.zig");
     _ = @import("http/handlers/library/catalogue_key.zig");
     _ = @import("http/handlers/library/query.zig");
@@ -207,20 +152,13 @@ test {
     _ = @import("http/handlers/fleets/create_install_steps_lifecycle_test.zig");
     _ = @import("http/handlers/fleets/list.zig");
     _ = @import("http/handlers/fleets/patch.zig");
-    _ = @import("http/handlers/fleets/patch_body_fields_integration_test.zig");
-    _ = @import("http/handlers/fleets/patch_concurrent_integration_test.zig");
-    _ = @import("http/handlers/fleets/cron_lifecycle_integration_test.zig");
     _ = @import("http/handlers/fleets/delete.zig");
-    _ = @import("http/handlers/fleet_bundles/api_integration_test.zig");
     _ = @import("http/handlers/fleet_bundles/resolve.zig");
     // Two-tier template onboarding + gallery (M103)
     _ = @import("http/handlers/library/onboard.zig");
     _ = @import("http/handlers/library/gallery.zig");
-    _ = @import("http/handlers/library/onboard_integration_test.zig");
     _ = @import("http/handlers/library/catalog.zig");
     _ = @import("http/handlers/library/entry_view.zig");
-    _ = @import("http/handlers/library/catalog_integration_test.zig");
-    _ = @import("http/handlers/library/catalog_patch_integration_test.zig");
     _ = @import("fleet_library/library_store.zig");
     _ = @import("fleet_library/importer.zig");
     _ = @import("fleet_library/requirement_limits.zig");
@@ -228,10 +166,7 @@ test {
     _ = @import("fleet_library/github_net.zig");
     // Fleet execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)
     _ = @import("state/fleet_telemetry_store.zig");
-    _ = @import("http/handlers/workspaces/dashboard_integration_test.zig");
-    _ = @import("http/handlers/workspaces/create_integration_test.zig");
     _ = @import("http/handlers/tenant_workspaces.zig");
-    _ = @import("http/handlers/tenant_workspaces_integration_test.zig");
     _ = @import("http/router_test.zig");
     // Harness HTTP message-type unit tests (relocated from test_harness.zig)
     _ = @import("http/test_harness_test.zig");
@@ -240,40 +175,24 @@ test {
     _ = @import("http/handlers/api_keys/fleet.zig");
     _ = @import("http/handlers/api_keys/tenant.zig");
     _ = @import("http/handlers/api_keys/list.zig");
-    _ = @import("http/handlers/api_keys/tenant_integration_test.zig");
     _ = @import("http/handlers/fleet/runners_list.zig");
     _ = @import("http/handlers/fleet/runners_list_test.zig");
-    _ = @import("http/handlers/tenant_billing_integration_test.zig");
     _ = @import("http/handlers/model_library.zig");
     _ = @import("http/handlers/model_library_page.zig");
     _ = @import("cmd/serve_caches.zig");
-    _ = @import("http/handlers/model_library_integration_test.zig");
     _ = @import("http/handlers/admin/model_library_admin.zig");
-    _ = @import("http/handlers/admin/model_library_admin_integration_test.zig");
     _ = @import("http/handlers/admin/model_library_admin_delete_guard_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");
-    _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
     _ = @import("http/handlers/webhooks/github.zig");
     _ = @import("fleet_runtime/notifications/grant_notifier.zig");
     _ = @import("http/handlers/fleets/messages.zig");
     // Chat ingress — POST /v1/.../fleets/{id}/messages
-    _ = @import("http/handlers/fleets/messages_integration_test.zig");
-    _ = @import("http/handlers/schedules/api_integration_test.zig");
-    _ = @import("http/handlers/memory/memories_integration_test.zig");
     _ = @import("http/handlers/runner/memory_fencing_test.zig");
-    _ = @import("http/handlers/runner/credentials_mint_integration_test.zig");
-    _ = @import("http/handlers/runner/memory_loop_integration_test.zig");
     _ = @import("http/handlers/runner/bundles.zig");
-    _ = @import("http/handlers/fleets/events_integration_test.zig");
     // The failure cause is durable end to end: report write → column → envelope.
-    _ = @import("http/handlers/fleets/events_failure_detail_integration_test.zig");
-    _ = @import("http/handlers/approvals/inbox_integration_test.zig");
-    _ = @import("http/handlers/fleets/sse_streaming_integration_test.zig");
-    _ = @import("http/handlers/fleets/backpressure_integration_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
     // RLS tenant-context resolution (use-after-free regression on the null-tenant lookup)
-    _ = @import("http/handlers/tenant_context_integration_test.zig");
     // Applied-migration-version set (extracted from pool_migrations for FLL)
     _ = @import("db/migration_versions.zig");
     _ = @import("types/id_format.zig");
@@ -306,5 +225,4 @@ test {
     _ = @import("cmd/doctor_render.zig");
     _ = @import("cmd/preflight_test.zig");
     _ = @import("cmd/serve_shutdown.zig");
-    _ = @import("cmd/serve_lifecycle_integration_test.zig");
 }

@@ -132,8 +132,7 @@ test "DbRole carries no worker variant" {
 
 fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, conn: *Conn } {
     // DB-backed integration tests must be opt-in via TEST_DATABASE_URL.
-    // This avoids accidentally running against unrelated DATABASE_URL values
-    // in non-DB test lanes (e.g. CI's _test-integration-agentsfleetd target).
+    // This prevents unit lanes from using an unrelated DATABASE_URL value.
     const url = env.testLiveValue("TEST_DATABASE_URL") orelse return null;
 
     // parseUrl allocates host/auth strings that must outlive the pool.
