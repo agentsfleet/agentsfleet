@@ -34,6 +34,7 @@
 //! self-skips otherwise.
 
 const std = @import("std");
+const pg = @import("pg");
 
 const base = @import("secrets_json_integration_test.zig");
 const fixtures = @import("library_bounds_test_fixtures.zig");
@@ -41,6 +42,11 @@ const counters = @import("../observability/library_read_counters.zig");
 const crypto_store = @import("../secrets/crypto_store.zig");
 const fixtures_provider = @import("../db/test_fixtures_provider.zig");
 const stages = @import("../observability/library_stages.zig");
+
+/// Ceiling on the drain loop so a pool that never refuses cannot spin forever.
+/// Far above any plausible pool size — the loop exits on the first refusal in
+/// practice, and this only bounds the pathological case.
+const MAX_POOL_DRAIN: usize = 256;
 
 /// Stages the tenant registry read must record on its success path, with the
 /// EXACT number of observations each makes. Named as a table rather than
@@ -223,6 +229,69 @@ test "integration: test_library_deterministic_resource_gate — a rejected reque
     // No pool slot was spent, so no pool result was recorded — the rejection
     // really did happen before the acquire rather than after it.
     for (snap.pool_results) |v| try std.testing.expectEqual(@as(u64, 0), v);
+
+    stages.resetForTest();
+}
+
+test "integration: test_library_deterministic_resource_gate — a saturated pool reaches the client as a typed timeout outcome" {
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // Failure injection: hold EVERY connection the harness pool owns, so the
+    // handler's own acquire cannot succeed and must take its timeout path.
+    // Draining by acquiring-until-failure rather than by a hardcoded count, so
+    // the injection survives a change to the pool's default size.
+    //
+    // This is the branch `hx.db()` was changed to preserve, exercised through
+    // the real router and middleware rather than against the pool in isolation:
+    // `pool_bounded_progress_integration_test.zig` proves `pg.Pool` produces
+    // `error.Timeout`, and this proves the handler turns that into the outcome
+    // an operator reads.
+    var held: std.ArrayList(*pg.Conn) = .empty;
+    defer {
+        for (held.items) |conn| h.releaseConn(conn);
+        held.deinit(alloc);
+    }
+    while (held.items.len < MAX_POOL_DRAIN) {
+        const conn = h.acquireConn() catch break;
+        try held.append(alloc, conn);
+    }
+    // Non-vacuity: if nothing was held, the request below would simply succeed
+    // and this test would pass while injecting nothing.
+    try std.testing.expect(held.items.len > 0);
+
+    stages.resetForTest();
+
+    const r = try (try h.get(fixtures.MODELS_PATH).bearer(base.TOKEN_OPERATOR)).send();
+    defer r.deinit();
+
+    const snap = stages.snapshot();
+    // Exactly one outcome, and it names the saturated pool rather than a
+    // generic internal error — the distinction that decides whether the on-call
+    // adds capacity or goes looking at the datastore.
+    try std.testing.expectEqual(@as(u64, 1), totalOutcomes(snap));
+    try std.testing.expectEqual(@as(u64, 1), outcomeCount(snap, .timeout));
+    try std.testing.expectEqual(@as(u64, 0), outcomeCount(snap, .ok));
+
+    // The pool_wait stage recorded the timeout, and no connection was acquired.
+    try std.testing.expectEqual(
+        @as(u64, 1),
+        snap.pool_results[@intFromEnum(stages.PoolResult.timeout)],
+    );
+    try std.testing.expectEqual(
+        @as(u64, 0),
+        snap.pool_results[@intFromEnum(stages.PoolResult.acquired)],
+    );
+    try std.testing.expectEqual(@as(u64, 1), stageCount(snap, .pool_wait));
+    // Stages past the acquire never ran — the read died at the pool, and the
+    // table must not fabricate spans for work that never happened.
+    try std.testing.expectEqual(@as(u64, 0), stageCount(snap, .sql));
+    try std.testing.expectEqual(@as(u64, 0), stageCount(snap, .serialize));
 
     stages.resetForTest();
 }
