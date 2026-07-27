@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 006
 **Date:** Jul 27, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — tooling; no product surface changes, but every branch pays the current cost on every push.
 **Categories:** INFRA
 **Batch:** B1 — independent of the M143 product workstreams; touches only test wiring and Continuous Integration (CI).
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m143-test-lane-concurrency
+**Test Baseline:** unit=3056 integration=405
 **Depends on:** M143_004 (established the split unit/integration roots, the kcov coverage lane, and the extracted memleak lane script this workstream builds on)
 **Provenance:** agent-generated (measurement-driven; profiling data in Discovery)
 **Canonical architecture:** `docs/architecture/testing.md`
