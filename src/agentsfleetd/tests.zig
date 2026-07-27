@@ -223,6 +223,7 @@ test {
     _ = @import("http/handlers/library/catalog_patch_integration_test.zig");
     _ = @import("fleet_library/library_store.zig");
     _ = @import("fleet_library/importer.zig");
+    _ = @import("fleet_library/requirement_limits.zig");
     _ = @import("fleet_library/github_source.zig");
     _ = @import("fleet_library/github_net.zig");
     // Fleet execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)

@@ -28,6 +28,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const library_store = @import("../../../fleet_library/library_store.zig");
 const github_source = @import("../../../fleet_library/github_source.zig");
 const sql = @import("../../../fleet_library/sql.zig");
+const requirement_limits = @import("../../../fleet_library/requirement_limits.zig");
 const catalog = @import("catalog.zig");
 const clock = @import("common").clock;
 const log = @import("log").scoped(.library_catalog);
@@ -53,6 +54,8 @@ const MSG_NAME_INVALID = "A name is required, and must be at most 200 characters
 const MSG_SOURCE_REPO_INVALID = "A repository must be owner/repo, using letters, digits, '.', '-' or '_'";
 const MSG_SOURCE_REF_INVALID = "A ref must be a branch or tag name, using letters, digits, '.', '-' or '_'";
 const MSG_REASONS_INVALID = "required_credentials_reasons must be an object mapping credential names to strings";
+const MSG_REASONS_TOO_MANY = "required_credentials_reasons carries more entries than a fleet may declare credentials";
+const MSG_REASON_TOO_LONG = "A credential name, or its reason copy, is longer than the install gate accepts";
 const MSG_PUBLISH_WITHOUT_BUNDLE = "This entry has no bundle. Fetch it from its repository first, then publish.";
 const MSG_ROW_STALE = "This catalog entry changed since you loaded it. Refresh to see the latest, then re-apply your edit.";
 
@@ -172,12 +175,24 @@ fn validIdentity(hx: Hx, body: PatchBody) bool {
             hx.fail(ec.ERR_INVALID_REQUEST, MSG_REASONS_INVALID);
             return false;
         }
+        // Bounded as well as well-shaped. This copy is operator-written text that
+        // §3's amended summary carries on every gallery card, so its size is part
+        // of the page's size; an object of strings with no ceiling is exactly the
+        // unbounded field a page-size invariant cannot be stated against.
+        requirement_limits.validateReasonCount(reasons.object.count()) catch {
+            hx.fail(ec.ERR_INVALID_REQUEST, MSG_REASONS_TOO_MANY);
+            return false;
+        };
         var it = reasons.object.iterator();
         while (it.next()) |kv| {
             if (kv.value_ptr.* != .string) {
                 hx.fail(ec.ERR_INVALID_REQUEST, MSG_REASONS_INVALID);
                 return false;
             }
+            requirement_limits.validateReason(kv.key_ptr.*, kv.value_ptr.string) catch {
+                hx.fail(ec.ERR_INVALID_REQUEST, MSG_REASON_TOO_LONG);
+                return false;
+            };
         }
     }
     return true;
