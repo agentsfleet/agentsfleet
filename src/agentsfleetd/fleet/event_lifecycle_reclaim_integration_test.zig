@@ -3,7 +3,6 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const protocol = @import("contract").protocol;
 const queue_consts = @import("../queue/constants.zig");
-const redis_fleet = @import("../queue/redis_fleet.zig");
 const event_rows = @import("event_rows.zig");
 const reclaim_sweeper = @import("reclaim_sweeper.zig");
 const base = @import("event_lifecycle_integration_test.zig");
@@ -187,7 +186,7 @@ test "terminal entry re-delivered from the PEL is re-acked, never re-executed" {
     try base.expectRow(conn, base.AGENTSFLEET_REACK, event_id, event_rows.STATUS_PROCESSED, "");
 }
 
-test "consumer identity is stable: repeated idle probes leave one consumer in the group" {
+test "consumer identity is stable: repeated no-lease probes reuse one consumer in the group" {
     var env = base.setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -196,11 +195,19 @@ test "consumer identity is stable: repeated idle probes leave one consumer in th
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, base.FLEET_IDLE, "lifecycle-idle", base.CONFIG_PLAIN, "4");
-    try redis_fleet.ensureFleetConsumerGroup(&h.queue, base.FLEET_IDLE);
+    // Under ready-first discovery a fleet holding no work is never examined, so
+    // an empty fleet cannot prove anything about consumer identity — no poll
+    // ever issues XREADGROUP against it. Park ONE gated event instead: the
+    // fleet stays in the readiness index, every poll re-reads the pending entry
+    // through XREADGROUP, and no lease is ever issued. 25 real probes against
+    // one group is the case the retired per-probe `worker-{host}-{ts}` minting
+    // would fail — it left 25 consumers where the stable identity leaves one.
+    try base.seedFleetWithConfig(conn, base.FLEET_IDLE, "lifecycle-idle", base.CONFIG_GATED_ALL, "4");
+    const event_id = try base.publishEvent(h, base.FLEET_IDLE);
+    defer h.queue.alloc.free(event_id);
 
     var i: usize = 0;
-    while (i < 25) : (i += 1) _ = try base.pollLease(h);
+    while (i < 25) : (i += 1) try std.testing.expect(!try base.pollLease(h));
     try std.testing.expectEqual(@as(usize, 1), try base.consumerCount(h, base.FLEET_IDLE));
 }
 
@@ -220,7 +227,8 @@ test "reclaim sweep recovers a stranded delivery from a dead consumer and re-lea
     try base.deliverToDeadConsumer(h, base.AGENTSFLEET_STRAND);
     try base.forceIdle(h, base.AGENTSFLEET_STRAND, event_id, base.FORCED_IDLE_MS);
 
-    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, std.testing.allocator);
+    var sweep_cursor = reclaim_sweeper.Cursor{};
+    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, std.testing.allocator, &sweep_cursor);
     try std.testing.expect(stats.reclaimed_entries >= 1);
     try std.testing.expect(try base.pollLease(h));
     try base.expectRow(conn, base.AGENTSFLEET_STRAND, event_id, event_rows.STATUS_RECEIVED, "");
@@ -241,7 +249,8 @@ test "reclaim sweep never touches an entry inside the lease window" {
     defer h.queue.alloc.free(event_id);
     try base.deliverToDeadConsumer(h, base.AGENTSFLEET_STRAND);
 
-    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, std.testing.allocator);
+    var sweep_cursor = reclaim_sweeper.Cursor{};
+    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, std.testing.allocator, &sweep_cursor);
     try std.testing.expectEqual(@as(i64, 0), stats.reclaimed_entries);
     try std.testing.expectEqual(@as(i64, 1), try base.pendingCount(h, base.AGENTSFLEET_STRAND));
 }

@@ -18,27 +18,6 @@
 //! `put`, `remove`, `removeMatching`, and `clear` mutate and need exclusive
 //! access.
 //!
-//! ## Ownership: one departure, one notification
-//!
-//! `V` may own memory. The table never frees anything itself, so the rule it
-//! offers instead is exhaustive and singular: **every entry that leaves the
-//! table is passed to `Context.evicted` exactly once**, whatever removed it —
-//! bucket overflow, an overwrite of its own key, reuse of its expired slot,
-//! `remove`, `removeMatching`, a `get` that reaped it, or `clear`. A consumer
-//! whose `V` is a heap slice frees it there and nowhere else.
-//!
-//! That is why `put` returns nothing. An earlier shape returned the displaced
-//! entry AND fired the hook on the overflow path only, so a consumer had two
-//! channels reporting one event on one path and no channel at all on four
-//! others — an owner reading the return leaked on every same-key refresh, which
-//! is the most common write a time-to-live cache makes. Callers that want to
-//! observe pressure declare `evicted`; there is no second way to learn it, so
-//! there is no way to double-free by using both.
-//!
-//! `peek` is the one departure-free reader: it declines to return an expired
-//! entry but leaves it resident, so it stays safe under a shared lock. The
-//! entry is released later, by whatever mutating call reaches it first.
-//!
 //! ## Attribution
 //!
 //! The bucket-and-lengths layout, in-bucket LRU by rotation, and the optional
@@ -49,14 +28,17 @@
 //! an already-uniform key is from Bun's `src/runtime/api/bun/SSLContextCache.zig`
 //! — MIT, Copyright (c) Oven. Applied by consumers in their `Context.hash`.
 //!
-//! Per-entry expiry, expired-slot reuse, `peek`, `removeMatching`, and the
-//! exhaustive release rule above are not in either upstream.
+//! Per-entry expiry, expired-slot reuse, `peek`, `removeMatching`, and
+//! `sweepExpired` are not in either upstream.
 
 const std = @import("std");
 
 /// Expiry for entries that live until something explicitly removes them.
 /// `put(k, v, NEVER_EXPIRES)` is the no-time-bound case.
 pub const NEVER_EXPIRES: i64 = std.math.maxInt(i64);
+
+/// Optional `Context` declaration called whenever an entry leaves the table.
+const EVICTION_HOOK = "evicted";
 
 pub const Options = struct {
     /// Number of buckets. Power of two — the index is a mask, not a modulo.
@@ -73,7 +55,7 @@ pub const Options = struct {
 ///   - `fn eql(*const Context, K, K) bool`
 ///
 /// and may optionally declare `fn evicted(*const Context, K, V) void`, called
-/// once for every entry that leaves the table (see §Ownership above).
+/// whenever an entry leaves the table by eviction or `clear`.
 pub fn CacheTable(
     comptime K: type,
     comptime V: type,
@@ -102,12 +84,16 @@ pub fn CacheTable(
         context: Context,
 
         pub fn init(context: Context) Self {
-            // SAFETY: a slot is only ever read below its bucket's recorded
-            // length, and reaching that length means a real entry was written
-            // there — `lengths` starts at zero, so nothing is readable until a
-            // `put` writes it. Zeroing `buckets` would cost a megabyte-scale
-            // memset at startup to establish something no read depends on.
-            return .{ .buckets = undefined, .lengths = @splat(0), .context = context };
+            return .{
+                // SAFETY: a slot is only ever read below its bucket's recorded
+                // length, and every length starts at zero, so no read can reach
+                // an entry that was never written. Zeroing the storage would
+                // cost a table-sized memset to establish what no read depends
+                // on, and `Entry` has no meaningful zero for a generic K/V.
+                .buckets = undefined,
+                .lengths = @splat(0),
+                .context = context,
+            };
         }
 
         /// The stored value for `key`, or null when absent or expired.
@@ -117,9 +103,7 @@ pub fn CacheTable(
         /// must survive eviction pressure wants `get`.
         ///
         /// `now_ms` is a parameter rather than a clock read so expiry boundaries
-        /// are provable without sleeping. Its epoch is the consumer's choice;
-        /// a monotonic source is the safe one, since a wall clock stepping
-        /// backwards resurrects expired entries.
+        /// are provable without sleeping.
         pub fn peek(self: *const Self, key: K, now_ms: i64) ?V {
             const idx = self.bucketIndex(key);
             const len = self.lengths[idx];
@@ -136,8 +120,8 @@ pub fn CacheTable(
 
         /// The stored value for `key`, promoting it to most-recently-used.
         ///
-        /// Mutates, so it needs exclusive access. An expired entry is released
-        /// on the way past rather than left to be re-read.
+        /// Mutates, so it needs exclusive access. An expired entry is dropped on
+        /// the way past rather than left to be re-read.
         pub fn get(self: *Self, key: K, now_ms: i64) ?V {
             const idx = self.bucketIndex(key);
             const len = self.lengths[idx];
@@ -156,34 +140,51 @@ pub fn CacheTable(
             return null;
         }
 
-        /// Store `key`'s value until `expires_at_ms`.
+        /// Store `key`'s value until `expires_at_ms`, returning any live entry
+        /// evicted to make room.
         ///
         /// Reuses the key's own entry, then any expired one, before evicting
         /// anything live — so an expired entry never costs a live one its slot.
-        /// Whichever entry gives up its slot is released first; see §Ownership.
-        pub fn put(self: *Self, key: K, value: V, expires_at_ms: i64, now_ms: i64) void {
+        ///
+        /// The displaced entry — whether it was this key's previous value, an
+        /// expired neighbour, or the evicted least-recently-used one — is passed
+        /// to `Context.evicted` if declared. A returned entry has therefore
+        /// already been released: read its `key`, never its `value`.
+        pub fn put(self: *Self, key: K, value: V, expires_at_ms: i64, now_ms: i64) ?Entry {
             const idx = self.bucketIndex(key);
             const len = self.lengths[idx];
             const entry: Entry = .{ .key = key, .value = value, .expires_at_ms = expires_at_ms };
 
-            for (self.buckets[idx][0..len], 0..) |*slot, i| {
-                const reusable = self.context.eql(key, slot.key) or now_ms >= slot.expires_at_ms;
-                if (!reusable) continue;
-                // Refreshing a key's own entry displaces the old value just as
-                // surely as evicting a stranger's does.
-                self.release(slot.*);
-                slot.* = entry;
+            // The key's own entry MUST win over an expired stranger: reusing an
+            // expired slot that sits earlier in the bucket would leave the key's
+            // live entry alive behind it — two entries for one key, and a later
+            // `remove` (which drops the first match) could keep the stale one
+            // answering after an invalidation.
+            var expired_idx: ?usize = null;
+            const reuse: ?usize = for (self.buckets[idx][0..len], 0..) |*slot, i| {
+                if (self.context.eql(key, slot.key)) break i;
+                if (expired_idx == null and now_ms >= slot.expires_at_ms) expired_idx = i;
+            } else expired_idx;
+
+            if (reuse) |i| {
+                // The occupant is dropped here, not overwritten silently: for a
+                // value that owns memory, refreshing a key would otherwise leak
+                // its previous body on every single write.
+                self.release(self.buckets[idx][i]);
+                self.buckets[idx][i] = entry;
                 rotateOnce(self.buckets[idx][i..len]);
-                return;
+                return null;
             }
 
             if (len < opts.bucket_size) {
                 self.buckets[idx][len] = entry;
                 self.lengths[idx] = len + 1;
-                return;
+                return null;
             }
 
-            self.release(rotateIn(&self.buckets[idx], entry));
+            const evicted = rotateIn(&self.buckets[idx], entry);
+            self.release(evicted);
+            return evicted;
         }
 
         /// Drop `key`'s entry. True when one was present, expired or not.
@@ -242,9 +243,9 @@ pub fn CacheTable(
             return removed;
         }
 
-        /// Drop everything, releasing each entry.
+        /// Drop everything. Fires `Context.evicted` for each entry if declared.
         pub fn clear(self: *Self) void {
-            for (&self.buckets, self.lengths) |*bucket, len| {
+            for (self.buckets, self.lengths) |bucket, len| {
                 for (bucket[0..len]) |entry| self.release(entry);
             }
             self.lengths = @splat(0);
@@ -253,7 +254,7 @@ pub fn CacheTable(
         /// Live (unexpired) entries. Walks the table — tests and gauges only.
         pub fn count(self: *const Self, now_ms: i64) usize {
             var live: usize = 0;
-            for (&self.buckets, self.lengths) |*bucket, len| {
+            for (self.buckets, self.lengths) |bucket, len| {
                 for (bucket[0..len]) |entry| {
                     if (now_ms < entry.expires_at_ms) live += 1;
                 }
@@ -263,15 +264,6 @@ pub fn CacheTable(
 
         fn bucketIndex(self: *const Self, key: K) usize {
             return @intCast(self.context.hash(key) & INDEX_MASK);
-        }
-
-        /// The single choke point for "this entry is gone". Every removal,
-        /// overwrite, and eviction routes through here, so a consumer whose `V`
-        /// owns memory frees it in exactly one place.
-        fn release(self: *Self, entry: Entry) void {
-            if (comptime @hasDecl(Context, "evicted")) {
-                self.context.evicted(entry.key, entry.value);
-            }
         }
 
         /// Compacts the entry at `i` out of its bucket, preserving LRU order of
@@ -286,6 +278,16 @@ pub fn CacheTable(
                 self.buckets[idx][i + 1 .. len],
             );
             self.lengths[idx] = len - 1;
+        }
+
+        /// The single exit an entry can leave by. Every drop, overwrite, and
+        /// eviction routes here, so a `Context` whose values own heap memory has
+        /// exactly one place to free them and cannot leak through a path the
+        /// table forgot to wire up.
+        fn release(self: *Self, entry: Entry) void {
+            if (comptime @hasDecl(Context, EVICTION_HOOK)) {
+                self.context.evicted(entry.key, entry.value);
+            }
         }
     };
 }

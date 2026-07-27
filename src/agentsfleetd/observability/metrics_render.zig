@@ -153,6 +153,18 @@ fn appendSignupFamilies(writer: anytype, s: mc.Snapshot) !void {
     );
 }
 
+/// Lease-poll cost and readiness-index health. Every family here is global and
+/// wholly unlabelled, so nothing in this block can create a series per fleet,
+/// workspace, tenant, or runner. Every value comes from the in-memory snapshot —
+/// the readiness depth is the sweeper's sample, never a scrape-time Redis read.
+fn appendLeasePollFamilies(writer: anytype, s: mc.Snapshot) !void {
+    try appendMetric(writer, mc.LEASE_POLLS_NAME, S_COUNTER, mc.LEASE_POLLS_HELP, s.lease_polls_total);
+    try appendMetric(writer, mc.CANDIDATES_SCANNED_NAME, S_COUNTER, mc.CANDIDATES_SCANNED_HELP, s.lease_poll_candidates_scanned_total);
+    try appendMetric(writer, mc.DB_ROUNDTRIPS_NAME, S_COUNTER, mc.DB_ROUNDTRIPS_HELP, s.lease_poll_db_roundtrips_total);
+    try appendMetric(writer, mc.READY_DEPTH_NAME, S_GAUGE, mc.READY_DEPTH_HELP, s.fleet_ready_depth);
+    try appendMetric(writer, mc.READY_WRITE_FAILURES_NAME, S_COUNTER, mc.READY_WRITE_FAILURES_HELP, s.fleet_ready_write_failures_total);
+}
+
 /// Redis request-path pool — emitted only when a Pool has been registered
 /// (early-boot scrapes pre-registration emit no lines; downstream scrapers
 /// treat absent series as zero, matching the no-pool-yet reality).
@@ -191,6 +203,7 @@ pub fn renderPrometheus(
     // renders an execution block.
     try appendMetric(writer, "agentsfleet_fleet_triggered_total", S_COUNTER, "Total fleet webhook triggers accepted.", s.fleet_triggered_total);
 
+    try appendLeasePollFamilies(writer, s);
     try appendRedisPoolFamilies(writer);
     try msm.renderPrometheus(writer);
     // Per-runner failure metrics (pushed in on each runner report).

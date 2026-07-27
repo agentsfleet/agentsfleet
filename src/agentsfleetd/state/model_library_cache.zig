@@ -197,7 +197,12 @@ pub const Cache = struct {
         // hook decrements. Both orders total the same; this one never
         // transiently under-counts.
         self.acct.bytes += owned.len;
-        self.table.put(key, owned, now_ms + TTL_MS, now_ms);
+        // The displaced entry is discarded: `CacheTable` has already released it
+        // through `Context.evicted`, which is where this cache frees its payloads
+        // and decrements `acct`. Reading the returned value would be a use after
+        // free; its only legitimate use is observing pressure, which `acct` and
+        // the gauges already cover.
+        _ = self.table.put(key, owned, now_ms + TTL_MS, now_ms);
         return true;
     }
 

@@ -18,6 +18,34 @@ pub const xautoclaim_count = "1";
 pub const fleet_stream_prefix = "fleet:";
 pub const fleet_stream_suffix = ":events";
 
+/// Scratch width every caller sizes its stream-key buffer to. Comfortably
+/// exceeds prefix + a canonical 36-char UUID + suffix (49 bytes); the slack
+/// absorbs the non-UUID fleet ids test fixtures use.
+pub const fleet_stream_key_buf_len: usize = 128;
+
+/// Build a fleet's event-stream key into `buf`. Single-sourced here rather than
+/// per call site: the producer in `redis_fleet.zig` and every consumer must
+/// agree byte-for-byte on this key, and the producer previously built it from
+/// its own inline literal (RULE UFS).
+pub fn fleetStreamKey(buf: []u8, fleet_id: []const u8) ![]const u8 {
+    // discipline: ok — returns a borrowed view into `buf` (bufPrint), not owned
+    // memory, so neither ownership phrase applies. Same shape as
+    // `events/activity_channel.zig`'s channel formatter.
+    return std.fmt.bufPrint(buf, "{s}{s}{s}", .{ fleet_stream_prefix, fleet_id, fleet_stream_suffix });
+}
+
+/// Readiness index: ONE global hash whose fields are the fleet ids currently
+/// holding work, each valued by the generation token its last mark minted. A
+/// lease poll reads this before touching Postgres, so an idle poll costs one
+/// bounded Redis read and no database round-trip at all.
+///
+/// Global-under-`fleet:` mirrors the retired `fleet:control` key shape rather
+/// than the per-fleet `fleet:{id}:…` streams — there is exactly one index for
+/// the whole deployment, shared by every replica (`docs/architecture/
+/// runner_fleet.md` §Redis topology). It is a hint, never the system of record:
+/// the streams are, and `reclaim_sweeper` re-derives lost entries from them.
+pub const ready_index_key = "fleet:ready";
+
 /// Consumer group for fleet event processing. One group per fleet stream.
 /// Named for the lease path that reads it (agentsfleetd consumes on a runner's
 /// behalf), not the retired worker process. Pre-launch rename from

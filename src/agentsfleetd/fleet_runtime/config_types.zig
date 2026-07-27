@@ -199,7 +199,7 @@ comptime {
 /// interpreted by the runtime — they exist for skill-host portability. `tags`
 /// IS interpreted: it persists to `core.fleets.required_tags` and gates
 /// placement (a runner claims the fleet only when `tags ⊆ runner.labels`;
-/// see `validRequiredTags` + `fleet.assign.listCandidates`). Cross-file
+/// see `validRequiredTags` + `fleet.assign.listReadyCandidates`). Cross-file
 /// invariant enforced upstream: `SkillMetadata.name == FleetConfig.name`.
 pub const SkillMetadata = struct {
     const Self = @This();

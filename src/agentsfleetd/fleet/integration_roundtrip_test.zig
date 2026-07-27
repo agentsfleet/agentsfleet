@@ -39,11 +39,8 @@ const RUNNER_A_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dda01";
 const RUNNER_B_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddb01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddc01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd01";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dde01";
-const LEASE_OLD_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddf01";
 const METERING_COLLISION_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd0f1";
 const FENCED_ERROR_CODE = "UZ-RUN-005";
-const SEEDED_EVENT_ID = "evt-seed-1";
 
 const RUNNER_A_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "f" ** 64;
 const RUNNER_B_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "0" ** 64;
@@ -89,33 +86,6 @@ fn seedActiveFleet(conn: *pg.Conn) !void {
     try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, "{}");
 }
 
-fn seedAffinity(conn: *pg.Conn, last_runner_id: []const u8, fencing_seq: i64, leased_until: i64) !void {
-    _ = try conn.exec(
-        \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
-        \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (fleet_id) DO UPDATE
-        \\  SET last_runner_id = EXCLUDED.last_runner_id,
-        \\      fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, FLEET_ID, last_runner_id, fencing_seq, leased_until });
-}
-
-fn seedActiveLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fencing_token: i64) !void {
-    _ = try conn.exec(
-        \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
-        \\   fencing_token, lease_expires_at, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-seed-1',
-        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
-        \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', 0, 0)
-        \\ON CONFLICT (id) DO NOTHING
-    , .{ lease_id, runner_id, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, clock.nowMillis() + 60_000 });
-}
-
 fn fundLargeBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
@@ -127,7 +97,7 @@ fn fundLargeBalance(conn: *pg.Conn) !void {
 
 fn publishFreshEvent(h: *TestHarness) !void {
     try redis_fleet.ensureFleetConsumerGroup(&h.queue, FLEET_ID);
-    const id = try h.queue.xaddFleetEvent(.{
+    const id = try redis_fleet.xaddFleetEvent(&h.queue, .{
         .event_id = "",
         .fleet_id = FLEET_ID,
         .workspace_id = WORKSPACE_ID,
@@ -267,18 +237,15 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
-fn delStream(h: *TestHarness, comptime key: []const u8) void {
-    var resp = h.queue.command(&.{ "DEL", key }) catch return;
-    resp.deinit(h.queue.alloc);
+/// Drop the fleet's stream AND its readiness mark — `fleet:ready` is one shared
+/// key and `peek` is bounded + randomized, so a leftover mark for a deleted
+/// fleet can crowd a sibling suite's fleet out of the sample.
+fn forgetFleet(h: *TestHarness, fleet_id: []const u8) void {
+    redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
-    delStream(h, "fleet:" ++ FLEET_ID ++ ":events");
-    // The reclaim test settles under this FIXED event id; without this delete
-    // the leaked slice makes any rerun collide on
-    // uq_metering_periods_event_id_slice_seq (the sibling renewal/concurrency
-    // suites all carry the same cleanup for their own fixed ids).
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{SEEDED_EVENT_ID});
+    forgetFleet(h, FLEET_ID);
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE uid = $1::uuid", .{METERING_COLLISION_UID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
@@ -388,26 +355,36 @@ test "the reclaim chain enforces monotonic token ordering across runners" {
 
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
+    try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN); // dead holder
     try seedRunner(conn, RUNNER_B_ID, "roundtrip-b", RUNNER_B_TOKEN); // reclaimer
     try seedActiveFleet(conn);
-    // A holds an expired affinity (claimable) at token 1 + its still-active lease
-    // carrying the durable event envelope to re-lease.
-    try seedAffinity(conn, RUNNER_A_ID, 1, 0);
-    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, 1);
+    try publishFreshEvent(h);
+
+    // A takes the lease through the production path, then dies: its affinity
+    // claim expires while its lease row stays 'active' — the exact state a
+    // reclaim recovers. This state can no longer be seeded by SQL shortcut:
+    // under ready-first discovery a fleet nothing ever published to is absent
+    // from the readiness index, so a poll answers no-work before Postgres is
+    // ever consulted.
+    const lv_a = try leaseAs(h, RUNNER_A_TOKEN);
+    defer lv_a.free();
+    try std.testing.expect(lv_a.present);
+    _ = try conn.exec("UPDATE fleet.runner_affinity SET leased_until = 0 WHERE fleet_id = $1::uuid", .{FLEET_ID});
 
     // B leases → reclaims A's event under a strictly higher token.
     const lv = try leaseAs(h, RUNNER_B_TOKEN);
     defer lv.free();
     try std.testing.expect(lv.present);
-    try std.testing.expect(lv.fencing_token > 1); // A's old token (1) < B's new token
+    try std.testing.expectEqualStrings(lv_a.event_id.?, lv.event_id.?); // the SAME event, re-leased
+    try std.testing.expect(lv.fencing_token > lv_a.fencing_token); // A's old token < B's new token
 
     // A's old lease is retired by the reclaim.
-    try std.testing.expect(try leaseStatusIs(conn, LEASE_OLD_ID, "expired"));
+    try std.testing.expect(try leaseStatusIs(conn, lv_a.lease_id.?, "expired"));
 
-    // A's late report on the stale token is fenced out (the reclaimed event id
-    // is the seeded 'evt-seed-1' B re-leased).
-    const a_rep = try reportAs(h, RUNNER_A_TOKEN, LEASE_OLD_ID, SEEDED_EVENT_ID, 1);
+    // A's late report on the stale token is fenced out.
+    const a_rep = try reportAs(h, RUNNER_A_TOKEN, lv_a.lease_id.?, lv_a.event_id.?, lv_a.fencing_token);
     defer a_rep.deinit();
     try a_rep.expectErrorCode(FENCED_ERROR_CODE);
 
@@ -492,10 +469,15 @@ test "integration: test_unaccepted_report_never_captures_completion" {
     try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN);
     try seedRunner(conn, RUNNER_B_ID, "roundtrip-b", RUNNER_B_TOKEN);
     try seedActiveFleet(conn);
-    try seedAffinity(conn, RUNNER_A_ID, 1, 0);
-    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, 1);
+    try publishFreshEvent(h);
 
-    // B reclaims A's event under a strictly higher token.
+    // A leases through the production path, then dies with its lease still
+    // active (see the monotonic-ordering test for why the SQL-shortcut seed no
+    // longer works under ready-first); B reclaims under a higher token.
+    const lv_a = try leaseAs(h, RUNNER_A_TOKEN);
+    defer lv_a.free();
+    try std.testing.expect(lv_a.present);
+    _ = try conn.exec("UPDATE fleet.runner_affinity SET leased_until = 0 WHERE fleet_id = $1::uuid", .{FLEET_ID});
     const lv = try leaseAs(h, RUNNER_B_TOKEN);
     defer lv.free();
     try std.testing.expect(lv.present);
@@ -503,7 +485,7 @@ test "integration: test_unaccepted_report_never_captures_completion" {
     telemetry.TestBackend.resetGlobal();
 
     // 1. Stale fence — A reports on the token B superseded.
-    const stale = try reportAs(h, RUNNER_A_TOKEN, LEASE_OLD_ID, SEEDED_EVENT_ID, 1);
+    const stale = try reportAs(h, RUNNER_A_TOKEN, lv_a.lease_id.?, lv_a.event_id.?, lv_a.fencing_token);
     defer stale.deinit();
     try stale.expectErrorCode(FENCED_ERROR_CODE);
     try std.testing.expectEqual(@as(u32, 0), completionCaptureCount());
@@ -516,8 +498,9 @@ test "integration: test_unaccepted_report_never_captures_completion" {
     try malformed.expectStatus(.bad_request);
     try std.testing.expectEqual(@as(u32, 0), completionCaptureCount());
 
-    // 3. Unknown lease — no lease to claim, so nothing settles.
-    const unknown = try reportAs(h, RUNNER_B_TOKEN, LEASE_OLD_ID, lv.event_id.?, lv.fencing_token);
+    // 3. Retired lease — A's reclaim-expired lease id offers nothing to claim,
+    //    even under B's current token, so nothing settles.
+    const unknown = try reportAs(h, RUNNER_B_TOKEN, lv_a.lease_id.?, lv.event_id.?, lv.fencing_token);
     defer unknown.deinit();
     try std.testing.expect(unknown.status != 200);
     try std.testing.expectEqual(@as(u32, 0), completionCaptureCount());

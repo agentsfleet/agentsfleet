@@ -33,6 +33,7 @@ test {
     _ = @import("util/strings/string_builder.zig");
     // Runner control-plane verbs' per-event prep, lifted from the deleted worker.
     _ = @import("fleet/fleet_session.zig");
+    _ = @import("fleet/PollCost.zig");
     _ = @import("fleet/event_rows.zig");
     _ = @import("fleet/budget.zig");
     _ = @import("fleet/budget_test.zig");
@@ -75,6 +76,7 @@ test {
     _ = @import("cli/commands.zig");
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
+    _ = @import("auth/runner_token_cache.zig");
     _ = @import("session/session_store_redis_proto_test.zig");
     _ = @import("events/bus.zig");
     _ = @import("events/subscription_hub.zig");
@@ -134,6 +136,10 @@ test {
     _ = @import("queue/redis_connection_test.zig");
     _ = @import("queue/redis_errors_test.zig");
     _ = @import("queue/redis_subscriber_test.zig");
+    _ = @import("queue/fleet_ready.zig");
+    _ = @import("queue/fleet_group_memo.zig");
+    _ = @import("queue/redis_fleet_probe.zig");
+    _ = @import("queue/redis_fleet_decode.zig");
     // Persistent Fleet Memory — role isolation + selection policy + adapter write-path tests.
     _ = @import("memory/fleet_memory_role_test.zig");
     _ = @import("memory/fleet_memory_test.zig");

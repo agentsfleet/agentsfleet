@@ -23,6 +23,7 @@ const life = @import("event_lifecycle_integration_test.zig");
 const base = @import("../db/test_fixtures.zig");
 const event_rows = @import("event_rows.zig");
 const store = @import("../state/fleet_telemetry_store.zig");
+const redis_fleet = @import("../queue/redis_fleet.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const contract = @import("contract");
 
@@ -80,11 +81,17 @@ fn teardownSpend(conn: *pg.Conn) void {
         std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
-fn deleteStream(h: anytype, fleet_id: []const u8) void {
-    var key_buf: [128]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id}) catch return;
-    var resp = h.queue.commandAllowError(&.{ "DEL", key }) catch return;
-    resp.deinit(h.queue.alloc);
+/// Forget the fleet's whole Redis footprint, not just its stream.
+///
+/// A bare `DEL` of the stream also destroys the consumer group on it while
+/// leaving the process-global group memo asserting that group still exists, and
+/// leaving the fleet's field in the shared readiness index. This file reuses
+/// `FLEET_UNDER` across four tests, so the next test's first poll spent its
+/// whole attempt discovering `NOGROUP` and returned no lease. The production
+/// purge drops stream, memo, and mark together.
+fn forgetFleet(h: anytype, fleet_id: []const u8) void {
+    redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err|
+        std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 /// Telemetry rows of one charge type for one event — the receive-debit probe.
@@ -109,7 +116,7 @@ test "integration: an over-budget fleet is refused the lease: gate_blocked + bud
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    defer deleteStream(h, FLEET_OVER);
+    defer forgetFleet(h, FLEET_OVER);
     defer teardownSpend(conn);
 
     try life.seedFleetWithConfig(conn, FLEET_OVER, "budget-over", CONFIG_DAILY_ONE_DOLLAR, "9");
@@ -135,7 +142,7 @@ test "integration: a budget refusal is taken before the receive debit, so the ev
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    defer deleteStream(h, FLEET_OVER);
+    defer forgetFleet(h, FLEET_OVER);
     defer teardownSpend(conn);
 
     try life.seedFleetWithConfig(conn, FLEET_OVER, "budget-over", CONFIG_DAILY_ONE_DOLLAR, "9");
@@ -162,7 +169,7 @@ test "integration: an under-budget fleet leases exactly as before" {
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    defer deleteStream(h, FLEET_UNDER);
+    defer forgetFleet(h, FLEET_UNDER);
     defer teardownSpend(conn);
 
     try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR, "a");
@@ -185,7 +192,7 @@ test "integration: a fleet whose spend is outside the rolling day window leases"
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    defer deleteStream(h, FLEET_UNDER);
+    defer forgetFleet(h, FLEET_UNDER);
     defer teardownSpend(conn);
 
     try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR, "a");
@@ -211,7 +218,7 @@ test "integration: a budget-killed run persists failure_label=budget_breach on t
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    defer deleteStream(h, FLEET_UNDER);
+    defer forgetFleet(h, FLEET_UNDER);
     defer teardownSpend(conn);
 
     try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR, "a");
@@ -236,7 +243,7 @@ test "integration: a credit-exhausted kill still reports renewal_terminate, not 
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    defer deleteStream(h, FLEET_UNDER);
+    defer forgetFleet(h, FLEET_UNDER);
     defer teardownSpend(conn);
 
     try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR, "a");
