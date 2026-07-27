@@ -32,7 +32,6 @@ const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const etag = @import("../etag.zig");
 const pagination = @import("../pagination.zig");
-const query = @import("library/query.zig");
 const catalogue_key = @import("library/catalogue_key.zig");
 
 const Hx = hx_mod.Hx;
@@ -75,11 +74,10 @@ pub fn build(
     after: ?model_library_store.PageBoundary,
     limit: u32,
 ) ![]u8 {
-    const like = if (filters.q) |term| try query.likeContains(hx.alloc, term) else null;
     const page = try model_library_store.listLibraryPage(
         hx.alloc,
         conn,
-        .{ .like = like, .provider = filters.provider },
+        .{ .q = filters.q, .provider = filters.provider },
         after,
         limit,
     );

@@ -38,7 +38,7 @@ const AS_TIER_RANK = " AS tier_rank";
 const OR_INDENT = "\n    OR ";
 
 /// Paired with every LIKE the gallery builds, whose escape character this must
-/// match or the escaping in `query.likeContains` is inert.
+/// match or the escaping below is inert.
 const GALLERY_LIKE_ESCAPE =
     \\ ESCAPE '\'
 ;
@@ -50,8 +50,16 @@ const GALLERY_LIKE_ESCAPE =
 /// IMMUTABLE, so `lower(normalize(col, NFKC))` is index-eligible. Generated from
 /// one function rather than written out three times — a column folded even
 /// slightly differently from the needle matches by accident.
+///
+/// The needle is LIKE-escaped and wildcard-wrapped AFTER the fold, backslash
+/// first — same expression and same reasoning as `model_library/sql.zig`'s
+/// `FOLDED_NEEDLE`: an escape pass that runs before NFKC misses compatibility
+/// characters that fold INTO `%`/`_`/`\`. `$3` is the caller's normalized
+/// term, raw.
 fn foldedLike(comptime column: []const u8) []const u8 {
-    return "lower(normalize(" ++ column ++ ", NFKC)) LIKE lower(normalize($3, NFKC))" ++ GALLERY_LIKE_ESCAPE;
+    return "lower(normalize(" ++ column ++ ", NFKC)) LIKE " ++
+        "'%' || replace(replace(replace(lower(normalize($3, NFKC)), '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'" ++
+        GALLERY_LIKE_ESCAPE;
 }
 
 /// Platform arm. `source_repo` is projected AS `source_ref` so both arms agree on

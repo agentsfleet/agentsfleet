@@ -128,10 +128,13 @@ pub const PageBoundary = struct {
     uid: []const u8,
 };
 
-/// Active search filters. Both absent means the whole catalogue. `like` is a
-/// pattern already wrapped and escaped by `handlers/library/query.zig`.
+/// Active search filters. Both absent means the whole catalogue. `q` is the
+/// caller's NORMALIZED term, raw — the SQL folds it and builds the escaped
+/// LIKE pattern itself (`model_library/sql.zig` `FOLDED_NEEDLE`), because an
+/// escape pass that ran before the fold missed compatibility characters that
+/// fold into metacharacters.
 pub const PageFilters = struct {
-    like: ?[]const u8 = null,
+    q: ?[]const u8 = null,
     provider: ?[]const u8 = null,
 };
 
@@ -161,9 +164,9 @@ pub fn listLibraryPage(
     const over_fetch: i64 = @as(i64, limit) + 1;
 
     var q = if (after) |a| PgQuery.from(try conn.query(sql.LIST_LIBRARY_PAGE_AFTER, .{
-        filters.like, filters.provider, a.display_key, a.vendor_key, a.uid, over_fetch,
+        filters.q, filters.provider, a.display_key, a.vendor_key, a.uid, over_fetch,
     })) else PgQuery.from(try conn.query(sql.LIST_LIBRARY_PAGE_FIRST, .{
-        filters.like, filters.provider, over_fetch,
+        filters.q, filters.provider, over_fetch,
     }));
     defer q.deinit();
 
@@ -177,14 +180,7 @@ pub fn listLibraryPage(
         seen += 1;
         if (seen > limit) continue; // the proof-of-more row: drained, never served
 
-        try rows.append(alloc, .{
-            .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
-            .provider = try alloc.dupe(u8, try row.get([]const u8, 1)),
-            .context_cap_tokens = try row.get(i32, 2),
-            .input_nanos_per_mtok = try row.get(i64, 3),
-            .cached_input_nanos_per_mtok = try row.get(i64, 4),
-            .output_nanos_per_mtok = try row.get(i64, 5),
-        });
+        try rows.append(alloc, try projectLibraryRow(alloc, row));
         const updated = try row.get(i64, 6);
         if (updated > max_updated_ms) max_updated_ms = updated;
 
@@ -200,6 +196,19 @@ pub fn listLibraryPage(
         .max_updated_ms = max_updated_ms,
         .boundary = boundary,
         .has_more = seen > limit,
+    };
+}
+
+/// One SELECT row projected into an owned `LibraryRow` — the six page columns,
+/// slices duped into `alloc` (the request arena in production).
+fn projectLibraryRow(alloc: std.mem.Allocator, row: pg.Row) !LibraryRow {
+    return .{
+        .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
+        .provider = try alloc.dupe(u8, try row.get([]const u8, 1)),
+        .context_cap_tokens = try row.get(i32, 2),
+        .input_nanos_per_mtok = try row.get(i64, 3),
+        .cached_input_nanos_per_mtok = try row.get(i64, 4),
+        .output_nanos_per_mtok = try row.get(i64, 5),
     };
 }
 
