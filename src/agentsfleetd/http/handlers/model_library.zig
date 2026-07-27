@@ -115,9 +115,12 @@ pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
     const key = catalogue_key.cacheKey(revision, filters.q, filters.provider, raw_cursor, limit);
 
     if (cachedBody(hx, key)) |cached| {
-        scope.succeed();
-        scope.endStageWith(.cache_lookup, .{ .cache = .hit, .bytes = cached.len });
+        // Responded BEFORE classifying: `page_mod.respond` writes its own 500
+        // on an etag or validator failure and returns void, so the status is
+        // the only thing that says whether the caller received the page.
         page_mod.respond(hx, req, cached);
+        scope.classify(if (isDelivered(hx.res.status)) .ok else .internal_error);
+        scope.endStageWith(.cache_lookup, .{ .cache = .hit, .bytes = cached.len });
         return;
     }
     scope.endStageWith(.cache_lookup, .{ .cache = .miss });
@@ -135,9 +138,19 @@ pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
     scope.endStage(.sql);
 
     storeBody(hx, key, body);
-    scope.succeed();
-    scope.endStageWith(.serialize, .{ .bytes = body.len });
     page_mod.respond(hx, req, body);
+    scope.classify(if (isDelivered(hx.res.status)) .ok else .internal_error);
+    scope.endStageWith(.serialize, .{ .bytes = body.len });
+}
+
+/// Whether the caller received the page.
+///
+/// `304 Not Modified` counts: the conditional read succeeded and the client
+/// holds a current copy. Treating it as a failure would make every warm
+/// dashboard look like an error to whoever reads the outcome family.
+fn isDelivered(status: u16) bool {
+    return status == @intFromEnum(std.http.Status.ok) or
+        status == @intFromEnum(std.http.Status.not_modified);
 }
 
 /// Normalize `q` and `provider`. Both out-of-bounds cases are `UZ-LIBRARY-003`.

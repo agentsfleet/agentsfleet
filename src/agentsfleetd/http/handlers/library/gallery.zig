@@ -48,22 +48,20 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const pg = @import("pg");
 
-const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const library_store = @import("../../../fleet_library/library_store.zig");
-const gallery_sql = @import("../../../fleet_library/gallery_sql.zig");
 const counters = @import("../../../observability/library_read_counters.zig");
 const ReadScope = @import("../../../observability/library_read_scope.zig");
+
+/// The one status that means the caller actually received the page.
+const HTTP_STATUS_OK: u16 = @intFromEnum(std.http.Status.ok);
 const pagination = @import("../../pagination.zig");
 const query = @import("query.zig");
 const keyset = @import("fleet_keyset.zig");
 const response_size = @import("../../response_size.zig");
-const entry_view = @import("entry_view.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -86,26 +84,11 @@ const S_BODY_CEILING = "This page of fleet libraries is too large to return";
 /// would make a client distinguish "no more pages" from "this server is old".
 const GALLERY_JSON_OPTIONS: std.json.Stringify.Options = .{};
 
-/// One gallery card. Everything here is rendered; see the module note for the
-/// one field deliberately absent.
-const SummaryEntry = struct {
-    id: []const u8,
-    name: []const u8,
-    description: []const u8,
-    visibility: []const u8,
-    source_ref: []const u8,
-    created_at: i64,
-    requirements: entry_view.Requirements,
-    required_credentials_reasons: std.json.Value,
-};
-
-const Page = struct {
-    items: []const SummaryEntry,
-    /// Always null. Counting a keyset page costs the scan this pagination exists
-    /// to avoid; §Interfaces requires the key present rather than omitted.
-    total: ?u64 = null,
-    next_cursor: ?[]const u8 = null,
-};
+/// The page shape and its builder live next door; this file asks for a page,
+/// that one produces it.
+const page_mod = @import("gallery_page.zig");
+const Page = page_mod.Page;
+const buildPage = page_mod.buildPage;
 
 pub fn innerGallery(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void {
     counters.beginRead();
@@ -200,7 +183,12 @@ fn respond(hx: Hx, scope: *ReadScope, page: Page) void {
     };
     counters.noteEncodedBytes(encoded_bytes);
     common.writeJson(hx.res, .ok, page);
-    scope.succeed();
+    // Classified from the STATUS, not from the call having returned.
+    // `common.writeJson` swallows a serialization failure and sets 500 rather
+    // than returning an error, so `succeed()` here would report `ok` for a
+    // request the client received as a 500 — the exact confusion this family
+    // exists to remove.
+    scope.classify(if (hx.res.status == HTTP_STATUS_OK) .ok else .internal_error);
     scope.endStageWith(.serialize, .{ .bytes = encoded_bytes, .count = page.items.len });
 }
 
@@ -239,109 +227,4 @@ fn decodeStart(
         return error.Rejected;
     }
     return .{ .created_at = cursor.created_at, .tier_rank = cursor.tier_rank, .id = cursor.id };
-}
-
-fn buildPage(
-    hx: Hx,
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    search: ?[]const u8,
-    after: ?keyset.Position,
-    limit: u32,
-) !Page {
-    // Over-fetch by one. The extra row never reaches the response; it only
-    // answers "is there another page?" without a second COUNT.
-    const fetch: i64 = @as(i64, limit) + 1;
-
-    var rows: std.ArrayList(SummaryEntry) = .empty;
-    errdefer rows.deinit(hx.alloc);
-
-    var q = try openPage(conn, workspace_id, search, after, fetch);
-    defer q.deinit();
-
-    var seen: usize = 0;
-    var has_more = false;
-    while (try q.next()) |row| {
-        seen += 1;
-        // The over-fetched row is DRAINED with `continue`, never `break` — an
-        // early break leaves the connection mid-result-set, which
-        // `make check-pg-drain` exists to catch.
-        if (seen > limit) {
-            has_more = true;
-            continue;
-        }
-        try rows.append(hx.alloc, try projectRow(hx.alloc, row));
-    }
-
-    const items = try rows.toOwnedSlice(hx.alloc);
-    counters.noteResults(items.len);
-    return .{
-        .items = items,
-        .next_cursor = if (has_more and items.len > 0)
-            try encodeNext(hx.alloc, items[items.len - 1], workspace_id, search, limit)
-        else
-            null,
-    };
-}
-
-fn openPage(
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    like: ?[]const u8,
-    after: ?keyset.Position,
-    fetch: i64,
-) !PgQuery {
-    const pos = after orelse return PgQuery.from(try conn.query(
-        gallery_sql.SELECT_GALLERY_PAGE_FIRST,
-        .{ library_store.VISIBILITY_PUBLIC, workspace_id, like, fetch },
-    ));
-    return PgQuery.from(try conn.query(gallery_sql.SELECT_GALLERY_PAGE_AFTER, .{
-        library_store.VISIBILITY_PUBLIC,
-        workspace_id,
-        like,
-        pos.created_at,
-        @as(i32, pos.tier_rank),
-        pos.id,
-        fetch,
-    }));
-}
-
-fn projectRow(alloc: std.mem.Allocator, row: anytype) !SummaryEntry {
-    const rank = try row.get(i32, 10);
-    return .{
-        .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
-        .name = try alloc.dupe(u8, try row.get([]const u8, 1)),
-        .description = try alloc.dupe(u8, try row.get([]const u8, 2)),
-        .source_ref = try alloc.dupe(u8, try row.get([]const u8, 3)),
-        .created_at = try row.get(i64, 4),
-        .requirements = .{
-            .credentials = try entry_view.decodeStrings(alloc, try row.get([]const u8, 5)),
-            .tools = try entry_view.decodeStrings(alloc, try row.get([]const u8, 6)),
-            .network_hosts = try entry_view.decodeStrings(alloc, try row.get([]const u8, 7)),
-            .trigger_present = try row.get(bool, 9),
-        },
-        .required_credentials_reasons = try entry_view.decodeReasons(alloc, try row.get([]const u8, 8)),
-        // The rank is a sort key, never a wire value: it is mapped back to its
-        // label here, so an unrecognised rank is a loud failure rather than a
-        // bare number leaking into a response body.
-        .visibility = (keyset.Tier.fromRank(rank) orelse return error.UnknownTierRank).label(),
-    };
-}
-
-fn encodeNext(
-    alloc: std.mem.Allocator,
-    last: SummaryEntry,
-    workspace_id: []const u8,
-    search: ?[]const u8,
-    limit: u32,
-) ![]u8 {
-    const tier = keyset.Tier.fromLabel(last.visibility) orelse return error.UnknownTierRank;
-    return pagination.encode(alloc, keyset.Cursor, .{
-        .created_at = last.created_at,
-        .tier_rank = tier.rank(),
-        .id = last.id,
-        .workspace_uuid = workspace_id,
-        .q = search,
-        .limit = limit,
-    });
 }
