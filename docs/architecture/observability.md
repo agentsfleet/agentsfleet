@@ -212,6 +212,85 @@ rejections, four server errors, and two sampled successes. Every excess incremen
 `agentsfleet_http_trace_suppressed_total` under a fixed reason, so an invalid-token
 storm stays visible without evicting all useful spans.
 
+### Library read stages are Prometheus, not spans
+
+The authenticated library reads — the tenant model registry, the global
+catalogue, the Fleet gallery — record where their time goes as fixed-cardinality
+Prometheus families in `observability/library_stages.zig`, scraped from
+`/metrics`. They do not emit a span per stage.
+
+The reason is the trace budget above: this process admits at most ten generic
+request spans per monotonic second. A library read passes through up to six
+stages, so one request emitting a span per stage would spend most of a second's
+admission on its own timing and evict the server-error spans that budget exists
+to protect. Stage timing is high-frequency, low-variance data with a closed
+label set, which is what a metric is for; the trace answers a different
+question — which request, and what happened around it.
+
+So the trace half of a library read is unchanged: W3C `traceparent` in at
+ingress, one `http.request` span out. The browser client mints a fresh root per
+request (`ui/packages/app/lib/api/client.ts`) rather than continuing a trace,
+because it holds no span the request is a child of.
+
+**The label sets are closed enums, and the series count is fixed at compile
+time.** `surface` (3), `stage` (10), `outcome` (9), `cache` (5), `pool_result`
+(4). One observation carries all five, but no metric does — emitting the
+cross-product would be 5400 series, nearly all permanently zero. Each family
+takes only the dimensions that vary for it:
+
+| Family | Labels | Series |
+|---|---|---|
+| `agentsfleet_library_stage_duration_seconds_total` | `surface`, `stage` | 30 |
+| `agentsfleet_library_stage_observations_total` | `surface`, `stage` | 30 |
+| `agentsfleet_library_read_outcome_total` | `surface`, `outcome` | 27 |
+| `agentsfleet_library_pool_result_total` | `pool_result` | 4 |
+| `agentsfleet_library_cache_outcome_total` | `cache` | 5 |
+| `agentsfleet_library_payload_bytes_total` | `surface` | 3 |
+| `agentsfleet_library_results_total` | `surface` | 3 |
+
+102 series, asserted at comptime, so an added enum member fails the build rather
+than appearing as scrape growth. The pool and cache families deliberately carry
+no `surface` label: a starving pool is a process-wide condition, and neither
+family may carry tenant, workspace, or request identity — the same rule the
+metric table above states, for the same reason.
+
+Duration and observations are two counters rather than one summary.
+`rate(duration)/rate(observations)` is the mean cost of a SPAN, which stays
+well-defined when a stage fires more than once in a read — `sql` does, landing
+on both sides of `secret_project` — whereas dividing by request count would
+silently halve that stage's apparent cost.
+
+**`secret_project` survives with a narrowed meaning.** Read-path decryption is
+gone; `vault.loadMetadata` answers one batch presence query and opens no
+envelope. The stage was kept rather than deleted with the decryption, and its
+decryption counter is pinned at zero, so a regression that reintroduces per-row
+envelope opens shows up as a stage that suddenly decrypts instead of as a stage
+that silently reappears.
+
+**One outcome per request, on every exit path.** `library_read_scope.zig` owns
+the per-request lifecycle; `defer scope.end()` covers every return, and the
+default outcome is `internal_error` rather than `ok` so a path nobody classified
+surfaces as something an operator investigates.
+
+### Performance evidence is captured, not gated
+
+Two commands, deliberately separate:
+
+- `bun scripts/report-library-performance.ts --check --baseline <a> --candidate <b>`
+  runs anywhere and decides STRUCTURE — schema, closed enums, internal
+  consistency (`p50 <= p95 <= p99`), byte-equal metadata, identical aggregate
+  key tuples. No timing or payload value appears in any pass/fail condition.
+- `make capture-library-performance BASELINE_REF=… CANDIDATE_REF=…` is
+  provisioned-only, absent from every CI workflow, and a prerequisite of no
+  aggregate target. It may fail for setup, execution, schema, sanitization, or
+  malformed output — never because a percentile moved.
+
+A latency threshold in a universal check fails on a noisy runner, gets widened
+until it cannot fail, and then reports success forever. The check that runs
+everywhere validates structure; the numbers are evidence a human reads.
+Comparability is stricter than validity on purpose: two runs under different
+pool sizes, warm states, or concurrency are both valid and are not comparable.
+
 ### PostHog is product analytics, not operations telemetry
 
 The PostHog client is optional. It flushes at 20 events or 10 seconds and retries
