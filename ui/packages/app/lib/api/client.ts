@@ -2,7 +2,21 @@ import { ApiError } from "./errors";
 import { recordWorkspaceFetchForAcceptance } from "../acceptance/workspace-fetch-audit";
 
 // Full backend origin — used for display URLs (webhooks) and server-side fetches.
-export const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.agentsfleet.net";
+// No fallback on purpose: a silent api-dev default once pointed env-less
+// worktrees at the shared dev backend. Production code refuses to guess;
+// test lanes declare their target (vitest.setup.ts, playwright configs).
+export function requireApiOrigin(): string {
+  const value = process.env.NEXT_PUBLIC_API_URL;
+  if (!value) {
+    throw new Error(
+      "NEXT_PUBLIC_API_URL is unset — refusing to guess a backend. " +
+        "Run provision-env-1password; the repo's post-checkout hook links " +
+        "ui/packages/app/.env.local from ~/.config/agentsfleet/ui.env.local.",
+    );
+  }
+  return value;
+}
+export const API_ORIGIN = requireApiOrigin();
 
 // BASE for fetch calls. On the server we hit the backend directly (no CORS).
 // In the browser we go through the same-origin `/backend` proxy configured in

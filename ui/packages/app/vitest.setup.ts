@@ -1,5 +1,11 @@
 import { afterEach, vi } from "vitest";
 
+// Unit tests declare their backend origin explicitly — lib/api/client.ts
+// throws on an unset NEXT_PUBLIC_API_URL instead of falling back (a silent
+// fallback once pointed env-less worktrees at the shared dev API). `??=`
+// keeps a caller-provided value intact.
+process.env.NEXT_PUBLIC_API_URL ??= "https://api-test.agentsfleet.net";
+
 // No unit test may touch a real network. Without this, a fetch that a test does
 // not explicitly mock resolves against the dev-API origin (localhost:3000),
 // gets ECONNREFUSED, and hangs to the 10s test timeout under parallel load — a

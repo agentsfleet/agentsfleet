@@ -60,6 +60,11 @@ export default defineConfig({
         // still load them from .env.local on disk. The publishable key is
         // public (it ships in the client bundle); the secret key never is.
         env: {
+          // The dry lane declares its backend target explicitly — production
+          // code (next.config.ts rewrites, lib/api/client.ts) throws on an
+          // unset NEXT_PUBLIC_API_URL instead of falling back. A declared
+          // api-dev here is a visible test-lane choice, not a silent default.
+          NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.agentsfleet.net",
           ...(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
             ? { NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }
             : {}),

@@ -11,7 +11,19 @@ that checkout. This file carries only project facts.
   `verify.*` commands (`make lint-all`, `make test-unit-all`,
   `make test-integration`, `make memleak`, `make check-version`). REVIEW
   remains a separate lifecycle stage.
+- **Make targets are the only repository claims — never hand-roll their
+  equivalents.** CONFORM → `make harness-verify` · lint → `make lint-all` ·
+  unit → `make test-unit-all` · integration → `make test-integration` ·
+  leaks → `make memleak` · version → `make check-version` · dry lanes →
+  `make dry-app` / `make dry` · drain audit → `make check-pg-drain`. A
+  package-scoped runner (`cd ui/packages/app && bun run test`, `zig build
+  test`, …) is inner-loop iteration; it proves a package, not the
+  repository, and never satisfies a VERIFY row or a "tests pass" claim.
 - A fresh linked worktree requires `bun install`, followed by
   `(cd cli && bun install && bun run build)` before repository tests.
+  `.githooks/post-checkout` links `ui/packages/app/.env.local` and
+  `.env.runner.local` from `~/.config/agentsfleet/`; a ⚠ from the hook
+  means run `provision-env-1password` (dotfiles) first. The app throws on
+  an unset `NEXT_PUBLIC_API_URL` instead of guessing a backend.
 - Public endpoint, command, flag, or behavior changes require a matching branch
   in `~/Projects/docs`; never edit that repository through this worktree.
