@@ -58,6 +58,7 @@ const id_format = @import("../../../types/id_format.zig");
 const library_store = @import("../../../fleet_library/library_store.zig");
 const gallery_sql = @import("../../../fleet_library/gallery_sql.zig");
 const counters = @import("../../../observability/library_read_counters.zig");
+const ReadScope = @import("../../../observability/library_read_scope.zig");
 const pagination = @import("../../pagination.zig");
 const query = @import("query.zig");
 const keyset = @import("fleet_keyset.zig");
@@ -110,7 +111,11 @@ pub fn innerGallery(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void 
     counters.beginRead();
     defer counters.endRead();
 
+    var scope = ReadScope.begin(hx.ctx.io, .fleet_summary);
+    defer scope.end();
+
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     }
@@ -118,33 +123,51 @@ pub fn innerGallery(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void 
     // Inputs are validated before a connection is acquired, so a bad limit or a
     // forged cursor costs no pool slot.
     const params = req.query() catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_QUERY_UNREADABLE);
         return;
     };
     const limit = pagination.parseLimit(params.get(Q_LIMIT)) catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_LIMIT_RANGE);
         return;
     };
     const search = query.normalizeSearch(hx.alloc, params.get(Q_SEARCH)) catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_SEARCH_BOUNDS);
         return;
     };
-    const after = decodeStart(hx, workspace_id, search, limit, params.get(Q_STARTING_AFTER)) catch return;
+    const after = decodeStart(hx, &scope, workspace_id, search, limit, params.get(Q_STARTING_AFTER)) catch return;
+    scope.endStage(.auth_verify);
 
-    var db = hx.db() orelse return;
+    var db = hx.db() orelse {
+        scope.classify(.dependency_error);
+        scope.endStageWith(.pool_wait, .{ .pool_result = .@"error" });
+        return;
+    };
     defer db.end();
     counters.noteConnection();
+    scope.endStageWith(.pool_wait, .{ .pool_result = .acquired });
 
+    // Two of this read's three statements are here, not in the page query:
+    // authorization is the handler's work because only it knows which workspace
+    // the path names, and the measurement window opens ahead of it.
     if (!common.authorizeWorkspace(db.conn, hx.principal, workspace_id)) {
+        scope.classify(.forbidden);
+        scope.endStage(.authorize);
         hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
         return;
     }
+    scope.endStage(.authorize);
 
     const page = buildPage(hx, db.conn, workspace_id, search, after, limit) catch {
+        scope.classify(.dependency_error);
+        scope.endStage(.sql);
         common.internalOperationError(hx.res, S_PAGE_FAILED, hx.req_id);
         return;
     };
-    respond(hx, page);
+    scope.endStage(.sql);
+    respond(hx, &scope, page);
 }
 
 /// Write the page, refusing one that would exceed §3's encoded-body ceiling.
@@ -158,12 +181,14 @@ pub fn innerGallery(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void 
 /// Measuring here is also what makes the §3 bound checkable at all — the tally
 /// has to be the bytes the client actually receives, and a handler that hands a
 /// struct to a generic writer never learns that number.
-fn respond(hx: Hx, page: Page) void {
+fn respond(hx: Hx, scope: *ReadScope, page: Page) void {
     const encoded_bytes = response_size.encodedWithinCeiling(
         page,
         GALLERY_JSON_OPTIONS,
         counters.FLEET_SUMMARY_MAX_BODY_BYTES,
     ) catch |err| {
+        scope.classify(.internal_error);
+        scope.endStage(.serialize);
         if (err == response_size.CeilingError.BodyCeilingExceeded) {
             hx.fail(ec.ERR_LIBRARY_BODY_CEILING, S_BODY_CEILING);
         } else {
@@ -173,6 +198,8 @@ fn respond(hx: Hx, page: Page) void {
     };
     counters.noteEncodedBytes(encoded_bytes);
     common.writeJson(hx.res, .ok, page);
+    scope.succeed();
+    scope.endStageWith(.serialize, .{ .bytes = encoded_bytes, .count = page.items.len });
 }
 
 /// Decode and authorize `starting_after`. Null means the first page.
@@ -187,6 +214,7 @@ fn respond(hx: Hx, page: Page) void {
 /// filter used for the read are always the request's.
 fn decodeStart(
     hx: Hx,
+    scope: *ReadScope,
     workspace_id: []const u8,
     search: ?[]const u8,
     limit: u32,
@@ -196,6 +224,7 @@ fn decodeStart(
     if (text.len == 0) return null;
 
     const cursor = pagination.decode(hx.alloc, keyset.Cursor, text) catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
         return error.Rejected;
     };
@@ -203,6 +232,7 @@ fn decodeStart(
         !std.mem.eql(u8, cursor.workspace_uuid, workspace_id) or
         !pagination.filterMatches(cursor.q, search))
     {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_CURSOR_MISMATCH, S_CURSOR_MISMATCH);
         return error.Rejected;
     }
