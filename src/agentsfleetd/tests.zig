@@ -39,6 +39,7 @@ test {
     _ = @import("util/strings/string_builder.zig");
     // Runner control-plane verbs' per-event prep, lifted from the deleted worker.
     _ = @import("fleet/fleet_session.zig");
+    _ = @import("fleet/PollCost.zig");
     _ = @import("fleet/event_rows.zig");
     _ = @import("fleet/budget.zig");
     _ = @import("fleet/budget_test.zig");

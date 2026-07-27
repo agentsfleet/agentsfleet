@@ -63,6 +63,15 @@ fn overfullFleetId(buf: *[id_format.UUID_TEXT_LEN]u8, index: usize) ![]const u8 
     return std.fmt.bufPrint(buf, OVERFULL_ID_FMT, .{index});
 }
 
+/// Brownout-proof population: more marked fleets than the bailout threshold, so
+/// "stopped early" is distinguishable from "ran out of candidates".
+const BROWNOUT_FLEETS: usize = @as(usize, common.MAX_CONSECUTIVE_REDIS_FAILURES_PER_POLL) + 3;
+const BROWNOUT_ID_FMT = "0195c9da-1e2a-7f13-8abc-2b3e1e10{d:0>4}";
+
+fn brownoutFleetId(buf: *[id_format.UUID_TEXT_LEN]u8, index: usize) ![]const u8 {
+    return std.fmt.bufPrint(buf, BROWNOUT_ID_FMT, .{index});
+}
+
 /// Start from an index this test fully owns — same reasoning as the sibling
 /// suite: the readiness index is ONE key shared by every suite in the binary,
 /// and the whole-index assertions here (depth, examined count) cannot be
@@ -84,6 +93,17 @@ fn corruptIndexKey(h: *TestHarness) !void {
 /// never leave the shared key poisoned for every suite that follows.
 fn dropIndexKey(h: *TestHarness) void {
     var resp = h.queue.command(&.{ CMD_DEL, queue_consts.ready_index_key }) catch return;
+    resp.deinit(h.queue.alloc);
+}
+
+/// Turn a fleet's event stream into a plain string, so every stream command
+/// against it fails with a type error. The cheapest deterministic stand-in for
+/// a Redis that still accepts connections but cannot serve reads — which is
+/// what a brownout presents as to the candidate loop.
+fn corruptFleetStream(h: *TestHarness, fleet_id: []const u8) !void {
+    var key_buf: [queue_consts.fleet_stream_key_buf_len]u8 = undefined;
+    const key = try queue_consts.fleetStreamKey(&key_buf, fleet_id);
+    var resp = try h.queue.command(&.{ CMD_SET, key, STRAY_VALUE });
     resp.deinit(h.queue.alloc);
 }
 
@@ -164,6 +184,59 @@ test "integration: a poll against an over-full index examines exactly the ceilin
     try std.testing.expectEqual(@as(u64, 1), snap.lease_polls_total);
     try std.testing.expectEqual(@as(u64, common.MAX_READY_CANDIDATES_PER_POLL), snap.lease_poll_candidates_scanned_total);
     try std.testing.expectEqual(@as(u64, UNEXAMINED_REMAINDER), try fleet_ready.depth(&h.queue));
+}
+
+// ── Redis brownout: the loop must not pin a Postgres connection ─────────────
+
+test "integration: a run of Redis failures ends the candidate loop early" {
+    var env = base.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try clearWholeIndex(h);
+
+    // Real active fleets, each marked ready and each with a stream that cannot
+    // be read. The population exceeds the bailout threshold, which is what
+    // makes "stopped early" distinguishable from "ran out of candidates".
+    var id_buf: [id_format.UUID_TEXT_LEN]u8 = undefined;
+    var name_buf: [32]u8 = undefined;
+    for (0..BROWNOUT_FLEETS) |i| {
+        const id = try brownoutFleetId(&id_buf, i);
+        const name = try std.fmt.bufPrint(&name_buf, "fault-brownout-{d}", .{i});
+        try fixtures.seedFleet(conn, id, base.WORKSPACE_ID, name, base.CONFIG_PLAIN, "# fault fixture");
+        fleet_ready.mark(&h.queue, id);
+        try corruptFleetStream(h, id);
+    }
+    defer {
+        for (0..BROWNOUT_FLEETS) |i| {
+            const id = brownoutFleetId(&id_buf, i) catch continue;
+            purgeFleet(h, id);
+        }
+        dropIndexKey(h);
+    }
+    try std.testing.expectEqual(@as(u64, BROWNOUT_FLEETS), try fleet_ready.depth(&h.queue));
+
+    mc.resetLeasePollMetricsForTest();
+    try std.testing.expect(!try base.pollLease(h));
+
+    // Stopped at the threshold — not at the ceiling, and not at the population.
+    // Absent the bailout this reads BROWNOUT_FLEETS, which is the whole point:
+    // every extra candidate costs a Redis request timeout while the poll holds
+    // a pooled Postgres connection it never uses again.
+    const snap = mc.snapshot();
+    try std.testing.expectEqual(@as(u64, 1), snap.lease_polls_total);
+    try std.testing.expectEqual(
+        @as(u64, common.MAX_CONSECUTIVE_REDIS_FAILURES_PER_POLL),
+        snap.lease_poll_candidates_scanned_total,
+    );
+
+    // A failed read is not evidence of an empty stream, so every fleet stays
+    // marked and the sweeper still owns the recovery.
+    try std.testing.expectEqual(@as(u64, BROWNOUT_FLEETS), try fleet_ready.depth(&h.queue));
 }
 
 // ── Ingress mark failure ────────────────────────────────────────────────────
