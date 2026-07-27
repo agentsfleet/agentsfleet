@@ -33,6 +33,31 @@ pub const Mutex = struct {
     }
 };
 
+/// Read-write lock, same arg-free shape as `Mutex`; owns no resource (no deinit).
+///
+/// For state whose readers outnumber and outpace its writers. A reader that
+/// provably does not mutate takes `lockShared` and does not serialize against
+/// other readers; anything that mutates takes `lock`.
+pub const RwLock = struct {
+    inner: std.Io.RwLock = .init,
+
+    pub fn lock(self: *RwLock) void {
+        self.inner.lockUncancelable(globalIo());
+    }
+
+    pub fn unlock(self: *RwLock) void {
+        self.inner.unlock(globalIo());
+    }
+
+    pub fn lockShared(self: *RwLock) void {
+        self.inner.lockSharedUncancelable(globalIo());
+    }
+
+    pub fn unlockShared(self: *RwLock) void {
+        self.inner.unlockShared(globalIo());
+    }
+};
+
 /// Counting barrier — `std.Thread.WaitGroup` is absent in this Zig, so it is
 /// rebuilt on the `Mutex`/`Condition` above. `start` registers a pending unit,
 /// `finish` retires one and wakes waiters when the count reaches zero, `wait`

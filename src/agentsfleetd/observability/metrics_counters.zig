@@ -5,6 +5,29 @@ const std = @import("std");
 const fleet_metrics = @import("metrics_fleet.zig");
 pub const incFleetsTriggered = fleet_metrics.incFleetsTriggered;
 
+// ── Lease-poll cost + readiness index ───────────────────────────────────────
+// Global and unlabelled: these describe the control plane's own discovery cost,
+// not any one fleet, workspace, tenant, or runner, so they live here rather than
+// in the per-runner labelled table (`metrics_runner.zig`).
+//
+// The two totals are only meaningful against `lease_polls_total` — an operator
+// reads `rate(candidates_scanned) / rate(polls)` for mean fan-out per poll and
+// `rate(db_roundtrips) / rate(polls)` for mean database cost per poll. Shipping
+// the numerators without that denominator would make a traffic increase
+// indistinguishable from a fan-out regression, which is the exact confusion
+// these families exist to remove.
+
+pub const LEASE_POLLS_NAME = "agentsfleet_lease_polls_total";
+pub const LEASE_POLLS_HELP = "Lease polls served, the denominator for the per-poll cost families below.";
+pub const CANDIDATES_SCANNED_NAME = "agentsfleet_lease_poll_candidates_scanned_total";
+pub const CANDIDATES_SCANNED_HELP = "Fleets examined across all lease polls; divide by lease polls for mean fan-out.";
+pub const DB_ROUNDTRIPS_NAME = "agentsfleet_lease_poll_db_roundtrips_total";
+pub const DB_ROUNDTRIPS_HELP = "Postgres round-trips issued on the lease path; an idle poll must contribute zero.";
+pub const READY_DEPTH_NAME = "agentsfleet_fleet_ready_depth";
+pub const READY_DEPTH_HELP = "Fleets in the shared readiness index, sampled by the reclaim sweeper. NOT summable across replicas — every replica samples the same index, so use any single series.";
+pub const READY_WRITE_FAILURES_NAME = "agentsfleet_fleet_ready_write_failures_total";
+pub const READY_WRITE_FAILURES_HELP = "Readiness index writes (mark or clear) that failed against Redis. Unlabelled: which of the two failed does not change the operator's response, and the log line carries it.";
+
 pub const Snapshot = struct {
     api_backpressure_rejections_total: u64,
     api_in_flight_requests: u64,
@@ -13,6 +36,12 @@ pub const Snapshot = struct {
     sse_dropped_frames_total: u64,
     sse_hub_reconnects_total: u64,
     fleet_triggered_total: u64 = 0,
+    // Lease-poll cost + readiness index.
+    lease_polls_total: u64 = 0,
+    lease_poll_candidates_scanned_total: u64 = 0,
+    lease_poll_db_roundtrips_total: u64 = 0,
+    fleet_ready_depth: u64 = 0,
+    fleet_ready_write_failures_total: u64 = 0,
     // Signup funnel counters.
     signup_bootstrapped_total: u64 = 0,
     signup_replayed_total: u64 = 0,
@@ -38,6 +67,11 @@ var g_signup_failed_missing_email_total = std.atomic.Value(u64).init(0);
 var g_signup_failed_db_error_total = std.atomic.Value(u64).init(0);
 var g_signup_failed_pool_unavailable_total = std.atomic.Value(u64).init(0);
 var g_signup_failed_metadata_writeback_total = std.atomic.Value(u64).init(0);
+var g_lease_polls_total = std.atomic.Value(u64).init(0);
+var g_lease_poll_candidates_scanned_total = std.atomic.Value(u64).init(0);
+var g_lease_poll_db_roundtrips_total = std.atomic.Value(u64).init(0);
+var g_fleet_ready_depth = std.atomic.Value(u64).init(0);
+var g_fleet_ready_write_failures_total = std.atomic.Value(u64).init(0);
 
 // safe because: every store/load below is an independent stat counter or
 // gauge — readers (the /metrics scrape) tolerate staleness, and no other
@@ -89,6 +123,34 @@ pub fn incSignupFailed(reason: SignupFailReason) void {
     _ = slot.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 
+// ── Lease-poll cost + readiness index writers ───────────────────────────────
+
+/// Record what one completed lease poll cost: how many fleets it examined and how
+/// many Postgres round-trips it issued. Called once per poll, on every exit path,
+/// so an idle poll contributes a candidate count and a round-trip count of zero
+/// rather than contributing nothing — an absent sample would leave the idle case
+/// invisible, which is the defect this family exists to expose.
+pub fn observeLeasePoll(candidates_scanned: u64, db_roundtrips: u64) void {
+    _ = g_lease_polls_total.fetchAdd(1, .monotonic); // safe because: see module note above
+    _ = g_lease_poll_candidates_scanned_total.fetchAdd(candidates_scanned, .monotonic); // safe because: see module note above
+    _ = g_lease_poll_db_roundtrips_total.fetchAdd(db_roundtrips, .monotonic); // safe because: see module note above
+}
+
+/// Overwrite the readiness-depth sample. A SETTER ONLY, deliberately: the index
+/// is one hash shared by every replica, so a process-local counter incremented on
+/// mark and decremented on clear could not describe it — one replica marks while
+/// another clears, a restart zeroes the local delta, and a repeat mark for an
+/// already-present fleet changes no field count. The sweeper reads the real field
+/// count once per pass and calls this; `/metrics` renders the sample, keeping the
+/// scrape path free of both datastores.
+pub fn setReadyIndexDepth(fields: u64) void {
+    g_fleet_ready_depth.store(fields, .release); // safe because: see module note above
+}
+
+pub fn incReadyWriteFailure() void {
+    _ = g_fleet_ready_write_failures_total.fetchAdd(1, .monotonic); // safe because: see module note above
+}
+
 fn loadStat(counter: *std.atomic.Value(u64)) u64 {
     return counter.load(.acquire); // safe because: scrape-time read of an independent stat counter; see module note
 }
@@ -111,5 +173,20 @@ pub fn snapshot() Snapshot {
     s.signup_failed_db_error_total = loadStat(&g_signup_failed_db_error_total);
     s.signup_failed_pool_unavailable_total = loadStat(&g_signup_failed_pool_unavailable_total);
     s.signup_failed_metadata_writeback_total = loadStat(&g_signup_failed_metadata_writeback_total);
+    s.lease_polls_total = loadStat(&g_lease_polls_total);
+    s.lease_poll_candidates_scanned_total = loadStat(&g_lease_poll_candidates_scanned_total);
+    s.lease_poll_db_roundtrips_total = loadStat(&g_lease_poll_db_roundtrips_total);
+    s.fleet_ready_depth = loadStat(&g_fleet_ready_depth);
+    s.fleet_ready_write_failures_total = loadStat(&g_fleet_ready_write_failures_total);
     return s;
+}
+
+/// Test-only reset for the lease-poll and readiness families, so a render test
+/// starts from a known zero rather than inheriting another test's increments.
+pub fn resetLeasePollMetricsForTest() void {
+    g_lease_polls_total.store(0, .release); // safe because: single-threaded test reset
+    g_lease_poll_candidates_scanned_total.store(0, .release);
+    g_lease_poll_db_roundtrips_total.store(0, .release);
+    g_fleet_ready_depth.store(0, .release);
+    g_fleet_ready_write_failures_total.store(0, .release);
 }

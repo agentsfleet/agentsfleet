@@ -24,6 +24,7 @@
 //!
 //! `updated_at` (BIGINT ms epoch) doubles as config_revision — monotonic.
 
+const std = @import("std");
 const httpz = @import("httpz");
 const logging = @import("log");
 
@@ -36,6 +37,8 @@ const patch_body = @import("patch_body.zig");
 const patch_txn = @import("patch_txn.zig");
 const cron_sync = @import("cron_sync.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
+const fleet_config = @import("../../../fleet_runtime/config.zig");
+const fleet_ready = @import("../../../queue/fleet_ready.zig");
 
 const log = logging.scoped(.fleet_api);
 
@@ -100,6 +103,16 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
 
     const updated = resolveOutcome(hx, fleet_id, outcome) orelse return;
 
+    // The transition is committed, so a fleet that just left `active` can no
+    // longer be leased — the candidate query filters on `status = 'active'`,
+    // which also makes the poll-site clear unreachable for it. Drop the
+    // readiness mark here or nothing ever will, and the field occupies a slot
+    // of the bounded peek sample permanently. Unconditional (not token-guarded)
+    // is correct: that guard protects live work, and there is none once the
+    // fleet is unleasable. The stream is deliberately left intact so a resume
+    // still has its undelivered event; the sweeper re-marks it on a later pass.
+    if (statusLeavesActive(body.status)) fleet_ready.forceClear(hx.ctx.queue, fleet_id);
+
     if (body.status != null or body.trigger_markdown != null or body.config_json != null) {
         const cron_result = cron_sync.syncStoredFleet(hx, workspace_id, fleet_id);
         if (cron_result != .ok and cron_result != .skipped) {
@@ -124,6 +137,15 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
     } else {
         hx.ok(.ok, .{ .fleet_id = fleet_id, .config_revision = updated.revision, .etag = updated.etag });
     }
+}
+
+/// True when this PATCH set a status that makes the fleet unleasable. Absent
+/// status (a config-only edit) leaves readiness alone, and so does a transition
+/// back to `active` — that fleet is a candidate again, and its mark is restored
+/// by ingress or by the sweeper's undelivered probe rather than invented here.
+fn statusLeavesActive(status: ?[]const u8) bool {
+    const s = status orelse return false;
+    return !std.mem.eql(u8, s, fleet_config.FleetStatus.active.toSlice());
 }
 
 /// Every refusal writes its own response and yields null; the success arm hands

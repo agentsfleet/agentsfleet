@@ -16,6 +16,7 @@ test {
     _ = @import("jwks.zig");
     _ = @import("oidc.zig");
     _ = @import("principal.zig");
+    _ = @import("runner_token_cache.zig");
     _ = @import("scopes.zig");
     _ = @import("session_state.zig");
     // The redis-backed session store (session_store_redis*) lives in

@@ -21,6 +21,7 @@ const clock = @import("common").clock;
 const auth_mw = @import("../auth/middleware/mod.zig");
 const oidc = @import("../auth/oidc.zig");
 const api_key = @import("../auth/api_key.zig");
+const token_cache = @import("../auth/runner_token_cache.zig");
 const api_key_lookup = @import("../cmd/api_key_lookup.zig");
 const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
 const error_registry = @import("../errors/error_registry.zig");
@@ -273,6 +274,13 @@ fn setGateRunner(h: *TestHarness, admin_state: []const u8) !void {
         \\VALUES ($1::uuid, 'host-gate-test', $2, 'dev_none', $3, '[]'::jsonb, NULL, 0, 0, 0)
         \\ON CONFLICT (id) DO UPDATE SET admin_state = EXCLUDED.admin_state
     , .{ GATE_RUNNER_ID, hash[0..], admin_state });
+    // This raw write stands in for an operator action, so it owes what the
+    // operator plane owes: `runner_patch.zig` and `runner_delete.zig` both drop
+    // the runner's memoized verdict once their write commits. Without it the
+    // fixture flips admin_state behind the cache's back — a state production
+    // cannot reach — and the 401 below would be waiting out ENTRY_TTL_MS rather
+    // than testing the gate. The assertion itself is unchanged.
+    token_cache.invalidateRunner(GATE_RUNNER_ID);
 }
 
 fn cleanupGate(h: *TestHarness) void {
@@ -308,3 +316,74 @@ test "runner auth admits an active admin_state and rejects a revoked one" {
 // so there is no binary-spawned register arm. The handler authz above is the
 // enrollment contract; the `agt_r` is minted server-side from the dashboard's
 // session-authed POST (proven here directly against the live HTTP surface).
+
+// ── Memo fast path: a verdict inside its window answers without Postgres ─────
+// The runner lookup memoizes a hit, so steady-state polling costs no
+// `fleet.runners` read. Proven deterministically: delete the runner's row
+// outright, then poll again inside the expiry window — a lookup that reached
+// Postgres would find nothing and answer 401, so the 200 IS the proof the memo
+// answered. No counters, no timing races: the row's absence is the instrument.
+
+const MEMO_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003";
+const MEMO_RAW_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "m" ** 60;
+
+fn seedMemoRunner(h: *TestHarness) !void {
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const hash = api_key.sha256Hex(MEMO_RAW_TOKEN);
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runners
+        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
+        \\   last_seen_at, created_at, updated_at)
+        \\VALUES ($1::uuid, 'host-memo-test', $2, 'dev_none', 'active', '[]'::jsonb, NULL, 0, 0, 0)
+        \\ON CONFLICT (id) DO NOTHING
+    , .{ MEMO_RUNNER_ID, hash[0..] });
+}
+
+fn deleteMemoRunnerRow(h: *TestHarness) !void {
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    _ = try conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{MEMO_RUNNER_ID});
+}
+
+fn pollAsMemoRunner(h: *TestHarness) !harness_mod.Response {
+    return (try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(MEMO_RAW_TOKEN)).json("{}")).send();
+}
+
+test "runner auth answers from the memo inside its window without a Postgres read" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    // The harness resets the token memo at start, so the first request below
+    // is a genuine miss; the invalidate keeps a failing run from leaking the
+    // memoized verdict into a sibling test.
+    defer token_cache.invalidateRunner(MEMO_RUNNER_ID);
+    try seedMemoRunner(h);
+
+    // Miss → Postgres read → 200; the verdict is memoized on the way out.
+    {
+        const resp = try pollAsMemoRunner(h);
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+    }
+
+    // Remove the row outright. From here, any lookup that reaches Postgres
+    // finds nothing and must answer 401.
+    try deleteMemoRunnerRow(h);
+
+    // Inside the window: still 200 — the memo answered, and Postgres was never
+    // consulted. This is the steady-state poll cost the memo exists to remove.
+    {
+        const resp = try pollAsMemoRunner(h);
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+    }
+
+    // Dropping the verdict restores ground truth immediately: the deleted
+    // runner is refused at the middleware on the very next request.
+    token_cache.invalidateRunner(MEMO_RUNNER_ID);
+    {
+        const resp = try pollAsMemoRunner(h);
+        defer resp.deinit();
+        try resp.expectStatus(.unauthorized);
+    }
+}

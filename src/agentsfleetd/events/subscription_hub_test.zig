@@ -875,6 +875,12 @@ test "integration: concurrent_read_write_one_subscriber_conn" {
     const viewer = try hub.subscribe(CHANNEL_A);
     var viewer_detached = false;
     defer if (!viewer_detached) hub.unsubscribe(viewer);
+    // …and is REGISTERED before anything publishes: subscribe() returns after
+    // writing SUBSCRIBE to the wire, not after Redis processes it, so an
+    // immediate publish on the second connection races the registration and
+    // loses the first frame under load ("expected 10, found 9"). Every sibling
+    // test settles the same way before publishing.
+    try expectNumsub(&pub_client, CHANNEL_A, 1);
 
     // …while churn threads hammer the write half of the SAME connection.
     var errs = [_]?anyerror{ null, null, null };

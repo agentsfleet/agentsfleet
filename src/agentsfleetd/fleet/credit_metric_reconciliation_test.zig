@@ -124,7 +124,7 @@ fn fundLargeBalance(conn: *pg.Conn) !void {
 
 fn publishFreshEvent(h: *TestHarness) !void {
     try redis_fleet.ensureFleetConsumerGroup(&h.queue, FLEET_ID);
-    const id = try h.queue.xaddFleetEvent(.{
+    const id = try redis_fleet.xaddFleetEvent(&h.queue, .{
         .event_id = "",
         .fleet_id = FLEET_ID,
         .workspace_id = WORKSPACE_ID,
@@ -140,13 +140,15 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
-fn delStream(h: *TestHarness) void {
-    var resp = h.queue.command(&.{ "DEL", "fleet:" ++ FLEET_ID ++ ":events" }) catch return;
-    resp.deinit(h.queue.alloc);
+/// Drop the fleet's stream AND its readiness mark — `fleet:ready` is one shared
+/// key and `peek` is bounded + randomized, so a leftover mark for a deleted
+/// fleet can crowd a sibling suite's fleet out of the sample.
+fn forgetFleet(h: *TestHarness) void {
+    redis_fleet.purgeFleetRedisState(&h.queue, FLEET_ID) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
-    delStream(h);
+    forgetFleet(h);
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE uid = $1::uuid", .{COLLISION_UID});
     execIgnore(conn,
         \\DELETE FROM fleet.metering_periods WHERE event_id IN

@@ -4,6 +4,7 @@ const std = @import("std");
 const common = @import("common");
 
 const FireQueue = @import("FireQueue.zig");
+const id_format = @import("../types/id_format.zig");
 const queue_constants = @import("../queue/constants.zig");
 const queue_redis = @import("../queue/redis.zig");
 
@@ -11,8 +12,8 @@ const CONTENDERS: usize = 100;
 const TEST_REDIS_URL_ENV: [:0]const u8 = "TEST_REDIS_TLS_URL";
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-105000000401";
 const SCHEDULE_ID = "0195b4ba-8d3a-7f13-8abc-105000000402";
-const SIGNED_MESSAGE_ID = "jwt_m105_fire";
-const PROVIDER_MESSAGE_ID = "msg_m105_fire";
+const SIGNED_MESSAGE_ID = "jwt_fire_probe";
+const PROVIDER_MESSAGE_ID = "msg_fire_probe";
 const FIRED_AT_MS: i64 = 1000;
 const REQUEST_JSON_FORMAT = "{{\"message\":\"summarize\",\"schedule_id\":\"" ++ SCHEDULE_ID ++ "\",\"generation\":1,\"fired_at\":{d}}}";
 const REQUEST_JSON = std.fmt.comptimePrint(REQUEST_JSON_FORMAT, .{FIRED_AT_MS});
@@ -83,12 +84,31 @@ fn expectStreamLength(client: *queue_redis.Client, alloc: std.mem.Allocator, str
     try std.testing.expectEqual(expected, response.integer);
 }
 
+fn readyMarkPresent(client: *queue_redis.Client, alloc: std.mem.Allocator, fleet_id: []const u8) !bool {
+    var response = try client.command(&.{ "HGET", queue_constants.ready_index_key, fleet_id });
+    defer response.deinit(alloc);
+    return switch (response) {
+        .bulk => |value| value != null,
+        else => false,
+    };
+}
+
+/// The readiness index is ONE hash shared by every suite in the binary; a mark
+/// left behind here would crowd a sibling's bounded randomized peek sample.
+fn clearReadyMark(client: *queue_redis.Client, alloc: std.mem.Allocator, fleet_id: []const u8) void {
+    var response = client.command(&.{ "HDEL", queue_constants.ready_index_key, fleet_id }) catch return;
+    response.deinit(alloc);
+}
+
 test "fire queue: signed and provider identities each suppress replay atomically" {
     const alloc = std.testing.allocator;
     var client = try redisOrSkip(alloc);
     defer client.deinit();
-    const fleet_id = try std.fmt.allocPrint(alloc, "m105-fire-{d}", .{common.clock.nowNanos()});
-    defer alloc.free(fleet_id);
+    // Canonical UUIDv7, minted per run: production fleet ids are canonical,
+    // and the readiness peek deletes non-canonical fields on sight — a junk id
+    // here would have its mark healed away mid-test.
+    const fleet_id_text = try id_format.generateUuidV7();
+    const fleet_id: []const u8 = &fleet_id_text;
     var signed_buffer: [384]u8 = undefined;
     const signed_key = try keyFor(&signed_buffer, fleet_id, "jwt", SIGNED_MESSAGE_ID);
     var provider_buffer: [384]u8 = undefined;
@@ -98,6 +118,7 @@ test "fire queue: signed and provider identities each suppress replay atomically
     const keys = [_][]const u8{ signed_key, provider_key, stream };
     deleteKeys(&client, alloc, &keys);
     defer deleteKeys(&client, alloc, &keys);
+    defer clearReadyMark(&client, alloc, fleet_id);
 
     const queue = FireQueue.init(alloc, &client);
     try std.testing.expectEqual(FireQueue.Outcome.enqueued, try queue.enqueue(
@@ -109,6 +130,14 @@ test "fire queue: signed and provider identities each suppress replay atomically
         REQUEST_JSON,
         FIRED_AT_MS,
     ));
+    // The append marked the fleet ready: scheduled fires enter ready-first
+    // lease discovery like every other producer's events, instead of waiting
+    // out a sweeper pass.
+    try std.testing.expect(try readyMarkPresent(&client, alloc, fleet_id));
+
+    // A suppressed replay appends nothing, so it must mark nothing either —
+    // drop the mark, replay both identities, and the field stays absent.
+    clearReadyMark(&client, alloc, fleet_id);
     try std.testing.expectEqual(FireQueue.Outcome.duplicate, try queue.enqueue(
         fleet_id,
         WORKSPACE_ID,
@@ -127,6 +156,7 @@ test "fire queue: signed and provider identities each suppress replay atomically
         REQUEST_JSON,
         FIRED_AT_MS,
     ));
+    try std.testing.expect(!try readyMarkPresent(&client, alloc, fleet_id));
     try expectStreamLength(&client, alloc, stream, 1);
 }
 
@@ -134,8 +164,8 @@ test "fire queue: 100 simultaneous copies append exactly once without a process 
     const alloc = std.testing.allocator;
     var client = try redisOrSkip(alloc);
     defer client.deinit();
-    const fleet_id = try std.fmt.allocPrint(alloc, "m105-fire-cc-{d}", .{common.clock.nowNanos()});
-    defer alloc.free(fleet_id);
+    const fleet_id_text = try id_format.generateUuidV7();
+    const fleet_id: []const u8 = &fleet_id_text;
     var signed_buffer: [384]u8 = undefined;
     const signed_key = try keyFor(&signed_buffer, fleet_id, "jwt", SIGNED_MESSAGE_ID);
     var provider_buffer: [384]u8 = undefined;
@@ -175,4 +205,8 @@ test "fire queue: 100 simultaneous copies append exactly once without a process 
     try std.testing.expectEqual(@as(u32, CONTENDERS - 1), counts.duplicate.load(.acquire));
     try std.testing.expectEqual(@as(u32, 0), counts.errors.load(.acquire));
     try expectStreamLength(&client, alloc, stream, 1);
+    // The one winning append marked readiness; the 99 suppressed replays
+    // neither re-marked nor raced the field away.
+    try std.testing.expect(try readyMarkPresent(&client, alloc, fleet_id));
+    clearReadyMark(&client, alloc, fleet_id);
 }

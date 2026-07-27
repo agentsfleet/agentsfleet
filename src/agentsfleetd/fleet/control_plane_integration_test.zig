@@ -124,7 +124,7 @@ pub fn fundLargeBalance(conn: *pg.Conn) !void {
 
 pub fn publishFreshEvent(h: *TestHarness, fleet_id: []const u8) !void {
     try redis_fleet.ensureFleetConsumerGroup(&h.queue, fleet_id);
-    const id = try h.queue.xaddFleetEvent(.{
+    const id = try redis_fleet.xaddFleetEvent(&h.queue, .{
         .event_id = "",
         .fleet_id = fleet_id,
         .workspace_id = WORKSPACE_ID,
@@ -255,16 +255,20 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
-fn delStream(h: *TestHarness, comptime key: []const u8) void {
-    var resp = h.queue.command(&.{ "DEL", key }) catch return;
-    resp.deinit(h.queue.alloc);
+/// Drop the fleet's stream AND its readiness mark. Deleting only the stream
+/// leaves a mark for a fleet this teardown then removes from Postgres, and
+/// `fleet:ready` is ONE key shared by every suite in the binary: because `peek`
+/// is bounded and randomized, those leftovers crowd a sibling's freshly-marked
+/// fleet out of the sample and its lease silently returns null.
+fn forgetFleet(h: *TestHarness, fleet_id: []const u8) void {
+    redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 /// Idempotent teardown of every fixture any test in this file seeds. Deletes are
 /// no-ops when absent, so one routine serves all tests.
 pub fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
-    delStream(h, "fleet:" ++ AGENTSFLEET_1_ID ++ ":events");
-    delStream(h, "fleet:" ++ AGENTSFLEET_2_ID ++ ":events");
+    forgetFleet(h, AGENTSFLEET_1_ID);
+    forgetFleet(h, AGENTSFLEET_2_ID);
     execIgnore(conn, "DELETE FROM core.integration_grants WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_1_ID, AGENTSFLEET_2_ID });
     execIgnore(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1", .{WORKSPACE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE runner_id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });

@@ -38,6 +38,7 @@ const clock = constants.clock;
 const common = @import("../../common.zig");
 const hx_mod = @import("../../hx.zig");
 const ec = @import("../../../../errors/error_registry.zig");
+const redis_fleet = @import("../../../../queue/redis_fleet.zig");
 const PgQuery = @import("../../../../db/pg_query.zig").PgQuery;
 const EventEnvelope = @import("contract").event_envelope;
 const oauth2 = @import("../oauth2.zig");
@@ -242,7 +243,7 @@ fn enqueueMention(hx: Hx, bot_token: ?[]const u8, workspace_id: []const u8, chan
         .request_json = request_json,
         .created_at = clock.nowMillis(),
     };
-    const new_event_id = hx.ctx.queue.xaddFleetEvent(envelope) catch |err| {
+    const new_event_id = redis_fleet.xaddFleetEvent(hx.ctx.queue, envelope) catch |err| {
         releaseDedup(hx, channel_fleet_id, dedup_key);
         log.err("slack_enqueue_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .channel_fleet_id = channel_fleet_id, .err = @errorName(err) });
         common.internalOperationError(hx.res, "Failed to enqueue mention", hx.req_id);

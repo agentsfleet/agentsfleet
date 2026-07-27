@@ -31,7 +31,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
-const queue_redis = @import("../../../queue/redis_client.zig");
+const redis_fleet = @import("../../../queue/redis_fleet.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = logging.scoped(.fleet_api);
@@ -95,10 +95,12 @@ pub fn innerDeleteFleet(hx: Hx, _: *httpz.Request, workspace_id: []const u8, fle
 
     switch (outcome) {
         .purged => {
-            // Best-effort Redis cleanup. PG state is the source of truth; if
-            // the stream DEL fails the row is already gone, so the next
-            // worker XREADGROUP will see the empty stream and move on.
-            cleanupRedisStream(hx.ctx.queue, fleet_id) catch |err| {
+            // Best-effort Redis cleanup, AFTER the PG purge committed. PG state
+            // is the source of truth; if this fails the row is already gone, so
+            // the next worker XREADGROUP sees an empty stream and moves on, and
+            // the readiness field is unreachable behind the candidate query's
+            // `status = 'active'` filter.
+            redis_fleet.purgeFleetRedisState(hx.ctx.queue, fleet_id) catch |err| {
                 log.warn(
                     "delete_redis_cleanup_failed",
                     .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "pg_row_purged_stream_orphaned_until_ttl" },
@@ -173,11 +175,4 @@ fn purgeFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const 
     }
     _ = try conn.exec("COMMIT", .{});
     return .purged;
-}
-
-fn cleanupRedisStream(redis: *queue_redis.Client, fleet_id: []const u8) !void {
-    var key_buf: [256]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
-    var resp = try redis.commandAllowError(&.{ "DEL", key });
-    resp.deinit(redis.alloc);
 }
