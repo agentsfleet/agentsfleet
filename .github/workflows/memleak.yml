@@ -29,7 +29,11 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel on main: these runs exist to populate the cache every branch
+  # restores from, so cancelling one to start the next leaves no warm cache at
+  # all — silently undoing the reason the main trigger is here. Pull Request
+  # runs stay cancellable; a superseded push has nothing worth finishing.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   memleak:
