@@ -38,34 +38,65 @@
 //! under a shared lock, so concurrent catalogue requests run in parallel. The
 //! predecessor took one exclusive mutex on every read in order to refresh LRU
 //! position. The trade is deliberate and is the one place this diverges from
-//! §2's "true LRU" wording: eviction is least-recently-used *within a bucket*
-//! and a hit does not promote. With a 60-second bound, a generation-scoped key
-//! set, and four ways per bucket, retention matters far less than keeping every
-//! reader off a single lock.
+//! §2's "true LRU" wording: eviction drops a bucket's oldest entry and a hit
+//! does not promote. With a generation-scoped key set — every resident entry is
+//! current-revision, because a bump clears the table — and four ways per bucket,
+//! retention matters far less than keeping every reader off a single lock.
+//!
+//! ## Nothing here reads a clock
+//!
+//! An earlier shape gave each entry a 60-second deadline. It was never a
+//! freshness bound: the revision in the key already makes a superseded page
+//! unreachable. Its real job was reclaiming those unreachable payloads before
+//! they starved the byte ceiling — which `clear` on a revision bump does exactly,
+//! immediately, and without a deadline to tune — the bump path in
+//! `state/model_catalogue_revision.zig` is what changes the key, and the entries
+//! under the old one age out under bucket pressure.
 //!
 //! ## Byte accounting is defined, not estimated
 //!
-//! "Including allocator metadata" is not observable through a Zig allocator, so
-//! a budget phrased that way cannot be asserted. This counts exactly one thing
-//! per live entry — the payload bytes it owns — and that sum IS the number the
-//! ceiling compares against, so the number a test reads is the number the cache
-//! enforces. Slot storage is preallocated and fixed, and allocator-internal
-//! padding is outside the budget by construction.
+//! The bound is the SLOT COUNT, and it is the only bound.
+//!
+//! §2 also named an 8 MiB byte ceiling, enforced by a running total with a bypass
+//! above it. That total is gone, because the geometry already binds well under
+//! it. A `model_library_store.LibraryRow` is six fields — id, provider, context
+//! cap, three prices — and serializes to 188 bytes at the median of the shipped
+//! fixture ids (180–217). A full `limit` = 50 page is therefore ≈9.2 KB, and 256
+//! slots of full pages ≈2.3 MiB: under a third of the ceiling, so the byte total
+//! could never fire.
+//!
+//! Keeping it would have cost a reclamation policy for no bound at all. With no
+//! clock in the table, nothing drops the superseded payloads still holding
+//! budget, so a byte ceiling would eventually wedge — resident on stale pages,
+//! bypassing every new one — which is what the deleted expiry sweep existed to
+//! prevent. Removing the ceiling removes the need for the sweep.
+//!
+//! So memory here is `MAX_ENTRIES` × page size. The tripwire if a row ever grows
+//! is `observability/library_read_counters.GLOBAL_MODELS_MAX_BODY_BYTES`
+//! (256 KiB), which the read-bounds suites assert every page against — at that
+//! ceiling 256 slots would be 64 MiB, so a row shape that grows 27× is the point
+//! at which this reasoning needs redoing.
+//!
+//! ## No recency, on purpose
+//!
+//! The table evicts a bucket's oldest INSERTED entry; a read does not promote.
+//! Ghostty's original refreshes recency on a hit, which retains hot entries
+//! better — but that read mutates, so it needs an exclusive lock, and every
+//! catalogue request would serialize behind one mutex. The trade is right only
+//! because this table is heavily over-provisioned against its working set: 256
+//! slots for the handful of query shapes that are hot at one revision, so
+//! eviction essentially never fires and retention is moot. If that stops being
+//! true, the fix is Ghostty's promoting read and an exclusive lock — a decision,
+//! not a rediscovery.
 
 const std = @import("std");
 const common = @import("common");
 
-/// §2's ceilings. `MAX_ENTRIES` is derived from the geometry rather than
-/// declared beside it, so the two cannot disagree.
+/// §2's entry ceiling, derived from the geometry rather than declared beside it,
+/// so the two cannot disagree. It is the cache's only bound (see the module note).
 const BUCKET_COUNT: usize = 64;
 const BUCKET_SIZE: u8 = 4;
 pub const MAX_ENTRIES: usize = BUCKET_COUNT * BUCKET_SIZE;
-pub const MAX_BYTES: usize = 8 * 1024 * 1024;
-
-/// Freshness bound. The cache never reads a clock — `now_ms` arrives from the
-/// caller — so §2's "monotonic" requirement is satisfied by the caller's choice
-/// of source and there is no wall clock here for a clock adjustment to move.
-pub const TTL_MS: i64 = 60 * std.time.ms_per_s;
 
 pub const DIGEST_LEN: usize = std.crypto.hash.sha2.Sha256.digest_length;
 
@@ -81,17 +112,8 @@ pub const Key = struct {
     digest: [DIGEST_LEN]u8,
 };
 
-/// Live payload bytes. Heap-allocated so the table's context can reach it
-/// through a stable pointer: the context is stored *inside* the table by value,
-/// so a counter living directly on `Cache` would be at a different address
-/// every time a `Cache` was moved.
-const Accounting = struct {
-    bytes: usize = 0,
-};
-
 const Context = struct {
     alloc: std.mem.Allocator,
-    acct: *Accounting,
 
     /// The digest is already uniform, so its leading bytes ARE the bucket index
     /// — rehashing them would only cost time. The revision is mixed in so the
@@ -105,15 +127,10 @@ const Context = struct {
         return a.revision == b.revision and std.mem.eql(u8, &a.digest, &b.digest);
     }
 
-    /// The table's single departure hook — eviction, overwrite, expiry sweep,
-    /// removal and teardown all arrive here. Freeing and un-counting in one
-    /// place is what keeps the tally and the heap in agreement without every
-    /// call site remembering to do both.
-    ///
-    /// Only ever called from a mutating table method, which the caller holds
-    /// the lock exclusively for, so the unsynchronized decrement is safe.
+    /// The table's single departure hook — bucket eviction and `clear` are its
+    /// only two exits, and both arrive here, so a payload is freed in exactly one
+    /// place and cannot leak through a path the table forgot to wire up.
     pub fn evicted(self: *const Context, _: Key, value: []u8) void {
-        self.acct.bytes -= value.len;
         self.alloc.free(value);
     }
 };
@@ -127,38 +144,23 @@ pub const Cache = struct {
     const Self = @This();
 
     alloc: std.mem.Allocator,
-    acct: *Accounting,
     table: Table,
     lock: common.RwLock = .{},
 
-    pub fn init(alloc: std.mem.Allocator) !Self {
-        const acct = try alloc.create(Accounting);
-        acct.* = .{};
-        return .{
-            .alloc = alloc,
-            .acct = acct,
-            .table = Table.init(.{ .alloc = alloc, .acct = acct }),
-        };
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{ .alloc = alloc, .table = Table.init(.{ .alloc = alloc }) };
     }
 
     pub fn deinit(self: *Self) void {
         self.table.clear(); // releases every resident payload
-        self.alloc.destroy(self.acct);
         self.* = undefined;
     }
 
-    /// Live payload bytes: the exact sum the ceiling is enforced against.
-    pub fn byteLen(self: *Self) usize {
+    /// Resident entries. All of them are current-revision (see `put`).
+    pub fn count(self: *Self) usize {
         self.lock.lockShared();
         defer self.lock.unlockShared();
-        return self.acct.bytes;
-    }
-
-    /// Entries still within their freshness bound at `now_ms`.
-    pub fn count(self: *Self, now_ms: i64) usize {
-        self.lock.lockShared();
-        defer self.lock.unlockShared();
-        return self.table.count(now_ms);
+        return self.table.count();
     }
 
     /// A fresh cached page, copied into `dest` for the caller to own.
@@ -173,50 +175,25 @@ pub const Cache = struct {
     /// traffic. The caller passes the arena its response is written from, which
     /// both frees the copy and puts it somewhere that outlives the handler.
     ///
-    /// An expired entry reads as a miss and is left resident — `peek` must not
-    /// mutate under a shared lock. `put` reclaims it later.
-    pub fn fetch(self: *Self, dest: std.mem.Allocator, key: Key, now_ms: i64) !?[]u8 {
+    /// A page cached under a superseded revision cannot be reached from here at
+    /// all: the revision is part of the key, so a caller that has observed a
+    /// newer one looks up a different key and misses.
+    pub fn fetch(self: *Self, dest: std.mem.Allocator, key: Key) !?[]u8 {
         self.lock.lockShared();
         defer self.lock.unlockShared();
-        const value = self.table.peek(key, now_ms) orelse return null;
+        const value = self.table.peek(key) orelse return null;
         return try dest.dupe(u8, value);
     }
 
-    /// Admit a response, returning false when it was BYPASSED rather than
-    /// stored — the caller still serves the response, it simply is not cached.
-    pub fn put(self: *Self, key: Key, value: []const u8, now_ms: i64) !bool {
-        if (value.len > MAX_BYTES) return false;
-
+    /// Admit a response. The only failure is an allocation fault; the caller
+    /// serves the page either way, so a refusal is a non-event.
+    ///
+    /// Admission is unconditional because the geometry is the bound: this may
+    /// displace a page from the key's bucket, and `evicted` frees it.
+    pub fn put(self: *Self, key: Key, value: []const u8) !void {
+        const owned = try self.alloc.dupe(u8, value);
         self.lock.lock();
         defer self.lock.unlock();
-
-        if (!self.reserve(value.len, now_ms)) return false;
-
-        const owned = try self.alloc.dupe(u8, value);
-        // Counted before the store because storing may evict, and the eviction
-        // hook decrements. Both orders total the same; this one never
-        // transiently under-counts.
-        self.acct.bytes += owned.len;
-        // The displaced entry is discarded: `CacheTable` has already released it
-        // through `Context.evicted`, which is where this cache frees its payloads
-        // and decrements `acct`. Reading the returned value would be a use after
-        // free; its only legitimate use is observing pressure, which `acct` and
-        // the gauges already cover.
-        _ = self.table.put(key, owned, now_ms + TTL_MS, now_ms);
-        return true;
-    }
-
-    /// Whether `len` more bytes fit, reclaiming dead entries first if not.
-    ///
-    /// §2 is explicit that crossing the ceiling is "a bypass, never an eviction
-    /// cascade", so nothing live is dropped to make room — emptying a working
-    /// cache to admit one outlier trades everything for a single hit. Expired
-    /// entries are a different matter: they are dead already and only lazy
-    /// expiry is still holding their memory, so they are swept before the
-    /// answer is allowed to be no.
-    fn reserve(self: *Self, len: usize, now_ms: i64) bool {
-        if (self.acct.bytes + len <= MAX_BYTES) return true;
-        _ = self.table.sweepExpired(now_ms);
-        return self.acct.bytes + len <= MAX_BYTES;
+        self.table.put(key, owned);
     }
 };

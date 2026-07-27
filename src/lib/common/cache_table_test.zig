@@ -6,12 +6,11 @@
 //!
 //!   1. it never returns a value for a key that was not stored (a wrong hit is
 //!      the only failure a cache cannot recover from),
-//!   2. it never returns an expired value,
-//!   3. an expired entry never costs a live entry its slot,
-//!   4. removal actually removes, including by predicate,
+//!   2. when a key is resident twice, the NEWEST value answers,
+//!   3. every entry that leaves is handed to the eviction hook exactly once,
 //!
-//! — and deliberately do NOT pin which entry is evicted under pressure beyond
-//! "the least recently used one", so the eviction policy stays free to change.
+//! — and deliberately do NOT pin which entry is evicted beyond "this bucket's
+//! oldest", so the policy stays free to change.
 //!
 //! The context below hashes to the key itself, so bucket placement is exact and
 //! collision cases are constructible rather than hoped for.
@@ -38,9 +37,6 @@ const Table = cache_table.CacheTable(u64, u64, IdentityContext, .{
     .bucket_size = BUCKET_SIZE,
 });
 
-const NEVER = cache_table.NEVER_EXPIRES;
-const BASE_MS: i64 = 1_000;
-
 fn newTable() Table {
     return Table.init(.{});
 }
@@ -51,241 +47,86 @@ const KEY_A_COLLIDES: u64 = 1 + BUCKET_COUNT;
 const KEY_A_COLLIDES_2: u64 = 1 + 2 * BUCKET_COUNT;
 const KEY_OTHER_BUCKET: u64 = 2;
 
-test "peek and get return a stored value" {
+test "peek returns a stored value" {
     var t = newTable();
-    _ = t.put(KEY_A, 42, NEVER, BASE_MS);
-
-    try std.testing.expectEqual(@as(?u64, 42), t.peek(KEY_A, BASE_MS));
-    try std.testing.expectEqual(@as(?u64, 42), t.get(KEY_A, BASE_MS));
+    t.put(KEY_A, 42);
+    try std.testing.expectEqual(@as(?u64, 42), t.peek(KEY_A));
 }
 
-test "absent key returns null from both readers" {
+test "absent key returns null" {
     var t = newTable();
-    _ = t.put(KEY_A, 42, NEVER, BASE_MS);
+    t.put(KEY_A, 42);
 
-    try std.testing.expect(t.peek(KEY_OTHER_BUCKET, BASE_MS) == null);
-    try std.testing.expect(t.get(KEY_OTHER_BUCKET, BASE_MS) == null);
+    try std.testing.expect(t.peek(KEY_OTHER_BUCKET) == null);
     // A key that hashes to the SAME bucket as a stored one must still miss —
     // this is the wrong-hit case, the one failure a cache cannot recover from.
-    try std.testing.expect(t.peek(KEY_A_COLLIDES, BASE_MS) == null);
-    try std.testing.expect(t.get(KEY_A_COLLIDES, BASE_MS) == null);
+    try std.testing.expect(t.peek(KEY_A_COLLIDES) == null);
 }
 
 test "empty table returns null rather than reading uninitialized slots" {
     var t = newTable();
     for (0..BUCKET_COUNT * 4) |k| {
-        try std.testing.expect(t.peek(@intCast(k), BASE_MS) == null);
+        try std.testing.expect(t.peek(@intCast(k)) == null);
     }
-}
-
-test "a value is returned up to its deadline and not on it" {
-    var t = newTable();
-    const ttl_ms: i64 = 10_000;
-    _ = t.put(KEY_A, 42, BASE_MS + ttl_ms, BASE_MS);
-
-    try std.testing.expectEqual(@as(?u64, 42), t.peek(KEY_A, BASE_MS + ttl_ms - 1));
-    // Expiry is a deadline, not a grace period: at exactly expires_at_ms it is gone.
-    try std.testing.expect(t.peek(KEY_A, BASE_MS + ttl_ms) == null);
-    try std.testing.expect(t.peek(KEY_A, BASE_MS + ttl_ms + 60_000) == null);
-}
-
-test "get drops the expired entry it walked past" {
-    var t = newTable();
-    _ = t.put(KEY_A, 42, BASE_MS + 1, BASE_MS);
-
-    try std.testing.expect(t.get(KEY_A, BASE_MS + 1) == null);
-    // Freed by the read, so the slot is available again before any put.
-    try std.testing.expectEqual(@as(usize, 0), t.count(BASE_MS));
-}
-
-test "peek leaves an expired entry in place" {
-    var t = newTable();
-    _ = t.put(KEY_A, 42, BASE_MS + 1, BASE_MS);
-
-    try std.testing.expect(t.peek(KEY_A, BASE_MS + 1) == null);
-    // peek is the read-lock-safe reader, so it must not mutate. The entry is
-    // still occupying its slot; it is simply never returned.
-    try std.testing.expectEqual(@as(usize, 0), t.count(BASE_MS + 1));
-    try std.testing.expectEqual(@as(usize, 1), t.count(BASE_MS));
-}
-
-test "put overwrites the same key in place rather than adding a second entry" {
-    var t = newTable();
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-    _ = t.put(KEY_A, 2, NEVER, BASE_MS);
-
-    try std.testing.expectEqual(@as(?u64, 2), t.peek(KEY_A, BASE_MS));
-    try std.testing.expectEqual(@as(usize, 1), t.count(BASE_MS));
-}
-
-test "put prefers the key's own live entry over an expired stranger earlier in the bucket" {
-    // The intersection the two tests around this one miss: an EXPIRED foreign
-    // entry sits at a lower index than the key's own LIVE entry. Taking the
-    // first reusable slot would write the fresh value into the stranger's slot
-    // and leave TWO entries for one key — and a later `remove` would drop only
-    // one of them, leaving a stale duplicate answering after an invalidation.
-    var t = newTable();
-    _ = t.put(KEY_A_COLLIDES, 9, BASE_MS + 1, BASE_MS); // dies at BASE_MS+1, index 0
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS); // lives forever, index 1
-
-    const later = BASE_MS + 10; // the stranger is now expired
-    _ = t.put(KEY_A, 2, NEVER, later);
-
-    try std.testing.expectEqual(@as(?u64, 2), t.get(KEY_A, later));
-    try std.testing.expect(t.remove(KEY_A));
-    // ONE remove fully removes: no stale duplicate may keep answering.
-    try std.testing.expect(t.get(KEY_A, later) == null);
-}
-
-test "an expired entry is reused before a live one is evicted" {
-    var t = newTable();
-    // Fill the bucket: one that dies early, one that lives.
-    _ = t.put(KEY_A, 1, BASE_MS + 1, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES, 2, NEVER, BASE_MS);
-
-    const now = BASE_MS + 5_000; // KEY_A is expired by now, KEY_A_COLLIDES is not.
-    const evicted = t.put(KEY_A_COLLIDES_2, 3, NEVER, now);
-
-    // The dead entry gave up its slot, so nothing live was displaced.
-    try std.testing.expect(evicted == null);
-    try std.testing.expectEqual(@as(?u64, 2), t.peek(KEY_A_COLLIDES, now));
-    try std.testing.expectEqual(@as(?u64, 3), t.peek(KEY_A_COLLIDES_2, now));
 }
 
 test "colliding keys coexist up to bucket_size" {
     var t = newTable();
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES, 2, NEVER, BASE_MS);
+    t.put(KEY_A, 1);
+    t.put(KEY_A_COLLIDES, 2);
 
-    // The direct-mapped shape this replaces would have evicted one of these.
-    try std.testing.expectEqual(@as(?u64, 1), t.peek(KEY_A, BASE_MS));
-    try std.testing.expectEqual(@as(?u64, 2), t.peek(KEY_A_COLLIDES, BASE_MS));
+    try std.testing.expectEqual(@as(?u64, 1), t.peek(KEY_A));
+    try std.testing.expectEqual(@as(?u64, 2), t.peek(KEY_A_COLLIDES));
+    try std.testing.expectEqual(@as(usize, 2), t.count());
 }
 
-test "overflowing a bucket evicts the least recently used entry" {
+test "a re-put of the same key is answered by the newer value" {
     var t = newTable();
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES, 2, NEVER, BASE_MS);
+    t.put(KEY_A, 1);
+    t.put(KEY_A, 2);
 
-    // Touch KEY_A so KEY_A_COLLIDES becomes the least recently used.
-    try std.testing.expectEqual(@as(?u64, 1), t.get(KEY_A, BASE_MS));
-
-    const evicted = t.put(KEY_A_COLLIDES_2, 3, NEVER, BASE_MS);
-    try std.testing.expect(evicted != null);
-    try std.testing.expectEqual(KEY_A_COLLIDES, evicted.?.key);
-
-    try std.testing.expectEqual(@as(?u64, 1), t.peek(KEY_A, BASE_MS));
-    try std.testing.expect(t.peek(KEY_A_COLLIDES, BASE_MS) == null);
-    try std.testing.expectEqual(@as(?u64, 3), t.peek(KEY_A_COLLIDES_2, BASE_MS));
+    // Both are resident — `put` appends rather than searching — so this pins
+    // that `peek` scans from the newest end and the stale one stays unreachable.
+    try std.testing.expectEqual(@as(?u64, 2), t.peek(KEY_A));
+    try std.testing.expectEqual(@as(usize, 2), t.count());
 }
 
-test "peek does not refresh LRU position" {
+test "overflowing a bucket evicts its oldest entry" {
     var t = newTable();
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES, 2, NEVER, BASE_MS);
+    t.put(KEY_A, 1);
+    t.put(KEY_A_COLLIDES, 2);
+    t.put(KEY_A_COLLIDES_2, 3);
 
-    // peek must not mutate, so KEY_A stays least-recently-used despite this.
-    try std.testing.expectEqual(@as(?u64, 1), t.peek(KEY_A, BASE_MS));
-
-    const evicted = t.put(KEY_A_COLLIDES_2, 3, NEVER, BASE_MS);
-    try std.testing.expectEqual(KEY_A, evicted.?.key);
+    try std.testing.expect(t.peek(KEY_A) == null); // oldest, gone
+    try std.testing.expectEqual(@as(?u64, 2), t.peek(KEY_A_COLLIDES));
+    try std.testing.expectEqual(@as(?u64, 3), t.peek(KEY_A_COLLIDES_2));
+    try std.testing.expectEqual(@as(usize, BUCKET_SIZE), t.count());
 }
 
 test "pressure on one bucket leaves other buckets untouched" {
     var t = newTable();
-    _ = t.put(KEY_OTHER_BUCKET, 99, NEVER, BASE_MS);
+    t.put(KEY_OTHER_BUCKET, 99);
+    t.put(KEY_A, 1);
+    t.put(KEY_A_COLLIDES, 2);
+    t.put(KEY_A_COLLIDES_2, 3);
 
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES, 2, NEVER, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES_2, 3, NEVER, BASE_MS);
-
-    try std.testing.expectEqual(@as(?u64, 99), t.peek(KEY_OTHER_BUCKET, BASE_MS));
-}
-
-test "remove drops the entry and reports whether one was there" {
-    var t = newTable();
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-
-    try std.testing.expect(t.remove(KEY_A));
-    try std.testing.expect(t.peek(KEY_A, BASE_MS) == null);
-    try std.testing.expect(!t.remove(KEY_A));
-}
-
-test "remove compacts a bucket without disturbing its other entry" {
-    var t = newTable();
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES, 2, NEVER, BASE_MS);
-
-    try std.testing.expect(t.remove(KEY_A));
-    try std.testing.expectEqual(@as(?u64, 2), t.peek(KEY_A_COLLIDES, BASE_MS));
-    try std.testing.expectEqual(@as(usize, 1), t.count(BASE_MS));
-}
-
-test "remove of an expired entry still reports it was present" {
-    var t = newTable();
-    _ = t.put(KEY_A, 1, BASE_MS + 1, BASE_MS);
-
-    // Removal is about occupancy, not liveness — an expired entry is still a
-    // row that has to go, and the caller learns it existed.
-    try std.testing.expect(t.remove(KEY_A));
-}
-
-const ValuePredicate = struct {
-    wanted: u64,
-    pub fn match(self: ValuePredicate, _: u64, value: u64) bool {
-        return value == self.wanted;
-    }
-};
-
-test "removeMatching drops every entry the predicate accepts, across buckets" {
-    var t = newTable();
-    _ = t.put(KEY_A, 7, NEVER, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES, 7, NEVER, BASE_MS);
-    _ = t.put(KEY_OTHER_BUCKET, 8, NEVER, BASE_MS);
-
-    const removed = t.removeMatching(ValuePredicate{ .wanted = 7 });
-
-    try std.testing.expectEqual(@as(usize, 2), removed);
-    try std.testing.expect(t.peek(KEY_A, BASE_MS) == null);
-    try std.testing.expect(t.peek(KEY_A_COLLIDES, BASE_MS) == null);
-    try std.testing.expectEqual(@as(?u64, 8), t.peek(KEY_OTHER_BUCKET, BASE_MS));
-}
-
-test "removeMatching that matches nothing removes nothing" {
-    var t = newTable();
-    _ = t.put(KEY_A, 7, NEVER, BASE_MS);
-
-    try std.testing.expectEqual(@as(usize, 0), t.removeMatching(ValuePredicate{ .wanted = 9 }));
-    try std.testing.expectEqual(@as(?u64, 7), t.peek(KEY_A, BASE_MS));
+    try std.testing.expectEqual(@as(?u64, 99), t.peek(KEY_OTHER_BUCKET));
 }
 
 test "clear empties every bucket" {
     var t = newTable();
-    for (0..BUCKET_COUNT * BUCKET_SIZE) |k| _ = t.put(@intCast(k), 1, NEVER, BASE_MS);
+    t.put(KEY_A, 1);
+    t.put(KEY_OTHER_BUCKET, 2);
 
     t.clear();
-
-    try std.testing.expectEqual(@as(usize, 0), t.count(BASE_MS));
-    for (0..BUCKET_COUNT * BUCKET_SIZE) |k| {
-        try std.testing.expect(t.peek(@intCast(k), BASE_MS) == null);
-    }
+    try std.testing.expectEqual(@as(usize, 0), t.count());
+    try std.testing.expect(t.peek(KEY_A) == null);
+    try std.testing.expect(t.peek(KEY_OTHER_BUCKET) == null);
 }
 
-test "count reports live entries only" {
-    var t = newTable();
-    _ = t.put(KEY_A, 1, BASE_MS + 1, BASE_MS);
-    _ = t.put(KEY_OTHER_BUCKET, 2, NEVER, BASE_MS);
-
-    try std.testing.expectEqual(@as(usize, 2), t.count(BASE_MS));
-    try std.testing.expectEqual(@as(usize, 1), t.count(BASE_MS + 1));
-}
-
-test "NEVER_EXPIRES survives any plausible clock" {
-    var t = newTable();
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-
-    try std.testing.expectEqual(@as(?u64, 1), t.peek(KEY_A, std.math.maxInt(i64) - 1));
-}
+// ---------------------------------------------------------------------------
+// The release rule, by a counting spy.
+// ---------------------------------------------------------------------------
 
 const EvictionSpy = struct {
     var seen_keys: [8]u64 = @splat(0);
@@ -313,96 +154,42 @@ const SpyTable = cache_table.CacheTable(u64, u64, EvictionSpy, .{
     .bucket_size = BUCKET_SIZE,
 });
 
-test "every path that drops an entry hands it to the eviction hook" {
-    // A value type that owns memory leaks through any drop path the table
-    // forgets to route through the hook. These are the four that are not
-    // "bucket overflowed", and each one was silently dropping its occupant.
-    const cases = [_]struct {
-        name: []const u8,
-        run: *const fn (*SpyTable) void,
-    }{
-        .{ .name = "put refreshing an existing key releases the old value", .run = struct {
-            fn f(t: *SpyTable) void {
-                _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-                _ = t.put(KEY_A, 2, NEVER, BASE_MS);
-            }
-        }.f },
-        .{ .name = "put reusing an expired slot releases its occupant", .run = struct {
-            fn f(t: *SpyTable) void {
-                _ = t.put(KEY_A, 1, BASE_MS + 1, BASE_MS);
-                _ = t.put(KEY_A_COLLIDES, 2, NEVER, BASE_MS + 5_000);
-            }
-        }.f },
-        .{ .name = "get dropping an expired entry releases it", .run = struct {
-            fn f(t: *SpyTable) void {
-                _ = t.put(KEY_A, 1, BASE_MS + 1, BASE_MS);
-                _ = t.get(KEY_A, BASE_MS + 1);
-            }
-        }.f },
-        .{ .name = "remove releases the entry", .run = struct {
-            fn f(t: *SpyTable) void {
-                _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-                _ = t.remove(KEY_A);
-            }
-        }.f },
-        .{ .name = "removeMatching releases each entry it drops", .run = struct {
-            fn f(t: *SpyTable) void {
-                _ = t.put(KEY_A, 7, NEVER, BASE_MS);
-                _ = t.removeMatching(ValuePredicate{ .wanted = 7 });
-            }
-        }.f },
-    };
-
-    for (cases) |case| {
-        EvictionSpy.reset();
-        var t: SpyTable = SpyTable.init(.{});
-        case.run(&t);
-        std.testing.expectEqual(@as(usize, 1), EvictionSpy.seen_count) catch |err| {
-            std.debug.print("leaked drop path: {s}\n", .{case.name});
-            return err;
-        };
-    }
-}
-
-test "the eviction hook fires on overflow and on clear" {
+test "the eviction hook fires on overflow, naming the entry that left" {
     EvictionSpy.reset();
     var t: SpyTable = SpyTable.init(.{});
 
-    _ = t.put(KEY_A, 1, NEVER, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES, 2, NEVER, BASE_MS);
+    t.put(KEY_A, 1);
+    t.put(KEY_A_COLLIDES, 2);
     try std.testing.expectEqual(@as(usize, 0), EvictionSpy.seen_count);
 
-    _ = t.put(KEY_A_COLLIDES_2, 3, NEVER, BASE_MS);
+    t.put(KEY_A_COLLIDES_2, 3);
     try std.testing.expectEqual(@as(usize, 1), EvictionSpy.seen_count);
     try std.testing.expectEqual(KEY_A, EvictionSpy.seen_keys[0]);
+}
 
+test "the eviction hook fires for every resident entry on clear, exactly once" {
+    EvictionSpy.reset();
+    var t: SpyTable = SpyTable.init(.{});
+    t.put(KEY_A, 1);
+    t.put(KEY_A_COLLIDES, 2);
+    t.put(KEY_OTHER_BUCKET, 3);
+
+    t.clear();
+    try std.testing.expectEqual(@as(usize, 3), EvictionSpy.seen_count);
+
+    // Cleared entries are gone, so a second clear releases nothing — the rule is
+    // "exactly once", not "at least once".
     t.clear();
     try std.testing.expectEqual(@as(usize, 3), EvictionSpy.seen_count);
 }
 
-test "sweepExpired releases the dead and keeps the live" {
-    EvictionSpy.reset();
-    var t: SpyTable = SpyTable.init(.{});
-    _ = t.put(KEY_A, 1, BASE_MS + 1, BASE_MS);
-    _ = t.put(KEY_OTHER_BUCKET, 2, NEVER, BASE_MS);
-
-    try std.testing.expectEqual(@as(usize, 1), t.sweepExpired(BASE_MS + 1));
-    try std.testing.expectEqual(@as(usize, 1), EvictionSpy.seen_count);
-    try std.testing.expectEqual(KEY_A, EvictionSpy.seen_keys[0]);
-    try std.testing.expectEqual(@as(?u64, 2), t.peek(KEY_OTHER_BUCKET, BASE_MS + 1));
-
-    // Idempotent: the dead are already gone, so a second sweep finds nothing.
-    try std.testing.expectEqual(@as(usize, 0), t.sweepExpired(BASE_MS + 1));
-}
-
 // ---------------------------------------------------------------------------
-// The release rule, proved by an allocator instead of a counter.
+// The same rule, proved by an allocator instead of a counter.
 // ---------------------------------------------------------------------------
 
-/// Frees the value of every entry that leaves the table. This is the whole
-/// reason the release rule has to be exhaustive: `std.testing.allocator`
-/// reports a leak for any path that forgets to call it, and a double-free for
-/// any path that calls it twice — neither of which a hook counter can see.
+/// Frees the value of every entry that leaves. `std.testing.allocator` reports a
+/// leak for any exit that forgets to call this, and a double-free for any exit
+/// that calls it twice — neither of which a hook counter can see.
 const OwnedContext = struct {
     alloc: std.mem.Allocator,
 
@@ -430,77 +217,48 @@ fn ownedValue(alloc: std.mem.Allocator, fill: u8) ![]u8 {
     return buf;
 }
 
-const AllPredicate = struct {
-    pub fn match(_: AllPredicate, _: u64, _: []u8) bool {
-        return true;
-    }
-};
-
-test "sweepExpired reclaims the memory an expired value was still holding" {
+test "eviction frees the owned value that lost its slot" {
     const alloc = std.testing.allocator;
     var t = OwnedTable.init(.{ .alloc = alloc });
     defer t.clear();
 
-    // Nothing else will ever reach these two: expiry is lazy, so without the
-    // sweep their bytes stay held until the slot is reused or the table dies.
-    _ = t.put(KEY_A, try ownedValue(alloc, 'a'), BASE_MS + 1, BASE_MS);
-    _ = t.put(KEY_OTHER_BUCKET, try ownedValue(alloc, 'b'), BASE_MS + 1, BASE_MS);
+    t.put(KEY_A, try ownedValue(alloc, 'a'));
+    t.put(KEY_A_COLLIDES, try ownedValue(alloc, 'b'));
+    // Overflows the bucket: KEY_A's body must be freed here, not leaked.
+    t.put(KEY_A_COLLIDES_2, try ownedValue(alloc, 'c'));
 
-    try std.testing.expectEqual(@as(usize, 2), t.sweepExpired(BASE_MS + 1));
-    try std.testing.expectEqual(@as(usize, 0), t.count(BASE_MS + 1));
-}
-
-test "every departure path frees an owned value" {
-    const alloc = std.testing.allocator;
-    var t = OwnedTable.init(.{ .alloc = alloc });
-    defer t.clear();
-
-    // Same-key refresh: releases the value it replaced.
-    _ = t.put(KEY_A, try ownedValue(alloc, 'a'), NEVER, BASE_MS);
-    _ = t.put(KEY_A, try ownedValue(alloc, 'b'), NEVER, BASE_MS);
-
-    // Expired-slot reuse: the bucket's second slot dies, then is taken over.
-    _ = t.put(KEY_A_COLLIDES, try ownedValue(alloc, 'c'), BASE_MS + 1, BASE_MS);
-    _ = t.put(KEY_A_COLLIDES_2, try ownedValue(alloc, 'd'), NEVER, BASE_MS + 2);
-
-    // Bucket overflow: both slots are live, so the least recent one goes. The
-    // returned entry has already been released — its value must not be read.
-    _ = t.put(KEY_A_COLLIDES, try ownedValue(alloc, 'e'), NEVER, BASE_MS + 2);
-
-    // Explicit removal.
-    try std.testing.expect(t.remove(KEY_A_COLLIDES_2));
-
-    // Reaped by a get that found it expired.
-    _ = t.put(KEY_OTHER_BUCKET, try ownedValue(alloc, 'f'), BASE_MS + 3, BASE_MS);
-    try std.testing.expect(t.get(KEY_OTHER_BUCKET, BASE_MS + 3) == null);
-
-    // Removal by predicate.
-    _ = t.put(KEY_OTHER_BUCKET, try ownedValue(alloc, 'g'), NEVER, BASE_MS);
-    try std.testing.expectEqual(@as(usize, 2), t.removeMatching(AllPredicate{}));
+    // A same-key re-put does NOT free the older body — it appends, and the older
+    // entry stays resident until evicted. Pinned so the deferred clear below is
+    // understood to be what frees it.
+    t.put(KEY_A_COLLIDES, try ownedValue(alloc, 'd'));
 
     // Anything still resident is freed by the deferred clear; the testing
-    // allocator fails this test if any of the above missed its release.
+    // allocator fails this test if any exit above missed its release.
 }
 
 test "clear frees the owned values still resident" {
     const alloc = std.testing.allocator;
     var t = OwnedTable.init(.{ .alloc = alloc });
 
-    _ = t.put(KEY_A, try ownedValue(alloc, 'a'), NEVER, BASE_MS);
-    _ = t.put(KEY_OTHER_BUCKET, try ownedValue(alloc, 'b'), NEVER, BASE_MS);
+    t.put(KEY_A, try ownedValue(alloc, 'a'));
+    t.put(KEY_OTHER_BUCKET, try ownedValue(alloc, 'b'));
 
     t.clear();
-    try std.testing.expectEqual(@as(usize, 0), t.count(BASE_MS));
+    try std.testing.expectEqual(@as(usize, 0), t.count());
 }
+
+// ---------------------------------------------------------------------------
+// Whole-table properties.
+// ---------------------------------------------------------------------------
 
 test "a full table keeps answering correctly for everything still resident" {
     var t = newTable();
     const total = BUCKET_COUNT * BUCKET_SIZE;
-    for (0..total) |k| _ = t.put(@intCast(k), @as(u64, @intCast(k)) * 10, NEVER, BASE_MS);
+    for (0..total) |k| t.put(@intCast(k), @as(u64, @intCast(k)) * 10);
 
-    try std.testing.expectEqual(@as(usize, total), t.count(BASE_MS));
+    try std.testing.expectEqual(@as(usize, total), t.count());
     for (0..total) |k| {
-        try std.testing.expectEqual(@as(?u64, @as(u64, @intCast(k)) * 10), t.peek(@intCast(k), BASE_MS));
+        try std.testing.expectEqual(@as(?u64, @as(u64, @intCast(k)) * 10), t.peek(@intCast(k)));
     }
 }
 
@@ -510,13 +268,13 @@ test "churning far more keys than capacity never yields a wrong value" {
 
     var k: u64 = 0;
     while (k < CHURN) : (k += 1) {
-        _ = t.put(k, k * 3, NEVER, BASE_MS);
+        t.put(k, k * 3);
         // Whatever survived must still map to its own value. A cache may forget;
         // it may never confuse two keys.
         var probe: u64 = 0;
         while (probe <= k) : (probe += 1) {
-            if (t.peek(probe, BASE_MS)) |v| try std.testing.expectEqual(probe * 3, v);
+            if (t.peek(probe)) |v| try std.testing.expectEqual(probe * 3, v);
         }
     }
-    try std.testing.expect(t.count(BASE_MS) <= BUCKET_COUNT * BUCKET_SIZE);
+    try std.testing.expect(t.count() <= BUCKET_COUNT * BUCKET_SIZE);
 }

@@ -149,7 +149,7 @@ test "integration: test_library_read_resource_bounds — the global models page 
     // The harness leaves `Context.model_library_cache` null, so this is the only
     // place the HIT row can be measured at all. Set on `&h.ctx` before the
     // request, per the harness's Option-C convention for boot-resolved fields.
-    var cache = try model_library_cache.Cache.init(alloc);
+    var cache = model_library_cache.Cache.init(alloc);
     defer cache.deinit();
     h.ctx.model_library_cache = &cache;
     // Cleared before the harness tears down: the Context outlives this scope's
