@@ -27,6 +27,10 @@
 //! reclaim or envelope-allocation failure therefore costs one poll, not a full
 //! `LEASE_TTL_MS` stall on that fleet.
 //!
+//! A run of failing Redis reads ends the candidate loop early rather than
+//! holding the pooled connection through one timeout per remaining candidate —
+//! see `PollCost.zig`.
+//!
 //! The result envelope is arena-dup'd into `select`'s `alloc` (the request arena
 //! in production); the caller (service.zig) loads the session + bills (fresh) or
 //! reuses billing (reclaim) + issues.
@@ -45,8 +49,8 @@ const constants = @import("common");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const fleet_ready = @import("../queue/fleet_ready.zig");
 const queue_redis = @import("../queue/redis_client.zig");
-const metrics = @import("../observability/metrics_counters.zig");
 const fleet_config = @import("../fleet_runtime/config.zig");
+const PollCost = @import("PollCost.zig");
 
 const Context = handlers_common.Context;
 const log = logging.scoped(.runner_assign);
@@ -75,23 +79,6 @@ pub const Acquired = struct {
     workspace_id: []const u8,
     event_created_at: i64,
     reused: ?Reused = null,
-};
-
-/// What one poll cost, reported to the metrics registry exactly once on every
-/// exit path. An idle poll reports zeroes rather than reporting nothing: an
-/// absent sample would leave the idle case invisible, and the idle case is the
-/// whole reason these counters exist.
-const PollCost = struct {
-    candidates_examined: u64 = 0,
-    db_roundtrips: u64 = 0,
-
-    fn countDb(self: *PollCost, roundtrips: u64) void {
-        self.db_roundtrips += roundtrips;
-    }
-
-    fn report(self: *const PollCost) void {
-        metrics.observeLeasePoll(self.candidates_examined, self.db_roundtrips);
-    }
 };
 
 /// A ready fleet that survived the candidate query, carrying the readiness token
@@ -141,6 +128,12 @@ fn selectInner(ctx: *Context, alloc: std.mem.Allocator, runner_id: []const u8, c
     for (candidates) |candidate| {
         cost.candidates_examined += 1;
         if (try tryCandidate(ctx, conn, alloc, runner_id, candidate, cost)) |acq| return acq;
+        // Stop rather than pin `conn` through one Redis timeout per remaining
+        // candidate; no-work is what the exhausted loop answers anyway.
+        if (cost.redisBrownedOut()) {
+            log.warn("assign_redis_brownout_bailout", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .candidates_examined = cost.candidates_examined });
+            break;
+        }
     }
     return null;
 }
@@ -227,6 +220,7 @@ fn acquireFresh(ctx: *Context, conn: *pg.Conn, alloc: std.mem.Allocator, candida
     redis_fleet.ensureFleetConsumerGroup(ctx.queue, fleet_id) catch |err| {
         log.warn("assign_group_ensure_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
         cost.countDb(1);
+        cost.noteRedisFailure();
         try affinity.release(conn, fleet_id, won.token);
         return null;
     };
@@ -242,6 +236,7 @@ fn acquireFresh(ctx: *Context, conn: *pg.Conn, alloc: std.mem.Allocator, candida
     var maybe_event = redis_fleet.xreadgroupFleetPending(ctx.queue, fleet_id, consumer_id) catch |err| {
         log.warn("assign_pel_read_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
         cost.countDb(1);
+        cost.noteRedisFailure();
         try affinity.release(conn, fleet_id, won.token);
         return null;
     };
@@ -251,10 +246,14 @@ fn acquireFresh(ctx: *Context, conn: *pg.Conn, alloc: std.mem.Allocator, candida
         maybe_event = redis_fleet.xreadgroupFleetOnce(ctx.queue, fleet_id, consumer_id) catch |err| {
             log.warn("assign_xreadgroup_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
             cost.countDb(1);
+            cost.noteRedisFailure();
             try affinity.release(conn, fleet_id, won.token);
             return null;
         };
     }
+    // Both arms above reached a verdict, so Redis answered — including the
+    // no-event case, which is a successful read of an empty stream.
+    cost.noteRedisReachable();
     var event = maybe_event orelse {
         clearReadiness(ctx, candidate);
         cost.countDb(1);

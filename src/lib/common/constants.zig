@@ -124,6 +124,23 @@ pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
 /// that its labels reject.
 pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
 
+/// Consecutive per-candidate Redis failures that end a lease poll early.
+///
+/// The poll acquires one pooled Postgres connection before the candidate loop
+/// and holds it to the end, while every candidate's event read is a Redis
+/// round-trip. A degraded Redis therefore pins a Postgres connection for up to
+/// `MAX_READY_CANDIDATES_PER_POLL` request timeouts without ever touching
+/// Postgres — the connection is hostage to a store it is not talking to.
+/// Bailing after this many caps the exposure at this many timeouts instead.
+///
+/// Consecutive, not cumulative: one candidate timing out is noise, a run of
+/// them means the store is degraded and every remaining candidate will pay the
+/// same timeout. The early return is `null`, which is what the poll would have
+/// answered anyway once the loop ran out of candidates, so nothing is lost —
+/// each candidate's claim was already released on its own error path, and
+/// readiness stays marked for the sweeper.
+pub const MAX_CONSECUTIVE_REDIS_FAILURES_PER_POLL: u32 = 3;
+
 // ── Connectors (Slack-resident channel bot, M106) ───────────────────────────
 // Provider + binding-kind identifiers shared across the OAuth connector
 // (spec.zig aliases `PROVIDER_SLACK`), the inbound events ingress, and the
