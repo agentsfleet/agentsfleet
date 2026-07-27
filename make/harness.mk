@@ -12,7 +12,7 @@
 # alive; everything else is monochrome chrome.
 #
 # Wiring:
-#   .githooks/pre-commit invokes `make harness-verify` BEFORE `make lint`
+#   .githooks/pre-commit invokes `make harness-verify` BEFORE `make lint-all`
 #   when lint-relevant files are staged. Harness-verify is seconds-fast and
 #   fails on the cheapest discipline regressions before paying for oxlint /
 #   tsc / zlint / actionlint / redocly.
@@ -25,7 +25,7 @@
 #   on the same hook run (no BASE...HEAD blindness — the M70 concern).
 #
 #   Canonical full-codebase enforcement lives in harness-verify-all (below)
-#   and `make lint` / CI — the audits default to full-codebase via
+#   and `make lint-all` / CI — the audits default to full-codebase via
 #   `git ls-files`; only this pre-commit target opts into `--staged`.
 #
 #   cross-tier-rates.sh always checks its fixed rate-pin file set (no scope

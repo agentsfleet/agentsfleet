@@ -50,6 +50,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bench-artifacts
-          path: .tmp/api-bench-*.json
+          path: .tmp/api-bench-*.csv
           if-no-files-found: warn
           retention-days: 7
