@@ -140,9 +140,11 @@ pub fn innerGallery(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void 
     const after = decodeStart(hx, &scope, workspace_id, search, limit, params.get(Q_STARTING_AFTER)) catch return;
     scope.endStage(.auth_verify);
 
-    var db = hx.db() orelse {
-        scope.classify(.dependency_error);
-        scope.endStageWith(.pool_wait, .{ .pool_result = .@"error" });
+    var db = hx.db() catch |err| {
+        scope.classify(if (err == error.PoolTimeout) .timeout else .dependency_error);
+        scope.endStageWith(.pool_wait, .{
+            .pool_result = if (err == error.PoolTimeout) .timeout else .@"error",
+        });
         return;
     };
     defer db.end();

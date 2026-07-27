@@ -82,28 +82,26 @@ pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
     const after = decodeStart(hx, &scope, tenant_id, limit, query.get(Q_STARTING_AFTER)) catch return;
     scope.endStage(.auth_verify);
 
-    const conn = hx.ctx.pool.acquire() catch |err| {
-        // The two acquire failures are different operator problems: a timeout
-        // means the pool is saturated and the fix is capacity, while any other
-        // error means the datastore itself is unreachable. Folding them into
-        // one label would put both behind the same alert.
-        const pool_result: ReadScope.StageDetail = if (err == error.Timeout)
-            .{ .pool_result = .timeout }
-        else
-            .{ .pool_result = .@"error" };
-        scope.classify(if (err == error.Timeout) .timeout else .dependency_error);
-        scope.endStageWith(.pool_wait, pool_result);
-        common.internalDbUnavailable(hx.res, hx.req_id);
+    // The two acquire failures are different operator problems: a timeout means
+    // the pool is saturated and the fix is capacity, while anything else means
+    // the datastore is unreachable. Folding them into one label would put both
+    // behind the same alert. This handler used to acquire directly to see that
+    // difference; `hx.db()` now names it, so the release discipline stays in the
+    // one place that owns it.
+    var db = hx.db() catch |err| {
+        scope.classify(if (err == error.PoolTimeout) .timeout else .dependency_error);
+        scope.endStageWith(.pool_wait, .{
+            .pool_result = if (err == error.PoolTimeout) .timeout else .@"error",
+        });
         return;
     };
-    defer hx.ctx.pool.release(conn);
-    // Counted here rather than at `hx.db()`: this handler acquires directly, and
+    defer db.end();
     // §3's "1 connection" row is a claim about a read never holding two at once
     // — the shape that deadlocks a pool under load.
     counters.noteConnection();
     scope.endStageWith(.pool_wait, .{ .pool_result = .acquired });
 
-    var result = view.buildList(hx.alloc, conn, tenant_id, limit, after) catch |err| {
+    var result = view.buildList(hx.alloc, db.conn, tenant_id, limit, after) catch |err| {
         scope.classify(.dependency_error);
         scope.endStage(.sql);
         log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });

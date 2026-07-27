@@ -108,7 +108,7 @@ fn parseRequest(hx: Hx, req: *httpz.Request) ?std.json.Parsed(resolve.ImportRequ
 }
 
 fn authorizeWs(hx: Hx, workspace_id: []const u8) bool {
-    var db = hx.db() orelse return false;
+    var db = hx.db() catch return false;
     defer db.end();
     if (!common.authorizeWorkspace(db.conn, hx.principal, workspace_id)) {
         hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
@@ -118,7 +118,7 @@ fn authorizeWs(hx: Hx, workspace_id: []const u8) bool {
 }
 
 fn insertPlatform(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle, replace: bool) ?[]const u8 {
-    var db = hx.db() orelse return null;
+    var db = hx.db() catch return null;
     defer db.end();
 
     // The catalog id is the bundle's frontmatter name, NOT the repository the
@@ -176,7 +176,7 @@ fn respondCollision(hx: Hx, conn: *pg.Conn, id: []const u8) void {
 }
 
 fn insertTenant(hx: Hx, workspace_id: []const u8, body: importer.ImportBody, prepared: importer.PreparedBundle) ?[]const u8 {
-    var db = hx.db() orelse return null;
+    var db = hx.db() catch return null;
     defer db.end();
     const entry_id = id_format.generateFleetLibraryId(hx.alloc) catch {
         common.internalOperationError(hx.res, "identifier generation failed", hx.req_id);

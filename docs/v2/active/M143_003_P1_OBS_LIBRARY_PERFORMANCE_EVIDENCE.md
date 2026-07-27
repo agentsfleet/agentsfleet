@@ -61,6 +61,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Scope grading.** Rubric R4 compares `git diff --name-only origin/main` against this table, so every cell is an exact path. A path that turns out to be genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
 
+### Files Changed — amendments
+
+| File | Action | Why |
+|---|---|---|
+| `src/agentsfleetd/observability/library_read_scope.zig` + its test | CREATE | The per-request telemetry lifecycle. §1 needs one outcome per request on every exit path; the handlers have nine to twelve each, and a call at each is the hand-placed-tally failure mode `library_read_counters.zig` already documents. Split from `library_stages.zig` at the length gate — schema and lifecycle are separate concerns. |
+| `src/agentsfleetd/http/handlers/hx.zig` | EDIT | `db()` returned `?DbScope`, so a pool acquire failure reached the caller as a null with its reason erased. §2's pool evidence cannot distinguish a saturated pool from an unreachable datastore through a null. Now returns a named `DbAcquireError`. **Indy-approved in session** (see Discovery). |
+| `handlers/fleets/create.zig`; `fleet_bundles/list.zig`; `library/onboard.zig`; `library/catalog_patch.zig`; `library/catalog.zig`; `schedules/api.zig` | EDIT | Mechanical consequence of the line above: `orelse <ret>` → `catch <ret>`, one line each, no behaviour change. Ten call sites that do not care about the distinction. |
+| `src/agentsfleetd/http/handlers/model_library.zig` | EDIT | The global catalogue surface — stage instrumentation. Not foreseen because §Files-Changed named `server.zig` and `route_trace.zig` for the trace half, but the stages are per-handler. |
+| `src/agentsfleetd/tests.zig` | EDIT | Test-root reachability for the two new modules. |
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — GRD, FLL, UFS, FLS, CNX, TNM, NDC, NLR, NLG, ORP, VLT.
@@ -252,6 +262,34 @@ dashboard would render as a permanently empty series.
 Dropping it is not a scope reduction — there is no surface left to instrument.
 §1's enum and §2's fourth row go together, and §4's `Aggregate` key tuple narrows
 with them because it is defined in terms of §1's enums.
+
+### `Hx.db()` lost the acquire reason, and §2 needs it
+
+Raised with Indy during EXECUTE as a quality-ceiling item and approved in
+session: *"Yes take that and fix it."*
+
+`Hx.db()` returned `?DbScope` and wrote its own error response, so a failed pool
+acquire reached the caller as a bare null. Two very different operator problems
+arrive that way — a **saturated pool**, whose answer is capacity, and an
+**unreachable datastore**, whose answer is the datastore — and a null cannot
+tell them apart. §2's pool evidence is specifically about that distinction, so
+the null was load-bearing in the wrong direction.
+
+`db()` now returns `DbAcquireError!DbScope` with `PoolTimeout` and
+`PoolUnavailable`. Deliberately a CHANGED signature rather than a second
+`dbOrError()` beside it: a second spelling of one operation is exactly the
+compatibility shim the operating model forbids, and the call sites that do not
+care still cost one line (`orelse return` → `catch return`).
+
+The reason this matters beyond tidiness: the tenant registry handler had already
+worked around the missing distinction by acquiring from the pool DIRECTLY, which
+meant reimplementing the acquire/release pairing `DbScope` exists to make
+unskippable. That workaround is now removed — the handler is back on `hx.db()`
+and the release discipline lives in one place again.
+
+Proof is deferred to §2's `test_pool_bounded_progress_and_timeout`, which is the
+only tier that can saturate a real pool; a unit test cannot produce
+`error.Timeout` from `pg.Pool` without one.
 
 ### Stage timings are metrics, not spans — the span budget decides it
 

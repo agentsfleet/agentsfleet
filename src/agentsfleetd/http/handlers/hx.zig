@@ -19,6 +19,16 @@ const pg = @import("pg");
 /// Scoped DB connection — acquire-on-construct, release-on-end. Use via
 /// `hx.db()` so the acquire+release pair can never be separated by an early
 /// return that forgets the defer.
+/// Why an acquire failed. The distinction is load-bearing for the on-call: a
+/// saturated pool is answered with capacity, an unreachable datastore is
+/// answered by fixing the datastore, and the same alert cannot mean both.
+pub const DbAcquireError = error{
+    /// Every connection was leased and the acquire budget elapsed.
+    PoolTimeout,
+    /// The pool could not produce a connection for any other reason.
+    PoolUnavailable,
+};
+
 pub const DbScope = struct {
     conn: *pg.Conn,
     pool: *pg.Pool,
@@ -40,15 +50,22 @@ pub const Hx = struct {
     ctx: *common.Context,
     res: *httpz.Response,
 
-    /// Acquire a pooled DB connection with a scoped lifetime. Returns null
-    /// (error response already written) when the pool is exhausted. Use:
-    ///   var db = hx.db() orelse return;
+    /// Acquire a pooled DB connection with a scoped lifetime. The error
+    /// response is already written when this fails. Use:
+    ///   var db = hx.db() catch return;
     ///   defer db.end();
     /// The connection is released unconditionally — no early return can leak it.
-    pub fn db(self: Self) ?DbScope {
-        const conn = self.ctx.pool.acquire() catch {
+    ///
+    /// Returns a NAMED error rather than null because the two ways an acquire
+    /// fails are two different operator problems, and a null erases which one
+    /// happened. A caller that does not care still writes one line
+    /// (`catch return`); a caller that reports pool telemetry can tell a
+    /// saturated pool from an unreachable datastore without acquiring directly
+    /// and reimplementing the release discipline this scope exists to enforce.
+    pub fn db(self: Self) DbAcquireError!DbScope {
+        const conn = self.ctx.pool.acquire() catch |err| {
             common.internalDbUnavailable(self.res, self.req_id);
-            return null;
+            return if (err == error.Timeout) error.PoolTimeout else error.PoolUnavailable;
         };
         return .{ .conn = conn, .pool = self.ctx.pool };
     }
