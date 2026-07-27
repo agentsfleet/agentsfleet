@@ -1,4 +1,4 @@
-import { request } from "./client";
+import { request, requireApiOrigin } from "./client";
 import { ApiError } from "./errors";
 
 // Mirrors the server's PendingRow envelope
@@ -114,9 +114,7 @@ async function resolveAction(
   const body = JSON.stringify(reason ? { reason } : {});
   const url = `/v1/workspaces/${workspaceId}/approvals/${gateId}:${decision}`;
   // Bypass `request()` so a 409 returns a body instead of throwing.
-  const base = typeof window === "undefined"
-    ? (process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.agentsfleet.net")
-    : "/backend";
+  const base = typeof window === "undefined" ? requireApiOrigin() : "/backend";
   const res = await fetch(`${base}${url}`, {
     method: "POST",
     headers: {
