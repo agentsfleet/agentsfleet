@@ -16,7 +16,7 @@
 .PHONY: check-test-reachability _lint_zig_test_depth
 
 REACHABLE_COUNTS := .tmp/zig-reachable-counts.txt
-REACHABILITY_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_zig_test_reachability*_test.py'
+REACHABILITY_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_zig_test*_test.py'
 
 check-test-reachability:  ## Every Zig `test` block compiles from a test root, or carries a waiver
 	@mkdir -p .tmp

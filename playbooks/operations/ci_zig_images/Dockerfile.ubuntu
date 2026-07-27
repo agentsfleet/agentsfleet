@@ -4,7 +4,9 @@
 # lanes that today run bare on ubuntu-latest with mlugg/setup-zig. Includes
 # docker-cli so it can also drive `docker compose` against a mounted
 # /var/run/docker.sock from the test-integration lane (alternative is to
-# convert that lane to GHA `services:` and skip docker-cli).
+# convert that lane to GHA `services:` and skip docker-cli). kcov is built
+# from a pinned upstream tarball — Ubuntu 24.04 (noble) dropped it from
+# universe — for the Zig coverage lane (M143).
 # amd64 only.
 
 FROM mirror.gcr.io/library/ubuntu:24.04
@@ -52,6 +54,33 @@ RUN set -eux; \
     /opt/zig/zig version
 
 ENV PATH=/opt/zig:$PATH
+
+# kcov — not packaged in noble; build the pinned v43 tarball from upstream.
+# SHA256 is the trust anchor for the GitHub-generated source archive.
+ARG KCOV_VERSION=43
+ARG KCOV_SHA256=4cbba86af11f72de0c7514e09d59c7927ed25df7cebdad087f6d3623213b95bf
+
+RUN set -eux; \
+    apt-get update \
+ && apt-get install -y --no-install-recommends \
+      cmake \
+      binutils-dev \
+      libcurl4-openssl-dev \
+      libdw-dev \
+      libelf-dev \
+      zlib1g-dev \
+ && curl -fsSL "https://github.com/SimonKagstrom/kcov/archive/refs/tags/v${KCOV_VERSION}.tar.gz" -o /tmp/kcov.tar.gz \
+ && echo "${KCOV_SHA256}  /tmp/kcov.tar.gz" | sha256sum -c - \
+ && mkdir -p /tmp/kcov-src \
+ && tar -xzf /tmp/kcov.tar.gz -C /tmp/kcov-src --strip-components=1 \
+ && cmake -S /tmp/kcov-src -B /tmp/kcov-build -DCMAKE_BUILD_TYPE=Release \
+ && cmake --build /tmp/kcov-build --parallel "$(nproc)" \
+ && cmake --install /tmp/kcov-build --prefix /usr/local \
+ && rm -rf /tmp/kcov-src /tmp/kcov-build /tmp/kcov.tar.gz \
+ && apt-get purge -y cmake \
+ && apt-get autoremove -y \
+ && rm -rf /var/lib/apt/lists/* \
+ && kcov --version
 
 LABEL org.opencontainers.image.title="agentsfleet ci-zig-ubuntu" \
       org.opencontainers.image.description="Ubuntu 24.04 + Zig — host-runner replacement for agentsfleet unit/bench/qa/lint-zig lanes" \
