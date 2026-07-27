@@ -16,6 +16,7 @@ const error_registry = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const revision_state = @import("../../../state/model_catalogue_revision.zig");
 const model_rate_cache = @import("../../../state/model_rate_cache.zig");
+const model_library_cache = @import("../../../state/model_library_cache.zig");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
@@ -110,6 +111,41 @@ test "admin models: platform_admin POST creates a priced row, GET lists it" {
     try list.expectStatus(.ok);
     try std.testing.expect(list.bodyContains("alpha-1"));
     try std.testing.expect(list.bodyContains("m100test"));
+}
+
+test "admin models: a committed mutation clears this replica's catalogue page cache; a rejected one does not" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    defer cleanup(h);
+
+    // The harness leaves `Context.model_library_cache` null, so wire a real one
+    // (the harness's Option-C convention for boot-resolved fields) and seed a
+    // resident page — the state a replica is in when an admin mutation lands.
+    var cache = model_library_cache.Cache.init(ALLOC);
+    defer cache.deinit();
+    h.ctx.model_library_cache = &cache;
+    // Cleared before the harness tears down: the Context outlives this scope's
+    // `cache`, and a dangling pointer there would fail a LATER test.
+    defer h.ctx.model_library_cache = null;
+
+    try cache.put(.{ .revision = 1, .digest = [_]u8{0xAB} ** model_library_cache.DIGEST_LEN }, "resident-page");
+    try std.testing.expectEqual(@as(usize, 1), cache.count());
+
+    const created = try (try (try h.post("/v1/admin/models").bearer(PLATFORM_ADMIN_TOKEN)).json(CREATE_BODY)).send();
+    defer created.deinit();
+    try created.expectStatus(.created);
+
+    // The mutation's post-commit step cleared the page cache along with the
+    // rate cache — the next catalogue read rebuilds at the new revision.
+    try std.testing.expectEqual(@as(usize, 0), cache.count());
+
+    // A rejected mutation must NOT clear: the duplicate 409 returns through the
+    // deferred abort, nothing committed, so resident pages are still current.
+    try cache.put(.{ .revision = 2, .digest = [_]u8{0xCD} ** model_library_cache.DIGEST_LEN }, "still-current-page");
+    const dup = try (try (try h.post("/v1/admin/models").bearer(PLATFORM_ADMIN_TOKEN)).json(CREATE_BODY)).send();
+    defer dup.deinit();
+    try dup.expectStatus(.conflict);
+    try std.testing.expectEqual(@as(usize, 1), cache.count());
 }
 
 test "admin models: a duplicate (provider, model_id) POST is rejected 409" {

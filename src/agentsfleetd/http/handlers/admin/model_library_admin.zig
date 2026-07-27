@@ -24,9 +24,10 @@
 //! serving a page and pricing a slice from a catalogue state that no longer
 //! exists, with nothing to detect the drift.
 //!
-//! The local rate cache is then cleared. That is prompt reclamation only: a
-//! sibling replica clears nothing and stays correct because its entries carry
-//! the old generation and every billing read compares it.
+//! The local rate cache and the catalogue page cache are then cleared. That is
+//! prompt reclamation only: a sibling replica clears nothing and stays correct
+//! because rate entries carry the old generation (every billing read compares
+//! it) and page keys carry the old revision (every catalogue read misses them).
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -84,12 +85,14 @@ fn ratesValid(hx: hx_mod.Hx, r: RatesInput) bool {
     return true;
 }
 
-/// Drop this replica's cached rates after a committed mutation, so the next
-/// charge reloads rather than waiting for its generation check to force it.
-/// Cannot fail and reads nothing: correctness comes from the generation stored
-/// with each entry, not from this call.
-fn invalidateRates() void {
+/// Drop this replica's cached rates and catalogue pages after a committed
+/// mutation, so the next charge reloads and the next catalogue read rebuilds
+/// rather than waiting for a generation check or bucket pressure. Cannot fail
+/// and reads nothing: correctness comes from the generation stored with each
+/// rate entry and the revision carried in each page key, not from this call.
+fn invalidateCaches(hx: hx_mod.Hx) void {
     model_rate_cache.clear();
+    if (hx.ctx.model_library_cache) |cache| cache.clear();
 }
 
 // ── GET /v1/admin/models ─────────────────────────────────────────────────────
@@ -184,7 +187,7 @@ pub fn innerPostAdminModel(hx: hx_mod.Hx, req: *httpz.Request) void {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    invalidateRates();
+    invalidateCaches(hx);
     log.debug("admin_model_created", .{ .provider = in.provider, .model_id = in.model_id });
 
     hx.ok(.created, .{
@@ -242,7 +245,7 @@ pub fn innerPatchAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8)
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    invalidateRates();
+    invalidateCaches(hx);
     log.debug("admin_model_updated", .{ .uid = uid });
 
     hx.ok(.ok, .{ .uid = uid, .updated = true, .request_id = hx.req_id });
@@ -294,7 +297,7 @@ pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    invalidateRates();
+    invalidateCaches(hx);
     log.debug("admin_model_deleted", .{ .uid = uid });
 
     hx.noContent();

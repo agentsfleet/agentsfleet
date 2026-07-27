@@ -178,3 +178,27 @@ test "teardown frees every resident payload" {
 
     c.deinit(); // leak-checked by testing.allocator
 }
+
+test "clear empties the table, frees every payload, and leaves the cache usable" {
+    var c = cache_mod.Cache.init(testing.allocator);
+    defer c.deinit();
+
+    // Pages across two generations — exactly the state after a revision bump,
+    // where the superseded generation is unreachable but still resident.
+    var seed: u64 = 0;
+    while (seed < 16) : (seed += 1) {
+        try c.put(keyOf(1, seed), "superseded-page");
+        try c.put(keyOf(2, seed), "current-page");
+    }
+    try testing.expect(c.count() > 0);
+
+    // The admin mutation path's reclamation: everything goes, freed through the
+    // `evicted` hook (a leak or double-free would trip testing.allocator).
+    c.clear();
+    try testing.expectEqual(@as(usize, 0), c.count());
+    try expectMiss(&c, keyOf(2, 1));
+
+    // A cleared cache admits and serves again — clear is reclamation, not teardown.
+    try c.put(keyOf(3, 1), "post-clear-page");
+    try expectHit(&c, keyOf(3, 1), "post-clear-page");
+}

@@ -1,13 +1,13 @@
 // Edge / boundary tests for src/agentsfleetd/state/tenant_billing.zig.
 //
-// The free-trial gate, computeStageChargeAt, and isFreeTrialActive are
-// PRIVATE in tenant_billing.zig and tested inline there (they need the
-// time-injected sibling). This sibling file exercises only the reachable
-// public surface: the DB-backed debit boundary contract and the
-// free_trial_active projection on the Billing struct. computeStageCharge
-// short-circuits to zero while the promotional window is open, so the
-// platform-posture token-cost assertions branch on free_trial_active and
-// only fire post-trial — exactly the pattern in metering_test.zig.
+// The free-trial gate and its connection-free rate math are tested inline in
+// tenant_billing_rates.zig (they need the time-injected private siblings).
+// This file exercises the DB-backed surface: the debit boundary rules, the
+// free_trial_active projection on the Billing struct, and — via the
+// clock-injected `computeStageChargeAt` — the post-trial platform pricing
+// paths. `computeStageCharge` reads the real clock and short-circuits to zero
+// while the promotional window is open, so its assertions branch on
+// free_trial_active and only fire post-trial; the `At` variant runs today.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -32,6 +32,10 @@ fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
     base.teardownWorkspace(conn, workspace_id);
     base.teardownTenantById(conn, TENANT_ID);
 }
+
+/// One second past the promotional window — any post-trial instant works; the
+/// clock-injected charge paths below need one that is deterministic today.
+const POST_TRIAL_NOW_MS: i64 = tenant_billing.FREE_TRIAL_END_MS + std.time.ms_per_s;
 
 // Segment 5 (aa06xx) identifies this file's workspaces; easy to grep + clean.
 const WS_PLATFORM_ZERO = "0195b4ba-8d3a-7f13-8abc-aa0600000001";
@@ -91,6 +95,30 @@ test "should not overflow when platform token counts approach u32 max" {
     const charge = try billing_rates.computeStageCharge(db_ctx.conn, "anthropic", .platform, "claude-sonnet-4-6", 3_600_000, big, big, big);
     try std.testing.expect(charge > 0);
     try std.testing.expect(charge < std.math.maxInt(i64));
+}
+
+test "should refuse to price an uncatalogued model post-trial with error.ModelNotPriced" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    // Deliberately NO model seeding: the point is a (provider, model) pair the
+    // catalogue has no row for — the state an admin DELETE of a non-default row
+    // leaves behind for any tenant still naming that model. This used to panic
+    // and abort the replica; it must be an error the caller's posture absorbs.
+    // The injected post-trial clock makes it deterministic while the
+    // promotional window is still open on the real one.
+    try std.testing.expectError(error.ModelNotPriced, billing_rates.computeStageChargeAt(
+        db_ctx.conn,
+        "no-such-provider",
+        .platform,
+        "no-such-model",
+        0,
+        0,
+        0,
+        0,
+        POST_TRIAL_NOW_MS,
+    ));
 }
 
 test "should succeed with zero balance when debit exactly covers the remaining credit" {

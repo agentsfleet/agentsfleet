@@ -181,8 +181,11 @@ pub fn buildList(
         try views.append(alloc, view);
     }
 
-    // Takes ownership of the resolved default's strings — no dupe, so nothing
-    // frees them twice.
+    // Takes ownership of the resolved default's strings — no dupe. The source
+    // is nulled out to disarm ITS errdefer, so from here exactly one owner
+    // (the errdefer below) can free `provider`/`model`; leaving both armed
+    // double-freed them when a later step (`pagination.encode`,
+    // `views.toOwnedSlice`) failed.
     var platform_default: ?PlatformDefaultView = if (source_default) |d| .{
         .provider = d.provider,
         .model = d.model,
@@ -191,6 +194,7 @@ pub fn buildList(
         .cached_input_nanos_per_mtok = if (rates.forDefault()) |r| r.cached_input_nanos_per_mtok else null,
         .output_nanos_per_mtok = if (rates.forDefault()) |r| r.output_nanos_per_mtok else null,
     } else null;
+    source_default = null;
     errdefer if (platform_default) |*dv| dv.deinit(alloc);
 
     // The cursor is built from the LAST ENTRY ROW, not from the last view: the
