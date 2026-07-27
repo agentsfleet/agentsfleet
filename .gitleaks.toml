@@ -56,7 +56,7 @@ stopwords = [
 id = "generic-api-key"
 
   [rules.allowlist]
-  description = "Oracle Secure Hash Algorithm 256-bit (SHA-256) lock digests"
+  description = "Retired Oracle lock digests in history. The .oracle/ruleset.lock file no longer exists in the tree, but gitleaks scans every commit, so this allowlist stays. The values are Secure Hash Algorithm 256-bit (SHA-256) checksums of markdown and shell files, never credentials."
   condition = "AND"
   paths = ['''(^|/)\.oracle/ruleset\.lock$''']
   regexTarget = "line"
