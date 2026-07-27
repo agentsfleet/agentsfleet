@@ -84,14 +84,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Closed traces and privacy-safe artifacts
 
-Propagate valid W3C `traceparent`; malformed input starts a clean trace. Closed stages are `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup`. Closed surfaces are `tenant_models`, `global_models`, `fleet_summary`, `fleet_detail`; outcomes are `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `cancelled`, `dependency_error`, `internal_error`; cache values are `hit`, `miss`, `bypass`, `stale`, `not_applicable`; pool results are `acquired`, `timeout`, `cancelled`, `error`. Permit only these enums and numeric duration/count/bytes. Prohibit authorization material, SQL/raw URL/query, free-form errors, identifiers, all M143_001 response metadata, secret values, API keys, and ciphertext in telemetry, observable cache keys, or evidence artifacts; M143_001's unlogged keyed selector digest remains permitted internally.
+Propagate valid W3C `traceparent`; malformed input starts a clean trace. Closed stages are `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup`. Closed surfaces are `tenant_models`, `global_models`, `fleet_summary` (**amended — §Discovery: `fleet_detail` is retired with the route M143_001 stripped**); outcomes are `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `cancelled`, `dependency_error`, `internal_error`; cache values are `hit`, `miss`, `bypass`, `stale`, `not_applicable`; pool results are `acquired`, `timeout`, `cancelled`, `error`. Permit only these enums and numeric duration/count/bytes. Prohibit authorization material, SQL/raw URL/query, free-form errors, identifiers, all M143_001 response metadata, secret values, API keys, and ciphertext in telemetry, observable cache keys, or evidence artifacts; M143_001's unlogged keyed selector digest remains permitted internally.
 
 - **Dimension 1.1** — context and closed schema are exact → Test `test_library_trace_and_stage_schema`
 - **Dimension 1.2** — labels/artifacts obey sink policy on every path → Test `test_library_evidence_is_secret_and_metadata_free`
 
 ### §2 — Deterministic resources and bounded pool progress
 
-Consume M143_001's exact measured application-data maxima after middleware auth verbatim: tenant registry ≤4 statements, **zero decryptions**, ≤100 results, 512 KiB, one connection; global model hit/miss ≤1/≤2 statements, zero decryptions, ≤100, 256 KiB, one connection; Fleet summary ≤1 statement, zero decryptions, ≤100, 512 KiB, one connection; Fleet detail ≤2 statements, zero decryptions, one result, 1 MiB, one connection. Payload overflow is typed, never truncated.
+Consume M143_001's exact measured application-data maxima after middleware auth verbatim — by **importing the constants** `observability/library_read_counters.zig` exports, never by retyping their values here or in a test. That module is the single home for the table, so a ceiling can only move visibly, in one place.
+
+**Amended (§Discovery — the drafted numbers are superseded by the measurement).** This paragraph was drafted before M143_001 measured its own reads and corrected them twice. The live table is: tenant registry ≤6 statements, **zero decryptions**, ≤100 results, 512 KiB, one connection; global model hit/miss ≤1/≤2 statements, zero decryptions, ≤100, 256 KiB, one connection; Fleet summary ≤3 statements, zero decryptions, ≤100, 512 KiB, one connection. Payload overflow is typed, never truncated.
 
 For a controlled occupied slot, releasing it causes at least one queued request to progress. Every waiter either succeeds or receives the configured typed timeout, and all completion/cancellation/failure paths leave zero leaked connections. Do not claim an ordering policy or unbounded scheduler guarantee.
 
@@ -218,3 +220,67 @@ No file deletion. Replaced stage names get root-wide zero-match checks; no alias
 - **Metrics review** — operational signals only; browser analytics unchanged.
 - **Skill-chain outcomes** — populated during implementation.
 - **Deferrals** — none.
+
+### §2's maxima were drafted, not measured — three corrections at PLAN
+
+This workstream's whole premise is that it *consumes* M143_001's numbers rather
+than restating them (Invariant 2). §2 as drafted restated them, and the restatement
+was already stale when it was written: M143_001 measured its own reads during
+implementation and corrected the table twice, in its own §Discovery. Verified at
+PLAN against `observability/library_read_counters.zig` on `origin/main`:
+
+| §2 as drafted | Shipped constant | Why it moved |
+|---|---|---|
+| tenant registry ≤4 statements | `TENANT_REGISTRY_MAX_STATEMENTS = 6` | 4→5 when the page's fifth load-bearing statement was counted, 5→6 when the rate batch replaced a resident-cache read that returned null for every row after a restart |
+| Fleet summary ≤1 statement | `FLEET_SUMMARY_MAX_STATEMENTS = 3` | `common.authorizeWorkspace` costs two statements and runs *inside* the measured window — the bearer chain authenticates, but only the handler knows which workspace the path names |
+| Fleet detail ≤2 statements, 1 result, 1 MiB | *(no constant)* | the route was stripped unconsumed; `FLEET_DETAIL_MAX_*` left the module with it |
+
+The resolution is the one §2 already asks for and the drafted prose undercut: the
+tests **import** the constants. No number from this table is spelled in a test or
+in this spec's assertions, so a ceiling that moves again moves in one visible
+place and this spec cannot go stale against it a third time.
+
+### `fleet_detail` leaves the closed surface enum
+
+M143_001 stripped the Fleet detail route unconsumed — `handlers/library/gallery_detail.zig`
+is deleted, its matcher and route registration are gone, and its integration
+suite pins the former URL to no-route. A `fleet_detail` value in this
+workstream's closed surface enum would therefore be an enum member no producer
+can ever emit: dead code at authoring time (RULE NDC), and a label that a
+dashboard would render as a permanently empty series.
+
+Dropping it is not a scope reduction — there is no surface left to instrument.
+§1's enum and §2's fourth row go together, and §4's `Aggregate` key tuple narrows
+with them because it is defined in terms of §1's enums.
+
+### Stage timings are metrics, not spans — the span budget decides it
+
+`http/route_trace.zig` admits at most **10 generic request spans per monotonic
+second** (four runner rejections, four server errors, two sampled successes), and
+`docs/architecture/observability.md` §Traces states that budget as the shipped
+routing policy. Ten stage spans per library request would consume a whole
+second's admission on one request, evicting exactly the server-error spans the
+budget exists to protect.
+
+So §1's trace half is the *ingress context* — `traceparent` in,
+`http.request` span out — and the stage timings are metric observations under
+§Metrics & Observability. `handlers/common.zig:196` `resolveTraceContext` already
+parses W3C, takes `.child()` on a valid header, and falls back to `.generate()`
+on a malformed one, so Dimension 1.1's context half is **verified**, not built.
+
+### Three metrics with disjoint labels, not one five-label observation
+
+`LibraryObservation` in §Interfaces carries five closed enums. Emitting it as one
+metric point with all five labels is a cross-product:
+`surface(3) × stage(10) × outcome(9) × cache(5) × pool_result(4) = 5400` series —
+against a Prometheus registry whose existing families are fixed in-memory state,
+and 21× the OTLP aggregator's `MAX_SERIES = 256` had it gone there instead.
+
+§Metrics & Observability already prescribes the split: three rows, each with its
+own *Properties allowed* cell, and the pool row explicitly forbidding a
+tenant/request label. Implemented on those lines the budget is fixed at authoring
+time: stage duration `surface × stage = 30`, read outcome `surface × outcome = 27`,
+pool result `4`, cache outcome `5` — **66 series**, none of which vary with
+tenant, request, or content. `LibraryObservation` stays the builder's input
+struct and fans out; it is not itself a label set. This is what Invariant 1
+("typed builders limit cardinality") requires rather than merely permits.
