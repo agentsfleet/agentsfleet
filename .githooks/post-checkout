@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# .githooks/post-checkout — link machine-level env into this worktree.
+# $3 == 1 means a branch checkout (fires on `git worktree add`).
+#
+# Sources live in ~/.config/agentsfleet/, written by provision-env-1password
+# (dotfiles). Symlink, never copy: one secret on disk per machine, rotation
+# reaches every worktree at once. Idempotent — an existing file (real or
+# link) is left alone; a missing source warns instead of failing the
+# checkout, so a fresh machine still gets its tree.
+set -euo pipefail
+[ "${3:-0}" = "1" ] || exit 0
+SRC="${HOME}/.config/agentsfleet"
+link() {  # $1 = source basename, $2 = path relative to worktree root
+  [ -f "$SRC/$1" ] || { printf '⚠ missing %s — run provision-env-1password\n' "$SRC/$1" >&2; return 0; }
+  [ -e "$2" ] && return 0
+  mkdir -p "$(dirname "$2")"
+  ln -s "$SRC/$1" "$2" && printf '✔ linked %s\n' "$2"
+}
+link ui.env.local     ui/packages/app/.env.local
+link runner.env.local .env.runner.local

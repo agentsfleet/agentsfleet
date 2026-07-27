@@ -332,16 +332,15 @@ describe("resolve base URL — server-side (window undefined)", () => {
     }
   });
 
-  it("falls back to the default API base when NEXT_PUBLIC_API_URL is unset", async () => {
+  it("throws when NEXT_PUBLIC_API_URL is unset instead of guessing a backend", async () => {
     vi.stubGlobal("window", undefined);
     const prev = process.env.NEXT_PUBLIC_API_URL;
     delete process.env.NEXT_PUBLIC_API_URL;
     try {
-      fetchMock.mockResolvedValueOnce(resolved());
-      await denyApproval(WORKSPACE_ID, GATE_ID, TOKEN);
-      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(url).toContain("agentsfleet.net");
-      expect(url).not.toContain(BACKEND_BASE);
+      await expect(denyApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toThrow(
+        /NEXT_PUBLIC_API_URL is unset/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       if (prev !== undefined) process.env.NEXT_PUBLIC_API_URL = prev;
     }
