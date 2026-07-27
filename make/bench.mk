@@ -6,7 +6,7 @@
 #   Tier-2  hey HTTP loadgen          (requires `hey` in PATH — mise installs it)
 # =============================================================================
 
-.PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _ensure-test-bin _memleak-lane _memleak-boot-drain
+.PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _memleak-lane _memleak-boot-drain
 
 # One definition shared by every valgrind invocation below, so a lane can never
 # drift onto different flags than the ones that were reviewed.
@@ -40,6 +40,12 @@ VALGRIND_LEAK_GATE := valgrind --quiet --leak-check=full --show-leak-kinds=all \
 # leak claim would be vacuous.
 memleak:  ## Run Zig memory-leak gates across the daemon, runner, and lib test graphs
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@# The boot-drain lane at the end needs live postgres + redis, and nothing
+	@# about bringing them up depends on the component lanes. It is started
+	@# alongside them below, which turns a serial tail (container start,
+	@# healthcheck poll, TLS cert extraction) into time spent while valgrind is
+	@# already running. The lane still depends on _ensure-test-infra, which is
+	@# idempotent — by then the containers are healthy and the call is a no-op.
 	@set -e; \
 	 macos_leaks_supported=0; \
 	 if [ "$$(uname -s)" = Darwin ] && command -v leaks >/dev/null 2>&1; then \
@@ -52,12 +58,16 @@ memleak:  ## Run Zig memory-leak gates across the daemon, runner, and lib test g
 	 fi; \
 	 lane_dir="$(CURDIR)/.tmp/memleak-lanes"; mkdir -p "$$lane_dir"; \
 	 : > "$$lane_dir/agentsfleetd.log"; : > "$$lane_dir/runner.log"; : > "$$lane_dir/lib.log"; \
+	 : > "$$lane_dir/infra.log"; \
+	 $(MAKE) _ensure-test-infra >"$$lane_dir/infra.log" 2>&1 & infra_pid=$$!; \
 	 $(MAKE) _memleak-lane LANE=agentsfleetd MEMLEAK_BUILD_FILE=- MEMLEAK_BUILD_STEP=test-bin MEMLEAK_OPENSSL_OFF=1 MEMLEAK_BINS="agentsfleetd-tests" MACOS_LEAKS_SUPPORTED=$$macos_leaks_supported >"$$lane_dir/agentsfleetd.log" 2>&1 & daemon_pid=$$!; \
 	 $(MAKE) _memleak-lane LANE=runner MEMLEAK_BUILD_FILE=build_runner.zig MEMLEAK_BUILD_STEP=test-bin MEMLEAK_OPENSSL_OFF=0 MEMLEAK_BINS="agentsfleet-runner-tests" MACOS_LEAKS_SUPPORTED=$$macos_leaks_supported >"$$lane_dir/runner.log" 2>&1 & runner_pid=$$!; \
 	 $(MAKE) _memleak-lane LANE=lib MEMLEAK_BUILD_FILE=- MEMLEAK_BUILD_STEP=test-lib-bin MEMLEAK_OPENSSL_OFF=1 MEMLEAK_BINS="agentsfleet-lib-tests agentsfleet-logging-tests agentsfleet-call-deadline-tests" MACOS_LEAKS_SUPPORTED=$$macos_leaks_supported >"$$lane_dir/lib.log" 2>&1 & lib_pid=$$!; \
 	 lane_status=0; wait "$$daemon_pid" || lane_status=1; wait "$$runner_pid" || lane_status=1; wait "$$lib_pid" || lane_status=1; \
-	 cat "$$lane_dir/agentsfleetd.log" "$$lane_dir/runner.log" "$$lane_dir/lib.log"; \
+	 infra_status=0; wait "$$infra_pid" || infra_status=1; \
+	 cat "$$lane_dir/agentsfleetd.log" "$$lane_dir/runner.log" "$$lane_dir/lib.log" "$$lane_dir/infra.log"; \
 	 [ "$$lane_status" -eq 0 ] || { echo "✗ [memleak] one or more component lanes failed"; exit "$$lane_status"; }; \
+	 [ "$$infra_status" -eq 0 ] || { echo "✗ [memleak] test infra failed to come up; the boot→drain lane cannot run"; exit 1; }; \
 	 $(MAKE) _memleak-boot-drain; \
 	 echo "✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)"
 
@@ -177,9 +187,3 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	 awk -v er=$$ERR_RATE -v max=$$MAX_ERR_RATE 'BEGIN{if (er+0 > max+0) {print "✗ error rate " er " exceeds gate " max; exit 1}}'; \
 	 awk -v p=$$P95_MS -v max=$$MAX_P95_MS 'BEGIN{if (p+0 > max+0) {print "✗ p95 " p "ms exceeds gate " max "ms"; exit 1}}'; \
 	 echo "✓ [agentsfleetd] Tier-2 hey loadgen passed"
-
-_ensure-test-bin:
-	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test-bin $(if $(TARGET),-Dtarget=$(TARGET),) $(if $(OPTIMIZE),-Doptimize=$(OPTIMIZE),) $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) $(EXTRA_BUILD_FLAGS)

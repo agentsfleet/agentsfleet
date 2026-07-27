@@ -10,11 +10,22 @@ Status: Canonical component ownership and verification topology.
 Each Zig component owns its build graph and test roots. Repository Make targets
 compose those graphs. They do not rebuild a component's import list.
 
-| Component | Unit root | Integration root | Build graph |
-|---|---|---|---|
-| `agentsfleetd` | `src/agentsfleetd/tests.zig` | `src/agentsfleetd/integration_tests.zig` | `build.zig` |
-| `agentsfleet-runner` | `src/runner/tests.zig` | `src/runner/integration_tests.zig` | `build_runner.zig` |
-| shared libraries | `src/lib/tests.zig` plus named-module roots | none | `build.zig` |
+| Root | Lane | Build graph |
+|---|---|---|
+| `src/agentsfleetd/tests.zig` | daemon unit (`test`) | `build.zig` |
+| `src/agentsfleetd/integration_tests.zig` | daemon integration (`test-integration`) | `build.zig` |
+| `src/agentsfleetd/auth/tests.zig` | auth portability (`test-auth`) | `build.zig` |
+| `src/lib/tests.zig` | shared-library barrel (`test-lib`) | `build.zig` |
+| `src/lib/logging/mod.zig` | logging named module (`test-lib`) | `build.zig` |
+| `src/lib/call_deadline/call_deadline.zig` | call-deadline named module (`test-lib`) | `build.zig` |
+| `src/runner/tests.zig` | runner unit (`test`) | `build_runner.zig` |
+| `src/runner/sandbox_integration_test.zig` | runner integration (`test-integration`) | `build_runner.zig` |
+
+Eight roots, not three. Two of them — the logging and call-deadline entries —
+are production module roots whose own `test` block doubles as the lane root, so
+they carry imports the module needs rather than an aggregate list. The runner's
+integration root is likewise a test file that force-imports three siblings, not
+a dedicated aggregate root; there is no `src/runner/integration_tests.zig`.
 
 The daemon unit root imports production modules and isolated test files. The
 daemon integration root imports live PostgreSQL, Redis, and QStash test files.

@@ -1,0 +1,116 @@
+name: cache-prune
+
+# Reclaims Actions cache space so the Zig jobs stop evicting each other.
+#
+# GitHub gives a repository 10 GB of cache and evicts Least Recently Used (LRU)
+# once that fills. This repository runs eleven distinct Zig cache families
+# (unit, integration, kernel, coverage, memleak, three cross-compile targets),
+# each 130-370 MB, each retained under both `refs/heads/main` and every open
+# Pull Request (PR) ref, and each keeping older key generations alive for their
+# `restore-keys` prefix fallback. Left alone that sits at the ceiling, so a
+# "warm cache" restore becomes a coin flip for every job — and whichever job
+# loses pays a full cold rebuild.
+#
+# The selection judgement lives in scripts/select-prunable-caches.sh, which is
+# pure and unit-tested. This workflow is only the GitHub input/output around it:
+# list, resolve PR states, select, report, delete.
+#
+# Manual runs default to a dry run; the nightly schedule deletes.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Set to 'true' to actually delete; anything else lists only"
+        type: string
+        default: 'false'
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      # `schedule` carries no inputs, so this fallback is what the nightly uses.
+      APPLY: ${{ github.event_name == 'schedule' && 'true' || inputs.apply }}
+      RETAIN_PER_FAMILY: '2'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: List caches and resolve pull-request states
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/cache-prune
+
+          # --paginate emits one page's lines at a time, so no slurping needed.
+          gh api --paginate "repos/$REPO/actions/caches?per_page=100" \
+            --jq '.actions_caches[] | [.id, .ref, .key, .created_at, .size_in_bytes] | @tsv' \
+            > .tmp/cache-prune/all.tsv
+
+          echo "Listed $(wc -l < .tmp/cache-prune/all.tsv | tr -d ' ') cache entries."
+
+          # Each PR number is resolved once. An unresolvable number records
+          # UNKNOWN, which the selector deliberately leaves alone.
+          : > .tmp/cache-prune/pr-state.tsv
+          cut -f2 .tmp/cache-prune/all.tsv \
+            | sed -n 's#^refs/pull/\([0-9]\{1,\}\)/.*#\1#p' | sort -u \
+            > .tmp/cache-prune/pr-numbers.txt
+          while read -r pr; do
+            [ -n "$pr" ] || continue
+            state=$(gh pr view "$pr" --repo "$REPO" --json state --jq .state 2>/dev/null || echo UNKNOWN)
+            printf '%s\t%s\n' "$pr" "$state" >> .tmp/cache-prune/pr-state.tsv
+          done < .tmp/cache-prune/pr-numbers.txt
+
+      - name: Select reclaimable entries
+        run: |
+          set -euo pipefail
+          bash scripts/select-prunable-caches.sh \
+            .tmp/cache-prune/pr-state.tsv "$RETAIN_PER_FAMILY" \
+            < .tmp/cache-prune/all.tsv > .tmp/cache-prune/doomed.tsv
+
+          total=$(wc -l < .tmp/cache-prune/all.tsv | tr -d ' ')
+          doomed=$(wc -l < .tmp/cache-prune/doomed.tsv | tr -d ' ')
+          bytes=$(awk -F'\t' '{ s += $4 } END { printf "%d", s + 0 }' .tmp/cache-prune/doomed.tsv)
+
+          {
+            echo "## Cache prune"
+            echo
+            echo "Apply: \`$APPLY\` · entries: $total · reclaimable: $doomed · bytes: $bytes"
+            echo
+            echo "| Reason | Ref | Key |"
+            echo "| --- | --- | --- |"
+            awk -F'\t' '{ printf "| %s | %s | %s |\n", $5, $2, $3 }' .tmp/cache-prune/doomed.tsv
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Delete
+        if: ${{ github.event_name == 'schedule' || inputs.apply == 'true' }}
+        run: |
+          set -euo pipefail
+          # A cache can vanish between listing and deletion — a concurrent run
+          # evicted it, or another prune won the race. That is this job's own
+          # goal, so a failed delete is reported and skipped, never fatal.
+          gone=0
+          deleted=0
+          while IFS=$'\t' read -r id ref key _size reason; do
+            [ -n "${id:-}" ] || continue
+            if gh api -X DELETE "repos/$REPO/actions/caches/$id" >/dev/null 2>&1; then
+              echo "deleted   $reason  $ref  $key"
+              deleted=$((deleted + 1))
+            else
+              echo "already gone  $reason  $ref  $key"
+              gone=$((gone + 1))
+            fi
+          done < .tmp/cache-prune/doomed.tsv
+          echo "Deleted $deleted entries; $gone had already been evicted."

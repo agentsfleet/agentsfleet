@@ -25,7 +25,11 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel on main: these runs exist to populate the cache every branch
+  # restores from, so cancelling one to start the next leaves no warm cache at
+  # all — silently undoing the reason the main trigger is here. Pull Request
+  # runs stay cancellable; a superseded push has nothing worth finishing.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test-integration:
@@ -81,10 +85,17 @@ jobs:
           #
           # Pre-compile both agentsfleetd binaries the suite needs, without
           # running them: `install` builds the agentsfleetd exe (the migrate
-          # binary `make test-integration` runs) and `test-bin` builds the exact
-          # test artifact `zig build test` executes (build.zig). So the make
-          # step finds a warm cache and only *migrates + runs* — on a cold cache
-          # both long compiles land here, hidden behind the datastore boot above.
+          # binary `make test-integration` runs) and `test-integration-bin`
+          # builds the exact artifact `zig build test-integration` executes.
+          # So the make step finds a warm cache and only *migrates + runs* — on
+          # a cold cache both long compiles land here, hidden behind the
+          # datastore boot above.
+          #
+          # It must be `test-integration-bin`, not `test-bin`: once the daemon
+          # test roots were split, `test-bin` became the UNIT artifact
+          # (src/agentsfleetd/tests.zig), which this job never runs. Warming it
+          # paid for a full codegen + link of a binary nobody executed while the
+          # integration binary still compiled cold inside the make step.
           docker run --rm --network host \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}":"${{ github.workspace }}" \
@@ -94,7 +105,7 @@ jobs:
             -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb" \
             -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
             ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0 \
-            sh -c 'mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && zig build install test-bin && make test-integration'
+            sh -c 'mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && zig build install test-integration-bin && make test-integration'
 
       - name: Stop services
         if: always()
@@ -123,9 +134,13 @@ jobs:
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
-          path: |
-            .tmp/zig-global-cache
-            .tmp/zig-local-cache
+          # Only the LOCAL cache is persisted. Zig writes nothing to the global
+          # cache for this build graph — a build with a warm local cache and a
+          # freshly created global one leaves that directory at 0 bytes and
+          # takes the same time. Listing it here cached a directory the make
+          # targets never even create (their default global path is under
+          # $HOME), so actions/cache skipped it with a warning every run.
+          path: .tmp/zig-local-cache
           key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-

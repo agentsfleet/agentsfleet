@@ -52,5 +52,19 @@ _prepare_local_agentsfleetd_binary:
 	@cp zig-out/bin/agentsfleetd dist/agentsfleetd-linux-$(LOCAL_DOCKER_ARCH)
 	@chmod +x dist/agentsfleetd-linux-$(LOCAL_DOCKER_ARCH)
 
+# `zig-cache` / `.zig-cache` are Zig's DEFAULTS. Most targets override them via
+# ZIG_LOCAL_CACHE_DIR, but not all did — anything that shelled out without
+# passing the variable through landed back in `.zig-cache` (693 MB in one
+# worktree). Both are removed, and the configured cache too, which grew unbounded
+# (7.4 GB in one worktree, and the local cache is per-worktree by design). Both
+# are still removed: a bare `zig build` typed by hand, with none of the lane
+# environment set, still lands in the default path.
+#
+# The guard matters because ZIG_LOCAL_CACHE_DIR is defined in make/test.mk; an
+# unset or empty value must not turn this into `rm -rf` against the worktree.
 _clean:
 	@rm -rf zig-out zig-cache .zig-cache
+	@if [ -n "$(strip $(ZIG_LOCAL_CACHE_DIR))" ]; then \
+	  rm -rf "$(ZIG_LOCAL_CACHE_DIR)"; \
+	  echo "Removed local Zig cache: $(ZIG_LOCAL_CACHE_DIR)"; \
+	fi

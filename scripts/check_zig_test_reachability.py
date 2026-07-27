@@ -234,7 +234,9 @@ def run_check(groups, candidates):
     if dead:
         sys.stderr.write(
             f"✗ [zig] {len(dead)} test-bearing file(s) register no test in any binary.\n"
-            f"  Force-import each from a test root, or add `{WAIVER_MARKER} <reason>`:\n"
+            f"  Force-import each from the file that owns it — its production\n"
+            f"  sibling if one exists (`foo.zig` for `foo_test.zig`), else the\n"
+            f"  component's root — or add `{WAIVER_MARKER} <reason>`:\n"
         )
         for path in dead:
             sys.stderr.write(f"    {path}  ({count_declared(path)} dead block(s))\n")
