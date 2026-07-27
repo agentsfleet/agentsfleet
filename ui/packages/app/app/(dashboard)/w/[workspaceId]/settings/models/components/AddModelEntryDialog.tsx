@@ -32,7 +32,7 @@ import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { captureModelActivated } from "../lib/track";
-import { useModelCatalogue } from "./ModelCatalogueProvider";
+import { maySpeculateOnHover, useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderModelSelect from "./ProviderModelSelect";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
@@ -54,7 +54,7 @@ export default function AddModelEntryDialog({
   onSecretsChanged: () => void;
 }) {
   const uid = useId();
-  const { models } = useModelCatalogue();
+  const { models, preload } = useModelCatalogue();
   // The library's providers plus the OpenAI-compatible option, pinned last —
   // one dropdown covers hosted providers and custom endpoints alike (no tabs).
   const providerOptions = uniqueProviders(models).filter((p) => p !== OPENAI_COMPATIBLE_PROVIDER);
@@ -89,6 +89,11 @@ export default function AddModelEntryDialog({
   }
 
   function handleOpenChange(next: boolean) {
+    // Opening is the strongest intent signal there is, and it is not gated on
+    // pointer or data policy: the picker inside needs the catalogue now. A
+    // hover or focus has usually warmed it already, so this is normally a
+    // no-op against the single-flight guard.
+    if (next) preload();
     setOpen(next);
     if (!next) reset();
   }
@@ -201,7 +206,20 @@ export default function AddModelEntryDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <TooltipButton type="button" size="sm" className="gap-1.5" tooltip={CREATE_MODEL_TOOLTIP}>
+        <TooltipButton
+          type="button"
+          size="sm"
+          className="gap-1.5"
+          tooltip={CREATE_MODEL_TOOLTIP}
+          // Focus is deliberate — keyboard users get the same warm dialog a
+          // mouse user gets from hovering, and it is never suppressed.
+          onFocus={preload}
+          // Hover only speculates where hover means something and the user has
+          // not asked us to conserve data.
+          onPointerEnter={() => {
+            if (maySpeculateOnHover()) preload();
+          }}
+        >
           <PlusIcon size={14} />
           Create model
         </TooltipButton>

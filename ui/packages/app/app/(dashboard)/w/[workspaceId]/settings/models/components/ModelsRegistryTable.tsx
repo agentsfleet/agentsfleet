@@ -20,7 +20,7 @@ import { captureModelActivated, captureProviderReset } from "../lib/track";
 import AddModelEntryDialog from "./AddModelEntryDialog";
 import EditModelEntryDialog from "./EditModelEntryDialog";
 import ModelDetailsDialog from "./ModelDetailsDialog";
-import { useModelCatalogue } from "./ModelCatalogueProvider";
+import { maySpeculateOnHover, useModelCatalogue } from "./ModelCatalogueProvider";
 import {
   ActionsCell,
   ContextCell,
@@ -107,10 +107,12 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   const [removeTarget, setRemoveTarget] = useState<TenantModelEntry | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // The public model library — context + per-token rates for the Context
-  // column's rates line. Already fetched once per session by the page-level
-  // provider; a failed fetch degrades rates to "—", never the table.
-  const { models: libraryModels } = useModelCatalogue();
+  // The public model library — a FALLBACK for the Context column's rates line,
+  // used only where the server did not price a row (`identity.rate ?? …`). It
+  // is no longer fetched on mount, so on an ordinary visit this is empty and
+  // rows render their own server-provided rates. `preloadCatalogue` warms it on
+  // intent to open a dialog whose picker genuinely needs it.
+  const { models: libraryModels, preload: preloadCatalogue } = useModelCatalogue();
 
   const hasActiveEntry = entries.some((e) => e.active);
   // The platform default is live only when it BOTH wins resolution (no active
@@ -272,7 +274,16 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
           onSwitchDefault={onSwitchDefault}
           onSwitchEntry={onSwitchEntry}
           onView={setDetailsTarget}
-          onEdit={setEditTarget}
+          onEdit={(entry) => {
+            // Opening is ungated intent — the picker inside needs the
+            // catalogue now. Usually a no-op: focus or hover warmed it.
+            preloadCatalogue();
+            setEditTarget(entry);
+          }}
+          onEditFocusIntent={preloadCatalogue}
+          onEditHoverIntent={() => {
+            if (maySpeculateOnHover()) preloadCatalogue();
+          }}
           onRemove={setRemoveTarget}
         />
       ),

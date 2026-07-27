@@ -30,12 +30,16 @@ const { catalogueState } = vi.hoisted(() => ({
     models: [
       { id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
     ],
-    loading: false,
-    error: false,
+    status: "ready" as const,
+    preload: vi.fn(),
   },
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
   useModelCatalogue: () => catalogueState,
+  // These suites exercise form shape, not prefetch policy — that has its own
+  // suite in model-catalogue-provider.test.tsx. Hover speculation is off so a
+  // stray pointer event cannot perturb the call counts asserted below.
+  maySpeculateOnHover: () => false,
 }));
 
 async function renderDialog(secrets: Secret[] = []) {

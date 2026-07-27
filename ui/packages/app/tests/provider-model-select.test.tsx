@@ -9,11 +9,15 @@ import type { LibraryModel } from "@/lib/api/model_library";
 // branches are deterministic.
 
 const { catalogueState } = vi.hoisted(() => ({
-  catalogueState: { models: [] as LibraryModel[], loading: false, error: false },
+  catalogueState: { models: [] as LibraryModel[], status: "ready" as const, preload: vi.fn() },
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
   useModelCatalogue: () => catalogueState,
+  // These suites exercise form shape, not prefetch policy — that has its own
+  // suite in model-catalogue-provider.test.tsx. Hover speculation is off so a
+  // stray pointer event cannot perturb the call counts asserted below.
+  maySpeculateOnHover: () => false,
 }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
 
@@ -31,8 +35,7 @@ const cap = (id: string, provider: string): LibraryModel => ({
 beforeEach(() => {
   vi.clearAllMocks();
   catalogueState.models = [];
-  catalogueState.loading = false;
-  catalogueState.error = false;
+
 });
 afterEach(() => cleanup());
 

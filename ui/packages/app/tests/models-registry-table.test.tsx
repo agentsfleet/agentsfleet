@@ -131,6 +131,23 @@ async function renderTableWithLibrary(initial: TenantModelEntryList, library: Mo
       ),
     ),
   );
+
+  // The catalogue is intent-loaded, not mount-loaded, so a bare render leaves
+  // it idle and library-sourced rates would never arrive. Focusing an Edit
+  // control is the same ungated signal a keyboard user produces, and it is
+  // what these two cases need in order to assert the library FALLBACK at all.
+  // Rows the server already priced do not depend on this — see the sibling
+  // "without depending on the public catalogue" cases, which use renderTable.
+  // A registry with no entries has no Edit control, so fall back to the
+  // Create-model trigger — which is the only catalogue-consuming affordance
+  // such a page has, and carries the same focus intent.
+  const intentTarget =
+    screen.queryAllByRole("button", { name: /^Edit / })[0] ??
+    screen.queryByRole("button", { name: /create model/i });
+  if (intentTarget) {
+    intentTarget.focus();
+    await waitFor(() => expect(getModelLibraryActionMock).toHaveBeenCalled());
+  }
 }
 
 beforeEach(() => {
