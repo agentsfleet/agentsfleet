@@ -181,8 +181,6 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
             .GET => &FLEET_READ,
             else => &LIBRARY_WRITE,
         },
-        // Detail is read-only; it projects a superset of one gallery card and
-        // therefore needs exactly the capability the gallery already needs.
 
         // ── Dashboard UI prefs + onboarding ──
         // Authenticated-only: the object is the caller's own preference/onboarding
