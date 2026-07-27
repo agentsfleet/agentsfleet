@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import {
+  Button,
   ConfirmDialog,
   DataTable,
   type DataTableColumn,
@@ -9,9 +10,11 @@ import {
   SectionHeader,
 } from "@agentsfleet/design-system";
 import type { Secret } from "@/lib/api/secrets";
+import type { TenantModelEntryPageResult } from "@/lib/api/tenant_model_entries";
+import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
 import { presentErrorString } from "@/lib/errors";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
-import type { TenantModelEntry, TenantModelEntryList, TenantPlatformDefault } from "@/lib/types";
+import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 import { listModelEntriesAction, listSecretsAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
 import AddModelEntryDialog from "./AddModelEntryDialog";
@@ -28,7 +31,13 @@ import {
   rowKey,
 } from "./ModelsRegistryCells";
 
-type Props = { workspaceId: string; initial: TenantModelEntryList; initialSecrets: Secret[] };
+type Props = {
+  workspaceId: string;
+  /** First registry page, or null when the read failed — see `initialError`. */
+  initialPage: TenantModelEntryPageResult | null;
+  /** Typed read failure. Distinct from an empty registry, and never both. */
+  initialError: LibraryError | null;
+};
 export type SortState = { key: "model" | "provider"; dir: "ascending" | "descending" } | null;
 
 // Pure — DataTable's onSortChange prop is typed `(key: string) => void` (any
@@ -47,18 +56,52 @@ export function sortValueFor(entry: TenantModelEntry, key: "model" | "provider")
   return key === "model" ? entry.model_id : (entry.provider ?? "");
 }
 
+/**
+ * Pure — user-facing copy for a typed read failure. Each kind gets its own
+ * next step, which is the whole point of typing them: "sign in" and "ask for
+ * access" and "try again" are different instructions, and an empty table gave
+ * the user none of them.
+ */
+export function readErrorCopy(error: LibraryError): string {
+  switch (error.kind) {
+    case LIBRARY_ERROR_KIND.unauthenticated:
+      return "Your session expired. Sign in to see your models.";
+    case LIBRARY_ERROR_KIND.forbidden:
+      return "You do not have access to this workspace's models.";
+    case LIBRARY_ERROR_KIND.notFound:
+      return "That model entry no longer exists.";
+    case LIBRARY_ERROR_KIND.unavailable:
+      return "Models are temporarily unavailable. Your entries are safe.";
+    default:
+      return "Could not load your models. They have not been changed.";
+  }
+}
+
 const SWITCH_ACTION = "switch models";
 const SWITCH_PLATFORM_ACTION = "switch to platform defaults";
 const REMOVE_ACTION = "remove this model entry";
 
-export default function ModelsRegistryTable({ workspaceId, initial, initialSecrets }: Props) {
+export default function ModelsRegistryTable({ workspaceId, initialPage, initialError }: Props) {
   const [pending, startTransition] = useTransition();
-  const [entries, setEntries] = useState<TenantModelEntry[]>(initial.models);
-  const [secrets, setSecrets] = useState<Secret[]>(initialSecrets);
-  const [platformDefaultAvailable, setPlatformDefaultAvailable] = useState(initial.platform_default_available);
-  const [platformDefault, setPlatformDefault] = useState<TenantPlatformDefault | null>(initial.platform_default ?? null);
+  const [entries, setEntries] = useState<TenantModelEntry[]>(initialPage?.models ?? []);
+  // The secret list is NOT preloaded. It arrives when the dialog
+  // that needs it opens, through `refreshSecrets` below.
+  const [secrets, setSecrets] = useState<Secret[]>([]);
+  const [platformDefaultAvailable, setPlatformDefaultAvailable] = useState(
+    initialPage?.platform_default_available ?? false,
+  );
+  const [platformDefault, setPlatformDefault] = useState<TenantPlatformDefault | null>(
+    initialPage?.platform_default ?? null,
+  );
+  // Invariant 5: retained rows are only half the story — the cursor and total
+  // say what has NOT been loaded, and both are rendered rather than implied.
+  const [nextCursor, setNextCursor] = useState<string | null>(initialPage?.next_cursor ?? null);
+  const [total, setTotal] = useState<number | null>(initialPage?.total ?? null);
   const [sort, setSort] = useState<SortState>(null);
   const [error, setError] = useState<string | null>(null);
+  // The server read's typed failure. Held separately from `error` (which is
+  // action feedback) so a failed LOAD never renders as an empty registry.
+  const [readError, setReadError] = useState<LibraryError | null>(initialError);
   const [detailsTarget, setDetailsTarget] = useState<TenantModelEntry | null>(null);
   const [editTarget, setEditTarget] = useState<TenantModelEntry | null>(null);
   const [removeTarget, setRemoveTarget] = useState<TenantModelEntry | null>(null);
@@ -100,18 +143,46 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
     if (next) setSort(next);
   }
 
+  // Re-read from the FIRST page, discarding retained rows only once a
+  // replacement actually arrives. A failed refresh leaves what is on screen
+  // alone and surfaces the fault — it must never fall back to empty.
   function refresh() {
     startTransition(async () => {
       const r = await listModelEntriesAction();
-      if (!r.ok) return;
+      if (!r.ok) {
+        setReadError({ kind: LIBRARY_ERROR_KIND.unknown, detail: r.error });
+        return;
+      }
+      setReadError(null);
       setEntries(r.data.models);
       setPlatformDefaultAvailable(r.data.platform_default_available);
       setPlatformDefault(r.data.platform_default ?? null);
+      setNextCursor(r.data.next_cursor);
+      setTotal(r.data.total);
     });
   }
 
-  // Refetches only the secrets list — the cheaper counterpart to refresh()
-  // above, called when AddModelEntryDialog commits a new stored secret.
+  // Append the next page, retaining every row already loaded. Exactly one
+  // request per invocation — the walk this replaced issued as many as the
+  // registry had pages, on every ordinary visit.
+  function loadMore() {
+    if (nextCursor === null) return;
+    startTransition(async () => {
+      const r = await listModelEntriesAction(nextCursor);
+      if (!r.ok) {
+        setReadError({ kind: LIBRARY_ERROR_KIND.unknown, detail: r.error });
+        return;
+      }
+      setReadError(null);
+      setEntries((prior) => [...prior, ...r.data.models]);
+      setNextCursor(r.data.next_cursor);
+      setTotal(r.data.total);
+    });
+  }
+
+  // Fetches the secrets list on demand. The eager page-level preload was
+  // removed, so this is now the ONLY path that loads it: the Add dialog
+  // calls it on open, and again when it commits a new stored secret.
   function refreshSecrets() {
     startTransition(async () => {
       const r = await listSecretsAction(workspaceId);
@@ -233,6 +304,38 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
           sortDirection={sort?.dir}
           onSortChange={onSortChange}
         />
+
+        {/*
+          Invariant 5. The walk this replaced guaranteed every row was present;
+          paging cannot, so what is NOT loaded is stated rather than left to be
+          inferred from whether a button happens to be rendered. With no total
+          the remainder cannot be named, but its existence still is.
+        */}
+        {nextCursor !== null ? (
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={loadMore} disabled={pending}>
+              {pending ? "Loading…" : "Load more"}
+            </Button>
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {total !== null
+                ? `Showing ${entries.length} of ${total} models`
+                : `Showing ${entries.length} models — more available`}
+            </p>
+          </div>
+        ) : null}
+
+        {/*
+          A failed READ is not an empty registry. This renders alongside any
+          rows already retained, so a refresh fault never blanks the table.
+        */}
+        {readError ? (
+          <div role="alert" className="flex items-center gap-3">
+            <p className="text-sm text-destructive">{readErrorCopy(readError)}</p>
+            <Button variant="secondary" onClick={refresh} disabled={pending}>
+              Retry
+            </Button>
+          </div>
+        ) : null}
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

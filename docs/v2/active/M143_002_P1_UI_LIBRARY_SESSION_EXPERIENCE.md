@@ -154,7 +154,7 @@ Refresh state: last success plus idle/loading/refreshing/error and typed error.
 2. Discriminated types enforce `(visibility,id)` everywhere.
 3. Reducer tests enforce retained authorized data until successful replacement.
 4. Canary checker enforces lane counts and verdict/source consistency.
-5. A paged gallery discloses what it has not loaded; truncation is never silent.
+5. A paged list discloses what it has not loaded; truncation is never silent. This binds **both** surfaces: the Models registry (`tenant_model_entries.ts`) and the Fleet gallery (`fleet-library.ts`) each replace an exhaustive `next_cursor` walk that exists specifically to stop later entries vanishing unannounced.
 
 ## Metrics & Observability
 
@@ -169,7 +169,7 @@ This table is the complete set. Every row is mandatory, including the failure ro
 
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 1.1 | integration | `test_models_registry_retains_pages_without_extra_decrypts` | prior rows retained; exactly one page request per load-more, asserted by request spy on the API client, no global catalogue or secret request on an ordinary visit |
+| 1.1 | integration | `test_models_registry_retains_pages_without_extra_decrypts` | prior rows retained; exactly one page request per load-more, asserted by request spy on the API client, no global catalogue or secret request on an ordinary visit; entries past the loaded page are disclosed, never silently dropped (Invariant 5) |
 | 1.2 | browser | `test_model_picker_prefetch_policy_and_latest_result` | coarse/Save-Data hover blocked; focus/open allowed; latest wins |
 | 2.1 | integration | `test_fleet_load_more_then_selected_summary` | append summaries; selection issues no further request; no secret preload |
 | 2.2 | end-to-end | `test_fleet_deep_link_and_typed_states` | server selection, exact 401/403/not-found states, no flash |

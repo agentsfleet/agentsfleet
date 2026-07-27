@@ -1,6 +1,5 @@
 import { request } from "./client";
 import type {
-  TenantModelEntry,
   TenantModelEntryList,
   TenantModelEntryWriteResult,
 } from "../types";
@@ -10,12 +9,10 @@ import type {
 // contract. `api_key` never appears in any response; each entry carries only
 // `has_key` plus the metadata joined from its referenced secret.
 
-// Rows per request, and the ceiling on how many requests one walk will make.
-// The endpoint pages at 50 by default and rejects a `limit` above 100
-// (`UZ-LIBRARY-003`), so asking for the maximum halves the round-trips a
-// large registry costs.
+// Rows per request. The endpoint pages at 50 by default and rejects a `limit`
+// above 100 (`UZ-LIBRARY-003`), so asking for the maximum gives the largest
+// window one round-trip can buy.
 const REGISTRY_PAGE_LIMIT = 100;
-const REGISTRY_MAX_PAGES = 50;
 
 /** One wire page: `models` is that page alone, `next_cursor` null on the last. */
 type TenantModelEntryPage = TenantModelEntryList & {
@@ -23,45 +20,44 @@ type TenantModelEntryPage = TenantModelEntryList & {
   next_cursor: string | null;
 };
 
-// The Models page renders the entire registry, so this follows `next_cursor`
-// to exhaustion instead of returning page one. Reading a single page would
-// drop every entry past the server's page size *silently* — the rows simply
-// would not render, with nothing to tell the user they still exist.
-export async function listTenantModelEntries(token: string): Promise<TenantModelEntryList> {
-  const models: TenantModelEntry[] = [];
-  let cursor: string | null = null;
+/** A page plus the cursor and total the caller needs to retain and disclose. */
+export type TenantModelEntryPageResult = TenantModelEntryList & {
+  next_cursor: string | null;
+  total: number | null;
+};
 
-  for (let page = 0; page < REGISTRY_MAX_PAGES; page += 1) {
-    const params = new URLSearchParams({ limit: String(REGISTRY_PAGE_LIMIT) });
-    if (cursor !== null) params.set("starting_after", cursor);
+// ONE page per call. This replaced a walk that followed
+// `next_cursor` to exhaustion on every ordinary visit to the Models page.
+//
+// That walk existed for a real reason — reading a single page would drop every
+// entry past the server's page size *silently*, with nothing to tell the user
+// the rest existed. Paging reintroduces exactly that hazard, so the protection
+// is REPLACED rather than removed: `next_cursor` and `total` come back with the
+// page, and Invariant 5 requires the caller to render what it has not loaded
+// instead of leaving it to be inferred from a button. Dropping the walk without
+// that disclosure would be a regression wearing a performance costume.
+export async function listTenantModelEntries(
+  token: string,
+  startingAfter: string | null = null,
+): Promise<TenantModelEntryPageResult> {
+  const params = new URLSearchParams({ limit: String(REGISTRY_PAGE_LIMIT) });
+  if (startingAfter !== null) params.set("starting_after", startingAfter);
 
-    const body = await request<TenantModelEntryPage>(
-      `/v1/tenants/me/models?${params.toString()}`,
-      { method: "GET" },
-      token,
-    );
-    models.push(...body.models);
-
-    if (!body.next_cursor) {
-      // Both platform-default fields describe the tenant rather than the page,
-      // and every page recomputes them, so the last page's answer is as
-      // authoritative as the first's.
-      return {
-        models,
-        platform_default_available: body.platform_default_available,
-        platform_default: body.platform_default,
-      };
-    }
-    cursor = body.next_cursor;
-  }
-
-  // Throw rather than return the rows collected so far. A walk reaches this
-  // bound only if the server stopped advancing its cursor, and then `models`
-  // holds one page repeated — rendering that would show duplicate rows as
-  // though they were distinct registry entries, which is worse than an error.
-  throw new Error(
-    `tenant model registry did not terminate within ${REGISTRY_MAX_PAGES} pages`,
+  const body = await request<TenantModelEntryPage>(
+    `/v1/tenants/me/models?${params.toString()}`,
+    { method: "GET" },
+    token,
   );
+
+  // Both platform-default fields describe the tenant rather than the page, and
+  // every page recomputes them, so any page's answer is authoritative.
+  return {
+    models: body.models,
+    platform_default_available: body.platform_default_available,
+    platform_default: body.platform_default,
+    next_cursor: body.next_cursor,
+    total: body.total,
+  };
 }
 
 export async function createTenantModelEntry(

@@ -12,9 +12,10 @@ import {
   createTenantModelEntry as apiCreateTenantModelEntry,
   updateTenantModelEntry as apiUpdateTenantModelEntry,
   deleteTenantModelEntry as apiDeleteTenantModelEntry,
+  type TenantModelEntryPageResult,
 } from "@/lib/api/tenant_model_entries";
 import type { SecretListResponse } from "@/lib/api/secrets";
-import type { TenantModelEntryList, TenantModelEntryWriteResult, TenantProvider } from "@/lib/types";
+import type { TenantModelEntryWriteResult, TenantProvider } from "@/lib/types";
 
 // The model library read (GET /v1/models) is bearer-authed; the client-side
 // catalogue provider fetches through this action so the token never reaches
@@ -38,8 +39,11 @@ export async function resetProviderAction(): Promise<ActionResult<TenantProvider
 // resetProviderAction above — these four only list/register/rename/remove
 // the registry rows themselves.
 
-export async function listModelEntriesAction(): Promise<ActionResult<TenantModelEntryList>> {
-  return withToken((t) => apiListTenantModelEntries(t));
+// One page per call. `startingAfter` null means the first page.
+export async function listModelEntriesAction(
+  startingAfter: string | null = null,
+): Promise<ActionResult<TenantModelEntryPageResult>> {
+  return withToken((t) => apiListTenantModelEntries(t, startingAfter));
 }
 
 export async function createModelEntryAction(

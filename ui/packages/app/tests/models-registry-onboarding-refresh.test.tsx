@@ -70,8 +70,8 @@ async function renderTable() {
       null,
       React.createElement(ModelsRegistryTable, {
         workspaceId: WORKSPACE_ID,
-        initial: registry(),
-        initialSecrets: [],
+        initialPage: { ...registry(), next_cursor: null, total: null },
+        initialError: null,
       }),
     ),
   );
