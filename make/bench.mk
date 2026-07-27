@@ -40,11 +40,26 @@ VALGRIND_LEAK_GATE := valgrind --quiet --leak-check=full --show-leak-kinds=all \
 # leak claim would be vacuous.
 memleak:  ## Run Zig memory-leak gates across the daemon, runner, and lib test graphs
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@$(MAKE) _memleak-lane LANE=agentsfleetd MEMLEAK_BUILD="test-bin" MEMLEAK_OPENSSL_OFF=1 MEMLEAK_BINS="agentsfleetd-tests"
-	@$(MAKE) _memleak-lane LANE=runner MEMLEAK_BUILD="--build-file build_runner.zig test-bin" MEMLEAK_OPENSSL_OFF=0 MEMLEAK_BINS="agentsfleet-runner-tests"
-	@$(MAKE) _memleak-lane LANE=lib MEMLEAK_BUILD="test-lib-bin" MEMLEAK_OPENSSL_OFF=1 MEMLEAK_BINS="agentsfleet-lib-tests agentsfleet-logging-tests agentsfleet-call-deadline-tests"
-	@$(MAKE) _memleak-boot-drain
-	@echo "✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)"
+	@set -e; \
+	 macos_leaks_supported=0; \
+	 if [ "$$(uname -s)" = Darwin ] && command -v leaks >/dev/null 2>&1; then \
+	   if MallocStackLogging=1 leaks -atExit -- /usr/bin/true >/dev/null 2>&1; then \
+	     macos_leaks_supported=1; \
+	     echo "✓ [memleak] macOS process inspection preflight passed"; \
+	   else \
+	     echo "→ [memleak] macOS process inspection unavailable; skipping advisory reruns"; \
+	   fi; \
+	 fi; \
+	 lane_dir="$(CURDIR)/.tmp/memleak-lanes"; mkdir -p "$$lane_dir"; \
+	 : > "$$lane_dir/agentsfleetd.log"; : > "$$lane_dir/runner.log"; : > "$$lane_dir/lib.log"; \
+	 $(MAKE) _memleak-lane LANE=agentsfleetd MEMLEAK_BUILD_FILE=- MEMLEAK_BUILD_STEP=test-bin MEMLEAK_OPENSSL_OFF=1 MEMLEAK_BINS="agentsfleetd-tests" MACOS_LEAKS_SUPPORTED=$$macos_leaks_supported >"$$lane_dir/agentsfleetd.log" 2>&1 & daemon_pid=$$!; \
+	 $(MAKE) _memleak-lane LANE=runner MEMLEAK_BUILD_FILE=build_runner.zig MEMLEAK_BUILD_STEP=test-bin MEMLEAK_OPENSSL_OFF=0 MEMLEAK_BINS="agentsfleet-runner-tests" MACOS_LEAKS_SUPPORTED=$$macos_leaks_supported >"$$lane_dir/runner.log" 2>&1 & runner_pid=$$!; \
+	 $(MAKE) _memleak-lane LANE=lib MEMLEAK_BUILD_FILE=- MEMLEAK_BUILD_STEP=test-lib-bin MEMLEAK_OPENSSL_OFF=1 MEMLEAK_BINS="agentsfleet-lib-tests agentsfleet-logging-tests agentsfleet-call-deadline-tests" MACOS_LEAKS_SUPPORTED=$$macos_leaks_supported >"$$lane_dir/lib.log" 2>&1 & lib_pid=$$!; \
+	 lane_status=0; wait "$$daemon_pid" || lane_status=1; wait "$$runner_pid" || lane_status=1; wait "$$lib_pid" || lane_status=1; \
+	 cat "$$lane_dir/agentsfleetd.log" "$$lane_dir/runner.log" "$$lane_dir/lib.log"; \
+	 [ "$$lane_status" -eq 0 ] || { echo "✗ [memleak] one or more component lanes failed"; exit "$$lane_status"; }; \
+	 $(MAKE) _memleak-boot-drain; \
+	 echo "✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)"
 
 # One parametrized lane. Build MEMLEAK_BUILD, then leak-gate every binary in
 # MEMLEAK_BINS. The `|| exit 1` lives INSIDE the shell `for` because a bare `for`
@@ -55,32 +70,13 @@ memleak:  ## Run Zig memory-leak gates across the daemon, runner, and lib test g
 # an optimized-but-safe binary); macOS uses the default build.
 _memleak-lane:
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)"; \
-	case "$$(uname -s)" in \
-	  Linux) \
-	    command -v valgrind >/dev/null 2>&1 || { echo "✗ valgrind is required on Linux for make memleak"; exit 1; }; \
-	    echo "→ [$(LANE)] Building (ReleaseSafe$(if $(filter 1,$(MEMLEAK_OPENSSL_OFF)), openssl off)) for the valgrind gate..."; \
-	    zig build $(MEMLEAK_BUILD) -Doptimize=ReleaseSafe $(if $(filter 1,$(MEMLEAK_OPENSSL_OFF)),-Dopenssl=false,) $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) || exit 1; \
-	    for b in $(MEMLEAK_BINS); do \
-	      echo "→ [$(LANE)] valgrind leak gate: $$b..."; \
-	      $(VALGRIND_LEAK_GATE) zig-out/bin/$$b || exit 1; \
-	    done;; \
-	  Darwin) \
-	    echo "→ [$(LANE)] Building for the allocator gate..."; \
-	    zig build $(MEMLEAK_BUILD) $(if $(filter 1,$(MEMLEAK_OPENSSL_OFF)),-Dopenssl=false,) || exit 1; \
-	    for b in $(MEMLEAK_BINS); do \
-	      echo "→ [$(LANE)] allocator leak gate: $$b..."; \
-	      zig-out/bin/$$b || exit 1; \
-	      if command -v leaks >/dev/null 2>&1; then \
-	        MallocStackLogging=1 leaks -atExit -- zig-out/bin/$$b >/dev/null || echo "→ [$(LANE)] leaks advisory unavailable in current runtime"; \
-	      fi; \
-	    done;; \
-	  *) \
-	    echo "→ [$(LANE)] platform=$$(uname -s): allocator gate only"; \
-	    zig build $(MEMLEAK_BUILD) $(if $(filter 1,$(MEMLEAK_OPENSSL_OFF)),-Dopenssl=false,) || exit 1; \
-	    for b in $(MEMLEAK_BINS); do zig-out/bin/$$b || exit 1; done;; \
-	esac
-	@echo "✓ [$(LANE)] memleak lane passed"
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 MEMLEAK_CPU="$(MEMLEAK_CPU)" \
+	 MACOS_LEAKS_SUPPORTED="$(MACOS_LEAKS_SUPPORTED)" \
+	 bash scripts/run-zig-memleak-lane.sh \
+	   "$(LANE)" "$(MEMLEAK_BUILD_FILE)" "$(MEMLEAK_BUILD_STEP)" \
+	   "$(MEMLEAK_OPENSSL_OFF)" $(MEMLEAK_BINS)
 
 # The daemon lane above runs with NO DB/Redis env, so every DB-gated test — the
 # boot→SIGTERM→drain lifecycle proof included — SKIPS under valgrind. This lane
@@ -102,10 +98,10 @@ _memleak-boot-drain: _ensure-test-infra
 	    runner="$(VALGRIND_LEAK_GATE)";; \
 	  *) opt="-Dopenssl=false"; runner="";; \
 	esac; \
-	echo "→ [boot-drain] Building the lifecycle test binary (filtered)..."; \
-	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" zig build test-bin $$opt -Dtest-filter="$$filter" $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) || exit 1; \
+	echo "→ [boot-drain] Building the integration lifecycle test binary (filtered)..."; \
+	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" zig build test-integration-bin $$opt -Dtest-filter="$$filter" $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) || exit 1; \
 	echo "→ [boot-drain] Running the lifecycle test under the leak gate (live pg + TLS redis)..."; \
-	out=$$(AGENTSFLEET_LIFECYCLE_ISOLATED=1 TEST_DATABASE_URL="$$db_url" TEST_REDIS_TLS_URL="$$redis_url" REDIS_TLS_CA_CERT_FILE="$$ca" $$runner zig-out/bin/agentsfleetd-tests 2>&1) || { echo "$$out"; echo "✗ [boot-drain] valgrind gate failed — check whether the output above is a LEAK SUMMARY or another memcheck class (an invalid read/write or a syscall param); they have different causes and this gate fails on all of them"; exit 1; }; \
+	out=$$(AGENTSFLEET_LIFECYCLE_ISOLATED=1 TEST_DATABASE_URL="$$db_url" TEST_REDIS_TLS_URL="$$redis_url" REDIS_TLS_CA_CERT_FILE="$$ca" $$runner zig-out/bin/agentsfleetd-integration-tests 2>&1) || { echo "$$out"; echo "✗ [boot-drain] valgrind gate failed — check whether the output above is a LEAK SUMMARY or another memcheck class (an invalid read/write or a syscall param); they have different causes and this gate fails on all of them"; exit 1; }; \
 	echo "$$out" | grep -q "$$marker" || { echo "$$out"; echo "✗ [boot-drain] lifecycle test did NOT run (skipped — infra env misconfigured); the leak claim would be vacuous"; exit 1; }; \
 	echo "✓ [boot-drain] boot→SIGTERM→drain ran leak-clean under the gate"
 

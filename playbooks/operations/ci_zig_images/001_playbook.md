@@ -150,11 +150,14 @@ docker run --rm \
   ghcr.io/agentsfleet/ci-zig-debian-trixie:"$ZIG_VERSION" \
   sh -c 'zig version && valgrind --version'
 
-# ubuntu — confirm zig + libssl + docker-cli
-docker run --rm \
+# ubuntu — confirm zig + kcov + python3 + make + docker-cli
+docker run --rm --platform linux/amd64 \
   ghcr.io/agentsfleet/ci-zig-ubuntu:"$ZIG_VERSION" \
-  sh -c 'zig version && dpkg -s libssl-dev | head -2 && docker --version'
+  sh -lc 'zig version && kcov --version && python3 --version && make --version | head -n 1 && docker --version'
 ```
+
+For a revisioned publish (e.g. `--revision r2`), substitute
+`"$ZIG_VERSION"-r2` for `"$ZIG_VERSION"` in the tag above.
 
 All three commands should print `0.16.0` (or whatever `versions.env` says) and exit 0.
 

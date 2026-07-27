@@ -2,7 +2,7 @@
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
 
-.PHONY: test-integration test-integration-db test-integration-redis test-integration-kernel _test-integration-agentsfleetd _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-db test-integration-redis test-integration-kernel _ensure-test-infra _reset-test-db
 
 # The runner's own real-process integration lane (build_runner.zig, no datastore):
 # it forks real children and asserts real KERNEL behaviour — the env allowlist +
@@ -171,15 +171,7 @@ _reset-test-db: _ensure-test-infra
 	@docker compose exec -T redis redis-cli --tls --cacert /tls/server.crt -a agentsfleet --no-auth-warning FLUSHALL >/dev/null
 	@echo "✓ [infra] Redis flushed"
 
-_test-integration-agentsfleetd:
-	@echo "→ [agentsfleetd] Running Zig integration tests..."
-	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@env -u TEST_DATABASE_URL -u TEST_REDIS_TLS_URL -u LIVE_DB \
-	 ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test
-
-_test-integration-db: _reset-test-db
+test-integration-db: _reset-test-db  ## Run real DB-backed integration suite only
 	@db_url="$$TEST_DATABASE_URL"; \
 	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
 	case "$$db_url" in \
@@ -204,10 +196,10 @@ _test-integration-db: _reset-test-db
 	TEST_DATABASE_URL="$$db_url" \
 	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
 	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
-	zig build test
+	zig build test-integration
 	@echo "✓ [agentsfleetd] DB-backed integration tests passed"
 
-_test-integration-redis: _reset-test-db
+test-integration-redis: _reset-test-db  ## Run Redis-backed integration suite only
 	@redis_tls_test_url="$$TEST_REDIS_TLS_URL"; \
 	if [ -z "$$redis_tls_test_url" ] && [ -n "$$REDIS_URL" ]; then \
 	  case "$$REDIS_URL" in \
@@ -223,10 +215,10 @@ _test-integration-redis: _reset-test-db
 	  TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
 	  REDIS_URL_API="$$redis_tls_test_url" \
 	  REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
-	  zig build test
+	  zig build test-integration
 	@echo "✓ [agentsfleetd] Redis integration tests passed"
 
-_test-integration-full: _reset-test-db
+test-integration: _reset-test-db  ## Run worker integration tests against real DB + Redis
 	@db_url="$$TEST_DATABASE_URL"; \
 	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
 	case "$$db_url" in \
@@ -273,12 +265,6 @@ _test-integration-full: _reset-test-db
 	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
 	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
 	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
-	zig build test
+	zig build test-integration
 	@echo "✓ [agentsfleetd] Full integration suite passed"
-
-test-integration-db: _test-integration-db  ## Run real DB-backed integration suite only
-
-test-integration-redis: _test-integration-redis  ## Run Redis-backed integration suite only
-
-test-integration: _test-integration-full  ## Run worker integration tests against real DB + Redis
 	@echo "✓ [agentsfleetd] All integration tests passed"
