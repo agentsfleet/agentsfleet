@@ -36,9 +36,13 @@ jobs:
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
-          path: |
-            .tmp/zig-global-cache
-            .tmp/zig-local-cache
+          # Only the LOCAL cache is persisted. Zig writes nothing to the global
+          # cache for this build graph — a build with a warm local cache and a
+          # freshly created global one leaves that directory at 0 bytes and
+          # takes the same time. Listing it here cached a directory the make
+          # targets never even create (their default global path is under
+          # $HOME), so actions/cache skipped it with a warning every run.
+          path: .tmp/zig-local-cache
           key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
@@ -55,9 +59,13 @@ jobs:
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
-          path: |
-            .tmp/zig-global-cache
-            .tmp/zig-local-cache
+          # Only the LOCAL cache is persisted. Zig writes nothing to the global
+          # cache for this build graph — a build with a warm local cache and a
+          # freshly created global one leaves that directory at 0 bytes and
+          # takes the same time. Listing it here cached a directory the make
+          # targets never even create (their default global path is under
+          # $HOME), so actions/cache skipped it with a warning every run.
+          path: .tmp/zig-local-cache
           key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
@@ -74,9 +82,13 @@ jobs:
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
-          path: |
-            .tmp/zig-global-cache
-            .tmp/zig-local-cache
+          # Only the LOCAL cache is persisted. Zig writes nothing to the global
+          # cache for this build graph — a build with a warm local cache and a
+          # freshly created global one leaves that directory at 0 bytes and
+          # takes the same time. Listing it here cached a directory the make
+          # targets never even create (their default global path is under
+          # $HOME), so actions/cache skipped it with a warning every run.
+          path: .tmp/zig-local-cache
           key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
@@ -101,9 +113,13 @@ jobs:
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
-          path: |
-            .tmp/zig-global-cache
-            .tmp/zig-local-cache
+          # Only the LOCAL cache is persisted. Zig writes nothing to the global
+          # cache for this build graph — a build with a warm local cache and a
+          # freshly created global one leaves that directory at 0 bytes and
+          # takes the same time. Listing it here cached a directory the make
+          # targets never even create (their default global path is under
+          # $HOME), so actions/cache skipped it with a warning every run.
+          path: .tmp/zig-local-cache
           key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-

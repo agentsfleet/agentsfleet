@@ -18,12 +18,6 @@ jobs:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     env:
       ZLINT_VERSION: v0.9.0
-      # Point Zig at the directories the cache step below actually persists.
-      # The Makefile defaults the GLOBAL cache to $HOME/.cache/agentsfleet, so
-      # without these a workflow can cache `.tmp/zig-global-cache` and store an
-      # empty directory — see the note in the cache step.
-      ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-global-cache
-      ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-local-cache
     steps:
       - uses: actions/checkout@v6
       # `make lint-zig` is not a text-only lint: check-test-reachability runs
@@ -35,9 +29,9 @@ jobs:
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
-          path: |
-            .tmp/zig-global-cache
-            .tmp/zig-local-cache
+          # Local cache only — the Makefile already defaults it to this path,
+          # and Zig writes nothing to the global one for this build graph.
+          path: .tmp/zig-local-cache
           key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
