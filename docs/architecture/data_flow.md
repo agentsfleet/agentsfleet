@@ -343,6 +343,38 @@ Before the cutover, the worker held **one dedicated blocking Redis connection pe
 
 **What this changed at scale.** The pre-cutover idle cost was dominated by N blocking `XREADGROUP BLOCK 5000` loops iterating every five seconds; the fleet's Upstash bill scaled with `(fleets + workers)`, not throughput. After the cutover there are no idle blocking loops — the idle cost is driven by runner **lease poll frequency** (each idle `lease` does one non-blocking `XREADGROUP`), tunable by the runner's `retry_after_ms` backoff rather than a Redis `BLOCK` constant. [`scaling.md`](./scaling.md) re-derives the math.
 
+## The Postgres pool: a saturated pool and a dead datastore are different pages
+
+Every request-path Postgres read takes exactly one pooled connection and holds
+it for the life of the handler. A read that acquires a second while holding the
+first is how a pool deadlocks under load — two requests each holding one and
+waiting for another — so `library_read_counters.MAX_CONNECTIONS_PER_READ` is 1
+and the library reads assert it.
+
+An acquire can fail two ways, and they are **different operator problems**:
+
+| Failure | What it means | The fix |
+|---|---|---|
+| `PoolTimeout` | every connection is leased and the acquire budget elapsed | capacity — pool size, or the slow query holding a slot |
+| `PoolUnavailable` | the pool could not produce a connection at all | the datastore — reachability, credentials, TLS |
+
+`Hx.db()` returns those as a named error set. It previously returned
+`?DbScope`, which erased the distinction at the handler boundary and put both
+behind one alert; the handler that needed to tell them apart worked around it by
+acquiring from the pool directly, which meant reimplementing the
+acquire/release pairing `DbScope` exists to make unskippable. Both are now
+gone. The library reads record the difference as
+`agentsfleet_library_pool_result_total{pool_result="timeout"|"error"}`.
+
+**What the pool guarantees, and what it does not.** Releasing an occupied slot
+lets at least one queued waiter progress, and every waiter either acquires or
+receives the configured timeout — no waiter blocks forever. There is **no
+ordering or fairness guarantee**: the vendored `pg.zig` fork wakes waiters from
+a 2 ms poll loop rather than a queue (`Io.Condition` has no timed wait), so
+which waiter wins is scheduling. `db/pool_bounded_progress_integration_test.zig`
+proves the two real guarantees against a live size-1 pool and deliberately
+declines to assert the third.
+
 ## Config reload — pull-per-lease, no signal
 
 `agentsfleetd` resolves a Fleet's config fresh from `core.fleets` on every `lease`, so a `PATCH /v1/workspaces/{ws}/fleets/{id}` takes effect on the **next lease** with no signaling. There is no in-memory config cache to invalidate and no `fleet_config_changed` consumer to wait on — the worker's watcher-reload path and the `system:config_updated` synthetic-event acknowledgement that depended on it were deleted with the worker.
