@@ -48,7 +48,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 2. `$(zig env | grep lib_dir)/compiler/test_runner.zig` `mainTerminal` — the upstream runner the shard runner must remain behaviourally equivalent to, including per-test allocator reset, `Io` instance lifecycle, leak detection, skip/fail accounting and exit code.
 3. `src/build/test_list.zig` — how a custom runner is attached to a `Compile` without disturbing the default-runner lanes; explains why the executing lanes were deliberately left on the default runner.
 4. `docs/architecture/testing.md` — the component ownership and lane topology this workstream extends. Update it in the same PR.
-5. `.github/workflows/lint.yml` `check-openapi` job — the regenerate-and-diff pattern the generated test roots must mirror.
 
 ## Files Changed (blast radius)
 
@@ -58,23 +57,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/build/daemon_tests.zig` | EDIT | Attach the shard runner to the installed daemon unit and integration artifacts. |
 | `src/build/lib_tests.zig` | EDIT | Same attachment for the shared-library binaries. |
 | `build_runner.zig` | EDIT | Same attachment for the runner graph's installed test artifacts. |
-| `scripts/gen_test_roots.py` | CREATE | Registers each test file at the level that owns it — production sibling, else the owning root. |
-| `scripts/gen_test_roots_test.py` | CREATE | Self-test for the generator's classification and waiver handling. |
-| `src/agentsfleetd/tests.zig` | EDIT | Becomes generated output; content unchanged in meaning. |
-| `src/agentsfleetd/integration_tests.zig` | EDIT | Becomes generated output. |
-| `src/runner/tests.zig` | EDIT | Becomes generated output. |
-| `src/lib/tests.zig` | EDIT | Becomes generated output. |
 | `scripts/run-zig-shards.sh` | CREATE | Fans a built test binary out over N shard processes, aggregates exit codes, preserves per-shard output. |
 | `scripts/check_zig_shard_runner_test.py` | CREATE | Leak-equivalence, partition-exactness and malformed-environment gates for the shard runner. |
 | `scripts/check_ci_lane_config_test.py` | CREATE | Continuous Integration lane configuration gates. |
 | `scripts/check_lane_concurrency_test.py` | CREATE | Lane concurrency and local-cost gates. |
 | `scripts/select-prunable-caches.sh` | CREATE | Pure cache-reclamation selection, unit-tested away from the workflow. |
-| `scripts/run-zig-memleak-lane.sh` | EDIT | Run a lane's binaries concurrently and shard each under the leak gate. |
+| `scripts/run-zig-memleak-lane.sh` | EDIT | Gate a lane's binaries concurrently. |
+| `scripts/check_zig_test_reachability.py` | EDIT | Failure message names the file that should own the registration. |
 | `make/test-unit.mk` | EDIT | Sharded unit lane; concurrent kcov components. |
 | `make/test-integration.mk` | EDIT | Keep-state opt-out for iterative local loops. |
 | `make/bench.mk` | EDIT | Overlap the boot-drain lane's infra and migrate with the component lanes. |
 | `make/dev.mk` | EDIT | `_clean` removes the cache directory the repository actually uses. |
-| `make/quality.mk` | EDIT | Register the generated-roots freshness gate in `lint-zig`. |
 | `.github/workflows/memleak.yml` | EDIT | Add the `main` push trigger that warms the cache. |
 | `.github/workflows/test-integration.yml` | EDIT | Pre-warm the integration artifact, not the unit artifact. |
 | `.github/workflows/test.yml` | EDIT | Narrow the coverage job's container privilege. |
@@ -120,23 +113,6 @@ The four CI defects that make every branch pay for a cold cache. Independent of 
 - **Dimension 1.3** — ✅ DONE — the coverage job runs kcov under the narrowest container option set that works, not `--privileged` → Test `test_coverage_job_is_not_privileged`
 - **Dimension 1.4** — ✅ DONE — a scheduled workflow reclaims cache entries for closed Pull Requests and superseded key generations, keeping total usage under the limit → Test `test_cache_prune_workflow_targets_closed_and_superseded`
 
-### §2 — Generated test roots
-
-Eight roots exist across the two build graphs, of which five are hand-maintained `test { _ = @import(…); }` aggregate lists: the daemon unit and integration roots, the auth portability root, the shared-library barrel, and the runner unit root. Forgetting an entry is caught by the reachability gate, but the edit is still manual and every branch appends to the same lines. Generation removes the edit and makes conflicts resolve mechanically.
-
-**Implementation default:** generate into the source tree and commit the result, gated by regenerate-and-diff, because a root generated into the build cache cannot resolve its own relative imports — Zig resolves `@import` against the importing file and enforces module-root boundaries.
-
-**Implementation default:** generate only the five aggregate roots. The logging and call-deadline roots are production module files whose own `test` block doubles as the lane root, and the runner's integration root is a test file that force-imports three siblings — none is an aggregate list, so generating them would rewrite production imports to satisfy a test-wiring concern.
-
-**Implementation default:** register each test file at the level that already owns it, not by flattening every file into a root. Reachability is transitive: 75 production modules force-import their own `_test.zig` partner, and 229 of 536 candidate files reach the compiler that way rather than through any root. So a file with a production sibling is registered in that sibling, and only a file with no sibling — integration suites, cross-cutting tests — is registered in a root. Flattening instead would replace per-module ownership with one shared list and risk pulling a file into a module shape whose imports it does not resolve against.
-
-- **Dimension 2.1** — the generator registers a test file in its production sibling when one exists, and in the owning root only when none does → Test `test_generator_registers_at_the_owning_level`
-- **Dimension 2.2** — a file carrying the existing `// no-test-root:` waiver marker is excluded from every root → Test `test_generator_honours_waiver_marker`
-- **Dimension 2.3** — regenerating over the committed roots is a no-op, and `lint-zig` fails when it is not → Test `test_generated_roots_are_fresh`
-- **Dimension 2.5** — the generator refuses to rewrite a root it does not own, so the two named-module roots and the runner integration root stay hand-authored → Test `test_generator_leaves_non_aggregate_roots_alone`
-- **Dimension 2.4** — a newly added test file is registered with no hand edit, and the reachability gate stays green → Test `test_new_test_file_registers_itself`
-- **Dimension 2.6** — running the generator against the current tree is a no-op, proving it encodes the existing ownership rather than imposing a new one → Test `test_generator_is_a_no_op_on_the_current_tree`
-
 ### §3 — Shard-aware test runner
 
 The single mechanism the remaining sections rest on. One compiled binary, N processes, disjoint test subsets, aggregated verdict.
@@ -175,8 +151,6 @@ Redis connection URL (src/agentsfleetd/queue/redis_config.zig):
     absent path component => logical database 0 (today's behaviour, unchanged)
 
 Generated roots:
-  make sync-test-roots      regenerate the four roots in place
-  lint-zig                  fails when a regenerated root differs from the committed one
 ```
 
 ## Failure Modes
@@ -214,10 +188,6 @@ Generated roots:
 | 1.2 | unit | `test_integration_workflow_prewarms_integration_binary` | The integration workflow's pre-warm step names the integration artifact and no longer names the unit artifact. |
 | 1.3 | unit | `test_coverage_job_is_not_privileged` | The coverage job's container options contain no `--privileged`. |
 | 1.4 | unit | `test_cache_prune_workflow_targets_closed_and_superseded` | Given a cache listing with open-Pull-Request, closed-Pull-Request and superseded entries, only the latter two are selected. |
-| 2.1 | unit | `test_generator_classifies_by_convention` | An integration-suffixed file lands in the integration root; a plain test file and a production file with a `test` block land in the unit root. |
-| 2.2 | unit | `test_generator_honours_waiver_marker` | A file carrying the waiver marker appears in no root. |
-| 2.3 | integration | `test_generated_roots_are_fresh` | Regenerating over the committed roots produces no diff; mutating a root then regenerating produces one. |
-| 2.4 | integration | `test_new_test_file_registers_itself` | Adding a test file and regenerating registers it, and the reachability checker reports it live. |
 | 3.1 | unit | `test_shard_partition_is_exact_and_disjoint` | Across every shard index for a given count, each registered test executes exactly once. |
 | 3.2 | integration | `test_shard_runner_fails_on_leak` | A binary containing one deliberately leaking test exits non-zero under the shard runner. |
 | 3.3 | unit | `test_shard_runner_reports_and_propagates` | A mixed pass/skip/fail set yields the correct counts and a non-zero exit. |
@@ -236,7 +206,7 @@ Generated roots:
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Every CI lane defect is corrected (§1) | `make check-gh-actions-valid && python3 scripts/check_ci_lane_config_test.py` | exit 0 | P0 | |
-| R2 | Generated roots are fresh and complete (§2) | `make sync-test-roots && git diff --exit-code src/agentsfleetd/tests.zig src/agentsfleetd/integration_tests.zig src/runner/tests.zig src/lib/tests.zig` | exit 0 | P0 | |
+| R2 | Every Zig test block still reaches a root | `make check-test-reachability` | exit 0 | P0 | |
 | R3 | Shard partition is exact, disjoint, and leak-detecting (§3) | `python3 -m unittest discover -s scripts -t scripts -p 'check_zig_shard*_test.py'` | exit 0 | P0 | |
 | R4 | Sharded lanes keep the leak verdict (§3) | `make memleak` | exit 0 | P0 | |
 | R5 | Sharded and unsharded verdicts agree (§3) | `AGENTSFLEET_TEST_SHARD_COUNT=1 make test-unit-agentsfleetd` | exit 0 | P0 | |
@@ -269,6 +239,7 @@ Generated roots:
 
 ## Out of Scope
 
+- Generating test-file registration. The reachability gate already detects an unregistered file, names it, and now names the file that should own it; a generator would save one `_ = @import(…)` line, at the cost of a script that writes into production source. The premise that motivated it — a shared import list every branch appends to — did not survive measurement: 75 production modules already own their test partners, so most new test files never touch a shared root.
 - Sharding the integration lane. Real isolation needs one Redis instance per shard, not one instance with per-shard logical databases: `FLUSHALL` is not database-scoped and would let one shard's reset destroy its siblings mid-run, and Redis Pub/Sub is not database-scoped either, so shards would receive each other's messages on any shared channel — which this suite asserts on heavily. That is N containers and N certificates for the smaller half of the win; the datastore-free binaries account for more lane time than the integration suite does.
 - Amortizing the per-test harness setup by sharing Postgres and Redis pools across tests within a shard. Sharding cuts the same wall clock without touching six hundred test bodies; pool sharing is a follow-up once shard counts stop scaling.
 - Trimming the individual slow tests in the tail (`catalog`, `dashboard`, `sse_streaming`). Real, but each needs its own behavioural judgement and none blocks this workstream.
@@ -301,6 +272,7 @@ Generated roots:
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - Baseline measurements taken before authoring, primary checkout, macOS, with a sibling worktree competing for cores: `make test-integration` 11:18 wall clock; the integration binary alone 614 registered tests, 606 passed, 8 skipped, 375.6s; per-test median 0.522s, p90 1.257s, p99 7.473s, max 21.834s, slowest decile carrying 43.3% of total. Daemon unit binary 2958 registered tests. CI: `memleak` 14 min on a branch's first push against 6 min on later pushes; `test-integration` 6–8 min; Actions cache 54 entries totalling 9.96 GB against a 10 GB limit, with no `memleak` entry under `refs/heads/main`.
   - Gate-flag triage pending: the shard runner replaces the upstream runner's leak detection. Indy approved the structural depth; the FILE SHAPE DECISION and the leak-equivalence evidence are due at PLAN and VERIFY respectively.
+  - Indy, on the proposed registration generator and on Makefile surface: dropped both. The generator's motivating premise did not survive measurement — 75 production modules already own their test partners, so the shared-import-list conflict it was solving is rare — and it would have written into production source to save one line the reachability gate already spells out. Its first implementation modelled reachability with a static import walk and rewrote 38 files before the no-op check caught it, which is the shape of risk it carried. A `sync-test-roots` make target was added and then removed: its only caller was a developer typing it, which the repository's own rule forbids. Net make-target count for this workstream is zero.
   - Adversarial review of the proposed Redis isolation, at Indy's request: the logical-database selector this spec originally carried does not isolate anything that matters. `FLUSHALL` is not database-scoped, so a shard's reset would destroy its siblings mid-run; and Redis Pub/Sub is outside the keyspace entirely, so `SELECT n` leaves channels shared — with `redis_client.publish`, `redis_subscriber`, the subscription hub and four integration suites asserting on exact event delivery, that is silent cross-shard bleed reading as SSE flake. Real isolation is one Redis instance per shard. Measuring where the time actually sits settled it: the datastore-free unit binaries account for 1091s of Continuous Integration step time against the integration suite's 479s, because that binary is executed three times per change. Section 4 removed; sharding applies to the datastore-free lanes, which need no isolation at all.
   - Architecture consult during EXECUTE: the roots are the top of a per-module ownership tree, not a flat catalogue — 75 production modules force-import their own `_test.zig` partner, and 229 of 536 candidate files are reachable only transitively through one. Generating flat root lists (the shape this section was originally specified with) would have discarded that structure and risked pulling files into module shapes their imports do not resolve against. Section amended to register at the owning level instead.
   - Architecture consult during EXECUTE: `docs/architecture/testing.md` named `src/runner/integration_tests.zig` as the runner's integration root. That file does not exist — the real root is `src/runner/sandbox_integration_test.zig`, a test file that force-imports three siblings. The doc also listed three roots where eight exist, omitting the auth portability root and both named-module roots. Corrected in this workstream; the omission is why this section was originally scoped to four roots rather than five aggregate plus three hand-authored.
