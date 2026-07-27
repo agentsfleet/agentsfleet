@@ -94,7 +94,7 @@ pub fn innerAdminCatalogPatch(hx: Hx, req: *httpz.Request, id: []const u8) void 
 
     if (!validIdentity(hx, body)) return;
 
-    var db = hx.db() orelse return;
+    var db = hx.db() catch return;
     defer db.end();
 
     const outcome = applyPatch(hx.alloc, db.conn, id, body, etag.ifMatch(req)) catch |err| switch (err) {

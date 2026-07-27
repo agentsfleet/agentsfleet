@@ -191,7 +191,7 @@ fn cronService(
 }
 
 fn authorizeRead(hx: Hx, workspace_id: []const u8) bool {
-    var db = hx.db() orelse return false;
+    var db = hx.db() catch return false;
     defer db.end();
     if (common.authorizeWorkspace(db.conn, hx.principal, workspace_id)) return true;
     hx.fail(error_codes.ERR_FORBIDDEN, DETAIL_WORKSPACE);
@@ -199,7 +199,7 @@ fn authorizeRead(hx: Hx, workspace_id: []const u8) bool {
 }
 
 fn authorizeMutation(hx: Hx, workspace_id: []const u8) bool {
-    var db = hx.db() orelse return false;
+    var db = hx.db() catch return false;
     defer db.end();
     const access = workspace_guards.enforce(hx.res, hx.req_id, db.conn, hx.principal, workspace_id) orelse return false;
     access.deinit(hx.alloc);

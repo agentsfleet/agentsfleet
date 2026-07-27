@@ -94,13 +94,11 @@ pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
     const after = decodeStart(hx, &scope, filters, limit, raw_cursor) catch return;
     scope.endStage(.auth_verify);
 
-    var db = hx.db() orelse {
-        // `hx.db()` writes its own error response and returns null, so the
-        // acquire error is not observable here — unlike the tenant registry,
-        // which acquires directly and can tell a saturated pool from an
-        // unreachable one. Recorded as `error` rather than guessed as `timeout`.
-        scope.classify(.dependency_error);
-        scope.endStageWith(.pool_wait, .{ .pool_result = .@"error" });
+    var db = hx.db() catch |err| {
+        scope.classify(if (err == error.PoolTimeout) .timeout else .dependency_error);
+        scope.endStageWith(.pool_wait, .{
+            .pool_result = if (err == error.PoolTimeout) .timeout else .@"error",
+        });
         return;
     };
     defer db.end();
