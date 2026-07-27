@@ -30,7 +30,16 @@ const nextConfig: NextConfig = {
   // resolves the handler first. A non-overlapping prefix removes the
   // precedence question entirely instead of relying on router ordering.
   async rewrites() {
-    const backend = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.agentsfleet.net";
+    // No fallback: an env-less worktree once silently proxied to the shared
+    // dev API. Fail the boot loudly instead — the post-checkout hook links
+    // .env.local from ~/.config/agentsfleet/ui.env.local (Next loads .env
+    // files before this config runs).
+    const backend = process.env.NEXT_PUBLIC_API_URL;
+    if (!backend) {
+      throw new Error(
+        "NEXT_PUBLIC_API_URL is unset — run provision-env-1password; the post-checkout hook links ui/packages/app/.env.local.",
+      );
+    }
     return [{ source: "/backend/:path*", destination: `${backend}/:path*` }];
   },
 };

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseRetryAfterHeaderValue, request } from "./client";
+import { parseRetryAfterHeaderValue, request, requireApiOrigin } from "./client";
 import { readWorkspaceFetchAudit, resetWorkspaceFetchAudit, WORKSPACE_LIST_PATH } from "../acceptance/workspace-fetch-audit";
 import { ApiError } from "./errors";
 
@@ -27,6 +27,22 @@ describe("parseRetryAfterHeaderValue", () => {
 
   it("returns null for a null header (missing header)", () => {
     expect(parseRetryAfterHeaderValue(null)).toBeNull();
+  });
+});
+
+describe("requireApiOrigin", () => {
+  it("returns the configured origin", () => {
+    expect(requireApiOrigin()).toBe(process.env.NEXT_PUBLIC_API_URL);
+  });
+
+  it("throws when NEXT_PUBLIC_API_URL is unset instead of guessing a backend", () => {
+    const prev = process.env.NEXT_PUBLIC_API_URL;
+    delete process.env.NEXT_PUBLIC_API_URL;
+    try {
+      expect(() => requireApiOrigin()).toThrow(/NEXT_PUBLIC_API_URL is unset/);
+    } finally {
+      process.env.NEXT_PUBLIC_API_URL = prev;
+    }
   });
 });
 
