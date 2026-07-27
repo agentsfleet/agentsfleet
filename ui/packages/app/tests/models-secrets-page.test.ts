@@ -15,7 +15,6 @@ const redirect = vi.fn((path: string) => {
 });
 const auth = vi.fn();
 const listTenantModelEntriesCached = vi.fn();
-const listSecretsCached = vi.fn();
 
 vi.mock("next/navigation", () => ({
   redirect,
@@ -26,23 +25,35 @@ vi.mock("@clerk/nextjs/server", () => ({ auth }));
 // The page's data reads come from the cache()-wrapped helpers; mock those rather
 // than the underlying API so the React `cache()` primitive isn't exercised here
 // (it has its own direct test in tests/reads-cache.test.ts).
+// No `listSecretsCached`: the page no longer reads the secret
+// list on an ordinary visit, so there is nothing here to mock.
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/lib/reads", () => ({
   listTenantModelEntriesCached,
-  listSecretsCached,
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
   ModelCatalogueProvider: ({ children }: React.PropsWithChildren) =>
     React.createElement("div", { "data-catalogue-provider": "1" }, children),
 }));
-// The page's own contract is just: pass workspaceId/initial/secrets through
-// to ModelsRegistryTable, which owns rendering the table + dialogs internally.
+// The page's own job is just: pass workspaceId + the first page (or the typed
+// read error) through to ModelsRegistryTable, which owns the table + dialogs.
+// `data-error-kind` is what lets these tests tell a FAILED read from an EMPTY
+// one — the distinction this change restores.
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable", () => ({
-  default: ({ workspaceId, initial }: { workspaceId: string; initial: { models: unknown[] } }) =>
+  default: ({
+    workspaceId,
+    initialPage,
+    initialError,
+  }: {
+    workspaceId: string;
+    initialPage: { models: unknown[] } | null;
+    initialError: { kind: string } | null;
+  }) =>
     React.createElement("div", {
       "data-testid": "models-registry-table",
       "data-workspace": workspaceId,
-      "data-entry-count": initial.models.length,
+      "data-entry-count": initialPage ? initialPage.models.length : -1,
+      "data-error-kind": initialError ? initialError.kind : "",
     }),
 }));
 
@@ -75,9 +86,6 @@ afterEach(() => vi.clearAllMocks());
 describe("Models page", () => {
   it("composes the registry table under the catalogue provider", async () => {
     listTenantModelEntriesCached.mockResolvedValue(registryList(2));
-    listSecretsCached.mockResolvedValue({
-      secrets: [{ kind: "provider_key", name: "anthropic-prod", created_at: 1_777_507_200_000, provider: "anthropic" }],
-    });
 
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
     const markup = renderToStaticMarkup(await renderPage(Page));
@@ -87,22 +95,31 @@ describe("Models page", () => {
     expect(markup).toContain('data-catalogue-provider="1"');
     expect(markup).toContain('data-testid="models-registry-table"');
     expect(markup).toContain('data-entry-count="2"');
+    // A successful read carries no error — the two are mutually exclusive.
+    expect(markup).toContain('data-error-kind=""');
   });
 
-  it("degrades to an empty registry when the entries fetch fails", async () => {
+  it("surfaces a typed read error rather than an empty registry when the fetch fails", async () => {
+    // This replaces a test that asserted the opposite. The page used to
+    // `.catch(() => EMPTY_REGISTRY)`, so a tenant whose models were merely
+    // unreachable was told they had none — no distinction, no next step, no
+    // retry. A failed read is now a failure, not a fact about the registry.
     listTenantModelEntriesCached.mockRejectedValue(new Error("503"));
-    listSecretsCached.mockResolvedValue({ secrets: [] });
 
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
     const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain('data-testid="models-registry-table"');
-    expect(markup).toContain('data-entry-count="0"');
+    // -1 is the mock's "no page at all", NOT a zero-length page.
+    expect(markup).toContain('data-entry-count="-1"');
+    expect(markup).toContain('data-error-kind="unknown"');
   });
 
-  it("still renders the registry table when listSecrets errors", async () => {
+  it("does not read the secret list on an ordinary visit", async () => {
+    // The secret list used to load in parallel on every visit to
+    // seed a picker most visits never open. The read module no longer exports
+    // a secrets wrapper at all, so this asserts the page renders without one.
     listTenantModelEntriesCached.mockResolvedValue(registryList(1));
-    listSecretsCached.mockRejectedValue(new Error("503"));
 
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
     const markup = renderToStaticMarkup(await renderPage(Page));

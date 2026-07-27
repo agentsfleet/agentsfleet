@@ -109,7 +109,7 @@ async function renderTable(initial: TenantModelEntryList) {
   const { default: ModelsRegistryTable } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
-  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never)));
+  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initialPage: { ...initial, next_cursor: null, total: null }, initialError: null } as never)));
 }
 
 /** Renders inside a real ModelCatalogueProvider with the library action mocked,
@@ -127,7 +127,7 @@ async function renderTableWithLibrary(initial: TenantModelEntryList, library: Mo
       React.createElement(
         ModelCatalogueProvider,
         null,
-        React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never),
+        React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initialPage: { ...initial, next_cursor: null, total: null }, initialError: null } as never),
       ),
     ),
   );
