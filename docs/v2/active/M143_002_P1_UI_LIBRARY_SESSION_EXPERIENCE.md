@@ -15,12 +15,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 002
 **Date:** Jul 24, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — current library pages block, morph controls, and collapse failures into empty states
 **Categories:** UI
 **Batch:** B2 — consumes M143_001 interfaces
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m143-library-session-experience
+**Test Baseline:** unit=3172 integration=446
 **Depends on:** M143_001 — paged tenant/global models and tier-qualified Fleet summary/detail
 **Provenance:** LLM-drafted (Codex, Jul 24, 2026) from Oracle second-pass review
 **Canonical architecture:** `docs/architecture/user_flow.md` §8.7 and `docs/AUTH.md` Flow 2
