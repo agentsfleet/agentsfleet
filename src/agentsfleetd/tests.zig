@@ -97,6 +97,7 @@ test {
     _ = @import("observability/library_read_counters.zig");
     _ = @import("observability/library_stages.zig");
     _ = @import("observability/library_read_scope.zig");
+    _ = @import("observability/library_failure_matrix_test.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
