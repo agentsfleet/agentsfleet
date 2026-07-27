@@ -106,16 +106,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Continuous Integration lane correctness
+### §1 — Continuous Integration lane correctness — ✅ DONE
 
 The four CI defects that make every branch pay for a cold cache. Independent of everything below and shippable on its own.
 
 **Implementation default:** the `memleak` `main` trigger mirrors `test.yml`'s existing paths filter rather than inventing a new one, because a filter that disagrees with the sibling workflows is how the next cache gap appears.
 
-- **Dimension 1.1** — `memleak.yml` triggers on pushes to `main` under a paths filter, so a fresh branch restores a warm cache → Test `test_memleak_workflow_warms_from_main`
-- **Dimension 1.2** — `test-integration.yml` pre-warms the artifact the job actually runs → Test `test_integration_workflow_prewarms_integration_binary`
-- **Dimension 1.3** — the coverage job runs kcov under the narrowest container option set that works, not `--privileged` → Test `test_coverage_job_is_not_privileged`
-- **Dimension 1.4** — a scheduled workflow reclaims cache entries for closed Pull Requests and superseded key generations, keeping total usage under the limit → Test `test_cache_prune_workflow_targets_closed_and_superseded`
+- **Dimension 1.1** — ✅ DONE — `memleak.yml` triggers on pushes to `main` under a paths filter, so a fresh branch restores a warm cache → Test `test_memleak_workflow_warms_from_main`
+- **Dimension 1.2** — ✅ DONE — `test-integration.yml` pre-warms the artifact the job actually runs → Test `test_integration_workflow_prewarms_integration_binary`
+- **Dimension 1.3** — ✅ DONE — the coverage job runs kcov under the narrowest container option set that works, not `--privileged` → Test `test_coverage_job_is_not_privileged`
+- **Dimension 1.4** — ✅ DONE — a scheduled workflow reclaims cache entries for closed Pull Requests and superseded key generations, keeping total usage under the limit → Test `test_cache_prune_workflow_targets_closed_and_superseded`
 
 ### §2 — Generated test roots
 
