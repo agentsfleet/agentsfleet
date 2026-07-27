@@ -333,13 +333,13 @@ describe("fleets routes", () => {
     ).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
-    listWorkspaceFleetLibraryMock.mockResolvedValue({
-      items: SAMPLE_TEMPLATES,
-    });
-    listSecretsMock.mockResolvedValue({
-      secrets: [{ kind: "custom_secret", name: "github", created_at: 1 }],
-    });
+  it("fleets new page shell streams the header + skeleton before the gallery", async () => {
+    // InstallFleetData is an async child, so renderToStaticMarkup renders the
+    // Suspense skeleton in its place — the header paints immediately and the
+    // gallery arrives after. Previously the whole page waited on the slower of
+    // the library and vault reads before painting anything.
+    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: SAMPLE_TEMPLATES, next_cursor: null, total: null });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
     const { default: Page } =
       await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
     const markup = renderToStaticMarkup(
@@ -348,7 +348,29 @@ describe("fleets routes", () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    expect(markup).toContain("Install fleet"); // page title
+    expect(markup).toContain("Install fleet"); // PageTitle in the shell
+    expect(markup).toContain("animate-pulse"); // Skeleton fallback
+    expect(markup).not.toContain("GitHub PR reviewer"); // data not yet resolved
+  });
+
+  it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
+    listWorkspaceFleetLibraryMock.mockResolvedValue({
+      items: SAMPLE_TEMPLATES,
+      next_cursor: null,
+      total: null,
+    });
+    listSecretsMock.mockResolvedValue({
+      secrets: [{ kind: "custom_secret", name: "github", created_at: 1 }],
+    });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: {} }),
+      ),
+    );
     expect(markup).toContain("Fleet library");
     expect(markup).toContain("GitHub PR reviewer");
     expect(markup).toContain("Use entry"); // the gallery card's install action
@@ -361,33 +383,38 @@ describe("fleets routes", () => {
     // way to tell the two apart. A failed read is now a failure.
     listWorkspaceFleetLibraryMock.mockRejectedValue(new Error("catalog down"));
     listSecretsMock.mockRejectedValue(new Error("vault down"));
-    const { default: Page } =
+    const { InstallFleetData } =
       await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
     const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1" }),
-        searchParams: Promise.resolve({}),
-      }),
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: {} }),
+      ),
     );
     expect(markup).toContain("Could not load the fleet library.");
     expect(markup).not.toContain("No prebuilt fleet library found");
   });
 
-  it("fleets new page accepts a ?library= deep link", async () => {
-    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
+  it("fleets new page accepts a tier-qualified deep link", async () => {
+    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
     listSecretsMock.mockResolvedValue({ secrets: [] });
-    const { default: Page } =
+    const { InstallFleetData } =
       await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
     const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1" }),
-        searchParams: Promise.resolve({
-          library_visibility: "platform",
-          library_id: "github-pr-reviewer",
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({
+          workspaceId: "ws_1",
+          query: { library_visibility: "platform", library_id: "github-pr-reviewer" },
         }),
-      }),
+      ),
     );
     expect(markup).toContain("Fleet library");
+    // Absent from the loaded page → the not-found selection state, which
+    // neither enumerates nor errors the page.
+    expect(markup).toContain("not on this page");
   });
 
   it("fleets detail page redirects to /sign-in when no token", async () => {

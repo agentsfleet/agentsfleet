@@ -1,10 +1,12 @@
+import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle, Skeleton } from "@agentsfleet/design-system";
 import { listWorkspaceFleetLibraryCached } from "@/lib/api/fleet-library";
 import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
 import { listSecrets } from "@/lib/api/secrets";
 import { InstallFleet } from "./InstallFleet";
+import { INSTALL_PAGE_DESCRIPTION, INSTALL_PAGE_TITLE } from "./library-docs";
 import { hasLibraryWriteScope } from "../scope";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +24,11 @@ function one(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) return value[0];
   return value;
 }
-const INSTALL_PAGE_DESCRIPTION = "Start a fleet from the library. Watch it run in a loop.";
 
-// Gallery-first install. Library entries + the workspace's existing
-// credential names are fetched server-side (workspace from the URL) so the
-// client orchestrator can render the gallery and the credential preview
-// without a client round-trip.
+// Gallery-first install. The header paints immediately and the gallery streams
+// in beneath it, matching the Approvals/Events/Fleets routes. Previously this
+// awaited both reads before rendering a single pixel, so the whole screen was
+// gated on whichever of the library and the vault answered last.
 export default async function InstallFleetPage({
   params,
   searchParams,
@@ -36,11 +37,67 @@ export default async function InstallFleetPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { workspaceId } = await params;
-  const { getToken, sessionClaims } = await auth();
+  const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
   const query = await searchParams;
+
+  return (
+    <PageLayout>
+      <PageHeader description={INSTALL_PAGE_DESCRIPTION}>
+        <PageTitle>{INSTALL_PAGE_TITLE}</PageTitle>
+      </PageHeader>
+
+      <Suspense fallback={<InstallGallerySkeleton />}>
+        <InstallFleetData workspaceId={workspaceId} query={query} />
+      </Suspense>
+    </PageLayout>
+  );
+}
+
+/**
+ * Stable loading region for the gallery.
+ *
+ * Fixed height and card count so the shell does not reflow when the real
+ * gallery arrives, and no shimmer — `Skeleton` owns motion and honours
+ * reduced-motion, which a bespoke animated placeholder here would not.
+ */
+function InstallGallerySkeleton() {
+  return (
+    <div className="space-y-sm" aria-busy="true" aria-label="Loading fleet library">
+      <Skeleton className="h-5 w-32" />
+      <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
+        <Skeleton className="h-40 rounded-lg" />
+        <Skeleton className="h-40 rounded-lg" />
+        <Skeleton className="h-40 rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Async data region: reads the first gallery page and the workspace's
+ * credential names, then resolves the deep-link selection. Exported so it
+ * renders and tests in isolation, matching `ApprovalsData`.
+ *
+ * Neither read is allowed to REJECT. Suspense here buys latency, not error
+ * handling: a rejected promise would throw in render and need an
+ * ErrorBoundary, which would trade the failed-versus-empty distinction this
+ * workstream exists to draw for an undifferentiated fallback. Both reads
+ * resolve to data-or-typed-error instead.
+ */
+export async function InstallFleetData({
+  workspaceId,
+  query,
+}: {
+  workspaceId: string;
+  query: SearchParams;
+}) {
+  const { getToken, sessionClaims } = await auth();
+  const token = await getToken();
+  if (!token) return null;
+
   // An unparseable cursor is discarded in favour of the first page rather than
   // surfacing an error — a bad link should still land somewhere useful.
   const after = one(query.library_after) ?? null;
@@ -91,20 +148,15 @@ export default async function InstallFleetPage({
   const initialCreateOpen = one(query.create) === "1";
 
   return (
-    <PageLayout>
-      <PageHeader description={INSTALL_PAGE_DESCRIPTION}>
-        <PageTitle>Install fleet</PageTitle>
-      </PageHeader>
-      <InstallFleet
-        workspaceId={workspaceId}
-        initialPage={pageResult}
-        initialError={pageError}
-        initialSelection={initialSelection}
-        selectionNotFound={selectionNotFound}
-        presentCredentialNames={credentialNames}
-        canAddLibraryEntry={hasLibraryWriteScope(sessionClaims)}
-        initialCreateOpen={initialCreateOpen}
-      />
-    </PageLayout>
+    <InstallFleet
+      workspaceId={workspaceId}
+      initialPage={pageResult}
+      initialError={pageError}
+      initialSelection={initialSelection}
+      selectionNotFound={selectionNotFound}
+      presentCredentialNames={credentialNames}
+      canAddLibraryEntry={hasLibraryWriteScope(sessionClaims)}
+      initialCreateOpen={initialCreateOpen}
+    />
   );
 }

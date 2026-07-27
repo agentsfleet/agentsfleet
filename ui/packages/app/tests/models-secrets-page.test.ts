@@ -87,11 +87,19 @@ describe("Models page", () => {
   it("composes the registry table under the catalogue provider", async () => {
     listTenantModelEntriesCached.mockResolvedValue(registryList(2));
 
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
-    const markup = renderToStaticMarkup(await renderPage(Page));
+    const { default: Page, ModelsRegistryData } = await import(
+      "../app/(dashboard)/w/[workspaceId]/settings/models/page"
+    );
+    // The shell paints the header immediately; the registry is an async child
+    // so renderToStaticMarkup renders the skeleton in its place.
+    const shell = renderToStaticMarkup(await renderPage(Page));
+    expect(shell).toContain("Models");
+    expect(shell).toContain(MODELS_PAGE_DESCRIPTION);
+    expect(shell).not.toContain('data-testid="models-registry-table"');
 
-    expect(markup).toContain("Models");
-    expect(markup).toContain(MODELS_PAGE_DESCRIPTION);
+    const markup = renderToStaticMarkup(
+      React.createElement(React.Fragment, null, await ModelsRegistryData({ workspaceId: WORKSPACE_ID })),
+    );
     expect(markup).toContain('data-catalogue-provider="1"');
     expect(markup).toContain('data-testid="models-registry-table"');
     expect(markup).toContain('data-entry-count="2"');
@@ -106,8 +114,10 @@ describe("Models page", () => {
     // retry. A failed read is now a failure, not a fact about the registry.
     listTenantModelEntriesCached.mockRejectedValue(new Error("503"));
 
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
-    const markup = renderToStaticMarkup(await renderPage(Page));
+    const { ModelsRegistryData } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(React.Fragment, null, await ModelsRegistryData({ workspaceId: WORKSPACE_ID })),
+    );
 
     expect(markup).toContain('data-testid="models-registry-table"');
     // -1 is the mock's "no page at all", NOT a zero-length page.
@@ -121,8 +131,10 @@ describe("Models page", () => {
     // a secrets wrapper at all, so this asserts the page renders without one.
     listTenantModelEntriesCached.mockResolvedValue(registryList(1));
 
-    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
-    const markup = renderToStaticMarkup(await renderPage(Page));
+    const { ModelsRegistryData } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(React.Fragment, null, await ModelsRegistryData({ workspaceId: WORKSPACE_ID })),
+    );
 
     expect(markup).toContain('data-testid="models-registry-table"');
     expect(markup).toContain('data-entry-count="1"');
