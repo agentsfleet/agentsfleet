@@ -34,6 +34,8 @@ const TestHarness = harness_mod.TestHarness;
 const model_library_store = @import("../../state/model_library_store.zig");
 const etag = @import("../etag.zig");
 const ec = @import("../../errors/error_registry.zig");
+const pagination = @import("../pagination.zig");
+const catalogue_key = @import("library/catalogue_key.zig");
 
 const MODELS_PATH = "/v1/models";
 const VIEWER = scope_fixtures.VIEWER;
@@ -254,6 +256,16 @@ test "integration: test_model_page_and_conditional_headers — filters select, a
         try r.expectStatus(.ok);
         try std.testing.expect(!r.bodyContains(MODEL_ALPHA));
     }
+    {
+        // Fullwidth ％ (U+FF05, URL-encoded %EF%BC%85) NFKC-folds into `%`
+        // INSIDE Postgres — after Zig-side escaping used to run, which made it
+        // a live match-everything wildcard. The pattern is now escaped in SQL
+        // after the fold, so it matches a literal percent like its ASCII twin.
+        const r = try (try h.get(MODELS_PATH ++ "?q=m143page%EF%BC%85").bearer(VIEWER)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try std.testing.expect(!r.bodyContains(MODEL_ALPHA));
+    }
 }
 
 test "integration: test_model_page_and_conditional_headers — both answers carry the validators, and If-None-Match yields a bodyless 304" {
@@ -344,6 +356,28 @@ test "integration: test_model_page_and_conditional_headers — every §Error Con
     // endpoint issued.
     {
         const r = try (try h.get(MODELS_PATH ++ "?starting_after=not-a-cursor").bearer(VIEWER)).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(ec.ERR_LIBRARY_CURSOR_MALFORMED);
+    }
+
+    // A cursor that DECODES cleanly but names a non-UUID id is the same
+    // UZ-LIBRARY-001: the uid rides the page SQL as a `::uuid` cast, and a
+    // hand-minted id must be rejected as malformed input rather than surface
+    // as a Postgres cast error dressed in a 503.
+    {
+        const forged = try pagination.encode(alloc, catalogue_key.Cursor, .{
+            .display_key = "aaa",
+            .vendor_key = "aaa",
+            .id = "not-a-uuid",
+            .q = null,
+            .provider = null,
+            .limit = pagination.DEFAULT_LIMIT,
+        });
+        defer alloc.free(forged);
+        const path = try std.fmt.allocPrint(alloc, MODELS_PATH ++ "?starting_after={s}", .{forged});
+        defer alloc.free(path);
+        const r = try (try h.get(path).bearer(VIEWER)).send();
         defer r.deinit();
         try r.expectStatus(.bad_request);
         try r.expectErrorCode(ec.ERR_LIBRARY_CURSOR_MALFORMED);

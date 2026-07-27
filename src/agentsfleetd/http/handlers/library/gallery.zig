@@ -16,17 +16,20 @@
 //!
 //! ## What the summary sheds, and what it keeps
 //!
-//! `support_files` is gone; `requirements` and `required_credentials_reasons`
-//! stay. §3 asked for all three to move to the detail route on a size argument.
-//! Measured, only one earns it.
+//! `support_files` is gone from the workspace plane entirely; `requirements`
+//! and `required_credentials_reasons` stay. §3 asked for all three to move to
+//! a per-entry detail route on a size argument. Measured, only one earned the
+//! move — and the detail route itself was then removed (no product caller was
+//! ever built), so the manifest now lives only on the admin plane
+//! (`handlers/library/catalog.zig`).
 //!
 //! The manifest is capped at `MAX_SUPPORT_FILES` (32) x `MAX_SUPPORT_PATH_LEN`
-//! (160), so it contributes up to ~6.3 KB per row and ~630 KB across a 100-row
-//! page — past this body's 512 KiB ceiling by itself. It is also the only one of
-//! the three with no reader: no component renders it, the install flow ignores
-//! it, and the runner materializes real support-file BYTES out of object storage
-//! from the lease's bundle hash, never from this path/size manifest. Dropping it
-//! is what brings the page inside its ceiling.
+//! (160), so it contributed up to ~6.3 KB per row and ~630 KB across a 100-row
+//! page — past this body's 512 KiB ceiling by itself. It is also the only one
+//! of the three with no reader: no component renders it, the install flow
+//! ignores it, and the runner materializes real support-file BYTES out of
+//! object storage from the lease's bundle hash, never from this path/size
+//! manifest. Dropping it is what brings the page inside its ceiling.
 //!
 //! The other two are RENDERED. `requirements.credentials` becomes the chips on
 //! the card, and `required_credentials_reasons` is the ConnectGate's per-
@@ -214,7 +217,6 @@ fn buildPage(
     after: ?keyset.Position,
     limit: u32,
 ) !Page {
-    const like = if (search) |term| try query.likeContains(hx.alloc, term) else null;
     // Over-fetch by one. The extra row never reaches the response; it only
     // answers "is there another page?" without a second COUNT.
     const fetch: i64 = @as(i64, limit) + 1;
@@ -222,7 +224,7 @@ fn buildPage(
     var rows: std.ArrayList(SummaryEntry) = .empty;
     errdefer rows.deinit(hx.alloc);
 
-    var q = try openPage(conn, workspace_id, like, after, fetch);
+    var q = try openPage(conn, workspace_id, search, after, fetch);
     defer q.deinit();
 
     var seen: usize = 0;

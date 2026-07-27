@@ -33,8 +33,10 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const logging = @import("log");
+const pg = @import("pg");
 
 const revision_state = @import("../../state/model_catalogue_revision.zig");
+const id_format = @import("../../types/id_format.zig");
 const model_library_store = @import("../../state/model_library_store.zig");
 const counters = @import("../../observability/library_read_counters.zig");
 const ec = @import("../../errors/error_registry.zig");
@@ -89,16 +91,7 @@ pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
     defer db.end();
     counters.noteConnection();
 
-    const revision = revision_state.read(db.conn) catch |err| {
-        log.err("revision_read_failed", .{
-            .error_code = ec.ERR_LIBRARY_REVISION_UNAVAILABLE,
-            .err = @errorName(err),
-        });
-        // No cached data on this path, ever: serving a page whose generation is
-        // unknown is precisely the drift the revision exists to prevent.
-        hx.fail(ec.ERR_LIBRARY_REVISION_UNAVAILABLE, S_REVISION_UNAVAILABLE);
-        return;
-    };
+    const revision = readRevisionOrFail(hx, db.conn) orelse return;
 
     const key = catalogue_key.cacheKey(revision, filters.q, filters.provider, raw_cursor, limit);
 
@@ -163,6 +156,13 @@ fn decodeStart(
         hx.fail(ec.ERR_LIBRARY_CURSOR_MISMATCH, S_CURSOR_MISMATCH);
         return error.Rejected;
     }
+    // The uid rides the page SQL as a `::uuid` cast, so a hand-minted cursor
+    // whose id is not a UUID must fail here as the malformed input it is — not
+    // downstream as a Postgres cast error dressed in a 503.
+    if (!id_format.isUuidV7(cursor.id)) {
+        hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
+        return error.Rejected;
+    }
     return .{
         .display_key = cursor.display_key,
         .vendor_key = cursor.vendor_key,
@@ -178,6 +178,20 @@ fn decodeStart(
 /// The copy is taken from `res.arena`, not `hx.alloc`: a hit and a miss must
 /// hand `respond` memory with the same lifetime, and only the response arena
 /// survives the handler's return (see `model_library_page.zig`).
+/// The catalogue generation, or null with the 503 already written. No cached
+/// data may be served past a failure here: a page whose generation is unknown
+/// is precisely the drift the revision exists to prevent.
+fn readRevisionOrFail(hx: Hx, conn: *pg.Conn) ?i64 {
+    return revision_state.read(conn) catch |err| {
+        log.err("revision_read_failed", .{
+            .error_code = ec.ERR_LIBRARY_REVISION_UNAVAILABLE,
+            .err = @errorName(err),
+        });
+        hx.fail(ec.ERR_LIBRARY_REVISION_UNAVAILABLE, S_REVISION_UNAVAILABLE);
+        return null;
+    };
+}
+
 fn cachedBody(hx: Hx, key: anytype) ?[]u8 {
     const cache = hx.ctx.model_library_cache orelse return null;
     return cache.fetch(hx.res.arena, key) catch null;

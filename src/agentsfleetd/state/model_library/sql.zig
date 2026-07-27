@@ -67,24 +67,35 @@ pub const LIST_LIBRARY =
 // IMMUTABLE. Folding BOTH the column and the needle with the same expression is
 // what makes a match independent of the script the caller typed in — a
 // half-folded needle against a fully folded column matches by accident.
-// `handlers/library/query.zig` keeps only the ASCII-safe half.
+// `handlers/library/query.zig` keeps only normalization; the LIKE pattern is
+// built here, after the fold.
 
 /// The two sort/search keys, spelled once so the ORDER BY, the seek predicate
 /// and the projection cannot fold differently from each other.
 const DISPLAY_KEY = "lower(normalize(model_id, NFKC))";
 const VENDOR_KEY = "lower(normalize(provider, NFKC))";
 
-/// Paired with every LIKE built by `query.likeContains`, whose escape character
-/// this must match or the escaping there is inert.
+/// Paired with the LIKE pattern built below, whose escape character this must
+/// match or the escaping there is inert.
 const LIKE_ESCAPE_CLAUSE =
     \\ ESCAPE '\'
 ;
 
-/// The search needle, folded by the same expression as the columns it is
-/// compared against. Spelled once because the two OR branches below must fold
+/// The search needle: folded by the same expression as the columns, THEN
+/// LIKE-escaped and wildcard-wrapped — in that order, in SQL. Escaping ran in
+/// Zig once, BEFORE the fold, and that order was a hole: NFKC maps
+/// compatibility characters (fullwidth ％, ﹪, ＿, ﹍﹎﹏, ＼) INTO live
+/// `%`/`_`/`\` after the escape pass had already run, so `q=％` matched
+/// everything. Escaping after the fold closes the class. Backslash is replaced
+/// first — the later replacements introduce backslashes that must not be
+/// re-escaped. `$1` is the caller's normalized term, raw.
+const FOLDED_NEEDLE =
+    "'%' || replace(replace(replace(lower(normalize($1, NFKC)), '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'";
+
+/// Spelled once because the two OR branches below must build the pattern
 /// identically — one of them folding differently is a match that depends on
 /// whether the hit came from the display or the vendor column.
-const LIKE_FOLDED_QUERY = " LIKE lower(normalize($1, NFKC))" ++ LIKE_ESCAPE_CLAUSE;
+const LIKE_FOLDED_QUERY = " LIKE " ++ FOLDED_NEEDLE ++ LIKE_ESCAPE_CLAUSE;
 
 /// Byte-order collation, as a key separator. Every sort key and every seek
 /// operand carries it, so the ORDER BY and the predicate that resumes it cannot
@@ -117,8 +128,9 @@ const SELECT_LIBRARY_PAGE =
     KEY_INDENT ++ VENDOR_KEY ++ " AS vendor_key" ++
     FROM_TABLE;
 
-/// `$1` = the LIKE pattern (null ⇒ no search), `$2` = the provider (null ⇒ no
-/// filter). Both needles are folded by the same expression as the columns.
+/// `$1` = the normalized search term, raw (null ⇒ no search) — the pattern is
+/// built from it above. `$2` = the provider (null ⇒ no filter). Both needles
+/// are folded by the same expression as the columns.
 const WHERE_LIBRARY_FILTERS =
     "\n WHERE ($1::text IS NULL" ++
     OR_INDENT ++ DISPLAY_KEY ++ LIKE_FOLDED_QUERY ++
