@@ -2,7 +2,7 @@
 # BUILD & REGISTRY — container builds and pushes
 # =============================================================================
 
-.PHONY: build build-dev push-dev push build-linux-alpine _prepare_prebuilt_linux_binaries sync-version check-version
+.PHONY: build build-dev push-dev push build-linux-alpine _docker_login _prepare_prebuilt_linux_binaries sync-version check-version
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 GIT_COMMIT := $(if $(GITHUB_SHA),$(shell echo $(GITHUB_SHA) | cut -c1-7),$(shell git rev-parse --short HEAD 2>/dev/null || echo "dev"))

@@ -22,7 +22,7 @@ help:  ## Show all available Makefile targets
 	@echo "  lint-all                 Run every linter + quality gate (umbrella for all checks below)"
 	@echo "  lint-zig                 Lint all Zig source — agentsfleetd/runner/lib (fmt + ZLint + pg-drain + test-depth + cross-target + line-limit + role/legacy guards)"
 	@echo "  lint-website             Lint website (Oxlint + tsc)"
-	@echo "  lint-apps-ds-ctl         Lint app + design-system + agentsfleet"
+	@echo "  lint-apps-designsystem-cli  Lint app + design-system + agentsfleet"
 	@echo ""
 	@echo "Quality Gates:"
 	@echo "  check-openapi            Bundle YAML → openapi.json + Redocly lint + error-schema + URL-shape checks"

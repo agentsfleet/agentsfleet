@@ -1,6 +1,26 @@
 name: memleak
 
 on:
+  # Run on merges to main (lane-relevant paths only) so the default branch
+  # populates the actions/cache for this job. GitHub scopes a cache to the ref
+  # that created it, with a fallback to the default branch — so without a main
+  # run, the only memleak caches that ever exist live under `refs/pull/<n>/merge`
+  # and are unreachable from any other branch. Every new branch then rebuilt all
+  # three ReleaseSafe test graphs from cold, which is the whole gap between this
+  # job's first-push and later-push wall clock. Paths mirror the sibling Zig
+  # workflows and the cache key's own hashFiles inputs, plus make/** because the
+  # lane's orchestration lives in make/bench.mk.
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'build.zig'
+      - 'build.zig.zon'
+      - 'build_runner.zig'
+      - 'make/**'
+      - 'scripts/run-zig-memleak-lane.sh'
+      - 'schema/**'
+      - '.github/workflows/memleak.yml'
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -9,7 +29,11 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel on main: these runs exist to populate the cache every branch
+  # restores from, so cancelling one to start the next leaves no warm cache at
+  # all — silently undoing the reason the main trigger is here. Pull Request
+  # runs stay cancellable; a superseded push has nothing worth finishing.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   memleak:

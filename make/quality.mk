@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-governance lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_zig_test_depth _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check
+.PHONY: lint-all lint-zig lint-governance lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -26,10 +26,6 @@ ACTIONLINT ?= actionlint
 # thing — and, worse, could not fail: `find` exits 0 whatever `-exec` returns, so
 # a misformatted file passed the gate silently. Both bugs die with the loop; zig
 # takes a directory and reports its own exit code.
-_fmt:
-	@echo "→ [zig] Formatting Zig code..."
-	@zig fmt src
-
 _fmt_check:
 	@echo "→ [zig] Checking Zig formatting..."
 	@zig fmt --check src
@@ -70,13 +66,16 @@ _lint_zig_pg_drain:
 # Roster-scoped ghostty-derived discipline (A5 poison + ownership phrase blocking
 # inside audits/zig-discipline-roster.txt; A2 errdefer heuristic advisory), plus
 # the fixture-driven self-tests that prove each check bites in/out of the roster.
-DISCIPLINE_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_zig_discipline*_test.py'
+# Every checker's self-test, not a hand-listed prefix: a narrow pattern meant a
+# new gate's tests sat on disk unrun, which is the same 'enforcement in
+# appearance only' defect this repository deletes dead checkers for.
+SCRIPT_SELF_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_*_test.py'
 
 _lint_zig_discipline:
 	@echo "→ [zig] Checking ghostty-derived A5/A2 discipline (roster-scoped)..."
 	@python3 lint-zig.py --discipline --roster audits/zig-discipline-roster.txt src
 	@echo "→ [zig] Discipline lint self-tests..."
-	@$(DISCIPLINE_TESTS)
+	@$(SCRIPT_SELF_TESTS)
 	@echo "✓ [zig] discipline check + self-tests passed"
 
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
@@ -255,14 +254,14 @@ lint-zig: _fmt_check _zlint_check lint-governance check-test-reachability _lint_
 	@echo "✓ [zig] Lint passed"
 
 
-lint-apps-ds-ctl: lint-app lint-design-system lint-cli  ## Lint app + design-system + agentsfleet
+lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + design-system + agentsfleet
 
 
 
 
 
 
-lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-zig lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
