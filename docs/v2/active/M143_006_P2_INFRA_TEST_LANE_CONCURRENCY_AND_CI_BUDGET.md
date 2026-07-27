@@ -116,17 +116,17 @@ The four CI defects that make every branch pay for a cold cache. Independent of 
 - **Dimension 1.3** — ✅ DONE — the coverage job runs kcov under the narrowest container option set that works, not `--privileged` → Test `test_coverage_job_is_not_privileged`
 - **Dimension 1.4** — ✅ DONE — a scheduled workflow reclaims cache entries for closed Pull Requests and superseded key generations, keeping total usage under the limit → Test `test_cache_prune_workflow_targets_closed_and_superseded`
 
-### §3 — Shard-aware test runner
+### §3 — Shard-aware test runner — IN_PROGRESS (mechanism DONE; coverage + memleak lanes not yet wired)
 
 The single mechanism the remaining sections rest on. One compiled binary, N processes, disjoint test subsets, aggregated verdict.
 
 **Implementation default:** shard assignment is by index modulo count over the compiler-registered order, and the fan-out assigns the longest-known tests first where a prior timing record exists, because the integration suite's slowest ten percent carry forty-three percent of its runtime and a naive split leaves one shard running alone.
 
-- **Dimension 3.1** — the runner executes exactly the tests whose index satisfies the shard predicate, and the union across all shards is the full registered set with no overlap → Test `test_shard_partition_is_exact_and_disjoint`
-- **Dimension 3.2** — the runner detects a `std.testing.allocator` leak and exits non-zero, matching the upstream runner → Test `test_shard_runner_fails_on_leak`
-- **Dimension 3.3** — skips, failures, and logged errors are counted and reported per shard, and the aggregate exit code is non-zero when any shard fails → Test `test_shard_runner_reports_and_propagates`
-- **Dimension 3.4** — with no shard environment set, the runner behaves as a single shard covering every test → Test `test_unsharded_default_runs_everything`
-- **Dimension 3.5** — the fan-out script preserves each shard's output and surfaces the failing shard's output first → Test `test_fanout_preserves_shard_output`
+- **Dimension 3.1** — ✅ DONE — the runner executes exactly the tests whose index satisfies the shard predicate, and the union across all shards is the full registered set with no overlap → Test `test_shard_partition_is_exact_and_disjoint`
+- **Dimension 3.2** — ✅ DONE — the runner detects a `std.testing.allocator` leak and exits non-zero, matching the upstream runner → Test `test_shard_runner_fails_on_leak`
+- **Dimension 3.3** — ✅ DONE — skips, failures, and logged errors are counted and reported per shard, and the aggregate exit code is non-zero when any shard fails → Test `test_shard_runner_reports_and_propagates`
+- **Dimension 3.4** — ✅ DONE — with no shard environment set, the runner behaves as a single shard covering every test → Test `test_unsharded_default_runs_everything`
+- **Dimension 3.5** — ✅ DONE — the fan-out script preserves each shard's output and surfaces the failing shard's output first → Test `test_fanout_preserves_shard_output`
 
 ### §5 — Lane concurrency and local cost — ✅ DONE
 
