@@ -83,11 +83,26 @@ export AGENTSFLEET_API_URL=http://localhost:3000   # or set it once
 
 ## Contributing
 
-Enable git hooks: `git config core.hooksPath .githooks`
+```bash
+git config core.hooksPath .githooks
+```
 
-Coding conventions and the agent operating model live in [`AGENTS.md`](AGENTS.md).
+Project facts live in [`AGENTS.md`](AGENTS.md). The shared operating model and
+the deterministic gate scripts live in
+[indykish/dotfiles](https://github.com/indykish/dotfiles) — this repository
+keeps no copies, so a rules change reaches every agent session without a commit
+here.
 
-Read about [architecture](docs/architecture/) and [deployment](playbooks/ARCHITECTURE.md), or jump into [local development](#local-development).
+`make harness-verify` runs those gates. It expects the dotfiles checkout at
+`~/Projects/dotfiles`; point it elsewhere with `ORLY_ROOT`:
+
+```bash
+make harness-verify ORLY_ROOT=/path/to/dotfiles
+```
+
+Read about [architecture](docs/architecture/) and
+[deployment](playbooks/ARCHITECTURE.md), or jump into
+[local development](#local-development).
 
 ---
 
