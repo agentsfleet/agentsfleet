@@ -1,9 +1,17 @@
 //! Atomic QStash replay suppression plus Fleet-event append.
+//!
+//! This is the second producer of `fleet:{id}:events` — the five HTTP ingress
+//! paths funnel through `redis_fleet.xaddFleetEvent`, but the dedup-and-append
+//! here must be one atomic script, so it cannot ride that producer. It
+//! therefore carries the same obligation: mark the fleet ready AFTER a
+//! successful append, or scheduled fires are invisible to ready-first lease
+//! discovery until a sweeper pass reaches the fleet.
 
 const FireQueue = @This();
 
 const std = @import("std");
 const error_registry = @import("../errors/error_registry.zig");
+const fleet_ready = @import("../queue/fleet_ready.zig");
 const queue_constants = @import("../queue/constants.zig");
 const queue_redis = @import("../queue/redis.zig");
 
@@ -74,7 +82,13 @@ pub fn enqueue(
     return switch (response) {
         .integer => |value| switch (value) {
             0 => .duplicate,
-            1 => .enqueued,
+            1 => blk: {
+                // Best-effort, after the append succeeded — the producer
+                // obligation from the module note. A duplicate marks nothing:
+                // its first delivery already did, and it appended no entry.
+                fleet_ready.mark(self.client, fleet_id);
+                break :blk .enqueued;
+            },
             else => error.RedisUnexpectedResponse,
         },
         else => error.RedisUnexpectedResponse,

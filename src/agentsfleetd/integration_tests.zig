@@ -27,6 +27,9 @@ test {
     _ = @import("fleet/budget_integration_test.zig");
     _ = @import("fleet/budget_gate_integration_test.zig");
     _ = @import("fleet/event_lifecycle_reclaim_integration_test.zig");
+    _ = @import("fleet/assign_ready_integration_test.zig");
+    _ = @import("fleet/assign_ready_faults_integration_test.zig");
+    _ = @import("fleet/reclaim_sweeper_readiness_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
     _ = @import("fleet/liveness_sweeper_integration_test.zig");
@@ -54,6 +57,7 @@ test {
     _ = @import("http/handlers/fleets/events_cost_integration_test.zig");
     _ = @import("http/handlers/fleets/list_aggregate_integration_test.zig");
     _ = @import("http/handlers/fleets/patch_if_match_integration_test.zig");
+    _ = @import("http/handlers/fleets/readiness_lifecycle_integration_test.zig");
     _ = @import("http/handlers/memory/memory_forget_integration_test.zig");
     _ = @import("http/handlers/library/catalog_etag_integration_test.zig");
     _ = @import("http/handlers/fleets/patch_body_fields_integration_test.zig");

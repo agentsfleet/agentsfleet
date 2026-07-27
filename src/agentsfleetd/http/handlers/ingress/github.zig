@@ -15,6 +15,7 @@ const clock = common_lib.clock;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const redis_fleet = @import("../../../queue/redis_fleet.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const vault = @import("../../../state/vault.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
@@ -140,7 +141,7 @@ fn fanOut(hx: Hx, ingress: webhook_verify.IngressConfig, provider: []const u8, d
         };
         if (!is_new) continue;
         const envelope = EventEnvelope{ .event_id = "", .fleet_id = target.fleet_id, .workspace_id = target.workspace_id, .actor = ingress.actor, .event_type = .webhook, .request_json = request_json, .created_at = clock.nowMillis() };
-        const event_id = hx.ctx.queue.xaddFleetEvent(envelope) catch {
+        const event_id = redis_fleet.xaddFleetEvent(hx.ctx.queue, envelope) catch {
             releaseSlot(hx, target.fleet_id, key);
             failed = true;
             continue;

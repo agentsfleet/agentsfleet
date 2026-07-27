@@ -19,6 +19,7 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const redis_fleet = @import("../../../queue/redis_fleet.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const EventEnvelope = @import("contract").event_envelope;
 
@@ -35,6 +36,16 @@ const MessageBody = struct {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 pub fn innerFleetMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_id: []const u8) void {
+    // Canonical spelling or nothing. Postgres normalizes `$1::uuid`, so an
+    // uppercase, brace-wrapped, or dash-free variant matches the row and passes
+    // every ownership check — but the RAW path text is what reaches the stream
+    // key and the readiness mark. That variant would open its own
+    // `fleet:{VARIANT}:events` stream no poll ever reads (a 202 whose message is
+    // never delivered) and leave an index field nothing can remove: the clear
+    // matches the peeked field against the query's canonical `id::text`, so it
+    // never fires for a variant. This guard is what every sibling fleet handler
+    // already does.
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, fleet_id, "fleet_id")) return;
     const body_raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
         return;
@@ -97,7 +108,7 @@ pub fn innerFleetMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []const
         .created_at = clock.nowMillis(),
     };
 
-    const event_id = hx.ctx.queue.xaddFleetEvent(envelope) catch |err| {
+    const event_id = redis_fleet.xaddFleetEvent(hx.ctx.queue, envelope) catch |err| {
         log.warn("xadd_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .actor = actor, .err = @errorName(err) });
         common.internalOperationError(hx.res, "failed to enqueue chat event", hx.req_id);
         return;

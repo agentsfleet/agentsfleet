@@ -44,6 +44,8 @@ const stream_registry = @import("stream_registry.zig");
 const message = @import("test_http_message.zig");
 const server_bringup = @import("test_harness_server.zig");
 const test_fixtures = @import("../db/test_fixtures.zig");
+const runner_token_cache = @import("../auth/runner_token_cache.zig");
+const group_memo = @import("../queue/fleet_group_memo.zig");
 
 const TEST_AUTH_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 const TEST_AUDIT_LOG_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
@@ -137,6 +139,16 @@ pub const TestHarness = struct {
         var env_map = try constants.env.testLiveSnapshot(self.alloc);
         defer env_map.deinit();
         self.queue = try queue_redis.Client.connectFromEnv(constants.globalIo(), &env_map, self.alloc, .api);
+        // From here the client is THIS function's to release until it returns.
+        // Every step below can fail, and `start` translates that failure into
+        // `error.SkipZigTest` — a path with no handle on the harness, so without
+        // this the pool, its dialled transports, and the parsed config all
+        // strand. That is the 21-allocation leak every Redis-skipping harness
+        // test used to report.
+        errdefer {
+            self.queue.deinit();
+            self.has_redis = false;
+        }
         self.has_redis = true;
         // Lower the reader-socket timeout BEFORE start() so the reader thread is
         // created with it — bounds the per-test `deinit()` join (see the const).
@@ -170,6 +182,22 @@ pub const TestHarness = struct {
         // Clear any fault-injection constraint a killed reclaim run leaked, before
         // this (or any) fleet test touches the shared tables — see the fn's note.
         test_fixtures.dropInjectedFaultConstraints(db_ctx.conn);
+        // A harness IS a fresh agentsfleetd instance, and a fresh instance holds
+        // no memoized token verdicts. Load-bearing rather than tidy: several
+        // suites reuse the same `agt_r` body against DIFFERENT runner rows, which
+        // production forbids (`uq_runners_token_hash`) but a sequential test
+        // binary reaches by seeding and tearing down in turn. Without this, the
+        // second suite to use a body would authenticate as the first one's runner
+        // until the entry expired.
+        runner_token_cache.resetForTest();
+        // Same reasoning, second process-global memo. `_ensure-test-infra`
+        // flushes Redis once for the whole binary while this memo lives for the
+        // whole binary too, and any teardown that drops a stream by hand takes
+        // its consumer group with it — so a later suite polling that fleet reads
+        // "group ensured", skips the create, and spends its poll on NOGROUP.
+        // Production only reaches that state through `purgeFleetRedisState`,
+        // which clears the memo as it goes.
+        group_memo.resetForTest();
         db_ctx.pool.release(db_ctx.conn);
         // Ownership transfers to h.pool below, but until we successfully
         // return h the pool is THIS function's responsibility — without
@@ -298,6 +326,12 @@ pub const TestHarness = struct {
                 if (constants.env.testLiveValue("CI")) |v| {
                     if (v.len > 0) return error.RedisRequiredForTestHarness;
                 }
+                // Name the error. A silent skip here reads exactly like a test
+                // that self-skipped on purpose, so a whole-suite Redis outage
+                // (a stale CA bundle is the usual one) presents as a smaller
+                // run rather than as a fault — which is how a run with 94
+                // un-run tests gets mistaken for a healthier one.
+                std.log.warn("test harness redis unavailable, skipping: {s}", .{@errorName(err)});
                 return error.SkipZigTest;
             },
         };
