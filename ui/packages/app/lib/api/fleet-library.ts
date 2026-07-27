@@ -34,7 +34,6 @@ const platformEntryPath = (id: string) =>
 // (`UZ-LIBRARY-003`), so asking for the maximum halves the round-trips a large
 // gallery costs.
 const GALLERY_PAGE_LIMIT = 100;
-const GALLERY_MAX_PAGES = 50;
 
 /** One wire page: `items` is that page alone, `next_cursor` null on the last. */
 type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
@@ -42,41 +41,36 @@ type FleetLibraryGalleryPage = FleetLibraryGalleryResponse & {
   next_cursor: string | null;
 };
 
-// The gallery renders every entry a workspace can install, so this follows
-// `next_cursor` to exhaustion instead of returning page one. Reading a single
-// page would drop every entry past the server's page size *silently* — the
-// cards simply would not render, with nothing to tell the user they exist.
-// Same failure the tenant model registry had the moment its endpoint gained a
-// default page size; see `tenant_model_entries.ts`.
+/** A gallery page plus what the caller needs to retain and to disclose. */
+export type FleetLibraryPageResult = FleetLibraryGalleryResponse & {
+  next_cursor: string | null;
+  total: number | null;
+};
+
+// ONE page per call. This replaced a walk that followed `next_cursor` to
+// exhaustion on every visit to the install screen.
+//
+// The walk was not paranoia: reading a single page drops every entry past the
+// server's page size *silently* — the cards simply do not render, with nothing
+// to tell the user they exist. Paging brings that hazard straight back, so the
+// protection is REPLACED rather than removed. `next_cursor` and `total` return
+// with the page, and Invariant 5 requires the caller to render what it has not
+// loaded instead of leaving it implied by a button.
 export async function listWorkspaceFleetLibrary(
   workspaceId: string,
   token: string,
-): Promise<FleetLibraryGalleryResponse> {
-  const items: FleetLibraryGalleryResponse["items"] = [];
-  let cursor: string | null = null;
+  startingAfter: string | null = null,
+): Promise<FleetLibraryPageResult> {
+  const params = new URLSearchParams({ limit: String(GALLERY_PAGE_LIMIT) });
+  if (startingAfter !== null) params.set("starting_after", startingAfter);
 
-  for (let page = 0; page < GALLERY_MAX_PAGES; page += 1) {
-    const params = new URLSearchParams({ limit: String(GALLERY_PAGE_LIMIT) });
-    if (cursor !== null) params.set("starting_after", cursor);
-
-    const body = await request<FleetLibraryGalleryPage>(
-      `${workspaceFleetLibrariesPath(workspaceId)}?${params.toString()}`,
-      { method: "GET" },
-      token,
-    );
-    items.push(...body.items);
-
-    if (!body.next_cursor) return { items };
-    cursor = body.next_cursor;
-  }
-
-  // Throw rather than return the rows collected so far. A walk reaches this
-  // bound only if the server stopped advancing its cursor, and then `items`
-  // holds one page repeated — rendering duplicate cards as though they were
-  // distinct library entries is worse than an error.
-  throw new Error(
-    `workspace fleet library did not terminate within ${GALLERY_MAX_PAGES} pages`,
+  const body = await request<FleetLibraryGalleryPage>(
+    `${workspaceFleetLibrariesPath(workspaceId)}?${params.toString()}`,
+    { method: "GET" },
+    token,
   );
+
+  return { items: body.items, next_cursor: body.next_cursor, total: body.total };
 }
 
 export async function onboardWorkspaceFleetLibrary(

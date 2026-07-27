@@ -354,7 +354,11 @@ describe("fleets routes", () => {
     expect(markup).toContain("Use entry"); // the gallery card's install action
   });
 
-  it("fleets new page swallows failed template + secret fetches", async () => {
+  it("fleets new page surfaces a failed library read instead of an empty gallery", async () => {
+    // This replaces a test named "swallows failed template + secret fetches",
+    // which asserted the anti-pattern: `.catch(() => [])` told a workspace its
+    // library was empty when the read had merely failed, with no retry and no
+    // way to tell the two apart. A failed read is now a failure.
     listWorkspaceFleetLibraryMock.mockRejectedValue(new Error("catalog down"));
     listSecretsMock.mockRejectedValue(new Error("vault down"));
     const { default: Page } =
@@ -365,7 +369,8 @@ describe("fleets routes", () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    expect(markup).toContain("No prebuilt fleet library found"); // empty gallery
+    expect(markup).toContain("Could not load the fleet library.");
+    expect(markup).not.toContain("No prebuilt fleet library found");
   });
 
   it("fleets new page accepts a ?library= deep link", async () => {
@@ -376,7 +381,10 @@ describe("fleets routes", () => {
     const markup = renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1" }),
-        searchParams: Promise.resolve({ library: "github-pr-reviewer" }),
+        searchParams: Promise.resolve({
+          library_visibility: "platform",
+          library_id: "github-pr-reviewer",
+        }),
       }),
     );
     expect(markup).toContain("Fleet library");
