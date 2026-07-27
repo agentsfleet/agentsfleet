@@ -193,7 +193,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
 
     defer serve_caches.deinit();
     var ctx = http_handler.Context{
-        .model_library_cache = try serve_caches.init(alloc),
+        .model_library_cache = serve_caches.init(alloc),
         .pool = api_pool,
         .queue = &api_queue,
         .install_wg = &install_wg,

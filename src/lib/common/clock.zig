@@ -37,28 +37,6 @@ pub fn nowNanos() i128 {
     };
 }
 
-/// Monotonic milliseconds since an arbitrary process-local origin.
-///
-/// NOT comparable with `nowMillis()`, and meaningless across processes or a
-/// reboot. It exists for deadlines and elapsed-time measurement, where a wall
-/// clock is the wrong instrument: an operator stepping the clock backwards would
-/// resurrect an expired cache entry, and stepping it forwards would expire a
-/// live one. Neither is acceptable for a value a caller then acts on, which is
-/// why §2's response cache takes its `now_ms` from here.
-pub fn monotonicMillis() i64 {
-    // SAFETY: clock_gettime fully populates ts before sec/nsec are read.
-    var ts: std.posix.timespec = undefined;
-    return switch (std.posix.errno(std.posix.system.clock_gettime(.MONOTONIC, &ts))) {
-        .SUCCESS => @as(i64, ts.sec) * std.time.ms_per_s + @divTrunc(ts.nsec, std.time.ns_per_ms),
-        // Same reasoning as `nowNanos` above: EFAULT/EINVAL are the only
-        // failures possible with a stack `timespec` and a hard-coded clock id,
-        // and both are programmer errors. A silent zero would freeze every
-        // deadline at one instant, so cached entries would either never expire
-        // or expire on the first read.
-        else => |err| std.debug.panic("clock_gettime(CLOCK_MONOTONIC) failed: {s}", .{@tagName(err)}),
-    };
-}
-
 /// First instant of the UTC calendar month containing `now_ms`, in epoch ms.
 ///
 /// A PURE function of its argument — it never reads the clock, so the budget

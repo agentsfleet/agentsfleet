@@ -30,13 +30,19 @@
 //!
 //! ## Freshness is the generation, not a deadline
 //!
-//! Entries never expire on a clock. The catalogue cannot change without
-//! `core.model_catalogue_revision` advancing, so the generation an entry was read
-//! at is stored WITH it and compared on every billing read: a caller that has
-//! observed revision N accepts a cached entry only at N or later, and otherwise
-//! reloads. A time-based deadline would add database reads on the charge path
-//! without making a single stale answer impossible — the revision already does
-//! that, and does it exactly.
+//! Entries never expire on a clock — the table has none. The catalogue cannot
+//! change without `core.model_catalogue_revision` advancing, so the generation an
+//! entry was read at is stored WITH it and compared on every billing read: a
+//! caller that has observed revision N accepts a cached entry only at N or later,
+//! and otherwise reloads. A time-based deadline would add database reads on the
+//! charge path without making a single stale answer impossible — the revision
+//! already does that, and does it exactly.
+//!
+//! A reload after a bump re-stores the same `(provider, model)`, and the table
+//! appends rather than replacing, so a key can be resident at several
+//! generations at once. Reads answer with the newest, and the older copies hold
+//! their identity strings until eviction reclaims them — bounded by
+//! `BUCKET_SIZE` per key, which is why nothing here tries to prevent it.
 //!
 //! Two consumers, two guarantees, one table:
 //!
@@ -109,11 +115,6 @@ const CachedRate = struct {
 const BUCKET_COUNT: usize = 256;
 const BUCKET_SIZE: u8 = 4;
 
-/// Entries carry no deadline (see the module note), so the `now_ms` the table
-/// takes for expiry comparisons is never consulted. Named rather than a bare `0`
-/// so a reader does not go looking for the clock it came from.
-const NO_DEADLINE: i64 = 0;
-
 pub const RateKeyContext = struct {
     /// Lengths are folded in before their bytes, so ("ab","c") and ("a","bc")
     /// hash differently even though their concatenations match. Without the
@@ -133,10 +134,15 @@ pub const RateKeyContext = struct {
         return std.mem.eql(u8, a.provider, b.provider) and std.mem.eql(u8, a.model, b.model);
     }
 
-    /// The table's single departure hook — eviction, same-key refresh, removal
-    /// and `clear` all arrive here. The KEY owns memory in this cache (the value
-    /// is plain data), so this is where the identity strings are freed, and the
-    /// only place.
+    /// The table's single departure hook — bucket eviction and `clear` are its
+    /// only two exits, and both arrive here. The KEY owns memory in this cache
+    /// (the value is plain data), so this is where the identity strings are freed,
+    /// and the only place.
+    ///
+    /// Note what is NOT an exit: a same-key `put` does not free the old entry. The
+    /// table appends rather than replacing, so both copies stay resident — each
+    /// owning its own duped strings — until eviction reaches them. See the module
+    /// header on multiple generations of one key.
     ///
     /// It reads the module allocator rather than holding one, so that
     /// `setBackingAllocatorForTest` cannot leave resident entries to be freed by
@@ -253,23 +259,23 @@ pub fn deinit() void {
     clear();
 }
 
-/// Live entries — tests and gauges only.
+/// Resident entries — tests and gauges only.
 pub fn count() usize {
     lock.lockShared();
     defer lock.unlockShared();
-    return table.count(NO_DEADLINE);
+    return table.count();
 }
 
 // ── internals ───────────────────────────────────────────────────────────────
 
 /// Non-mutating read under a shared lock, so concurrent charge computations do
-/// not serialize behind one another. `peek` declines to refresh LRU position,
+/// not serialize behind one another. The table refreshes no recency on a read,
 /// which is the price of not needing exclusive access; the catalogue working set
 /// is far smaller than the table, so nothing contends for slots anyway.
 fn peek(provider: []const u8, model: []const u8) ?CachedRate {
     lock.lockShared();
     defer lock.unlockShared();
-    return table.peek(.{ .provider = provider, .model = model }, NO_DEADLINE);
+    return table.peek(.{ .provider = provider, .model = model });
 }
 
 /// Admit a rate. Best-effort by construction: an allocation failure skips the
@@ -284,14 +290,12 @@ fn store(revision: i64, provider: []const u8, model: []const u8, rate: ModelRate
     };
     lock.lock();
     defer lock.unlock();
-    // The displaced entry is discarded, never read: `evicted` above has already
-    // freed its identity strings, so touching the returned key would be a use
-    // after free. `evicted` is this cache's only release path by design.
-    _ = table.put(
+    // Whatever this displaces is freed by `evicted` above, which is this cache's
+    // only release path — the identity strings it duped are freed there and
+    // nowhere else.
+    table.put(
         .{ .provider = p, .model = m },
         .{ .revision = revision, .rate = rate },
-        common.NEVER_EXPIRES,
-        NO_DEADLINE,
     );
 }
 

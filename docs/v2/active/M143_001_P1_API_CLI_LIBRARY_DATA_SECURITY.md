@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 001
 **Date:** Jul 24, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P1 — library reads repeat database and decrypt work and expose unbounded behavior
 **Categories:** API, CLI
 **Batch:** B1 — establishes interfaces consumed by later workstreams
@@ -205,6 +205,33 @@ blast radius when the gap was flagged. They are in scope now — see §Discovery
 | `ui/packages/app/tests/fleet-library-api.test.ts` | EDIT | The paged gallery client's walk. Its unbounded-walk guard had no test, so `lib/api/fleet-library.ts` sat at 88% statements and 50% branches and pulled the app's global coverage under its 100% threshold — `make test-unit-all` (S1) was red on exactly that. One test per half: the resume asserts the FIRST request carries no `starting_after` and the second carries the cursor the first returned (a client paging from the wrong cursor still produces two pages of rows, so row count alone would not catch it), and the bound asserts both the throw and that `fetch` ran exactly `GALLERY_MAX_PAGES` times, so "bounded" is checked rather than "eventually stops". |
 | `VERSION`; `build.zig.zon`; `cli/package.json` | EDIT | 0.22.1 → 0.23.0 via `make sync-version`. The release template's matrix puts a feature milestone at a minor bump, and pre-`1.0` breaking changes at a minor bump as well; this workstream is both, since `GET /v1/models` and the workspace gallery each change from an unbounded list to a bounded page. `cli.js` reads the version at runtime and needs no edit. |
 
+### Files Changed — amendments (the cache primitive rebuild and the two memo deletions)
+
+Owner-directed after the `origin/main` merge: rebuild `common.CacheTable` on
+Ghostty's shape and delete every cache whose staleness could not be reasoned
+about. Full reasoning in §Discovery.
+
+| File | Action | Why it was required |
+|------|--------|---------------------|
+| `src/lib/common/cache_table.zig`; `common/cache_table_test.zig` | EDIT | Rebuilt on Ghostty's `src/datastruct/cache_table.zig`: `put`/`peek`/`clear`/`count`, two exits, no clock. Per-entry expiry, `now_ms`, `NEVER_EXPIRES`, `sweepExpired`, `remove`, `removeMatching`, expired-slot reuse and read-reaping are all removed — each was an exit, and the exits are the only thing this structure can get wrong. Test suite rewritten to the surviving surface. |
+| `src/lib/common/constants.zig` | EDIT | Drops the `NEVER_EXPIRES` re-export with the sentinel it named. |
+| `src/agentsfleetd/state/model_library_cache.zig`; `state/model_library_cache_test.zig` | EDIT | Loses the 60-second TTL, the byte accounting (`Accounting`, `byteLen`, `reserve`) and the 8 MiB ceiling, so its bound is the 256 slots and nothing else; `Cache.init` becomes infallible. Freshness was never the TTL's job — the revision in the key is — and the measured page size makes the byte ceiling unreachable. Tests rewritten: the TTL and byte-ceiling cases described behaviour that no longer exists. |
+| `src/agentsfleetd/state/model_rate_cache.zig` | EDIT | Loses `NEVER_EXPIRES` and its `NO_DEADLINE` sentinel; the generation in the value was always what governed freshness here. |
+| `src/agentsfleetd/http/handlers/model_library.zig`; `cmd/serve_caches.zig`; `cmd/serve.zig`; `http/library_page_bounds_integration_test.zig` | EDIT | Call-site consequences of dropping `now_ms` from the cache API and of the infallible `init`. |
+| `src/agentsfleetd/queue/fleet_group_memo.zig`; `queue/fleet_group_memo_test.zig` | DELETE | A `void`-valued set memoizing a monotonic fact, existing only to make a redundant per-poll call cheap. The group is created on the fleet's write path; a missing one announces itself as `NOGROUP`. |
+| `src/agentsfleetd/queue/redis_fleet.zig` | EDIT | `readGroup` repairs on a `NOGROUP` reply (create at id `0`, report no event, next poll delivers) and propagates every other error reply, so a `WRONGTYPE` cannot become an infinite create loop. `ensureFleetConsumerGroup` loses its memo short-circuit; `purgeFleetRedisState` loses the memo drop. |
+| `src/agentsfleetd/fleet/assign.zig` | EDIT | The per-candidate-per-poll `ensureFleetConsumerGroup` is removed from the lease path entirely. |
+| `src/agentsfleetd/fleet/assign_ready_integration_test.zig` | EDIT | Adds the repair proof: `XGROUP DESTROY` out of band, then one poll leases the event that was already in the stream — lossless because the recreate reads from id `0`, and same-poll because the repair is transparent. The zero-`XGROUP CREATE` assertion is retained and its rationale updated. |
+| `src/agentsfleetd/fleet/assign_ready_faults_integration_test.zig` | EDIT | #561's out-of-band-group test asserted "exactly one no-work poll", which was a consequence of the memo mechanism rather than a safety property. Retitled and re-asserted: the repair is transparent, so the backlog leases on that same poll. Its second half (publish again, poll again) is removed — `pollLease` never completes the lease it takes, so the fleet's slot is occupied by the event the first poll leased and a second poll would answer null for that reason rather than for the group's. Contract change to a merged PR, flagged in §Discovery. |
+| `src/agentsfleetd/auth/runner_token_cache.zig`; `auth/runner_token_cache_test.zig` | DELETE | A silent-staleness cache in front of the only channel by which a cordoned, drained, revoked or deleted runner learns it is out of service. |
+| `src/agentsfleetd/cmd/serve_runner_lookup.zig` | EDIT | Every runner request now reads `fleet.runners`. Documents the cost (one indexed read per request at ~1/sec/worker) and the 503-not-401 outage requirement. |
+| `src/agentsfleetd/http/handlers/fleet/runner_patch.zig`; `handlers/fleet/runner_delete.zig`; `fleet/liveness_sweeper.zig` | EDIT | The three `invalidateRunner` obligations disappear with the memo — the committed `admin_state` is the verdict every machine reads. |
+| `src/agentsfleetd/http/test_harness.zig` | EDIT | Both `resetForTest` calls removed. They existed to undo cross-suite contamination the two memos caused; that class of bug is now structurally absent. |
+| `src/agentsfleetd/http/runner_enrollment_integration_test.zig` | EDIT | The memo fast-path test is inverted into `a deleted runner is refused on its very next request, with no window`, which is the property the deletion buys. |
+| `src/agentsfleetd/tests.zig`; `auth/tests.zig` | EDIT | Deregister the deleted modules. |
+| `docs/AUTH.md` | EDIT | §Runner token rewritten: no memoized verdict, auth rejection as the sole admin-state channel (the heartbeat reply is unconditionally `.ok`), the outage posture, and the shelved signed-credential design with its lease-grant recheck requirement and revisit trigger. |
+| `src/agentsfleetd/state/tenant_provider/sql.zig` | EDIT | **Caught by this re-grade, not by the original one.** Commit `8e6520ed7` (§2.2 billing) moved `SELECT_PROVIDER_VIEW` out of `http/handlers/tenant_provider.zig` into this module, because a handler holding its own SQL is the one place the table name stops being grepable from the store. No amendment table named it, so the earlier "0 unlisted / 100 paths" R3 green was wrong by one path — recorded here rather than quietly added. |
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — GRD, VLT, FLS, CNX, WAUTH, RTM, FLL, UFS, ITF, TNM, NDC, NLR, NLG, ORP.
@@ -250,11 +277,11 @@ The model API has only `q` and provider filters. Normalize `q` with NFKC, trim, 
 
 After authentication, every request reads the database catalogue revision before cache selection. A mutation locks the singleton revision row, mutates the catalogue and increments revision in one transaction, and commits.
 
-**The revision belongs in the cache key, and that removes the publish protocol.** An earlier draft also kept a process-published generation and allowed a candidate to publish only when its revision exceeded it, with a rule that concurrent publishers must never replace a newer generation with an older one. That protocol is unnecessary once the revision is part of the key, which it already is. A candidate built from revision N lands under a key containing N. Every later request reads revision N+1 first and looks up a different key, so a stale candidate is unreachable rather than dangerous — it simply ages out under LRU and TTL. Ordering between concurrent publishers stops mattering, and with it goes a class of races that is hard to test and easy to get wrong.
+**The revision belongs in the cache key, and that removes the publish protocol.** An earlier draft also kept a process-published generation and allowed a candidate to publish only when its revision exceeded it, with a rule that concurrent publishers must never replace a newer generation with an older one. That protocol is unnecessary once the revision is part of the key, which it already is. A candidate built from revision N lands under a key containing N. Every later request reads revision N+1 first and looks up a different key, so a stale candidate is unreachable rather than dangerous — it simply ages out under bucket pressure. Ordering between concurrent publishers stops mattering, and with it goes a class of races that is hard to test and easy to get wrong.
 
 Rollback or commit failure discards the candidate, as before. What is deliberately **not** removed is billing reconciliation: the rate cache is keyed by `(provider, model_id)` rather than by revision, so it cannot use this trick and keeps its explicit reconcile-and-copy under the mutex. Billing uses its existing connection to reconcile revision and atomically copy a rate from the cache generation it observed; rebuild failure fails closed, never bills stale. Revision-read failure returns typed 503 without cached data. The existing top-level catalogue `version` string remains in every 200 page; internal `catalogue_revision` is not exposed.
 
-The response cache key is revision plus an unlogged HMAC-SHA-256 digest, under a process-random key, of canonical q/provider/starting_after/limit selectors; no raw selector or credential metadata enters keys. It holds at most 256 entries and 8 MiB, with a monotonic 60-second TTL.
+The response cache key is revision plus an unlogged HMAC-SHA-256 digest, under a process-random key, of canonical q/provider/starting_after/limit selectors; no raw selector or credential metadata enters keys. It holds at most 256 entries. That slot count is the only bound — see §Discovery for why the 8 MiB byte ceiling and the 60-second TTL were both removed.
 
 **Eviction is least-recently-used within a bucket, not globally** — amended from "true LRU" once the storage became the shared `common.CacheTable` primitive (see Discovery). The key is fixed-size, so it is stored inline: capacity is a compile-time slot count, which makes the 256-entry ceiling a property of the type rather than a counter any path could fail to check, and no key byte competes with a payload byte for the budget. What is given up is naming the exact victim under pressure; what is bought is that reads take the table's non-mutating `peek` under a shared lock and stop serializing every catalogue request behind one mutex. A miss costs one rebuild, never a wrong answer.
 
@@ -265,7 +292,7 @@ The billing decision linearizes at its revision read: under the rate-cache mutex
 Rate-cache identity is a collision-safe structured `(provider,model_id)` key, never delimiter concatenation. Migration tests include provider/model strings containing the current `0x1f` separator and prove distinct tuples cannot alias or select another rate.
 
 - **Dimension 2.1** — normalized search/keyset and headers are exact → Test `test_model_page_and_conditional_headers` — **DONE.** The normalization half is implemented and unit-tested (`http/handlers/library/query.zig`, `library_query_normalization_test.zig`): trim, whitespace collapse, the 128-byte bound, UTF-8 validation, and LIKE-wildcard escaping. Per the Discovery amendment, NFKC and casefold are SQL-side (`lower(normalize(col, NFKC))`), so Zig holds only the ASCII-safe half. The keyset/cursor wiring, the SQL comparison, and the conditional read are now implemented and the named test is written: `http/handlers/model_library_page_integration_test.zig` drives the real route for the order (with a display-key TIE, because the vendor comparison is unreachable until the first key ties), the exclusive resume, both filters, literal `%` matching, every §Error Contracts 400 with no unpaged fallback, and the conditional half — `ETag`/`Cache-Control`/`Vary` on BOTH answers, strong/weak/`*` each yielding a bodyless 304, and a non-matching tag yielding 200 rather than a wrong 304. The cache is deliberately absent under the harness for this dimension: a 304 is computed from the body's own tag, so it must hold identically with and without one.
-- **Dimension 2.2** — response and billing caches converge or fail closed → Test `test_catalogue_revision_governs_both_caches` — **DONE.** `schema/037_model_catalogue_revision.sql` adds the singleton generation. `state/model_catalogue_revision.zig` gives the hot-path read (no lock), the mutation lock/bump (`FOR UPDATE`), and `Txn`/`beginMutation` — the lock-mutate-bump-commit protocol the three admin mutations now run inside. They previously ran in **autocommit and never bumped**, so the generation never left 0 and no catalogue mutation ever invalidated the response cache; `bumpLocked` had no production caller at all (§Discovery). `state/model_library_cache.zig` is the revision-keyed response cache with defined byte accounting, the 256-entry / 8 MiB ceilings, monotonic 60s TTL and over-budget bypass (`model_library_cache_test.zig`). `state/model_rate_cache.zig` is rebuilt on `common.CacheTable` by owner decision: the `(provider, model)` key stays two byte-compared fields so `0x1f` aliasing remains unrepresentable (`model_rate_cache_key_test.zig` asserts the policy directly), and the generation rides in the value, so a charge accepts an entry only at the generation it observed or later and otherwise reloads the row. That replaces the reconcile-and-copy protocol §2 specified — see §Discovery for why its premise no longer holds, and for how "fail closed" resolves differently at the charge path, the lease gate, and activation. The named integration test now covers both halves: publish-after-commit, rollback invisibility, two mutations cannot share a generation, **and** the billing half — a replica that never saw the mutation cannot bill the old rate, an uncommitted price change is never billed, and a deleted model reads as null rather than as its last known price.
+- **Dimension 2.2** — response and billing caches converge or fail closed → Test `test_catalogue_revision_governs_both_caches` — **DONE.** `schema/037_model_catalogue_revision.sql` adds the singleton generation. `state/model_catalogue_revision.zig` gives the hot-path read (no lock), the mutation lock/bump (`FOR UPDATE`), and `Txn`/`beginMutation` — the lock-mutate-bump-commit protocol the three admin mutations now run inside. They previously ran in **autocommit and never bumped**, so the generation never left 0 and no catalogue mutation ever invalidated the response cache; `bumpLocked` had no production caller at all (§Discovery). `state/model_library_cache.zig` is the revision-keyed response cache, bounded by its 256 slots and nothing else (`model_library_cache_test.zig`). `state/model_rate_cache.zig` is rebuilt on `common.CacheTable` by owner decision: the `(provider, model)` key stays two byte-compared fields so `0x1f` aliasing remains unrepresentable (`model_rate_cache_key_test.zig` asserts the policy directly), and the generation rides in the value, so a charge accepts an entry only at the generation it observed or later and otherwise reloads the row. That replaces the reconcile-and-copy protocol §2 specified — see §Discovery for why its premise no longer holds, and for how "fail closed" resolves differently at the charge path, the lease gate, and activation. The named integration test now covers both halves: publish-after-commit, rollback invisibility, two mutations cannot share a generation, **and** the billing half — a replica that never saw the mutation cannot bill the old rate, an uncommitted price change is never billed, and a deleted model reads as null rather than as its last known price.
 
 ### §3 — Fleet keyset, detail, and measured ceilings
 
@@ -374,7 +401,7 @@ This table is the complete set. Every row is mandatory, including the unit tier 
 | 1.1, 2.1, 3.1 | **unit** | `test_library_cursor_codec_roundtrip` | canonical JSON key order/types encode and decode losslessly; every malformed, wrong-version, and identity-mismatch input maps to its exact `UZ-LIBRARY-001`/`002` code |
 | 2.1 | **unit** | `test_library_query_normalization` | NFKC, trim, whitespace collapse, casefold; empty-after-normalization is absent; over-128-byte input is `UZ-LIBRARY-003`; LIKE wildcards are escaped so `%` and `_` match literally |
 | 3.1 | **unit** | `test_fleet_keyset_seek_predicate` | the three-part `created_at`/`tier_rank`/`id` seek orders correctly across every tie combination, `tier_rank` platform=0 before tenant=1 |
-| 2.2 | **unit** | `test_response_cache_accounting_and_lru` | byte accounting per §2, 256-entry and 8 MiB ceilings, bucket-local LRU that never exceeds capacity and retains near-totally below it, 60-second monotonic TTL, over-budget bypass, expired-entry reclamation |
+| 2.2 | **unit** | `test_response_cache_accounting_and_lru` | no wrong hits across 64 colliding keys, a structural 256-entry ceiling no write sequence exceeds, ≥90% retention below capacity, revision-in-key generation isolation, newest-wins on a duplicate admit, and every displaced payload freed under `std.testing.allocator` |
 | — | **unit** | `cache_table_test.zig` | `common.CacheTable`: no wrong hits, no expired reads, an expired entry never costs a live one its slot, and every departing entry is released exactly once — proved by a counting spy per path and again against `std.testing.allocator` with an owned-memory value |
 | 2.2 | **unit** | `test_rate_cache_key_is_collision_safe` | structured `(provider,model_id)` keys with `0x1f` in either field stay distinct and select no other rate |
 | — | integration | `test_invalid_library_inputs` | every §Error Contracts 400 row returns its exact code with no unpaged fallback |
@@ -388,18 +415,24 @@ This table is the complete set. Every row is mandatory, including the unit tier 
 
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | Data/security tests pass | `make test-integration` | exit 0 | P0 | ✅ exit 0. Graded on the post-merge tree, with all five library integration suites registered in `integration_tests.zig` and none in the unit root — the lane gate pins that split, so none of them can silently skip. |
-| R2 | OpenAPI and CLI agree | `make check-openapi && make test-unit-cli` | exit 0 | P0 | ✅ exit 0. Bundle + redocly lint + error-schema + URL shape + 78-route coverage green; CLI 1367 pass, 15 skip, 0 fail. |
-| R3 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | ✅ 0 unlisted across 100 changed paths, after four amendment tables recorded the paths the original blast radius did not name. |
-| S1 | Unit/lint/conform | `make test-unit-all && make lint-all && make harness-verify` | exit 0 | P0 | ✅ exit 0 — but only on the second run. The first was RED: the paged gallery client's unbounded-walk guard had no test, so `lib/api/fleet-library.ts` sat at 88% statements / 50% branches and pulled the app under its 100% coverage threshold. Covered, then 100% on all four metrics. |
-| S2 | Memory/build/secrets | `make memleak && zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux && gitleaks detect` | exit 0 | P0 | ✅ exit 0 on all four. All four memleak lanes clean (`agentsfleetd`, `runner`, `lib`, `boot→drain`); both Linux targets cross-compile; no leaks found. |
+| R1 | Data/security tests pass | `make test-integration` | exit 0 | P0 | ✅ exit 0 on the reworked post-#561 tree. Took four rounds: the `NOGROUP` repair first returned null (letting a failed PEL read read as an empty one), then an error (which `noteRedisFailure` counted, tripping the candidate loop's brownout bailout — one groupless fleet would have starved every fleet behind it on every poll), before landing on a transparent repair. See §Discovery. |
+| R2 | OpenAPI and CLI agree | `make check-openapi && make test-unit-cli` | exit 0 | P0 | ✅ exit 0 on both, re-run on the reworked tree. CLI 1367 pass, 0 fail, 2883 `expect()` calls. The rework touched no OpenAPI or CLI surface, and this confirms it. |
+| R3 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | ✅ 0 unlisted across 114 changed paths, after the rework amendment table. The re-grade found TWO paths the earlier ✅ had missed: `assign_ready_faults_integration_test.zig` (this rework) and `state/tenant_provider/sql.zig` (from `8e6520ed7`, never named by any amendment table) — so the inherited "0 unlisted / 100 paths" was wrong by one path. Both recorded rather than quietly added. |
+| S1 | Unit/lint/conform | `make test-unit-all && make lint-all && make harness-verify` | exit 0 | P0 | ✅ exit 0 on all three, first run, on the reworked tree. `test-unit-all`: 34/34 steps, 1970/2262 passed (292 skipped), every package coverage gate green including the Zig merged-line gate at 61.70%. |
+| S2 | Memory/build/secrets | `make memleak && zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux && gitleaks detect` | exit 0 | P0 | ✅ exit 0 on all four. `memleak` clean across every lane — `agentsfleetd`, `runner`, `lib`, and the boot→SIGTERM→drain lifecycle under the gate against live Postgres + TLS Redis. Both Linux targets cross-compile. `gitleaks`: no leaks, 3848 commits scanned. |
 
 **Grading protocol (VERIFY):** run verbatim; record ✅/❌ and one decisive line. Every P0 must pass.
 
 **Graded VERIFY block (§§2–4).**
 
 ```
-Test Delta: unit 3051→3133 (+82) · integration 407→418 (+11) vs CHORE(open) baseline
+Test Delta: unit 3051→3166 (+115) · integration 407→445 (+38) vs CHORE(open)
+baseline, measured by `make _lint_zig_test_depth` on the final tree. Positive on
+both tiers, so the VERIFY rule needs no justification — but the number is
+inflated by the two `origin/main` merges this branch absorbed (#562 and #561),
+whose tests the baseline predates. The rework itself is net test-REMOVING in one
+place: the shared-lib lane went 151→136 as the cache primitive shed the surface
+(expiry, removal, sweep) those tests covered.
 Lacking:    none — every changed surface gained coverage. The two that were bare
             when this branch was picked up are now covered: the requirement
             ceilings (11 boundary tests plus two handler-level refusals driven
@@ -482,11 +515,151 @@ No file deletion. Removed unpaged helpers, unsupported filter, bare Fleet identi
 - **Owner decision, against the implementing agent's first recommendation.** Indy (2026-07-26) directed that the model and Fleet library caches use the shared `common.CacheTable` primitive rather than the hand-rolled intrusive list `state/model_library_cache.zig` shipped with in #558, and asked for the objections to be reviewed adversarially rather than defended. Two of the three did not survive that review and are recorded here so they are not raised again:
   - *"The clock must be monotonic and the table takes milliseconds"* — **wrong.** `now_ms` is a caller-supplied parameter, deliberately so ("a parameter rather than a clock read so expiry boundaries are provable without sleeping"). The unit is a naming convention; the epoch is the consumer's choice. The cache passes a monotonic source and reads no clock itself.
   - *"§2 requires true LRU"* — **weak.** It required it because the predecessor happened to provide it. Per-bucket LRU across four ways, at a 50% load factor, retains near-totally, and a miss costs one catalogue rebuild. The spec is amended (§2) rather than the design bent to it.
-  - *"There is no byte dimension"* — **stands, and was the useful one.** The table bounds slots, not bytes, so the 8 MiB ceiling stays a wrapper-side bypass threshold. That is what §2 always specified ("a bypass, never an eviction cascade"); the predecessor evicted live entries under byte pressure, so this is the shape the spec asked for rather than a concession.
+  - *"There is no byte dimension"* — **stands, and was the useful one at the time. SUPERSEDED** by the primitive rebuild below, which removed the byte ceiling entirely once it was measured to be unreachable. The table bounds slots, not bytes, and as of that rebuild so does the wrapper. Original reasoning kept for the record: the 8 MiB ceiling was a wrapper-side bypass threshold. That is what §2 always specified ("a bypass, never an eviction cascade"); the predecessor evicted live entries under byte pressure, so this is the shape the spec asked for rather than a concession.
 - **The primitive leaked on five paths, not the two first identified.** `Context.evicted` fired only on bucket overflow and `clear`. Every other departure — a same-key refresh, reuse of an expired slot, `remove`, `removeMatching`, and a `get` that reaped an expired entry — dropped its value with no hook and no return. Invisible while `V` is an integer, and a leak the moment `V` owns memory; the same-key refresh is the most common write a time-to-live cache makes. **Fixed** by routing every departure through one `release` choke point and deleting `put`'s `?Entry` return, which was a second channel reporting one of those events and no channel at all for the other four. An owner reading that return leaked on every refresh. `cache_table_test.zig` pins the rule per path with a spy and again end to end under `std.testing.allocator`.
-- **`sweepExpired` was added because the byte ceiling needed it.** Expiry is lazy, so dead payloads keep holding budget against live ones, and `removeMatching` cannot express "expired" — it is handed `(key, value)` and the deadline lives on the entry. The cache sweeps once on the over-budget path before it refuses an insert.
+- **`sweepExpired` was added because the byte ceiling needed it. BOTH ARE NOW GONE** — see the primitive rebuild below; this entry describes the intermediate state, not the shipped one. Expiry is lazy, so dead payloads keep holding budget against live ones, and `removeMatching` cannot express "expired" — it is handed `(key, value)` and the deadline lives on the entry. The cache sweeps once on the over-budget path before it refuses an insert.
 - **The key stopped being a string.** A revision plus a 32-byte digest is fixed-size and stored inline, so no key is allocated, no key byte counts against the 8 MiB budget, and the 256-entry ceiling is `BUCKET_COUNT * BUCKET_SIZE` rather than a counter.
 - **Sequencing.** `cache_table.zig` was untracked in the `m141-lease-fanout` worktree, on a branch never pushed, with no open Pull Request — so there was no landing timeline to wait for and nothing to import from. Indy chose to land it through this branch; `m141` rebases onto `main` and drops its own copies of `cache_table.zig`, `cache_table_test.zig`, the `RwLock` addition, and the `constants.zig` re-exports, all of which are taken verbatim here apart from the release fix.
+
+### The cache primitive was rebuilt on Ghostty's shape, and two caches were deleted
+
+- **The `m141` sequencing recorded above did not happen.** That entry says `m141`
+  would rebase onto `main` and drop its copies of `cache_table.zig` and friends,
+  taking this branch's verbatim. In fact #561 merged FIRST, carrying its own
+  independently-written copy. Merging it produced an add/add conflict on the same
+  file, resolved toward `main`'s — the only one of the two that could not hold two
+  entries for one key, since its `put` preferred the key's own live entry over an
+  earlier expired stranger and a later `remove` (which drops the first match)
+  could otherwise resurrect a stale value. Both sides had independently closed the
+  eviction leak, so that was not the deciding axis.
+
+- **Then the primitive was replaced outright, by owner decision**, with Ghostty's
+  shape from `src/datastruct/cache_table.zig`: `put` / `peek` / `clear` / `count`
+  and nothing else. Gone: per-entry expiry, `now_ms`, `NEVER_EXPIRES`,
+  `sweepExpired`, `remove`, `removeMatching`, expired-slot reuse, and reaping on
+  read. Every one of those was a way for an entry to leave, and the exits are the
+  only thing this structure can get wrong — the release hook must cover all of
+  them, and a key that can be removed must not be resident twice. With two exits
+  (bucket overflow, `clear`) both properties hold by construction.
+
+  Two deliberate departures from upstream: the read is non-mutating, so both
+  consumers serve concurrent readers under a shared lock where Ghostty's
+  recency-refreshing `get` would serialize every request behind one mutex; and
+  `put` returns nothing, because both consumers free in `Context.evicted` and a
+  return nobody reads is dead code (RULE NDC). The cost is real and recorded in
+  the module header: no recency at all, so a hot page can be evicted by one cold
+  insert. It is acceptable only because both tables are heavily over-provisioned
+  against their working sets — 256 slots for a handful of hot query shapes, 1024
+  for a catalogue of ~50 models — so eviction essentially never fires.
+
+- **The 8 MiB byte ceiling and the 60-second TTL are both gone, and the second was
+  never a freshness bound.** Freshness comes from the revision in the KEY: a
+  superseded page is unreachable, not stale. The TTL's only real job was
+  reclaiming those unreachable payloads before they starved the byte ceiling. So
+  the ceiling was the thing forcing a reclamation policy, and it was measured to
+  be unreachable: a `model_library_store.LibraryRow` is six fields and serializes
+  to **188 bytes** at the median of the shipped fixture ids (180–217), so a full
+  50-row page is ≈9.2 KB and 256 of them ≈2.3 MiB — under a third of the ceiling.
+  Removing the ceiling removed the need for the sweep, which removed the need for
+  the clock. `GLOBAL_MODELS_MAX_BODY_BYTES` (256 KiB) remains the tripwire if a
+  row shape ever grows; at that size 256 slots would be 64 MiB, so a 27× growth in
+  row size is where this reasoning needs redoing.
+
+- **`queue/fleet_group_memo.zig` is deleted.** It memoized one monotonic boolean
+  per fleet — "this fleet's Redis consumer group exists" — with a `void` value. It
+  was not a cache but a set, and it existed only to make a redundant call cheap:
+  the group is created on the fleet's WRITE path (`create_stream.zig`, which
+  retries and rolls the Postgres row back on failure), and the lease poll was
+  re-asserting that durable invariant per candidate per poll, using the
+  `BUSYGROUP` error reply as its steady state. The ensure is removed from
+  `fleet/assign.zig` entirely, and a genuinely missing group is now repaired where
+  it announces itself: `redis_fleet.readGroup` creates it on a `NOGROUP` reply and
+  reports no event, so the next poll reads it. Any other error reply still
+  propagates — repairing indiscriminately would turn a `WRONGTYPE` into an
+  infinite create loop. `assign_ready_integration_test` still proves zero
+  `XGROUP CREATE` calls across ten polls, now from Redis's own `commandstats`
+  rather than the memo's opinion of itself.
+
+- **The `NOGROUP` repair took four R1 rounds, and the two wrong answers are worth
+  recording because both looked right.** Removing the per-poll ensure means a
+  groupless fleet reaches the read, so the read has to handle it. Three shapes
+  were tried:
+
+  1. **Return null after repairing.** Wrong: null means "the PEL is empty", and
+     `fleet/assign.zig` states outright that a read which did not succeed must
+     never be read that way — it falls through to the fresh read and promotes a new
+     entry over a possibly-pending one. It also silently converted #561's tested
+     "exactly one no-work poll" into an immediate lease.
+  2. **Return `error.RedisGroupRepaired`.** Worse, and the failure was
+     non-obvious: `PollCost.noteRedisFailure` counts read errors, and a run of them
+     ends the candidate loop early so a Redis brownout cannot pin a Postgres
+     connection (`assign_ready_faults_integration_test`). A routine self-heal
+     therefore read as a brownout — the ceiling test caught it as
+     `expected 64, found 3`, three repairs tripping the bailout. In production ONE
+     fleet with a missing group would have starved every fleet behind it on every
+     poll, forever. A repair is not a fault and must never be counted as one.
+  3. **Repair and read again, once.** Correct: the caller gets the answer it would
+     have got had the group never gone. A second `NOGROUP` is a real fault, which
+     both propagates honestly and bounds the retry at one.
+
+  **This changed a contract #561 shipped and tested.** Its test asserted the
+  missing-group poll costs exactly one no-work answer; it now leases. That cost was
+  a consequence of the old mechanism (the read simply failed, and dropping the memo
+  was the recovery), not a safety property — the invariant being protected is about
+  reads that did NOT succeed, and after a successful repair the retry does succeed.
+  Its second half — publish again, poll again — is removed rather than adapted:
+  `pollLease` never completes the lease it takes, so once the first poll leases the
+  backlog the fleet's slot is occupied and a second poll answers null for that
+  reason rather than for the group's.
+
+- **`auth/runner_token_cache.zig` is deleted; every runner request reads
+  `fleet.runners`.** The two memos looked alike and were not: a wrong hit in the
+  group memo ANNOUNCES itself (the next Redis read fails with `NOGROUP`, which is
+  the invalidation signal), while a wrong hit in the token cache is SILENT — a
+  revoked runner simply keeps working and nothing errors. That asymmetry is what
+  decided their designs. It matters more than it looks, because
+  `handlers/runner/heartbeat.zig` returns `.ok` unconditionally: the runner's
+  `switch (hb.status)` on `.stop`/`.drain` is dead server-side, so **auth
+  rejection is the only channel by which a cordoned, drained, revoked, or deleted
+  runner learns it is out of service.** A per-process memo made that deterministic
+  only on the machine that served the operator's write. The cost is one indexed
+  single-row read per request at the lease poll's ~1/sec/worker — a few hundred
+  index probes a second at ~100 runners — and the gain is that revocation takes
+  effect everywhere, immediately, with no window and no per-machine state. The old
+  memo test is inverted into `a deleted runner is refused on its very next
+  request, with no window`.
+
+  Two costs recorded honestly: a Postgres outage now fails runner auth immediately
+  rather than being absorbed for up to one heartbeat (it surfaces as `503`
+  `UZ-AUTH-004`, which the runner classifies as transport loss, so it cannot trip
+  `MAX_CONSECUTIVE_AUTH_REJECTS`), and the read rate rises 10–40× from the memoized
+  steady state.
+
+- **The signed-credential replacement is deliberately NOT here.** The scale answer
+  is to stop the credential being opaque — keep `agt_r` as a provisioning
+  credential, exchange it on the heartbeat for a short-lived signed token, verify
+  locally. An adversarial review (Fable) established the condition any such design
+  must meet: it MUST re-check `admin_state` inside the lease-grant transaction,
+  because a lease delivers the tenant's `secrets_map` and the resolved provider key
+  inline, so a locally-verified token with no state check would let a revoked
+  runner collect fresh secrets for its remaining lifetime — a security regression
+  dressed as a performance win. It also needs a signing keypair, which this system
+  has never had (`auth/jwks*.zig` only ever VERIFIES), so it is credential-gated.
+  Recorded in `docs/AUTH.md` with its trigger: revisit when the per-request read
+  becomes measurable, not before.
+
+- **`karlseguin/cache.zig` is retained.** It backs `credentials/broker.zig`'s OAuth
+  token cache, the one consumer whose entries carry a genuinely per-entry,
+  externally-determined expiry (a provider-issued `expires_in`). Consolidating it
+  onto `common.CacheTable` would mean re-adding the clock this workstream removed,
+  to serve the single case where a clock is correct.
+
+- **A defect on `main`, found while reasoning about this and NOT fixed here.**
+  Because `draining` is non-active, a draining runner is auth-cut immediately, so
+  it cannot renew or report its in-flight lease; `lease_expires_at` passes and the
+  reclaim sweeper re-delivers the event to another runner while the first child is
+  still running. Drain behaves as a hard kill and can duplicate execution. It
+  predates this branch and wants its own spec.
 
 ### §2.2's rate cache moved onto `common.CacheTable` too — and what that cost
 

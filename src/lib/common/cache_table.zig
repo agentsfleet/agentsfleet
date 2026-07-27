@@ -1,41 +1,57 @@
-//! Fixed-capacity associative cache: N-way set-associative buckets, least-
-//! recently-used (LRU) eviction within a bucket, per-entry expiry, no allocator.
+//! Fixed-capacity associative cache for values that can be recomputed.
 //!
-//! For values that can always be recomputed. A miss is never an error — it costs
-//! whatever the underlying lookup costs — so the table trades exactness of
-//! retention for a hard memory bound and zero allocation.
+//! `bucket_count` buckets of `bucket_size` slots, in one flat array, allocated
+//! once and never grown. A key's hash picks its bucket and it can live in no
+//! other, so a lookup is at most `bucket_size` comparisons and no operation ever
+//! allocates. Inserting into a full bucket drops that bucket's oldest entry.
 //!
-//! **Why set-associative and not direct-mapped.** A direct-mapped table has no
-//! probing: two live keys landing on one slot evict each other on every
-//! interleaved access and both fall back to the real lookup permanently, which
-//! makes the cache worst at exactly the scale it exists for. Widening the table
-//! only makes that rarer. `bucket_size` entries per bucket makes it *survivable*
-//! — colliding keys coexist, and only the least recently used one leaves.
+//! ## What this deliberately does NOT have
 //!
-//! **Not synchronized.** No lock is held internally, so a consumer picks a lock
-//! matched to its own correctness needs rather than paying for the strictest
-//! one. `peek` never mutates and is safe under a shared/read lock; `get`,
-//! `put`, `remove`, `removeMatching`, and `clear` mutate and need exclusive
-//! access.
+//! No expiry, no `now_ms`, no removal by key. Those were here once and each one
+//! added a way for an entry to leave, which is the only thing this structure can
+//! get wrong: the release hook has to cover every exit, and a key that can be
+//! removed must not be resident twice. With only the two exits below, both
+//! properties hold by construction rather than by care.
+//!
+//! Staleness is therefore the consumer's problem, and both consumers already
+//! solve it without a clock: `state/model_library_cache.zig` puts the catalogue
+//! revision IN THE KEY, so an entry built from an older revision is unreachable
+//! rather than wrong, and `state/model_rate_cache.zig` puts the generation in
+//! the VALUE, so a reader accepts an entry only at the generation it observed.
+//! A cache of recomputable values may forget anything at any time; it may never
+//! answer with something else's value.
+//!
+//! ## The two exits, and the release rule
+//!
+//! An entry leaves only by (1) losing its slot to a newer entry in a full
+//! bucket, or (2) `clear`. Both call `Context.evicted` if it is declared, so a
+//! consumer whose `K` or `V` owns heap memory frees it in exactly one place and
+//! cannot leak through a path this file forgot to wire up.
+//!
+//! ## Duplicate keys are allowed, and the newest wins
+//!
+//! `put` does not look for the key first — it appends. Two entries for one key
+//! can therefore coexist, and `peek` scans a bucket from its newest end, so it
+//! finds the most recent one and the older is unreachable until evicted. That is
+//! safe here because both consumers `put` only after a miss and neither can
+//! remove by key; the wasted slot is bounded by `bucket_size`. Do not add a
+//! removal verb without also making `put` reuse the key's own slot — a removal
+//! that drops one of two entries for a key resurrects the other.
 //!
 //! ## Attribution
 //!
-//! The bucket-and-lengths layout, in-bucket LRU by rotation, and the optional
-//! eviction hook are adapted from Ghostty's `src/datastruct/cache_table.zig` —
-//! MIT, Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors.
+//! The bucket-and-lengths layout, eviction by rotating the newcomer in, and the
+//! optional eviction hook are adapted from Ghostty's
+//! `src/datastruct/cache_table.zig` — MIT, Copyright (c) 2024 Mitchell
+//! Hashimoto, Ghostty contributors. Ghostty's `get` refreshes recency on a hit;
+//! neither consumer here reads through a mutating path, so that is omitted and
+//! eviction is oldest-inserted within the bucket.
 //!
 //! Deriving the bucket index from a digest's leading bytes rather than re-hashing
 //! an already-uniform key is from Bun's `src/runtime/api/bun/SSLContextCache.zig`
 //! — MIT, Copyright (c) Oven. Applied by consumers in their `Context.hash`.
-//!
-//! Per-entry expiry, expired-slot reuse, `peek`, `removeMatching`, and
-//! `sweepExpired` are not in either upstream.
 
 const std = @import("std");
-
-/// Expiry for entries that live until something explicitly removes them.
-/// `put(k, v, NEVER_EXPIRES)` is the no-time-bound case.
-pub const NEVER_EXPIRES: i64 = std.math.maxInt(i64);
 
 /// Optional `Context` declaration called whenever an entry leaves the table.
 const EVICTION_HOOK = "evicted";
@@ -44,18 +60,17 @@ pub const Options = struct {
     /// Number of buckets. Power of two — the index is a mask, not a modulo.
     /// Size it near the count of keys expected live at once.
     bucket_count: usize,
-    /// Entries per bucket, i.e. how many colliding keys coexist. Raise it when
-    /// a burst of unimportant keys would otherwise push important ones out.
+    /// Slots per bucket. Larger tolerates more keys colliding on one bucket
+    /// before they start evicting each other.
     bucket_size: u8,
 };
 
-/// `Context` supplies the key policy and must declare:
-///
+/// `Context` must declare:
 ///   - `fn hash(*const Context, K) u64`
 ///   - `fn eql(*const Context, K, K) bool`
 ///
 /// and may optionally declare `fn evicted(*const Context, K, V) void`, called
-/// whenever an entry leaves the table by eviction or `clear`.
+/// once for every entry that leaves the table (see §The two exits above).
 pub fn CacheTable(
     comptime K: type,
     comptime V: type,
@@ -64,19 +79,18 @@ pub fn CacheTable(
 ) type {
     return struct {
         const Self = @This();
+        const INDEX_MASK: u64 = opts.bucket_count - 1;
 
         comptime {
-            std.debug.assert(std.math.isPowerOfTwo(opts.bucket_count));
-            std.debug.assert(opts.bucket_size > 0);
+            if (!std.math.isPowerOfTwo(opts.bucket_count))
+                @compileError("bucket_count must be a power of two — the index is a mask");
+            if (opts.bucket_size == 0)
+                @compileError("bucket_size must be at least 1");
         }
 
-        const INDEX_MASK: usize = opts.bucket_count - 1;
-
-        pub const Entry = struct {
+        const Entry = struct {
             key: K,
             value: V,
-            /// Absolute deadline. The entry is dead once `now_ms >= expires_at_ms`.
-            expires_at_ms: i64,
         };
 
         buckets: [opts.bucket_count][opts.bucket_size]Entry,
@@ -84,181 +98,63 @@ pub fn CacheTable(
         context: Context,
 
         pub fn init(context: Context) Self {
-            return .{
-                // SAFETY: a slot is only ever read below its bucket's recorded
-                // length, and every length starts at zero, so no read can reach
-                // an entry that was never written. Zeroing the storage would
-                // cost a table-sized memset to establish what no read depends
-                // on, and `Entry` has no meaningful zero for a generic K/V.
-                .buckets = undefined,
-                .lengths = @splat(0),
-                .context = context,
-            };
+            // SAFETY: a slot is only ever read below its bucket's recorded
+            // length, and reaching that length means a real entry was written
+            // there — `lengths` starts at zero, so nothing is readable until a
+            // `put` writes it. Zeroing `buckets` would cost a megabyte-scale
+            // memset at startup to establish something no read depends on, and
+            // `Entry` has no meaningful zero for a generic K/V.
+            return .{ .buckets = undefined, .lengths = @splat(0), .context = context };
         }
 
-        /// The stored value for `key`, or null when absent or expired.
+        /// The stored value for `key`, or null when absent.
         ///
-        /// Does not mutate, so it is safe to call under a shared/read lock. It
-        /// therefore does not refresh LRU position — a consumer whose hot keys
-        /// must survive eviction pressure wants `get`.
-        ///
-        /// `now_ms` is a parameter rather than a clock read so expiry boundaries
-        /// are provable without sleeping.
-        pub fn peek(self: *const Self, key: K, now_ms: i64) ?V {
-            const idx = self.bucketIndex(key);
-            const len = self.lengths[idx];
-            var i: usize = len;
-            while (i > 0) {
-                i -= 1;
-                const entry = &self.buckets[idx][i];
-                if (!self.context.eql(key, entry.key)) continue;
-                if (now_ms >= entry.expires_at_ms) return null;
-                return entry.value;
-            }
-            return null;
-        }
-
-        /// The stored value for `key`, promoting it to most-recently-used.
-        ///
-        /// Mutates, so it needs exclusive access. An expired entry is dropped on
-        /// the way past rather than left to be re-read.
-        pub fn get(self: *Self, key: K, now_ms: i64) ?V {
-            const idx = self.bucketIndex(key);
-            const len = self.lengths[idx];
-            var i: usize = len;
-            while (i > 0) {
-                i -= 1;
-                if (!self.context.eql(key, self.buckets[idx][i].key)) continue;
-                if (now_ms >= self.buckets[idx][i].expires_at_ms) {
-                    self.removeAt(idx, i);
-                    return null;
-                }
-                const value = self.buckets[idx][i].value;
-                rotateOnce(self.buckets[idx][i..len]);
-                return value;
-            }
-            return null;
-        }
-
-        /// Store `key`'s value until `expires_at_ms`, returning any live entry
-        /// evicted to make room.
-        ///
-        /// Reuses the key's own entry, then any expired one, before evicting
-        /// anything live — so an expired entry never costs a live one its slot.
-        ///
-        /// The displaced entry — whether it was this key's previous value, an
-        /// expired neighbour, or the evicted least-recently-used one — is passed
-        /// to `Context.evicted` if declared. A returned entry has therefore
-        /// already been released: read its `key`, never its `value`.
-        pub fn put(self: *Self, key: K, value: V, expires_at_ms: i64, now_ms: i64) ?Entry {
-            const idx = self.bucketIndex(key);
-            const len = self.lengths[idx];
-            const entry: Entry = .{ .key = key, .value = value, .expires_at_ms = expires_at_ms };
-
-            // The key's own entry MUST win over an expired stranger: reusing an
-            // expired slot that sits earlier in the bucket would leave the key's
-            // live entry alive behind it — two entries for one key, and a later
-            // `remove` (which drops the first match) could keep the stale one
-            // answering after an invalidation.
-            var expired_idx: ?usize = null;
-            const reuse: ?usize = for (self.buckets[idx][0..len], 0..) |*slot, i| {
-                if (self.context.eql(key, slot.key)) break i;
-                if (expired_idx == null and now_ms >= slot.expires_at_ms) expired_idx = i;
-            } else expired_idx;
-
-            if (reuse) |i| {
-                // The occupant is dropped here, not overwritten silently: for a
-                // value that owns memory, refreshing a key would otherwise leak
-                // its previous body on every single write.
-                self.release(self.buckets[idx][i]);
-                self.buckets[idx][i] = entry;
-                rotateOnce(self.buckets[idx][i..len]);
-                return null;
-            }
-
-            if (len < opts.bucket_size) {
-                self.buckets[idx][len] = entry;
-                self.lengths[idx] = len + 1;
-                return null;
-            }
-
-            const evicted = rotateIn(&self.buckets[idx], entry);
-            self.release(evicted);
-            return evicted;
-        }
-
-        /// Drop `key`'s entry. True when one was present, expired or not.
-        pub fn remove(self: *Self, key: K) bool {
+        /// Does not mutate, so it is safe under a shared/read lock — which is
+        /// why both consumers can serve concurrent readers without serializing
+        /// on one exclusive lock. Scans from the bucket's newest end, so when a
+        /// key is resident twice this is the most recently stored one.
+        pub fn peek(self: *const Self, key: K) ?V {
             const idx = self.bucketIndex(key);
             var i: usize = self.lengths[idx];
             while (i > 0) {
                 i -= 1;
-                if (!self.context.eql(key, self.buckets[idx][i].key)) continue;
-                self.removeAt(idx, i);
-                return true;
+                const entry = &self.buckets[idx][i];
+                if (self.context.eql(key, entry.key)) return entry.value;
             }
-            return false;
+            return null;
         }
 
-        /// Drop every entry `pred.match(key, value)` accepts; returns the count.
+        /// Store `key`'s value, evicting this bucket's oldest entry if it is
+        /// full. The evicted entry is passed to `Context.evicted` if declared.
         ///
-        /// Walks the whole table, so it belongs on control-plane actions rather
-        /// than a request path. It exists for invalidation keyed by something
-        /// other than the cache key — a caller holding an identity that maps to
-        /// entries it cannot name.
-        pub fn removeMatching(self: *Self, pred: anytype) usize {
-            var removed: usize = 0;
-            for (0..opts.bucket_count) |idx| {
-                var i: usize = self.lengths[idx];
-                while (i > 0) {
-                    i -= 1;
-                    const entry = &self.buckets[idx][i];
-                    if (!pred.match(entry.key, entry.value)) continue;
-                    self.removeAt(idx, i);
-                    removed += 1;
-                }
+        /// Appends without looking for `key` first: both consumers call this
+        /// only after a miss, so the duplicate case is rare, bounded, and
+        /// answered correctly by `peek` (see §Duplicate keys above).
+        pub fn put(self: *Self, key: K, value: V) void {
+            const idx = self.bucketIndex(key);
+            const len = self.lengths[idx];
+            const entry: Entry = .{ .key = key, .value = value };
+
+            if (len < opts.bucket_size) {
+                self.buckets[idx][len] = entry;
+                self.lengths[idx] = len + 1;
+                return;
             }
-            return removed;
+            self.release(rotateIn(&self.buckets[idx], entry));
         }
 
-        /// Release every entry whose deadline has passed; returns the count.
-        ///
-        /// Expiry is otherwise lazy — a dead entry keeps its slot until
-        /// something reaches it — which is free when `V` is a plain value and
-        /// not free when `V` owns memory, because the memory stays held. A
-        /// consumer that accounts for what its values cost calls this when that
-        /// accounting says the walk has become worth it. Walks the whole table,
-        /// so it belongs off the hot path, same as `removeMatching`.
-        pub fn sweepExpired(self: *Self, now_ms: i64) usize {
-            var removed: usize = 0;
-            for (0..opts.bucket_count) |idx| {
-                var i: usize = self.lengths[idx];
-                while (i > 0) {
-                    i -= 1;
-                    if (now_ms < self.buckets[idx][i].expires_at_ms) continue;
-                    self.removeAt(idx, i);
-                    removed += 1;
-                }
-            }
-            return removed;
-        }
-
-        /// Drop everything. Fires `Context.evicted` for each entry if declared.
+        /// Drop everything, releasing each resident entry.
         pub fn clear(self: *Self) void {
-            for (self.buckets, self.lengths) |bucket, len| {
+            for (&self.buckets, self.lengths) |*bucket, len| {
                 for (bucket[0..len]) |entry| self.release(entry);
             }
             self.lengths = @splat(0);
         }
 
-        /// Live (unexpired) entries. Walks the table — tests and gauges only.
-        pub fn count(self: *const Self, now_ms: i64) usize {
+        /// Resident entries. Walks the lengths array — gauges and tests only.
+        pub fn count(self: *const Self) usize {
             var live: usize = 0;
-            for (self.buckets, self.lengths) |bucket, len| {
-                for (bucket[0..len]) |entry| {
-                    if (now_ms < entry.expires_at_ms) live += 1;
-                }
-            }
+            for (self.lengths) |len| live += len;
             return live;
         }
 
@@ -266,46 +162,23 @@ pub fn CacheTable(
             return @intCast(self.context.hash(key) & INDEX_MASK);
         }
 
-        /// Compacts the entry at `i` out of its bucket, preserving LRU order of
-        /// the rest. Order matters: a swap-remove would promote whatever it
-        /// moved into the gap.
-        fn removeAt(self: *Self, idx: usize, i: usize) void {
-            const len = self.lengths[idx];
-            self.release(self.buckets[idx][i]);
-            std.mem.copyForwards(
-                Entry,
-                self.buckets[idx][i .. len - 1],
-                self.buckets[idx][i + 1 .. len],
-            );
-            self.lengths[idx] = len - 1;
-        }
-
-        /// The single exit an entry can leave by. Every drop, overwrite, and
-        /// eviction routes here, so a `Context` whose values own heap memory has
-        /// exactly one place to free them and cannot leak through a path the
-        /// table forgot to wire up.
+        /// The single exit an entry can leave by. Both eviction and `clear`
+        /// route here, so a `Context` whose entries own heap memory has exactly
+        /// one place to free them.
         fn release(self: *Self, entry: Entry) void {
             if (comptime @hasDecl(Context, EVICTION_HOOK)) {
                 self.context.evicted(entry.key, entry.value);
             }
         }
+
+        /// Rotates `item` in at the end and returns the displaced first item.
+        fn rotateIn(bucket: *[opts.bucket_size]Entry, item: Entry) Entry {
+            const removed = bucket[0];
+            std.mem.copyForwards(Entry, bucket[0 .. bucket.len - 1], bucket[1..]);
+            bucket[bucket.len - 1] = item;
+            return removed;
+        }
     };
-}
-
-/// Moves the first item to the end: `0 1 2 3` -> `1 2 3 0`.
-fn rotateOnce(items: anytype) void {
-    if (items.len <= 1) return;
-    const tmp = items[0];
-    std.mem.copyForwards(@TypeOf(tmp), items[0 .. items.len - 1], items[1..]);
-    items[items.len - 1] = tmp;
-}
-
-/// Rotates `item` in at the end and returns the displaced first item.
-fn rotateIn(items: anytype, item: anytype) @TypeOf(item) {
-    const removed = items[0];
-    std.mem.copyForwards(@TypeOf(item), items[0 .. items.len - 1], items[1..]);
-    items[items.len - 1] = item;
-    return removed;
 }
 
 test {

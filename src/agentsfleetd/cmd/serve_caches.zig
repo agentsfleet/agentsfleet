@@ -28,9 +28,9 @@ var g_ready: bool = false;
 /// the first. `serve.run` is the only caller, but a re-entered boot (a test that
 /// starts the server twice in one process) must not silently strand a cache
 /// holding every payload it had admitted.
-pub fn init(alloc: std.mem.Allocator) !*model_library_cache.Cache {
+pub fn init(alloc: std.mem.Allocator) *model_library_cache.Cache {
     if (!g_ready) {
-        g_model_library = try model_library_cache.Cache.init(alloc);
+        g_model_library = model_library_cache.Cache.init(alloc);
         g_ready = true;
     }
     return &g_model_library;
@@ -50,8 +50,8 @@ test "init is idempotent and deinit tolerates never having run" {
     // The re-entered-boot case: the second init must hand back the SAME cache,
     // because a fresh one would strand every payload the first had admitted.
     deinit(); // tolerate a prior test having initialized it
-    const a = try init(std.testing.allocator);
-    const b = try init(std.testing.allocator);
+    const a = init(std.testing.allocator);
+    const b = init(std.testing.allocator);
     try std.testing.expectEqual(a, b);
 
     deinit();

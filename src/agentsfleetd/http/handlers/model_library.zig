@@ -33,7 +33,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const logging = @import("log");
-const common_lib = @import("common");
 
 const revision_state = @import("../../state/model_catalogue_revision.zig");
 const model_library_store = @import("../../state/model_library_store.zig");
@@ -102,9 +101,8 @@ pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
     };
 
     const key = catalogue_key.cacheKey(revision, filters.q, filters.provider, raw_cursor, limit);
-    const now_ms = common_lib.clock.monotonicMillis();
 
-    if (cachedBody(hx, key, now_ms)) |cached| {
+    if (cachedBody(hx, key)) |cached| {
         page_mod.respond(hx, req, cached);
         return;
     }
@@ -118,7 +116,7 @@ pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    storeBody(hx, key, body, now_ms);
+    storeBody(hx, key, body);
     page_mod.respond(hx, req, body);
 }
 
@@ -180,16 +178,16 @@ fn decodeStart(
 /// The copy is taken from `res.arena`, not `hx.alloc`: a hit and a miss must
 /// hand `respond` memory with the same lifetime, and only the response arena
 /// survives the handler's return (see `model_library_page.zig`).
-fn cachedBody(hx: Hx, key: anytype, now_ms: i64) ?[]u8 {
+fn cachedBody(hx: Hx, key: anytype) ?[]u8 {
     const cache = hx.ctx.model_library_cache orelse return null;
-    return cache.fetch(hx.res.arena, key, now_ms) catch null;
+    return cache.fetch(hx.res.arena, key) catch null;
 }
 
 /// Admit the page. A refusal (over budget) and an allocation fault are both
 /// non-events — the response is already built and is served either way.
-fn storeBody(hx: Hx, key: anytype, body: []const u8, now_ms: i64) void {
+fn storeBody(hx: Hx, key: anytype, body: []const u8) void {
     const cache = hx.ctx.model_library_cache orelse return;
-    _ = cache.put(key, body, now_ms) catch return;
+    cache.put(key, body) catch return;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
