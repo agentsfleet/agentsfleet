@@ -4,7 +4,6 @@
 //! unchanged; the matching logic (match/matchV1) stays in router.zig.
 
 const matchers = @import("route_matchers.zig");
-const matchers_library = @import("route_matchers_library.zig");
 
 pub const Route = union(enum) {
     healthz,
@@ -59,11 +58,6 @@ pub const Route = union(enum) {
     // Tenant Fleet library onboarding — POST /v1/workspaces/{ws}/fleet-libraries
     // (library:write + workspace ownership). Carries workspace_id.
     workspace_fleet_library: []const u8,
-    /// One Fleet library entry: `{workspace_uuid}/fleet-libraries/{tier}/{id}`.
-    /// The tier arrives as a validated enum — `route_matchers_library.zig`
-    /// refuses to match an unknown one, so this can never carry a caller-supplied
-    /// string that a handler would use as a table selector.
-    workspace_fleet_library_detail: matchers_library.FleetLibraryDetailRoute, // GET /v1/workspaces/{ws}/fleet-libraries/{tier}/{id}
     /// POST /v1/webhooks/{fleet_id} — generic per-fleet webhook receiver.
     /// HMAC-only via webhook_sig middleware; secret resolved from the
     /// workspace credential keyed by the matching `triggers[].source`.

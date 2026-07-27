@@ -76,10 +76,14 @@
 // non-ceiling arm of each `respond` — an allocation fault while MEASURING the
 // body, distinct from the body being too large, which answers UZ-LIBRARY-005).
 // Same plain-English details as their siblings, so counted (86 -> 88).
+//
+// Stripping the workspace fleet-library detail route (no product caller was
+// ever built) removed gallery_detail.zig and its 2 sites. Re-tightened
+// immediately (88 -> 86) — the ratchet's own doctrine above.
 const std = @import("std");
 const common = @import("common");
 
-const BASELINE_CALL_SITE_COUNT: usize = 88;
+const BASELINE_CALL_SITE_COUNT: usize = 86;
 const CALL_SITE_NEEDLE = "internalOperationError(";
 const HANDLERS_DIR_PATH = "src/agentsfleetd/http/handlers";
 // `http/server.zig` sits one level above `http/handlers/` (the dispatcher,

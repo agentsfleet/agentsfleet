@@ -9,12 +9,13 @@
 //! Separate file rather than more of the same one, because the same one is at
 //! its 350-line cap. The seam is the resource: registry there, pages here.
 //!
-//! ## Two of these numbers were drafted wrong, and the measurement says so
+//! ## One of these numbers was drafted wrong, and the measurement says so
 //!
-//! §3 budgeted the Fleet summary at ≤1 statement and the Fleet detail at ≤2.
-//! Both omit `common.authorizeWorkspace`, which costs TWO — one resolving the
+//! §3 budgeted the Fleet summary at ≤1 statement. That omits
+//! `common.authorizeWorkspace`, which costs TWO — one resolving the
 //! principal's tenant through `core.users`, one checking the workspace belongs
-//! to it — and which runs inside the measured window.
+//! to it — and which runs inside the measured window. (A per-entry detail read
+//! shared this shape until its route was removed unconsumed.)
 //!
 //! That is not an accounting slip in the handler; it is where the boundary
 //! actually falls. §3 states the window as "after middleware auth", and
@@ -55,12 +56,12 @@ const FLEET_ONE = "m143bounds-fleet-1";
 const FLEET_TWO = "m143bounds-fleet-2";
 const CONTENT_HASH = "0000000000000000000000000000000000000000000000000000000000000243";
 
-// Both Fleet rows are asserted against `counters.FLEET_*_MAX_STATEMENTS`
+// The Fleet row is asserted against `counters.FLEET_SUMMARY_MAX_STATEMENTS`
 // directly, not against arithmetic spelled here. The first draft of this file
-// did the arithmetic — authorization pair plus the table's own
-// `FLEET_DETAIL_MAX_STATEMENTS` — and expected 4 against a measured 3, because
-// the table's ≤2 had already folded in an authorization cost of one. A number
-// carried out of a table and re-added in a test is not a measurement; it is the
+// did the arithmetic — authorization pair plus the table's own budget — and
+// expected 4 against a measured 3, because the drafted ≤2 had already folded
+// in an authorization cost of one. A number carried out of a table and
+// re-added in a test is not a measurement; it is the
 // same guess twice. The constants now hold the measurement and this file
 // compares against them, which is what that module exists for.
 
@@ -212,7 +213,7 @@ fn galleryUrl(alloc: std.mem.Allocator, extra: []const u8) ![]u8 {
     return std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleet-libraries{s}", .{ http_auth.WS_PRIMARY, extra });
 }
 
-test "integration: test_library_read_resource_bounds — both Fleet reads pay for workspace authorization and nothing else" {
+test "integration: test_library_read_resource_bounds — the Fleet gallery read pays for workspace authorization and nothing else" {
     const alloc = std.testing.allocator;
     const h = openOrSkip(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -247,26 +248,5 @@ test "integration: test_library_read_resource_bounds — both Fleet reads pay fo
         try std.testing.expect(measured.encoded_bytes <= counters.FLEET_SUMMARY_MAX_BODY_BYTES);
         // Bounded by `limit`, not by how many rows happen to exist.
         try std.testing.expect(measured.results <= counters.TENANT_REGISTRY_MAX_RESULTS);
-    }
-
-    // ── the detail: authorization, then ONE single-entry read ────────────────
-    {
-        const url = try galleryUrl(alloc, "/platform/" ++ FLEET_ONE);
-        defer alloc.free(url);
-        crypto_store.resetDecryptCountForTest();
-        const r = try (try h.get(url).bearer(TOKEN)).send();
-        defer r.deinit();
-        try r.expectStatus(.ok);
-
-        const measured = counters.snapshot();
-        try std.testing.expectEqual(
-            counters.FLEET_DETAIL_MAX_STATEMENTS,
-            measured.statements,
-        );
-        try expectCommon(measured, r.body.len);
-        // Exactly one row. A detail route that returned two would still satisfy
-        // every ceiling above.
-        try std.testing.expectEqual(counters.FLEET_DETAIL_MAX_RESULTS, measured.results);
-        try std.testing.expect(measured.encoded_bytes <= counters.FLEET_DETAIL_MAX_BODY_BYTES);
     }
 }

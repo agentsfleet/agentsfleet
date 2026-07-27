@@ -37,7 +37,6 @@ platform-only (set by the anomaly gate) and rejected if requested via API.
 | `get_model_library` | GET | `/v1/models` | — (paged; `q`/`provider` filters, `ETag`) |
 | `list_tenant_model_entries` | GET | `/v1/tenants/me/models` | — (paged) |
 | `list_workspace_fleet_library` | GET | `/v1/workspaces/{workspace_id}/fleet-libraries` | — (paged) |
-| `get_workspace_fleet_library_entry` | GET | `/v1/workspaces/{workspace_id}/fleet-libraries/{tier}/{id}` | — (`tier`: `platform`\|`tenant`) |
 
 Every `GET` list above is a bounded keyset page carrying `next_cursor`. Follow it
 to read the whole collection — reading only the first page silently drops the

@@ -95,14 +95,7 @@
       "operationId": "list_workspace_fleet_library",
       "method": "GET",
       "path": "/v1/workspaces/{workspace_id}/fleet-libraries",
-      "description": "One bounded keyset page of the workspace Fleet library gallery — the union of the platform catalog and this workspace's own entries, and nothing from another workspace. Support-file manifests are served by the detail operation.",
-      "actionClass": "safe"
-    },
-    {
-      "operationId": "get_workspace_fleet_library_entry",
-      "method": "GET",
-      "path": "/v1/workspaces/{workspace_id}/fleet-libraries/{tier}/{id}",
-      "description": "One Fleet library entry in full, including the support-file manifest the paged gallery omits. `tier` is `platform` or `tenant`; any other value does not route. An absent entry and one belonging to another workspace both answer 404 with UZ-LIBRARY-007, so the route cannot be used to enumerate other workspaces.",
+      "description": "One bounded keyset page of the workspace Fleet library gallery — the union of the platform catalog and this workspace's own entries, and nothing from another workspace. Support-file manifests are not served on the workspace plane.",
       "actionClass": "safe"
     },
     {
@@ -123,7 +116,7 @@
     "description": "Users may supply their own Large Language Model (LLM) API keys. agentsfleet meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
   },
   "policyClasses": {
-    "safe": ["list_fleet_events", "stream_fleet_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods", "get_model_library", "list_tenant_model_entries", "list_workspace_fleet_library", "get_workspace_fleet_library_entry"],
+    "safe": ["list_fleet_events", "stream_fleet_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods", "get_model_library", "list_tenant_model_entries", "list_workspace_fleet_library"],
     "sensitive": ["create_fleet", "patch_fleet", "post_fleet_message", "ingest_fleet_webhook"],
     "critical": ["delete_fleet"]
   }

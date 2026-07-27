@@ -166,15 +166,12 @@ pub const GLOBAL_MODELS_MAX_BODY_BYTES: usize = 256 * 1024;
 /// handler knows which workspace the path names, so authorization is the
 /// handler's work and `beginRead()` opens ahead of it.
 ///
-/// Each read then issues exactly ONE statement of its own — the summary's
-/// merged `UNION ALL` across both libraries, the detail's single select — and
-/// that is the number `limit` cannot move. Drafted at 1 and 2; corrected here to
-/// what the instrumentation reports, as the tenant registry row was, twice.
+/// The read then issues exactly ONE statement of its own — the summary's
+/// merged `UNION ALL` across both libraries — and that is the number `limit`
+/// cannot move. Drafted at 1; corrected here to what the instrumentation
+/// reports, as the tenant registry row was, twice.
 pub const FLEET_SUMMARY_MAX_STATEMENTS: usize = 3;
 pub const FLEET_SUMMARY_MAX_BODY_BYTES: usize = 512 * 1024;
-pub const FLEET_DETAIL_MAX_STATEMENTS: usize = 3;
-pub const FLEET_DETAIL_MAX_RESULTS: usize = 1;
-pub const FLEET_DETAIL_MAX_BODY_BYTES: usize = 1024 * 1024;
 
 /// Every library read path uses exactly one pooled connection. A read that
 /// acquires a second while holding the first is how a pool deadlocks under
@@ -294,10 +291,6 @@ test "the §3 ceilings are the numbers the spec table states" {
     try testing.expectEqual(@as(usize, 256 * 1024), GLOBAL_MODELS_MAX_BODY_BYTES);
 
     try testing.expectEqual(@as(usize, 3), FLEET_SUMMARY_MAX_STATEMENTS);
-    try testing.expectEqual(@as(usize, 3), FLEET_DETAIL_MAX_STATEMENTS);
-    try testing.expectEqual(@as(usize, 1), FLEET_DETAIL_MAX_RESULTS);
-    // pin test: literal is the contract
-    try testing.expectEqual(@as(usize, 1024 * 1024), FLEET_DETAIL_MAX_BODY_BYTES);
 
     // One connection per read, on every path without exception.
     try testing.expectEqual(@as(usize, 1), MAX_CONNECTIONS_PER_READ);

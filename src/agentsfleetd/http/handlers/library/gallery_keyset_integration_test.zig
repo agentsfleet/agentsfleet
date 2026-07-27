@@ -1,8 +1,9 @@
 //! Integration tier for §3 Dimension 3.1 — `test_fleet_keyset_and_detail_status`.
 //!
-//! Two claims, one fixture set: the merged gallery's three-part order resumes
-//! exactly across a page boundary, and the detail route's status ladder is
-//! 401 → 403 → 404 with the last one covering two different facts on purpose.
+//! One claim over one fixture set: the merged gallery's three-part order
+//! resumes exactly across a page boundary. (A per-entry detail route existed
+//! here once — built for a dashboard click-through that never landed — and was
+//! removed; a pin below holds its former URL to "no such route".)
 //!
 //! ## Every fixture ties, because the order is unreachable otherwise
 //!
@@ -35,7 +36,6 @@ const scope_fixtures = @import("../../test_scope_tokens.zig");
 const http_auth = @import("../../../db/test_fixtures_http_auth.zig");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const ec = @import("../../../errors/error_registry.zig");
 const library_store = @import("../../../fleet_library/library_store.zig");
 
 const TOKEN = scope_fixtures.TENANT_ADMIN;
@@ -231,7 +231,7 @@ fn detailUrl(alloc: std.mem.Allocator, workspace: []const u8, tier: []const u8, 
     return std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleet-libraries/{s}/{s}", .{ workspace, tier, id });
 }
 
-test "integration: test_fleet_keyset_and_detail_status — the detail ladder is 401, 403, then one non-enumerating 404" {
+test "integration: test_fleet_keyset_and_detail_status — the removed detail URL is no route, even for an entry that exists" {
     const alloc = std.testing.allocator;
     const h = openOrSkip(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -244,76 +244,20 @@ test "integration: test_fleet_keyset_and_detail_status — the detail ladder is 
         try seed(conn);
     }
 
-    // ── 200: both tiers resolve, and the detail carries what the card sheds ──
+    // The per-entry detail route was removed with its handler — no product
+    // caller was ever built, and `support_files` lives on the admin plane
+    // only. Its former URL must fall through the router entirely, for a row
+    // that IS resident: a stale table arm or a half-resurrected matcher would
+    // answer something here, and this pin is what catches it.
     {
         const url = try detailUrl(alloc, http_auth.WS_PRIMARY, "platform", P_NEW);
         defer alloc.free(url);
         const r = try (try h.get(url).bearer(TOKEN)).send();
         defer r.deinit();
-        try r.expectStatus(.ok);
-        try std.testing.expect(r.bodyContains(P_NEW));
-        // `support_files` is the field the summary drops; the detail is where it
-        // has to reappear, or dropping it from the card lost it entirely.
-        try std.testing.expect(r.bodyContains("\"support_files\""));
+        try r.expectStatus(.not_found);
     }
     {
         const url = try detailUrl(alloc, http_auth.WS_PRIMARY, "tenant", T_MINE);
-        defer alloc.free(url);
-        const r = try (try h.get(url).bearer(TOKEN)).send();
-        defer r.deinit();
-        try r.expectStatus(.ok);
-        try std.testing.expect(r.bodyContains(T_MINE));
-    }
-
-    // ── 401: no bearer at all, decided before the handler runs ───────────────
-    {
-        const url = try detailUrl(alloc, http_auth.WS_PRIMARY, "platform", P_NEW);
-        defer alloc.free(url);
-        const r = try h.get(url).send();
-        defer r.deinit();
-        try r.expectStatus(.unauthorized);
-    }
-
-    // ── 403: authenticated, but the workspace is not the caller's ────────────
-    {
-        const url = try detailUrl(alloc, http_auth.WS_ABSENT, "platform", P_NEW);
-        defer alloc.free(url);
-        const r = try (try h.get(url).bearer(TOKEN)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-    }
-
-    // ── 404, twice, with the SAME code ───────────────────────────────────────
-    //
-    // Absent and foreign must be indistinguishable. If they were not, a caller
-    // authorized for neither could ask "does this id exist somewhere?" and use
-    // the detail route to enumerate every other workspace's library.
-    {
-        const url = try detailUrl(alloc, http_auth.WS_PRIMARY, "tenant", "0195b4ba-8d3a-7f13-8abc-2b3e1e0abfff");
-        defer alloc.free(url);
-        const r = try (try h.get(url).bearer(TOKEN)).send();
-        defer r.deinit();
-        try r.expectStatus(.not_found);
-        try r.expectErrorCode(ec.ERR_LIBRARY_ENTRY_NOT_FOUND);
-    }
-    {
-        // Exists — in WS_SECONDARY. Asked for through WS_PRIMARY.
-        const url = try detailUrl(alloc, http_auth.WS_PRIMARY, "tenant", T_FOREIGN);
-        defer alloc.free(url);
-        const r = try (try h.get(url).bearer(TOKEN)).send();
-        defer r.deinit();
-        try r.expectStatus(.not_found);
-        try r.expectErrorCode(ec.ERR_LIBRARY_ENTRY_NOT_FOUND);
-        // And it does not leak the row it declined to serve.
-        try std.testing.expect(!r.bodyContains("keyset fixture"));
-    }
-
-    // ── an unknown tier is not a route at all ────────────────────────────────
-    //
-    // Validated at the MATCHER, so the handler never receives a caller-supplied
-    // string it would have to treat as a table selector.
-    {
-        const url = try detailUrl(alloc, http_auth.WS_PRIMARY, "wheelbarrow", P_NEW);
         defer alloc.free(url);
         const r = try (try h.get(url).bearer(TOKEN)).send();
         defer r.deinit();
