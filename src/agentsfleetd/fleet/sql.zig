@@ -302,3 +302,38 @@ pub const INSERT_LEASE_WITH_EVENT =
     \\       NULL, $17::bigint
     \\FROM inserted
 ;
+
+// ── Lease assignment ────────────────────────────────────────────────────────
+
+/// Eligible active fleets for one lease poll, sticky-first and bounded.
+///
+/// Readiness NARROWS the input; it never decides eligibility. The label gate and
+/// the sticky ordering are unchanged from the unbounded form — `required_tags <@
+/// labels` still filters (empty tags ⊆ any labels ⇒ any runner) and the runner's
+/// own affinity still sorts to the front. What is new is the `$3` membership
+/// restriction to the fleets the readiness index reported, plus the `$4` ceiling
+/// that makes per-poll cost independent of how many fleets exist.
+///
+/// The runner's labels (stored JSONB) bind as a constant TEXT[] via the
+/// uncorrelated subquery, so `<@` stays a `column <@ constant` shape the
+/// `required_tags` GIN index can serve — not a column-to-column join, which no
+/// index serves.
+///
+/// `$1` active status, `$2` runner id, `$3` ready fleet ids, `$4` ceiling.
+pub const SELECT_READY_CANDIDATES =
+    \\SELECT z.id::text
+    \\FROM core.fleets z
+    \\LEFT JOIN fleet.runner_affinity a ON a.fleet_id = z.id
+    \\WHERE z.status = $1
+    \\  AND z.id = ANY(($3::text[])::uuid[])
+    \\  AND z.required_tags <@ (
+    \\        SELECT COALESCE(array_agg(e), '{}'::text[])
+    \\        FROM jsonb_array_elements_text(
+    \\               (SELECT CASE WHEN jsonb_typeof(labels) = 'array'
+    \\                            THEN labels ELSE '[]'::jsonb END
+    \\                FROM fleet.runners WHERE id = $2::uuid)
+    \\             ) AS e
+    \\      )
+    \\ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, z.created_at ASC
+    \\LIMIT $4
+;

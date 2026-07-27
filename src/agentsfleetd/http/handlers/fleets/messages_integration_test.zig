@@ -14,6 +14,7 @@ const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 const harness_mod = @import("../../test_harness.zig");
+const redis_fleet = @import("../../../queue/redis_fleet.zig");
 const TestHarness = harness_mod.TestHarness;
 
 const ALLOC = std.testing.allocator;
@@ -87,6 +88,14 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\VALUES ($1, $2, 'msg-otherws', '---\nname: msg-otherws\n---\ntest', '{"name":"msg-otherws"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_OTHER_WS, OTHER_WS_ID });
+}
+
+/// Drop the fleet's whole Redis footprint — stream, readiness mark, and the
+/// process-global group memo — the way production does when a fleet stops being
+/// leasable. A bare stream DEL leaves the mark stranded in the shared index.
+fn forgetFleet(h: *harness_mod.TestHarness, fleet_id: []const u8) void {
+    redis_fleet.purgeFleetRedisState(&h.queue, fleet_id) catch |err|
+        std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
@@ -164,10 +173,12 @@ test "integration: fleet messages idle — 202 returns event_id from xadd" {
     try std.testing.expect(r.bodyContains("\"status\":\"accepted\""));
     try std.testing.expect(r.bodyContains("\"event_id\":\""));
 
-    // The XADD created the stream — drop it so leftover entries don't bleed
-    // across runs.
-    var del = h.queue.command(&.{ "DEL", "fleet:" ++ FLEET_IDLE ++ ":events" }) catch return;
-    defer del.deinit(h.queue.alloc);
+    // The XADD created the stream AND marked the fleet ready — drop both, so
+    // neither leftover entries nor a leftover readiness mark bleed across runs.
+    // A bare stream DEL leaves the mark in the one deployment-wide index, where
+    // a later suite's poll can draw this fleet out of the random sample instead
+    // of its own and lease nothing.
+    forgetFleet(h, FLEET_IDLE);
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
@@ -213,8 +224,7 @@ test "integration: steer paused fleet — 409 UZ-AGT-012; resumed fleet steers f
         const r = try (try (try h.post(url).bearer(TOKEN_OPERATOR)).json("{\"message\":\"wake up\"}")).send();
         defer r.deinit();
         try r.expectStatus(.accepted);
-        var del = h.queue.command(&.{ "DEL", "fleet:" ++ AGENTSFLEET_PAUSED ++ ":events" }) catch null;
-        if (del) |*d| d.deinit(h.queue.alloc);
+        forgetFleet(h, AGENTSFLEET_PAUSED);
     }
 
     const conn = try h.acquireConn();
@@ -243,8 +253,7 @@ test "integration: fleet messages active — 202 returns event_id (same single i
     try std.testing.expect(r.bodyContains("\"status\":\"accepted\""));
     try std.testing.expect(r.bodyContains("\"event_id\":\""));
 
-    var del = h.queue.command(&.{ "DEL", "fleet:" ++ AGENTSFLEET_ACTIVE ++ ":events" }) catch return;
-    defer del.deinit(h.queue.alloc);
+    forgetFleet(h, AGENTSFLEET_ACTIVE);
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
