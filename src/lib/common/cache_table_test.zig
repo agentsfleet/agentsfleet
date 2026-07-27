@@ -227,13 +227,34 @@ test "eviction frees the owned value that lost its slot" {
     // Overflows the bucket: KEY_A's body must be freed here, not leaked.
     t.put(KEY_A_COLLIDES_2, try ownedValue(alloc, 'c'));
 
-    // A same-key re-put does NOT free the older body — it appends, and the older
-    // entry stays resident until evicted. Pinned so the deferred clear below is
-    // understood to be what frees it.
+    // A same-key re-put APPENDS — but this bucket is already full, so the
+    // append rotates the oldest entry ('b', the same key's older body) out
+    // through `evicted`. The duplicate-resident case, where both bodies stay
+    // alive together, needs a non-full bucket: the dedicated test below.
     t.put(KEY_A_COLLIDES, try ownedValue(alloc, 'd'));
 
     // Anything still resident is freed by the deferred clear; the testing
     // allocator fails this test if any exit above missed its release.
+}
+
+test "two same-key entries resident together are two independent owners" {
+    // The primitive's documented hazard, held under the leak detector: `put`
+    // never searches for its key, so a re-put into a NON-full bucket leaves two
+    // entries for one key resident at once. `peek` must answer the newest, and
+    // `clear` must free BOTH bodies exactly once each — they are separate
+    // allocations with separate owners, so a departure path that conflated
+    // them would double-free here and one that missed the shadowed older entry
+    // would leak.
+    const alloc = std.testing.allocator;
+    var t = OwnedTable.init(.{ .alloc = alloc });
+
+    t.put(KEY_A, try ownedValue(alloc, 'x'));
+    t.put(KEY_A, try ownedValue(alloc, 'y'));
+    try std.testing.expectEqual(@as(usize, 2), t.count());
+    try std.testing.expectEqual(@as(u8, 'y'), t.peek(KEY_A).?[0]);
+
+    t.clear();
+    try std.testing.expectEqual(@as(usize, 0), t.count());
 }
 
 test "clear frees the owned values still resident" {

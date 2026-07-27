@@ -19,13 +19,14 @@
 //!      200 KB in the response. Three such rows push the registry page past its
 //!      512 KiB ceiling, and the page is the only way to find the rows to
 //!      delete them.
-//!   2. **It stalled billing process-wide.** Every projected row calls
-//!      `model_rate_cache.lookup_model_rate`, which hashes the whole
-//!      `(provider, model_id)` pair while holding a process-global mutex that
-//!      billing shares. 100 rows × 200 KB is ~20 MB of hashing per request,
-//!      under a lock every tenant's charge computation waits on. This is the
-//!      one that makes the bound urgent rather than tidy: the blast radius is
-//!      other tenants, not just the one holding the oversized rows.
+//!   2. **It stalled billing process-wide.** Every projected row consults the
+//!      process-global rate cache (`model_rate_cache.rateAtRevision`), which
+//!      hashes the whole `(provider, model_id)` pair under the cache's
+//!      process-global lock that billing shares. 100 rows × 200 KB is ~20 MB
+//!      of hashing per request, under a lock every tenant's charge computation
+//!      waits on. This is the one that makes the bound urgent rather than
+//!      tidy: the blast radius is other tenants, not just the one holding the
+//!      oversized rows.
 //!   3. **The write reported the wrong thing.** Past the index limit Postgres
 //!      raised an index-size error, which the handler surfaced as
 //!      `503 Database unavailable` — a client input fault reported as a server
