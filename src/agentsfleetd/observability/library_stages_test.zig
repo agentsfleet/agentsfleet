@@ -299,3 +299,95 @@ test "test_library_evidence_is_secret_and_metadata_free — the scrape emits clo
     // like if the families stop rendering entirely.
     try testing.expect(checked > 0);
 }
+
+// ── concurrency: no lost increments, no hidden serialization ────────────────
+
+const CONCURRENT_WRITERS: usize = 128;
+const OBSERVATIONS_PER_WRITER: usize = 200;
+
+const Writer = struct {
+    start: *std.atomic.Value(bool),
+
+    fn run(self: *Writer) void {
+        // Barrier: every thread spins until released together, so the writes
+        // genuinely contend instead of being staggered by spawn latency. A
+        // staggered test can pass on a recorder that loses increments under
+        // real contention.
+        while (!self.start.load(.acquire)) std.atomic.spinLoopHint();
+
+        var i: usize = 0;
+        while (i < OBSERVATIONS_PER_WRITER) : (i += 1) {
+            stages.observeStage(.{
+                .surface = .tenant_models,
+                .stage = .sql,
+                .outcome = .ok,
+                .duration_ns = 1,
+                .bytes = 1,
+                .count = 1,
+            });
+            stages.observeReadOutcome(.tenant_models, .ok);
+        }
+    }
+};
+
+// Every increment survives 128 threads writing the same cells at once.
+//
+// The families are lock-free `fetchAdd`, which is exactly the shape where a
+// mistaken read-modify-write (load, add, store) passes every single-threaded
+// test and silently drops counts in production under load. An exact total is
+// the only assertion that catches it — "greater than zero" would not.
+test "should not lose a single increment when 128 threads write the same cells" {
+    stages.resetForTest();
+    defer stages.resetForTest();
+
+    var start = std.atomic.Value(bool).init(false);
+    var writers: [CONCURRENT_WRITERS]Writer = undefined;
+    for (&writers) |*w| w.* = .{ .start = &start };
+
+    var threads: [CONCURRENT_WRITERS]std.Thread = undefined;
+    for (&threads, &writers) |*t, *w| t.* = try std.Thread.spawn(.{}, Writer.run, .{w});
+    start.store(true, .release);
+    for (&threads) |*t| t.join();
+
+    const expected: u64 = CONCURRENT_WRITERS * OBSERVATIONS_PER_WRITER;
+    const snap = stages.snapshot();
+    const s = @intFromEnum(stages.Surface.tenant_models);
+
+    try testing.expectEqual(expected, snap.stages[s][@intFromEnum(stages.Stage.sql)].count);
+    try testing.expectEqual(expected, snap.stages[s][@intFromEnum(stages.Stage.sql)].duration_ns);
+    try testing.expectEqual(expected, snap.read_outcomes[s][@intFromEnum(stages.Outcome.ok)]);
+    try testing.expectEqual(expected, snap.payload_bytes[s]);
+    try testing.expectEqual(expected, snap.results[s]);
+}
+
+// Contention must not bleed across cells. A recorder that indexed with a shared
+// mutable cursor rather than by enum value would pass the totals above while
+// writing some increments into a neighbouring stage.
+test "should confine concurrent writes to the cells they name" {
+    stages.resetForTest();
+    defer stages.resetForTest();
+
+    var start = std.atomic.Value(bool).init(false);
+    var writers: [CONCURRENT_WRITERS]Writer = undefined;
+    for (&writers) |*w| w.* = .{ .start = &start };
+
+    var threads: [CONCURRENT_WRITERS]std.Thread = undefined;
+    for (&threads, &writers) |*t, *w| t.* = try std.Thread.spawn(.{}, Writer.run, .{w});
+    start.store(true, .release);
+    for (&threads) |*t| t.join();
+
+    const snap = stages.snapshot();
+    const s = @intFromEnum(stages.Surface.tenant_models);
+    // Every stage other than the one written stays exactly zero.
+    inline for (@typeInfo(stages.Stage).@"enum".fields) |field| {
+        if (field.value != @intFromEnum(stages.Stage.sql)) {
+            try testing.expectEqual(@as(u64, 0), snap.stages[s][field.value].count);
+        }
+    }
+    // And no other surface moved at all.
+    for ([_]stages.Surface{ .global_models, .fleet_summary }) |other| {
+        const o = @intFromEnum(other);
+        for (snap.stages[o]) |cell| try testing.expectEqual(@as(u64, 0), cell.count);
+        for (snap.read_outcomes[o]) |v| try testing.expectEqual(@as(u64, 0), v);
+    }
+}
