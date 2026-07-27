@@ -11,6 +11,11 @@ const testing = std.testing;
 const scope_mod = @import("library_read_scope.zig");
 const stages = @import("library_stages.zig");
 
+/// How far the marker is pushed into the future to simulate a backwards clock.
+/// An hour is far past any plausible stage, so a test that accidentally measured
+/// real elapsed time instead of the clamp could not produce zero by luck.
+const CLOCK_JUMP_NS: i96 = std.time.ns_per_s * 3600;
+
 /// Every test needs a real `std.Io` because the scope reads the boot clock.
 /// Threaded is what the HTTP harness uses, so the clock behaves here as it does
 /// in the integration tier.
@@ -163,4 +168,37 @@ fn stageDurationsAreAttributed(io: std.Io) !void {
 
 test "recorded stage durations are real elapsed time" {
     try withIo(stageDurationsAreAttributed);
+}
+
+fn clockGoingBackwardsIsClamped(io: std.Io) !void {
+    stages.resetForTest();
+    defer stages.resetForTest();
+
+    {
+        var scope = scope_mod.begin(io, .tenant_models);
+        defer scope.end();
+
+        // A marker in the FUTURE, which is what a clock that jumped backwards
+        // between `begin` and `endStage` looks like from inside the scope.
+        //
+        // The subtraction is signed, so without the clamp this wraps to an
+        // enormous unsigned duration and poisons the stage's cumulative sum for
+        // the life of the PROCESS — every later dashboard read of that stage is
+        // wrong, and nothing points back at the clock.
+        scope.stage_started_ns += CLOCK_JUMP_NS;
+        scope.endStage(.sql);
+        scope.succeed();
+    }
+
+    const snap = stages.snapshot();
+    const s = @intFromEnum(stages.Surface.tenant_models);
+    const cell = snap.stages[s][@intFromEnum(stages.Stage.sql)];
+    // Recorded as zero, not as an hour and not as 2^64 nanoseconds.
+    try testing.expectEqual(@as(u64, 0), cell.duration_ns);
+    // The observation still counts — the stage ran, it just cannot be timed.
+    try testing.expectEqual(@as(u64, 1), cell.count);
+}
+
+test "should clamp a backwards clock to zero rather than wrap to an enormous duration" {
+    try withIo(clockGoingBackwardsIsClamped);
 }
