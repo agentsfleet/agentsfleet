@@ -11,6 +11,7 @@ const S_INTEGRATION_ROOT = "src/agentsfleetd/integration_tests.zig";
 const S_INTEGRATION_FILE_FILTER = "_integration_test";
 const S_INTEGRATION_NAME_FILTER = "integration:";
 const S_ROOT_DIR = "src/agentsfleetd";
+const S_SHARD_RUNNER = "src/build/test_runner_shard.zig";
 
 pub fn addTestSteps(
     b: *std.Build,
@@ -20,7 +21,18 @@ pub fn addTestSteps(
     imports: []const std.Build.Module.Import,
     list_step: *std.Build.Step,
 ) void {
+    // The unit binary carries no datastore, so it is the one that can be run by
+    // several processes at once — and it is the one that pays: the same artifact
+    // is executed three times per change (plain, under kcov, under Valgrind).
+    // The shard runner reproduces the default runner's leak, failure and
+    // logged-error accounting exactly; with no shard environment set it runs
+    // every test, so `zig build test` is unchanged in what it proves.
+    //
+    // Deliberately NOT applied to the integration binary below: sharding that
+    // one needs per-shard datastores, which Redis cannot provide through
+    // numbered databases (FLUSHALL and Pub/Sub are both global).
     const unit_tests = addTest(b, S_UNIT_NAME, S_UNIT_ROOT, target, optimize, filters, imports);
+    unit_tests.test_runner = .{ .path = b.path(S_SHARD_RUNNER), .mode = .simple };
     fixtures.addDaemon(b, unit_tests.root_module);
     b.step("test", "Run agentsfleetd unit tests").dependOn(&b.addRunArtifact(unit_tests).step);
     installTest(b, "test-bin", "Install the agentsfleetd unit test binary", unit_tests);
