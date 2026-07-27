@@ -31,6 +31,13 @@ Status transitions ride PATCH on the fleet resource — body {status: "active"|"
 - get_tenant_billing:         GET /v1/tenants/me/billing
 - get_tenant_billing_charges: GET /v1/tenants/me/billing/charges
 - get_tenant_metering_periods: GET /v1/tenants/me/billing/charges/{event_id}/telemetry
+- get_model_library:      GET /v1/models    # paged; ?limit=&starting_after=&q=&provider= — ETag/If-None-Match
+- list_tenant_model_entries: GET /v1/tenants/me/models   # paged; the tenant's own model registry
+- list_workspace_fleet_library:     GET /v1/workspaces/{workspace_id}/fleet-libraries   # paged gallery: platform catalog ∪ this workspace's entries
+- get_workspace_fleet_library_entry: GET /v1/workspaces/{workspace_id}/fleet-libraries/{tier}/{id}   # tier: platform|tenant; adds the support-file manifest
+
+Every list above is a bounded keyset page: read `next_cursor` and follow it.
+A client that reads only the first page silently loses everything past it.
 
 ## Authentication
 Bearer token: Authorization: Bearer <api_key>

@@ -78,6 +78,34 @@
       "actionClass": "safe"
     },
     {
+      "operationId": "get_model_library",
+      "method": "GET",
+      "path": "/v1/models",
+      "description": "One bounded keyset page of the model catalogue, newest-updated date in `version`. Supports `limit`, `starting_after`, a `q` substring over model id and provider, and an exact `provider` filter. Carries an ETag; a matching If-None-Match answers 304. Follow `next_cursor` — the first page is not the whole catalogue.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "list_tenant_model_entries",
+      "method": "GET",
+      "path": "/v1/tenants/me/models",
+      "description": "One bounded keyset page of the caller tenant's own model registry. Follow `next_cursor` to read all of it.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "list_workspace_fleet_library",
+      "method": "GET",
+      "path": "/v1/workspaces/{workspace_id}/fleet-libraries",
+      "description": "One bounded keyset page of the workspace Fleet library gallery — the union of the platform catalog and this workspace's own entries, and nothing from another workspace. Support-file manifests are served by the detail operation.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "get_workspace_fleet_library_entry",
+      "method": "GET",
+      "path": "/v1/workspaces/{workspace_id}/fleet-libraries/{tier}/{id}",
+      "description": "One Fleet library entry in full, including the support-file manifest the paged gallery omits. `tier` is `platform` or `tenant`; any other value does not route. An absent entry and one belonging to another workspace both answer 404 with UZ-LIBRARY-007, so the route cannot be used to enumerate other workspaces.",
+      "actionClass": "safe"
+    },
+    {
       "operationId": "ingest_fleet_webhook",
       "method": "POST",
       "path": "/v1/webhooks/{fleet_id}",
@@ -95,7 +123,7 @@
     "description": "Users may supply their own Large Language Model (LLM) API keys. agentsfleet meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
   },
   "policyClasses": {
-    "safe": ["list_fleet_events", "stream_fleet_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods"],
+    "safe": ["list_fleet_events", "stream_fleet_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods", "get_model_library", "list_tenant_model_entries", "list_workspace_fleet_library", "get_workspace_fleet_library_entry"],
     "sensitive": ["create_fleet", "patch_fleet", "post_fleet_message", "ingest_fleet_webhook"],
     "critical": ["delete_fleet"]
   }
