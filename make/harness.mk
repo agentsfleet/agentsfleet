@@ -35,8 +35,12 @@
 #   function — pre-commit `HEAD` is the prior commit, so a `BASE...HEAD`
 #   check was blind to a fix the agent staged but had not yet committed.
 #
+# Gate scripts resolve from the dotfiles checkout (ORLY_ROOT) — this repo
+# carries no copies. Repo-native gates keep living under audits/.
+ORLY_ROOT ?= $(HOME)/Projects/dotfiles
+
 # Adding a gate:
-#   1. Drop audits/<gate>.sh on disk (or symlink from dotfiles).
+#   1. Land the gate script in dotfiles audits/ (or a repo-native audits/ file).
 #   2. Add a row in HARNESS_GATES below with the gate's short label + the
 #      command that runs the audit.
 #   3. Update docs/gates/<gate>.md with "Fires in: make harness-verify".
@@ -71,15 +75,14 @@ endef
 
 harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIFY layer; staged scope — pre-commit lens)
 	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · staged scope (pre-commit lens)$(C_RESET)\n"
-	$(call HARNESS_RUN,UFS,audits/ufs.sh --staged)
-	$(call HARNESS_RUN,GITLEAKS CONFIG,audits/gitleaks-config.sh)
-	$(call HARNESS_RUN,DESIGN TOKEN,audits/design-tokens.sh --staged)
-	$(call HARNESS_RUN,SPEC TEMPLATE,audits/spec-template.sh --staged)
-	$(call HARNESS_RUN,ERROR REGISTRY,audits/error-codes.sh --staged)
-	$(call HARNESS_RUN,LOGGING,audits/logging.sh --staged)
-	$(call HARNESS_RUN,LIFECYCLE,audits/deinit-pairs.sh --staged)
-	$(call HARNESS_RUN,CROSS-TIER RATES,audits/cross-tier-rates.sh)
-	$(call HARNESS_RUN,MS-ID + UI,audits/msid-ui.sh --staged)
+	$(call HARNESS_RUN,UFS,$(ORLY_ROOT)/audits/ufs.sh --staged)
+	$(call HARNESS_RUN,DESIGN TOKEN,$(ORLY_ROOT)/audits/design-tokens.sh --staged)
+	$(call HARNESS_RUN,SPEC TEMPLATE,$(ORLY_ROOT)/audits/spec-template.sh --staged)
+	$(call HARNESS_RUN,ERROR REGISTRY,$(ORLY_ROOT)/audits/error-codes.sh --staged)
+	$(call HARNESS_RUN,LOGGING,$(ORLY_ROOT)/audits/logging.sh --staged)
+	$(call HARNESS_RUN,LIFECYCLE,$(ORLY_ROOT)/audits/deinit-pairs.sh --staged)
+	$(call HARNESS_RUN,CROSS-TIER RATES,$(ORLY_ROOT)/audits/cross-tier-rates.sh)
+	$(call HARNESS_RUN,MS-ID + UI,$(ORLY_ROOT)/audits/msid-ui.sh --staged)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── ready for VERIFY$(C_RESET)\n\n"
 
 harness-verify-all:  ## Whole-worktree variant for periodic deep audits
@@ -88,13 +91,12 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	# differs from harness-verify only in the COMBINED check's scope:
 	# `--diff` (vs origin/main) is the broadest meaningful scope for that
 	# diff-shaped script.
-	$(call HARNESS_RUN,UFS,audits/ufs.sh)
-	$(call HARNESS_RUN,GITLEAKS CONFIG,audits/gitleaks-config.sh)
-	$(call HARNESS_RUN,DESIGN TOKEN,audits/design-tokens.sh)
-	$(call HARNESS_RUN,SPEC TEMPLATE,audits/spec-template.sh)
-	$(call HARNESS_RUN,ERROR REGISTRY,audits/error-codes.sh)
-	$(call HARNESS_RUN,LOGGING,audits/logging.sh)
-	$(call HARNESS_RUN,LIFECYCLE,audits/deinit-pairs.sh)
-	$(call HARNESS_RUN,CROSS-TIER RATES,audits/cross-tier-rates.sh)
-	$(call HARNESS_RUN,MS-ID + UI,audits/msid-ui.sh --diff)
+	$(call HARNESS_RUN,UFS,$(ORLY_ROOT)/audits/ufs.sh)
+	$(call HARNESS_RUN,DESIGN TOKEN,$(ORLY_ROOT)/audits/design-tokens.sh)
+	$(call HARNESS_RUN,SPEC TEMPLATE,$(ORLY_ROOT)/audits/spec-template.sh)
+	$(call HARNESS_RUN,ERROR REGISTRY,$(ORLY_ROOT)/audits/error-codes.sh)
+	$(call HARNESS_RUN,LOGGING,$(ORLY_ROOT)/audits/logging.sh)
+	$(call HARNESS_RUN,LIFECYCLE,$(ORLY_ROOT)/audits/deinit-pairs.sh)
+	$(call HARNESS_RUN,CROSS-TIER RATES,$(ORLY_ROOT)/audits/cross-tier-rates.sh)
+	$(call HARNESS_RUN,MS-ID + UI,$(ORLY_ROOT)/audits/msid-ui.sh --diff)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── whole-worktree sweep clean$(C_RESET)\n\n"
