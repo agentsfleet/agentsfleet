@@ -6,7 +6,7 @@
 #   Tier-2  hey HTTP loadgen          (requires `hey` in PATH — mise installs it)
 # =============================================================================
 
-.PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _ensure-test-bin _memleak-lane _memleak-boot-drain
+.PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _memleak-lane _memleak-boot-drain
 
 # One definition shared by every valgrind invocation below, so a lane can never
 # drift onto different flags than the ones that were reviewed.
@@ -187,9 +187,3 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	 awk -v er=$$ERR_RATE -v max=$$MAX_ERR_RATE 'BEGIN{if (er+0 > max+0) {print "✗ error rate " er " exceeds gate " max; exit 1}}'; \
 	 awk -v p=$$P95_MS -v max=$$MAX_P95_MS 'BEGIN{if (p+0 > max+0) {print "✗ p95 " p "ms exceeds gate " max "ms"; exit 1}}'; \
 	 echo "✓ [agentsfleetd] Tier-2 hey loadgen passed"
-
-_ensure-test-bin:
-	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test-bin $(if $(TARGET),-Dtarget=$(TARGET),) $(if $(OPTIMIZE),-Doptimize=$(OPTIMIZE),) $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) $(EXTRA_BUILD_FLAGS)

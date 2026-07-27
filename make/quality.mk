@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-governance lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_zig_test_depth _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check
+.PHONY: lint-all lint-zig lint-governance lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_zig_test_depth _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -26,10 +26,6 @@ ACTIONLINT ?= actionlint
 # thing — and, worse, could not fail: `find` exits 0 whatever `-exec` returns, so
 # a misformatted file passed the gate silently. Both bugs die with the loop; zig
 # takes a directory and reports its own exit code.
-_fmt:
-	@echo "→ [zig] Formatting Zig code..."
-	@zig fmt src
-
 _fmt_check:
 	@echo "→ [zig] Checking Zig formatting..."
 	@zig fmt --check src

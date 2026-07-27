@@ -68,6 +68,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/test-integration.mk` | EDIT | Keep-state opt-out for iterative local loops. |
 | `make/bench.mk` | EDIT | Overlap the boot-drain lane's infra and migrate with the component lanes. |
 | `make/dev.mk` | EDIT | `_clean` removes the cache directory the repository actually uses. |
+| `.github/workflows/lint.yml` | EDIT | Cache Zig for the lint job; enforce `check-version`. |
+| `scripts/check_readme_hero_sync.sh` | DELETE | Checker with no caller — enforcement in appearance only. |
+| `scripts/regen-integration-jwts.mjs` | DELETE | One-off regeneration tool, called by nothing. |
 | `.github/workflows/memleak.yml` | EDIT | Add the `main` push trigger that warms the cache. |
 | `.github/workflows/test-integration.yml` | EDIT | Pre-warm the integration artifact, not the unit artifact. |
 | `.github/workflows/test.yml` | EDIT | Narrow the coverage job's container privilege. |
@@ -228,7 +231,8 @@ Generated roots:
 
 | File to delete | Verify |
 |----------------|--------|
-| none — the hand-maintained roots are regenerated in place, not deleted | `test -f src/agentsfleetd/integration_tests.zig` |
+| `scripts/check_readme_hero_sync.sh` | `test ! -f scripts/check_readme_hero_sync.sh` |
+| `scripts/regen-integration-jwts.mjs` | `test ! -f scripts/regen-integration-jwts.mjs` |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -236,6 +240,8 @@ Generated roots:
 |-----------------------|------|----------|
 | the removed serial kcov component loop | `grep -rn "for component in" make/test-unit.mk` | 0 matches |
 | the removed serial binary loop in the memleak lane | `grep -rn 'for binary in "$@"' scripts/run-zig-memleak-lane.sh` | 0 matches |
+| `_ensure-test-bin` (orphaned when the memleak lane moved its build into the lane script) | `git grep -n -w -- _ensure-test-bin -- Makefile 'make/*.mk' .github .githooks` | 0 matches |
+| `_fmt` (the writing half of the formatter; `_fmt_check` is the gate) | `git grep -n -w -- _fmt -- Makefile 'make/*.mk' .github .githooks` | 0 matches |
 
 ## Out of Scope
 
@@ -272,6 +278,7 @@ Generated roots:
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - Baseline measurements taken before authoring, primary checkout, macOS, with a sibling worktree competing for cores: `make test-integration` 11:18 wall clock; the integration binary alone 614 registered tests, 606 passed, 8 skipped, 375.6s; per-test median 0.522s, p90 1.257s, p99 7.473s, max 21.834s, slowest decile carrying 43.3% of total. Daemon unit binary 2958 registered tests. CI: `memleak` 14 min on a branch's first push against 6 min on later pushes; `test-integration` 6–8 min; Actions cache 54 entries totalling 9.96 GB against a 10 GB limit, with no `memleak` entry under `refs/heads/main`.
   - Gate-flag triage pending: the shard runner replaces the upstream runner's leak detection. Indy approved the structural depth; the FILE SHAPE DECISION and the leak-equivalence evidence are due at PLAN and VERIFY respectively.
+  - Orphan audit at Indy's request, across all 80 make targets and 30 scripts (excluding self-definitions, `.PHONY` lines, `make help` echo text, and the checkers that scan every target name generically): four dead entries, all pre-existing. `_ensure-test-bin` was orphaned by M143_004's own refactor — extracting the memleak lane to a script moved the build inline and left the helper uncalled. `_fmt` survives only in closed-spec prose and as a string literal in a checker's test fixture, which is why a naive grep reads it as live. `scripts/check_readme_hero_sync.sh` is a checker with no caller — enforcement in appearance only. `scripts/regen-integration-jwts.mjs` is a one-off tool from a closed milestone. `scripts/scopes.admin` was also flagged; Indy chose to keep it. One false positive: `reachability_test_support.py` is imported without its extension by two test files.
   - Indy, on the proposed registration generator and on Makefile surface: dropped both. The generator's motivating premise did not survive measurement — 75 production modules already own their test partners, so the shared-import-list conflict it was solving is rare — and it would have written into production source to save one line the reachability gate already spells out. Its first implementation modelled reachability with a static import walk and rewrote 38 files before the no-op check caught it, which is the shape of risk it carried. A `sync-test-roots` make target was added and then removed: its only caller was a developer typing it, which the repository's own rule forbids. Net make-target count for this workstream is zero.
   - Adversarial review of the proposed Redis isolation, at Indy's request: the logical-database selector this spec originally carried does not isolate anything that matters. `FLUSHALL` is not database-scoped, so a shard's reset would destroy its siblings mid-run; and Redis Pub/Sub is outside the keyspace entirely, so `SELECT n` leaves channels shared — with `redis_client.publish`, `redis_subscriber`, the subscription hub and four integration suites asserting on exact event delivery, that is silent cross-shard bleed reading as SSE flake. Real isolation is one Redis instance per shard. Measuring where the time actually sits settled it: the datastore-free unit binaries account for 1091s of Continuous Integration step time against the integration suite's 479s, because that binary is executed three times per change. Section 4 removed; sharding applies to the datastore-free lanes, which need no isolation at all.
   - Architecture consult during EXECUTE: the roots are the top of a per-module ownership tree, not a flat catalogue — 75 production modules force-import their own `_test.zig` partner, and 229 of 536 candidate files are reachable only transitively through one. Generating flat root lists (the shape this section was originally specified with) would have discarded that structure and risked pulling files into module shapes their imports do not resolve against. Section amended to register at the owning level instead.
