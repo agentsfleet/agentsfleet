@@ -1,65 +1,126 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { LibraryModel } from "@/lib/api/model_library";
 import { getModelLibraryAction } from "../actions";
 
-// The model library rides a single client-side fetch on mount, through the
-// token-minting Server Action (the GET /v1/models read is bearer-authed; the
-// token never reaches the browser). Every picker reads it from context instead
-// of props, so the library is fetched ONCE per session regardless of how many
-// pickers mount. A 401 means the session, not the catalogue — the user routes
-// to sign-in. Any other failure (network, 5xx) degrades pickers to free-text
-// model entry (error=true).
+// The global model library, loaded on INTENT rather than on mount.
+//
+// It used to ride a single client-side fetch in a mount effect, so every visit
+// to the Models page paid for a catalogue most visits never consulted: the
+// registry rows carry their own server-provided rates, and the catalogue is
+// only a fallback for a row the server did not price. The pickers that truly
+// need it live inside the Add and Edit dialogs, so it now loads when a user
+// shows intent to open one.
+//
+// The read still goes through the token-minting Server Action — GET /v1/models
+// is bearer-authed and the token never reaches the browser. A 401 means the
+// session, not the catalogue, so the user routes to sign-in. Any other failure
+// degrades pickers to free-text model entry.
+
+export const CATALOGUE_STATUS = {
+  /** Never requested. Distinct from "loaded and empty". */
+  idle: "idle",
+  loading: "loading",
+  ready: "ready",
+  error: "error",
+} as const;
+
+export type CatalogueStatus = (typeof CATALOGUE_STATUS)[keyof typeof CATALOGUE_STATUS];
 
 export type ModelCatalogueState = {
   models: LibraryModel[];
-  loading: boolean;
-  error: boolean;
+  status: CatalogueStatus;
+  /** Request the catalogue. Idempotent, single-flight, safe to call on hover. */
+  preload: () => void;
 };
-
-const INITIAL_STATE: ModelCatalogueState = { models: [], loading: true, error: false };
 
 // Consumers rendered outside a provider degrade to free-text entry rather than
 // throwing — the catalogue is an enhancement, never a hard dependency.
-const FALLBACK_STATE: ModelCatalogueState = { models: [], loading: false, error: true };
+const FALLBACK_STATE: ModelCatalogueState = {
+  models: [],
+  status: CATALOGUE_STATUS.error,
+  preload: () => {},
+};
 
 const ModelCatalogueContext = createContext<ModelCatalogueState | null>(null);
 
+/**
+ * Whether a hover may speculate. A coarse pointer has no true hover — a touch
+ * that lands on a control is already a press, so "hover" prefetch there is just
+ * an unconditional fetch wearing a different name. Save-Data is the user asking
+ * not to spend bytes on a maybe.
+ *
+ * Focus and open are NOT gated by this: both are deliberate, so the request is
+ * wanted rather than speculative.
+ */
+export function maySpeculateOnHover(): boolean {
+  if (typeof window === "undefined") return false;
+  // Typed non-nullish, but absent in some test environments — a `typeof` probe
+  // rather than an optional chain, which the type system reads as dead.
+  if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
+    return false;
+  }
+  const connection = (navigator as { connection?: { saveData?: boolean } }).connection;
+  return connection?.saveData !== true;
+}
+
 export function ModelCatalogueProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<ModelCatalogueState>(INITIAL_STATE);
+  const [models, setModels] = useState<LibraryModel[]>([]);
+  const [status, setStatus] = useState<CatalogueStatus>(CATALOGUE_STATUS.idle);
   const router = useRouter();
 
-  useEffect(() => {
-    let active = true;
+  // Monotonic request id. Only the newest request may write state, so a slow
+  // earlier response cannot overwrite a newer one — the "latest wins" rule.
+  // Held in a ref because a hover storm must not re-render on every attempt.
+  const generation = useRef(0);
+  const inFlight = useRef(false);
+
+  const preload = useCallback(() => {
+    // Single-flight: hover, focus, and open all call this, often within the
+    // same gesture. Without the guard one deliberate click could issue three
+    // identical catalogue reads.
+    if (inFlight.current) return;
+    if (status === CATALOGUE_STATUS.ready) return;
+
+    inFlight.current = true;
+    const mine = ++generation.current;
+    setStatus(CATALOGUE_STATUS.loading);
+
     getModelLibraryAction()
       .then((res) => {
-        if (!active) return;
+        if (mine !== generation.current) return;
         if (res.ok) {
-          setState({ models: res.data.models, loading: false, error: false });
+          setModels(res.data.models);
+          setStatus(CATALOGUE_STATUS.ready);
           return;
         }
-        // An expired session must not become a silent free-text degrade —
-        // the user would hand-type model ids into a signed-out page.
+        // An expired session must not become a silent free-text degrade — the
+        // user would hand-type model ids into a signed-out page.
         if (res.status === 401) {
           router.push("/sign-in");
           return;
         }
-        setState(FALLBACK_STATE);
+        setStatus(CATALOGUE_STATUS.error);
       })
       .catch(() => {
-        if (active) setState(FALLBACK_STATE);
+        if (mine !== generation.current) return;
+        setStatus(CATALOGUE_STATUS.error);
+      })
+      .finally(() => {
+        inFlight.current = false;
       });
-    return () => {
-      active = false;
-    };
-  }, [router]);
+  }, [router, status]);
 
-  return <ModelCatalogueContext.Provider value={state}>{children}</ModelCatalogueContext.Provider>;
+  return (
+    <ModelCatalogueContext.Provider value={{ models, status, preload }}>
+      {children}
+    </ModelCatalogueContext.Provider>
+  );
 }
 
-/** Read the once-per-session catalogue. Returns a safe degraded state if no provider is mounted. */
+/** Read the catalogue. Returns a safe degraded state if no provider is mounted. */
 export function useModelCatalogue(): ModelCatalogueState {
   return useContext(ModelCatalogueContext) ?? FALLBACK_STATE;
 }

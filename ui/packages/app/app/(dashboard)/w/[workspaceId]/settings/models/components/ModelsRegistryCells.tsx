@@ -195,6 +195,8 @@ export function ActionsCell({
   onSwitchEntry,
   onView,
   onEdit,
+  onEditFocusIntent,
+  onEditHoverIntent,
   onRemove,
 }: {
   row: RegistryRow;
@@ -205,6 +207,10 @@ export function ActionsCell({
   onSwitchEntry: (e: TenantModelEntry) => void;
   onView: (e: TenantModelEntry) => void;
   onEdit: (e: TenantModelEntry) => void;
+  /** Fired when the Edit control takes focus — a deliberate, ungated signal. */
+  onEditFocusIntent: () => void;
+  /** Fired on pointer-enter of the Edit control; the caller decides whether to act. */
+  onEditHoverIntent: () => void;
   onRemove: (e: TenantModelEntry) => void;
 }) {
   if (row.kind === "default") {
@@ -252,6 +258,13 @@ export function ActionsCell({
         variant="ghost"
         disabled={pending}
         onClick={() => onEdit(entry)}
+        // The Edit dialog's model picker needs the global catalogue. Warming
+        // it on intent means the dialog opens populated instead of opening
+        // empty and filling in underneath the user's cursor. Focus always
+        // qualifies; hover only where it is a real signal — the caller owns
+        // that policy, this just reports the gesture.
+        onFocus={onEditFocusIntent}
+        onPointerEnter={onEditHoverIntent}
         label={`Edit ${entry.model_id}`}
       >
         <PencilIcon size={14} />

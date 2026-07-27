@@ -33,12 +33,16 @@ const { catalogueState } = vi.hoisted(() => ({
       cached_input_nanos_per_mtok: number;
       output_nanos_per_mtok: number;
     }>,
-    loading: false,
-    error: false,
+    status: "ready" as const,
+    preload: vi.fn(),
   },
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
   useModelCatalogue: () => catalogueState,
+  // These suites exercise form shape, not prefetch policy — that has its own
+  // suite in model-catalogue-provider.test.tsx. Hover speculation is off so a
+  // stray pointer event cannot perturb the call counts asserted below.
+  maySpeculateOnHover: () => false,
 }));
 
 const ANTHROPIC_SECRET: Secret = {
