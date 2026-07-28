@@ -528,6 +528,21 @@ describe("ModelsRegistryTable", () => {
     expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
   });
 
+  it("a thrown non-Error still reports the failure, with no fabricated detail", async () => {
+    // `detail` is the thrown message, and only an Error carries one. A rejected
+    // string (or anything else) must still surface the failure rather than
+    // render `undefined` at the operator as if it were a reason.
+    listModelEntriesActionMock.mockRejectedValue("bare string, not an Error");
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
+    expect(screen.queryByText(/bare string, not an Error/)).toBeNull();
+  });
+
   it("readErrorFrom maps a preserved transport status onto the typed vocabulary", async () => {
     const { readErrorFrom } = await import("@/lib/api/library-types");
     expect(readErrorFrom({ error: "no session", status: 401 }).kind).toBe("unauthenticated");
@@ -537,6 +552,18 @@ describe("ModelsRegistryTable", () => {
     // never a guessed specific instruction.
     expect(readErrorFrom({ error: "boom" }).kind).toBe("unknown");
     expect(readErrorFrom({ error: "boom" }).detail).toBe("boom");
+  });
+
+  it("libraryErrorFromCause reads a status off the cause and a detail only off an Error", async () => {
+    const { libraryErrorFromCause } = await import("@/lib/api/library-types");
+    // An ApiError-shaped throw keeps its specific kind.
+    expect(libraryErrorFromCause({ status: 503 }).kind).toBe("unavailable");
+    // A thrown Error contributes its message as the detail...
+    expect(libraryErrorFromCause(new Error("threw")).detail).toBe("threw");
+    expect(libraryErrorFromCause(new Error("threw")).kind).toBe("unknown");
+    // ...and a thrown non-Error has no message to contribute, so it must not
+    // invent one rather than render `undefined` at the operator as a reason.
+    expect(libraryErrorFromCause("bare string").detail).toBeUndefined();
   });
 
   it("readErrorCopy gives each failure kind its own next step", async () => {
