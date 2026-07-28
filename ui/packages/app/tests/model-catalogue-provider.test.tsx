@@ -191,6 +191,16 @@ describe("maySpeculateOnHover — prefetch policy", () => {
   });
 });
 
+describe("maySpeculateOnHover — environments without matchMedia", () => {
+  it("still speculates when the environment has no matchMedia at all", () => {
+    // The pointer probe is a `typeof` check rather than an optional chain
+    // because the property is typed non-nullish; an environment that omits it
+    // must fall through to the Save-Data question, not throw or refuse.
+    vi.stubGlobal("matchMedia", undefined);
+    expect(maySpeculateOnHover()).toBe(true);
+  });
+});
+
 describe("useModelCatalogue outside a provider", () => {
   it("returns the safe degraded fallback state", () => {
     render(React.createElement(Probe));

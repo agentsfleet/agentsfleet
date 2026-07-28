@@ -37,7 +37,18 @@ import re
 import sys
 
 DOCS_GLOB = "docs/*.md"
-REST_GUIDE_PATH = "docs/REST_API_DESIGN_GUIDELINES.md"
+
+# The REST guide is one of the shared rule documents: it lives in the dotfiles
+# checkout and is read by every consumer repository, which keeps no copy. Resolve
+# it there, honouring ORLY_ROOT so a relocated checkout still finds it, and fall
+# back to the in-repo path for the case where a repository does vendor its own.
+ORLY_ROOT = os.environ.get("ORLY_ROOT") or os.path.expanduser("~/Projects/dotfiles")
+REST_GUIDE_RELATIVE = "docs/REST_API_DESIGN_GUIDELINES.md"
+REST_GUIDE_PATH = (
+    REST_GUIDE_RELATIVE
+    if os.path.exists(REST_GUIDE_RELATIVE)
+    else os.path.join(ORLY_ROOT, REST_GUIDE_RELATIVE)
+)
 MIDDLEWARE_MOD_PATH = "src/agentsfleetd/auth/middleware/mod.zig"
 MAKE_DIR = "make"
 MAKEFILE_PATH = "Makefile"
