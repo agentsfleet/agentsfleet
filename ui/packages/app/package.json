@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "bun run typecheck && next build",
+    "size": "bun scripts/check-route-bundles.ts",
     "start": "next start",
     "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit",
     "lint": "oxlint --type-aware .",

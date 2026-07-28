@@ -51,7 +51,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |---|---|---|
 | `ui/packages/app/package.json` | EDIT | Expose the production route report and authenticated bundle gate. |
-| `ui/packages/app/scripts/check-route-bundles.ts`; `ui/packages/app/scripts/check-route-bundles.test.ts`; `ui/packages/app/bundle-budgets.json` | CREATE | Named limits, deterministic report generation, and fail-closed fixtures. |
+| `ui/packages/app/scripts/route-bundle-report.ts`; `check-route-bundles.ts`; `check-route-bundles.test.ts`; `ui/packages/app/bundle-budgets.json` | CREATE | Pure report calculation, build-input adapter, named limits, and fail-closed fixtures. |
 | `.github/workflows/test.yml` | EDIT | Run the authenticated bundle gate. **Pre-approved by Indy (Jul 25, 2026)** — the implementing agent does not stop to ask again for this one file and this one purpose. Any other workflow edit still needs its own approval. |
 | `ui/packages/app/app/(dashboard)/layout.tsx` | EDIT | Replace broad client-shell ownership with a server frame and narrow control islands. |
 | `ui/packages/app/components/layout/Shell.tsx` | DELETE | Broad client shell; its structure moves to the server frame and its controls to islands. |
@@ -97,7 +97,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The checker builds a file union from `.next/build-manifest.json` and route client-reference manifests, compresses each emitted file independently, and reports framework, authenticated shared, route incremental, and route total bytes. Missing entries, unreadable chunks, duplicate attribution, a stale build Identifier (ID), or manifest drift fail closed. Generated chunk names are evidence, never pinned source. Continuous Integration (CI) uses the repository's pinned Bun version and frozen lockfile, runs the production build once, and checks that exact `.next` output; the size command never starts a second build or restores a report from cache.
 
-- **Dimension 1.1** — report calculation is deterministic and fail-closed → Test `test_route_bundle_report_is_deterministic_and_fails_closed`
+- **Dimension 1.1** — report calculation is deterministic and fail-closed → Test `test_route_bundle_report_is_deterministic_and_fails_closed` — **DONE**
 - **Dimension 1.2** — the production lane enforces every named authenticated budget → Test `test_authenticated_route_budgets_are_enforced`
 
 ### §2 — The dashboard frame returns to server ownership
@@ -240,6 +240,7 @@ Production references to deleted broad shell/provider paths, superseded eager di
 
 ## Discovery (consult log)
 
+- **Bundle checker file shape** — the first fixture-tested implementation proved the report calculation but combined it with build input/output in a 488-line script. The File & Function Length gate requires the pure report engine to live in `scripts/route-bundle-report.ts`, leaving `check-route-bundles.ts` as the Bun entrypoint. This is a mechanical file-shape split with no new behaviour or surface.
 - **Jul 29 quality-ceiling review** — Indy asked whether a larger refactor would make the application more optimized, concurrent, performant, fluid, fast, and easy to test. The selected answer is a targeted boundary refactor: server ownership for persistent structure, independent client state owners for unrelated interactions, and one resettable intent-loader lifecycle. A whole-application rewrite loses because the authentication keeper, live-stream registries, Server Actions, and design primitives already provide the required concurrency and recovery semantics; replacing them would increase regression surface without reducing authenticated-route ownership.
 - **Consults** — Indy restricted the target to `ui/packages/app`, required fluid inner navigation, prohibited user-experience compromise, and requires consultation before any mock server. Two separate approvals, kept distinct because one does not imply the other: Indy approved the single `.github/workflows/test.yml` edit that adds the bundle gate (Jul 25, 2026), and separately reconfirmed “keep the preapproved bundle size”, meaning the 250/100 KiB limits stand and are not to be relaxed to make the gate pass. Every other CI change remains gated, and a failing budget is fixed by removing bytes rather than by raising a limit.
 - **Batch B4 holds two workstreams** — this one and M143_004. They share a batch but no dependency: M143_004 is infrastructure and depends on nothing, this one is UI and depends on M143_002. Either may land first, and neither blocks the other. Orly's production build found about 134 KiB of framework runtime, about 283 KiB for the lightest authenticated route, and about 107–109 KiB of route-owned code on the heaviest admin routes.
