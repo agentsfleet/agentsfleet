@@ -72,6 +72,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/tenant_model_entries_projection.zig` | CREATE | `tenant_model_entries_view.zig` sat exactly AT the 350-line cap and the gate covers every tracked file, so the `secret_project` stage boundary §2 requires could not be added without splitting it (RULE FLL). Seam is rows-into-views. |
 | `src/agentsfleetd/db/pool_bounded_progress_integration_test.zig` | CREATE | §2 Dimension 2.2. `db/pool.zig` needed no seam change after all — a size-1 pool saturates deterministically from outside, so the vendored `pg.zig` fork is untouched. |
 | `src/agentsfleetd/integration_tests.zig` | EDIT | Integration-root reachability for the pool proof. |
+| `docs/architecture/*.md` (directory-wide) | EDIT | **Indy-directed in session** (post-close): brevity pass over the whole architecture set per `SOUL.md` + `DOCUMENTATION_RULES.md` — observability.md rewritten with a categorised metric census, decision-record artifact links attached, and 55 over-45-word sentences split across the directory. Not part of the observability scope; authorized as PR follow-on work. |
 
 ## Applicable Rules
 

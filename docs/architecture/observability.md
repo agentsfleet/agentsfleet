@@ -1,94 +1,110 @@
 # Observability — `agentsfleetd` is the plane, the runner is bare
 
-> One decision drives this whole file: **`agentsfleetd` owns backend-bound application
-> telemetry; the host-resident `agentsfleet-runner` is deliberately bare.** A runner
-> emits local logs and reports bounded liveness and result facts over the
-> `/v1/runners` protocol. It holds no analytics or observability-backend credential.
-> Everything below follows from that split.
+> One decision drives this file: **`agentsfleetd` owns backend-bound telemetry;
+> `agentsfleet-runner` is deliberately bare.** A runner emits local logs and
+> reports bounded liveness and result facts over `/v1/runners`. It holds no
+> analytics or observability-backend credential.
 
-This is a sibling of [`runner_fleet.md`](./runner_fleet.md) (the control-plane /
-execution-plane structure) and [`data_flow.md`](./data_flow.md) (an event traced
-through the runtime). This file answers a narrower question: *when something
-happens, where does the signal go, and who owns it.*
+Siblings: [`runner_fleet.md`](./runner_fleet.md) (plane structure),
+[`data_flow.md`](./data_flow.md) (an event traced through the runtime). This
+file answers: when something happens, where does the signal go, and who owns it.
 
----
+## The four signal paths
 
-## `agentsfleetd` — the observability plane
+All of it lives under `src/agentsfleetd/observability/`.
 
-All of `agentsfleetd`'s telemetry lives under `src/agentsfleetd/observability/`. Four
-independent signal paths, each with a different consumer:
+| Path | What | Consumer |
+|---|---|---|
+| Prometheus (pull) | `agentsfleet_*` families, rendered at `GET /metrics` via `metrics_render.zig`. Nothing pushes. | operator dashboards |
+| OTLP (push) | logs → Loki, traces → Tempo, metrics → Mimir. Direct to Grafana Cloud; **no collector hop**. Gated on the `GRAFANA_OTLP_*` env triple. | Grafana Cloud |
+| PostHog | nullable client, product events only | product analytics |
+| Postgres | per-run execution telemetry + billing counters in `src/agentsfleetd/state/` | the money system of record |
 
-- **Prometheus metrics (pull).** The `agentsfleet_*` metric families — counters,
-  histograms, and gauges for API and Server-Sent Events (SSE) backpressure and
-  in-flight depth, process Resident Set Size (RSS), aggregate plaintext-erasure
-  bytes and sensitive-write failures, the signup funnel,
-  `agentsfleet_fleet_triggered_total`, the runner fleet, durable memory, exporter
-  health, and the Redis pool — render at the pull endpoint `GET /metrics`
-  (`src/agentsfleetd/http/handlers/health.zig`, via `metrics_render.zig`).
-  Nothing pushes; Prometheus scrapes. The plaintext-erasure families have no
-  labels: tenant, workspace, fleet, route, individual secret size, and token
-  material never enter telemetry.
+**One process, one namespace.** Every metric family carries the `agentsfleet_`
+prefix. `semantic_schema_test.zig` renders the body and fails on any family
+outside it. `fleet_id`, log event names, `EventKind` tags, and the Redis
+consumer group keep their old spelling; the namespace rule covers only what
+`/metrics` renders.
 
-  **One process exposes one namespace.** Every family carries the
-  `agentsfleet_` prefix, with no exceptions and no dual emission. The exposition
-  was split between `fleet_*` and `agentsfleet_*` prefixes until the semantic
-  cutover normalized it; `semantic_schema_test.zig` renders the body and fails on
-  any family outside the namespace, so the split cannot reopen. Note that
-  `fleet_id`, log event names, `EventKind` tags, and the Redis consumer group
-  share the old spelling and are **not** metric families — the namespace rule is
-  scoped to what `/metrics` renders, never applied as a textual sweep.
+No dashboard files live in this repository. `deploy/grafana/` was deleted at
+the semantic cutover because every panel queried a family or table that did not
+exist. Scrape/fleet setup: `playbooks/operations/observability/`.
 
-- **OpenTelemetry (OTel) logs + traces — LIVE, exported direct.** `otel_logs.zig`
-  and `otel_traces.zig` are real OpenTelemetry Protocol (OTLP) / JSON exporters: a
-  ring buffer drained by a background flush thread that POSTs to Grafana Cloud
-  (logs to Loki, traces to Tempo), gated on the `GRAFANA_OTLP_*` environment. Every
-  structured log line fans out to the OTLP sink in addition to stderr. **There is no
-  OTel collector** — the app exports straight to Grafana Cloud with no intermediary
-  hop. The scrape/fleet setup is in `playbooks/operations/observability/`. No
-  dashboard artefacts live in this repository: `deploy/grafana/` was deleted with
-  the semantic cutover because every panel it held queried a metric family or a
-  table that did not exist. Dashboard authoring is owned by its own workstream.
+### The M61 naming trap
 
-- **PostHog — product analytics.** A nullable client (see
-  [`scaling.md`](./scaling.md) for where it sits in the request path). Present in
-  `agentsfleetd`, absent in the runner.
+The milestone named `OTEL_EXPORT_REMOVAL` did **not** remove the live OTel
+export. It deleted a dead trio (`otel_export`/`otel_histogram`/`otel_json`) and
+kept `otel_logs` and `otel_traces` wired. Before touching anything OTel-shaped,
+check `otel_logs.zig` / `otel_traces.zig` and the `GRAFANA_OTLP_*` gate, not
+the milestone name.
 
-- **Postgres execution telemetry.** Per-run accounting in
-  `src/agentsfleetd/state/` (execution telemetry + the billing/credit-pool counters) —
-  durable, queryable, the system of record for what a run cost.
+## Metric family census — what to watch, and what it means
 
-### The M61 naming trap (read before you "remove" OTel)
+Category legend: **latency** (how slow), **traffic** (how much), **errors**
+(what failed), **saturation** (how full), **health** (is the plumbing itself
+working). Improve latency by finding the slow stage; errors by rate per cause;
+saturation by capacity or shedding; health by fixing the exporter or pool, not
+the workload.
 
-The milestone named **`OTEL_EXPORT_REMOVAL`** did **not** remove the live OTel
-export. It deleted a *different*, genuinely-dead trio (`otel_export` /
-`otel_histogram` / `otel_json`) and **kept `otel_logs` and `otel_traces` wired**.
-The name reads like "we stopped exporting OTel" — we did not. Before touching
-anything OTel-shaped, confirm against `otel_logs.zig` / `otel_traces.zig` and the
-`GRAFANA_OTLP_*` gate, not against the milestone name.
-
----
+| Family | Labels | Category | Watch for |
+|---|---|---|---|
+| `agentsfleet_api_in_flight_requests` | none | saturation | approaching `api_max_in_flight_requests` |
+| `agentsfleet_api_backpressure_rejections_total` | none | errors | any growth: requests shed at the cap |
+| `agentsfleet_sse_in_flight_streams` | none | saturation | approaching the stream cap |
+| `agentsfleet_sse_backpressure_rejections_total` | none | errors | streams refused at the cap |
+| `agentsfleet_sse_dropped_frames_total` | none | errors | slow consumers losing frames |
+| `agentsfleet_sse_hub_reconnects_total` | none | health | pub/sub redials; spikes mean Redis instability |
+| `agentsfleet_worker_running` | none | health | 0 when the worker should be up |
+| `agentsfleet_fleet_triggered_total` | none | traffic | trigger volume |
+| `agentsfleet_lease_polls_total` | none | traffic | the denominator for the two below |
+| `agentsfleet_lease_poll_candidates_scanned_total` | none | latency | rate ÷ polls = fan-out per poll |
+| `agentsfleet_lease_poll_db_roundtrips_total` | none | latency | rate ÷ polls = DB cost per poll; idle polls must add zero |
+| `agentsfleet_fleet_ready_depth` | none | saturation | readiness backlog (not summable across replicas) |
+| `agentsfleet_fleet_ready_write_failures_total` | none | errors | Redis index writes failing |
+| `agentsfleet_library_stage_duration_seconds_total` | `surface`,`stage` | latency | ÷ observations = mean stage cost |
+| `agentsfleet_library_stage_observations_total` | `surface`,`stage` | latency | the denominator above |
+| `agentsfleet_library_read_outcome_total` | `surface`,`outcome` | errors | non-`ok` outcomes per surface |
+| `agentsfleet_library_pool_result_total` | `pool_result` | saturation | `timeout` = pool starved; `error` = datastore down |
+| `agentsfleet_library_cache_outcome_total` | `cache` | latency | hit ratio of the global catalogue cache |
+| `agentsfleet_library_payload_bytes_total` | `surface` | traffic | response bytes per surface |
+| `agentsfleet_library_results_total` | `surface` | traffic | rows served per surface |
+| `agentsfleet_runner_executions_total` | `runner_id`,`outcome` | traffic | run volume per runner |
+| `agentsfleet_runner_failures_total` | `runner_id`,`reason` | errors | failure rate per reason |
+| `agentsfleet_runner_failures_overflow_total` | none | health | increments only past 4096 runner slots |
+| `agentsfleet_runner_last_seen_seconds` | `runner_id` | health | a runner going quiet |
+| `agentsfleet_runner_active_leases` | `runner_id` | saturation | best-effort; self-heals on restart |
+| `agentsfleet_memory_entries_captured_total` | none | traffic | durable-memory write volume |
+| `agentsfleet_memory_capture_skipped_total` / `_truncated_total` | none | errors | captures lost or clipped |
+| `agentsfleet_memory_push_failures_total` | none | errors | memory writes failing |
+| `agentsfleet_memory_hydration_window_entries` | none | saturation | hydration window fill |
+| `agentsfleet_memory_hydration_dropped_{entries,bytes}_total` | none | errors | hydration overflow |
+| `agentsfleet_memory_cap_evictions_total` | none | health | cap pressure on stored memory |
+| `agentsfleet_memory_search_zero_hits_total` | none | health | searches finding nothing |
+| `agentsfleet_signup_bootstrapped_total` / `_replayed_total` | none | traffic | signup funnel |
+| `agentsfleet_signup_failed_total` | `reason` | errors | rejected signups per cause |
+| `agentsfleet_sensitive_{request,response}_erased_bytes_total` | none | health | plaintext-erasure proof; no labels by design |
+| `agentsfleet_sensitive_response_write_failures_total` | none | errors | sensitive writes failing |
+| `agentsfleet_http_trace_suppressed_total` | `reason` | health | span budget shedding; storms stay visible |
+| `agentsfleet_otlp_queue_depth` | `signal` | saturation | exporter ring fill per signal |
+| `agentsfleet_otlp_entries_discarded_total` | `signal`,`reason` | errors | telemetry loss, visible even when OTLP is dark |
+| `agentsfleet_otel_attribute_omitted_total` | `attribute`,`reason` | health | model attribution gaps (never faked) |
+| `agentsfleet_redis_pool_active` / `_idle` | none | saturation | pool utilisation |
+| `agentsfleet_redis_pool_dials_total` / `_overflow_dials_total` | none | health | burst dialing past `max_idle` |
+| `agentsfleet_redis_pool_reconnects_total` / `_poisoned_connections_total` / `_forced_closes_total` | none | health | transport churn |
+| `agentsfleet_redis_pool_acquire_timeouts_total` | none | errors | currently always 0; acquires never block |
+| `agentsfleet_process_resident_memory_bytes` | none | saturation | process RSS |
 
 ## `agentsfleet-runner` — deliberately bare
 
-The host-resident runner (`src/runner/`) carries **no** metrics, OTel, PostHog, or
-telemetry of its own — the lone `record_metric` hook is a no-op stub. It:
+The runner (`src/runner/`) carries no metrics, OTel, or PostHog. Its lone
+`record_metric` hook is a no-op stub. It emits logfmt locally for the host
+operator and reports liveness and results over `/v1/runners` (heartbeat,
+`/renew`, result-report). `agentsfleetd` owns the runner's observable state in
+`metrics_runner.zig` and derives fleet liveness itself. Runners are cattle
+(`runner_fleet.md`); an exporter on the runner would re-couple it to the
+backends the split removed.
 
-- emits **logfmt** logs locally (operator reads them on the host), and
-- reports **liveness and results** to `agentsfleetd` over the `/v1/runners` protocol
-  (heartbeat / `/renew` / result-report).
-
-The server side owns the runner's observable state: `agentsfleetd` holds
-`metrics_runner.zig` and derives fleet liveness itself (see `runner_fleet.md`). This
-is intentional — a runner is cattle (`runner_fleet.md`, "Runners are cattle, not
-pets"); it holds no datastore credentials and runs no exporter. Pushing telemetry
-infrastructure onto the runner would re-couple it to the very backends the split
-removed.
-
-## Signal routing decision — logs, metrics, and traces
-
-The runner has two exits, and they serve different jobs. Raw process output goes
-to the host. Bounded execution facts go to the control plane through existing
-fleet verbs.
+## Signal routing
 
 ```text
 agentsfleet-runner
@@ -104,350 +120,236 @@ agentsfleetd structured logs ──► stderr + bounded OTLP exporter ──► 
 agentsfleetd selected spans  ──► bounded OTLP exporter ──────────► Tempo
 ```
 
-The optional host collector owns its backend credential and disk queue. The
-runner binary still writes only stderr. A collector can read journald and push
-directly to Loki, but `agentsfleetd` never accepts, stores, or relays raw runner
-log lines. Activity frames remain user-visible run output; they are not a log
-tunnel.
+**Why raw runner logs bypass `agentsfleetd`.** A log line is an unbounded byte
+stream; heartbeat and report are bounded semantic messages. Routing logs
+through the control plane would tie request and database capacity to log
+volume, and would make the control plane the failure point for the diagnostics
+you need when that plane is unhealthy.
 
-Remote collection is fail-closed on privacy. The collector may forward only
-single-line logfmt records after applying an allowlist for `ts_ms`, `level`,
-`scope`, `event`, registered `error_code`, and reviewed bounded metadata. It
-drops prompts, response bodies, tokens, credentials, environment values,
-arbitrary `msg` text, and any record it cannot parse. Sampling, when enabled, is
-fixed level- or rate-based admission applied after redaction; it never examines
-payload content or tenant identity. These requirements extend the repository
-logging standard to the collector boundary instead of trusting a backend-side
-scrubber after bytes have left the host.
+**Collector rules (fail-closed on privacy).** A host collector may forward
+only single-line logfmt records after an allowlist: `ts_ms`, `level`, `scope`,
+`event`, registered `error_code`, reviewed bounded metadata. It drops prompts,
+response bodies, tokens, credentials, environment values, arbitrary `msg`
+text, and anything it cannot parse. Sampling is level- or rate-based after
+redaction; it never reads payload content or tenant identity. No collector is
+deployed by this repository today, so its network rate is zero bytes per
+second. Enabling one requires numeric memory, disk, retention, rate, sampling,
+and retry limits plus the allowlist proof.
 
-No host collector is selected or deployed by this repository. The current
-application-owned collector queue is therefore zero bytes. A later deployment
-must name numeric memory, disk, retention, rate, sampling, and retry limits and
-prove the allowlist above before enabling the direct path; defaults from a host
-image are not an architecture guarantee. Until then its network rate is exactly
-zero bytes per second.
-
-| Signal | Producer and owner | Network path | Bound and loss behavior |
+| Signal | Producer / owner | Path | Bound and loss |
 |---|---|---|---|
-| runner logs | runner writes logfmt; host supervisor owns retention | none by default; optional host collector goes direct to Loki | host policy caps disk and queue use; collector loss never blocks a run |
-| runner semantic metrics | `agentsfleetd` derives from accepted fleet verbs | existing runner API only; Prometheus pulls `agentsfleetd` | 4096 runner slots; overflow counters use `_other`; no per-event metric transport |
-| runner host metrics | host collector or node exporter, if operators require them | direct to the metrics backend | outside the runner API; collector policy owns sampling and loss |
-| runner traces | none in the runner at present | no trace exporter and no trace-context payload | correlate local logs with `event_id` and `lease_id`; add propagation only with a real runner span producer |
-| control-plane logs | `agentsfleetd` structured logger | stderr plus OTLP to Loki | 2047 usable queued records; enqueue never blocks |
-| control-plane metrics | in-memory Prometheus families plus selected OTLP run metrics | pull `/metrics`; OTLP metrics push where configured | fixed labels or explicit cardinality caps; exporter loss is best effort |
-| control-plane traces | HTTP ingress and settled fleet delivery | OTLP to Tempo | route policy and sampling must keep production below the exporter budget |
-| product analytics | `agentsfleetd` PostHog client | batched PostHog capture | selected business events only; no log, scheduler-arm, or trace traffic |
+| runner logs | runner logfmt; host owns retention | none by default; optional collector direct to Loki | host policy caps disk; loss never blocks a run |
+| runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | Prometheus pulls `agentsfleetd` | 4096 runner slots; overflow → `_other` |
+| runner host metrics | node exporter, if operators want it | direct to metrics backend | outside the runner API |
+| runner traces | none | none | correlate logs via `event_id` + `lease_id` |
+| control-plane logs | structured logger | stderr + OTLP to Loki | 2047 queued records; enqueue never blocks |
+| control-plane metrics | Prometheus families + selected OTLP samples | pull `/metrics`; OTLP push where configured | fixed labels or explicit caps |
+| control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | route policy keeps output under the budget |
+| product analytics | PostHog client | batched capture | selected business events only |
 
 ### Production wiring truth — Jul 23, 2026
 
-| Surface | State | Production evidence |
+| Surface | State | Evidence |
 |---|---|---|
-| `agentsfleetd` structured stderr | installed and called | `main.zig` registers the sink; scoped loggers call it throughout the daemon |
-| OTLP logs | installed and called when configured | `preflight.zig` installs; `main.zig` sends every accepted structured line |
-| OTLP traces | installed and called when configured | `server.zig` emits `http.request`; `metering.zig` emits `fleet.delivery` |
-| OTLP run metrics | installed and called when configured | `service_report.zig` calls `recordRunSettlement` after the fenced claim |
-| PostHog product events | installed and partly called when configured | server start, workspace create, fleet trigger, and signup bootstrap have production captures |
-| PostHog `FleetCompleted` | installed and called when configured | `service_report.zig` captures once the fenced report claim returns `claimed=true` |
-| runner backend exporter | absent | runner registers one local stderr sink and no OTLP or PostHog client |
-| runner operational metrics | called through existing semantics | `agentsfleetd` updates fixed state after accepted heartbeat, lease, and report operations |
+| structured stderr | installed, called | `main.zig` registers the sink |
+| OTLP logs | called when configured | `preflight.zig` installs; every accepted line fans out |
+| OTLP traces | called when configured | `server.zig` emits `http.request`; `metering.zig` emits `fleet.delivery` |
+| OTLP run metrics | called when configured | `service_report.zig` after the fenced claim |
+| PostHog events | partly called when configured | five production captures (list below) |
+| runner exporter | absent | one local stderr sink, nothing else |
 
-### Why raw runner logs bypass `agentsfleetd`
+## Metrics stay semantic
 
-A log line is an unbounded byte stream. Heartbeat and report are bounded semantic
-messages. Combining them makes request capacity, database capacity, and runner
-progress depend on log volume. It also makes the control plane the failure point
-for the diagnostics needed when that plane is unhealthy.
+`agentsfleetd` updates fixed in-memory state after it accepts heartbeat, lease,
+and report verbs. One terminal report enqueues at most five OTLP samples: one
+credit delta, three non-zero token directions, one duration.
 
-The direct collector path uses standard host supervision instead of a second
-logging client inside the runner. Local logs survive a network outage according
-to the host's retention policy. A full collector queue drops by collector policy;
-it does not add backpressure to runner execution.
+Do not turn scheduler arms, activity frames, log lines, lease or event
+identifiers, model text, error text, or raw runner identifiers into metric
+labels. A scheduler metric is justified only as a fixed aggregate (queue depth,
+fired total, stale-target total). The runner needs no remote series today:
+terminal `timeout_kill` outcomes and local deadline events cover the visible
+failure.
 
-### Metrics stay semantic
+## Traces
 
-The current runner metric path is the default pattern. `agentsfleetd` updates
-fixed in-memory state after it accepts heartbeat, lease, and report operations.
-One terminal report can also enqueue at most five OTLP samples: one credit delta,
-three non-zero token directions, and one duration observation.
+`agentsfleetd` accepts W3C `traceparent` at ingress and emits `http.request`
+spans, plus one `fleet.delivery` span after an accepted terminal report. A
+missing or malformed `traceparent` starts a new local root; invalid input never
+rejects a request. The runner has no span producer; its verbs carry no trace
+field. `event_id` and `lease_id` correlate logs instead. A future runner span
+producer must first define a bounded span budget and durable context ownership.
 
-Do not turn scheduler arms, activity frames, log lines, lease identifiers, event
-identifiers, model text, error text, or raw runner identifiers into new OTLP or
-scheduler-derived metric labels. The existing Prometheus runner families retain
-their explicitly capped `runner_id` drill-down. A scheduler metric is justified
-only when it answers an operator question as a fixed aggregate such as queue
-depth, fired total, or stale-target total. The runner currently needs no such
-remote series: terminal `timeout_kill` outcomes and structured local deadline
-events cover the visible failure.
+**Route policy** (`http/route_trace.zig`): successful heartbeat, lease, renew,
+activity, and report requests never enqueue spans. Responses ≥ 500 enter the
+server-error bucket. Matched runner 4xx (including admission-shed 429) enter
+the runner-rejection bucket. Other sub-500 responses use deterministic head
+sampling from the server-generated span id, never caller input. Budget: **10
+generic spans per monotonic second** (4 runner rejections + 4 server errors +
+2 sampled successes). Excess increments
+`agentsfleet_http_trace_suppressed_total{reason}`.
 
-### Traces stay on the process that creates spans
+Why it matters: idle heartbeats alone are one matched request per runner per
+10 s. Unfiltered, 100 idle runners consumed the exporter's whole steady drain
+budget. The ceiling is now fixed at any fleet size.
 
-`agentsfleetd` accepts World Wide Web Consortium (W3C) `traceparent` at HTTP
-ingress and emits `http.request` spans. It also emits one independent
-`fleet.delivery` span after an accepted terminal report. The runner observer's
-trace getter returns null and its setter is a no-op; no runner span exists to
-join to a distributed trace.
+## Library read stages are Prometheus, not spans
 
-A missing or malformed `traceparent` starts a new local root. Trace parsing is
-best effort: invalid caller input never rejects the request and never crosses the
-runner protocol.
+The authenticated library reads (tenant model registry, global catalogue,
+Fleet gallery) record stage timing as fixed-cardinality families in
+`library_stages.zig`. A six-stage read emitting spans would spend most of a
+second's span admission on its own timing and evict the server-error spans the
+budget protects. Stage timing is high-frequency, closed-label data; that is
+what a metric is for. The trace half is unchanged: `traceparent` in, one
+`http.request` span out. The browser client mints a fresh root per request
+(`ui/packages/app/lib/api/client.ts`); it holds no parent span.
 
-Therefore the current decision adds no trace field to lease, renew, activity, or
-report. `event_id` and `lease_id` provide log correlation. A future runner span
-producer must first define a bounded span budget and durable context ownership;
-only then should standard W3C context cross the fleet protocol.
-
-High-rate runner API successes are not useful trace spans. The shipped routing
-policy in `http/route_trace.zig` removes successful heartbeat, lease, renew,
-activity, and report requests
-from the default HTTP span stream. The lease rule intentionally covers both empty
-polls and grants; useful run work retains one settled `fleet.delivery` span. Trace
-lifetime starts after route match but before API admission. Every response at
-status 500 or above enters the server-error bucket first. A matched runner response
-at status 400 through 499, including an admission-shed 429, enters the bounded
-runner-rejection bucket. The buckets are disjoint. Other
-API responses below status 500 use deterministic head sampling from the
-server-generated span identifier, not caller-controlled trace input. The process
-admits at most 10 generic request spans per monotonic second: four runner
-rejections, four server errors, and two sampled successes. Every excess increments
-`agentsfleet_http_trace_suppressed_total` under a fixed reason, so an invalid-token
-storm stays visible without evicting all useful spans.
-
-### Library read stages are Prometheus, not spans
-
-The authenticated library reads — the tenant model registry, the global
-catalogue, the Fleet gallery — record where their time goes as fixed-cardinality
-Prometheus families in `observability/library_stages.zig`, scraped from
-`/metrics`. They do not emit a span per stage.
-
-The reason is the trace budget above: this process admits at most ten generic
-request spans per monotonic second. A library read passes through up to six
-stages, so one request emitting a span per stage would spend most of a second's
-admission on its own timing and evict the server-error spans that budget exists
-to protect. Stage timing is high-frequency, low-variance data with a closed
-label set, which is what a metric is for; the trace answers a different
-question — which request, and what happened around it.
-
-So the trace half of a library read is unchanged: W3C `traceparent` in at
-ingress, one `http.request` span out. The browser client mints a fresh root per
-request (`ui/packages/app/lib/api/client.ts`) rather than continuing a trace,
-because it holds no span the request is a child of.
-
-**The label sets are closed enums, and the series count is fixed at compile
-time.** Every member of every one is listed in the label registry under
-§Metrics above — that table is the schema an operator reads before writing a
-query, so the values live there rather than being restated here. In short:
-`surface` (3), `stage` (10), `outcome` (9), `cache` (5), `pool_result` (4).
-
-One observation carries all five, but no metric does — emitting the
-cross-product would be 5400 series, nearly all permanently zero. Each family
-takes only the dimensions that vary for it:
+Label members live in the label registry below. Series are fixed at compile
+time: 102 total, asserted at comptime, so a new enum member fails the build
+instead of growing the scrape.
 
 | Family | Labels | Series |
 |---|---|---|
-| `agentsfleet_library_stage_duration_seconds_total` | `surface`, `stage` | 30 |
-| `agentsfleet_library_stage_observations_total` | `surface`, `stage` | 30 |
-| `agentsfleet_library_read_outcome_total` | `surface`, `outcome` | 27 |
+| `agentsfleet_library_stage_duration_seconds_total` | `surface`,`stage` | 30 |
+| `agentsfleet_library_stage_observations_total` | `surface`,`stage` | 30 |
+| `agentsfleet_library_read_outcome_total` | `surface`,`outcome` | 27 |
 | `agentsfleet_library_pool_result_total` | `pool_result` | 4 |
 | `agentsfleet_library_cache_outcome_total` | `cache` | 5 |
 | `agentsfleet_library_payload_bytes_total` | `surface` | 3 |
 | `agentsfleet_library_results_total` | `surface` | 3 |
 
-102 series, asserted at comptime, so an added enum member fails the build rather
-than appearing as scrape growth. The pool and cache families deliberately carry
-no `surface` label: a starving pool is a process-wide condition, and neither
-family may carry tenant, workspace, or request identity — the same rule the
-metric table above states, for the same reason.
+Design points, each load-bearing:
 
-Duration and observations are two counters rather than one summary.
-`rate(duration)/rate(observations)` is the mean cost of a SPAN, which stays
-well-defined when a stage fires more than once in a read — `sql` does, landing
-on both sides of `secret_project` — whereas dividing by request count would
-silently halve that stage's apparent cost.
+- One observation carries five dimensions; no metric does. The cross-product
+  is 5400 series, nearly all permanently zero.
+- Pool and cache families carry no `surface` label: a starving pool is
+  process-wide, and neither may carry tenant or request identity.
+- Duration and observations are two counters, not a summary.
+  `rate(duration)/rate(observations)` is the mean cost of a *span*, and `sql`
+  fires twice per registry read (both sides of `secret_project`). Dividing by
+  requests would halve its apparent cost.
+- `secret_project` survives the read-path decryption removal with a narrowed
+  meaning: it times the batch presence query, and its decryption counter is
+  pinned at zero. A regression that reintroduces per-row decryption shows up
+  as a stage that suddenly decrypts, not one that silently reappears.
+- One outcome per request on every exit path. `library_read_scope.zig` owns
+  the lifecycle; the default outcome is `internal_error`, so an unclassified
+  path surfaces as something to investigate, never as `ok`.
 
-**`secret_project` survives with a narrowed meaning.** Read-path decryption is
-gone; `vault.loadMetadata` answers one batch presence query and opens no
-envelope. The stage was kept rather than deleted with the decryption, and its
-decryption counter is pinned at zero, so a regression that reintroduces per-row
-envelope opens shows up as a stage that suddenly decrypts instead of as a stage
-that silently reappears.
+**The scrape is the evidence, and nothing gates on a percentile.** A latency
+threshold in a universal check fails on a noisy runner, gets widened until it
+cannot fail, then reports success forever. Percentile comparison needs a
+provisioned environment with pinned pool size, warm state, and concurrency.
+That capture harness is deferred to its own spec. An earlier draft shipped a
+report validator and a `capture-library-performance` target; the target could
+not capture, so both were removed rather than left looking like a capability.
 
-**One outcome per request, on every exit path.** `library_read_scope.zig` owns
-the per-request lifecycle; `defer scope.end()` covers every return, and the
-default outcome is `internal_error` rather than `ok` so a path nobody classified
-surfaces as something an operator investigates.
+## PostHog is product analytics, not operations telemetry
 
-### Performance evidence is the scrape, and nothing gates on a percentile
+The client is optional. Flush: 20 events or 10 s; at most 3 retries. Failure
+disables or drops analytics without failing a request. The pinned library
+holds two 1000-slot buffer sides (≤ 2000 resident events); a full write side
+drops the new event and counts it. `capture` does not return admission, so
+application wording says `submitted`, never `captured` or `delivered`.
 
-The stage families above ARE the evidence. An operator reads
-`rate(agentsfleet_library_stage_duration_seconds_total) /
-rate(agentsfleet_library_stage_observations_total)` per surface and stage to see
-where a slow read spent its time, and `agentsfleet_library_read_outcome_total`
-to see how reads are ending.
-
-**No check anywhere gates on a latency value, and that is deliberate.** A
-latency threshold in a universal check fails on a noisy runner, gets widened
-until it cannot fail, and then reports success forever. Percentile comparison
-between two builds needs a provisioned environment with pinned pool size, warm
-state, and concurrency — comparing runs that differ in any of those reads a
-configuration change as a regression.
-
-A baseline-versus-candidate capture harness is therefore **deferred to its own
-spec** rather than half-built here. An earlier draft of this workstream shipped
-a report validator and a `capture-library-performance` target, but the target
-could not capture — it checked for two JSON files and told the operator to write
-them by hand — so the validator validated a format nothing emitted. Both were
-removed rather than left as scaffolding that reads like a working capability.
-
-### PostHog is product analytics, not operations telemetry
-
-The PostHog client is optional. It flushes at 20 events or 10 seconds and retries
-at most three times. Initialization or capture failure disables or drops analytics
-without failing a request.
-
-The pinned PostHog library allocates two queue sides with 1000 event slots each.
-One side can drain while the other accepts writes, so at most 2000 serialized
-events are resident. A full write side drops the new event, increments the
-library's internal drop counter, and logs a warning; its current `capture` API
-does not return queue admission. Application wording must therefore say
-`submitted`, never `captured` or `delivered`, for a successful call.
-
-Five production event types now capture: `ServerStarted`, `WorkspaceCreated`,
-`FleetTriggered`, `SignupBootstrapped`, and `FleetCompleted`. `FleetCompleted`
-fires only after durable report settlement — the same fenced claim that authorizes
-the settlement authorizes the capture, so a replayed or superseded report emits
-nothing. Its `$insert_id` is the 64-character lowercase Secure Hash Algorithm
-256-bit (SHA-256) digest of `fleet_id || 0x00 || event_id`, allowing PostHog to
-deduplicate its own batch retry without forwarding an unbounded insertion key.
-Runner-controlled `u64` properties saturate at `maxInt(i64)` rather than trapping.
-Scheduler mechanics, raw logs, spans, heartbeats, renewals, and activity frames
-never become PostHog events.
-
----
+Five production events: `ServerStarted`, `WorkspaceCreated`, `FleetTriggered`,
+`SignupBootstrapped`, `FleetCompleted`. `FleetCompleted` fires only after the
+fenced report claim returns `claimed=true`, so replays emit nothing. Its
+`$insert_id` is the SHA-256 hex digest of `fleet_id || 0x00 || event_id`.
+Runner-controlled `u64` properties saturate at `maxInt(i64)`. Scheduler
+mechanics, raw logs, spans, heartbeats, renewals, and activity frames never
+become PostHog events.
 
 ## The shared logging module
 
-The real logger is the named **`log`** module at `src/lib/logging/` — shared by both
-binaries (it is in `src/lib/`, so both `build.zig` and `build_runner.zig` wire it as
-a named module). Its shape makes conformance by construction:
+`src/lib/logging/` is the one logger for both binaries:
 
-- `mod.zig` — the body builder; callers write `log.scoped(.tag).level("event", .{…})`.
-- `envelope.zig` — wraps every line with the required keys (`ts_ms=`, `level=`,
-  `scope=`) and scrubs newlines to close log-injection.
-- `sinks.zig` — fans application lines out to stderr **and** the OTLP sink, with
-  a 4 KiB buffer and a `truncated=true` marker when a line overflows. The routing
-  filter keeps exporter-internal scopes on stderr only, so a failed log exporter
-  cannot enqueue its own warning forever.
+- `mod.zig` — `log.scoped(.tag).level("event", .{…})`.
+- `envelope.zig` — enforces `ts_ms=`, `level=`, `scope=`; scrubs newlines.
+- `sinks.zig` — fans out to stderr **and** OTLP; 4 KiB buffer with
+  `truncated=true` on overflow; exporter-internal scopes stay stderr-only so a
+  failing exporter cannot enqueue its own warnings forever.
 
-Because the envelope and fan-out are enforced in the module, any call site that uses
-`log.scoped(...).level(...)` is conformant for free — there is no per-call
-discipline to remember. The field-level standard those calls must satisfy lives at
-`docs/LOGGING_STANDARD.md` — a tracked symlink into the operating-model dotfiles,
-so open it locally (GitHub renders only the symlink target path, not the document).
-This file covers *where the signal goes*; that one covers *what a line must contain*.
+Any `log.scoped(...)` call site is conformant by construction. Field rules:
+`docs/LOGGING_STANDARD.md` (a tracked symlink into the dotfiles; open it
+locally).
 
----
+## The OTLP exporter substrate
 
-## The OTLP exporter substrate (traces · logs · metrics)
+One pipeline (`observability/otlp/`) serves traces (`/v1/traces`), logs
+(`/v1/logs`), and metrics (`/v1/metrics`): a lock-free MPSC `Ring`, shared
+`GrafanaOtlpConfig`, a persistent basic-auth `Client`, and an
+`Exporter(hooks)` flush thread. It borrows the cancel-capable `std.Io` from
+`std.process.Init`, never `common.globalIo()`, and creates no extra pool.
 
-`agentsfleetd` pushes three OTLP signals to Grafana Cloud over one shared pipeline,
-gated by a single env triple (`GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`,
-`GRAFANA_OTLP_API_KEY`):
+- Emission is fire-and-forget: a full ring drops the entry, never blocks.
+- Wake thresholds: 50 logs, 50 traces, 768 metrics (leaves 255 usable slots
+  while the consumer wakes). Below threshold, entries batch until the 5 s max
+  interval. Stop sets the event immediately.
+- Collection removes entries before the POST, so outcomes are definite:
+  non-success → `export_rejected`; timeout/transport → `export_uncertain`;
+  `partialSuccess` → parse the rejected count as `partial_rejected` (the
+  collector message is ignored, so backend text never enters logs); malformed
+  partial body → whole batch `export_uncertain`. Each records one stderr-only
+  warning.
+- **No retry, deliberately.** OTLP JSON has no idempotency key; replaying
+  delta metrics can double-count.
 
-- **traces → Tempo** (`otel_traces.zig`, `/v1/traces`)
-- **logs → Loki** (`otel_logs.zig`, `/v1/logs`)
-- **metrics → Mimir** (`otel_metrics.zig`, `/v1/metrics`)
+Decision records:
 
-All three are built on `observability/otlp/`: a generic lock-free multi-producer/
-single-consumer `Ring`, a shared `GrafanaOtlpConfig` + `configFromEnv`, a persistent
-basic-auth HTTP `Client`, and an `Exporter(hooks)` flush driver that owns the
-background flush thread. Installation takes the cancel-capable `std.Io` supplied
-by `std.process.Init` and borrows it for event waits,
-monotonic timers, and HTTP. It does not use the non-canceling
-`common.globalIo()` seam and does not create another input/output thread pool.
-Each signal supplies only its entry type, serialization, and enqueue API. Emission
-is fire-and-forget: a full ring drops the entry and never blocks the caller.
-An enqueue calls the atomic producer side of `std.Io.Event` only when queue depth
-reaches a reachable per-signal threshold: 50 logs, 50 traces, or 768 metrics.
-The metric threshold leaves 255 usable slots while the consumer wakes. Lower
-traffic waits for the maximum flush interval and therefore stays batched. Stop
-always sets the event immediately. The standard event coalesces notifications
-without making producers wait on an input/output mutex.
-Collection removes entries before the HTTP post. A non-success HTTP response
-therefore records a definite `export_rejected` local discard. A timeout or
-transport outcome whose remote acceptance cannot be proven records
-`export_uncertain`. A successful OTLP response with `partialSuccess` parses the
-signal-specific rejected-item count and records it as `partial_rejected`; the
-collector message is ignored so arbitrary backend text never enters logs. An
-invalid partial-success body records the whole attempted batch as
-`export_uncertain`, because remote acceptance cannot be established. These
-outcomes record one stderr-only warning. The exporter
-deliberately does not retry because OTLP JSON has no idempotency key and replaying
-delta metrics can double-count them.
+- [PR #549 — outbound bounding, before and after M139](https://claude.ai/code/artifact/de681e67-024d-4c08-bc04-4fa96aa58d48):
+  one process-wide deadline scheduler (sorted tree, monotonic boot clock)
+  replaced per-caller watchdog threads on raw file descriptors. Deadlines arm
+  on a connection *generation*, so a recycled descriptor is provably a no-op;
+  the owner shuts the socket down, and the blocked call returns a transport
+  error. Postgres stays outside the scheduler on purpose: the pool's acquire
+  and connect timeouts already bound it.
+- [PR #553 — the OTLP unbounded in-flight export](https://claude.ai/code/artifact/aee9e003-6c91-40a1-9d7e-0feacdb1d810):
+  a stalled Grafana endpoint can block the flush thread up to the OS TCP
+  timeout, and shutdown's join waits it out. Deferred, not fixed, because
+  `std.http.Client.fetch` is not cancel-safe (cancelling reintroduces the
+  crash PR #553 removed) and the exporter boots before the scheduler exists.
+  The scoped fix: shut the pinned socket down at the deadline via the
+  scheduler, after reordering boot.
 
 ### Capacity and loss audit — Jul 23, 2026
 
-The table uses usable ring capacity: the ring keeps one slot empty to distinguish
-full from empty. Rates are capacity ceilings, not throughput benchmarks.
+Usable capacity: the ring keeps one slot empty. Rates are ceilings, not
+benchmarks.
 
-| Signal | Usable queue | Flush behavior | Capacity implication |
+| Signal | Usable queue | Flush | Loss behavior |
 |---|---:|---|---|
-| logs | 2047 records; body truncated at 512 bytes | wakes at 50 accepted records or 5 seconds, then drains the cycle-start backlog in 50-record batches | drain is bounded by the backlog present when the cycle began, not by one batch per interval; ring drops export as `ring_full` |
-| traces | 1023 spans; 12 attributes per span | wakes at 50 accepted spans or 5 seconds, then drains the cycle-start backlog in 50-span batches | same cycle-start rule as logs; ring drops export as `ring_full` |
-| OTLP metrics | 1023 samples; at most 256 coalesced series | wakes at 768 accepted samples or 5 seconds, then drains the cycle-start backlog and coalesces label sets | the 768 threshold leaves 255 usable slots while the consumer is scheduled; excess series export as `aggregate_cap` |
-| PostHog | 1000 events per double-buffer side; up to 2000 resident | 20 events or 10 seconds; three retries | a full write side drops the new event and increments the library drop counter; capture return alone does not prove admission |
+| logs | 2047 records; body truncated at 512 B | wake at 50 or 5 s; drain the cycle-start backlog in 50-record batches | ring drops export as `ring_full` |
+| traces | 1023 spans; 12 attributes each | same as logs | same |
+| OTLP metrics | 1023 samples; ≤ 256 coalesced series | wake at 768 or 5 s; coalesce label sets | overflow series export as `aggregate_cap` |
+| PostHog | 1000/side, ≤ 2000 resident | 20 events or 10 s; 3 retries | full side drops the new event |
 
-The scenario model below makes the producer unit and the limiting resource
-explicit. `R` is registered runners, `B` is committed pre-execution credit debits
-per second, `C` is accepted terminal reports per second, `L` is runner log records
-per second, and `D` is control-plane log records per second. Unknown workload
-rates stay variables; the architecture bounds what the application owns instead
-of inventing a traffic number.
+Scenario model: `R` runners, `B` billed debits/s, `C` accepted reports/s, `L`
+runner log records/s, `D` control-plane records/s. Unknown rates stay
+variables; the architecture bounds what the application owns.
 
-| Signal | Scenario | Producer volume | Application-owned bound and outcome |
+| Signal | Scenario | Producer volume | Bound and outcome |
 |---|---|---:|---|
-| runner logs | steady | `L` records/s, each structured runner record at most 4096 bytes | local stderr only; repository network queue and remote bytes remain zero |
-| runner logs | burst | arbitrary `L` until the host supervisor applies its byte/rate policy | no `agentsfleetd` load; local host retention is the sole current bound |
-| runner logs | backend outage | unchanged local record rate | no application retry or queue; an enabled collector uses its declared disk ceiling then drops |
-| runner logs | fleet growth | sum of host-local `L`; no central application aggregation | each host remains isolated; direct collection stays disabled until numeric host policy and redaction proof exist |
-| control-plane logs | steady | `D` accepted structured records/s, each OTLP body truncated at 512 bytes | stderr remains authoritative; 2047 usable queue slots absorb the rate, and a cycle drains its whole starting backlog rather than one 50-record batch |
-| control-plane logs | burst | arbitrary `D` from bounded control-plane events | non-blocking admission fills at 2047 records, then drops and exports overflow as `ring_full`; the consumer wakes at 50 and drains the cycle-start backlog |
-| control-plane logs | backend outage | unchanged `D` while the endpoint is unavailable | the fixed ring fills, later entries drop, and product work continues; exporter warnings stay stderr-only and never re-enter the OTLP log ring |
-| control-plane logs | fleet growth | `D` follows semantic control-plane events, never the raw runner byte stream | queue capacity remains 2047 process-wide; the logging allowlist excludes prompt, body, token, credential, environment, and arbitrary error fields |
-| metrics | steady | idle heartbeats update memory but enqueue zero OTLP samples; each billed lease enqueues one credit sample and each accepted report enqueues at most five | 4096 runner slots; 1023 usable OTLP sample slots |
-| metrics | burst | at most `B + 5C` OTLP samples/s before coalescing | non-blocking ring admission; overflow drops and is counted |
-| metrics | backend outage | at most `B + 5C` attempted samples/s | ring holds 1023; later entries drop; request, debit, and settlement paths continue |
-| metrics | fleet growth | `R` liveness keys plus debit and report samples | 4096 exact runner slots regardless of `R`; overflow counters aggregate into `_other`, while last-seen and active-lease gauges drop |
-| traces | steady | `R/10` heartbeat requests/s before lease and run traffic | route policy admits at most 10 generic request spans/s plus one settled delivery span per accepted run |
-| traces | burst | arbitrary matched requests plus `C` settled runs/s | generic spans keep the fixed 4 rejection, 4 server-error, and 2 sampled-success budget; the 1023-slot ring bounds all selected spans |
-| traces | backend outage | selected generic spans plus one delivery span per accepted run | ring fills to 1023, then selected spans drop without blocking product work |
-| traces | fleet growth | heartbeat input grows linearly with `R`; generic output does not | generic request output remains 10 spans/s process-wide and exact suppressions aggregate in Prometheus |
+| runner logs | any | `L` records/s, ≤ 4096 B each | local stderr only; repository network bytes are zero |
+| control-plane logs | steady/burst | `D` records/s | 2047 slots absorb; overflow drops as `ring_full` |
+| control-plane logs | backend outage | unchanged `D` | ring fills, later entries drop, product work continues |
+| metrics | steady | idle heartbeats enqueue zero; each billed lease 1 sample, each report ≤ 5 | 4096 runner slots; 1023 sample slots |
+| metrics | burst/outage | ≤ `B + 5C` samples/s | non-blocking admission; overflow drops and is counted |
+| metrics | fleet growth | `R` liveness keys | 4096 exact slots at any `R`; counters overflow to `_other`, gauges drop |
+| traces | steady/burst | matched requests + `C` settled runs/s | fixed 4+4+2 budget; 1023-slot ring |
+| traces | fleet growth | heartbeat input grows with `R`; output does not | 10 generic spans/s process-wide |
 
-Idle heartbeats alone produce one matched HTTP request every 10 seconds per
-runner. Before route filtering, the unsampled `http.request` path produced 10 spans
-per second at 100 idle runners, 100 spans per second at 1000, and 1000 spans per
-second at 10000 — the 100-runner case alone consumed the trace exporter's whole
-steady drain budget. Route policy now decouples generic span output from request
-volume: successful runner chatter never enqueues, and the process ceiling is a
-fixed 10 generic spans per monotonic second at any fleet size.
+Metric coalescing happens after ring admission, so it reduces wire series, not
+enqueue pressure. The aggregator admits ≤ 256 distinct label sets per flush.
+`agentsfleet.telemetry.samples_dropped` covers ring and aggregation loss but
+only arrives if a later export succeeds; the Prometheus
+`agentsfleet_otlp_entries_discarded_total{signal,reason}` counter and
+`agentsfleet_otlp_queue_depth` gauge keep local loss visible even when OTLP is
+dark.
 
-Metric coalescing happens after samples enter the ring, so it reduces wire series
-but not enqueue pressure. The aggregator admits at most 256 distinct label sets
-per flush and discards excess samples. The existing
-`agentsfleet.telemetry.samples_dropped` self-signal includes ring and aggregation
-loss, but arrives only if a later metric export succeeds. Prometheus therefore
-carries fixed `ring_full`, `aggregate_cap`, `serialize_failed`, `export_rejected`,
-`partial_rejected`, and `export_uncertain` reasons through
-`agentsfleet_otlp_entries_discarded_total`, plus an `agentsfleet_otlp_queue_depth`
-gauge per signal — so local loss stays visible even when OTLP itself is dark. Log
-and trace draining is threshold-driven and cycle-start bounded, so the fixed
-five-second, 50-entry cadence is no longer their throughput ceiling. Definite
-backend rejection remains distinct from collector-declared partial rejection and
-uncertain remote delivery after a transport or malformed-response failure.
+### Label registry — money stays in Postgres
 
-### Metrics: off-Postgres dashboards, money stays in PG
-
-Metric labels are bounded at their source and again by the 256-series flush
-ceiling:
+Labels are bounded at the source and again by the 256-series flush ceiling:
 
 | Label | Allowed values and ceiling | Overflow action |
 |---|---|---|
@@ -464,64 +366,39 @@ ceiling:
 | `cache` (library) | `hit`, `miss`, `bypass`, `stale`, `not_applicable` | closed enum; `not_applicable` is never counted — it means no cache decision was made |
 | `pool_result` (library) | `acquired`, `timeout`, `cancelled`, `error` | closed enum; no overflow value |
 
-**Workspace and tenant identity never reach a metric.** They were previously
-retained under a first-100-distinct-values-per-process guard, which bounded
-series per process but not at the backend — series accumulate across replicas and
-restarts, and a process guard cannot cap that total. Exact workspace-level cost
-is a Postgres query against the authoritative ledger, which is exact rather than
-merely bounded; the metric path carries no tenant dimension at all.
+**Workspace and tenant identity never reach a metric.** A per-process
+distinct-value guard cannot cap series across replicas and restarts. Exact
+per-workspace cost is a Postgres query against the ledger, which is exact
+rather than bounded.
 
-Model attribution survived that removal because it answers a different question
-(which model is slow or expensive, not which customer), and it is bounded by
-construction rather than by a fixed guess. `semconv.zig` derives the admissible
-distinct `(provider, model)` pairs from the fixed attribute sets — postures ×
-error-type slots × token types × charge classes — so adding a posture or a charge
-class automatically tightens the cap instead of silently overrunning the flush
-ceiling. The aggregator passes its own ceiling in, so the two cannot disagree.
+**Model attribution is derived, not guessed.** `semconv.zig` computes the
+admissible distinct `(provider, model)` pairs from the fixed attribute sets
+(postures × error-type slots × token types × charge classes) and the
+aggregator passes its own ceiling in, so the two cannot disagree. A provider
+with no well-known name, a pair past the budget, or a value past the payload
+bound **omits the attribute and keeps the measurement**, and each omission
+increments `agentsfleet_otel_attribute_omitted_total{attribute,reason}`.
 
-Attribution is never faked to stay inside the budget. A provider with no exact
-well-known name, a pair past the budget, and a value past the payload bound all
-**omit the attribute and preserve the measurement**, never truncate it and never
-invent a standard-looking value. Each omission increments
-`agentsfleet_otel_attribute_omitted_total` under a fixed attribute key and
-reason, so a gap in model coverage is visible rather than being misread as an
-idle model. Exporter-health labels are a separate, closed set: fixed `signal` and
-`reason` enums with no caller-provided values.
+All three OTLP signals share one resource (`service.name`,
+`service.namespace=agentsfleet`, `service.version`, `service.instance.id` only
+when a trusted id exists) and schema URL
+`https://opentelemetry.io/schemas/1.43.0`. The pinned GenAI conventions commit
+publishes no schema URL, so none is fabricated.
 
-All three OTLP signals share one resource — `service.name`,
-`service.namespace=agentsfleet`, `service.version`, and `service.instance.id`
-only when a trusted instance identifier exists — and the core schema URL
-`https://opentelemetry.io/schemas/1.43.0`. The pinned Generative Artificial
-Intelligence (GenAI) conventions commit publishes no schema URL of its own, so
-none is fabricated beside it.
+OTLP metric series (all emitted in the service layer, strictly after the money
+transaction commits, so the exporter can never block or fail a debit):
 
-The metrics signal lets operators watch credit-drain, token throughput, and run
-latency without any dashboard query touching the control-plane Postgres. Series:
+| Series | Kind / unit | Note |
+|---|---|---|
+| `gen_ai.invoke_agent.duration` | histogram, `s` | runner wall time bounds exactly one invocation, so the standard name is truthful |
+| `agentsfleet.invoke_agent.token.usage` | histogram, `{token}` | by `gen_ai.token.type`; cumulative per invocation, so the GenAI client-call name would be false |
+| `agentsfleet.invoke_agent.cache_read.token.usage` | histogram, `{token}` | non-additive subset of input; never a third total |
+| `agentsfleet.billing.credit.consumed` | delta sum, `{nanocredit}` | by charge class; nanocredits are money, not time |
+| `agentsfleet.telemetry.samples_dropped` | sum | exporter self-observability |
 
-- `gen_ai.invoke_agent.duration` (histogram, unit `s`) — the runner's reported
-  wall time bounds exactly one sandboxed agent invocation, so the standard GenAI
-  agent-duration name is truthful here.
-- `agentsfleet.invoke_agent.token.usage` (histogram, unit `{token}`) — by
-  `gen_ai.token.type`. Product-namespaced, **not** `gen_ai.client.token.usage`:
-  the report's counts are cumulative across every provider call in the
-  invocation, so claiming a client-call boundary would be false.
-- `agentsfleet.invoke_agent.cache_read.token.usage` (histogram, unit `{token}`) —
-  a non-additive **subset** of the input direction, never a third total. Input
-  already includes cached input.
-- `agentsfleet.billing.credit.consumed` (monotonic delta sum, unit
-  `{nanocredit}`) — by charge class. Nanocredits are a billing quantity; the
-  superseded name declared the time unit `ns` for money.
-- `agentsfleet.telemetry.samples_dropped` (sum) — exporter self-observability.
-
-The emits live in the **service-orchestration layer** (`service_billing` at the
-receive debit, `service_renew` at each successful renewal debit, `service_report`
-at the settle), strictly **after** the money transaction commits — never inside
-`fleet_runtime/metering.zig` or `fleet/renewal_settle.zig`. So the exporter can
-never block or fail a debit, and the wallet + ledger + `metering_periods` stay
-transactional in Postgres. Every committed debit emits once; an uncommitted,
-stale-fenced, or replayed operation emits nothing. The flush coalesces a window's
-samples into one **DELTA** dataPoint per (metric, labelset); a collector with the
-`deltatocumulative` processor must convert them before Mimir. No such collector
-is provisioned by this repository today, so the OTLP metric path is prepared
-rather than operationally proven. The scraped `agentsfleet_*` families are
-unaffected by that gap and remain the reliable operator signal.
+Every committed debit emits once; uncommitted, stale-fenced, or replayed
+operations emit nothing. Flush coalesces into one **delta** dataPoint per
+(metric, labelset); Mimir needs a `deltatocumulative` processor, and none is
+provisioned today, so the OTLP metric path is prepared rather than proven. The
+scraped `agentsfleet_*` families are unaffected and remain the reliable
+operator signal.

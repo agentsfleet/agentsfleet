@@ -155,11 +155,11 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
                   User reads it.
 ```
 
-The 12 numbered writes are the same durable effects the deleted worker's `processEvent` produced, in the same order — split across two protocol calls (`lease` does 1–6, `report` does 7–12) instead of one in-process loop. The control-plane handlers under `src/agentsfleetd/fleet/` are faithful mirrors of the old `event_loop_writepath`; the row-equivalence guarantee (cutover Invariant 2) is what keeps history, billing, and the SSE tail byte-identical to the pre-cutover path.
+The 12 numbered writes are the deleted worker's `processEvent` effects, in the same order, split across two calls: `lease` does 1–6, `report` does 7–12. The handlers under `src/agentsfleetd/fleet/` mirror the old `event_loop_writepath`. Row equivalence (cutover Invariant 2) keeps history, billing, and the SSE tail byte-identical.
 
 ## The three durable stores: who owns what
 
-The flow above writes to three Postgres tables. They are **not** redundant — each answers a distinct user question, has a different cardinality, mutability, and retention rule. The cutover did not change their shape or their write order; it moved the writer from the per-Fleet worker thread to `agentsfleetd`'s lease/report path.
+The flow writes three Postgres tables. Each answers a distinct user question and has its own cardinality, mutability, and retention rule. The cutover moved the writer from the per-Fleet worker thread to the lease/report path; shapes and write order did not change.
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
@@ -224,7 +224,7 @@ execution_started_at 1729874001000
 (other fields unchanged from "before")
 ```
 
-The lease reply ships to the runner. NullClaw runs inside the runner's sandboxed child: fetches GH run logs via `${secrets.github.token}`, fetches Fly app logs, fetches Upstash Redis stats, posts a remediation message to Slack. For GitHub — a **mintable integration** — that placeholder does not resolve to a stored value: at the tool bridge the child asks its runner, which forwards to the daemon-side credential broker over the `agt_r` plane (`POST /v1/runners/me/credentials/mint`); the broker signs a GitHub App JWT (RS256, platform key, daemon-side) and exchanges it for a short-lived installation token, returned just for that call. The App private key never leaves the daemon. (Fly/Upstash/Slack remain static custom secrets until the `oauth_refresh` integration lands.) The child returns `ExecutionResult{content, tokens=1840, wall_ms=8210, ttft_ms=320, outcome=ok}` over the stdout pipe; the runner POSTs it to `report`.
+The lease reply ships to the runner. NullClaw runs inside the runner's sandboxed child: fetches GH run logs via `${secrets.github.token}`, fetches Fly app logs, fetches Upstash Redis stats, posts a remediation message to Slack. GitHub is a **mintable integration**, so that placeholder does not resolve to a stored value. At the tool bridge the child asks its runner, which forwards to the daemon-side credential broker over the `agt_r` plane (`POST /v1/runners/me/credentials/mint`). The broker signs a GitHub App JWT (RS256, platform key, daemon-side) and exchanges it for a short-lived installation token, returned just for that call. The App private key never leaves the daemon. (Fly/Upstash/Slack remain static custom secrets until the `oauth_refresh` integration lands.) The child returns `ExecutionResult{content, tokens=1840, wall_ms=8210, ttft_ms=320, outcome=ok}` over the stdout pipe; the runner POSTs it to `report`.
 
 **Step 7 — UPDATE `fleet_events`** (close the same row, at `report`):
 
@@ -275,7 +275,7 @@ execution_started_at NULL
 - `agentsfleet events {id} [--actor=…]` reads **`fleet_events`** — answers "what has this fleet done, what was asked, what did it reply, did any gate block it?"
 - Billing rollups + p95 dashboards read **`fleet_execution_telemetry`** — answers "how many tokens this month, what's the latency tail?"
 
-If only **one** table existed, every user query would either pay full-table-scan cost (one row per delivery for "is it busy now?") or lose immutability guarantees on billing audit (mutable narrative columns alongside immutable spend columns). Three tables, three contracts, one join key (`event_id`).
+One table would force either a full scan to answer "is it busy now?" or mutable narrative columns beside immutable spend columns. Three tables, three jobs, one join key: `event_id`.
 
 ## Two streams + one pub/sub channel — and the one that retired
 
@@ -289,7 +289,7 @@ Before the cutover there were three Redis surfaces. The split kept two and retir
 
 `fleet:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery guarantee. The pub/sub channel is ephemeral and exists only to power live user interfaces — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.fleet_events`; the pub/sub channel is the eyeballs surface, not the audit surface.
 
-**Client-side gap recovery (M122).** Because the channel has no resume, a dashboard tab that drops its Server-Sent Events (SSE) connection misses every frame published during the reconnect window. The stream registry (`ui/packages/app/lib/streaming/fleet-stream-registry.ts`) closes that gap client-side: on every reconnect open — never the SSR-seeded initial connect — it fetches the bounded `core.fleet_events` list through the same-origin token-minting proxy (`/live/v1/workspaces/{ws}/fleets/{id}/events`, mirror of the SSE proxy — the `/live/*` prefix keeps these handler routes outside the `/backend/:path*` rewrite that shadowed them on Vercel), keyed `since` the last server-delivered event minus a 2-second overlap, and merges by event id. No server, channel, or frame-shape change — the durable table remains the recovery source of truth.
+**Client-side gap recovery (M122).** Because the channel has no resume, a dashboard tab that drops its Server-Sent Events (SSE) connection misses every frame published during the reconnect window. The stream registry (`ui/packages/app/lib/streaming/fleet-stream-registry.ts`) closes that gap client-side. On every reconnect open — never the SSR-seeded initial connect — it fetches the bounded `core.fleet_events` list, keyed `since` the last server-delivered event minus a 2-second overlap, and merges by event id. The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/events` (mirror of the SSE proxy; the `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel). No server, channel, or frame-shape change — the durable table remains the recovery source of truth.
 
 ## Connection topology — the cutover collapsed the dedicated tier
 
@@ -377,9 +377,7 @@ declines to assert the third.
 
 ## Config reload — pull-per-lease, no signal
 
-`agentsfleetd` resolves a Fleet's config fresh from `core.fleets` on every `lease`, so a `PATCH /v1/workspaces/{ws}/fleets/{id}` takes effect on the **next lease** with no signaling. There is no in-memory config cache to invalidate and no `fleet_config_changed` consumer to wait on — the worker's watcher-reload path and the `system:config_updated` synthetic-event acknowledgement that depended on it were deleted with the worker.
-
-A config change never alters a language-model turn already in flight (one lease = one run, and the run already has its resolved policy); the next run picks up the new config. The PATCH handler writes `core.fleets` and returns — there is no signal to emit, since the control stream was removed at the cutover. A status change (`paused` / `stopped` / `killed` / back to `active`) is read the same way: the lease assignment scan filters on `core.fleets.status = 'active'`, so a paused Fleet drops out of the candidate set on the next scan and a resumed one re-enters — no notification needed.
+`agentsfleetd` reads a Fleet's config fresh from `core.fleets` on every `lease`. A `PATCH` therefore takes effect on the next lease with no signal: no config cache to invalidate, no `fleet_config_changed` consumer (both deleted with the worker). An in-flight run keeps its resolved policy; the next run picks up the change. Status works the same way: the assignment scan filters `core.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
 
 ## End-to-end sequence
 
@@ -848,7 +846,7 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 - A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
 - Continuity across runs is the checkpoint in `agentsfleetd`, not runner-local state — so any runner can pick up the next run. Sticky routing (prefer `last_runner_id`) is a hint for warm-sandbox reuse, never ownership.
 
-Failure mode: if the runner holding a lease dies, no other runner can claim that fleet until `lease_expires_at`; the reclaim sweep then re-leases it with a higher fencing token. Recovery latency is bounded by the TTL (Time To Live) plus poll density — the S0 lazy-reclaim SLA. Tightening it (heartbeat-driven reassignment, sub-10 s recovery) is M80_006.
+Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency = TTL plus poll density (the S0 lazy-reclaim SLA). Tightening it is M80_006.
 
 ## What the coding fleet never does
 
@@ -871,7 +869,7 @@ The API server (not a runner) is the side that writes to Redis during install. S
 1. **Inline retry (API).** `ensureEventStream` retries `XGROUP CREATE MKSTREAM fleet:{id}:events` on a fixed backoff `[100ms, 500ms, 1500ms]` — four attempts, ~2.1s total wall budget. Most blips never escape this loop. (The group is load-bearing — the `lease` `XREADGROUP` needs it.)
 2. **PG rollback (API).** If retries exhaust, the handler `DELETE`s the freshly-inserted `core.fleets` row and returns 500 with `hint=rolling_back_pg_row` so the caller can retry cleanly. No orphan.
 
-**The watcher reconcile sweep — the pre-cutover third layer — is gone.** It lived in the deleted worker. So the rare **double-fault** (group-setup exhausts retries AND rollback also fails) now leaves an orphaned `core.fleets` row that is **not** auto-healed; recovery is operator-driven (logged `hint=row_orphaned_manual_recovery`) or awaits a future control-plane reconcile job. The orphan is inert: the fleet has no runner leasing it and no live tail; it surfaces in `core.fleets` as `status='active'` with no events group.
+**The pre-cutover third layer (watcher reconcile sweep) is gone** with the worker. A rare double fault (group setup exhausts retries AND rollback fails) now leaves an orphaned `core.fleets` row, logged `hint=row_orphaned_manual_recovery`, healed by an operator or a future reconcile job. The orphan is inert: no runner can lease it (no events group), no live tail.
 
 ```
    TIME ──►
