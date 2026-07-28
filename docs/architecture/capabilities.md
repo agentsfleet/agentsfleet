@@ -8,6 +8,34 @@ A Fleet's capabilities split into two layers: what the language model is told it
 
 ---
 
+## Facts
+
+Every row is extracted from the numbered sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Capability layers | 2 | `SKILL.md` + support files are advisory; `TRIGGER.md` + install-derived policy are binding, enforced in the sandboxed child | §1 |
+| `trigger.type` vs `event_type` | orthogonal fields | different tables (`TRIGGER.md` frontmatter vs `core.fleet_events`), never the same value | §1.1 |
+| Tool primitives | `http_request` · `file_read/write/edit` · `git` · `memory_store/recall` · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | §2 |
+| Mintable integrations | short-lived tokens, minted at the bridge | GitHub App: daemon-signed RS256 JWT exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §2, §3 |
+| Vault secret shapes | 2 | static (stores the value, resolved at lease) vs mintable (stores a handle, never a token) | §3 |
+| Context lifecycle | 3 layers | `memory_checkpoint_every: 5` · `tool_window: auto` (30 / 20 / 10 by context cap) · `stage_chunk_threshold: 0.75` | §4 |
+| Layer 3 authority | observability only | the runtime logs `chunk_threshold_breached` but cannot interrupt the model loop; the fleet's prose owns the wrap-up | §4 |
+| Runaway bound | `budget` caps + lease runtime deadline | there is no enforced continuation-chain counter | §4 |
+| Memory hygiene | `core` pinned; `daily` expires | `daily` rows older than 72 h are deleted on the next capture push; re-storing a key is an upsert | §4 |
+| Cap resolution | install or provider-set time | from the model library, never at trigger time; `""` / `0` are the self-managed overlay sentinels | §4 |
+
+## Traps
+
+Each trap is enforced in its owner section; this list is the index — §5 (What the platform never does) is the binding never-list.
+
+- `SKILL.md` is advisory, `TRIGGER.md` is binding — never treat prose as enforcement (§1).
+- `trigger.type` and `event_type` are never the same value and never the same table (§1.1).
+- Scheduled wakes are not a child tool — QStash owns the clock; the runner receives only the resulting event (§2).
+- The runtime cannot force a chunk; do not design as if a mid-loop interrupt exists (§4).
+- A fleet that hoards everything as `core` defeats the pinning — an over-cap all-`core` set evicts the coldest `core` (§4).
+- The GitHub App private key never rides the lease envelope, the `secrets_map`, or the sandbox child (§3, §5).
+
 ## 1. Reasoning + tool inventory (declared in the fleet's own files)
 
 | File | What it carries | Enforced by |

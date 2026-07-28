@@ -16,6 +16,34 @@ system's concrete invariants, and it is the seed the discipline roster
 
 ---
 
+## Facts
+
+Every row is extracted from the sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Concurrency rules | C1–C5 | SPSC receiver-frees · stop→join→deinit · no blocking under a consumer's lock · one documented mutex per aggregate · thread-confined by default | §The five invariants |
+| Long-lived threads | 11 control-plane + 3 runner | each with a declared spawn point, protection, and stop path | §Thread map |
+| Shutdown flags | 2, deliberately split | a boot-window SIGTERM cannot kill the background stack while the server may still come up | §Thread map |
+| Registered locks | 7 | `hub.mutex` and `hub.wire` are never held together; a wire send happens under `hub.wire` alone | §Lock-invariant registry |
+| Deadline schedulers | exactly one per process root | registrations target a connection *generation*, never a descriptor; arming is fail-CLOSED everywhere | §The deadline-ownership invariant |
+| Shutdown order | 7 steps, LIFO-deferred | the scheduler is constructed after — and torn down before — anything that arms into it | §Shutdown choreography |
+| Io precondition | concurrency-capable `std.Io` required | `common.globalIo()` cannot `select.concurrent`; fail-CLOSED turns that into a refused boot | §The deadline-ownership invariant |
+| Test handshake | `common.Event` | `set()` one side, bounded `timedWait()` the other — no sleeps, no polling races | §Shutdown choreography |
+| Discipline scope | one roster line per folder | enforcement scope is data, not logic; RULE NLR owns files outside the roster | §Expanding the discipline base |
+
+## Traps
+
+Each trap is enforced in its owner section; this list is the index.
+
+- Never hold `hub.mutex` together with `hub.wire`; acquire one at a time (§Lock-invariant registry).
+- Never do a blocking wire send while holding the map mutex — the C3 fix that ended the hub hazard (§Lock-invariant registry).
+- A scheduler callback is a bounded, non-reentrant leaf — it must never call back into scheduler barriers (§Lock-invariant registry).
+- Never free shared maps before their threads have joined; a timed-out drain never proceeds to free (§Shutdown choreography).
+- Never hand `common.globalIo()` to a network owner that needs concurrency (§The deadline-ownership invariant).
+- New cross-thread channels must be SPSC with a carried allocator; reshaping existing ones is a separate judgment with this doc as input (§Channel inventory).
+- Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
+
 ## The five invariants (rules C1–C5)
 
 1. **C1 — SPSC channels, receiver frees.** Every channel that crosses a thread

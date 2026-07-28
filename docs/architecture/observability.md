@@ -9,6 +9,26 @@ Siblings: [`runner_fleet.md`](./runner_fleet.md) (plane structure),
 [`data_flow.md`](./data_flow.md) (an event traced through the runtime). This
 file answers: when something happens, where does the signal go, and who owns it.
 
+## Facts
+
+Every row is extracted from the sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Signal paths | 4 | Prometheus pull · OTLP push (no collector hop) · PostHog · Postgres (money) | §The four signal paths |
+| Metric namespace | `agentsfleet_` only | `semantic_schema_test.zig` renders the body and fails on any family outside it | §The four signal paths |
+| Runner telemetry | deliberately bare | `record_metric` is a no-op stub; local logfmt to the host, liveness over `/v1/runners` | §`agentsfleet-runner` — deliberately bare |
+| Library read series | 102 total, comptime-asserted | closed enums; a new member fails the build, never grows the scrape | §Library read stages are Prometheus, not spans |
+| Trace budget | 10 generic spans per monotonic second | 4 runner rejections + 4 server errors + 2 sampled successes; successful runner verbs never enqueue | §Traces |
+| OTLP queues | logs 2047 · traces 1023 · metrics 1023 (≤ 256 coalesced series) | fire-and-forget; a full ring drops, never blocks; no retry, deliberately | §The OTLP exporter substrate, §Capacity and loss audit |
+| PostHog events | 5 production captures | `FleetCompleted` fires only after the fenced claim; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
+| Per-runner label ceiling | 4096 exact `runner_id` slots | counters overflow to `_other`, gauges drop | §Label registry |
+| Tenant identity on metrics | never | exact per-workspace cost is a Postgres ledger query, which is exact rather than bounded | §Label registry |
+| Log envelope | 4 KiB buffer, `truncated=true` on overflow | exporter-internal scopes stay stderr-only so a failing exporter cannot feed itself | §The shared logging module |
+| Performance gating | nothing gates on a percentile | the scrape is the evidence; a threshold that cannot fail reports success forever | §Library read stages are Prometheus, not spans |
+| The M61 naming trap | the live OTel export survived `OTEL_EXPORT_REMOVAL` | check `otel_logs.zig` / `otel_traces.zig` + the `GRAFANA_OTLP_*` gate, never the milestone name | §The M61 naming trap |
+| Production wiring truth | dated table, Jul 23, 2026 | per-surface state with code evidence | §Signal routing |
+
 ## The four signal paths
 
 All of it lives under `src/agentsfleetd/observability/`.
