@@ -10,7 +10,10 @@ import { resolve } from "node:path";
 const APP_ROOT = resolve(__dirname, "..");
 
 const GLOBALS = readFileSync(resolve(APP_ROOT, "app/globals.css"), "utf8");
-const SHELL = readFileSync(resolve(APP_ROOT, "components/layout/Shell.tsx"), "utf8");
+const SHELL_FRAME = readFileSync(
+  resolve(APP_ROOT, "components/layout/ShellFrame.tsx"),
+  "utf8",
+);
 const SIDEBAR_NAVIGATION = readFileSync(
   resolve(APP_ROOT, "components/layout/SidebarNavigation.tsx"),
   "utf8",
@@ -28,12 +31,12 @@ describe("dashboard route motion is absent", () => {
   });
 
   it("never wires a page-mount animation onto the Shell content wrapper", () => {
-    expect(SHELL).not.toContain("app-content-rise");
+    expect(SHELL_FRAME).not.toContain("app-content-rise");
     expect(GLOBALS).not.toMatch(/\.app-content-rise\s*>\s*\*\s*\{[^}]*opacity:\s*0\s*;/s);
   });
 
   it("wires the ambient-glow canvas onto the Shell main region", () => {
-    expect(SHELL).toMatch(/<main className="app-dashboard-canvas/);
+    expect(SHELL_FRAME).toMatch(/<main className="app-dashboard-canvas/);
   });
 });
 

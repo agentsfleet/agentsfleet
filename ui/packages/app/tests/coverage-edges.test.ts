@@ -55,12 +55,11 @@ describe("DashboardLayout edge branches", () => {
     vi.doMock("@/lib/workspace", () => ({
       listTenantWorkspacesCached: vi.fn(),
     }));
-    vi.doMock("@/components/layout/Shell", () => ({
-      default: ({ workspaces, activeWorkspaceId, children }: {
-        workspaces: unknown[]; activeWorkspaceId: string | null; children: React.ReactNode;
+    vi.doMock("@/components/layout/ShellFrame", () => ({
+      ShellFrame: ({ workspaces, children }: {
+        workspaces: unknown[]; children: React.ReactNode;
       }) => React.createElement("div", {
         "data-ws-count": String((workspaces ?? []).length),
-        "data-active": activeWorkspaceId ?? "none",
       }, children),
     }));
     const { default: DashboardLayout } = await import("../app/(dashboard)/layout");
@@ -68,7 +67,6 @@ describe("DashboardLayout edge branches", () => {
       await DashboardLayout({ children: React.createElement("span", null, "x") }),
     );
     expect(markup).toContain('data-ws-count="0"');
-    expect(markup).toContain('data-active="none"');
   });
 
   it("recovers via catch when listTenantWorkspacesCached rejects", async () => {
@@ -76,8 +74,8 @@ describe("DashboardLayout edge branches", () => {
     vi.doMock("@/lib/workspace", () => ({
       listTenantWorkspacesCached: vi.fn().mockRejectedValue(new Error("api-down")),
     }));
-    vi.doMock("@/components/layout/Shell", () => ({
-      default: ({ workspaces, children }: {
+    vi.doMock("@/components/layout/ShellFrame", () => ({
+      ShellFrame: ({ workspaces, children }: {
         workspaces: unknown[]; children: React.ReactNode;
       }) => React.createElement("div", {
         "data-ws-count": String((workspaces ?? []).length),

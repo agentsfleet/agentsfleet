@@ -50,6 +50,13 @@ function rowFor(modelId: string): HTMLElement {
   return screen.getByText(modelId).closest("tr")!;
 }
 
+async function loadedEditDialog(label: string) {
+  const field = await screen.findByLabelText(label);
+  const dialog = field.closest('[role="dialog"]');
+  if (!dialog) throw new Error("loaded edit field has no dialog owner");
+  return within(dialog as HTMLElement);
+}
+
 const CATALOGUE: AdminModel[] = [
   { uid: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000 },
   { uid: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000 },
@@ -60,7 +67,10 @@ const DEFAULT_FIREWORKS: PlatformKey = {
 };
 
 beforeEach(() => vi.clearAllMocks());
-afterEach(() => cleanup());
+afterEach(() => {
+  vi.restoreAllMocks();
+  cleanup();
+});
 
 describe("AddModelDialog", () => {
   it("renders a PlusIcon on the create-model-library trigger (test_create_triggers_render_plus_icon)", () => {
@@ -160,6 +170,27 @@ describe("CatalogueList — rows + rates + empty state", () => {
     expect(screen.getByText("Add a model to price it and make it the platform default.")).toBeTruthy();
     expect(screen.queryByTestId("data-table")).toBeNull();
   });
+
+  it("does not speculate on the editor from a coarse-pointer hover", () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+    } as MediaQueryList);
+    renderWithTooltipProvider(
+      React.createElement(CatalogueList, {
+        models: CATALOGUE,
+        activeDefault: null,
+        onDeleted: vi.fn(),
+        onUpdated: vi.fn(),
+      }),
+    );
+
+    fireEvent.pointerEnter(
+      within(rowFor("glm-5.2")).getByRole("button", {
+        name: "Edit glm-5.2",
+      }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 });
 
 describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
@@ -227,7 +258,7 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
-    const dialog = within(await screen.findByRole("dialog"));
+    const dialog = await loadedEditDialog("Input $/1M");
     // Pre-filled from the row: 550_000_000 nanos → $0.55, cap 128000.
     expect((dialog.getByLabelText("Input $/1M") as HTMLInputElement).value).toBe("0.55");
     expect((dialog.getByLabelText("Context cap (tokens)") as HTMLInputElement).value).toBe("128000");
@@ -249,7 +280,7 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
   it("shows the immutable provider + model as disabled fields", async () => {
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
-    const dialog = within(await screen.findByRole("dialog"));
+    const dialog = await loadedEditDialog("Provider (locked)");
     const provider = dialog.getByLabelText("Provider (locked)") as HTMLInputElement;
     const modelId = dialog.getByLabelText("Model (locked)") as HTMLInputElement;
     expect(provider.disabled).toBe(true);

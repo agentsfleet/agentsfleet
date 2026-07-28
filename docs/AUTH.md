@@ -181,6 +181,12 @@ The full data lifecycle, sequence, session state machine, threat model, pinned c
 
 > **Post-Stage-1 reconciliation (M74_002 §9 shipped).** The Token A / Token B description in this section is the **historical pre-Stage-1 shape**, kept for context on *why* the split existed. **Current shape:** the dashboard rides **one** token — the customized session token (`auth().getToken()`, no template arg). The browser holds no token value of its own: reads run in React Server Components, mutations in Server Actions (both server-side), and the Server-Sent Events (SSE) route handler mints server-side. `AuthSessionKeeper` calls Clerk's `user.reload()` while a signed-in dashboard is active and when the browser resumes; this refreshes the `__session` cookie without returning token bytes to application code. For where this is headed, see [`architecture/roadmap.md`](./architecture/roadmap.md).
 
+The authenticated layout keeps `ClerkProvider` and `AuthSessionKeeper` at the
+root. `ShellFrame` owns persistent markup on the server. `ShellControls` owns
+only route-aware controls and analytics context in the browser. Loading mobile,
+workspace, account, or route-tool code later does not remount the authentication
+provider or create a second session-refresh lifecycle.
+
 ### Shape
 
 ```

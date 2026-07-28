@@ -3,6 +3,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useId, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   ActivityIcon,
   BookOpenIcon,
@@ -16,24 +17,20 @@ import {
   KeyIcon,
   KeyRoundIcon,
   LibraryIcon,
-  MenuIcon,
   PlugIcon,
   ServerIcon,
 } from "lucide-react";
 import {
-  Button,
   cn,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogTrigger,
   EYEBROW_CLASS,
   Nav,
 } from "@agentsfleet/design-system";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
+import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { SCOPE } from "@/lib/auth/scopes";
-import { workspacePath } from "@/lib/workspace-routes";
-import GettingStartedWidget from "./GettingStartedWidget";
+import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
+import GettingStartedWidgetDynamic from "@/components/domain/island-dynamic/GettingStartedWidgetDynamic";
+import { useShellSidebarCollapsed } from "./shell-sidebar-state";
 import type { OnboardingPollingMode } from "./use-onboarding-progress";
 
 type NavEntry = {
@@ -89,6 +86,35 @@ const BOTTOM_NAV: NavEntry[] = [
   { label: "Docs", path: "https://docs.agentsfleet.net", icon: BookOpenIcon, external: true },
 ];
 
+export function DesktopSidebarNavigation({
+  workspaces,
+  operatorScopes,
+}: {
+  workspaces: TenantWorkspace[];
+  operatorScopes: string[];
+}) {
+  const pathname = usePathname();
+  const collapsed = useShellSidebarCollapsed();
+  const workspaceId =
+    workspaceIdFromPath(pathname) ?? workspaces[0]?.id ?? null;
+  return (
+    <div
+      className={cn(
+        "h-full shrink-0 transition-all duration-snap ease-snap",
+        collapsed ? "w-16" : "w-60",
+      )}
+    >
+      <SidebarNavigation
+        pathname={pathname}
+        workspaceId={workspaceId}
+        operatorScopes={operatorScopes}
+        collapsed={collapsed}
+        onNavigate={() => {}}
+      />
+    </div>
+  );
+}
+
 function resolveHref(entry: NavEntry, workspaceId: string | null): string {
   if (entry.external || !entry.workspaceScoped) return entry.path;
   return workspaceId ? workspacePath(workspaceId, entry.path) : "/";
@@ -142,7 +168,10 @@ export function SidebarNavigation({
       <NavSection label="Organization" items={ORGANIZATION_NAV} {...shared} />
       <div className="mt-auto">
         {workspaceId && !collapsed ? (
-          <GettingStartedWidget workspaceId={workspaceId} pollingMode={gettingStartedPolling} />
+          <GettingStartedWidgetDynamic
+            workspaceId={workspaceId}
+            pollingMode={gettingStartedPolling}
+          />
         ) : null}
         <NavSection items={BOTTOM_NAV} {...shared} />
       </div>
@@ -192,28 +221,6 @@ function PlatformSection({ items, activeHref, workspaceId, onNavigate, collapsed
         {open ? <NavItems items={items} {...{ activeHref, workspaceId, onNavigate, collapsed }} /> : null}
       </div>
     </NavGroup>
-  );
-}
-
-export function MobileNavigation(props: Omit<SidebarNavigationProps, "collapsed" | "onNavigate">) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" aria-label="Open navigation" variant="ghost" size="icon" className="md:hidden -ml-2">
-          <MenuIcon size={18} />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xs">
-        <DialogTitle className="sr-only">Navigation</DialogTitle>
-        <SidebarNavigation
-          {...props}
-          collapsed={false}
-          gettingStartedPolling="mounted"
-          onNavigate={() => setOpen(false)}
-        />
-      </DialogContent>
-    </Dialog>
   );
 }
 

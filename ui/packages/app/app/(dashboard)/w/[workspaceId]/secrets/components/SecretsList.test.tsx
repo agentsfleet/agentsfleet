@@ -4,7 +4,7 @@ import path from "node:path";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { TooltipProvider, formatTimeAbsolute } from "@agentsfleet/design-system";
+import { formatTimeAbsolute } from "@agentsfleet/design-system";
 import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 
 // next/navigation + the server action module are the only runtime deps
@@ -30,11 +30,7 @@ function providerSecret(created_at: number): Secret {
 
 function renderList(secrets: Secret[]) {
   return render(
-    React.createElement(
-      TooltipProvider,
-      null,
-      React.createElement(SecretsList, { workspaceId: "ws_1", secrets }),
-    ),
+    React.createElement(SecretsList, { workspaceId: "ws_1", secrets }),
   );
 }
 

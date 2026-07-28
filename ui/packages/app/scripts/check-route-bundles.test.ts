@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  assertSavedReport,
-} from "./check-route-bundles";
+  assertSavedReport as validateSavedReport,
+  type LimitScope,
+} from "./saved-route-bundle-report";
 import {
   createRouteBundleReport,
   parseClientReferenceManifest,
@@ -47,6 +48,14 @@ const BUDGETS: BundleBudgets = {
     ROUTES.cliAuth,
   ],
 };
+
+function assertSavedReport(
+  report: unknown,
+  buildId: string,
+  scope: LimitScope,
+) {
+  validateSavedReport(report, buildId, scope, BUDGETS);
+}
 
 function routeManifest(
   appPath: string,

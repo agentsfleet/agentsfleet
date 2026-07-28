@@ -144,6 +144,27 @@ billing with workspace resolution and skip the workspaces round-trip when the
 `active_workspace_id` cookie is set. Measure a Vercel preview first; never
 optimize against dev numbers.
 
+### Authenticated route bundle gate
+
+Build the production app before measuring route size:
+
+```bash
+NEXT_PUBLIC_API_URL=http://127.0.0.1:3000 bun run --cwd ui/packages/app build
+bun run --cwd ui/packages/app size
+```
+
+The report prints framework runtime, the shared authenticated entry, and every
+authenticated route. The shared entry must stay at or below 250 Kibibytes
+(KiB). Each dashboard route may add at most 100 KiB. Command-line
+authentication may total at most 240 KiB.
+
+The size command fails when a route exceeds its limit. It also fails when the
+build is stale, a manifest entry is missing, or an expected route is absent.
+The checked report lives at the repository root under
+`test-results/app-route-bundles.json`. The build also records a source
+fingerprint inside `.next`; `size` rejects that output after bundle-relevant
+source changes and asks for a fresh build.
+
 ## Synced tooling (not repo-owned)
 
 `scripts/audit-*.sh`, `scripts/lib/`, and `scripts/llmevals/` appear untracked —

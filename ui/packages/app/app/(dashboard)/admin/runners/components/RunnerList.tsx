@@ -13,6 +13,7 @@ import {
   type DataTableColumn,
   EmptyState,
   PAGINATION_KIND,
+  TooltipProvider,
 } from "@agentsfleet/design-system";
 import { ServerIcon } from "lucide-react";
 import {
@@ -292,7 +293,8 @@ export default function RunnerList({
   });
 
   return (
-    <div className="space-y-4">
+    <TooltipProvider>
+      <div className="space-y-4">
       <DataTable
         columns={columns}
         rows={items}
@@ -377,6 +379,7 @@ export default function RunnerList({
         }}
         onConfirm={confirmDelete}
       />
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

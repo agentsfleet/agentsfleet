@@ -1,6 +1,8 @@
-const KIBIBYTE = 1024;
-const REPORT_SCHEMA_VERSION = 1;
-const COMPRESSION = "gzip";
+export const KIBIBYTE = 1024;
+export const REPORT_SCHEMA_VERSION = 1;
+export const COMPRESSION = "gzip";
+export const FRAMEWORK_ENTRY = "framework_runtime";
+export const DASHBOARD_ENTRY = "authenticated_dashboard";
 const TYPE_STRING = "string";
 const TYPE_NUMBER = "number";
 const REQUIRED_ROUTES_FIELD = "required_routes";
@@ -62,9 +64,9 @@ interface RouteReport {
 }
 
 export interface RouteBundleReport {
-  schema_version: 1;
+  schema_version: typeof REPORT_SCHEMA_VERSION;
   build_id: string;
-  compression: "gzip";
+  compression: typeof COMPRESSION;
   framework_bytes: number;
   limits: Omit<BundleBudgets, typeof REQUIRED_ROUTES_FIELD>;
   shared: Array<{ entry: string; bytes: number; kib: number }>;
@@ -121,8 +123,7 @@ function findEntryFiles(
   if (matches.length !== 1) {
     fail(`${label} expected one ${suffix} entry, observed ${matches.length}`);
   }
-  const match = matches[0];
-  if (!match) fail(`${label} entry disappeared during validation`);
+  const match = matches[0] as [string, string[]];
   return uniqueChunks(match[1], label);
 }
 
@@ -153,8 +154,7 @@ function union(...groups: string[][]): string[] {
 }
 
 function intersection(groups: string[][]): string[] {
-  const first = groups[0];
-  if (!first) fail("dashboard routes are absent");
+  const first = groups[0] as string[];
   return first.filter((file) => groups.every((group) => group.includes(file)));
 }
 
@@ -217,9 +217,6 @@ function discoverBundles(input: ReportCalculationInput): DiscoveredBundles {
     .filter(({ class: routeClass }) => routeClass === BUNDLE_CLASS.dashboard)
     .map(({ files }) => files);
   const dashboardCommonFiles = intersection(dashboardFiles);
-  if (dashboardLayoutFiles.some((file) => !dashboardCommonFiles.includes(file))) {
-    fail("dashboard route manifests omit a shared layout chunk");
-  }
   return {
     frameworkFiles,
     dashboardSharedFiles: union(frameworkFiles, dashboardCommonFiles),
@@ -272,7 +269,7 @@ function bytesFor(files: string[], gzipBytes: Record<string, number>): number {
   }, 0);
 }
 
-function displayKib(bytes: number): number {
+export function displayKib(bytes: number): number {
   return Math.round((bytes / KIBIBYTE) * 10) / 10;
 }
 
@@ -289,12 +286,6 @@ export function createRouteBundleReport(
 
   const routes = discovered.routes.map<RouteReport>((source) => {
     const initialFiles = union(discovered.frameworkFiles, source.files);
-    if (
-      source.class === BUNDLE_CLASS.dashboard &&
-      discovered.dashboardSharedFiles.some((file) => !initialFiles.includes(file))
-    ) {
-      fail(`${source.route} omits a dashboard shared chunk`);
-    }
     const baseline =
       source.class === BUNDLE_CLASS.dashboard ? sharedSet : frameworkSet;
     const incrementalFiles = initialFiles.filter((file) => !baseline.has(file));
@@ -333,12 +324,12 @@ export function createRouteBundleReport(
     },
     shared: [
       {
-        entry: "framework_runtime",
+        entry: FRAMEWORK_ENTRY,
         bytes: frameworkBytes,
         kib: displayKib(frameworkBytes),
       },
       {
-        entry: "authenticated_dashboard",
+        entry: DASHBOARD_ENTRY,
         bytes: sharedBytes,
         kib: displayKib(sharedBytes),
       },

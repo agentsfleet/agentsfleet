@@ -6,7 +6,7 @@ import { LayoutTemplateIcon } from "lucide-react";
 import type { FleetLibraryPageResult } from "@/lib/api/fleet-library";
 import { LIBRARY_AFTER_PARAM, LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
-import AddLibraryDialog from "./AddLibraryDialog";
+import AddLibraryDialogDynamic from "@/components/domain/island-dynamic/AddLibraryDialogDynamic";
 import { readFleetLibraryPageAction } from "./actions";
 import {
   LibraryDocsLink,
@@ -166,7 +166,10 @@ export function InstallSourceSelector({
       <div className="flex flex-wrap items-baseline justify-between gap-md">
         <SectionLabel>Fleet library</SectionLabel>
         {showAddLibraryEntry && hasEntries ? (
-          <AddLibraryDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
+          <AddLibraryDialogDynamic
+            workspaceId={workspaceId}
+            defaultOpen={initialCreateOpen}
+          />
         ) : null}
       </div>
 
@@ -221,7 +224,10 @@ export function InstallSourceSelector({
             <div className="flex flex-wrap items-center justify-center gap-md">
               <LibraryDocsLink />
               {showAddLibraryEntry ? (
-                <AddLibraryDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
+                <AddLibraryDialogDynamic
+                  workspaceId={workspaceId}
+                  defaultOpen={initialCreateOpen}
+                />
               ) : null}
             </div>
           }
