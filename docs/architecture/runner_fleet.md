@@ -458,11 +458,11 @@ The credit-pool billing model debits twice per event, and both debits live on `a
 - At **report**: reconcile the run's telemetry row to the actual token counts. The charged amount stays at the pre-execution estimate — report updates telemetry, it does not re-charge.
 - At **renewal** (M80_006 `/renew`): the same balance gate re-runs as a **coverage check only** — no debit, no telemetry row. A live child's renewal is refused with `UZ-RUN-012` when the tenant can no longer cover the run; the child is killed and the lease ends at its current deadline, never extended. In M80_006 a renewed lease is **not** re-billed — the run charge at lease issue covers the whole run however many renewals extend it (M80_010 later moves the run debit onto these ticks as a per-slice Δ-debit). The gate's exhaustion policy is resolved **once at startup** and carried on the request `Context` (`ctx.balance_policy`), shared by the lease and renewal paths — not re-read from the environment per request.
 
-Receive credits are not refunded if the run later exhausts. This mirrors the deleted `metering.zig` exactly; only the caller moved from the worker to `agentsfleetd`'s lease/report path. **Metering never stops, but the gate only bites post-trial.** While the free-trial window is open the run charge is `0`, so neither the lease gate nor the renewal gate can refuse any tenant. The `UZ-RUN-012` path is unreachable until `FREE_TRIAL_END_MS` passes (mechanism + the metering-vs-revenue split in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-promotional-windows-free-trial-mechanism)).
+Receive credits are not refunded if the run later exhausts. This mirrors the deleted `metering.zig` exactly; only the caller moved from the worker to `agentsfleetd`'s lease/report path. **Metering never stops, but the gate only bites post-trial** — `UZ-RUN-012` is unreachable until `FREE_TRIAL_END_MS` passes. The free-trial mechanics are canonical in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-promotional-windows-free-trial-mechanism).
 
 ## Redis topology — what changed
 
-The pre-cutover runtime had three Redis surfaces. The split keeps two (shifting their producer/consumer to `agentsfleetd`) and retires one.
+The pre-cutover runtime had three Redis surfaces. The split keeps two (shifting their producer/consumer to `agentsfleetd`) and retires one. Surface semantics — cardinality, purpose, volume — are canonical in [`data_flow.md` §"Two streams + one pub/sub channel"](./data_flow.md); this table records only the cutover delta, plus `fleet:ready`, which this file owns.
 
 | Surface | Before | Now |
 |---|---|---|
