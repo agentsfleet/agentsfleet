@@ -4,6 +4,35 @@
 >
 > Scope: the platform shape — the comptime registry + archetype dispatch that makes a new provider a data entry, the callback and event-ingress trust anchors, the bounded-outbound rule for vendor calls, and the connector-vs-integration terminology. Read this before adding a provider or writing any connector outbound call. Flow behavior stays in AUTH.md; this doc owns the invariants that make the flows generic.
 
+## Facts
+
+Every row is extracted from the sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Vocabulary | connector ≠ integration | connector = auth + credential plumbing; integration = a capability built ON the credential | §Terminology |
+| Registry | comptime `[]const ConnectorSpec`, `REGISTRY.len` pinned at 5 | adding a provider is one entry + a small hook file; never new route or flow code | §The registry |
+| Dispatch | on archetype SHAPE, never provider id | exhaustive switch on the tagged union; registry invariants are `@compileError`s | §The registry |
+| Archetypes | 2 — `oauth2` · `app_install` | `slack` / `zoho` (multi-DC) / `jira` / `linear` · `github`; the `api_key` archetype was considered and dropped (M108_002) | §Archetypes |
+| Trust anchors | 4 | signed single-use `state` (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures; no Bearer fallback inbound | §Trust anchors |
+| GitHub App URLs | 2, different jobs | `/v1/connectors/github/callback` (browser install) vs `/v1/ingress/github` (machine events) | §GitHub App |
+| App replay identity | authenticated body digest, per fleet | the unsigned delivery header is diagnostic only; failed fan-out legs retry without duplicating others | §GitHub App |
+| Outbound HTTP | `bounded_fetch.zig` only, grep-gated | pin → arm → fetch → disarm; refusal is `UZ-CONN-003` (502); deadlines named per call class (10 s / 10 s / 1.5 s) | §Bounded outbound |
+| Residual unbounded window | the TLS handshake | `std.http.Client.connect` does TCP+TLS atomically; tracked follow-up | §Bounded outbound |
+| Front-door failures | 404 vs 503 | unknown provider → `UZ-CONN-004`; registry id with no `<provider>-app` bag → `UZ-CONN-001`, fail-loud | §Unknown vs unconfigured |
+
+## Traps
+
+Each trap is enforced in its owner section; this list is the index.
+
+- "Slack integration is broken" and "Slack connector is broken" name different layers — keep the vocabulary straight (§Terminology).
+- No `if provider == "slack"` exists anywhere in the flow; adding one is a design regression (§The registry).
+- A static vendor key (Datadog, Grafana, Fly) is a plain workspace secret, never a registry entry (§Archetypes).
+- Generic connect plumbing does not imply generic event behavior — inbound routing follows the provider's real shape (§The registry).
+- A watchdog arms exactly ONE call at a time; sharing an instance across concurrent requests leaves one call unbounded (§Bounded outbound).
+- No pool slot rides a vendor call — credentials load under a short acquire released before the exchange (§Bounded outbound).
+- The App private key and webhook secret never enter the lease, runner environment, sandboxed child, logs, or response frames (§GitHub App).
+
 ## Terminology (binding)
 
 | Term | Means | Lives in |

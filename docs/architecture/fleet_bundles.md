@@ -4,6 +4,34 @@
 >
 > Scope: where a Fleet's `SKILL.md`, `TRIGGER.md`, and support files come from, how they are stored across Cloudflare R2 + Postgres, what is mutable, and what the runner reads at run time. Read this when you touch import, the bundle store, or the fleet-update path.
 
+## Facts
+
+Every row is extracted from the sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Definition layers | 2 | immutable library entry (content-addressed snapshot) vs live Fleet (`PATCH`-editable); the runner executes the fleet's copy | §Two layers |
+| Onboard | fetch → validate → re-pack | `canonicalTar()` builds agentsfleet's own tar; the runner untars without re-validating; GitHub is never a runtime dependency | §Onboard |
+| Catalog tiers | 2 tables | `core.fleet_library` (slug id, platform, runtime-owned since M128) · `core.tenant_fleet_library` (UUIDv7, deduped on `(workspace_id, content_hash)`) | §Two-tier Fleet library catalog |
+| Publish gate | `visibility` ∈ {`draft`, `public`} | every write stages to `draft`; gallery, bundles list, and install-by-id all require `public` AND `content_hash IS NOT NULL` | §The publish gate |
+| Install pinning | snapshot onto the fleet | `bundle_content_hash` + `bundle_snapshot_key`; unpublish or delete never touches a running fleet | §The publish gate |
+| Catalog identity | frontmatter `name:`, not the repository path | a duplicate name is refused (`UZ-CATALOG-004`); a changed source sets `content_hash = NULL` + `draft` atomically | §The publish gate |
+| Content store | R2 only | `fleet-bundles/sha256/{hash}.tar`; Postgres holds a path/size/hash manifest, never file bytes | §Storage map |
+| Size caps | 32 files · 64 KiB each · 256 KiB total | import validation also caps 16 MiB decompressed / 4096 entries | §Storage map, §Onboard |
+| Runtime reads | lease + bundle endpoint | SKILL/TRIGGER ride the lease fresh per PATCH; support files via `GET /v1/runners/me/bundles/{content_hash}`, cached | §Runtime read path |
+| Concurrency control | optional ETag / `If-Match` | on fleet markdown edits and on platform catalog edits alike; stale writes 412 | §Update + sync |
+| Known gaps 🟡 | 2 | no in-place support-file edit; no GitHub → library sync (manual re-onboard) | §Update + sync |
+
+## Traps
+
+§Notable invariants is the binding list; the index highlights:
+
+- The runner ignores the tar's SKILL.md/TRIGGER.md copies — the fleet's live copy wins on every lease (§Runtime read path).
+- A `public` row with no bundle is invisible by query, not by migration — stale rows cannot lie to a tenant (§The publish gate).
+- Operator-curated fields never ride the `ON CONFLICT` update list; only `required_credentials_reasons` is pruned to the incoming bundle's credentials (§The publish gate).
+- Secrets never enter R2 or the snapshot — credentials are vault refs resolved at lease (§Notable invariants).
+- A platform fleet is never born in SQL — no migration seeds `core.fleet_library` (§Notable invariants).
+
 ## Two layers: the immutable Bundle vs the live Fleet
 
 A Fleet's definition lives in two distinct objects with different mutability and different runtime roles. Conflating them is the usual source of confusion.
