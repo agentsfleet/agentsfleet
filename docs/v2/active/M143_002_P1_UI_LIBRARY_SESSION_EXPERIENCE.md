@@ -397,6 +397,41 @@ follow-up: either restore the document or retire the checker that demands it.
 
 - **Rules inconsistency, flagged not fixed — SCHEMA GUARD contradicts SCHEMA_CONVENTIONS.** `dispatch/write_sql.md`'s Schema Table Removal Guard branches on `VERSION < 2.0.0` into a teardown-rebuild model that lists `ALTER TABLE` and `DROP TABLE` as **forbidden**. `VERSION` is `0.23.0`, so read literally the guard forbids the additive migration that `SCHEMA_CONVENTIONS.md` §Migration Model (owner decision, Jul 22, 2026) requires — and that `schema/032`'s own header cites as governing. The conventions document is the one the dispatch names as source-of-truth, so additive wins; §5 needed no migration either way, so nothing here depended on the resolution. Raised to Indy as a `dotfiles` fix rather than touched from this repository.
 
+- **Amendment A12 (VERIFY) — the named-frame fix left two test doubles behind, and the full app suite was red.** The prior session recorded `make test-unit-app` as "expected green, unverified as a whole". It was not: 58 tests failed across `lib/streaming/fleet-stream-registry.test.ts` (55) and `fleet-stream-retry.test.ts` (3).
+
+  One cause, not fifty-eight. The named-frame fix added `es.addEventListener(...)` to `startEventSource`, but three test files each carried their own hand-rolled `FakeEventSource` and only `tests/use-fleet-event-stream.test.ts` was updated. The other two had no `addEventListener` at all, so every test that opened a connection threw inside `subscribe()` — and 55 of the 59 registry tests open a connection.
+
+  Both stale copies carried a comment asserting the duplication was deliberate ("centralizing was considered and rejected — the helper is small and the duplication keeps each test file freestanding"). That rationale is what the failure falsifies: a double free to model a friendlier server than the real one is how an `onmessage`-only client shipped against a green suite in the first place. The three copies are now one `tests/helpers/fake-event-source.ts`, browser-faithful by construction — named frames reach only their named listeners, an unsubscribed kind drops silently, and `emitRaw` feeds the no-kind fallback channel verbatim so the parse guards keep their coverage. Red-green re-proved: removing the named-listener wiring fails 8 tests across 2 files.
+
+  Two further copies exist (`lib/streaming/workspace-stream.test.ts`, `tests/dashboard-fleets-wall.test.tsx`). Both already implement `addEventListener`, both are green, and neither was touched by this diff — surfaced here rather than swept, since they model a different subject (the workspace multiplex stream).
+
+- **Amendment A13 (EXECUTE, Indy bug report) — the Events tab could not scroll, and the cause was not the one suspected.** Expanding a `×10` runs group on the fleet detail Events view left the page unscrollable in a non-maximized window. The standing hypothesis blamed a viewport-height container with `overflow-hidden` around `EventsList`. Measured in Chromium against a faithful reduction of the real class chain (Shell → page → gate → row → content → EventsList → DataTableView → viewport), that was wrong on both counts, and two plausible fixes were falsified:
+
+  - `stickyHeader={false}` does **not** fix it. `overflow-x-auto` alone makes the box a scroll container on both axes (a box whose one axis is not `visible` computes the other to `auto`), so the containment survives losing `overflow-y-auto`.
+  - Bounding the flex chain (`min-h-0` on the row and content wrappers) does **not** bound it either — the growth is driven from `min-h-full` above, and the viewport still measured 1240/1240.
+
+  The actual cause is `overscroll-behavior: contain` on the DataTable viewport. That div is a scroll container with *nothing to scroll* (client == scroll == 1240px), and two-axis containment therefore swallows the wheel instead of letting it chain to `main`, which is the element that needs to scroll. With the pointer anywhere over the rows — which is most of the content area — the page is frozen. Maximizing hides it only because the content then fits.
+
+  Fix is `overscroll-x-contain`: the viewport exists to scroll wide tables horizontally, so containing that axis keeps the intent while the vertical wheel chains to the page. This is a pre-existing defect, not branch-introduced — the classes came from `55231456f` on `main`. Regression pinned in `DataTable.test.tsx`; the causal evidence is a browser measurement, which no jsdom test can reproduce.
+
+- **Amendment A14 (EXECUTE, Indy design report) — the unsorted sort indicator was the heaviest glyph in the header.** lucide draws `ArrowUpDown` with two full shafts spanning 16 of its 24 units and 18 wide, against the single sorted arrow's 14 × 14 — so at an identical `size={14}` the state meaning "no sort applied" rendered 14% taller and 29% wider than the state meaning "sorted", on every sortable column at once. Replaced with `ChevronsUpDown` (10 units wide, no shafts) at one shared `SORT_ICON_SIZE`, so the header also stops resizing as sorting changes. Judged against a rendered comparison, not asserted.
+
+- **Amendment A15 (EXECUTE, Indy reports) — runner row affordances.** The host-id `CopyButton` is removed: it existed because the id is truncated in the cell, but at real host-id lengths there is nothing to truncate and the glyph was pure noise. The status pair now leads with administrative state and follows with liveness ("active online"), because what an operator has done to a runner decides what it may do, while liveness only reports what it is doing right now. Both pinned in `runners-list.test.ts`.
+
+- **Amendment A16 (EXECUTE) — secret creation claims a free name; `UZ-VAULT-005`.** The adversarial review's create-vs-rotate TOCTOU is closed server-side rather than deferred.
+
+  > Indy (2026-07-28): "Well simplest things is conflict? like we did for workspace." — context: choosing between a client-side gate, a new pending spec, and a server-side conflict for concurrent creates on one secret name.
+
+  The routes were already separate (`POST /v1/workspaces/{id}/secrets` creates, `PATCH .../{secret_name}` rotates) and the UI already had a rotate-only dialog; only the storage layer conflated them, via a single blind `ON CONFLICT … DO UPDATE`. `INSERT_SECRET_IF_ABSENT` adds a `DO NOTHING` arm composed from the same shared column list, so the two arms cannot drift; the affected-row count is the answer and `crypto_store.create` raises `error.SecretNameTaken` on zero. The uniqueness decision is Postgres's, so two concurrent creates on one name resolve to one `201` and one `409` with no read-then-write window.
+
+  Scope was deliberately narrow: the OAuth connector callbacks and the token refresh stay on the overwriting form, because re-connecting a provider *is* a rotation. An absent row count is treated as "not written" — for a credential, answering "that name is taken" beats reporting a success we cannot confirm, and `DO NOTHING` guarantees nothing was overwritten either way.
+
+  This rides the breaking release rather than waiting: `0.24.0` already ships an Upgrading section, and holding the 409 back would make `0.25.0` a second breaking release for one line of SQL.
+
+- **Amendment A17 (VERIFY) — decisions taken on the open review findings.**
+  - *Client sort over a partial page* — accepted at current scale with a visible annotation; no workspace approaches the page size at which a sorted subset misleads.
+  - *Perf list* — **withdrawn, not deferred.** The two proposed Postgres indexes were challenged by Indy and did not survive checking: `core.tenant_fleet_library` already carries `idx_tenant_fleet_library_ws_created_at (workspace_id, created_at DESC)`, so the proposed partial adds only an `id` tiebreaker for rows sharing a millisecond; `core.model_library` is a seeded catalogue small enough that the planner will sort without an index. The benefit was asserted, never measured, and the claim is retracted. Only the shared paged-list footer survives, and its justification is drift between two surfaces rather than performance.
+
 - **Metrics review** — privacy-safe aggregate only; funnel unchanged.
 - **Skill-chain outcomes** — populated during implementation.
 - **Deferrals** — none.

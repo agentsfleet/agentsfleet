@@ -738,4 +738,38 @@ describe("ModelsRegistryTable", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(rotateSecretActionMock).not.toHaveBeenCalled();
   });
+
+  it("fails closed when the secrets round-trip rejects, not just when it returns an error", async () => {
+    // A rejected action is a different failure from `{ ok: false }`: the call
+    // never came back at all (network drop, deploy skew). Without the catch the
+    // dialog strands at "Checking your stored secrets…" — Save disabled forever
+    // and no Retry, because Retry only renders in the error state.
+    createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+    listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
+    listSecretsActionMock
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue({ ok: true, data: { secrets: [] } });
+    await renderTable(registry([]));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /create model/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+
+    // Complete form, rejected list: same fail-closed surface as `ok: false`.
+    await screen.findByText(/couldn't load your stored secrets/i);
+    expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+
+    // And the same Retry recovers it.
+    await user.click(within(dialog).getByRole("button", { name: /retry/i }));
+    await waitFor(() =>
+      expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(false),
+    );
+  });
 });

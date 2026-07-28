@@ -198,3 +198,26 @@ describe("lib/api/fleet-library", () => {
     expect(res.next_cursor).toBeNull();
   });
 });
+
+describe("errorKindForStatus", () => {
+  it("maps the three statuses these surfaces actually produce", async () => {
+    const { errorKindForStatus, LIBRARY_ERROR_KIND } = await import(
+      "@/lib/api/library-types"
+    );
+    expect(errorKindForStatus(401)).toBe(LIBRARY_ERROR_KIND.unauthenticated);
+    expect(errorKindForStatus(403)).toBe(LIBRARY_ERROR_KIND.forbidden);
+    expect(errorKindForStatus(503)).toBe(LIBRARY_ERROR_KIND.unavailable);
+  });
+
+  it("falls back to unknown for any status it has no vocabulary for", async () => {
+    const { errorKindForStatus, LIBRARY_ERROR_KIND } = await import(
+      "@/lib/api/library-types"
+    );
+    // 404 is deliberately unmapped — no read path here emits one, so it must
+    // land on the generic kind rather than invent a state the server never
+    // reports. Same for anything else the vocabulary does not name.
+    for (const status of [400, 404, 418, 500, 502]) {
+      expect(errorKindForStatus(status)).toBe(LIBRARY_ERROR_KIND.unknown);
+    }
+  });
+});
