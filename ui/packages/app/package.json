@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "bun run typecheck && next build",
+    "build": "bun run typecheck && AGENTSFLEET_ROUTE_BUILD_FINGERPRINT=$(bun scripts/write-route-build-provenance.ts capture) && next build && bun scripts/write-route-build-provenance.ts commit \"$AGENTSFLEET_ROUTE_BUILD_FINGERPRINT\"",
     "size": "bun scripts/check-route-bundles.ts",
     "start": "next start",
     "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit",
@@ -50,6 +50,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@next/env": "16.2.10",
     "@axe-core/playwright": "^4.12.1",
     "@clerk/testing": "^2.2.6",
     "@playwright/test": "1.61.1",

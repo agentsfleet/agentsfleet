@@ -10,6 +10,7 @@ import {
   EYEBROW_CLASS,
   SectionHeader,
   TooltipButton,
+  TooltipProvider,
   WakePulse,
 } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS, type Fleet } from "@/lib/api/fleets";
@@ -66,7 +67,8 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
   }
 
   return (
-    <div className="grid gap-xl">
+    <TooltipProvider>
+      <div className="grid gap-xl">
       <SectionHeader
         actions={
           <div className="flex items-center gap-3">
@@ -121,6 +123,7 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
           </div>
         ) : null}
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

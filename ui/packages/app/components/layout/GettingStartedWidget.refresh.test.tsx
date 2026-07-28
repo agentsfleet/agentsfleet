@@ -214,6 +214,25 @@ describe("GettingStartedWidget — live completion refresh", () => {
     expect(rendered.getByText("5/5")).toBeTruthy();
   });
 
+  it("ignores a failed progress read that settles after unmount", async () => {
+    let rejectProgress!: (reason: unknown) => void;
+    getProgress.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectProgress = reject;
+      }),
+    );
+    const rendered = renderWidget();
+    await act(async () => Promise.resolve());
+    expect(getProgress).toHaveBeenCalledOnce();
+
+    rendered.unmount();
+    await act(async () => {
+      rejectProgress(new Error("late read failure"));
+      await Promise.resolve();
+    });
+    expect(rendered.queryByText("Getting started")).toBeNull();
+  });
+
   it("keeps the committed workspace active when a concurrent navigation is interrupted", async () => {
     getProgress
       .mockResolvedValueOnce(progressOk(INCOMPLETE))

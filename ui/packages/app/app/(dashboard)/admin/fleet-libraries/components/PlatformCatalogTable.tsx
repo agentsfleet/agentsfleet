@@ -23,6 +23,14 @@ import type { PlatformCatalogEntry } from "@/lib/types";
 import { presentErrorString } from "@/lib/errors";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
+import { preloadAddFleetDialog } from "@/components/domain/island-dynamic/AddFleetDialogDynamic";
+import {
+  default as EditFleetDialogDynamic,
+  preloadEditFleetDialog,
+} from "@/components/domain/island-dynamic/EditFleetDialogDynamic";
+import {
+  maySpeculateOnHover,
+} from "@/components/domain/island-dynamic/intent-module-loader";
 import { deletePlatformLibraryAction, patchPlatformLibraryAction } from "../actions";
 import {
   COLUMN_ACTIONS,
@@ -50,7 +58,6 @@ import {
   UNPUBLISH,
 } from "../library-copy";
 import { rowActions, statusView } from "./catalog-status";
-import EditFleetDialog from "./EditFleetDialog";
 
 // Em dash, not an empty cell: a row with no bundle has a definite absence, and
 // blank space reads as a rendering bug.
@@ -257,11 +264,23 @@ export default function PlatformCatalogTable({
             <IconAction
               label={row.content_hash ? FETCH_UPDATE : FETCH_BUNDLE}
               disabled={busy}
+              onFocus={preloadAddFleetDialog}
+              onPointerEnter={() => {
+                if (maySpeculateOnHover()) preloadAddFleetDialog();
+              }}
               onClick={() => onFetch(row)}
             >
               <DownloadIcon size={14} />
             </IconAction>
-            <IconAction label={EDIT} disabled={busy} onClick={() => setEditingId(row.id)}>
+            <IconAction
+              label={EDIT}
+              disabled={busy}
+              onFocus={preloadEditFleetDialog}
+              onPointerEnter={() => {
+                if (maySpeculateOnHover()) preloadEditFleetDialog();
+              }}
+              onClick={() => setEditingId(row.id)}
+            >
               <PencilIcon size={14} />
             </IconAction>
             {/* A published fleet has no Delete at all, rather than a disabled one:
@@ -304,7 +323,7 @@ export default function PlatformCatalogTable({
       />
 
       {editing ? (
-        <EditFleetDialog
+        <EditFleetDialogDynamic
           key={editing.id}
           entry={editing}
           open

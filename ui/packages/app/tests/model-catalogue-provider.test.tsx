@@ -14,8 +14,8 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
 vi.mock("next/navigation", () => ({ useRouter: () => routerMock }));
 
 import { CATALOGUE_STATUS } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/catalogue-status";
+import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
 import {
-  maySpeculateOnHover,
   ModelCatalogueProvider,
   useModelCatalogue,
 } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider";

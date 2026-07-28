@@ -12,12 +12,16 @@ import {
 import { PlusIcon } from "lucide-react";
 import type { PlatformCatalogEntry } from "@/lib/types";
 import {
+  default as AddFleetDialogDynamic,
+  preloadAddFleetDialog,
+} from "@/components/domain/island-dynamic/AddFleetDialogDynamic";
+import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
+import {
   ADD_TOOLTIP,
   CREATE_FLEET_LIBRARY,
   FLEET_LIBRARIES_DESCRIPTION,
   FLEET_LIBRARY_TITLE,
 } from "../library-copy";
-import AddFleetDialog from "./AddFleetDialog";
 import PlatformCatalogTable from "./PlatformCatalogTable";
 
 // The catalog IS the page. Every write revalidates it, so an operator never has to
@@ -53,7 +57,20 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
       <Section aria-label="Platform fleet catalog">
         <SectionHeader
           actions={
-            <TooltipButton type="button" size="sm" tooltip={ADD_TOOLTIP} onClick={openAdd}>
+            <TooltipButton
+              type="button"
+              size="sm"
+              tooltip={ADD_TOOLTIP}
+              onFocus={preloadAddFleetDialog}
+              onPointerEnter={(event) => {
+                const mayPreload = maySpeculateOnHover();
+                event.currentTarget.dataset.intentHover = mayPreload
+                  ? "requested"
+                  : "suppressed";
+                if (mayPreload) preloadAddFleetDialog();
+              }}
+              onClick={openAdd}
+            >
               <PlusIcon size={14} />
               {CREATE_FLEET_LIBRARY}
             </TooltipButton>
@@ -64,7 +81,12 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
 
         <PlatformCatalogTable entries={entries} onFetch={openFetch} />
 
-        <AddFleetDialog open={adding} onOpenChange={setAdding} prefillRepo={prefillRepo} prefillRef={prefillRef} />
+        <AddFleetDialogDynamic
+          open={adding}
+          onOpenChange={setAdding}
+          prefillRepo={prefillRepo}
+          prefillRef={prefillRef}
+        />
       </Section>
     </PageLayout>
   );

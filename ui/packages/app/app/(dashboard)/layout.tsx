@@ -1,5 +1,4 @@
-import { TooltipProvider } from "@agentsfleet/design-system";
-import Shell from "@/components/layout/Shell";
+import { ShellFrame } from "@/components/layout/ShellFrame";
 import { auth } from "@clerk/nextjs/server";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { readSessionScopes } from "@/lib/auth/platform";
@@ -27,19 +26,12 @@ export default async function DashboardLayout({
       ])
     : [{ items: [], total: 0 }, new Set<string>()];
 
-  // Single TooltipProvider at the dashboard root keeps every <Tooltip>
-  // (DataTable headers, EventsList timestamps, Time primitives, future
-  // sites) on a coordinated delay timer. Per-page providers like
-  // BillingBalanceCard stay nested — Radix tolerates re-entry.
-  //
   // Shell derives the active workspace from the route (`/w/<id>/…`) itself —
   // no `activeWorkspaceId` prop, no cookie. It wraps both the workspace-scoped
   // subtree and the tenant/platform pages (settings/api-keys, billing, admin).
   return (
-    <TooltipProvider>
-      <Shell workspaces={listResult.items} operatorScopes={[...scopes]}>
-        {children}
-      </Shell>
-    </TooltipProvider>
+    <ShellFrame workspaces={listResult.items} operatorScopes={[...scopes]}>
+      {children}
+    </ShellFrame>
   );
 }

@@ -103,10 +103,18 @@ afterEach(() => {
 });
 
 describe("WorkspaceSwitcher component", () => {
+  async function activateWorkspaceMenu() {
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("workspace-switcher"));
+      await import("../components/layout/WorkspaceSwitcherMenu");
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("workspace-new")).toBeTruthy();
+  }
+
   async function renderSwitcher(
     props: {
       workspaces?: Array<{ id: string; name: string | null }>;
-      activeId?: string | null;
     } = {},
   ) {
     const [{ default: WorkspaceSwitcher }, { WorkspaceCreationProvider }] =
@@ -114,7 +122,7 @@ describe("WorkspaceSwitcher component", () => {
         import("../components/layout/WorkspaceSwitcher"),
         import("../components/layout/WorkspaceCreationProvider"),
       ]);
-    return render(
+    const view = render(
       React.createElement(
         WorkspaceCreationProvider,
         null,
@@ -123,10 +131,11 @@ describe("WorkspaceSwitcher component", () => {
             { id: "ws_1", name: "Alpha" },
             { id: "ws_2", name: "Beta" },
           ],
-          activeId: props.activeId === undefined ? "ws_1" : props.activeId,
         } as never),
       ),
     );
+    await activateWorkspaceMenu();
+    return view;
   }
 
   function deferWorkspaceAction() {
@@ -147,21 +156,8 @@ describe("WorkspaceSwitcher component", () => {
   }
 
   it("still renders with a Create workspace affordance when workspaces is empty", async () => {
-    const [{ default: WorkspaceSwitcher }, { WorkspaceCreationProvider }] =
-      await Promise.all([
-        import("../components/layout/WorkspaceSwitcher"),
-        import("../components/layout/WorkspaceCreationProvider"),
-      ]);
-    render(
-      React.createElement(
-        WorkspaceCreationProvider,
-        null,
-        React.createElement(WorkspaceSwitcher, {
-          workspaces: [],
-          activeId: null,
-        } as never),
-      ),
-    );
+    usePathname.mockReturnValue("/");
+    await renderSwitcher({ workspaces: [] });
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain(
       "No workspace",
     );
@@ -182,21 +178,9 @@ describe("WorkspaceSwitcher component", () => {
       id: `ws_${index}`,
       name: `Workspace ${index}`,
     }));
-    const [{ default: WorkspaceSwitcher }, { WorkspaceCreationProvider }] =
-      await Promise.all([
-        import("../components/layout/WorkspaceSwitcher"),
-        import("../components/layout/WorkspaceCreationProvider"),
-      ]);
-    const { container } = render(
-      React.createElement(
-        WorkspaceCreationProvider,
-        null,
-        React.createElement(WorkspaceSwitcher, {
-          workspaces: manyWorkspaces,
-          activeId: "ws_0",
-        } as never),
-      ),
-    );
+    const { container } = await renderSwitcher({
+      workspaces: manyWorkspaces,
+    });
     const menu = container.querySelector("[data-dropdown-content]");
     const list = screen.getByTestId("workspace-list-scroll");
     expect(menu?.className).toContain("overflow-hidden");
@@ -213,16 +197,17 @@ describe("WorkspaceSwitcher component", () => {
   });
 
   it("uses the oldest visible workspace when no route is active", async () => {
-    await renderSwitcher({ activeId: null });
+    usePathname.mockReturnValue("/");
+    await renderSwitcher();
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain(
       "Alpha",
     );
   });
 
   it("uses a calm label when a workspace name is absent", async () => {
+    usePathname.mockReturnValue("/");
     await renderSwitcher({
       workspaces: [{ id: "ws_only", name: null }],
-      activeId: "ws_only",
     });
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain(
       "Unnamed workspace",
@@ -230,12 +215,12 @@ describe("WorkspaceSwitcher component", () => {
   });
 
   it("shows a safe routed label when the bounded list omits the active workspace", async () => {
+    usePathname.mockReturnValue("/w/ws_unknown/fleets");
     await renderSwitcher({
       workspaces: [
         { id: "ws_a", name: "Alpha" },
         { id: "ws_b", name: "Beta" },
       ],
-      activeId: "ws_unknown",
     });
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain(
       "Current workspace",
@@ -275,10 +260,10 @@ describe("WorkspaceSwitcher component", () => {
     );
   });
 
-  it("navigates into the displayed workspace from a tenant page (activeId is only a display fallback)", async () => {
+  it("navigates into the displayed fallback workspace from a tenant page", async () => {
     const user = userEvent.setup({ delay: null });
     usePathname.mockReturnValue("/settings/billing");
-    await renderSwitcher({ activeId: "ws_1" });
+    await renderSwitcher();
     const items = screen.getAllByRole("menuitem");
     await user.click(items[0]!);
     await waitFor(() =>
@@ -307,7 +292,6 @@ describe("WorkspaceSwitcher component", () => {
     const longName = "A".repeat(128);
     await renderSwitcher({
       workspaces: [{ id: "ws_long", name: longName }],
-      activeId: "ws_long",
     });
     const label = screen.getByTitle(longName);
     expect(label.className).toContain("truncate");
@@ -396,7 +380,7 @@ describe("WorkspaceSwitcher component", () => {
     expect(routerPush).not.toHaveBeenCalled();
   });
 
-  it("turns a rejected action into an attached dialog error", async () => {
+  it("test_react19_transitions_and_optimistic_rollbacks_are_stable", async () => {
     const user = userEvent.setup({ delay: null });
     createWorkspaceActionMock.mockRejectedValueOnce(
       new Error("network unavailable"),
@@ -485,12 +469,12 @@ describe("WorkspaceSwitcher component", () => {
           null,
           React.createElement(WorkspaceSwitcher, {
             workspaces: [],
-            activeId: null,
           }),
           React.createElement(NoWorkspaceEmptyState),
         ),
       ),
     );
+    await activateWorkspaceMenu();
 
     await user.click(screen.getByTestId("create-first-workspace"));
     await enterWorkspaceName("shared");
@@ -549,12 +533,12 @@ describe("WorkspaceSwitcher component", () => {
           null,
           React.createElement(WorkspaceSwitcher, {
             workspaces: [],
-            activeId: null,
           }),
           React.createElement(NoWorkspaceEmptyState),
         ),
       ),
     );
+    await activateWorkspaceMenu();
 
     await user.click(screen.getByTestId("workspace-new"));
     await enterWorkspaceName("switcher");
@@ -607,7 +591,6 @@ describe("WorkspaceSwitcher component", () => {
           null,
           React.createElement(WorkspaceSwitcher, {
             workspaces: [],
-            activeId: null,
           }),
           showEmptyState ? React.createElement(NoWorkspaceEmptyState) : null,
         ),
@@ -615,6 +598,7 @@ describe("WorkspaceSwitcher component", () => {
     }
     const user = userEvent.setup({ delay: null });
     const view = render(React.createElement(Tree, { showEmptyState: true }));
+    await activateWorkspaceMenu();
     await user.click(screen.getByTestId("create-first-workspace"));
     await enterWorkspaceName("after-unmount");
     await user.click(await screen.findByTestId("workspace-create-submit"));
@@ -658,7 +642,6 @@ describe("WorkspaceSwitcher component", () => {
           null,
           React.createElement(WorkspaceSwitcher, {
             workspaces: [],
-            activeId: null,
           }),
           showEmptyState ? React.createElement(NoWorkspaceEmptyState) : null,
         ),
@@ -666,6 +649,7 @@ describe("WorkspaceSwitcher component", () => {
     }
     const user = userEvent.setup({ delay: null });
     const view = render(React.createElement(Tree, { showEmptyState: true }));
+    await activateWorkspaceMenu();
     await user.click(screen.getByTestId("workspace-new"));
     await enterWorkspaceName("owner");
     await user.click(await screen.findByTestId("workspace-create-submit"));
@@ -714,7 +698,6 @@ describe("WorkspaceSwitcher component", () => {
           null,
           React.createElement(WorkspaceSwitcher, {
             workspaces: [],
-            activeId: null,
           }),
           React.createElement(ReleaseAfterRouteCommit, { release }),
         ),
@@ -722,6 +705,7 @@ describe("WorkspaceSwitcher component", () => {
     }
     const user = userEvent.setup({ delay: null });
     const view = render(React.createElement(Tree, { release: false }));
+    await activateWorkspaceMenu();
     await user.click(screen.getByTestId("workspace-new"));
     await enterWorkspaceName("route-commit");
     await user.click(await screen.findByTestId("workspace-create-submit"));
@@ -803,7 +787,6 @@ describe("WorkspaceSwitcher component", () => {
       );
       return React.createElement(WorkspaceSwitcher, {
         workspaces: [],
-        activeId: null,
       } as never);
     }
     const user = userEvent.setup({ delay: null });
@@ -814,6 +797,7 @@ describe("WorkspaceSwitcher component", () => {
         React.createElement(ReleaseOnLayoutCleanup),
       ),
     );
+    await activateWorkspaceMenu();
     await user.click(screen.getByTestId("workspace-new"));
     await enterWorkspaceName("layout-unmount");
     await user.click(await screen.findByTestId("workspace-create-submit"));

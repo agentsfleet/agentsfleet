@@ -36,7 +36,6 @@ afterEach(() => cleanup());
 
 import { EventsList } from "../components/domain/EventsList";
 import { type EventRow, type EventsPage } from "@/lib/api/events";
-import { TooltipProvider } from "@agentsfleet/design-system";
 import { GUIDANCE } from "@/lib/events/event-summary";
 
 function row(over: Partial<EventRow> = {}): EventRow {
@@ -65,11 +64,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
 
 function renderList(initial: EventsPage, fleetId?: string) {
   return render(
-    React.createElement(
-      TooltipProvider,
-      null,
-      React.createElement(EventsList, { initial, pageSize: 25, fleetId }),
-    ),
+    React.createElement(EventsList, { initial, pageSize: 25, fleetId }),
   );
 }
 
