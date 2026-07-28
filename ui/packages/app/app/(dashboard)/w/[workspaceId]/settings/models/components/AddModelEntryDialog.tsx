@@ -32,6 +32,7 @@ import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { captureModelActivated } from "../lib/track";
+import { CATALOGUE_STATUS } from "./catalogue-status";
 import { maySpeculateOnHover, useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderModelSelect from "./ProviderModelSelect";
 import { SECRETS_LOAD, type SecretsLoad } from "./secrets-load";
@@ -69,7 +70,7 @@ export default function AddModelEntryDialog({
   onSecretsNeeded: () => void;
 }) {
   const uid = useId();
-  const { models, preload } = useModelCatalogue();
+  const { models, status: catalogueStatus, preload } = useModelCatalogue();
   // The library's providers plus the OpenAI-compatible option, pinned last —
   // one dropdown covers hosted providers and custom endpoints alike (no tabs).
   const providerOptions = uniqueProviders(models).filter((p) => p !== OPENAI_COMPATIBLE_PROVIDER);
@@ -246,10 +247,12 @@ export default function AddModelEntryDialog({
           // Focus is deliberate — keyboard users get the same warm dialog a
           // mouse user gets from hovering, and it is never suppressed.
           onFocus={preload}
-          // Hover only speculates where hover means something and the user has
-          // not asked us to conserve data.
+          // Hover only speculates where hover means something, the user has
+          // not asked us to conserve data, and the catalogue is not already
+          // known-failing — mousing around a failing backend must not fire a
+          // request per hover. Open still retries deliberately.
           onPointerEnter={() => {
-            if (maySpeculateOnHover()) preload();
+            if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preload();
           }}
         >
           <PlusIcon size={14} />

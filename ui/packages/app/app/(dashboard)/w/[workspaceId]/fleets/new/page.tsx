@@ -7,8 +7,8 @@ import {
   type FleetLibraryPageResult,
 } from "@/lib/api/fleet-library";
 import {
-  errorKindForStatus,
-  LIBRARY_ERROR_KIND,
+  LIBRARY_AFTER_PARAM,
+  libraryErrorFromCause,
   type LibraryError,
 } from "@/lib/api/library-types";
 import { listSecrets } from "@/lib/api/secrets";
@@ -112,18 +112,14 @@ async function readGalleryPage(
     if (after !== null && status === CURSOR_REJECTED_STATUS) {
       try {
         return { result: await listWorkspaceFleetLibraryCached(workspaceId, token, null), error: null };
-      } catch {
-        // Fall through to the typed error below: the library itself is
-        // unreachable, which is not something a better cursor would fix.
+      } catch (fallbackCause) {
+        // The FALLBACK's failure is the one to classify: the library itself is
+        // unreachable, and reporting the discarded 400 here would show a
+        // cursor-shaped error during an auth or availability incident.
+        return { result: null, error: libraryErrorFromCause(fallbackCause) };
       }
     }
-    return {
-      result: null,
-      error: {
-        kind: typeof status === "number" ? errorKindForStatus(status) : LIBRARY_ERROR_KIND.unknown,
-        detail: cause instanceof Error ? cause.message : undefined,
-      },
-    };
+    return { result: null, error: libraryErrorFromCause(cause) };
   }
 }
 
@@ -149,7 +145,7 @@ export async function InstallFleetData({
   const token = await getToken();
   if (!token) return null;
 
-  const after = one(query.library_after) ?? null;
+  const after = one(query[LIBRARY_AFTER_PARAM]) ?? null;
 
   const [gallery, credentialNames] = await Promise.all([
     readGalleryPage(workspaceId, token, after),

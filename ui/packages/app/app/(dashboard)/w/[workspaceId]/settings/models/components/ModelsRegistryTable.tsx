@@ -10,7 +10,7 @@ import {
   SectionHeader,
 } from "@agentsfleet/design-system";
 import type { TenantModelEntryPageResult } from "@/lib/api/tenant_model_entries";
-import type { LibraryError } from "@/lib/api/library-types";
+import { LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
 import { presentErrorString } from "@/lib/errors";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
@@ -18,9 +18,10 @@ import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedActi
 import { captureModelActivated, captureProviderReset } from "../lib/track";
 import AddModelEntryDialog from "./AddModelEntryDialog";
 import EditModelEntryDialog from "./EditModelEntryDialog";
-import { computeNextSort, readErrorCopy, readErrorFrom, sortValueFor, type SortState } from "./registry-view";
+import { computeNextSort, readErrorCopy, sortValueFor, type SortState } from "./registry-view";
 import { useStoredSecrets } from "./use-stored-secrets";
 import ModelDetailsDialog from "./ModelDetailsDialog";
+import { CATALOGUE_STATUS } from "./catalogue-status";
 import { maySpeculateOnHover, useModelCatalogue } from "./ModelCatalogueProvider";
 import {
   ActionsCell,
@@ -74,7 +75,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   // is no longer fetched on mount, so on an ordinary visit this is empty and
   // rows render their own server-provided rates. `preloadCatalogue` warms it on
   // intent to open a dialog whose picker genuinely needs it.
-  const { models: libraryModels, preload: preloadCatalogue } = useModelCatalogue();
+  const { models: libraryModels, status: catalogueStatus, preload: preloadCatalogue } = useModelCatalogue();
 
   const hasActiveEntry = entries.some((e) => e.active);
   // The platform default is live only when it BOTH wins resolution (no active
@@ -112,17 +113,28 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   // alone and surfaces the fault — it must never fall back to empty.
   function refresh() {
     startTransition(async () => {
-      const r = await listModelEntriesAction();
-      if (!r.ok) {
-        setReadError(readErrorFrom(r));
-        return;
+      // try/catch because the action ROUND-TRIP itself can reject (network
+      // failure, deploy skew) — `withToken` only catches server-side. An
+      // uncaught rejection here would escape the transition into a route
+      // with no error boundary.
+      try {
+        const r = await listModelEntriesAction();
+        if (!r.ok) {
+          setReadError(readErrorFrom(r));
+          return;
+        }
+        setReadError(null);
+        setEntries(r.data.models);
+        setPlatformDefaultAvailable(r.data.platform_default_available);
+        setPlatformDefault(r.data.platform_default ?? null);
+        setNextCursor(r.data.next_cursor);
+        setTotal(r.data.total);
+      } catch (cause) {
+        setReadError({
+          kind: LIBRARY_ERROR_KIND.unknown,
+          detail: cause instanceof Error ? cause.message : undefined,
+        });
       }
-      setReadError(null);
-      setEntries(r.data.models);
-      setPlatformDefaultAvailable(r.data.platform_default_available);
-      setPlatformDefault(r.data.platform_default ?? null);
-      setNextCursor(r.data.next_cursor);
-      setTotal(r.data.total);
     });
   }
 
@@ -132,15 +144,26 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   function loadMore() {
     if (nextCursor === null) return;
     startTransition(async () => {
-      const r = await listModelEntriesAction(nextCursor);
-      if (!r.ok) {
-        setReadError(readErrorFrom(r));
-        return;
+      try {
+        const r = await listModelEntriesAction(nextCursor);
+        if (!r.ok) {
+          setReadError(readErrorFrom(r));
+          return;
+        }
+        setReadError(null);
+        setEntries((prior) => [...prior, ...r.data.models]);
+        // A cursor that does not advance means the server is re-serving the
+        // same page; appending it forever would duplicate every row. The
+        // exhaustive walk this replaced threw on exactly this defect —
+        // treat it as terminal instead.
+        setNextCursor(r.data.next_cursor === nextCursor ? null : r.data.next_cursor);
+        setTotal(r.data.total);
+      } catch (cause) {
+        setReadError({
+          kind: LIBRARY_ERROR_KIND.unknown,
+          detail: cause instanceof Error ? cause.message : undefined,
+        });
       }
-      setReadError(null);
-      setEntries((prior) => [...prior, ...r.data.models]);
-      setNextCursor(r.data.next_cursor);
-      setTotal(r.data.total);
     });
   }
 
@@ -233,7 +256,11 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
           }}
           onEditFocusIntent={preloadCatalogue}
           onEditHoverIntent={() => {
-            if (maySpeculateOnHover()) preloadCatalogue();
+            // A failed catalogue does not re-fetch on speculation: mousing
+            // across rows against a failing backend would fire one request
+            // per hover with no backoff. Deliberate intent (open) still
+            // retries.
+            if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preloadCatalogue();
           }}
           onRemove={setRemoveTarget}
         />

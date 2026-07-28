@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Button, EmptyState, SectionLabel } from "@agentsfleet/design-system";
 import { LayoutTemplateIcon } from "lucide-react";
 import type { FleetLibraryPageResult } from "@/lib/api/fleet-library";
-import { errorKindForStatus, LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
+import { LIBRARY_AFTER_PARAM, LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import AddLibraryDialog from "./AddLibraryDialog";
 import { readFleetLibraryPageAction } from "./actions";
@@ -33,9 +33,6 @@ type Props = {
 const NOT_FOUND_COPY =
   "That library entry is not on this page. It may have been removed, or it may be further down the library.";
 
-/** The query parameter carrying list position. Parsed by `page.tsx`. */
-const CURSOR_PARAM = "library_after";
-
 /**
  * Write the current list position into the URL.
  *
@@ -48,8 +45,8 @@ const CURSOR_PARAM = "library_after";
 function mirrorCursorIntoUrl(cursor: string | null) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  if (cursor === null) url.searchParams.delete(CURSOR_PARAM);
-  else url.searchParams.set(CURSOR_PARAM, cursor);
+  if (cursor === null) url.searchParams.delete(LIBRARY_AFTER_PARAM);
+  else url.searchParams.set(LIBRARY_AFTER_PARAM, cursor);
   window.history.replaceState(window.history.state, "", url);
 }
 
@@ -99,22 +96,34 @@ export function InstallSourceSelector({
   // surfaces a typed fault — it never blanks the gallery.
   function fetchPage(cursor: string | null, append: boolean) {
     startTransition(async () => {
-      const r = await readFleetLibraryPageAction(workspaceId, cursor);
-      if (!r.ok) {
+      // try/catch because the action ROUND-TRIP itself can reject (network
+      // failure, deploy skew) — `withToken` only catches server-side, and an
+      // uncaught rejection would escape the transition into a route with no
+      // error boundary.
+      try {
+        const r = await readFleetLibraryPageAction(workspaceId, cursor);
+        if (!r.ok) {
+          setError(readErrorFrom(r));
+          return;
+        }
+        setError(null);
+        setEntries((prior) => (append ? [...prior, ...r.data.items] : r.data.items));
+        // A cursor that does not advance means the server is re-serving the
+        // same page; another click would append it again as duplicate cards.
+        // The exhaustive walk this replaced threw on exactly this defect —
+        // treat it as terminal instead.
+        setNextCursor(r.data.next_cursor === cursor ? null : r.data.next_cursor);
+        setTotal(r.data.total);
+        // Mirror the page we just loaded FROM into the URL, so a reload, a
+        // shared link, or a back navigation out of a detail view lands here
+        // rather than dumping the user back at the first page.
+        mirrorCursorIntoUrl(cursor);
+      } catch (cause) {
         setError({
-          kind: typeof r.status === "number" ? errorKindForStatus(r.status) : LIBRARY_ERROR_KIND.unknown,
-          detail: r.error,
+          kind: LIBRARY_ERROR_KIND.unknown,
+          detail: cause instanceof Error ? cause.message : undefined,
         });
-        return;
       }
-      setError(null);
-      setEntries((prior) => (append ? [...prior, ...r.data.items] : r.data.items));
-      setNextCursor(r.data.next_cursor);
-      setTotal(r.data.total);
-      // Mirror the page we just loaded FROM into the URL, so a reload, a
-      // shared link, or a back navigation out of a detail view lands here
-      // rather than dumping the user back at the first page.
-      mirrorCursorIntoUrl(cursor);
     });
   }
 

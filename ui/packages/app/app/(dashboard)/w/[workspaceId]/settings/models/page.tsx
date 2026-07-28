@@ -6,11 +6,7 @@ import { listTenantModelEntriesCached } from "./lib/reads";
 import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
 import ModelsRegistryTable from "./components/ModelsRegistryTable";
 import { MODELS_PAGE_DESCRIPTION, MODELS_PAGE_TITLE } from "./copy";
-import {
-  errorKindForStatus,
-  LIBRARY_ERROR_KIND,
-  type LibraryError,
-} from "@/lib/api/library-types";
+import { libraryErrorFromCause, type LibraryError } from "@/lib/api/library-types";
 
 export const dynamic = "force-dynamic";
 
@@ -86,11 +82,7 @@ export async function ModelsRegistryData({ workspaceId }: { workspaceId: string 
   try {
     page = await listTenantModelEntriesCached(token);
   } catch (cause) {
-    const status = (cause as { status?: number }).status;
-    error = {
-      kind: typeof status === "number" ? errorKindForStatus(status) : LIBRARY_ERROR_KIND.unknown,
-      detail: cause instanceof Error ? cause.message : undefined,
-    };
+    error = libraryErrorFromCause(cause);
   }
 
   return (

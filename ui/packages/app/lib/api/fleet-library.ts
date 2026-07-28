@@ -29,10 +29,9 @@ const platformEntryPath = (id: string) =>
 // entry carries `visibility`, so the install flow keys the create body off the
 // chosen tier (platform_library_id vs tenant_library_id). Metadata only — the
 // canonical bundle bytes live in R2, never in the response.
-// Rows per request, and the ceiling on how many requests one walk will make.
-// The endpoint pages at 50 by default and rejects a `limit` above 100
-// (`UZ-LIBRARY-003`), so asking for the maximum halves the round-trips a large
-// gallery costs.
+// Rows per request. The endpoint pages at 50 by default and rejects a `limit` above 100
+// (`UZ-LIBRARY-003`), so asking for the maximum gives the largest window one
+// round-trip can buy.
 const GALLERY_PAGE_LIMIT = 100;
 
 /** One wire page: `items` is that page alone, `next_cursor` null on the last. */

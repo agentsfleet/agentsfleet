@@ -3,7 +3,7 @@
 // length cap. Everything here is a pure function over passive values; the
 // component keeps the state and wiring.
 
-import { errorKindForStatus, LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
+import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
 import type { TenantModelEntry } from "@/lib/types";
 
 export type SortState = { key: "model" | "provider"; dir: "ascending" | "descending" } | null;
@@ -36,23 +36,9 @@ export function readErrorCopy(error: LibraryError): string {
       return "Your session expired. Sign in to see your models.";
     case LIBRARY_ERROR_KIND.forbidden:
       return "You do not have access to this workspace's models.";
-    case LIBRARY_ERROR_KIND.notFound:
-      return "That model entry no longer exists.";
     case LIBRARY_ERROR_KIND.unavailable:
       return "Models are temporarily unavailable. Your entries are safe.";
     default:
       return "Could not load your models. They have not been changed.";
   }
-}
-
-/**
- * Pure — an ActionResult failure mapped onto the typed vocabulary. The action
- * layer preserves the transport status when it has one, which is what lets a
- * 401/403/503 keep its specific copy instead of collapsing to "unknown".
- */
-export function readErrorFrom(failure: { error: string; status?: number }): LibraryError {
-  return {
-    kind: typeof failure.status === "number" ? errorKindForStatus(failure.status) : LIBRARY_ERROR_KIND.unknown,
-    detail: failure.error,
-  };
 }
