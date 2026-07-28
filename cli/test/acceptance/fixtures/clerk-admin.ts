@@ -82,6 +82,8 @@ const FIXTURE_ROLE_METADATA_KEY = "role";
 const FIXTURE_ROLE_REGULAR = "regular";
 const REDACTED_VALUE = "[REDACTED]";
 const S_CLERK_NOT_FOUND_RESPONSE = "\u2192 404:";
+const ACTIVE_SESSION_STATUS = "active";
+const SESSION_LIST_LIMIT = "10";
 const mintedSessions = new Map<string, string>();
 
 function authHeaders(clerkSecret: string): Record<string, string> {
@@ -291,6 +293,33 @@ export async function revokeMintedSessions(): Promise<void> {
   await Promise.all(sessions.map(([sessionId, clerkSecret]) =>
     revokeSession(clerkSecret, sessionId)
   ));
+}
+
+async function listClientSessionIds(clerkSecret: string, clientId: string): Promise<Set<string>> {
+  const query = new URLSearchParams({ client_id: clientId, status: ACTIVE_SESSION_STATUS, limit: SESSION_LIST_LIMIT });
+  const sessions = await clerkRequest(clerkSecret, "GET", `/sessions?${query.toString()}`);
+  if (!Array.isArray(sessions)) throw new Error("Clerk session list returned a non-array");
+  return new Set(sessions.map((session) => (session as ClerkSession).id));
+}
+
+export async function withClientSessionSweepOnFailure<T>(
+  clerkSecret: string,
+  clientId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previousIds = await listClientSessionIds(clerkSecret, clientId);
+  try {
+    return await operation();
+  } catch (error: unknown) {
+    try {
+      const currentIds = await listClientSessionIds(clerkSecret, clientId);
+      await Promise.all([...currentIds].filter((id) => !previousIds.has(id))
+        .map((id) => revokeSession(clerkSecret, id)));
+    } catch (cleanupError: unknown) {
+      throw new AggregateError([error, cleanupError], "browser handoff and session sweep both failed");
+    }
+    throw error;
+  }
 }
 
 export async function withSessionRevocation<T>(
