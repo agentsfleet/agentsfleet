@@ -2,6 +2,24 @@
 
 > Items intentionally out of v2.0 scope, captured so specs don't foreclose them. Current canon for what ships is [`high_level.md`](./high_level.md) + [`direction.md`](./direction.md) + `docs/v2/{pending,active,done}/`. This file is direction, not a commitment.
 
+## Status index
+
+One row per item, so an agent can check a status without reading the ledger; each owner section carries the detail.
+
+| Item | Status | Owner section |
+|---|---|---|
+| Scope-based authorization | ✅ delivered (M104_001) | §v2.1 — authorization |
+| Fleet keys as first-class principal | deferred to v2.1 | §v2.1 — authorization |
+| Label-scoped sticky affinity | ✅ delivered (M85_001) | §v2.1+ — other deferred items |
+| Trust-scoped sticky affinity | deferred — its own security workstream | §v2.1+ — other deferred items |
+| Flow-1 active-MITM closure · dashboard token model · open fleet (mode C) | deferred | §v2.1+ — other deferred items |
+| GitHub App event routing | shipped in M102_005; `github-pr-reviewer` stays unproven until its repository-bound test passes | §GitHub App event routing |
+| Runner call deadlines + shared watchdog | ✅ delivered (M90_001 + M108_001) | §Runner resilience |
+| Operator plane + reassignment | ✅ delivered (M84_001 read, M84_002 mutation) | §Fleet operator plane |
+| Security Reviewer prebuilt fleet | forward-looking, unspecced | §Security Reviewer |
+| Slack consumption ladder | Rung 0 ✅ (M106_001); Rung 1 is direction, not a commitment | §Slack-resident surface |
+| Bastion | post-MVP shape, documented so specs don't foreclose it | §Bastion |
+
 ## v2.1 — authorization
 
 ### Scope-based authorization — ✅ DELIVERED (M104_001)
@@ -28,7 +46,7 @@ The `github-pr-reviewer` walkthrough remains a target, not a shipped proof, unti
 
 ## Runner resilience — shipped in M90_001 (deadlines) + M108_001 (shared watchdog)
 
-- **Control-plane call deadlines — ✅ DELIVERED.** The runner still uses `std.http.Client.fetch`, but every `/v1/runners/me/*` verb now takes a required `deadline_ms`; `control_plane_client.zig` arms a per-client `CallWatchdog` around the pooled socket and shuts the in-flight call down at the bound, so a hung control plane returns a retryable transport failure instead of wedging the worker. Deadlines are env-overridable via `RUNNER_CP_*_DEADLINE_MS`; renew is clamped under the renewal tick/window relation so a stuck renew cannot starve the child deadline kill. M108_001 promoted the watchdog into `src/lib/call_deadline/` for reuse. Residual window: name resolution and initial TCP connect inside `fetch` are still outside the watchdog.
+- **Control-plane call deadlines — ✅ DELIVERED.** Every `/v1/runners/me/*` verb takes a required `deadline_ms`. `control_plane_client.zig` arms a per-client `CallWatchdog` around the pooled socket and shuts the in-flight call down at the bound. A hung control plane returns a retryable transport failure instead of wedging the worker. Deadlines are env-overridable via `RUNNER_CP_*_DEADLINE_MS`; renew is clamped under the renewal tick/window relation so a stuck renew cannot starve the child deadline kill. M108_001 promoted the watchdog into `src/lib/call_deadline/` for reuse. Residual window: name resolution and initial TCP connect inside `fetch` are still outside the watchdog.
 
 ## Fleet operator plane + proactive reassignment — shipped in M84_001 (read) + M84_002 (mutation/reassignment)
 
@@ -43,7 +61,7 @@ Both shipped: the `GET /v1/fleets/runners` read + honest derived liveness landed
 
 ## Security Reviewer — prebuilt fleet fleet (forward-looking)
 
-A customer-facing prebuilt fleet whose job is **security testing on the customer's own code and infrastructure** (authorized, defensive — not red-teaming the fleet runtime itself, which is the platform's internal sandbox concern). It fits the existing evidence-plus-approval loop: wakes on a pull request or a schedule, scans the diff and dependencies for vulnerabilities and exposed secrets, reproduces the finding as a scenario, opens a remediation pull request with the evidence attached, and **holds the fix at human approval** while flagging the team in Slack. Integrations: GitHub (code / pull requests) + Slack (alerts); no new credential class beyond what the review and incident fleets already use. Captured here because it surfaced as product direction (marketing showcase + customer ask) before any spec — so spec authors don't foreclose it. Not part of v2.0 scope.
+A customer-facing prebuilt fleet whose job is **security testing on the customer's own code and infrastructure** (authorized, defensive — not red-teaming the fleet runtime itself, which is the platform's internal sandbox concern). It fits the existing evidence-plus-approval loop. It wakes on a pull request or a schedule, scans the diff and dependencies for vulnerabilities and exposed secrets, and reproduces the finding as a scenario. Then it opens a remediation pull request with the evidence attached and **holds the fix at human approval** while flagging the team in Slack. Integrations: GitHub (code / pull requests) + Slack (alerts); no new credential class beyond what the review and incident fleets already use. Captured here because it surfaced as product direction (marketing showcase + customer ask) before any spec — so spec authors don't foreclose it. Not part of v2.0 scope.
 
 ## Slack-resident surface — the consumption ladder (M106 + follow-on)
 

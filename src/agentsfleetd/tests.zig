@@ -27,6 +27,7 @@ test {
     _ = @import("types/model_identity.zig");
     _ = @import("secrets/metadata.zig");
     _ = @import("http/handlers/tenant_model_entries_delete.zig");
+    _ = @import("http/handlers/tenant_model_entries_projection.zig");
     _ = @import("secrets/metadata_backfill.zig");
     _ = @import("fleet_runtime/activity_publisher.zig");
     _ = @import("fleet_runtime/metering.zig");
@@ -94,6 +95,9 @@ test {
     _ = @import("observability/otel_metrics_aggregate.zig");
     _ = @import("observability/otel_metrics_cardinality.zig");
     _ = @import("observability/library_read_counters.zig");
+    _ = @import("observability/library_stages.zig");
+    _ = @import("observability/library_read_scope.zig");
+    _ = @import("observability/library_failure_matrix_test.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
@@ -149,6 +153,7 @@ test {
     _ = @import("http/handlers/library/library_query_normalization_test.zig");
     _ = @import("http/handlers/library/fleet_keyset.zig");
     _ = @import("http/handlers/library/library_keyset_test.zig");
+    _ = @import("http/handlers/library/gallery_page.zig");
     _ = @import("http/handlers/library/library_sink_policy_test.zig");
     _ = @import("http/handlers/library/library_sink_scan_test.zig");
     _ = @import("http/handlers/fleets/create.zig");
