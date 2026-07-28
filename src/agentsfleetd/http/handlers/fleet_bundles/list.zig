@@ -46,7 +46,7 @@ const ResponseBody = struct {
 
 pub fn innerList(hx: Hx, req: *httpz.Request) void {
     _ = req;
-    var db = hx.db() orelse return;
+    var db = hx.db() catch return;
     defer db.end();
 
     const items = buildCatalog(hx.alloc, db.conn) catch {

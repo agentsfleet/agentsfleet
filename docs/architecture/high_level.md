@@ -4,6 +4,26 @@
 
 The product, the problem, the wedge, the differentiation, and why the obvious alternatives don't make this product redundant. Read this first if you've never seen the project — every other file in `docs/architecture/` and every spec under `docs/v2/` assumes you've internalized this one.
 
+## Facts
+
+Every row is extracted from the numbered sections below; the owner column names the section that carries the full story.
+
+| Claim | Value | Owner section |
+|---|---|---|
+| The product | a durable runtime for one operational outcome — shipped as "AI teammates, ready to run" | §1 |
+| The pillars | open source · self-managed provider keys · markdown-defined | §1 |
+| Deployment | hosted-only in v2; self-host deferred to v3 | §1 |
+| The wedge | `platform-ops`: GitHub Actions deploy-failure responder + manual operator steer | §1, §2 |
+| The MVP promise | "Operational outcomes do not fall into limbo" | §4 |
+| The existence bar | if local Claude answers "what should I do next?" as well, v2 has not earned its existence | §1 |
+| The Slack bot | acquisition on-ramp, reactive only — agency, not memory, is the line to the durable teammate | §5.2 |
+
+## Traps
+
+- v2 is not a chat UI over tools, a general assistant, or an automate-anything platform (§1).
+- The §3 counterarguments are live risks, not strawmen — the MVP bar exists because the thesis can still fail (§3).
+- The reactive Slack bot converts to the durable teammate; it is never a second product (§5.2).
+
 ---
 
 ## 1. Product Thesis
@@ -57,7 +77,7 @@ The flagship workflow: `platform-ops`. The wedge surface is **GitHub Actions dep
 
 Operational work falls into limbo.
 
-When a deploy fails, production looks unhealthy, or a risky recovery action like a database teardown is needed, the operator has to manually gather logs, inspect dashboards, remember prior attempts, decide the next step, and keep the audit trail straight across terminals, chat, CI, and infrastructure consoles. The work is fragmented, state is lost between attempts, and dangerous actions are performed ad hoc.
+When a deploy fails, production looks unhealthy, or a risky recovery like a database teardown is needed, the operator does it all by hand: gather logs, inspect dashboards, remember prior attempts, decide the next step. The audit trail smears across terminals, chat, CI, and infrastructure consoles. The work is fragmented, state is lost between attempts, and dangerous actions are performed ad hoc.
 
 Existing tooling captures pieces of the workflow but not the whole outcome:
 

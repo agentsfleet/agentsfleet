@@ -4,7 +4,7 @@
 >
 > **Shipped (M106).** Specced in [`../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`](../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md). This narrates the channel-resident surface as it now ships.
 
-**Outcome under test:** a fact a user tells `@agentsfleet` in one Slack thread is recalled by the bot in a *different thread of the same channel* — because the memory namespace is the per-channel resident fleet, not the thread — with the bot read-only and never acting unattended.
+**Outcome under test:** a fact a user tells `@agentsfleet` in one Slack thread is recalled by the bot in a *different thread of the same channel* — because the memory namespace is the per-channel resident fleet, not the thread. The bot stays read-only and never acts unattended.
 
 Legend: ✅ shipped · ♻️ reused substrate.
 
@@ -37,11 +37,11 @@ sequenceDiagram
 
 ## 1. Install — one Open Authorization (OAuth), multi-tenant
 
-A workspace admin clicks **Connect Slack** in the dashboard. `agentsfleetd` runs the Open Authorization (OAuth) code-exchange, persists the install as a `(workspace_id,'slack')` **vault handle** carrying the bot token + metadata (`bot_user_id`, `scopes`) — mirroring the GitHub connector (`github/callback.zig`, zero entity tables) — plus a generic `core.connector_installs (provider='slack', external_account_id=team_id → workspace_id)` row that makes the inbound `team_id → workspace` lookup resolvable. The platform app credentials (`client_id`/`client_secret`/`signing_secret`) were registered once via [`../../../playbooks/operations/slack_app_registration/001_playbook.md`](../../../playbooks/operations/slack_app_registration/001_playbook.md). One app serves every tenant; `team_id` is the routing key. ✅
+A workspace admin clicks **Connect Slack** in the dashboard. `agentsfleetd` runs the Open Authorization (OAuth) code-exchange and persists the install as a `(workspace_id,'slack')` **vault handle** carrying the bot token + metadata (`bot_user_id`, `scopes`) — mirroring the GitHub connector (`github/callback.zig`, zero entity tables). A generic `core.connector_installs (provider='slack', external_account_id=team_id → workspace_id)` row makes the inbound `team_id → workspace` lookup resolvable. The platform app credentials (`client_id`/`client_secret`/`signing_secret`) were registered once via [`../../../playbooks/operations/slack_app_registration/001_playbook.md`](../../../playbooks/operations/slack_app_registration/001_playbook.md). One app serves every tenant; `team_id` is the routing key. ✅
 
 ## 2. The channel is the memory namespace
 
-The first `@mention` in `#support` materializes a **durable per-channel resident fleet** by calling the existing fleet-create path (`innerCreateFleet`) with a default channel-bot `skill.md` — a normal `core.fleets` row with a **code-set reactive config** (read-only tools, no `triggers[]`, no cron; set by the materialization helper, never from the skill.md prose) — and binds it in the generic `core.connector_channels (provider='slack', team_id, channel_id → fleet_id, kind='resident')`. Every later mention in *any thread* of `#support` routes to this same fleet. No new fleet-creation actor exists: `innerCreateFleet` is the sole `core.fleets` insert path, invoked here under the install-delegated workspace authority.
+The first `@mention` in `#support` materializes a **durable per-channel resident fleet** by calling the existing fleet-create path (`innerCreateFleet`) with a default channel-bot `skill.md`. The result is a normal `core.fleets` row with a **code-set reactive config** (read-only tools, no `triggers[]`, no cron; set by the materialization helper, never from the skill.md prose), bound in the generic `core.connector_channels (provider='slack', team_id, channel_id → fleet_id, kind='resident')`. Every later mention in *any thread* of `#support` routes to this same fleet. No new fleet-creation actor exists: `innerCreateFleet` is the sole `core.fleets` insert path, invoked here under the install-delegated workspace authority.
 
 | | Thread | Channel-resident fleet |
 |---|---|---|

@@ -18,6 +18,7 @@ const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const counters = @import("../../observability/library_read_counters.zig");
+const ReadScope = @import("../../observability/library_read_scope.zig");
 const entries_state = @import("../../state/tenant_model_entries.zig");
 const view = @import("tenant_model_entries_view.zig");
 const pagination = @import("../pagination.zig");
@@ -55,39 +56,65 @@ pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
     counters.beginRead();
     defer counters.endRead();
 
+    // Opens the telemetry window over the same boundary. `defer scope.end()`
+    // is what makes the per-request outcome counter total the requests served
+    // rather than the exit paths someone remembered to instrument — this
+    // handler has nine, and the tenth added later is covered by construction.
+    var scope = ReadScope.begin(hx.ctx.io, .tenant_models);
+    defer scope.end();
+
     const tenant_id = hx.principal.tenant_id orelse {
+        scope.classify(.forbidden);
         hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
         return;
     };
 
     const query = req.query() catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_QUERY_UNREADABLE);
         return;
     };
     const limit = pagination.parseLimit(query.get(Q_LIMIT)) catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_LIMIT_RANGE);
         return;
     };
-    const after = decodeStart(hx, tenant_id, limit, query.get(Q_STARTING_AFTER)) catch return;
+    const after = decodeStart(hx, &scope, tenant_id, limit, query.get(Q_STARTING_AFTER)) catch return;
+    scope.endStage(.auth_verify);
 
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
+    // The two acquire failures are different operator problems: a timeout means
+    // the pool is saturated and the fix is capacity, while anything else means
+    // the datastore is unreachable. Folding them into one label would put both
+    // behind the same alert. This handler used to acquire directly to see that
+    // difference; `hx.db()` now names it, so the release discipline stays in the
+    // one place that owns it.
+    var db = hx.db() catch |err| {
+        scope.classify(if (err == error.PoolTimeout) .timeout else .dependency_error);
+        scope.endStageWith(.pool_wait, .{
+            .pool_result = if (err == error.PoolTimeout) .timeout else .@"error",
+        });
         return;
     };
-    defer hx.ctx.pool.release(conn);
-    // Counted here rather than at `hx.db()`: this handler acquires directly, and
+    defer db.end();
     // §3's "1 connection" row is a claim about a read never holding two at once
     // — the shape that deadlocks a pool under load.
     counters.noteConnection();
+    scope.endStageWith(.pool_wait, .{ .pool_result = .acquired });
 
-    var result = view.buildList(hx.alloc, conn, tenant_id, limit, after) catch |err| {
+    var result = view.buildList(hx.alloc, db.conn, tenant_id, limit, after, &scope) catch |err| {
+        scope.classify(.dependency_error);
+        scope.endStage(.sql);
         log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
     defer result.deinit(hx.alloc);
+    // No stage mark here: `buildList` owns its own internal staging (sql,
+    // secret_project, sql, map) and its last mark closes `map` immediately
+    // before it returns. Marking again would record a near-zero `sql`
+    // observation on every successful read and inflate that stage's count.
 
-    respond(hx, result);
+    respond(hx, &scope, result);
 }
 
 /// Write the page, once it is proven to fit §3's encoded-body ceiling.
@@ -95,7 +122,7 @@ pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
 /// Split from the handler so the request-shaping half (bounds, cursor, auth)
 /// and the response-shaping half stay separately readable, and so the ceiling
 /// check sits next to the serialization whose size it governs.
-fn respond(hx: Hx, result: view.ListResult) void {
+fn respond(hx: Hx, scope: *ReadScope, result: view.ListResult) void {
     counters.noteResults(result.rows.len);
 
     const payload = .{
@@ -139,6 +166,8 @@ fn respond(hx: Hx, result: view.ListResult) void {
         ceiling,
     ) catch |err| switch (err) {
         response_size.CeilingError.BodyCeilingExceeded => {
+            scope.classify(.internal_error);
+            scope.endStage(.serialize);
             log.err("body_ceiling_exceeded", .{
                 .error_code = ec.ERR_LIBRARY_BODY_CEILING,
                 .ceiling_bytes = ceiling,
@@ -148,6 +177,8 @@ fn respond(hx: Hx, result: view.ListResult) void {
             return;
         },
         else => {
+            scope.classify(.internal_error);
+            scope.endStage(.serialize);
             common.internalOperationError(hx.res, S_LIST_BUILD_FAILED, hx.req_id);
             return;
         },
@@ -156,8 +187,16 @@ fn respond(hx: Hx, result: view.ListResult) void {
 
     hx.res.status = @intFromEnum(std.http.Status.ok);
     hx.res.json(payload, LIST_JSON_OPTIONS) catch {
+        // Reclassified AFTER the optimistic success below would have run: the
+        // write is the last thing that can fail, and a page that failed to
+        // serialize is not a page the caller received.
+        scope.classify(.internal_error);
+        scope.endStageWith(.serialize, .{ .count = result.rows.len });
         common.internalOperationError(hx.res, S_LIST_BUILD_FAILED, hx.req_id);
+        return;
     };
+    scope.succeed();
+    scope.endStageWith(.serialize, .{ .bytes = encoded_bytes, .count = result.rows.len });
 }
 
 /// Decode and authorize `starting_after`. Returns null for the first page.
@@ -171,15 +210,20 @@ fn respond(hx: Hx, result: view.ListResult) void {
 ///
 /// Nothing is trusted from the cursor except the sort boundary: the tenant used
 /// for the read is always the authenticated one, never the cursor's.
-fn decodeStart(hx: Hx, tenant_id: []const u8, limit: u32, raw: ?[]const u8) !?entries_state.PageStart {
+fn decodeStart(hx: Hx, scope: *ReadScope, tenant_id: []const u8, limit: u32, raw: ?[]const u8) !?entries_state.PageStart {
     const text = raw orelse return null;
     if (text.len == 0) return null;
 
     const cursor = pagination.decode(hx.alloc, view.Cursor, text) catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
         return error.Rejected;
     };
     if (!pagination.identityMatches(cursor.tenant_uuid, tenant_id, cursor.limit, limit)) {
+        // `invalid`, not `unauthorized`: a cursor naming another tenant is a
+        // malformed REQUEST for this endpoint, and the two error codes already
+        // keep the replay signal distinguishable in the log.
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_CURSOR_MISMATCH, S_CURSOR_MISMATCH);
         return error.Rejected;
     }
