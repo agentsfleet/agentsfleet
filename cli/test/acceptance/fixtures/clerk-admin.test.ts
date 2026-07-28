@@ -7,6 +7,7 @@ import {
   provisionUser,
   revokeMintedSessions,
   revokeSession,
+  withSessionRevocation,
 } from "./clerk-admin.ts";
 import { IS_TEST_FIXTURE_METADATA_KEY } from "./constants.ts";
 
@@ -30,6 +31,8 @@ const HTTP_NOT_FOUND = 404;
 const ACCEPTANCE_API_URL = "https://api.example.test";
 const WEBHOOK_SECRET = `${["wh", "sec"].join("")}_${btoa("fixture-webhook-secret")}`;
 const TENANT_ID = "tenant_fixture";
+const HANDOFF_FAILURE = "browser handoff failed";
+const REVOCATION_FAILURE = "session revocation failed";
 
 interface CapturedRequest {
   readonly url: string;
@@ -246,6 +249,56 @@ describe("CLI fixture Clerk identity ownership", () => {
     expect(requests.some((request) =>
       request.url.endsWith(`/sessions/${MINTED_SESSION_ID}/revoke`)
     )).toBe(true);
+  });
+
+  it("revokes a browser session after the handoff succeeds", async () => {
+    installFetch(() => jsonResponse({}));
+
+    await expect(withSessionRevocation(
+      CLERK_SECRET,
+      SESSION_ID,
+      async () => SIGN_IN_TICKET,
+    )).resolves.toBe(SIGN_IN_TICKET);
+
+    expect(requests.some((request) =>
+      request.url.endsWith(`/sessions/${SESSION_ID}/revoke`)
+    )).toBe(true);
+  });
+
+  it("revokes a browser session when the handoff fails", async () => {
+    installFetch(() => jsonResponse({}));
+
+    await expect(withSessionRevocation(
+      CLERK_SECRET,
+      SESSION_ID,
+      async () => {
+        throw new Error(HANDOFF_FAILURE);
+      },
+    )).rejects.toThrow(HANDOFF_FAILURE);
+
+    expect(requests.some((request) =>
+      request.url.endsWith(`/sessions/${SESSION_ID}/revoke`)
+    )).toBe(true);
+  });
+
+  it("preserves browser handoff and revocation failures", async () => {
+    installFetch(() => new Response(REVOCATION_FAILURE, { status: HTTP_FORBIDDEN }));
+
+    let caught: unknown;
+    try {
+      await withSessionRevocation(CLERK_SECRET, SESSION_ID, async () => {
+        throw new Error(HANDOFF_FAILURE);
+      });
+    } catch (error: unknown) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AggregateError);
+    if (!(caught instanceof AggregateError)) throw new Error("expected AggregateError");
+    expect(caught.errors).toHaveLength(2);
+    expect(caught.errors[0]).toEqual(new Error(HANDOFF_FAILURE));
+    expect(caught.errors[1]).toBeInstanceOf(Error);
+    expect((caught.errors[1] as Error).message).toContain(REVOCATION_FAILURE);
   });
 
   it("revokes a created session when one parallel token mint fails", async () => {

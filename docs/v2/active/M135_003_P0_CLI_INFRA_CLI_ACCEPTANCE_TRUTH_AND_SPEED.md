@@ -204,12 +204,12 @@ Timeout, cancellation, and indeterminate outcomes are not success.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Fixture provisioning self-heals | `cd cli && bun test test/acceptance/fixtures/clerk-admin.test.ts` | exit 0 | P0 | ✅ 10 passed, 0 failed |
+| R1 | Fixture provisioning self-heals | `cd cli && bun test test/acceptance/fixtures/clerk-admin.test.ts` | exit 0 | P0 | ✅ 13 passed, 0 failed |
 | R2 | Deterministic CLI breadth passes | `cd cli && bun run test:acceptance:deterministic` | 0 failed and 0 remote steer calls | P0 | ✅ exit 0 |
 | R3 | Browser login and live result pass | `cd cli && bun run test:acceptance:live` | terminal result observed and 0 critical skips | P0 | ✅ Indy accepted manual browser and live-steer eyeballing |
 | R4 | Aggregate lane is bounded | `make cli-acceptance` | exit 0 and duration below 600 seconds | P0 | |
 | R5 | Development runner can establish its resource cage | `bash playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh` | exit 0 with delegated runner unit | P0 | |
-| S1 | CLI unit tests pass | `make test-unit-cli` | exit 0 | P0 | ✅ 1,391 passed, 0 failed |
+| S1 | CLI unit tests pass | `make test-unit-cli` | exit 0 | P0 | ✅ 1,394 passed, 0 failed |
 | S2 | Repository lint passes | `make lint-all` | exit 0 | P0 | ✅ exit 0 |
 | S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
 | S4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 0 missing paths |
@@ -255,7 +255,11 @@ orphan sweep and test-root reachability checks passed.
 - **Metrics review** — deterministic and live lane summaries now report
   registered, passed, failed, skipped, and duration fields.
 - **Skill-chain outcomes** — unit-test and integration-test audits passed; the
-  repository review found no unresolved implementation finding.
+  repository review found no unresolved implementation finding. After the PR
+  moved to ready, Greptile found that the browser-created Clerk session was
+  absent from teardown; the fix revokes it immediately after the browser
+  handoff succeeds or fails and preserves both errors when revocation also
+  fails.
 - **Manual acceptance** —
   > Indy (2026-07-28 11:15): "i think for now Indy will manually eyeball the browser login . - live steer so move it to DONE." — context: browser handoff and the golden live steer are accepted as manual review items for closure.
 - **Deferrals** — none. Aggregate duration and installed development runner

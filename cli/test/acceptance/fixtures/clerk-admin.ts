@@ -72,6 +72,10 @@ export interface AttachJwtOptions {
 
 export interface EnsureFixtureTenantReadyOptions extends ProvisionUserOptions {}
 
+type SessionOperationResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: unknown };
+
 const FIXTURE_OWNER = "acceptance-e2e-suite";
 const FIXTURE_OWNER_METADATA_KEY = "owner";
 const FIXTURE_ROLE_METADATA_KEY = "role";
@@ -287,4 +291,30 @@ export async function revokeMintedSessions(): Promise<void> {
   await Promise.all(sessions.map(([sessionId, clerkSecret]) =>
     revokeSession(clerkSecret, sessionId)
   ));
+}
+
+export async function withSessionRevocation<T>(
+  clerkSecret: string,
+  sessionId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let result: SessionOperationResult<T>;
+  try {
+    result = { ok: true, value: await operation() };
+  } catch (error: unknown) {
+    result = { ok: false, error };
+  }
+  try {
+    await revokeSession(clerkSecret, sessionId);
+  } catch (cleanupError: unknown) {
+    if (!result.ok) {
+      throw new AggregateError(
+        [result.error, cleanupError],
+        "browser handoff and session revocation both failed",
+      );
+    }
+    throw cleanupError;
+  }
+  if (!result.ok) throw result.error;
+  return result.value;
 }

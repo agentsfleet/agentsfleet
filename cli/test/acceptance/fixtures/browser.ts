@@ -23,7 +23,10 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createSignInTicket } from "./clerk-admin.ts";
+import {
+  createSignInTicket,
+  withSessionRevocation,
+} from "./clerk-admin.ts";
 
 const APPROVE_BUTTON_NAME = /approve/i;
 const VERIFICATION_CODE_LABEL = "Verification code";
@@ -38,6 +41,21 @@ export interface CliAuthHandoffOptions {
   readonly loginUrl: string;
   readonly clerkUserId: string;
   readonly timeoutMs?: number;
+}
+
+interface BrowserClerk {
+  readonly client?: {
+    readonly signIn: {
+      create(input: { strategy: string; ticket: string }): Promise<{
+        readonly status: string;
+        readonly createdSessionId?: string | null;
+      }>;
+    };
+  };
+  setActive(input: {
+    session: string;
+    navigate: () => Promise<void>;
+  }): Promise<void>;
 }
 
 async function runBrowserHandoff(opts: CliAuthHandoffOptions): Promise<string> {
@@ -84,23 +102,8 @@ async function runBrowserHandoff(opts: CliAuthHandoffOptions): Promise<string> {
       Boolean((globalThis as unknown as { Clerk?: { client?: unknown } }).Clerk?.client)
     );
     const ticket = await createSignInTicket(clerkSecret, opts.clerkUserId);
-    await page.evaluate(async (signInTicket) => {
-      const clerk = (globalThis as unknown as {
-        Clerk?: {
-          client?: {
-            signIn: {
-              create(input: { strategy: string; ticket: string }): Promise<{
-                status: string;
-                createdSessionId?: string | null;
-              }>;
-            };
-          };
-          setActive(input: {
-            session: string;
-            navigate: () => Promise<void>;
-          }): Promise<void>;
-        };
-      }).Clerk;
+    const browserSessionId = await page.evaluate(async (signInTicket) => {
+      const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;
       if (!clerk?.client) throw new Error("Clerk client unavailable during fixture sign-in");
       const attempt = await clerk.client.signIn.create({
         strategy: "ticket",
@@ -109,27 +112,34 @@ async function runBrowserHandoff(opts: CliAuthHandoffOptions): Promise<string> {
       if (attempt.status !== "complete" || !attempt.createdSessionId) {
         throw new Error(`fixture ticket sign-in did not complete (${attempt.status})`);
       }
-      await clerk.setActive({
-        session: attempt.createdSessionId,
-        navigate: async () => {},
-      });
+      return attempt.createdSessionId;
     }, ticket);
-    await page.waitForFunction(() =>
-      Boolean((globalThis as unknown as { Clerk?: { user?: unknown } }).Clerk?.user)
-    );
+    return await withSessionRevocation(clerkSecret, browserSessionId, async () => {
+      await page.evaluate(async (sessionId) => {
+        const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;
+        if (!clerk) throw new Error("Clerk client unavailable during fixture activation");
+        await clerk.setActive({
+          session: sessionId,
+          navigate: async () => {},
+        });
+      }, browserSessionId);
+      await page.waitForFunction(() =>
+        Boolean((globalThis as unknown as { Clerk?: { user?: unknown } }).Clerk?.user)
+      );
 
-    await page.goto(opts.loginUrl, { waitUntil: "load", timeout: timeoutMs });
-    const approve = page.getByRole("button", { name: APPROVE_BUTTON_NAME });
-    await approve.waitFor({ state: "visible", timeout: timeoutMs });
-    await approve.click();
+      await page.goto(opts.loginUrl, { waitUntil: "load", timeout: timeoutMs });
+      const approve = page.getByRole("button", { name: APPROVE_BUTTON_NAME });
+      await approve.waitFor({ state: "visible", timeout: timeoutMs });
+      await approve.click();
 
-    const codeOutput = page.getByLabel(VERIFICATION_CODE_LABEL);
-    await codeOutput.waitFor({ state: "visible", timeout: timeoutMs });
-    const code = ((await codeOutput.textContent()) ?? "").trim();
-    if (!VERIFICATION_CODE_RE.test(code)) {
-      throw new Error(`completeCliAuthHandoff: expected a 6-digit code, got ${JSON.stringify(code)}`);
-    }
-    return code;
+      const codeOutput = page.getByLabel(VERIFICATION_CODE_LABEL);
+      await codeOutput.waitFor({ state: "visible", timeout: timeoutMs });
+      const code = ((await codeOutput.textContent()) ?? "").trim();
+      if (!VERIFICATION_CODE_RE.test(code)) {
+        throw new Error(`completeCliAuthHandoff: expected a 6-digit code, got ${JSON.stringify(code)}`);
+      }
+      return code;
+    });
   } finally {
     await browser.close().catch(() => {});
   }
