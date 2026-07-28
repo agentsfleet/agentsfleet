@@ -233,8 +233,12 @@ request (`ui/packages/app/lib/api/client.ts`) rather than continuing a trace,
 because it holds no span the request is a child of.
 
 **The label sets are closed enums, and the series count is fixed at compile
-time.** `surface` (3), `stage` (10), `outcome` (9), `cache` (5), `pool_result`
-(4). One observation carries all five, but no metric does — emitting the
+time.** Every member of every one is listed in the label registry under
+§Metrics above — that table is the schema an operator reads before writing a
+query, so the values live there rather than being restated here. In short:
+`surface` (3), `stage` (10), `outcome` (9), `cache` (5), `pool_result` (4).
+
+One observation carries all five, but no metric does — emitting the
 cross-product would be 5400 series, nearly all permanently zero. Each family
 takes only the dimensions that vary for it:
 
@@ -454,6 +458,11 @@ ceiling:
 | `agentsfleet.billing.charge.type` | `receive`, `renewal`, `settle` | closed set; no overflow value |
 | `gen_ai.provider.name` | exact OpenTelemetry well-known names only | unmapped provider omits the attribute and counts the omission |
 | `gen_ai.request.model` | exact value, admitted while the derived series budget holds | overflow omits the attribute and counts the omission |
+| `surface` (library) | `tenant_models`, `global_models`, `fleet_summary` | closed enum; no overflow value — a fourth surface is a code change, not a label |
+| `stage` (library) | `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup` | closed enum; no overflow value |
+| `outcome` (library) | `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `cancelled`, `dependency_error`, `internal_error` | closed enum; no overflow value |
+| `cache` (library) | `hit`, `miss`, `bypass`, `stale`, `not_applicable` | closed enum; `not_applicable` is never counted — it means no cache decision was made |
+| `pool_result` (library) | `acquired`, `timeout`, `cancelled`, `error` | closed enum; no overflow value |
 
 **Workspace and tenant identity never reach a metric.** They were previously
 retained under a first-100-distinct-values-per-process guard, which bounded
