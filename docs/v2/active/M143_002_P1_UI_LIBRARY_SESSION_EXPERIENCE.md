@@ -105,10 +105,32 @@ Nothing user-visible is lost, and this was verified rather than assumed. The sum
 
 ### §3 — The session keeper is retained; no canary is built
 
-`AuthSessionKeeper` polls `user.reload()` every 45 seconds so a long dashboard
-journey cannot POST a Server Action after the session cookie has lapsed. The
-original §3 proposed proving it removable: five scenarios, 20 attempts, three
-browser engines, two cohorts, a provisioned capture and a grading checker.
+**The keeper is a fix for an observed failure, not a precaution.** It landed as
+`a2d507bfb fix(app): keep Clerk sessions alive for server actions` (Jul 22,
+2026), and the same commit deleted 14 lines from
+`tests/e2e/acceptance/fixtures/auth.ts` and 4 from `lifecycle.ts` — fixture
+workarounds the acceptance suite had been using to paper over the very failure
+it fixes. Anyone reconsidering removal should start from that commit, not from
+this section.
+
+**The arithmetic is what makes it load-bearing.** A Clerk session token lives
+about **60 seconds**; the keeper refreshes at **45**, leaving 15 seconds of
+headroom, and the daemon enforces expiry with no leeway
+(`auth/jwks_standard_claims.zig:36` — `if (exp <= now_s) return VerifyError.TokenExpired`).
+Without the refresh, a tab open for 90 seconds has a lapsed token, and the next
+Server Action POST fails — a POST cannot complete Clerk's redirect handshake, so
+the user loses the submission rather than being redirected to sign in. That is
+the failure `a2d507bfb` fixed.
+
+Note the two expiries are different things and are easy to confuse: the **token**
+is ~60 seconds and is refreshed silently; the **session** — the login itself —
+lasts days and is configured in Clerk's dashboard, not in this repository. A user
+sitting on a page is never signed out at the 60-second mark; only the short-lived
+credential behind it turns over.
+
+The original §3 proposed proving the keeper removable: five scenarios, 20
+attempts, three browser engines, two cohorts, a provisioned capture and a grading
+checker.
 
 **That was built and then reverted, deliberately.** The question it answered was
 "may this component be deleted", and deletion has no user-visible benefit — the
@@ -124,11 +146,19 @@ run, and the first time it flakes it gets skipped — a skipped test reads as
 coverage while providing none.
 
 The component keeps the testing proportionate to its size: `lib/auth/client.test.tsx`
-covers mount, the refresh interval, and listener cleanup. Nothing has been
-reported that the keeper fails to prevent, and nothing suspects it.
+covers mount, the refresh interval, and listener cleanup. That is the right level
+for 45 lines whose behaviour is a timer and three event listeners.
 
-**Verdict: `retain`.** Not "the capture could not be provisioned" — removal was
-not worth proving.
+**Verdict: `retain`.** Not "the capture could not be provisioned", which would
+imply the evidence is still wanted. A component introduced to fix a specific,
+observed Server Action failure does not need a two-cohort browser matrix to
+justify continuing to exist; the commit that added it is the justification.
+
+**What would actually reopen this.** Not a tidiness impulse. Either Clerk
+documents that its own client refreshes the session cookie on interval, focus,
+and resume — making the keeper provably redundant, which is a documentation
+question rather than a measurement one — or the keeper is implicated in a real
+problem someone has hit. Absent one of those, leave it alone.
 
 - **Dimension 3.1** — the keeper stays mounted and its unit coverage holds → Test `lib/auth/client.test.tsx` (existing)
 
