@@ -96,7 +96,6 @@ describe("fleets routes", () => {
         trigger_present: true,
       },
       required_credentials_reasons: { github: "review your pull requests" },
-      support_files: [],
     },
   ];
 

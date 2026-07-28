@@ -125,24 +125,8 @@ pub const SELECT_GALLERY_PAGE_FIRST =
 pub const SELECT_GALLERY_PAGE_AFTER =
     GALLERY_MERGED ++ GALLERY_SEEK ++ ORDER_BY_GALLERY ++ "\n LIMIT $6";
 
-/// Platform detail — one entry, every field the summary sheds. Carries the same
-/// publish+bundle pair as the collection arm, so an entry that is invisible in
-/// the gallery is also unreachable here rather than merely unlisted.
-pub const SELECT_GALLERY_DETAIL_PLATFORM =
-    \\SELECT id, name, description, source_repo, created_at,
-    \\       required_credentials::text, required_tools::text, network_hosts::text,
-    \\       required_credentials_reasons::text,
-    \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL)
-    \\  FROM core.fleet_library
-    \\ WHERE id = $1 AND visibility = $2 AND content_hash IS NOT NULL
-;
-
-/// Tenant detail, scoped to the workspace. A foreign id returns no row, so the
-/// handler answers the same 404 it gives a genuinely absent one — the response
-/// cannot be used to enumerate another workspace's entries.
-pub const SELECT_GALLERY_DETAIL_TENANT =
-    \\SELECT id::text, name, description, source_ref, created_at,
-    \\       requirements_json::text, support_files_json::text
-    \\  FROM core.tenant_fleet_library
-    \\ WHERE id = $1::uuid AND workspace_id = $2::uuid
-;
+// The two per-entry detail projections are gone with the route they served. That
+// route was built, published, and retired unconsumed — `router.zig` asserts its
+// former URL is unrouted and `gallery_keyset_integration_test.zig` pins it to 404
+// even for a resident entry. Their only remaining distinction over the summary
+// was the support-file manifest, which no reader ever wanted.

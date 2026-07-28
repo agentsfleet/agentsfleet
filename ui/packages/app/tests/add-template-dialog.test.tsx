@@ -28,7 +28,6 @@ const onboarded = {
   visibility: "tenant" as const,
   content_hash: "sha256:abc",
   requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
-  support_files: [],
 };
 
 beforeEach(() => {

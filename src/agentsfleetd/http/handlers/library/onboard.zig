@@ -51,7 +51,7 @@ pub fn innerPlatformOnboard(hx: Hx, req: *httpz.Request) void {
     defer ctx.deinit(hx.alloc);
     const id = insertPlatform(hx, ctx.resolved.body, ctx.prepared, ctx.parsed.value.replace) orelse return;
     defer hx.alloc.free(id);
-    respond(hx, ctx.resolved.body, ctx.prepared, id, library_store.TIER_PLATFORM);
+    respond(hx, ctx.prepared, id, library_store.TIER_PLATFORM);
 }
 
 /// POST /v1/workspaces/{workspace_id}/fleet-libraries — tenant onboarding. The
@@ -67,7 +67,7 @@ pub fn innerTenantOnboard(hx: Hx, req: *httpz.Request, workspace_id: []const u8)
     defer ctx.deinit(hx.alloc);
     const id = insertTenant(hx, workspace_id, ctx.resolved.body, ctx.prepared) orelse return;
     defer hx.alloc.free(id);
-    respond(hx, ctx.resolved.body, ctx.prepared, id, library_store.TIER_TENANT);
+    respond(hx, ctx.prepared, id, library_store.TIER_TENANT);
 }
 
 /// Parse the request, fetch + validate the source, derive the content hash, and
@@ -203,23 +203,33 @@ fn insertTenant(hx: Hx, workspace_id: []const u8, body: importer.ImportBody, pre
     };
 }
 
-fn respond(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle, id: []const u8, tier: []const u8) void {
-    const requirements = std.json.parseFromSlice(std.json.Value, hx.alloc, prepared.requirements_json, .{}) catch {
+fn respond(hx: Hx, prepared: importer.PreparedBundle, id: []const u8, tier: []const u8) void {
+    var requirements = std.json.parseFromSlice(std.json.Value, hx.alloc, prepared.requirements_json, .{}) catch {
         common.internalOperationError(hx.res, "Failed to build the library entry's requirements", hx.req_id);
         return;
     };
     defer requirements.deinit();
-    const summaries = pipeline.supportSummaries(hx.alloc, body.support_files) catch {
-        common.internalOperationError(hx.res, "Failed to build the support-file summary", hx.req_id);
-        return;
-    };
-    defer hx.alloc.free(summaries);
+
+    // Drop `support_files` on the way out. Two distinct things carry that name
+    // and BOTH are withheld from responses now: the path/size manifest in
+    // `support_files_json`, and this list of paths inside `requirements_json`.
+    // Both are still persisted — they are durable provenance for what a stored
+    // bundle contained — and neither has ever had a reader on any plane.
+    //
+    // Removing the key here rather than reshaping the stored JSON keeps the
+    // admin catalog and this route agreeing on one `requirements` shape:
+    // `catalog.zig` builds `entry_view.Requirements` from separate columns and
+    // has never carried support files, so emitting them here made two responses
+    // that share an OpenAPI schema disagree about their own contents.
+    if (requirements.value == .object) {
+        _ = requirements.value.object.orderedRemove("support_files");
+    }
+
     hx.ok(.created, .{
         .id = id,
         .name = prepared.name,
         .visibility = tier,
         .content_hash = prepared.content_hash,
         .requirements = requirements.value,
-        .support_files = summaries,
     });
 }
