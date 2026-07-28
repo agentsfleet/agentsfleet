@@ -83,7 +83,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Models use retained page/load-more state
 
-Ordinary Models requests only the first tenant registry page: no global catalogue or secret list. Load-more appends and retains prior rows, while only the current fetched page is projected/decrypted; no action decrypts beyond it. Add/Edit open, focus, and eligible hover prefetch global model pages. Disable hover prefetch for coarse pointers or Save-Data; focus/open still prefetch. Search retains successful rows while revalidating and rejects stale completions.
+Ordinary Models requests only the first tenant registry page: no global catalogue or secret list. Load-more appends and retains prior rows, while only the current fetched page is projected/decrypted; no action decrypts beyond it. Add/Edit open, focus, and eligible hover prefetch global model pages. Disable hover prefetch for coarse pointers or Save-Data; focus/open still prefetch.
 
 - **Dimension 1.1** — ordinary/load-more requests and projection are page-bounded → Test `test_models_registry_retains_pages_without_extra_decrypts`
 - **Dimension 1.2** — intent prefetch honors pointer/data policy and request ordering → Test `test_model_picker_prefetch_policy_and_latest_result`
@@ -131,14 +131,14 @@ Provisioned `make capture-session-keeper-canary BASELINE_REF=origin/main CANDIDA
 `FleetSummaryPages = retained items + current next_cursor + remaining disclosure`. Each item is the M143_001 gallery row: `{visibility:"platform"|"tenant",id,name,description,created_at,requirements,required_credentials_reasons}`. There is no separate detail resource — see §2's amendment.
 Deep link: `/w/{workspace}/fleets/new?library_visibility=platform|tenant&library_id=<encoded-id>`.
 
-List position survives a reload: the active `starting_after` and `q` are mirrored into the URL as `library_after` and `library_q`, replacing rather than pushing history so load-more does not fill the back stack. A reload, a shared link, or a back navigation from a detail view restores the same page rather than dropping the user at the first one. Absent parameters mean the first page, and an unparseable `library_after` is discarded in favour of the first page rather than surfacing an error — a bad link should still land somewhere useful.
+List position survives a reload: the active `starting_after` is mirrored into the URL as `library_after`, replacing rather than pushing history so load-more does not fill the back stack. A reload, a shared link, or a back navigation from a detail view restores the same page rather than dropping the user at the first one. Absent parameters mean the first page, and an unparseable `library_after` is discarded in favour of the first page rather than surfacing an error — a bad link should still land somewhere useful.
 Refresh state: last success plus idle/loading/refreshing/error and typed error.
 
 ## Failure Modes
 
 | Mode | Cause | Injection | Handling | Named test |
 |---|---|---|---|---|
-| Stale search | older request resolves last | deferred promises | ignore stale; retain rows | `test_model_picker_prefetch_policy_and_latest_result` |
+| Stale catalogue load | older preload resolves last | deferred promises | ignore stale; latest generation wins | `test_model_picker_prefetch_policy_and_latest_result` |
 | Typed status | 401/403 on the gallery read | response fixtures | distinct action/state | `test_fleet_deep_link_and_typed_states` |
 | Unknown selection | `library_id` absent from the gallery | foreign/absent fixture | not-found selection state; no enumeration, page still usable | `test_fleet_deep_link_and_typed_states` |
 | Hidden remainder | entries exist past the loaded page | multi-page fixture | remaining count disclosed, never silently dropped | `test_fleet_gallery_paging_discloses_remaining` |
@@ -178,7 +178,7 @@ This table is the complete set. Every row is mandatory, including the failure ro
 | 3.2 | integration | `test_session_keeper_verdict_matches_repository` | valid retain/remove both pass only with matching source |
 | — | integration | `test_refresh_retains_authorized_content` | a network or 503 fault after a success keeps the last successful rows on screen and offers retry, never falling back to an empty state |
 | — | browser | `test_library_reduced_motion_state` | under `prefers-reduced-motion: reduce` no shimmer or transform runs, and loading remains distinguishable from loaded |
-| — | end-to-end | `test_library_list_position_survives_reload` | after load-more, a reload restores the same page from `library_after`/`library_q`; back from a detail returns to that page, not the first; an unparseable `library_after` falls back to the first page without an error state |
+| — | end-to-end | `test_library_list_position_survives_reload` | after load-more, a reload restores the same page from `library_after`; back from a detail returns to that page, not the first; an unparseable `library_after` falls back to the first page without an error state |
 
 **Decryption is asserted indirectly and deliberately.** Decryption happens server-side and is owned by M143_001. Row 1.1 asserts what this workstream controls — the number and shape of requests the UI issues — and treats "no extra decrypts" as a consequence proven by M143_001's `test_tenant_registry_page_is_bounded`. Naming that split here stops an agent from trying to observe decryption from a browser context.
 
@@ -253,6 +253,14 @@ For `remove`, root-wide production `AuthSessionKeeper` references are zero. For 
   **Suspense buys latency here, not error handling.** Neither data region is allowed to reject: both resolve to data-or-typed-error. A rejected promise would throw in render and need an ErrorBoundary, which would trade the failed-versus-empty distinction this workstream exists to draw for one undifferentiated fallback.
 
   **Declined, with reasons, from the same review:** `useOptimistic` for load-more (optimistic UI needs a predictable outcome; the next page's contents are unknowable, so there is nothing to show); a React Compiler flip (M143_005 ring-fences it so transfer and hydration stay the only variables); and `cacheLife`/`unstable_cache` on the gallery (per-workspace and auth-gated, so `force-dynamic` is correct). `useDeferredValue` remains the right tool for §1's search revalidation and is not yet built.
+
+- **Amendment A8 (EXECUTE) — search removed from this workstream; `q` slated for deletion in its own workstream.** §1 carried a sentence about search retaining rows while revalidating, the Interfaces section mirrored `q` into a `library_q` URL parameter, and a Failure Modes row named a stale-search race. None of it had a surface: **no client anywhere sends `q`** — not the dashboard, not the Command-Line Interface (CLI), not the runner. The parameter is nonetheless fully built server-side (`handlers/library/gallery.zig`, `handlers/model_library.zig`, `handlers/library/catalogue_key.zig` where it joins the cache key, a dedicated `library_query_normalization_test.zig`, both OpenAPI path documents, and the keyset cursor's canonical JSON).
+
+  That is the same position the workspace detail route was in when M143_001 deleted it — built, hardened, published, uncalled. Indy's call is to follow the precedent: **delete `q`** rather than build a consumer for it, because the realistic scale is under 15 fleets and under 10 fleet libraries per workspace, where a filter solves a problem nobody has. Search gets built when a workspace genuinely holds hundreds of entries, and not before.
+
+  `library_q` was never a second name for `q` — it named a URL parameter that was never built. It is struck here rather than implemented. The Failure Modes row is **retargeted, not deleted**: the latest-wins mechanism it described IS built, as the catalogue provider's generation counter, and keeps its test.
+
+  **Deleting `q` is NOT in this workstream.** It spans Zig handlers, the gallery and model SQL, the keyset cursor's wire format, the published OpenAPI parameter on two paths, and the `q` half of `UZ-LIBRARY-003` — none of which M143_002 touches, all of which would breach its User Interface (UI)-only scope, fire the ZIG and PUB gates its own table marks "no", and collide with M143_003's Zig surface. Recorded here for the follow-up workstream.
 
 - **Decision recorded (Indy, in-session) — §3 uses the Clerk instance in `ui/packages/app/.env.local`.** It is a `pk_test_` development instance. Indy directed that this is the instance to use and that the question is settled; the capture reads the configured session lifetime from Clerk's Backend API at run time and records it, with the instance kind, in report metadata. No further consult on instance provenance.
 
