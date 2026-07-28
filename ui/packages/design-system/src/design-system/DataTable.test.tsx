@@ -262,6 +262,20 @@ describe("DataTable", () => {
     expect(thead.className).not.toContain("sticky");
   });
 
+  it("contains overscroll on the horizontal axis only", () => {
+    render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />);
+    const viewport = screen.getByRole("region", { name: "Scrollable table" });
+    const classes = viewport.className.split(/\s+/);
+
+    // `overflow-x-auto` makes this a scroll container on BOTH axes, so a
+    // two-axis containment swallows the wheel even with nothing here to
+    // scroll vertically. On a surface that grows with the page rather than
+    // bounding the table, that leaves the page unscrollable with the pointer
+    // anywhere over the rows.
+    expect(classes).toContain("overscroll-x-contain");
+    expect(classes).not.toContain("overscroll-contain");
+  });
+
   it("the scroll region is keyboard-reachable (tabIndex + region role)", () => {
     render(
       <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} caption="Spend by agent" />,

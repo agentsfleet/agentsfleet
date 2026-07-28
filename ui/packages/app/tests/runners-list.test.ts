@@ -123,6 +123,21 @@ describe("RunnerList component", () => {
     expect(screen.getByText("us-east")).toBeTruthy();
   });
 
+  it("leads the status pair with administrative state, then liveness", async () => {
+    await renderList(listResponse([ONLINE]));
+    const row = screen.getByText("web-idle-2").closest("tr") as HTMLElement;
+    const badges = within(row).getAllByText(/^(active|online)$/);
+    // What an operator has done to the runner decides what it may do; liveness
+    // only reports what it is doing right now. "active online", in that order.
+    expect(badges.map((b) => b.textContent)).toEqual(["active", "online"]);
+  });
+
+  it("shows the host id without a copy affordance", async () => {
+    await renderList(listResponse([ONLINE]));
+    const row = screen.getByText("web-idle-2").closest("tr") as HTMLElement;
+    expect(within(row).queryByRole("button", { name: /copy host id/i })).toBeNull();
+  });
+
   it("toggles the backend host sort from the shared header arrow", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED, ONLINE]));

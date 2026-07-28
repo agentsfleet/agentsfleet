@@ -7,7 +7,7 @@ vi.mock("lucide-react", () => ({
   Loader2Icon: () => React.createElement("svg", { "data-icon": "Loader2Icon" }),
   ArrowUp: () => React.createElement("svg", { "data-icon": "ArrowUp" }),
   ArrowDown: () => React.createElement("svg", { "data-icon": "ArrowDown" }),
-  ArrowUpDown: () => React.createElement("svg", { "data-icon": "ArrowUpDown" }),
+  ChevronsUpDown: () => React.createElement("svg", { "data-icon": "ChevronsUpDown" }),
 }));
 
 
