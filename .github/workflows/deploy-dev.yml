@@ -293,6 +293,11 @@ jobs:
           $SSH "$TARGET" \
             "sudo DRAIN_TIMEOUT=60 /opt/agentsfleet/deploy/deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner"
 
+      - name: Verify delegated runner cgroup
+        run: REQUIRE_RUNNER_CGROUP_DELEGATION=1 VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
       - name: Clean up Discord env file on server
         if: always()
         run: |
@@ -668,6 +673,7 @@ jobs:
         env:
           AGENTSFLEET_ACCEPTANCE_TARGET: https://api-dev.agentsfleet.net
           AGENTSFLEET_ACCEPTANCE_BINARY: worktree
+          AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE: "1"
           # Dev dashboard that serves /cli-auth/{session_id} and is built with
           # the dev Clerk instance matching api-dev (Vercel dev environment).
           AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL: https://app-dev.agentsfleet.net

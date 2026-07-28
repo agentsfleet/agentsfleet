@@ -62,7 +62,14 @@ RuntimeDirectoryMode=0755
 # the engine folded into the runner.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/run/agent /sys/fs/cgroup /tmp
+# Delegate only this service's subtree. The daemon creates each execution cgroup
+# beneath it; it never receives a writable host-wide cgroup mount.
+Delegate=cpu memory pids
+DelegateSubgroup=runner
+CPUAccounting=yes
+MemoryAccounting=yes
+TasksAccounting=yes
+ReadWritePaths=/run/agent /sys/fs/cgroup/system.slice/agentsfleet-runner.service /tmp
 ProtectHome=yes
 
 [Install]

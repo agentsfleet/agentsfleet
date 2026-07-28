@@ -81,7 +81,10 @@ export async function hydrateWorkspacesForToken(opts: HydrateOptions): Promise<H
     const detail = await res.text().catch(() => "");
     throw new Error(`workspace hydrate ${res.status}: ${detail.slice(0, 200)}`);
   }
-  const body = await res.json() as { items?: unknown };
+  const body = await res.json() as { items?: unknown; tenant_id?: unknown };
+  if (typeof body.tenant_id !== "string" || body.tenant_id.length === 0) {
+    throw new Error("hydrateWorkspacesForToken: response missing tenant_id");
+  }
   const fallbackCreatedAt = Date.now();
   const rawItems: RawWorkspaceItem[] = Array.isArray(body?.items) ? body.items as RawWorkspaceItem[] : [];
   const items: HydratedWorkspace[] = rawItems
@@ -92,7 +95,7 @@ export async function hydrateWorkspacesForToken(opts: HydrateOptions): Promise<H
     throw new Error("hydrateWorkspacesForToken: tenant has no workspaces — fixture identity is mis-bootstrapped");
   }
   const current_workspace_id = first.workspace_id;
-  const payload = { current_workspace_id, items };
+  const payload = { tenant_id: body.tenant_id, current_workspace_id, items };
 
   await fs.mkdir(stateDir, { recursive: true });
   const target = path.join(stateDir, "workspaces.json");

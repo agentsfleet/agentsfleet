@@ -26,6 +26,7 @@ type ClerkMethod = "GET" | "POST";
 
 interface ClerkUser {
   readonly id: string;
+  readonly public_metadata?: Record<string, unknown> | undefined;
   readonly [key: string]: unknown;
 }
 
@@ -36,6 +37,11 @@ interface ClerkSession {
 
 interface ClerkToken {
   readonly jwt: string;
+  readonly [key: string]: unknown;
+}
+
+interface ClerkSignInToken {
+  readonly token: string;
   readonly [key: string]: unknown;
 }
 
@@ -52,7 +58,6 @@ export interface AttachedJwt extends MintedTokens {
 
 export interface ProvisionUserOptions {
   readonly email: string;
-  readonly password?: string | undefined;
   readonly role?: string | undefined;
 }
 
@@ -62,9 +67,24 @@ export interface MintTokensOptions {
 
 export interface AttachJwtOptions {
   readonly email: string;
-  readonly password?: string | undefined;
   readonly ttlSeconds?: number | undefined;
 }
+
+export interface EnsureFixtureTenantReadyOptions extends ProvisionUserOptions {}
+
+type SessionOperationResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: unknown };
+
+const FIXTURE_OWNER = "acceptance-e2e-suite";
+const FIXTURE_OWNER_METADATA_KEY = "owner";
+const FIXTURE_ROLE_METADATA_KEY = "role";
+const FIXTURE_ROLE_REGULAR = "regular";
+const REDACTED_VALUE = "[REDACTED]";
+const S_CLERK_NOT_FOUND_RESPONSE = "\u2192 404:";
+const ACTIVE_SESSION_STATUS = "active";
+const SESSION_LIST_LIMIT = "10";
+const mintedSessions = new Map<string, string>();
 
 function authHeaders(clerkSecret: string): Record<string, string> {
   if (!clerkSecret) throw new Error("clerkSecret missing — pass CLERK_SECRET_KEY explicitly");
@@ -79,6 +99,7 @@ async function clerkRequest(
   method: ClerkMethod,
   pathSuffix: string,
   body?: unknown,
+  redactedValues: ReadonlyArray<string> = [],
 ): Promise<unknown> {
   const res = await fetch(`${CLERK_API_BASE}${pathSuffix}`, {
     method,
@@ -86,10 +107,17 @@ async function clerkRequest(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    const detail = await res.text();
+    const detail = redactValues(await res.text(), redactedValues);
     throw new Error(`Clerk ${method} ${pathSuffix} → ${res.status}: ${detail}`);
   }
   return res.json();
+}
+
+function redactValues(input: string, values: ReadonlyArray<string>): string {
+  return values.reduce(
+    (redacted, value) => value ? redacted.replaceAll(value, REDACTED_VALUE) : redacted,
+    input,
+  );
 }
 
 async function findUserByEmail(clerkSecret: string, email: string): Promise<ClerkUser | null> {
@@ -102,18 +130,25 @@ async function findUserByEmail(clerkSecret: string, email: string): Promise<Cler
 }
 
 async function createUser(clerkSecret: string, opts: ProvisionUserOptions): Promise<ClerkUser> {
+  const password = `${globalThis.crypto.randomUUID()}-${globalThis.crypto.randomUUID()}`;
   const result = await clerkRequest(clerkSecret, "POST", "/users", {
     email_address: [opts.email],
-    password: opts.password,
+    password,
     skip_password_checks: true,
     skip_password_requirement: false,
     public_metadata: {
       [IS_TEST_FIXTURE_METADATA_KEY]: true,
-      owner: "acceptance-e2e-suite",
-      role: opts.role ?? "regular",
+      [FIXTURE_OWNER_METADATA_KEY]: FIXTURE_OWNER,
+      [FIXTURE_ROLE_METADATA_KEY]: opts.role ?? FIXTURE_ROLE_REGULAR,
     },
-  });
+  }, [password]);
   return result as ClerkUser;
+}
+
+function isOwnedFixtureUser(user: ClerkUser): boolean {
+  const metadata = user.public_metadata;
+  return metadata?.[IS_TEST_FIXTURE_METADATA_KEY] === true
+    && metadata[FIXTURE_OWNER_METADATA_KEY] === FIXTURE_OWNER;
 }
 
 export async function provisionUser(
@@ -121,9 +156,13 @@ export async function provisionUser(
   opts: ProvisionUserOptions,
 ): Promise<ClerkUser> {
   const existing = await findUserByEmail(clerkSecret, opts.email);
-  if (existing) return existing;
-  if (!opts.password) {
-    throw new Error(`fixture user ${opts.email} does not exist and no password supplied for create`);
+  if (existing) {
+    if (!isOwnedFixtureUser(existing)) {
+      throw new Error(
+        `fixture ownership mismatch for ${opts.email}: refusing to adopt an existing Clerk identity`,
+      );
+    }
+    return existing;
   }
   return createUser(clerkSecret, opts);
 }
@@ -134,19 +173,40 @@ export async function mintTokens(
   opts?: MintTokensOptions,
 ): Promise<MintedTokens> {
   const session = await clerkRequest(clerkSecret, "POST", "/sessions", { user_id: clerkUserId }) as ClerkSession;
+  mintedSessions.set(session.id, clerkSecret);
   const ttl = opts?.ttlSeconds ?? SESSION_TOKEN_TTL_SECONDS;
   // Two tokens per session: the template-minted JWT goes to the backend as
   // Bearer auth (carried via the env credential slot, AGENTSFLEET_API_KEY),
   // and the default (no-template) JWT goes into the `__session` cookie so
   // clerkMiddleware accepts the dashboard request.
   // Parallel mint matches the dashboard suite's posture verbatim.
-  const [template, standard] = await Promise.all([
-    clerkRequest(clerkSecret, "POST", `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
-      { expires_in_seconds: ttl }) as Promise<ClerkToken>,
-    clerkRequest(clerkSecret, "POST", `/sessions/${session.id}/tokens`,
-      { expires_in_seconds: ttl }) as Promise<ClerkToken>,
-  ]);
-  return { sessionId: session.id, sessionJwt: template.jwt, cookieJwt: standard.jwt };
+  try {
+    const [template, standard] = await Promise.all([
+      clerkRequest(clerkSecret, "POST", `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
+        { expires_in_seconds: ttl }) as Promise<ClerkToken>,
+      clerkRequest(clerkSecret, "POST", `/sessions/${session.id}/tokens`,
+        { expires_in_seconds: ttl }) as Promise<ClerkToken>,
+    ]);
+    return { sessionId: session.id, sessionJwt: template.jwt, cookieJwt: standard.jwt };
+  } catch (err: unknown) {
+    try {
+      await revokeSession(clerkSecret, session.id);
+    } catch (cleanup_err: unknown) {
+      throw new AggregateError([err, cleanup_err], "token minting and session revocation both failed");
+    }
+    throw err;
+  }
+}
+
+export async function createSignInTicket(
+  clerkSecret: string,
+  clerkUserId: string,
+): Promise<string> {
+  const result = await clerkRequest(clerkSecret, "POST", "/sign_in_tokens", {
+    user_id: clerkUserId,
+    expires_in_seconds: 300,
+  }) as ClerkSignInToken;
+  return result.token;
 }
 
 // Clerk propagates publicMetadata (tenant_id/role) ASYNCHRONOUSLY after the
@@ -194,8 +254,11 @@ async function waitForTenantMetadata(clerkSecret: string, userId: string, stale:
   );
 }
 
-export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Promise<AttachedJwt> {
-  const user = await provisionUser(clerkSecret, { email: opts.email, password: opts.password });
+export async function ensureFixtureTenantReady(
+  clerkSecret: string,
+  opts: EnsureFixtureTenantReadyOptions,
+): Promise<ClerkUser> {
+  const user = await provisionUser(clerkSecret, opts);
   // Snapshot the tenant_id Clerk holds BEFORE this bootstrap — it may be stale
   // metadata from an older dev DB.
   const staleTenantId = readTenantId(await getUser(clerkSecret, user.id));
@@ -207,6 +270,11 @@ export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Pr
   // old tenant; on a replay the existing value is already correct. Minting before
   // the right tenant_id lands produces a JWT agentsfleetd rejects (UZ-AUTH-001).
   await waitForTenantMetadata(clerkSecret, user.id, created ? staleTenantId : null);
+  return user;
+}
+
+export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Promise<AttachedJwt> {
+  const user = await ensureFixtureTenantReady(clerkSecret, { email: opts.email });
   const tokens = await mintTokens(clerkSecret, user.id, { ttlSeconds: opts.ttlSeconds });
   return { ...tokens, clerkUserId: user.id, email: opts.email };
 }
@@ -215,7 +283,67 @@ export async function revokeSession(clerkSecret: string, sessionId: string): Pro
   try {
     await clerkRequest(clerkSecret, "POST", `/sessions/${sessionId}/revoke`);
   } catch (err: unknown) {
-    if (err instanceof Error && /4\d\d/.test(err.message)) return;
-    throw err;
+    if (!(err instanceof Error && err.message.includes(S_CLERK_NOT_FOUND_RESPONSE))) throw err;
   }
+  mintedSessions.delete(sessionId);
+}
+
+export async function revokeMintedSessions(): Promise<void> {
+  const sessions = [...mintedSessions.entries()];
+  await Promise.all(sessions.map(([sessionId, clerkSecret]) =>
+    revokeSession(clerkSecret, sessionId)
+  ));
+}
+
+async function listClientSessionIds(clerkSecret: string, clientId: string): Promise<Set<string>> {
+  const query = new URLSearchParams({ client_id: clientId, status: ACTIVE_SESSION_STATUS, limit: SESSION_LIST_LIMIT });
+  const sessions = await clerkRequest(clerkSecret, "GET", `/sessions?${query.toString()}`);
+  if (!Array.isArray(sessions)) throw new Error("Clerk session list returned a non-array");
+  return new Set(sessions.map((session) => (session as ClerkSession).id));
+}
+
+export async function withClientSessionSweepOnFailure<T>(
+  clerkSecret: string,
+  clientId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previousIds = await listClientSessionIds(clerkSecret, clientId);
+  try {
+    return await operation();
+  } catch (error: unknown) {
+    try {
+      const currentIds = await listClientSessionIds(clerkSecret, clientId);
+      await Promise.all([...currentIds].filter((id) => !previousIds.has(id))
+        .map((id) => revokeSession(clerkSecret, id)));
+    } catch (cleanupError: unknown) {
+      throw new AggregateError([error, cleanupError], "browser handoff and session sweep both failed");
+    }
+    throw error;
+  }
+}
+
+export async function withSessionRevocation<T>(
+  clerkSecret: string,
+  sessionId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let result: SessionOperationResult<T>;
+  try {
+    result = { ok: true, value: await operation() };
+  } catch (error: unknown) {
+    result = { ok: false, error };
+  }
+  try {
+    await revokeSession(clerkSecret, sessionId);
+  } catch (cleanupError: unknown) {
+    if (!result.ok) {
+      throw new AggregateError(
+        [result.error, cleanupError],
+        "browser handoff and session revocation both failed",
+      );
+    }
+    throw cleanupError;
+  }
+  if (!result.ok) throw result.error;
+  return result.value;
 }
