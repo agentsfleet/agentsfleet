@@ -69,7 +69,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     }
     const body = parseCreateBody(hx, req) orelse return;
 
-    var db = hx.db() orelse return;
+    var db = hx.db() catch return;
     var db_open = true;
     defer if (db_open) db.end();
 
