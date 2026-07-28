@@ -17,6 +17,10 @@ missing=0
 
 # Single host-resident unit since the M80 cutover folded the prior units into it.
 readonly RUNNER_UNIT="agentsfleet-runner.service"
+readonly REQUIRE_RUNNER_CGROUP_DELEGATION="${REQUIRE_RUNNER_CGROUP_DELEGATION:-0}"
+readonly CGROUP_MOUNT="/sys/fs/cgroup"
+readonly REQUIRED_CGROUP_CONTROLLERS="cpu memory pids"
+readonly RUNNER_CGROUP_SUBGROUP="runner"
 
 declare -A OP_CACHE_VALUE
 declare -A OP_CACHE_STATUS
@@ -129,6 +133,50 @@ check_remote_executable() {
   echo "  ✓ $label: $path is executable"
 }
 
+check_runner_cgroup_delegation() {
+  local delegated
+  delegated="$(remote_cmd "systemctl show '$RUNNER_UNIT' --property=Delegate --value")"
+  if [ "$delegated" != "yes" ]; then
+    echo "  ✗ runner cgroup delegation: Delegate=$delegated (expected yes)"
+    missing=$((missing + 1))
+    return
+  fi
+
+  local subgroup
+  subgroup="$(remote_cmd "systemctl show '$RUNNER_UNIT' --property=DelegateSubgroup --value")"
+  if [ "$subgroup" != "$RUNNER_CGROUP_SUBGROUP" ]; then
+    echo "  ✗ runner cgroup delegation: DelegateSubgroup=$subgroup (expected $RUNNER_CGROUP_SUBGROUP)"
+    missing=$((missing + 1))
+    return
+  fi
+
+  local cgroup_path
+  cgroup_path="$(remote_cmd "systemctl show '$RUNNER_UNIT' --property=ControlGroup --value")"
+  case "$cgroup_path" in
+    /system.slice/agentsfleet-runner.service) ;;
+    *)
+      echo "  ✗ runner cgroup delegation: unexpected control group '$cgroup_path'"
+      missing=$((missing + 1))
+      return
+      ;;
+  esac
+
+  local enabled_controllers
+  enabled_controllers="$(remote_cmd "sudo -n cat '$CGROUP_MOUNT$cgroup_path/cgroup.subtree_control'")"
+  for controller in $REQUIRED_CGROUP_CONTROLLERS; do
+    case " $enabled_controllers " in
+      *" $controller "*) ;;
+      *)
+        echo "  ✗ runner cgroup delegation: controller '$controller' is not enabled"
+        missing=$((missing + 1))
+        return
+        ;;
+    esac
+  done
+
+  echo "  ✓ runner cgroup delegation: $cgroup_path ($enabled_controllers)"
+}
+
 # 6.1 Deploy artifacts
 echo "-- checking deploy artifacts (step 6.1)"
 check_remote_file "/opt/agentsfleet/deploy/deploy.sh" "deploy script"
@@ -142,6 +190,11 @@ check_remote_file "/opt/agentsfleet/.env" "env file" "600"
 # 6.3 Systemd units installed
 echo "-- checking systemd units (step 6.3)"
 check_remote_file "/etc/systemd/system/$RUNNER_UNIT" "systemd runner unit"
+
+if [ "$REQUIRE_RUNNER_CGROUP_DELEGATION" = "1" ]; then
+  echo "-- checking delegated runner cgroup"
+  check_runner_cgroup_delegation
+fi
 
 # 6.4 Egress host dependencies — records bwrap/nftables/iproute2
 # versions in the CI log and fails loud if a box cannot enforce per-lease egress.

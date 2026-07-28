@@ -163,7 +163,7 @@ All remaining steps use the Tailscale hostname `zombie-dev-worker-ant`.
 | `ca-certificates` | `agentsfleet-runner` | TLS connection to the agentsfleetd control plane |
 | `openssl` | `agentsfleet-runner` | TLS runtime libraries |
 
-Landlock and cgroups v2 require **no packages** — Landlock uses raw syscalls (kernel 5.13+, included in Debian 12), cgroups v2 is the default hierarchy on Debian 12. The egress boundary also needs the service to hold **CAP_NET_ADMIN** — granted by the systemd unit (`AmbientCapabilities`), not a package; the runner's own startup probe + `doctor` confirm it at runtime.
+Landlock and cgroups v2 require **no packages** — Landlock uses raw syscalls (kernel 5.13+, included in Debian 12), cgroups v2 is the default hierarchy on Debian 12. The tracked runner unit delegates only the `cpu`, `memory`, and `pids` controllers within its own cgroup subtree, runs the daemon in its `runner` leaf, and enables those controllers before the daemon starts; execution scopes never use the host cgroup root. The egress boundary also needs the service to hold **CAP_NET_ADMIN** — granted by the systemd unit (`AmbientCapabilities`), not a package; the runner's own startup probe + `doctor` confirm it at runtime.
 
 The installed versions of the three egress packages (`bubblewrap` + `--info-fd`/`--block-fd`, `nftables`, `iproute2`) are **asserted and recorded** by the shared probe `playbooks/lib/egress_host_deps.sh`, called from both `02_host_readiness.sh` (manual) and `03_deploy_readiness.sh` (run in CI by `deploy-dev.yml` → recorded in the job log). A box missing any of them fails readiness loud, before first lease.
 
@@ -280,6 +280,7 @@ deploy, it stops the service retry loop and leaves startup to `deploy.sh`.
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << 'REMOTE'
 sudo cp /opt/agentsfleet/deploy/agentsfleet-runner.service /etc/systemd/system/
 sudo systemctl daemon-reload
+sudo systemctl show agentsfleet-runner.service --property=Delegate --property=DelegateSubgroup --property=CPUAccounting --property=MemoryAccounting --property=TasksAccounting
 REMOTE
 ```
 
@@ -296,6 +297,16 @@ ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "ls /etc/systemd/system/agentsfleet-runner.service"
 # Expected:
 #   /etc/systemd/system/agentsfleet-runner.service
+
+# After deploy.sh starts the service, verify the delegated subtree can host
+# per-execution resource cages. The Continuous Integration (CI) job repeats this
+# check after every later deployment.
+ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
+  "sudo systemctl show agentsfleet-runner.service --property=Delegate --property=DelegateSubgroup --value && sudo cat /sys/fs/cgroup/system.slice/agentsfleet-runner.service/cgroup.subtree_control"
+# Expected:
+#   yes
+#   runner
+#   cpu memory pids
 ```
 
 **Gate check:** run `./04_provision_runner_env.sh` — it verifies vault refs and
@@ -375,7 +386,8 @@ Once `DEV_WORKER_READY=true` is set, every push to `main` triggers the `deploy-w
 4. Verifies worker host readiness (`03_deploy_readiness.sh`)
 5. scp's the binary + `deploy/baremetal/deploy.sh` + `agentsfleet-runner.service` to the server
 6. Calls `sudo deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner` with the local binary path
-7. Sends Discord notification on success/failure
+7. Verifies the installed unit delegates `cpu`, `memory`, and `pids` for runner child scopes
+8. Sends Discord notification on success/failure
 
 No manual steps after bootstrap — the server is fully CI-managed. The env file
 (`/opt/agentsfleet/.env`) is rewritten from the vault on every deploy, so token

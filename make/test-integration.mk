@@ -34,7 +34,7 @@ ifeq ($(shell uname),Darwin)
 	  -v "$(CURDIR)":"$(CURDIR)" -w "$(CURDIR)" \
 	  -e ZIG_GLOBAL_CACHE_DIR="$(CURDIR)/.tmp/zig-kernel-global-cache" \
 	  -e ZIG_LOCAL_CACHE_DIR="$(CURDIR)/.tmp/zig-kernel-local-cache" \
-	  "$(RUNNER_CI_IMAGE)" sh -c 'sh scripts/cgroup-delegate.sh && make test-integration-kernel'
+	  "$(RUNNER_CI_IMAGE)" sh -c 'sh scripts/cgroup-delegate.sh make test-integration-kernel'
 else
 	@echo "→ [kernel] Running runner integration tests via build_runner.zig (env filter + kill-tree + seccomp/Landlock/cgroup)..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"

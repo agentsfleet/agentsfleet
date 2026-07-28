@@ -10,18 +10,14 @@
  *     spawned child's stdin is a pipe AND a positional message is
  *     supplied, so `shouldEnterSteerRepl` (message===undefined && tty)
  *     stays false and the command runs a single turn (no REPL drive)
- *   - assert the steer envelope is accepted. The CLI streams content
+ *   - require the steer envelope to contain a processed terminal result. The CLI streams content
  *     frames to STDOUT as plain `[claw] …` / `[tool] …` lines via
  *     `output.info` even under `--json`, then writes the JSON envelope
  *     LAST via `output.printJson`. So the envelope is the trailing
  *     balanced `{…}` object in stdout — parsing the *whole* stdout as
  *     JSON would throw on any turn that streamed prose. Acceptance:
  *       - exit 0 → `{event_id, kind: "complete", status: "processed"}`
- *       - exit !=0 → a graceful non-processed terminal / timeout on a
- *         shared DEV tenant (credits, gate, runner latency) that still
- *         names the event in the envelope and carries the matching
- *         `renderError` stem on stderr. Tolerated as long as the minted
- *         JWT never leaks.
+ *       - every timeout, cancellation, and non-processed result fails.
  *
  * Negative paths (no network residue beyond the already-installed fleet):
  *   - whitespace-only message rejected client-side ("message is required")
@@ -69,7 +65,6 @@ const ENVELOPE_EVENT_ID_KEY = "event_id" as const;
 const ENVELOPE_KIND_KEY = "kind" as const;
 const ENVELOPE_STATUS_KEY = "status" as const;
 const KIND_COMPLETE = "complete" as const;
-const KIND_TIMEOUT = "timeout" as const;
 const STATUS_PROCESSED = "processed" as const;
 const STATE_DIR_PREFIX = "agentsfleet-steer-" as const;
 const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" as const;
@@ -85,13 +80,6 @@ const BACKSLASH = "\\" as const;
 // reads as `complete`; `runFleetctl` *throws* TimeoutError if the child
 // outlives this, so it must exceed the CLI's own internal cap.
 const STEER_TIMEOUT_MS = 180_000;
-
-// Non-zero exits emit a typed CliError whose `message` (detail) reaches
-// stderr via `renderError` → `output.error`. The two single-turn stems
-// (`renderOutcome`): a non-processed terminal completion and a timeout.
-// The `still in flight` line is a JSON-mode-suppressed branch and never
-// fires here, so it is intentionally absent from this matcher.
-const TOLERATED_TERMINAL_STEM = /event\s+\S+\s+(terminated with status|did not complete)/i;
 
 interface SteerEnvelope {
   readonly [ENVELOPE_EVENT_ID_KEY]?: unknown;
@@ -136,37 +124,17 @@ function parseSteerEnvelope(stdout: string): SteerEnvelope {
   return parsed;
 }
 
-// Accept either path the live server can drive on a shared DEV tenant:
-//   - exit 0 → `kind: complete`, `status: processed`
-//   - exit !=0 → a graceful non-processed terminal / timeout that still
-//     names the event and carries the matching `renderError` stem
-function assertSteerAccepted(result: RunResult): void {
+function assertSteerProcessed(result: RunResult): void {
+  assert.equal(result.code, 0,
+    `live steer must exit 0 with a processed result; stdout=${result.stdout} stderr=${result.stderr}`);
   const envelope = parseSteerEnvelope(result.stdout);
   const eventId = envelope[ENVELOPE_EVENT_ID_KEY];
   assert.equal(typeof eventId, "string", `steer envelope missing ${ENVELOPE_EVENT_ID_KEY}: ${result.stdout}`);
   assert.ok((eventId as string).length > 0, `steer ${ENVELOPE_EVENT_ID_KEY} is empty`);
-
-  if (result.code === 0) {
-    assert.equal(envelope[ENVELOPE_KIND_KEY], KIND_COMPLETE,
-      `exit 0 must carry kind=${KIND_COMPLETE}; got ${JSON.stringify(envelope)}`);
-    assert.equal(envelope[ENVELOPE_STATUS_KEY], STATUS_PROCESSED,
-      `exit 0 must carry status=${STATUS_PROCESSED}; got ${JSON.stringify(envelope)}`);
-    return;
-  }
-
-  // Non-zero: a `complete`/`processed` envelope here is a contradiction
-  // (success shape, failure code) and must NOT pass. A `complete` with a
-  // non-processed terminal status, or a `timeout`, is the graceful path.
-  const kind = envelope[ENVELOPE_KIND_KEY];
-  if (kind === KIND_COMPLETE) {
-    assert.notEqual(envelope[ENVELOPE_STATUS_KEY], STATUS_PROCESSED,
-      `processed completion must exit 0, not ${result.code}: ${result.stdout}`);
-  } else {
-    assert.equal(kind, KIND_TIMEOUT,
-      `non-zero steer must be ${KIND_COMPLETE} (non-processed) or ${KIND_TIMEOUT}: ${result.stdout}`);
-  }
-  assert.match(`${result.stderr}\n${result.stdout}`, TOLERATED_TERMINAL_STEM,
-    `non-zero steer exit ${result.code} lacked a known terminal stem; stdout=${result.stdout} stderr=${result.stderr}`);
+  assert.equal(envelope[ENVELOPE_KIND_KEY], KIND_COMPLETE,
+    `live steer must carry kind=${KIND_COMPLETE}; got ${JSON.stringify(envelope)}`);
+  assert.equal(envelope[ENVELOPE_STATUS_KEY], STATUS_PROCESSED,
+    `live steer must carry status=${STATUS_PROCESSED}; got ${JSON.stringify(envelope)}`);
 }
 
 if (!isLive) {
@@ -218,10 +186,10 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    it("steer <id> <message> --json is accepted and emits a structured envelope", async () => {
+    it("steer <id> <message> --json returns a processed terminal result", async () => {
       assert.ok(fleetId, "fleet was not installed in beforeAll");
       const result = await runWithEnv([STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
-      assertSteerAccepted(result);
+      assertSteerProcessed(result);
     }, STEER_TIMEOUT_MS);
 
     it("steer <id> with a whitespace-only message is rejected client-side", async () => {

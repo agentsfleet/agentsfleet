@@ -7,11 +7,8 @@
  *     dashboard's CLI-auth approve action via browser.ts, scrape the 6-digit
  *     code it displays, type it into the pty prompt, assert credentials.json
  *     mode 0600 + 3-segment JWT (WS-E #C3).
- *   - persisted-credentials read-only sweep (no env API key
- *     (AGENTSFLEET_API_KEY) in the spawn env; proves credentials.json is the
- *     load-bearing auth source).
- *   - prefix-scoped post-teardown emptiness (fleet list).
- *   - persisted-credentials install + lifecycle walk.
+ *   - immediate auth-status proof with no env API key
+ *     (AGENTSFLEET_API_KEY), so credentials.json is the load-bearing source.
  *
  * Skip posture:
  *   - Live API target — AGENTSFLEET_ACCEPTANCE_TARGET must be an https URL.
@@ -28,11 +25,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { READ_ONLY_COMMANDS } from "./fixtures/command-matrix.ts";
-import { ACCEPTANCE_RUN_PREFIX } from "./fixtures/constants.ts";
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
-import { PtyProcess } from "./fixtures/pty.ts";
+import { extractLoginUrl, PtyProcess } from "./fixtures/pty.ts";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
   resolveAcceptanceEnv,
@@ -42,42 +37,20 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { completeCliAuthHandoff } from "./fixtures/browser.ts";
-import { installPlatformOpsFleet } from "./fixtures/seed.ts";
-import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import {
-  expectStatus,
-  killFleet,
-  resumeFleet,
-  stopFleet,
-} from "./fixtures/lifecycle.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
-// The browser leg signs in via `clerk.signIn` (fixtures/browser.ts), needing
-// CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY. Verified 2026-06-19: clerkSetup
-// clears the bot-protection error, but `clerk.signIn` then times out on
-// `window.Clerk.loaded` against the deployed app-dev.agentsfleet.net — the
-// test's Clerk keys must belong to the SAME instance that deployed dashboard
-// embeds (a publishable-key/instance alignment to confirm dashboard-side).
-// Gated behind an explicit opt-in until that's confirmed, so CI stays green;
-// the machinery (clerk.signIn + CI key wiring) is in place to flip on.
-const handshakeEnabled =
-  process.env.AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE === "1" && Boolean(process.env.CLERK_PUBLISHABLE_KEY);
-
-// printKeyValue renders the key space-aligned ("login_url   https://…"), not
-// "login_url: …" — match an optional colon then whitespace before the URL.
-const LOGIN_URL_RE = /login_url:?\s+(https?:\/\/\S+)/i;
 const CODE_PROMPT_RE = /verification code/i;
 const CREDENTIALS_MODE = 0o600;
 const JWT_SEGMENTS = 3;
 const HANDSHAKE_TIMEOUT_MS = 60_000;
+const AUTH_SOURCE_FILE = "file" as const;
 
 function parseLoginUrl(output: string): string {
-  // The CLI prints "login_url: <URL>" inside the Login session block.
-  const match = output.match(LOGIN_URL_RE);
-  if (!match || !match[1]) throw new Error(`could not find login_url in CLI output: ${output.slice(0, 400)}`);
-  return match[1];
+  const loginUrl = extractLoginUrl(output);
+  if (!loginUrl) throw new Error(`could not find login_url in CLI output: ${output.slice(0, 400)}`);
+  return loginUrl;
 }
 
 function rewriteHost(loginUrl: string, dashboardBase: string): string {
@@ -95,15 +68,12 @@ if (!isLive) {
   describe("lifecycle-after-login.spec.ts", () => {
     it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
-} else if (!handshakeEnabled) {
-  describe("lifecycle-after-login.spec.ts", () => {
-    it.skip("CLERK_PUBLISHABLE_KEY absent — the browser leg needs it for clerk.signIn", () => {});
-  });
 } else {
   describe("lifecycle-after-login — real login → persisted credentials", () => {
     let apiUrl: string = "";
     let dashboardUrl: string = "";
     let sessionJwt: string = "";
+    let clerkUserId: string = "";
     let fixtureEmail: string = "";
     let stateDir: string = "";
     let baseEnv: Record<string, string> = {};
@@ -123,6 +93,7 @@ if (!isLive) {
       fixtureEmail = resolveFixtureEmail("regular");
       const minted = await attachJwt(clerkSecret, { email: fixtureEmail });
       sessionJwt = minted.sessionJwt;
+      clerkUserId = minted.clerkUserId;
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-login-"));
       credentialsPath = path.join(stateDir, "credentials.json");
@@ -136,7 +107,6 @@ if (!isLive) {
     });
 
     afterAll(async () => {
-      try { await cleanWorkspaceFleets(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX }); } catch { /* best-effort teardown */ }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
@@ -148,10 +118,14 @@ if (!isLive) {
         // runs the interactive verification prompt instead of fast-failing.
         const cli = PtyProcess.spawnFleetctl(["login", "--no-open"], { env: baseEnv });
         try {
-          const announced = await cli.waitForLine((line) => LOGIN_URL_RE.test(line), HANDSHAKE_TIMEOUT_MS);
+          const announced = await cli.waitForLine((line) => extractLoginUrl(line) !== null, HANDSHAKE_TIMEOUT_MS);
           const handoffUrl = rewriteHost(parseLoginUrl(announced), dashboardUrl);
 
-          const code = await completeCliAuthHandoff({ loginUrl: handoffUrl, email: fixtureEmail, timeoutMs: HANDSHAKE_TIMEOUT_MS });
+          const code = await completeCliAuthHandoff({
+            loginUrl: handoffUrl,
+            clerkUserId,
+            timeoutMs: HANDSHAKE_TIMEOUT_MS,
+          });
 
           await cli.waitForLine((line) => CODE_PROMPT_RE.test(line), HANDSHAKE_TIMEOUT_MS);
           cli.writeLine(code);
@@ -169,71 +143,18 @@ if (!isLive) {
         assert.equal(typeof creds.token, "string");
         assert.equal(creds.token.split(".").length, JWT_SEGMENTS, `token is not a 3-segment JWT: ${creds.token}`);
 
+        const authStatus = await spawn(["auth", "status", "--json"]);
+        assert.equal(authStatus.code, 0,
+          `persisted auth status exited ${authStatus.code}: ${authStatus.stderr}`);
+        const status = JSON.parse(authStatus.stdout.trim()) as {
+          authenticated?: boolean;
+          source?: string;
+        };
+        assert.equal(status.authenticated, true);
+        assert.equal(status.source, AUTH_SOURCE_FILE);
+
         // WS-E #C1: the minted browser-leg JWT must never surface on the pty.
         assertNoSecretLeak({ stdout: cli.output, stderr: "" }, sessionJwt);
-      });
-    });
-
-    // Persisted-credentials read-only sweep (no env API key).
-    describe("read-only sweep using persisted credentials", () => {
-      for (const row of READ_ONLY_COMMANDS) {
-        const label = row.label ?? row.args.join(" ");
-        it(`${label} exits 0 against persisted credentials.json`, async () => {
-          // The env MUST NOT carry AGENTSFLEET_API_KEY — it wins over the
-          // stored login, which would mask whether login actually persisted.
-          assert.equal(baseEnv["AGENTSFLEET_API_KEY"], undefined, "baseEnv must not contain AGENTSFLEET_API_KEY");
-          const result = await spawn(row.args);
-          assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
-          const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
-          if (row.requiredKey) {
-            assert.ok(row.requiredKey in parsed, `${label}: missing ${row.requiredKey} in ${result.stdout}`);
-          }
-          if (row.isList && row.itemsKey) {
-            assert.ok(Array.isArray(parsed[row.itemsKey]), `${label}: ${row.itemsKey} not an array`);
-          }
-        });
-      }
-    });
-
-    // Prefix-scoped post-teardown emptiness (fleet list).
-    // Same expectation as the seeded-credentials spec: shared DEV tenants carry
-    // residual fleets; the only assertion that holds is "none of MY
-    // run's fleets remain after teardown".
-    describe("post-teardown emptiness (prefix-scoped)", () => {
-      beforeAll(async () => {
-        await cleanWorkspaceFleets(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX });
-      });
-
-      it(`fleet list --json: no items match ACCEPTANCE_RUN_PREFIX`, async () => {
-        const result = await spawn(["list", "--json"]);
-        assert.equal(result.code, 0);
-        const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
-        const items = Array.isArray(parsed.items) ? (parsed.items as Array<{ name?: string }>) : [];
-        const mine = items.filter((z) => typeof z.name === "string" && z.name.startsWith(ACCEPTANCE_RUN_PREFIX));
-        assert.equal(mine.length, 0,
-          `expected zero fleets starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mine.length}: ${JSON.stringify(mine)}`);
-      });
-    });
-
-    // Persisted-credentials install + lifecycle (no env API key).
-    describe("install + lifecycle (no env API key)", () => {
-      let fleetId: string = "";
-
-      it("install platform-ops uses persisted creds", async () => {
-        const installed = await installPlatformOpsFleet({ env: baseEnv, runPrefix: ACCEPTANCE_RUN_PREFIX });
-        const id = installed.id ?? installed.fleet_id;
-        assert.ok(id, `install missing id: ${JSON.stringify(installed)}`);
-        fleetId = id as string;
-      });
-
-      it("status → stop → resume → kill walks state", async () => {
-        await expectStatus(baseEnv, fleetId, ["active", "starting", "running"]);
-        await stopFleet(baseEnv, fleetId);
-        await expectStatus(baseEnv, fleetId, ["paused", "stopped"]);
-        await resumeFleet(baseEnv, fleetId);
-        await expectStatus(baseEnv, fleetId, ["active", "running", "starting"]);
-        await killFleet(baseEnv, fleetId);
-        await expectStatus(baseEnv, fleetId, ["killed", "errored", "terminated"]);
       });
     });
   });

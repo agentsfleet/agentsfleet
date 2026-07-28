@@ -29,6 +29,11 @@ const CARRIAGE_RETURN = /\r/g;
 const ANSI_CONTROL_SEQ = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 const OUTPUT_PREVIEW_CHARS = 600;
 const STDERR_PREVIEW_CHARS = 300;
+const LOGIN_URL_RE = /login_url(?:\s*[:·])?\s+(https?:\/\/\S+)/i;
+
+export function extractLoginUrl(output: string): string | null {
+  return output.match(LOGIN_URL_RE)?.[1] ?? null;
+}
 
 export interface PtySpawnOptions {
   readonly env: Record<string, string>;
