@@ -396,6 +396,53 @@ describe("fleets routes", () => {
     expect(markup).not.toContain("No prebuilt fleet library found");
   });
 
+  it("falls back to the first page when a supplied cursor is rejected", async () => {
+    // A stale or hand-edited ?library_after must not strand someone on an
+    // error screen. The first page always lands somewhere useful.
+    const rejected = Object.assign(new Error("bad cursor"), { status: 400 });
+    listWorkspaceFleetLibraryMock
+      .mockRejectedValueOnce(rejected)
+      .mockResolvedValueOnce({ items: SAMPLE_TEMPLATES, next_cursor: null, total: 2 });
+
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: { library_after: "garbage" } }),
+      ),
+    );
+
+    // Second call carries no cursor — that is the fallback, not a retry of the
+    // same bad request.
+    expect(listWorkspaceFleetLibraryMock).toHaveBeenCalledTimes(2);
+    expect(listWorkspaceFleetLibraryMock.mock.calls[1]?.[2] ?? null).toBeNull();
+    expect(markup).toContain("GitHub PR reviewer");
+    expect(markup).not.toContain("Could not load the fleet library.");
+  });
+
+  it("does not retry a first-page failure that no cursor could fix", async () => {
+    // Only a REJECTED CURSOR earns the fallback. A 503 on the first page is a
+    // real outage, and a silent second round-trip would just double the load.
+    const down = Object.assign(new Error("upstream"), { status: 503 });
+    listWorkspaceFleetLibraryMock.mockRejectedValue(down);
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: {} }),
+      ),
+    );
+
+    expect(listWorkspaceFleetLibraryMock).toHaveBeenCalledTimes(1);
+    expect(markup).toContain("The fleet library is temporarily unavailable.");
+  });
+
   it("fleets new page accepts a tier-qualified deep link", async () => {
     listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
     listSecretsMock.mockResolvedValue({ secrets: [] });

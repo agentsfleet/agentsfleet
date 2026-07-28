@@ -33,6 +33,26 @@ type Props = {
 const NOT_FOUND_COPY =
   "That library entry is not on this page. It may have been removed, or it may be further down the library.";
 
+/** The query parameter carrying list position. Parsed by `page.tsx`. */
+const CURSOR_PARAM = "library_after";
+
+/**
+ * Write the current list position into the URL.
+ *
+ * REPLACES rather than pushes: load-more is not a navigation, and pushing
+ * would make Back walk the user backwards one page-load at a time instead of
+ * leaving the screen. Uses `history` directly rather than the router so the
+ * route does not re-render — the rows are already in state, and a re-render
+ * would refetch the page we just appended.
+ */
+function mirrorCursorIntoUrl(cursor: string | null) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (cursor === null) url.searchParams.delete(CURSOR_PARAM);
+  else url.searchParams.set(CURSOR_PARAM, cursor);
+  window.history.replaceState(window.history.state, "", url);
+}
+
 /**
  * Pure — user-facing copy for a typed gallery failure. Separate strings per
  * kind because "sign in", "ask for access" and "try again" are different
@@ -90,6 +110,10 @@ export function InstallSourceSelector({
       setEntries((prior) => [...prior, ...r.data.items]);
       setNextCursor(r.data.next_cursor);
       setTotal(r.data.total);
+      // Mirror the page we just loaded FROM into the URL, so a reload, a
+      // shared link, or a back navigation out of a detail view lands here
+      // rather than dumping the user back at the first page.
+      mirrorCursorIntoUrl(nextCursor);
     });
   }
 

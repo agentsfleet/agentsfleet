@@ -13,6 +13,12 @@ vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nex
 vi.mock("@/components/domain/useFleetEventStream", () => ({
   useFleetEventStream: useFleetEventStreamMock,
 }));
+const { readFleetLibraryPageActionMock } = vi.hoisted(() => ({
+  readFleetLibraryPageActionMock: vi.fn(),
+}));
+vi.mock("../app/(dashboard)/w/[workspaceId]/fleets/new/actions", () => ({
+  readFleetLibraryPageAction: readFleetLibraryPageActionMock,
+}));
 
 import { InstallEntry } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallEntry";
 import { FleetInstallGate } from "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetInstallGate";
@@ -232,5 +238,99 @@ describe("FleetInstallGate", () => {
     renderGate("installing");
     await user.click(screen.getByRole("button", { name: /back to library/i }));
     expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets");
+  });
+});
+
+describe("InstallSourceSelector — paging and list position", () => {
+  const SECOND = { ...TEMPLATE, id: "second-entry", name: "Second entry" };
+
+  beforeEach(() => {
+    readFleetLibraryPageActionMock.mockReset();
+    window.history.replaceState({}, "", "/w/ws_1/fleets/new");
+  });
+
+  it("discloses what it has not loaded rather than implying it with a button", () => {
+    // Invariant 5. The exhaustive walk this replaced guaranteed every entry was
+    // present; paging cannot, so the remainder is stated outright.
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: "cur-2", total: 7 },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+    expect(screen.getByText("Showing 1 of 7 entries")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Load more" })).toBeTruthy();
+  });
+
+  it("appends the next page, retaining prior cards, and mirrors position into the URL", async () => {
+    const user = userEvent.setup({ delay: null });
+    readFleetLibraryPageActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [SECOND], next_cursor: null, total: 2 },
+    });
+
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: "cur-2", total: 2 },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+
+    // Exactly one request, carrying the cursor the first page returned.
+    expect(readFleetLibraryPageActionMock).toHaveBeenCalledTimes(1);
+    expect(readFleetLibraryPageActionMock).toHaveBeenCalledWith("ws_1", "cur-2");
+    // Prior cards RETAINED, not replaced.
+    expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
+    expect(screen.getByText("Second entry")).toBeTruthy();
+    // Position mirrored so a reload lands here, and REPLACED so Back still
+    // leaves the screen rather than walking back one page-load at a time.
+    expect(window.location.search).toContain("library_after=cur-2");
+    // Last page reached — the affordance and its disclosure both retire.
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
+
+  it("keeps loaded cards on screen when load-more fails, and offers retry", async () => {
+    const user = userEvent.setup({ delay: null });
+    readFleetLibraryPageActionMock.mockResolvedValue({ ok: false, error: "upstream 503" });
+
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: "cur-2", total: 7 },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+
+    // A failed page never blanks the gallery.
+    expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    // And it is a failure, not an empty library.
+    expect(screen.queryByText("No prebuilt fleet library found")).toBeNull();
+  });
+
+  it("shows the not-found selection state without erroring the page", () => {
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: null, total: 1 },
+        initialError: null,
+        selectionNotFound: true,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+    expect(screen.getByText(/not on this page/)).toBeTruthy();
+    // The gallery still works — a bad link lands somewhere useful.
+    expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

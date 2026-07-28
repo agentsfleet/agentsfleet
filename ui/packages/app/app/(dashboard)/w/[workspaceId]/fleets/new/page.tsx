@@ -2,8 +2,15 @@ import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { PageHeader, PageLayout, PageTitle, Skeleton } from "@agentsfleet/design-system";
-import { listWorkspaceFleetLibraryCached } from "@/lib/api/fleet-library";
-import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
+import {
+  listWorkspaceFleetLibraryCached,
+  type FleetLibraryPageResult,
+} from "@/lib/api/fleet-library";
+import {
+  errorKindForStatus,
+  LIBRARY_ERROR_KIND,
+  type LibraryError,
+} from "@/lib/api/library-types";
 import { listSecrets } from "@/lib/api/secrets";
 import { InstallFleet } from "./InstallFleet";
 import { INSTALL_PAGE_DESCRIPTION, INSTALL_PAGE_TITLE } from "./library-docs";
@@ -76,6 +83,50 @@ function InstallGallerySkeleton() {
   );
 }
 
+/** A 400 is how the server rejects a cursor it cannot parse or does not own. */
+const CURSOR_REJECTED_STATUS = 400;
+
+/**
+ * Read one gallery page, falling back to the FIRST page when a supplied cursor
+ * is rejected.
+ *
+ * A stale or hand-edited `library_after` must not strand someone on an error
+ * screen — a bad link should still land somewhere useful, and the first page
+ * always is. The retry fires only when a cursor was actually supplied and only
+ * on the status that means "this cursor is bad", so a 503 on the first page
+ * stays a 503 rather than becoming a silent second round-trip.
+ *
+ * Never rejects: the result carries either a page or a typed error, because
+ * this runs inside a Suspense boundary that must not swallow the distinction
+ * between a failed read and an empty library.
+ */
+async function readGalleryPage(
+  workspaceId: string,
+  token: string,
+  after: string | null,
+): Promise<{ result: FleetLibraryPageResult | null; error: LibraryError | null }> {
+  try {
+    return { result: await listWorkspaceFleetLibraryCached(workspaceId, token, after), error: null };
+  } catch (cause) {
+    const status = (cause as { status?: number }).status;
+    if (after !== null && status === CURSOR_REJECTED_STATUS) {
+      try {
+        return { result: await listWorkspaceFleetLibraryCached(workspaceId, token, null), error: null };
+      } catch {
+        // Fall through to the typed error below: the library itself is
+        // unreachable, which is not something a better cursor would fix.
+      }
+    }
+    return {
+      result: null,
+      error: {
+        kind: typeof status === "number" ? errorKindForStatus(status) : LIBRARY_ERROR_KIND.unknown,
+        detail: cause instanceof Error ? cause.message : undefined,
+      },
+    };
+  }
+}
+
 /**
  * Async data region: reads the first gallery page and the workspace's
  * credential names, then resolves the deep-link selection. Exported so it
@@ -98,26 +149,10 @@ export async function InstallFleetData({
   const token = await getToken();
   if (!token) return null;
 
-  // An unparseable cursor is discarded in favour of the first page rather than
-  // surfacing an error — a bad link should still land somewhere useful.
   const after = one(query.library_after) ?? null;
 
-  // A failed gallery read is a failure, not an empty library. The previous
-  // `.catch(() => [])` told a workspace its library was empty when the read
-  // merely failed, offering no retry and no way to tell the two apart.
-  const galleryRead = listWorkspaceFleetLibraryCached(workspaceId, token, after).then(
-    (result) => ({ result, error: null }),
-    (cause: unknown) => ({
-      result: null,
-      error: {
-        kind: LIBRARY_ERROR_KIND.unknown,
-        detail: cause instanceof Error ? cause.message : undefined,
-      } satisfies LibraryError,
-    }),
-  );
-
   const [gallery, credentialNames] = await Promise.all([
-    galleryRead,
+    readGalleryPage(workspaceId, token, after),
     listSecrets(workspaceId, token)
       .then((response) => response.secrets.map((secret) => secret.name))
       // null (not []) when the vault read fails: the preview must not mistake an
