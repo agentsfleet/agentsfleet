@@ -1,6 +1,5 @@
 import { cache } from "react";
 import { listTenantModelEntries } from "@/lib/api/tenant_model_entries";
-import { listSecrets } from "@/lib/api/secrets";
 
 // Server-only read wrappers for the Models page. React's `cache()` is an
 // RSC primitive that collapses repeat reads within ONE server render. Same
@@ -13,6 +12,9 @@ import { listSecrets } from "@/lib/api/secrets";
 // `active` per entry and `platform_default_available` directly, so a second
 // full tenant-provider round-trip is redundant — the secrets/lib/reads.ts
 // sibling still needs its own copy for the Secrets page's delete guard.
+//
+// No `listSecretsCached` either: an ordinary Models visit must
+// not request the secret list. The picker that needs it fetches on open,
+// through the refetch seam `ModelsRegistryTable` already owned.
 
 export const listTenantModelEntriesCached = cache(listTenantModelEntries);
-export const listSecretsCached = cache(listSecrets);

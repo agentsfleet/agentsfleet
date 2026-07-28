@@ -157,7 +157,16 @@ test "integration: test_library_read_resource_bounds — the global models page 
     // `cache`, and a dangling pointer there would fail a LATER test.
     defer h.ctx.model_library_cache = null;
 
-    const path = MODELS_PATH ++ "?q=" ++ CATALOGUE_MODEL ++ "&limit=100";
+    // The full page at the maximum limit, deliberately unfiltered.
+    //
+    // This asserts a BUDGET — statements issued, results returned, encoded bytes
+    // — so the worst case is the honest subject: the widest page this endpoint
+    // will ever serve. Narrowing to this suite's own rows would measure a
+    // two-row response against a ceiling sized for a hundred, and the assertion
+    // would pass for the wrong reason. The seeded rows above still guarantee the
+    // page is non-empty; everything else in the shared catalogue makes the
+    // measurement more representative, not less.
+    const path = MODELS_PATH ++ "?limit=100";
 
     // ── miss: the revision read, then the page ───────────────────────────────
     {

@@ -9,46 +9,13 @@ import { __resetRegistryForTests } from "@/lib/streaming/fleet-stream-registry";
 import { OUTCOME } from "@/lib/events/event-summary";
 import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
 
-// ── FakeEventSource ────────────────────────────────────────────────────────
-// Standalone SSE-test harness. Future SSE-touching tests should
-// inline the same pattern; centralizing was considered and rejected
-// (the helper is small enough that the duplication is cheaper than
-// the extra import surface).
-
-type EsHandlers = {
-  onopen: ((this: EventSource, ev: Event) => unknown) | null;
-  onmessage: ((this: EventSource, ev: MessageEvent) => unknown) | null;
-  onerror: ((this: EventSource, ev: Event) => unknown) | null;
-};
-
-class FakeEventSource implements EsHandlers {
-  static instances: FakeEventSource[] = [];
-  url: string;
-  onopen: EsHandlers["onopen"] = null;
-  onmessage: EsHandlers["onmessage"] = null;
-  onerror: EsHandlers["onerror"] = null;
-  closed = false;
-  constructor(url: string) {
-    this.url = url;
-    FakeEventSource.instances.push(this);
-  }
-  close() {
-    this.closed = true;
-  }
-  emit(frame: LiveFrame) {
-    this.onmessage?.call(this as unknown as EventSource, {
-      data: JSON.stringify(frame),
-    } as MessageEvent);
-  }
-  open() {
-    this.onopen?.call(this as unknown as EventSource, {} as Event);
-  }
-  fail() {
-    this.onerror?.call(this as unknown as EventSource, {} as Event);
-  }
-}
+import { FakeEventSource } from "./helpers/fake-event-source";
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
+
+// A kind the client has no branch for. The daemon is free to add frame kinds
+// ahead of the browser bundle, so an unrecognised one must be inert, not fatal.
+const UNKNOWN_FRAME_KIND = "future_kind_we_dont_know";
 
 function row(over: Partial<EventRow> = {}): EventRow {
   const now = Date.UTC(2026, 4, 15, 18, 30, 0);
@@ -83,15 +50,14 @@ function mount(initial: EventRow[] = []) {
 
 describe("useFleetEventStream", () => {
   beforeEach(() => {
-    FakeEventSource.instances = [];
-    (globalThis as unknown as { EventSource: unknown }).EventSource = FakeEventSource;
+    FakeEventSource.install();
     __resetRegistryForTests();
   });
 
   afterEach(() => {
     cleanup();
     __resetRegistryForTests();
-    delete (globalThis as { EventSource?: unknown }).EventSource;
+    FakeEventSource.uninstall();
   });
 
   it("opens an EventSource against the same-origin stream URL on mount", () => {
@@ -382,10 +348,7 @@ describe("useFleetEventStream", () => {
   it("ignores SSE frames with malformed JSON", () => {
     const { result } = mount();
     act(() => {
-      FakeEventSource.instances[0]!.onmessage?.call(
-        FakeEventSource.instances[0]! as unknown as EventSource,
-        { data: "this is not json" } as MessageEvent,
-      );
+      FakeEventSource.instances[0]!.emitRaw("this is not json");
     });
     expect(result.current.events).toEqual([]);
   });
@@ -421,11 +384,8 @@ describe("useFleetEventStream", () => {
     const inputs: unknown[] = [null, 42, '"a string"', "[1,2,3]"];
     act(() => {
       for (const raw of inputs) {
-        FakeEventSource.instances[0]!.onmessage?.call(
-          FakeEventSource.instances[0]! as unknown as EventSource,
-          {
-            data: typeof raw === "string" ? raw : JSON.stringify(raw),
-          } as MessageEvent,
+        FakeEventSource.instances[0]!.emitRaw(
+          typeof raw === "string" ? raw : JSON.stringify(raw),
         );
       }
     });
@@ -435,11 +395,8 @@ describe("useFleetEventStream", () => {
   it("drops SSE frames with unknown kind (default-switch arm)", async () => {
     const { result } = mount();
     act(() => {
-      FakeEventSource.instances[0]!.onmessage?.call(
-        FakeEventSource.instances[0]! as unknown as EventSource,
-        {
-          data: JSON.stringify({ kind: "future_kind_we_dont_know" }),
-        } as MessageEvent,
+      FakeEventSource.instances[0]!.emitRaw(
+        JSON.stringify({ kind: UNKNOWN_FRAME_KIND }),
       );
     });
     expect(result.current.events).toEqual([]);

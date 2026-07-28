@@ -20,10 +20,10 @@ vi.mock("@/lib/api/tenant_provider", () => ({ getTenantProvider }));
 vi.mock("@/lib/api/secrets", () => ({ listSecrets }));
 vi.mock("@/lib/api/tenant_model_entries", () => ({ listTenantModelEntries }));
 
-import {
-  listSecretsCached as listSecretsCachedModels,
-  listTenantModelEntriesCached,
-} from "@/app/(dashboard)/w/[workspaceId]/settings/models/lib/reads";
+// No `listSecretsCached` from the Models reads: an ordinary
+// Models visit no longer requests the secret list, so the models-side wrapper
+// is gone. The Secrets page keeps its own, covered below.
+import { listTenantModelEntriesCached } from "@/app/(dashboard)/w/[workspaceId]/settings/models/lib/reads";
 import {
   getTenantProviderCached as getTenantProviderCachedSecrets,
   listSecretsCached as listSecretsCachedSecrets,
@@ -31,17 +31,15 @@ import {
 
 describe("Models cached reads", () => {
   it("listTenantModelEntriesCached forwards the token to listTenantModelEntries", async () => {
-    const registry = { models: [], platform_default_available: true };
+    const registry = {
+      models: [],
+      platform_default_available: true,
+      next_cursor: null,
+      total: 0,
+    };
     listTenantModelEntries.mockResolvedValue(registry);
     await expect(listTenantModelEntriesCached("tok")).resolves.toBe(registry);
     expect(listTenantModelEntries).toHaveBeenCalledWith("tok");
-  });
-
-  it("listSecretsCached forwards the workspace id + token to listSecrets", async () => {
-    const resp = { secrets: [] };
-    listSecrets.mockResolvedValue(resp);
-    await expect(listSecretsCachedModels("ws_1", "tok")).resolves.toBe(resp);
-    expect(listSecrets).toHaveBeenCalledWith("ws_1", "tok");
   });
 });
 

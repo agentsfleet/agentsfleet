@@ -585,3 +585,65 @@ test "integration: two repositories racing the same unused name cannot both win"
     const row = try q.next() orelse return error.RowMissing;
     try std.testing.expectEqualStrings(PROBE_REPO, try row.get([]const u8, 0));
 }
+
+// ── No response carries the support-file manifest ───────────────────────────
+
+test "test_library_responses_omit_support_manifest" {
+    // Dimension 5.1. The manifest is write-only: stored on import as a record
+    // of what a bundle held, returned by nothing. The stored row below is given
+    // a NON-empty manifest, and `requirements_json` always carries its own
+    // `support_files` key — so every clean body here proves an active strip or
+    // a narrowed projection, not an accidentally-empty fixture.
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+
+    // The onboard 201 (both tiers share `onboard.respond`): the stored
+    // requirements carry `support_files`; the response must not.
+    const created = try addFleet(h, alloc, PROBE_REPO, false);
+    defer created.deinit();
+    try created.expectStatus(.created);
+    try std.testing.expect(!created.bodyContains("support_files"));
+
+    // Plant a non-empty manifest on the stored row, then publish it so every
+    // tenant-facing read serves it.
+    _ = try conn.exec(
+        \\UPDATE core.fleet_library
+        \\   SET support_files_json = '[{"path":"docs/NOTES.md","size_bytes":4,"sha256":"ab"}]'::jsonb
+        \\ WHERE id = $1
+    , .{PROBE_ID});
+    // The PATCH response is the single-row read: it answers through
+    // `SELECT_ADMIN_CATALOG_ROW` + the same row mapper as the list (there is
+    // no GET on the per-entry path — PATCH and DELETE only).
+    const published = try publish(h, alloc, PROBE_ID);
+    defer published.deinit();
+    try published.expectStatus(.ok);
+    try std.testing.expect(!published.bodyContains("support_files"));
+
+    // Admin catalog list — with the row read above, both admin projections.
+    const admin_list = try (try h.get(CATALOG_URL).bearer(TOKEN_PLATFORM)).send();
+    defer admin_list.deinit();
+    try admin_list.expectStatus(.ok);
+    try std.testing.expect(admin_list.bodyContains(PROBE_ID));
+    try std.testing.expect(!admin_list.bodyContains("support_files"));
+
+    // The workspace gallery and the public bundles list.
+    const gallery_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleet-libraries", .{http_auth.WS_PRIMARY});
+    defer alloc.free(gallery_url);
+    const gallery = try (try h.get(gallery_url).bearer(TOKEN_TENANT)).send();
+    defer gallery.deinit();
+    try gallery.expectStatus(.ok);
+    try std.testing.expect(gallery.bodyContains(PROBE_ID));
+    try std.testing.expect(!gallery.bodyContains("support_files"));
+
+    const bundles = try (try h.get(BUNDLES_URL).bearer(TOKEN_TENANT)).send();
+    defer bundles.deinit();
+    try bundles.expectStatus(.ok);
+    try std.testing.expect(!bundles.bodyContains("support_files"));
+}

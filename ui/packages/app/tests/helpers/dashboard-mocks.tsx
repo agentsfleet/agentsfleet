@@ -73,7 +73,7 @@ export function workspaceMock() {
 // Union of every lucide icon the dashboard test files reference. Each renders a
 // stub <svg data-icon="…"> so name-based queries keep working.
 const LUCIDE_ICONS = [
-  "AlertTriangleIcon", "CheckIcon", "CopyIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
+  "AlertTriangleIcon", "CheckIcon", "CopyIcon", "DownloadIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
   "KeyRoundIcon", "KeyIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "SettingsIcon",
   "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "BrainCircuitIcon", "BoxesIcon",
   "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
@@ -81,7 +81,7 @@ const LUCIDE_ICONS = [
   "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
   "BrainIcon", "LayoutDashboardIcon",
   "MessageSquareIcon", "Code2Icon", "FolderIcon",
-  "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUp", "ArrowDown", "ArrowUpDown",
+  "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUp", "ArrowDown", "ChevronsUpDown",
 ] as const;
 
 export function lucideMock() {

@@ -233,13 +233,13 @@ describe("resolveDataSource @- sentinel paths (lines 122-131)", () => {
     );
     try {
       const exit = await baseProvide(
-        secretAddEffectFromFlags({ name: "stdin-secret", data: "@-", force: true }),
+        secretAddEffectFromFlags({ name: "stdin-secret", data: "@-" }),
         captured,
         false,
         http,
       );
       expect(Exit.isSuccess(exit)).toBe(true);
-      expect(captured.some((s) => s.includes("stored") || s.includes("overwritten"))).toBe(true);
+      expect(captured.some((s) => s.includes("stored"))).toBe(true);
     } finally {
       Bun.stdin.text = originalText;
     }

@@ -96,7 +96,6 @@ describe("fleets routes", () => {
         trigger_present: true,
       },
       required_credentials_reasons: { github: "review your pull requests" },
-      support_files: [],
     },
   ];
 
@@ -333,53 +332,299 @@ describe("fleets routes", () => {
     ).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
-    listWorkspaceFleetLibraryMock.mockResolvedValue({
-      items: SAMPLE_TEMPLATES,
-    });
-    listSecretsMock.mockResolvedValue({
-      secrets: [{ kind: "custom_secret", name: "github", created_at: 1 }],
-    });
-    const { default: Page } =
-      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
-    const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1" }),
-        searchParams: Promise.resolve({}),
-      }),
-    );
-    expect(markup).toContain("Install fleet"); // page title
-    expect(markup).toContain("Fleet library");
-    expect(markup).toContain("GitHub PR reviewer");
-    expect(markup).toContain("Use entry"); // the gallery card's install action
-  });
-
-  it("fleets new page swallows failed template + secret fetches", async () => {
-    listWorkspaceFleetLibraryMock.mockRejectedValue(new Error("catalog down"));
-    listSecretsMock.mockRejectedValue(new Error("vault down"));
-    const { default: Page } =
-      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
-    const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1" }),
-        searchParams: Promise.resolve({}),
-      }),
-    );
-    expect(markup).toContain("No prebuilt fleet library found"); // empty gallery
-  });
-
-  it("fleets new page accepts a ?library= deep link", async () => {
-    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
+  it("fleets new page shell streams the header + skeleton before the gallery", async () => {
+    // InstallFleetData is an async child, so renderToStaticMarkup renders the
+    // Suspense skeleton in its place — the header paints immediately and the
+    // gallery arrives after. Previously the whole page waited on the slower of
+    // the library and vault reads before painting anything.
+    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: SAMPLE_TEMPLATES, next_cursor: null, total: null });
     listSecretsMock.mockResolvedValue({ secrets: [] });
     const { default: Page } =
       await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
     const markup = renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1" }),
-        searchParams: Promise.resolve({ library: "github-pr-reviewer" }),
+        searchParams: Promise.resolve({}),
       }),
     );
+    expect(markup).toContain("Install fleet"); // PageTitle in the shell
+    expect(markup).toContain("animate-pulse"); // Skeleton fallback
+    expect(markup).not.toContain("GitHub PR reviewer"); // data not yet resolved
+  });
+
+  it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
+    listWorkspaceFleetLibraryMock.mockResolvedValue({
+      items: SAMPLE_TEMPLATES,
+      next_cursor: null,
+      total: null,
+    });
+    listSecretsMock.mockResolvedValue({
+      secrets: [{ kind: "custom_secret", name: "github", created_at: 1 }],
+    });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: {} }),
+      ),
+    );
     expect(markup).toContain("Fleet library");
+    expect(markup).toContain("GitHub PR reviewer");
+    expect(markup).toContain("Use entry"); // the gallery card's install action
+  });
+
+  it("fleets new page surfaces a failed library read instead of an empty gallery", async () => {
+    // This replaces a test named "swallows failed template + secret fetches",
+    // which asserted the anti-pattern: `.catch(() => [])` told a workspace its
+    // library was empty when the read had merely failed, with no retry and no
+    // way to tell the two apart. A failed read is now a failure.
+    listWorkspaceFleetLibraryMock.mockRejectedValue(new Error("catalog down"));
+    listSecretsMock.mockRejectedValue(new Error("vault down"));
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: {} }),
+      ),
+    );
+    expect(markup).toContain("Could not load the fleet library.");
+    expect(markup).not.toContain("No prebuilt fleet library found");
+  });
+
+  it("the streamed gallery renders nothing at all when the session lapsed mid-stream", async () => {
+    // The shell already redirected on a missing token, but the gallery is a
+    // SEPARATE async child that mints its own. A session that lapses between
+    // the two reads must yield no gallery rather than an unauthenticated read
+    // — and it cannot redirect from here, because the shell has already been
+    // flushed to the browser.
+    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: {} }),
+      ),
+    );
+    expect(markup).toBe("");
+    expect(listWorkspaceFleetLibraryMock).not.toHaveBeenCalled();
+  });
+
+  it("a repeated query parameter resolves to its first value, not to the array", async () => {
+    // `?library_after=a&library_after=b` reaches Next as an array. Passing it
+    // on unchanged would build a cursor of "a,b" and read a page the server
+    // never issued — a hand-edited or duplicated share link, not a hostile
+    // one, and it must land on a real page rather than an error.
+    listWorkspaceFleetLibraryMock.mockResolvedValue({
+      items: SAMPLE_TEMPLATES,
+      next_cursor: null,
+      total: null,
+    });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: { library_after: ["cur-2", "cur-3"] } }),
+      ),
+    );
+
+    expect(markup).toContain("GitHub PR reviewer");
+    expect(listWorkspaceFleetLibraryMock).toHaveBeenCalledWith("ws_1", expect.anything(), "cur-2");
+  });
+
+  it("test_library_list_position_survives_reload — a cursor in the URL restores that page", async () => {
+    // The server half of list position. Load-more mirrors the cursor into the
+    // URL; this is what makes that mirror worth anything — a reload, a shared
+    // link, or Back out of a detail view must land on the page the user was
+    // on, not dump them at the first one having lost their scroll.
+    listWorkspaceFleetLibraryMock.mockResolvedValue({
+      items: SAMPLE_TEMPLATES,
+      next_cursor: null,
+      total: 2,
+    });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: { library_after: "cur-2" } }),
+      ),
+    );
+
+    // The cursor reached the read verbatim — not dropped, not re-encoded.
+    expect(listWorkspaceFleetLibraryMock.mock.calls[0]?.[2]).toBe("cur-2");
+    expect(markup).toContain("GitHub PR reviewer");
+    // One request: restoring a position must not walk from page one to find it.
+    expect(listWorkspaceFleetLibraryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the first page when a supplied cursor is rejected", async () => {
+    // A stale or hand-edited ?library_after must not strand someone on an
+    // error screen. The first page always lands somewhere useful.
+    const rejected = Object.assign(new Error("bad cursor"), { status: 400 });
+    listWorkspaceFleetLibraryMock
+      .mockRejectedValueOnce(rejected)
+      .mockResolvedValueOnce({ items: SAMPLE_TEMPLATES, next_cursor: null, total: 2 });
+
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: { library_after: "garbage" } }),
+      ),
+    );
+
+    // Second call carries no cursor — that is the fallback, not a retry of the
+    // same bad request.
+    expect(listWorkspaceFleetLibraryMock).toHaveBeenCalledTimes(2);
+    expect(listWorkspaceFleetLibraryMock.mock.calls[1]?.[2] ?? null).toBeNull();
+    expect(markup).toContain("GitHub PR reviewer");
+    expect(markup).not.toContain("Could not load the fleet library.");
+  });
+
+  it("classifies the FALLBACK's failure when the first-page retry also fails", async () => {
+    // A stale cursor 400 followed by a 503 on the fallback is an availability
+    // incident, not a cursor problem — reporting the discarded 400 would show
+    // a cursor-shaped error while the library is down.
+    const badCursor = Object.assign(new Error("bad cursor"), { status: 400 });
+    const down = Object.assign(new Error("upstream"), { status: 503 });
+    listWorkspaceFleetLibraryMock
+      .mockRejectedValueOnce(badCursor)
+      .mockRejectedValueOnce(down);
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: { library_after: "stale" } }),
+      ),
+    );
+    expect(markup).toContain("The fleet library is temporarily unavailable.");
+  });
+
+  it("does not retry a first-page failure that no cursor could fix", async () => {
+    // Only a REJECTED CURSOR earns the fallback. A 503 on the first page is a
+    // real outage, and a silent second round-trip would just double the load.
+    const down = Object.assign(new Error("upstream"), { status: 503 });
+    listWorkspaceFleetLibraryMock.mockRejectedValue(down);
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: {} }),
+      ),
+    );
+
+    expect(listWorkspaceFleetLibraryMock).toHaveBeenCalledTimes(1);
+    expect(markup).toContain("The fleet library is temporarily unavailable.");
+  });
+
+  it("test_fleet_deep_link_and_typed_states — tier-qualified deep link and exact states", async () => {
+    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({
+          workspaceId: "ws_1",
+          query: { library_visibility: "platform", library_id: "github-pr-reviewer" },
+        }),
+      ),
+    );
+    expect(markup).toContain("Fleet library");
+    // Absent from the loaded page → the not-found selection state, which
+    // neither enumerates nor errors the page.
+    expect(markup).toContain("not on this page");
+  });
+
+  it("a deep link whose entry IS on the page resolves straight to the confirm step", async () => {
+    // The resolver's positive path. An inverted or typo'd match predicate
+    // would turn every valid deep link into "not on this page" with the rest
+    // of the suite green — this is the assertion that catches it.
+    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: SAMPLE_TEMPLATES, next_cursor: null, total: null });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({
+          workspaceId: "ws_1",
+          query: { library_visibility: "platform", library_id: "github-pr-reviewer" },
+        }),
+      ),
+    );
+    // Confirm step, first paint: the name field is present, the gallery is not
+    // — no frame in which the gallery is wrong.
+    expect(markup).toContain("Fleet name");
+    expect(markup).not.toContain("Use entry");
+    expect(markup).not.toContain("not on this page");
+  });
+
+  it("a deep link matching the id under the OTHER tier is a not-found selection", async () => {
+    // The create body keys off the tier, so a tier mismatch must not resolve.
+    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: SAMPLE_TEMPLATES, next_cursor: null, total: null });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({
+          workspaceId: "ws_1",
+          query: { library_visibility: "tenant", library_id: "github-pr-reviewer" },
+        }),
+      ),
+    );
+    expect(markup).toContain("not on this page");
+    expect(markup).not.toContain("Fleet name");
+  });
+
+  it.each([
+    // Apostrophes are asserted-around, not spelled: renderToStaticMarkup
+    // HTML-escapes them (&#x27;).
+    [401, "Your session expired. Sign in to browse the fleet library."],
+    [403, "You do not have access to this workspace"],
+  ])("a %i on the gallery read renders its own instruction, not a generic failure", async (status, copy) => {
+    const rejected = Object.assign(new Error("denied"), { status });
+    listWorkspaceFleetLibraryMock.mockRejectedValue(rejected);
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: {} }),
+      ),
+    );
+    expect(markup).toContain(copy);
+    expect(markup).not.toContain("No prebuilt fleet library found");
   });
 
   it("fleets detail page redirects to /sign-in when no token", async () => {

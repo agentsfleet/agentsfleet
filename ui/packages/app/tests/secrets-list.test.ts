@@ -39,7 +39,7 @@ vi.mock("lucide-react", () => {
     ArrowUpDownIcon: make("ArrowUpDownIcon"),
     ArrowUp: make("ArrowUp"),
     ArrowDown: make("ArrowDown"),
-    ArrowUpDown: make("ArrowUpDown"),
+    ChevronsUpDown: make("ChevronsUpDown"),
   };
 });
 

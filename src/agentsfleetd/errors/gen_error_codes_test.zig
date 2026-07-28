@@ -29,7 +29,7 @@ test "gen_error_codes.render() follows the documentation reference shape" {
     const ordered = [_][]const u8{
         "type: reference\n",
         "audience: user\n",
-        "verified: 2026-07-12\n",
+        "verified: 2026-07-28\n",
         "product_version: " ++ build_options.version ++ "\n",
         "executable: false\n",
         "# Error codes\n",

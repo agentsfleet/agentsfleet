@@ -34,33 +34,15 @@ const COLLATE_C = " COLLATE \"C\"";
 /// same name — a mismatch there is a column the outer ORDER BY cannot see.
 const AS_TIER_RANK = " AS tier_rank";
 
-/// Continuation indent for the search disjunction's arms.
-const OR_INDENT = "\n    OR ";
-
-/// Paired with every LIKE the gallery builds, whose escape character this must
-/// match or the escaping below is inert.
-const GALLERY_LIKE_ESCAPE =
-    \\ ESCAPE '\'
-;
-
-/// One searchable column, folded by the SAME expression as the needle.
-///
-/// NFKC and casefold are SQL-side: Zig's standard library ships no Unicode
-/// normalization tables and Postgres `normalize(text, NFKC)` is built in and
-/// IMMUTABLE, so `lower(normalize(col, NFKC))` is index-eligible. Generated from
-/// one function rather than written out three times — a column folded even
-/// slightly differently from the needle matches by accident.
-///
-/// The needle is LIKE-escaped and wildcard-wrapped AFTER the fold, backslash
-/// first — same expression and same reasoning as `model_library/sql.zig`'s
-/// `FOLDED_NEEDLE`: an escape pass that runs before NFKC misses compatibility
-/// characters that fold INTO `%`/`_`/`\`. `$3` is the caller's normalized
-/// term, raw.
-fn foldedLike(comptime column: []const u8) []const u8 {
-    return "lower(normalize(" ++ column ++ ", NFKC)) LIKE " ++
-        "'%' || replace(replace(replace(lower(normalize($3, NFKC)), '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'" ++
-        GALLERY_LIKE_ESCAPE;
-}
+// The search disjunction retired with the `q` parameter, taking
+// `OR_INDENT`, `GALLERY_LIKE_ESCAPE`, and the `foldedLike` column generator with
+// it. What they solved is worth keeping on the record in case a search is ever
+// asked for again: NFKC folding and casefolding had to happen SQL-side, on both
+// the column and the needle, via the one generated expression — Zig ships no
+// Unicode tables, and a column folded even slightly differently from the needle
+// matches by accident. The `LIKE` escape ran AFTER the fold, because
+// compatibility characters (fullwidth `％`, `＿`, `＼`) fold INTO live wildcards
+// and an escape pass before the fold misses them.
 
 /// Platform arm. `source_repo` is projected AS `source_ref` so both arms agree on
 /// column names as well as types. The `visibility = $1 AND content_hash IS NOT
@@ -112,14 +94,6 @@ const GALLERY_MERGED =
     "\n    UNION ALL" ++ GALLERY_TENANT_ARM ++
     "\n  ) g";
 
-/// `$3` = the LIKE pattern, or NULL for no search. Matches id, name and
-/// description only — §3 names those three.
-const GALLERY_WHERE_SEARCH =
-    "\n WHERE ($3::text IS NULL" ++
-    OR_INDENT ++ foldedLike("id") ++
-    OR_INDENT ++ foldedLike("name") ++
-    OR_INDENT ++ foldedLike("description") ++ ")";
-
 /// The merged order. Each direction is load-bearing and they differ:
 /// `created_at` newest-first, `tier_rank` platform-first, `id` descending.
 const ORDER_BY_GALLERY =
@@ -130,38 +104,29 @@ const ORDER_BY_GALLERY =
 /// "after" is SMALLER, `tier_rank` ascends so "after" is LARGER. A predicate that
 /// disagrees with its ORDER BY does not error; it silently skips or repeats rows
 /// at every page boundary.
+///
+/// It opens the WHERE rather than continuing one. This was once an `AND` arm
+/// hanging off the search clause; with that clause retired, the seek is the only
+/// outer predicate and must introduce its own `WHERE`.
 const GALLERY_SEEK =
-    "\n   AND (created_at < $4" ++
-    "\n     OR (created_at = $4 AND tier_rank > $5)" ++
-    "\n     OR (created_at = $4 AND tier_rank = $5 AND id" ++ COLLATE_C ++ " < $6))";
+    "\n WHERE (created_at < $3" ++
+    "\n     OR (created_at = $3 AND tier_rank > $4)" ++
+    "\n     OR (created_at = $3 AND tier_rank = $4 AND id" ++ COLLATE_C ++ " < $5))";
 
-/// First page. `$4` is `limit + 1`: the extra row never reaches the response, it
+/// First page. `$3` is `limit + 1`: the extra row never reaches the response, it
 /// only answers "is there another page?" without a second COUNT.
+///
+/// The inner arms bind `$1` (visibility) and `$2` (workspace id); the outer query
+/// adds no predicate of its own on the first page.
 pub const SELECT_GALLERY_PAGE_FIRST =
-    GALLERY_MERGED ++ GALLERY_WHERE_SEARCH ++ ORDER_BY_GALLERY ++ "\n LIMIT $4";
+    GALLERY_MERGED ++ ORDER_BY_GALLERY ++ "\n LIMIT $3";
 
-/// Resume after a cursor: `$4` created_at, `$5` tier_rank, `$6` id, `$7` limit+1.
+/// Resume after a cursor: `$3` created_at, `$4` tier_rank, `$5` id, `$6` limit+1.
 pub const SELECT_GALLERY_PAGE_AFTER =
-    GALLERY_MERGED ++ GALLERY_WHERE_SEARCH ++ GALLERY_SEEK ++ ORDER_BY_GALLERY ++ "\n LIMIT $7";
+    GALLERY_MERGED ++ GALLERY_SEEK ++ ORDER_BY_GALLERY ++ "\n LIMIT $6";
 
-/// Platform detail — one entry, every field the summary sheds. Carries the same
-/// publish+bundle pair as the collection arm, so an entry that is invisible in
-/// the gallery is also unreachable here rather than merely unlisted.
-pub const SELECT_GALLERY_DETAIL_PLATFORM =
-    \\SELECT id, name, description, source_repo, created_at,
-    \\       required_credentials::text, required_tools::text, network_hosts::text,
-    \\       required_credentials_reasons::text,
-    \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL)
-    \\  FROM core.fleet_library
-    \\ WHERE id = $1 AND visibility = $2 AND content_hash IS NOT NULL
-;
-
-/// Tenant detail, scoped to the workspace. A foreign id returns no row, so the
-/// handler answers the same 404 it gives a genuinely absent one — the response
-/// cannot be used to enumerate another workspace's entries.
-pub const SELECT_GALLERY_DETAIL_TENANT =
-    \\SELECT id::text, name, description, source_ref, created_at,
-    \\       requirements_json::text, support_files_json::text
-    \\  FROM core.tenant_fleet_library
-    \\ WHERE id = $1::uuid AND workspace_id = $2::uuid
-;
+// The two per-entry detail projections are gone with the route they served. That
+// route was built, published, and retired unconsumed — `router.zig` asserts its
+// former URL is unrouted and `gallery_keyset_integration_test.zig` pins it to 404
+// even for a resident entry. Their only remaining distinction over the summary
+// was the support-file manifest, which no reader ever wanted.

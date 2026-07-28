@@ -140,7 +140,6 @@ export const buildFleetHandlers = (
             optString(frame.parsed.options, FIELD_API_KEY_CAMEL) ??
             optString(frame.parsed.options, FIELD_API_KEY_KEBAB),
           model: optString(frame.parsed.options, FIELD_MODEL),
-          force: frame.parsed.options["force"] === true,
         }),
     ),
     show: wrapEFn(

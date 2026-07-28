@@ -30,32 +30,44 @@ const { catalogueState } = vi.hoisted(() => ({
     models: [
       { id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
     ],
-    loading: false,
-    error: false,
+    status: "ready" as const,
+    preload: vi.fn(),
   },
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
   useModelCatalogue: () => catalogueState,
+  // These suites exercise form shape, not prefetch policy — that has its own
+  // suite in model-catalogue-provider.test.tsx. Hover speculation is off so a
+  // stray pointer event cannot perturb the call counts asserted below.
+  maySpeculateOnHover: () => false,
 }));
 
 async function renderDialog(secrets: Secret[] = []) {
   const { default: AddModelEntryDialog } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog"
   );
+  const { SECRETS_LOAD } = await import(
+    "../app/(dashboard)/w/[workspaceId]/settings/models/components/secrets-load"
+  );
   const onCreated = vi.fn();
   const onSecretsChanged = vi.fn();
+  const onSecretsNeeded = vi.fn();
   render(
     React.createElement(AddModelEntryDialog, {
       workspaceId: "ws_1",
       secrets,
+      // These suites exercise the custom-endpoint form, not the load gate —
+      // that has its own cases in models-registry-add.test.tsx.
+      secretsLoad: SECRETS_LOAD.ready,
       onCreated,
       onSecretsChanged,
+      onSecretsNeeded,
     } as never),
   );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /create model/i }));
   await screen.findByRole("dialog");
-  return { onCreated, onSecretsChanged, user };
+  return { onCreated, onSecretsChanged, onSecretsNeeded, user };
 }
 
 /** Picks "Custom — OpenAI-compatible" in the Provider dropdown — the move

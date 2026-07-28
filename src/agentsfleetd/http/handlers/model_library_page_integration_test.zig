@@ -32,6 +32,7 @@ const scope_fixtures = @import("../test_scope_tokens.zig");
 const harness_mod = @import("../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const model_library_store = @import("../../state/model_library_store.zig");
+const sql = @import("../../state/model_library/sql.zig");
 const etag = @import("../etag.zig");
 const ec = @import("../../errors/error_registry.zig");
 const pagination = @import("../pagination.zig");
@@ -57,9 +58,11 @@ const VENDOR_ALPHA = "m143page-vendor-a";
 const VENDOR_BETA = "m143page-vendor-b";
 const VENDOR_GAMMA = "m143page-vendor-g";
 
-/// The whole suite's search needle: every seeded row matches it and no sibling
-/// suite's row does, so `q` is what isolates this fixture set from a shared
-/// table rather than a cleanup that would race other suites.
+/// The prefix every seeded identifier shares, and no sibling suite's does.
+///
+/// It once doubled as a `q=` search needle that scoped every request — isolation
+/// smuggled in through an API filter. `seed` now clears the table instead, so
+/// this is purely a naming convention that keeps a collision visible.
 const SUITE_NEEDLE = "m143page";
 
 /// Filler rates. This suite asserts on ORDER and on headers, never on a price,
@@ -90,16 +93,39 @@ fn openOrSkip(alloc: std.mem.Allocator) !*TestHarness {
     });
 }
 
-/// Four rows whose normalized sort order is known and whose first key TIES.
+/// Seed four rows whose normalized sort order is known and whose first key TIES,
+/// into a catalogue that holds nothing else.
 ///
 /// Expected order — display, then vendor, then uid:
 ///   1. m143page-alpha / vendor-a   (display ties with 2; vendor decides)
 ///   2. m143page-alpha / vendor-b
 ///   3. m143page-mid   / vendor-g
 ///   4. m143page-zeta  / vendor-a
+///
+/// The clear is what makes the page assertions below mean anything.
+/// `core.model_library` is a shared platform table — the platform seed and
+/// sibling suites both put rows in it — and this suite asserts ABSOLUTE page
+/// contents: that `limit=2` returns exactly the tied pair and that page two holds
+/// exactly the other two rows. Any foreign row lands inside those boundaries and
+/// the assertions break, or worse, pass for the wrong reason.
+///
+/// Clearing is safe for the same reason the empty-catalogue leg in
+/// `model_library_integration_test.zig` relies on: every suite self-seeds what it
+/// asserts on, so no sibling depends on rows it did not write.
+///
+/// It cannot always succeed. An active platform default holds a foreign key into
+/// this table under `ON DELETE RESTRICT`, so a database with defaults configured
+/// refuses the delete. That is state this suite does not own, so it skips rather
+/// than fails — the same guard, for the same reason, as the sibling leg.
 fn seed(h: *TestHarness) !void {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
+
+    _ = conn.exec("DELETE FROM " ++ sql.TABLE, .{}) catch |err| {
+        std.log.warn("page suite skipped: catalogue not emptiable ({s})", .{@errorName(err)});
+        return error.SkipZigTest;
+    };
+
     const now = clock.nowMillis();
     // Inserted out of sort order so a passing assertion cannot be insertion
     // order wearing the ORDER BY's clothes.
@@ -156,10 +182,16 @@ fn expectOrder(body: []const u8, a: []const u8, b: []const u8) !void {
     try std.testing.expect(try indexOfOrFail(body, a) < try indexOfOrFail(body, b));
 }
 
-/// `{MODELS_PATH}?q={SUITE_NEEDLE}&...` — every request scopes to this suite's
-/// rows so a sibling's catalogue entries cannot shift the assertions.
-fn suitePath(alloc: std.mem.Allocator, extra: []const u8) ![]u8 {
-    return std.fmt.allocPrint(alloc, MODELS_PATH ++ "?q=" ++ SUITE_NEEDLE ++ "{s}", .{extra});
+/// `{MODELS_PATH}?{extra}` — no scoping filter, because `seed` guarantees the
+/// catalogue holds this suite's rows and nothing else.
+///
+/// This used to append a `q=` substring filter to every request. That parameter
+/// was retired as an unused public surface, and the isolation it was quietly
+/// providing moved into `seed`'s clear — which is the honest place for it, since
+/// isolating a test is not something an API filter should have been responsible
+/// for in the first place.
+fn suitePath(alloc: std.mem.Allocator, params: []const u8) ![]u8 {
+    return std.fmt.allocPrint(alloc, MODELS_PATH ++ "?{s}", .{params});
 }
 
 test "integration: test_model_page_and_conditional_headers — the normalized keyset orders, ties, and resumes exactly" {
@@ -170,7 +202,7 @@ test "integration: test_model_page_and_conditional_headers — the normalized ke
     defer cleanup(h);
 
     // ── page one of two ──────────────────────────────────────────────────────
-    const first_path = try suitePath(alloc, "&limit=2");
+    const first_path = try suitePath(alloc, "limit=2");
     defer alloc.free(first_path);
     const cursor = blk: {
         const r = try (try h.get(first_path).bearer(VIEWER)).send();
@@ -228,7 +260,7 @@ test "integration: test_model_page_and_conditional_headers — filters select, a
     {
         // Provider filter is an exact normalized match, not a substring: the
         // vendor names share a prefix, so a LIKE here would return all three.
-        const path = try suitePath(alloc, "&provider=" ++ VENDOR_GAMMA);
+        const path = try suitePath(alloc, "provider=" ++ VENDOR_GAMMA);
         defer alloc.free(path);
         const r = try (try h.get(path).bearer(VIEWER)).send();
         defer r.deinit();
@@ -240,31 +272,55 @@ test "integration: test_model_page_and_conditional_headers — filters select, a
     {
         // An unknown provider is VALID and simply matches nothing (§2), rather
         // than a 400 — the catalogue's vendor column is arbitrary text.
-        const path = try suitePath(alloc, "&provider=m143page-vendor-nonexistent");
+        const path = try suitePath(alloc, "provider=m143page-vendor-nonexistent");
         defer alloc.free(path);
         const r = try (try h.get(path).bearer(VIEWER)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("\"models\":[]"));
     }
-    {
-        // `%` is escaped, so it matches a literal percent — which none of the
-        // seeded ids contain. Unescaped it would be "match everything", and the
-        // page would come back full.
-        const r = try (try h.get(MODELS_PATH ++ "?q=m143page%25").bearer(VIEWER)).send();
+}
+
+test "integration: test_library_reads_ignore_retired_search_param" {
+    // Dimension 4.1. The retired `q` is now an unrecognised parameter, and an
+    // unrecognised parameter must be INERT — neither filtering nor rejecting.
+    //
+    // Both failure modes matter. If some remnant still read it, `?q=` would
+    // narrow the page and a caller would silently receive fewer rows than the
+    // catalogue holds. If the handler rejected unknown parameters instead, an
+    // old client that still appends `q=` would start getting 400s at deploy —
+    // which is the one way retiring an unused parameter could break someone.
+    //
+    // The two escaping cases that used to live here went with the parameter:
+    // they asserted that `%` and its fullwidth twin matched literally inside a
+    // LIKE pattern built after the NFKC fold. No LIKE pattern exists on this
+    // route now, so there is nothing left to escape.
+    const alloc = std.testing.allocator;
+    const h = try openOrSkip(alloc);
+    defer h.deinit();
+    try seed(h);
+    defer cleanup(h);
+
+    const baseline = try (try h.get(MODELS_PATH ++ "?limit=100").bearer(VIEWER)).send();
+    defer baseline.deinit();
+    try baseline.expectStatus(.ok);
+
+    for ([_][]const u8{
+        MODELS_PATH ++ "?limit=100&q=" ++ SUITE_NEEDLE,
+        MODELS_PATH ++ "?limit=100&q=m143page%25",
+        MODELS_PATH ++ "?limit=100&q=" ++ MODEL_ALPHA,
+        MODELS_PATH ++ "?limit=100&q=",
+    }) |path| {
+        const r = try (try h.get(path).bearer(VIEWER)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
-        try std.testing.expect(!r.bodyContains(MODEL_ALPHA));
-    }
-    {
-        // Fullwidth ％ (U+FF05, URL-encoded %EF%BC%85) NFKC-folds into `%`
-        // INSIDE Postgres — after Zig-side escaping used to run, which made it
-        // a live match-everything wildcard. The pattern is now escaped in SQL
-        // after the fold, so it matches a literal percent like its ASCII twin.
-        const r = try (try h.get(MODELS_PATH ++ "?q=m143page%EF%BC%85").bearer(VIEWER)).send();
-        defer r.deinit();
-        try r.expectStatus(.ok);
-        try std.testing.expect(!r.bodyContains(MODEL_ALPHA));
+        // Byte-identical to the unfiltered answer: the parameter changed nothing.
+        try std.testing.expectEqualStrings(baseline.body, r.body);
+        // Named explicitly so a regression reads as "q came back", not as an
+        // opaque body mismatch.
+        try std.testing.expect(r.bodyContains(MODEL_ALPHA));
+        try std.testing.expect(r.bodyContains(MODEL_MID));
+        try std.testing.expect(r.bodyContains(MODEL_ZETA));
     }
 }
 
@@ -275,7 +331,7 @@ test "integration: test_model_page_and_conditional_headers — both answers carr
     try seed(h);
     defer cleanup(h);
 
-    const path = try suitePath(alloc, "&limit=2");
+    const path = try suitePath(alloc, "limit=2");
     defer alloc.free(path);
 
     const tag = blk: {
@@ -330,18 +386,21 @@ test "integration: test_model_page_and_conditional_headers — every §Error Con
     const h = try openOrSkip(alloc);
     defer h.deinit();
 
-    // `limit` outside 1..100 and an over-long `q` are both UZ-LIBRARY-003.
-    const long_q = try alloc.alloc(u8, 129);
-    defer alloc.free(long_q);
-    @memset(long_q, 'q');
-    const long_q_path = try std.fmt.allocPrint(alloc, MODELS_PATH ++ "?q={s}", .{long_q});
-    defer alloc.free(long_q_path);
+    // `limit` outside 1..100 and an over-long `provider` are both
+    // UZ-LIBRARY-003. The over-long case used to be spelled with `q`; that
+    // parameter retired, but the byte bound it shared with `provider` did not,
+    // so the case moves rather than disappears.
+    const long_provider = try alloc.alloc(u8, 129);
+    defer alloc.free(long_provider);
+    @memset(long_provider, 'p');
+    const long_provider_path = try std.fmt.allocPrint(alloc, MODELS_PATH ++ "?provider={s}", .{long_provider});
+    defer alloc.free(long_provider_path);
 
     for ([_][]const u8{
         MODELS_PATH ++ "?limit=0",
         MODELS_PATH ++ "?limit=101",
         MODELS_PATH ++ "?limit=notanumber",
-        long_q_path,
+        long_provider_path,
     }) |path| {
         const r = try (try h.get(path).bearer(VIEWER)).send();
         defer r.deinit();
@@ -370,7 +429,6 @@ test "integration: test_model_page_and_conditional_headers — every §Error Con
             .display_key = "aaa",
             .vendor_key = "aaa",
             .id = "not-a-uuid",
-            .q = null,
             .provider = null,
             .limit = pagination.DEFAULT_LIMIT,
         });

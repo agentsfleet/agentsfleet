@@ -100,7 +100,7 @@ pub const SELECT_ADMIN_CATALOG =
     \\SELECT id, name, description, source_repo, source_ref, visibility, content_hash,
     \\       required_credentials::text, required_tools::text, network_hosts::text,
     \\       required_credentials_reasons::text,
-    \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL),
+    \\       (trigger_markdown IS NOT NULL),
     \\       updated_at
     \\  FROM core.fleet_library
     \\ ORDER BY id
@@ -113,7 +113,7 @@ pub const SELECT_ADMIN_CATALOG_ROW =
     \\SELECT id, name, description, source_repo, source_ref, visibility, content_hash,
     \\       required_credentials::text, required_tools::text, network_hosts::text,
     \\       required_credentials_reasons::text,
-    \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL),
+    \\       (trigger_markdown IS NOT NULL),
     \\       updated_at
     \\  FROM core.fleet_library
     \\ WHERE id = $1
@@ -235,23 +235,10 @@ pub const INSERT_TENANT =
     \\LIMIT 1
 ;
 
-pub const SELECT_GALLERY_PLATFORM =
-    \\SELECT id, name, description, source_repo,
-    \\       required_credentials::text, required_tools::text, network_hosts::text,
-    \\       required_credentials_reasons::text,
-    \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL)
-    \\  FROM core.fleet_library
-    \\ WHERE visibility = $1 AND content_hash IS NOT NULL
-    \\ ORDER BY id
-;
-
-pub const SELECT_GALLERY_TENANT =
-    \\SELECT id::text, name, description, source_ref,
-    \\       requirements_json::text, support_files_json::text
-    \\  FROM core.tenant_fleet_library
-    \\ WHERE workspace_id = $1::uuid
-    \\ ORDER BY created_at DESC
-;
+// `SELECT_GALLERY_PLATFORM` and `SELECT_GALLERY_TENANT` are gone. They were the
+// two unbounded reads the merged keyset gallery replaced — one per plane,
+// concatenated in Zig — and nothing has called them since. Removed here rather
+// than left as a second, divergent definition of what a gallery row is.
 
 /// The public bundles list (GET /v1/fleets/bundles). Filters on BOTH the publish
 /// state and the bundle's presence — the same pair the gallery and the install path

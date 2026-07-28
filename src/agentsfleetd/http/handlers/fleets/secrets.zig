@@ -75,6 +75,11 @@ pub fn innerStoreSecret(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []cons
             hx.fail(ec.ERR_VAULT_DATA_TOO_LARGE, ec.MSG_SECRET_DATA_TOO_LARGE);
             return;
         },
+        // Creation claims a free name; rotation is PATCH on the named secret.
+        error.SecretNameTaken => {
+            hx.fail(ec.ERR_SECRET_NAME_TAKEN, ec.MSG_SECRET_NAME_TAKEN);
+            return;
+        },
         else => {
             log.err("store_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .name = cred.name, .req_id = hx.req_id });
             common.internalDbError(hx.res, hx.req_id);
@@ -108,7 +113,7 @@ fn storeSecretJsonOnConn(
     defer secure_memory.freeBytes(alloc, plaintext);
     if (plaintext.len > MAX_SECRET_DATA_LEN) return error.DataTooLarge;
 
-    try vault.storeJsonPlaintext(alloc, conn, workspace_id, cred.name, plaintext);
+    try vault.createJsonPlaintext(alloc, conn, workspace_id, cred.name, plaintext);
 }
 
 // ── Delete Secret ─────────────────────────────────────────────────

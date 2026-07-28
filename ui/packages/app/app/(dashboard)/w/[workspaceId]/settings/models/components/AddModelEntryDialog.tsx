@@ -32,8 +32,10 @@ import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { captureModelActivated } from "../lib/track";
-import { useModelCatalogue } from "./ModelCatalogueProvider";
+import { CATALOGUE_STATUS } from "./catalogue-status";
+import { maySpeculateOnHover, useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderModelSelect from "./ProviderModelSelect";
+import { SECRETS_LOAD, type SecretsLoad } from "./secrets-load";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 const REGISTER_ACTION = "register the model entry";
@@ -41,20 +43,34 @@ const ACTIVATE_ACTION = "activate this model";
 const STORE_ACTION = "store the credential";
 const NAME_PROVIDER_MISMATCH = "That name is already used by a different provider or secret — pick another one.";
 const CREATE_MODEL_TOOLTIP = "Create a model entry for this workspace.";
+const SECRETS_LOADING = "Checking your stored secrets…";
+const SECRETS_LOAD_FAILED =
+  "Couldn't load your stored secrets. Saving is disabled so an existing secret can't be silently overwritten.";
 
 export default function AddModelEntryDialog({
   workspaceId,
   secrets,
+  secretsLoad,
   onCreated,
   onSecretsChanged,
+  onSecretsNeeded,
 }: {
   workspaceId: string;
   secrets: Secret[];
+  /**
+   * Whether `secrets` above is trustworthy yet. Anything but `ready` disables
+   * Save: submit() resolves rotate-vs-create and the name-ownership guard
+   * from that list, and the secrets POST upserts — an unloaded list would
+   * silently overwrite whatever already holds the typed name.
+   */
+  secretsLoad: SecretsLoad;
   onCreated: () => void;
   onSecretsChanged: () => void;
+  /** Load the stored-secret list. Fired on open — see handleOpenChange. */
+  onSecretsNeeded: () => void;
 }) {
   const uid = useId();
-  const { models } = useModelCatalogue();
+  const { models, status: catalogueStatus, preload } = useModelCatalogue();
   // The library's providers plus the OpenAI-compatible option, pinned last —
   // one dropdown covers hosted providers and custom endpoints alike (no tabs).
   const providerOptions = uniqueProviders(models).filter((p) => p !== OPENAI_COMPATIBLE_PROVIDER);
@@ -73,7 +89,14 @@ export default function AddModelEntryDialog({
   // Gates both Save buttons below — without it, a click on an incomplete
   // form silently no-ops (no error, no feedback) since submit() validates
   // internally. A custom endpoint may be keyless; a named provider never is.
+  //
+  // The secrets-load arm is a safety gate, not polish: firing the load on
+  // open is worthless if a fast hand can submit before it lands, and the
+  // window is not only a race — a failed load would leave the list empty for
+  // the whole session. Either way `existing` would resolve to undefined and
+  // the create path's upsert would stomp the stored secret unseen.
   const canSubmit =
+    secretsLoad === SECRETS_LOAD.ready &&
     keyName.trim() !== "" &&
     provider.trim() !== "" &&
     model.trim() !== "" &&
@@ -89,6 +112,21 @@ export default function AddModelEntryDialog({
   }
 
   function handleOpenChange(next: boolean) {
+    if (next) {
+      // Opening is the strongest intent signal there is, and it is not gated
+      // on pointer or data policy: the picker inside needs the catalogue now.
+      // A hover or focus has usually warmed it already, so this is normally a
+      // no-op against the single-flight guard.
+      preload();
+      // The stored-secret list is LOAD-BEARING, not decoration: `submit()`
+      // resolves `existing` from it to decide rotate-vs-create and to refuse a
+      // name owned by a different provider. The secrets POST is an upsert
+      // server-side, so an empty list here does not degrade to a picker with
+      // no options — it silently overwrites whatever already holds that name.
+      // It must be loaded before the dialog can be submitted, not merely after
+      // a secret changes.
+      onSecretsNeeded();
+    }
     setOpen(next);
     if (!next) reset();
   }
@@ -201,7 +239,22 @@ export default function AddModelEntryDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <TooltipButton type="button" size="sm" className="gap-1.5" tooltip={CREATE_MODEL_TOOLTIP}>
+        <TooltipButton
+          type="button"
+          size="sm"
+          className="gap-1.5"
+          tooltip={CREATE_MODEL_TOOLTIP}
+          // Focus is deliberate — keyboard users get the same warm dialog a
+          // mouse user gets from hovering, and it is never suppressed.
+          onFocus={preload}
+          // Hover only speculates where hover means something, the user has
+          // not asked us to conserve data, and the catalogue is not already
+          // known-failing — mousing around a failing backend must not fire a
+          // request per hover. Open still retries deliberately.
+          onPointerEnter={() => {
+            if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preload();
+          }}
+        >
           <PlusIcon size={14} />
           Create model
         </TooltipButton>
@@ -256,6 +309,20 @@ export default function AddModelEntryDialog({
             />
           </div>
         </div>
+        {/* Why Save is disabled, said out loud. `<output>` carries an implicit
+            status role, so the loading line announces without an explicit
+            attribute; the failed load is an alert with its own retry, wired
+            to the same load the open fired. */}
+        {secretsLoad === SECRETS_LOAD.error ? (
+          <Alert variant="destructive" className="flex items-center gap-3 text-xs">
+            {SECRETS_LOAD_FAILED}
+            <Button type="button" variant="outline" size="sm" onClick={onSecretsNeeded}>
+              Retry
+            </Button>
+          </Alert>
+        ) : secretsLoad !== SECRETS_LOAD.ready ? (
+          <output className="block text-xs text-muted-foreground">{SECRETS_LOADING}</output>
+        ) : null}
         {error ? <Alert variant="destructive" className="text-xs">{error}</Alert> : null}
         <DialogFooter>
           <Button type="button" variant="ghost" disabled={pending} onClick={() => handleOpenChange(false)}>

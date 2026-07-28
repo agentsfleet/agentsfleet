@@ -21,7 +21,6 @@ function entry(overrides: Partial<PlatformCatalogEntry> = {}): PlatformCatalogEn
     visibility: "draft",
     content_hash: "sha256:abc",
     requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
-    support_files: [],
     etag: "etag-1",
     updated_at: 1,
     ...overrides,

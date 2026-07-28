@@ -13,6 +13,12 @@ export const INSTALL_FLEET_TOOLTIP = "Start from the fleet library.";
 
 // Shared copy for the Fleet library empty state (dashboard embed + install
 // picker) so the two surfaces can never drift apart.
+// The route header. Shared by `page.tsx` and `loading.tsx` so the navigation
+// placeholder cannot drift from the real header — a mismatch reads as the page
+// changing its mind about what it is, mid-navigation.
+export const INSTALL_PAGE_TITLE = "Install fleet";
+export const INSTALL_PAGE_DESCRIPTION = "Start a fleet from the library. Watch it run in a loop.";
+
 export const FLEET_LIBRARY_EMPTY_TITLE = "No prebuilt fleet library found";
 // Only shown alongside the Create-fleet-library action — a viewer without
 // library:write never sees an invitation to do something they can't.

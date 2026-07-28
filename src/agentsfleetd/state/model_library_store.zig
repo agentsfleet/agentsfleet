@@ -128,13 +128,14 @@ pub const PageBoundary = struct {
     uid: []const u8,
 };
 
-/// Active search filters. Both absent means the whole catalogue. `q` is the
-/// caller's NORMALIZED term, raw — the SQL folds it and builds the escaped
-/// LIKE pattern itself (`model_library/sql.zig` `FOLDED_NEEDLE`), because an
-/// escape pass that ran before the fold missed compatibility characters that
-/// fold into metacharacters.
+/// Active filters. Absent means the whole catalogue. `provider` is the caller's
+/// NORMALIZED value, raw — the SQL folds it with the same expression as the
+/// column it is compared against, so the match cannot depend on which spelling
+/// reached the handler.
+///
+/// A `q` substring-search filter shared this struct until it was retired: it
+/// was published and hardened but no client ever sent it.
 pub const PageFilters = struct {
-    q: ?[]const u8 = null,
     provider: ?[]const u8 = null,
 };
 
@@ -164,9 +165,9 @@ pub fn listLibraryPage(
     const over_fetch: i64 = @as(i64, limit) + 1;
 
     var q = if (after) |a| PgQuery.from(try conn.query(sql.LIST_LIBRARY_PAGE_AFTER, .{
-        filters.q, filters.provider, a.display_key, a.vendor_key, a.uid, over_fetch,
+        filters.provider, a.display_key, a.vendor_key, a.uid, over_fetch,
     })) else PgQuery.from(try conn.query(sql.LIST_LIBRARY_PAGE_FIRST, .{
-        filters.q, filters.provider, over_fetch,
+        filters.provider, over_fetch,
     }));
     defer q.deinit();
 

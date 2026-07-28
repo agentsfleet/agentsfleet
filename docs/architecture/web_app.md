@@ -97,17 +97,45 @@ The bar between the worlds:
 
 ## Scoreboard
 
-Measured Jul 27, 2026 (`ui/packages/app`, 161 `.tsx` files). Move the
+Measured Jul 28, 2026 (`ui/packages/app`, 162 `.tsx` files). Move the
 numbers, not the prose. Re-measure at any milestone that touches the app
 and update this table in the same diff.
+
+The Jul 27 row recorded 23 `useEffect` and 4 `Suspense`; re-running the
+listed greps against that same commit yields 22 and 3. The numbers below are
+measured, and the deltas attributed to M143_002 are counted from 22 and 3
+rather than from the published figures.
 
 | Signal | Today | Target | Grep |
 |---|---|---|---|
 | `"use client"` files | 90 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
-| `useEffect` files | 23 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
+| `useEffect` files | 20 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
 | `useActionState` | 0 | every form | `grep -rl useActionState app components \| wc -l` |
 | `useOptimistic` | 1 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
-| `Suspense` files | 4 | every data route | `grep -rl Suspense app \| wc -l` |
+| `Suspense` files | 5 | every data route | `grep -rl Suspense app \| wc -l` |
+
+**Jul 28 — M143_002 (library reads).** `useEffect` 22 → 20 and `Suspense`
+3 → 5, both from the two library routes.
+
+Statement 5 was the larger of the two. `ModelCatalogueProvider` fetched the
+entire global model catalogue in a mount effect, so every visit to Models
+paid for data most visits never opened a dialog to use; it now loads on
+intent — dialog open, focus, or an eligible hover. `InstallFleet` matched a
+`?library=<id>` deep link against the gallery in a second mount effect,
+which painted the gallery and replaced it a frame later; selection is now
+resolved on the server and passed down as the entry itself, so there is no
+frame in which the gallery is wrong.
+
+Statement 3 covered both routes, which previously awaited every read before
+painting a pixel. Each now renders its header immediately and streams an
+exported async data region under `Suspense`, matching `ApprovalsData`.
+
+One boundary worth recording, because it is easy to get backwards: those
+regions never REJECT. Suspense there buys latency, not error handling — a
+rejected promise throws in render and needs an ErrorBoundary, which would
+collapse "this read failed" and "this library is empty" into one
+undifferentiated fallback. Keeping them distinct is what lets a user whose
+read failed see a retry instead of being told they have nothing.
 
 Migration happens route by route inside normal milestone work — statement
 compliance is checked for touched files at review, not by a big-bang

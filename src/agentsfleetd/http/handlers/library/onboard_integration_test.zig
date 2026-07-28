@@ -10,6 +10,8 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 const scope_fixtures = @import("../../test_scope_tokens.zig");
 const http_auth = @import("../../../db/test_fixtures_http_auth.zig");
+const importer = @import("../../../fleet_library/importer.zig");
+const library_store = @import("../../../fleet_library/library_store.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -409,4 +411,54 @@ test "integration: gallery isolates another workspace's tenant templates" {
     // WS_PRIMARY's gallery must not surface WS_SECONDARY's tenant template.
     try std.testing.expect(!gallery.bodyContains(FOREIGN_TEMPLATE_NAME));
     try std.testing.expect(gallery.bodyContains("\"onboard-probe\"")); // platform still shown
+}
+
+test "test_import_manifest_survives_store_round_trip" {
+    // The manifest's round-trip through the REAL insert. The unit pin proves
+    // the statement TEXT still names support_files_json; this proves the
+    // BINDING does — a mis-bound or dropped parameter would persist '[]' or
+    // NULL while every substring pin stayed green.
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    const body = importer.ImportBody{
+        .source_kind = importer.SOURCE_KIND_UPLOAD,
+        .source_ref = "unit/manifest-roundtrip",
+        .skill_markdown = "---\nname: manifest-roundtrip\ndescription: d\nversion: 0.1.0\n---\nBody.\n",
+        .support_files = &.{.{ .path = "docs/NOTES.md", .content = "kept" }},
+    };
+    const prepared = try importer.prepare(alloc, body);
+    defer prepared.deinit(alloc);
+
+    const id = try library_store.insertOrFetchTenant(conn, alloc, .{
+        .id = "0195b4ba-8d3a-7f13-8abc-00000000d1aa",
+        .workspace_id = http_auth.WS_PRIMARY,
+        .name = prepared.name,
+        .description = "manifest round trip",
+        .source_kind = importer.SOURCE_KIND_UPLOAD,
+        .source_ref = "unit/manifest-roundtrip",
+        .content_hash = prepared.content_hash,
+        .skill_markdown = body.skill_markdown,
+        .trigger_markdown = null,
+        .support_files_json = prepared.support_files_json,
+        .requirements_json = prepared.requirements_json,
+        .now_ms = 1,
+    });
+    defer alloc.free(id);
+
+    var q = PgQuery.from(try conn.query(
+        \\SELECT support_files_json::text FROM core.tenant_fleet_library WHERE id = $1::uuid
+    , .{id}));
+    defer q.deinit();
+    const row = try q.next() orelse return error.RowMissing;
+    const stored = try row.get([]const u8, 0);
+    try std.testing.expect(std.mem.indexOf(u8, stored, "docs/NOTES.md") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stored, "sha256") != null);
 }

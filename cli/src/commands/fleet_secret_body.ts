@@ -38,7 +38,6 @@ export interface SecretAddFlags {
   readonly baseUrl?: string | undefined;
   readonly apiKey?: string | undefined;
   readonly model?: string | undefined;
-  readonly force?: boolean | undefined;
 }
 
 type ParsedData =

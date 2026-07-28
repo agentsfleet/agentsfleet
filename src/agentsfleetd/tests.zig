@@ -153,6 +153,7 @@ test {
     _ = @import("http/handlers/library/library_query_normalization_test.zig");
     _ = @import("http/handlers/library/fleet_keyset.zig");
     _ = @import("http/handlers/library/library_keyset_test.zig");
+    _ = @import("http/handlers/library/catalog_projection_test.zig");
     _ = @import("http/handlers/library/gallery_page.zig");
     _ = @import("http/handlers/library/library_sink_policy_test.zig");
     _ = @import("http/handlers/library/library_sink_scan_test.zig");

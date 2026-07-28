@@ -4039,7 +4039,7 @@
       "post": {
         "operationId": "store_workspace_secret",
         "summary": "Store a workspace secret",
-        "description": "Stores an encrypted JSON object. Secret values are never returned.\n\n`data` must be a non-empty object no larger than 4 KiB. Larger values return `UZ-VAULT-002`.\n\nStrings, arrays, scalars, and empty objects return `UZ-VAULT-001`.\n",
+        "description": "Stores an encrypted JSON object. Secret values are never returned.\n\n`data` must be a non-empty object no larger than 4 KiB. Larger values return `UZ-VAULT-002`.\n\nStrings, arrays, scalars, and empty objects return `UZ-VAULT-001`.\n\nCreating claims a name that is free. A name already held in this workspace\nreturns `UZ-VAULT-005` and nothing is written — rotate the existing secret\nwith `PATCH /v1/workspaces/{workspace_id}/secrets/{secret_name}` instead.\nThe database decides the winner, so two concurrent creates on one name\nresolve to one `201` and one `409`.\n",
         "tags": [
           "Secrets"
         ],
@@ -4108,6 +4108,10 @@
             "$ref": "#/components/responses/Error"
           },
           "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "description": "A secret with this name already exists in the workspace (`UZ-VAULT-005`).",
             "$ref": "#/components/responses/Error"
           }
         }
@@ -5227,7 +5231,7 @@
       "get": {
         "operationId": "list_workspace_fleet_library",
         "summary": "List the workspace Fleet library gallery",
-        "description": "Returns the union of the platform Fleet library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements and per-credential reason copy; never an object-store key.\n\nA bounded keyset page ordered by `created_at DESC, tier ASC, id DESC` across BOTH catalogs. Follow `next_cursor` to read the whole gallery; a client that reads only the first page silently loses every entry past it. Support-file summaries are served by the detail route below.",
+        "description": "Returns the union of the platform Fleet library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements and per-credential reason copy; never an object-store key.\n\nA bounded keyset page ordered by `created_at DESC, tier ASC, id DESC` across BOTH catalogs. Follow `next_cursor` to read the whole gallery; a client that reads only the first page silently loses every entry past it. The support-file manifest is stored on import but served by no endpoint.",
         "tags": [
           "Fleet library"
         ],
@@ -5258,19 +5262,9 @@
             "name": "starting_after",
             "in": "query",
             "required": false,
-            "description": "Opaque cursor from a previous page's `next_cursor`. Bound to the workspace, filter and page size that produced it; a mismatch is `UZ-LIBRARY-002` rather than a silently different page.",
+            "description": "Opaque cursor from a previous page's `next_cursor`. Bound to the workspace and page size that produced it; a mismatch is `UZ-LIBRARY-002` rather than a silently different page.",
             "schema": {
               "type": "string"
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "description": "Case- and accent-insensitive substring over id, name and description. At most 128 bytes once normalized; `%` and `_` match literally.",
-            "schema": {
-              "type": "string",
-              "maxLength": 128
             }
           }
         ],
@@ -7206,16 +7200,6 @@
             }
           },
           {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "description": "Case- and accent-insensitive substring over the model id and the provider. At most 128 bytes once normalized; `%` and `_` match literally. Empty after normalization is treated as absent.",
-            "schema": {
-              "type": "string",
-              "maxLength": 128
-            }
-          },
-          {
             "name": "provider",
             "in": "query",
             "required": false,
@@ -8200,7 +8184,6 @@
           "credentials",
           "tools",
           "network_hosts",
-          "support_files",
           "trigger_present"
         ],
         "properties": {
@@ -8222,30 +8205,8 @@
               "type": "string"
             }
           },
-          "support_files": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
           "trigger_present": {
             "type": "boolean"
-          }
-        }
-      },
-      "FleetBundleSupportFileSummary": {
-        "type": "object",
-        "required": [
-          "path",
-          "size_bytes"
-        ],
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "size_bytes": {
-            "type": "integer",
-            "format": "int64"
           }
         }
       },
@@ -8262,7 +8223,6 @@
           "content_hash",
           "requirements",
           "required_credentials_reasons",
-          "support_files",
           "etag",
           "updated_at"
         ],
@@ -8308,12 +8268,6 @@
               "type": "string"
             },
             "description": "Per-credential \"why this fleet needs it\" copy, keyed by credential name, shown at the install gate. Operator-owned: the importer cannot derive it, and a bundle refetch never overwrites it."
-          },
-          "support_files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
-            }
           },
           "etag": {
             "type": "string",
@@ -8370,14 +8324,13 @@
       },
       "FleetLibraryOnboardResult": {
         "type": "object",
-        "description": "Result of onboarding a Fleet library entry (platform or tenant tier). Carries the entry identity, its tier in `visibility`, the content hash, the derived requirements, and support-file summaries — never an object-store key or support-file content.",
+        "description": "Result of onboarding a Fleet library entry (platform or tenant tier). Carries the entry identity, its tier in `visibility`, the content hash, and the derived requirements — never a support-file manifest, an object-store key, or support-file content.",
         "required": [
           "id",
           "name",
           "visibility",
           "content_hash",
-          "requirements",
-          "support_files"
+          "requirements"
         ],
         "properties": {
           "id": {
@@ -8401,12 +8354,6 @@
           },
           "requirements": {
             "$ref": "#/components/schemas/FleetBundleRequirements"
-          },
-          "support_files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
-            }
           }
         }
       },
@@ -8446,7 +8393,7 @@
       },
       "FleetLibraryGalleryEntry": {
         "type": "object",
-        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements and per-credential reason copy; never an object-store key or support-file content.\n\nCarries no `support_files`. That manifest is bounded at 32 files by 160-char paths. It therefore dominated a 100-row page — roughly 630 KB against this endpoint's 512 KiB ceiling — while no client rendered it. The detail route serves it instead. Runners never read it either — they materialize support-file bytes from object storage via the lease's bundle hash.",
+        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements and per-credential reason copy; never an object-store key or support-file content.\n\nCarries no `support_files`. That manifest is bounded at 32 files by 160-char paths. It therefore dominated a 100-row page — roughly 630 KB against this endpoint's 512 KiB ceiling. No client rendered it, and no endpoint serves it now. It is stored as a record of what a bundle held, and nothing reads it back. Runners never did either: they build support-file bytes from object storage via the lease's bundle hash.",
         "required": [
           "id",
           "name",

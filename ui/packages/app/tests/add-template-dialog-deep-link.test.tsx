@@ -40,7 +40,8 @@ describe("InstallSourceSelector deep link", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        entries: [],
+        initialPage: { items: [], next_cursor: null, total: 0 },
+        initialError: null,
         onUseLibraryEntry: () => {},
         canAddLibraryEntry: true,
         initialCreateOpen: true,

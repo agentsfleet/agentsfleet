@@ -2,22 +2,27 @@
 
 import { useMemo, useState, useTransition } from "react";
 import {
+  Button,
   ConfirmDialog,
   DataTable,
   type DataTableColumn,
   Section,
   SectionHeader,
 } from "@agentsfleet/design-system";
-import type { Secret } from "@/lib/api/secrets";
+import type { TenantModelEntryPageResult } from "@/lib/api/tenant_model_entries";
+import { LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
 import { presentErrorString } from "@/lib/errors";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
-import type { TenantModelEntry, TenantModelEntryList, TenantPlatformDefault } from "@/lib/types";
-import { listModelEntriesAction, listSecretsAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
+import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
+import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
 import AddModelEntryDialog from "./AddModelEntryDialog";
 import EditModelEntryDialog from "./EditModelEntryDialog";
+import { computeNextSort, readErrorCopy, sortValueFor, type SortState } from "./registry-view";
+import { useStoredSecrets } from "./use-stored-secrets";
 import ModelDetailsDialog from "./ModelDetailsDialog";
-import { useModelCatalogue } from "./ModelCatalogueProvider";
+import { CATALOGUE_STATUS } from "./catalogue-status";
+import { maySpeculateOnHover, useModelCatalogue } from "./ModelCatalogueProvider";
 import {
   ActionsCell,
   ContextCell,
@@ -28,46 +33,49 @@ import {
   rowKey,
 } from "./ModelsRegistryCells";
 
-type Props = { workspaceId: string; initial: TenantModelEntryList; initialSecrets: Secret[] };
-export type SortState = { key: "model" | "provider"; dir: "ascending" | "descending" } | null;
-
-// Pure — DataTable's onSortChange prop is typed `(key: string) => void` (any
-// column could be sortable), but only the "model"/"provider" columns below
-// opt in; a `key` outside that set returns `null` (no-op) instead of ever
-// reaching component state. Exported so the boundary is unit-testable
-// without needing to reach it through a real DataTable header click.
-export function computeNextSort(cur: SortState, key: string): SortState | null {
-  if (key !== "model" && key !== "provider") return null;
-  if (!cur || cur.key !== key) return { key, dir: "ascending" };
-  return { key, dir: cur.dir === "ascending" ? "descending" : "ascending" };
-}
-
-/** Pure — the sort comparator's per-row key, single call site per column. */
-export function sortValueFor(entry: TenantModelEntry, key: "model" | "provider"): string {
-  return key === "model" ? entry.model_id : (entry.provider ?? "");
-}
-
+type Props = {
+  workspaceId: string;
+  /** First registry page, or null when the read failed — see `initialError`. */
+  initialPage: TenantModelEntryPageResult | null;
+  /** Typed read failure. Distinct from an empty registry, and never both. */
+  initialError: LibraryError | null;
+};
 const SWITCH_ACTION = "switch models";
 const SWITCH_PLATFORM_ACTION = "switch to platform defaults";
 const REMOVE_ACTION = "remove this model entry";
 
-export default function ModelsRegistryTable({ workspaceId, initial, initialSecrets }: Props) {
+export default function ModelsRegistryTable({ workspaceId, initialPage, initialError }: Props) {
   const [pending, startTransition] = useTransition();
-  const [entries, setEntries] = useState<TenantModelEntry[]>(initial.models);
-  const [secrets, setSecrets] = useState<Secret[]>(initialSecrets);
-  const [platformDefaultAvailable, setPlatformDefaultAvailable] = useState(initial.platform_default_available);
-  const [platformDefault, setPlatformDefault] = useState<TenantPlatformDefault | null>(initial.platform_default ?? null);
+  const [entries, setEntries] = useState<TenantModelEntry[]>(initialPage?.models ?? []);
+  // The secret list is NOT preloaded — the Add dialog loads it on open and
+  // fails closed until it lands; the hook's docstring carries the why.
+  const { secrets, secretsLoad, refreshSecrets } = useStoredSecrets(workspaceId);
+  const [platformDefaultAvailable, setPlatformDefaultAvailable] = useState(
+    initialPage?.platform_default_available ?? false,
+  );
+  const [platformDefault, setPlatformDefault] = useState<TenantPlatformDefault | null>(
+    initialPage?.platform_default ?? null,
+  );
+  // Invariant 5: retained rows are only half the story — the cursor and total
+  // say what has NOT been loaded, and both are rendered rather than implied.
+  const [nextCursor, setNextCursor] = useState<string | null>(initialPage?.next_cursor ?? null);
+  const [total, setTotal] = useState<number | null>(initialPage?.total ?? null);
   const [sort, setSort] = useState<SortState>(null);
   const [error, setError] = useState<string | null>(null);
+  // The server read's typed failure. Held separately from `error` (which is
+  // action feedback) so a failed LOAD never renders as an empty registry.
+  const [readError, setReadError] = useState<LibraryError | null>(initialError);
   const [detailsTarget, setDetailsTarget] = useState<TenantModelEntry | null>(null);
   const [editTarget, setEditTarget] = useState<TenantModelEntry | null>(null);
   const [removeTarget, setRemoveTarget] = useState<TenantModelEntry | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // The public model library — context + per-token rates for the Context
-  // column's rates line. Already fetched once per session by the page-level
-  // provider; a failed fetch degrades rates to "—", never the table.
-  const { models: libraryModels } = useModelCatalogue();
+  // The public model library — a FALLBACK for the Context column's rates line,
+  // used only where the server did not price a row (`identity.rate ?? …`). It
+  // is no longer fetched on mount, so on an ordinary visit this is empty and
+  // rows render their own server-provided rates. `preloadCatalogue` warms it on
+  // intent to open a dialog whose picker genuinely needs it.
+  const { models: libraryModels, status: catalogueStatus, preload: preloadCatalogue } = useModelCatalogue();
 
   const hasActiveEntry = entries.some((e) => e.active);
   // The platform default is live only when it BOTH wins resolution (no active
@@ -100,23 +108,65 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
     if (next) setSort(next);
   }
 
+  // Re-read from the FIRST page, discarding retained rows only once a
+  // replacement actually arrives. A failed refresh leaves what is on screen
+  // alone and surfaces the fault — it must never fall back to empty.
   function refresh() {
     startTransition(async () => {
-      const r = await listModelEntriesAction();
-      if (!r.ok) return;
-      setEntries(r.data.models);
-      setPlatformDefaultAvailable(r.data.platform_default_available);
-      setPlatformDefault(r.data.platform_default ?? null);
+      // try/catch because the action ROUND-TRIP itself can reject (network
+      // failure, deploy skew) — `withToken` only catches server-side. An
+      // uncaught rejection here would escape the transition into a route
+      // with no error boundary.
+      try {
+        const r = await listModelEntriesAction();
+        if (!r.ok) {
+          setReadError(readErrorFrom(r));
+          return;
+        }
+        setReadError(null);
+        setEntries(r.data.models);
+        setPlatformDefaultAvailable(r.data.platform_default_available);
+        setPlatformDefault(r.data.platform_default ?? null);
+        setNextCursor(r.data.next_cursor);
+        setTotal(r.data.total);
+      } catch (cause) {
+        setReadError({
+          kind: LIBRARY_ERROR_KIND.unknown,
+          detail: cause instanceof Error ? cause.message : undefined,
+        });
+      }
     });
   }
 
-  // Refetches only the secrets list — the cheaper counterpart to refresh()
-  // above, called when AddModelEntryDialog commits a new stored secret.
-  function refreshSecrets() {
+  // Append the next page, retaining every row already loaded. Exactly one
+  // request per invocation — the walk this replaced issued as many as the
+  // registry had pages, on every ordinary visit.
+  //
+  // Takes the cursor rather than reading `nextCursor` behind a null guard: the
+  // control that calls this only renders when a next page exists, so the guard
+  // could never fire and the type now carries that invariant instead.
+  function loadMore(cursor: string) {
     startTransition(async () => {
-      const r = await listSecretsAction(workspaceId);
-      if (!r.ok) return;
-      setSecrets(r.data.secrets);
+      try {
+        const r = await listModelEntriesAction(cursor);
+        if (!r.ok) {
+          setReadError(readErrorFrom(r));
+          return;
+        }
+        setReadError(null);
+        setEntries((prior) => [...prior, ...r.data.models]);
+        // A cursor that does not advance means the server is re-serving the
+        // same page; appending it forever would duplicate every row. The
+        // exhaustive walk this replaced threw on exactly this defect —
+        // treat it as terminal instead.
+        setNextCursor(r.data.next_cursor === cursor ? null : r.data.next_cursor);
+        setTotal(r.data.total);
+      } catch (cause) {
+        setReadError({
+          kind: LIBRARY_ERROR_KIND.unknown,
+          detail: cause instanceof Error ? cause.message : undefined,
+        });
+      }
     });
   }
 
@@ -201,7 +251,20 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
           onSwitchDefault={onSwitchDefault}
           onSwitchEntry={onSwitchEntry}
           onView={setDetailsTarget}
-          onEdit={setEditTarget}
+          onEdit={(entry) => {
+            // Opening is ungated intent — the picker inside needs the
+            // catalogue now. Usually a no-op: focus or hover warmed it.
+            preloadCatalogue();
+            setEditTarget(entry);
+          }}
+          onEditFocusIntent={preloadCatalogue}
+          onEditHoverIntent={() => {
+            // A failed catalogue does not re-fetch on speculation: mousing
+            // across rows against a failing backend would fire one request
+            // per hover with no backoff. Deliberate intent (open) still
+            // retries.
+            if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preloadCatalogue();
+          }}
           onRemove={setRemoveTarget}
         />
       ),
@@ -216,8 +279,10 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
             <AddModelEntryDialog
               workspaceId={workspaceId}
               secrets={secrets}
+              secretsLoad={secretsLoad}
               onCreated={refresh}
               onSecretsChanged={refreshSecrets}
+              onSecretsNeeded={refreshSecrets}
             />
           }
         >
@@ -233,6 +298,38 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
           sortDirection={sort?.dir}
           onSortChange={onSortChange}
         />
+
+        {/*
+          Invariant 5. The walk this replaced guaranteed every row was present;
+          paging cannot, so what is NOT loaded is stated rather than left to be
+          inferred from whether a button happens to be rendered. With no total
+          the remainder cannot be named, but its existence still is.
+        */}
+        {nextCursor !== null ? (
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={() => loadMore(nextCursor)} disabled={pending}>
+              {pending ? "Loading…" : "Load more"}
+            </Button>
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {total !== null
+                ? `Showing ${entries.length} of ${total} models`
+                : `Showing ${entries.length} models — more available`}
+            </p>
+          </div>
+        ) : null}
+
+        {/*
+          A failed READ is not an empty registry. This renders alongside any
+          rows already retained, so a refresh fault never blanks the table.
+        */}
+        {readError ? (
+          <div role="alert" className="flex items-center gap-3">
+            <p className="text-sm text-destructive">{readErrorCopy(readError)}</p>
+            <Button variant="secondary" onClick={refresh} disabled={pending}>
+              Retry
+            </Button>
+          </div>
+        ) : null}
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

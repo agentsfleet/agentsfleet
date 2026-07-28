@@ -156,6 +156,57 @@ test "integration: crypto store canonicalizes workspace id and upserts a fresh e
     try std.testing.expect(!std.mem.eql(u8, first.ciphertext, second.ciphertext));
 }
 
+test "integration: crypto store create claims a free name and declines a held one" {
+    const alloc = std.testing.allocator;
+    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer {
+        handle.pool.release(handle.conn);
+        handle.pool.deinit();
+    }
+    try seedWorkspace(handle.conn, ROUNDTRIP);
+    defer cleanup(handle.conn, ROUNDTRIP);
+
+    try store.create(alloc, handle.conn, ROUNDTRIP.workspace_id, "claimed", "first", OPAQUE);
+
+    // The second create must neither succeed nor overwrite: the point of the
+    // conflict is that the first credential survives an accidental re-create.
+    try std.testing.expectError(
+        error.SecretNameTaken,
+        store.create(alloc, handle.conn, ROUNDTRIP.workspace_id, "claimed", "second", OPAQUE),
+    );
+    const survived = try store.load(alloc, handle.conn, ROUNDTRIP.workspace_id, "claimed");
+    defer alloc.free(survived);
+    try std.testing.expectEqualStrings("first", survived);
+
+    // Rotation is the other verb and still overwrites in place.
+    try store.store(alloc, handle.conn, ROUNDTRIP.workspace_id, "claimed", "rotated", OPAQUE);
+    const rotated = try store.load(alloc, handle.conn, ROUNDTRIP.workspace_id, "claimed");
+    defer alloc.free(rotated);
+    try std.testing.expectEqualStrings("rotated", rotated);
+}
+
+test "integration: crypto store create canonicalizes the workspace id before claiming" {
+    const alloc = std.testing.allocator;
+    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer {
+        handle.pool.release(handle.conn);
+        handle.pool.deinit();
+    }
+    try seedWorkspace(handle.conn, ROUNDTRIP);
+    defer cleanup(handle.conn, ROUNDTRIP);
+
+    const uppercase_workspace_id = try std.ascii.allocUpperString(alloc, ROUNDTRIP.workspace_id);
+    defer alloc.free(uppercase_workspace_id);
+    try store.create(alloc, handle.conn, ROUNDTRIP.workspace_id, "cased", "first", OPAQUE);
+
+    // A differently-cased workspace id is the SAME workspace, so it must not be
+    // able to claim a name that workspace already holds.
+    try std.testing.expectError(
+        error.SecretNameTaken,
+        store.create(alloc, handle.conn, uppercase_workspace_id, "cased", "second", OPAQUE),
+    );
+}
+
 test "integration: crypto store rejects an envelope relocated to another key" {
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;

@@ -98,9 +98,11 @@ export type InstallFleetResponse = {
 // platform → `platform_library_id`, tenant → `tenant_library_id`.
 export type FleetLibraryVisibility = "platform" | "tenant";
 
-// A non-authoritative support file shipped alongside SKILL.md/TRIGGER.md, shown
-// as a {path, size_bytes} summary — the bytes live in R2, never in the response.
-export type FleetLibrarySupportFileSummary = { path: string; size_bytes: number };
+// No support-file summary type. The server stores a {path, size_bytes, sha256}
+// manifest for every imported bundle as a record of what it held, but no
+// endpoint returns it and nothing here ever rendered one. Support-file BYTES are
+// unaffected — they live in object storage and the runner untars them from the
+// canonical tar, whose own entries are the authoritative file list.
 
 // A library entry's declared requirements — drives the install gate's
 // credential preview and the skill-only fallback when no TRIGGER.md shipped.
@@ -131,11 +133,11 @@ export type FleetLibraryGalleryEntry = {
   required_credentials_reasons?: Record<string, string>;
   // No `support_files`. The gallery card never rendered the manifest, and it was
   // the single largest thing on a row (32 files x 160-char paths), so the server
-  // stopped projecting it — on the workspace plane it is gone entirely (the
-  // per-entry detail route that briefly carried it was removed unconsumed); the
-  // admin catalog still serves it. The runner never read it either: it
-  // materializes real support-file bytes from object storage via the lease's
-  // bundle hash.
+  // stopped projecting it. No endpoint returns it now — the admin catalog was
+  // the last one that did, and its screen dropped the field on the floor. The
+  // manifest is still stored as a record of what a bundle held; nothing reads it
+  // back. The runner never did either: it materializes real support-file bytes
+  // from object storage via the lease's bundle hash.
 };
 
 export type FleetLibraryGalleryResponse = { items: FleetLibraryGalleryEntry[] };
@@ -170,7 +172,6 @@ type OnboardedLibraryEntryBase = {
   name: string;
   content_hash: string;
   requirements: FleetLibraryRequirements;
-  support_files: FleetLibrarySupportFileSummary[];
 };
 
 export type OnboardedLibraryEntry = OnboardedLibraryEntryBase & { visibility: "tenant" };
@@ -205,7 +206,6 @@ export type PlatformCatalogEntry = {
   content_hash: string | null;
   requirements: FleetLibraryRequirements;
   required_credentials_reasons?: Record<string, string>;
-  support_files: FleetLibrarySupportFileSummary[];
   etag: string;
   updated_at: number;
 };
