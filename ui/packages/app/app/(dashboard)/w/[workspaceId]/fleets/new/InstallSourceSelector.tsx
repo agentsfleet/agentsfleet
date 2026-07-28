@@ -131,14 +131,26 @@ export function InstallSourceSelector({
     });
   }
 
+  // Append the next page. Exactly one request per invocation — the walk this
+  // replaced issued as many as the library had pages, on every visit.
+  //
+  // Takes a non-null cursor by type. `fetchPage` accepts null because the
+  // recovery path legitimately re-reads page one, but appending a null cursor
+  // would append page one to the rows already on screen and render every card
+  // twice. Every caller here narrows first, so the type states that rather
+  // than a guard no call site can trip.
+  function loadMore(cursor: string) {
+    fetchPage(cursor, true);
+  }
+
   // Re-attempt whichever read failed. With a cursor in hand the fault was a
   // load-more, so retry that same page; with none it was the server-render's
   // first-page read, which has no client twin to re-run — so read page one.
-  // Keying this off `loadMore` alone left Retry permanently disabled in
+  // Keying this off the append path alone left Retry permanently disabled in
   // exactly the failed-first-read state it existed for.
   function retryFailedRead() {
     if (nextCursor !== null) {
-      fetchPage(nextCursor, true);
+      loadMore(nextCursor);
       return;
     }
     fetchPage(null, false);
@@ -189,7 +201,7 @@ export function InstallSourceSelector({
                 a null guard inside a handler: this branch is the only thing
                 that renders the control, so a guard could never have fired.
               */}
-              <Button type="button" variant="secondary" onClick={() => fetchPage(nextCursor, true)} disabled={pending}>
+              <Button type="button" variant="secondary" onClick={() => loadMore(nextCursor)} disabled={pending}>
                 {pending ? "Loading…" : "Load more"}
               </Button>
               <p className="text-sm text-muted-foreground" aria-live="polite">
