@@ -12,11 +12,31 @@
 /// Every value comes from one `metadata.project` call over one parse of the
 /// plaintext being stored (`state/vault.zig::storeJsonPlaintext`), so no caller
 /// is in a position to supply a projection of something else.
-pub const INSERT_SECRET =
+/// The envelope + projection both arms write. Shared so the create arm and the
+/// rotate arm cannot come to disagree about the column set they insert.
+const INSERT_SECRET_ROW =
     \\INSERT INTO vault.secrets
     \\  (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version, created_at, updated_at,
     \\   meta_kind, meta_provider, meta_base_url, meta_has_key)
     \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12, $13, $14, $15)
+    \\
+;
+
+/// Claim a name, or report that someone already holds it.
+///
+/// `DO NOTHING` makes the uniqueness decision Postgres's rather than the
+/// caller's: a read-then-write in the handler would leave a window in which two
+/// requests both find the name free and the second silently buries the first
+/// one's credential. The affected-row count is the answer — zero means the name
+/// was taken, and no ciphertext was written.
+///
+/// Rotation is a different verb and uses `INSERT_SECRET`; a create that finds
+/// the name occupied must not quietly become one.
+pub const INSERT_SECRET_IF_ABSENT = INSERT_SECRET_ROW ++
+    \\ON CONFLICT (workspace_id, key_name) DO NOTHING
+;
+
+pub const INSERT_SECRET = INSERT_SECRET_ROW ++
     \\ON CONFLICT (workspace_id, key_name) DO UPDATE
     \\SET encrypted_dek = EXCLUDED.encrypted_dek,
     \\    dek_nonce = EXCLUDED.dek_nonce,

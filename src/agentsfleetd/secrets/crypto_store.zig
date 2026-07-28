@@ -79,6 +79,35 @@ pub fn store(
     plaintext: []const u8,
     projection: metadata.Projection,
 ) !void {
+    return writeEnvelope(alloc, conn, workspace_id, key_name, plaintext, projection, sql.INSERT_SECRET);
+}
+
+/// Store a credential under a name nobody holds yet, or fail with
+/// `error.SecretNameTaken` having written nothing.
+///
+/// The uniqueness decision belongs to the database, not to a caller that read
+/// the name list first: two creates racing on one name would both find it free.
+/// Rotation is `store`, which is a different verb on a different route.
+pub fn create(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    plaintext: []const u8,
+    projection: metadata.Projection,
+) !void {
+    return writeEnvelope(alloc, conn, workspace_id, key_name, plaintext, projection, sql.INSERT_SECRET_IF_ABSENT);
+}
+
+fn writeEnvelope(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    plaintext: []const u8,
+    projection: metadata.Projection,
+    statement: []const u8,
+) !void {
     var kek = try cp.loadKek();
     defer std.crypto.secureZero(u8, &kek);
 
@@ -99,7 +128,7 @@ pub fn store(
 
     const secret_id = try id_format.generateVaultSecretId(alloc);
     defer alloc.free(secret_id);
-    _ = try conn.exec(sql.INSERT_SECRET, .{
+    const written = try conn.exec(statement, .{
         secret_id,
         workspace_id,
         key_name,
@@ -116,6 +145,12 @@ pub fn store(
         projection.base_url,
         projection.has_key,
     });
+    // Only the create statement can decline — the rotate arm always updates, so
+    // it reports one row here. An absent count is treated as "not written": for
+    // a credential we would rather answer "that name is taken" than report a
+    // success we cannot confirm, and `DO NOTHING` guarantees nothing was
+    // overwritten either way.
+    if ((written orelse 0) == 0) return error.SecretNameTaken;
     // info (not debug) by design: credential store/retrieve stays visible in default prod logs for
     // security-access monitoring — key_name only, never the secret value. LOGGING_STANDARD §4 exception.
     log.info("stored", .{ .workspace_id = workspace_id, .key_name = key_name });

@@ -4039,7 +4039,7 @@
       "post": {
         "operationId": "store_workspace_secret",
         "summary": "Store a workspace secret",
-        "description": "Stores an encrypted JSON object. Secret values are never returned.\n\n`data` must be a non-empty object no larger than 4 KiB. Larger values return `UZ-VAULT-002`.\n\nStrings, arrays, scalars, and empty objects return `UZ-VAULT-001`.\n",
+        "description": "Stores an encrypted JSON object. Secret values are never returned.\n\n`data` must be a non-empty object no larger than 4 KiB. Larger values return `UZ-VAULT-002`.\n\nStrings, arrays, scalars, and empty objects return `UZ-VAULT-001`.\n\nCreating claims a name that is free. A name already held in this workspace\nreturns `UZ-VAULT-005` and nothing is written — rotate the existing secret\nwith `PATCH /v1/workspaces/{workspace_id}/secrets/{secret_name}` instead.\nThe database decides the winner, so two concurrent creates on one name\nresolve to one `201` and one `409`.\n",
         "tags": [
           "Secrets"
         ],
@@ -4108,6 +4108,10 @@
             "$ref": "#/components/responses/Error"
           },
           "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "description": "A secret with this name already exists in the workspace (`UZ-VAULT-005`).",
             "$ref": "#/components/responses/Error"
           }
         }
