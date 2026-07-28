@@ -15,12 +15,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 005
 **Date:** Jul 25, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the authenticated shell makes every route pay for broad client ownership
 **Categories:** User Interface (UI)
 **Batch:** B4 — cross-cutting application gate after M143_002
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m143-authenticated-app-fluidity`
+**Test Baseline:** unit=3223 integration=455
 **Depends on:** M143_002 — preserve its library states and session-keeper verdict
 **Provenance:** Large Language Model (LLM)-drafted (Codex, Jul 25, 2026) from Orly Chief Technology Officer review and production-build evidence
 **Canonical architecture:** `docs/architecture/user_flow.md` §8.4; `docs/architecture/product_analytics.md` §Workspace group + person context
@@ -127,7 +127,7 @@ Retain `useTransition` where route and mutation work must not block input. Use `
 - Top-level fields are `schema_version: 1`, the non-empty Next `build_id`, `compression: "gzip"`, `framework_bytes`, `limits`, `shared`, `routes`, and `pass`.
 - `limits` contains `auth_total_kib: 225`, `cli_auth_total_kib: 240`, `dashboard_shared_total_kib: 250`, and `route_incremental_kib: 100`.
 - Each `shared` item contains a stable logical `entry`, exact `bytes`, and display `kib`.
-- Each `routes` item contains `route`, `class` (`auth`, `cli_auth`, or `dashboard`), `initial_bytes`, `incremental_bytes`, `initial_kib`, `incremental_kib`, `limit_kib`, and `pass`. Field names are part of the contract, not a suggestion: the checker, the rubric commands, and any future dashboard all read the same keys, so an implementer must not have to guess between `initial_bytes` and `initialBytes`.
+- Each `routes` item contains `route`, `class` (`auth`, `cli_auth`, or `dashboard`), `initial_bytes`, `incremental_bytes`, `initial_kib`, `incremental_kib`, `limit_kib`, and `pass`. Field names define the interface: the checker, the rubric commands, and any future dashboard all read the same keys, so an implementer must not have to guess between `initial_bytes` and `initialBytes`.
 - Top-level `pass` is true only when the report belongs to the current build and every required route and limit verdict is present and passing.
 
 A missing route, a missing framework figure, or a `pass` computed from absent files is a failure, not a zero.
