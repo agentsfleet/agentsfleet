@@ -126,7 +126,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
                 auth_rejects += 1;
                 heartbeat_errors = 0;
                 if (auth_rejects >= MAX_CONSECUTIVE_AUTH_REJECTS) {
-                    log.err("runner_token_rejected", .{ .error_code = ERR_EXEC_RUNNER_TOKEN_REJECTED, .consecutive = auth_rejects, .hint = "mint a fresh agt_r and re-provision the runner token" });
+                    log.err("runner_token_rejected", .{ .error_code = ERR_EXEC_RUNNER_TOKEN_REJECTED, .consecutive = auth_rejects, .hint = "mint a fresh agt_r and issue the runner token again" });
                     drain_requested.store(true, .seq_cst);
                     return .token_rejected;
                 }
