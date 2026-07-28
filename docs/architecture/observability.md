@@ -272,24 +272,27 @@ the per-request lifecycle; `defer scope.end()` covers every return, and the
 default outcome is `internal_error` rather than `ok` so a path nobody classified
 surfaces as something an operator investigates.
 
-### Performance evidence is captured, not gated
+### Performance evidence is the scrape, and nothing gates on a percentile
 
-Two commands, deliberately separate:
+The stage families above ARE the evidence. An operator reads
+`rate(agentsfleet_library_stage_duration_seconds_total) /
+rate(agentsfleet_library_stage_observations_total)` per surface and stage to see
+where a slow read spent its time, and `agentsfleet_library_read_outcome_total`
+to see how reads are ending.
 
-- `bun scripts/report-library-performance.ts --check --baseline <a> --candidate <b>`
-  runs anywhere and decides STRUCTURE — schema, closed enums, internal
-  consistency (`p50 <= p95 <= p99`), byte-equal metadata, identical aggregate
-  key tuples. No timing or payload value appears in any pass/fail condition.
-- `make capture-library-performance BASELINE_REF=… CANDIDATE_REF=…` is
-  provisioned-only, absent from every CI workflow, and a prerequisite of no
-  aggregate target. It may fail for setup, execution, schema, sanitization, or
-  malformed output — never because a percentile moved.
+**No check anywhere gates on a latency value, and that is deliberate.** A
+latency threshold in a universal check fails on a noisy runner, gets widened
+until it cannot fail, and then reports success forever. Percentile comparison
+between two builds needs a provisioned environment with pinned pool size, warm
+state, and concurrency — comparing runs that differ in any of those reads a
+configuration change as a regression.
 
-A latency threshold in a universal check fails on a noisy runner, gets widened
-until it cannot fail, and then reports success forever. The check that runs
-everywhere validates structure; the numbers are evidence a human reads.
-Comparability is stricter than validity on purpose: two runs under different
-pool sizes, warm states, or concurrency are both valid and are not comparable.
+A baseline-versus-candidate capture harness is therefore **deferred to its own
+spec** rather than half-built here. An earlier draft of this workstream shipped
+a report validator and a `capture-library-performance` target, but the target
+could not capture — it checked for two JSON files and told the operator to write
+them by hand — so the validator validated a format nothing emitted. Both were
+removed rather than left as scaffolding that reads like a working capability.
 
 ### PostHog is product analytics, not operations telemetry
 

@@ -55,7 +55,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/db/pool.zig`; `db/pool_test.zig`; `db/test_fixtures.zig`; `http/test_harness.zig` | EDIT if seams change | Deterministic release/timeout/failure fixtures only when required. |
 | `ui/packages/app/lib/api/client.ts` | EDIT | Valid traceparent propagation. |
 | `tests/bench/micro.zig`; `make/bench.mk`; `make/test-unit.mk` | EDIT | Deterministic resource/pool lane and capture target. |
-| `scripts/report-library-performance.ts` | CREATE | Aggregate report validation. |
 | `docs/architecture/observability.md`; `docs/architecture/data_flow.md` | EDIT | Stage, privacy, pool, evidence-command truth. |
 | `src/agentsfleetd/observability/metrics_otel_test.zig`; `observability/semantic_schema_test.zig`; `observability/otel_traces_test.zig`; `tests/fixtures/telemetry/otlp_metrics.json` | EDIT | One-to-one failure and artifact proof. |
 
@@ -72,8 +71,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/tests.zig` | EDIT | Test-root reachability for the two new modules. |
 | `src/agentsfleetd/http/handlers/tenant_model_entries_projection.zig` | CREATE | `tenant_model_entries_view.zig` sat exactly AT the 350-line cap and the gate covers every tracked file, so the `secret_project` stage boundary §2 requires could not be added without splitting it (RULE FLL). Seam is rows-into-views. |
 | `src/agentsfleetd/db/pool_bounded_progress_integration_test.zig` | CREATE | §2 Dimension 2.2. `db/pool.zig` needed no seam change after all — a size-1 pool saturates deterministically from outside, so the vendored `pg.zig` fork is untouched. |
-| `scripts/check_library_performance_report_test.py` | CREATE | §4's two named tests. Lands in the auto-discovered `check_*_test.py` suite so no new `make` target is needed, and drives the real `bun` command R3 grades. |
-| `tests/fixtures/library-performance/{baseline,candidate}.json` | CREATE | R3's inputs. See Discovery — the drafted R3 pointed at gitignored capture output. |
 | `src/agentsfleetd/integration_tests.zig` | EDIT | Integration-root reachability for the pool proof. |
 
 ## Applicable Rules
@@ -127,12 +124,24 @@ Changed-backend branch coverage moved out of this workstream to **M143_004**. It
 
 ### §4 — Report validation is separate from provisioned capture
 
-Required report check: `bun scripts/report-library-performance.ts --check --baseline test-results/library-performance/baseline.json --candidate test-results/library-performance/candidate.json`. Each file is exactly `{schema_version:1,commit_sha:string,metadata:{fixture_sha256:string,build_profile:string,database_version:string,pool_size:int,replica_count:int,region_class:"local"|"single_region"|"multi_region",warm_state:"cold"|"warm",concurrency:int},aggregates:Aggregate[]}`. `Aggregate={surface,stage,outcome,cache,pool_result,sample_count:int,p50_seconds:number,p95_seconds:number,p99_seconds:number,payload_bytes:int}` using §1 enums. Comparable runs require byte-equal metadata and identical aggregate key tuples `(surface,stage,outcome,cache,pool_result)`; commit differs. Counts are positive, values nonnegative, and `p50≤p95≤p99`; timing/payload values never decide pass/fail.
+**Amended (§Discovery — §4 is withdrawn; capture is deferred to its own spec).**
+As drafted this section specified a report validator and a distinct
+provisioned-only `make capture-library-performance`. Both were built, and the
+review found the target could not capture: it checked for two JSON files and
+told the operator to write them by hand. Nothing in the tree emitted the
+schema, so the validator validated a format with no producer.
 
-Add the distinct documented provisioned-environment command `make capture-library-performance BASELINE_REF=origin/main CANDIDATE_REF=HEAD` outside universal CI. Capture may fail for setup, execution, schema, sanitization, or output correctness, never because p50/p95/p99 changed. The generic benchmark target is not P0 evidence.
+The evidence this workstream actually delivers is the §1 metric families, which
+are real and consumed. **No check gates on a latency value** — that property is
+now structural rather than asserted, because there is no path anywhere in the
+repository that compares a percentile. A baseline-versus-candidate harness
+needs a provisioned environment with pinned pool size, warm state, and
+concurrency; that is a workstream, not a loose end, and it gets its own spec.
 
-- **Dimension 4.1** — explicit aggregates validate comparability without value thresholds → Test `test_library_performance_report_validation` — **DONE.** `scripts/report-library-performance.ts` decides structure and comparability only. Percentile ordering is an INTERNAL-CONSISTENCY check — whether three numbers can describe one distribution, never whether that distribution is fast enough. The property is asserted positively in both directions: a candidate 100x slower and one that is all zeroes are both valid. The committed fixture pair is itself the demonstration — its candidate is 37% slower on every row, so a threshold anywhere in this path would fail the very fixture that proves R3 green.
-- **Dimension 4.2** — capture command is provisioned-only and value-neutral → Test `test_library_capture_command_is_not_universal_gate` — **DONE.** `make capture-library-performance` is `.PHONY`, requires both refs, appears in no CI workflow, and is a prerequisite of no aggregate target. Three separate tests enforce that, because "absent from CI" alone would miss a target reachable through `make lint-all`. A fourth reads the recipe body and rejects any reference to a percentile. No new make target was added for the tests themselves — the auto-discovered `check_*_test.py` suite already had a caller.
+- **Dimension 4.1** — explicit aggregates validate comparability without value thresholds → Test `test_library_performance_report_validation` — **WITHDRAWN.** The validator it graded is removed; see §Discovery. Its load-bearing claim (no percentile decides pass/fail) now holds by construction: no comparison exists to gate on.
+
+- **Dimension 4.2** — capture command is provisioned-only and value-neutral → Test `test_library_capture_command_is_not_universal_gate` — **WITHDRAWN.** The command is removed rather than shipped non-functional; five tests guarding a target that could not capture went with it.
+
 
 ## Interfaces
 
@@ -192,7 +201,6 @@ This table is the complete set. Every row is mandatory, including the failure ro
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
 | R1 | Telemetry/resource/pool tests pass | `make test-unit-all && make test-integration` | exit 0 | P0 | |
-| R3 | Explicit aggregate report is valid | `bun scripts/report-library-performance.ts --check --baseline tests/fixtures/library-performance/baseline.json --candidate tests/fixtures/library-performance/candidate.json` | exit 0 and `comparison=valid`; values do not gate | P0 | |
 | R4 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | |
 | S1 | Lint/conform/build | `make lint-all && make harness-verify && zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S2 | Memory/secrets | `make memleak && gitleaks detect` | exit 0 | P0 | |
@@ -296,27 +304,36 @@ Proof is deferred to §2's `test_pool_bounded_progress_and_timeout`, which is th
 only tier that can saturate a real pool; a unit test cannot produce
 `error.Timeout` from `pg.Pool` without one.
 
-### R3 pointed at gitignored paths, so it could never have passed
+### §4 was built, then withdrawn — the target could not capture
 
-`test-results/` is in `.gitignore` (line 32), and the two files R3 named are
-CAPTURE OUTPUT. As drafted, R3 was a P0 acceptance criterion whose inputs cannot
-exist on a fresh checkout — it would have failed at VERIFY for every grader, and
-the only way to make it pass would have been to run the provisioned capture that
-§4 explicitly puts outside universal CI.
+Two rounds of scrutiny landed on the same defect from opposite directions.
 
-R3 now points at `tests/fixtures/library-performance/{baseline,candidate}.json`,
-committed. The command shape is unchanged; only the paths move, from capture
-output to a canonical pair. What R3 grades is the VALIDATOR, and a validator
-needs deterministic input to be graded at all.
+R3 as drafted named `test-results/library-performance/*.json` — capture output,
+and `test-results/` is gitignored, so a P0 criterion had inputs that cannot
+exist on a fresh checkout. The first fix pointed R3 at a committed pair, which
+made the criterion runnable and left the deeper problem intact.
 
-The committed pair is not a rubber stamp. Its candidate is **37% slower on every
-single row** than its baseline, and identical in metadata and in aggregate keys.
-So the fixture that proves R3 green is itself the demonstration that timing does
-not gate — a threshold anywhere in this path would fail on this exact pair.
+The deeper problem: `make capture-library-performance` never captured. It
+checked whether two JSON files existed and, if they did not, told the operator
+to produce them by hand. Nothing in the tree emitted the schema. Greptile
+flagged it P1 on PR #569 ("Capture target never captures") and Indy asked the
+same question independently — whether the two scripts were needed at all.
 
-`make capture-library-performance` still writes to
-`test-results/library-performance/`, which is where real provisioned runs land
-and why that directory is ignored.
+They were not. A census of the 27 tests guarding them found that **none touched
+runtime code**: twenty tested the validator's own logic and its argument
+parsing, five guarded a target that did not work, and two compared the
+validator's duplicated enums against the Zig schema — a duplication that only
+existed because the validator did. Deleting the validator deleted the reason
+for every one of them.
+
+So `scripts/report-library-performance.ts`, its test file, the fixture pair, and
+the `capture-library-performance` target are all removed. §4's load-bearing
+claim survives in a stronger form: **no percentile decides pass/fail anywhere**,
+now because no comparison exists rather than because a test asserts it.
+
+A real baseline-versus-candidate harness needs a provisioned environment with
+pinned pool size, warm state, and concurrency. That is a workstream with its own
+spec, not scaffolding to leave behind in this one.
 
 ### Stage timings are metrics, not spans — the span budget decides it
 
