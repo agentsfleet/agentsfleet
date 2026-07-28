@@ -6,6 +6,81 @@
 
 Read this when you need to know where a webhook, a steer, or a cron fire ends up. Many specs reference this file as the canonical picture of the runtime.
 
+## Facts
+
+Every row is extracted from the sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Event ingress | ONE — five producers | steer / webhook / cron / continuation / Slack all `XADD fleet:{id}:events`; the stream entry id IS the canonical event id | §B. TRIGGER |
+| Hot-path writes | 12, in the worker's order | `lease` does 1–6, `report` does 7–12; row-equivalent to the deleted worker (cutover Invariant 2) | §Steer flow end-to-end |
+| Durable stores | 3 tables, join key `event_id` | `fleet_sessions` (one row per fleet, UPSERT) · `fleet_events` (one row per delivery) · `fleet_execution_telemetry` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The three durable stores |
+| Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
+| Stale-writer rejection | `UZ-RUN-005` | `claimReport()` fences, flips, and dedups in one atomic statement | §C. EXECUTE |
+| Redis pool | `max_idle=8, eager_min=2` | short-lived commands only: `XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK` | §Connection topology |
+| Dedicated Redis connections | one — the SubscriptionHub | refcounted `SUBSCRIBE`; N viewers cost one connection per replica | §Connection topology |
+| Postgres acquire failures | 2 distinct errors | `PoolTimeout` (capacity) vs `PoolUnavailable` (datastore); `MAX_CONNECTIONS_PER_READ` = 1 | §The Postgres pool |
+| Config freshness | read per lease | a `PATCH` takes effect on the next lease; no cache, no signal | §Config reload |
+| Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §C. EXECUTE step 3 |
+| Webhook rejections | 3 codes | `UZ-WH-020` (misconfig) · `UZ-WH-010` (bad signature) · `UZ-WH-011` (stale timestamp, 5-minute window) | §B. TRIGGER |
+| Install guarantee | stream + group before 201 | `ensureEventStream` retries `[100ms, 500ms, 1500ms]`; exhaustion rolls back the PG row | §A. INSTALL |
+| SSE sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
+| Client gap recovery | reconnect-only fetch (M122) | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id | §Two streams + one pub/sub channel |
+| Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
+| Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §KILL |
+| Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
+| Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §C. EXECUTE step 4 |
+| Tenant isolation | RLS + namespacing | Postgres Row-Level Security by `workspace_id`; Redis keys namespaced by unguessable fleet UUID | §Multi-tenancy boundary |
+
+## Traps
+
+Each trap is enforced in its owner section; this list is the index.
+
+- The live tail is the eyeballs surface, not the audit surface; durable history is `core.fleet_events` (§Two streams + one pub/sub channel).
+- A connection held across a blocking `SUBSCRIBE` can never return to a pool (§Connection topology).
+- Never acquire a second Postgres connection while holding one — that is how a pool deadlocks (§The Postgres pool).
+- The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
+- `gate_blocked` rows are NEVER reopened (§C. EXECUTE step 3).
+- Never carry a separate event id in the payload — the stream entry id IS the canonical event id (§B. TRIGGER).
+- The continuation actor is FLAT — it never re-nests `continuation:` (§B. TRIGGER).
+- `repositories` is required for GitHub App traffic; omission means no delivery, never every repository (§B. TRIGGER).
+- No Bearer fallback on webhook routes; the `Authorization` header is never consulted there (§B. TRIGGER).
+- Clients never derive a cursor from an event id; SSE sequence ids have no cross-connection meaning (§D. WATCH).
+- The reasoning loop never branches on actor — actor is metadata (§B. TRIGGER).
+- `/v1/webhooks/` and `/v1/ingress/` are customer-data-plane only; Clerk identity events live in the auth plane (§B. TRIGGER).
+- The coding fleet never becomes the Fleet runtime and never sees its tokens (§The coding fleet and the Fleet runtime).
+
+## Topology
+
+The diagrams live with their flows — each is the section's proof, so none is duplicated here:
+
+- coding fleet vs Fleet runtime — §The coding fleet and the Fleet runtime
+- the steer round-trip with the 12 writes — §Steer flow end-to-end
+- the Redis connection topology — §Connection topology
+- install, trigger envelope, execute, watch, kill — §A–§D and §KILL under §End-to-end sequence
+- the install failure window — §The install failure scenario, visually
+
+## Decisions
+
+| Decision | Reason | Where / artifact |
+|---|---|---|
+| Two per-delivery tables (`events` + `telemetry`) | different write authorities and retention rules | §The three durable stores |
+| `fleet:control` removed | no per-fleet threads left to orchestrate | §Two streams + one pub/sub channel |
+| Dedicated Redis tier collapsed | idle cost now tracks lease-poll frequency, not fleet count | §Connection topology; M80_002 |
+| `Hx.db()` returns a named error set, not `?DbScope` | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
+| Gap recovery is client-side, not server resume | no channel or frame-shape change; the durable table is the recovery source | §Two streams; M122 |
+| QStash owns the clock | the runner and its disposable child own no schedule timer | §B. TRIGGER |
+| Upload-bundle picker path deferred | Indy-acked 2026-06-20 | §A. INSTALL |
+| Watcher reconcile sweep deleted; orphan stays inert | no runner can lease a fleet with no events group; a future reconcile job heals it | §The install failure scenario |
+| SSE auth is dual-accept with strict no-fallthrough | a stale cookie must not silently fall through to a valid Bearer | §D. WATCH |
+| Outbound answers ride a generic `connector:outbound` stream | the report path stays provider-agnostic (Invariant 9) | §C. EXECUTE; M106 |
+
+---
+
+## Detail
+
+Everything below is the full reference. Headings are stable — specs cite them by text; insert new sections, never rename existing ones.
+
 ## Process and stream ownership at a glance
 
 | Process | Role |
