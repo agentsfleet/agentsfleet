@@ -163,7 +163,7 @@ For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Do
 
 An idle poll reads the readiness index and stops. A **busy** poll takes a randomized, server-bounded slice of that index and restricts the candidate query to it, capped at `MAX_READY_CANDIDATES_PER_POLL` (`src/lib/common/constants.zig`, beside `NO_WORK_RETRY_AFTER_MS` because they trade the same axis).
 
-That ceiling is what makes per-poll cost independent of the population, and it holds **even when the index is wrong**. A stale or over-marked index costs extra candidate checks up to the ceiling and never more, so a hint failure degrades discovery fairness rather than cost. The index is a hint; the streams stay the system of record.
+That ceiling is what makes per-poll cost independent of the population, and it holds **even when the index is wrong**. A stale or over-marked index costs extra candidate checks up to the ceiling and never more, so a hint failure degrades discovery fairness rather than cost. The index is a hint; the streams stay the system of record. (The index mechanism — the `fleet:ready` hash, its token semantics, the sweeper — is canonical in [`runner_fleet.md` §Redis topology](./runner_fleet.md).)
 
 Two consequences worth carrying into a sizing conversation:
 

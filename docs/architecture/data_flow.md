@@ -452,7 +452,7 @@ declines to assert the third.
 
 ## Config reload — pull-per-lease, no signal
 
-`agentsfleetd` reads a Fleet's config fresh from `core.fleets` on every `lease`. A `PATCH` therefore takes effect on the next lease with no signal: no config cache to invalidate, no `fleet_config_changed` consumer (both deleted with the worker). An in-flight run keeps its resolved policy; the next run picks up the change. Status works the same way: the assignment scan filters `core.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
+Canonical: [`runner_fleet.md` §Config](./runner_fleet.md) — config resolves fresh from `core.fleets` on every `lease`; a `PATCH` takes effect on the next lease with no cache and no signal. What is specific to this flow: status works the same way — the assignment scan filters `core.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
 
 ## End-to-end sequence
 
