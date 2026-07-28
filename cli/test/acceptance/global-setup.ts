@@ -3,17 +3,10 @@
  *
  * Resolves `CLERK_SECRET_KEY` + the fixture email (op:// resolution happens
  * at the CI layer; this helper only reads the resolved values from env).
- * Optionally mints a session JWT for the `regular` fixture and writes it
- * to `test/acceptance/.fixture-jwt` (mode 0600) so per-spec spawns can
- * read it without re-minting.
- *
- * Specs that don't need a JWT (e.g. `help-and-errors.spec.ts`) can skip
- * `ensureFixtureJwt` and only call `resolveAcceptanceEnv` for the API URL.
+ * The live-lane entrypoint validates the browser/auth inputs and establishes
+ * both suite-owned Clerk identities before any live spec starts. Deterministic
+ * specs never invoke this file as an entrypoint and need no browser.
  */
-
-import fs from "node:fs/promises";
-import path from "node:path";
-import url from "node:url";
 
 import {
   ACCEPTANCE_DASHBOARD_URL_ENV,
@@ -22,31 +15,38 @@ import {
   API_URL_PROD,
   DASHBOARD_URL_DEV,
   DASHBOARD_URL_PROD,
-  FIXTURE_JWT_FILE,
 } from "./fixtures/constants.ts";
-import { attachJwt } from "./fixtures/clerk-admin.ts";
-
-const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const CLI_ROOT = path.resolve(HERE, "..", "..");
-const JWT_PATH = path.join(CLI_ROOT, FIXTURE_JWT_FILE);
-
-const JWT_TTL_SECONDS = 800;
+import { ensureFixtureTenantReady } from "./fixtures/clerk-admin.ts";
 
 export interface AcceptanceEnv {
   readonly apiUrl: string;
 }
 
-export interface FixtureJwtRecord {
-  readonly sessionId: string;
-  readonly sessionJwt: string;
-  readonly clerkUserId: string;
-  readonly mintedAt: number;
-}
-
 export type FixtureKey = "admin" | "regular";
 
-export function resolveAcceptanceEnv(): AcceptanceEnv {
-  const target = process.env[ACCEPTANCE_TARGET_ENV];
+const LOGIN_HANDSHAKE_ENV = "AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE";
+const CLERK_SECRET_ENV = "CLERK_SECRET_KEY";
+const CLERK_PUBLISHABLE_KEY_ENV = "CLERK_PUBLISHABLE_KEY";
+const CLERK_WEBHOOK_SECRET_ENV = "CLERK_WEBHOOK_SECRET";
+const REGULAR_EMAIL_ENV = "AUTH_E2E_REGULAR_EMAIL";
+const ADMIN_EMAIL_ENV = "AUTH_E2E_ADMIN_EMAIL";
+const HANDSHAKE_ENABLED_VALUE = "1";
+const HTTPS_PREFIX = "https://";
+const FIXTURE_ROLE = {
+  regular: "regular",
+  admin: "admin",
+} as const;
+
+export interface LiveAcceptancePreflight {
+  readonly apiUrl: string;
+  readonly dashboardUrl: string;
+  readonly clerkSecret: string;
+  readonly regularEmail: string;
+  readonly adminEmail: string;
+}
+
+export function resolveAcceptanceEnv(env: NodeJS.ProcessEnv = process.env): AcceptanceEnv {
+  const target = env[ACCEPTANCE_TARGET_ENV];
   if (!target) {
     throw new Error(`${ACCEPTANCE_TARGET_ENV} unset — acceptance suite requires an API URL`);
   }
@@ -61,8 +61,11 @@ export function resolveAcceptanceEnv(): AcceptanceEnv {
  * Explicit `AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL` override wins (use this
  * for `localhost:3000` against a locally-running dashboard).
  */
-export function resolveDashboardUrl(apiUrl: string): string {
-  const override = process.env[ACCEPTANCE_DASHBOARD_URL_ENV]?.trim();
+export function resolveDashboardUrl(
+  apiUrl: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const override = env[ACCEPTANCE_DASHBOARD_URL_ENV]?.trim();
   if (override) return override;
   if (apiUrl.startsWith(API_URL_DEV)) return DASHBOARD_URL_DEV;
   if (apiUrl.startsWith(API_URL_PROD)) return DASHBOARD_URL_PROD;
@@ -71,15 +74,18 @@ export function resolveDashboardUrl(apiUrl: string): string {
   );
 }
 
-export function resolveClerkSecret(): string {
-  const secret = process.env.CLERK_SECRET_KEY;
-  if (!secret) throw new Error("CLERK_SECRET_KEY missing — op:// resolution must run at the workflow layer");
+export function resolveClerkSecret(env: NodeJS.ProcessEnv = process.env): string {
+  const secret = env[CLERK_SECRET_ENV];
+  if (!secret) throw new Error(`${CLERK_SECRET_ENV} missing — op:// resolution must run at the workflow layer`);
   return secret;
 }
 
-export function resolveFixtureEmail(key: FixtureKey): string {
-  const envName = key === "admin" ? "AUTH_E2E_ADMIN_EMAIL" : "AUTH_E2E_REGULAR_EMAIL";
-  const value = process.env[envName];
+export function resolveFixtureEmail(
+  key: FixtureKey,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const envName = key === FIXTURE_ROLE.admin ? ADMIN_EMAIL_ENV : REGULAR_EMAIL_ENV;
+  const value = env[envName];
   if (!value) {
     throw new Error(`${envName} unset — workflow must resolve op://VAULT/e2e-fixtures-email/${key}`);
   }
@@ -89,37 +95,63 @@ export function resolveFixtureEmail(key: FixtureKey): string {
   return value;
 }
 
-export async function ensureFixtureJwt(): Promise<FixtureJwtRecord> {
-  const cached = await readCachedJwt();
-  if (cached && !isExpired(cached)) return cached;
-  const clerkSecret = resolveClerkSecret();
-  const email = resolveFixtureEmail("regular");
-  const minted = await attachJwt(clerkSecret, { email });
-  const record: FixtureJwtRecord = {
-    sessionId: minted.sessionId,
-    sessionJwt: minted.sessionJwt,
-    clerkUserId: minted.clerkUserId,
-    mintedAt: Date.now(),
+export function resolveLiveAcceptancePreflight(
+  env: NodeJS.ProcessEnv = process.env,
+): LiveAcceptancePreflight {
+  const { apiUrl } = resolveAcceptanceEnv(env);
+  if (!apiUrl.startsWith(HTTPS_PREFIX)) {
+    throw new Error(`${ACCEPTANCE_TARGET_ENV} must be an https URL for the live lane`);
+  }
+  if (env[LOGIN_HANDSHAKE_ENV] !== HANDSHAKE_ENABLED_VALUE) {
+    throw new Error(`${LOGIN_HANDSHAKE_ENV} must equal ${HANDSHAKE_ENABLED_VALUE} for the live lane`);
+  }
+  requireEnv(env, CLERK_PUBLISHABLE_KEY_ENV);
+  requireEnv(env, CLERK_WEBHOOK_SECRET_ENV);
+  return {
+    apiUrl,
+    dashboardUrl: resolveDashboardUrl(apiUrl, env),
+    clerkSecret: resolveClerkSecret(env),
+    regularEmail: resolveFixtureEmail(FIXTURE_ROLE.regular, env),
+    adminEmail: resolveFixtureEmail(FIXTURE_ROLE.admin, env),
   };
-  await fs.mkdir(path.dirname(JWT_PATH), { recursive: true });
-  await fs.writeFile(JWT_PATH, JSON.stringify(record), { mode: 0o600 });
-  return record;
 }
 
-async function readCachedJwt(): Promise<FixtureJwtRecord | null> {
-  try {
-    const raw = await fs.readFile(JWT_PATH, "utf8");
-    return JSON.parse(raw) as FixtureJwtRecord;
-  } catch {
-    return null;
+function requireEnv(env: NodeJS.ProcessEnv, name: string): string {
+  const value = env[name]?.trim();
+  if (!value) throw new Error(`${name} missing — live acceptance preflight failed`);
+  return value;
+}
+
+async function verifyChromiumInstalled(): Promise<void> {
+  const { chromium } = await import("playwright");
+  const executablePath = chromium.executablePath();
+  if (!(await Bun.file(executablePath).exists())) {
+    throw new Error(`Playwright Chromium missing at ${executablePath}`);
   }
 }
 
-function isExpired(record: FixtureJwtRecord): boolean {
-  const ageSec = (Date.now() - (record.mintedAt ?? 0)) / 1000;
-  return ageSec >= JWT_TTL_SECONDS;
+export async function runLiveAcceptancePreflight(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  const config = resolveLiveAcceptancePreflight(env);
+  await verifyChromiumInstalled();
+  await ensureFixtureTenantReady(config.clerkSecret, {
+    email: config.regularEmail,
+    role: FIXTURE_ROLE.regular,
+  });
+  await ensureFixtureTenantReady(config.clerkSecret, {
+    email: config.adminEmail,
+    role: FIXTURE_ROLE.admin,
+  });
 }
 
-export function fixtureJwtPath(): string {
-  return JWT_PATH;
+if (import.meta.main) {
+  try {
+    await runLiveAcceptancePreflight();
+    process.stdout.write("CLI live acceptance preflight passed\n");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`CLI live acceptance preflight failed: ${message}\n`);
+    process.exitCode = 1;
+  }
 }

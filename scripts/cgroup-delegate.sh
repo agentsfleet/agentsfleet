@@ -7,10 +7,18 @@
 # cgroup v2 forbids a non-root cgroup from holding member processes AND enabling
 # controllers for its children ("no internal processes"). So we drain every
 # process in the current cgroup into an `init` leaf, then enable the controllers
-# on the (now process-free) cgroup so child scopes — fleet.runner/exec-* — inherit
-# memory/pids/cpu. CgroupScope.create then writes memory.max / pids.max there.
+# on the (now process-free) cgroup. It enters the proof command through a delegated
+# child, matching the service-owned cgroup subtree used in production.
 set -eu
-CG="${CGROUP_ROOT:-/sys/fs/cgroup}"
+readonly CG="${CGROUP_ROOT:-/sys/fs/cgroup}"
+readonly CONTROLLERS="+cpu +memory +pids"
+readonly RUNNER_TEST_GROUP="$CG/runner-test"
+readonly RUNNER_TEST_LEAF="$RUNNER_TEST_GROUP/runner"
+
+if [ "$#" -eq 0 ]; then
+  echo "cgroup-delegate: missing proof command" >&2
+  exit 2
+fi
 
 if [ ! -w "$CG/cgroup.subtree_control" ]; then
   echo "cgroup-delegate: $CG/cgroup.subtree_control not writable — skipping (lane will SkipZigTest)" >&2
@@ -38,7 +46,7 @@ done
 # under `set -e` an EBUSY here aborts loudly. Then verify each controller is
 # actually present so a partial enable surfaces now, not later as an opaque
 # CgroupScope.create failure with no SkipZigTest.
-echo "+cpu +memory +pids" > "$CG/cgroup.subtree_control"
+echo "$CONTROLLERS" > "$CG/cgroup.subtree_control"
 sc="$(cat "$CG/cgroup.subtree_control")"
 for c in cpu memory pids; do
   case " $sc " in
@@ -47,16 +55,13 @@ for c in cpu memory pids; do
   esac
 done
 
-# Pre-create the runner base with delegation so exec-<id> scopes inherit them.
-mkdir -p "$CG/fleet.runner"
+# Create an empty delegated parent before the test command becomes its member.
+# The kernel forbids enabling domain controllers after the parent has processes.
+mkdir -p "$RUNNER_TEST_GROUP"
+find "$RUNNER_TEST_GROUP" -mindepth 1 -depth -type d -exec rmdir {} \; 2>/dev/null || true
+echo "$CONTROLLERS" > "$RUNNER_TEST_GROUP/cgroup.subtree_control"
+mkdir -p "$RUNNER_TEST_LEAF"
+echo "$$" > "$RUNNER_TEST_LEAF/cgroup.procs"
 
-# Sweep stale per-exec scopes a crashed/aborted prior run may have left behind: a
-# create() that fails partway leaves an orphan exec-<id> dir, and the next create()
-# trips on it. Each is process-free once its child died. `-depth` removes leaf-first;
-# `-exec rmdir` is whitespace-safe (no word-splitting). Idempotent and CI-safe — a
-# previous run's debris never fails the next.
-find "$CG/fleet.runner" -mindepth 1 -depth -type d -exec rmdir {} \; 2>/dev/null || true
-
-echo "+cpu +memory +pids" > "$CG/fleet.runner/cgroup.subtree_control"
-
-echo "cgroup-delegate: controllers ready: $(cat "$CG/cgroup.subtree_control")" >&2
+echo "cgroup-delegate: controllers ready: $(cat "$RUNNER_TEST_GROUP/cgroup.subtree_control")" >&2
+exec "$@"

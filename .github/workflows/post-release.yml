@@ -57,8 +57,8 @@ jobs:
   # CLI acceptance against api.agentsfleet.net using the just-published
   # @agentsfleet/cli@latest. WS-E #C2: secret-load comes AFTER `bun
   # install` AND `npm i -g` so a hostile postinstall sees no Clerk admin
-  # key. lifecycle-after-login is skipped on PROD (no dashboard URL is
-  # provided — per spec §5 disposition).
+  # key. The live lane derives the production dashboard URL and requires
+  # the browser handoff to complete before the remaining scenarios run.
   cli-acceptance-prod:
     if: github.event.workflow_run.conclusion == 'success'
     needs: verify-npm
@@ -94,6 +94,8 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLERK_SECRET_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/secret-key
+          CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/publishable-key
+          CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_PROD }}/clerk-prod/webhook-secret
           AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures-email/regular
           AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures-email/admin
 
@@ -103,9 +105,11 @@ jobs:
         env:
           AGENTSFLEET_ACCEPTANCE_TARGET: https://api.agentsfleet.net
           AGENTSFLEET_ACCEPTANCE_BINARY: global
-          # AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL intentionally unset — the
-          # lifecycle-after-login spec skips on PROD per spec §5.
+          AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE: "1"
+          # The dashboard URL derives from the production API target.
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
+          CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
           AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}
           AUTH_E2E_ADMIN_EMAIL: ${{ env.AUTH_E2E_ADMIN_EMAIL }}
 

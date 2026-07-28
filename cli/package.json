@@ -24,7 +24,11 @@
   "scripts": {
     "test": "npm run build && node ./scripts/enforce-coverage.mjs",
     "test:coverage": "npm run build && bun test --coverage",
-    "test:acceptance": "npm run build && bun test test/acceptance --timeout 120000",
+    "test:acceptance": "npm run build && bun run test:acceptance:deterministic:run && bun run test:acceptance:live:run",
+    "test:acceptance:deterministic": "npm run build && bun run test:acceptance:deterministic:run",
+    "test:acceptance:deterministic:run": "bun test/acceptance/run-lane.ts deterministic",
+    "test:acceptance:live": "npm run build && bun run test:acceptance:live:run",
+    "test:acceptance:live:run": "bun test/acceptance/run-lane.ts live",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src test scripts && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",
     "lint:fix": "oxlint src test scripts --fix && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",

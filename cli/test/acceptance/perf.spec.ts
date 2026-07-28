@@ -77,6 +77,7 @@ const EVENT_PAGE_LIMIT = 2;
 // breach surfaces as a recorded slow sample (a clean assertion failure)
 // rather than a spawn TimeoutError that swallows the duration.
 const SPAWN_TIMEOUT_MS = PER_COMMAND_BUDGET_MS + 5_000;
+const REMOTE_SETUP_TIMEOUT_MS = 120_000;
 
 const FLAG_JSON = "--json" as const;
 const FLAG_CURSOR = "--cursor" as const;
@@ -246,7 +247,7 @@ if (!isLive) {
         const id = installed.id ?? installed.fleet_id;
         if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
         fleetId = id;
-      });
+      }, REMOTE_SETUP_TIMEOUT_MS);
 
       it(`walks <= ${MAX_EVENT_PAGES} pages, each page under ${PER_COMMAND_BUDGET_MS}ms`, async () => {
         const pageDurations: number[] = [];

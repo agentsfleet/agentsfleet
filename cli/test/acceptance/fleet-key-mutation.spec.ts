@@ -50,6 +50,7 @@ const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
 const ENV_NO_COLOR = "NO_COLOR" as const;
 const NO_COLOR_ON = "1" as const;
 const STATE_DIR_PREFIX = "agentsfleet-fleetkey-" as const;
+const REMOTE_SETUP_TIMEOUT_MS = 120_000;
 
 // Well-formed (uuidv7-shaped) but never-issued id: it must clear the client
 // validator and fail server-side, proving the negative reaches the API.
@@ -111,7 +112,7 @@ if (!isLive) {
       const id = installed.id ?? installed.fleet_id;
       assert.ok(id, `install missing id: ${JSON.stringify(installed)}`);
       fleetId = id as string;
-    });
+    }, REMOTE_SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
       if (mintedKeyId) {

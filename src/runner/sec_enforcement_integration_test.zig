@@ -41,6 +41,22 @@ const EXIT_SETUP_FAILED: u8 = 91;
 const EXIT_NOT_ENFORCED: u8 = 92;
 /// A control action that MUST stay allowed was wrongly denied (deny-all regression).
 const EXIT_CONTROL_DENIED: u8 = 93;
+const CGROUP_MOUNT = "/sys/fs/cgroup";
+const CGROUP_PROC_PATH = "/proc/self/cgroup";
+const S_CGROUP_CONTROLLERS = "{s}{s}/cgroup.controllers";
+const UNIFIED_RUNNER_PLACEMENT = "0::/system.slice/agentsfleet-runner.service/runner\n";
+const ROOT_CGROUP_PLACEMENT = "0::/\n";
+const LEGACY_CGROUP_PLACEMENT = "11:memory:/system.slice/agentsfleet-runner.service/runner\n";
+const MALFORMED_CGROUP_PLACEMENT = "0::system.slice/agentsfleet-runner.service/runner\n";
+const SERVICE_CGROUP_PLACEMENT = "0::/system.slice/agentsfleet-runner.service\n";
+const MAX_CGROUP_PLACEMENT_BYTES = 4096;
+const OOM_KILL_COUNTER = "oom_kill ";
+const PIDS_MAX_COUNTER = "max ";
+const THROTTLED_USEC_COUNTER = "throttled_usec ";
+const MEMORY_EVENTS_CONTENT = "low 0\nhigh 0\nmax 0\noom 0\noom_kill 3\n";
+const PIDS_EVENTS_CONTENT = "max 7\n";
+const CPU_STAT_CONTENT = "nr_periods 0\nthrottled_usec 12345\n";
+const MALFORMED_OOM_KILL_CONTENT = "oom_kill abc\n";
 
 // ── fork / wait plumbing (Zig 0.16 removed std.posix.fork → raw linux layer) ──
 
@@ -202,15 +218,41 @@ fn threadedIo(t: *std.Io.Threaded) std.Io {
 /// failures — no silent green on a misconfigured privileged lane.
 fn requireCgroupDelegation() error{SkipZigTest}!void {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
-    var buf: [256]u8 = undefined;
-    const fd: isize = @bitCast(linux.openat(linux.AT.FDCWD, "/sys/fs/cgroup/fleet.runner/cgroup.controllers", .{ .ACCMODE = .RDONLY }, 0));
-    if (fd < 0) return error.SkipZigTest; // the runner base scope is not delegated
+    var buf: [MAX_CGROUP_PLACEMENT_BYTES]u8 = undefined;
+    const fd: isize = @bitCast(linux.openat(linux.AT.FDCWD, CGROUP_PROC_PATH, .{ .ACCMODE = .RDONLY }, 0));
+    if (fd < 0) return error.SkipZigTest;
     const n: isize = @bitCast(linux.read(@intCast(fd), &buf, buf.len));
     _ = linux.close(@intCast(fd));
     if (n <= 0) return error.SkipZigTest;
-    const ctrls = buf[0..@intCast(n)];
+
+    const placement = CgroupScope.delegatedCgroupPath(buf[0..@intCast(n)]) orelse return error.SkipZigTest;
+    var controllers_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const controllers_path = std.fmt.bufPrintZ(&controllers_path_buf, S_CGROUP_CONTROLLERS, .{ CGROUP_MOUNT, placement }) catch return error.SkipZigTest;
+    const controllers_fd: isize = @bitCast(linux.openat(linux.AT.FDCWD, controllers_path.ptr, .{ .ACCMODE = .RDONLY }, 0));
+    if (controllers_fd < 0) return error.SkipZigTest;
+    const controllers_len: isize = @bitCast(linux.read(@intCast(controllers_fd), &buf, buf.len));
+    _ = linux.close(@intCast(controllers_fd));
+    if (controllers_len <= 0) return error.SkipZigTest;
+
+    const ctrls = buf[0..@intCast(controllers_len)];
     if (std.mem.indexOf(u8, ctrls, "memory") == null or std.mem.indexOf(u8, ctrls, "pids") == null)
         return error.SkipZigTest; // memory/pids not delegated to child scopes
+}
+
+test "runner cgroup base requires a unified delegated service path" {
+    const service_path = CgroupScope.delegatedCgroupPath(UNIFIED_RUNNER_PLACEMENT) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("/system.slice/agentsfleet-runner.service", service_path);
+    try std.testing.expect(CgroupScope.delegatedCgroupPath(ROOT_CGROUP_PLACEMENT) == null);
+    try std.testing.expect(CgroupScope.delegatedCgroupPath(LEGACY_CGROUP_PLACEMENT) == null);
+    try std.testing.expect(CgroupScope.delegatedCgroupPath(MALFORMED_CGROUP_PLACEMENT) == null);
+    try std.testing.expect(CgroupScope.delegatedCgroupPath(SERVICE_CGROUP_PLACEMENT) == null);
+}
+
+test "runner cgroup counters parse valid values and fail safe" {
+    try std.testing.expectEqual(@as(u64, 3), CgroupScope.parseEventCount(MEMORY_EVENTS_CONTENT, OOM_KILL_COUNTER));
+    try std.testing.expectEqual(@as(u64, 7), CgroupScope.parseEventCount(PIDS_EVENTS_CONTENT, PIDS_MAX_COUNTER));
+    try std.testing.expectEqual(@as(u64, 12345), CgroupScope.parseEventCount(CPU_STAT_CONTENT, THROTTLED_USEC_COUNTER));
+    try std.testing.expectEqual(@as(u64, 0), CgroupScope.parseEventCount(MALFORMED_OOM_KILL_CONTENT, OOM_KILL_COUNTER));
 }
 
 fn disableScopeSwap(scope_path: []const u8) void {
