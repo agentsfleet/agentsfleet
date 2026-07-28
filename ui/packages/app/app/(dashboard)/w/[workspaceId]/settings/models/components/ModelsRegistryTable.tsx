@@ -182,9 +182,12 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     });
   }
 
-  // Fetches the secrets list on demand. The eager page-level preload was
-  // removed, so this is now the ONLY path that loads it: the Add dialog
-  // calls it on open, and again when it commits a new stored secret.
+  // Fetches the stored-secret list on demand. The eager page-level preload was
+  // removed, so this is the ONLY path that loads it: the Add dialog fires it on
+  // OPEN (`onSecretsNeeded`) and again when it commits a secret
+  // (`onSecretsChanged`). The open call is not an optimisation — the dialog
+  // resolves rotate-vs-create against this list, and the secrets POST upserts,
+  // so an unloaded list silently overwrites an existing name.
   function refreshSecrets() {
     startTransition(async () => {
       const r = await listSecretsAction(workspaceId);
@@ -300,6 +303,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
               secrets={secrets}
               onCreated={refresh}
               onSecretsChanged={refreshSecrets}
+              onSecretsNeeded={refreshSecrets}
             />
           }
         >

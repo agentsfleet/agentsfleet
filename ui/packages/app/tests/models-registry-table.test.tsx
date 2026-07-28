@@ -490,10 +490,17 @@ describe("ModelsRegistryTable", () => {
     rotateSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
     createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
-    listSecretsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: 1 }] },
-    });
+    // The dialog now loads the stored-secret list on OPEN as well as after a
+    // secret changes, so the sequence has to mirror reality: nothing stored
+    // when the dialog first opens, "anthropic" present from the create onward.
+    // A single mockResolvedValueOnce left later calls resolving `undefined`,
+    // which the real action never does.
+    listSecretsActionMock
+      .mockResolvedValueOnce({ ok: true, data: { secrets: [] } })
+      .mockResolvedValue({
+        ok: true,
+        data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: 1 }] },
+      });
     await renderTable(registry([]));
 
     const user = userEvent.setup();
