@@ -1,10 +1,15 @@
 // `agentsfleet secret create|show|list|delete` — workspace-scoped opaque
 // JSON secrets keyed by `name`. The skill consuming them addresses fields
 // as ${secrets.<name>.<field>}; this CLI does not enforce a schema (the
-// consumer owns it). Default `create` skips existing names; `--force`
-// overwrites. The backing endpoint upserts on (workspace_id, key_name);
-// the client-side guard keeps re-runs from silently clobbering a shared
-// secret.
+// consumer owns it).
+//
+// `create` claims a name that is free and never overwrites: the endpoint
+// answers `UZ-VAULT-005` on a name this workspace already holds, and a
+// taken name is reported as a skip so re-running a provisioning script is
+// quiet. Replacing a value is `delete` then `create`. This replaced a
+// `--force` flag that relied on the endpoint upserting on
+// (workspace_id, key_name) — it no longer does, so the flag could only
+// have failed.
 
 import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
@@ -28,6 +33,14 @@ import {
 const TYPE_STRING = "string" as const;
 
 const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
+
+/** The workspace already holds this name. Matched on the code rather than the
+ *  bare `409` so an unrelated future conflict on this route is not swallowed
+ *  into a silent skip. */
+const ERR_SECRET_NAME_TAKEN = "UZ-VAULT-005" as const;
+
+const isNameTaken = (err: CliError): boolean =>
+  err._tag === "ServerError" && err.code === ERR_SECRET_NAME_TAKEN;
 
 interface SecretRow {
   readonly name?: string;
@@ -85,37 +98,44 @@ export const secretAddEffectFromFlags = (
     const wsId = yield* requireWorkspaceId;
     const name = yield* requireName(
       flags.name,
-      "agentsfleet secret create <name> --data='<json-object>' [--force]",
+      "agentsfleet secret create <name> --data='<json-object>'",
     );
     const data = yield* resolveSecretBody(flags);
 
-    if (flags.force !== true) {
-      const existing = yield* findSecretByName(wsId, name);
-      if (existing) {
-        if (config.jsonMode) {
-          yield* output.printJson({ status: "skipped", name, reason: "already_exists" });
-        } else {
-          yield* output.info(
-            `Secret '${name}' already exists — skipped. Pass --force to overwrite.`,
-          );
-        }
-        return;
+    const token = yield* resolveAuthToken;
+    // The server decides whether the name was free, so there is no preflight
+    // read: a check here would be a check-then-write over exactly the window
+    // `UZ-VAULT-005` exists to close, and two concurrent creates would both
+    // pass it. One round-trip, and Postgres picks the winner.
+    const stored = yield* http
+      .request<unknown>({
+        path: wsSecretsPath(wsId),
+        method: "POST",
+        body: { name, data },
+        token,
+      })
+      .pipe(
+        Effect.as(true),
+        // A taken name is an outcome, not a failure: re-running a provisioning
+        // script must stay quiet and exit 0 rather than abort the run.
+        Effect.catchIf(isNameTaken, () => Effect.succeed(false)),
+      );
+
+    if (!stored) {
+      if (config.jsonMode) {
+        yield* output.printJson({ status: "skipped", name, reason: "already_exists" });
+      } else {
+        yield* output.info(
+          `Secret '${name}' already exists — skipped. Delete it first to replace its value: agentsfleet secret delete ${name}`,
+        );
       }
+      return;
     }
 
-    const token = yield* resolveAuthToken;
-    yield* http.request<unknown>({
-      path: wsSecretsPath(wsId),
-      method: "POST",
-      body: { name, data },
-      token,
-    });
-
-    const status = flags.force === true ? "overwritten" : "stored";
     if (config.jsonMode) {
-      yield* output.printJson({ status, name });
+      yield* output.printJson({ status: "stored", name });
     } else {
-      yield* output.success(`Secret '${name}' ${status} in vault.`);
+      yield* output.success(`Secret '${name}' stored in vault.`);
     }
   });
 

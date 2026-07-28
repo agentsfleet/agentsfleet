@@ -9,7 +9,8 @@
  * Plus the negative edges that gate the slice:
  *   - create without --data fails client-side (no network)
  *   - create with a non-object payload fails client-side
- *   - create of an existing name without --force is skipped, --force overwrites
+ *   - create of an existing name is skipped (the endpoint claims a free name
+ *     and never overwrites); --force no longer exists and is rejected at parse
  *   - show of an unknown name exits non-zero, exists:false
  *   - secret material never appears in any captured stream (assertNoSecretLeak
  *     also fires against the minted JWT after every spawn)
@@ -64,7 +65,6 @@ const KEY_EXISTS = "exists" as const;
 const KEY_REASON = "reason" as const;
 
 const STATUS_STORED = "stored" as const;
-const STATUS_OVERWRITTEN = "overwritten" as const;
 const STATUS_SKIPPED = "skipped" as const;
 const STATUS_DELETED = "deleted" as const;
 const REASON_ALREADY_EXISTS = "already_exists" as const;
@@ -272,14 +272,14 @@ if (!isLive) {
       });
     });
 
-    describe("upsert guard", () => {
+    describe("name claim", () => {
       const upsertName = secretName("upsert");
 
       afterAll(async () => {
         await run([CMD_SECRET, SUB_DELETE, upsertName, FLAG_JSON]).catch(() => undefined);
       });
 
-      it("first create stores; repeat create without --force is skipped; --force overwrites", async () => {
+      it("first create stores; a repeat is skipped; --force is gone and never reaches the API", async () => {
         const first = await run([
           CMD_SECRET, SUB_CREATE, upsertName, FLAG_DATA, secretPayload(), FLAG_JSON,
         ]);
@@ -289,22 +289,21 @@ if (!isLive) {
           STATUS_STORED,
         );
 
+        // The live daemon answers UZ-VAULT-005 and writes nothing. The CLI
+        // reports that as a skip so a re-run of a provisioning script is quiet.
         const repeatCreate = await run([
           CMD_SECRET, SUB_CREATE, upsertName, FLAG_DATA, secretPayload(), FLAG_JSON,
         ]);
+        assert.equal(repeatCreate.code, 0, `repeat create exited ${repeatCreate.code}`);
         const reParsed = parseJson<Record<string, unknown>>(repeatCreate.stdout, "repeat-create");
         assert.equal(reParsed[KEY_STATUS], STATUS_SKIPPED, `expected skipped: ${repeatCreate.stdout}`);
         assert.equal(reParsed[KEY_REASON], REASON_ALREADY_EXISTS, `expected reason: ${repeatCreate.stdout}`);
 
-        const forced = await run([
+        // Replacing a value is delete-then-create; the flag that used to claim
+        // otherwise is rejected before anything is sent.
+        await runUnroutable([
           CMD_SECRET, SUB_CREATE, upsertName, FLAG_DATA, secretPayload(), FLAG_FORCE, FLAG_JSON,
         ]);
-        assert.equal(forced.code, 0, `forced create exited ${forced.code}: ${forced.stderr}`);
-        assert.equal(
-          parseJson<Record<string, unknown>>(forced.stdout, "forced-create")[KEY_STATUS],
-          STATUS_OVERWRITTEN,
-          `expected overwritten: ${forced.stdout}`,
-        );
       });
     });
 

@@ -1,7 +1,8 @@
 // Unit tests for parseDataObject error paths and resolveDataSource missing-data
 // path in fleet_secret.ts. These are exercised by calling the exported
 // secretAddEffectFromFlags with test layers and specific data values.
-// Also covers the JSON-mode already-exists skip output path (line 166).
+// Also covers the JSON-mode already-exists skip output path, which is now
+// driven by the endpoint's `UZ-VAULT-005` rather than by a preflight read.
 
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
@@ -12,7 +13,7 @@ import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
-import { ValidationError, type CliError } from "../src/errors/index.ts";
+import { ServerError, ValidationError, type CliError } from "../src/errors/index.ts";
 
 // ---------------------------------------------------------------------------
 // Layer factories (minimal — only what addEffect needs)
@@ -64,8 +65,10 @@ const makeWsLayer = (wsId: string): Layer.Layer<Workspaces> =>
     save: () => Effect.void,
   });
 
+/** The responder may FAIL — `secret create` now learns that a name is taken
+ *  from the endpoint's `UZ-VAULT-005` rather than from a preflight read. */
 const makeHttpLayer = (
-  responder: (input: { path: string; method?: string }) => Effect.Effect<unknown, never>,
+  responder: (input: { path: string; method?: string }) => Effect.Effect<unknown, CliError>,
 ): Layer.Layer<HttpClient> =>
   Layer.succeed(HttpClient, {
     request: (input) => responder(input) as Effect.Effect<never, never>,
@@ -77,7 +80,7 @@ const runAdd = (
   flags: Parameters<typeof secretAddEffectFromFlags>[0],
   captured: string[],
   jsonMode = false,
-  responder?: (input: { path: string; method?: string }) => Effect.Effect<unknown, never>,
+  responder?: (input: { path: string; method?: string }) => Effect.Effect<unknown, CliError>,
 ): Promise<Exit.Exit<void, CliError>> => {
   const http = makeHttpLayer(responder ?? (() => Effect.succeed({})));
   return Effect.runPromiseExit(
@@ -98,7 +101,7 @@ const runAdd = (
 describe("parseDataObject error paths", () => {
   test("fails with ValidationError when --data is invalid JSON (lines 45-46)", async () => {
     const captured: string[] = [];
-    const exit = await runAdd({ name: "k", data: "not-json", force: true }, captured);
+    const exit = await runAdd({ name: "k", data: "not-json" }, captured);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const err = Option.getOrNull(Cause.findErrorOption(exit.cause));
@@ -111,7 +114,7 @@ describe("parseDataObject error paths", () => {
 
   test("fails with ValidationError when --data is a JSON string scalar (line 50)", async () => {
     const captured: string[] = [];
-    const exit = await runAdd({ name: "k", data: '"just-a-string"', force: true }, captured);
+    const exit = await runAdd({ name: "k", data: '"just-a-string"' }, captured);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const err = Option.getOrNull(Cause.findErrorOption(exit.cause));
@@ -124,7 +127,7 @@ describe("parseDataObject error paths", () => {
 
   test("fails with ValidationError when --data is a JSON array (line 50)", async () => {
     const captured: string[] = [];
-    const exit = await runAdd({ name: "k", data: "[1,2,3]", force: true }, captured);
+    const exit = await runAdd({ name: "k", data: "[1,2,3]" }, captured);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const err = Option.getOrNull(Cause.findErrorOption(exit.cause));
@@ -137,7 +140,7 @@ describe("parseDataObject error paths", () => {
 
   test("fails with ValidationError when --data is a JSON null (line 50)", async () => {
     const captured: string[] = [];
-    const exit = await runAdd({ name: "k", data: "null", force: true }, captured);
+    const exit = await runAdd({ name: "k", data: "null" }, captured);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const err = Option.getOrNull(Cause.findErrorOption(exit.cause));
@@ -150,7 +153,7 @@ describe("parseDataObject error paths", () => {
 
   test("fails with ValidationError when --data is an empty JSON object (lines 54-57)", async () => {
     const captured: string[] = [];
-    const exit = await runAdd({ name: "k", data: "{}", force: true }, captured);
+    const exit = await runAdd({ name: "k", data: "{}" }, captured);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const err = Option.getOrNull(Cause.findErrorOption(exit.cause));
@@ -169,9 +172,9 @@ describe("parseDataObject error paths", () => {
 describe("resolveDataSource missing-data path", () => {
   test("fails with ValidationError when data flag is absent (lines 114-119)", async () => {
     const captured: string[] = [];
-    // HTTP responder returns empty secrets so requireName passes, but
-    // resolveDataSource fires before any network call when force=true.
-    const exit = await runAdd({ name: "k", data: undefined, force: true }, captured);
+    // resolveDataSource fires before any network call at all, so the HTTP
+    // responder is never consulted on this path.
+    const exit = await runAdd({ name: "k", data: undefined }, captured);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const err = Option.getOrNull(Cause.findErrorOption(exit.cause));
@@ -184,7 +187,7 @@ describe("resolveDataSource missing-data path", () => {
 
   test("fails with ValidationError when data flag is empty string (lines 114-119)", async () => {
     const captured: string[] = [];
-    const exit = await runAdd({ name: "k", data: "", force: true }, captured);
+    const exit = await runAdd({ name: "k", data: "" }, captured);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const err = Option.getOrNull(Cause.findErrorOption(exit.cause));
@@ -201,13 +204,22 @@ describe("resolveDataSource missing-data path", () => {
 // ---------------------------------------------------------------------------
 
 describe("secretAddEffectFromFlags JSON-mode already-exists", () => {
-  test("emits JSON skipped payload when secret exists and jsonMode is true (line 166)", async () => {
+  test("emits JSON skipped payload when the endpoint reports the name taken", async () => {
     const captured: string[] = [];
     const exit = await runAdd(
       { name: "k", data: '{"x":1}' },
       captured,
       true,
-      () => Effect.succeed({ secrets: [{ name: "k", created_at: 1700000000000 }] }),
+      () =>
+        Effect.fail(
+          new ServerError({
+            detail: "Secret name already taken",
+            suggestion: "verify the request payload and retry",
+            code: "UZ-VAULT-005",
+            status: 409,
+            requestId: null,
+          }),
+        ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     const found = captured.find((s) => s.includes("skipped"));
@@ -226,12 +238,13 @@ describe("secretAddEffectFromFlags JSON-mode already-exists", () => {
       true,
       (input) => {
         requests.push(input);
-        if (input.method === "GET") return Effect.succeed({ secrets: [] });
         return Effect.succeed({});
       },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(requests.map((request) => request.method ?? "GET")).toEqual(["GET", "POST"]);
+    // One round-trip: the preflight read is gone, so a free name costs a
+    // single POST and a taken one costs the same POST plus a 409.
+    expect(requests.map((request) => request.method ?? "GET")).toEqual(["POST"]);
     const found = captured.find((s) => s.includes("stored"));
     expect(found).toBeDefined();
     const parsed = JSON.parse(found ?? "{}") as { status?: string; name?: string };
