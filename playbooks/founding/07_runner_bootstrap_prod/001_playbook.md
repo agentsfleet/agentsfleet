@@ -3,7 +3,14 @@
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
 **Status:** Worker era retired — each host now runs the single `agentsfleet-runner` daemon (M80 cutover). `zombie-prod-worker-ant` is provisioned; `zombie-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `agt_r` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/zombie-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `agt_rFAKE_…` placeholder until then.
-**Prerequisite:** Vault items exist (`ZMB_CD_PROD`). Tailscale OAuth client secret in `ZMB_CD_PROD/tailscale/oauth-secret`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
+**Prerequisite:** Vault items exist (`ZMB_CD_PROD`). Tailscale OAuth client secret in `ZMB_CD_PROD/tailscale/oauth-secret`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`. Tailscale policy grants SSH to `tag:ci` (one-time, per tailnet):
+
+```jsonc
+// login.tailscale.com/admin/acls → "ssh"
+{ "action": "accept", "src": ["autogroup:member"], "dst": ["tag:ci"], "users": ["autogroup:nonroot", "root"] }
+```
+
+Without this grant the node advertises host keys but every connect fails with `tailnet policy does not permit you to SSH to this node`.
 
 Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the host-resident `agentsfleet-runner` daemon autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 each host ran two services that the M80 cutover folded into the single `agentsfleet-runner` daemon.)
 
@@ -137,10 +144,12 @@ TS_OAUTH_SECRET=$(op read "op://$VAULT_PROD/tailscale/oauth-secret")
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${HOST}" << REMOTE
 set -euo pipefail
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --auth-key "${TS_OAUTH_SECRET}?ephemeral=false&preauthorized=true" --advertise-tags=tag:ci --hostname "${WORKER_NAME}"
+sudo tailscale up --auth-key "${TS_OAUTH_SECRET}?ephemeral=false&preauthorized=true" --advertise-tags=tag:ci --hostname "${WORKER_NAME}" --ssh
 tailscale status
 REMOTE
 ```
+
+> **`--ssh` is required.** Without it the node never advertises SSH host keys, and `tailscale ssh root@<node>` fails with `Host key verification failed`. This also depends on the tailnet policy carrying an SSH grant for the tag — see the prerequisite below.
 
 ### Acceptance
 
