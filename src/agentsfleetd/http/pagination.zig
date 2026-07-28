@@ -40,7 +40,15 @@ const base64 = std.base64.url_safe_no_pad;
 /// Cursor payload version. Bumped only when a payload's field set changes
 /// incompatibly; a decoded cursor carrying any other value is rejected, which is
 /// what stops a deploy from silently reinterpreting yesterday's boundary.
-pub const CURSOR_VERSION: u8 = 1;
+///
+/// **v2** — the catalogue cursor dropped its `q` field when the
+/// search parameter was retired. The version is shared by every payload in this
+/// codebase, so the bump invalidates in-flight cursors on all paged endpoints,
+/// not only the catalogue. That is the intended trade: a cursor is a
+/// seconds-to-minutes pagination token, and the alternative — per-payload
+/// versions — would let one payload's field change pass unnoticed by the check
+/// that exists to catch exactly that.
+pub const CURSOR_VERSION: u8 = 2;
 
 /// Page size when the caller names none, and the ceiling it may ask for
 /// (`docs/REST_API_DESIGN_GUIDELINES.md` §3).

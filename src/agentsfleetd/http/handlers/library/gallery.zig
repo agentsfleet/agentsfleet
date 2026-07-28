@@ -59,7 +59,6 @@ const ReadScope = @import("../../../observability/library_read_scope.zig");
 /// The one status that means the caller actually received the page.
 const HTTP_STATUS_OK: u16 = @intFromEnum(std.http.Status.ok);
 const pagination = @import("../../pagination.zig");
-const query = @import("query.zig");
 const keyset = @import("fleet_keyset.zig");
 const response_size = @import("../../response_size.zig");
 
@@ -67,13 +66,11 @@ const Hx = hx_mod.Hx;
 
 const Q_LIMIT = "limit";
 const Q_STARTING_AFTER = "starting_after";
-const Q_SEARCH = "q";
 
 const S_QUERY_UNREADABLE = "Query string could not be parsed";
 const S_LIMIT_RANGE = "limit must be an integer between 1 and 100";
-const S_SEARCH_BOUNDS = "q must be at most 128 bytes once normalized, and valid UTF-8";
 const S_CURSOR_MALFORMED = "starting_after is not a cursor this endpoint issued";
-const S_CURSOR_MISMATCH = "starting_after was issued for a different workspace, filter or page size";
+const S_CURSOR_MISMATCH = "starting_after was issued for a different workspace or page size";
 const S_PAGE_FAILED = "Failed to list this workspace's fleet libraries";
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
 const S_BODY_CEILING = "This page of fleet libraries is too large to return";
@@ -115,12 +112,7 @@ pub fn innerGallery(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void 
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_LIMIT_RANGE);
         return;
     };
-    const search = query.normalizeSearch(hx.alloc, params.get(Q_SEARCH)) catch {
-        scope.classify(.invalid);
-        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_SEARCH_BOUNDS);
-        return;
-    };
-    const after = decodeStart(hx, &scope, workspace_id, search, limit, params.get(Q_STARTING_AFTER)) catch return;
+    const after = decodeStart(hx, &scope, workspace_id, limit, params.get(Q_STARTING_AFTER)) catch return;
     scope.endStage(.auth_verify);
 
     var db = hx.db() catch |err| {
@@ -145,7 +137,7 @@ pub fn innerGallery(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void 
     }
     scope.endStage(.authorize);
 
-    const page = buildPage(hx, db.conn, workspace_id, search, after, limit) catch {
+    const page = buildPage(hx, db.conn, workspace_id, after, limit) catch {
         scope.classify(.dependency_error);
         scope.endStage(.sql);
         common.internalOperationError(hx.res, S_PAGE_FAILED, hx.req_id);
@@ -200,13 +192,12 @@ fn respond(hx: Hx, scope: *ReadScope, page: Page) void {
 /// for a different query. The workspace arm is the one that matters most: it is
 /// what stops a cursor minted in one workspace from seeking inside another.
 ///
-/// Nothing is trusted from the cursor except the sort boundary; the workspace and
-/// filter used for the read are always the request's.
+/// Nothing is trusted from the cursor except the sort boundary; the workspace
+/// used for the read is always the request's.
 fn decodeStart(
     hx: Hx,
     scope: *ReadScope,
     workspace_id: []const u8,
-    search: ?[]const u8,
     limit: u32,
     raw: ?[]const u8,
 ) !?keyset.Position {
@@ -218,9 +209,11 @@ fn decodeStart(
         hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
         return error.Rejected;
     };
+    // The search-filter arm retired with the `q` parameter. Workspace and limit
+    // remain: the first is the isolation boundary, the second changes the set a
+    // cursor was minted against.
     if (cursor.limit != limit or
-        !std.mem.eql(u8, cursor.workspace_uuid, workspace_id) or
-        !pagination.filterMatches(cursor.q, search))
+        !std.mem.eql(u8, cursor.workspace_uuid, workspace_id))
     {
         scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_CURSOR_MISMATCH, S_CURSOR_MISMATCH);

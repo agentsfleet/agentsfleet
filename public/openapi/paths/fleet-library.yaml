@@ -213,15 +213,6 @@
         `UZ-LIBRARY-002` rather than a silently different page.
       schema:
         type: string
-    - name: q
-      in: query
-      required: false
-      description: >-
-        Case- and accent-insensitive substring over id, name and description.
-        At most 128 bytes once normalized; `%` and `_` match literally.
-      schema:
-        type: string
-        maxLength: 128
     responses:
       '200':
         description: One page of the workspace Fleet library gallery.

@@ -5262,16 +5262,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "description": "Case- and accent-insensitive substring over id, name and description. At most 128 bytes once normalized; `%` and `_` match literally.",
-            "schema": {
-              "type": "string",
-              "maxLength": 128
-            }
           }
         ],
         "responses": {
@@ -7203,16 +7193,6 @@
             "description": "Opaque cursor from a previous page's `next_cursor`. Bound to the filters and page size that produced it. A cursor this endpoint never issued is `UZ-LIBRARY-001`. A real cursor carrying different filters or a different page size is `UZ-LIBRARY-002`, rather than a silently different page. Only the sort boundary is read from it — the filters applied are always the request's.",
             "schema": {
               "type": "string"
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "description": "Case- and accent-insensitive substring over the model id and the provider. At most 128 bytes once normalized; `%` and `_` match literally. Empty after normalization is treated as absent.",
-            "schema": {
-              "type": "string",
-              "maxLength": 128
             }
           },
           {

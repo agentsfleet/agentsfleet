@@ -43,7 +43,6 @@ pub fn buildPage(
     hx: Hx,
     conn: *pg.Conn,
     workspace_id: []const u8,
-    search: ?[]const u8,
     after: ?keyset.Position,
     limit: u32,
 ) !Page {
@@ -54,7 +53,7 @@ pub fn buildPage(
     var rows: std.ArrayList(SummaryEntry) = .empty;
     errdefer rows.deinit(hx.alloc);
 
-    var q = try openPage(conn, workspace_id, search, after, fetch);
+    var q = try openPage(conn, workspace_id, after, fetch);
     defer q.deinit();
 
     var seen: usize = 0;
@@ -76,7 +75,7 @@ pub fn buildPage(
     return .{
         .items = items,
         .next_cursor = if (has_more and items.len > 0)
-            try encodeNext(hx.alloc, items[items.len - 1], workspace_id, search, limit)
+            try encodeNext(hx.alloc, items[items.len - 1], workspace_id, limit)
         else
             null,
     };
@@ -85,18 +84,16 @@ pub fn buildPage(
 fn openPage(
     conn: *pg.Conn,
     workspace_id: []const u8,
-    like: ?[]const u8,
     after: ?keyset.Position,
     fetch: i64,
 ) !PgQuery {
     const pos = after orelse return PgQuery.from(try conn.query(
         gallery_sql.SELECT_GALLERY_PAGE_FIRST,
-        .{ library_store.VISIBILITY_PUBLIC, workspace_id, like, fetch },
+        .{ library_store.VISIBILITY_PUBLIC, workspace_id, fetch },
     ));
     return PgQuery.from(try conn.query(gallery_sql.SELECT_GALLERY_PAGE_AFTER, .{
         library_store.VISIBILITY_PUBLIC,
         workspace_id,
-        like,
         pos.created_at,
         @as(i32, pos.tier_rank),
         pos.id,
@@ -130,7 +127,6 @@ fn encodeNext(
     alloc: std.mem.Allocator,
     last: SummaryEntry,
     workspace_id: []const u8,
-    search: ?[]const u8,
     limit: u32,
 ) ![]u8 {
     const tier = keyset.Tier.fromLabel(last.visibility) orelse return error.UnknownTierRank;
@@ -139,7 +135,6 @@ fn encodeNext(
         .tier_rank = tier.rank(),
         .id = last.id,
         .workspace_uuid = workspace_id,
-        .q = search,
         .limit = limit,
     });
 }
