@@ -46,6 +46,9 @@ async function renderDialog(secrets: Secret[] = []) {
   const { default: AddModelEntryDialog } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog"
   );
+  const { SECRETS_LOAD } = await import(
+    "../app/(dashboard)/w/[workspaceId]/settings/models/components/secrets-load"
+  );
   const onCreated = vi.fn();
   const onSecretsChanged = vi.fn();
   const onSecretsNeeded = vi.fn();
@@ -53,6 +56,9 @@ async function renderDialog(secrets: Secret[] = []) {
     React.createElement(AddModelEntryDialog, {
       workspaceId: "ws_1",
       secrets,
+      // These suites exercise the custom-endpoint form, not the load gate —
+      // that has its own cases in models-registry-add.test.tsx.
+      secretsLoad: SECRETS_LOAD.ready,
       onCreated,
       onSecretsChanged,
       onSecretsNeeded,

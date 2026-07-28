@@ -34,6 +34,7 @@ import { captureProductEvent } from "@/lib/analytics/posthog";
 import { captureModelActivated } from "../lib/track";
 import { maySpeculateOnHover, useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderModelSelect from "./ProviderModelSelect";
+import { SECRETS_LOAD, type SecretsLoad } from "./secrets-load";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 const REGISTER_ACTION = "register the model entry";
@@ -41,16 +42,27 @@ const ACTIVATE_ACTION = "activate this model";
 const STORE_ACTION = "store the credential";
 const NAME_PROVIDER_MISMATCH = "That name is already used by a different provider or secret — pick another one.";
 const CREATE_MODEL_TOOLTIP = "Create a model entry for this workspace.";
+const SECRETS_LOADING = "Checking your stored secrets…";
+const SECRETS_LOAD_FAILED =
+  "Couldn't load your stored secrets. Saving is disabled so an existing secret can't be silently overwritten.";
 
 export default function AddModelEntryDialog({
   workspaceId,
   secrets,
+  secretsLoad,
   onCreated,
   onSecretsChanged,
   onSecretsNeeded,
 }: {
   workspaceId: string;
   secrets: Secret[];
+  /**
+   * Whether `secrets` above is trustworthy yet. Anything but `ready` disables
+   * Save: submit() resolves rotate-vs-create and the name-ownership guard
+   * from that list, and the secrets POST upserts — an unloaded list would
+   * silently overwrite whatever already holds the typed name.
+   */
+  secretsLoad: SecretsLoad;
   onCreated: () => void;
   onSecretsChanged: () => void;
   /** Load the stored-secret list. Fired on open — see handleOpenChange. */
@@ -76,7 +88,14 @@ export default function AddModelEntryDialog({
   // Gates both Save buttons below — without it, a click on an incomplete
   // form silently no-ops (no error, no feedback) since submit() validates
   // internally. A custom endpoint may be keyless; a named provider never is.
+  //
+  // The secrets-load arm is a safety gate, not polish: firing the load on
+  // open is worthless if a fast hand can submit before it lands, and the
+  // window is not only a race — a failed load would leave the list empty for
+  // the whole session. Either way `existing` would resolve to undefined and
+  // the create path's upsert would stomp the stored secret unseen.
   const canSubmit =
+    secretsLoad === SECRETS_LOAD.ready &&
     keyName.trim() !== "" &&
     provider.trim() !== "" &&
     model.trim() !== "" &&
@@ -287,6 +306,20 @@ export default function AddModelEntryDialog({
             />
           </div>
         </div>
+        {/* Why Save is disabled, said out loud. `<output>` carries an implicit
+            status role, so the loading line announces without an explicit
+            attribute; the failed load is an alert with its own retry, wired
+            to the same load the open fired. */}
+        {secretsLoad === SECRETS_LOAD.error ? (
+          <Alert variant="destructive" className="flex items-center gap-3 text-xs">
+            {SECRETS_LOAD_FAILED}
+            <Button type="button" variant="outline" size="sm" onClick={onSecretsNeeded}>
+              Retry
+            </Button>
+          </Alert>
+        ) : secretsLoad !== SECRETS_LOAD.ready ? (
+          <output className="block text-xs text-muted-foreground">{SECRETS_LOADING}</output>
+        ) : null}
         {error ? <Alert variant="destructive" className="text-xs">{error}</Alert> : null}
         <DialogFooter>
           <Button type="button" variant="ghost" disabled={pending} onClick={() => handleOpenChange(false)}>

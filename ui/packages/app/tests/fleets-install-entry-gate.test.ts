@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
 import { routerPush, routerRefresh, resetCommonMocks } from "./helpers/dashboard-mocks";
@@ -20,7 +20,7 @@ vi.mock("../app/(dashboard)/w/[workspaceId]/fleets/new/actions", () => ({
   readFleetLibraryPageAction: readFleetLibraryPageActionMock,
 }));
 
-import { InstallEntry } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallEntry";
+import { LIBRARY_ERROR_KIND } from "@/lib/api/library-types";
 import { FleetInstallGate } from "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetInstallGate";
 import { InstallSourceSelector } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallSourceSelector";
 
@@ -37,7 +37,6 @@ const TEMPLATE = {
     trigger_present: true,
   },
   required_credentials_reasons: { github: "review your pull requests" },
-  support_files: [],
 };
 
 function stubStream(installStep: string | null) {
@@ -60,64 +59,6 @@ beforeEach(() => {
   stubStream(null);
 });
 afterEach(() => cleanup());
-
-// ── InstallEntry — the shared entry surface (both empty states compose it) ───
-
-describe("InstallEntry", () => {
-  it("renders the library-entry grid with a deep link", () => {
-    const m = renderToStaticMarkup(React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [TEMPLATE] }));
-    // Tier-qualified: a bare ?library=<id> could not tell a platform entry
-    // from a tenant entry sharing the id, and the create body keys off tier.
-    expect(m).toContain("library_visibility=platform");
-    expect(m).toContain("library_id=github-pr-reviewer");
-    expect(m).toContain("GitHub PR reviewer");
-  });
-
-  it("renders compactly and drops the credential badges for a no-credential entry", () => {
-    // The compact grid + a credential-less entry cover LibraryCard's compact and
-    // no-badge branches (formerly exercised by the removed dashboard FirstInstall).
-    const noCreds = {
-      ...TEMPLATE,
-      id: "no-creds",
-      name: "No-credential fleet",
-      requirements: { ...TEMPLATE.requirements, credentials: [] as string[] },
-    };
-    const m = renderToStaticMarkup(
-      React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [noCreds], compact: true }),
-    );
-    expect(m).toContain("No-credential fleet");
-    // No credential requirement → no "needs" badge rendered.
-    expect(m).not.toContain("github");
-  });
-
-  it("falls back to an empty state with Learn-more + Create-fleet-library when library:write is available", () => {
-    const m = renderToStaticMarkup(
-      React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [], canAddLibraryEntry: true }),
-    );
-    expect(m).toContain("No prebuilt fleet library found");
-    expect(m).toContain("Write your own fleet library");
-    expect(m).toContain("Create fleet library");
-    expect(m).toContain("Learn more");
-    expect(m).not.toContain("library_id=");
-  });
-
-  it("omits Create-fleet-library (and its copy) when library:write is absent — matches InstallSourceSelector's own gate", () => {
-    const m = renderToStaticMarkup(React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [] }));
-    expect(m).toContain("No prebuilt fleet library found");
-    expect(m).toContain("Ask a workspace admin");
-    expect(m).not.toContain("Create fleet library");
-    expect(m).toContain("Learn more");
-  });
-
-  it("caps the gallery at maxEntries", () => {
-    const many = [TEMPLATE, { ...TEMPLATE, id: "second", name: "Second template" }];
-    const m = renderToStaticMarkup(
-      React.createElement(InstallEntry, { workspaceId: "ws_1", entries: many, maxEntries: 1 }),
-    );
-    expect(m).toContain("GitHub PR reviewer");
-    expect(m).not.toContain("Second template");
-  });
-});
 
 // ── InstallSourceSelector — full install page library-entry picker ──────────
 
@@ -183,6 +124,26 @@ describe("InstallSourceSelector", () => {
 
     expect(screen.getByText("No prebuilt fleet library found")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Create fleet library" })).toBeTruthy();
+  });
+
+  it("drops the needs badges for a credential-less entry", () => {
+    // LibraryCard's no-badge branch, exercised through its one consumer.
+    const noCreds = {
+      ...TEMPLATE,
+      id: "no-creds",
+      name: "No-credential fleet",
+      requirements: { ...TEMPLATE.requirements, credentials: [] as string[] },
+    };
+    const m = renderToStaticMarkup(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [noCreds], next_cursor: null, total: 1 },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+    expect(m).toContain("No-credential fleet");
+    expect(m).not.toContain("needs:");
   });
 });
 
@@ -330,6 +291,73 @@ describe("InstallSourceSelector — paging and list position", () => {
     );
     expect(screen.getByText(/not on this page/)).toBeTruthy();
     // The gallery still works — a bad link lands somewhere useful.
+    expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("a failed initial read leaves Retry live, and it re-reads the FIRST page", async () => {
+    // The failure Retry exists for: the server-render read failed, so there is
+    // no page and no cursor. Retry must not depend on either — a load-more
+    // bound retry is disabled in exactly this state, with no way back short of
+    // a browser reload.
+    const user = userEvent.setup({ delay: null });
+    readFleetLibraryPageActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [TEMPLATE], next_cursor: null, total: 1 },
+    });
+
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: null,
+        initialError: { kind: LIBRARY_ERROR_KIND.unavailable },
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+
+    // The typed failure renders its own copy, and is not the empty state.
+    expect(screen.getByText("The fleet library is temporarily unavailable.")).toBeTruthy();
+    expect(screen.queryByText("No prebuilt fleet library found")).toBeNull();
+
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(false);
+    await user.click(retry);
+
+    // First page, no cursor — the read that actually failed.
+    expect(readFleetLibraryPageActionMock).toHaveBeenCalledWith("ws_1", null);
+    expect(await screen.findByText("GitHub PR reviewer")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("Retry after a failed load-more re-requests the SAME page and appends", async () => {
+    const user = userEvent.setup({ delay: null });
+    readFleetLibraryPageActionMock
+      .mockResolvedValueOnce({ ok: false, error: "upstream 503" })
+      .mockResolvedValueOnce({ ok: true, data: { items: [SECOND], next_cursor: null, total: 2 } });
+
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: "cur-2", total: 2 },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(screen.getByRole("alert")).toBeTruthy();
+
+    // The failed transition's `pending` can settle a commit after the alert
+    // appears; the click must wait for the button to be live again.
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    await waitFor(() => expect(retry.disabled).toBe(false));
+    await user.click(retry);
+
+    // Same cursor both times: the retry re-reads the page that failed rather
+    // than restarting the walk, so nothing already on screen is lost.
+    expect(readFleetLibraryPageActionMock).toHaveBeenNthCalledWith(1, "ws_1", "cur-2");
+    expect(readFleetLibraryPageActionMock).toHaveBeenNthCalledWith(2, "ws_1", "cur-2");
+    expect(await screen.findByText("Second entry")).toBeTruthy();
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });

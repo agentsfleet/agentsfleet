@@ -6,25 +6,20 @@ const NEEDS_PREFIX = "needs:";
 
 type Props = {
   entry: FleetLibraryGalleryEntry;
-  compact?: boolean;
-  // The call-to-action slot — a link on the dashboard gallery
-  // (/fleets/new?library=<id>) or an in-page "Use entry" button on the
-  // install flow. Kept as a slot so this card stays presentational and shared
-  // across the server (dashboard) and client (install) trees.
+  // The call-to-action slot — the install picker's "Use entry" button. Kept
+  // as a slot so this card stays presentational.
   action: ReactNode;
 };
 
 // Presentational library-entry card: name, description, the credentials it
-// needs, and a caller-supplied action.
-export function LibraryCard({ entry, compact = false, action }: Props) {
+// needs, and a caller-supplied action. The `compact` variant left with the
+// dashboard surface that used it — the install picker is the one consumer now.
+export function LibraryCard({ entry, action }: Props) {
   return (
     // Keyed by catalog id so a test can assert an entry appears exactly once —
     // a duplicate row in the catalog is only ever visible here, in the gallery.
-    <Card
-      data-testid={`library-card-${entry.id}`}
-      className={compact ? "flex flex-col gap-2 p-md" : "flex flex-col gap-3 p-lg"}
-    >
-      <div className={compact ? "space-y-0.5" : "space-y-1"}>
+    <Card data-testid={`library-card-${entry.id}`} className="flex flex-col gap-3 p-lg">
+      <div className="space-y-1">
         <h3 className="font-medium text-foreground">{entry.name}</h3>
         <p className="text-body-sm leading-body-sm text-muted-foreground">{entry.description}</p>
       </div>
@@ -37,7 +32,7 @@ export function LibraryCard({ entry, compact = false, action }: Props) {
           ))}
         </div>
       ) : null}
-      <div className={compact ? "mt-auto pt-sm" : "mt-auto pt-md"}>{action}</div>
+      <div className="mt-auto pt-md">{action}</div>
     </Card>
   );
 }
