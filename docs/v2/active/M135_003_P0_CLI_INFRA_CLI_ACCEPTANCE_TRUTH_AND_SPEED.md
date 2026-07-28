@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Date:** Jul 20, 2026
 **Status:** IN_PROGRESS
 **Priority:** P0 — the current CLI job either fails on missing fixture identities or spends most of its run accepting inconclusive steer timeouts.
-**Categories:** CLI, INFRA
+**Categories:** CLI, Infrastructure (INFRA)
 **Batch:** B2 — starts only after M135_001 and M135_002 pass
 **Branch:** `feat/m135-release-readiness`
 **Test Baseline:** unit=2802 integration=369
@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Problem:** The latest run registered 87 tests but failed 16 because fixture users were absent and no creation password was supplied. When those users existed, 206 tests passed in 600.84 seconds, with three steering cases consuming 365.68 seconds while treating timeout-like outcomes as acceptable. Browser dependencies are installed even when the login handshake is disabled.
 **Solution summary:** Make fixture ownership self-healing without stable shared passwords, run the browser handshake deliberately, separate deterministic command coverage from one golden live execution, require Server-Sent Events (SSE) or fallback polling to observe an actual terminal result, and remove duplicate live waits. Do not shorten production timeouts merely to make tests green.
 
-## PR Intent & comprehension handshake
+## Pull Request (PR) Intent & comprehension handshake
 
 - **PR title (eventual):** test(cli): make development acceptance truthful and bounded
 - **Intent (one sentence):** A green CLI acceptance job proves that a new user can authenticate, manage resources, and receive one real fleet result without waiting through redundant inconclusive timeouts.
@@ -74,8 +74,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/runner/engine/CgroupScope.zig` | EDIT | Resolve the runner's own delegated systemd cgroup and create execution scopes only below it. |
 | `src/runner/sec_enforcement_integration_test.zig` | EDIT | Exercise the unified cgroup placement parser through its external runner integration consumer. |
 | `deploy/baremetal/agentsfleet-runner.service` | EDIT | Delegate the runner service's cgroup subtree so resource controls can be enforced without writing at the host root. |
-| `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md` | EDIT | Make delegated cgroup readiness a required DEV runner bootstrap outcome. |
-| `playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh` | EDIT | Fail DEV deployment readiness when the installed unit lacks cgroup delegation. |
+| `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md` | EDIT | Make delegated cgroup readiness a required development runner bootstrap outcome. |
+| `playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh` | EDIT | Fail development deployment readiness when the installed unit lacks cgroup delegation. |
 | `playbooks/founding/06_runner_bootstrap_dev/deploy_readiness_test.sh` | CREATE | Pin accepted and rejected delegated-cgroup readiness states without touching a host. |
 | `scripts/cgroup-delegate.sh` | EDIT | Place the disposable kernel proof command in a delegated cgroup subtree instead of preparing a host-root runner path. |
 | `make/test-integration.mk` | EDIT | Invoke the disposable delegation helper with the kernel proof command. |
@@ -109,7 +109,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Fixture identities self-heal securely
+### §1 — Fixture identities self-heal securely — DONE
 
 Missing users are created with generated strong credentials and suite ownership metadata. Direct token minting does not depend on knowing the password; real browser login uses the existing secure handoff path instead of a shared static password.
 
@@ -117,14 +117,14 @@ Missing users are created with generated strong credentials and suite ownership 
 - **Dimension 1.2** — an existing non-fixture identity at the configured email is refused rather than adopted → Test `test_cli_fixture_refuses_unowned_user`
 - **Dimension 1.3** — setup and teardown redact credentials and revoke minted sessions → Test `test_cli_fixture_teardown_revokes_and_redacts`
 
-### §2 — Browser login is a real release scenario
+### §2 — Browser login is a real release scenario — IN_PROGRESS
 
 The aggregate acceptance command enables the login handshake explicitly. Browser installation is conditional on this lane, and a disabled handshake is a failure in the release job rather than a misleading skip.
 
 - **Dimension 2.1** — browser handoff signs in, approves the session, and leaves the CLI authenticated → Test `test_cli_login_browser_handoff_completes`
 - **Dimension 2.2** — missing browser prerequisites fail preflight before the rest of the suite → Test `test_cli_login_preflight_fails_loud`
 
-### §3 — One golden live steer must finish
+### §3 — One golden live steer must finish — IN_PROGRESS
 
 Reuse one installed fleet and one live steer across the operational assertions. Green requires a processed terminal event or explicit fleet terminal failure; timeout, cancel, and indeterminate outcomes fail.
 
@@ -132,19 +132,19 @@ Reuse one installed fleet and one live steer across the operational assertions. 
 - **Dimension 3.2** — forced stream loss exercises bounded fallback polling and still reaches the same terminal result → Test `test_cli_live_steer_fallback_returns_terminal_result`
 - **Dimension 3.3** — an online runner or provider failure is classified distinctly from a transport timeout → Test `test_cli_live_steer_failure_is_actionable`
 
-### §4 — Deterministic breadth stays broad; remote work stays small
+### §4 — Deterministic breadth stays broad; remote work stays small — DONE
 
 The command, error, lifecycle, and concurrency matrix remains broad, but only the golden scenario pays for external execution. Report registered, passed, failed, and skipped counts by lane.
 
 - **Dimension 4.1** — deterministic cases do not enqueue remote fleet executions → Test `test_cli_deterministic_lane_has_no_live_steer`
 - **Dimension 4.2** — release summary reports zero critical skips and job duration within budget → Test `test_cli_acceptance_summary_is_release_grade`
 
-### §5 — Runner execution capacity is real, not merely online
+### §5 — Runner execution capacity is real, not merely online — IN_PROGRESS
 
-The DEV runner's online heartbeat is insufficient when it cannot establish its per-execution resource cage. The service delegates only its own cgroup subtree, and the runner resolves that subtree before making child execution cgroups. Deployment readiness proves the installed unit carries delegation before live acceptance spends its bounded steer window.
+The development runner's online heartbeat is insufficient when it cannot establish its per-execution resource cage. The service delegates only its own cgroup subtree, and the runner resolves that subtree before making child execution cgroups. Deployment readiness proves the installed unit carries delegation before live acceptance spends its bounded steer window.
 
 - **Dimension 5.1** — a cgroup-v2 placement line resolves to a base below the runner service, while malformed or legacy-only input fails closed → Test `test_runner_cgroup_base_requires_unified_service_path`
-- **Dimension 5.2** — the tracked service delegates and enables its cgroup subtree before the runner starts; DEV readiness rejects an installed unit without that property → Test `test_dev_runner_readiness_requires_cgroup_delegation`
+- **Dimension 5.2** — the tracked service delegates and enables its cgroup subtree before the runner starts; development readiness rejects an installed unit without that property → Test `test_dev_runner_readiness_requires_cgroup_delegation`
 
 ## Interfaces
 
@@ -203,21 +203,23 @@ Timeout, cancellation, and indeterminate outcomes are not success.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Fixture provisioning self-heals | `cd cli && bun test test/acceptance/fixtures/clerk-admin.test.ts` | exit 0 | P0 | |
-| R2 | Deterministic CLI breadth passes | `cd cli && bun run test:acceptance:deterministic` | 0 failed and 0 remote steer calls | P0 | |
+| R1 | Fixture provisioning self-heals | `cd cli && bun test test/acceptance/fixtures/clerk-admin.test.ts` | exit 0 | P0 | ✅ 10 passed, 0 failed |
+| R2 | Deterministic CLI breadth passes | `cd cli && bun run test:acceptance:deterministic` | 0 failed and 0 remote steer calls | P0 | ✅ exit 0 |
 | R3 | Browser login and live result pass | `cd cli && bun run test:acceptance:live` | terminal result observed and 0 critical skips | P0 | |
 | R4 | Aggregate lane is bounded | `make cli-acceptance` | exit 0 and duration below 600 seconds | P0 | |
-| R5 | DEV runner can establish its resource cage | `bash playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh` | exit 0 with delegated runner unit | P0 | |
-| S1 | CLI unit tests pass | `make test-unit-cli` | exit 0 | P0 | |
-| S2 | Repository lint passes | `make lint-all` | exit 0 | P0 | |
-| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
+| R5 | Development runner can establish its resource cage | `bash playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh` | exit 0 with delegated runner unit | P0 | |
+| S1 | CLI unit tests pass | `make test-unit-cli` | exit 0 | P0 | ✅ 1,391 passed, 0 failed |
+| S2 | Repository lint passes | `make lint-all` | exit 0 | P0 | ✅ exit 0 |
+| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 0 missing paths |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
 ## Dead Code Sweep
 
-N/A — no files deleted. Removed skip branches and duplicate live cases require `rg` proof in PR Session Notes.
+`cli/test/acceptance/fixtures/streaming-ops.ts` was deleted after its last
+consumer moved to the lane runner and local transport tests. The staged-scope
+orphan sweep and test-root reachability checks passed.
 
 ## Out of Scope
 
@@ -246,7 +248,13 @@ N/A — no files deleted. Removed skip branches and duplicate live cases require
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage:
-- **Metrics review** —
-- **Skill-chain outcomes** —
-- **Deferrals** —
+- **Consults** — runner cgroup placement was checked against
+  `docs/architecture/runner_fleet.md`; adversarial security and maintainability
+  reviews reported no remaining findings.
+- **Metrics review** — deterministic and live lane summaries now report
+  registered, passed, failed, skipped, and duration fields.
+- **Skill-chain outcomes** — unit-test and integration-test audits passed; the
+  repository review found no unresolved implementation finding.
+- **Deferrals** — none. Browser handoff, golden live steer, aggregate duration,
+  and installed development runner readiness remain ungraded work in this
+  workstream.
