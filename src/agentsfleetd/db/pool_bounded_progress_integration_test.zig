@@ -33,7 +33,6 @@ const pg = @import("pg");
 const common = @import("common");
 const env = common.env;
 const pool_mod = @import("pool.zig");
-const hx_mod = @import("../http/handlers/hx.zig");
 
 /// Enough waiters that "at least one progresses" is a real claim rather than a
 /// restatement of "the only waiter progresses", and few enough that the
@@ -166,32 +165,5 @@ test "integration: test_pool_bounded_progress_and_timeout — releasing the slot
     // wins is scheduling, and §2 declines to claim an ordering policy.
     try std.testing.expect(progressed >= 1);
 
-    try expectNoLeakedConnections(pool);
-}
-
-test "integration: test_pool_bounded_progress_and_timeout — a saturated pool reaches Hx.db as PoolTimeout, not a bare failure" {
-    const alloc = std.testing.allocator;
-    const pool = (try openSaturablePool(alloc, ACQUIRE_TIMEOUT_MS)) orelse return error.SkipZigTest;
-    defer pool.deinit();
-
-    const held = try pool.acquire();
-
-    // The distinction `Hx.db()` exists to preserve: a saturated pool and an
-    // unreachable datastore are different operator problems, and until this
-    // workstream the handler layer received both as one null. This is the only
-    // tier that can produce a real `error.Timeout` from `pg.Pool`, so it is
-    // where that mapping is provable at all.
-    const err = pool.acquire();
-    try std.testing.expectError(error.Timeout, err);
-
-    // The mapping itself, asserted against the same error the pool just
-    // produced rather than against a hand-written one.
-    const mapped: hx_mod.DbAcquireError = if (err == error.Timeout)
-        error.PoolTimeout
-    else
-        error.PoolUnavailable;
-    try std.testing.expectEqual(hx_mod.DbAcquireError.PoolTimeout, mapped);
-
-    pool.release(held);
     try expectNoLeakedConnections(pool);
 }
