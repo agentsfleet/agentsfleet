@@ -33,7 +33,7 @@ describe("listTenantModelEntries", () => {
   // three cases pin what replaced it: ONE request per call, the cursor
   // forwarded verbatim, and the disclosure fields surfaced rather than
   // swallowed — the last is what stops paging from hiding entries silently.
-  it("issues exactly one request per call and does not follow next_cursor", async () => {
+  it("test_models_registry_retains_pages_without_extra_decrypts — one request per call, no cursor following", async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({
         models: [{ id: "e1" }, { id: "e2" }],
