@@ -28,6 +28,7 @@ class FakeEventSource implements EsHandlers {
   onmessage: EsHandlers["onmessage"] = null;
   onerror: EsHandlers["onerror"] = null;
   closed = false;
+  listeners = new Map<string, Set<(e: MessageEvent) => void>>();
   constructor(url: string) {
     this.url = url;
     FakeEventSource.instances.push(this);
@@ -35,10 +36,26 @@ class FakeEventSource implements EsHandlers {
   close() {
     this.closed = true;
   }
+  addEventListener(name: string, fn: (e: MessageEvent) => void) {
+    const set = this.listeners.get(name) ?? new Set();
+    set.add(fn);
+    this.listeners.set(name, set);
+  }
+  removeEventListener(name: string, fn: (e: MessageEvent) => void) {
+    this.listeners.get(name)?.delete(fn);
+  }
+  // Dispatch exactly as a browser EventSource does. The daemon names every
+  // frame with its payload kind (`event: chunk` — sse_frame.writeHead), and a
+  // NAMED frame reaches ONLY its addEventListener set — never `onmessage`. A
+  // kind nobody subscribed to is dropped, silently, with the connection still
+  // "live". The previous fake delivered everything through onmessage — a
+  // server shape that never existed — which is how an onmessage-only client
+  // shipped with every live frame dropped.
   emit(frame: LiveFrame) {
-    this.onmessage?.call(this as unknown as EventSource, {
-      data: JSON.stringify(frame),
-    } as MessageEvent);
+    const ev = { data: JSON.stringify(frame) } as MessageEvent;
+    const named = this.listeners.get((frame as { kind: string }).kind);
+    if (!named) return;
+    for (const fn of named) fn(ev);
   }
   open() {
     this.onopen?.call(this as unknown as EventSource, {} as Event);
