@@ -39,6 +39,7 @@ const revision_state = @import("../../state/model_catalogue_revision.zig");
 const id_format = @import("../../types/id_format.zig");
 const model_library_store = @import("../../state/model_library_store.zig");
 const counters = @import("../../observability/library_read_counters.zig");
+const ReadScope = @import("../../observability/library_read_scope.zig");
 const ec = @import("../../errors/error_registry.zig");
 const hx_mod = @import("hx.zig");
 const pagination = @import("../pagination.zig");
@@ -75,32 +76,58 @@ pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
     counters.beginRead();
     defer counters.endRead();
 
+    var scope = ReadScope.begin(hx.ctx.io, .global_models);
+    defer scope.end();
+
     const params = req.query() catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_QUERY_UNREADABLE);
         return;
     };
     const limit = pagination.parseLimit(params.get(Q_LIMIT)) catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_LIMIT_RANGE);
         return;
     };
-    const filters = normalizeFilters(hx, params) catch return;
+    const filters = normalizeFilters(hx, &scope, params) catch return;
     const raw_cursor = params.get(Q_STARTING_AFTER);
-    const after = decodeStart(hx, filters, limit, raw_cursor) catch return;
+    const after = decodeStart(hx, &scope, filters, limit, raw_cursor) catch return;
+    scope.endStage(.auth_verify);
 
-    var db = hx.db() orelse return;
+    var db = hx.db() catch |err| {
+        scope.classify(if (err == error.PoolTimeout) .timeout else .dependency_error);
+        scope.endStageWith(.pool_wait, .{
+            .pool_result = if (err == error.PoolTimeout) .timeout else .@"error",
+        });
+        return;
+    };
     defer db.end();
     counters.noteConnection();
+    scope.endStageWith(.pool_wait, .{ .pool_result = .acquired });
 
-    const revision = readRevisionOrFail(hx, db.conn) orelse return;
+    const revision = readRevisionOrFail(hx, db.conn) orelse {
+        scope.classify(.dependency_error);
+        scope.endStage(.cache_revision);
+        return;
+    };
+    scope.endStage(.cache_revision);
 
     const key = catalogue_key.cacheKey(revision, filters.q, filters.provider, raw_cursor, limit);
 
     if (cachedBody(hx, key)) |cached| {
+        // Responded BEFORE classifying: `page_mod.respond` writes its own 500
+        // on an etag or validator failure and returns void, so the status is
+        // the only thing that says whether the caller received the page.
         page_mod.respond(hx, req, cached);
+        scope.classify(if (isDelivered(hx.res.status)) .ok else .internal_error);
+        scope.endStageWith(.cache_lookup, .{ .cache = .hit, .bytes = cached.len });
         return;
     }
+    scope.endStageWith(.cache_lookup, .{ .cache = .miss });
 
     const body = page_mod.build(hx, db.conn, filters, after, limit) catch |err| {
+        scope.classify(.dependency_error);
+        scope.endStage(.sql);
         log.err("page_build_failed", .{
             .error_code = ec.ERR_LIBRARY_DB_UNAVAILABLE,
             .err = @errorName(err),
@@ -108,18 +135,33 @@ pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
         hx.fail(ec.ERR_LIBRARY_DB_UNAVAILABLE, S_PAGE_BUILD_FAILED);
         return;
     };
+    scope.endStage(.sql);
 
     storeBody(hx, key, body);
     page_mod.respond(hx, req, body);
+    scope.classify(if (isDelivered(hx.res.status)) .ok else .internal_error);
+    scope.endStageWith(.serialize, .{ .bytes = body.len });
+}
+
+/// Whether the caller received the page.
+///
+/// `304 Not Modified` counts: the conditional read succeeded and the client
+/// holds a current copy. Treating it as a failure would make every warm
+/// dashboard look like an error to whoever reads the outcome family.
+fn isDelivered(status: u16) bool {
+    return status == @intFromEnum(std.http.Status.ok) or
+        status == @intFromEnum(std.http.Status.not_modified);
 }
 
 /// Normalize `q` and `provider`. Both out-of-bounds cases are `UZ-LIBRARY-003`.
-fn normalizeFilters(hx: Hx, params: anytype) !page_mod.Filters {
+fn normalizeFilters(hx: Hx, scope: *ReadScope, params: anytype) !page_mod.Filters {
     const q = query.normalizeSearch(hx.alloc, params.get(Q_SEARCH)) catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_SEARCH_BOUNDS);
         return error.Rejected;
     };
     const provider = query.normalizeProvider(hx.alloc, params.get(Q_PROVIDER)) catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_SEARCH_BOUNDS);
         return error.Rejected;
     };
@@ -138,6 +180,7 @@ fn normalizeFilters(hx: Hx, params: anytype) !page_mod.Filters {
 /// for the read are always the request's, never the cursor's.
 fn decodeStart(
     hx: Hx,
+    scope: *ReadScope,
     filters: page_mod.Filters,
     limit: u32,
     raw: ?[]const u8,
@@ -146,6 +189,7 @@ fn decodeStart(
     if (text.len == 0) return null;
 
     const cursor = pagination.decode(hx.alloc, catalogue_key.Cursor, text) catch {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
         return error.Rejected;
     };
@@ -153,6 +197,7 @@ fn decodeStart(
         !pagination.filterMatches(cursor.q, filters.q) or
         !pagination.filterMatches(cursor.provider, filters.provider))
     {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_CURSOR_MISMATCH, S_CURSOR_MISMATCH);
         return error.Rejected;
     }
@@ -160,6 +205,7 @@ fn decodeStart(
     // whose id is not a UUID must fail here as the malformed input it is — not
     // downstream as a Postgres cast error dressed in a 503.
     if (!id_format.isUuidV7(cursor.id)) {
+        scope.classify(.invalid);
         hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
         return error.Rejected;
     }

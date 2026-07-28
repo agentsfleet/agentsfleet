@@ -8,6 +8,7 @@ test {
     _ = @import("db/index_usage_fleet_integration_test.zig");
     _ = @import("db/index_removal_integration_test.zig");
     _ = @import("db/runner_list_liveness_integration_test.zig");
+    _ = @import("db/pool_bounded_progress_integration_test.zig");
     _ = @import("http/handlers/fleet/runners_list_integration_test.zig");
     _ = @import("http/handlers/fleets/secret_list_integration_test.zig");
     _ = @import("http/handlers/connectors/registry_integration_test.zig");
@@ -41,6 +42,7 @@ test {
     _ = @import("http/secrets_json_metadata_integration_test.zig");
     _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
     _ = @import("http/library_read_bounds_integration_test.zig");
+    _ = @import("http/library_stage_bounds_integration_test.zig");
     _ = @import("http/library_body_ceiling_integration_test.zig");
     _ = @import("http/library_page_bounds_integration_test.zig");
     _ = @import("http/tenant_model_entries_integration_test.zig");

@@ -9,7 +9,67 @@ Status: Canonical reference for the v2 problem, thesis, runtime model, Fleet / r
 
 ## Why the doc is split this way
 
-The architecture doc used to be a single ~1,500-line file. That was hard to read end-to-end and hard to land changes against (every PR touching architecture got into a fifteen-section diff). Each topic now lives in its own file in this directory; this README is the table of contents and a short on-ramp.
+One topic per file, so a change lands in one small diff and a reader (human or
+agent) loads only the file that answers their question. This README is the
+lookup surface: find your topic in the table below, open that one file, grep
+inside it. Do not read the whole directory to answer one question.
+
+## Question → anchor index
+
+Start here: find the question, jump to the one §-section that answers it. Every target file front-loads a Facts table, so the answer is usually in the first screen.
+
+| Question | Where |
+|---|---|
+| How long can a fleet run before its lease expires? | [`runner_fleet.md`](./runner_fleet.md) §Per-lease renewal |
+| What happens when a runner dies mid-event? | [`runner_fleet.md`](./runner_fleet.md) §Failure recovery model |
+| How is a stale runner's late report rejected? | [`runner_fleet.md`](./runner_fleet.md) §System guarantees |
+| How does work get assigned, executed, and reported? | [`data_flow.md`](./data_flow.md) §C. EXECUTE |
+| Can two runners hold the same fleet at once? | [`data_flow.md`](./data_flow.md) §One active lease per fleet |
+| How does a new runner get enrolled? | [`runner_fleet.md`](./runner_fleet.md) §Registering a runner |
+| What are the runner protocol verbs? | [`runner_fleet.md`](./runner_fleet.md) §The control protocol |
+| What sandbox does a leased event run in? | [`runner_fleet.md`](./runner_fleet.md) §Running one event |
+| What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §Egress model |
+| Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §Sandbox tiers |
+| How do steer, kill, and pause propagate? | [`runner_fleet.md`](./runner_fleet.md) §Steer, kill, pause |
+| Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §B. TRIGGER |
+| What does one event write, in what order? | [`data_flow.md`](./data_flow.md) §Steer flow end-to-end |
+| Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §The three durable stores |
+| How does the live tail work — and can it lose frames? | [`data_flow.md`](./data_flow.md) §D. WATCH |
+| What happens if Redis blips during install? | [`data_flow.md`](./data_flow.md) §The install failure scenario, visually |
+| Why was my webhook rejected, and what do I fix? | [`data_flow.md`](./data_flow.md) §B. TRIGGER (webhook auth taxonomy) |
+| Who owns cron scheduling? | [`data_flow.md`](./data_flow.md) §B. TRIGGER — QStash owns the clock |
+| What is memory keyed by, and what survives? | [`memory.md`](./memory.md) §1 |
+| How does memory travel between runs? | [`runner_fleet.md`](./runner_fleet.md) §Memory continuity |
+| What should a fleet store so it survives hydration? | [`capabilities.md`](./capabilities.md) §4 — memory hygiene |
+| How does a long incident outlive one context window? | [`capabilities.md`](./capabilities.md) §4 |
+| What can a fleet do, and what is merely advisory? | [`capabilities.md`](./capabilities.md) §1 |
+| When and how is a tenant charged? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §3 |
+| What does one event cost, by shape? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §4.3 |
+| What happens when credits run out? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §6 |
+| How does the free-trial window behave? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §2.3 |
+| Where may the provider `api_key` exist? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 |
+| How does a per-fleet budget cap work? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §5.1 |
+| Where do model rates and context caps come from? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10 |
+| How does a cold machine reach a running fleet? | [`user_flow.md`](./user_flow.md) §8.0 + §8.2.1 |
+| Where do model and cap originate, per posture? | [`user_flow.md`](./user_flow.md) §8.7 |
+| What triggers can `TRIGGER.md` declare? | [`user_flow.md`](./user_flow.md) §8.3 |
+| What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §8.8 |
+| How many Redis connections does a deployment need? | [`scaling.md`](./scaling.md) §Connection budget after the cutover |
+| What drives the idle Upstash bill? | [`scaling.md`](./scaling.md) §Per-request volume |
+| Which knob do I turn, and when? | [`scaling.md`](./scaling.md) §Tuneup knobs |
+| Where is the next bottleneck? | [`scaling.md`](./scaling.md) §Where the next ceiling actually lives |
+| Where does a signal go, and who owns it? | [`observability.md`](./observability.md) §The four signal paths |
+| What does metric family X mean? | [`observability.md`](./observability.md) §Metric family census |
+| Which locks exist, and what does each protect? | [`concurrency.md`](./concurrency.md) §Lock-invariant registry |
+| What order does shutdown happen in? | [`concurrency.md`](./concurrency.md) §Shutdown choreography |
+| How do I add a connector provider? | [`connectors.md`](./connectors.md) §Adding a provider |
+| How does a GitHub event find its fleet? | [`connectors.md`](./connectors.md) §GitHub App |
+| What is immutable in a bundle vs editable in a fleet? | [`fleet_bundles.md`](./fleet_bundles.md) §Two layers |
+| How does a platform fleet become installable? | [`fleet_bundles.md`](./fleet_bundles.md) §The publish gate |
+| Which test root owns my component? | [`testing.md`](./testing.md) §Component ownership |
+| What client analytics events exist? | [`product_analytics.md`](./product_analytics.md) §Client event catalog |
+| Is feature X shipped or deferred? | [`roadmap.md`](./roadmap.md) §Status index |
+| Who may call what, with which token? | [`../AUTH.md`](../AUTH.md) |
 
 Read in this order if you've never seen the project:
 
@@ -44,6 +104,22 @@ After that, dip into whichever of these matches the change you're making:
 | [`../AUTH.md`](../AUTH.md) | The principal model (CLI, UI, tenant api key, fleet key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
 
 ---
+
+## Decision records (Claude artifacts)
+
+Long-form decision write-ups live as published artifacts, not in this repo —
+link out instead of pasting them in. Each line names the decision it carries.
+
+| Artifact | Decision |
+|---|---|
+| [Outbound bounding — before & after M139](https://claude.ai/code/artifact/de681e67-024d-4c08-bc04-4fa96aa58d48) | One process-wide deadline scheduler (generation-armed, monotonic clock) replaced per-caller watchdog threads on raw file descriptors. Postgres stays outside it; the pool's own timeouts bound it. |
+| [Greptile P1 — OTLP unbounded export](https://claude.ai/code/artifact/aee9e003-6c91-40a1-9d7e-0feacdb1d810) | The in-flight OTLP export stays unbounded for now: `fetch` is not cancel-safe, and the cancel-safe socket-shutdown bound needs a boot reorder. Deferred with the fix scoped, not forgotten. |
+| [PR #549 review — deadline scheduler](https://claude.ai/code/artifact/9bb6fc29-9ff4-4838-bc9d-bdf1bdcd5290) | The pre-merge review of the scheduler change above. |
+| [Index audit — slots 033 & 034](https://claude.ai/code/artifact/16b3fe3e-6a0f-47cf-a80f-03f34681ec85) | Which Postgres indexes earn their slots. |
+| [Error registry — inventory & curation](https://claude.ai/code/artifact/f5dd342f-633e-4a32-a7ee-579cd2db2427) | The `UZ-*` error-code inventory review. |
+| [M120_002 — Admin Model Library, as built](https://claude.ai/code/artifact/3add99c7-6ce3-4617-8656-bf371b658490) | The admin catalogue's final shape. |
+| [Fleet library: why your gallery was empty](https://claude.ai/code/artifact/a6b8c064-8643-444b-a43b-2fb2e7e82434) | Root cause of the empty-gallery incident. |
+| [Model configuration journeys](https://claude.ai/code/artifact/e0621bf7-7b01-4492-8862-38a43d6f46b3) | How users reach a working model configuration. |
 
 ## What we are, in one paragraph
 
