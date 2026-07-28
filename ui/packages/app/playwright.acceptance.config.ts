@@ -67,6 +67,11 @@ const OPERATOR_JOURNEY_SPEC = "**/operator-journey.spec.ts";
 const LIVE_COUNTER_SPEC = "**/fleet-count.spec.ts";
 const PULSE_WALL_SPEC = "**/multi-fleet.spec.ts";
 const FETCH_AUDIT_SPEC = "**/workspace-fetch-dedupe.spec.ts";
+// The session-continuity canary. Unlike every other group this runs on THREE
+// engines: the question it answers — may `AuthSessionKeeper` be deleted — is a
+// question about cookie and refresh behaviour, and Chromium's answer does not
+// generalise to Firefox's or WebKit's. One engine would be an anecdote.
+const SESSION_CONTINUITY_SPEC = "**/library-session-continuity.spec.ts";
 
 const PROJECT_PREFLIGHT = "preflight";
 const PROJECT_JOURNEYS = "journeys";
@@ -75,8 +80,19 @@ const PROJECT_OPERATOR_JOURNEY = "operator-journey";
 const PROJECT_LIVE_COUNTER = "live-counter";
 const PROJECT_PULSE_WALL = "pulse-wall";
 const PROJECT_FETCH_AUDIT = "fetch-audit";
+const PROJECT_SESSION_CHROMIUM = "session-continuity-chromium";
+const PROJECT_SESSION_FIREFOX = "session-continuity-firefox";
+const PROJECT_SESSION_WEBKIT = "session-continuity-webkit";
 
 const CHROMIUM = { ...devices["Desktop Chrome"] };
+const FIREFOX = { ...devices["Desktop Firefox"] };
+const WEBKIT = { ...devices["Desktop Safari"] };
+
+// The continuity lanes are opt-in. They cross genuine session expiry, so they
+// are paced by the Clerk instance's configured lifetime rather than by test
+// logic, and they have no place in an ordinary acceptance run. The capture
+// target sets this; nothing else does.
+const SESSION_CANARY_ENABLED = process.env.AGENTSFLEET_SESSION_CANARY === "1";
 
 export default defineConfig({
   testDir: "./tests/e2e/acceptance",
@@ -126,6 +142,9 @@ export default defineConfig({
         LIVE_COUNTER_SPEC,
         PULSE_WALL_SPEC,
         FETCH_AUDIT_SPEC,
+        // Opt-in and multi-engine; it has its own three projects below and
+        // must never be swept into the single-engine journey group.
+        SESSION_CONTINUITY_SPEC,
       ],
       dependencies: [PROJECT_PREFLIGHT],
       use: CHROMIUM,
@@ -162,6 +181,31 @@ export default defineConfig({
       dependencies: [PROJECT_PULSE_WALL, PROJECT_OPERATOR_JOURNEY],
       use: CHROMIUM,
     },
+    // Three engines, same spec, no cross-lane dependency: each is an
+    // independent sample of the same question, so a WebKit failure must not
+    // suppress the Firefox result. They depend only on preflight.
+    ...(SESSION_CANARY_ENABLED
+      ? [
+          {
+            name: PROJECT_SESSION_CHROMIUM,
+            testMatch: SESSION_CONTINUITY_SPEC,
+            dependencies: [PROJECT_PREFLIGHT],
+            use: CHROMIUM,
+          },
+          {
+            name: PROJECT_SESSION_FIREFOX,
+            testMatch: SESSION_CONTINUITY_SPEC,
+            dependencies: [PROJECT_PREFLIGHT],
+            use: FIREFOX,
+          },
+          {
+            name: PROJECT_SESSION_WEBKIT,
+            testMatch: SESSION_CONTINUITY_SPEC,
+            dependencies: [PROJECT_PREFLIGHT],
+            use: WEBKIT,
+          },
+        ]
+      : []),
   ],
   webServer: process.env.BASE_URL
     ? undefined
