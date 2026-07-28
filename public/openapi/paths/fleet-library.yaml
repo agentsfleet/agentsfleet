@@ -184,7 +184,7 @@
       A bounded keyset page ordered by `created_at DESC, tier ASC, id DESC`
       across BOTH catalogs. Follow `next_cursor` to read the whole gallery; a
       client that reads only the first page silently loses every entry past it.
-      Support-file summaries are served by the detail route below.
+      The support-file manifest is stored on import but served by no endpoint.
     tags:
     - Fleet library
     parameters:
@@ -209,7 +209,7 @@
       required: false
       description: >-
         Opaque cursor from a previous page's `next_cursor`. Bound to the
-        workspace, filter and page size that produced it; a mismatch is
+        workspace and page size that produced it; a mismatch is
         `UZ-LIBRARY-002` rather than a silently different page.
       schema:
         type: string

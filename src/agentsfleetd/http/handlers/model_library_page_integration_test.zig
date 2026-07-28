@@ -190,12 +190,7 @@ fn expectOrder(body: []const u8, a: []const u8, b: []const u8) !void {
 /// providing moved into `seed`'s clear — which is the honest place for it, since
 /// isolating a test is not something an API filter should have been responsible
 /// for in the first place.
-fn suitePath(alloc: std.mem.Allocator, extra: []const u8) ![]u8 {
-    // Callers spell `extra` as a continuation (`&limit=2`) because it used to
-    // follow a filter. With nothing before it, the leading separator becomes the
-    // first character after `?` — an empty parameter that Postgres never sees but
-    // that makes the URL wrong on its face.
-    const params = if (extra.len > 0 and extra[0] == '&') extra[1..] else extra;
+fn suitePath(alloc: std.mem.Allocator, params: []const u8) ![]u8 {
     return std.fmt.allocPrint(alloc, MODELS_PATH ++ "?{s}", .{params});
 }
 
@@ -207,7 +202,7 @@ test "integration: test_model_page_and_conditional_headers — the normalized ke
     defer cleanup(h);
 
     // ── page one of two ──────────────────────────────────────────────────────
-    const first_path = try suitePath(alloc, "&limit=2");
+    const first_path = try suitePath(alloc, "limit=2");
     defer alloc.free(first_path);
     const cursor = blk: {
         const r = try (try h.get(first_path).bearer(VIEWER)).send();
@@ -265,7 +260,7 @@ test "integration: test_model_page_and_conditional_headers — filters select, a
     {
         // Provider filter is an exact normalized match, not a substring: the
         // vendor names share a prefix, so a LIKE here would return all three.
-        const path = try suitePath(alloc, "&provider=" ++ VENDOR_GAMMA);
+        const path = try suitePath(alloc, "provider=" ++ VENDOR_GAMMA);
         defer alloc.free(path);
         const r = try (try h.get(path).bearer(VIEWER)).send();
         defer r.deinit();
@@ -277,7 +272,7 @@ test "integration: test_model_page_and_conditional_headers — filters select, a
     {
         // An unknown provider is VALID and simply matches nothing (§2), rather
         // than a 400 — the catalogue's vendor column is arbitrary text.
-        const path = try suitePath(alloc, "&provider=m143page-vendor-nonexistent");
+        const path = try suitePath(alloc, "provider=m143page-vendor-nonexistent");
         defer alloc.free(path);
         const r = try (try h.get(path).bearer(VIEWER)).send();
         defer r.deinit();
@@ -336,7 +331,7 @@ test "integration: test_model_page_and_conditional_headers — both answers carr
     try seed(h);
     defer cleanup(h);
 
-    const path = try suitePath(alloc, "&limit=2");
+    const path = try suitePath(alloc, "limit=2");
     defer alloc.free(path);
 
     const tag = blk: {

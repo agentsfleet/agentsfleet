@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { Secret } from "@/lib/api/secrets";
 import { listSecretsAction } from "../actions";
 import { SECRETS_LOAD, type SecretsLoad } from "./secrets-load";
@@ -28,17 +28,33 @@ export function useStoredSecrets(workspaceId: string): {
   const [, startTransition] = useTransition();
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [secretsLoad, setSecretsLoad] = useState<SecretsLoad>(SECRETS_LOAD.idle);
+  // Latest-wins: open/close/reopen and retry can overlap requests, and this
+  // list decides rotate-vs-create — a slow stale response must not overwrite
+  // a newer list and still call itself ready. Same pattern as
+  // ModelCatalogueProvider.preload.
+  const generation = useRef(0);
 
   function refreshSecrets() {
+    const mine = ++generation.current;
     setSecretsLoad((prior) => (prior === SECRETS_LOAD.ready ? prior : SECRETS_LOAD.loading));
     startTransition(async () => {
-      const r = await listSecretsAction(workspaceId);
-      if (!r.ok) {
+      // try/catch because the action ROUND-TRIP itself can reject (network
+      // failure, deploy skew): without it, a rejection would strand the
+      // dialog at "Checking your stored secrets…" with Save disabled and no
+      // Retry, since Retry only renders in the error state.
+      try {
+        const r = await listSecretsAction(workspaceId);
+        if (mine !== generation.current) return;
+        if (!r.ok) {
+          setSecretsLoad((prior) => (prior === SECRETS_LOAD.ready ? prior : SECRETS_LOAD.error));
+          return;
+        }
+        setSecrets(r.data.secrets);
+        setSecretsLoad(SECRETS_LOAD.ready);
+      } catch {
+        if (mine !== generation.current) return;
         setSecretsLoad((prior) => (prior === SECRETS_LOAD.ready ? prior : SECRETS_LOAD.error));
-        return;
       }
-      setSecrets(r.data.secrets);
-      setSecretsLoad(SECRETS_LOAD.ready);
     });
   }
 

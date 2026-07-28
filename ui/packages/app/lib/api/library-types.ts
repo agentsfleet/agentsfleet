@@ -1,40 +1,20 @@
-// Shared page/error shapes for the two authenticated library surfaces: the
+// Shared failure vocabulary for the two authenticated library surfaces: the
 // tenant Models registry (`tenant_model_entries.ts`) and the Fleet gallery
 // (`fleet-library.ts`). Both consume the same keyset endpoints, so both carry
-// the same cursor, retention, and failure vocabulary — kept here rather than
-// duplicated so a state a reducer forgets to handle fails to compile in both.
+// the same typed-failure shapes — kept here rather than duplicated so the two
+// surfaces cannot drift.
 //
-// No `cache()` and no server-only import: these are plain types shared by
-// server reads and client reducers alike.
+// No `cache()` and no server-only import: these are plain types and pure
+// functions shared by server reads and client components alike.
 
 /**
- * Load state for a retained paged list.
- *
- * `refreshing` and `error` both carry `items` because a revalidation fault must
- * leave the last successful rows on screen. Collapsing either into an empty
- * state is the failure this workstream exists to remove — see the spec's
- * `test_refresh_retains_authorized_content`.
- */
-export const LIBRARY_LOAD_STATUS = {
-  idle: "idle",
-  loading: "loading",
-  refreshing: "refreshing",
-  ready: "ready",
-  error: "error",
-} as const;
-
-export type LibraryLoadStatus =
-  (typeof LIBRARY_LOAD_STATUS)[keyof typeof LIBRARY_LOAD_STATUS];
-
-/**
- * Typed read failure. `notFound` is a *selection* outcome rather than a
- * transport one: the workspace detail route was retired, so an unknown
- * `library_id` is an id absent from the gallery, not a 404 from a fetch.
+ * Typed read failure. A deep-linked id absent from the loaded page is NOT a
+ * kind here — it is a *selection* outcome (`selectionNotFound` on the install
+ * screen), because no read path in this vocabulary's surfaces produces a 404.
  */
 export const LIBRARY_ERROR_KIND = {
   unauthenticated: "unauthenticated",
   forbidden: "forbidden",
-  notFound: "notFound",
   unavailable: "unavailable",
   unknown: "unknown",
 } as const;
@@ -49,57 +29,45 @@ export type LibraryError = {
 };
 
 /**
- * One retained page window. `nextCursor` null means the server said this is the
- * last page; `retained` is every row loaded so far, not just the newest page.
+ * The query parameter carrying gallery list position. Written by the install
+ * screen's load-more URL mirror and parsed by its server render — one name,
+ * because a producer/parser drift compiles clean and silently breaks the
+ * position restore.
  */
-export type LibraryPage<TItem> = {
-  retained: TItem[];
-  nextCursor: string | null;
-  /**
-   * Server-reported total when the endpoint supplies one, else null.
-   *
-   * Invariant 5: a paged list must disclose what it has NOT loaded. Both
-   * surfaces previously walked `next_cursor` to exhaustion precisely so later
-   * entries could not vanish unannounced; paging reintroduces that hazard, so
-   * `retained.length` and `hasMore` are rendered rather than implied by whether
-   * a button happens to be present. A null `total` still discloses via
-   * `hasMore` — it just cannot name the remainder.
-   */
-  total: number | null;
-};
-
-export type LibraryListState<TItem> =
-  | { status: typeof LIBRARY_LOAD_STATUS.idle }
-  | { status: typeof LIBRARY_LOAD_STATUS.loading }
-  | ({ status: typeof LIBRARY_LOAD_STATUS.ready } & LibraryPage<TItem>)
-  | ({ status: typeof LIBRARY_LOAD_STATUS.refreshing } & LibraryPage<TItem>)
-  | ({ status: typeof LIBRARY_LOAD_STATUS.error; error: LibraryError } & Partial<
-      LibraryPage<TItem>
-    >);
-
-/** True while the list holds rows worth rendering, whatever else is happening. */
-export function hasRetainedItems<TItem>(
-  state: LibraryListState<TItem>,
-): state is Extract<
-  LibraryListState<TItem>,
-  { retained?: TItem[] }
-> & { retained: TItem[] } {
-  return "retained" in state && Array.isArray(state.retained) && state.retained.length > 0;
-}
-
-/** More pages remain on the server. Drives the load-more affordance. */
-export function hasMore<TItem>(state: LibraryListState<TItem>): boolean {
-  return "nextCursor" in state && state.nextCursor !== null;
-}
+export const LIBRARY_AFTER_PARAM = "library_after";
 
 /**
- * Map a transport status onto the typed vocabulary. 404 is deliberately absent:
- * no read path in this workstream produces one, and mapping it would invent a
- * state no server emits.
+ * Map a transport status onto the typed vocabulary. 404 is deliberately
+ * absent: no read path in this vocabulary's surfaces produces one, and
+ * mapping it would invent a state no server emits.
  */
 export function errorKindForStatus(status: number): LibraryErrorKind {
   if (status === 401) return LIBRARY_ERROR_KIND.unauthenticated;
   if (status === 403) return LIBRARY_ERROR_KIND.forbidden;
   if (status === 503) return LIBRARY_ERROR_KIND.unavailable;
   return LIBRARY_ERROR_KIND.unknown;
+}
+
+/**
+ * Pure — an ActionResult failure mapped onto the typed vocabulary. The action
+ * layer preserves the transport status when it has one, which is what lets a
+ * 401/403/503 keep its specific copy instead of collapsing to "unknown".
+ */
+export function readErrorFrom(failure: { error: string; status?: number }): LibraryError {
+  return {
+    kind: typeof failure.status === "number" ? errorKindForStatus(failure.status) : LIBRARY_ERROR_KIND.unknown,
+    detail: failure.error,
+  };
+}
+
+/**
+ * Pure — a thrown/rejected read mapped onto the typed vocabulary. `ApiError`
+ * carries `status`; anything else (network failure, deploy skew) is unknown.
+ */
+export function libraryErrorFromCause(cause: unknown): LibraryError {
+  const status = (cause as { status?: number }).status;
+  return {
+    kind: typeof status === "number" ? errorKindForStatus(status) : LIBRARY_ERROR_KIND.unknown,
+    detail: cause instanceof Error ? cause.message : undefined,
+  };
 }

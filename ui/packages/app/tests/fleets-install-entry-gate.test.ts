@@ -22,7 +22,7 @@ vi.mock("../app/(dashboard)/w/[workspaceId]/fleets/new/actions", () => ({
 
 import { LIBRARY_ERROR_KIND } from "@/lib/api/library-types";
 import { FleetInstallGate } from "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetInstallGate";
-import { InstallSourceSelector } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallSourceSelector";
+import { galleryErrorCopy, InstallSourceSelector } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallSourceSelector";
 
 const TEMPLATE = {
   id: "github-pr-reviewer",
@@ -225,6 +225,76 @@ describe("InstallSourceSelector — paging and list position", () => {
     expect(screen.getByRole("button", { name: "Load more" })).toBeTruthy();
   });
 
+  it("discloses an unnamed remainder when the server sends no total — the branch production actually hits", () => {
+    // Every daemon endpoint currently emits total: null (counting a keyset
+    // page costs the scan it avoids), so THIS wording is the one users see;
+    // the named-total case above pins the wire shape OpenAPI permits.
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: "cur-2", total: null },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+    expect(screen.getByText("Showing 1 entries — more available")).toBeTruthy();
+  });
+
+  it("treats a cursor that does not advance as the last page instead of appending forever", async () => {
+    // The exhaustive walk this replaced THREW when the server stopped
+    // advancing its cursor ("one page repeated is worse than an error");
+    // load-more must not reintroduce that as infinite duplicate appends.
+    const user = userEvent.setup({ delay: null });
+    readFleetLibraryPageActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [SECOND], next_cursor: "cur-2", total: null },
+    });
+
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: "cur-2", total: null },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("Second entry")).toBeTruthy();
+    // Terminal: the affordance retires rather than offering the same page again.
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
+
+  it("a rejected action round-trip surfaces the failure instead of escaping the transition", async () => {
+    // `withToken` catches server-side; the POST to the action endpoint itself
+    // can still reject (network failure, deploy skew). Uncaught, that escapes
+    // into a route with no error boundary.
+    const user = userEvent.setup({ delay: null });
+    readFleetLibraryPageActionMock.mockRejectedValue(new Error("network down"));
+
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: "cur-2", total: null },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    // Cards retained; the failure is a failure, not an empty library.
+    expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
+  });
+
+  it("galleryErrorCopy gives each failure kind its own next step", async () => {
+    const { LIBRARY_ERROR_KIND: kinds } = await import("@/lib/api/library-types");
+    const copies = Object.values(kinds).map((kind) => galleryErrorCopy({ kind }));
+    expect(new Set(copies).size).toBe(copies.length);
+    expect(galleryErrorCopy({ kind: kinds.unauthenticated })).toMatch(/sign in/i);
+    expect(galleryErrorCopy({ kind: kinds.unavailable })).toMatch(/temporarily unavailable/i);
+  });
+
   it("test_fleet_load_more_then_selected_summary — appends and retains prior cards, selection needs no request", async () => {
     const user = userEvent.setup({ delay: null });
     readFleetLibraryPageActionMock.mockResolvedValue({
@@ -327,6 +397,26 @@ describe("InstallSourceSelector — paging and list position", () => {
     expect(readFleetLibraryPageActionMock).toHaveBeenCalledWith("ws_1", null);
     expect(await screen.findByText("GitHub PR reviewer")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("a failed page with a transport status keeps its specific copy", async () => {
+    // The action layer preserves `status`; collapsing every client-side
+    // failure to "unknown" would show "Could not load" where "temporarily
+    // unavailable" (or "sign in") is the actionable instruction.
+    const user = userEvent.setup({ delay: null });
+    readFleetLibraryPageActionMock.mockResolvedValue({ ok: false, error: "boom", status: 503 });
+
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: "cur-2", total: 2 },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(screen.getByText("The fleet library is temporarily unavailable.")).toBeTruthy();
   });
 
   it("Retry after a failed load-more re-requests the SAME page and appends", async () => {
