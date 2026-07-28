@@ -209,7 +209,7 @@ Timeout, cancellation, and indeterminate outcomes are not success.
 | R3 | Browser login and live result pass | `cd cli && bun run test:acceptance:live` | terminal result observed and 0 critical skips | P0 | ✅ Indy accepted manual browser and live-steer eyeballing |
 | R4 | Aggregate lane is bounded | `make cli-acceptance` | exit 0 and duration below 600 seconds | P0 | |
 | R5 | Development runner can establish its resource cage | `bash playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh` | exit 0 with delegated runner unit | P0 | |
-| S1 | CLI unit tests pass | `make test-unit-cli` | exit 0 | P0 | ✅ 1,394 passed, 0 failed |
+| S1 | CLI unit tests pass | `make test-unit-cli` | exit 0 | P0 | ✅ 1,395 passed, 0 failed |
 | S2 | Repository lint passes | `make lint-all` | exit 0 | P0 | ✅ exit 0 |
 | S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
 | S4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 0 missing paths |
