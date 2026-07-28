@@ -9,16 +9,17 @@ import {
   Section,
   SectionHeader,
 } from "@agentsfleet/design-system";
-import type { Secret } from "@/lib/api/secrets";
 import type { TenantModelEntryPageResult } from "@/lib/api/tenant_model_entries";
-import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
+import type { LibraryError } from "@/lib/api/library-types";
 import { presentErrorString } from "@/lib/errors";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
-import { listModelEntriesAction, listSecretsAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
+import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
 import AddModelEntryDialog from "./AddModelEntryDialog";
 import EditModelEntryDialog from "./EditModelEntryDialog";
+import { computeNextSort, readErrorCopy, readErrorFrom, sortValueFor, type SortState } from "./registry-view";
+import { useStoredSecrets } from "./use-stored-secrets";
 import ModelDetailsDialog from "./ModelDetailsDialog";
 import { maySpeculateOnHover, useModelCatalogue } from "./ModelCatalogueProvider";
 import {
@@ -38,45 +39,6 @@ type Props = {
   /** Typed read failure. Distinct from an empty registry, and never both. */
   initialError: LibraryError | null;
 };
-export type SortState = { key: "model" | "provider"; dir: "ascending" | "descending" } | null;
-
-// Pure — DataTable's onSortChange prop is typed `(key: string) => void` (any
-// column could be sortable), but only the "model"/"provider" columns below
-// opt in; a `key` outside that set returns `null` (no-op) instead of ever
-// reaching component state. Exported so the boundary is unit-testable
-// without needing to reach it through a real DataTable header click.
-export function computeNextSort(cur: SortState, key: string): SortState | null {
-  if (key !== "model" && key !== "provider") return null;
-  if (!cur || cur.key !== key) return { key, dir: "ascending" };
-  return { key, dir: cur.dir === "ascending" ? "descending" : "ascending" };
-}
-
-/** Pure — the sort comparator's per-row key, single call site per column. */
-export function sortValueFor(entry: TenantModelEntry, key: "model" | "provider"): string {
-  return key === "model" ? entry.model_id : (entry.provider ?? "");
-}
-
-/**
- * Pure — user-facing copy for a typed read failure. Each kind gets its own
- * next step, which is the whole point of typing them: "sign in" and "ask for
- * access" and "try again" are different instructions, and an empty table gave
- * the user none of them.
- */
-export function readErrorCopy(error: LibraryError): string {
-  switch (error.kind) {
-    case LIBRARY_ERROR_KIND.unauthenticated:
-      return "Your session expired. Sign in to see your models.";
-    case LIBRARY_ERROR_KIND.forbidden:
-      return "You do not have access to this workspace's models.";
-    case LIBRARY_ERROR_KIND.notFound:
-      return "That model entry no longer exists.";
-    case LIBRARY_ERROR_KIND.unavailable:
-      return "Models are temporarily unavailable. Your entries are safe.";
-    default:
-      return "Could not load your models. They have not been changed.";
-  }
-}
-
 const SWITCH_ACTION = "switch models";
 const SWITCH_PLATFORM_ACTION = "switch to platform defaults";
 const REMOVE_ACTION = "remove this model entry";
@@ -84,9 +46,9 @@ const REMOVE_ACTION = "remove this model entry";
 export default function ModelsRegistryTable({ workspaceId, initialPage, initialError }: Props) {
   const [pending, startTransition] = useTransition();
   const [entries, setEntries] = useState<TenantModelEntry[]>(initialPage?.models ?? []);
-  // The secret list is NOT preloaded. It arrives when the dialog
-  // that needs it opens, through `refreshSecrets` below.
-  const [secrets, setSecrets] = useState<Secret[]>([]);
+  // The secret list is NOT preloaded — the Add dialog loads it on open and
+  // fails closed until it lands; the hook's docstring carries the why.
+  const { secrets, secretsLoad, refreshSecrets } = useStoredSecrets(workspaceId);
   const [platformDefaultAvailable, setPlatformDefaultAvailable] = useState(
     initialPage?.platform_default_available ?? false,
   );
@@ -152,7 +114,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     startTransition(async () => {
       const r = await listModelEntriesAction();
       if (!r.ok) {
-        setReadError({ kind: LIBRARY_ERROR_KIND.unknown, detail: r.error });
+        setReadError(readErrorFrom(r));
         return;
       }
       setReadError(null);
@@ -172,27 +134,13 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     startTransition(async () => {
       const r = await listModelEntriesAction(nextCursor);
       if (!r.ok) {
-        setReadError({ kind: LIBRARY_ERROR_KIND.unknown, detail: r.error });
+        setReadError(readErrorFrom(r));
         return;
       }
       setReadError(null);
       setEntries((prior) => [...prior, ...r.data.models]);
       setNextCursor(r.data.next_cursor);
       setTotal(r.data.total);
-    });
-  }
-
-  // Fetches the stored-secret list on demand. The eager page-level preload was
-  // removed, so this is the ONLY path that loads it: the Add dialog fires it on
-  // OPEN (`onSecretsNeeded`) and again when it commits a secret
-  // (`onSecretsChanged`). The open call is not an optimisation — the dialog
-  // resolves rotate-vs-create against this list, and the secrets POST upserts,
-  // so an unloaded list silently overwrites an existing name.
-  function refreshSecrets() {
-    startTransition(async () => {
-      const r = await listSecretsAction(workspaceId);
-      if (!r.ok) return;
-      setSecrets(r.data.secrets);
     });
   }
 
@@ -301,6 +249,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
             <AddModelEntryDialog
               workspaceId={workspaceId}
               secrets={secrets}
+              secretsLoad={secretsLoad}
               onCreated={refresh}
               onSecretsChanged={refreshSecrets}
               onSecretsNeeded={refreshSecrets}

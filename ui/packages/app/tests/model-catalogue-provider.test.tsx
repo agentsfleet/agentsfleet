@@ -13,8 +13,8 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => routerMock }));
 
+import { CATALOGUE_STATUS } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/catalogue-status";
 import {
-  CATALOGUE_STATUS,
   maySpeculateOnHover,
   ModelCatalogueProvider,
   useModelCatalogue,

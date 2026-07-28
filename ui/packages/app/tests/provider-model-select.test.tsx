@@ -2,14 +2,19 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { LibraryModel } from "@/lib/api/model_library";
+import {
+  CATALOGUE_STATUS,
+  type CatalogueStatus,
+} from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/catalogue-status";
 
 // Catalogue-backed model picker. With a catalogue it constrains to a <Select>
 // (provider-scoped or provider-agnostic); when empty it degrades to a free-text
-// <Input>. The catalogue comes from useModelCatalogue, mocked here so the two
-// branches are deterministic.
+// <Input>; while the catalogue is IN FLIGHT it holds a disabled select rather
+// than letting the empty array pick the input shape. The catalogue comes from
+// useModelCatalogue, mocked here so every branch is deterministic.
 
 const { catalogueState } = vi.hoisted(() => ({
-  catalogueState: { models: [] as LibraryModel[], status: "ready" as const, preload: vi.fn() },
+  catalogueState: { models: [] as LibraryModel[], status: "ready" as CatalogueStatus, preload: vi.fn() },
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
@@ -35,11 +40,22 @@ const cap = (id: string, provider: string): LibraryModel => ({
 beforeEach(() => {
   vi.clearAllMocks();
   catalogueState.models = [];
-
+  catalogueState.status = CATALOGUE_STATUS.ready;
 });
 afterEach(() => cleanup());
 
 describe("ProviderModelSelect", () => {
+  it("holds a stable, disabled select while the catalogue is in flight", () => {
+    // The catalogue loads on dialog-open intent, so a cold open renders this
+    // state for the round-trip. It must NOT be the free-text input: swapping
+    // control identity when the catalogue lands drops focus and visually
+    // orphans anything already typed.
+    catalogueState.status = CATALOGUE_STATUS.loading;
+    render(React.createElement(ProviderModelSelect, { id: "m", model: "", onModelChange: vi.fn() }));
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByText("Loading models…")).toBeTruthy();
+  });
+
   it("degrades to a free-text input when the catalogue is empty, firing onModelChange", () => {
     const onModelChange = vi.fn();
     render(

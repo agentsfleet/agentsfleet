@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import type { Secret } from "@/lib/api/secrets";
 import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
+import { SECRETS_LOAD, type SecretsLoad } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/secrets-load";
 
 const createModelEntryActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
@@ -53,7 +54,7 @@ const ANTHROPIC_SECRET: Secret = {
 };
 const ROTATED_API_KEY = "sk-ant-rotated-key";
 
-async function renderDialog(secrets: Secret[] = []) {
+async function renderDialog(secrets: Secret[] = [], secretsLoad: SecretsLoad = SECRETS_LOAD.ready) {
   const { default: AddModelEntryDialog } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog"
   );
@@ -61,7 +62,7 @@ async function renderDialog(secrets: Secret[] = []) {
   const onSecretsChanged = vi.fn();
   const onSecretsNeeded = vi.fn();
   render(
-    React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, onCreated, onSecretsChanged, onSecretsNeeded } as never),
+    React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, secretsLoad, onCreated, onSecretsChanged, onSecretsNeeded } as never),
   );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /create model/i }));
@@ -365,6 +366,34 @@ describe("AddModelEntryDialog — the stored-secret list is loaded before submit
     // dialog IS the trigger under test.
     const { onSecretsNeeded } = await renderDialog([]);
     expect(onSecretsNeeded).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Save disabled while the secret list is in flight, even with a complete form", async () => {
+    // Firing the load on open is worthless if a fast hand can submit before it
+    // lands: `existing` resolves to undefined against a not-yet-loaded list,
+    // skipping the name-ownership guard and taking the create path — an
+    // upsert over whatever already holds the name. Fail closed until ready.
+    const { user } = await renderDialog([], SECRETS_LOAD.loading);
+    const dialog = screen.getByRole("dialog");
+    await fillKnownForm(user, dialog, { name: "anthropic", key: "sk-ant-e2e-xxxx" });
+
+    expect(screen.getByText(/checking your stored secrets/i)).toBeTruthy();
+    expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(dialog).getByRole("button", { name: /save & make active/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("a failed secret-list load keeps Save disabled and offers a retry wired to the same load", async () => {
+    const { user, onSecretsNeeded } = await renderDialog([], SECRETS_LOAD.error);
+    const dialog = screen.getByRole("dialog");
+    await fillKnownForm(user, dialog, { name: "anthropic", key: "sk-ant-e2e-xxxx" });
+
+    expect(screen.getByText(/couldn't load your stored secrets/i)).toBeTruthy();
+    expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true);
+
+    // Retry re-fires the load the open fired — once on open, once here.
+    await user.click(within(dialog).getByRole("button", { name: /retry/i }));
+    expect(onSecretsNeeded).toHaveBeenCalledTimes(2);
   });
 });
 

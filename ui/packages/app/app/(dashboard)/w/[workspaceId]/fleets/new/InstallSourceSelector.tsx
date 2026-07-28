@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Button, EmptyState, SectionLabel } from "@agentsfleet/design-system";
 import { LayoutTemplateIcon } from "lucide-react";
 import type { FleetLibraryPageResult } from "@/lib/api/fleet-library";
-import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
+import { errorKindForStatus, LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import AddLibraryDialog from "./AddLibraryDialog";
 import { readFleetLibraryPageAction } from "./actions";
@@ -93,28 +93,49 @@ export function InstallSourceSelector({
   const [total, setTotal] = useState<number | null>(initialPage?.total ?? null);
   const [error, setError] = useState<LibraryError | null>(initialError);
 
-  // Append the next page, retaining every card already loaded. Exactly one
-  // request per invocation — the walk this replaced issued as many as the
-  // library had pages, on every visit to this screen.
-  function loadMore() {
-    if (nextCursor === null) return;
+  // One page per request. `append` retains every card already loaded (the
+  // load-more path); replace is the recovery path, refilling a gallery that
+  // never got its first page. A failed page keeps whatever is on screen and
+  // surfaces a typed fault — it never blanks the gallery.
+  function fetchPage(cursor: string | null, append: boolean) {
     startTransition(async () => {
-      const r = await readFleetLibraryPageAction(workspaceId, nextCursor);
+      const r = await readFleetLibraryPageAction(workspaceId, cursor);
       if (!r.ok) {
-        // A failed load-more keeps the cards already on screen and offers
-        // another go; it never blanks the gallery.
-        setError({ kind: LIBRARY_ERROR_KIND.unknown, detail: r.error });
+        setError({
+          kind: typeof r.status === "number" ? errorKindForStatus(r.status) : LIBRARY_ERROR_KIND.unknown,
+          detail: r.error,
+        });
         return;
       }
       setError(null);
-      setEntries((prior) => [...prior, ...r.data.items]);
+      setEntries((prior) => (append ? [...prior, ...r.data.items] : r.data.items));
       setNextCursor(r.data.next_cursor);
       setTotal(r.data.total);
       // Mirror the page we just loaded FROM into the URL, so a reload, a
       // shared link, or a back navigation out of a detail view lands here
       // rather than dumping the user back at the first page.
-      mirrorCursorIntoUrl(nextCursor);
+      mirrorCursorIntoUrl(cursor);
     });
+  }
+
+  // Append the next page. Exactly one request per invocation — the walk this
+  // replaced issued as many as the library had pages, on every visit.
+  function loadMore() {
+    if (nextCursor === null) return;
+    fetchPage(nextCursor, true);
+  }
+
+  // Re-attempt whichever read failed. With a cursor in hand the fault was a
+  // load-more, so retry that same page; with none it was the server-render's
+  // first-page read, which has no client twin to re-run — so read page one.
+  // Keying this off `loadMore` alone left Retry permanently disabled in
+  // exactly the failed-first-read state it existed for.
+  function retryFailedRead() {
+    if (nextCursor !== null) {
+      fetchPage(nextCursor, true);
+      return;
+    }
+    fetchPage(null, false);
   }
 
   const showAddLibraryEntry = canAddLibraryEntry;
@@ -185,7 +206,7 @@ export function InstallSourceSelector({
       {error ? (
         <div role="alert" className="flex items-center gap-3">
           <p className="text-sm text-destructive">{galleryErrorCopy(error)}</p>
-          <Button type="button" variant="secondary" onClick={loadMore} disabled={pending || nextCursor === null}>
+          <Button type="button" variant="secondary" onClick={retryFailedRead} disabled={pending}>
             Retry
           </Button>
         </div>

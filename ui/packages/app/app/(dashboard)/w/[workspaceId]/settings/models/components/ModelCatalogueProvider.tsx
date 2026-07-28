@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 import { useRouter } from "next/navigation";
 import type { LibraryModel } from "@/lib/api/model_library";
 import { getModelLibraryAction } from "../actions";
+import { CATALOGUE_STATUS, type CatalogueStatus } from "./catalogue-status";
 
 // The global model library, loaded on INTENT rather than on mount.
 //
@@ -19,15 +20,8 @@ import { getModelLibraryAction } from "../actions";
 // session, not the catalogue, so the user routes to sign-in. Any other failure
 // degrades pickers to free-text model entry.
 
-export const CATALOGUE_STATUS = {
-  /** Never requested. Distinct from "loaded and empty". */
-  idle: "idle",
-  loading: "loading",
-  ready: "ready",
-  error: "error",
-} as const;
-
-export type CatalogueStatus = (typeof CATALOGUE_STATUS)[keyof typeof CATALOGUE_STATUS];
+// CATALOGUE_STATUS lives in ./catalogue-status — ProviderModelSelect keys its
+// control shape off it, and this module gets stubbed wholesale in tests.
 
 export type ModelCatalogueState = {
   models: LibraryModel[];

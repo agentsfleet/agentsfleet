@@ -5,13 +5,16 @@ import {
   Label,
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectItem,
 } from "@agentsfleet/design-system";
 import { modelsForProvider, uniqueModelIds } from "@/lib/api/model_library";
+import { CATALOGUE_STATUS } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { knownModelsFor } from "../lib/known-models";
+
+const CATALOGUE_LOADING_PLACEHOLDER = "Loading models…";
 
 export type ProviderModelSelectProps = {
   id: string;
@@ -21,6 +24,25 @@ export type ProviderModelSelectProps = {
   onModelChange: (value: string) => void;
   label?: string;
 };
+
+/**
+ * Held while the catalogue is in flight (it loads on dialog-open intent, so a
+ * cold open renders this for the round-trip). A disabled Select rather than
+ * letting the models array decide the control: an empty array would mount the
+ * free-text Input and then swap it for a Select when the catalogue lands —
+ * replacing the control mid-interaction, dropping focus, and visually
+ * orphaning anything already typed.
+ */
+function LoadingModelSelect({ id, label }: { id: string; label: string }) {
+  return (
+    <Select disabled>
+      <SelectTrigger id={id} aria-label={label}>
+        <SelectValue placeholder={CATALOGUE_LOADING_PLACEHOLDER} />
+      </SelectTrigger>
+      <SelectContent />
+    </Select>
+  );
+}
 
 /**
  * Model picker with three tiers: the admin-managed, priced catalogue first
@@ -39,7 +61,7 @@ export default function ProviderModelSelect({
   onModelChange,
   label = "Model",
 }: ProviderModelSelectProps) {
-  const { models } = useModelCatalogue();
+  const { models, status } = useModelCatalogue();
   const catalogueOptions = provider ? modelsForProvider(models, provider) : uniqueModelIds(models);
   const optionIds =
     catalogueOptions.length > 0
@@ -51,7 +73,9 @@ export default function ProviderModelSelect({
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      {optionIds.length > 0 ? (
+      {status === CATALOGUE_STATUS.loading ? (
+        <LoadingModelSelect id={id} label={label} />
+      ) : optionIds.length > 0 ? (
         <Select value={model} onValueChange={onModelChange}>
           <SelectTrigger id={id} aria-label={label}>
             <SelectValue placeholder="Select a model" />

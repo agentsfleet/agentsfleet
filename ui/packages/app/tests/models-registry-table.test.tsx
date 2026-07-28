@@ -433,7 +433,7 @@ describe("ModelsRegistryTable", () => {
 
   it("computeNextSort ignores a key outside the sortable column set, and toggles both directions", async () => {
     const { computeNextSort } = await import(
-      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
     );
     expect(computeNextSort(null, "status")).toBeNull();
     expect(computeNextSort({ key: "model", dir: "ascending" }, "actions")).toBeNull();
@@ -443,7 +443,7 @@ describe("ModelsRegistryTable", () => {
 
   it("sortValueFor reads model_id for the model column and provider (or '') for the provider column", async () => {
     const { sortValueFor } = await import(
-      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
     );
     const e = entry({ model_id: "claude-sonnet-5", provider: "anthropic" });
     expect(sortValueFor(e, "model")).toBe("claude-sonnet-5");
@@ -533,11 +533,18 @@ describe("ModelsRegistryTable", () => {
     expect(createSecretActionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("a failed secrets refresh leaves the stored-key state as-is — a repeat add re-creates rather than rotating", async () => {
+  it("a failed first secret-list load fails closed — Save stays disabled until a retry lands", async () => {
+    // The dialog's rotate-vs-create decision and its name-ownership guard both
+    // read the stored-secret list, and the secrets POST upserts server-side.
+    // Submitting against a list that never arrived would therefore stomp
+    // whatever already holds the typed name — so an unloaded list must BLOCK,
+    // not silently take the create path.
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
     createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
-    listSecretsActionMock.mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" });
+    listSecretsActionMock
+      .mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" })
+      .mockResolvedValue({ ok: true, data: { secrets: [] } });
     await renderTable(registry([]));
 
     const user = userEvent.setup();
@@ -548,25 +555,22 @@ describe("ModelsRegistryTable", () => {
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
     await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+
+    // Complete form, unknown secret list: both Save buttons are inert and the
+    // dialog says why.
+    await screen.findByText(/couldn't load your stored secrets/i);
+    expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+
+    // Retry loads the list; with it present, the same submit goes through.
+    await user.click(within(dialog).getByRole("button", { name: /retry/i }));
+    await waitFor(() =>
+      expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(false),
+    );
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
+    await waitFor(() => expect(createSecretActionMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-
-    // The `!r.ok` early return kept the secrets state empty, so the same
-    // name is unknown to the dialog and the second add takes the create path
-    // again (the backend would 409 in reality; mocked ok here — the branch
-    // under test is refreshSecrets' silent no-op, matching refresh()).
-    await user.click(screen.getByRole("button", { name: /create model/i }));
-    const reopened = await screen.findByRole("dialog");
-    await user.type(within(reopened).getByLabelText(/^name$/i), "anthropic");
-    await user.type(within(reopened).getByLabelText(/^provider$/i), "anthropic");
-    await user.click(within(reopened).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
-    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
-    await user.click(within(reopened).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(createSecretActionMock).toHaveBeenCalledTimes(2));
     expect(rotateSecretActionMock).not.toHaveBeenCalled();
   });
 });
