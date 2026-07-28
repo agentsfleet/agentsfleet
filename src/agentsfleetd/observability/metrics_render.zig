@@ -7,6 +7,7 @@ const mrp = @import("metrics_redis_pool.zig");
 const msm = @import("metrics_sensitive_memory.zig");
 const mt = @import("metrics_trace.zig");
 const mot = @import("metrics_otel.zig");
+const ls = @import("library_stages.zig");
 
 const S_TYPE_S_S_N = "# TYPE {s} {s}\n";
 /// One exposition line carrying a single label: `name{label="value"} 42`.
@@ -180,6 +181,78 @@ fn appendRedisPoolFamilies(writer: anytype) !void {
     try appendMetric(writer, "agentsfleet_redis_pool_acquire_timeouts_total", S_COUNTER, "Acquire calls that timed out waiting for a slot (currently always 0 — Pool acquires never block).", rps.acquire_timeouts_total);
 }
 
+/// Library read evidence. Every label here is a closed enum
+/// declared in `library_stages.zig`, so this block cannot emit a series that
+/// varies with tenant, workspace, request, or content — the loops below are
+/// bounded by enum field counts at compile time, which is the fixed-cardinality
+/// property §1 states, enforced by the shape of the iteration rather than by a
+/// guard someone has to remember to call.
+fn appendLibraryFamilies(writer: anytype) !void {
+    const snap = ls.snapshot();
+
+    try writer.print(S_HELP_S_S_N, .{ ls.STAGE_DURATION_NAME, ls.STAGE_DURATION_HELP });
+    try writer.print(S_TYPE_S_S_N, .{ ls.STAGE_DURATION_NAME, S_COUNTER });
+    for (ls.SURFACE_LABELS, 0..) |surface, si| {
+        for (ls.STAGE_LABELS, 0..) |stage, sti| {
+            const seconds = @as(f64, @floatFromInt(snap.stages[si][sti].duration_ns)) /
+                @as(f64, @floatFromInt(std.time.ns_per_s));
+            try writer.print(S_TWO_LABEL_SAMPLE, .{
+                ls.STAGE_DURATION_NAME, ls.LABEL_SURFACE, surface, ls.LABEL_STAGE, stage, seconds,
+            });
+        }
+    }
+
+    try writer.print(S_HELP_S_S_N, .{ ls.STAGE_OBSERVATIONS_NAME, ls.STAGE_OBSERVATIONS_HELP });
+    try writer.print(S_TYPE_S_S_N, .{ ls.STAGE_OBSERVATIONS_NAME, S_COUNTER });
+    for (ls.SURFACE_LABELS, 0..) |surface, si| {
+        for (ls.STAGE_LABELS, 0..) |stage, sti| {
+            try writer.print(S_TWO_LABEL_SAMPLE, .{
+                ls.STAGE_OBSERVATIONS_NAME, ls.LABEL_SURFACE, surface, ls.LABEL_STAGE, stage, snap.stages[si][sti].count,
+            });
+        }
+    }
+
+    try writer.print(S_HELP_S_S_N, .{ ls.READ_OUTCOME_NAME, ls.READ_OUTCOME_HELP });
+    try writer.print(S_TYPE_S_S_N, .{ ls.READ_OUTCOME_NAME, S_COUNTER });
+    for (ls.SURFACE_LABELS, 0..) |surface, si| {
+        for (ls.OUTCOME_LABELS, 0..) |outcome, oi| {
+            try writer.print(S_TWO_LABEL_SAMPLE, .{
+                ls.READ_OUTCOME_NAME, ls.LABEL_SURFACE, surface, ls.LABEL_OUTCOME, outcome, snap.read_outcomes[si][oi],
+            });
+        }
+    }
+
+    try appendLibrarySingleLabelFamilies(writer, snap);
+}
+
+/// The three single-label library families. Split from the block above only to
+/// keep each function inside the length gate; the seam is label arity.
+fn appendLibrarySingleLabelFamilies(writer: anytype, snap: ls.Snapshot) !void {
+    try writer.print(S_HELP_S_S_N, .{ ls.POOL_RESULT_NAME, ls.POOL_RESULT_HELP });
+    try writer.print(S_TYPE_S_S_N, .{ ls.POOL_RESULT_NAME, S_COUNTER });
+    for (ls.POOL_RESULT_LABELS, 0..) |result, i| {
+        try writer.print(S_ONE_LABEL_SAMPLE, .{ ls.POOL_RESULT_NAME, ls.LABEL_POOL_RESULT, result, snap.pool_results[i] });
+    }
+
+    try writer.print(S_HELP_S_S_N, .{ ls.CACHE_OUTCOME_NAME, ls.CACHE_OUTCOME_HELP });
+    try writer.print(S_TYPE_S_S_N, .{ ls.CACHE_OUTCOME_NAME, S_COUNTER });
+    for (ls.CACHE_LABELS, 0..) |cache, i| {
+        try writer.print(S_ONE_LABEL_SAMPLE, .{ ls.CACHE_OUTCOME_NAME, ls.LABEL_CACHE, cache, snap.cache_outcomes[i] });
+    }
+
+    try writer.print(S_HELP_S_S_N, .{ ls.PAYLOAD_BYTES_NAME, ls.PAYLOAD_BYTES_HELP });
+    try writer.print(S_TYPE_S_S_N, .{ ls.PAYLOAD_BYTES_NAME, S_COUNTER });
+    for (ls.SURFACE_LABELS, 0..) |surface, i| {
+        try writer.print(S_ONE_LABEL_SAMPLE, .{ ls.PAYLOAD_BYTES_NAME, ls.LABEL_SURFACE, surface, snap.payload_bytes[i] });
+    }
+
+    try writer.print(S_HELP_S_S_N, .{ ls.RESULTS_NAME, ls.RESULTS_HELP });
+    try writer.print(S_TYPE_S_S_N, .{ ls.RESULTS_NAME, S_COUNTER });
+    for (ls.SURFACE_LABELS, 0..) |surface, i| {
+        try writer.print(S_ONE_LABEL_SAMPLE, .{ ls.RESULTS_NAME, ls.LABEL_SURFACE, surface, snap.results[i] });
+    }
+}
+
 /// Render the whole exposition. Family order is the scrape's stable shape, so
 /// the calls below stay in emission order; every family carries the one
 /// `agentsfleet_` namespace (`semantic_schema_test.zig` proves it).
@@ -204,6 +277,7 @@ pub fn renderPrometheus(
     try appendMetric(writer, "agentsfleet_fleet_triggered_total", S_COUNTER, "Total fleet webhook triggers accepted.", s.fleet_triggered_total);
 
     try appendLeasePollFamilies(writer, s);
+    try appendLibraryFamilies(writer);
     try appendRedisPoolFamilies(writer);
     try msm.renderPrometheus(writer);
     // Per-runner failure metrics (pushed in on each runner report).

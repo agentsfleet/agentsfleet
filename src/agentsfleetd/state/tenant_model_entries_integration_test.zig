@@ -152,7 +152,7 @@ fn walkPages(
     // assertion instead of looping until the harness times out.
     var guard: usize = 0;
     while (guard <= SEEDED + 1) : (guard += 1) {
-        var result = try view.buildList(alloc, conn, TENANT, limit, after);
+        var result = try view.buildList(alloc, conn, TENANT, limit, after, null);
         defer result.deinit(alloc);
 
         for (result.rows) |row| try out.append(alloc, try alloc.dupe(u8, row.id));
@@ -233,13 +233,13 @@ test "integration: test_tenant_registry_page_is_bounded: the last page reports n
     // over-fetch probe is what decides this, and off-by-one there yields a
     // cursor pointing at an empty page — navigable, but it makes a client
     // request a page that can never contain anything.
-    var full = try view.buildList(alloc, db.conn, TENANT, SEEDED, null);
+    var full = try view.buildList(alloc, db.conn, TENANT, SEEDED, null, null);
     defer full.deinit(alloc);
     try std.testing.expectEqual(@as(usize, SEEDED), full.rows.len);
     try std.testing.expect(full.next_cursor == null);
 
     // One short of the set must say the opposite.
-    var partial = try view.buildList(alloc, db.conn, TENANT, SEEDED - 1, null);
+    var partial = try view.buildList(alloc, db.conn, TENANT, SEEDED - 1, null, null);
     defer partial.deinit(alloc);
     try std.testing.expectEqual(@as(usize, SEEDED - 1), partial.rows.len);
     try std.testing.expect(partial.next_cursor != null);

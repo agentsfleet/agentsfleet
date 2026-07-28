@@ -44,10 +44,19 @@ describe("createTenantWorkspace", () => {
     expect(reqInit.method).toBe("POST");
     expect(reqInit.body as string).toContain("acme-prod");
     expect(headers.Authorization).toBe("Bearer tok_1");
+    // Exact set, deliberately — this assertion exists to catch a header
+    // leaking onto the request, so it must list every header the client sends.
+    // `traceparent` is one of them: every request mints a fresh W3C root so a
+    // slow page can be attributed to the server-side stages that produced it.
     expect(Object.keys(headers).sort()).toEqual([
       "Authorization",
       "Content-Type",
+      "traceparent",
     ]);
+    // The value has to be a shape the server will actually parse; one it
+    // rejects is silently ignored and costs the correlation this header exists
+    // for, without failing anything.
+    expect(headers.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
     expect(reqInit.signal).toBeInstanceOf(AbortSignal);
   });
 

@@ -259,3 +259,45 @@ fn allZero(bytes: []const u8) bool {
     for (bytes) |byte| if (byte != 0) return false;
     return true;
 }
+
+// ── pool acquire classification ─────────────────────────────────────────────
+//
+// Both arms of the decision `Hx.db()` makes on failure. The timeout arm also has
+// an integration proof against a real saturated pool
+// (`db/pool_bounded_progress_integration_test.zig`); this pins the mapping
+// itself, including the arm no test can stage against a live pool.
+
+test "should map a pool acquire timeout to PoolTimeout when the pool is saturated" {
+    // The operator reads this as "capacity" — every connection leased and the
+    // acquire budget elapsed.
+    try std.testing.expectEqual(
+        hx_mod.DbAcquireError.PoolTimeout,
+        hx_mod.classifyAcquireError(error.Timeout),
+    );
+}
+
+test "should map any non-timeout acquire failure to PoolUnavailable" {
+    // The operator reads these as "the datastore" — reachability, credentials,
+    // TLS. Folding them into PoolTimeout would send someone to add capacity
+    // while the database is simply down.
+    const non_timeout = [_]anyerror{
+        error.ConnectionRefused,
+        error.OutOfMemory,
+        error.BrokenPipe,
+        error.TlsInitializationFailed,
+    };
+    for (non_timeout) |err| {
+        try std.testing.expectEqual(
+            hx_mod.DbAcquireError.PoolUnavailable,
+            hx_mod.classifyAcquireError(err),
+        );
+    }
+}
+
+test "should classify every error into exactly one arm, never silently widening" {
+    // The error set has two members and the mapping is total. A third member
+    // added without a mapping arm would make this fail to compile rather than
+    // reach a handler as an unclassified acquire failure.
+    const fields = @typeInfo(hx_mod.DbAcquireError).error_set.?;
+    try std.testing.expectEqual(@as(usize, 2), fields.len);
+}
