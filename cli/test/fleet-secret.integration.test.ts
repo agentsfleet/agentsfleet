@@ -283,8 +283,10 @@ describe("secret create already-exists human mode", () => {
   test("prints human-mode skip message when secret already exists (no --json)", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
-          jsonResponse(200, { secrets: [{ name: "existing", created_at: 1700000000000 }] }),
+        [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(409, {
+            error: { code: "UZ-VAULT-005", message: "Secret name already taken" },
+          }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
@@ -296,8 +298,8 @@ describe("secret create already-exists human mode", () => {
         expect(code).toBe(0);
         const text = out.read();
         expect(text).toMatch(/already exists/i);
-        expect(text).toMatch(/--force/i);
-        expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+        expect(text).toMatch(/secret delete existing/);
+        expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
       });
     });
   });

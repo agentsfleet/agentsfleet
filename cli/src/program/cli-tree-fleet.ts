@@ -142,7 +142,6 @@ export function buildFleetTree(
     .option(FLAG_BASE_URL, "Custom endpoint base URL (https; required for a custom-endpoint provider)", parseHttpsUrlOption)
     .option(FLAG_API_KEY, "Provider API key for the typed custom-endpoint form")
     .option(FLAG_MODEL_OPT, "Default model identifier for the typed custom-endpoint form", parseStringOption)
-    .option("--force", "Overwrite if a secret with this name already exists")
     .action(actionFor("fleet.secret.create", (frame) => runHandler(state, frame, handlers.fleet.secret.create)));
 
   secret.command("show <name>")
