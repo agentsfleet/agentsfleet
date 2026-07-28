@@ -24,6 +24,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Depends on:** M143_001 — paged tenant/global models and tier-qualified Fleet summary/detail
 **Provenance:** LLM-drafted (Codex, Jul 24, 2026) from Oracle second-pass review
 **Canonical architecture:** `docs/architecture/web_app.md` (statements 3 and 5, plus its scoreboard) and `docs/AUTH.md` Flow 2. Amended at VERIFY — see Discovery A9.
+**Scope amended at EXECUTE (Jul 28, 2026):** §4 retires the uncalled `q` search parameter and §5 removes `support_files` from API responses while retaining the stored manifest — both on Indy's in-session decision. This takes the workstream beyond User Interface (UI)-only into Zig handlers, SQL modules, and published OpenAPI; the ZIG, PUB, and ERROR REGISTRY gate rows flip accordingly. See Discovery A10 and A11.
 
 ---
 
@@ -56,6 +57,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/auth/client.test.tsx` | EDIT | Keeper retained; existing unit coverage stands (§3). |
 | `tests/e2e/acceptance/settings-models.spec.ts`; `platform-library-onboarding.spec.ts` | EDIT/CREATE | Authenticated UI/session proof. |
 | `docs/architecture/web_app.md` | EDIT | Scoreboard re-measure and the statement-3/5 record for these routes (Discovery A9). |
+| `src/agentsfleetd/http/handlers/library/query.zig`; `.../library/gallery.zig`; `.../library/gallery_page.zig`; `.../library/catalogue_key.zig`; `.../model_library.zig`; `src/agentsfleetd/fleet_library/gallery_sql.zig`; `src/agentsfleetd/state/model_library/sql.zig`; `src/agentsfleetd/state/model_library_store.zig`; `.../library/library_query_normalization_test.zig`; `.../model_library_page_integration_test.zig`; `public/openapi/paths/fleet-library.yaml`; `public/openapi/paths/models.yaml`; `public/openapi.json` | EDIT | §4 — retire the uncalled `q` search parameter end-to-end (Discovery A10). Search normalization, the folded `LIKE` pattern, the cursor key's `q` field, both published parameter documents, and the `q` half of `UZ-LIBRARY-003`. |
+| `src/agentsfleetd/fleet_library/sql.zig`; `.../library/entry_view.zig`; `.../library/catalog.zig`; `.../library/onboard.zig`; `public/openapi/components/schemas.yaml`; `ui/packages/app/lib/types.ts` | EDIT | §5 — stop projecting `support_files` onto API responses while continuing to persist the manifest (Discovery A11). Read-back SELECTs, the admin-catalog and onboard response projections, the published schemas, and the two client types. |
 
 **Scope grading.** Rubric R4 compares `git diff --name-only origin/main` against this table, so every cell is an exact path. Test files are covered by the row of the code they exercise, whether they sit beside it as `<Name>.test.tsx` or in this package's shared `ui/packages/app/tests/` directory — which is where most of this application's tests actually live, a fact the original wording did not anticipate. A path that turns out to be genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
 
@@ -68,11 +71,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | Gate | Fires? | Satisfaction strategy |
 |---|---|---|
-| ZIG / PUB | no | M143_001 is consumed |
+| ZIG / PUB | **yes** (was no) | §4 and §5 edit handlers, stores, and SQL modules. Cross-compile both linux targets; every `pub` surface removed is proven to have no remaining caller before deletion. Flipped at EXECUTE — see Discovery A10/A11. |
 | File & Function Length | yes | focused types/state components |
 | UFS | yes | constants for states, thresholds, routes |
 | UI Substitution / DESIGN TOKEN | yes | primitives/tokens; stable reduced motion |
-| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no | no backend/schema changes |
+| ERROR REGISTRY | **yes** (was no) | §4 narrows `UZ-LIBRARY-003` to its `limit` half. The code keeps its identifier and its registry row; only the search-bound cause retires. |
+| SCHEMA | no | §5 retains the `support_files_json` column and every write to it. No migration, no `DROP COLUMN`, no edit to a frozen slot file — the change is confined to what is read back and projected (Discovery A11). |
+| LOGGING / LIFECYCLE | no | no logging or lifecycle surface changes |
 
 ## Prior-Art / Reference Implementations
 
@@ -162,6 +167,37 @@ problem someone has hit. Absent one of those, leave it alone.
 
 - **Dimension 3.1** — the keeper stays mounted and its unit coverage holds → Test `lib/auth/client.test.tsx` (existing)
 
+### §4 — The `q` search parameter is retired
+
+**Added at EXECUTE on Indy's in-session decision (Discovery A10), superseding Amendment A8's "Deleting `q` is NOT in this workstream".**
+
+`q` is a substring filter on `GET /v1/fleet-libraries` (matched over `id`, `name`, `description`) and on `GET /v1/models`. It is fully built and published: trim/collapse normalization, a 128-byte bound mapped to `UZ-LIBRARY-003`, UTF-8 validation, Postgres-side `NFKC` fold with `lower()`, `LIKE` metacharacter escaping applied *after* the fold, participation in the keyset cursor's canonical key, and a dedicated normalization test file.
+
+**No client sends it.** `fleet-library.ts` and `tenant_model_entries.ts` both build `URLSearchParams({limit})` and stop; the Command-Line Interface (CLI) and the runner never send it. It is reachable only by hand-writing a URL. This is the same position the workspace detail route was in when M143_001 deleted it — built, hardened, published, uncalled — and the resolution follows that precedent rather than inventing a consumer for it. The realistic scale is under 15 fleets and under 10 fleet libraries per workspace, where a filter solves a problem nobody has.
+
+`UZ-LIBRARY-003` is **narrowed, not retired**: it keeps its identifier and registry row for the `limit`-out-of-range cause. Only the search-bound cause goes.
+
+**`provider` is deliberately left in place.** It sits in the same `Filters` struct and the same cursor key as `q`, and it is equally uncalled — but it was not authorized, and this workstream does not widen its own scope. Recorded in Discovery A10 as a standing finding.
+
+- **Dimension 4.1** — no `q` reaches any handler, SQL module, or cursor key, and the gallery/models reads behave identically without it → Test `test_library_reads_ignore_retired_search_param`
+- **Dimension 4.2** — `UZ-LIBRARY-003` still fires for an out-of-range `limit` and no longer has a search-bound cause → Test `test_library_limit_bound_survives_search_retirement`
+
+### §5 — `support_files` leaves the API surface; the manifest stays stored
+
+**Added at EXECUTE on Indy's in-session decision (Discovery A11).**
+
+The persisted `support_files_json` manifest is written at import and read back by nothing user-facing. Verified rather than assumed: **zero production `.tsx` files reference `support_files`** anywhere; the install screen's directory contains no occurrence of the string at all; the Command-Line Interface (CLI) and runner never read it. The admin catalog response is the only surface that carries it, and the admin screen renders nothing from it — the one non-empty fixture, `FleetLibrariesView.test.tsx:44`, appears once and is never asserted, existing only to satisfy a non-optional type.
+
+Install does not need it, and the reason is structural. The Command-Line Interface (CLI) resolves a gallery entry and sends only `{platform_library_id}` or `{tenant_library_id}`; `create_fleet_bundle.zig` reads `content_hash` and derives `snapshot_key`; `runner/bundle_extract.zig` downloads the canonical tar by `content_hash` and untars support files **from the tar's own entries**. The authoritative file list travels inside the content-addressed tar. Postgres holds a second copy that nothing consults.
+
+**The column is retained and every write to it stays.** Indy's call is to keep storing the manifest as durable provenance and stop returning it — so no migration, no `DROP COLUMN`, and no edit to a frozen slot file (`SCHEMA_CONVENTIONS.md` §Migration Model: shipped slots are frozen history). `importer.zig` still validates paths, hashes content, and persists the manifest; `library_store.zig` still carries the write fields; the INSERT/UPSERT SQL is untouched.
+
+**Support-file bytes are untouched and remain fully load-bearing** — this section removes a duplicated *index*, never content.
+
+- **Dimension 5.1** — no API response carries `support_files`, and the published schemas agree → Test `test_library_responses_omit_support_manifest`
+- **Dimension 5.2** — the manifest is still persisted on import and survives a round-trip through the store → Test `test_import_still_persists_support_manifest`
+- **Dimension 5.3** — narrowing the SELECT lists does not shift any positional row read → Test `test_catalog_row_projection_indices_hold`
+
 ## Interfaces
 
 `TenantModelPages = retained rows + current starting_after; projection scope=current response page only`.
@@ -188,6 +224,8 @@ Refresh state: last success plus idle/loading/refreshing/error and typed error.
 2. Discriminated types enforce `(visibility,id)` everywhere.
 3. Reducer tests enforce retained authorized data until successful replacement.
 4. A paged list discloses what it has not loaded; truncation is never silent. This binds **both** surfaces: the Models registry (`tenant_model_entries.ts`) and the Fleet gallery (`fleet-library.ts`) each replace an exhaustive `next_cursor` walk that exists specifically to stop later entries vanishing unannounced.
+5. Retiring a read never retires a write. §5 removes `support_files` from every response while `support_files_json` continues to be computed, validated, and persisted on every import — and support-file *bytes* stay untouched end to end, from `importer.zig` hashing through `runner/bundle_extract.zig` materialization.
+6. Narrowing a SELECT list never shifts a positional read. Every `row.get(T, i)` index downstream of a removed column is re-derived and pinned by test, because a silent off-by-one here reads a neighbouring field rather than failing.
 
 ## Metrics & Observability
 
@@ -210,6 +248,11 @@ This table is the complete set. Every row is mandatory, including the failure ro
 | — | integration | `test_refresh_retains_authorized_content` | a network or 503 fault after a success keeps the last successful rows on screen and offers retry, never falling back to an empty state |
 | — | browser | `test_library_reduced_motion_state` | under `prefers-reduced-motion: reduce` no shimmer or transform runs, and loading remains distinguishable from loaded |
 | — | end-to-end | `test_library_list_position_survives_reload` | after load-more, a reload restores the same page from `library_after`; back from a detail returns to that page, not the first; an unparseable `library_after` falls back to the first page without an error state |
+| 4.1 | integration | `test_library_reads_ignore_retired_search_param` | a `?q=` on either read is inert — same rows, same order, same cursor as the request without it; no handler, SQL module, or cursor key retains a search field |
+| 4.2 | unit | `test_library_limit_bound_survives_search_retirement` | `UZ-LIBRARY-003` still fires for `limit` out of range, and no code path can raise it for a search bound |
+| 5.1 | integration | `test_library_responses_omit_support_manifest` | neither the admin catalog nor the onboard response carries `support_files`, and both published schemas agree with what is served |
+| 5.2 | integration | `test_import_still_persists_support_manifest` | an import writes `support_files_json` and it survives a round-trip through the store — the column and its writes are retained, only the read-back goes |
+| 5.3 | unit | `test_catalog_row_projection_indices_hold` | every positional `row.get` index in the narrowed projection maps to the field it names, so removing a SELECT column cannot silently shift a read |
 
 **Decryption is asserted indirectly and deliberately.** Decryption happens server-side and is owned by M143_001. Row 1.1 asserts what this workstream controls — the number and shape of requests the UI issues — and treats "no extra decrypts" as a consequence proven by M143_001's `test_tenant_registry_page_is_bounded`. Naming that split here stops an agent from trying to observe decryption from a browser context.
 
@@ -222,6 +265,10 @@ This table is the complete set. Every row is mandatory, including the failure ro
 | R3 | Session keeper retained and unit-covered | `bun --cwd ui/packages/app test lib/auth/client.test.tsx` | exit 0 | P0 | ✅ `3 passed` — keeper mount, refresh interval, listener cleanup |
 | R4 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | ✅ 36 files, every one in the table above |
 | S1 | Repository gates | `make test-unit-all && make lint-all && make harness-verify && gitleaks detect` | exit 0 | P0 | ⚠️ `harness-verify` ALL GATES GREEN; `gitleaks` no leaks found; `lint-all` fails pre-existing — see note |
+| R5 | `q` is gone from every surface | `grep -rn '"q"' src/ public/openapi/ \| grep -v provider` | 0 library search hits | P0 | pending re-grade |
+| R6 | Zig suites pass and both targets cross-compile | `make test-unit-all && zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | pending re-grade |
+| R7 | No response carries `support_files`, but imports still store it | `make test-integration` (Dimensions 5.1, 5.2) | exit 0 | P0 | pending re-grade |
+| R8 | Published schemas match what is served | `make check-openapi` | exit 0 | P0 | pending re-grade |
 
 **Grading protocol (VERIFY):** run verbatim; record ✅/❌ and one decisive line.
 
@@ -314,7 +361,7 @@ follow-up: either restore the document or retire the checker that demands it.
 
   `library_q` was never a second name for `q` — it named a URL parameter that was never built. It is struck here rather than implemented. The Failure Modes row is **retargeted, not deleted**: the latest-wins mechanism it described IS built, as the catalogue provider's generation counter, and keeps its test.
 
-  **Deleting `q` is NOT in this workstream.** It spans Zig handlers, the gallery and model SQL, the keyset cursor's wire format, the published OpenAPI parameter on two paths, and the `q` half of `UZ-LIBRARY-003` — none of which M143_002 touches, all of which would breach its User Interface (UI)-only scope, fire the ZIG and PUB gates its own table marks "no", and collide with M143_003's Zig surface. Recorded here for the follow-up workstream.
+  **~~Deleting `q` is NOT in this workstream.~~ SUPERSEDED by Amendment A10 — `q` is deleted here.** The original text read: *"It spans Zig handlers, the gallery and model SQL, the keyset cursor's wire format, the published OpenAPI parameter on two paths, and the `q` half of `UZ-LIBRARY-003` — none of which M143_002 touches, all of which would breach its User Interface (UI)-only scope, fire the ZIG and PUB gates its own table marks 'no', and collide with M143_003's Zig surface."* The blast-radius list is accurate and §4 implements exactly it; the scope objection is reversed by Indy's decision, the gate table now marks ZIG and PUB "yes", and the M143_003 collision no longer exists (PR #569 merged).
 
 - **Amendment A9 (VERIFY) — canonical architecture repointed to `docs/architecture/web_app.md`.** The spec cited `user_flow.md` §8.7, which is about platform-versus-self-managed model and context-cap origin and has nothing to say about library reads or loading. `web_app.md` did not exist when this spec was drafted on Jul 24; it landed Jul 28 in PR #568 and is the correct home. Its statement 3 ("every route paints a shell before it paints data") and statement 5 ("`useEffect` is for subscriptions, not for loading") describe precisely what this workstream implemented, and its scoreboard carries a standing instruction to "re-measure at any milestone that touches the app and update this table in the same diff". Done: `useEffect` 22 → 20, `Suspense` 3 → 5.
 
@@ -322,7 +369,27 @@ follow-up: either restore the document or retire the checker that demands it.
 
 - **Decision recorded (Indy, in-session) — §3 uses the Clerk instance in `ui/packages/app/.env.local`.** It is a `pk_test_` development instance. Indy directed that this is the instance to use and that the question is settled; the capture reads the configured session lifetime from Clerk's Backend API at run time and records it, with the instance kind, in report metadata. No further consult on instance provenance.
 
-- **Out of scope, recorded so it is not lost — the `support_files_json` manifest read path is dead weight.** Distinct from support-file *bytes*, which are fully load-bearing: `importer.zig` validates paths and hashes content, and `runner/bundle_extract.zig` untars them into the workspace at execution. The persisted *manifest* is different — SELECTed at four sites (`fleet_library/sql.zig:103,116,242`, `gallery_sql.zig:154`), decoded by `entry_view.decodeSummaries`, projected into the admin catalog response by `catalog.zig:130`, and then rendered by nothing. The code documents its own redundancy: *"The per-file hash stays internal — it is a handle to stored bytes, and no reader needs it"* and *"`sha256` is read and dropped"*. The runner never reads it (`gallery_sql.zig:103` — bytes come from object storage by `content_hash`). Retiring it is a Zig + SQL + response-schema change that would breach this workstream's User Interface (UI)-only scope and collide with M143_003's surface, and it carries an open question (does `sha256` stay as durable provenance, or should the admin screen render a file list instead?). Flagged to Indy; awaiting a decision on whether it becomes its own workstream.
+- **~~Out of scope~~ — RESOLVED by Amendment A11 and §5; the read path is removed, the column retained.** Original entry preserved below for its evidence, which the investigation confirmed. The open question it posed — *"does `sha256` stay as durable provenance, or should the admin screen render a file list instead?"* — is answered by keeping the manifest stored (provenance survives) and rendering nothing (no reader wanted one).
+
+  **The `support_files_json` manifest read path is dead weight.** Distinct from support-file *bytes*, which are fully load-bearing: `importer.zig` validates paths and hashes content, and `runner/bundle_extract.zig` untars them into the workspace at execution. The persisted *manifest* is different — SELECTed at four sites (`fleet_library/sql.zig:103,116,242`, `gallery_sql.zig:154`), decoded by `entry_view.decodeSummaries`, projected into the admin catalog response by `catalog.zig:130`, and then rendered by nothing. The code documents its own redundancy: *"The per-file hash stays internal — it is a handle to stored bytes, and no reader needs it"* and *"`sha256` is read and dropped"*. The runner never reads it (`gallery_sql.zig:103` — bytes come from object storage by `content_hash`). Retiring it is a Zig + SQL + response-schema change that would breach this workstream's User Interface (UI)-only scope and collide with M143_003's surface, and it carries an open question (does `sha256` stay as durable provenance, or should the admin screen render a file list instead?). Flagged to Indy; awaiting a decision on whether it becomes its own workstream.
+
+- **Amendment A10 (EXECUTE) — `q` is deleted in this workstream, superseding A8.** A8 recorded the deletion as belonging to a follow-up workstream, on two grounds: it would breach a User Interface (UI)-only scope, and it would collide with M143_003's Zig surface. Indy's in-session decision reverses the first, and the second is now factually stale — M143_003 merged as PR #569 (`7d0c881b6`) and its spec sits in `docs/v2/done/`, so there is no surface left to collide with.
+
+  > Indy (2026-07-28): "Yes delete q in this PR and not in a new milestone" — context: retiring the uncalled `q` search parameter; reaffirmed as "Yes delete q as well."
+
+  A8's reasoning for *why* `q` should go is unchanged and remains the record: built, hardened, published, uncalled, at a scale where a filter solves a problem nobody has. Only its routing to a later workstream is superseded. §4 carries the implementation.
+
+  **Standing finding, not actioned — `provider` is in the identical position.** `GET /v1/models?provider=` is normalized at `model_library.zig:163`, published at `public/openapi/paths/models.yaml:57`, shares the `Filters` struct and the cursor key with `q`, and is sent by no client — `fleet-library.ts` and `tenant_model_entries.ts` both build `URLSearchParams({limit})` and stop. The `provider` references in `model_library.ts` are client-side helpers over an already-fetched list (`modelsForProvider`), not a query parameter. Surfaced to Indy twice during EXECUTE and not authorized, so it stays: retiring it alongside `q` would have been one edit instead of two passes over the same five files, but an agent does not widen its own scope. A follow-up workstream can take it cheaply.
+
+- **Amendment A11 (EXECUTE) — `support_files` leaves the API surface; the column and its writes are retained.** The original out-of-scope note (retained below) proposed retiring the manifest read path and left open whether `sha256` should survive as provenance or the admin screen should render a file list. Investigation answered the prior question — nothing reads it, admin included — and Indy settled the disposition.
+
+  > Indy (2026-07-28): "I think i dont want to drop the column support_files_json (Store it) but dont return it in the API response" — context: the persisted manifest, after confirming no reader exists on any plane.
+
+  This is deliberately **not** the `q` resolution. `q` is deleted because it is a filter nobody asked for; the manifest is *kept* because it is a durable record of what a stored bundle contained, and keeping it costs one JSONB write per import. Only the projection goes. The consequence is that no migration is authored, `SCHEMA_CONVENTIONS.md` §Migration Model's frozen-slot rule is never approached, and the `DROP COLUMN` owner-decision requirement at `SCHEMA_CONVENTIONS.md:9` does not apply.
+
+  **Correction to an earlier claim in this log.** An intermediate position held that dropping the column would lose the file list irrecoverably. That was wrong: the canonical tar is self-describing and `runner/bundle_extract.zig` already reads the file list from the tar's own entries rather than from Postgres. The manifest is a second copy. The retention decision therefore rests on provenance convenience, not on data that exists nowhere else — worth stating plainly so a later reader does not inherit a false constraint.
+
+- **Rules inconsistency, flagged not fixed — SCHEMA GUARD contradicts SCHEMA_CONVENTIONS.** `dispatch/write_sql.md`'s Schema Table Removal Guard branches on `VERSION < 2.0.0` into a teardown-rebuild model that lists `ALTER TABLE` and `DROP TABLE` as **forbidden**. `VERSION` is `0.23.0`, so read literally the guard forbids the additive migration that `SCHEMA_CONVENTIONS.md` §Migration Model (owner decision, Jul 22, 2026) requires — and that `schema/032`'s own header cites as governing. The conventions document is the one the dispatch names as source-of-truth, so additive wins; §5 needed no migration either way, so nothing here depended on the resolution. Raised to Indy as a `dotfiles` fix rather than touched from this repository.
 
 - **Metrics review** — privacy-safe aggregate only; funnel unchanged.
 - **Skill-chain outcomes** — populated during implementation.
