@@ -7,7 +7,6 @@ import { type ReactNode } from "react";
 import {
   Badge,
   type BadgeVariant,
-  CopyButton,
   IconAction,
   Time,
 } from "@agentsfleet/design-system";
@@ -113,10 +112,8 @@ export function actionsFor(state: RunnerAdminState): RunnerAdminAction[] {
 export function HostCell({ r }: { r: RunnerListItem }) {
   return (
     <div className="min-w-0">
-      {/* Truncated in the cell; whole on the clipboard. */}
       <div className="flex min-w-0 items-center gap-1">
         <div className="truncate font-mono text-sm">{r.host_id}</div>
-        <CopyButton value={r.host_id} label={`Copy host id: ${r.host_id}`} />
       </div>
       <div className="font-mono text-xs tabular-nums text-muted-foreground">
         enrolled <Time value={new Date(r.created_at)} format="relative" /> ·{" "}
@@ -134,9 +131,13 @@ export function HostCell({ r }: { r: RunnerListItem }) {
 
 export function StatusCell({ r }: { r: RunnerListItem }) {
   return (
+    // Administrative state leads: whether an operator has cordoned, drained or
+    // revoked this runner decides what it is allowed to do, and liveness only
+    // reports what it is doing right now. Reading "active online" in that order
+    // matches how the pair is spoken about.
     <div className="flex flex-wrap gap-1.5">
-      <Badge variant={LIVENESS_VARIANT[r.liveness]}>{r.liveness}</Badge>
       <Badge variant={ADMIN_STATE_VARIANT[r.admin_state]}>{r.admin_state}</Badge>
+      <Badge variant={LIVENESS_VARIANT[r.liveness]}>{r.liveness}</Badge>
     </div>
   );
 }
