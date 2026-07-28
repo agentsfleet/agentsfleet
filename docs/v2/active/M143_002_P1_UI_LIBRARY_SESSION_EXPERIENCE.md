@@ -23,7 +23,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Test Baseline:** unit=3172 integration=446
 **Depends on:** M143_001 — paged tenant/global models and tier-qualified Fleet summary/detail
 **Provenance:** LLM-drafted (Codex, Jul 24, 2026) from Oracle second-pass review
-**Canonical architecture:** `docs/architecture/user_flow.md` §8.7 and `docs/AUTH.md` Flow 2
+**Canonical architecture:** `docs/architecture/web_app.md` (statements 3 and 5, plus its scoreboard) and `docs/AUTH.md` Flow 2. Amended at VERIFY — see Discovery A9.
 
 ---
 
@@ -55,9 +55,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/page.tsx`; `.../fleets/new/actions.ts`; `.../fleets/new/LibraryCard.tsx`; `.../fleets/new/InstallSourceSelector.tsx`; `.../fleets/new/AddLibraryDialog.tsx`; `.../fleets/new/loading.tsx`; `.../fleets/new/InstallFleet.tsx`; `.../fleets/new/InstallStates.tsx`; `.../fleets/new/InstallEntry.tsx`; `.../fleets/new/library-docs.tsx` | EDIT/CREATE | Retained gallery paging, server-resolved selection from the held summary, and typed selection states. `InstallFleet.tsx`/`InstallStates.tsx` amended in at PLAN (see Discovery) — they own deep-link initialization and the selection/ConnectGate states §2 now renders from the summary. |
 | `ui/packages/app/lib/auth/client.test.tsx` | EDIT | Keeper retained; existing unit coverage stands (§3). |
 | `tests/e2e/acceptance/settings-models.spec.ts`; `platform-library-onboarding.spec.ts` | EDIT/CREATE | Authenticated UI/session proof. |
-| `docs/architecture/user_flow.md` | EDIT | Paged UI and server-resolved selection truth. |
+| `docs/architecture/web_app.md` | EDIT | Scoreboard re-measure and the statement-3/5 record for these routes (Discovery A9). |
 
-**Scope grading.** Rubric R4 compares `git diff --name-only origin/main` against this table, so every cell is an exact path. Component test files sit beside their component as `<Name>.test.tsx` and are covered by their component's row. A path that turns out to be genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
+**Scope grading.** Rubric R4 compares `git diff --name-only origin/main` against this table, so every cell is an exact path. Test files are covered by the row of the code they exercise, whether they sit beside it as `<Name>.test.tsx` or in this package's shared `ui/packages/app/tests/` directory — which is where most of this application's tests actually live, a fact the original wording did not anticipate. A path that turns out to be genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
 
 ## Applicable Rules
 
@@ -292,6 +292,10 @@ This table is the complete set. Every row is mandatory, including the failure ro
   `library_q` was never a second name for `q` — it named a URL parameter that was never built. It is struck here rather than implemented. The Failure Modes row is **retargeted, not deleted**: the latest-wins mechanism it described IS built, as the catalogue provider's generation counter, and keeps its test.
 
   **Deleting `q` is NOT in this workstream.** It spans Zig handlers, the gallery and model SQL, the keyset cursor's wire format, the published OpenAPI parameter on two paths, and the `q` half of `UZ-LIBRARY-003` — none of which M143_002 touches, all of which would breach its User Interface (UI)-only scope, fire the ZIG and PUB gates its own table marks "no", and collide with M143_003's Zig surface. Recorded here for the follow-up workstream.
+
+- **Amendment A9 (VERIFY) — canonical architecture repointed to `docs/architecture/web_app.md`.** The spec cited `user_flow.md` §8.7, which is about platform-versus-self-managed model and context-cap origin and has nothing to say about library reads or loading. `web_app.md` did not exist when this spec was drafted on Jul 24; it landed Jul 28 in PR #568 and is the correct home. Its statement 3 ("every route paints a shell before it paints data") and statement 5 ("`useEffect` is for subscriptions, not for loading") describe precisely what this workstream implemented, and its scoreboard carries a standing instruction to "re-measure at any milestone that touches the app and update this table in the same diff". Done: `useEffect` 22 → 20, `Suspense` 3 → 5.
+
+  Two measurement notes recorded there rather than silently absorbed. The published Jul 27 figures (23 and 4) do not reproduce — re-running the listed greps against that same commit yields 22 and 3 — so deltas are counted from the measured baseline. And a comment in the new `fleets/new/loading.tsx` originally contained the bare word `Suspense`, which the scoreboard grep counted as a usage; the comment was reworded so the metric keeps meaning what it claims to measure.
 
 - **Decision recorded (Indy, in-session) — §3 uses the Clerk instance in `ui/packages/app/.env.local`.** It is a `pk_test_` development instance. Indy directed that this is the instance to use and that the question is settled; the capture reads the configured session lifetime from Clerk's Backend API at run time and records it, with the instance kind, in report metadata. No further consult on instance provenance.
 
