@@ -145,4 +145,20 @@ describe("Models page", () => {
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
     await expect(renderPage(Page)).rejects.toThrow("redirect:/sign-in");
   });
+
+  it("the streamed registry renders nothing when the session lapsed after the shell flushed", async () => {
+    // The shell redirects on a missing token, but the registry is a SEPARATE
+    // async child that mints its own. By the time it runs, the header has
+    // already gone to the browser — so a lapsed session yields no table rather
+    // than an unauthenticated read, and it cannot redirect from here.
+    auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
+
+    const { ModelsRegistryData } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(React.Fragment, null, await ModelsRegistryData({ workspaceId: WORKSPACE_ID })),
+    );
+
+    expect(markup).toBe("");
+    expect(listTenantModelEntriesCached).not.toHaveBeenCalled();
+  });
 });

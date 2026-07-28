@@ -169,6 +169,15 @@ async function renderTableWithLibrary(initial: TenantModelEntryList, library: Mo
   }
 }
 
+/** Retry renders as soon as the read fails but stays disabled until the
+ *  transition settles. Clicking it while disabled is a silent no-op, so the
+ *  wait is what makes the second read actually happen. */
+async function findEnabledRetry(): Promise<HTMLElement> {
+  const retry = await screen.findByRole("button", { name: "Retry" });
+  await waitFor(() => expect((retry as HTMLButtonElement).disabled).toBe(false));
+  return retry;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   listSecretsActionMock.mockResolvedValue({ ok: true, data: { secrets: [] } });
@@ -543,6 +552,46 @@ describe("ModelsRegistryTable", () => {
     expect(screen.queryByText(/bare string, not an Error/)).toBeNull();
   });
 
+  it("a rejected Retry re-reports the failure instead of escaping the transition", async () => {
+    // Retry re-reads from the FIRST page, which is a different request from
+    // load-more and has its own catch. An uncaught rejection here escapes the
+    // transition into a route with no error boundary, and the operator is left
+    // clicking a Retry that silently does nothing.
+    listModelEntriesActionMock.mockRejectedValue(new Error("still down"));
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    await user.click(await findEnabledRetry());
+
+    // Retry re-reads from the first page, so it sends NO cursor — that is what
+    // makes it a different request from the load-more that failed.
+    await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledTimes(2));
+    expect(listModelEntriesActionMock).toHaveBeenLastCalledWith();
+    expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
+    // Retained rows survive a second failure — a failed re-read never blanks
+    // the table it was meant to refresh.
+    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("a Retry that rejects with a non-Error reports the failure without a fabricated detail", async () => {
+    listModelEntriesActionMock.mockRejectedValue("bare string, not an Error");
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    await user.click(await findEnabledRetry());
+
+    await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
+    expect(screen.queryByText(/bare string, not an Error/)).toBeNull();
+  });
+
   it("readErrorFrom maps a preserved transport status onto the typed vocabulary", async () => {
     const { readErrorFrom } = await import("@/lib/api/library-types");
     expect(readErrorFrom({ error: "no session", status: 401 }).kind).toBe("unauthenticated");
@@ -798,5 +847,87 @@ describe("ModelsRegistryTable", () => {
     await waitFor(() =>
       expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(false),
     );
+  });
+});
+
+describe("ModelsRegistryTable — hover speculation on a row's Edit control", () => {
+  // happy-dom answers `(pointer: coarse)` affirmatively, which is the correct
+  // answer for a headless document and the wrong one for the desktop pointer
+  // this policy is written for. Choosing the answer is what puts the fine-
+  // pointer arm — the one every mouse user takes — under test at all.
+  function stubFinePointer() {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((q: string) => ({ matches: false, media: q })),
+    );
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Mounts inside a real provider and leaves the catalogue IDLE — unlike
+   *  `renderTableWithLibrary`, which focuses an Edit control to warm it. Hover
+   *  policy is only observable from a cold start. */
+  async function renderTableColdCatalogue() {
+    getModelLibraryActionMock.mockResolvedValue({ ok: true, data: LIBRARY });
+    const { ModelCatalogueProvider } = await import(
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider"
+    );
+    const { default: ModelsRegistryTable } = await import(
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
+    );
+    render(
+      withTooltipProvider(
+        React.createElement(
+          ModelCatalogueProvider,
+          null,
+          React.createElement(ModelsRegistryTable, {
+            workspaceId: "ws_1",
+            initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: null, total: null },
+            initialError: null,
+          } as never),
+        ),
+      ),
+    );
+    expect(getModelLibraryActionMock).not.toHaveBeenCalled();
+  }
+
+  it("warms the catalogue when hover is a real signal", async () => {
+    // The Edit dialog's picker needs the global catalogue. Warming it on hover
+    // means the dialog opens populated rather than filling in underneath the
+    // user's cursor — and an ordinary Models visit still pays nothing, because
+    // nothing fetches until the gesture.
+    stubFinePointer();
+    await renderTableColdCatalogue();
+
+    const user = userEvent.setup();
+    await user.hover(screen.getByRole("button", { name: "Edit claude-sonnet-5" }));
+
+    await waitFor(() => expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("warms the catalogue from the Create-model trigger on the same policy", async () => {
+    // The Add dialog carries its own copy of the hover gate, because its
+    // trigger lives in a different component from the row controls. Both must
+    // agree, or one of the two ways into the picker opens cold.
+    stubFinePointer();
+    await renderTableColdCatalogue();
+
+    const user = userEvent.setup();
+    await user.hover(screen.getByRole("button", { name: /create model/i }));
+
+    await waitFor(() => expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not speculate on a coarse pointer, where hover is already a press", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((q: string) => ({ matches: q.includes("coarse"), media: q })),
+    );
+    await renderTableColdCatalogue();
+
+    const user = userEvent.setup();
+    await user.hover(screen.getByRole("button", { name: "Edit claude-sonnet-5" }));
+
+    expect(getModelLibraryActionMock).not.toHaveBeenCalled();
   });
 });

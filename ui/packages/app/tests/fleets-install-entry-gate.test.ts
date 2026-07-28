@@ -22,7 +22,11 @@ vi.mock("../app/(dashboard)/w/[workspaceId]/fleets/new/actions", () => ({
 
 import { LIBRARY_ERROR_KIND } from "@/lib/api/library-types";
 import { FleetInstallGate } from "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetInstallGate";
-import { galleryErrorCopy, InstallSourceSelector } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallSourceSelector";
+import {
+  galleryErrorCopy,
+  InstallSourceSelector,
+  mirrorCursorIntoUrl,
+} from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallSourceSelector";
 
 const TEMPLATE = {
   id: "github-pr-reviewer",
@@ -285,6 +289,45 @@ describe("InstallSourceSelector — paging and list position", () => {
     expect(await screen.findByRole("alert")).toBeTruthy();
     // Cards retained; the failure is a failure, not an empty library.
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
+  });
+
+  it("a thrown non-Error still surfaces the failure, with no fabricated detail", async () => {
+    // `detail` is the thrown message, and only an Error carries one. A rejected
+    // string — a deploy-skewed action, a framework-level throw — must still
+    // reach the typed failure state rather than render `undefined` at the user
+    // as though it were the reason.
+    const user = userEvent.setup({ delay: null });
+    readFleetLibraryPageActionMock.mockRejectedValue("bare string, not an Error");
+
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        initialPage: { items: [TEMPLATE], next_cursor: "cur-2", total: null },
+        initialError: null,
+        onUseLibraryEntry: vi.fn(),
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByText(/bare string, not an Error/)).toBeNull();
+    expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
+  });
+
+  it("mirroring the cursor is a no-op where there is no window to mirror into", () => {
+    // The module is evaluated during the server render even though the click
+    // that calls this cannot happen there. Touching `window.location` under
+    // those conditions is a ReferenceError that takes the whole route down, so
+    // the guard returns before the read rather than after it.
+    //
+    // Assigning `undefined` is what makes `typeof window` report "undefined":
+    // happy-dom always defines the binding, so removing the VALUE is the only
+    // way to reproduce a server render inside a browser environment.
+    const before = window.location.href;
+    vi.stubGlobal("window", undefined);
+    expect(() => mirrorCursorIntoUrl("cur-2")).not.toThrow();
+    vi.unstubAllGlobals();
+    expect(window.location.href).toBe(before);
   });
 
   it("galleryErrorCopy gives each failure kind its own next step", async () => {

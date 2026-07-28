@@ -141,11 +141,14 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   // Append the next page, retaining every row already loaded. Exactly one
   // request per invocation — the walk this replaced issued as many as the
   // registry had pages, on every ordinary visit.
-  function loadMore() {
-    if (nextCursor === null) return;
+  //
+  // Takes the cursor rather than reading `nextCursor` behind a null guard: the
+  // control that calls this only renders when a next page exists, so the guard
+  // could never fire and the type now carries that invariant instead.
+  function loadMore(cursor: string) {
     startTransition(async () => {
       try {
-        const r = await listModelEntriesAction(nextCursor);
+        const r = await listModelEntriesAction(cursor);
         if (!r.ok) {
           setReadError(readErrorFrom(r));
           return;
@@ -156,7 +159,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
         // same page; appending it forever would duplicate every row. The
         // exhaustive walk this replaced threw on exactly this defect —
         // treat it as terminal instead.
-        setNextCursor(r.data.next_cursor === nextCursor ? null : r.data.next_cursor);
+        setNextCursor(r.data.next_cursor === cursor ? null : r.data.next_cursor);
         setTotal(r.data.total);
       } catch (cause) {
         setReadError({
@@ -304,7 +307,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
         */}
         {nextCursor !== null ? (
           <div className="flex items-center gap-3">
-            <Button variant="secondary" onClick={loadMore} disabled={pending}>
+            <Button variant="secondary" onClick={() => loadMore(nextCursor)} disabled={pending}>
               {pending ? "Loading…" : "Load more"}
             </Button>
             <p className="text-sm text-muted-foreground" aria-live="polite">
