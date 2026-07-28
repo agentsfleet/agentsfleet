@@ -47,11 +47,14 @@ export default function AddModelEntryDialog({
   secrets,
   onCreated,
   onSecretsChanged,
+  onSecretsNeeded,
 }: {
   workspaceId: string;
   secrets: Secret[];
   onCreated: () => void;
   onSecretsChanged: () => void;
+  /** Load the stored-secret list. Fired on open — see handleOpenChange. */
+  onSecretsNeeded: () => void;
 }) {
   const uid = useId();
   const { models, preload } = useModelCatalogue();
@@ -89,11 +92,21 @@ export default function AddModelEntryDialog({
   }
 
   function handleOpenChange(next: boolean) {
-    // Opening is the strongest intent signal there is, and it is not gated on
-    // pointer or data policy: the picker inside needs the catalogue now. A
-    // hover or focus has usually warmed it already, so this is normally a
-    // no-op against the single-flight guard.
-    if (next) preload();
+    if (next) {
+      // Opening is the strongest intent signal there is, and it is not gated
+      // on pointer or data policy: the picker inside needs the catalogue now.
+      // A hover or focus has usually warmed it already, so this is normally a
+      // no-op against the single-flight guard.
+      preload();
+      // The stored-secret list is LOAD-BEARING, not decoration: `submit()`
+      // resolves `existing` from it to decide rotate-vs-create and to refuse a
+      // name owned by a different provider. The secrets POST is an upsert
+      // server-side, so an empty list here does not degrade to a picker with
+      // no options — it silently overwrites whatever already holds that name.
+      // It must be loaded before the dialog can be submitted, not merely after
+      // a secret changes.
+      onSecretsNeeded();
+    }
     setOpen(next);
     if (!next) reset();
   }

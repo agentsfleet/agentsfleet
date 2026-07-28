@@ -48,18 +48,20 @@ async function renderDialog(secrets: Secret[] = []) {
   );
   const onCreated = vi.fn();
   const onSecretsChanged = vi.fn();
+  const onSecretsNeeded = vi.fn();
   render(
     React.createElement(AddModelEntryDialog, {
       workspaceId: "ws_1",
       secrets,
       onCreated,
       onSecretsChanged,
+      onSecretsNeeded,
     } as never),
   );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /create model/i }));
   await screen.findByRole("dialog");
-  return { onCreated, onSecretsChanged, user };
+  return { onCreated, onSecretsChanged, onSecretsNeeded, user };
 }
 
 /** Picks "Custom — OpenAI-compatible" in the Provider dropdown — the move

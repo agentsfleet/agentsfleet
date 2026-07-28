@@ -59,13 +59,14 @@ async function renderDialog(secrets: Secret[] = []) {
   );
   const onCreated = vi.fn();
   const onSecretsChanged = vi.fn();
+  const onSecretsNeeded = vi.fn();
   render(
-    React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, onCreated, onSecretsChanged } as never),
+    React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, onCreated, onSecretsChanged, onSecretsNeeded } as never),
   );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /create model/i }));
   await screen.findByRole("dialog");
-  return { onCreated, onSecretsChanged, user };
+  return { onCreated, onSecretsChanged, onSecretsNeeded, user };
 }
 
 /** Walks the unified form in its field order: Name → Provider → Model → API key.
@@ -347,3 +348,23 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 });
+
+describe("AddModelEntryDialog — the stored-secret list is loaded before submit is possible", () => {
+  it("test_add_dialog_loads_secrets_on_open — asks for secrets when opened, not only after one changes", async () => {
+    // Regression guard. The eager page-level secrets preload was removed when
+    // the Models page became page-bounded; for a while nothing replaced it on
+    // the OPEN path, so `secrets` stayed [] in production while every test
+    // injected it as a prop and passed.
+    //
+    // That is not a cosmetic gap. submit() resolves `existing` from this list
+    // to choose rotate-vs-create and to refuse a name owned by a different
+    // provider, and the secrets POST upserts server-side — so an unloaded list
+    // does not mean "no options to pick", it means a re-used name silently
+    // overwrites the credential already holding it.
+    // renderDialog opens the dialog as part of its setup, so reaching an open
+    // dialog IS the trigger under test.
+    const { onSecretsNeeded } = await renderDialog([]);
+    expect(onSecretsNeeded).toHaveBeenCalledTimes(1);
+  });
+});
+
