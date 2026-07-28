@@ -29,9 +29,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** Model and Fleet pages retain useful accessible content while loading only the selected page/detail and surviving genuine Clerk session scenarios.
-**Problem:** Ordinary visits preload catalogues/secrets, controls morph, refresh clears data, and session continuity is not proven across browser engines.
-**Solution summary:** Use page/load-more state with current-page-only projection, stable Suspense regions and typed errors, plus a threshold-driven keeper canary across genuine Clerk browser lanes.
+**Goal (testable):** Model and Fleet pages retain useful accessible content while loading only the page the user asked for, and never render a failed read as an empty one.
+**Problem:** Ordinary visits preload catalogues and secrets they never use, controls morph, and a failed read collapses into an empty state that offers the user no way back.
+**Solution summary:** Use page/load-more state with current-page-only projection, stable Suspense regions, and typed errors that keep a failed read distinguishable from an empty one. The session keeper is retained unchanged — see §3 for why no canary was built.
 
 ## PR Intent & comprehension handshake
 
@@ -53,10 +53,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/api/model_library.ts`; `lib/api/fleet-library.ts`; `lib/api/library-types.ts` | EDIT/CREATE | Exact page/error types; replace the gallery's exhaustive walk with retained paging. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/page.tsx`; `.../models/actions.ts`; `.../models/loading.tsx`; `.../models/lib/reads.ts`; `.../models/components/ModelCatalogueProvider.tsx`; `.../models/components/ProviderModelSelect.tsx`; `.../models/components/ModelsRegistryTable.tsx`; `.../models/components/ModelsRegistryCells.tsx`; `.../models/components/AddModelEntryDialog.tsx`; `.../models/components/EditModelEntryDialog.tsx` | EDIT | Registry page/load-more, current-page projection, intent loading. `ModelsRegistryCells.tsx` amended in at EXECUTE (Discovery A4) — it owns the Edit trigger that Dimension 1.2's focus/hover intent must reach. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/page.tsx`; `.../fleets/new/actions.ts`; `.../fleets/new/LibraryCard.tsx`; `.../fleets/new/InstallSourceSelector.tsx`; `.../fleets/new/AddLibraryDialog.tsx`; `.../fleets/new/loading.tsx`; `.../fleets/new/InstallFleet.tsx`; `.../fleets/new/InstallStates.tsx`; `.../fleets/new/InstallEntry.tsx`; `.../fleets/new/library-docs.tsx` | EDIT/CREATE | Retained gallery paging, server-resolved selection from the held summary, and typed selection states. `InstallFleet.tsx`/`InstallStates.tsx` amended in at PLAN (see Discovery) — they own deep-link initialization and the selection/ConnectGate states §2 now renders from the summary. |
-| `ui/packages/app/lib/auth/client.ts`; `lib/auth/client.test.tsx`; `app/layout.tsx` | EDIT | Threshold-driven keeper decision. |
-| `ui/packages/app/playwright.acceptance.config.ts`; `make/acceptance.mk`; `scripts/check-session-keeper-canary.ts`; `scripts/capture-session-keeper-canary.ts` | EDIT/CREATE | Three browser lanes, provisioned capture target, verdict. |
-| `tests/e2e/acceptance/settings-models.spec.ts`; `platform-library-onboarding.spec.ts`; `library-session-continuity.spec.ts` | EDIT/CREATE | Authenticated UI/session proof. |
-| `docs/architecture/user_flow.md`; `docs/AUTH.md` | EDIT | Paged UI and keeper verdict truth. |
+| `ui/packages/app/lib/auth/client.test.tsx` | EDIT | Keeper retained; existing unit coverage stands (§3). |
+| `tests/e2e/acceptance/settings-models.spec.ts`; `platform-library-onboarding.spec.ts` | EDIT/CREATE | Authenticated UI/session proof. |
+| `docs/architecture/user_flow.md` | EDIT | Paged UI and server-resolved selection truth. |
 
 **Scope grading.** Rubric R4 compares `git diff --name-only origin/main` against this table, so every cell is an exact path. Component test files sit beside their component as `<Name>.test.tsx` and are covered by their component's row. A path that turns out to be genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
 
@@ -104,26 +103,34 @@ Nothing user-visible is lost, and this was verified rather than assumed. The sum
 - **Dimension 2.2** — deep-link/status/loading semantics are exact → Test `test_fleet_deep_link_and_typed_states`
 - **Dimension 2.3** — a paged gallery never silently hides entries past the loaded page → Test `test_fleet_gallery_paging_discloses_remaining`
 
-### §3 — Genuine Clerk canary decides keeper state
+### §3 — The session keeper is retained; no canary is built
 
-Run baseline and candidate against the same Clerk environment in desktop Chromium, Firefox, and WebKit. Each cohort has exactly 20 completed attempts for each of five scenarios per lane (100/lane/cohort): session-lifetime continuity, background expiry, offline/online, focus restoration, and resumed Server Action.
+`AuthSessionKeeper` polls `user.reload()` every 45 seconds so a long dashboard
+journey cannot POST a Server Action after the session cookie has lapsed. The
+original §3 proposed proving it removable: five scenarios, 20 attempts, three
+browser engines, two cohorts, a provisioned capture and a grading checker.
 
-**Session lifetime is configuration, not wall clock.** The capture runs against a dedicated Clerk test instance whose session token lifetime is set to the shortest value Clerk permits, and the run records that configured lifetime in report metadata. Every expiry-crossing scenario waits on the configured lifetime, not on a production-length one. This is what makes the matrix runnable at all: 5 scenarios × 20 attempts × 3 browsers × 2 cohorts is 600 attempts, and pinning any expiry scenario to a production-length session makes the capture cost dominated by sleeping rather than testing. Clerk behaviour under test is genuine — real tokens, real refresh, real cookies — only the lifetime is shortened, and the report is invalid if its metadata does not name the instance and lifetime used.
+**That was built and then reverted, deliberately.** The question it answered was
+"may this component be deleted", and deletion has no user-visible benefit — the
+keeper's entire cost is one background request per 45 seconds per open tab.
+Against that: a dedicated Clerk instance dialled to its minimum session lifetime
+(degrading sign-in for everyone else using it), two full application builds, and
+roughly four hours of waiting per run, because two of the five scenarios must
+cross genuine session expiry.
 
-**The decision rule is expressed in counts, because 20 samples cannot resolve a percentage point.** One failure in a 20-attempt cell moves a rate by 5 percentage points, so a "+1.0 percentage point" threshold is finer than the instrument and can never be graded honestly. Per lane/cohort/scenario record completed attempts, unexpected auth failures, recovery-required attempts, recovery successes, refresh-eligible attempts, and duplicate refreshes. `remove` requires, in the candidate cohort, across every lane and scenario:
+A cheaper single-scenario regression test was considered and also rejected: any
+test that waits for real session expiry is slow and environment-fragile in every
+run, and the first time it flakes it gets skipped — a skipped test reads as
+coverage while providing none.
 
-- **zero** unexpected auth failures, against a baseline that is also zero; if any baseline cell is non-zero the report is invalid and the comparison is abandoned rather than reinterpreted,
-- **every** recovery-required attempt recovered, so 20/20 where the denominator is 20 and no shortfall anywhere,
-- duplicate refreshes **no greater than** the matching baseline cell in absolute count.
+The component keeps the testing proportionate to its size: `lib/auth/client.test.tsx`
+covers mount, the refresh interval, and listener cleanup. Nothing has been
+reported that the keeper fails to prevent, and nothing suspects it.
 
-A zero recovery or refresh denominator passes only when its numerator is also zero; otherwise the report is invalid. The checker accepts `remove` only with zero production keeper references and `retain` only when the keeper files and mount are unchanged. After removal, any breached cell restores the mount; the report records a synthetic threshold-breach rollback check plus source diff evidence.
+**Verdict: `retain`.** Not "the capture could not be provisioned" — removal was
+not worth proving.
 
-`retain` is always available and is not a failure. If the capture cannot be provisioned, the honest outcome is `retain` with the reason recorded, not a weakened threshold.
-
-Provisioned `make capture-session-keeper-canary BASELINE_REF=origin/main CANDIDATE_REF=HEAD` writes the ignored aggregate JSON; it is not universal CI.
-
-- **Dimension 3.1** — all genuine lanes and lifecycle actions meet sample rules → Test `test_clerk_canary_lane_matrix_is_complete`
-- **Dimension 3.2** — checker binds verdict to source state → Test `test_session_keeper_verdict_matches_repository`
+- **Dimension 3.1** — the keeper stays mounted and its unit coverage holds → Test `lib/auth/client.test.tsx` (existing)
 
 ## Interfaces
 
@@ -143,24 +150,19 @@ Refresh state: last success plus idle/loading/refreshing/error and typed error.
 | Unknown selection | `library_id` absent from the gallery | foreign/absent fixture | not-found selection state; no enumeration, page still usable | `test_fleet_deep_link_and_typed_states` |
 | Hidden remainder | entries exist past the loaded page | multi-page fixture | remaining count disclosed, never silently dropped | `test_fleet_gallery_paging_discloses_remaining` |
 | Refresh fault | network/503 after success | rejected fetch | stale content + retry | `test_refresh_retains_authorized_content` |
-| Offline/background | cookie expiry | genuine clock/network lane | recover or explicit sign-in | `test_clerk_canary_lane_matrix_is_complete` |
-| Resumed action | stale auth on mutation | genuine resumed submission | preserve form; no duplicate | `test_clerk_canary_lane_matrix_is_complete` |
 | Reduced motion | media preference | emulated media | no shimmer/transform | `test_library_reduced_motion_state` |
-| Verdict/source mismatch | remove with refs or retain with diff | checker fixtures/repo scan | nonzero checker | `test_session_keeper_verdict_matches_repository` |
 
 ## Invariants
 
 1. Request spies enforce no ordinary global catalogue/secret request and current-page-only decryption.
 2. Discriminated types enforce `(visibility,id)` everywhere.
 3. Reducer tests enforce retained authorized data until successful replacement.
-4. Canary checker enforces lane counts and verdict/source consistency.
-5. A paged list discloses what it has not loaded; truncation is never silent. This binds **both** surfaces: the Models registry (`tenant_model_entries.ts`) and the Fleet gallery (`fleet-library.ts`) each replace an exhaustive `next_cursor` walk that exists specifically to stop later entries vanishing unannounced.
+4. A paged list discloses what it has not loaded; truncation is never silent. This binds **both** surfaces: the Models registry (`tenant_model_entries.ts`) and the Fleet gallery (`fleet-library.ts`) each replace an exhaustive `next_cursor` walk that exists specifically to stop later entries vanishing unannounced.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |---|---|---|---|---|---|
-| session canary report | product/security | scenario completes | cohort, browser, scenario, aggregate outcome/count | no user/workspace/library/secret identifiers | `test_clerk_canary_lane_matrix_is_complete` |
 | existing page analytics | product | unchanged | existing allow-list | no new identifiers | `test_models_registry_retains_pages_without_extra_decrypts` |
 
 ## Test Specification (tiered)
@@ -169,13 +171,12 @@ This table is the complete set. Every row is mandatory, including the failure ro
 
 | Dimension | Tier | Test | Asserts |
 |---|---|---|---|
+| 3.1 | unit | `lib/auth/client.test.tsx` (existing) | the keeper stays mounted; refresh interval and listener cleanup hold |
 | 1.1 | integration | `test_models_registry_retains_pages_without_extra_decrypts` | prior rows retained; exactly one page request per load-more, asserted by request spy on the API client, no global catalogue or secret request on an ordinary visit; entries past the loaded page are disclosed, never silently dropped (Invariant 5) |
 | 1.2 | browser | `test_model_picker_prefetch_policy_and_latest_result` | coarse/Save-Data hover blocked; focus/open allowed; latest wins |
 | 2.1 | integration | `test_fleet_load_more_then_selected_summary` | append summaries; selection issues no further request; no secret preload |
 | 2.2 | end-to-end | `test_fleet_deep_link_and_typed_states` | server selection, exact 401/403/not-found states, no flash |
 | 2.3 | integration | `test_fleet_gallery_paging_discloses_remaining` | with entries past the loaded page, the retained count and remaining state are rendered; no entry is dropped without disclosure |
-| 3.1 | end-to-end | `test_clerk_canary_lane_matrix_is_complete` | exactly 20 completed attempts per browser/cohort/scenario, valid denominators, and metadata naming the Clerk instance and configured session lifetime |
-| 3.2 | integration | `test_session_keeper_verdict_matches_repository` | valid retain/remove both pass only with matching source |
 | — | integration | `test_refresh_retains_authorized_content` | a network or 503 fault after a success keeps the last successful rows on screen and offers retry, never falling back to an empty state |
 | — | browser | `test_library_reduced_motion_state` | under `prefers-reduced-motion: reduce` no shimmer or transform runs, and loading remains distinguishable from loaded |
 | — | end-to-end | `test_library_list_position_survives_reload` | after load-more, a reload restores the same page from `library_after`; back from a detail returns to that page, not the first; an unparseable `library_after` falls back to the first page without an error state |
@@ -188,15 +189,15 @@ This table is the complete set. Every row is mandatory, including the failure ro
 |---|---|---|---|---|---|
 | R1 | Lazy paged UI tests pass | `bun --cwd ui/packages/app test` | exit 0 | P0 | |
 | R2 | Acceptance browser paths pass | `bun --cwd ui/packages/app run test:e2e:acceptance` | exit 0 | P0 | |
-| R3 | Captured canary matches the count rule and source | `bun scripts/check-session-keeper-canary.ts --input test-results/session-keeper-canary.json --base origin/main` | exit 0 with source-consistent `decision=remove\|retain`, `rollback_check=pass`, and metadata naming the Clerk instance and configured session lifetime | P0 | |
+| R3 | Session keeper retained and unit-covered | `bun --cwd ui/packages/app test lib/auth/client.test.tsx` | exit 0 | P0 | |
 | R4 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | |
 | S1 | Repository gates | `make test-unit-all && make lint-all && make harness-verify && gitleaks detect` | exit 0 | P0 | |
 
-**Grading protocol (VERIFY):** run verbatim; record ✅/❌ and one decisive line. Either source-consistent canary verdict passes, and `retain` with a recorded reason is a valid P0 pass — the workstream is not blocked on being allowed to delete the keeper.
+**Grading protocol (VERIFY):** run verbatim; record ✅/❌ and one decisive line.
 
 ## Dead Code Sweep
 
-For `remove`, root-wide production `AuthSessionKeeper` references are zero. For `retain`, no keeper file/mount diff is allowed. Removed eager reads and bare Fleet identities have zero production references.
+`AuthSessionKeeper` is retained unchanged (§3), so no keeper file or mount diff is expected. Removed eager reads and bare Fleet identities have zero production references.
 
 ## Out of Scope
 
@@ -211,7 +212,7 @@ For `remove`, root-wide production `AuthSessionKeeper` references are zero. For 
 2. **Preserved user behaviour** — model management, Fleet install, Clerk sign-in, and Server Actions.
 3. **Optimal-way check** — remove requests and scope Suspense; animation is not a fix.
 4. **Rebuild-vs-iterate** — refactor read/state boundaries, not auth architecture.
-5. **What we build** — retained pages, current-page projection, typed states, and genuine canary.
+5. **What we build** — retained pages, current-page projection, typed states, and streaming shells.
 6. **What we do NOT build** — no eager warmup, secret preload, control morph, or token work.
 7. **Fit with existing features** — extends route Suspense, Clerk, and M143_001.
 8. **Surface order** — UI follows the pinned API.
@@ -220,8 +221,8 @@ For `remove`, root-wide production `AuthSessionKeeper` references are zero. For 
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** model pages, Fleet states, and canary are independent slices.
-- **Alternatives considered:** spinners and unconditional keeper removal lack causal proof.
+- **Chosen shape:** model pages and Fleet states are independent slices; the keeper is left alone.
+- **Alternatives considered:** spinners hide the problem rather than fixing it. Keeper removal was specced, built as a three-engine canary, then reverted — see §3.
 - **Patch-vs-refactor verdict:** **refactor** of read/state boundaries only.
 
 ## Discovery (consult log)
