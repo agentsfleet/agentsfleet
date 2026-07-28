@@ -44,16 +44,6 @@
         the request's.
       schema:
         type: string
-    - name: q
-      in: query
-      required: false
-      description: >-
-        Case- and accent-insensitive substring over the model id and the
-        provider. At most 128 bytes once normalized; `%` and `_` match
-        literally. Empty after normalization is treated as absent.
-      schema:
-        type: string
-        maxLength: 128
     - name: provider
       in: query
       required: false

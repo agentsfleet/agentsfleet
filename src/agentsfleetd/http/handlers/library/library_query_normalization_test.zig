@@ -1,25 +1,27 @@
-//! Unit tier for §2 Dimension 2.1 — search-filter normalization.
+//! Unit tier for §2 and §4 — filter normalization on the bounded library reads.
 //!
-//! Spec row: *"NFKC, trim, whitespace collapse, casefold; normalized empty means
-//! absent; over-128-byte input is `UZ-LIBRARY-003`; LIKE wildcards are escaped so
-//! `%` and `_` match literally."*
+//! **Retargeted when the `q=` search parameter was retired.** These cases were
+//! written against that parameter. The normalization they cover did not go
+//! with it: `provider=` runs through the same `squeeze` — the same bytewise trim
+//! and collapse, the same byte bound, the same UTF-8 rejection — so the cases are
+//! repointed onto the surviving caller rather than deleted. Deleting them would
+//! have dropped live coverage on the pretext that its original subject left.
 //!
-//! Two of those are asserted somewhere other than where the spec first put them,
-//! and the tests say so rather than quietly skipping them:
+//! What genuinely retired with `q` is named here so nobody looks for it:
 //!
-//!   - **NFKC and casefold happen in SQL**, per the Discovery amendment. Zig
-//!     ships no Unicode normalization tables, and half-folding a term in the
-//!     handler (ASCII only) while the column is fully folded by `lower()` gives
-//!     matches that depend on which script the user typed in. `lower(normalize(
-//!     col, NFKC))` on both sides is the fix; these tests cover the ASCII-safe
-//!     half that genuinely belongs in Zig.
-//!   - **Wildcard escaping is the security-adjacent one.** `_` matches any single
-//!     character in `LIKE`, so an unescaped `gpt_4` silently matches `gpt-4`,
-//!     `gpt.4`, `gpt 4`. That is a wrong answer presented as a search result.
+//!   - **The "case is NOT folded here" case.** It asserted that `q` reached SQL
+//!     unfolded, because half-folding a search term in Zig (ASCII only) against
+//!     a column fully folded by `lower()` gives matches that depend on which
+//!     script the user typed in. `provider` is folded here deliberately — it is
+//!     an equality match on an ASCII vocabulary, so the hazard does not apply.
+//!   - **Wildcard escaping.** `_` matches any single character in `LIKE`, so an
+//!     unescaped `gpt_4` silently matched `gpt-4`. With no `LIKE` pattern left on
+//!     these reads, there is nothing to escape.
 
 const std = @import("std");
 
 const ec = @import("../../../errors/error_registry.zig");
+const pagination = @import("../../pagination.zig");
 const query = @import("query.zig");
 
 const testing = std.testing;
@@ -33,25 +35,16 @@ test "test_library_query_normalization" {
 
     // ── trim ──
     {
-        const got = (try query.normalizeSearch(alloc, "  claude  ")).?;
+        const got = (try query.normalizeProvider(alloc, "  anthropic  ")).?;
         defer alloc.free(got);
-        try testing.expectEqualStrings("claude", got);
+        try testing.expectEqualStrings("anthropic", got);
     }
 
     // ── interior runs collapse to a single space ──
     {
-        const got = (try query.normalizeSearch(alloc, "claude\t\t opus\n\nlatest")).?;
+        const got = (try query.normalizeProvider(alloc, "open\t\t router\n\nlabs")).?;
         defer alloc.free(got);
-        try testing.expectEqualStrings("claude opus latest", got);
-    }
-
-    // ── case is NOT folded here: SQL folds both sides ──
-    // Asserted positively so nobody "fixes" this by adding an ASCII-only
-    // toLower, which is the bug the module header describes.
-    {
-        const got = (try query.normalizeSearch(alloc, "  CLAUDE Opus  ")).?;
-        defer alloc.free(got);
-        try testing.expectEqualStrings("CLAUDE Opus", got);
+        try testing.expectEqualStrings("open router labs", got);
     }
 }
 
@@ -59,27 +52,24 @@ test "test_library_query_normalization: normalized-empty is absent, not the empt
     const alloc = testing.allocator;
 
     // A filter that normalizes away is no filter. If these returned an empty
-    // slice, a caller doing `if (q) |term|` would filter on "" and match
-    // everything or nothing depending on the pattern built from it.
-    try expectAbsent(try query.normalizeSearch(alloc, null));
-    try expectAbsent(try query.normalizeSearch(alloc, ""));
-    try expectAbsent(try query.normalizeSearch(alloc, "   "));
-    try expectAbsent(try query.normalizeSearch(alloc, "\t\n\r "));
-
+    // slice, a caller doing `if (provider) |p|` would filter on "" and match
+    // everything or nothing depending on the predicate built from it.
     try expectAbsent(try query.normalizeProvider(alloc, null));
-    try expectAbsent(try query.normalizeProvider(alloc, "  "));
+    try expectAbsent(try query.normalizeProvider(alloc, ""));
+    try expectAbsent(try query.normalizeProvider(alloc, "   "));
+    try expectAbsent(try query.normalizeProvider(alloc, "\t\n\r "));
 }
 
 test "test_library_query_normalization: over 128 bytes is UZ-LIBRARY-003" {
     const alloc = testing.allocator;
 
     // Exactly at the bound is accepted — an off-by-one here rejects a legitimate
-    // term, and the bound is documented as inclusive.
+    // value, and the bound is documented as inclusive.
     const at_bound = try alloc.alloc(u8, query.MAX_QUERY_BYTES);
     defer alloc.free(at_bound);
     @memset(at_bound, 'a');
     {
-        const got = (try query.normalizeSearch(alloc, at_bound)).?;
+        const got = (try query.normalizeProvider(alloc, at_bound)).?;
         defer alloc.free(got);
         try testing.expectEqual(query.MAX_QUERY_BYTES, got.len);
     }
@@ -88,14 +78,14 @@ test "test_library_query_normalization: over 128 bytes is UZ-LIBRARY-003" {
     const over = try alloc.alloc(u8, query.MAX_QUERY_BYTES + 1);
     defer alloc.free(over);
     @memset(over, 'a');
-    try testing.expectError(query.Error.OutOfBounds, query.normalizeSearch(alloc, over));
+    try testing.expectError(query.Error.OutOfBounds, query.normalizeProvider(alloc, over));
 
     // The bound applies to the NORMALIZED form: padding that collapses away
-    // must not push a short term over.
+    // must not push a short value over.
     const padded = try std.mem.concat(alloc, u8, &.{ "   ", at_bound, "   " });
     defer alloc.free(padded);
     {
-        const got = (try query.normalizeSearch(alloc, padded)).?;
+        const got = (try query.normalizeProvider(alloc, padded)).?;
         defer alloc.free(got);
         try testing.expectEqual(query.MAX_QUERY_BYTES, got.len);
     }
@@ -106,13 +96,13 @@ test "test_library_query_normalization: over 128 bytes is UZ-LIBRARY-003" {
 test "test_library_query_normalization: malformed UTF-8 is rejected, not passed to SQL" {
     const alloc = testing.allocator;
 
-    // Postgres `normalize()` rejects invalid UTF-8, so passing it through would
-    // surface as a database error with no useful code. Failing here names it as
-    // an input bound instead.
-    try testing.expectError(query.Error.OutOfBounds, query.normalizeSearch(alloc, "\xff\xfe"));
+    // Postgres rejects invalid UTF-8, so passing it through would surface as a
+    // database error with no useful code. Failing here names it as an input
+    // bound instead.
+    try testing.expectError(query.Error.OutOfBounds, query.normalizeProvider(alloc, "\xff\xfe"));
     // A truncated multi-byte sequence — the realistic form, from a client that
     // sliced a string by bytes.
-    try testing.expectError(query.Error.OutOfBounds, query.normalizeSearch(alloc, "claude \xe2\x82"));
+    try testing.expectError(query.Error.OutOfBounds, query.normalizeProvider(alloc, "anthropic \xe2\x82"));
 }
 
 test "test_library_query_normalization: multi-byte characters survive collapse intact" {
@@ -122,7 +112,11 @@ test "test_library_query_normalization: multi-byte characters survive collapse i
     // multi-byte UTF-8 sequence is >= 0x80 and can therefore never equal an
     // ASCII space — if that reasoning were wrong, this test would corrupt a
     // character rather than merely reformat the string.
-    const got = (try query.normalizeSearch(alloc, "  клод   опус  ")).?;
+    //
+    // The ASCII-only lowercase pass leaves these code points untouched, which is
+    // the same property under test: a bytewise loop that does not straddle a
+    // character boundary.
+    const got = (try query.normalizeProvider(alloc, "  клод   опус  ")).?;
     defer alloc.free(got);
     try testing.expectEqualStrings("клод опус", got);
     try testing.expect(std.unicode.utf8ValidateSlice(got));
@@ -147,9 +141,23 @@ test "test_library_query_normalization: provider lowercases and stays open-vocab
     }
 }
 
-// LIKE-escaping moved out of Zig entirely: the pattern is built in SQL AFTER
-// the NFKC fold (`model_library/sql.zig` `FOLDED_NEEDLE`), because escaping
-// before the fold missed compatibility characters that fold INTO wildcards.
-// Its contract — `%`, `_`, `\`, and their fullwidth lookalikes match
-// literally — is pinned at the integration tier, where the real fold runs:
-// `model_library_page_integration_test.zig` (literal `%`, fullwidth `％`).
+test "test_library_limit_bound_survives_search_retirement" {
+    // Dimension 4.2. `UZ-LIBRARY-003` covered two causes: a search term over its
+    // byte bound, and a `limit` outside 1..100. §4 retired the first. The code
+    // keeps its identifier and its registry row for the second — narrowed, not
+    // deleted — so a caller who oversteps `limit` still gets a named error rather
+    // than a generic one.
+    try testing.expectError(error.OutOfRange, pagination.parseLimit("0"));
+    try testing.expectError(error.OutOfRange, pagination.parseLimit("101"));
+    try testing.expectError(error.OutOfRange, pagination.parseLimit("not-a-number"));
+
+    try testing.expectEqual(@as(u32, 1), try pagination.parseLimit("1"));
+    try testing.expectEqual(pagination.MAX_LIMIT, try pagination.parseLimit("100"));
+    try testing.expectEqual(pagination.DEFAULT_LIMIT, try pagination.parseLimit(null));
+
+    try testing.expectEqualStrings("UZ-LIBRARY-003", ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS);
+
+    // The retired half must not be reachable: `query` no longer exposes a search
+    // normalizer, so no code path can raise this code for a search bound.
+    try testing.expect(!@hasDecl(query, "normalizeSearch"));
+}

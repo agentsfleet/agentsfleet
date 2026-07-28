@@ -59,12 +59,11 @@ pub const MODEL_LIBRARY_PATH = "/v1/models";
 /// `docs/REST_API_DESIGN_GUIDELINES.md` §3 pins, not a slip.
 const Q_LIMIT = "limit";
 const Q_STARTING_AFTER = "starting_after";
-const Q_SEARCH = "q";
 const Q_PROVIDER = "provider";
 
 const S_QUERY_UNREADABLE = "Query string could not be parsed";
 const S_LIMIT_RANGE = "limit must be an integer between 1 and 100";
-const S_SEARCH_BOUNDS = "q must be at most 128 bytes once normalized, and valid UTF-8";
+const S_PROVIDER_BOUNDS = "provider must be at most 128 bytes once normalized, and valid UTF-8";
 const S_CURSOR_MALFORMED = "starting_after is not a cursor this endpoint issued";
 const S_CURSOR_MISMATCH = "starting_after was issued for different filters or page size";
 const S_REVISION_UNAVAILABLE = "The catalogue revision could not be read";
@@ -112,7 +111,7 @@ pub fn innerGetModelLibrary(hx: Hx, req: *httpz.Request) void {
     };
     scope.endStage(.cache_revision);
 
-    const key = catalogue_key.cacheKey(revision, filters.q, filters.provider, raw_cursor, limit);
+    const key = catalogue_key.cacheKey(revision, filters.provider, raw_cursor, limit);
 
     if (cachedBody(hx, key)) |cached| {
         // Responded BEFORE classifying: `page_mod.respond` writes its own 500
@@ -153,19 +152,14 @@ fn isDelivered(status: u16) bool {
         status == @intFromEnum(std.http.Status.not_modified);
 }
 
-/// Normalize `q` and `provider`. Both out-of-bounds cases are `UZ-LIBRARY-003`.
+/// Normalize `provider`. Its out-of-bounds case is `UZ-LIBRARY-003`.
 fn normalizeFilters(hx: Hx, scope: *ReadScope, params: anytype) !page_mod.Filters {
-    const q = query.normalizeSearch(hx.alloc, params.get(Q_SEARCH)) catch {
-        scope.classify(.invalid);
-        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_SEARCH_BOUNDS);
-        return error.Rejected;
-    };
     const provider = query.normalizeProvider(hx.alloc, params.get(Q_PROVIDER)) catch {
         scope.classify(.invalid);
-        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_SEARCH_BOUNDS);
+        hx.fail(ec.ERR_LIBRARY_INPUT_OUT_OF_BOUNDS, S_PROVIDER_BOUNDS);
         return error.Rejected;
     };
-    return .{ .q = q, .provider = provider };
+    return .{ .provider = provider };
 }
 
 /// Decode and authorize `starting_after`. Null means the first page.
@@ -193,8 +187,9 @@ fn decodeStart(
         hx.fail(ec.ERR_LIBRARY_CURSOR_MALFORMED, S_CURSOR_MALFORMED);
         return error.Rejected;
     };
+    // The search arm retired with the `q` parameter; `provider` still binds a
+    // cursor to the filter it was minted under.
     if (cursor.limit != limit or
-        !pagination.filterMatches(cursor.q, filters.q) or
         !pagination.filterMatches(cursor.provider, filters.provider))
     {
         scope.classify(.invalid);
