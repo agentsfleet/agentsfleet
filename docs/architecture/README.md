@@ -14,6 +14,63 @@ agent) loads only the file that answers their question. This README is the
 lookup surface: find your topic in the table below, open that one file, grep
 inside it. Do not read the whole directory to answer one question.
 
+## Question → anchor index
+
+Start here: find the question, jump to the one §-section that answers it. Every target file front-loads a Facts table, so the answer is usually in the first screen.
+
+| Question | Where |
+|---|---|
+| How long can a fleet run before its lease expires? | [`runner_fleet.md`](./runner_fleet.md) §Per-lease renewal |
+| What happens when a runner dies mid-event? | [`runner_fleet.md`](./runner_fleet.md) §Failure recovery model |
+| How is a stale runner's late report rejected? | [`runner_fleet.md`](./runner_fleet.md) §System guarantees |
+| How does work get assigned, executed, and reported? | [`data_flow.md`](./data_flow.md) §C. EXECUTE |
+| Can two runners hold the same fleet at once? | [`data_flow.md`](./data_flow.md) §One active lease per fleet |
+| How does a new runner get enrolled? | [`runner_fleet.md`](./runner_fleet.md) §Registering a runner |
+| What are the runner protocol verbs? | [`runner_fleet.md`](./runner_fleet.md) §The control protocol |
+| What sandbox does a leased event run in? | [`runner_fleet.md`](./runner_fleet.md) §Running one event |
+| What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §Egress model |
+| Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §Sandbox tiers |
+| How do steer, kill, and pause propagate? | [`runner_fleet.md`](./runner_fleet.md) §Steer, kill, pause |
+| Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §B. TRIGGER |
+| What does one event write, in what order? | [`data_flow.md`](./data_flow.md) §Steer flow end-to-end |
+| Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §The three durable stores |
+| How does the live tail work — and can it lose frames? | [`data_flow.md`](./data_flow.md) §D. WATCH |
+| What happens if Redis blips during install? | [`data_flow.md`](./data_flow.md) §The install failure scenario, visually |
+| Why was my webhook rejected, and what do I fix? | [`data_flow.md`](./data_flow.md) §B. TRIGGER (webhook auth taxonomy) |
+| Who owns cron scheduling? | [`data_flow.md`](./data_flow.md) §B. TRIGGER — QStash owns the clock |
+| What is memory keyed by, and what survives? | [`memory.md`](./memory.md) §1 |
+| How does memory travel between runs? | [`runner_fleet.md`](./runner_fleet.md) §Memory continuity |
+| What should a fleet store so it survives hydration? | [`capabilities.md`](./capabilities.md) §4 — memory hygiene |
+| How does a long incident outlive one context window? | [`capabilities.md`](./capabilities.md) §4 |
+| What can a fleet do, and what is merely advisory? | [`capabilities.md`](./capabilities.md) §1 |
+| When and how is a tenant charged? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §3 |
+| What does one event cost, by shape? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §4.3 |
+| What happens when credits run out? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §6 |
+| How does the free-trial window behave? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §2.3 |
+| Where may the provider `api_key` exist? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 |
+| How does a per-fleet budget cap work? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §5.1 |
+| Where do model rates and context caps come from? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10 |
+| How does a cold machine reach a running fleet? | [`user_flow.md`](./user_flow.md) §8.0 + §8.2.1 |
+| Where do model and cap originate, per posture? | [`user_flow.md`](./user_flow.md) §8.7 |
+| What triggers can `TRIGGER.md` declare? | [`user_flow.md`](./user_flow.md) §8.3 |
+| What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §8.8 |
+| How many Redis connections does a deployment need? | [`scaling.md`](./scaling.md) §Connection budget after the cutover |
+| What drives the idle Upstash bill? | [`scaling.md`](./scaling.md) §Per-request volume |
+| Which knob do I turn, and when? | [`scaling.md`](./scaling.md) §Tuneup knobs |
+| Where is the next bottleneck? | [`scaling.md`](./scaling.md) §Where the next ceiling actually lives |
+| Where does a signal go, and who owns it? | [`observability.md`](./observability.md) §The four signal paths |
+| What does metric family X mean? | [`observability.md`](./observability.md) §Metric family census |
+| Which locks exist, and what does each protect? | [`concurrency.md`](./concurrency.md) §Lock-invariant registry |
+| What order does shutdown happen in? | [`concurrency.md`](./concurrency.md) §Shutdown choreography |
+| How do I add a connector provider? | [`connectors.md`](./connectors.md) §Adding a provider |
+| How does a GitHub event find its fleet? | [`connectors.md`](./connectors.md) §GitHub App |
+| What is immutable in a bundle vs editable in a fleet? | [`fleet_bundles.md`](./fleet_bundles.md) §Two layers |
+| How does a platform fleet become installable? | [`fleet_bundles.md`](./fleet_bundles.md) §The publish gate |
+| Which test root owns my component? | [`testing.md`](./testing.md) §Component ownership |
+| What client analytics events exist? | [`product_analytics.md`](./product_analytics.md) §Client event catalog |
+| Is feature X shipped or deferred? | [`roadmap.md`](./roadmap.md) §Status index |
+| Who may call what, with which token? | [`../AUTH.md`](../AUTH.md) |
+
 Read in this order if you've never seen the project:
 
 1. [`high_level.md`](./high_level.md) — what the product is, what it isn't, and why it exists.
