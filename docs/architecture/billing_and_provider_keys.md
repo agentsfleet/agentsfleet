@@ -12,6 +12,78 @@ The billing model is **credit-based, Amp-style**: every tenant has a single cred
 
 ---
 
+## Facts
+
+Every row is extracted from the numbered sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Currency unit | nanos — 1 USD = 1,000,000,000 | `core.tenant_billing.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
+| Postures | exactly 2, tenant-scoped | `core.tenant_model_selection.mode` ∈ {`platform`, `self_managed`}; a missing row means `platform` | §1 |
+| Debit points | 2 per event | receive (`EVENT_NANOS`, posture-independent today) + run (metered per `/renew`, settled at report — M80_010) | §3 |
+| Run slice charge | `run_fee + token_cost` | `run_fee = elapsed_ms × RUN_NANOS_PER_SEC / 1000`; platform adds the three-tier Δ-token cost; self-managed records tokens but never charges them | §3, §4.2 |
+| Wallet clamp | `charged = LEAST(slice, balance)` | wallet write is `GREATEST(0, …)` — never negative, never credits a negative Δ | §3 |
+| Writes per slice | 3, atomic | wallet + accumulated `stage` ledger row + `fleet.metering_periods` breakdown, inside the fenced renewal CTE | §3 |
+| Telemetry keying | `UNIQUE (event_id, charge_type)` | one `receive` row + one accumulated `stage` row + N metering-period rows per event | §3 |
+| Free-trial window | `FREE_TRIAL_END_MS` = 2026-08-01T00:00:00Z | timestamp-gated, no flag, no column; charges are 0 until then and the gates cannot refuse | §2.3 |
+| Exhaustion policy | `BALANCE_EXHAUSTED_POLICY`, default `stop` | `warn` / `continue` opt out of blocking | §5 |
+| Mid-run exhaustion | next `/renew` refused | `UZ-RUN-012`; the run ends at its current deadline, never extended | §3, §5 |
+| Budget gate | per-fleet, independent of the balance gate | `daily_dollars` rolling 24 h · `monthly_dollars` UTC calendar month; mid-run refusal `UZ-RUN-015` | §5.1 |
+| Budget no-verdict posture | asymmetric | database failure → admit; no budget declared → admit; unparseable budget → refuse | §5.1 |
+| `api_key` boundary | process-internal vs user-facing | never in responses, logs, fleet context, or persisted rows; the runner lease is the machine-plane exception | §8.2 |
+| Credential list | metadata projection | `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`}; `api_key` structurally absent (no field to leak) | §8.3 |
+| Model registry | one row per `(model_id, secret_ref)` | `core.tenant_model_entries`, `UNIQUE (tenant_id, model_id, secret_ref)`; entries reference keys, never own material | §8.4 |
+| Rate lookup | generation-validated process cache | entry accepted only at the observed `core.model_catalogue_revision` or later; a miss loads the row | §4.2, §10 |
+| Unknown model on platform | `std.debug.panic` | an unpriced model reaching the charge path is an internal inconsistency, never a default rate | §4.2 |
+| Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired — `404`, no alias | §10 |
+| Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a `compute_charge` branch | §2.4 |
+| Posture switch | claim-time snapshot wins | posture resolved once, at gate time, before the receive deduct | §7 |
+| Blocked rows | terminal | no automatic replay after top-up; resume writes a continuation event | §6 |
+| Live dollar values | never in this doc | canonical on `agentsfleet.net/#pricing`; constants pinned across 4 files by `audits/cross-tier-rates.sh` | preamble, §4.2 |
+
+## Traps
+
+Each trap is enforced in its owner section; this list is the index.
+
+- Never quote dollar amounts or promo windows in docs — they go stale the moment a rate moves (preamble).
+- Metering never stops — the trial window zeroes the money column, not the audit row (§2.3).
+- Never read a cache eviction as "this model is not in the catalogue" — a miss loads, it does not answer (§4.2).
+- `slice_seq` comes from a `FOR UPDATE` counter on the affinity slot, never a `MAX(slice_seq)` read (§3).
+- The budget gate sums `fleet.metering_periods` by drain time — never the accumulating stage telemetry row, whose timestamp is pinned at first renewal (§5.1).
+- No plan branch inside `compute_charge`, ever (§2.4).
+- The provider `api_key` never joins `secrets_map`; it rides `ExecutionPolicy` on a different path entirely (§8.2).
+- Model-registry entries reference vault keys — they never own credential material (§8.4).
+- Absence of a `tenant_model_selection` row is `mode=platform`; new tenants get no eager row (§1).
+- No silent auto-fallback from self-managed to platform on provider error — it would charge without consent (§13).
+- `tenant provider create` never test-calls the provider; auth-validity surfaces at the first event as `provider_auth_failed` (§7).
+- Budget overshoot is bounded, not zero — at most one renewal window past the cap (§5.1).
+
+## Topology
+
+The diagrams live with their flows: the per-slice metering picture (§3) and the balance-gate mermaid flowchart (§5).
+
+## Decisions
+
+| Decision | Reason | Where / artifact |
+|---|---|---|
+| Credit-based Amp-style billing, no tier ladder | one number that drains; refills are grants or purchases | preamble, §2 |
+| Platform default routes through the admin tenant's own credential | no separate platform vault, no env-var fallback, one vault code path | §1 |
+| Fireworks Kimi K2.6 as the v2.0 platform default | strong general model, 256K context, cheap wholesale, OpenAI-compatible | §1 |
+| Free trial is timestamp-gated, not feature-flagged | time passes, the window closes — no deploy, no toggle to forget | §2.3 |
+| Incremental per-renewal metering replaced the one-shot estimate | drained credit equals runtime × rate + actual tokens; refund-on-actual superseded | §3, §13; M80_010 |
+| Budget gate fails open on database failure | a metering outage must not halt every fleet on the platform | §5.1 |
+| Catalogue read moved behind auth | per-token margins are no longer world-readable | §10 |
+| Registry consistency via activation-time upsert, not read-time self-heal | a read handler must not mutate rows to paper over a write-path violation | §8.4; M121 |
+| `fleet:` vault-name prefix removed repo-wide | it discriminated nothing; dead convention | §8.4 |
+| No boot-time warm of the rate cache | a second fill path would drift from the first | §10 |
+| Stripe purchase flow deferred | v2.1; schema anticipates it | §13 |
+
+---
+
+## Detail
+
+Everything below is the full reference. Headings are stable — specs cite them by §-number and text; insert new sections, never rename or renumber existing ones.
+
 ## 1. The two postures
 
 One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs a Fleet on the default platform-managed posture, runs for a while, then activates self-managed with his own Fireworks key so he stops paying agentsfleet for tokens. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
