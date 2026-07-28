@@ -5,7 +5,7 @@
 //! - cpu.max: CPU quota/period throttling
 //! - pids.max: process/thread cap (fork-bomb / runaway-spawn bound)
 //!
-//! The cgroup is created under /sys/fs/cgroup/fleet.runner/ and
+//! The cgroup is created beneath the runner service's delegated cgroup and
 //! cleaned up when the session is destroyed.
 //! Linux-only; no-ops on other platforms.
 
@@ -17,12 +17,18 @@ alloc: std.mem.Allocator,
 /// through Io. Borrowed from the daemon's Threaded; never owned/closed here.
 io: std.Io,
 
-const CGROUP_BASE = "/sys/fs/cgroup/fleet.runner";
+const CGROUP_MOUNT = "/sys/fs/cgroup";
+const CGROUP_PROC_PATH = "/proc/self/cgroup";
+const S_CGROUP_BASE = "{s}{s}";
+const S_EXECUTION_SCOPE = "{s}/exec-{s}";
+const S_UNIFIED_CGROUP_PREFIX = "0::";
+const S_RUNNER_SUBGROUP_SUFFIX = "/runner";
 const S_THROTTLED_USEC = "throttled_usec ";
 const S_D = "{d}";
 const S_S_S = "{s}/{s}";
 const S_OOM_KILL = "oom_kill ";
 const S_PIDS_MAX = "max ";
+const MAX_CGROUP_PLACEMENT_BYTES = 4096;
 const BYTES_PER_KIB = 1024;
 const log = logging.scoped(.runner_cgroup);
 const ERR_RUN_SANDBOX_ESTABLISH_FAILED = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED;
@@ -51,17 +57,15 @@ pub fn create(
 ) !CgroupScope {
     if (builtin.os.tag != .linux) return CgroupError.UnsupportedPlatform;
 
-    const hex = types.executionIdHex(execution_id);
-    const path = try std.fmt.allocPrint(alloc, "{s}/exec-{s}", .{ CGROUP_BASE, hex });
-    errdefer alloc.free(path);
-
-    // Ensure base directory exists.
-    std.Io.Dir.createDirAbsolute(io, CGROUP_BASE, .default_dir) catch |err| {
-        if (err != error.PathAlreadyExists) {
-            log.err("base_create_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .path = CGROUP_BASE, .err = @errorName(err) });
-            return CgroupError.CgroupCreateFailed;
-        }
+    const base = resolveCgroupBase(io, alloc) catch |err| {
+        log.err("base_resolve_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
+        return err;
     };
+    defer alloc.free(base);
+
+    const hex = types.executionIdHex(execution_id);
+    const path = try std.fmt.allocPrint(alloc, S_EXECUTION_SCOPE, .{ base, hex });
+    errdefer alloc.free(path);
 
     // Create scope directory.
     std.Io.Dir.createDirAbsolute(io, path, .default_dir) catch |err| {
@@ -154,16 +158,52 @@ pub fn wasPidsExhausted(self: *const CgroupScope) bool {
     return self.readEventCount("pids.events", S_PIDS_MAX) > 0;
 }
 
-/// Parse a `<key> N` counter out of cgroup events-file CONTENT (M100 —
-/// pure, no I/O, so it is fixture-testable off-Linux). `key` includes its
+/// Parse a `<key> N` counter out of cgroup events-file content —
+/// pure, no I/O, so it is fixture-testable off-Linux. `key` includes its
 /// trailing space (e.g. `"oom_kill "`). Returns 0 when the key is absent or its
 /// value is empty/malformed — the same fail-safe the live readers rely on.
-/// `pub` for the sibling test.
 pub fn parseEventCount(content: []const u8, key: []const u8) u64 {
     const pos = std.mem.indexOf(u8, content, key) orelse return 0;
     const after = content[pos + key.len ..];
     const end = std.mem.indexOfScalar(u8, after, '\n') orelse after.len;
     return std.fmt.parseInt(u64, after[0..end], 10) catch 0;
+}
+
+/// Return the delegated service cgroup from `/proc/self/cgroup` content.
+/// The runner must run in systemd's `runner` leaf before it may create children.
+pub fn delegatedCgroupPath(placement: []const u8) ?[]const u8 {
+    var lines = std.mem.splitScalar(u8, placement, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, S_UNIFIED_CGROUP_PREFIX)) continue;
+        const runner_path = line[S_UNIFIED_CGROUP_PREFIX.len..];
+        if (!safeCgroupPath(runner_path)) return null;
+        if (!std.mem.endsWith(u8, runner_path, S_RUNNER_SUBGROUP_SUFFIX)) return null;
+        const delegated_path = runner_path[0 .. runner_path.len - S_RUNNER_SUBGROUP_SUFFIX.len];
+        return if (safeCgroupPath(delegated_path)) delegated_path else null;
+    }
+    return null;
+}
+
+fn resolveCgroupBase(io: std.Io, alloc: std.mem.Allocator) ![]u8 {
+    const file = std.Io.Dir.openFileAbsolute(io, CGROUP_PROC_PATH, .{}) catch return CgroupError.CgroupReadFailed;
+    defer file.close(io);
+
+    var reader = file.reader(io, &.{});
+    var buf: [MAX_CGROUP_PLACEMENT_BYTES]u8 = undefined;
+    const len = reader.interface.readSliceShort(&buf) catch return CgroupError.CgroupReadFailed;
+    const path = delegatedCgroupPath(buf[0..len]) orelse return CgroupError.CgroupReadFailed;
+    return std.fmt.allocPrint(alloc, S_CGROUP_BASE, .{ CGROUP_MOUNT, path });
+}
+
+fn safeCgroupPath(path: []const u8) bool {
+    if (path.len <= 1 or path[0] != '/') return false;
+    if (std.mem.indexOfScalar(u8, path, 0) != null) return false;
+
+    var segments = std.mem.splitScalar(u8, path[1..], '/');
+    while (segments.next()) |segment| {
+        if (segment.len == 0 or std.mem.eql(u8, segment, ".") or std.mem.eql(u8, segment, "..")) return false;
+    }
+    return true;
 }
 
 /// Read a `<key> N` counter from a cgroup events file (0 if absent/unreadable/off-linux).
@@ -249,32 +289,6 @@ fn readControlValue(self: *const CgroupScope, control_file: []const u8) !u64 {
     const len = fr.interface.readSliceShort(&buf) catch return CgroupError.CgroupReadFailed;
     const trimmed = std.mem.trim(u8, buf[0..len], " \t\r\n");
     return std.fmt.parseInt(u64, trimmed, 10) catch 0;
-}
-
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-test "parseEventCount reads the counter for valid memory.events / pids.events bytes (M100)" {
-    // Real memory.events shape — oom_kill is the field wasOomKilled() reads.
-    try std.testing.expectEqual(@as(u64, 3), parseEventCount("low 0\nhigh 0\nmax 0\noom 0\noom_kill 3\n", S_OOM_KILL));
-    // Real pids.events shape — `max` is the field wasPidsExhausted() reads.
-    try std.testing.expectEqual(@as(u64, 7), parseEventCount("max 7\n", S_PIDS_MAX));
-    // cpu.stat throttled_usec rides the same parser.
-    try std.testing.expectEqual(@as(u64, 12345), parseEventCount("nr_periods 0\nthrottled_usec 12345\n", S_THROTTLED_USEC));
-    // Counter at EOF with no trailing newline.
-    try std.testing.expectEqual(@as(u64, 9), parseEventCount("oom_kill 9", S_OOM_KILL));
-}
-
-test "parseEventCount fails safe (0) on missing/empty/malformed (M100)" {
-    // Absent key → 0 (e.g. memory.events with no oom_kill line yet).
-    try std.testing.expectEqual(@as(u64, 0), parseEventCount("low 0\nhigh 0\n", S_OOM_KILL));
-    // Empty content → 0.
-    try std.testing.expectEqual(@as(u64, 0), parseEventCount("", S_OOM_KILL));
-    // Malformed value (non-numeric / empty after key) → 0, never a parse panic.
-    try std.testing.expectEqual(@as(u64, 0), parseEventCount("oom_kill abc\n", S_OOM_KILL));
-    try std.testing.expectEqual(@as(u64, 0), parseEventCount("oom_kill \n", S_OOM_KILL));
-    try std.testing.expectEqual(@as(u64, 0), parseEventCount("oom_kill", S_OOM_KILL)); // key present, no value
-    // Overflowing value → 0 (parseInt rejects), no panic.
-    try std.testing.expectEqual(@as(u64, 0), parseEventCount("oom_kill 99999999999999999999999999\n", S_OOM_KILL));
 }
 
 const std = @import("std");

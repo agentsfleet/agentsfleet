@@ -33,7 +33,7 @@ import path from "node:path";
 
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
-import { PtyProcess } from "./fixtures/pty.ts";
+import { extractLoginUrl, PtyProcess } from "./fixtures/pty.ts";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
   resolveAcceptanceEnv,
@@ -54,19 +54,6 @@ import {
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
-// Only the wrong-code retry drives the dashboard browser leg (clerk.signIn).
-// Gated behind an explicit opt-in + the publishable key: clerk.signIn still
-// times out on window.Clerk.loaded against the deployed dashboard pending a
-// Clerk publishable-key/instance alignment (see lifecycle-after-login.spec).
-// The SIGINT, --token, piped-stdin, logout, and auth-status paths need no
-// browser leg and always run live.
-const handshakeEnabled =
-  process.env.AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE === "1" && Boolean(process.env.CLERK_PUBLISHABLE_KEY);
-const itHandshake = handshakeEnabled ? it : it.skip;
-
-// printKeyValue renders the key space-aligned ("login_url   https://…"), not
-// "login_url: …" — match an optional colon then whitespace before the URL.
-const LOGIN_URL_RE = /login_url:?\s+(https?:\/\/\S+)/i;
 const CODE_PROMPT_RE = /6-digit verification code/i;
 const RETRY_WARN_RE = /didn't match|one more try/i;
 const WRONG_CODE = "000000";
@@ -91,11 +78,11 @@ const AUTH_REQUIRED_CODE = "AUTH_REQUIRED" as const;
 const SOURCE_FILE = "file" as const;
 
 function parseLoginUrl(output: string): string {
-  const match = output.match(LOGIN_URL_RE);
-  if (!match || !match[1]) {
+  const loginUrl = extractLoginUrl(output);
+  if (!loginUrl) {
     throw new Error(`could not find login_url in CLI output: ${output.slice(0, 400)}`);
   }
-  return match[1];
+  return loginUrl;
 }
 
 function rewriteHost(loginUrl: string, dashboardBase: string): string {
@@ -117,6 +104,7 @@ if (!isLive) {
     let apiUrl: string = "";
     let dashboardUrl: string = "";
     let sessionJwt: string = "";
+    let clerkUserId: string = "";
     let fixtureEmail: string = "";
     let stateDir: string = "";
     let baseEnv: Record<string, string> = {};
@@ -146,6 +134,7 @@ if (!isLive) {
       fixtureEmail = resolveFixtureEmail("regular");
       const minted = await attachJwt(clerkSecret, { email: fixtureEmail });
       sessionJwt = minted.sessionJwt;
+      clerkUserId = minted.clerkUserId;
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-login-neg-"));
       credentialsPath = path.join(stateDir, CREDENTIALS_FILENAME);
@@ -193,7 +182,8 @@ if (!isLive) {
         // writes session_id:null (on-disk key is snake_case session_id).
         assert.ok(!record?.session_id, `direct token must persist with no session_id; got ${record?.session_id}`);
         // No browser-session URL announced on the direct path.
-        assert.ok(!LOGIN_URL_RE.test(result.stdout), `direct path must not announce a login_url: ${result.stdout}`);
+        assert.equal(extractLoginUrl(result.stdout), null,
+          `direct path must not announce a login_url: ${result.stdout}`);
       });
     });
 
@@ -297,14 +287,14 @@ if (!isLive) {
     describe("wrong verification code then correct", () => {
       beforeEach(freshStateDir);
 
-      itHandshake("000000 → re-prompt → real code → exit 0 + credentials.json", async () => {
+      it("000000 → re-prompt → real code → exit 0 + credentials.json", async () => {
         const cli = PtyProcess.spawnFleetctl([CMD_LOGIN, FLAG_NO_OPEN], { env: baseEnv });
         try {
-          const announced = await cli.waitForLine((line) => LOGIN_URL_RE.test(line), HANDSHAKE_TIMEOUT_MS);
+          const announced = await cli.waitForLine((line) => extractLoginUrl(line) !== null, HANDSHAKE_TIMEOUT_MS);
           const handoffUrl = rewriteHost(parseLoginUrl(announced), dashboardUrl);
           const realCode = await completeCliAuthHandoff({
             loginUrl: handoffUrl,
-            email: fixtureEmail,
+            clerkUserId,
             timeoutMs: HANDSHAKE_TIMEOUT_MS,
           });
           assert.notEqual(realCode, WRONG_CODE, "fixture sanity: real code must differ from the wrong code");

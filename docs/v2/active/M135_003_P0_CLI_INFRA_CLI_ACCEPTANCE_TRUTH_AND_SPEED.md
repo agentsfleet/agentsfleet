@@ -54,20 +54,43 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `cli/test/acceptance/fixtures/clerk-admin.ts` | EDIT | Create missing owned users with ephemeral strong credentials while preserving direct session minting. |
 | `cli/test/acceptance/fixtures/clerk-admin.test.ts` | CREATE | Failure-inject user lookup, creation, reuse, and redaction behavior. |
+| `cli/test/acceptance/fixtures/browser.ts` | EDIT | Reuse the dashboard’s one-time ticket flow for the real browser session. |
 | `cli/test/acceptance/global-setup.ts` | EDIT | Establish suite-owned identities and one isolated golden live fixture without browser-suite ordering. |
+| `cli/test/acceptance/global-teardown.ts` | CREATE | Revoke every Clerk session minted by the lane even when a spec fails partway. |
 | `cli/test/acceptance/lifecycle-after-login.spec.ts` | EDIT | Make the real browser handoff a release-critical scenario. |
 | `cli/test/acceptance/login-negatives.spec.ts` | EDIT | Keep negative login cases deterministic while sharing browser setup policy. |
+| `cli/test/acceptance/fixtures/pty.ts` | EDIT | Parse the human-rendered login URL separator before starting the browser handoff. |
+| `cli/test/acceptance/fixtures/workspace-hydration.ts` | EDIT | Preserve tenant identity so workspace creation reconciles with the hydrated local list. |
+| `cli/test/acceptance/fixtures/workspace-hydration.test.ts` | CREATE | Pin tenant-aware local workspace hydration and reject incomplete API envelopes. |
+| `cli/test/acceptance/fleet-key-mutation.spec.ts` | EDIT | Give its remote fleet setup enough bounded time when the live lane runs concurrently. |
+| `cli/test/acceptance/perf.spec.ts` | EDIT | Give its remote cursor-walk setup enough bounded time when the live lane runs concurrently. |
 | `cli/test/acceptance/steer-live.spec.ts` | EDIT | Require one real terminal result and remove redundant live turns. |
 | `cli/test/acceptance/streaming-follow.spec.ts` | EDIT | Pin SSE terminal delivery and fallback behavior without accepting timeout as success. |
-| `cli/test/acceptance/fixtures/streaming-ops.ts` | EDIT | Centralize golden live result assertions and bounded evidence capture. |
+| `cli/test/acceptance/fixtures/streaming-ops.ts` | DELETE | Remove the orphaned live read-eval-print loop helper after streaming proof moves to local transport tests. |
+| `cli/test/acceptance/run-lane.ts` | CREATE | Run one named lane and emit bounded release-grade counts and duration. |
+| `cli/test/acceptance/acceptance-lanes.test.ts` | CREATE | Pin lane membership, summary parsing, and the no-remote-work deterministic boundary. |
 | `cli/package.json` | EDIT | Split deterministic and live acceptance commands while retaining one aggregate entrypoint. |
 | `cli/src/commands/fleet_steer_events.ts` | EDIT (conditional) | Change only if the golden live proof exposes a production SSE/fallback defect; never lower the timeout for test speed. |
+| `src/runner/engine/CgroupScope.zig` | EDIT | Resolve the runner's own delegated systemd cgroup and create execution scopes only below it. |
+| `src/runner/sec_enforcement_integration_test.zig` | EDIT | Exercise the unified cgroup placement parser through its external runner integration consumer. |
+| `deploy/baremetal/agentsfleet-runner.service` | EDIT | Delegate the runner service's cgroup subtree so resource controls can be enforced without writing at the host root. |
+| `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md` | EDIT | Make delegated cgroup readiness a required DEV runner bootstrap outcome. |
+| `playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh` | EDIT | Fail DEV deployment readiness when the installed unit lacks cgroup delegation. |
+| `playbooks/founding/06_runner_bootstrap_dev/deploy_readiness_test.sh` | CREATE | Pin accepted and rejected delegated-cgroup readiness states without touching a host. |
+| `scripts/cgroup-delegate.sh` | EDIT | Place the disposable kernel proof command in a delegated cgroup subtree instead of preparing a host-root runner path. |
+| `make/test-integration.mk` | EDIT | Invoke the disposable delegation helper with the kernel proof command. |
+| `make/quality.mk` | EDIT | Run the delegated-cgroup readiness regression with the existing playbook checks. |
+| `.github/workflows/deploy-dev.yml` | EDIT | Enable the release-critical browser handoff in development acceptance. |
+| `.github/workflows/test-integration.yml` | EDIT | Invoke the disposable delegation helper with the kernel proof command. |
+| `.github/workflows/post-release.yml` | EDIT | Supply the production browser lane with its matching Clerk public key. |
 
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — Test Naming (TST-NAM), Unified Form for Symbols (UFS), Tagged Union (TGU), No Dead Code (NDC), No Legacy Retained (NLR), Orphan Sweep (ORP), Prompt-injection Resistance (PRI): behavior names, constants, tagged outcomes, no dormant fixture modes, and no secret output.
 - **`dispatch/write_ts_adhere_bun.md`** — Bun-native tests, parse-boundary narrowing, constant discipline, and focused test files.
 - **`docs/AUTH.md`** — CLI browser handoff and session-token boundaries remain real.
+- **`docs/architecture/runner_fleet.md`** — a runner fails closed when its cgroup kill domain cannot be established.
+- **`dispatch/write_zig.md`** — resource ownership, named constants, cgroup lifecycle, and Linux cross-compilation rules.
 
 ## Applicable Gates
 
@@ -77,6 +100,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File & Function Length | yes | split fixture transport from lifecycle if caps approach |
 | UFS | yes | named timeout, outcome, fixture-owner, and mode constants |
 | LOGGING / LIFECYCLE | yes | revoke sessions, clean state directories, and redact identity credentials |
+| ZIG / LIFECYCLE | yes for runner cgroup resolution | preserve allocator ownership, fail closed on malformed cgroup placement, and cross-compile both Linux targets |
 
 ## Prior-Art / Reference Implementations
 
@@ -115,6 +139,13 @@ The command, error, lifecycle, and concurrency matrix remains broad, but only th
 - **Dimension 4.1** — deterministic cases do not enqueue remote fleet executions → Test `test_cli_deterministic_lane_has_no_live_steer`
 - **Dimension 4.2** — release summary reports zero critical skips and job duration within budget → Test `test_cli_acceptance_summary_is_release_grade`
 
+### §5 — Runner execution capacity is real, not merely online
+
+The DEV runner's online heartbeat is insufficient when it cannot establish its per-execution resource cage. The service delegates only its own cgroup subtree, and the runner resolves that subtree before making child execution cgroups. Deployment readiness proves the installed unit carries delegation before live acceptance spends its bounded steer window.
+
+- **Dimension 5.1** — a cgroup-v2 placement line resolves to a base below the runner service, while malformed or legacy-only input fails closed → Test `test_runner_cgroup_base_requires_unified_service_path`
+- **Dimension 5.2** — the tracked service delegates and enables its cgroup subtree before the runner starts; DEV readiness rejects an installed unit without that property → Test `test_dev_runner_readiness_requires_cgroup_delegation`
+
 ## Interfaces
 
 ```text
@@ -136,12 +167,14 @@ Timeout, cancellation, and indeterminate outcomes are not success.
 | Runner unavailable | no online runner can lease the event | fail with runner-readiness diagnosis, not a generic timeout |
 | SSE interruption | live stream closes before terminal event | use bounded polling fallback and require the same terminal result |
 | External stall | neither stream nor polling reaches terminal state | fail and retain redacted event identifiers for diagnosis |
+| Runner cgroup unavailable | installed unit lacks delegated controllers or runner placement is malformed | fail closed before child execution; deployment readiness identifies missing delegation |
 
 ## Invariants
 
 1. No stable fixture password is stored in repository, workflow, or vault.
 2. A green live steer always contains a terminal event; timeout is never an accepted outcome.
 3. Deterministic cases cannot enqueue remote work; only the named live lane may do so.
+4. An execution cgroup is created only below the runner service's delegated cgroup; the host cgroup root is never used as the runner base.
 
 ## Metrics & Observability
 
@@ -163,6 +196,8 @@ Timeout, cancellation, and indeterminate outcomes are not success.
 | 3.3 | integration | `test_cli_live_steer_failure_is_actionable` | runner, provider, and transport failures remain distinct |
 | 4.1 | integration | `test_cli_deterministic_lane_has_no_live_steer` | deterministic command run produces zero remote execution calls |
 | 4.2 | integration | `test_cli_acceptance_summary_is_release_grade` | summary has zero critical skips and bounded duration |
+| 5.1 | unit | `test_runner_cgroup_base_requires_unified_service_path` | valid unified service placement resolves below the service; malformed and legacy-only placement fail |
+| 5.2 | integration | `test_dev_runner_readiness_requires_cgroup_delegation` | readiness rejects a unit without delegated controllers and accepts the tracked unit |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -172,7 +207,8 @@ Timeout, cancellation, and indeterminate outcomes are not success.
 | R2 | Deterministic CLI breadth passes | `cd cli && bun run test:acceptance:deterministic` | 0 failed and 0 remote steer calls | P0 | |
 | R3 | Browser login and live result pass | `cd cli && bun run test:acceptance:live` | terminal result observed and 0 critical skips | P0 | |
 | R4 | Aggregate lane is bounded | `make cli-acceptance` | exit 0 and duration below 600 seconds | P0 | |
-| S1 | CLI unit tests pass | `make test-unit-agentsfleet` | exit 0 | P0 | |
+| R5 | DEV runner can establish its resource cage | `bash playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh` | exit 0 with delegated runner unit | P0 | |
+| S1 | CLI unit tests pass | `make test-unit-cli` | exit 0 | P0 | |
 | S2 | Repository lint passes | `make lint-all` | exit 0 | P0 | |
 | S3 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
