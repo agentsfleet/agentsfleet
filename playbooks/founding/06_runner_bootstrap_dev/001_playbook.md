@@ -2,18 +2,18 @@
 
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
-**Prerequisite:** Vault items exist (`ZMB_CD_DEV`, `ZMB_CD_PROD`). Tailscale OAuth client secret in `ZMB_CD_PROD/tailscale/oauth-secret`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`. Tailscale policy grants SSH to `tag:ci` (one-time, per tailnet):
 
-```jsonc
-// login.tailscale.com/admin/acls → "ssh"
-{ "action": "accept", "src": ["autogroup:member"], "dst": ["tag:ci"], "users": ["autogroup:nonroot", "root"] }
-```
+**Prerequisites:**
+- Vault items in `ZMB_CD_DEV` and `ZMB_CD_PROD`
+- Tailscale OAuth client secret at `op://ZMB_CD_PROD/tailscale/oauth-secret`
+- 1Password service account token as `OP_SERVICE_ACCOUNT_TOKEN`
+- Tailnet policy grants SSH to `tag:ci` — see `02_preflight/tailnet-policy.hujson` (login.tailscale.com/admin/acls)
 
-Without this grant the node advertises host keys but every connect fails with `tailnet policy does not permit you to SSH to this node`.
+Without the `ssh` grant for `tag:ci`, the node advertises host keys but every connect fails with `tailnet policy does not permit you to SSH to this node`.
 
-Bootstrap the DEV bare-metal worker node so CI can deploy the host-resident `agentsfleet-runner` daemon autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 this host ran two services that the M80 cutover folded into the single `agentsfleet-runner` daemon.)
+Bootstrap the DEV bare-metal worker so CI can deploy the host-resident `agentsfleet-runner` daemon. After step 0 (human provisions server), remaining steps run without human interaction.
 
-Environment setup for all commands in this playbook:
+Environment setup for all commands:
 
 ```bash
 export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
