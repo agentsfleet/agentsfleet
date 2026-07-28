@@ -395,6 +395,51 @@ describe("fleets routes", () => {
     expect(markup).not.toContain("No prebuilt fleet library found");
   });
 
+  it("the streamed gallery renders nothing at all when the session lapsed mid-stream", async () => {
+    // The shell already redirected on a missing token, but the gallery is a
+    // SEPARATE async child that mints its own. A session that lapses between
+    // the two reads must yield no gallery rather than an unauthenticated read
+    // — and it cannot redirect from here, because the shell has already been
+    // flushed to the browser.
+    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: {} }),
+      ),
+    );
+    expect(markup).toBe("");
+    expect(listWorkspaceFleetLibraryMock).not.toHaveBeenCalled();
+  });
+
+  it("a repeated query parameter resolves to its first value, not to the array", async () => {
+    // `?library_after=a&library_after=b` reaches Next as an array. Passing it
+    // on unchanged would build a cursor of "a,b" and read a page the server
+    // never issued — a hand-edited or duplicated share link, not a hostile
+    // one, and it must land on a real page rather than an error.
+    listWorkspaceFleetLibraryMock.mockResolvedValue({
+      items: SAMPLE_TEMPLATES,
+      next_cursor: null,
+      total: null,
+    });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: { library_after: ["cur-2", "cur-3"] } }),
+      ),
+    );
+
+    expect(markup).toContain("GitHub PR reviewer");
+    expect(listWorkspaceFleetLibraryMock).toHaveBeenCalledWith("ws_1", expect.anything(), "cur-2");
+  });
+
   it("test_library_list_position_survives_reload — a cursor in the URL restores that page", async () => {
     // The server half of list position. Load-more mirrors the cursor into the
     // URL; this is what makes that mirror worth anything — a reload, a shared

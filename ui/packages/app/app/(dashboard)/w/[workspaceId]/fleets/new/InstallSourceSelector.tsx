@@ -41,8 +41,12 @@ const NOT_FOUND_COPY =
  * leaving the screen. Uses `history` directly rather than the router so the
  * route does not re-render — the rows are already in state, and a re-render
  * would refetch the page we just appended.
+ *
+ * Exported for the same reason `galleryErrorCopy` is: reaching the no-window
+ * arm through a render is impossible, because the only environment that lacks
+ * `window` is also the one that cannot run the click that calls this.
  */
-function mirrorCursorIntoUrl(cursor: string | null) {
+export function mirrorCursorIntoUrl(cursor: string | null) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   if (cursor === null) url.searchParams.delete(LIBRARY_AFTER_PARAM);
@@ -127,13 +131,6 @@ export function InstallSourceSelector({
     });
   }
 
-  // Append the next page. Exactly one request per invocation — the walk this
-  // replaced issued as many as the library had pages, on every visit.
-  function loadMore() {
-    if (nextCursor === null) return;
-    fetchPage(nextCursor, true);
-  }
-
   // Re-attempt whichever read failed. With a cursor in hand the fault was a
   // load-more, so retry that same page; with none it was the server-render's
   // first-page read, which has no client twin to re-run — so read page one.
@@ -185,7 +182,14 @@ export function InstallSourceSelector({
 
           {nextCursor !== null ? (
             <div className="flex items-center gap-3">
-              <Button type="button" variant="secondary" onClick={loadMore} disabled={pending}>
+              {/*
+                Append the next page — exactly one request per click, where the
+                exhaustive walk this replaced issued as many as the library had
+                pages on every visit. The cursor is read here rather than behind
+                a null guard inside a handler: this branch is the only thing
+                that renders the control, so a guard could never have fired.
+              */}
+              <Button type="button" variant="secondary" onClick={() => fetchPage(nextCursor, true)} disabled={pending}>
                 {pending ? "Loading…" : "Load more"}
               </Button>
               <p className="text-sm text-muted-foreground" aria-live="polite">

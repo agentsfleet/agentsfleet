@@ -65,26 +65,30 @@ export function ModelCatalogueProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<CatalogueStatus>(CATALOGUE_STATUS.idle);
   const router = useRouter();
 
-  // Monotonic request id. Only the newest request may write state, so a slow
-  // earlier response cannot overwrite a newer one — the "latest wins" rule.
-  // Held in a ref because a hover storm must not re-render on every attempt.
-  const generation = useRef(0);
+  // Single-flight, held in a ref because a hover storm must not re-render on
+  // every attempt.
+  //
+  // This is also what delivers the ordering property, which is why there is no
+  // request id beside it: a monotonic generation resolves a race between two
+  // in-flight reads, and this guard means there is never a second one to race.
+  // `inFlight` is only cleared in `.finally`, which runs after `.then`/`.catch`
+  // — so every handler below is provably the newest request's. `useStoredSecrets`
+  // is the sibling case that does need a generation: open/close/reopen genuinely
+  // overlap there, because it takes no single-flight guard.
   const inFlight = useRef(false);
 
   const preload = useCallback(() => {
-    // Single-flight: hover, focus, and open all call this, often within the
-    // same gesture. Without the guard one deliberate click could issue three
-    // identical catalogue reads.
+    // Hover, focus, and open all call this, often within the same gesture.
+    // Without the guard one deliberate click could issue three identical
+    // catalogue reads.
     if (inFlight.current) return;
     if (status === CATALOGUE_STATUS.ready) return;
 
     inFlight.current = true;
-    const mine = ++generation.current;
     setStatus(CATALOGUE_STATUS.loading);
 
     getModelLibraryAction()
       .then((res) => {
-        if (mine !== generation.current) return;
         if (res.ok) {
           setModels(res.data.models);
           setStatus(CATALOGUE_STATUS.ready);
@@ -99,7 +103,6 @@ export function ModelCatalogueProvider({ children }: { children: ReactNode }) {
         setStatus(CATALOGUE_STATUS.error);
       })
       .catch(() => {
-        if (mine !== generation.current) return;
         setStatus(CATALOGUE_STATUS.error);
       })
       .finally(() => {

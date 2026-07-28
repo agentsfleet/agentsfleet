@@ -114,6 +114,12 @@ describe("ModelCatalogueProvider — intent loading", () => {
   it("test_model_picker_prefetch_policy_and_latest_result — latest request wins when an earlier resolves late", async () => {
     // Latest-wins. A slow first attempt that errors must not stamp `error`
     // over a later attempt that already succeeded.
+    //
+    // Single-flight is what delivers this, which is why there is no request id
+    // in the provider: an attempt cannot start until the previous one has
+    // settled, so "two responses arriving out of order" is a state the
+    // component cannot reach. The mid-flight assertion below is the load-
+    // bearing half — remove the guard and a second read starts here.
     let failFirst!: (e: unknown) => void;
     getModelLibraryActionMock
       .mockReturnValueOnce(new Promise((_r, rej) => (failFirst = rej)))
@@ -121,6 +127,11 @@ describe("ModelCatalogueProvider — intent loading", () => {
 
     renderProvider();
     await fireIntent();
+
+    // Intent while the first read is still open issues nothing at all.
+    await fireIntent();
+    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
+
     // First attempt settles (rejects) — that frees the single-flight guard.
     await act(async () => {
       failFirst(new Error("slow-503"));
@@ -198,6 +209,22 @@ describe("maySpeculateOnHover — environments without matchMedia", () => {
     // must fall through to the Save-Data question, not throw or refuse.
     vi.stubGlobal("matchMedia", undefined);
     expect(maySpeculateOnHover()).toBe(true);
+  });
+});
+
+describe("maySpeculateOnHover — on the server", () => {
+  it("refuses to speculate where there is no window to speculate for", () => {
+    // The dialog trigger's hover handler is defined in a client component, but
+    // the module is still evaluated during the server render. Reaching for
+    // `window.matchMedia` there is a ReferenceError, so the guard has to answer
+    // before the pointer probe rather than after it — and "no window" must read
+    // as "do not prefetch", never as "prefetch unconditionally".
+    //
+    // Assigning `undefined` is what makes `typeof window` report "undefined":
+    // happy-dom always defines the binding, so removing the VALUE is the only
+    // way to reproduce a Node render inside a DOM environment.
+    vi.stubGlobal("window", undefined);
+    expect(maySpeculateOnHover()).toBe(false);
   });
 });
 
