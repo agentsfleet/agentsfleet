@@ -2,6 +2,24 @@
 
 > Items intentionally out of v2.0 scope, captured so specs don't foreclose them. Current canon for what ships is [`high_level.md`](./high_level.md) + [`direction.md`](./direction.md) + `docs/v2/{pending,active,done}/`. This file is direction, not a commitment.
 
+## Status index
+
+One row per item, so an agent can check a status without reading the ledger; each owner section carries the detail.
+
+| Item | Status | Owner section |
+|---|---|---|
+| Scope-based authorization | ✅ delivered (M104_001) | §v2.1 — authorization |
+| Fleet keys as first-class principal | deferred to v2.1 | §v2.1 — authorization |
+| Label-scoped sticky affinity | ✅ delivered (M85_001) | §v2.1+ — other deferred items |
+| Trust-scoped sticky affinity | deferred — its own security workstream | §v2.1+ — other deferred items |
+| Flow-1 active-MITM closure · dashboard token model · open fleet (mode C) | deferred | §v2.1+ — other deferred items |
+| GitHub App event routing | shipped in M102_005; `github-pr-reviewer` stays unproven until its repository-bound test passes | §GitHub App event routing |
+| Runner call deadlines + shared watchdog | ✅ delivered (M90_001 + M108_001) | §Runner resilience |
+| Operator plane + reassignment | ✅ delivered (M84_001 read, M84_002 mutation) | §Fleet operator plane |
+| Security Reviewer prebuilt fleet | forward-looking, unspecced | §Security Reviewer |
+| Slack consumption ladder | Rung 0 ✅ (M106_001); Rung 1 is direction, not a commitment | §Slack-resident surface |
+| Bastion | post-MVP shape, documented so specs don't foreclose it | §Bastion |
+
 ## v2.1 — authorization
 
 ### Scope-based authorization — ✅ DELIVERED (M104_001)
