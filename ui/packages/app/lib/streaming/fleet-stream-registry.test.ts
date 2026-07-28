@@ -12,25 +12,7 @@ import {
   subscribe,
 } from "./fleet-stream-registry";
 import { FRAME_KIND, type EventRow } from "@/lib/api/events";
-
-// Mirrors the FakeEventSource pattern in tests/use-fleet-event-stream.test.ts.
-// Centralizing was considered and rejected — the helper is small and the
-// duplication keeps each test file freestanding.
-class FakeEventSource {
-  static instances: FakeEventSource[] = [];
-  url: string;
-  onopen: ((this: EventSource, ev: Event) => unknown) | null = null;
-  onmessage: ((this: EventSource, ev: MessageEvent) => unknown) | null = null;
-  onerror: ((this: EventSource, ev: Event) => unknown) | null = null;
-  closed = false;
-  constructor(url: string) {
-    this.url = url;
-    FakeEventSource.instances.push(this);
-  }
-  close() {
-    this.closed = true;
-  }
-}
+import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 
 function row(over: Partial<EventRow> = {}): EventRow {
   const now = Date.UTC(2026, 4, 15, 18, 30, 0);
@@ -64,15 +46,14 @@ const IDLE_RELEASE_MS = 30_000;
 
 beforeEach(() => {
   vi.useFakeTimers();
-  FakeEventSource.instances = [];
-  (globalThis as unknown as { EventSource: unknown }).EventSource = FakeEventSource;
+  FakeEventSource.install();
   __resetRegistryForTests();
 });
 
 afterEach(() => {
   __resetRegistryForTests();
   vi.useRealTimers();
-  delete (globalThis as { EventSource?: unknown }).EventSource;
+  FakeEventSource.uninstall();
 });
 
 describe("fleet-stream-registry — subscribe lifecycle", () => {
@@ -311,13 +292,11 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     // resolves — the frame carries no message body, so the live row holds
     // the real event id with an empty trigger.
     const es = FakeEventSource.instances[0]!;
-    es.onmessage?.call(es as unknown as EventSource, {
-      data: JSON.stringify({
-        kind: FRAME_KIND.EVENT_RECEIVED,
-        event_id: "evt_early",
-        actor: "steer:k@e2e.com",
-      }),
-    } as MessageEvent);
+    es.emit({
+      kind: FRAME_KIND.EVENT_RECEIVED,
+      event_id: "evt_early",
+      actor: "steer:k@e2e.com",
+    });
     expect(reconcileOptimistic(Z_A, tempId, "evt_early")).toBe(false);
     const events = getSnapshot(Z_A).events;
     expect(events).toHaveLength(1);
@@ -707,13 +686,11 @@ describe("fleet-stream-registry — reconnect backfill", () => {
     const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
     const es0 = FakeEventSource.instances[0]!;
     es0.onopen?.call(es0 as unknown as EventSource, {} as Event);
-    es0.onmessage?.call(es0 as unknown as EventSource, {
-      data: JSON.stringify({
-        kind: FRAME_KIND.EVENT_RECEIVED,
-        event_id: "evt_live",
-        actor: "fleet",
-      }),
-    } as MessageEvent);
+    es0.emit({
+      kind: FRAME_KIND.EVENT_RECEIVED,
+      event_id: "evt_live",
+      actor: "fleet",
+    });
     es0.onerror?.call(es0 as unknown as EventSource, {} as Event);
     vi.advanceTimersByTime(RECONNECT_ADVANCE_MS);
     const es1 = FakeEventSource.instances[1]!;
@@ -914,9 +891,11 @@ describe("fleet-stream-registry — a lost connection recovers itself", () => {
     vi.advanceTimersByTime(OFFLINE_RETRY_MS);
     const es = FakeEventSource.instances.at(-1)!;
     es.onopen?.call(es as unknown as EventSource, {} as Event);
-    es.onmessage?.call(es as unknown as EventSource, {
-      data: JSON.stringify({ kind: "event_received", event_id: "e1", actor: "fleet" }),
-    } as MessageEvent);
+    es.emit({
+      kind: FRAME_KIND.EVENT_RECEIVED,
+      event_id: "e1",
+      actor: "fleet",
+    });
     // A subsequent failure is treated as attempt 1 (fast), not a continuation
     // of the exhausted offline count.
     es.onerror?.call(es as unknown as EventSource, {} as Event);

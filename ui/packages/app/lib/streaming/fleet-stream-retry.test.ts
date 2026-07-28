@@ -6,38 +6,24 @@ import {
   retryConnection,
   subscribe,
 } from "./fleet-stream-registry";
-
-class FakeEventSource {
-  static instances: FakeEventSource[] = [];
-  onopen: ((this: EventSource, event: Event) => unknown) | null = null;
-  onmessage: ((this: EventSource, event: MessageEvent) => unknown) | null = null;
-  onerror: ((this: EventSource, event: Event) => unknown) | null = null;
-  closed = false;
-  constructor(readonly url: string) {
-    FakeEventSource.instances.push(this);
-  }
-  close() {
-    this.closed = true;
-  }
-}
+import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 
 const FLEET_ID = "fleet_retry";
 
 beforeEach(() => {
   vi.useFakeTimers();
-  FakeEventSource.instances = [];
-  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  FakeEventSource.install();
   __resetRegistryForTests();
 });
 
 afterEach(() => {
   __resetRegistryForTests();
   vi.useRealTimers();
+  FakeEventSource.uninstall();
 });
 
 function failCurrentConnection() {
-  const source = FakeEventSource.instances.at(-1)!;
-  source.onerror?.call(source as unknown as EventSource, new Event("error"));
+  FakeEventSource.instances.at(-1)!.fail();
 }
 
 describe("fleet stream retry lifecycle", () => {
@@ -49,8 +35,8 @@ describe("fleet stream retry lifecycle", () => {
   it("deduplicates repeated errors from one connection", () => {
     const unsubscribe = subscribe("ws_1", FLEET_ID, [], () => {});
     const source = FakeEventSource.instances[0]!;
-    source.onerror?.call(source as unknown as EventSource, new Event("error"));
-    source.onerror?.call(source as unknown as EventSource, new Event("error"));
+    source.fail();
+    source.fail();
     vi.runOnlyPendingTimers();
     expect(FakeEventSource.instances).toHaveLength(2);
     unsubscribe();
