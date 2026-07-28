@@ -55,12 +55,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/operations/github_app_registration/001_playbook.md` | EDIT | Record any discovered app-dev-safe, idempotent connection or verification correction. |
 | `playbooks/operations/slack_app_registration/001_playbook.md` | EDIT | Record any discovered app-dev-safe, idempotent connection or verification correction. |
 | `playbooks/operations/jira_app_registration/001_playbook.md` | EDIT (discovered) | Pin resource-level authorization and the issue plus Service Management reply scopes selected during development registration. |
-| `playbooks/operations/linear_app_registration/001_playbook.md` | EDIT (discovered) | Align the application controls and targeted comment scope with Linear's current refresh-token contract. |
+| `playbooks/operations/linear_app_registration/001_playbook.md` | EDIT (discovered) | Align the application controls and targeted comment scope with Linear's current refresh-token behavior. |
 | `playbooks/founding/02_preflight/001_playbook.md` | EDIT | Inventory the actual connector bags and agentsfleet callback signer required before promotion. |
 | `playbooks/founding/02_preflight/02_credentials.sh` | EDIT | Fail loud on missing canonical GitHub, Slack, OAuth, QStash, and callback-state credentials. |
 | `playbooks/founding/02_preflight/credentials_test.sh` | EDIT | Pin canonical field checks and missing callback-signer failure. |
 | `playbooks/founding/01_bootstrap/001_playbook.md` | EDIT (review) | Remove retired GitHub Fly secrets and load the agentsfleet callback signer. |
-| `playbooks/founding/03_priming_infra/001_playbook.md` | EDIT (review) | Keep the manual Fly bootstrap contract aligned with the deployment workflow. |
+| `playbooks/founding/03_priming_infra/001_playbook.md` | EDIT (review) | Keep the manual Fly bootstrap steps aligned with the deployment workflow. |
 | `.github/workflows/deploy-dev.yml` | EDIT | Load the callback signer and remove retired GitHub Fly secrets. |
 | `.github/workflows/release.yml` | EDIT | Make the same production path reproducible without activating or deploying it. |
 | `deploy/fly/agentsfleetd-dev/fly.toml` | EDIT (discovered) | Pin the development API and app origins so OAuth redemption and browser redirects use the same environment. |
@@ -71,10 +71,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/connectors/jira/spec.zig` | EDIT (discovered) | Request and pin the least-privilege read/write scopes needed to reply on Jira and Service Management tickets. |
 | `src/agentsfleetd/http/handlers/connectors/linear/spec.zig` | EDIT (discovered) | Remove the retired offline scope and request targeted Linear comment replies. |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Keep the external proof visibly open without citing a pending milestone from canonical architecture. |
-| `docs/v2/done/M135_001_P0_DOCS_INFRA_DEV_CONNECTOR_READINESS.md` | EDIT | Grade and close this amended readiness contract. |
-| `docs/v2/active/M135_002_P0_DOCS_INFRA_DEV_RUNNER_ACTIVATION.md` | NO EDIT (parked) | Keep the active runner workstream open as M136_001's prerequisite. |
-| `docs/v2/active/M135_003_P0_CLI_INFRA_CLI_ACCEPTANCE_TRUTH_AND_SPEED.md` | NO EDIT (parked) | Keep the active CLI workstream open for later execution. |
-| `docs/v2/active/M135_004_P0_INFRA_UI_DEV_RELEASE_ACCEPTANCE_GATE.md` | NO EDIT (parked) | Keep the active UI workstream open for later execution. |
+| `docs/v2/done/M135_001_P0_DOCS_INFRA_DEV_CONNECTOR_READINESS.md` | EDIT | Grade and close this amended readiness workstream. |
+| `docs/v2/done/M135_002_P0_DOCS_INFRA_DEV_RUNNER_ACTIVATION.md` | NO EDIT (completed separately) | Runner activation subsequently completed in its own workstream. |
+| `docs/v2/done/M135_003_P0_CLI_INFRA_CLI_ACCEPTANCE_TRUTH_AND_SPEED.md` | NO EDIT (completed separately) | CLI acceptance subsequently completed in its own workstream. |
+| `docs/v2/done/M135_004_P0_INFRA_UI_DEV_RELEASE_ACCEPTANCE_GATE.md` | NO EDIT (completed separately) | UI release acceptance subsequently completed in its own workstream. |
 | `docs/v2/pending/M136_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | CREATE | Carry the explicitly deferred Slack and real-repository proof without claiming it passed here. |
 
 ## Applicable Rules
@@ -224,4 +224,4 @@ N/A — no files deleted.
 - **Deferrals** —
   > Indy (2026-07-20 22:23): "And move th 2,3,4 to the next milestone and read and move this milestone to done?" — context: runner activation remains M135_002; live Slack authorization/signed mention and real GitHub review/replay proof move to M136_001 rather than being claimed passed by M135_001.
 
-**Jul 20, 2026 — CHORE(close).** M135_001 closes the amended provider registration and callback-readiness contract. M135_002–004 remain active and parked. M136_001 is pending and owns the unrun live Slack and GitHub proof; the canonical architecture marker remains visibly open. No external proof was relabelled as passed. No user-facing changelog entry is required because this is internal deployment, callback routing, test, and operator-playbook readiness work.
+**Jul 20, 2026 — CHORE(close).** M135_001 closes the amended provider registration and callback-readiness workstream. At this close, M135_002–004 remained active and parked; all three have since completed and now live in `docs/v2/done/`. M136_001 is pending and owns the unrun live Slack and GitHub proof; the canonical architecture marker remains visibly open. No external proof was relabelled as passed. No user-facing changelog entry is required because this is internal deployment, callback routing, test, and operator-playbook readiness work.
