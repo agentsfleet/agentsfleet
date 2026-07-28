@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   createSignInTicket,
+  withClientSessionSweepOnFailure,
   withSessionRevocation,
 } from "./clerk-admin.ts";
 
@@ -45,6 +46,7 @@ export interface CliAuthHandoffOptions {
 
 interface BrowserClerk {
   readonly client?: {
+    readonly id: string;
     readonly signIn: {
       create(input: { strategy: string; ticket: string }): Promise<{
         readonly status: string;
@@ -101,19 +103,28 @@ async function runBrowserHandoff(opts: CliAuthHandoffOptions): Promise<string> {
     await page.waitForFunction(() =>
       Boolean((globalThis as unknown as { Clerk?: { client?: unknown } }).Clerk?.client)
     );
+    const browserClientId = await page.evaluate(() => {
+      const id = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk?.client?.id;
+      if (!id) throw new Error("Clerk client id unavailable during fixture sign-in");
+      return id;
+    });
     const ticket = await createSignInTicket(clerkSecret, opts.clerkUserId);
-    const browserSessionId = await page.evaluate(async (signInTicket) => {
-      const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;
-      if (!clerk?.client) throw new Error("Clerk client unavailable during fixture sign-in");
-      const attempt = await clerk.client.signIn.create({
-        strategy: "ticket",
-        ticket: signInTicket,
-      });
-      if (attempt.status !== "complete" || !attempt.createdSessionId) {
-        throw new Error(`fixture ticket sign-in did not complete (${attempt.status})`);
-      }
-      return attempt.createdSessionId;
-    }, ticket);
+    const browserSessionId = await withClientSessionSweepOnFailure(
+      clerkSecret,
+      browserClientId,
+      () => page.evaluate(async (signInTicket) => {
+        const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;
+        if (!clerk?.client) throw new Error("Clerk client unavailable during fixture sign-in");
+        const attempt = await clerk.client.signIn.create({
+          strategy: "ticket",
+          ticket: signInTicket,
+        });
+        if (attempt.status !== "complete" || !attempt.createdSessionId) {
+          throw new Error(`fixture ticket sign-in did not complete (${attempt.status})`);
+        }
+        return attempt.createdSessionId;
+      }, ticket),
+    );
     return await withSessionRevocation(clerkSecret, browserSessionId, async () => {
       await page.evaluate(async (sessionId) => {
         const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;

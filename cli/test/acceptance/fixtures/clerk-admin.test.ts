@@ -7,6 +7,7 @@ import {
   provisionUser,
   revokeMintedSessions,
   revokeSession,
+  withClientSessionSweepOnFailure,
   withSessionRevocation,
 } from "./clerk-admin.ts";
 import { IS_TEST_FIXTURE_METADATA_KEY } from "./constants.ts";
@@ -16,6 +17,7 @@ const FIXTURE_EMAIL = "cli-fixture@example.test";
 const FIXTURE_OWNER = "acceptance-e2e-suite";
 const FIXTURE_ROLE = "regular";
 const EXISTING_USER_ID = "user_existing";
+const BROWSER_CLIENT_ID = "client_browser_fixture";
 const CREATED_USER_ID = "user_created";
 const SESSION_ID = "session_fixture";
 const MINTED_SESSION_ID = "session_minted";
@@ -33,7 +35,6 @@ const WEBHOOK_SECRET = `${["wh", "sec"].join("")}_${btoa("fixture-webhook-secret
 const TENANT_ID = "tenant_fixture";
 const HANDOFF_FAILURE = "browser handoff failed";
 const REVOCATION_FAILURE = "session revocation failed";
-
 interface CapturedRequest {
   readonly url: string;
   readonly init: RequestInit | undefined;
@@ -299,6 +300,25 @@ describe("CLI fixture Clerk identity ownership", () => {
     expect(caught.errors[0]).toEqual(new Error(HANDOFF_FAILURE));
     expect(caught.errors[1]).toBeInstanceOf(Error);
     expect((caught.errors[1] as Error).message).toContain(REVOCATION_FAILURE);
+  });
+
+  it("sweeps a browser-client session whose id is lost with its page context", async () => {
+    installFetch((request, index) => {
+      if (request.url.includes("/sessions?")) {
+        return jsonResponse(index === 0 ? [] : [{ id: SESSION_ID }]);
+      }
+      return jsonResponse({});
+    });
+    await expect(withClientSessionSweepOnFailure(
+      CLERK_SECRET,
+      BROWSER_CLIENT_ID,
+      async () => {
+        throw new Error(HANDOFF_FAILURE);
+      },
+    )).rejects.toThrow(HANDOFF_FAILURE);
+    expect(requests.some((request) =>
+      request.url.endsWith(`/sessions/${SESSION_ID}/revoke`)
+    )).toBe(true);
   });
 
   it("revokes a created session when one parallel token mint fails", async () => {

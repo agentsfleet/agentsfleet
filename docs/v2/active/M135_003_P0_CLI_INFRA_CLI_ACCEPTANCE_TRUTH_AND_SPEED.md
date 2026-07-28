@@ -204,7 +204,7 @@ Timeout, cancellation, and indeterminate outcomes are not success.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Fixture provisioning self-heals | `cd cli && bun test test/acceptance/fixtures/clerk-admin.test.ts` | exit 0 | P0 | ✅ 13 passed, 0 failed |
+| R1 | Fixture provisioning self-heals | `cd cli && bun test test/acceptance/fixtures/clerk-admin.test.ts` | exit 0 | P0 | ✅ 14 passed, 0 failed |
 | R2 | Deterministic CLI breadth passes | `cd cli && bun run test:acceptance:deterministic` | 0 failed and 0 remote steer calls | P0 | ✅ exit 0 |
 | R3 | Browser login and live result pass | `cd cli && bun run test:acceptance:live` | terminal result observed and 0 critical skips | P0 | ✅ Indy accepted manual browser and live-steer eyeballing |
 | R4 | Aggregate lane is bounded | `make cli-acceptance` | exit 0 and duration below 600 seconds | P0 | |
@@ -259,7 +259,9 @@ orphan sweep and test-root reachability checks passed.
   moved to ready, Greptile found that the browser-created Clerk session was
   absent from teardown; the fix revokes it immediately after the browser
   handoff succeeds or fails and preserves both errors when revocation also
-  fails.
+  fails. A second Greptile pass found the narrower browser-context-loss window;
+  the fixture now snapshots the fresh browser client's sessions before sign-in
+  and sweeps only sessions newly visible for that client after failure.
 - **Manual acceptance** —
   > Indy (2026-07-28 11:15): "i think for now Indy will manually eyeball the browser login . - live steer so move it to DONE." — context: browser handoff and the golden live steer are accepted as manual review items for closure.
 - **Deferrals** — none. Aggregate duration and installed development runner
