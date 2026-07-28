@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 002
 **Date:** Jul 24, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — current library pages block, morph controls, and collapse failures into empty states
 **Categories:** UI
 **Batch:** B2 — consumes M143_001 interfaces
@@ -85,14 +85,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Models use retained page/load-more state
+### §1 — Models use retained page/load-more state — **DONE**
 
 Ordinary Models requests only the first tenant registry page: no global catalogue or secret list. Load-more appends and retains prior rows, while only the current fetched page is projected/decrypted; no action decrypts beyond it. Add/Edit open, focus, and eligible hover prefetch global model pages. Disable hover prefetch for coarse pointers or Save-Data; focus/open still prefetch.
 
-- **Dimension 1.1** — ordinary/load-more requests and projection are page-bounded → Test `test_models_registry_retains_pages_without_extra_decrypts`
-- **Dimension 1.2** — intent prefetch honors pointer/data policy and request ordering → Test `test_model_picker_prefetch_policy_and_latest_result`
+- **Dimension 1.1** — ordinary/load-more requests and projection are page-bounded → Test `test_models_registry_retains_pages_without_extra_decrypts` — **DONE**
+- **Dimension 1.2** — intent prefetch honors pointer/data policy and request ordering → Test `test_model_picker_prefetch_policy_and_latest_result` — **DONE**
 
-### §2 — Fleet summary paging and failures are progressive
+### §2 — Fleet summary paging and failures are progressive — **DONE**
 
 Initial Fleet creation requests one gallery page, then load-more appends and retains prior cards. Selection renders from the summary already held — it issues no second request, because the retained summary carries every field the install screen reads. Server-resolved links include visibility/id and avoid gallery flash. Unauthenticated is 401 and a denied workspace is 403; a `library_id` absent from the gallery resolves to a not-found selection state that neither enumerates nor errors the page. Stable skeletons, stale refresh content, retry, empty, 401, 403, and not-found remain distinct and reduced-motion safe.
 
@@ -104,11 +104,11 @@ Nothing user-visible is lost, and this was verified rather than assumed. The sum
 
 **Load-more replaces an exhaustive walk, so it must not silently truncate.** Today `fleet-library.ts` follows `next_cursor` to exhaustion precisely because reading one page "would drop every entry past the server's page size *silently*". Paging the gallery reintroduces that hazard, so the retained-count and remaining-state must be visible to the user rather than implied by a button.
 
-- **Dimension 2.1** — gallery pages append, are retained, and selection issues no further request → Test `test_fleet_load_more_then_selected_summary`
-- **Dimension 2.2** — deep-link/status/loading semantics are exact → Test `test_fleet_deep_link_and_typed_states`
-- **Dimension 2.3** — a paged gallery never silently hides entries past the loaded page → Test `test_fleet_gallery_paging_discloses_remaining`
+- **Dimension 2.1** — gallery pages append, are retained, and selection issues no further request → Test `test_fleet_load_more_then_selected_summary` — **DONE**
+- **Dimension 2.2** — deep-link/status/loading semantics are exact → Test `test_fleet_deep_link_and_typed_states` — **DONE**
+- **Dimension 2.3** — a paged gallery never silently hides entries past the loaded page → Test `test_fleet_gallery_paging_discloses_remaining` — **DONE**
 
-### §3 — The session keeper is retained; no canary is built
+### §3 — The session keeper is retained; no canary is built — **DONE**
 
 **The keeper is a fix for an observed failure, not a precaution.** It landed as
 `a2d507bfb fix(app): keep Clerk sessions alive for server actions` (Jul 22,
@@ -165,9 +165,9 @@ and resume — making the keeper provably redundant, which is a documentation
 question rather than a measurement one — or the keeper is implicated in a real
 problem someone has hit. Absent one of those, leave it alone.
 
-- **Dimension 3.1** — the keeper stays mounted and its unit coverage holds → Test `lib/auth/client.test.tsx` (existing)
+- **Dimension 3.1** — the keeper stays mounted and its unit coverage holds → Test `lib/auth/client.test.tsx` (existing) — **DONE**
 
-### §4 — The `q` search parameter is retired
+### §4 — The `q` search parameter is retired — **DONE**
 
 **Added at EXECUTE on Indy's in-session decision (Discovery A10), superseding Amendment A8's "Deleting `q` is NOT in this workstream".**
 
@@ -179,10 +179,10 @@ problem someone has hit. Absent one of those, leave it alone.
 
 **`provider` is deliberately left in place.** It sits in the same `Filters` struct and the same cursor key as `q`, and it is equally uncalled — but it was not authorized, and this workstream does not widen its own scope. Recorded in Discovery A10 as a standing finding.
 
-- **Dimension 4.1** — no `q` reaches any handler, SQL module, or cursor key, and the gallery/models reads behave identically without it → Test `test_library_reads_ignore_retired_search_param`
-- **Dimension 4.2** — `UZ-LIBRARY-003` still fires for an out-of-range `limit` and no longer has a search-bound cause → Test `test_library_limit_bound_survives_search_retirement`
+- **Dimension 4.1** — no `q` reaches any handler, SQL module, or cursor key, and the gallery/models reads behave identically without it → Test `test_library_reads_ignore_retired_search_param` — **DONE**
+- **Dimension 4.2** — `UZ-LIBRARY-003` still fires for an out-of-range `limit` and no longer has a search-bound cause → Test `test_library_limit_bound_survives_search_retirement` — **DONE**
 
-### §5 — `support_files` leaves the API surface; the manifest stays stored
+### §5 — `support_files` leaves the API surface; the manifest stays stored — **DONE**
 
 **Added at EXECUTE on Indy's in-session decision (Discovery A11).**
 
@@ -194,9 +194,9 @@ Install does not need it, and the reason is structural. The Command-Line Interfa
 
 **Support-file bytes are untouched and remain fully load-bearing** — this section removes a duplicated *index*, never content.
 
-- **Dimension 5.1** — no API response carries `support_files`, and the published schemas agree → Test `test_library_responses_omit_support_manifest`
-- **Dimension 5.2** — the manifest is still persisted on import and survives a round-trip through the store → Test `test_import_still_persists_support_manifest`
-- **Dimension 5.3** — narrowing the SELECT lists does not shift any positional row read → Test `test_catalog_row_projection_indices_hold`
+- **Dimension 5.1** — no API response carries `support_files`, and the published schemas agree → Test `test_library_responses_omit_support_manifest` — **DONE**
+- **Dimension 5.2** — the manifest is still persisted on import and survives a round-trip through the store → Test `test_import_still_persists_support_manifest` — **DONE**
+- **Dimension 5.3** — narrowing the SELECT lists does not shift any positional row read → Test `test_catalog_row_projection_indices_hold` — **DONE**
 
 ## Interfaces
 
@@ -431,6 +431,40 @@ follow-up: either restore the document or retire the checker that demands it.
 - **Amendment A17 (VERIFY) — decisions taken on the open review findings.**
   - *Client sort over a partial page* — accepted at current scale with a visible annotation; no workspace approaches the page size at which a sorted subset misleads.
   - *Perf list* — **withdrawn, not deferred.** The two proposed Postgres indexes were challenged by Indy and did not survive checking: `core.tenant_fleet_library` already carries `idx_tenant_fleet_library_ws_created_at (workspace_id, created_at DESC)`, so the proposed partial adds only an `id` tiebreaker for rows sharing a millisecond; `core.model_library` is a seeded catalogue small enough that the planner will sort without an index. The benefit was asserted, never measured, and the claim is retracted. Only the shared paged-list footer survives, and its justification is drift between two surfaces rather than performance.
+
+- **Amendment A13 (VERIFY) — the coverage lane was red, and the reason it looked unfixable was a misreading.** `ui/packages/app` runs a 100% istanbul threshold. It sat at 99.71% statements / 99.41% branches, from code that landed on this branch without tests while the lane went unrun (`test-unit-app` skips coverage). A prior note held that istanbul was mis-attributing multi-line object literals inside `catch` blocks. It was not: the text reporter's "Uncovered Line #s" column lists lines carrying uncovered **branches**, not only uncovered lines, and of nineteen gaps exactly two were line misses. Reading `coverage/lcov.info` directly — `DA:` for lines, `BRDA:` for branch arms — gives arm-level truth in one pass. Recorded because the wrong reading cost a session and pointed at a tooling escape that was never needed: the repository still contains no `istanbul ignore`.
+
+  Fifteen tests closed seventeen of the nineteen. The stale-response guards in `use-stored-secrets` needed two reads genuinely in flight at once, which the dialog cannot stage reliably, so they are driven from a direct hook test with deferred promises. The two server-render guards are reached with `vi.stubGlobal("window", undefined)` — happy-dom always defines the binding, so removing the *value* is what makes `typeof window` report `"undefined"`.
+
+  **A defect surfaced while closing them.** `ModelsRegistryTable`'s Retry renders the moment a read fails but stays `disabled` until the transition settles, so a click inside that window is silently dropped — which is what a user who clicks Retry promptly gets. The first version of the test hit exactly that and passed while covering nothing.
+
+- **Amendment A14 (VERIFY, Indy-directed) — two unreachable guards deleted rather than tested.** `loadMore`'s `if (nextCursor === null) return;` could not fire in either the registry table or the install picker: the control that calls it renders only inside `nextCursor !== null`. The cursor is now a `string` parameter, so the type states the invariant once instead of re-checking it where it cannot fail.
+
+  `ModelCatalogueProvider`'s monotonic request id resolved a race its own single-flight guard already prevents — `inFlight` clears in `.finally`, which runs after `.then`/`.catch`, so every handler was provably the newest request's. Two guards, one job, and single-flight is the stronger of the two because it prevents the overlap rather than adjudicating it.
+
+  > Indy (2026-07-28): "Drop the redundant generation ref" — context: the last two uncovered branch arms, choosing removal over lowering the gate or adding the repository's first coverage escape.
+
+  Dimension 1.2's request-ordering property therefore rests on single-flight, pinned by a mid-flight assertion in `test_model_picker_prefetch_policy_and_latest_result` that no second read starts. `useStoredSecrets` **keeps** its generation ref: it takes no single-flight guard, open/close/reopen genuinely overlap there, and both stale arms are now tested.
+
+  A standing levy to lower the app threshold to 99.6% was **withdrawn** once the gaps proved ordinary rather than structural. There is no 99.6% anywhere in the workspace: `ui/packages/app` is 100% on four axes, `cli/` is 100% line and function via `bunfig.toml` and `scripts/enforce-coverage.mjs`, `ui/packages/design-system` is 99%, and no other repository under `~/Projects` gates coverage at all.
+
+- **Amendment A15 (DOCUMENT, Indy-directed) — the secrets `409` broke `agentsfleet secret create --force`, and the flag is retired.** `--force` skipped the client-side existence check and POSTed directly, relying on the endpoint upserting on `(workspace_id, key_name)`. §A16's change removed that upsert, so against the daemon this branch ships the flag could only ever have failed. The CLI suite stayed green because `cli/test/secrets.integration.test.ts` mocked a server that still accepted the POST — a test asserting against a permissive mock proves only that the client talks to the mock.
+
+  > Indy (2026-07-29): "Retire --force instead" — context: choosing between teaching the flag to rotate via `PATCH`, retiring it, and shipping the break with a follow-up.
+
+  `create` claims a free name; replacing a value is `delete` then `create`. The flag is rejected at the parser rather than ignored, so a script still passing it fails before it sends a secret body it believes will overwrite something. The preflight `GET` goes with it — it was a check-then-write over exactly the window `UZ-VAULT-005` exists to close — so `create` costs one round-trip and a taken name is reported as a skip with exit 0. The skip is keyed on the error **code**, not the bare `409`, so an unrelated future conflict on this route surfaces rather than being swallowed.
+
+- **Amendment A16 (DOCUMENT, Indy-directed) — two pre-existing seams between the generator and the docs checker, surfaced by regenerating the error reference.** `make gen-error-codes` injects the live `VERSION` into `product_version`, while `check-documentation.py` pinned every page to `0.17.0`. The two have been in conflict since `VERSION` passed `0.17.0`, and the committed page satisfied the checker only by being hand-edited after generation — which is what its `0.17.0` and `verified: 2026-07-27` were.
+
+  > Indy (2026-07-29): "Bump the site pin to 0.24.0" — context: choosing between exempting the generated page, moving the site-wide pin, and hardcoding the pin into the Zig generator.
+
+  `EXPECTED_VERSION` is now `0.24.0` and `product_version` moved on all 24 pages. `verified` did **not** move, so no page claims a re-check it did not receive.
+
+  Separately, `UZ-EXEC-016` used "re-provision", banned by DOC-05. It surfaced only now because the stale page had never carried that row. Indy directed rewording over an allowlist entry; the registry copy and the runner's matching log hint in `daemon/loop.zig` both now read "issue the host's runner token again", so the log and the reference tell an operator the same thing.
+
+  The regeneration is otherwise pure catch-up: it adds the Workspaces, Schedules and Dashboard preferences sections, promotes "Fleet catalog" to "Fleet library catalog" with three codes it had been missing, and picks up `UZ-VAULT-005`. No code was dropped.
+
+- **Standing finding, not actioned — `cli`'s own coverage floor is red on `origin/main`.** `npm run test` in `cli/` reports 99.97% function / 99.74% line against a 100% floor, in `api_key.ts`, `connector.ts`, `fleet_schedule.ts` and `cli.ts` — four files this branch does not touch. Verified rather than assumed: re-running the suite with this branch's `cli/` changes stashed gives identical numbers. `fleet_secret.ts` itself stays at 100%. Inherited debt, outside this workstream's Files-Changed scope, and cheap for a follow-up to take.
 
 - **Metrics review** — privacy-safe aggregate only; funnel unchanged.
 - **Skill-chain outcomes** — populated during implementation.
