@@ -6,7 +6,7 @@
 #   Tier-2  hey HTTP loadgen          (requires `hey` in PATH — mise installs it)
 # =============================================================================
 
-.PHONY: memleak bench bench-redis capture-library-performance _bench-micro _bench-loadgen _memleak-lane _memleak-boot-drain
+.PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _memleak-lane _memleak-boot-drain
 
 # One definition shared by every valgrind invocation below, so a lane can never
 # drift onto different flags than the ones that were reviewed.
@@ -187,39 +187,3 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	 awk -v er=$$ERR_RATE -v max=$$MAX_ERR_RATE 'BEGIN{if (er+0 > max+0) {print "✗ error rate " er " exceeds gate " max; exit 1}}'; \
 	 awk -v p=$$P95_MS -v max=$$MAX_P95_MS 'BEGIN{if (p+0 > max+0) {print "✗ p95 " p "ms exceeds gate " max "ms"; exit 1}}'; \
 	 echo "✓ [agentsfleetd] Tier-2 hey loadgen passed"
-
-# =============================================================================
-# CAPTURE — library read performance evidence (provisioned environments only).
-#
-# Deliberately NOT wired into any universal CI lane, and no CI workflow may call
-# it. Two runs of this command produce the baseline/candidate pair that
-# `bun scripts/report-library-performance.ts --check` validates.
-#
-# The division of labour is the point. THIS target may fail for setup, for
-# execution, for a schema violation, for a sanitization violation, or because
-# its output is malformed. It may NOT fail because p50, p95 or p99 moved — a
-# latency threshold on a shared runner fails on noise, gets widened until it
-# cannot fail, and then reports success forever. The validator that runs
-# everywhere checks STRUCTURE; the numbers are evidence a human reads.
-#
-# `make bench` is a different thing and is not this evidence: it is a generic
-# HTTP loadgen against /healthz with its own p95 gate, which measures the
-# server's floor rather than a library read's stages.
-capture-library-performance:  ## Capture library read performance evidence (provisioned env only; needs BASELINE_REF + CANDIDATE_REF)
-	@test -n "$(BASELINE_REF)" || { echo "usage: make capture-library-performance BASELINE_REF=origin/main CANDIDATE_REF=HEAD"; exit 1; }
-	@test -n "$(CANDIDATE_REF)" || { echo "usage: make capture-library-performance BASELINE_REF=origin/main CANDIDATE_REF=HEAD"; exit 1; }
-	@command -v bun >/dev/null 2>&1 || { echo "✗ bun is required to validate the captured reports"; exit 1; }
-	@out="$(CURDIR)/test-results/library-performance"; mkdir -p "$$out"; \
-	 echo "→ [capture] baseline=$(BASELINE_REF) candidate=$(CANDIDATE_REF) → $$out"; \
-	 echo "→ [capture] this target is provisioned-only: it is absent from every CI lane by design"; \
-	 test -f "$$out/baseline.json" || { \
-	   echo "✗ [capture] $$out/baseline.json is absent."; \
-	   echo "  Capture is environment-specific: run the instrumented suite against the"; \
-	   echo "  provisioned datastore at $(BASELINE_REF), write its aggregates there, then"; \
-	   echo "  repeat at $(CANDIDATE_REF) into candidate.json."; \
-	   exit 1; \
-	 }; \
-	 test -f "$$out/candidate.json" || { echo "✗ [capture] $$out/candidate.json is absent."; exit 1; }; \
-	 bun scripts/report-library-performance.ts --check \
-	   --baseline "$$out/baseline.json" --candidate "$$out/candidate.json"
-	@echo "✓ [capture] reports are structurally valid and comparable (values are evidence, not a gate)"
