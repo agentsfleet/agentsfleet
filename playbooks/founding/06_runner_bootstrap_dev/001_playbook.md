@@ -2,7 +2,14 @@
 
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
-**Prerequisite:** Vault items exist (`ZMB_CD_DEV`, `ZMB_CD_PROD`). Tailscale OAuth client secret in `ZMB_CD_PROD/tailscale/oauth-secret`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
+**Prerequisite:** Vault items exist (`ZMB_CD_DEV`, `ZMB_CD_PROD`). Tailscale OAuth client secret in `ZMB_CD_PROD/tailscale/oauth-secret`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`. Tailscale policy grants SSH to `tag:ci` (one-time, per tailnet):
+
+```jsonc
+// login.tailscale.com/admin/acls → "ssh"
+{ "action": "accept", "src": ["autogroup:member"], "dst": ["tag:ci"], "users": ["autogroup:nonroot", "root"] }
+```
+
+Without this grant the node advertises host keys but every connect fails with `tailnet policy does not permit you to SSH to this node`.
 
 Bootstrap the DEV bare-metal worker node so CI can deploy the host-resident `agentsfleet-runner` daemon autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 this host ran two services that the M80 cutover folded into the single `agentsfleet-runner` daemon.)
 
@@ -121,10 +128,12 @@ TS_OAUTH_SECRET=$(op read "op://$VAULT_PROD/tailscale/oauth-secret")
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${HOST}" << REMOTE
 set -euo pipefail
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --auth-key "${TS_OAUTH_SECRET}?ephemeral=false&preauthorized=true" --advertise-tags=tag:ci --hostname zombie-dev-worker-ant
+sudo tailscale up --auth-key "${TS_OAUTH_SECRET}?ephemeral=false&preauthorized=true" --advertise-tags=tag:ci --hostname zombie-dev-worker-ant --ssh
 tailscale status
 REMOTE
 ```
+
+> **`--ssh` is required.** Without it the node never advertises SSH host keys, and `tailscale ssh root@<node>` fails with `Host key verification failed`. This also depends on the tailnet policy carrying an SSH grant for the tag — see the prerequisite below.
 
 ### Acceptance
 
