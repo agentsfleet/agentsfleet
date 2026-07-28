@@ -396,6 +396,35 @@ describe("fleets routes", () => {
     expect(markup).not.toContain("No prebuilt fleet library found");
   });
 
+  it("test_library_list_position_survives_reload — a cursor in the URL restores that page", async () => {
+    // The server half of list position. Load-more mirrors the cursor into the
+    // URL; this is what makes that mirror worth anything — a reload, a shared
+    // link, or Back out of a detail view must land on the page the user was
+    // on, not dump them at the first one having lost their scroll.
+    listWorkspaceFleetLibraryMock.mockResolvedValue({
+      items: SAMPLE_TEMPLATES,
+      next_cursor: null,
+      total: 2,
+    });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+
+    const { InstallFleetData } =
+      await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await InstallFleetData({ workspaceId: "ws_1", query: { library_after: "cur-2" } }),
+      ),
+    );
+
+    // The cursor reached the read verbatim — not dropped, not re-encoded.
+    expect(listWorkspaceFleetLibraryMock.mock.calls[0]?.[2]).toBe("cur-2");
+    expect(markup).toContain("GitHub PR reviewer");
+    // One request: restoring a position must not walk from page one to find it.
+    expect(listWorkspaceFleetLibraryMock).toHaveBeenCalledTimes(1);
+  });
+
   it("falls back to the first page when a supplied cursor is rejected", async () => {
     // A stale or hand-edited ?library_after must not strand someone on an
     // error screen. The first page always lands somewhere useful.
@@ -443,7 +472,7 @@ describe("fleets routes", () => {
     expect(markup).toContain("The fleet library is temporarily unavailable.");
   });
 
-  it("fleets new page accepts a tier-qualified deep link", async () => {
+  it("test_fleet_deep_link_and_typed_states — tier-qualified deep link and exact states", async () => {
     listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
     listSecretsMock.mockResolvedValue({ secrets: [] });
     const { InstallFleetData } =

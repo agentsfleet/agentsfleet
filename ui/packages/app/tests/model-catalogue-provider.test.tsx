@@ -111,7 +111,7 @@ describe("ModelCatalogueProvider — intent loading", () => {
     expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("lets the latest request win when an earlier one resolves late", async () => {
+  it("test_model_picker_prefetch_policy_and_latest_result — latest request wins when an earlier resolves late", async () => {
     // Latest-wins. A slow first attempt that errors must not stamp `error`
     // over a later attempt that already succeeded.
     let failFirst!: (e: unknown) => void;

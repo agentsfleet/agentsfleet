@@ -249,7 +249,7 @@ describe("InstallSourceSelector — paging and list position", () => {
     window.history.replaceState({}, "", "/w/ws_1/fleets/new");
   });
 
-  it("discloses what it has not loaded rather than implying it with a button", () => {
+  it("test_fleet_gallery_paging_discloses_remaining — states what it has not loaded", () => {
     // Invariant 5. The exhaustive walk this replaced guaranteed every entry was
     // present; paging cannot, so the remainder is stated outright.
     render(
@@ -264,7 +264,7 @@ describe("InstallSourceSelector — paging and list position", () => {
     expect(screen.getByRole("button", { name: "Load more" })).toBeTruthy();
   });
 
-  it("appends the next page, retaining prior cards, and mirrors position into the URL", async () => {
+  it("test_fleet_load_more_then_selected_summary — appends and retains prior cards, selection needs no request", async () => {
     const user = userEvent.setup({ delay: null });
     readFleetLibraryPageActionMock.mockResolvedValue({
       ok: true,
@@ -295,7 +295,7 @@ describe("InstallSourceSelector — paging and list position", () => {
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
   });
 
-  it("keeps loaded cards on screen when load-more fails, and offers retry", async () => {
+  it("test_refresh_retains_authorized_content — a failed page keeps prior cards and offers retry", async () => {
     const user = userEvent.setup({ delay: null });
     readFleetLibraryPageActionMock.mockResolvedValue({ ok: false, error: "upstream 503" });
 
