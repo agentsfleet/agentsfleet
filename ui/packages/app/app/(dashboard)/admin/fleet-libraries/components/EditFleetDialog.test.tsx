@@ -39,7 +39,6 @@ const ENTRY: PlatformCatalogEntry = {
     trigger_present: true,
   },
   required_credentials_reasons: { github: "review your pull requests" },
-  support_files: [],
   etag: '"catalog-v1"',
   updated_at: 1_700_000_000_000,
 };

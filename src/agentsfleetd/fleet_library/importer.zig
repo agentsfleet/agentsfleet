@@ -292,58 +292,8 @@ fn hashBundle(alloc: std.mem.Allocator, body: ImportBody) !HashedBundle {
     };
 }
 
-test "prepare rejects unsafe support paths" {
-    const alloc = std.testing.allocator;
-    const body = ImportBody{
-        .source_kind = SOURCE_KIND_UPLOAD,
-        .skill_markdown = "---\nname: bad-path\ndescription: d\nversion: 0.1.0\n---\nBody.\n",
-        .support_files = &.{.{ .path = "../secret.txt", .content = "x" }},
-    };
-    try std.testing.expectError(ImportError.UnsafePath, prepare(alloc, body));
-}
-
-test "prepare lists trigger requirements" {
-    const alloc = std.testing.allocator;
-    const body = ImportBody{
-        .source_kind = SOURCE_KIND_UPLOAD,
-        .source_ref = "unit",
-        .skill_markdown = "---\nname: github-pr-reviewer\ndescription: d\nversion: 0.1.0\n---\nBody.\n",
-        .trigger_markdown =
-        \\---
-        \\name: github-pr-reviewer
-        \\x-agentsfleet:
-        \\  triggers:
-        \\    - type: webhook
-        \\      source: github
-        \\  credentials: [github]
-        \\  tools: [http_request]
-        \\  network:
-        \\    allow: [api.github.com]
-        \\  budget:
-        \\    daily_dollars: 1.0
-        \\---
-        ,
-        .support_files = &.{.{ .path = "README.md", .content = "review notes" }},
-    };
-    const prepared = try prepare(alloc, body);
-    defer prepared.deinit(alloc);
-    try std.testing.expect(std.mem.indexOf(u8, prepared.requirements_json, "\"github\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, prepared.requirements_json, "api.github.com") != null);
-    try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "README.md") != null);
-}
-
-test "prepare stores support file manifest not content" {
-    const alloc = std.testing.allocator;
-    const body = ImportBody{
-        .source_kind = SOURCE_KIND_UPLOAD,
-        .source_ref = "unit",
-        .skill_markdown = "---\nname: manifest-test\ndescription: d\nversion: 0.1.0\n---\nBody.\n",
-        .support_files = &.{.{ .path = "README.md", .content = "review notes" }},
-    };
-    const prepared = try prepare(alloc, body);
-    defer prepared.deinit(alloc);
-    try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "README.md") != null);
-    try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "size_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "sha256") != null);
-    try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "review notes") == null);
+test {
+    // Behaviour tests live in the sibling file (RULE FLL split); registered
+    // here so `zig build test` reaches them through this module's test root.
+    _ = @import("importer_test.zig");
 }

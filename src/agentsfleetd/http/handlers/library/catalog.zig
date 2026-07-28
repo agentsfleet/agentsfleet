@@ -51,7 +51,6 @@ const CatalogEntry = struct {
     content_hash: ?[]const u8,
     requirements: entry_view.Requirements,
     required_credentials_reasons: std.json.Value,
-    support_files: []const entry_view.SupportSummary,
     updated_at: i64,
     /// Optimistic-concurrency tag over the operator-editable surface
     /// (`rowSurface`), so a row editor can send it as `If-Match` on PATCH.
@@ -104,6 +103,12 @@ pub fn innerAdminCatalogList(hx: Hx) void {
 
 /// One row of SELECT_ADMIN_CATALOG (or SELECT_ADMIN_CATALOG_ROW — the same
 /// projection, so the column indices are shared by construction).
+///
+/// Indices are positional, so removing a projected column RENUMBERS everything
+/// after it. When the support-file manifest was dropped from the projection,
+/// `trigger_present` moved 12 -> 11 and `updated_at` 13 -> 12. A miss there does
+/// not fail loudly — it reads a neighbouring column of a compatible type — which
+/// is why `test_catalog_row_projection_indices_hold` pins the mapping.
 fn rowToEntry(alloc: std.mem.Allocator, row: anytype) !CatalogEntry {
     const hash_opt = try row.get(?[]const u8, 6);
     const name = try alloc.dupe(u8, try row.get([]const u8, 1));
@@ -124,11 +129,10 @@ fn rowToEntry(alloc: std.mem.Allocator, row: anytype) !CatalogEntry {
             .credentials = try entry_view.decodeStrings(alloc, try row.get([]const u8, 7)),
             .tools = try entry_view.decodeStrings(alloc, try row.get([]const u8, 8)),
             .network_hosts = try entry_view.decodeStrings(alloc, try row.get([]const u8, 9)),
-            .trigger_present = try row.get(bool, 12),
+            .trigger_present = try row.get(bool, 11),
         },
         .required_credentials_reasons = try entry_view.decodeReasons(alloc, reasons_raw),
-        .support_files = try entry_view.decodeSummaries(alloc, try row.get([]const u8, 11)),
-        .updated_at = try row.get(i64, 13),
+        .updated_at = try row.get(i64, 12),
         .etag = try etag.compute(alloc, &rowSurface(name, description, source_repo, source_ref, reasons_raw, visibility)),
     };
 }

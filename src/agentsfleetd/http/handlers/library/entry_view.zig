@@ -18,20 +18,14 @@ pub const Requirements = struct {
     trigger_present: bool,
 };
 
-/// A support file as the API reports it: path and size. The per-file hash stays
-/// internal — it is a handle to stored bytes, and no reader needs it.
-pub const SupportSummary = struct {
-    path: []const u8,
-    size_bytes: usize,
-};
-
-/// The manifest entry shape persisted in `support_files_json`. Decoded only to
-/// project `SupportSummary` out of it; `sha256` is read and dropped.
-pub const ManifestEntry = struct {
-    path: []const u8,
-    size_bytes: usize,
-    sha256: []const u8 = "",
-};
+// `SupportSummary`, `ManifestEntry`, and `decodeSummaries` are gone. They read
+// the persisted support-file manifest back out of `support_files_json` so the
+// admin catalog could project it — and nothing on any plane ever rendered what
+// they produced. The manifest is still WRITTEN on every import as durable
+// provenance for what a stored bundle contained; it is simply no longer read
+// back. Support-file BYTES are untouched by all of this: the importer still
+// validates and hashes them, and the runner still materializes them from the
+// canonical tar, whose entries are the authoritative file list.
 
 pub fn decodeStrings(alloc: std.mem.Allocator, json_text: []const u8) ![]const []const u8 {
     return std.json.parseFromSliceLeaky([]const []const u8, alloc, json_text, .{});
@@ -42,22 +36,4 @@ pub fn decodeStrings(alloc: std.mem.Allocator, json_text: []const u8) ![]const [
 /// the empty-object literal.
 pub fn decodeReasons(alloc: std.mem.Allocator, json_text: []const u8) !std.json.Value {
     return std.json.parseFromSliceLeaky(std.json.Value, alloc, json_text, .{});
-}
-
-/// Project the stored manifest into {path, size_bytes} summaries. A MALFORMED
-/// manifest degrades to zero support files rather than failing the whole read —
-/// one bad row must not take down the operator's catalog view.
-///
-/// OutOfMemory is deliberately NOT degraded: an allocation failure is not a
-/// statement about the manifest, and silently reporting "this fleet has no
-/// support files" because the machine was under pressure would be a lie told to
-/// every tenant in the gallery. It propagates.
-pub fn decodeSummaries(alloc: std.mem.Allocator, json_text: []const u8) ![]const SupportSummary {
-    const manifest = std.json.parseFromSliceLeaky([]const ManifestEntry, alloc, json_text, .{ .ignore_unknown_fields = true }) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return &.{},
-    };
-    const out = try alloc.alloc(SupportSummary, manifest.len);
-    for (manifest, 0..) |entry, i| out[i] = .{ .path = entry.path, .size_bytes = entry.size_bytes };
-    return out;
 }

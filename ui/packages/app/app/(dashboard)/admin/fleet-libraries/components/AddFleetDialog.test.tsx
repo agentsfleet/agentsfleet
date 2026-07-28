@@ -32,7 +32,6 @@ const ENTRY = {
     network_hosts: [],
     trigger_present: true,
   },
-  support_files: [],
 };
 
 // The dialog is controlled by the page now — success closes it and the page

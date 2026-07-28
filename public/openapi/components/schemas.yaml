@@ -402,24 +402,12 @@ components:
           type: array
           items:
             type: string
-    FleetBundleSupportFileSummary:
-      type: object
-      required:
-      - path
-      - size_bytes
-      properties:
-        path:
-          type: string
-        size_bytes:
-          type: integer
-          format: int64
     FleetBundleRequirements:
       type: object
       required:
       - credentials
       - tools
       - network_hosts
-      - support_files
       - trigger_present
       properties:
         credentials:
@@ -431,10 +419,6 @@ components:
           items:
             type: string
         network_hosts:
-          type: array
-          items:
-            type: string
-        support_files:
           type: array
           items:
             type: string
@@ -496,8 +480,9 @@ components:
 
         Carries no `support_files`. That manifest is bounded at 32 files by
         160-char paths. It therefore dominated a 100-row page — roughly 630 KB
-        against this endpoint's 512 KiB ceiling — while no client rendered it.
-        The detail route serves it instead. Runners never read it either — they materialize
+        against this endpoint's 512 KiB ceiling. No client rendered it, and no
+        endpoint serves it now. It is stored as a record of what a bundle held,
+        and nothing reads it back. Runners never did either: they build
         support-file bytes from object storage via the lease's bundle hash.
       required:
       - id
@@ -576,7 +561,6 @@ components:
       - content_hash
       - requirements
       - required_credentials_reasons
-      - support_files
       - etag
       - updated_at
       properties:
@@ -619,10 +603,6 @@ components:
             Per-credential "why this fleet needs it" copy, keyed by credential name,
             shown at the install gate. Operator-owned: the importer cannot derive it,
             and a bundle refetch never overwrites it.
-        support_files:
-          type: array
-          items:
-            $ref: '#/components/schemas/FleetBundleSupportFileSummary'
         etag:
           type: string
           description: Optimistic-concurrency tag over the operator-editable catalog row fields. Send it as `If-Match` on PATCH to prevent stale overwrites.
@@ -673,16 +653,15 @@ components:
       type: object
       description: >-
         Result of onboarding a Fleet library entry (platform or tenant tier). Carries
-        the entry identity, its tier in `visibility`, the content hash, the
-        derived requirements, and support-file summaries — never an object-store
-        key or support-file content.
+        the entry identity, its tier in `visibility`, the content hash, and the
+        derived requirements — never a support-file manifest, an object-store
+        key, or support-file content.
       required:
       - id
       - name
       - visibility
       - content_hash
       - requirements
-      - support_files
       properties:
         id:
           type: string
@@ -700,10 +679,6 @@ components:
           description: SHA-256 content hash of the onboarded snapshot.
         requirements:
           $ref: '#/components/schemas/FleetBundleRequirements'
-        support_files:
-          type: array
-          items:
-            $ref: '#/components/schemas/FleetBundleSupportFileSummary'
     FleetTrigger:
       type: object
       description: A single trigger projected into the fleet list row.

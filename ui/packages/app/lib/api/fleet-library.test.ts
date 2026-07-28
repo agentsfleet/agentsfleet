@@ -13,7 +13,6 @@ const onboarded = {
   visibility: "tenant",
   content_hash: "sha256:abc",
   requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
-  support_files: [],
 };
 
 describe("fleet template API client", () => {

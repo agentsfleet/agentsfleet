@@ -8180,7 +8180,6 @@
           "credentials",
           "tools",
           "network_hosts",
-          "support_files",
           "trigger_present"
         ],
         "properties": {
@@ -8202,30 +8201,8 @@
               "type": "string"
             }
           },
-          "support_files": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
           "trigger_present": {
             "type": "boolean"
-          }
-        }
-      },
-      "FleetBundleSupportFileSummary": {
-        "type": "object",
-        "required": [
-          "path",
-          "size_bytes"
-        ],
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "size_bytes": {
-            "type": "integer",
-            "format": "int64"
           }
         }
       },
@@ -8242,7 +8219,6 @@
           "content_hash",
           "requirements",
           "required_credentials_reasons",
-          "support_files",
           "etag",
           "updated_at"
         ],
@@ -8288,12 +8264,6 @@
               "type": "string"
             },
             "description": "Per-credential \"why this fleet needs it\" copy, keyed by credential name, shown at the install gate. Operator-owned: the importer cannot derive it, and a bundle refetch never overwrites it."
-          },
-          "support_files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
-            }
           },
           "etag": {
             "type": "string",
@@ -8350,14 +8320,13 @@
       },
       "FleetLibraryOnboardResult": {
         "type": "object",
-        "description": "Result of onboarding a Fleet library entry (platform or tenant tier). Carries the entry identity, its tier in `visibility`, the content hash, the derived requirements, and support-file summaries — never an object-store key or support-file content.",
+        "description": "Result of onboarding a Fleet library entry (platform or tenant tier). Carries the entry identity, its tier in `visibility`, the content hash, and the derived requirements — never a support-file manifest, an object-store key, or support-file content.",
         "required": [
           "id",
           "name",
           "visibility",
           "content_hash",
-          "requirements",
-          "support_files"
+          "requirements"
         ],
         "properties": {
           "id": {
@@ -8381,12 +8350,6 @@
           },
           "requirements": {
             "$ref": "#/components/schemas/FleetBundleRequirements"
-          },
-          "support_files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
-            }
           }
         }
       },
@@ -8426,7 +8389,7 @@
       },
       "FleetLibraryGalleryEntry": {
         "type": "object",
-        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements and per-credential reason copy; never an object-store key or support-file content.\n\nCarries no `support_files`. That manifest is bounded at 32 files by 160-char paths. It therefore dominated a 100-row page — roughly 630 KB against this endpoint's 512 KiB ceiling — while no client rendered it. The detail route serves it instead. Runners never read it either — they materialize support-file bytes from object storage via the lease's bundle hash.",
+        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements and per-credential reason copy; never an object-store key or support-file content.\n\nCarries no `support_files`. That manifest is bounded at 32 files by 160-char paths. It therefore dominated a 100-row page — roughly 630 KB against this endpoint's 512 KiB ceiling. No client rendered it, and no endpoint serves it now. It is stored as a record of what a bundle held, and nothing reads it back. Runners never did either: they build support-file bytes from object storage via the lease's bundle hash.",
         "required": [
           "id",
           "name",
