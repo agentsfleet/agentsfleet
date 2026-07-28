@@ -8,6 +8,57 @@ Read this when you need to size a deployment, pick env-var values, or decide whe
 
 ---
 
+## Facts
+
+Every row is extracted from the sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Redis connection budget | ≈ 9·R per deployment | 8 pooled + 1 SubscriptionHub connection per replica; no per-fleet, no per-viewer term | §Connection budget after the cutover |
+| Idle Upstash bill | `N_runners / poll_s` requests/sec | each idle poll = one bounded `HRANDFIELD` + one indexed auth read; ~72,000/hour at 20 runners, 1 s | §Per-request volume |
+| Idle-cost knob | `NO_WORK_RETRY_AFTER_MS` = 1000 | trades idle bill against idle pickup latency; single-sourced in `src/lib/common/constants.zig` | §Tuneup knobs |
+| Per-poll fan-out ceiling | `MAX_READY_CANDIDATES_PER_POLL` = 64, compile-time | randomized readiness slice; per-poll cost independent of population, even when the index is wrong | §The per-poll bound |
+| Auth read per request | one indexed single-row read | M143_001 removed the per-process memo, so cordon/drain/revoke bite fleet-wide the moment they commit | §Per-request volume |
+| Fleet count in the idle term | absent | fleet count appears only in the readiness *recovery* bound | §The per-poll bound |
+| SSE ceiling | `SSE_MAX_STREAMS` = 64 per replica | one dedicated detached thread (~0.25 MiB stack) per tail; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
+| Redis timeout | `REDIS_REQUEST_TIMEOUT_MS` = 5000 — do not raise | above 5 s is failure, not slowness | §Tuneup knobs |
+| Lease TTL | `LEASE_TTL_MS` = 30000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
+| Per-host concurrency | `RUNNER_WORKER_COUNT` = 1 | a capacity knob that widens the failure domain to N in-flight runs on host loss | §Tuneup knobs, §Runner host loss |
+| Admission ceiling | `API_MAX_IN_FLIGHT_REQUESTS` = 256, api-class only | ops routes (`/healthz`, `/readyz`, `/metrics`) are NEVER shed | §Tuneup knobs |
+| The binding constraint | `agentsfleetd` replicas + Postgres writes | both horizontally scalable; the hot path is shardable per fleet | §Where the next ceiling actually lives |
+| Recurring-read indexes | schema slot `033`, plan-asserted | idle Postgres cost tracks work, not accumulated rows; liveness batch = 6 buffer hits at 20,000 runners | §Which recurring Postgres reads are index-served |
+| Idle pickup latency floor | ≤ `NO_WORK_RETRY_AFTER_MS` | a runner already mid-poll picks up immediately | §Event-delivery latency |
+| Outbound-answer consumer | non-blocking, `IDLE_POLL_MS` = 250 | rides the shared pool — adds requests, never connections | §Tuneup knobs |
+| Failover storm | bounded by 9·R re-dials | pool re-dials; the hub redials once and replays its SUBSCRIBEs | §Upstash failover |
+
+## Traps
+
+The nine sizing anti-patterns ARE the trap list — read §Anti-patterns (do NOT do these) before any sizing conversation. Three more that live elsewhere:
+
+- The pre-M141 idle figure was wrong by exactly the fleet count — never size idle cost by fleet population (§Per-request volume).
+- Metric ratios need their denominator: without `agentsfleet_lease_polls_total`, a traffic increase and a fan-out regression look identical (§The per-poll bound).
+- Fleet-memory hydration still sorts, and correctly so — an index only removes a sort where the plan can exit early (§Which recurring Postgres reads are index-served).
+
+## Topology
+
+No standalone diagram; the sizing procedure block in §Sizing procedure is the operational artifact, with inputs, formulas, and emit targets.
+
+## Decisions
+
+| Decision | Reason | Where / artifact |
+|---|---|---|
+| Auth memo removed — read the runner row every request | revocation must be deterministic fleet-wide, not per-machine | §Per-request volume; M143_001, `AUTH.md` §Runner token |
+| Readiness recorded at ingress; lease consults the index before Postgres | idle cost follows the pollers, not the population | §Per-request volume; M141 |
+| Bare `LIMIT` on the candidate scan rejected | an ordered scan silently starves every fleet past the bound; only a randomized slice + ceiling is fair | §Anti-patterns |
+| Evented SSE substrate stays gated | it only earns its keep above the thread/memory ceiling and must event the subscriber socket itself | §2; M88_001 |
+| Fixed pool sizing, no adaptive resize | revisit only if a post-landing bench shows contention | §Out of scope |
+
+---
+
+## Detail
+
+Everything below is the full reference. Headings are stable — specs cite them by text; insert new sections, never rename existing ones.
+
 ## TL;DR — what the cutover changed
 
 **The old wall is gone.** Before the cutover, every fleet held one dedicated `XREADGROUP … BLOCK 5000` Redis connection, so the fleet was capped by the Upstash max-concurrent-connections ceiling at roughly one connection per fleet. **That tier no longer exists.** `agentsfleetd` now claims work with a **non-blocking** `XREADGROUP` on the request thread that serves a `lease` call — a short-lived pooled command. Runners hold **zero** Redis connections.
