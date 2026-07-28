@@ -9,6 +9,94 @@ Read this when a spec touches the `agentsfleet-runner` binary, the `/v1/runners`
 
 ---
 
+## Facts
+
+Every row is extracted from the sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Lease expiry backstop | `LEASE_TTL_MS` = 30 s (single-sourced in `src/lib/common/constants.zig`) | reclaim sweep re-leases an expired lease with a higher fencing token | §Failure recovery model |
+| Max run duration | `MAX_RUNTIME_MS` hard cap | `/renew` extends to `min(now+LEASE_TTL_MS, created_at+MAX_RUNTIME_MS)` | §Per-lease renewal |
+| Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
+| Sandbox failure fails closed | `UZ-RUN-007` | the child never starts; the lease stays redeliverable | §System guarantees |
+| Renewal refused on empty wallet | `UZ-RUN-012` | coverage re-check on `/renew`; unreachable while the free trial is open (`FREE_TRIAL_END_MS`) | §Money gates |
+| Readiness recovery bound | `min-idle + ceil(active_fleets / 100) × interval` | `SWEEP_BATCH_LIMIT` = 100, keyset cursor on `(updated_at, id)`; ≈6 min at 100 fleets, ≈15 at 1 000, ≈55 at 5 000 | §Failure recovery model |
+| Runner datastore credentials | zero | `build_runner.zig` links no `pg` / `httpz` / `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
+| Control protocol | five verbs | register · heartbeat · lease · report · activity; `me` resolves from the token | §The control protocol |
+| Enrollment gate | `platform_admin` claim | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
+| Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
+| Runner "status" | three separate categories | `admin_state` enum + derived liveness + append-only `fleet.runner_events` | §Runner state |
+| Memory isolation | one live holder per fleet | `uq_runner_affinity_fleet_id UNIQUE(fleet_id)` + time gate + capture-time fencing | §Memory continuity |
+| Memory hydration | category-pinned byte window | every `core` entry first (newest-first), then the newest non-core entries; deterministic | §Memory continuity |
+| Per-runner metric families | 4, in a fixed 4096-slot table | overflow routes to `runner_id="_other"`; ~0.7 MB constant; zero Postgres on the scrape path | §Observability |
+| Multi-replica gauges | counters exact via `sum by`; `active_leases` approximate | the `+1` grant and `−1` release can land on different replicas | §Multi-replica |
+| Sandbox tiers | 4 (`landlock_full` … `dev_none`) | release builds refuse `dev_none`; tier is orthogonal to egress policy | §Sandbox tiers |
+| Egress policies | 3 (`allow_all` default · `deny_all_egress` · `allow_list_egress`) | host-side default-deny `nftables` on a veth pair; port 53 dropped; IPv4-only at launch | §Egress model |
+| Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §Steer, kill, pause |
+| Config freshness | resolved per lease | no cache, no reload signal; the next lease sees the change | §Config |
+| Debit points | 2, both on the lease path | receive (flat) + run (floor-token estimate) at issue; report reconciles telemetry only | §Money gates |
+| Production shape | 2–3 `agentsfleetd` machines | set by `flyctl scale`; runner verbs load-balance across replicas | §Multi-replica |
+| Readiness index | one global `fleet:ready` hash | field = fleet id, value = a minted UUIDv7 token; a hint, never the record | §Redis topology |
+
+## Traps
+
+Each trap is enforced in its owner section; this list is the index.
+
+- Sticky routing is a performance hint, never ownership — correctness never blocks on one runner being alive (§Runners are cattle, not pets).
+- Do not conflate runner status into one Kubernetes-style JSONB object; the three categories stay separate (§Runner state).
+- There is no `runner_runtime` Postgres role, and there must never be one (§Datastore role model).
+- `platform_admin` is an auth claim, not a Postgres role — it must not become a database `GRANT` (§Datastore role model).
+- Quote operators the readiness-recovery formula, not the single-batch case (§Failure recovery model).
+- Sandbox tiers are not egress policy — no tier substitutes for the egress model (§Sandbox tiers).
+- The live tail is never the source of truth; `report` is the durable system of record (§Live activity).
+- The readiness index is a hint, never the system of record — a lost mark costs latency, never the event (§Redis topology).
+- Not a general scheduler: no autoscale, no fairness engine, no arbitrary workload types (§Scope).
+- A dashboard must not sum `agentsfleet_fleet_ready_depth`; every replica samples the same shared hash (§The four per-runner families).
+- Memory isolation does not rest on `fleet_id` scoping alone; a feature breaking single-live-holder must scope by `lease_id` first (§Memory continuity).
+- Lease secrets ride stdin, never argv or env; the child's environment is a fail-closed allowlist (§Process-boundary hardening).
+- Config is never cached; warm mode reuses only the sandbox shell (§Cold and warm execution).
+- No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle — the deferred name-layer is eBPF/FQDN (§Egress model).
+
+## Topology
+
+```
+        BEFORE (deleted)                            NOW (this doc + data_flow.md)
+ ┌──────── ONE TRUST ZONE ─────────┐    ┌─ PLATFORM ──┐      ┌─ HOST (bare metal / Mac / pod) ─┐
+ │ agentsfleetd serve ─┐  PG, Vault      │    │ agentsfleetd     │      │ agentsfleet-runner  (one binary)     │
+ │                ▼                 │    │ control     │◀────▶│  parent loop: heartbeat,        │
+ │ PG ◀─ 15 writes ─ agentsfleetd worker │    │ plane:      │HTTPS │  lease, report, activity        │
+ │ Redis ◀─ XREADGROUP ─ worker     │    │ owns PG +   │ pull │  (boots from pre-minted agt_r)   │
+ │                │ Unix-socket RPC │    │ Redis +     │ agt_r │    │ fork + sandbox per event    │
+ │                ▼                 │    │ Vault API + │      │    ▼                            │
+ │           sandbox sidecar        │    │ assignment  │      │  sandboxed child: NullClaw      │
+ └──────────────────────────────────┘   └──────┬──────┘      └─────────────────────────────────┘
+                                          PG · Redis · Vault
+                                          (never leave the platform)
+```
+
+Deeper diagrams stay with their sections: the renewal timeline (§Per-lease renewal), the enrollment sequence (§Registering a runner), the two auth layers (§Datastore role model), one event's run (§Running one event), the memory carry-over (§Memory continuity), and the three signal routes (§Observability).
+
+## Decisions
+
+| Decision | Reason | Where / artifact |
+|---|---|---|
+| The runner holds zero datastore credentials | a compromised host cannot reach Postgres, Redis, or the Vault | §Why split; M80_002 |
+| Operator pre-mints `agt_r`; no host self-registration | no enrollment-grade credential ever touches a host (Option B, the GitLab-16 model) | §Registering a runner; M84_001 |
+| Typed columns + event log, not a `status` JSONB | one operator-intent dimension; JSONB conditions are for many writers | §Runner state; cross-validated Jun 2026 |
+| Lease expiry + fencing replaces `XAUTOCLAIM` | an off-platform processor is invisible to Redis consumer-idle | §Redis topology; M80_001 |
+| `fleet:ready` token is a UUIDv7, not a counter | an evicted counter restarts and re-issues a token a live poll still holds | §Redis topology |
+| Cold-start reconciliation deferred | discovery scaffolding the future scheduler replaces (Indy-acked, M141_001 Discovery) | §Failure recovery model |
+| Engine folded in, child still forked | Landlock is one-way; the parent needs un-sandboxed network | §The split |
+| Renewal is a coverage check, not a re-bill | the run charge at issue covers the run; M80_010 later moves to per-slice Δ-debit | §Money gates |
+| Launch egress is IP-pin `nftables`; the name-layer comes later via eBPF/FQDN | no proxy and no TLS interception, at any tier | §Egress model |
+| Exact gauges via a deferred Postgres refresher | keeps the scrape path datastore-free; deferred at current scale | §The deferred refresher |
+
+---
+
+## Detail
+
+Everything below is the full reference. Headings are stable — specs cite them by text; insert new sections, never rename existing ones.
+
 ## System guarantees (read this first)
 
 The runner fleet is an **execution plane**: stateless runners lease work, run it in a sandbox, and report back. The control plane (`agentsfleetd`) owns all durable state. Everything below is a consequence of that one decision — read the guarantees before the mechanics, because the mechanics only exist to hold these.
@@ -102,20 +190,7 @@ The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that
 - **`agentsfleetd`** — the control plane. Owns Postgres, Redis, the Vault API, the HTTP API, and work assignment / fencing / reclaim. It gained the `/v1/runners` endpoints and does the `XREADGROUP` / `XACK` the worker used to do.
 - **`agentsfleet-runner`** — the host-resident execution plane. It is the parent control loop **plus the NullClaw execution engine linked in directly** (the old standalone sandbox sidecar is gone). It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
-```
-        BEFORE (deleted)                            NOW (this doc + data_flow.md)
- ┌──────── ONE TRUST ZONE ─────────┐    ┌─ PLATFORM ──┐      ┌─ HOST (bare metal / Mac / pod) ─┐
- │ agentsfleetd serve ─┐  PG, Vault      │    │ agentsfleetd     │      │ agentsfleet-runner  (one binary)     │
- │                ▼                 │    │ control     │◀────▶│  parent loop: heartbeat,        │
- │ PG ◀─ 15 writes ─ agentsfleetd worker │    │ plane:      │HTTPS │  lease, report, activity        │
- │ Redis ◀─ XREADGROUP ─ worker     │    │ owns PG +   │ pull │  (boots from pre-minted agt_r)   │
- │                │ Unix-socket RPC │    │ Redis +     │ agt_r │    │ fork + sandbox per event    │
- │                ▼                 │    │ Vault API + │      │    ▼                            │
- │           sandbox sidecar        │    │ assignment  │      │  sandboxed child: NullClaw      │
- └──────────────────────────────────┘   └──────┬──────┘      └─────────────────────────────────┘
-                                          PG · Redis · Vault
-                                          (never leave the platform)
-```
+The BEFORE/NOW split diagram is front-loaded in §Topology.
 
 **Why the engine folds in but still forks.** NullClaw runs the fleet: language-model calls plus tool calls, with tenant secrets substituted at the tool bridge. It needs a sandbox — Landlock (filesystem) + cgroups (memory/CPU) + a network namespace. Landlock is one-way and irreversible for a process, and the `agentsfleet-runner` parent loop needs un-sandboxed network to reach `agentsfleetd`. So the runner **forks a sandboxed child per event** and talks to it over a local pipe. One binary, two process roles: an un-sandboxed parent that speaks the control protocol, and a sandboxed child that runs NullClaw. There is no separate daemon to deploy.
 
