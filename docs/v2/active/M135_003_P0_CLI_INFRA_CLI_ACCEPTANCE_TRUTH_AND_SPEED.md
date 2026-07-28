@@ -21,6 +21,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** CLI, Infrastructure (INFRA)
 **Batch:** B2 — starts only after M135_001 and M135_002 pass
 **Branch:** `feat/m135-release-readiness`
+**Pull Request (PR):** #571
 **Test Baseline:** unit=2802 integration=369
 **Depends on:** M135_001 (provider-ready fleet path), M135_002 (online runner executes live steer)
 **Provenance:** human-directed, Oracle-authored from Actions runs 29680816280 and 29708730980 plus current CLI fixtures
@@ -34,7 +35,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Problem:** The latest run registered 87 tests but failed 16 because fixture users were absent and no creation password was supplied. When those users existed, 206 tests passed in 600.84 seconds, with three steering cases consuming 365.68 seconds while treating timeout-like outcomes as acceptable. Browser dependencies are installed even when the login handshake is disabled.
 **Solution summary:** Make fixture ownership self-healing without stable shared passwords, run the browser handshake deliberately, separate deterministic command coverage from one golden live execution, require Server-Sent Events (SSE) or fallback polling to observe an actual terminal result, and remove duplicate live waits. Do not shorten production timeouts merely to make tests green.
 
-## Pull Request (PR) Intent & comprehension handshake
+## PR Intent & comprehension handshake
 
 - **PR title (eventual):** test(cli): make development acceptance truthful and bounded
 - **Intent (one sentence):** A green CLI acceptance job proves that a new user can authenticate, manage resources, and receive one real fleet result without waiting through redundant inconclusive timeouts.
@@ -117,14 +118,14 @@ Missing users are created with generated strong credentials and suite ownership 
 - **Dimension 1.2** — an existing non-fixture identity at the configured email is refused rather than adopted → Test `test_cli_fixture_refuses_unowned_user`
 - **Dimension 1.3** — setup and teardown redact credentials and revoke minted sessions → Test `test_cli_fixture_teardown_revokes_and_redacts`
 
-### §2 — Browser login is a real release scenario — IN_PROGRESS
+### §2 — Browser login is a real release scenario — DONE
 
 The aggregate acceptance command enables the login handshake explicitly. Browser installation is conditional on this lane, and a disabled handshake is a failure in the release job rather than a misleading skip.
 
 - **Dimension 2.1** — browser handoff signs in, approves the session, and leaves the CLI authenticated → Test `test_cli_login_browser_handoff_completes`
 - **Dimension 2.2** — missing browser prerequisites fail preflight before the rest of the suite → Test `test_cli_login_preflight_fails_loud`
 
-### §3 — One golden live steer must finish — IN_PROGRESS
+### §3 — One golden live steer must finish — DONE
 
 Reuse one installed fleet and one live steer across the operational assertions. Green requires a processed terminal event or explicit fleet terminal failure; timeout, cancel, and indeterminate outcomes fail.
 
@@ -205,7 +206,7 @@ Timeout, cancellation, and indeterminate outcomes are not success.
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Fixture provisioning self-heals | `cd cli && bun test test/acceptance/fixtures/clerk-admin.test.ts` | exit 0 | P0 | ✅ 10 passed, 0 failed |
 | R2 | Deterministic CLI breadth passes | `cd cli && bun run test:acceptance:deterministic` | 0 failed and 0 remote steer calls | P0 | ✅ exit 0 |
-| R3 | Browser login and live result pass | `cd cli && bun run test:acceptance:live` | terminal result observed and 0 critical skips | P0 | |
+| R3 | Browser login and live result pass | `cd cli && bun run test:acceptance:live` | terminal result observed and 0 critical skips | P0 | ✅ Indy accepted manual browser and live-steer eyeballing |
 | R4 | Aggregate lane is bounded | `make cli-acceptance` | exit 0 and duration below 600 seconds | P0 | |
 | R5 | Development runner can establish its resource cage | `bash playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh` | exit 0 with delegated runner unit | P0 | |
 | S1 | CLI unit tests pass | `make test-unit-cli` | exit 0 | P0 | ✅ 1,391 passed, 0 failed |
@@ -255,6 +256,7 @@ orphan sweep and test-root reachability checks passed.
   registered, passed, failed, skipped, and duration fields.
 - **Skill-chain outcomes** — unit-test and integration-test audits passed; the
   repository review found no unresolved implementation finding.
-- **Deferrals** — none. Browser handoff, golden live steer, aggregate duration,
-  and installed development runner readiness remain ungraded work in this
-  workstream.
+- **Manual acceptance** —
+  > Indy (2026-07-28 11:15): "i think for now Indy will manually eyeball the browser login . - live steer so move it to DONE." — context: browser handoff and the golden live steer are accepted as manual review items for closure.
+- **Deferrals** — none. Aggregate duration and installed development runner
+  readiness remain ungraded work in this workstream.
