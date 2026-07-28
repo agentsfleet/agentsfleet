@@ -57,7 +57,7 @@ The flagship workflow: `platform-ops`. The wedge surface is **GitHub Actions dep
 
 Operational work falls into limbo.
 
-When a deploy fails, production looks unhealthy, or a risky recovery action like a database teardown is needed, the operator has to manually gather logs, inspect dashboards, remember prior attempts, decide the next step, and keep the audit trail straight across terminals, chat, CI, and infrastructure consoles. The work is fragmented, state is lost between attempts, and dangerous actions are performed ad hoc.
+When a deploy fails, production looks unhealthy, or a risky recovery like a database teardown is needed, the operator does it all by hand: gather logs, inspect dashboards, remember prior attempts, decide the next step. The audit trail smears across terminals, chat, CI, and infrastructure consoles. The work is fragmented, state is lost between attempts, and dangerous actions are performed ad hoc.
 
 Existing tooling captures pieces of the workflow but not the whole outcome:
 
