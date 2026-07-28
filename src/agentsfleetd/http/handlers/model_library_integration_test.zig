@@ -25,10 +25,19 @@ const VIEWER_TOKEN = scope_fixtures.VIEWER;
 const UID_PRICED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a8001";
 const UID_ZERO_RATED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a8002";
 
-/// The substring both fixture model ids share, and nothing else in the shared
-/// catalogue does. Selects exactly this suite's two rows out of a table other
-/// suites also seed.
-const FIXTURE_QUERY = "library-read-fixture";
+/// The provider both fixture rows are seeded under, owned by this suite alone.
+///
+/// `core.model_library` is shared — the platform seed and several sibling suites
+/// put rows in it — so an unscoped read returns whatever the table happens to
+/// hold and this suite's own rows may not even be on the first page. Scoping by a
+/// provider no other seeder uses makes the response exactly these two rows, which
+/// turns the assertions below into properties of the projection rather than of
+/// how many rows some other suite seeded first.
+///
+/// The provider is a fixture identity, never asserted on. It is deliberately not
+/// a real vendor name: a real one would collide with the platform seed and put
+/// this suite back where it started.
+const FIXTURE_PROVIDER = "library-read-fixture-vendor";
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -55,13 +64,13 @@ fn seedLibrary(h: *TestHarness) !void {
     const now = clock.nowMillis();
     try std.testing.expectEqual(@as(?i64, 1), try model_library_store.create(conn, .{
         .uid = UID_PRICED,
-        .provider = "anthropic",
+        .provider = FIXTURE_PROVIDER,
         .model_id = "claude-library-read-fixture",
         .rates = .{ .context_cap_tokens = 256000, .input_nanos_per_mtok = 3000000000, .cached_input_nanos_per_mtok = 300000000, .output_nanos_per_mtok = 15000000000 },
     }, now));
     try std.testing.expectEqual(@as(?i64, 1), try model_library_store.create(conn, .{
         .uid = UID_ZERO_RATED,
-        .provider = "moonshot",
+        .provider = FIXTURE_PROVIDER,
         .model_id = "kimi-library-read-fixture",
         .rates = .{ .context_cap_tokens = 256000, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 },
     }, now));
@@ -81,17 +90,13 @@ test "integration(model_library): GET with a valid token returns the catalogue" 
     try seedLibrary(h);
     defer cleanupLibrary(h);
 
-    // The `q` filter is load-bearing, not decoration. §2 made this route a
+    // The provider scope is load-bearing, not decoration. §2 made this route a
     // BOUNDED page (50 rows by default), ordered by normalized model_id
-    // ascending. `core.model_library` is shared: sibling suites and the platform
-    // seed put ~50 real rows in it, and `kimi-library-read-fixture` sorts AFTER
-    // `kimi-k2.7-code-highspeed` (`k` < `l` at the fifth byte), so unfiltered it
-    // lands on page TWO and this test's own fixture is absent from the answer it
-    // reads. Filtering to the substring both fixture ids share makes the
-    // assertion a property of the projection rather than of how many rows some
-    // other suite happened to seed first. Page boundaries, cursor resume and
-    // ordering are Dimension 2.1's, proved in model_library_page_integration_test.
-    const path = model_library_h.MODEL_LIBRARY_PATH ++ "?q=" ++ FIXTURE_QUERY;
+    // ascending. Scoped to this suite's own provider so the answer is exactly the
+    // two rows seeded above — see FIXTURE_PROVIDER for why an unscoped read is
+    // not deterministic here. Page boundaries, cursor resume and ordering are
+    // proved in model_library_page_integration_test, not here.
+    const path = model_library_h.MODEL_LIBRARY_PATH ++ "?provider=" ++ FIXTURE_PROVIDER;
     const r = try (try h.get(path).bearer(VIEWER_TOKEN)).send();
     defer r.deinit();
     try r.expectStatus(.ok);

@@ -112,17 +112,28 @@ test("steer <id> --tty dispatches without a message", async () => {
   expect(calls[0]?.frame.parsed.options.tty).toBe(true);
 });
 
-test("secret create <name> accepts --data / --force", async () => {
+test("secret create <name> accepts --data", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
     "secret", "create", "openai",
     "--data", '{"api_key":"sk-test"}',
-    "--force",
   ], handlers);
   expect(calls[0]?.name).toBe("fleet.secret.create");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe("openai");
   expect(calls[0]?.frame.parsed.options.data).toBe('{"api_key":"sk-test"}');
-  expect(calls[0]?.frame.parsed.options.force).toBe(true);
+});
+
+test("secret create rejects --force with no dispatch", async () => {
+  // Creation claims a free name and the endpoint no longer upserts, so the
+  // flag has nothing left to mean. Failing at the parser keeps a script that
+  // still passes it from sending a secret body it believes will overwrite.
+  const { handlers, calls } = makeSpyTree();
+  await expect(dispatch([
+    "secret", "create", "openai",
+    "--data", '{"api_key":"sk-test"}',
+    "--force",
+  ], handlers)).rejects.toThrow();
+  expect(calls).toHaveLength(0);
 });
 
 test("secret add is rejected with no dispatch", async () => {

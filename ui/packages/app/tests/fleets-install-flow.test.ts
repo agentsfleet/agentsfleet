@@ -82,10 +82,20 @@ function renderFlow(props: FlowProps = {}) {
   return render(
     React.createElement(InstallFleet, {
       workspaceId: "ws_1",
-      entries: props.entries ?? [TEMPLATE_GH, TEMPLATE_TENANT],
+      initialPage: {
+        items: props.entries ?? [TEMPLATE_GH, TEMPLATE_TENANT],
+        next_cursor: null,
+        total: null,
+      },
+      initialError: null,
+      // Deep-link selection is resolved on the SERVER now, so the flow test
+      // hands over the already-matched entry instead of an id to match.
+      initialSelection:
+        (props.entries ?? [TEMPLATE_GH, TEMPLATE_TENANT]).find(
+          (e: { id: string }) => e.id === props.initialLibraryId,
+        ) ?? null,
       presentCredentialNames:
         props.presentCredentialNames === undefined ? [] : props.presentCredentialNames,
-      initialLibraryId: props.initialLibraryId,
     }),
   );
 }

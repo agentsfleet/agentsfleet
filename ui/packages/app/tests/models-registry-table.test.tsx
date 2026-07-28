@@ -109,7 +109,26 @@ async function renderTable(initial: TenantModelEntryList) {
   const { default: ModelsRegistryTable } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
-  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never)));
+  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initialPage: { ...initial, next_cursor: null, total: null }, initialError: null } as never)));
+}
+
+/** Render with explicit paging fields (cursor/total) or a typed read failure. */
+async function renderTablePaged(props: {
+  initialPage: (TenantModelEntryList & { next_cursor: string | null; total: number | null }) | null;
+  initialError?: { kind: string; detail?: string } | null;
+}) {
+  const { default: ModelsRegistryTable } = await import(
+    "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
+  );
+  render(
+    withTooltipProvider(
+      React.createElement(ModelsRegistryTable, {
+        workspaceId: "ws_1",
+        initialPage: props.initialPage,
+        initialError: props.initialError ?? null,
+      } as never),
+    ),
+  );
 }
 
 /** Renders inside a real ModelCatalogueProvider with the library action mocked,
@@ -127,10 +146,36 @@ async function renderTableWithLibrary(initial: TenantModelEntryList, library: Mo
       React.createElement(
         ModelCatalogueProvider,
         null,
-        React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never),
+        React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initialPage: { ...initial, next_cursor: null, total: null }, initialError: null } as never),
       ),
     ),
   );
+
+  // The catalogue is intent-loaded, not mount-loaded, so a bare render leaves
+  // it idle and library-sourced rates would never arrive. Focusing an Edit
+  // control is the same ungated signal a keyboard user produces, and it is
+  // what these two cases need in order to assert the library FALLBACK at all.
+  // Rows the server already priced do not depend on this — see the sibling
+  // "without depending on the public catalogue" cases, which use renderTable.
+  // A registry with no entries has no Edit control, so fall back to the
+  // Create-model trigger — which is the only catalogue-consuming affordance
+  // such a page has, and carries the same focus intent.
+  const intentTarget =
+    screen.queryAllByRole("button", { name: /^Edit / })[0] ??
+    screen.queryByRole("button", { name: /create model/i });
+  if (intentTarget) {
+    intentTarget.focus();
+    await waitFor(() => expect(getModelLibraryActionMock).toHaveBeenCalled());
+  }
+}
+
+/** Retry renders as soon as the read fails but stays disabled until the
+ *  transition settles. Clicking it while disabled is a silent no-op, so the
+ *  wait is what makes the second read actually happen. */
+async function findEnabledRetry(): Promise<HTMLElement> {
+  const retry = await screen.findByRole("button", { name: "Retry" });
+  await waitFor(() => expect((retry as HTMLButtonElement).disabled).toBe(false));
+  return retry;
 }
 
 beforeEach(() => {
@@ -414,9 +459,178 @@ describe("ModelsRegistryTable", () => {
     expect(screen.getByRole("columnheader", { name: "Model" }).getAttribute("aria-sort")).toBe("none");
   });
 
+  it("Load more appends the next page, retains prior rows, and discloses the unnamed remainder", async () => {
+    // The registry's own Invariant-5 surface, mirroring the gallery suite: the
+    // walk this replaced guaranteed every row was present; paging must retain
+    // what is loaded and say what is not.
+    listModelEntriesActionMock.mockResolvedValue({
+      ok: true,
+      data: { ...registry([entry({ id: "e2", model_id: "gpt-5", secret_ref: "openai" })]), next_cursor: null, total: null },
+    });
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    // total is null on every daemon endpoint today, so this wording is the
+    // one production users actually see.
+    expect(screen.getByText("Showing 1 models — more available")).toBeTruthy();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+
+    expect(listModelEntriesActionMock).toHaveBeenCalledWith("cur-2");
+    expect(await screen.findByText("gpt-5")).toBeTruthy();
+    // Prior rows RETAINED, not replaced.
+    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    // Last page reached — the affordance and its disclosure both retire.
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
+
+  it("a failed load-more keeps the rows on screen and offers retry — never an empty registry", async () => {
+    listModelEntriesActionMock.mockResolvedValue({ ok: false, error: "upstream 503", status: 503 });
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+
+    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    // The preserved 503 keeps its specific instruction.
+    expect(await screen.findByText("Models are temporarily unavailable. Your entries are safe.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("a failed server read renders the typed failure on the real table, distinct from empty", async () => {
+    await renderTablePaged({
+      initialPage: null,
+      initialError: { kind: "unavailable" },
+    });
+    expect(screen.getByText("Models are temporarily unavailable. Your entries are safe.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("treats a cursor that does not advance as the last page instead of appending forever", async () => {
+    listModelEntriesActionMock.mockResolvedValue({
+      ok: true,
+      data: { ...registry([entry({ id: "e2", model_id: "gpt-5", secret_ref: "openai" })]), next_cursor: "cur-2", total: null },
+    });
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("gpt-5")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
+
+  it("a rejected action round-trip surfaces as a read failure instead of escaping the transition", async () => {
+    listModelEntriesActionMock.mockRejectedValue(new Error("network down"));
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
+    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+  });
+
+  it("a thrown non-Error still reports the failure, with no fabricated detail", async () => {
+    // `detail` is the thrown message, and only an Error carries one. A rejected
+    // string (or anything else) must still surface the failure rather than
+    // render `undefined` at the operator as if it were a reason.
+    listModelEntriesActionMock.mockRejectedValue("bare string, not an Error");
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
+    expect(screen.queryByText(/bare string, not an Error/)).toBeNull();
+  });
+
+  it("a rejected Retry re-reports the failure instead of escaping the transition", async () => {
+    // Retry re-reads from the FIRST page, which is a different request from
+    // load-more and has its own catch. An uncaught rejection here escapes the
+    // transition into a route with no error boundary, and the operator is left
+    // clicking a Retry that silently does nothing.
+    listModelEntriesActionMock.mockRejectedValue(new Error("still down"));
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    await user.click(await findEnabledRetry());
+
+    // Retry re-reads from the first page, so it sends NO cursor — that is what
+    // makes it a different request from the load-more that failed.
+    await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledTimes(2));
+    expect(listModelEntriesActionMock).toHaveBeenLastCalledWith();
+    expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
+    // Retained rows survive a second failure — a failed re-read never blanks
+    // the table it was meant to refresh.
+    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("a Retry that rejects with a non-Error reports the failure without a fabricated detail", async () => {
+    listModelEntriesActionMock.mockRejectedValue("bare string, not an Error");
+    await renderTablePaged({
+      initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: "cur-2", total: null },
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    await user.click(await findEnabledRetry());
+
+    await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
+    expect(screen.queryByText(/bare string, not an Error/)).toBeNull();
+  });
+
+  it("readErrorFrom maps a preserved transport status onto the typed vocabulary", async () => {
+    const { readErrorFrom } = await import("@/lib/api/library-types");
+    expect(readErrorFrom({ error: "no session", status: 401 }).kind).toBe("unauthenticated");
+    expect(readErrorFrom({ error: "nope", status: 403 }).kind).toBe("forbidden");
+    expect(readErrorFrom({ error: "down", status: 503 }).kind).toBe("unavailable");
+    // No status (thrown before transport, or a non-Api failure) → unknown,
+    // never a guessed specific instruction.
+    expect(readErrorFrom({ error: "boom" }).kind).toBe("unknown");
+    expect(readErrorFrom({ error: "boom" }).detail).toBe("boom");
+  });
+
+  it("libraryErrorFromCause reads a status off the cause and a detail only off an Error", async () => {
+    const { libraryErrorFromCause } = await import("@/lib/api/library-types");
+    // An ApiError-shaped throw keeps its specific kind.
+    expect(libraryErrorFromCause({ status: 503 }).kind).toBe("unavailable");
+    // A thrown Error contributes its message as the detail...
+    expect(libraryErrorFromCause(new Error("threw")).detail).toBe("threw");
+    expect(libraryErrorFromCause(new Error("threw")).kind).toBe("unknown");
+    // ...and a thrown non-Error has no message to contribute, so it must not
+    // invent one rather than render `undefined` at the operator as a reason.
+    expect(libraryErrorFromCause("bare string").detail).toBeUndefined();
+  });
+
+  it("readErrorCopy gives each failure kind its own next step", async () => {
+    const { readErrorCopy } = await import(
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
+    );
+    const { LIBRARY_ERROR_KIND } = await import("@/lib/api/library-types");
+    // Five kinds, five distinct instructions — collapsing any two loses the
+    // reason these are typed at all.
+    const copies = Object.values(LIBRARY_ERROR_KIND).map((kind) => readErrorCopy({ kind }));
+    expect(new Set(copies).size).toBe(copies.length);
+    expect(readErrorCopy({ kind: LIBRARY_ERROR_KIND.unauthenticated })).toMatch(/sign in/i);
+    expect(readErrorCopy({ kind: LIBRARY_ERROR_KIND.unavailable })).toMatch(/temporarily unavailable/i);
+  });
+
   it("computeNextSort ignores a key outside the sortable column set, and toggles both directions", async () => {
     const { computeNextSort } = await import(
-      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
     );
     expect(computeNextSort(null, "status")).toBeNull();
     expect(computeNextSort({ key: "model", dir: "ascending" }, "actions")).toBeNull();
@@ -426,7 +640,7 @@ describe("ModelsRegistryTable", () => {
 
   it("sortValueFor reads model_id for the model column and provider (or '') for the provider column", async () => {
     const { sortValueFor } = await import(
-      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
     );
     const e = entry({ model_id: "claude-sonnet-5", provider: "anthropic" });
     expect(sortValueFor(e, "model")).toBe("claude-sonnet-5");
@@ -473,10 +687,17 @@ describe("ModelsRegistryTable", () => {
     rotateSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
     createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
-    listSecretsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: 1 }] },
-    });
+    // The dialog now loads the stored-secret list on OPEN as well as after a
+    // secret changes, so the sequence has to mirror reality: nothing stored
+    // when the dialog first opens, "anthropic" present from the create onward.
+    // A single mockResolvedValueOnce left later calls resolving `undefined`,
+    // which the real action never does.
+    listSecretsActionMock
+      .mockResolvedValueOnce({ ok: true, data: { secrets: [] } })
+      .mockResolvedValue({
+        ok: true,
+        data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: 1 }] },
+      });
     await renderTable(registry([]));
 
     const user = userEvent.setup();
@@ -509,11 +730,20 @@ describe("ModelsRegistryTable", () => {
     expect(createSecretActionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("a failed secrets refresh leaves the stored-key state as-is — a repeat add re-creates rather than rotating", async () => {
-    createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+  it("a failed refresh after a good load keeps the stored-key state live — rotate still resolves", async () => {
+    // `ready` is sticky: once a real list has arrived, a failed background
+    // refresh must neither blank it (locking a form that has usable data) nor
+    // lose the rotate-vs-create resolution it feeds. Only a list that NEVER
+    // loaded fails closed — that case is the test below.
+    rotateSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
     createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
-    listSecretsActionMock.mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" });
+    listSecretsActionMock
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: 1 }] },
+      })
+      .mockResolvedValue({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" });
     await renderTable(registry([]));
 
     const user = userEvent.setup();
@@ -525,16 +755,14 @@ describe("ModelsRegistryTable", () => {
     await user.click((await screen.findAllByRole("option"))[0]!);
     await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
+    await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // The `!r.ok` early return kept the secrets state empty, so the same
-    // name is unknown to the dialog and the second add takes the create path
-    // again (the backend would 409 in reality; mocked ok here — the branch
-    // under test is refreshSecrets' silent no-op, matching refresh()).
+    // Reopen: the on-open refresh now FAILS, but the earlier list is retained —
+    // no fail-closed alert, and the same name still resolves to rotate.
     await user.click(screen.getByRole("button", { name: /create model/i }));
     const reopened = await screen.findByRole("dialog");
+    expect(within(reopened).queryByText(/couldn't load your stored secrets/i)).toBeNull();
     await user.type(within(reopened).getByLabelText(/^name$/i), "anthropic");
     await user.type(within(reopened).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(reopened).getByLabelText(/^model$/i));
@@ -542,7 +770,164 @@ describe("ModelsRegistryTable", () => {
     await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
     await user.click(within(reopened).getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(createSecretActionMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic", "sk-ant-second-key"));
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("a failed first secret-list load fails closed — Save stays disabled until a retry lands", async () => {
+    // The dialog's rotate-vs-create decision and its name-ownership guard both
+    // read the stored-secret list, and the secrets POST upserts server-side.
+    // Submitting against a list that never arrived would therefore stomp
+    // whatever already holds the typed name — so an unloaded list must BLOCK,
+    // not silently take the create path.
+    createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+    listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
+    listSecretsActionMock
+      .mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" })
+      .mockResolvedValue({ ok: true, data: { secrets: [] } });
+    await renderTable(registry([]));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /create model/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+
+    // Complete form, unknown secret list: both Save buttons are inert and the
+    // dialog says why.
+    await screen.findByText(/couldn't load your stored secrets/i);
+    expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+
+    // Retry loads the list; with it present, the same submit goes through.
+    await user.click(within(dialog).getByRole("button", { name: /retry/i }));
+    await waitFor(() =>
+      expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(false),
+    );
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(createSecretActionMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(rotateSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the secrets round-trip rejects, not just when it returns an error", async () => {
+    // A rejected action is a different failure from `{ ok: false }`: the call
+    // never came back at all (network drop, deploy skew). Without the catch the
+    // dialog strands at "Checking your stored secrets…" — Save disabled forever
+    // and no Retry, because Retry only renders in the error state.
+    createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+    listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
+    listSecretsActionMock
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue({ ok: true, data: { secrets: [] } });
+    await renderTable(registry([]));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /create model/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+
+    // Complete form, rejected list: same fail-closed surface as `ok: false`.
+    await screen.findByText(/couldn't load your stored secrets/i);
+    expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+
+    // And the same Retry recovers it.
+    await user.click(within(dialog).getByRole("button", { name: /retry/i }));
+    await waitFor(() =>
+      expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(false),
+    );
+  });
+});
+
+describe("ModelsRegistryTable — hover speculation on a row's Edit control", () => {
+  // happy-dom answers `(pointer: coarse)` affirmatively, which is the correct
+  // answer for a headless document and the wrong one for the desktop pointer
+  // this policy is written for. Choosing the answer is what puts the fine-
+  // pointer arm — the one every mouse user takes — under test at all.
+  function stubFinePointer() {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((q: string) => ({ matches: false, media: q })),
+    );
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Mounts inside a real provider and leaves the catalogue IDLE — unlike
+   *  `renderTableWithLibrary`, which focuses an Edit control to warm it. Hover
+   *  policy is only observable from a cold start. */
+  async function renderTableColdCatalogue() {
+    getModelLibraryActionMock.mockResolvedValue({ ok: true, data: LIBRARY });
+    const { ModelCatalogueProvider } = await import(
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider"
+    );
+    const { default: ModelsRegistryTable } = await import(
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
+    );
+    render(
+      withTooltipProvider(
+        React.createElement(
+          ModelCatalogueProvider,
+          null,
+          React.createElement(ModelsRegistryTable, {
+            workspaceId: "ws_1",
+            initialPage: { ...registry([entry({ id: "e1" })]), next_cursor: null, total: null },
+            initialError: null,
+          } as never),
+        ),
+      ),
+    );
+    expect(getModelLibraryActionMock).not.toHaveBeenCalled();
+  }
+
+  it("warms the catalogue when hover is a real signal", async () => {
+    // The Edit dialog's picker needs the global catalogue. Warming it on hover
+    // means the dialog opens populated rather than filling in underneath the
+    // user's cursor — and an ordinary Models visit still pays nothing, because
+    // nothing fetches until the gesture.
+    stubFinePointer();
+    await renderTableColdCatalogue();
+
+    const user = userEvent.setup();
+    await user.hover(screen.getByRole("button", { name: "Edit claude-sonnet-5" }));
+
+    await waitFor(() => expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("warms the catalogue from the Create-model trigger on the same policy", async () => {
+    // The Add dialog carries its own copy of the hover gate, because its
+    // trigger lives in a different component from the row controls. Both must
+    // agree, or one of the two ways into the picker opens cold.
+    stubFinePointer();
+    await renderTableColdCatalogue();
+
+    const user = userEvent.setup();
+    await user.hover(screen.getByRole("button", { name: /create model/i }));
+
+    await waitFor(() => expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not speculate on a coarse pointer, where hover is already a press", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((q: string) => ({ matches: q.includes("coarse"), media: q })),
+    );
+    await renderTableColdCatalogue();
+
+    const user = userEvent.setup();
+    await user.hover(screen.getByRole("button", { name: "Edit claude-sonnet-5" }));
+
+    expect(getModelLibraryActionMock).not.toHaveBeenCalled();
   });
 });

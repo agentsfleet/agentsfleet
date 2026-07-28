@@ -71,12 +71,40 @@ pub fn storeJsonPlaintext(
     key_name: []const u8,
     plaintext: []const u8,
 ) !void {
+    return writeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext, crypto_store.store);
+}
+
+/// Same projection derivation as `storeJsonPlaintext`, but the write claims a
+/// free name instead of overwriting whatever holds it — `error.SecretNameTaken`
+/// when one already does.
+///
+/// The create route uses this and the rotate route uses `storeJsonPlaintext`;
+/// the OAuth connector callbacks and the token refresh deliberately stay on the
+/// overwriting form, because re-connecting a provider is a rotation.
+pub fn createJsonPlaintext(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    plaintext: []const u8,
+) !void {
+    return writeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext, crypto_store.create);
+}
+
+fn writeJsonPlaintext(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    plaintext: []const u8,
+    comptime write: fn (std.mem.Allocator, *pg.Conn, []const u8, []const u8, []const u8, metadata.Projection) anyerror!void,
+) !void {
     var parsed = std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{}) catch {
-        try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext, .{ .kind = .custom_secret });
+        try write(alloc, conn, workspace_id, key_name, plaintext, .{ .kind = .custom_secret });
         return;
     };
     defer parsed.deinit();
-    try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext, metadata.project(parsed.value));
+    try write(alloc, conn, workspace_id, key_name, plaintext, metadata.project(parsed.value));
 }
 
 /// Decrypt and parse the row at (workspace_id, key_name) as a JSON object.

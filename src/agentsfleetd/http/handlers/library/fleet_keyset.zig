@@ -88,13 +88,16 @@ pub const Position = struct {
 
 /// The gallery cursor payload. Field order is the canonical JSON key order, and
 /// `pagination.decode` enforces it by re-encoding.
+///
+/// `q` was carried here to bind a cursor to the search that issued it, until the
+/// parameter was retired. `workspace_uuid` still binds the cursor to its tenant,
+/// which is the isolation-relevant half; nothing else varied the set.
 pub const Cursor = struct {
     v: u8 = pagination.CURSOR_VERSION,
     created_at: i64,
     tier_rank: u8,
     id: []const u8,
     workspace_uuid: []const u8,
-    q: ?[]const u8,
     limit: u32,
 };
 

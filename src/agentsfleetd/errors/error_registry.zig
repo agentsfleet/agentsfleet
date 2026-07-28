@@ -151,6 +151,7 @@ pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
 pub const ERR_SECRET_NOT_FOUND = "UZ-VAULT-003";
 pub const ERR_SECRET_REFERENCED_BY_MODEL_ENTRIES = "UZ-VAULT-004";
+pub const ERR_SECRET_NAME_TAKEN = "UZ-VAULT-005";
 // PROVIDER (tenant-scoped LLM provider config — PUT /v1/tenants/me/provider)
 pub const ERR_PROVIDER_SECRET_REF_REQUIRED = "UZ-PROVIDER-001";
 pub const ERR_PROVIDER_SECRET_NOT_FOUND = "UZ-PROVIDER-002";
@@ -275,6 +276,7 @@ pub const MSG_SECRET_DATA_REQUIRED = "secret data must be a non-empty JSON objec
 pub const MSG_SECRET_DATA_TOO_LARGE = "secret data exceeds 4KB when stringified";
 pub const MSG_SECRET_KEY_REQUIRED = "api_key is required and must be a non-empty string";
 pub const MSG_SECRET_NOT_FOUND = "secret not found in this workspace";
+pub const MSG_SECRET_NAME_TAKEN = "a secret with this name already exists in this workspace; rotate it instead of creating it again";
 // Serving-plane backpressure messages
 pub const MSG_API_BACKPRESSURE = "Server is at its in-flight request ceiling";
 pub const MSG_SSE_STREAM_CAP = "Concurrent event-stream limit reached on this instance";

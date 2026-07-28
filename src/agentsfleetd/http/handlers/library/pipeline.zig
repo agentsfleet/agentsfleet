@@ -1,10 +1,8 @@
-//! Shared bundle-onboarding pipeline helpers (M103). The platform and tenant
-//! onboarding handlers run the same resolve → prepare → R2 flow; these are the
-//! pieces both reuse: the R2-before-metadata snapshot put, the support-file
-//! summary projection, and the resolve/import error → HTTP mapping. Extracted
-//! here when the legacy per-workspace bundle import endpoint was removed.
-
-const std = @import("std");
+//! Shared bundle-onboarding pipeline helpers. The platform and tenant
+//! onboarding handlers run the same resolve → prepare → R2 flow; these are
+//! the pieces both reuse: the R2-before-metadata snapshot put and the
+//! resolve/import error → HTTP mapping. Extracted here when the
+//! per-workspace bundle import endpoint was removed.
 
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -14,19 +12,8 @@ const resolve = @import("../fleet_bundles/resolve.zig");
 
 const Hx = hx_mod.Hx;
 
-pub const SupportFileSummary = struct {
-    path: []const u8,
-    size_bytes: usize,
-};
-
-/// Build {path, size_bytes} summaries from the live body's support files.
-pub fn supportSummaries(alloc: std.mem.Allocator, files: []const importer.SupportFile) ![]SupportFileSummary {
-    const summaries = try alloc.alloc(SupportFileSummary, files.len);
-    for (files, 0..) |file, i| {
-        summaries[i] = .{ .path = file.path, .size_bytes = file.content.len };
-    }
-    return summaries;
-}
+// `SupportFileSummary` / `supportSummaries` are gone: they built the manifest
+// projection the onboard 201 used to return, and no client read it.
 
 /// Write the canonical tar to R2 under the content-addressed snapshot key, before
 /// any metadata commit (R2-before-metadata invariant). Returns false (and

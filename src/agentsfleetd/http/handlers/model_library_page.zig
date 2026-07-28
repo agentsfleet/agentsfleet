@@ -58,7 +58,6 @@ const PAGE_JSON_OPTIONS: std.json.Stringify.Options = .{};
 /// cache key and the query cannot be built from three different readings of one
 /// request.
 pub const Filters = struct {
-    q: ?[]const u8,
     provider: ?[]const u8,
 };
 
@@ -77,7 +76,7 @@ pub fn build(
     const page = try model_library_store.listLibraryPage(
         hx.alloc,
         conn,
-        .{ .q = filters.q, .provider = filters.provider },
+        .{ .provider = filters.provider },
         after,
         limit,
     );
@@ -114,7 +113,6 @@ fn nextCursor(
         .display_key = boundary.display_key,
         .vendor_key = boundary.vendor_key,
         .id = boundary.uid,
-        .q = filters.q,
         .provider = filters.provider,
         .limit = limit,
     });

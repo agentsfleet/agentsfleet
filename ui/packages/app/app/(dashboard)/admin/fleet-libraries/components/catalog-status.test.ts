@@ -35,7 +35,6 @@ function entry(visibility: CatalogVisibility, content_hash: string | null): Plat
     visibility,
     content_hash,
     requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
-    support_files: [],
     etag: '"catalog-v1"',
     updated_at: 1_716_000_000_000,
   };

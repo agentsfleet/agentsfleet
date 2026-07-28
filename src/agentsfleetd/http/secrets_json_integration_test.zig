@@ -18,6 +18,7 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const vault = @import("../state/vault.zig");
 
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 
@@ -254,6 +255,51 @@ test "integration: custom openai-compatible secret activates end-to-end" {
         try std.testing.expect(r.bodyContains("\"model\":\"kimi-k2.6\""));
         try std.testing.expect(r.bodyContains("\"secret_ref\":\"compat-key\""));
         try std.testing.expect(!r.bodyContains("sk-compat-not-real"));
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupRows(conn);
+}
+
+test "integration: secret POST conflicts on a taken name and leaves the stored value intact" {
+    setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
+    defer alloc.free(path);
+
+    const first = "{\"name\":\"dupe\",\"data\":{\"api_key\":\"first-value\"}}";
+    const second = "{\"name\":\"dupe\",\"data\":{\"api_key\":\"second-value\"}}";
+
+    {
+        const r = try (try (try h.post(path).bearer(TOKEN_OPERATOR)).json(first)).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+    {
+        const r = try (try (try h.post(path).bearer(TOKEN_OPERATOR)).json(second)).send();
+        defer r.deinit();
+        try r.expectStatus(.conflict);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_SECRET_NAME_TAKEN));
+    }
+
+    // The credential the first request stored must still be the one on disk —
+    // a rejected create that had already overwritten would be the bug.
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        const stored = try vault.loadJson(alloc, conn, TEST_WS_ID, "dupe");
+        defer stored.deinit();
+        try std.testing.expectEqualStrings(
+            "first-value",
+            stored.value.object.get("api_key").?.string,
+        );
     }
 
     const conn = try h.acquireConn();

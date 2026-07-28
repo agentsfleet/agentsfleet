@@ -6,12 +6,16 @@
 //! ## Why the cache key is an HMAC rather than the selectors themselves
 //!
 //! §4 forbids raw selectors from entering observable cache keys. A key built by
-//! concatenating `q`, `provider`, `starting_after` and `limit` would put every
-//! search term a tenant typed into a structure that gets dumped by heap
+//! concatenating `provider`, `starting_after` and `limit` would put every
+//! selector a tenant sent into a structure that gets dumped by heap
 //! inspection, printed by a debug handler someone adds later, or exported by a
 //! future cache-stats gauge. A digest under a process-random key is not
 //! reversible into those terms by anything holding the key list, and the key
 //! never leaves this process.
+//!
+//! The reasoning outlives the `q` selector that motivated it, which was retired
+//! as an unused parameter. `provider` is still a caller-supplied value, and the
+//! next selector added will be too.
 //!
 //! **No tenant is mixed in.** That is Invariant 6 and it is deliberate: the
 //! catalogue payload must be byte-identical for every authorized caller, so a
@@ -38,15 +42,20 @@ const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 /// the final tiebreak; the uid can, and it rides here opaquely without ever
 /// appearing in a response body.
 ///
-/// `q` and `provider` are carried so the cursor is bound to the query that
-/// issued it — resuming under different filters would paginate a set the caller
-/// never asked for, which is `UZ-LIBRARY-002`.
+/// `provider` is carried so the cursor is bound to the query that issued it —
+/// resuming under a different filter would paginate a set the caller never asked
+/// for, which is `UZ-LIBRARY-002`.
+///
+/// `q` was carried here for the same reason until the search parameter was
+/// retired. Its removal changes this payload's field set incompatibly, which is
+/// precisely what `pagination.CURSOR_VERSION` exists to signal — the version is
+/// bumped in the same change, so a cursor issued before the deploy is rejected as
+/// `VersionMismatch` rather than reinterpreted against the shorter shape.
 pub const Cursor = struct {
     v: u8 = pagination.CURSOR_VERSION,
     display_key: []const u8,
     vendor_key: []const u8,
     id: []const u8,
-    q: ?[]const u8,
     provider: ?[]const u8,
     limit: u32,
 };
@@ -102,18 +111,16 @@ fn absorb(mac: *HmacSha256, field: ?[]const u8) void {
 
 /// The response-cache key for one page request at one catalogue generation.
 ///
-/// `q` and `provider` are the NORMALIZED forms, not the raw query values: two
-/// requests that normalize to the same filter are the same page and must share
-/// a cache entry, or the cache misses on every spelling variation.
+/// `provider` is the NORMALIZED form, not the raw query value: two requests that
+/// normalize to the same filter are the same page and must share a cache entry,
+/// or the cache misses on every spelling variation.
 pub fn cacheKey(
     revision: i64,
-    q: ?[]const u8,
     provider: ?[]const u8,
     starting_after: ?[]const u8,
     limit: u32,
 ) mlc.Key {
     var mac = HmacSha256.init(hmacKey());
-    absorb(&mac, q);
     absorb(&mac, provider);
     absorb(&mac, starting_after);
 
@@ -134,8 +141,8 @@ const REV: i64 = 7;
 const LIMIT: u32 = 50;
 
 test "the same selectors at the same revision give the same key" {
-    const a = cacheKey(REV, "claude", null, null, LIMIT);
-    const b = cacheKey(REV, "claude", null, null, LIMIT);
+    const a = cacheKey(REV, "anthropic", null, LIMIT);
+    const b = cacheKey(REV, "anthropic", null, LIMIT);
     try testing.expectEqual(a.revision, b.revision);
     try testing.expectEqualSlices(u8, &a.digest, &b.digest);
 }
@@ -143,47 +150,45 @@ test "the same selectors at the same revision give the same key" {
 test "the revision is structural, not hashed into the digest" {
     // Two generations of the same query differ in the field the cache compares
     // first, so a whole generation ages out together rather than entry by entry.
-    const a = cacheKey(REV, "claude", null, null, LIMIT);
-    const b = cacheKey(REV + 1, "claude", null, null, LIMIT);
+    const a = cacheKey(REV, "anthropic", null, LIMIT);
+    const b = cacheKey(REV + 1, "anthropic", null, LIMIT);
     try testing.expect(a.revision != b.revision);
     try testing.expectEqualSlices(u8, &a.digest, &b.digest);
 }
 
 test "every selector changes the digest" {
-    const base = cacheKey(REV, "claude", null, null, LIMIT);
-    const other_q = cacheKey(REV, "gpt", null, null, LIMIT);
-    const with_provider = cacheKey(REV, "claude", "anthropic", null, LIMIT);
-    const with_cursor = cacheKey(REV, "claude", null, "abc", LIMIT);
-    const other_limit = cacheKey(REV, "claude", null, null, LIMIT + 1);
+    const base = cacheKey(REV, "anthropic", null, LIMIT);
+    const other_provider = cacheKey(REV, "openai", null, LIMIT);
+    const with_cursor = cacheKey(REV, "anthropic", "abc", LIMIT);
+    const other_limit = cacheKey(REV, "anthropic", null, LIMIT + 1);
 
-    try testing.expect(!std.mem.eql(u8, &base.digest, &other_q.digest));
-    try testing.expect(!std.mem.eql(u8, &base.digest, &with_provider.digest));
+    try testing.expect(!std.mem.eql(u8, &base.digest, &other_provider.digest));
     try testing.expect(!std.mem.eql(u8, &base.digest, &with_cursor.digest));
     try testing.expect(!std.mem.eql(u8, &base.digest, &other_limit.digest));
 }
 
 test "absent and empty are distinct selectors" {
-    // `?q=` normalizes to absent, so these should never both occur — but if a
-    // caller ever reaches here with an empty string, it must not collide with
-    // "no filter at all" and serve the unfiltered page.
-    const absent = cacheKey(REV, null, null, null, LIMIT);
-    const empty = cacheKey(REV, "", null, null, LIMIT);
+    // `?provider=` normalizes to absent, so these should never both occur — but
+    // if a caller ever reaches here with an empty string, it must not collide
+    // with "no filter at all" and serve the unfiltered page.
+    const absent = cacheKey(REV, null, null, LIMIT);
+    const empty = cacheKey(REV, "", null, LIMIT);
     try testing.expect(!std.mem.eql(u8, &absent.digest, &empty.digest));
 }
 
 test "field boundaries cannot be shifted between selectors" {
     // Without length prefixes these two collide: one query's tail becomes the
     // next query's head, and two different pages share a cache entry.
-    const a = cacheKey(REV, "ab", "c", null, LIMIT);
-    const b = cacheKey(REV, "a", "bc", null, LIMIT);
+    const a = cacheKey(REV, "ab", "c", LIMIT);
+    const b = cacheKey(REV, "a", "bc", LIMIT);
     try testing.expect(!std.mem.eql(u8, &a.digest, &b.digest));
 }
 
 test "no raw selector survives into the key" {
     // The §4 rule, asserted rather than assumed: the digest is the only place a
     // selector reaches, and it must not contain the term's bytes.
-    const needle = "supersecret-model-name";
-    const key = cacheKey(REV, needle, null, null, LIMIT);
+    const needle = "supersecret-provider-name";
+    const key = cacheKey(REV, needle, null, LIMIT);
     try testing.expect(std.mem.indexOf(u8, &key.digest, needle) == null);
 }
 
@@ -192,9 +197,18 @@ test "the cursor payload declares the spec's fixed key order" {
     // of the wire format rather than a formatting detail. A reordered struct
     // silently invalidates every cursor already issued.
     const fields = @typeInfo(Cursor).@"struct".fields;
-    const expected = [_][]const u8{ "v", "display_key", "vendor_key", "id", "q", "provider", "limit" };
+    const expected = [_][]const u8{ "v", "display_key", "vendor_key", "id", "provider", "limit" };
     try testing.expectEqual(expected.len, fields.len);
     inline for (fields, expected) |field, want| {
         try testing.expectEqualStrings(want, field.name);
+    }
+}
+
+test "test_library_reads_ignore_retired_search_param: no cursor field carries a search term" {
+    // Dimension 4.1. The retired `q` must not survive anywhere in the payload —
+    // a leftover field would keep binding cursors to a filter no caller can set.
+    const fields = @typeInfo(Cursor).@"struct".fields;
+    inline for (fields) |field| {
+        try testing.expect(!std.mem.eql(u8, field.name, "q"));
     }
 }

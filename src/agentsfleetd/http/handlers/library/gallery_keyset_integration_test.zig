@@ -264,3 +264,31 @@ test "integration: test_fleet_keyset_and_detail_status — the removed detail UR
         try r.expectStatus(.not_found);
     }
 }
+
+test "test_library_reads_ignore_retired_search_param: a stray q leaves the gallery byte-identical" {
+    // The models route has this proof; the gallery is the other read the
+    // retired parameter was stripped from, and a bookmarked ?q= must be
+    // ignored — same rows, same cursor, no 400.
+    const alloc = std.testing.allocator;
+    const h = try openOrSkip(alloc);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seed(conn);
+
+    const base_url = try galleryUrl(alloc, "");
+    defer alloc.free(base_url);
+    const base = try (try h.get(base_url).bearer(TOKEN)).send();
+    defer base.deinit();
+    try base.expectStatus(.ok);
+
+    const variants = [_][]const u8{ "?q=alpha", "?q=%25", "?q=" };
+    for (variants) |variant| {
+        const url = try galleryUrl(alloc, variant);
+        defer alloc.free(url);
+        const r = try (try h.get(url).bearer(TOKEN)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try std.testing.expectEqualStrings(base.body, r.body);
+    }
+}

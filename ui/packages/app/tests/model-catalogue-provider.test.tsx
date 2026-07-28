@@ -5,15 +5,17 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 const getModelLibraryActionMock = vi.hoisted(() => vi.fn());
 const routerPushMock = vi.hoisted(() => vi.fn());
 // Stable router instance — Next's real useRouter returns a stable object, and
-// the provider's effect depends on it; a per-render mock object would re-fire
-// the effect and double-count the fetch.
+// `preload` is memoised against it; a per-render mock object would churn the
+// callback identity for no reason.
 const routerMock = vi.hoisted(() => ({ push: routerPushMock }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   getModelLibraryAction: getModelLibraryActionMock,
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => routerMock }));
 
+import { CATALOGUE_STATUS } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/catalogue-status";
 import {
+  maySpeculateOnHover,
   ModelCatalogueProvider,
   useModelCatalogue,
 } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider";
@@ -33,100 +35,205 @@ const okLibrary = (models: ReturnType<typeof model>[]) => ({
 });
 
 function Probe() {
-  const { models, loading, error } = useModelCatalogue();
+  const { models, status, preload } = useModelCatalogue();
   return React.createElement(
     "div",
     null,
-    React.createElement("span", { "data-testid": "loading" }, String(loading)),
-    React.createElement("span", { "data-testid": "error" }, String(error)),
+    React.createElement("span", { "data-testid": "status" }, status),
     React.createElement("span", { "data-testid": "models" }, models.map((m) => m.id).join(",")),
+    React.createElement("button", { "data-testid": "preload", onClick: preload }, "preload"),
+  );
+}
+
+function renderProvider() {
+  return render(React.createElement(ModelCatalogueProvider, null, React.createElement(Probe)));
+}
+
+function fireIntent() {
+  return act(async () => {
+    screen.getByTestId("preload").click();
+  });
+}
+
+/** Install a matchMedia whose `(pointer: coarse)` answer is ours to choose. */
+function stubPointer(coarse: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((q: string) => ({ matches: coarse && q.includes("coarse"), media: q })),
   );
 }
 
 beforeEach(() => vi.clearAllMocks());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
-describe("ModelCatalogueProvider", () => {
-  it("fetches the library once on mount through the Server Action and provides the models", async () => {
+describe("ModelCatalogueProvider — intent loading", () => {
+  it("does not fetch the catalogue on mount", async () => {
+    renderProvider();
+    // The whole point of the change: an ordinary visit to the Models page
+    // pays nothing for a catalogue it may never consult.
+    expect(getModelLibraryActionMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.idle);
+  });
+
+  it("fetches once on intent and provides the models", async () => {
     getModelLibraryActionMock.mockResolvedValue(okLibrary([model("m1", "anthropic"), model("m2", "openai")]));
-    render(
-      React.createElement(ModelCatalogueProvider, null, React.createElement(Probe)),
-    );
-    await waitFor(() => expect(screen.getByTestId("loading").textContent).toBe("false"));
-    expect(screen.getByTestId("error").textContent).toBe("false");
+    renderProvider();
+    await fireIntent();
+    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.ready));
     expect(screen.getByTestId("models").textContent).toBe("m1,m2");
     expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("degrades to error=true / empty models when the action reports a non-auth failure", async () => {
+  it("coalesces a burst of intents into one request", async () => {
+    // Hover, focus, and click all fire within one gesture. Without the
+    // single-flight guard a deliberate click costs three catalogue reads.
+    getModelLibraryActionMock.mockResolvedValue(okLibrary([model("m1", "anthropic")]));
+    renderProvider();
+    await act(async () => {
+      const button = screen.getByTestId("preload");
+      button.click();
+      button.click();
+      button.click();
+    });
+    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.ready));
+    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refetch once ready", async () => {
+    getModelLibraryActionMock.mockResolvedValue(okLibrary([model("m1", "anthropic")]));
+    renderProvider();
+    await fireIntent();
+    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.ready));
+    await fireIntent();
+    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("test_model_picker_prefetch_policy_and_latest_result — latest request wins when an earlier resolves late", async () => {
+    // Latest-wins. A slow first attempt that errors must not stamp `error`
+    // over a later attempt that already succeeded.
+    //
+    // Single-flight is what delivers this, which is why there is no request id
+    // in the provider: an attempt cannot start until the previous one has
+    // settled, so "two responses arriving out of order" is a state the
+    // component cannot reach. The mid-flight assertion below is the load-
+    // bearing half — remove the guard and a second read starts here.
+    let failFirst!: (e: unknown) => void;
+    getModelLibraryActionMock
+      .mockReturnValueOnce(new Promise((_r, rej) => (failFirst = rej)))
+      .mockResolvedValueOnce(okLibrary([model("fresh", "anthropic")]));
+
+    renderProvider();
+    await fireIntent();
+
+    // Intent while the first read is still open issues nothing at all.
+    await fireIntent();
+    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
+
+    // First attempt settles (rejects) — that frees the single-flight guard.
+    await act(async () => {
+      failFirst(new Error("slow-503"));
+    });
+    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.error));
+
+    await fireIntent();
+    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.ready));
+    expect(screen.getByTestId("models").textContent).toBe("fresh");
+  });
+
+  it("degrades to error / empty models on a non-auth failure", async () => {
     getModelLibraryActionMock.mockResolvedValue({ ok: false, error: "Service Unavailable", status: 503 });
-    render(
-      React.createElement(ModelCatalogueProvider, null, React.createElement(Probe)),
-    );
-    await waitFor(() => expect(screen.getByTestId("error").textContent).toBe("true"));
-    expect(screen.getByTestId("loading").textContent).toBe("false");
+    renderProvider();
+    await fireIntent();
+    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.error));
     expect(screen.getByTestId("models").textContent).toBe("");
     expect(routerPushMock).not.toHaveBeenCalled();
   });
 
   it("routes to sign-in on a 401 — an expired session is not a catalogue outage", async () => {
     getModelLibraryActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
-    render(
-      React.createElement(ModelCatalogueProvider, null, React.createElement(Probe)),
-    );
+    renderProvider();
+    await fireIntent();
     await waitFor(() => expect(routerPushMock).toHaveBeenCalledWith("/sign-in"));
     // No free-text degrade: the user leaves for sign-in instead of being
     // handed silent manual model-id inputs.
-    expect(screen.getByTestId("error").textContent).toBe("false");
+    expect(screen.getByTestId("status").textContent).not.toBe(CATALOGUE_STATUS.error);
   });
 
-  it("degrades to error=true / empty models when the action call itself rejects", async () => {
+  it("degrades to error when the action call itself rejects", async () => {
     getModelLibraryActionMock.mockRejectedValue(new Error("network"));
-    render(
-      React.createElement(ModelCatalogueProvider, null, React.createElement(Probe)),
-    );
-    await waitFor(() => expect(screen.getByTestId("error").textContent).toBe("true"));
-    expect(screen.getByTestId("loading").textContent).toBe("false");
+    renderProvider();
+    await fireIntent();
+    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.error));
     expect(screen.getByTestId("models").textContent).toBe("");
   });
+});
 
-  it("ignores a resolved fetch after unmount (no state update on a dead component)", async () => {
-    // A deferred resolve that lands after the effect cleanup ran (active=false):
-    // the `if (!active)` guard in .then must skip the setState.
-    let resolveLibrary!: (v: unknown) => void;
-    getModelLibraryActionMock.mockReturnValue(new Promise((r) => (resolveLibrary = r)));
-    const { unmount } = render(
-      React.createElement(ModelCatalogueProvider, null, React.createElement(Probe)),
-    );
-    unmount();
-    await act(async () => {
-      resolveLibrary(okLibrary([model("late", "anthropic")]));
-    });
-    // No throw / act warning means the guarded branch held.
-    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
+describe("maySpeculateOnHover — prefetch policy", () => {
+  it("allows speculation on a fine pointer with no Save-Data", () => {
+    stubPointer(false);
+    vi.stubGlobal("navigator", { connection: { saveData: false } });
+    expect(maySpeculateOnHover()).toBe(true);
   });
 
-  it("ignores a rejected fetch after unmount (no state update on a dead component)", async () => {
-    let rejectLibrary!: (e: unknown) => void;
-    getModelLibraryActionMock.mockReturnValue(new Promise((_r, rej) => (rejectLibrary = rej)));
-    const { unmount } = render(
-      React.createElement(ModelCatalogueProvider, null, React.createElement(Probe)),
-    );
-    unmount();
-    await act(async () => {
-      rejectLibrary(new Error("late-503"));
-    });
-    expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
+  it("blocks speculation on a coarse pointer", () => {
+    // A touch that lands on a control is already a press, so "hover" prefetch
+    // there is an unconditional fetch wearing a different name.
+    stubPointer(true);
+    vi.stubGlobal("navigator", { connection: { saveData: false } });
+    expect(maySpeculateOnHover()).toBe(false);
+  });
+
+  it("blocks speculation under Save-Data", () => {
+    stubPointer(false);
+    vi.stubGlobal("navigator", { connection: { saveData: true } });
+    expect(maySpeculateOnHover()).toBe(false);
+  });
+
+  it("allows speculation when the connection API is absent", () => {
+    // Absence of the hint is not a request to conserve — Safari and Firefox
+    // do not implement it, and treating that as Save-Data would disable
+    // prefetch for most desktop users.
+    stubPointer(false);
+    vi.stubGlobal("navigator", {});
+    expect(maySpeculateOnHover()).toBe(true);
+  });
+});
+
+describe("maySpeculateOnHover — environments without matchMedia", () => {
+  it("still speculates when the environment has no matchMedia at all", () => {
+    // The pointer probe is a `typeof` check rather than an optional chain
+    // because the property is typed non-nullish; an environment that omits it
+    // must fall through to the Save-Data question, not throw or refuse.
+    vi.stubGlobal("matchMedia", undefined);
+    expect(maySpeculateOnHover()).toBe(true);
+  });
+});
+
+describe("maySpeculateOnHover — on the server", () => {
+  it("refuses to speculate where there is no window to speculate for", () => {
+    // The dialog trigger's hover handler is defined in a client component, but
+    // the module is still evaluated during the server render. Reaching for
+    // `window.matchMedia` there is a ReferenceError, so the guard has to answer
+    // before the pointer probe rather than after it — and "no window" must read
+    // as "do not prefetch", never as "prefetch unconditionally".
+    //
+    // Assigning `undefined` is what makes `typeof window` report "undefined":
+    // happy-dom always defines the binding, so removing the VALUE is the only
+    // way to reproduce a Node render inside a DOM environment.
+    vi.stubGlobal("window", undefined);
+    expect(maySpeculateOnHover()).toBe(false);
   });
 });
 
 describe("useModelCatalogue outside a provider", () => {
   it("returns the safe degraded fallback state", () => {
     render(React.createElement(Probe));
-    // No provider mounted → the context default fires: not loading, error true,
-    // empty models — pickers fall back to free-text entry.
-    expect(screen.getByTestId("loading").textContent).toBe("false");
-    expect(screen.getByTestId("error").textContent).toBe("true");
+    // No provider mounted → the context default fires: error status, empty
+    // models — pickers fall back to free-text entry, and preload is a no-op.
+    expect(screen.getByTestId("status").textContent).toBe(CATALOGUE_STATUS.error);
     expect(screen.getByTestId("models").textContent).toBe("");
     expect(getModelLibraryActionMock).not.toHaveBeenCalled();
   });

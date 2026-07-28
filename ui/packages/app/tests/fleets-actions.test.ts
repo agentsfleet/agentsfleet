@@ -161,7 +161,6 @@ describe("fleet server actions — thin token-forwarders", () => {
       visibility: "tenant",
       content_hash: "sha256:abc",
       requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
-      support_files: [],
     };
     onboardWorkspaceFleetLibraryMock.mockResolvedValueOnce(onboarded);
     const body = { source_kind: "github" as const, source_ref: "owner/repo" };

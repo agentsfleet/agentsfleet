@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { flexRender, type Table } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import { cn } from "../utils";
 import { Button } from "./Button";
@@ -17,10 +17,18 @@ import {
 
 type ColumnMap<T> = Map<string, DataTableColumn<T>>;
 
+// One nominal size across all three states, so the header does not resize as
+// sorting changes.
+const SORT_ICON_SIZE = 14;
+
+// The unsorted state is a chevron pair, not a double-headed arrow: lucide draws
+// ArrowUpDown with two full shafts spanning 16 of its 24 units against the
+// single arrow's 14, so beside a small uppercase column label it read as the
+// heaviest glyph in the header while meaning "no sort applied".
 function sortIndicator(direction: false | "asc" | "desc") {
-  if (direction === "asc") return <ArrowUp size={14} aria-hidden="true" />;
-  if (direction === "desc") return <ArrowDown size={14} aria-hidden="true" />;
-  return <ArrowUpDown size={14} aria-hidden="true" />;
+  if (direction === "asc") return <ArrowUp size={SORT_ICON_SIZE} aria-hidden="true" />;
+  if (direction === "desc") return <ArrowDown size={SORT_ICON_SIZE} aria-hidden="true" />;
+  return <ChevronsUpDown size={SORT_ICON_SIZE} aria-hidden="true" />;
 }
 
 function DataTableHead<T>({
@@ -232,8 +240,15 @@ export function DataTableView<T>({
     >
       <div
         ref={viewportRef}
+        // Contain the horizontal axis only. `overflow-x-auto` makes this a
+        // scroll container on BOTH axes (a box whose one axis is not `visible`
+        // computes the other to `auto`), and a two-axis `overscroll-contain`
+        // swallows the wheel even when there is nothing here to scroll. On a
+        // surface that grows with the page rather than bounding this table —
+        // the fleet detail Events view — that left the page unable to scroll
+        // with the pointer anywhere over the rows.
         className={cn(
-          "overflow-x-auto overscroll-contain motion-safe:scroll-smooth focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pulse",
+          "overflow-x-auto overscroll-x-contain motion-safe:scroll-smooth focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pulse",
           stickyHeader && "overflow-y-auto",
           stickyHeader && !viewportClassName && "max-h-96",
           viewportClassName,

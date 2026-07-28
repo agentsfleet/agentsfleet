@@ -1,4 +1,4 @@
-import { streamFleetEventsUrl, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND, streamFleetEventsUrl, type EventRow, type LiveFrame } from "@/lib/api/events";
 import { outcomeForStatus } from "@/lib/events/event-summary";
 import { runBackfill, warnBackfillFailure } from "./fleet-stream-backfill";
 import {
@@ -97,11 +97,23 @@ function startEventSource(entry: Entry, fleetId: string): void {
     patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
     if (needsBackfill) void backfillMissedFrames(entry, fleetId);
   };
-  es.onmessage = (e) => {
+  const handleFrame = (e: MessageEvent) => {
     // A delivered frame is proof the stream works: return to fast backoff.
     entry.reconnectAttempts = 0;
     onFrame(entry, e);
   };
+  // The daemon names every frame with its payload kind (`event: chunk`,
+  // `event: event_complete` — sse_frame.writeHead), and a NAMED Server-Sent
+  // Events frame dispatches ONLY to its addEventListener — never to
+  // `onmessage`. An onmessage-only client shows a green Live badge (onopen
+  // fires, heartbeats flow) while silently dropping every frame; replies then
+  // appear only on the next server render. Same wiring as workspace-stream.ts.
+  for (const name of Object.values(FRAME_KIND)) {
+    es.addEventListener(name, handleFrame as (e: Event) => void);
+  }
+  // The daemon's fallback for a payload with no leading kind is
+  // `event: message`, which is what onmessage receives.
+  es.onmessage = handleFrame;
   es.onerror = () => onEventSourceError(entry, fleetId);
 }
 

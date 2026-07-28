@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import type { FleetLibraryPageResult } from "@/lib/api/fleet-library";
+import type { LibraryError } from "@/lib/api/library-types";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import { InstallConfirm } from "./InstallConfirm";
 import { InstallSourceSelector } from "./InstallSourceSelector";
@@ -9,9 +11,19 @@ import type { InstallSource } from "./install-flow";
 
 type Props = {
   workspaceId: string;
-  entries: FleetLibraryGalleryEntry[];
+  /** First gallery page, or null when the read failed — see `initialError`. */
+  initialPage: FleetLibraryPageResult | null;
+  /** Typed read failure. Distinct from an empty library, and never both. */
+  initialError: LibraryError | null;
+  /**
+   * Deep-link selection, already resolved on the server against the loaded
+   * page. Passing the resolved ENTRY rather than an id is what removes the
+   * gallery flash: there is no frame in which the gallery is correct.
+   */
+  initialSelection: FleetLibraryGalleryEntry | null;
+  /** A `library_id` was asked for and is not on the loaded page. */
+  selectionNotFound?: boolean;
   presentCredentialNames: string[] | null;
-  initialLibraryId?: string;
   canAddLibraryEntry?: boolean;
   /** Open the add-library-entry dialog on first render (?create=1 deep link). */
   initialCreateOpen?: boolean;
@@ -25,26 +37,22 @@ type Props = {
 // connect → creating → done and land "Open fleet".
 export function InstallFleet({
   workspaceId,
-  entries,
+  initialPage,
+  initialError,
+  initialSelection,
+  selectionNotFound = false,
   presentCredentialNames,
-  initialLibraryId,
   canAddLibraryEntry = false,
   initialCreateOpen = false,
 }: Props) {
-  const [selection, setSelection] = useState<InstallSource | null>(null);
+  // Seeded from the server-resolved selection. This used to start null and be
+  // filled by an effect that matched `?library=<id>` against the entries after
+  // hydration, so a deep link painted the gallery and then replaced it with the
+  // confirm step a frame later. Seeding state directly removes that frame.
+  const [selection, setSelection] = useState<InstallSource | null>(initialSelection);
   // `null` ⇒ the operator has not confirmed the install yet (the confirm step is
   // showing); a string (possibly empty) ⇒ confirmed, carrying the optional name.
   const [installName, setInstallName] = useState<string | null>(null);
-
-  // A ?library=<id> deep link (from the dashboard gallery) preselects the
-  // library entry and lands on the confirm step on first render.
-  const preselected = useRef(false);
-  useEffect(() => {
-    if (preselected.current || !initialLibraryId) return;
-    preselected.current = true;
-    const match = entries.find((entry) => entry.id === initialLibraryId);
-    if (match) setSelection(match);
-  }, [initialLibraryId, entries]);
 
   function reset() {
     setSelection(null);
@@ -76,7 +84,9 @@ export function InstallFleet({
   return (
     <InstallSourceSelector
       workspaceId={workspaceId}
-      entries={entries}
+      initialPage={initialPage}
+      initialError={initialError}
+      selectionNotFound={selectionNotFound}
       onUseLibraryEntry={(entry) => setSelection(entry)}
       canAddLibraryEntry={canAddLibraryEntry}
       initialCreateOpen={initialCreateOpen}

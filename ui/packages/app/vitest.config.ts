@@ -68,6 +68,12 @@ export default defineConfig({
         // so the `app/**/*.tsx` include glob otherwise sweeps them into the
         // production-coverage denominator. Coverage measures shipped code.
         'tests/**',
+        // Next.js route-loading skeletons: each is a single `RouteLoading`
+        // element built from two title constants, with no branch, no state and
+        // no handler. A render assertion here would pin the framework's file
+        // convention rather than any behaviour of ours. Server actions are NOT
+        // excluded — those carry real logic and stay in the denominator.
+        'app/**/loading.tsx',
       ],
       thresholds: {
         statements: 100,

@@ -70,8 +70,8 @@ async function renderTable() {
       null,
       React.createElement(ModelsRegistryTable, {
         workspaceId: WORKSPACE_ID,
-        initial: registry(),
-        initialSecrets: [],
+        initialPage: { ...registry(), next_cursor: null, total: null },
+        initialError: null,
       }),
     ),
   );
@@ -130,3 +130,29 @@ describe("ModelsRegistryTable onboarding refresh", () => {
     expect(onboardingRefresh).not.toHaveBeenCalled();
   });
 });
+
+describe("stored-secret list reaches the Add dialog", () => {
+  it("test_add_dialog_loads_secrets_on_open — the table fetches secrets when the dialog opens", async () => {
+    // The regression this guards is a WIRING bug, so it has to be asserted
+    // through the real table, not the dialog in isolation. Removing the eager
+    // page-level secrets preload left `secrets` at [] with nothing loading it
+    // on open; every dialog-level test kept passing because they inject the
+    // list as a prop.
+    //
+    // Why it mattered more than an empty picker: submit() resolves `existing`
+    // from this list to choose rotate-vs-create and to reject a name owned by
+    // another provider, and the secrets POST upserts server-side. An unloaded
+    // list therefore does not show "no options" — it silently overwrites the
+    // credential already holding that name.
+    listSecretsActionMock.mockResolvedValue({ ok: true, data: { secrets: [] } });
+    const user = userEvent.setup();
+    await renderTable();
+
+    expect(listSecretsActionMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /create model/i }));
+
+    await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith(WORKSPACE_ID));
+  });
+});
+

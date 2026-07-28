@@ -133,7 +133,8 @@ describe("provider server actions — thin forwarders", () => {
     listTenantModelEntriesMock.mockResolvedValueOnce(registry);
     const r = await listModelEntriesAction();
     expect(r).toEqual({ ok: true, data: registry });
-    expect(listTenantModelEntriesMock).toHaveBeenCalledWith("tok");
+    // The action forwards the page cursor too — null is "first page".
+    expect(listTenantModelEntriesMock).toHaveBeenCalledWith("tok", null);
   });
 
   it("createModelEntryAction forwards the body then token through withToken to the client", async () => {
