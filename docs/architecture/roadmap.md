@@ -28,7 +28,7 @@ The `github-pr-reviewer` walkthrough remains a target, not a shipped proof, unti
 
 ## Runner resilience — shipped in M90_001 (deadlines) + M108_001 (shared watchdog)
 
-- **Control-plane call deadlines — ✅ DELIVERED.** The runner still uses `std.http.Client.fetch`, but every `/v1/runners/me/*` verb now takes a required `deadline_ms`; `control_plane_client.zig` arms a per-client `CallWatchdog` around the pooled socket and shuts the in-flight call down at the bound, so a hung control plane returns a retryable transport failure instead of wedging the worker. Deadlines are env-overridable via `RUNNER_CP_*_DEADLINE_MS`; renew is clamped under the renewal tick/window relation so a stuck renew cannot starve the child deadline kill. M108_001 promoted the watchdog into `src/lib/call_deadline/` for reuse. Residual window: name resolution and initial TCP connect inside `fetch` are still outside the watchdog.
+- **Control-plane call deadlines — ✅ DELIVERED.** Every `/v1/runners/me/*` verb takes a required `deadline_ms`. `control_plane_client.zig` arms a per-client `CallWatchdog` around the pooled socket and shuts the in-flight call down at the bound. A hung control plane returns a retryable transport failure instead of wedging the worker. Deadlines are env-overridable via `RUNNER_CP_*_DEADLINE_MS`; renew is clamped under the renewal tick/window relation so a stuck renew cannot starve the child deadline kill. M108_001 promoted the watchdog into `src/lib/call_deadline/` for reuse. Residual window: name resolution and initial TCP connect inside `fetch` are still outside the watchdog.
 
 ## Fleet operator plane + proactive reassignment — shipped in M84_001 (read) + M84_002 (mutation/reassignment)
 

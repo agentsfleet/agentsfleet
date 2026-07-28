@@ -9,7 +9,10 @@ Status: Canonical reference for the v2 problem, thesis, runtime model, Fleet / r
 
 ## Why the doc is split this way
 
-The architecture doc used to be a single ~1,500-line file. That was hard to read end-to-end and hard to land changes against (every PR touching architecture got into a fifteen-section diff). Each topic now lives in its own file in this directory; this README is the table of contents and a short on-ramp.
+One topic per file, so a change lands in one small diff and a reader (human or
+agent) loads only the file that answers their question. This README is the
+lookup surface: find your topic in the table below, open that one file, grep
+inside it. Do not read the whole directory to answer one question.
 
 Read in this order if you've never seen the project:
 
@@ -44,6 +47,22 @@ After that, dip into whichever of these matches the change you're making:
 | [`../AUTH.md`](../AUTH.md) | The principal model (CLI, UI, tenant api key, fleet key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
 
 ---
+
+## Decision records (Claude artifacts)
+
+Long-form decision write-ups live as published artifacts, not in this repo —
+link out instead of pasting them in. Each line names the decision it carries.
+
+| Artifact | Decision |
+|---|---|
+| [Outbound bounding — before & after M139](https://claude.ai/code/artifact/de681e67-024d-4c08-bc04-4fa96aa58d48) | One process-wide deadline scheduler (generation-armed, monotonic clock) replaced per-caller watchdog threads on raw file descriptors. Postgres stays outside it; the pool's own timeouts bound it. |
+| [Greptile P1 — OTLP unbounded export](https://claude.ai/code/artifact/aee9e003-6c91-40a1-9d7e-0feacdb1d810) | The in-flight OTLP export stays unbounded for now: `fetch` is not cancel-safe, and the cancel-safe socket-shutdown bound needs a boot reorder. Deferred with the fix scoped, not forgotten. |
+| [PR #549 review — deadline scheduler](https://claude.ai/code/artifact/9bb6fc29-9ff4-4838-bc9d-bdf1bdcd5290) | The pre-merge review of the scheduler change above. |
+| [Index audit — slots 033 & 034](https://claude.ai/code/artifact/16b3fe3e-6a0f-47cf-a80f-03f34681ec85) | Which Postgres indexes earn their slots. |
+| [Error registry — inventory & curation](https://claude.ai/code/artifact/f5dd342f-633e-4a32-a7ee-579cd2db2427) | The `UZ-*` error-code inventory review. |
+| [M120_002 — Admin Model Library, as built](https://claude.ai/code/artifact/3add99c7-6ce3-4617-8656-bf371b658490) | The admin catalogue's final shape. |
+| [Fleet library: why your gallery was empty](https://claude.ai/code/artifact/a6b8c064-8643-444b-a43b-2fb2e7e82434) | Root cause of the empty-gallery incident. |
+| [Model configuration journeys](https://claude.ai/code/artifact/e0621bf7-7b01-4492-8862-38a43d6f46b3) | How users reach a working model configuration. |
 
 ## What we are, in one paragraph
 
