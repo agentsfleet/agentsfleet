@@ -14,6 +14,63 @@ The Claude session becomes the place where the user defines, imports, creates, u
 
 For the full end-to-end install + first-trigger walkthroughs (platform-managed and self-managed), see [`scenarios/`](./scenarios/).
 
+## Facts
+
+Every row is extracted from the §-numbered sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| The wedge surface | `agentsfleet` CLI + first-party Fleet library | `curl -fsSL https://agentsfleet.dev \| bash` → `login` → `install --library <id>` | §8.0 |
+| Install input | `--library <id>` only | no direct local-file install; live-edit via `agentsfleet fleet update <fleet_id> --from <path>` | §8.0 |
+| Deployment posture | hosted-only in v2 | no `--self-host` flag, no self-host runbook; validation on non-Fly hosts is v3 | §8.0.1 |
+| Fleet definition | `SKILL.md` required, `TRIGGER.md` optional | a missing trigger yields a default manual/API trigger with no tools, secrets, or network | §8.1, §8.2.2 |
+| Preflight | `agentsfleet doctor --json`, health only | `server_reachable` · `workspace_selected` · `workspace_binding_valid`; the only sanctioned preflight surface | §8.2.2 |
+| Create guarantee | stream + consumer group before 201 | the 201 carries `fleet_id` + `webhook_urls:{<source>:<url>}` per declared webhook trigger | §8.2.2 |
+| Trigger declarations | 1–8 entries, unique on `(type, source)` | GitHub App triggers require explicit `repositories` (fail-closed); at most one declarative cron | §8.3 |
+| Cron authority | QStash owns the clock | one stable schedule id registered synchronously at install; the runner owns no timer | §8.3 |
+| `type: api` | reserved, not accepted in v1 | admission lands with the workspace-API-tokens spec | §8.3 |
+| Steer | always accepted | same single-ingress `XADD` with `actor=steer:<user>` | §8.3 |
+| Model/cap overlay | per-field, at lease time | frontmatter `""` / `0` / absent ⇒ overlay from `tenant_model_selection` (or synth-default) | §8.7 |
+| Cap resolution time | provider-set or install time | never at trigger time — no network dependency on the hot path | §8.7 |
+| Run-chunk threshold | 0.75 × `context_cap_tokens` | L3 chunking; continuation resumes in a fresh window | §8.7 |
+| Slack surface | Rung 0, reactive only | per-channel resident fleet is the memory namespace; answers on `@mention`, never unattended | §8.8 |
+
+## Traps
+
+Each trap is enforced in its owner section; this list is the index.
+
+- The §-numbered subsections are stable anchors — never rename them without sweeping cross-references (preamble).
+- Doctor carries no provider or trial posture; read `tenant provider show` and `billing show` separately once health passes (§8.2.2).
+- Omitting `repositories` on a GitHub App trigger is fail-closed — no delivery, never every repository (§8.3).
+- The fleet's in-run loop never branches on actor; SKILL.md prose dictates behaviour (§8.3).
+- Never resolve context caps at trigger time (§8.7).
+- The dashboard never asks for or stores a user's provider Personal Access Token (§8.2.2, §8.4).
+- The browser never automatically repeats a failed workspace POST (§8.4).
+- No install-time gating questions — the markdown IS the configuration (§8.0).
+- Bundle support files are readable files inside the sandbox, never capability grants (§8.1).
+- The Rung 0 Slack bot never acts unattended; unattended action is Rung 1, a separate spec (§8.8).
+
+## Topology
+
+The dual-posture model/cap resolution diagram lives in §8.7 — it is that section's proof and stays there.
+
+## Decisions
+
+| Decision | Reason | Where / artifact |
+|---|---|---|
+| Hosted-only v2 | launch claim is "OSS + self-managed + markdown-defined", not "self-hostable"; integration burden earns v3 | §8.0.1 |
+| The CLI is the install surface | deterministic, scriptable, host-neutral; the bundle stays portable markdown | §8.0 |
+| Upload-bundle picker deferred | Indy-acked 2026-06-20; library + GitHub + paste ship first | §8.2.3 |
+| `type: api` deferred | rides the `/v1/auth/tokens` surface; webhook + cron cover the wedge | §8.3 |
+| Visible sentinels (`""`, `0`) in self-managed frontmatter | a human can spot "inherits from tenant config" at a glance; absent-key is the safety net | §8.7 |
+| `/credentials` page removed outright, not redirected | provider keys live on `/settings/models`; custom secrets on `/secrets` | §8.7 |
+
+---
+
+## Detail
+
+Everything below is the full reference. Headings are stable — specs cite them by §-number; insert new sections, never rename or renumber existing ones.
+
 ## §8.0 The wedge surface
 
 The MVP's user-facing wedge is the **`agentsfleet` Command-Line Interface (CLI) plus the first-party Fleet library**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
