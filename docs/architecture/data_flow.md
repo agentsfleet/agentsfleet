@@ -6,6 +6,81 @@
 
 Read this when you need to know where a webhook, a steer, or a cron fire ends up. Many specs reference this file as the canonical picture of the runtime.
 
+## Facts
+
+Every row is extracted from the sections below; the owner column names the section that carries the full story.
+
+| Invariant | Value | Mechanism | Owner section |
+|---|---|---|---|
+| Event ingress | ONE — five producers | steer / webhook / cron / continuation / Slack all `XADD fleet:{id}:events`; the stream entry id IS the canonical event id | §B. TRIGGER |
+| Hot-path writes | 12, in the worker's order | `lease` does 1–6, `report` does 7–12; row-equivalent to the deleted worker (cutover Invariant 2) | §Steer flow end-to-end |
+| Durable stores | 3 tables, join key `event_id` | `fleet_sessions` (one row per fleet, UPSERT) · `fleet_events` (one row per delivery) · `fleet_execution_telemetry` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The three durable stores |
+| Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
+| Stale-writer rejection | `UZ-RUN-005` | `claimReport()` fences, flips, and dedups in one atomic statement | §C. EXECUTE |
+| Redis pool | `max_idle=8, eager_min=2` | short-lived commands only: `XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK` | §Connection topology |
+| Dedicated Redis connections | one — the SubscriptionHub | refcounted `SUBSCRIBE`; N viewers cost one connection per replica | §Connection topology |
+| Postgres acquire failures | 2 distinct errors | `PoolTimeout` (capacity) vs `PoolUnavailable` (datastore); `MAX_CONNECTIONS_PER_READ` = 1 | §The Postgres pool |
+| Config freshness | read per lease | a `PATCH` takes effect on the next lease; no cache, no signal | §Config reload |
+| Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §C. EXECUTE step 3 |
+| Webhook rejections | 3 codes | `UZ-WH-020` (misconfig) · `UZ-WH-010` (bad signature) · `UZ-WH-011` (stale timestamp, 5-minute window) | §B. TRIGGER |
+| Install guarantee | stream + group before 201 | `ensureEventStream` retries `[100ms, 500ms, 1500ms]`; exhaustion rolls back the PG row | §A. INSTALL |
+| SSE sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
+| Client gap recovery | reconnect-only fetch (M122) | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id | §Two streams + one pub/sub channel |
+| Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
+| Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §KILL |
+| Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
+| Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §C. EXECUTE step 4 |
+| Tenant isolation | RLS + namespacing | Postgres Row-Level Security by `workspace_id`; Redis keys namespaced by unguessable fleet UUID | §Multi-tenancy boundary |
+
+## Traps
+
+Each trap is enforced in its owner section; this list is the index.
+
+- The live tail is the eyeballs surface, not the audit surface; durable history is `core.fleet_events` (§Two streams + one pub/sub channel).
+- A connection held across a blocking `SUBSCRIBE` can never return to a pool (§Connection topology).
+- Never acquire a second Postgres connection while holding one — that is how a pool deadlocks (§The Postgres pool).
+- The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
+- `gate_blocked` rows are NEVER reopened (§C. EXECUTE step 3).
+- Never carry a separate event id in the payload — the stream entry id IS the canonical event id (§B. TRIGGER).
+- The continuation actor is FLAT — it never re-nests `continuation:` (§B. TRIGGER).
+- `repositories` is required for GitHub App traffic; omission means no delivery, never every repository (§B. TRIGGER).
+- No Bearer fallback on webhook routes; the `Authorization` header is never consulted there (§B. TRIGGER).
+- Clients never derive a cursor from an event id; SSE sequence ids have no cross-connection meaning (§D. WATCH).
+- The reasoning loop never branches on actor — actor is metadata (§B. TRIGGER).
+- `/v1/webhooks/` and `/v1/ingress/` are customer-data-plane only; Clerk identity events live in the auth plane (§B. TRIGGER).
+- The coding fleet never becomes the Fleet runtime and never sees its tokens (§The coding fleet and the Fleet runtime).
+
+## Topology
+
+The diagrams live with their flows — each is the section's proof, so none is duplicated here:
+
+- coding fleet vs Fleet runtime — §The coding fleet and the Fleet runtime
+- the steer round-trip with the 12 writes — §Steer flow end-to-end
+- the Redis connection topology — §Connection topology
+- install, trigger envelope, execute, watch, kill — §A–§D and §KILL under §End-to-end sequence
+- the install failure window — §The install failure scenario, visually
+
+## Decisions
+
+| Decision | Reason | Where / artifact |
+|---|---|---|
+| Two per-delivery tables (`events` + `telemetry`) | different write authorities and retention rules | §The three durable stores |
+| `fleet:control` removed | no per-fleet threads left to orchestrate | §Two streams + one pub/sub channel |
+| Dedicated Redis tier collapsed | idle cost now tracks lease-poll frequency, not fleet count | §Connection topology; M80_002 |
+| `Hx.db()` returns a named error set, not `?DbScope` | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
+| Gap recovery is client-side, not server resume | no channel or frame-shape change; the durable table is the recovery source | §Two streams; M122 |
+| QStash owns the clock | the runner and its disposable child own no schedule timer | §B. TRIGGER |
+| Upload-bundle picker path deferred | Indy-acked 2026-06-20 | §A. INSTALL |
+| Watcher reconcile sweep deleted; orphan stays inert | no runner can lease a fleet with no events group; a future reconcile job heals it | §The install failure scenario |
+| SSE auth is dual-accept with strict no-fallthrough | a stale cookie must not silently fall through to a valid Bearer | §D. WATCH |
+| Outbound answers ride a generic `connector:outbound` stream | the report path stays provider-agnostic (Invariant 9) | §C. EXECUTE; M106 |
+
+---
+
+## Detail
+
+Everything below is the full reference. Headings are stable — specs cite them by text; insert new sections, never rename existing ones.
+
 ## Process and stream ownership at a glance
 
 | Process | Role |
@@ -155,11 +230,11 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
                   User reads it.
 ```
 
-The 12 numbered writes are the same durable effects the deleted worker's `processEvent` produced, in the same order — split across two protocol calls (`lease` does 1–6, `report` does 7–12) instead of one in-process loop. The control-plane handlers under `src/agentsfleetd/fleet/` are faithful mirrors of the old `event_loop_writepath`; the row-equivalence guarantee (cutover Invariant 2) is what keeps history, billing, and the SSE tail byte-identical to the pre-cutover path.
+The 12 numbered writes are the deleted worker's `processEvent` effects, in the same order, split across two calls: `lease` does 1–6, `report` does 7–12. The handlers under `src/agentsfleetd/fleet/` mirror the old `event_loop_writepath`. Row equivalence (cutover Invariant 2) keeps history, billing, and the SSE tail byte-identical.
 
 ## The three durable stores: who owns what
 
-The flow above writes to three Postgres tables. They are **not** redundant — each answers a distinct user question, has a different cardinality, mutability, and retention rule. The cutover did not change their shape or their write order; it moved the writer from the per-Fleet worker thread to `agentsfleetd`'s lease/report path.
+The flow writes three Postgres tables. Each answers a distinct user question and has its own cardinality, mutability, and retention rule. The cutover moved the writer from the per-Fleet worker thread to the lease/report path; shapes and write order did not change.
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
@@ -224,7 +299,7 @@ execution_started_at 1729874001000
 (other fields unchanged from "before")
 ```
 
-The lease reply ships to the runner. NullClaw runs inside the runner's sandboxed child: fetches GH run logs via `${secrets.github.token}`, fetches Fly app logs, fetches Upstash Redis stats, posts a remediation message to Slack. For GitHub — a **mintable integration** — that placeholder does not resolve to a stored value: at the tool bridge the child asks its runner, which forwards to the daemon-side credential broker over the `agt_r` plane (`POST /v1/runners/me/credentials/mint`); the broker signs a GitHub App JWT (RS256, platform key, daemon-side) and exchanges it for a short-lived installation token, returned just for that call. The App private key never leaves the daemon. (Fly/Upstash/Slack remain static custom secrets until the `oauth_refresh` integration lands.) The child returns `ExecutionResult{content, tokens=1840, wall_ms=8210, ttft_ms=320, outcome=ok}` over the stdout pipe; the runner POSTs it to `report`.
+The lease reply ships to the runner. NullClaw runs inside the runner's sandboxed child: fetches GH run logs via `${secrets.github.token}`, fetches Fly app logs, fetches Upstash Redis stats, posts a remediation message to Slack. GitHub is a **mintable integration**, so that placeholder does not resolve to a stored value. At the tool bridge the child asks its runner, which forwards to the daemon-side credential broker over the `agt_r` plane (`POST /v1/runners/me/credentials/mint`). The broker signs a GitHub App JWT (RS256, platform key, daemon-side) and exchanges it for a short-lived installation token, returned just for that call. The App private key never leaves the daemon. (Fly/Upstash/Slack remain static custom secrets until the `oauth_refresh` integration lands.) The child returns `ExecutionResult{content, tokens=1840, wall_ms=8210, ttft_ms=320, outcome=ok}` over the stdout pipe; the runner POSTs it to `report`.
 
 **Step 7 — UPDATE `fleet_events`** (close the same row, at `report`):
 
@@ -275,7 +350,7 @@ execution_started_at NULL
 - `agentsfleet events {id} [--actor=…]` reads **`fleet_events`** — answers "what has this fleet done, what was asked, what did it reply, did any gate block it?"
 - Billing rollups + p95 dashboards read **`fleet_execution_telemetry`** — answers "how many tokens this month, what's the latency tail?"
 
-If only **one** table existed, every user query would either pay full-table-scan cost (one row per delivery for "is it busy now?") or lose immutability guarantees on billing audit (mutable narrative columns alongside immutable spend columns). Three tables, three contracts, one join key (`event_id`).
+One table would force either a full scan to answer "is it busy now?" or mutable narrative columns beside immutable spend columns. Three tables, three jobs, one join key: `event_id`.
 
 ## Two streams + one pub/sub channel — and the one that retired
 
@@ -289,7 +364,7 @@ Before the cutover there were three Redis surfaces. The split kept two and retir
 
 `fleet:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery guarantee. The pub/sub channel is ephemeral and exists only to power live user interfaces — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.fleet_events`; the pub/sub channel is the eyeballs surface, not the audit surface.
 
-**Client-side gap recovery (M122).** Because the channel has no resume, a dashboard tab that drops its Server-Sent Events (SSE) connection misses every frame published during the reconnect window. The stream registry (`ui/packages/app/lib/streaming/fleet-stream-registry.ts`) closes that gap client-side: on every reconnect open — never the SSR-seeded initial connect — it fetches the bounded `core.fleet_events` list through the same-origin token-minting proxy (`/live/v1/workspaces/{ws}/fleets/{id}/events`, mirror of the SSE proxy — the `/live/*` prefix keeps these handler routes outside the `/backend/:path*` rewrite that shadowed them on Vercel), keyed `since` the last server-delivered event minus a 2-second overlap, and merges by event id. No server, channel, or frame-shape change — the durable table remains the recovery source of truth.
+**Client-side gap recovery (M122).** Because the channel has no resume, a dashboard tab that drops its Server-Sent Events (SSE) connection misses every frame published during the reconnect window. The stream registry (`ui/packages/app/lib/streaming/fleet-stream-registry.ts`) closes that gap client-side. On every reconnect open — never the SSR-seeded initial connect — it fetches the bounded `core.fleet_events` list, keyed `since` the last server-delivered event minus a 2-second overlap, and merges by event id. The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/events` (mirror of the SSE proxy; the `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel). No server, channel, or frame-shape change — the durable table remains the recovery source of truth.
 
 ## Connection topology — the cutover collapsed the dedicated tier
 
@@ -343,11 +418,41 @@ Before the cutover, the worker held **one dedicated blocking Redis connection pe
 
 **What this changed at scale.** The pre-cutover idle cost was dominated by N blocking `XREADGROUP BLOCK 5000` loops iterating every five seconds; the fleet's Upstash bill scaled with `(fleets + workers)`, not throughput. After the cutover there are no idle blocking loops — the idle cost is driven by runner **lease poll frequency** (each idle `lease` does one non-blocking `XREADGROUP`), tunable by the runner's `retry_after_ms` backoff rather than a Redis `BLOCK` constant. [`scaling.md`](./scaling.md) re-derives the math.
 
+## The Postgres pool: a saturated pool and a dead datastore are different pages
+
+Every request-path Postgres read takes exactly one pooled connection and holds
+it for the life of the handler. A read that acquires a second while holding the
+first is how a pool deadlocks under load — two requests each holding one and
+waiting for another — so `library_read_counters.MAX_CONNECTIONS_PER_READ` is 1
+and the library reads assert it.
+
+An acquire can fail two ways, and they are **different operator problems**:
+
+| Failure | What it means | The fix |
+|---|---|---|
+| `PoolTimeout` | every connection is leased and the acquire budget elapsed | capacity — pool size, or the slow query holding a slot |
+| `PoolUnavailable` | the pool could not produce a connection at all | the datastore — reachability, credentials, TLS |
+
+`Hx.db()` returns those as a named error set. It previously returned
+`?DbScope`, which erased the distinction at the handler boundary and put both
+behind one alert; the handler that needed to tell them apart worked around it by
+acquiring from the pool directly, which meant reimplementing the
+acquire/release pairing `DbScope` exists to make unskippable. Both are now
+gone. The library reads record the difference as
+`agentsfleet_library_pool_result_total{pool_result="timeout"|"error"}`.
+
+**What the pool guarantees, and what it does not.** Releasing an occupied slot
+lets at least one queued waiter progress, and every waiter either acquires or
+receives the configured timeout — no waiter blocks forever. There is **no
+ordering or fairness guarantee**: the vendored `pg.zig` fork wakes waiters from
+a 2 ms poll loop rather than a queue (`Io.Condition` has no timed wait), so
+which waiter wins is scheduling. `db/pool_bounded_progress_integration_test.zig`
+proves the two real guarantees against a live size-1 pool and deliberately
+declines to assert the third.
+
 ## Config reload — pull-per-lease, no signal
 
-`agentsfleetd` resolves a Fleet's config fresh from `core.fleets` on every `lease`, so a `PATCH /v1/workspaces/{ws}/fleets/{id}` takes effect on the **next lease** with no signaling. There is no in-memory config cache to invalidate and no `fleet_config_changed` consumer to wait on — the worker's watcher-reload path and the `system:config_updated` synthetic-event acknowledgement that depended on it were deleted with the worker.
-
-A config change never alters a language-model turn already in flight (one lease = one run, and the run already has its resolved policy); the next run picks up the new config. The PATCH handler writes `core.fleets` and returns — there is no signal to emit, since the control stream was removed at the cutover. A status change (`paused` / `stopped` / `killed` / back to `active`) is read the same way: the lease assignment scan filters on `core.fleets.status = 'active'`, so a paused Fleet drops out of the candidate set on the next scan and a resumed one re-enters — no notification needed.
+Canonical: [`runner_fleet.md` §Config](./runner_fleet.md) — config resolves fresh from `core.fleets` on every `lease`; a `PATCH` takes effect on the next lease with no cache and no signal. What is specific to this flow: status works the same way — the assignment scan filters `core.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
 
 ## End-to-end sequence
 
@@ -709,7 +814,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    dead runner is fenced out at claimReport (UZ-RUN-005).
 ```
 
-**Slack-resident answer round-trip (M106).** For §B's fifth producer (the Slack channel bot) two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context; it **never throws** — a failed or absent re-fetch degrades to an empty thread and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
+**Slack-resident answer round-trip (M106).** For §B's fifth producer (the Slack channel bot) two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
 
 ### D. WATCH  (user-side: how the live tail surfaces)
 
@@ -816,7 +921,7 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 - A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
 - Continuity across runs is the checkpoint in `agentsfleetd`, not runner-local state — so any runner can pick up the next run. Sticky routing (prefer `last_runner_id`) is a hint for warm-sandbox reuse, never ownership.
 
-Failure mode: if the runner holding a lease dies, no other runner can claim that fleet until `lease_expires_at`; the reclaim sweep then re-leases it with a higher fencing token. Recovery latency is bounded by the TTL (Time To Live) plus poll density — the S0 lazy-reclaim SLA. Tightening it (heartbeat-driven reassignment, sub-10 s recovery) is M80_006.
+Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency = TTL plus poll density (the S0 lazy-reclaim SLA). Tightening it is M80_006.
 
 ## What the coding fleet never does
 
@@ -839,7 +944,7 @@ The API server (not a runner) is the side that writes to Redis during install. S
 1. **Inline retry (API).** `ensureEventStream` retries `XGROUP CREATE MKSTREAM fleet:{id}:events` on a fixed backoff `[100ms, 500ms, 1500ms]` — four attempts, ~2.1s total wall budget. Most blips never escape this loop. (The group is load-bearing — the `lease` `XREADGROUP` needs it.)
 2. **PG rollback (API).** If retries exhaust, the handler `DELETE`s the freshly-inserted `core.fleets` row and returns 500 with `hint=rolling_back_pg_row` so the caller can retry cleanly. No orphan.
 
-**The watcher reconcile sweep — the pre-cutover third layer — is gone.** It lived in the deleted worker. So the rare **double-fault** (group-setup exhausts retries AND rollback also fails) now leaves an orphaned `core.fleets` row that is **not** auto-healed; recovery is operator-driven (logged `hint=row_orphaned_manual_recovery`) or awaits a future control-plane reconcile job. The orphan is inert: the fleet has no runner leasing it and no live tail; it surfaces in `core.fleets` as `status='active'` with no events group.
+**The pre-cutover third layer (watcher reconcile sweep) is gone** with the worker. A rare double fault (group setup exhausts retries AND rollback fails) now leaves an orphaned `core.fleets` row, logged `hint=row_orphaned_manual_recovery`, healed by an operator or a future reconcile job. The orphan is inert: no runner can lease it (no events group), no live tail.
 
 ```
    TIME ──►

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRetryAfterHeaderValue, request, requireApiOrigin } from "./client";
 import { readWorkspaceFetchAudit, resetWorkspaceFetchAudit, WORKSPACE_LIST_PATH } from "../acceptance/workspace-fetch-audit";
-import { ApiError } from "./errors";
+import { ApiError, RequestCancelledError } from "./errors";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
@@ -168,5 +168,102 @@ describe("request", () => {
     const err = await request("/v1/test", { method: "GET" }, "tok").catch((e) => e) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe("UZ-UNKNOWN");
+  });
+});
+
+/** The traceparent sent on the nth fetch, asserting the call actually happened. */
+function sentTraceparent(callIndex: number): string {
+  const call = fetchMock.mock.calls[callIndex];
+  expect(call, `expected a fetch call at index ${callIndex}`).toBeDefined();
+  const init = call?.[1] as RequestInit | undefined;
+  const headers = init?.headers as Record<string, string> | undefined;
+  expect(headers, "fetch was called without headers").toBeDefined();
+  return headers?.traceparent as string;
+}
+
+describe("test_library_next_cancel_case — a navigation abort", () => {
+  it("surfaces as RequestCancelledError, not an unhandled DOMException", async () => {
+    // What `fetch` does when an AbortSignal fires mid-flight.
+    const abortError = new Error("The operation was aborted.");
+    abortError.name = "AbortError";
+    fetchMock.mockRejectedValue(abortError);
+
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      request("/v1/tenants/me/models", { signal: controller.signal }, "tok"),
+    ).rejects.toBeInstanceOf(RequestCancelledError);
+  });
+
+  it("names the path so a cancelled request is attributable without a status", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    fetchMock.mockRejectedValue(abortError);
+
+    await expect(
+      request("/v1/fleets/bundles", {}, "tok"),
+    ).rejects.toThrow("/v1/fleets/bundles");
+  });
+
+  it("is NOT an ApiError — nothing failed, so there is no status or code to carry", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    fetchMock.mockRejectedValue(abortError);
+
+    const caught = await request("/v1/models", {}, "tok").catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(RequestCancelledError);
+    // The distinction the whole type exists for: a cancel must not be reported
+    // to the user as a request that went wrong.
+    expect(caught).not.toBeInstanceOf(ApiError);
+  });
+
+  it("leaves a real transport failure alone", async () => {
+    // Only an abort is reclassified. A genuine network error must keep
+    // propagating, or a dead backend reads to the caller as a user action.
+    const networkError = new Error("network down");
+    fetchMock.mockRejectedValue(networkError);
+
+    await expect(request("/v1/models", {}, "tok")).rejects.toBe(networkError);
+  });
+});
+
+describe("test_library_trace_and_stage_schema — traceparent propagation", () => {
+  it("sends a well-formed W3C traceparent the server will accept", async () => {
+    const spy = fetchMock;
+    spy.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await request("/v1/models", {}, "tok");
+
+    const sent = sentTraceparent(0);
+    // `00-<32 hex>-<16 hex>-01`, the exact shape observability/trace.zig parses.
+    // A value it cannot parse is ignored server-side, which costs correlation
+    // silently — so the shape is asserted rather than merely present.
+    expect(sent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+  });
+
+  it("mints a fresh trace per request rather than reusing one", async () => {
+    const spy = fetchMock;
+    spy.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await request("/v1/models", {}, "tok");
+    await request("/v1/models", {}, "tok");
+
+    const first = sentTraceparent(0);
+    const second = sentTraceparent(1);
+    // Two page loads sharing one trace id would collapse every request in a
+    // session into a single unreadable trace.
+    expect(first).not.toBe(second);
+  });
+
+  it("lets an explicit caller traceparent win", async () => {
+    const spy = fetchMock;
+    spy.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const explicit = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    await request("/v1/models", { headers: { traceparent: explicit } }, "tok");
+
+    // A caller continuing an existing trace knows better than the default.
+    expect(sentTraceparent(0)).toBe(explicit);
   });
 });

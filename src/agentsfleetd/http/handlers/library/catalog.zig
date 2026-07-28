@@ -92,7 +92,7 @@ pub fn rowSurface(
 }
 
 pub fn innerAdminCatalogList(hx: Hx) void {
-    var db = hx.db() orelse return;
+    var db = hx.db() catch return;
     defer db.end();
 
     const entries = buildCatalog(hx.alloc, db.conn) catch {
@@ -155,7 +155,7 @@ pub fn innerAdminCatalogDelete(hx: Hx, id: []const u8) void {
         hx.fail(ec.ERR_INVALID_REQUEST, MSG_CATALOG_ID_REQUIRED);
         return;
     }
-    var db = hx.db() orelse return;
+    var db = hx.db() catch return;
     defer db.end();
 
     const state = fetchRowState(hx.alloc, db.conn, id) catch {

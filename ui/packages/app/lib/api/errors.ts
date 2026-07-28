@@ -36,3 +36,22 @@ export class ApiError extends Error {
     this.etag = etag;
   }
 }
+
+/**
+ * A request the caller abandoned — a navigation away, a superseded search
+ * keystroke, a React effect cleanup.
+ *
+ * Deliberately NOT an `ApiError`: nothing failed, the server may never have
+ * been asked, and there is no status, no request id, and no error code to
+ * carry. Callers `instanceof` this to drop the result silently instead of
+ * surfacing a toast for a page the user already left.
+ *
+ * It also carries no `UZ-` code on purpose. Those are the wire registry's, and
+ * this condition never reaches the wire.
+ */
+export class RequestCancelledError extends Error {
+  constructor(public readonly path: string) {
+    super(`request to ${path} was cancelled`);
+    this.name = "RequestCancelledError";
+  }
+}
