@@ -217,13 +217,36 @@ This table is the complete set. Every row is mandatory, including the failure ro
 
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | Lazy paged UI tests pass | `bun --cwd ui/packages/app test` | exit 0 | P0 | |
-| R2 | Acceptance browser paths pass | `bun --cwd ui/packages/app run test:e2e:acceptance` | exit 0 | P0 | |
-| R3 | Session keeper retained and unit-covered | `bun --cwd ui/packages/app test lib/auth/client.test.tsx` | exit 0 | P0 | |
-| R4 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | |
-| S1 | Repository gates | `make test-unit-all && make lint-all && make harness-verify && gitleaks detect` | exit 0 | P0 | |
+| R1 | Lazy paged UI tests pass | `bun --cwd ui/packages/app test` | exit 0 | P0 | ✅ `188 files / 1947 tests / 0 failures` |
+| R2 | Acceptance browser paths pass | `bun --cwd ui/packages/app run test:e2e:acceptance` | exit 0 | P0 | ⚠️ `19 passed, 1 failed (5.6m)` — see grading note |
+| R3 | Session keeper retained and unit-covered | `bun --cwd ui/packages/app test lib/auth/client.test.tsx` | exit 0 | P0 | ✅ `3 passed` — keeper mount, refresh interval, listener cleanup |
+| R4 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | ✅ 36 files, every one in the table above |
+| S1 | Repository gates | `make test-unit-all && make lint-all && make harness-verify && gitleaks detect` | exit 0 | P0 | ⚠️ `harness-verify` ALL GATES GREEN; `gitleaks` no leaks found; `lint-all` fails pre-existing — see note |
 
 **Grading protocol (VERIFY):** run verbatim; record ✅/❌ and one decisive line.
+
+**R2 — one acceptance failure, attributed and not from this diff.**
+`signup-lifecycle.spec.ts` → "fresh signup walks install → observe → bill →
+halt entirely in the UI" timed out on
+`expect(getByRole('alertdialog')).toBeHidden()` at
+`tests/e2e/acceptance/fixtures/lifecycle.ts:42`. That helper is `confirmAction`,
+the Stop/Resume confirm dialog on the **fleet detail** route. This workstream
+touches `fleets/new` and `settings/models` only — `git diff --name-only
+origin/main` contains no file on the lifecycle, halt, or confirm path. The
+journey reached the halt step, so install itself completed, and the nineteen
+passing specs include those that exercise the changed install and models
+surfaces. Recorded as attributed-not-cleared: the reasoning is sound but the
+decisive proof would be re-running the same spec on `origin/main`, which was
+not done.
+
+**S1 — `make lint-all` is broken on `origin/main`, not by this branch.**
+`check-route-registration-doc` fails with `docs/REST_API_DESIGN_GUIDELINES.md
+not found`. Commit `b6bbfd133 chore(rules): thin to the global operating model`
+deleted that file (781 lines) while `scripts/check_openapi_url_shape.py` and
+`scripts/check_openapi_route_coverage.py` still cite it and a checker still
+requires it. `git show origin/main:docs/REST_API_DESIGN_GUIDELINES.md` confirms
+it is absent there too. The other three S1 commands pass. Flagged for a
+follow-up: either restore the document or retire the checker that demands it.
 
 ## Dead Code Sweep
 
