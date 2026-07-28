@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 005
 **Date:** Jul 25, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the authenticated shell makes every route pay for broad client ownership
 **Categories:** User Interface (UI)
 **Batch:** B4 — cross-cutting application gate after M143_002
