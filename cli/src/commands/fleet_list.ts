@@ -8,7 +8,7 @@ import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
-import { wsFleetsPath } from "../lib/api-paths.ts";
+import { QUERY_STARTING_AFTER, wsFleetsPath } from "../lib/api-paths.ts";
 import { ui } from "../output/index.ts";
 import {
   ConfigError,
@@ -29,8 +29,6 @@ const FIELD_NAME = "name" as const;
 const FIELD_STATUS = "status" as const;
 const TYPE_STRING = "string" as const;
 const FIELD_FLEET_ID = "fleet_id" as const;
-// Mirrors the daemon's QUERY_STARTING_AFTER (http/pagination.zig).
-const QUERY_STARTING_AFTER = "starting_after" as const;
 
 const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 

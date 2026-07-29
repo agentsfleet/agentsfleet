@@ -60,7 +60,7 @@ pub fn innerListFleets(hx: Hx, req: *httpz.Request, workspace_id: []const u8) vo
 
     const page = fetchFleetPageOnConn(conn, hx.alloc, workspace_id, cursor, limit) catch |err| {
         if (err == error.InvalidCursor) {
-            hx.fail(ec.ERR_INVALID_REQUEST, "Invalid cursor format");
+            hx.fail(ec.ERR_INVALID_REQUEST, paging.MSG_INVALID_CURSOR);
             return;
         }
         log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });

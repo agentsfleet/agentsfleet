@@ -42,6 +42,11 @@ const base64 = std.base64.url_safe_no_pad;
 pub const QUERY_STARTING_AFTER = "starting_after";
 pub const QUERY_LIMIT = "limit";
 
+/// The 400 body detail every keyset handler answers when `starting_after`
+/// does not parse as a cursor it issued — one spelling across handlers so
+/// clients can match on it.
+pub const MSG_INVALID_CURSOR = "Invalid cursor format";
+
 /// Cursor payload version. Bumped only when a payload's field set changes
 /// incompatibly; a decoded cursor carrying any other value is rejected, which is
 /// what stops a deploy from silently reinterpreting yesterday's boundary.

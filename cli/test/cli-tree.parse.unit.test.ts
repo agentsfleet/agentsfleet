@@ -126,6 +126,13 @@ test("test_fleet_list_flag_renamed_to_starting_after", async () => {
   expect(calls[0]?.frame.parsed.options.startingAfter).toBe("1713700000000:zom_2");
 });
 
+test("memory list --starting-after parses into the frame", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["memory", "list", "--fleet", VALID_ID, "--starting-after", "1713700000000:goal"], handlers);
+  expect(calls[0]?.name).toBe("memory.list");
+  expect(calls[0]?.frame.parsed.options.startingAfter).toBe("1713700000000:goal");
+});
+
 test("fleet-key add is rejected with no dispatch", async () => {
   const { handlers, calls } = makeSpyTree();
   await expect(dispatch(["fleet-key", "add"], handlers)).rejects.toThrow();
