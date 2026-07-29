@@ -74,13 +74,31 @@ pub fn storeJsonPlaintext(
     return writeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext, crypto_store.store);
 }
 
+/// Replace the whole body of a secret this workspace already holds, deriving
+/// the projection from the same bytes being encrypted.
+///
+/// `error.NotFound` when no such name is held — the write is an UPDATE, so it
+/// creates nothing. Replacement is total: a field absent from `plaintext` is
+/// absent from the stored secret afterwards. That is the point of the verb, and
+/// it is why no caller needs to read a secret back in order to change it.
+pub fn replaceJsonPlaintext(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    plaintext: []const u8,
+) !void {
+    return writeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext, crypto_store.replace);
+}
+
 /// Same projection derivation as `storeJsonPlaintext`, but the write claims a
 /// free name instead of overwriting whatever holds it — `error.SecretNameTaken`
 /// when one already does.
 ///
-/// The create route uses this and the rotate route uses `storeJsonPlaintext`;
+/// The create route uses this and the replace route uses `replaceJsonPlaintext`;
 /// the OAuth connector callbacks and the token refresh deliberately stay on the
-/// overwriting form, because re-connecting a provider is a rotation.
+/// overwriting `storeJsonPlaintext`, because re-connecting a provider is a
+/// rotation.
 pub fn createJsonPlaintext(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,

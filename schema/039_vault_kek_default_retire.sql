@@ -1,0 +1,12 @@
+-- 039: drop kek_version's DEFAULT 1 — it named the retired unbound envelope.
+--
+-- Every writer binds the envelope version explicitly in the same statement as
+-- the ciphertext, so this default never fired on a correct write. The only row
+-- it could ever produce is one an INSERT that forgot the column would silently
+-- mint as version 1 — a format nothing serves and only the startup rewrap can
+-- read. Dropping the default turns that mistake into a loud NOT NULL failure
+-- at write time instead of an undecryptable credential at use time.
+--
+-- Idempotent: dropping an absent default is a no-op, so this applies cleanly
+-- to both a fresh bootstrap and an already-provisioned database.
+ALTER TABLE vault.secrets ALTER COLUMN kek_version DROP DEFAULT;

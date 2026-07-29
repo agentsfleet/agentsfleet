@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** `PUT /v1/workspaces/{workspace_id}/secrets/{secret_name}` replaces a stored secret's whole body in one statement, the name is never released, a name that is not held answers `404`, and no surface can change a secret one field at a time.
 **Problem:** A stored secret can never be read back, and the only write that changes one has been `PATCH` with a hardcoded `api_key`. That shape cannot say what a user means. It silently adds an unused field to any secret keyed on `token` or `api_token` and reports success; it leaves `provider` and `base_url` permanently uneditable once set; and it forces the dashboard's Edit dialog to spend two unrelated writes on one intent, with a partial-success path when the second fails.
-**Solution summary:** Replace the verb. `PUT` takes the same `data` object `create` takes and replaces the stored body wholesale, so every secret shape is equally editable and nothing merges. `PATCH` and its handler are deleted rather than kept alongside. The write becomes a single `UPDATE … WHERE workspace_id AND key_name`: one statement instead of read-decrypt-merge-upsert, which removes the unlocked read-modify-write and makes resurrection of a concurrently-deleted secret impossible — zero rows affected is the `404`. The client gains `agentsfleet secret update`, mirroring `create`. The dashboard's Edit becomes the Create form. Separately, wire the Command-Line Interface (CLI) coverage floor into Continuous Integration (CI), where it has never run.
+**Solution summary:** Replace the verb. `PUT` takes the same `data` object `create` takes and replaces the stored body wholesale, so every secret shape is equally editable and nothing merges. `PATCH` and its handler are deleted rather than kept alongside. The write becomes a single `UPDATE … WHERE workspace_id AND key_name`: one statement instead of read-decrypt-merge-upsert, which removes the unlocked read-modify-write and makes resurrection of a concurrently-deleted secret impossible — zero rows affected is the `404`. The client gains `agentsfleet secret update`, mirroring `create`. The dashboard's Edit becomes the Create form. The vault also stops speaking two envelope versions: reads accept only the AAD-bound format, and the schema default naming the dead one is dropped (§6). Separately, wire the Command-Line Interface (CLI) coverage floor into Continuous Integration (CI), where it has never run.
 
 ## PR Intent & comprehension handshake
 
@@ -64,6 +64,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/api/secrets.ts`; `.../settings/models/actions.ts` | EDIT | `replaceSecret` / `replaceSecretAction` over `PUT`; `rotateSecret` is deleted. |
 | `.../settings/models/components/EditModelEntryDialog.tsx`; `.../AddModelEntryDialog.tsx` | EDIT | Edit becomes the Create form and sends one secret write; Add's existing-name branch replaces instead of patching. |
 | `ui/packages/app/tests/models-registry-add.test.tsx`; `.../models-registry-edit.test.tsx` | EDIT/CREATE | The dialog behaviour both dialogs now share. |
+| `schema/039_vault_kek_default_retire.sql`; `schema/embed.zig` | CREATE/EDIT | §6 — drop the schema default naming the dead envelope version; register the slot. |
+| `src/agentsfleetd/secrets/crypto_store_test.zig` | EDIT | §6 — refusal, relabel, and no-default proofs replace the dual-read round-trip. |
+| `src/agentsfleetd/fleet/secrets_resolve.zig` | EDIT | Comment-only: "legacy credential" renamed to what it is (RULE NLR touch-it-fix-it). |
 | `.github/workflows/test.yml`; `make/test-unit.mk` | EDIT | Run the enforcing coverage script instead of the non-enforcing one. |
 | `cli/test/api-key-linecov.unit.test.ts`; `cli/test/cli-linecov.unit.test.ts`; `cli/test/connectors.service.unit.test.ts`; `cli/test/coverage-fill.unit.test.ts` | EDIT | Close the floor gaps §5 turns red-blocking. |
 | `~/Projects/docs/fleets/secrets.mdx`; `~/Projects/docs/changelog.mdx` | EDIT | Document the replace verb, correct the wrong body, and announce the removal. |
@@ -88,7 +91,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | UFS | yes | The `UPDATE` reuses the shared column list; method and status literals are named constants. |
 | UI Substitution / DESIGN TOKEN | yes | Edit is rebuilt from the same design-system primitives the Add dialog uses. |
 | ERROR REGISTRY | yes | No new code; `MSG_SECRET_KEY_REQUIRED` retires with its only caller, and the registry test proves no dangling reference. |
-| SCHEMA | no | No column, table, or migration changes — only the statement that writes them. |
+| SCHEMA | yes | §6 adds additive slot 039 (`DROP DEFAULT`, idempotent) per `SCHEMA_CONVENTIONS.md`'s migration model; `write_sql.md` read before authoring; no frozen slot edited. |
 | LOGGING / LIFECYCLE | no | No new logging surface; the write takes no transaction because it is one statement. |
 
 ## Prior-Art / Reference Implementations
@@ -100,7 +103,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — The route replaces a secret whole
+### §1 — The route replaces a secret whole — **DONE**
 
 `PUT /v1/workspaces/{ws}/secrets/{name}` accepts the same `data` object `create` accepts and stores it as the secret's entire body. Nothing merges, so no field name is privileged and every shape — `api_key`, `token`, `api_token`, anything — is equally replaceable. The name must already be held: a `PUT` on a name this workspace does not have answers `404` and writes nothing, which keeps claiming a name the sole job of `create`.
 
@@ -113,11 +116,11 @@ The write is one `UPDATE … WHERE workspace_id = $ AND key_name = $` composed f
 - **Dimension 1.3** — a secret keyed on any field rotates: `{"token":…}` replaced with a new `token` leaves no stale value and no added field → Test `test_put_replaces_non_api_key_shapes`
 - **Dimension 1.4** — body validation matches `create`: non-object, empty object, and oversize each answer their existing typed code and write nothing → Test `test_put_body_validation_matches_create`
 
-### §2 — `PATCH` is deleted, not deprecated
+### §2 — `PATCH` is deleted, not deprecated — **DONE**
 
 The field patch is removed from every site that names it: the method dispatch, the sensitive-request classification, the route comment, the handler, its body struct, its helper, the retired message constant, and both published documents. Pre-`2.0.0` this is a removal, not a `410` stub (RULE EP4 applies only post-`2.0.0`), and there is no compatibility spelling.
 
-- **Dimension 2.1** — `PATCH` on the item route answers method-not-allowed, and `innerRotateSecret` exists nowhere → Test `test_patch_is_gone_from_the_item_route`
+- **Dimension 2.1** — no source file names the field patch: handler, body struct, helper, message constant, and client callers are gone → verified by Rubric R3's repo-wide grep; the method switch answers 405 structurally, and no test memorializes the dead method (Discovery A5)
 - **Dimension 2.2** — the sensitive-request classification follows the method that now carries a secret body → Test `test_put_is_classified_sensitive`
 
 ### §3 — The client sends the secret it wants stored
@@ -147,6 +150,14 @@ The registry entry's `model_id` remains its own write: it is a different resourc
 - **Dimension 5.2** — the floor is met: the uncovered lines in `cli.ts`, `commands/api_key.ts`, `commands/connector.ts`, `commands/fleet_install.ts`, `commands/fleet_schedule.ts` and the uncovered function in `commands/login-helpers.ts` are covered, or deleted if unreachable → Test `test_cli_coverage_floor_met`
 
 Gaps are read from `cli/coverage/lcov.info` (`DA:` for lines, `FNDA:` for functions). The text reporter's "Uncovered Line #s" column also lists lines carrying uncovered *branches*, and reading it as a line list cost a prior session a full cycle. Where a gap proves unreachable, RULE TVR applies: delete the dead arm rather than test a value that cannot occur.
+
+### §6 — The vault speaks one envelope version — **DONE**
+
+Envelopes sealed before AAD binding (`0ff4902ca`, Jul 11) are version 1; every write since is version 2, bound to `(workspace_id, key_name)` so relocated ciphertext refuses to decrypt. The read path still accepted both, forever — a compatibility branch with no writer behind it. It is deleted, not converged: reads accept exactly the bound version, a surviving v1 row answers the typed unsupported-version error at its point of use, and its owner replaces the secret. A startup conversion sweep was built and then removed on Indy's direction (Discovery A6); no code converts v1. Migration slot 039 drops `kek_version`'s `DEFAULT 1`, so an INSERT that forgot the column fails loudly instead of silently minting a row nothing can read.
+
+- **Dimension 6.1** — a v1 envelope is refused with the typed error and never decrypted; storing a new value over the held name re-seals it as bound and it serves again → Test `an unbound (v1) envelope is refused, and replacing it re-seals as bound`
+- **Dimension 6.2** — a bound envelope relabeled v1 is refused on the version alone, with no decrypt attempted → Test `crypto store binds the envelope version`
+- **Dimension 6.3** — `kek_version` carries no schema default → Test `kek_version carries no schema default`
 
 ## Interfaces
 
@@ -208,7 +219,6 @@ The dashboard's existing rotation event is retained and keeps firing on a save t
 | 1.2 | integration | `test_put_refuses_unheld_name` | `PUT` on an unheld name → `404` `UZ-VAULT-003`; `SELECT count(*)` for that name stays 0 |
 | 1.3 | integration | `test_put_replaces_non_api_key_shapes` | `{"token":"old"}` replaced with `{"token":"new"}` → stored body has the new token and no `api_key` |
 | 1.4 | integration | `test_put_body_validation_matches_create` | Array, scalar, empty object, and a 5 KiB object each answer the same code `create` answers and write nothing |
-| 2.1 | integration | `test_patch_is_gone_from_the_item_route` | `PATCH` on the item route → 405; repo-wide grep for `innerRotateSecret` returns 0 |
 | 2.2 | unit | `test_put_is_classified_sensitive` | `sensitive_request` classifies `PUT` on `workspace_secret` as sensitive and `PATCH` no longer appears |
 | 3.1 | integration | `test_secret_update_sends_single_put` | `update acme --data='{"k":"v"}'` issues exactly one `PUT` with `{data:{k:"v"}}`; no GET, no DELETE |
 | 3.2 | unit | `test_secret_update_body_sources_and_validation` | `--data=@-`, literal `--data`, empty stdin, absent flag, absent name — same outcomes as `create`, zero requests on each rejection |
@@ -236,6 +246,7 @@ The dashboard's existing rotation event is retained and keeps firing on a save t
 | R6 | The coverage floor is enforced and met (§5) | `cd cli && node ./scripts/enforce-coverage.mjs` | exit 0, output contains `enforce-coverage: PASS` | P0 | |
 | R7 | The published page documents the replace verb | `grep -c 'PATCH' ~/Projects/docs/fleets/secrets.mdx` | 0 | P0 | |
 | R8 | The live lane executed against a daemon | `cd cli && AGENTSFLEET_ACCEPTANCE_TARGET=<url> bun run test:acceptance:live:run` | exit 0, update spec not skipped | P1 | |
+| R9 | One envelope version: v1 refused, no default, no dual read (§6) | `zig build test --summary all 2>&1 \| grep -cE "unbound \(v1\) envelope is refused\|kek_version carries no schema default"` | 2 | P0 | |
 | S1 | Unit lanes pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
@@ -306,6 +317,22 @@ The dashboard's existing rotation event is retained and keeps firing on a save t
   > Indy (2026-07-29 08:14): "Yes Scope for UI as well Edit is essentially like the Create" — context: whether the dashboard's Edit dialog is in this workstream.
 
   Three earlier findings are resolved by the redesign rather than by their own fixes. The unlocked read-modify-write (a rotation racing a delete re-inserted the deleted credential, because the write was `ON CONFLICT DO UPDATE` and the read had already committed) disappears because `PUT` is a single `UPDATE` with no read. The silent-corruption case (`PATCH {api_key}` on a `{"token":…}` secret added an unused field, left the live credential stale, and answered `200`) disappears because nothing merges. The proposed `UZ-VAULT-006` guard is therefore not needed and is not added. The abandoned lock implementation stays on `stash@{0}` of this worktree for reference.
+
+- **Amendment A5 (EXECUTE, Indy-directed) — no test memorializes the removed method.** The spec ordered a 405 pin on `PATCH`; it was built and then deleted.
+
+  > Indy (2026-07-29): "well remove the patch patch of secrets dont keep retired methods" — context: whether a test asserting the dead method answers 405 should exist at all.
+
+  Dimension 2.1 reworded: absence is proven by Rubric R3's repo-wide grep, and the 405 falls out of the method switch structurally.
+
+- **Amendment A6 (EXECUTE, Indy-directed) — the envelope-version duality is folded in and retired by deletion, not conversion.** An audit for live old/new duality found one real case: `vault.secrets.kek_version` — reads accepted v1 (pre-AAD) and v2 forever, nothing wrote v1, and the schema default still named it.
+
+  > Indy (2026-07-29): "I wanted to be folded in this PR" — context: whether the kek_version finding becomes its own spec or rides this one.
+
+  A startup rewrap sweep (list v1 rows, decrypt under the empty AAD, re-seal as v2) was built, wired into serve, and tested — then deleted:
+
+  > Indy (2026-07-29): "I said i dont want to support this legacy crap what are you trying to fix here KEK_VERSION_LEGACY? … why are we adding so much code" — context: the sweep's ~100 lines against outright refusal.
+
+  Accepted consequence, stated rather than hidden: any v1 row still in an old database answers the typed unsupported-version error at use, and its owner replaces the secret (`delete` + `create`). The changelog's Upgrading note carries one line for it. Also folded under NLR: `fleet/secrets_resolve.zig`'s "legacy credential" comment renamed — the shape is just a credential without an integration field.
 
 - **Authoring verification (Jul 29, 2026)** — read from source on the branch, not from prose: the item route's dispatch is `route_table_invoke.zig:251` and matches on method only, so the matcher needs no change; `sensitive_request.zig:19` classifies `PATCH` on this route as sensitive and must move with the verb; `secret_list.zig:20` projects `kind`, `provider`, `model`, `base_url` — which is what makes a client-side full-body rebuild possible without reading the secret; `EditModelEntryDialog.tsx:72-95` issues two writes for one intent and calls `onPartialSuccess()` between them; `AddModelEntryDialog.tsx:207` calls the same rotate action on an existing name; and the coverage floor was reproduced red at `function=99.97% line=99.74%` against a 100% floor.
 

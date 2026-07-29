@@ -4118,10 +4118,10 @@
       }
     },
     "/v1/workspaces/{workspace_id}/secrets/{secret_name}": {
-      "patch": {
-        "operationId": "rotate_workspace_secret",
-        "summary": "Rotate a secret's api_key field",
-        "description": "Replaces only the stored `api_key` field. Other fields keep their current values.\n\nA missing secret returns `UZ-VAULT-003`.\n",
+      "put": {
+        "operationId": "replace_workspace_secret",
+        "summary": "Replace a secret's stored body",
+        "description": "Replaces the stored object in full. Send the secret you want stored, in the\nsame `data` shape `create` takes — a field you omit is absent from the\nsecret afterwards.\n\nReplacement is total by design. A stored secret is never readable, so a\npartial write cannot be reasoned about by the caller. Every field needed to\nrebuild the body is already returned by\n`GET /v1/workspaces/{workspace_id}/secrets`. The secret itself is the one\nexception, and this call supplies it.\n\nThe name must already be held. A name this workspace does not have returns\n`UZ-VAULT-003` and nothing is created — claiming a name is `create`'s job.\n",
         "tags": [
           "Secrets"
         ],
@@ -4154,12 +4154,13 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "api_key"
+                  "data"
                 ],
                 "properties": {
-                  "api_key": {
-                    "type": "string",
-                    "description": "The new key. Rejected empty or over the 4 KiB stored-object limit (`UZ-VAULT-002`), and never echoed back or logged."
+                  "data": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "The complete replacement body. Must be a non-empty JSON object (`UZ-VAULT-001`) no larger than 4 KiB stringified (`UZ-VAULT-002`). Never echoed back or logged."
                   }
                 }
               }
