@@ -8,7 +8,8 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
-const pagination = @import("../pagination.zig");
+const paging = @import("../../pagination.zig");
+const keyset_cursor = @import("../../../fleet_runtime/keyset_cursor.zig");
 const protocol = @import("contract").protocol;
 const runner_events = @import("../../../fleet/runner_events.zig");
 
@@ -16,7 +17,10 @@ const Hx = hx_mod.Hx;
 const QUERY_EVENT_TYPE = "event_type";
 const QUERY_SINCE = "since";
 const QUERY_UNTIL = "until";
-const S_BAD_QUERY = "page must be a positive integer; page_size must be between 1 and 100; event_type must be a comma-separated set of runner event types; since/until must be millis";
+const QUERY_PAGE = "page";
+const QUERY_PAGE_SIZE = "page_size";
+const S_BAD_QUERY = "limit must be between 1 and 100; starting_after must be a cursor from a previous page; event_type must be a comma-separated set of runner event types; since/until must be millis";
+const S_RETIRED_PARAMS = "page and page_size are retired on this list; page with starting_after and limit";
 
 /// A set filter can name at most every tag once — the enum's own cardinality
 /// bounds the parse so a hostile comma chain cannot inflate the allocation.
@@ -24,6 +28,10 @@ const MAX_EVENT_TYPE_TOKENS = std.meta.fields(protocol.RunnerEventType).len;
 
 pub fn innerListFleetRunnerEvents(hx: Hx, req: *httpz.Request, runner_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, runner_id, "runner_id")) return;
+    if (hasRetiredPageParams(req)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_RETIRED_PARAMS);
+        return;
+    }
     const q = parseListQuery(hx.alloc, req) orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, S_BAD_QUERY);
         return;
@@ -43,23 +51,39 @@ pub fn innerListFleetRunnerEvents(hx: Hx, req: *httpz.Request, runner_id: []cons
         return;
     }
 
-    const page = runner_events.listForRunner(conn, hx.alloc, runner_id, q.filter, q.page, q.page_size) catch {
+    const page = runner_events.listForRunner(conn, hx.alloc, runner_id, q.filter, q.cursor, @intCast(q.limit)) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
-    hx.ok(.ok, protocol.RunnerEventsResponse{ .items = page.items, .total = page.total, .page = q.page, .page_size = q.page_size });
+    const next_cursor: ?[]const u8 = if (page.items.len == q.limit and page.items.len > 0) blk: {
+        const last = page.items[page.items.len - 1];
+        break :blk keyset_cursor.format(hx.alloc, .{ .created_at_ms = last.occurred_at, .id = last.id }) catch {
+            common.internalOperationError(hx.res, "Failed to build the events page", hx.req_id);
+            return;
+        };
+    } else null;
+    hx.ok(.ok, protocol.RunnerEventsResponse{ .items = page.items, .total = page.total, .next_cursor = next_cursor });
 }
 
 const ListQuery = struct {
-    page: i32 = 1,
-    page_size: i32 = pagination.DEFAULT_PAGE_SIZE,
+    cursor: ?runner_events.EventCursor = null,
+    limit: u32,
     filter: runner_events.Filter = .{},
 };
 
+fn hasRetiredPageParams(req: *httpz.Request) bool {
+    const qs = req.query() catch return false;
+    return qs.get(QUERY_PAGE) != null or qs.get(QUERY_PAGE_SIZE) != null;
+}
+
 fn parseListQuery(alloc: std.mem.Allocator, req: *httpz.Request) ?ListQuery {
     const qs = req.query() catch return null;
-    const pp = pagination.parsePageParams(qs) orelse return null;
-    var out = ListQuery{ .page = pp.page, .page_size = pp.page_size };
+    const limit = paging.parseLimit(qs.get(paging.QUERY_LIMIT)) catch return null;
+    var out = ListQuery{ .limit = limit };
+    if (qs.get(paging.QUERY_STARTING_AFTER)) |raw| {
+        const parsed = keyset_cursor.parse(raw) catch return null;
+        out.cursor = .{ .occurred_at = parsed.created_at_ms, .id = parsed.id };
+    }
     if (qs.get(QUERY_EVENT_TYPE)) |raw| out.filter.event_types = parseEventTypeSet(alloc, raw) orelse return null;
     if (qs.get(QUERY_SINCE)) |raw| out.filter.since = std.fmt.parseInt(i64, raw, 10) catch return null;
     if (qs.get(QUERY_UNTIL)) |raw| out.filter.until = std.fmt.parseInt(i64, raw, 10) catch return null;

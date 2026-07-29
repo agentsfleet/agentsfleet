@@ -170,7 +170,7 @@ fn reportLease(h: *TestHarness, lease: LeaseView) !harness_mod.Response {
 }
 
 fn eventsPath(runner_id: []const u8) ![]const u8 {
-    return std.fmt.allocPrint(ALLOC, "{s}/{s}/events?page=1&page_size=10", .{ protocol.PATH_FLEET_RUNNERS, runner_id });
+    return std.fmt.allocPrint(ALLOC, "{s}/{s}/events?limit=10", .{ protocol.PATH_FLEET_RUNNERS, runner_id });
 }
 
 fn eventsPathWithQuery(runner_id: []const u8, query: []const u8) ![]const u8 {
@@ -302,15 +302,15 @@ test "integration: lease and report append acquire and release events" {
     try std.testing.expect(events.bodyContains("\"lease_released\""));
     try std.testing.expect(events.bodyContains("\"total\":2"));
 
+    // The retired page-number spelling is refused, never silently ignored.
     const beyond_page = try eventsPathWithQuery(RUNNER_ID, "page=2&page_size=10");
     defer ALLOC.free(beyond_page);
     const beyond_events = try (try h.get(beyond_page).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer beyond_events.deinit();
-    try beyond_events.expectStatus(.ok);
-    try std.testing.expect(beyond_events.bodyContains("\"items\":[]"));
-    try std.testing.expect(beyond_events.bodyContains("\"total\":2"));
+    try beyond_events.expectStatus(.bad_request);
+    try std.testing.expect(beyond_events.bodyContains("UZ-REQ-001"));
 
-    const last_busy = try eventsPathWithQuery(RUNNER_ID, "event_type=lease_acquired&since=0&page=1&page_size=1");
+    const last_busy = try eventsPathWithQuery(RUNNER_ID, "event_type=lease_acquired&since=0&limit=1");
     defer ALLOC.free(last_busy);
     const busy_events = try (try h.get(last_busy).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer busy_events.deinit();
@@ -318,7 +318,7 @@ test "integration: lease and report append acquire and release events" {
     try std.testing.expect(busy_events.bodyContains("\"lease_acquired\""));
     try std.testing.expect(busy_events.bodyContains("\"total\":1"));
 
-    const empty_window = try eventsPathWithQuery(RUNNER_ID, "event_type=lease_acquired&until=0&page=1&page_size=10");
+    const empty_window = try eventsPathWithQuery(RUNNER_ID, "event_type=lease_acquired&until=0&limit=10");
     defer ALLOC.free(empty_window);
     const no_events = try (try h.get(empty_window).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer no_events.deinit();
@@ -349,7 +349,7 @@ test "integration: test_runner_events_accepts_comma_separated_type_set" {
     try drain.expectStatus(.ok);
 
     // Three event types exist; the two-tag set returns exactly their union.
-    const ep = try eventsPathWithQuery(runner_id, "event_type=runner_registered,runner_cordoned&page=1&page_size=10");
+    const ep = try eventsPathWithQuery(runner_id, "event_type=runner_registered,runner_cordoned&limit=10");
     defer ALLOC.free(ep);
     const events = try (try h.get(ep).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer events.deinit();
@@ -379,7 +379,7 @@ test "integration: test_runner_events_single_value_filter_unchanged" {
     defer cordon.deinit();
     try cordon.expectStatus(.ok);
 
-    const ep = try eventsPathWithQuery(runner_id, "event_type=runner_cordoned&page=1&page_size=10");
+    const ep = try eventsPathWithQuery(runner_id, "event_type=runner_cordoned&limit=10");
     defer ALLOC.free(ep);
     const events = try (try h.get(ep).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer events.deinit();
@@ -402,7 +402,7 @@ test "integration: test_runner_events_rejects_unknown_type_in_set" {
     const runner_id = try registeredRunnerId(conn);
     defer ALLOC.free(runner_id);
 
-    const ep = try eventsPathWithQuery(runner_id, "event_type=runner_online,not_a_type&page=1&page_size=10");
+    const ep = try eventsPathWithQuery(runner_id, "event_type=runner_online,not_a_type&limit=10");
     defer ALLOC.free(ep);
     const events = try (try h.get(ep).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer events.deinit();
@@ -425,7 +425,7 @@ test "integration: test_runner_events_rejects_empty_type_parameter" {
     defer ALLOC.free(runner_id);
 
     // An empty value must refuse, never silently mean "all".
-    const ep = try eventsPathWithQuery(runner_id, "event_type=&page=1&page_size=10");
+    const ep = try eventsPathWithQuery(runner_id, "event_type=&limit=10");
     defer ALLOC.free(ep);
     const events = try (try h.get(ep).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer events.deinit();
@@ -498,4 +498,145 @@ test "integration: delete lifecycle - 409 while live, 204 once revoked, cascade 
     defer again.deinit();
     try again.expectStatus(.not_found);
     try std.testing.expect(again.bodyContains("UZ-RUN-014"));
+}
+
+// ── Keyset paging over the events read ──────────────────────────────────────
+
+fn seedRunnerEventRow(conn: anytype, runner_id: []const u8, suffix: []const u8, event_type: []const u8, occurred_at: i64) !void {
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_events (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+        \\VALUES (overlay(md5($1 || $2)::uuid::text placing '7' from 15 for 1)::uuid,
+        \\        $1::uuid, $3, $4, '{}'::jsonb, NULL, $4)
+        \\ON CONFLICT (id) DO NOTHING
+    , .{ runner_id, suffix, event_type, occurred_at });
+}
+
+fn cleanupSeededRunner(conn: anytype) void {
+    _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err|
+        std.log.warn("cleanup seeded runner ignored: {s}", .{@errorName(err)});
+}
+
+/// Walk the events read to exhaustion under `query_prefix` (filters), asserting
+/// every non-final page is `limit` long; returns ids in arrival order.
+fn walkEvents(h: *TestHarness, query_prefix: []const u8, limit: usize) !std.ArrayList([]const u8) {
+    var ids: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (ids.items) |id| ALLOC.free(id);
+        ids.deinit(ALLOC);
+    }
+    var cursor: ?[]const u8 = null;
+    defer if (cursor) |c| ALLOC.free(c);
+    while (true) {
+        const query = if (cursor) |c|
+            try std.fmt.allocPrint(ALLOC, "{s}limit={d}&starting_after={s}", .{ query_prefix, limit, c })
+        else
+            try std.fmt.allocPrint(ALLOC, "{s}limit={d}", .{ query_prefix, limit });
+        defer ALLOC.free(query);
+        const path = try eventsPathWithQuery(RUNNER_ID, query);
+        defer ALLOC.free(path);
+        const resp = try (try h.get(path).bearer(PLATFORM_ADMIN_TOKEN)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+        const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, resp.body, .{});
+        defer parsed.deinit();
+        const obj = parsed.value.object;
+        const items = obj.get("items").?.array;
+        for (items.items) |item| {
+            try ids.append(ALLOC, try ALLOC.dupe(u8, item.object.get("id").?.string));
+        }
+        const next = obj.get("next_cursor").?;
+        if (next == .null) break;
+        try std.testing.expectEqual(limit, items.items.len);
+        if (cursor) |c| ALLOC.free(c);
+        cursor = try ALLOC.dupe(u8, next.string);
+    }
+    return ids;
+}
+
+fn freeWalked(ids: *std.ArrayList([]const u8)) void {
+    for (ids.items) |id| ALLOC.free(id);
+    ids.deinit(ALLOC);
+}
+
+test "integration: test_runner_events_uses_keyset_envelope" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupSeededRunner(conn);
+    try seedRunner(conn);
+    try seedRunnerEventRow(conn, RUNNER_ID, "env-1", "runner_online", 1_700_000_000_000);
+
+    const ep = try eventsPathWithQuery(RUNNER_ID, "limit=10");
+    defer ALLOC.free(ep);
+    const resp = try (try h.get(ep).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, resp.body, .{});
+    defer parsed.deinit();
+    const obj = parsed.value.object;
+    try std.testing.expectEqual(@as(usize, 3), obj.count());
+    try std.testing.expect(obj.contains("items"));
+    try std.testing.expect(obj.contains("total"));
+    try std.testing.expect(obj.contains("next_cursor"));
+
+    // page_size is retired: refused, never silently ignored.
+    const retired = try eventsPathWithQuery(RUNNER_ID, "page_size=10");
+    defer ALLOC.free(retired);
+    const refused = try (try h.get(retired).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer refused.deinit();
+    try refused.expectStatus(.bad_request);
+    try std.testing.expect(refused.bodyContains("UZ-REQ-001"));
+}
+
+test "integration: test_runner_events_same_millisecond_rows_are_not_skipped" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupSeededRunner(conn);
+    try seedRunner(conn);
+    const shared_ms: i64 = 1_700_000_100_000;
+    const suffixes = [_][]const u8{ "ms-1", "ms-2", "ms-3", "ms-4", "ms-5" };
+    for (suffixes) |suffix| {
+        try seedRunnerEventRow(conn, RUNNER_ID, suffix, "runner_online", shared_ms);
+    }
+
+    var ids = try walkEvents(h, "", 2);
+    defer freeWalked(&ids);
+    try std.testing.expectEqual(@as(usize, 5), ids.items.len);
+    for (ids.items, 0..) |a, i| {
+        for (ids.items[i + 1 ..]) |b| try std.testing.expect(!std.mem.eql(u8, a, b));
+    }
+}
+
+test "integration: test_runner_events_type_filter_survives_keyset_paging" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupSeededRunner(conn);
+    try seedRunner(conn);
+    const base_ms: i64 = 1_700_000_200_000;
+    try seedRunnerEventRow(conn, RUNNER_ID, "flt-on-1", "runner_online", base_ms + 1);
+    try seedRunnerEventRow(conn, RUNNER_ID, "flt-on-2", "runner_online", base_ms + 2);
+    try seedRunnerEventRow(conn, RUNNER_ID, "flt-on-3", "runner_online", base_ms + 3);
+    try seedRunnerEventRow(conn, RUNNER_ID, "flt-off-1", "runner_offline", base_ms + 4);
+    try seedRunnerEventRow(conn, RUNNER_ID, "flt-off-2", "runner_offline", base_ms + 5);
+    try seedRunnerEventRow(conn, RUNNER_ID, "flt-cord-1", "runner_cordoned", base_ms + 6);
+    try seedRunnerEventRow(conn, RUNNER_ID, "flt-cord-2", "runner_cordoned", base_ms + 7);
+
+    // The two-tag set holds across every cursored page: five union rows, the
+    // cordoned rows never leak in.
+    var ids = try walkEvents(h, "event_type=runner_online,runner_offline&", 2);
+    defer freeWalked(&ids);
+    try std.testing.expectEqual(@as(usize, 5), ids.items.len);
+
+    const full = try eventsPathWithQuery(RUNNER_ID, "event_type=runner_online,runner_offline&limit=10");
+    defer ALLOC.free(full);
+    const resp = try (try h.get(full).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    try std.testing.expect(!resp.bodyContains("runner_cordoned"));
+    try std.testing.expect(resp.bodyContains("\"total\":5"));
 }
