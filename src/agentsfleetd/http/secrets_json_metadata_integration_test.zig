@@ -298,3 +298,37 @@ test "integration: test_put_replaces_whole_body — a dropped field is gone, not
     defer h.releaseConn(conn);
     base.cleanupRows(conn);
 }
+
+test "integration: replace refuses non-JSON bytes and a malformed workspace id" {
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const item_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/anything", .{base.TEST_WS_ID});
+    defer alloc.free(item_path);
+
+    // The absent-body `orelse` arm is not drivable through TestHarness — its
+    // client requires a body on PUT — and no route in the repo pins that arm.
+    // Bytes that are not JSON: the parse arm answers the malformed-body error.
+    {
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR)).json("not json at all")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_INVALID_REQUEST));
+    }
+    // A workspace id that is not a UUIDv7: refused before any vault touch.
+    {
+        const r = try (try (try h.put("/v1/workspaces/not-a-uuid/secrets/anything").bearer(base.TOKEN_OPERATOR)).json("{\"data\":{\"k\":\"v\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_INVALID_REQUEST));
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    base.cleanupRows(conn);
+}

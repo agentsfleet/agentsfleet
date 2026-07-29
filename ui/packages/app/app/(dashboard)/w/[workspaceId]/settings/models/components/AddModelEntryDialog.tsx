@@ -162,13 +162,11 @@ export default function AddModelEntryDialog({
     return true;
   }
 
-  /** Store (or rotate) the credential, register the entry, optionally activate.
+  /** Store or replace the credential, register the entry, optionally activate.
    * Name is the credential's identity, guarded across EVERY stored kind: a
-   * name owned by anything other than a same-shaped secret errors instead of
-   * being replaced. Reusing a name with the SAME shape replaces the stored
-   * body whole (PUT — create claims free names only and answers UZ-VAULT-005
-   * on a held one): the named-provider motion resends provider + key, and the
-   * custom reconfigure motion resends provider + base_url + key together. */
+   * name owned by a different shape errors instead of being replaced. A
+   * same-shape held name is replaced whole via PUT — create claims free
+   * names only and answers UZ-VAULT-005 on a held one. */
   async function submit(activate: boolean) {
     const name = keyName.trim();
     const modelId = model.trim();
@@ -190,8 +188,7 @@ export default function AddModelEntryDialog({
       };
       if (key !== "") data[SECRET_FIELD.apiKey] = key;
       if (existing) {
-        // Reconfiguring a held endpoint replaces the whole body — create
-        // claims free names only, so a POST here would answer UZ-VAULT-005.
+        // A held endpoint reconfigures via whole-body replace, never create.
         const replaced = await replaceSecretAction(workspaceId, name, data);
         if (!replaced.ok) {
           setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: STORE_ACTION }));
@@ -215,10 +212,7 @@ export default function AddModelEntryDialog({
         setError(NAME_PROVIDER_MISMATCH);
         return;
       }
-      const replaced = await replaceSecretAction(workspaceId, name, {
-        [SECRET_FIELD.provider]: provider.trim(),
-        [SECRET_FIELD.apiKey]: key,
-      });
+      const replaced = await replaceSecretAction(workspaceId, name, { [SECRET_FIELD.provider]: provider.trim(), [SECRET_FIELD.apiKey]: key });
       if (!replaced.ok) {
         setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: STORE_ACTION }));
         return;
