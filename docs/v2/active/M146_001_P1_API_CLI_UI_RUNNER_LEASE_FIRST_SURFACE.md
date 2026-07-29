@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M146
 **Workstream:** 001
 **Date:** Jul 29, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — platform operators cannot answer "what is this host doing and why did that run fail" from any existing surface
 **Categories:** API, CLI, UI
 **Batch:** B1 — independent of M145 secret rotation; no shared files
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m146-runner-lease-surface
+**Test Baseline:** unit=3223 integration=455
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5, Jul 29, 2026) — design board reviewed screen-by-screen with Indy before authoring
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Runner state, §Observability
