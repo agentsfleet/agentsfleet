@@ -54,7 +54,7 @@ const REVOKED: ApiKeyRow = {
 };
 
 function listResponse(items: ApiKeyRow[], total = items.length): ApiKeyListResponse {
-  return { items, total, page: 1, page_size: 25 };
+  return { items, total, next_cursor: null };
 }
 
 beforeEach(() => {
@@ -215,69 +215,27 @@ describe("ApiKeyList component", () => {
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());
   });
 
-  it("pagination shows when total exceeds the page size and Next re-fetches page 2", async () => {
-    const user = userEvent.setup();
-    await renderList(listResponse([ACTIVE], 30));
-    expect(screen.getByText("Page 1 of 2 · 30 keys")).toBeTruthy();
-    const next = screen.getByRole("button", { name: /^next page$/i });
-    await user.click(next);
-    await waitFor(() =>
-      expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2, page_size: 25 })),
-    );
+  it("test_api_key_list_view_has_no_pagination_footer", async () => {
+    // The list is complete by construction — the client walks the cursor to
+    // exhaustion — so no paging control renders and every key is visible.
+    await renderList(listResponse([ACTIVE, REVOKED]));
+    expect(screen.queryByRole("button", { name: /next page/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /previous page/i })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /rows per page/i })).toBeNull();
+    expect(screen.getByText("ci-runner")).toBeTruthy();
+    expect(screen.getByText("old-zapier")).toBeTruthy();
   });
 
-  it("should refetch page one with the selected row count", async () => {
-    await renderList(listResponse([ACTIVE], 30));
-    const trigger = screen.getByRole("combobox", { name: "Rows per page" });
-
-    fireEvent.click(trigger);
-    fireEvent.keyDown(trigger, { key: "Enter" });
-    fireEvent.click(screen.getByRole("option", { name: "50" }));
-
-    await waitFor(() =>
-      expect(listApiKeysActionMock).toHaveBeenCalledWith(
-        expect.objectContaining({ page: 1, page_size: 50 }),
-      ),
-    );
-  });
-
-  it("Previous re-fetches the prior page", async () => {
-    const user = userEvent.setup();
-    // Render already on page 2 (Previous enabled, no in-flight transition) so
-    // the click can't race a pending-disabled button — deterministic under the
-    // slower coverage instrumentation.
-    await renderList({ ...listResponse([ACTIVE], 30), page: 2 });
-    await user.click(screen.getByRole("button", { name: /^previous page$/i }));
-    await waitFor(() =>
-      expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })),
-    );
-  });
-
-  it("keeps Previous available when a later server page becomes empty", async () => {
-    const user = userEvent.setup();
-    await renderList({ ...listResponse([], 26), page: 2 });
-
-    expect(screen.getByText(/No API keys yet/i)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /^previous page$/i }));
-    await waitFor(() =>
-      expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })),
-    );
-  });
-
-  it("clicking the Name column header re-fetches page 1 sorted by name", async () => {
+  it("clicking the Name column header re-fetches sorted by name", async () => {
     await renderList(listResponse([ACTIVE], 30));
     fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
-    await waitFor(() =>
-      expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ sort: "key_name", page: 1 })),
-    );
+    await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalledWith("key_name"));
   });
 
   it("clicking the active Created column header toggles its direction", async () => {
     await renderList(listResponse([ACTIVE], 30));
     fireEvent.click(screen.getByRole("button", { name: /^created$/i }));
-    await waitFor(() =>
-      expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ sort: "created_at", page: 1 })),
-    );
+    await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalledWith("created_at"));
   });
 
   it("resets to defaults at most once on UZ-REQ-001 (no infinite retry loop)", async () => {
@@ -292,7 +250,7 @@ describe("ApiKeyList component", () => {
     expect(listApiKeysActionMock.mock.calls.length).toBe(2);
   });
 
-  it("re-fetches the first page after a key is minted and the reveal is closed", async () => {
+  it("re-fetches the list after a key is minted and the reveal is closed", async () => {
     const user = userEvent.setup();
     const { default: ApiKeysView } = await import(
       "../app/(dashboard)/settings/api-keys/components/ApiKeysView"
@@ -319,9 +277,7 @@ describe("ApiKeyList component", () => {
     await screen.findByLabelText(/API key value/i);
     const before = listApiKeysActionMock.mock.calls.length;
     await user.click(screen.getByRole("button", { name: /done/i }));
-    await waitFor(() =>
-      expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1, sort: "-created_at" })),
-    );
+    await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalledWith("-created_at"));
     expect(listApiKeysActionMock.mock.calls.length).toBeGreaterThan(before);
   });
 
@@ -336,34 +292,19 @@ describe("ApiKeyList component", () => {
   });
 
   it("surfaces a non-validation load error inline without resetting", async () => {
-    const user = userEvent.setup();
     await renderList(listResponse([ACTIVE], 30));
     listApiKeysActionMock.mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" });
-    await user.click(screen.getByRole("button", { name: /^next page$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
     await screen.findByText(/couldn't load api keys/i);
     // No UZ-REQ-001 reset loop: exactly one load fired by the click.
-    expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
+    expect(listApiKeysActionMock).toHaveBeenCalledWith("key_name");
+    expect(listApiKeysActionMock.mock.calls.length).toBe(1);
   });
 
-  it("an invalid sort/page response (UZ-REQ-001) resets to the default sort + page 1", async () => {
+  it("an invalid sort response (UZ-REQ-001) resets to the default sort", async () => {
     listApiKeysActionMock.mockResolvedValueOnce({ ok: false, error: "bad sort", errorCode: "UZ-REQ-001" });
-    const user = userEvent.setup();
     await renderList(listResponse([ACTIVE], 30));
-    await user.click(screen.getByRole("button", { name: /^next page$/i }));
-    await waitFor(() =>
-      expect(listApiKeysActionMock).toHaveBeenCalledWith(
-        expect.objectContaining({ page: 1, sort: "-created_at" }),
-      ),
-    );
-  });
-
-  it("never sends a page_size above the backend maximum", async () => {
-    const user = userEvent.setup();
-    await renderList(listResponse([ACTIVE], 30));
-    await user.click(screen.getByRole("button", { name: /^next page$/i }));
-    await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());
-    for (const call of listApiKeysActionMock.mock.calls) {
-      expect(call[0].page_size).toBeLessThanOrEqual(100);
-    }
+    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
+    await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalledWith("-created_at"));
   });
 });

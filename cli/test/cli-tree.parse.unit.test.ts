@@ -153,18 +153,10 @@ test("api-key create accepts --name / --description", async () => {
   expect(calls[0]?.frame.parsed.options.description).toBe("build automation");
 });
 
-test("api-key list accepts pagination and sort flags", async () => {
+test("api-key list accepts the sort flag", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch([
-    "api-key", "list",
-    "--page", "2",
-    "--page-size", "50",
-    "--sort", "key_name",
-  ], handlers);
+  await dispatch(["api-key", "list", "--sort", "key_name"], handlers);
   expect(calls[0]?.name).toBe("api-key.list");
-  expect(calls[0]?.frame.parsed.options.page).toBe(2);
-  expect(calls[0]?.frame.parsed.options.pageSize).toBe(50);
-  expect(calls[0]?.frame.parsed.options["page-size"]).toBe(50);
   expect(calls[0]?.frame.parsed.options.sort).toBe("key_name");
 });
 

@@ -1,4 +1,5 @@
 import { request } from "./client";
+import { QUERY_STARTING_AFTER } from "./runners";
 
 // Tenant API keys are tenant-scoped: every endpoint filters by the principal's
 // tenant_id server-side, so none of these calls take a workspace id (unlike
@@ -7,13 +8,11 @@ import { request } from "./client";
 
 // Mirrors the Zig handler's constants verbatim (src/http/handlers/api_keys):
 // tenant.zig isValidKeyName (1-64 chars, alnum + - + _) and MAX_DESC_LEN,
-// list.zig DEFAULT_PAGE_SIZE / MAX_PAGE_SIZE and the sort allowlist.
+// and list.zig's sort allowlist.
 export const KEY_PREFIX = "agt_t";
 export const KEY_NAME_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
 export const KEY_NAME_MAX = 64;
 export const DESCRIPTION_MAX = 256;
-export const DEFAULT_PAGE_SIZE = 25;
-export const MAX_PAGE_SIZE = 100;
 
 export const API_KEY_SORTS = ["-created_at", "created_at", "-key_name", "key_name"] as const;
 export type ApiKeySort = (typeof API_KEY_SORTS)[number];
@@ -33,9 +32,8 @@ export interface ApiKeyRow {
 
 export interface ApiKeyListResponse {
   items: ApiKeyRow[];
-  total: number;
-  page: number;
-  page_size: number;
+  total: number | null;
+  next_cursor: string | null;
 }
 
 /** The mint response — `key` is the raw secret, returned exactly once. */
@@ -52,19 +50,27 @@ export interface RevokedApiKey {
   revoked_at: number;
 }
 
-export interface ListParams {
-  page?: number;
-  page_size?: number;
-  sort?: ApiKeySort;
-}
+// A tenant's keys are human-created and number in the low tens, so the client
+// exposes no paging controls: the list is complete by construction, following
+// next_cursor until the server reports the end. The bound stops a runaway
+// cursor from spinning the walk forever — at the server's default page of 50
+// it covers 2,000 keys, far past any real tenant.
+const MAX_LIST_WALK_REQUESTS = 40;
 
-export async function listApiKeys(token: string, params: ListParams = {}): Promise<ApiKeyListResponse> {
-  const qs = new URLSearchParams({
-    page: String(params.page ?? 1),
-    page_size: String(params.page_size ?? DEFAULT_PAGE_SIZE),
-    sort: params.sort ?? DEFAULT_SORT,
-  });
-  return request<ApiKeyListResponse>(`/v1/api-keys?${qs.toString()}`, { method: "GET" }, token);
+export async function listApiKeys(token: string, sort: ApiKeySort = DEFAULT_SORT): Promise<ApiKeyListResponse> {
+  const items: ApiKeyRow[] = [];
+  let total: number | null = null;
+  let cursor: string | null = null;
+  for (let requests = 0; requests < MAX_LIST_WALK_REQUESTS; requests += 1) {
+    const qs = new URLSearchParams({ sort });
+    if (cursor !== null) qs.set(QUERY_STARTING_AFTER, cursor);
+    const page = await request<ApiKeyListResponse>(`/v1/api-keys?${qs.toString()}`, { method: "GET" }, token);
+    items.push(...page.items);
+    total = page.total ?? total;
+    if (page.next_cursor === null) return { items, total, next_cursor: null };
+    cursor = page.next_cursor;
+  }
+  throw new Error(`the API key list did not end after ${MAX_LIST_WALK_REQUESTS} pages`);
 }
 
 export async function createApiKey(

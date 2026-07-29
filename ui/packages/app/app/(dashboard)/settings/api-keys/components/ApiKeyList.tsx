@@ -1,16 +1,14 @@
 "use client";
 
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
-import { Badge, Button, DataTable, type DataTableColumn, EmptyState, PAGINATION_KIND, Time, TooltipProvider } from "@agentsfleet/design-system";
+import { Badge, Button, DataTable, type DataTableColumn, EmptyState, Time, TooltipProvider } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import {
-  DEFAULT_PAGE_SIZE,
   DEFAULT_SORT,
   type ApiKeyListResponse,
   type ApiKeyRow,
   type ApiKeySort,
 } from "@/lib/api/api_keys";
-import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { presentErrorString } from "@/lib/errors";
 import { listApiKeysAction, revokeApiKeyAction, deleteApiKeyAction } from "../actions";
 import RevokeConfirm, { type ConfirmTarget, type ConfirmTargetActive } from "./RevokeConfirm";
@@ -34,53 +32,35 @@ export default function ApiKeyList({
 }) {
   const [pending, startTransition] = useTransition();
   const [items, setItems] = useState<ApiKeyRow[]>(initial.items);
-  const [total, setTotal] = useState(initial.total);
-  const [page, setPage] = useState(initial.page);
-  const [pageSize, setPageSize] = useState(initial.page_size);
   const [sort, setSort] = useState<ApiKeySort>(DEFAULT_SORT);
   const [target, setTarget] = useState<ConfirmTarget>(null);
   const [error, setError] = useState<string | null>(null);
 
   // The header "New API key" dialog (rendered by the parent view) calls this via
-  // ref on create — a targeted re-fetch of page 1, not a full-route refresh.
+  // ref on create — a targeted re-fetch, not a full-route refresh.
   useImperativeHandle(ref, () => ({
-    refresh: () => loadPage({ page: 1, sort: DEFAULT_SORT }),
+    refresh: () => loadSorted(DEFAULT_SORT),
   }));
 
-  function apply(data: ApiKeyListResponse, nextSort: ApiKeySort) {
-    setItems(data.items);
-    setTotal(data.total);
-    setPage(data.page);
-    setPageSize(data.page_size);
-    setSort(nextSort);
-  }
-
-  // User-initiated sort/page navigation. Clears the error on a clean load; an
-  // invalid sort/page (UZ-REQ-001) resets to the defaults rather than blanking.
-  // `retried` guards the reset: if the backend rejects even the defaults
-  // (response drift), self-calling again would loop forever — reset at most once.
-  function loadPage(
-    next: { page: number; pageSize?: number; sort?: ApiKeySort },
-    retried = false,
-  ) {
-    const nextPage = next.page;
-    const nextPageSize = next.pageSize ?? pageSize;
-    const nextSort = next.sort ?? sort;
+  // User-initiated sort. The list is always complete (the client walks the
+  // cursor to exhaustion server-action-side), so sorting is the only control.
+  // Clears the error on a clean load; an invalid sort (UZ-REQ-001) resets to
+  // the default rather than blanking. `retried` guards the reset: if the
+  // backend rejects even the default (response drift), self-calling again
+  // would loop forever — reset at most once.
+  function loadSorted(nextSort: ApiKeySort, retried = false) {
     startTransition(async () => {
-      const r = await listApiKeysAction({
-        page: nextPage,
-        page_size: nextPageSize,
-        sort: nextSort,
-      });
+      const r = await listApiKeysAction(nextSort);
       if (!r.ok) {
         setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "load API keys" }));
         if (r.errorCode === "UZ-REQ-001" && !retried) {
-          loadPage({ page: 1, pageSize: DEFAULT_PAGE_SIZE, sort: DEFAULT_SORT }, true);
+          loadSorted(DEFAULT_SORT, true);
         }
         return;
       }
       setError(null);
-      apply(r.data, nextSort);
+      setItems(r.data.items);
+      setSort(nextSort);
     });
   }
 
@@ -88,8 +68,8 @@ export default function ApiKeyList({
   // clobbering a mutation error the user still needs to read.
   function refresh() {
     startTransition(async () => {
-      const r = await listApiKeysAction({ page, page_size: pageSize, sort });
-      if (r.ok) apply(r.data, sort);
+      const r = await listApiKeysAction(sort);
+      if (r.ok) setItems(r.data.items);
     });
   }
 
@@ -127,18 +107,8 @@ export default function ApiKeyList({
           caption="API keys"
           sortKey={sortKey}
           sortDirection={sortDirection}
-          onSortChange={(key) => loadPage({ sort: NEXT_SORT[key as "name" | "activity"][sort], page: 1 })}
-          pagination={{
-            kind: PAGINATION_KIND.page,
-            page,
-            pageSize,
-            total,
-            totalLabel: "keys",
-            onPageChange: (nextPage) => loadPage({ page: nextPage }),
-            pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
-            onPageSizeChange: (nextPageSize) => loadPage({ page: 1, pageSize: nextPageSize }),
-            isLoading: pending,
-          }}
+          onSortChange={(key) => loadSorted(NEXT_SORT[key as "name" | "activity"][sort])}
+          pagination={false}
           empty={
             <EmptyState
               icon={<KeyRoundIcon size={28} />}

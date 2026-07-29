@@ -43,12 +43,11 @@ beforeEach(() => {
 afterEach(() => vi.resetAllMocks());
 
 describe("api-keys server actions — thin forwarders", () => {
-  it("listApiKeysAction threads the token first and forwards params, returning the envelope", async () => {
-    const data = { items: [], total: 0, page: 2, page_size: 25 };
+  it("listApiKeysAction threads the token first and forwards the sort, returning the envelope", async () => {
+    const data = { items: [], total: 0, next_cursor: null };
     listApiKeysMock.mockResolvedValueOnce(data);
-    const params = { page: 2, page_size: 25, sort: "-created_at" as const };
-    const r = await listApiKeysAction(params);
-    expect(listApiKeysMock).toHaveBeenCalledWith("tok", params);
+    const r = await listApiKeysAction("-created_at");
+    expect(listApiKeysMock).toHaveBeenCalledWith("tok", "-created_at");
     expect(r).toEqual({ ok: true, data });
   });
 

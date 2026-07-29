@@ -47,44 +47,101 @@ describe("api-key commands", () => {
     });
   });
 
-  test("`api-key list` forwards pagination and renders last-used null as never", async () => {
+  const SECOND_KEY_ID = "01900000-0000-7000-8000-000000a91e91";
+  const WALK_CURSOR = "cur_page_boundary";
+  const walkKeyRow = (id: string, name: string) => ({
+    id,
+    key_name: name,
+    active: true,
+    created_at: 1700000000000,
+    last_used_at: null,
+    revoked_at: null,
+  });
+  // Two server pages split by a cursor boundary; the walk must cross it.
+  const twoPageWalkRoutes = (expectedSort: string): MockRoutes => ({
+    "GET /v1/api-keys": (_req, url) => {
+      expect(url.searchParams.get("sort")).toBe(expectedSort);
+      expect(url.searchParams.has("page")).toBe(false);
+      expect(url.searchParams.has("page_size")).toBe(false);
+      if (url.searchParams.get("starting_after") === null) {
+        return jsonResponse(200, {
+          items: [walkKeyRow(KEY_ID, "alpha-runner")],
+          total: 2,
+          next_cursor: WALK_CURSOR,
+        });
+      }
+      expect(url.searchParams.get("starting_after")).toBe(WALK_CURSOR);
+      return jsonResponse(200, {
+        items: [walkKeyRow(SECOND_KEY_ID, "beta-runner")],
+        total: 2,
+        next_cursor: null,
+      });
+    },
+  });
+
+  test("test_api_key_list_returns_every_key", async () => {
     await authedScope(async () => {
-      const routes: MockRoutes = {
-        "GET /v1/api-keys": (_req, url) => {
-          expect(url.searchParams.get("page")).toBe("2");
-          expect(url.searchParams.get("page_size")).toBe("50");
-          expect(url.searchParams.get("sort")).toBe("key_name");
-          return jsonResponse(200, {
-            items: [
-              {
-                id: KEY_ID,
-                key_name: "ci-runner",
-                active: true,
-                created_at: 1700000000000,
-                last_used_at: null,
-                revoked_at: null,
-              },
-            ],
-            total: 1,
-            page: 2,
-            page_size: 50,
-          });
-        },
-      };
-      await withMockApi(routes, async (apiUrl, calls) => {
+      await withMockApi(twoPageWalkRoutes("-created_at"), async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["api-key", "list", "--page", "2", "--page-size", "50", "--sort", "key_name"],
+          ["api-key", "list"],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).toBe(0);
         const text = out.read();
-        expect(text).toContain("ci-runner");
-        expect(text).toContain("active");
+        expect(text).toContain("alpha-runner");
+        expect(text).toContain("beta-runner");
         expect(text).toContain("never");
-        expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["GET /v1/api-keys"]);
+        expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+          "GET /v1/api-keys",
+          "GET /v1/api-keys",
+        ]);
+      });
+    });
+  });
+
+  test("test_api_key_list_sort_orders_complete_set", async () => {
+    await authedScope(async () => {
+      // The route asserts the sort rides EVERY read; the output asserts the
+      // concatenated pages read as one ordered set, not per-read islands.
+      await withMockApi(twoPageWalkRoutes("key_name"), async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["api-key", "list", "--sort", "key_name"],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+
+        expect(code).toBe(0);
+        const text = out.read();
+        expect(text.indexOf("alpha-runner")).toBeGreaterThanOrEqual(0);
+        expect(text.indexOf("alpha-runner")).toBeLessThan(text.indexOf("beta-runner"));
+      });
+    });
+  });
+
+  test("test_api_key_list_json_mode_is_complete", async () => {
+    await authedScope(async () => {
+      await withMockApi(twoPageWalkRoutes("-created_at"), async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["--json", "api-key", "list"],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+
+        expect(code).toBe(0);
+        const printed = JSON.parse(out.read()) as {
+          items: Array<{ id: string }>;
+          total: number;
+          next_cursor: string | null;
+        };
+        expect(printed.items.map((item) => item.id)).toEqual([KEY_ID, SECOND_KEY_ID]);
+        expect(printed.total).toBe(2);
+        expect(printed.next_cursor).toBeNull();
+        expect(calls.length).toBe(2);
       });
     });
   });
@@ -128,8 +185,6 @@ describe("api-key commands", () => {
     await authedScope(async () => {
       const invalidCases: ReadonlyArray<ReadonlyArray<string>> = [
         ["api-key", "create"],
-        ["api-key", "list", "--page", "abc"],
-        ["api-key", "list", "--page-size", "101"],
         ["api-key", "list", "--sort", "name"],
         ["api-key", "revoke", "not-a-uuid"],
       ];
