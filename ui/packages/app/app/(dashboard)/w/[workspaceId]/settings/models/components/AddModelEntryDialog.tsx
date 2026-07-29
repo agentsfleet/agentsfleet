@@ -120,23 +120,19 @@ export default function AddModelEntryDialog({
       // A hover or focus has usually warmed it already, so this is normally a
       // no-op against the single-flight guard.
       preload();
-      // The stored-secret list is LOAD-BEARING, not decoration: `submit()`
-      // resolves `existing` from it to decide replace-vs-create and to refuse a
-      // name owned by a different provider. Create claims free names only, so an
-      // empty list can't tell a held name from a free one — it would route the
-      // write wrong and 409, not silently, but with no way to reach replace.
-      // It must be loaded before the dialog can be submitted, not merely after
-      // a secret changes.
+      // The stored-secret list is LOAD-BEARING: `submit()` resolves `existing`
+      // from it to decide replace-vs-create and to refuse a name owned by a
+      // different provider. Create claims free names only, so an empty list
+      // can't tell a held name from a free one and would route the write wrong.
+      // It must load before the dialog can submit, not merely after a change.
       onSecretsNeeded();
     }
     setOpen(next);
     if (!next) reset();
   }
 
-  // `secretsChanged` tells the entry-write whether the secrets list must
-  // refetch. A named-provider replace keeps every list-visible field
-  // (name/provider/kind) identical → false. A custom reconfigure rewrites
-  // `base_url` → true, so sibling entries pick up the new endpoint.
+  // `secretsChanged` gates the secrets-list refetch: false when a replace keeps
+  // every list-visible field, true when a custom reconfigure rewrites base_url.
   async function doCreateEntry(secretRef: string, modelId: string, activate: boolean, secretsChanged: boolean) {
     const created = await createModelEntryAction({ model_id: modelId, secret_ref: secretRef });
     if (!created.ok) {
