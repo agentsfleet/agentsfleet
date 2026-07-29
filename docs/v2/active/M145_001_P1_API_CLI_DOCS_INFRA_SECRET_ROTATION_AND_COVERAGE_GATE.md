@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M145
 **Workstream:** 001
 **Date:** Jul 29, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — `0.24.0` shipped an operator-facing hole: no client path replaces a secret value without a window where the name is absent.
 **Categories:** API, CLI, DOCS, INFRA
 **Batch:** B1 — standalone; no other workstream touches the vault surface.
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m145-secret-rotate
+**Test Baseline:** unit=3223 integration=455
 **Depends on:** none — `PATCH /v1/workspaces/{workspace_id}/secrets/{secret_name}` shipped in `0.24.0`.
 **Provenance:** agent-generated (pre-spec, `docs/v2/done/M143_002_P1_UI_LIBRARY_SESSION_EXPERIENCE.md` Discovery A15 and the standing coverage finding)
 **Canonical architecture:** `docs/architecture/web_app.md` (secret surfaces) and `docs/AUTH.md` (workspace operator role on every vault route)
