@@ -63,7 +63,7 @@ localStorage+cookie).
 
 ## Workspace group + person context
 
-`setAnalyticsContext` (bound from `Shell`) binds the active workspace as a
+`setAnalyticsContext` (bound from `ShellControls`) binds the active workspace as a
 PostHog **group** (`group("workspace", …)`), so every subsequent event and
 pageview is sliceable per workspace — mirroring Supabase Studio's
 `$groups: { organization, project }`. The same call sets org-level **person

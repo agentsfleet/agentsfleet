@@ -1,6 +1,13 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { EVENTS } from "@/lib/analytics/events";
@@ -68,7 +75,10 @@ describe("FleetLibrariesView", () => {
     deletePlatformLibraryActionMock.mockReset();
     captureProductEventMock.mockReset();
   });
-  afterEach(cleanup);
+  afterEach(() => {
+    vi.restoreAllMocks();
+    cleanup();
+  });
 
   it("renders one row per catalog entry, each with its status", () => {
     renderView([PUBLISHED, DRAFT, NO_BUNDLE]);
@@ -100,6 +110,25 @@ describe("FleetLibrariesView", () => {
     renderView([PUBLISHED]);
     expect(screen.getByRole("button", { name: "Unpublish" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+  });
+
+  it("does not speculate on closed tools from a coarse-pointer hover", () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+    } as MediaQueryList);
+    renderView([DRAFT]);
+
+    const createTrigger = screen.getByRole("button", {
+      name: "Create fleet library",
+    });
+    fireEvent.pointerEnter(createTrigger);
+    fireEvent.pointerEnter(
+      screen.getByRole("button", { name: "Fetch update" }),
+    );
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Edit" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(createTrigger.dataset.intentHover).toBe("suppressed");
   });
 
   // A row with no bundle has nothing to serve a tenant, so publishing it is a 409
@@ -169,7 +198,7 @@ describe("FleetLibrariesView", () => {
     renderView([stale]);
 
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
-    const repository = screen.getByLabelText("Repository");
+    const repository = await screen.findByLabelText("Repository");
     await userEvent.clear(repository);
     await userEvent.type(repository, DRAFT.source_repo);
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -192,7 +221,7 @@ describe("FleetLibrariesView", () => {
     renderView([stale]);
 
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
-    const description = screen.getByLabelText("Description");
+    const description = await screen.findByLabelText("Description");
     await userEvent.clear(description);
     await userEvent.type(description, edited.description);
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));

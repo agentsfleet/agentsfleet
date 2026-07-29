@@ -68,7 +68,7 @@ afterEach(() => {
 
 describe("app components", () => {
   it("tracks shell navigation", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
     const { container } = render(
@@ -87,7 +87,7 @@ describe("app components", () => {
   });
 
   it("clears the workspace toast fade timer when the shell unmounts", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
     try {
@@ -109,12 +109,12 @@ describe("app components", () => {
     }
   });
 
-  it("binds the analytics workspace context from the active workspace + count", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+  it("test_navigation_does_not_duplicate_live_subscriptions", async () => {
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     // M118: Shell derives the active workspace from the route (`/w/<id>/…`), not
     // an `activeWorkspaceId` prop — the pathname is the single source of truth.
     mocks.usePathname.mockReturnValue("/w/ws_1");
-    render(
+    const { rerender } = render(
       React.createElement(
         Shell,
         {
@@ -128,6 +128,19 @@ describe("app components", () => {
     );
     // The Shell effect binds the PostHog workspace group + records the count.
     expect(mocks.setAnalyticsContext).toHaveBeenCalledWith({ workspaceId: "ws_1", workspaceCount: 2 });
+    rerender(
+      React.createElement(
+        Shell,
+        {
+          workspaces: [
+            { id: "ws_1", name: "Alpha", created_at: 1 },
+            { id: "ws_2", name: "Beta", created_at: 2 },
+          ],
+        } as never,
+        React.createElement("div", null, "next route content"),
+      ),
+    );
+    expect(mocks.setAnalyticsContext).toHaveBeenCalledTimes(1);
     cleanup();
   });
 
@@ -252,7 +265,7 @@ describe("app components", () => {
   });
 
   it("renders Shell with brand-mark wake-pulse + sidebar nav", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     // M118: a workspace is in the route, so workspace-scoped nav hrefs carry the
     // `/w/<id>` segment; tenant/platform items (API Keys, Billing) stay at root.
     mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
@@ -286,7 +299,7 @@ describe("app components", () => {
   });
 
   it("test_nav_config_destinations: nav renders Models→/w/<id>/settings/models, Integrations→/w/<id>/integrations, Secrets→/w/<id>/secrets", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     // M118: the workspace in the route prefixes every Configuration destination.
     mocks.usePathname.mockReturnValue("/w/ws_1");
     const markup = renderToStaticMarkup(
@@ -299,7 +312,7 @@ describe("app components", () => {
   });
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     // The active link gets data-active="true" — the sidebar's surface-3 fill
@@ -308,7 +321,7 @@ describe("app components", () => {
   });
 
   it("Shell active-link resolves the longest-matching prefix (nested /settings/* routes)", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     // Render at a pathname and report how many items are active + the active
     // item's icon — exactly one item must light, and it must be the most
     // specific match.

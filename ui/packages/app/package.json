@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "bun run typecheck && next build",
+    "size": "size-limit",
     "start": "next start",
     "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit",
     "lint": "oxlint --type-aware .",
@@ -52,7 +53,7 @@
     "@axe-core/playwright": "^4.12.1",
     "@clerk/testing": "^2.2.6",
     "@playwright/test": "1.61.1",
-    "@size-limit/preset-app": "^12.1.0",
+    "@size-limit/file": "12.1.0",
     "@tailwindcss/postcss": "^4.3.2",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",

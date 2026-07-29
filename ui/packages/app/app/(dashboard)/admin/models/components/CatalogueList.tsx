@@ -14,8 +14,12 @@ import {
 import { CoinsIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
 import { type AdminModel, type PlatformKey, nanosToUsdPerMtok } from "@/lib/api/admin_model_library";
 import { presentErrorString } from "@/lib/errors";
+import {
+  default as EditModelDialogDynamic,
+  preloadEditModelDialog,
+} from "@/components/domain/island-dynamic/EditModelDialogDynamic";
+import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
 import { deleteAdminModelAction } from "../actions";
-import EditModelDialog from "./EditModelDialog";
 import MakeDefaultDialog from "./MakeDefaultDialog";
 
 // $/1M tokens, two decimals — the catalogue is priced per million tokens (matches
@@ -61,6 +65,10 @@ function RowActions({
       <IconAction
         type="button"
         variant="ghost"
+        onFocus={preloadEditModelDialog}
+        onPointerEnter={() => {
+          if (maySpeculateOnHover()) preloadEditModelDialog();
+        }}
         onClick={() => onEdit(model)}
         disabled={busy}
         label={`Edit ${model.model_id}`}
@@ -217,7 +225,7 @@ export default function CatalogueList({
       {editTarget ? (
         // Mounted only while editing and controlled always-open, so Radix only
         // ever signals a close (onOpenChange(false)) — unmount on any close signal.
-        <EditModelDialog
+        <EditModelDialogDynamic
           key={editTarget.uid}
           model={editTarget}
           onOpenChange={() => setEditTarget(null)}

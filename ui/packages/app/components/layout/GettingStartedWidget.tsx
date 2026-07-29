@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { ChevronDownIcon, ChevronUpIcon, XIcon } from "lucide-react";
-import { cn, EYEBROW_CLASS, IconAction } from "@agentsfleet/design-system";
+import { Button, cn, EYEBROW_CLASS } from "@agentsfleet/design-system";
 import OnboardingRail from "@/components/domain/OnboardingRail";
 import {
   completedRequiredCount,
@@ -93,16 +93,25 @@ export default function GettingStartedWidget({ workspaceId, pollingMode = "mount
           <span className="font-mono text-label text-pulse tabular-nums">
             {completed}/{REQUIRED_STEP_COUNT}
           </span>
-          <IconAction
-            label={collapsed ? "Expand getting started" : "Collapse getting started"}
+          <Button
+            size="icon-sm"
+            variant="outline"
+            aria-label={collapsed ? "Expand getting started" : "Collapse getting started"}
+            title={collapsed ? "Expand getting started" : "Collapse getting started"}
             onClick={toggleCollapse}
           >
             {collapsed ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
-          </IconAction>
+          </Button>
           {complete ? (
-            <IconAction label="Dismiss getting started" onClick={dismiss}>
+            <Button
+              size="icon-sm"
+              variant="outline"
+              aria-label="Dismiss getting started"
+              title="Dismiss getting started"
+              onClick={dismiss}
+            >
               <XIcon size={14} />
-            </IconAction>
+            </Button>
           ) : null}
         </div>
       </div>

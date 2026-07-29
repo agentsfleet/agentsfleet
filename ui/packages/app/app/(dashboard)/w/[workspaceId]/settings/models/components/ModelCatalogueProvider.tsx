@@ -40,26 +40,6 @@ const FALLBACK_STATE: ModelCatalogueState = {
 
 const ModelCatalogueContext = createContext<ModelCatalogueState | null>(null);
 
-/**
- * Whether a hover may speculate. A coarse pointer has no true hover — a touch
- * that lands on a control is already a press, so "hover" prefetch there is just
- * an unconditional fetch wearing a different name. Save-Data is the user asking
- * not to spend bytes on a maybe.
- *
- * Focus and open are NOT gated by this: both are deliberate, so the request is
- * wanted rather than speculative.
- */
-export function maySpeculateOnHover(): boolean {
-  if (typeof window === "undefined") return false;
-  // Typed non-nullish, but absent in some test environments — a `typeof` probe
-  // rather than an optional chain, which the type system reads as dead.
-  if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
-    return false;
-  }
-  const connection = (navigator as { connection?: { saveData?: boolean } }).connection;
-  return connection?.saveData !== true;
-}
-
 export function ModelCatalogueProvider({ children }: { children: ReactNode }) {
   const [models, setModels] = useState<LibraryModel[]>([]);
   const [status, setStatus] = useState<CatalogueStatus>(CATALOGUE_STATUS.idle);

@@ -53,8 +53,14 @@ const DEFAULTS: FormValues = {
 };
 const CREATE_MODEL_LIBRARY_TOOLTIP = "Create a priced model users can choose.";
 
-export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminModel) => void }) {
-  const [open, setOpen] = useState(false);
+export default function AddModelDialog({
+  onCreated,
+  defaultOpen = false,
+}: {
+  onCreated: (m: AdminModel) => void;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: DEFAULTS });

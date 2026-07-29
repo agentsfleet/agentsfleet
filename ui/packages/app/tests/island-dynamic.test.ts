@@ -60,7 +60,7 @@ const ISLANDS: Island[] = [
     name: "CreateWorkspaceDialog",
     shim: "CreateWorkspaceDialogDynamic",
     rawImportFragment: "layout/CreateWorkspaceDialog",
-    callSite: "components/layout/WorkspaceSwitcher.tsx",
+    callSite: "components/layout/WorkspaceSwitcherMenu.tsx",
     rawComponent: "CreateWorkspaceDialog",
   },
   {
