@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M146_001: Runner surface opens on leases, not on an event count
+# M146_001: Runner surface opens on leases, and no list pages by number
 
 **Prototype:** v2.0.0
 **Milestone:** M146
@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Date:** Jul 29, 2026
 **Status:** PENDING
 **Priority:** P1 — platform operators cannot answer "what is this host doing and why did that run fail" from any existing surface
-**Categories:** API, UI
+**Categories:** API, CLI, UI
 **Batch:** B1 — independent of M145 secret rotation; no shared files
 **Branch:** set at CHORE(open)
 **Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
@@ -30,16 +30,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `/admin/runners/{runner_id}` opens on that runner's leases — live leases first, each failed lease reading as the shared plain-English sentence — while Activity carries lifecycle records only, so a runner holding 4,021 leases renders 4,021 lease rows and roughly 214 lifecycle records instead of one undifferentiated count of 8,126.
+**Goal (testable):** `/admin/runners/{runner_id}` opens on that runner's leases — live leases first, each failed lease reading as the shared plain-English sentence — while Activity carries lifecycle records only, so a runner holding 4,021 leases renders 4,021 lease rows and roughly 214 lifecycle records instead of one undifferentiated count of 8,126; and afterwards `grep -rn parsePageParams src/` returns nothing, because every list in the platform pages by cursor or does not page at all.
 
 **Problem:** A platform operator opening Runners today gets a table and, behind an icon, a dialog listing raw runner events. The only number on that dialog is the event total, and it roughly doubles the real execution count because a successful execution appends both `lease_acquired` and `lease_released`. From that surface an operator cannot see what a host is working on right now, how many Fleets it is serving, why any individual run failed, or what the host has done over its life. There is no addressable page for a single runner, so a colleague cannot be sent a link to one.
 
-**Solution summary:** Rebuild the Runners surface to the same product grammar Fleets already uses. `/admin/runners` becomes a card wall whose whole card links to `/admin/runners/{runner_id}`. That detail page mirrors `fleets/[id]/page.tsx`: a breadcrumb-plus-actions header with no second title, a left rail, and a default view that is the page's main object. For a runner the main object is the lease, so the page lands on **Leases** — a metrics strip over the standard `DataTable`, live leases first, each failed row rendering `failureSentenceFor()` rather than a machine tag, each row opening a Review lease panel for the fencing token, provider, model and token meters. **Activity** becomes lifecycle records only, with `lease_acquired` and `lease_released` filtered out because the lease table already states each of them once with its outcome. Three operator-plane reads land behind it: a single-runner read (none exists), a keyset-paginated lease read joined to its Fleet event for outcome and failure cause (nothing like it exists), and multi-value `event_type` filtering on the existing runner-events read so Activity can exclude two types in one call.
+**Solution summary:** Rebuild the Runners surface to the same product grammar Fleets already uses. `/admin/runners` becomes a card wall whose whole card links to `/admin/runners/{runner_id}`. That detail page mirrors `fleets/[id]/page.tsx`: a breadcrumb-plus-actions header with no second title, a left rail, and a default view that is the page's main object. For a runner the main object is the lease, so the page lands on **Leases** — a metrics strip over the standard `DataTable`, live leases first, each failed row rendering `failureSentenceFor()` rather than a machine tag, each row opening a Review lease panel for the fencing token, provider, model and token meters. **Activity** becomes lifecycle records only, with `lease_acquired` and `lease_released` filtered out because the lease table already states each of them once with its outcome. Behind it, three operator-plane reads land — a single-runner read (none exists), a lease read joined to its Fleet event for outcome and failure cause (nothing like it exists), and multi-value `event_type` filtering so Activity can exclude two types in one call — and the two existing runner reads migrate from page-number to keyset pagination in the same milestone, because every caller of them is a file this spec already replaces.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** feat(app): open the runner surface on its leases
-- **Intent (one sentence):** A platform operator can open one runner, see what it is working on, read why any run failed in plain English, and share the link — without decoding a lifecycle-event count that means nothing.
+- **PR title (eventual):** feat(app): open the runner surface on its leases, retire page-number paging
+- **Intent (one sentence):** A platform operator can open one runner, see what it is working on, read why any run failed in plain English, and share the link — and every list they page through, here or anywhere else, stops silently repeating and skipping rows.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
 
 ## Implementing agent — read these first
@@ -100,6 +100,33 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/runners-list-activity-open-change.test.ts` | DELETE | Covers the deleted activity dialog |
 | `ui/packages/app/tests/e2e/acceptance/runner-detail.spec.ts` | CREATE | End-to-end walk: wall → detail → failed lease → Review lease |
 | `docs/architecture/runner_fleet.md` | EDIT | Records the operator-plane read surface and the lifecycle-versus-work event split |
+| `src/agentsfleetd/fleet_runtime/keyset_cursor.zig` | EDIT | Cursor widens to carry an integer or text sort value beside the row id (§7) |
+| `src/agentsfleetd/http/pagination.zig` | DELETE | Its last caller goes with §7; the page-number helper is retired |
+| `src/agentsfleetd/http/handlers/api_keys/list.zig` | EDIT | Page-number paging becomes keyset; the sort allowlist rides the widened cursor |
+| `src/agentsfleetd/http/handlers/fleets/list.zig` | EDIT | Request parameter and response field move to `starting_after` / `next_cursor` (§9) |
+| `src/agentsfleetd/http/handlers/memory/handler.zig` | EDIT | All three query shapes gain a cursor guard (§10) |
+| `src/agentsfleetd/http/handlers/memory/sql.zig` | EDIT | Search, category and recent statements become keyset seeks |
+| `schema/039_memory_entries_keyset_index.sql` | CREATE | Index supporting `(fleet_id, created_at, key)` ordering |
+| `schema/embed.zig` | EDIT | Registers the new migration in the array |
+| `public/openapi/paths/api_keys.yaml` | EDIT | API-keys list moves to the keyset parameters and envelope |
+| `public/openapi/paths/fleets.yaml` | EDIT | Fleets list renames its parameter and response field |
+| `public/openapi/paths/memory.yaml` | EDIT | Memory list gains cursor paging |
+| `ui/packages/app/lib/api/api_keys.ts` | EDIT | Client drops paging params and follows `next_cursor` to exhaustion (§8) |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/page.tsx` | EDIT | No page params on the initial read |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/actions.ts` | EDIT | Action signature loses paging |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/components/ApiKeyList.tsx` | EDIT | Pagination footer removed; sorting retained |
+| `ui/packages/app/lib/api/fleets.ts` | EDIT | Sends `starting_after`, reads `next_cursor` (§9) |
+| `ui/packages/app/lib/api/memory.ts` | EDIT | Gains cursor paging and walks to completion (§10) |
+| `cli/src/program/cli-tree-access.ts` | EDIT | `api-key list` loses `--page` and `--page-size` |
+| `cli/src/program/cli-tree-fleet.ts` | EDIT | `fleet list` renames `--cursor` to `--starting-after` |
+| `cli/src/program/cli-tree-memory.ts` | EDIT | `memory list` gains `--starting-after` |
+| `cli/src/program/handlers-bind-access.ts` | EDIT | Drops the page bindings |
+| `cli/src/commands/api_key.ts` | EDIT | List follows `next_cursor` instead of taking a page |
+| `cli/src/commands/fleet.ts` | EDIT | Sends `starting_after`, reads `next_cursor` |
+| `cli/src/commands/memory.ts` | EDIT | Sends `starting_after` |
+| `cli/test/api_key.integration.test.ts` | EDIT | Retargeted at the unpaged list |
+| `cli/test/cli-tree.parse.unit.test.ts` | EDIT | Flag surface assertions follow the renames |
+| `~/Projects/docs/changelog.mdx` | EDIT | One `<Update>` covering the runner surface and the paging changes |
 
 ## Applicable Rules
 
@@ -107,6 +134,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - `~/Projects/dotfiles/docs/REST_API_DESIGN_GUIDELINES.md` — §1 URL design, §3 pagination and list envelope, §4 datetime and status codes, §7 the six registration points, §8 handler signature. Load-bearing: §3 forbids the `page`/`page_size` shape the existing runner endpoints use.
 - `dispatch/write_zig.md` — the two new handlers and the widened filter are Zig; memory lifecycle, `errdefer` placement, tagged-union results, file and function length caps, cross-compile.
 - `dispatch/write_ts_adhere_bun.md` — every new component is TypeScript; design-system primitives over raw markup, design tokens over arbitrary values, `const` and import discipline.
+- `dispatch/write_sql.md` and `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` — §10's index migration. **RULE SGR** (a migration creating an object states its GRANTs), **RULE MIG** (the migration's index assertion tracks its position in the array), **RULE STS** (no static-string CHECK).
+- **RULE JCL** — the CLI's JavaScript Object Notation output shape stays stable across §8's depagination and §9/§10's flag changes.
+- **RULE CLI-HINT** — renaming or removing a CLI flag means sweeping every error message and help string that names the old syntax; `--page`, `--page-size` and `--cursor` all disappear, so every hint mentioning them is updated in the same diff.
 - `~/Projects/dotfiles/docs/LOGGING_STANDARD.md` — the new handlers' warn branches.
 - `docs/DESIGN_SYSTEM.md` — dark Operational Restraint, the 4px scale, mint reserved for genuine live signals, administrative state before liveness, borders over shadows.
 
@@ -119,7 +149,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File & Function Length (≤350/≤50/≤70) | yes — `runners.ts` and `RunnerListCells.tsx` are already near the cap and the detail page adds components | Split by role as the existing surface already does: data flow in the page, presentation in components, copy in `runner-copy.ts` |
 | UFS (repeated/semantic literals) | yes — outcome tags and the lifecycle-type set cross the Zig and TypeScript boundary | Named constants both sides, spelled identically; the lifecycle set is one exported array consumed by the Activity caller |
 | UI Substitution / DESIGN TOKEN | yes — every new component | `DataTable`, `Badge`, `Card`, `CopyButton`, `Time`, `Nav`, `EmptyState` from the design system; no arbitrary `*-[…]` utilities |
-| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LOGGING yes, LIFECYCLE yes, ERROR REGISTRY yes, SCHEMA no | Scoped loggers with error codes on every warn; arena-owned slices freed on the error path; reuse `UZ-RUN-014` and `UZ-REQ-001` rather than minting codes; no migration — every column this spec reads already exists |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | all four yes | Scoped loggers with error codes on every warn; arena-owned slices freed on the error path; reuse `UZ-RUN-014` and `UZ-REQ-001` rather than minting codes; §10's index-only migration is single-concern, adds no column, registers in `schema/embed.zig` and the migration array, and carries its GRANT review per RULE SGR |
+| SCHEMA Removal Guard | no | Nothing is dropped or altered — §10 adds one index and touches no existing object |
 
 ## Prior-Art / Reference Implementations
 
@@ -211,6 +242,73 @@ Activity is the second rail item and the last piece of the 8K problem. The old t
 - **Dimension 6.4** — Activity renders through the same `DataTable` as Leases → Test `test_activity_uses_data_table`
 - **Dimension 6.5** — `RunnerList`, `RunnerActivityDialog` and their tests are gone, and no reference to them survives anywhere → Test `test_no_orphaned_runner_table_references`
 
+### §7 — Retire page-number pagination from the daemon
+
+Three reads page by number: `GET /v1/fleets/runners`, `GET /v1/fleets/runners/{runner_id}/events`, and `GET /v1/api-keys`. They are the only callers of `pagination.zig::parsePageParams`, and the guidelines name that shape as legacy not to be copied. Under load a page-number reader silently repeats or skips rows whenever a row is inserted mid-traversal; on a runner acquiring leases continuously that is every few seconds. This slice moves all three to keyset and deletes the helper, so no page-based read survives anywhere in the daemon.
+
+**Implementation default:** `keyset_cursor.zig` is widened once, from `{created_at_ms}:{uuid}` to a sort-value form carrying either an integer timestamp or a text key beside the row id. The API-keys read sorts by `key_name`, which the timestamp-only form cannot encode, and amputating a working sort to avoid a module change is the wrong trade. One widening serves every caller; the existing `{ts}:{id}` inputs stay parseable so `fleets/list.zig` is untouched.
+
+**Implementation default:** `runners_list` orders by `(created_at, id)`; `runner_events` orders by `(occurred_at, id)` to ride the existing `runner_events_runner_idx (runner_id, occurred_at DESC, id DESC)`; `api_keys/list` keeps its full sort allowlist, now cursor-encoded.
+
+**Implementation default:** the `sort` parameter is removed from `runners_list` only. Its non-default values `host_id` and `-host_id` existed solely to serve the sortable Host column on the table §4 deletes, and a card wall has no column header to sort by, so the capability leaves with the control that used it. The API-keys sort stays — its table stays.
+
+**Implementation default:** `total` is retained on all three responses. The guidelines allow `integer | null`, and the count these reads already compute is cheap, so every footer's row count survives.
+
+- **Dimension 7.1** — `keyset_cursor.zig` encodes and parses both an integer sort value and a text sort value beside the row id, and still parses every previously-issued `{ts}:{id}` cursor → Test `test_keyset_cursor_roundtrips_integer_and_text_sort_values`
+- **Dimension 7.2** — `GET /v1/fleets/runners` answers `{items, total, next_cursor}` and refuses `page` and `page_size` → Test `test_runner_list_uses_keyset_envelope`
+- **Dimension 7.3** — The runner list pages forward with no duplicate or skipped row when a runner is enrolled mid-traversal → Test `test_runner_list_stable_under_concurrent_enrolment`
+- **Dimension 7.4** — The runner list's `sort` parameter is gone; a request carrying it is refused rather than silently ignored → Test `test_runner_list_rejects_retired_sort_parameter`
+- **Dimension 7.5** — `GET /v1/fleets/runners/{runner_id}/events` answers `{items, total, next_cursor}` and refuses `page` and `page_size` → Test `test_runner_events_uses_keyset_envelope`
+- **Dimension 7.6** — The events read orders by `occurred_at` and returns every record sharing one millisecond across page boundaries → Test `test_runner_events_same_millisecond_rows_are_not_skipped`
+- **Dimension 7.7** — The events read honours the multi-value `event_type` set from §3 while paging by cursor → Test `test_runner_events_type_filter_survives_keyset_paging`
+- **Dimension 7.8** — `GET /v1/api-keys` answers `{items, total, next_cursor}`, refuses `page` and `page_size`, and keeps every value in its sort allowlist working → Test `test_api_keys_list_uses_keyset_envelope_and_keeps_sorts`
+- **Dimension 7.9** — Paging the API-keys list by `key_name` returns every key exactly once across pages, including keys sharing a name prefix → Test `test_api_keys_key_name_sort_pages_without_loss`
+- **Dimension 7.10** — `pagination.zig` is deleted and no caller of `parsePageParams` remains anywhere → Test `test_page_param_helper_is_gone`
+
+### §8 — API keys lose their pagination controls entirely
+
+A tenant's API keys are human-created and number in the single digits to low tens; a default page of 25 essentially never fills. Paging controls on that list are ceremony, and §7 removes the parameters the Command-Line Interface (CLI) sends anyway. Rather than translate them into cursor flags nobody will type, both clients drop the controls and follow `next_cursor` to exhaustion, so the list is simply complete.
+
+**Implementation default:** the endpoint keeps the `{items, total, next_cursor}` envelope and its bounded default. The guidelines require that envelope of every list, and an unbounded read is a denial-of-service shape regardless of how small the collection usually is. Only the *clients* stop exposing controls.
+
+**Implementation default:** the retired flags are removed, not aliased. Pre-`2.0.0` carries no compatibility shims, and a flag that silently does nothing is worse than one that fails with a message saying what changed.
+
+- **Dimension 8.1** — `api-key list` refuses `--page` and `--page-size` with a message stating that the list is no longer paged → Test `test_api_key_list_rejects_retired_page_flags`
+- **Dimension 8.2** — `api-key list` returns every key the tenant holds, following `next_cursor` until it is null → Test `test_api_key_list_returns_every_key`
+- **Dimension 8.3** — `--sort` is unchanged and still orders the complete set → Test `test_api_key_list_sort_orders_complete_set`
+- **Dimension 8.4** — Help text and the command tree name no paging flag → Test `test_api_key_list_help_has_no_paging_flags`
+- **Dimension 8.5** — In JavaScript Object Notation mode the printed object carries the complete item set and `next_cursor: null` → Test `test_api_key_list_json_mode_is_complete`
+- **Dimension 8.6** — The app's key list renders no pagination footer and shows every key → Test `test_api_key_list_view_has_no_pagination_footer`
+
+### §9 — One cursor vocabulary: fleets moves to `starting_after` / `next_cursor`
+
+`fleets/list.zig` reads the request parameter `cursor` and emits the response field `cursor`. The guidelines require `starting_after` on the request and `next_cursor` on the response, so the shipped handler matches neither, and the CLI's `--cursor <token>` flag inherits the drift. With §7 putting three more reads on the guideline spelling, leaving fleets alone would ship two names for one concept across neighbouring commands.
+
+**Implementation default:** rename in place across all four layers in one slice — request parameter, response field, CLI flag, app client — so no intermediate state has a handler answering one name and a caller sending another. The old spellings are refused, not accepted-and-translated.
+
+- **Dimension 9.1** — `GET /v1/workspaces/{workspace_id}/fleets` accepts `starting_after` and refuses `cursor` → Test `test_fleets_list_accepts_starting_after_and_refuses_cursor`
+- **Dimension 9.2** — The response field is `next_cursor`; no `cursor` key is emitted → Test `test_fleets_list_emits_next_cursor`
+- **Dimension 9.3** — `fleet list` accepts `--starting-after <id>` and refuses `--cursor` with a message naming the replacement → Test `test_fleet_list_flag_renamed_to_starting_after`
+- **Dimension 9.4** — The app's fleets client sends `starting_after` and reads `next_cursor`, and the wall's paging still walks every fleet → Test `test_fleets_client_uses_guideline_cursor_names`
+- **Dimension 9.5** — No request parameter or response field named `cursor` survives anywhere in the daemon, the app or the CLI → Test `test_no_bare_cursor_spelling_survives`
+
+### §10 — Memory list pages by cursor
+
+`agentsfleet memory list` takes `--limit` and nothing else, because the endpoint has no cursor to expose: `handlers/memory/handler.zig` serves three query shapes — text search, category filter, and recent — all bounded by limit alone. Memory entries accumulate per execution, so this is the collection where paging genuinely earns its keep, unlike the human-authored lists §8 depaginates. This slice gives the endpoint keyset paging and the CLI the same `--starting-after` flag §9 standardises.
+
+**Implementation default:** all three query shapes gain the cursor, ordered by `(created_at, key)`. Paging only the recent path would leave a filtered or searched list silently truncated, which is the failure the whole milestone exists to remove.
+
+**Implementation default:** a supporting index lands with it. `schema/010_memory_entries.sql` indexes category and fleet id only, so keyset ordering has nothing to ride. The migration adds one index and touches no column, so no existing row is rewritten.
+
+- **Dimension 10.1** — A migration adds the index supporting `(fleet_id, created_at, key)` ordering, registered in `schema/embed.zig` and the migration array → Test `test_memory_keyset_index_migration_registered`
+- **Dimension 10.2** — The recent path accepts `starting_after` and pages without repeating or skipping an entry → Test `test_memory_recent_pages_by_cursor`
+- **Dimension 10.3** — The category-filtered path pages by cursor while keeping its filter → Test `test_memory_category_filter_pages_by_cursor`
+- **Dimension 10.4** — The text-search path pages by cursor while keeping its query → Test `test_memory_search_pages_by_cursor`
+- **Dimension 10.5** — The response envelope becomes `{items, total, next_cursor}` on every path → Test `test_memory_list_envelope_shape`
+- **Dimension 10.6** — Entries sharing one `created_at` are all returned across page boundaries → Test `test_memory_same_millisecond_entries_are_not_skipped`
+- **Dimension 10.7** — `memory list` accepts `--starting-after <key>` alongside its existing `--limit` → Test `test_memory_list_accepts_starting_after`
+- **Dimension 10.8** — The app's memory panel walks every entry rather than stopping at the first bounded read → Test `test_memory_panel_walks_every_entry`
+
 ## Interfaces
 
 ```
@@ -266,13 +364,43 @@ GET /v1/fleets/runners/{runner_id}/leases?starting_after=<lease_id>&limit=<1..10
   400 UZ-REQ-001 — unparseable starting_after, or limit outside 1..100
   404 UZ-RUN-014 — no runner with this id
 
-GET /v1/fleets/runners/{runner_id}/events?event_type=<tag>[,<tag>…]&page=&page_size=
-  unchanged except event_type, which now accepts a comma-separated set.
-  400 UZ-REQ-001 — any unrecognised tag in the set, or an empty value.
+GET /v1/fleets/runners/{runner_id}/events?event_type=<tag>[,<tag>…]&starting_after=&limit=
+  MIGRATED (§7). Was ?page=&page_size= returning {items,total,page,page_size}.
+  Now keyset over (occurred_at, id); returns {items, total, next_cursor}.
+  Item shape unchanged. event_type now accepts a comma-separated set (§3).
+  400 UZ-REQ-001 — unrecognised tag, empty type value, unparseable cursor,
+                   limit outside 1..100, or a request still sending page/page_size.
+
+GET /v1/fleets/runners?starting_after=&limit=
+  MIGRATED (§7). Was ?page=&page_size=&sort= returning {items,total,page,page_size}.
+  Now keyset over (created_at, id); returns {items, total, next_cursor}.
+  Item shape unchanged. `sort` is REMOVED — newest-first is the sole order.
+  400 UZ-REQ-001 — unparseable cursor, limit outside 1..100, or a retired
+                   page/page_size/sort parameter.
+
+GET /v1/api-keys?starting_after=&limit=&sort=
+  MIGRATED (§7). Was ?page=&page_size=. Now keyset; sort allowlist unchanged.
+  Clients no longer expose paging (§8) — they follow next_cursor to exhaustion.
+
+GET /v1/workspaces/{workspace_id}/fleets?starting_after=&limit=
+  RENAMED (§9). Request param `cursor` → `starting_after`.
+  Response field `cursor` → `next_cursor`. Both old spellings refused.
+
+GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories?starting_after=&limit=&category=&query=
+  EXTENDED (§10). Gains keyset paging over (created_at, key) on all three
+  query shapes; envelope becomes {items, total, next_cursor}.
+
+CLI flag surface after this milestone:
+  agentsfleet api-key list [--sort <field>]                 # no paging flags
+  agentsfleet fleet list   [--starting-after <id>] [--limit <n>]
+  agentsfleet memory list  [--starting-after <key>] [--limit <n>] [--category <name>]
+  retired: --page, --page-size, --cursor
 
 Client:
   getRunner(token, runnerId): Promise<RunnerDetail>
   listRunnerLeases(token, runnerId, { starting_after?, limit? }): Promise<RunnerLeaseResponse>
+  listRunners(token, { starting_after?, limit? }): Promise<RunnerListResponse>       // migrated
+  listRunnerEvents(token, runnerId, { starting_after?, limit?, event_type? }): …     // migrated
   runnerPath(runnerId, view?): string        // "/admin/runners/{id}" | "…?view=activity"
   RUNNER_LIFECYCLE_EVENT_TYPES: readonly RunnerEventType[]   // the seven non-lease tags
 ```
@@ -357,6 +485,35 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | 6.3 | unit | `test_activity_renders_registration_record` | Registration metadata → host identifier and isolation tier render |
 | 6.4 | unit | `test_activity_uses_data_table` | Activity view → the rendered table carries the shared table structure, not bespoke markup |
 | 6.5 | unit | `test_no_orphaned_runner_table_references` | Repository grep for the deleted symbols → zero matches outside this spec |
+| 7.1 | unit | `test_keyset_cursor_roundtrips_integer_and_text_sort_values` | Format then parse for an integer sort value, a text sort value, and a legacy `{ts}:{id}` string → each returns its input |
+| 7.2 | integration | `test_runner_list_uses_keyset_envelope` | The runner list → exactly `{items, total, next_cursor}`; a request sending `page=2` → 400 |
+| 7.3 | integration | `test_runner_list_stable_under_concurrent_enrolment` | Page 1 read, a runner enrolled, page 2 read via `next_cursor` → no row repeated, none skipped |
+| 7.4 | integration | `test_runner_list_rejects_retired_sort_parameter` | `sort=host_id` → 400 `UZ-REQ-001`, never a silently unsorted 200 |
+| 7.5 | integration | `test_runner_events_uses_keyset_envelope` | The events read → exactly `{items, total, next_cursor}`; `page_size=10` → 400 |
+| 7.6 | integration | `test_runner_events_same_millisecond_rows_are_not_skipped` | 5 records sharing one `occurred_at`, `limit=2` → all 5 across pages, no duplicates |
+| 7.7 | integration | `test_runner_events_type_filter_survives_keyset_paging` | Multi-value `event_type` plus `starting_after` → every page honours the set |
+| 7.8 | integration | `test_api_keys_list_uses_keyset_envelope_and_keeps_sorts` | The API-keys read → exactly `{items, total, next_cursor}`; `page=2` → 400; each of the four sort values still orders correctly |
+| 7.9 | integration | `test_api_keys_key_name_sort_pages_without_loss` | 7 keys including two sharing a name prefix, `sort=key_name`, `limit=3` → all 7 across pages, no duplicates |
+| 7.10 | unit | `test_page_param_helper_is_gone` | Repository grep for `parsePageParams` and for `pagination.zig` → 0 matches outside this spec |
+| 8.1 | unit | `test_api_key_list_rejects_retired_page_flags` | `--page 2` and `--page-size 10` → non-zero exit, message states the list is no longer paged, no request made |
+| 8.2 | e2e | `test_api_key_list_returns_every_key` | A tenant holding more keys than one bounded read returns → every key printed, no truncation notice |
+| 8.3 | e2e | `test_api_key_list_sort_orders_complete_set` | `--sort key_name` across a multi-read set → the full set is ordered, not each read separately |
+| 8.4 | unit | `test_api_key_list_help_has_no_paging_flags` | Help output → contains no `--page`, `--page-size`, `--limit` or `--starting-after` |
+| 8.5 | e2e | `test_api_key_list_json_mode_is_complete` | JavaScript Object Notation mode → every key present, `next_cursor` null |
+| 8.6 | unit | `test_api_key_list_view_has_no_pagination_footer` | The app's key list → no pagination control renders, every seeded key is visible |
+| 9.1 | integration | `test_fleets_list_accepts_starting_after_and_refuses_cursor` | `starting_after=<id>` → 200 and correct page; `cursor=<id>` → 400 `UZ-REQ-001` |
+| 9.2 | integration | `test_fleets_list_emits_next_cursor` | A page with more to follow → `next_cursor` present, no `cursor` key anywhere in the body |
+| 9.3 | unit | `test_fleet_list_flag_renamed_to_starting_after` | `--starting-after X` → sends `starting_after`; `--cursor X` → non-zero exit naming the replacement |
+| 9.4 | unit | `test_fleets_client_uses_guideline_cursor_names` | The app's fleets client → sends `starting_after`, reads `next_cursor`, walks a two-page fixture to completion |
+| 9.5 | unit | `test_no_bare_cursor_spelling_survives` | Repository grep for a `cursor` query parameter or response key → 0 matches in daemon, app and CLI source |
+| 10.1 | integration | `test_memory_keyset_index_migration_registered` | The migration applies, the index exists, and its position in the migration array matches `schema/embed.zig` |
+| 10.2 | integration | `test_memory_recent_pages_by_cursor` | 7 entries, `limit=3` → three pages of 3/3/1, no entry repeated or skipped |
+| 10.3 | integration | `test_memory_category_filter_pages_by_cursor` | A category with 5 entries, `limit=2` → all 5 across pages, no entry from another category |
+| 10.4 | integration | `test_memory_search_pages_by_cursor` | A query matching 5 entries, `limit=2` → all 5 across pages, no non-matching entry |
+| 10.5 | integration | `test_memory_list_envelope_shape` | Each of the three query shapes → exactly `{items, total, next_cursor}` |
+| 10.6 | integration | `test_memory_same_millisecond_entries_are_not_skipped` | 5 entries sharing one `created_at`, `limit=2` → all 5 across pages, no duplicates |
+| 10.7 | unit | `test_memory_list_accepts_starting_after` | `memory list --starting-after K --limit 5` → both parameters reach the request |
+| 10.8 | unit | `test_memory_panel_walks_every_entry` | A two-read fixture → the panel renders every entry, not just the first read |
 | failure | integration | `test_runner_leases_rejects_malformed_cursor` | `starting_after` that is not a lease id this runner owns → 400 `UZ-REQ-001`, no partial page |
 | failure | integration | `test_runner_leases_rejects_limit_out_of_range` | `limit` of 0, -1, `abc` and 101 → 400 each, message names the 1..100 range |
 | failure | integration | `test_runner_read_db_unavailable_is_service_error` | Pool acquire injected to fail on both new reads → 503 with the shared unavailable body, never a 200 with empty items |
@@ -379,7 +536,10 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | R3 | Activity carries no lease work events (§3, §6) | `grep -n 'lease_acquired\|lease_released' ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/ActivityTable.tsx` | no output | P0 | |
 | R4 | No runner component spells a failure tag literal (§5) | `grep -rn 'oom_kill\|timeout_kill\|transport_loss\|renewal_terminate' 'ui/packages/app/app/(dashboard)/admin/runners'` | no output | P0 | |
 | R5 | The retired table surface is gone from disk and from every reference (§6) | `test ! -f 'ui/packages/app/app/(dashboard)/admin/runners/components/RunnerList.tsx' && ! grep -rn 'RunnerActivityDialog' ui/packages/app --include='*.ts*'` | exit 0, no output | P0 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R6 | No page-number pagination survives in the daemon (§7) | `grep -rn "parsePageParams\|page_size" src/agentsfleetd --include='*.zig' \| grep -v _test` | no output | P0 | |
+| R7 | No retired paging flag survives in the CLI (§8, §9) | `grep -rn -- "--page\b\|--page-size\|--cursor" cli/src` | no output | P0 | |
+| R8 | One cursor vocabulary across every surface (§9) | `grep -rn "\"cursor\"\|'cursor'\|\.cursor\b" src/agentsfleetd ui/packages/app/lib cli/src --include='*.zig' --include='*.ts' \| grep -v next_cursor \| grep -v keyset_cursor` | no output | P0 | |
+| R9 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes (HTTP and Redis touched) | `make test-integration` | exit 0 | P0 | |
@@ -404,6 +564,7 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | `ui/packages/app/tests/runners-list.test.ts` | `test ! -f ui/packages/app/tests/runners-list.test.ts` |
 | `ui/packages/app/tests/runners-list-actions.test.ts` | `test ! -f ui/packages/app/tests/runners-list-actions.test.ts` |
 | `ui/packages/app/tests/runners-list-activity-open-change.test.ts` | `test ! -f ui/packages/app/tests/runners-list-activity-open-change.test.ts` |
+| `src/agentsfleetd/http/pagination.zig` | `test ! -f src/agentsfleetd/http/pagination.zig` |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -416,10 +577,14 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | `StatusCell` | `grep -rn -w "StatusCell" ui/packages/app --include="*.ts*"` | 0 matches |
 | `LabelsCell` | `grep -rn -w "LabelsCell" ui/packages/app --include="*.ts*"` | 0 matches |
 | `ActionsCell` | `grep -rn -w "ActionsCell" ui/packages/app --include="*.ts*"` | 0 matches |
+| `parsePageParams` | `grep -rn -w "parsePageParams" src/ --include="*.zig"` | 0 matches |
+| `PAGE_FIELD` / `PAGE_SIZE_FIELD` | `grep -rn -w "PAGE_FIELD\|PAGE_SIZE_FIELD" cli/src` | 0 matches |
+| `FLAG_CURSOR_TOKEN` | `grep -rn -w "FLAG_CURSOR_TOKEN" cli/src` | 0 matches |
 
 ## Out of Scope
 
-- **Migrating `GET /v1/fleets/runners/{id}/events` and `GET /v1/fleets/runners` to keyset pagination.** The guidelines forbid the page-based shape for *new* endpoints; converting the two existing ones is a separate read-surface change with its own client and test blast radius. Consequence accepted here: Leases pages by cursor while Activity pages by number until that lands. Follow-up spec, not a deferral of this one.
+- **Pagination for secrets, connectors, workspaces, integration grants and fleet keys.** All five are human-authored and small — a workspace holds a handful. `fleet-key` in particular is a per-fleet credential for webhook and external-framework callers (`docs/AUTH.md` §Fleet keys), minted one at a time. Adding paging there would invent a problem.
+- **Making fleet keys a first-class auth principal.** They authenticate through a bespoke handler-local lookup today and never become an `AuthPrincipal`; the v2.1 revamp owns that, per `docs/AUTH.md:362`.
 - **Windowed performance counters and their index.** Lifetime counting ships now; a "last 24 hours" selector needs an index on `fleet.runner_leases (runner_id, created_at)` and a bounded plan, which belongs with the window that motivates it.
 - **Filtering the lease list to a single outcome.** The shared table offers sort, not filter, and a server-side outcome filter needs a sort or filter key the endpoint does not yet expose. Sorting is available; a dedicated failures filter is follow-up work.
 - **Provisioning Grafana dashboards or a runner deep link target.** This spec renders the action against a configured base address and hides it when unset; standing up dashboards is operational work under the observability playbooks.
@@ -434,8 +599,8 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 2. **Preserved user behaviour** — Cordon, drain, revoke and delete keep their exact confirm copy, eligibility rules and error handling; delete still appears only once a runner is revoked. Enrolling a runner is untouched. The list endpoint keeps its envelope so any other caller is unaffected.
 3. **Optimal-way check** — The most direct shape is the one Fleets already ships, and this copies it rather than inventing. The gap to unconstrained-optimal is the lease list's inability to filter to failures server-side; sorting covers the common case, and closing it properly needs an endpoint capability that is named in Out of Scope rather than half-built here.
 4. **Rebuild-vs-iterate** — Rebuild. The table cannot express "what is this host doing", and no addressable page exists to iterate toward; the surface is being replaced, not patched. Determinism is unaffected: every number rendered comes from durable rows, and the one non-durable source available (the in-memory Prometheus families) is explicitly rejected in §1.
-5. **What we build** — Three operator-plane reads, a card wall, a two-view detail page landing on Leases, and a Review lease panel.
-6. **What we do NOT build** — No Overview view (Fleets has none and the questions it would answer are answered by the header and the strip); no Details view (four static facts do not earn a destination); no outcome filter chips (the shared table has no filter slot); no window selector; no capacity meter; no success-rate percentage.
+5. **What we build** — Three operator-plane reads, a card wall, a two-view detail page landing on Leases, a Review lease panel, and the pagination retirement that follows from them: every page-number read moves to keyset, `parsePageParams` is deleted, the API-keys list drops its paging controls on both clients, fleets renames its parameter and response field to the guideline spelling, and memory gains the cursor it never had.
+6. **What we do NOT build** — No Overview view (Fleets has none and the questions it would answer are answered by the header and the strip); no Details view (four static facts do not earn a destination); no outcome filter chips (the shared table has no filter slot); no window selector; no capacity meter; no success-rate percentage; no pagination for secrets, connectors, workspaces, grants or fleet keys, which are human-authored and small.
 7. **Fit with existing features** — Compounds with the Fleet console: every lease row links into the Fleet that produced the work, so runner triage and fleet triage are one path. The feature it must not destabilize is runner enrolment and the administrative state machine — those endpoints are untouched and covered by regression rows.
 8. **Surface order** — User-Interface-first, and deliberately so: the repository default is Command-Line-Interface-first, but this is a platform-admin triage surface with no `agentsfleet` command today, and the operator reaching for it is already in the console. The two new reads are public, so a command-line consumer can follow without redesign.
 9. **Dashboard restraint** — No control ships ahead of its evidence: `Open Grafana` renders only when configured; `total` may be null rather than fabricated; a lease with no Fleet event reads unknown rather than succeeded; a stale active lease is counted as neither live nor expired. No percentage, ratio or capacity figure appears anywhere.
@@ -443,9 +608,9 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Six Sections split API-before-UI so the three reads can land and be integration-tested before any component consumes them, then wall, then detail, then Activity-and-retirement together so no dead surface survives a partial landing. One workstream rather than several: the reads have no consumer without the pages, and the pages cannot hydrate without the reads.
-- **Alternatives considered:** (a) *Hydrate the detail page from the existing list response.* Rejected — a refresh or a shared link would have nothing to read, which defeats the addressable-page goal. (b) *Keep the table and add an Overview page.* Rejected by Indy after review of the dense mockup; and Fleets proves the pattern needs no Overview. (c) *Three separate treatments of an Overview page* (one-line, two-card, lease-as-object) — all superseded once the Fleets pattern was adopted, since it removes the page rather than simplifying it. (d) *Match the neighbouring runner endpoints' page-based pagination for consistency.* Rejected — the guidelines name that shape as legacy and forbid it for new endpoints; the rule is the constant, the spec is the instance.
-- **Patch-vs-refactor verdict:** this is a **refactor** because the existing surface has no shape to extend — a table with an icon dialog cannot express live work, and there is no runner page at all. Solution size matches problem size: the replacement copies a shipped pattern rather than inventing one, and the two existing endpoints it does not need are left alone rather than opportunistically migrated.
+- **Chosen shape:** Ten Sections in two arcs. §1–§6 are the runner surface, ordered API-before-UI so the three reads land and integration-test before any component consumes them, ending with Activity-and-retirement together so no dead surface survives a partial landing. §7–§10 are the pagination arc: retire the page-number helper, depaginate the lists that never needed it, unify the cursor vocabulary, and give memory the paging it always needed. One workstream rather than two because the arcs are not separable in practice — §2 cannot ship a keyset lease read next to a page-numbered Activity in the same rail without shipping the inconsistency this milestone exists to remove.
+- **Alternatives considered:** (a) *Hydrate the detail page from the existing list response.* Rejected — a refresh or a shared link would have nothing to read, which defeats the addressable-page goal. (b) *Keep the table and add an Overview page.* Rejected by Indy after review of the dense mockup; and Fleets proves the pattern needs no Overview. (c) *Three separate treatments of an Overview page* (one-line, two-card, lease-as-object) — all superseded once the Fleets pattern was adopted, since it removes the page rather than simplifying it. (d) *Match the neighbouring runner endpoints' page-based pagination for consistency.* Rejected — the guidelines name that shape as legacy and forbid it for new endpoints. (e) *Leave the existing page-based reads alone and ship the mixed idiom.* Rejected by Indy; and the blast radius that would have justified deferring turned out not to exist, since every runner-read caller is a file §4 and §6 already delete. (f) *Split the pagination arc into M146_002.* Proposed and rejected by Indy — one spec, one Pull Request. (g) *Translate the API-keys paging flags into cursor flags.* Rejected — the collection is single-digit; the honest move is no controls at all rather than controls nobody types.
+- **Patch-vs-refactor verdict:** this is a **refactor** because the existing surface has no shape to extend — a table with an icon dialog cannot express live work, and there is no runner page at all. Solution size matches problem size on the runner arc: the replacement copies a shipped pattern rather than inventing one. The pagination arc is deliberately wider than the runner work strictly needs, on Indy's explicit call, because a half-migrated pagination vocabulary is a worse resting state than either end.
 
 ## Discovery (consult log)
 
@@ -486,6 +651,42 @@ Verified against `fleets/[id]/page.tsx`: the Fleet detail page opens on `chat`, 
 > Indy (2026-07-29): "remove enrollment, and activitys registered row is ffine"
 
 The enrolment date therefore appears only on Activity's `registered` record, with the real date. The word "reclaimed" was replaced everywhere: an expired lease now states that the runner stopped renewing and the work was re-leased to another runner.
+
+**The pagination arc (§7–§10) — how it was decided.**
+
+The first draft put the new lease read on keyset (the guidelines forbid page-number for new endpoints) and deferred migrating the two existing runner reads to a follow-up, on the stated reason that they had their own caller blast radius. Indy challenged the deferral:
+
+> Indy (2026-07-29): "I think fix activity too? who else uses the page?"
+
+Counting the callers proved the deferral wrong. `parsePageParams` had exactly three callers — `runners_list`, `runner_events`, `api_keys/list` — and both runner reads were consumed only by `RunnerList.tsx` and four test files that §4 and §6 already delete. RULE NLR applies: the surface is being rewritten, so its legacy idiom is not carried forward. §7 absorbed the migration.
+
+> Indy (2026-07-29): "that we must be migrated, i dont need anyone to use page based params"
+
+That widened §7 to the API-keys read as well, and made deleting `pagination.zig` the outcome rather than a side effect.
+
+**A false claim, corrected.** While sizing the migration the authoring agent wrote that there were "no Command-Line Interface callers at all." That was true of the two runner reads and false of `api_keys/list`: `cli/src/commands/api_key.ts:213` ships an `api-key list` command sending `page`, `page_size` and `sort`. Indy caught it:
+
+> Indy (2026-07-29): "is that a true statem,ent"
+
+The corrected count is what produced §8's scope.
+
+> Indy (2026-07-29): "I want api keys fixes and the cli ones --starting-after and --limit in this PR"
+
+Then, on reconsidering whether that list needs paging at all:
+
+> Indy (2026-07-29): "i feel its pretty much pointless to have pagination for api-key?" … "it would help in secrets, or fleets?" … "in cli"
+
+Counting again: `fleet list` already ships `--cursor` + `--limit`; `memory list` has `--limit` and no cursor; `secret`, `connector`, `workspace`, `grant` and `fleet-key` have no paging at all. API keys and secrets are human-authored and small; memory entries accumulate per execution. So §8 became *remove the controls* rather than *rename them*.
+
+> Indy (2026-07-29): "I think remove pagination from api-key (CLI) and UI. Rename parameter from --cursor to --starting-after? memory --starting-after (add) this / Its fine to skip paging in secret, conenctor, workspace, grant"
+
+§9 and §10 follow directly. §9 is larger than a flag rename because `fleets/list.zig` reads the request parameter `cursor` and emits the response field `cursor`, matching neither guideline spelling. §10 is a new server capability, not a flag: the memory endpoint has three query shapes, all limit-only, and no index supporting keyset ordering.
+
+Splitting the pagination arc into a second workstream was proposed and declined:
+
+> Indy (2026-07-29): "I need in 146_001"
+
+**`fleet-key` was asked about twice and belongs on the record.** `agt_a<hex>`, workspace-scoped and bound to a single fleet, minted at `POST /v1/workspaces/{ws}/fleet-keys`. It exists for webhook-driven external integrations and Path B agent frameworks (LangGraph, CrewAI, Composio), each of which gets a companion fleet record so integration grants apply identically. A leaked `agt_a` exposes one fleet's event stream rather than a tenant. It authenticates through a bespoke handler-local lookup and never becomes an `AuthPrincipal` (`docs/AUTH.md:362`); first-class principal status is v2.1 roadmap work. A handful exist per workspace, so it stays unpaged.
 
 **Facts verified on `main` during authoring, not taken from prose:**
 
