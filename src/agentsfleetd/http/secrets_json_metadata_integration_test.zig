@@ -130,16 +130,20 @@ test "integration: rotate replaces only the api_key, preserving provider/model/b
         try r.expectStatus(.created);
     }
 
-    const rotate_body = "{\"api_key\":\"" ++ NEW_KEY ++ "\"}";
+    // Replacement is total, so the caller sends every field it wants kept.
+    // Nothing is merged — that is what makes the verb expressible on a secret
+    // nobody can read back.
+    const named_replace = "{\"data\":{\"provider\":\"anthropic\",\"api_key\":\"" ++ NEW_KEY ++ "\",\"model\":\"claude-sonnet-4-6\"}}";
+    const endpoint_replace = "{\"data\":{\"provider\":\"openai-compatible\",\"base_url\":\"https://gw.example.com/v1\",\"model\":\"kimi-k2.6\",\"api_key\":\"" ++ NEW_KEY ++ "\"}}";
     {
-        const r = try (try (try h.patch(named_item).bearer(base.TOKEN_OPERATOR)).json(rotate_body)).send();
+        const r = try (try (try h.put(named_item).bearer(base.TOKEN_OPERATOR)).json(named_replace)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("\"name\":\"anthropic-prod\""));
         try std.testing.expect(!r.bodyContains(NEW_KEY));
     }
     {
-        const r = try (try (try h.patch(endpoint_item).bearer(base.TOKEN_OPERATOR)).json(rotate_body)).send();
+        const r = try (try (try h.put(endpoint_item).bearer(base.TOKEN_OPERATOR)).json(endpoint_replace)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
     }
@@ -171,7 +175,7 @@ test "integration: rotate a missing secret returns typed 404" {
 
     const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/does-not-exist", .{base.TEST_WS_ID});
     defer alloc.free(path);
-    const r = try (try (try h.patch(path).bearer(base.TOKEN_OPERATOR)).json("{\"api_key\":\"sk-whatever\"}")).send();
+    const r = try (try (try h.put(path).bearer(base.TOKEN_OPERATOR)).json("{\"data\":{\"api_key\":\"sk-whatever\"}}")).send();
     defer r.deinit();
     try r.expectStatus(.not_found);
     try std.testing.expect(r.bodyContains(error_codes.ERR_SECRET_NOT_FOUND));
@@ -181,7 +185,7 @@ test "integration: rotate a missing secret returns typed 404" {
     base.cleanupRows(conn);
 }
 
-test "integration: rotate rejects an empty or oversized key without leaking it" {
+test "integration: replace rejects an empty or oversized body without leaking it" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {
@@ -201,18 +205,20 @@ test "integration: rotate rejects an empty or oversized key without leaking it" 
         try r.expectStatus(.created);
     }
     {
-        const r = try (try (try h.patch(item_path).bearer(base.TOKEN_OPERATOR)).json("{\"api_key\":\"\"}")).send();
+        // An empty object is rejected by the same gate `create` uses, so the
+        // two verbs cannot disagree about what a secret is.
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR)).json("{\"data\":{}}")).send();
         defer r.deinit();
         try r.expectStatus(.bad_request);
-        try std.testing.expect(r.bodyContains(error_codes.ERR_INVALID_REQUEST));
+        try std.testing.expect(r.bodyContains(error_codes.ERR_VAULT_DATA_INVALID));
     }
     {
         const filler = try alloc.alloc(u8, 5 * 1024);
         defer alloc.free(filler);
         @memset(filler, 'k');
-        const body = try std.fmt.allocPrint(alloc, "{{\"api_key\":\"{s}\"}}", .{filler});
+        const body = try std.fmt.allocPrint(alloc, "{{\"data\":{{\"api_key\":\"{s}\"}}}}", .{filler});
         defer alloc.free(body);
-        const r = try (try (try h.patch(item_path).bearer(base.TOKEN_OPERATOR)).json(body)).send();
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR)).json(body)).send();
         defer r.deinit();
         try r.expectStatus(.bad_request);
         try std.testing.expect(r.bodyContains(error_codes.ERR_VAULT_DATA_TOO_LARGE));
@@ -240,6 +246,53 @@ test "integration: cross-workspace DELETE is rejected (IDOR guard)" {
     defer r.deinit();
     try std.testing.expect(r.status >= 400);
     try std.testing.expect(r.status != 204);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    base.cleanupRows(conn);
+}
+
+test "integration: test_put_replaces_whole_body — a dropped field is gone, not retained" {
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const creds_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{base.TEST_WS_ID});
+    defer alloc.free(creds_path);
+    const item_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/shape-shifter", .{base.TEST_WS_ID});
+    defer alloc.free(item_path);
+
+    // Seed a provider-shaped secret: the list projects `provider` for it.
+    {
+        const r = try (try (try h.post(creds_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"name\":\"shape-shifter\",\"data\":{\"provider\":\"anthropic\",\"api_key\":\"sk-seed\",\"model\":\"claude-sonnet-4-6\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+
+    // Replace it with a body that shares no field at all. Under the former
+    // field-merge this was impossible to express; under a whole-body replace
+    // it is the ordinary case, and every old field must vanish.
+    {
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"data\":{\"token\":\"ghp-replaced\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+    }
+
+    // The projection is derived from the stored bytes, so the list is the
+    // observable proof: a secret that was a provider key is now an opaque
+    // custom secret, and `anthropic` is gone rather than merged around.
+    const r = try (try h.get(creds_path).bearer(base.TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"name\":\"shape-shifter\""));
+    try std.testing.expect(!r.bodyContains("\"provider\":\"anthropic\""));
+    try std.testing.expect(!r.bodyContains("ghp-replaced"));
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);

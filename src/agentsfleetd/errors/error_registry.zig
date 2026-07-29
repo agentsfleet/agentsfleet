@@ -274,7 +274,6 @@ pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
 pub const MSG_SECRET_NAME_REQUIRED = "secret name is required (max 64 chars)";
 pub const MSG_SECRET_DATA_REQUIRED = "secret data must be a non-empty JSON object";
 pub const MSG_SECRET_DATA_TOO_LARGE = "secret data exceeds 4KB when stringified";
-pub const MSG_SECRET_KEY_REQUIRED = "api_key is required and must be a non-empty string";
 pub const MSG_SECRET_NOT_FOUND = "secret not found in this workspace";
 pub const MSG_SECRET_NAME_TAKEN = "a secret with this name already exists in this workspace; rotate it instead of creating it again";
 // Serving-plane backpressure messages

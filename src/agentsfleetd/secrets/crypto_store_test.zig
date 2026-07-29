@@ -26,14 +26,14 @@ const ROUNDTRIP = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000002", .w
 const RELOCATE_KEY = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000003", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000003" };
 const RELOCATE_WS = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000004", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000004" };
 const RELOCATE_WS_TARGET = "0195b4ba-8d3a-7f13-8abc-cd0000000014";
-const LEGACY = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000005", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000005" };
+const UNBOUND = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000005", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000005" };
 const MISSING = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000006", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000006" };
 const UNSUPPORTED = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000007", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000007" };
 const WRONG_VERSION = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000008", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000008" };
 const MALFORMED = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000009", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000009" };
 const PAYLOAD_FAILURE = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000010", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000010" };
 const ALLOC_FAIL = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000011", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000011" };
-const VERSION_LEGACY: i32 = 1;
+const VERSION_UNBOUND: i32 = 1;
 const VERSION_BOUND: i32 = 2;
 const VERSION_UNSUPPORTED: i32 = 3;
 const DELETE_ROWS = "DELETE FROM vault.secrets WHERE workspace_id = $1";
@@ -102,7 +102,7 @@ fn readCiphertext(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []cons
     };
 }
 
-fn seedLegacyEnvelope(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8, plaintext: []const u8) !void {
+fn seedUnboundEnvelope(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8, plaintext: []const u8) !void {
     var kek = try cp.loadKek();
     defer std.crypto.secureZero(u8, &kek);
     var dek: [cp.KEY_LEN]u8 = undefined;
@@ -124,7 +124,7 @@ fn seedLegacyEnvelope(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []
     const no_projection: ?[]const u8 = null;
     _ = try conn.exec(sql.INSERT_SECRET, .{
         secret_id,    workspace_id,   key_name,           wrapped.ciphertext, &wrapped.nonce,
-        &wrapped.tag, &payload.nonce, payload.ciphertext, &payload.tag,       VERSION_LEGACY,
+        &wrapped.tag, &payload.nonce, payload.ciphertext, &payload.tag,       VERSION_UNBOUND,
         now_ms,       no_projection,  no_projection,      no_projection,      @as(?bool, null),
     });
 }
@@ -256,24 +256,33 @@ test "integration: crypto store rejects an envelope relocated to another workspa
     try std.testing.expectError(cp.SecretError.DecryptFailed, store.load(alloc, handle.conn, RELOCATE_WS_TARGET, "shared"));
 }
 
-test "integration: crypto store reads a legacy envelope then rewrites version two" {
+test "integration: an unbound (v1) envelope is refused, and replacing it re-seals as bound" {
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
     defer {
         handle.pool.release(handle.conn);
         handle.pool.deinit();
     }
-    try seedWorkspace(handle.conn, LEGACY);
-    defer cleanup(handle.conn, LEGACY);
+    try seedWorkspace(handle.conn, UNBOUND);
+    defer cleanup(handle.conn, UNBOUND);
 
-    try seedLegacyEnvelope(alloc, handle.conn, LEGACY.workspace_id, "legacy", "old-secret");
-    const loaded = try store.load(alloc, handle.conn, LEGACY.workspace_id, "legacy");
+    try seedUnboundEnvelope(alloc, handle.conn, UNBOUND.workspace_id, "unbound", "old-secret");
+
+    // There is exactly one supported envelope version. A pre-AAD row is
+    // refused outright — never quietly decrypted under the empty AAD — and
+    // its owner's way forward is to store a new value.
+    try std.testing.expectError(
+        cp.SecretError.UnsupportedKekVersion,
+        store.load(alloc, handle.conn, UNBOUND.workspace_id, "unbound"),
+    );
+
+    // Storing a new value over the held name re-seals it as bound and the
+    // secret serves normally again.
+    try store.store(alloc, handle.conn, UNBOUND.workspace_id, "unbound", "new-secret", OPAQUE);
+    try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, UNBOUND.workspace_id, "unbound"));
+    const loaded = try store.load(alloc, handle.conn, UNBOUND.workspace_id, "unbound");
     defer alloc.free(loaded);
-    try std.testing.expectEqualStrings("old-secret", loaded);
-    try std.testing.expectEqual(VERSION_LEGACY, try readVersion(handle.conn, LEGACY.workspace_id, "legacy"));
-
-    try store.store(alloc, handle.conn, LEGACY.workspace_id, "legacy", "new-secret", OPAQUE);
-    try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, LEGACY.workspace_id, "legacy"));
+    try std.testing.expectEqualStrings("new-secret", loaded);
 }
 
 test "integration: crypto store returns not found for a missing key" {
@@ -321,8 +330,12 @@ test "integration: crypto store binds the envelope version" {
     defer cleanup(handle.conn, WRONG_VERSION);
 
     try store.store(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version", "secret", OPAQUE);
-    _ = try handle.conn.exec(SET_VERSION, .{ WRONG_VERSION.workspace_id, "wrong-version", VERSION_LEGACY });
-    try std.testing.expectError(cp.SecretError.DecryptFailed, store.load(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version"));
+    _ = try handle.conn.exec(SET_VERSION, .{ WRONG_VERSION.workspace_id, "wrong-version", VERSION_UNBOUND });
+
+    // The read refuses the relabeled row on version alone — no decrypt is
+    // attempted against a version nothing supports, so a tampered label can
+    // neither decrypt under the wrong AAD nor distinguish envelope contents.
+    try std.testing.expectError(cp.SecretError.UnsupportedKekVersion, store.load(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version"));
 }
 
 test "integration: crypto store rejects a malformed envelope" {
@@ -361,7 +374,8 @@ test "integration: crypto store frees the unwrapped key after payload failure" {
 }
 
 test "crypto store source keeps transient key zeroization" {
-    const store_source = @embedFile("crypto_store.zig");
+    // Read + write halves of the store (RULE FLL split); the invariant spans both.
+    const store_source = @embedFile("crypto_store.zig") ++ @embedFile("crypto_store_write.zig");
     const primitive_source = @embedFile("crypto_primitives.zig");
     // Relational, not a fixed count: EVERY unwrapped Key Encryption Key (KEK) is
     // zeroed. A pinned number says "there are two of these" and has to be edited
@@ -437,4 +451,24 @@ test "integration: crypto store store unwinds leak-free at every allocation-fail
     // every failing run returns OutOfMemory before the INSERT with kek/dek
     // zeroed and no leaked AAD / wrapped-DEK / ciphertext / secret-id buffer.
     try std.testing.checkAllAllocationFailures(alloc, storeForFailCheck, .{ handle.conn, ALLOC_FAIL.workspace_id, @as([]const u8, "afl-store"), @as([]const u8, "another-secret-value") });
+}
+
+test "integration: kek_version carries no schema default" {
+    // Slot 039 dropped DEFAULT 1: every writer binds the version explicitly,
+    // and the only row a default could ever mint is an unbound one nothing
+    // serves. An INSERT that forgets the column must fail loudly instead.
+    const alloc = std.testing.allocator;
+    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer {
+        handle.pool.release(handle.conn);
+        handle.pool.deinit();
+    }
+    var q = PgQuery.from(try handle.conn.query(
+        \\SELECT column_default IS NULL FROM information_schema.columns
+        \\ WHERE table_schema = 'vault' AND table_name = 'secrets'
+        \\   AND column_name = 'kek_version'
+    , .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.ColumnMissing;
+    try std.testing.expect(try row.get(bool, 0));
 }

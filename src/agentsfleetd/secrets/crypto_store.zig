@@ -3,14 +3,10 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const constants = @import("common");
-const clock = constants.clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
 const sql = @import("sql.zig");
-const metadata = @import("metadata.zig");
 const secure_memory = @import("secure_memory.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const logging = @import("log");
@@ -52,109 +48,14 @@ pub fn resetDecryptCountForTest() void {
 const KEY_LEN = cp.KEY_LEN;
 const NONCE_LEN = cp.NONCE_LEN;
 const TAG_LEN = cp.TAG_LEN;
-const KEK_VERSION_LEGACY: i32 = 1;
-const KEK_VERSION_AAD_BOUND: i32 = 2;
-const AAD_SEPARATOR: u8 = 0x1f;
-const AAD_FORMAT = "{s}{c}{s}{c}{d}";
-
-fn buildAad(alloc: std.mem.Allocator, workspace_id: []const u8, key_name: []const u8, kek_version: i32) ![]u8 {
-    const canonical_workspace_id = try std.ascii.allocLowerString(alloc, workspace_id);
-    defer alloc.free(canonical_workspace_id);
-    return std.fmt.allocPrint(alloc, AAD_FORMAT, .{ canonical_workspace_id, AAD_SEPARATOR, key_name, AAD_SEPARATOR, kek_version });
-}
-
-/// Store encrypted secret in vault.secrets with envelope encryption, together
-/// with the non-secret projection of the body being stored (the metadata promotion).
-///
-/// `projection` is not optional and carries no default. Every caller must have
-/// derived it from THIS `plaintext`, because the two are written by one
-/// statement and a mismatched pair is indistinguishable afterwards from a
-/// correct one. Making it a required parameter is the enforcement: a caller that
-/// has not looked at the body it is storing cannot call this.
-pub fn store(
-    alloc: std.mem.Allocator,
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    key_name: []const u8,
-    plaintext: []const u8,
-    projection: metadata.Projection,
-) !void {
-    return writeEnvelope(alloc, conn, workspace_id, key_name, plaintext, projection, sql.INSERT_SECRET);
-}
-
-/// Store a credential under a name nobody holds yet, or fail with
-/// `error.SecretNameTaken` having written nothing.
-///
-/// The uniqueness decision belongs to the database, not to a caller that read
-/// the name list first: two creates racing on one name would both find it free.
-/// Rotation is `store`, which is a different verb on a different route.
-pub fn create(
-    alloc: std.mem.Allocator,
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    key_name: []const u8,
-    plaintext: []const u8,
-    projection: metadata.Projection,
-) !void {
-    return writeEnvelope(alloc, conn, workspace_id, key_name, plaintext, projection, sql.INSERT_SECRET_IF_ABSENT);
-}
-
-fn writeEnvelope(
-    alloc: std.mem.Allocator,
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    key_name: []const u8,
-    plaintext: []const u8,
-    projection: metadata.Projection,
-    statement: []const u8,
-) !void {
-    var kek = try cp.loadKek();
-    defer std.crypto.secureZero(u8, &kek);
-
-    var dek: [KEY_LEN]u8 = undefined;
-    defer std.crypto.secureZero(u8, &dek);
-    try constants.secureRandomBytes(&dek);
-
-    const aad = try buildAad(alloc, workspace_id, key_name, KEK_VERSION_AAD_BOUND);
-    defer alloc.free(aad);
-
-    const wrapped_dek = try cp.encrypt(alloc, dek[0..], aad, &kek);
-    defer wrapped_dek.deinit(alloc);
-
-    const encrypted_payload = try cp.encrypt(alloc, plaintext, aad, &dek);
-    defer encrypted_payload.deinit(alloc);
-
-    const now_ms = clock.nowMillis();
-
-    const secret_id = try id_format.generateVaultSecretId(alloc);
-    defer alloc.free(secret_id);
-    const written = try conn.exec(statement, .{
-        secret_id,
-        workspace_id,
-        key_name,
-        wrapped_dek.ciphertext,
-        wrapped_dek.nonce[0..],
-        wrapped_dek.tag[0..],
-        encrypted_payload.nonce[0..],
-        encrypted_payload.ciphertext,
-        encrypted_payload.tag[0..],
-        KEK_VERSION_AAD_BOUND,
-        now_ms,
-        projection.kind.wire(),
-        projection.provider,
-        projection.base_url,
-        projection.has_key,
-    });
-    // Only the create statement can decline — the rotate arm always updates, so
-    // it reports one row here. An absent count is treated as "not written": for
-    // a credential we would rather answer "that name is taken" than report a
-    // success we cannot confirm, and `DO NOTHING` guarantees nothing was
-    // overwritten either way.
-    if ((written orelse 0) == 0) return error.SecretNameTaken;
-    // info (not debug) by design: credential store/retrieve stays visible in default prod logs for
-    // security-access monitoring — key_name only, never the secret value. LOGGING_STANDARD §4 exception.
-    log.info("stored", .{ .workspace_id = workspace_id, .key_name = key_name });
-}
+// The write path lives in `crypto_store_write.zig` (RULE FLL split at the
+// read/write seam); this module stays the one import surface for both sides.
+const write_path = @import("crypto_store_write.zig");
+pub const store = write_path.store;
+pub const create = write_path.create;
+pub const replace = write_path.replace;
+const KEK_VERSION_AAD_BOUND = write_path.KEK_VERSION_AAD_BOUND;
+const buildAad = write_path.buildAad;
 
 /// Load and decrypt a secret from vault.secrets.
 pub fn load(
@@ -194,20 +95,10 @@ fn decryptRowAt(
     kek: *const [KEY_LEN]u8,
     col: usize,
 ) ![]u8 {
-    // The single funnel every envelope open passes through — `load` and
-    // `loadAllForWorkspace` both land here, so no caller decrypts untallied.
-    // Counted on ENTRY, not on success: a read path that touched ciphertext and
-    // then failed still touched ciphertext, and the invariant is about touching.
-    noteDecrypt();
-
-    const encrypted_dek = try row.get([]u8, col);
-    const dek_nonce_slice = try row.get([]u8, col + 1);
-    const dek_tag_slice = try row.get([]u8, col + 2);
-    const payload_nonce_slice = try row.get([]u8, col + 3);
-    const payload_ciphertext = try row.get([]u8, col + 4);
-    const payload_tag_slice = try row.get([]u8, col + 5);
     const kek_version = try row.get(i32, col + 6);
-    if (kek_version != KEK_VERSION_LEGACY and kek_version != KEK_VERSION_AAD_BOUND) {
+    // Exactly one envelope version is spoken. Anything else — including the
+    // retired pre-AAD version 1 — is refused before any ciphertext is touched.
+    if (kek_version != KEK_VERSION_AAD_BOUND) {
         log.err("unsupported_kek_version", .{
             .workspace_id = workspace_id,
             .key_name = key_name,
@@ -217,6 +108,37 @@ fn decryptRowAt(
         return cp.SecretError.UnsupportedKekVersion;
     }
 
+    const aad = try buildAad(alloc, workspace_id, key_name, kek_version);
+    defer alloc.free(aad);
+    return openEnvelopeAt(alloc, row, workspace_id, key_name, kek, col, aad);
+}
+
+/// The byte work of one envelope open: read the six ciphertext columns at
+/// `col`, unwrap the Data Encryption Key (DEK) under `aad`, decrypt the
+/// payload. Caller owns the result (free via `secure_memory.freeBytes`) and
+/// supplies the AAD.
+fn openEnvelopeAt(
+    alloc: std.mem.Allocator,
+    row: anytype,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    kek: *const [KEY_LEN]u8,
+    col: usize,
+    aad: []const u8,
+) ![]u8 {
+    // The single funnel every envelope open passes through — `load` and
+    // `loadAllForWorkspace` both land here, so no caller decrypts untallied. Counted on ENTRY, not on success: a read path that
+    // touched ciphertext and then failed still touched ciphertext, and the
+    // invariant is about touching.
+    noteDecrypt();
+
+    const encrypted_dek = try row.get([]u8, col);
+    const dek_nonce_slice = try row.get([]u8, col + 1);
+    const dek_tag_slice = try row.get([]u8, col + 2);
+    const payload_nonce_slice = try row.get([]u8, col + 3);
+    const payload_ciphertext = try row.get([]u8, col + 4);
+    const payload_tag_slice = try row.get([]u8, col + 5);
+
     const dek_nonce = try cp.toFixed(NONCE_LEN, dek_nonce_slice);
     const dek_tag = try cp.toFixed(TAG_LEN, dek_tag_slice);
     const payload_nonce = try cp.toFixed(NONCE_LEN, payload_nonce_slice);
@@ -225,12 +147,6 @@ fn decryptRowAt(
     defer alloc.free(ciphertext_copy);
     const dek_copy = try alloc.dupe(u8, encrypted_dek);
     defer alloc.free(dek_copy);
-
-    const aad = if (kek_version == KEK_VERSION_AAD_BOUND)
-        try buildAad(alloc, workspace_id, key_name, kek_version)
-    else
-        try alloc.dupe(u8, "");
-    defer alloc.free(aad);
 
     const dek_plain = try cp.decrypt(alloc, &dek_nonce, dek_copy, &dek_tag, aad, kek);
     defer {
