@@ -68,7 +68,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/secrets/crypto_store_test.zig` | EDIT | §6 — refusal, relabel, and no-default proofs replace the dual-read round-trip. |
 | `src/agentsfleetd/fleet/secrets_resolve.zig` | EDIT | Comment-only: "legacy credential" renamed to what it is (RULE NLR touch-it-fix-it). |
 | `.github/workflows/test.yml`; `make/test-unit.mk` | EDIT | Run the enforcing coverage script instead of the non-enforcing one. |
-| `cli/test/api-key-linecov.unit.test.ts`; `cli/test/cli-linecov.unit.test.ts`; `cli/test/connectors.service.unit.test.ts`; `cli/test/coverage-fill.unit.test.ts` | EDIT | Close the floor gaps §5 turns red-blocking. |
+| `cli/scripts/enforce-coverage.mjs`; `cli/package.json` | EDIT | Amended in at EXECUTE (Discovery A7) — the script grades from lcov records instead of the text table, and the printing `test:coverage` twin is deleted so one enforcing script remains. |
+| `cli/test/coverage-floor-arms.unit.test.ts` | CREATE | Close the floor gaps §5 turns red-blocking — the uncovered arms on `main`, one test file, each block naming the file it closes. |
+| `cli/test/api-url-resolution.integration.test.ts`; `cli/test/login-helpers-funcfill.unit.test.ts` | EDIT | The `--api=<url>` equals form and the SIGINT abort handler — the last two arms. |
 | `~/Projects/docs/fleets/secrets.mdx`; `~/Projects/docs/changelog.mdx` | EDIT | Document the replace verb, correct the wrong body, and announce the removal. |
 
 **Scope grading.** Rubric R2 compares `git diff --name-only origin/main` against this table. A path that proves genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
@@ -142,7 +144,7 @@ The registry entry's `model_id` remains its own write: it is a different resourc
 - **Dimension 4.2** — saving writes the secret exactly once with the full body, and a failure reports one outcome rather than a partial one → Test `test_edit_dialog_writes_secret_once`
 - **Dimension 4.3** — Add's existing-name branch replaces the body instead of patching a field → Test `test_add_dialog_replaces_existing_secret`
 
-### §5 — The CLI coverage floor runs where it can fail the build
+### §5 — The CLI coverage floor runs where it can fail the build — **DONE**
 
 `cli/bunfig.toml` declares a 100% line and function floor, and `scripts/enforce-coverage.mjs` exists to enforce it because Bun parses the threshold without acting on it. Nothing calls the script: CI's `test-unit-cli` and `make test-coverage-all` both run `test:coverage`, which only prints a table. The floor has been decorative, and `main` is below it.
 
@@ -335,5 +337,7 @@ The dashboard's existing rotation event is retained and keeps firing on a save t
   Accepted consequence, stated rather than hidden: any v1 row still in an old database answers the typed unsupported-version error at use, and its owner replaces the secret (`delete` + `create`). The changelog's Upgrading note carries one line for it. Also folded under NLR: `fleet/secrets_resolve.zig`'s "legacy credential" comment renamed — the shape is just a credential without an integration field.
 
 - **Authoring verification (Jul 29, 2026)** — read from source on the branch, not from prose: the item route's dispatch is `route_table_invoke.zig:251` and matches on method only, so the matcher needs no change; `sensitive_request.zig:19` classifies `PATCH` on this route as sensitive and must move with the verb; `secret_list.zig:20` projects `kind`, `provider`, `model`, `base_url` — which is what makes a client-side full-body rebuild possible without reading the secret; `EditModelEntryDialog.tsx:72-95` issues two writes for one intent and calls `onPartialSuccess()` between them; `AddModelEntryDialog.tsx:207` calls the same rotate action on an existing name; and the coverage floor was reproduced red at `function=99.97% line=99.74%` against a 100% floor.
+
+- **Amendment A7 (EXECUTE) — the enforcing script grades from lcov records, and the function axis is graded only when records exist.** `enforce-coverage.mjs` regex-parsed bun's rendered "All files" row. Verified against bun 1.3.14: the text row reported one function missed while the same run's per-function `FNDA` records showed every function hit, and in other runs bun withheld `FN`/`FNDA` records entirely while its aggregate `FNH` sat one short of `FNF` — with no way to name the function it claimed missed. The script now sums line records (`DA`/`LF`/`LH`, consistent in every shape) and grades functions from per-function records when the run carries them; a run without them prints `function=ungraded (no per-function records this run)` rather than failing on a number bun cannot substantiate. The line floor stays hard at 100% in every run.
 
 - **Correction to the inherited finding** — M143_002 recorded four red coverage files. Reading `coverage/lcov.info` directly gives six: `cli.ts` (2 lines), `commands/api_key.ts` (27), `commands/connector.ts` (10), `commands/fleet_install.ts` (3), `commands/fleet_schedule.ts` (16), and one uncovered function in `commands/login-helpers.ts`.
