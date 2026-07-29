@@ -214,43 +214,43 @@ Activity must exclude exactly two event types. Today `event_type` accepts one va
 - **Dimension 3.3** — A single-value request behaves exactly as before → Test `test_runner_events_single_value_filter_unchanged` — **DONE**
 - **Dimension 3.4** — An empty `event_type` value is refused rather than silently meaning "all" → Test `test_runner_events_rejects_empty_type_parameter` — **DONE**
 
-### §4 — Runner card wall
+### §4 — Runner card wall — **DONE**
 
 `/admin/runners` is a `DataTable` whose rows carry icon-only actions. A table cannot show what a host is doing, and none of its rows are addressable. This slice replaces it with the Fleet wall grammar so a runner is something you click into.
 
-- **Dimension 4.1** — One card renders per runner and the whole card links to `/admin/runners/{runner_id}` → Test `test_runner_wall_card_links_to_detail`
-- **Dimension 4.2** — Status renders as a dot with uppercase text, administrative state before liveness → Test `test_runner_status_renders_admin_state_before_liveness`
-- **Dimension 4.3** — Only a runner whose derived liveness is genuinely awake gets the wake ring; a cordoned or offline host gets a static dot → Test `test_runner_status_wake_ring_only_when_live`
-- **Dimension 4.4** — A card states its current work in one line, or that it is idle → Test `test_runner_tile_states_current_work_or_idle`
-- **Dimension 4.5** — Zero runners renders the empty state, not an empty grid → Test `test_runner_wall_empty_state`
+- **Dimension 4.1** — One card renders per runner and the whole card links to `/admin/runners/{runner_id}` → Test `test_runner_wall_card_links_to_detail` — **DONE**
+- **Dimension 4.2** — Status renders as a dot with uppercase text, administrative state before liveness → Test `test_runner_status_renders_admin_state_before_liveness` — **DONE**
+- **Dimension 4.3** — Only a runner whose derived liveness is genuinely awake gets the wake ring; a cordoned or offline host gets a static dot → Test `test_runner_status_wake_ring_only_when_live` — **DONE**
+- **Dimension 4.4** — A card states its current work in one line, or that it is idle → Test `test_runner_tile_states_current_work_or_idle` — **DONE**
+- **Dimension 4.5** — Zero runners renders the empty state, not an empty grid → Test `test_runner_wall_empty_state` — **DONE**
 
-### §5 — Detail shell, Leases landing, Review lease
+### §5 — Detail shell, Leases landing, Review lease — **DONE**
 
 The runner's main object is the lease, so the detail page opens on it. This slice builds the shell and the landing view together because the shell has no other default: there is no Overview.
 
 **Implementation default:** the header carries no page title. The breadcrumb already names the host and the Fleet detail page proves the pattern by keeping its `<h1>` screen-reader-only. Identity — isolation tier, labels, runner id — rides one line below the header; enrolment is not repeated there because Activity's `registered` record already carries it with the real date.
 
-- **Dimension 5.1** — The header is a breadcrumb and an action cluster on one vertically-centred row, with an accessible name present but not rendered as a second title → Test `test_runner_header_has_no_visible_second_title`
-- **Dimension 5.2** — The identity line renders status, the isolation tier as a `Badge`, and label badges; the runner id is reachable only through a `CopyButton` → Test `test_runner_header_identity_line`
-- **Dimension 5.3** — The rail renders Leases and Activity, and an absent or unknown view parameter resolves to Leases → Test `test_runner_view_resolves_to_leases_by_default`
-- **Dimension 5.4** — The strip renders six cells and each outcome counter carries its status colour → Test `test_runner_metrics_strip_cells_and_colours`
-- **Dimension 5.5** — Leases render through `DataTable` with live leases ordered first → Test `test_lease_table_orders_live_leases_first`
-- **Dimension 5.6** — A failed row renders `failureSentenceFor()` output and never the raw tag → Test `test_lease_table_failed_row_renders_failure_sentence`
-- **Dimension 5.7** — An expired row states that the lease was not renewed and the work was re-leased → Test `test_lease_table_expired_row_states_reclaim`
-- **Dimension 5.8** — Activating a row opens Review lease carrying lease id, kind, fencing token, provider, model, posture, token meters and expiry → Test `test_review_lease_renders_lease_facts`
-- **Dimension 5.9** — Review lease renders no request payload field under any outcome → Test `test_review_lease_never_renders_request_payload`
-- **Dimension 5.10** — `Open Grafana` renders only when its base address is configured → Test `test_grafana_action_hidden_without_configured_base`
-- **Dimension 5.11** — Opening the page captures `runner_viewed` with the runner id and coarse liveness, never a token or host secret → Test `test_runner_viewed_event_properties`
+- **Dimension 5.1** — The header is a breadcrumb and an action cluster on one vertically-centred row, with an accessible name present but not rendered as a second title → Test `test_runner_header_has_no_visible_second_title` — **DONE**
+- **Dimension 5.2** — The identity line renders status, the isolation tier as a `Badge`, and label badges; the runner id is reachable only through a `CopyButton` → Test `test_runner_header_identity_line` — **DONE**
+- **Dimension 5.3** — The rail renders Leases and Activity, and an absent or unknown view parameter resolves to Leases → Test `test_runner_view_resolves_to_leases_by_default` — **DONE**
+- **Dimension 5.4** — The strip renders six cells and each outcome counter carries its status colour → Test `test_runner_metrics_strip_cells_and_colours` — **DONE**
+- **Dimension 5.5** — Leases render through `DataTable` with live leases ordered first → Test `test_lease_table_orders_live_leases_first` — **DONE**
+- **Dimension 5.6** — A failed row renders `failureSentenceFor()` output and never the raw tag → Test `test_lease_table_failed_row_renders_failure_sentence` — **DONE**
+- **Dimension 5.7** — An expired row states that the lease was not renewed and the work was re-leased → Test `test_lease_table_expired_row_states_reclaim` — **DONE**
+- **Dimension 5.8** — Activating a row opens Review lease carrying lease id, kind, fencing token, provider, model, posture, token meters and expiry → Test `test_review_lease_renders_lease_facts` — **DONE**
+- **Dimension 5.9** — Review lease renders no request payload field under any outcome → Test `test_review_lease_never_renders_request_payload` — **DONE**
+- **Dimension 5.10** — `Open Grafana` renders only when its base address is configured → Test `test_grafana_action_hidden_without_configured_base` — **DONE**
+- **Dimension 5.11** — Opening the page captures `runner_viewed` with the runner id and coarse liveness, never a token or host secret → Test `test_runner_viewed_event_properties` — **DONE**
 
-### §6 — Activity view and retirement of the table surface
+### §6 — Activity view and retirement of the table surface — **DONE**
 
 Activity is the second rail item and the last piece of the 8K problem. The old table, its cells and the activity dialog are deleted in the same slice so no dead surface survives the replacement.
 
-- **Dimension 6.1** — Activity requests the lifecycle type set, and neither `lease_acquired` nor `lease_released` appears in the rendered feed → Test `test_activity_excludes_lease_work_events`
-- **Dimension 6.2** — A state-change record renders its from-state and to-state from event metadata → Test `test_activity_renders_admin_state_transition`
-- **Dimension 6.3** — The registration record renders the host identifier and isolation tier from event metadata → Test `test_activity_renders_registration_record`
-- **Dimension 6.4** — Activity renders through the same `DataTable` as Leases → Test `test_activity_uses_data_table`
-- **Dimension 6.5** — `RunnerList`, `RunnerActivityDialog` and their tests are gone, and no reference to them survives anywhere → Test `test_no_orphaned_runner_table_references`
+- **Dimension 6.1** — Activity requests the lifecycle type set, and neither `lease_acquired` nor `lease_released` appears in the rendered feed → Test `test_activity_excludes_lease_work_events` — **DONE**
+- **Dimension 6.2** — A state-change record renders its from-state and to-state from event metadata → Test `test_activity_renders_admin_state_transition` — **DONE**
+- **Dimension 6.3** — The registration record renders the host identifier and isolation tier from event metadata → Test `test_activity_renders_registration_record` — **DONE**
+- **Dimension 6.4** — Activity renders through the same `DataTable` as Leases → Test `test_activity_uses_data_table` — **DONE**
+- **Dimension 6.5** — `RunnerList`, `RunnerActivityDialog` and their tests are gone, and no reference to them survives anywhere → Test `test_no_orphaned_runner_table_references` — **DONE**
 
 ### §7 — Retire page-number pagination from the daemon — **DONE**
 
@@ -583,10 +583,10 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | `RunnerActivityDialog` | `grep -rn -w "RunnerActivityDialog" ui/packages/app --include="*.ts*"` | 0 matches |
 | `RunnerList` | `grep -rn -w "RunnerList" ui/packages/app --include="*.ts*"` | 0 matches |
 | `RunnerListHandle` | `grep -rn -w "RunnerListHandle" ui/packages/app --include="*.ts*"` | 0 matches |
-| `HostCell` | `grep -rn -w "HostCell" ui/packages/app --include="*.ts*"` | 0 matches |
-| `StatusCell` | `grep -rn -w "StatusCell" ui/packages/app --include="*.ts*"` | 0 matches |
-| `LabelsCell` | `grep -rn -w "LabelsCell" ui/packages/app --include="*.ts*"` | 0 matches |
-| `ActionsCell` | `grep -rn -w "ActionsCell" ui/packages/app --include="*.ts*"` | 0 matches |
+| `HostCell` | `grep -rn -w "HostCell" 'ui/packages/app/app/(dashboard)/admin/runners' --include="*.ts*"` | 0 matches |
+| `StatusCell` | `grep -rn -w "StatusCell" 'ui/packages/app/app/(dashboard)/admin/runners' --include="*.ts*"` | 0 matches |
+| `LabelsCell` | `grep -rn -w "LabelsCell" 'ui/packages/app/app/(dashboard)/admin/runners' --include="*.ts*"` | 0 matches |
+| `ActionsCell` | `grep -rn -w "ActionsCell" 'ui/packages/app/app/(dashboard)/admin/runners' --include="*.ts*"` | 0 matches |
 | `parsePageParams` | `grep -rn -w "parsePageParams" src/ --include="*.zig"` | 0 matches |
 | `PAGE_FIELD` / `PAGE_SIZE_FIELD` | `grep -rn -w "PAGE_FIELD\|PAGE_SIZE_FIELD" cli/src` | 0 matches |
 | `FLAG_CURSOR_TOKEN` | `grep -rn -w "FLAG_CURSOR_TOKEN" cli/src` | 0 matches |
@@ -634,6 +634,7 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 - **Cascade reality (RULE TVR)** — `runner_leases.fleet_id ON DELETE CASCADE` makes an orphan lease row unreachable, so the deleted-fleet failure mode and its integration test were amended to assert the cascade; the null-`fleet_name` defensive render is proven at the component tier instead.
 - **Rubric scope note (pending Indy review, flagged in the PLAN handshake)** — R7/R8 and Dimension 9.5 as authored also match the already-keyset `cursor` spellings on fleet events, workspace events, billing charges, approvals, and the CLI's `fleet logs` / `fleet events` / `billing show` flags — none in Files Changed, none reviewed. The implementation scopes those criteria to the surfaces this spec migrates (fleets list, api-keys, memory, runner reads) and names the remaining spelling sweep as follow-up in Out of Scope. Widening to the full sweep is Indy's call.
 - **Gate events (mechanical, auto-applied)** — OpenAPI prose gate: two over-length sentences split, `execute`/`hydrate` replaced. URL-shape gate: `leases` registered in `NOUN_FINAL_SEGMENT_ALLOW` with justification — the checker's own designed registration point, as prior milestones did for their collections.
+- **Dead Code Sweep scoping correction** — the app-wide `grep -w` rows for the four generic cell names were unpassable as authored: `origin/main` already carries an unrelated `StatusCell` in the models registry (`ModelsRegistryCells.tsx`), and the api-keys surface owns `KeyActionsCell`. The generic names (`HostCell`, `StatusCell`, `LabelsCell`, `ActionsCell`) now sweep the runners surface — the only home the deleted table's cells ever had — while the runner-named symbols (`RunnerActivityDialog`, `RunnerList`, `RunnerListHandle`) stay app-wide. `test_no_orphaned_runner_table_references` enforces exactly this split with word-boundary matches.
 - **503 failure injection** — `test_runner_read_db_unavailable_is_service_error` drains the harness pool (short acquire budget) so the handler's `pool.acquire` genuinely fails; no new harness machinery.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).

@@ -22,6 +22,10 @@ export const EVENTS = {
   platform_library_published: "platform_library_published",
   platform_library_source_changed: "platform_library_source_changed",
   fleet_viewed: "fleet_viewed",
+  // A platform operator opened one runner's detail page (once per mount,
+  // mirroring fleet_viewed). Props carry the runner id and the coarse states
+  // — never the host identifier, a token, or label values.
+  runner_viewed: "runner_viewed",
   // An operator saved an edited SKILL.md / TRIGGER.md from the console left rail
   // (M131 §4). Props carry the fleet id, which half was saved, and the coarse
   // outcome — never the source contents.
@@ -83,6 +87,7 @@ export type EventProps = {
     outcome: string;
   };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
+  [EVENTS.runner_viewed]: { runner_id: string; liveness: string; admin_state: string };
   // Saving the source is the one console edit that changes what the fleet does
   // on its next wake. `field` names which half moved (skill|trigger); `outcome`
   // is the coarse success/failure. No source markdown, no credential material.
@@ -119,6 +124,7 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.platform_library_published]: ["entry_id", "action", "outcome"],
   [EVENTS.platform_library_source_changed]: ["entry_id", "field", "was_published", "outcome"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
+  [EVENTS.runner_viewed]: ["runner_id", "liveness", "admin_state"],
   [EVENTS.fleet_source_saved]: ["fleet_id", "field", "outcome"],
   [EVENTS.fleet_memory_forgotten]: ["fleet_id", "outcome"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],

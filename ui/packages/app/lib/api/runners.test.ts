@@ -5,13 +5,14 @@ vi.mock("./client", () => ({ request: requestMock }));
 
 import {
   listRunners,
+  getRunner,
+  listRunnerLeases,
   createRunner,
   updateRunnerAdminState,
   deleteRunner,
   listRunnerEvents,
   parseLabels,
-  DEFAULT_PAGE_SIZE,
-  DEFAULT_SORT,
+  RUNNER_LIFECYCLE_EVENT_TYPES,
   RUNNER_ADMIN_ACTIONS,
   RUNNER_ADMIN_STATES,
   RUNNER_EVENT_TYPES,
@@ -21,24 +22,39 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requestMock.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
+  requestMock.mockResolvedValue({ items: [], total: 0, next_cursor: null });
 });
 afterEach(() => vi.resetAllMocks());
 
 describe("listRunners", () => {
-  it("reads the platform-admin operator-plane path with default paging", async () => {
+  it("reads the keyset first page with no paging params at all", async () => {
     await listRunners("tok");
+    expect(requestMock).toHaveBeenCalledWith("/v1/fleets/runners", { method: "GET" }, "tok");
+  });
+
+  it("pages forward with starting_after + limit", async () => {
+    await listRunners("tok", { starting_after: "cursor-1", limit: 50 });
     expect(requestMock).toHaveBeenCalledWith(
-      `/v1/fleets/runners?page=1&page_size=${DEFAULT_PAGE_SIZE}&sort=${DEFAULT_SORT}`,
+      "/v1/fleets/runners?starting_after=cursor-1&limit=50",
       { method: "GET" },
       "tok",
     );
   });
+});
 
-  it("passes through explicit page + sort", async () => {
-    await listRunners("tok", { page: 2, sort: "host_id" });
+describe("getRunner", () => {
+  it("reads the single-runner operator path", async () => {
+    requestMock.mockResolvedValueOnce({ id: "runner-1" });
+    await getRunner("tok", "runner-1");
+    expect(requestMock).toHaveBeenCalledWith("/v1/fleets/runners/runner-1", { method: "GET" }, "tok");
+  });
+});
+
+describe("listRunnerLeases", () => {
+  it("reads the lease history behind a lease-id cursor", async () => {
+    await listRunnerLeases("tok", "runner-1", { starting_after: "lease-9", limit: 25 });
     expect(requestMock).toHaveBeenCalledWith(
-      "/v1/fleets/runners?page=2&page_size=25&sort=host_id",
+      "/v1/fleets/runners/runner-1/leases?starting_after=lease-9&limit=25",
       { method: "GET" },
       "tok",
     );
@@ -87,28 +103,37 @@ describe("deleteRunner", () => {
 });
 
 describe("listRunnerEvents", () => {
-  it("reads runner activity with default paging", async () => {
+  it("reads runner activity with no params on the first page", async () => {
     await listRunnerEvents("tok", "runner-1");
     expect(requestMock).toHaveBeenCalledWith(
-      `/v1/fleets/runners/runner-1/events?page=1&page_size=${DEFAULT_PAGE_SIZE}`,
+      "/v1/fleets/runners/runner-1/events",
       { method: "GET" },
       "tok",
     );
   });
 
-  it("passes through activity filters and explicit paging", async () => {
+  it("passes the comma-joined lifecycle set, window filters and keyset paging", async () => {
     await listRunnerEvents("tok", "runner-1", {
-      page: 2,
-      page_size: DEFAULT_PAGE_SIZE,
-      event_type: "runner_online",
+      starting_after: "100:evt-1",
+      limit: 25,
+      event_type: RUNNER_LIFECYCLE_EVENT_TYPES.join(","),
       since: 10,
       until: 20,
     });
+    const lifecycle = encodeURIComponent(RUNNER_LIFECYCLE_EVENT_TYPES.join(","));
     expect(requestMock).toHaveBeenCalledWith(
-      `/v1/fleets/runners/runner-1/events?page=2&page_size=${DEFAULT_PAGE_SIZE}&event_type=runner_online&since=10&until=20`,
+      `/v1/fleets/runners/runner-1/events?starting_after=100%3Aevt-1&limit=25&event_type=${lifecycle}&since=10&until=20`,
       { method: "GET" },
       "tok",
     );
+  });
+});
+
+describe("RUNNER_LIFECYCLE_EVENT_TYPES", () => {
+  it("holds the seven non-lease tags and neither work record", () => {
+    expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(7);
+    expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_acquired");
+    expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_released");
   });
 });
 

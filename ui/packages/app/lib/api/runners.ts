@@ -80,11 +80,25 @@ export const RUNNER_EVENT_TYPES = [
 ] as const;
 export type RunnerEventType = (typeof RUNNER_EVENT_TYPES)[number];
 
-export const RUNNER_SORTS = ["-created_at", "created_at", "host_id", "-host_id"] as const;
-export type RunnerSort = (typeof RUNNER_SORTS)[number];
+// The lifecycle subset Activity renders: every tag EXCEPT the two per-work
+// records, which the Leases table already states once each with an outcome.
+// One exported constant, consumed verbatim by the Activity caller (Invariant:
+// lifecycle and work events never mix in that feed).
+export const RUNNER_LIFECYCLE_EVENT_TYPES = [
+  "runner_registered",
+  "runner_online",
+  "runner_offline",
+  "runner_cordoned",
+  "runner_draining",
+  "runner_drained",
+  "runner_revoked",
+] as const satisfies readonly RunnerEventType[];
 
-export const DEFAULT_PAGE_SIZE = 25;
-export const DEFAULT_SORT: RunnerSort = "-created_at";
+// Canonical Stripe-style paging parameter names — spelled identically to the
+// daemon's `QUERY_STARTING_AFTER` / `QUERY_LIMIT` (http/pagination.zig).
+export const QUERY_STARTING_AFTER = "starting_after";
+export const QUERY_LIMIT = "limit";
+
 const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
 const RUNNERS_ENROLLMENT_PATH = "/v1/runners";
 
@@ -101,9 +115,65 @@ export interface RunnerListItem {
 
 export interface RunnerListResponse {
   items: RunnerListItem[];
-  total: number;
-  page: number;
-  page_size: number;
+  total: number | null;
+  next_cursor: string | null;
+}
+
+/** The single-runner operator read: the list fields plus live-work and lifetime counters. */
+export interface RunnerDetail extends RunnerListItem {
+  active_lease_count: number;
+  active_fleet_count: number;
+  leases_acquired: number;
+  leases_succeeded: number;
+  leases_failed: number;
+  leases_expired: number;
+}
+
+// Settled server-side into one closed tag; the client never re-derives an
+// outcome from raw statuses (the two surfaces cannot drift on what expired means).
+export const LEASE_OUTCOME = {
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+  expired: "expired",
+  unknown: "unknown",
+} as const;
+export type LeaseOutcome = (typeof LEASE_OUTCOME)[keyof typeof LEASE_OUTCOME];
+
+export const LEASE_KIND = {
+  fresh: "fresh",
+  reclaim: "reclaim",
+} as const;
+export type LeaseKind = (typeof LEASE_KIND)[keyof typeof LEASE_KIND];
+
+export interface RunnerLease {
+  id: string;
+  fleet_id: string;
+  fleet_name: string | null;
+  workspace_id: string;
+  event_id: string;
+  event_type: string;
+  actor: string;
+  outcome: LeaseOutcome;
+  failure_label: string | null;
+  failure_detail: string | null;
+  kind: LeaseKind;
+  fencing_token: number;
+  provider: string;
+  model: string;
+  posture: string;
+  metered_input_tokens: number;
+  metered_cached_tokens: number;
+  metered_output_tokens: number;
+  wall_ms: number | null;
+  lease_expires_at: number;
+  created_at: number;
+}
+
+export interface RunnerLeaseResponse {
+  items: RunnerLease[];
+  total: number | null;
+  next_cursor: string | null;
 }
 
 /** The mint response — `runner_token` is the raw `agt_r`, returned exactly once. */
@@ -127,32 +197,58 @@ export interface RunnerEventItem {
 
 export interface RunnerEventsResponse {
   items: RunnerEventItem[];
-  total: number;
-  page: number;
-  page_size: number;
+  total: number | null;
+  next_cursor: string | null;
 }
 
 export interface ListParams {
-  page?: number;
-  page_size?: number;
-  sort?: RunnerSort;
+  starting_after?: string;
+  limit?: number;
 }
 
 export interface EventListParams {
-  page?: number;
-  page_size?: number;
-  event_type?: RunnerEventType;
+  starting_after?: string;
+  limit?: number;
+  /** One tag, or a comma-separated set returning the union. */
+  event_type?: string;
   since?: number;
   until?: number;
 }
 
+export interface LeaseListParams {
+  starting_after?: string;
+  limit?: number;
+}
+
+function keysetParams(params: ListParams): URLSearchParams {
+  const qs = new URLSearchParams();
+  if (params.starting_after) qs.set(QUERY_STARTING_AFTER, params.starting_after);
+  if (params.limit !== undefined) qs.set(QUERY_LIMIT, String(params.limit));
+  return qs;
+}
+
 export async function listRunners(token: string, params: ListParams = {}): Promise<RunnerListResponse> {
-  const qs = new URLSearchParams({
-    page: String(params.page ?? 1),
-    page_size: String(params.page_size ?? DEFAULT_PAGE_SIZE),
-    sort: params.sort ?? DEFAULT_SORT,
-  });
-  return request<RunnerListResponse>(`${FLEET_RUNNERS_PATH}?${qs.toString()}`, { method: "GET" }, token);
+  const qs = keysetParams(params);
+  const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
+  return request<RunnerListResponse>(`${FLEET_RUNNERS_PATH}${suffix}`, { method: "GET" }, token);
+}
+
+export async function getRunner(token: string, runnerId: string): Promise<RunnerDetail> {
+  return request<RunnerDetail>(`${FLEET_RUNNERS_PATH}/${runnerId}`, { method: "GET" }, token);
+}
+
+export async function listRunnerLeases(
+  token: string,
+  runnerId: string,
+  params: LeaseListParams = {},
+): Promise<RunnerLeaseResponse> {
+  const qs = keysetParams(params);
+  const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
+  return request<RunnerLeaseResponse>(
+    `${FLEET_RUNNERS_PATH}/${runnerId}/leases${suffix}`,
+    { method: "GET" },
+    token,
+  );
 }
 
 export async function createRunner(
@@ -184,15 +280,13 @@ export async function listRunnerEvents(
   runnerId: string,
   params: EventListParams = {},
 ): Promise<RunnerEventsResponse> {
-  const qs = new URLSearchParams({
-    page: String(params.page ?? 1),
-    page_size: String(params.page_size ?? DEFAULT_PAGE_SIZE),
-  });
+  const qs = keysetParams(params);
   if (params.event_type) qs.set("event_type", params.event_type);
   if (params.since !== undefined) qs.set("since", String(params.since));
   if (params.until !== undefined) qs.set("until", String(params.until));
+  const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
   return request<RunnerEventsResponse>(
-    `${FLEET_RUNNERS_PATH}/${runnerId}/events?${qs.toString()}`,
+    `${FLEET_RUNNERS_PATH}/${runnerId}/events${suffix}`,
     { method: "GET" },
     token,
   );
