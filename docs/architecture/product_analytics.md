@@ -37,7 +37,7 @@ never break the product flow it instruments.
 | `api_key_minted` | the API-key dialog succeeds | `api_key_id` (never the key) |
 | `model_added` | the Models provider-key form saves a Bring-Your-Own-Key (BYOK) setup (a platform-defaults reset emits nothing) | `provider`, `mode`, `model?` |
 | `model_changed` | the Models page's active-model row switches the active provider/model | `provider`, `model` |
-| `key_rotated` | a provider key is rotated via Replace key (PATCH `…/secrets/{name}`) | `provider` (never the key) |
+| `key_rotated` | a stored credential is replaced with a new key (PUT `…/secrets/{name}`, the Edit dialog) | `provider` (never the key) |
 | `provider_reset` | the active provider is reset to the platform default | `from_provider` |
 | `secret_added` | the Secrets & ENVs custom-secret form succeeds | `secret_name` (never `data_json`) |
 | `integration_requested` | a fleet requests an integration grant from the integrations surface | `integration_id`, `integration_name` |

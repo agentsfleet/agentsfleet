@@ -132,7 +132,7 @@ export function secretsApiMock() {
     listSecrets: listSecretsMock,
     createSecret: createSecretMock,
     deleteSecret: deleteSecretMock,
-    rotateSecret: vi.fn(),
+    replaceSecret: vi.fn(),
     SECRET_KIND,
     providerKeysOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.provider_key),
     customEndpointsOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.custom_endpoint),
