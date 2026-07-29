@@ -12,7 +12,7 @@ const {
   withTokenMock,
   setTenantProviderSelfManagedMock,
   resetTenantProviderMock,
-  rotateSecretMock,
+  replaceSecretMock,
   listSecretsMock,
   listTenantModelEntriesMock,
   createTenantModelEntryMock,
@@ -23,7 +23,7 @@ const {
   withTokenMock: vi.fn(),
   setTenantProviderSelfManagedMock: vi.fn(),
   resetTenantProviderMock: vi.fn(),
-  rotateSecretMock: vi.fn(),
+  replaceSecretMock: vi.fn(),
   listSecretsMock: vi.fn(),
   listTenantModelEntriesMock: vi.fn(),
   createTenantModelEntryMock: vi.fn(),
@@ -37,7 +37,7 @@ vi.mock("@/lib/api/tenant_provider", () => ({
   setTenantProviderSelfManaged: setTenantProviderSelfManagedMock,
   resetTenantProvider: resetTenantProviderMock,
 }));
-vi.mock("@/lib/api/secrets", () => ({ rotateSecret: rotateSecretMock, listSecrets: listSecretsMock }));
+vi.mock("@/lib/api/secrets", () => ({ replaceSecret: replaceSecretMock, listSecrets: listSecretsMock }));
 vi.mock("@/lib/api/tenant_model_entries", () => ({
   listTenantModelEntries: listTenantModelEntriesMock,
   createTenantModelEntry: createTenantModelEntryMock,
@@ -49,7 +49,7 @@ vi.mock("@/lib/api/model_library", () => ({ getModelLibrary: getModelLibraryMock
 import {
   setProviderSelfManagedAction,
   resetProviderAction,
-  rotateSecretAction,
+  replaceSecretAction,
   listSecretsAction,
   listModelEntriesAction,
   createModelEntryAction,
@@ -119,11 +119,12 @@ describe("provider server actions — thin forwarders", () => {
     expect(withTokenMock).toHaveBeenCalledTimes(2);
   });
 
-  it("rotateSecretAction forwards (workspaceId, name, apiKey) then token to the client", async () => {
-    rotateSecretMock.mockResolvedValueOnce({ name: "anthropic-prod" });
-    const r = await rotateSecretAction("ws_1", "anthropic-prod", "sk-ant-rotated");
+  it("replaceSecretAction forwards (workspaceId, name, data) then token to the client", async () => {
+    replaceSecretMock.mockResolvedValueOnce({ name: "anthropic-prod" });
+    const body = { provider: "anthropic", api_key: "sk-ant-replaced" };
+    const r = await replaceSecretAction("ws_1", "anthropic-prod", body);
     expect(r).toEqual({ ok: true, data: { name: "anthropic-prod" } });
-    expect(rotateSecretMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", "sk-ant-rotated", "tok");
+    expect(replaceSecretMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", body, "tok");
     expect(setTenantProviderSelfManagedMock).not.toHaveBeenCalled();
     expect(resetTenantProviderMock).not.toHaveBeenCalled();
   });

@@ -14,9 +14,12 @@ import {
   Label,
   Spinner,
 } from "@agentsfleet/design-system";
-import { rotateSecretAction, updateModelEntryAction } from "../actions";
+import { replaceSecretAction, updateModelEntryAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
+import { SECRET_KIND } from "@/lib/api/secrets";
+import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import type { TenantModelEntry } from "@/lib/types";
+import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";
 import { captureKeyRotated, captureModelChanged } from "../lib/track";
 import ProviderModelSelect from "./ProviderModelSelect";
 
@@ -25,43 +28,70 @@ type Props = {
   target: TenantModelEntry | null;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
-  /** Refreshes the table without closing the dialog — see the modelChanged
-   * branch in `save()` below: the model rename can commit to the server
-   * before a later key-rotation step fails, and the row must not show the
-   * stale model_id if the user then cancels instead of retrying. */
-  onPartialSuccess: () => void;
 };
 
 const EDIT_MODEL_ACTION = "change the model";
-const ROTATE_ACTION = "rotate the key";
+const REPLACE_ACTION = "replace the credential";
+const CUSTOM_SECRET_HINT =
+  "This entry uses an opaque secret the dashboard cannot recompose. Replace its value with: agentsfleet secret update";
 
 // Rendered only while `target` is non-null (see the Dialog body below), so
 // every field here takes `target` directly — no null branch to guard. Keyed
-// by `target.id` at the call site, so React remounts fresh state (not a
-// stale model/key from the previously edited row) whenever the target row
-// changes without needing a re-seeding effect.
+// by `target.id` at the call site, so React remounts fresh state whenever the
+// target row changes without needing a re-seeding effect.
+//
+// The same form as Add, prefilled from the entry row the table already holds
+// — provider, base URL, model — with the key blank because a stored secret is
+// never readable. Replacement is total, so any secret-side change requires
+// the key and sends ONE whole-body write. The secret writes FIRST: a later
+// entry-write failure leaves the table consistent (the rename never
+// committed), so no partial-success path exists.
 function EditForm({
   workspaceId,
   target,
   onOpenChange,
   onSaved,
-  onPartialSuccess,
 }: {
   workspaceId: string;
   target: TenantModelEntry;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
-  onPartialSuccess: () => void;
 }) {
   const uid = useId();
   const [model, setModel] = useState(target.model_id);
+  const [baseUrl, setBaseUrl] = useState(target.base_url ?? "");
   const [apiKey, setApiKey] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isCustom = target.kind === SECRET_KIND.custom_endpoint;
+  // An opaque secret has a shape only its author knows; the dashboard cannot
+  // rebuild the body, so the secret side is read-only here and the CLI owns
+  // replacement. Model edits (an entry-side write) remain available.
+  const isOpaque = target.kind === SECRET_KIND.custom_secret;
+
   const modelChanged = model.trim() !== "" && model.trim() !== target.model_id;
-  const keyChanged = apiKey.trim() !== "";
-  const canSubmit = model.trim() !== "" && (modelChanged || keyChanged);
+  const keyEntered = apiKey.trim() !== "";
+  const baseUrlChanged = isCustom && baseUrl.trim() !== (target.base_url ?? "");
+  const secretTouched = !isOpaque && (keyEntered || baseUrlChanged);
+  const canSubmit = model.trim() !== "" && (modelChanged || secretTouched);
+
+  /** The whole replacement body, composed exactly as Add composes a create
+   *  body — the two verbs must not disagree about what a secret is. */
+  function composeReplacement(): Record<string, unknown> {
+    if (isCustom) {
+      const data: Record<string, unknown> = {
+        [SECRET_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
+        [SECRET_FIELD.baseUrl]: baseUrl.trim(),
+      };
+      if (keyEntered) data[SECRET_FIELD.apiKey] = apiKey.trim();
+      return data;
+    }
+    return {
+      [SECRET_FIELD.provider]: target.provider ?? "",
+      [SECRET_FIELD.apiKey]: apiKey.trim(),
+    };
+  }
 
   // Only wired to the Save button below, disabled whenever `pending ||
   // !canSubmit` — no redundant re-check needed here.
@@ -69,6 +99,18 @@ function EditForm({
     setPending(true);
     setError(null);
     try {
+      if (secretTouched) {
+        if (isCustom && !isHttpsUrl(baseUrl.trim())) {
+          setError(BASE_URL_NOT_HTTPS);
+          return;
+        }
+        const replaced = await replaceSecretAction(workspaceId, target.secret_ref, composeReplacement());
+        if (!replaced.ok) {
+          setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: REPLACE_ACTION }));
+          return;
+        }
+        if (keyEntered) captureKeyRotated(target.provider ?? "");
+      }
       if (modelChanged) {
         const updated = await updateModelEntryAction(target.id, { model_id: model.trim() });
         if (!updated.ok) {
@@ -76,18 +118,6 @@ function EditForm({
           return;
         }
         captureModelChanged({ provider: target.provider ?? "", model: model.trim() });
-        // The rename already committed server-side — keep the table in sync
-        // even if the key rotation below fails and the user cancels instead
-        // of retrying, rather than showing the pre-edit model_id.
-        onPartialSuccess();
-      }
-      if (keyChanged) {
-        const rotated = await rotateSecretAction(workspaceId, target.secret_ref, apiKey.trim());
-        if (!rotated.ok) {
-          setError(presentErrorString({ errorCode: rotated.errorCode, message: rotated.error, action: ROTATE_ACTION }));
-          return;
-        }
-        captureKeyRotated(target.provider ?? "");
       }
       onSaved();
     } finally {
@@ -99,26 +129,45 @@ function EditForm({
     <>
       <DialogHeader>
         <DialogTitle>{`Edit "${target.model_id}"`}</DialogTitle>
-        <DialogDescription>Change the model, or enter a new key to rotate the shared credential.</DialogDescription>
+        <DialogDescription>
+          Change the model, or replace the shared credential. Replacing resends the whole secret.
+        </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
         <ProviderModelSelect id={`${uid}-model`} provider={target.provider} model={model} onModelChange={setModel} />
-        <div className="space-y-2">
-          <Label htmlFor={`${uid}-key`}>New API key</Label>
-          <Input
-            id={`${uid}-key`}
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="Leave blank to keep the current key"
-            spellCheck={false}
-            autoComplete="off"
-            className="font-mono"
-          />
-          <p className="text-xs text-muted-foreground">
-            Rotating updates every entry sharing this key, not just this row.
-          </p>
-        </div>
+        {isCustom ? (
+          <div className="space-y-2">
+            <Label htmlFor={`${uid}-base-url`}>Base URL</Label>
+            <Input
+              id={`${uid}-base-url`}
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+              className="font-mono"
+            />
+          </div>
+        ) : null}
+        {isOpaque ? (
+          <p className="text-xs text-muted-foreground font-mono">{CUSTOM_SECRET_HINT}</p>
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor={`${uid}-key`}>API key</Label>
+            <Input
+              id={`${uid}-key`}
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={isCustom ? "Blank for a keyless endpoint" : "Enter the key to replace the credential"}
+              spellCheck={false}
+              autoComplete="off"
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Replacing updates every entry sharing this credential, not just this row.
+            </p>
+          </div>
+        )}
       </div>
       {error ? <Alert variant="destructive" className="text-xs">{error}</Alert> : null}
       <DialogFooter>
@@ -134,7 +183,7 @@ function EditForm({
   );
 }
 
-export default function EditModelEntryDialog({ workspaceId, target, onOpenChange, onSaved, onPartialSuccess }: Props) {
+export default function EditModelEntryDialog({ workspaceId, target, onOpenChange, onSaved }: Props) {
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -145,7 +194,6 @@ export default function EditModelEntryDialog({ workspaceId, target, onOpenChange
             target={target}
             onOpenChange={onOpenChange}
             onSaved={onSaved}
-            onPartialSuccess={onPartialSuccess}
           />
         ) : null}
       </DialogContent>

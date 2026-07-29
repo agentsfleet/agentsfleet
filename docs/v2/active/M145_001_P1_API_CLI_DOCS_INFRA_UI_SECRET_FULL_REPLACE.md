@@ -132,7 +132,7 @@ The field patch is removed from every site that names it: the method dispatch, t
 - **Dimension 3.3** — JSON mode emits status and name only, and neither renderer prints secret bytes → Test `test_secret_update_output_modes_omit_secret`
 - **Dimension 3.4** — a `404` renders as "secret not found" with a `secret list` suggestion and a non-zero exit → Test `test_secret_update_renders_missing_secret`
 
-### §4 — The dashboard's Edit is the Create form
+### §4 — The dashboard's Edit is the Create form — **DONE**
 
 Edit currently offers `model` and a new key, sends two writes to two endpoints, and has a dedicated partial-success path when the second fails. It becomes the same form as Add — provider, base URL, model, key — prefilled from the list row the page already holds, because the list projects everything except the secret itself. The secret is written once, as a whole body.
 
