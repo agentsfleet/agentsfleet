@@ -234,26 +234,6 @@ describe("Row actions — Edit", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
-  it("a keyless base-URL change replaces without an api_key — a gateway may need none", async () => {
-    const target = entry({
-      id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway",
-      provider: "openai-compatible", kind: "custom_endpoint", base_url: "https://old.vllm.corp/v1",
-    });
-    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
-    const { dialog, onSaved, user } = await renderEditDialog(target);
-
-    const baseUrl = within(dialog).getByLabelText(/base url/i) as HTMLInputElement;
-    await user.clear(baseUrl);
-    await user.type(baseUrl, "https://new.vllm.corp/v1");
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "vllm-gateway", {
-      provider: "openai-compatible",
-      base_url: "https://new.vllm.corp/v1",
-    }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalled());
-  });
-
   it("a non-https base URL is refused client-side — no request is sent", async () => {
     const target = entry({
       id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway",
@@ -297,6 +277,58 @@ describe("Row actions — Edit", () => {
 
     await waitFor(() => expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true));
     expect(replaceSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("a keyed custom endpoint refuses a base-URL-only change that would drop the key", async () => {
+    // Whole-body replace can't preserve a key it can never read back. Changing
+    // only the base URL with the key blank must be refused, not silently PUT a
+    // keyless body that deletes the stored credential (adversarial-review F3).
+    const target = entry({
+      id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway",
+      provider: "openai-compatible", kind: "custom_endpoint",
+      base_url: "https://old.vllm.corp/v1", has_key: true,
+    });
+    const { dialog, user } = await renderEditDialog(target);
+
+    const baseUrl = within(dialog).getByLabelText(/base url/i) as HTMLInputElement;
+    await user.clear(baseUrl);
+    await user.type(baseUrl, "https://new.vllm.corp/v1");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("a keyless custom endpoint allows a base-URL-only change", async () => {
+    // has_key false → there is no key to drop, so the base URL may change alone.
+    const target = entry({
+      id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway",
+      provider: "openai-compatible", kind: "custom_endpoint",
+      base_url: "https://old.vllm.corp/v1", has_key: false,
+    });
+    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
+    const { dialog, onSaved, user } = await renderEditDialog(target);
+
+    const baseUrl = within(dialog).getByLabelText(/base url/i) as HTMLInputElement;
+    await user.clear(baseUrl);
+    await user.type(baseUrl, "https://new.vllm.corp/v1");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "vllm-gateway", {
+      provider: "openai-compatible",
+      base_url: "https://new.vllm.corp/v1",
+    }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("a stored-key entry prompts to re-enter the key; a keyless one does not", async () => {
+    // The key placeholder has three arms: has_key (re-enter), keyless custom
+    // (blank ok), keyless named (enter). Cover the named-keyless arm here; the
+    // other two are exercised by the refuse/allow tests above.
+    const target = entry({ id: "e1", model_id: "claude-sonnet-5", has_key: false });
+    const { dialog } = await renderEditDialog(target);
+    const key = within(dialog).getByLabelText(/api key/i) as HTMLInputElement;
+    expect(key.placeholder).toMatch(/enter the key/i);
   });
 
   it("a custom endpoint with no stored base URL renders the field empty", async () => {

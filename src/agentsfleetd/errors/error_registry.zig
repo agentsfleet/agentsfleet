@@ -275,7 +275,7 @@ pub const MSG_SECRET_NAME_REQUIRED = "secret name is required (max 64 chars)";
 pub const MSG_SECRET_DATA_REQUIRED = "secret data must be a non-empty JSON object";
 pub const MSG_SECRET_DATA_TOO_LARGE = "secret data exceeds 4KB when stringified";
 pub const MSG_SECRET_NOT_FOUND = "secret not found in this workspace";
-pub const MSG_SECRET_NAME_TAKEN = "a secret with this name already exists in this workspace; rotate it instead of creating it again";
+pub const MSG_SECRET_NAME_TAKEN = "a secret with this name already exists in this workspace; replace its value with `secret update` instead of creating it again";
 // Serving-plane backpressure messages
 pub const MSG_API_BACKPRESSURE = "Server is at its in-flight request ceiling";
 pub const MSG_SSE_STREAM_CAP = "Concurrent event-stream limit reached on this instance";

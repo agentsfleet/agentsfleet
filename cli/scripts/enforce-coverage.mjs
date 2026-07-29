@@ -8,7 +8,7 @@
 // Wired into package.json `test` so CI fails on coverage regressions.
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -27,6 +27,10 @@ function readThreshold() {
 }
 
 function runTests() {
+  // Delete any prior lcov.info first. parseSummary grades from that file, so a
+  // run that exits 0 without rewriting it (a dropped reporter, a bun path
+  // change) must fail on a missing file, never grade a stale green.
+  rmSync(join(CLI_DIR, "coverage", "lcov.info"), { force: true });
   // --timeout 30000: spawn-based help-e2e / PTY tests flake at bun's 5s default
   // under parallel test-lane load; give the built-binary spawns realistic time.
   const result = spawnSync("bun", ["test", "--coverage", "--timeout", "30000"], {
@@ -40,7 +44,6 @@ function runTests() {
     console.error(`enforce-coverage: bun test exited ${result.status}`);
     process.exit(result.status ?? 1);
   }
-  return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 }
 
 function parseSummary() {
