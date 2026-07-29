@@ -1,5 +1,6 @@
 import { request, requestWithEtag } from "./client";
 import { requestWithRetry, type RetryOptions } from "./retry";
+import { QUERY_STARTING_AFTER } from "./runners";
 import type {
   InstallFleetRequest,
   InstallFleetResponse,
@@ -20,10 +21,10 @@ function requireFleetEtag(etag: string | null | undefined): string {
 export async function listFleets(
   workspaceId: string,
   token: string,
-  opts?: { cursor?: string; limit?: number },
+  opts?: { starting_after?: string; limit?: number },
 ): Promise<FleetListResponse> {
   const params = new URLSearchParams();
-  if (opts?.cursor) params.set("cursor", opts.cursor);
+  if (opts?.starting_after) params.set(QUERY_STARTING_AFTER, opts.starting_after);
   if (opts?.limit != null) params.set("limit", String(opts.limit));
   const qs = params.toString();
   const path = qs

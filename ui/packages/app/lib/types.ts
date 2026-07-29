@@ -267,7 +267,7 @@ export type PlatformCatalogPatch = {
 export type FleetListResponse = {
   items: Fleet[];
   total: number;
-  cursor: string | null;
+  next_cursor: string | null;
 };
 
 // ── Tenant billing ──

@@ -75,7 +75,7 @@ export function buildFleetTree(
     .command(COMMAND_LIST)
     .description("List fleets in the active workspace (paginated)")
     .option("--workspace-id <id>", "Workspace ID override", parseIdOption)
-    .option(FLAG_CURSOR_TOKEN, NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
+    .option(FLAG_STARTING_AFTER, NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
     .option(FLAG_LIMIT_N, PAGE_SIZE, parseIntOption(LIST_LIMIT_BOUNDS))
     .action(actionFor("fleet.list", (frame) => runHandler(state, frame, handlers.fleet.list)));
 
@@ -156,6 +156,9 @@ export function buildFleetTree(
     .description("Delete a secret from the workspace vault")
     .action(actionFor("fleet.secret.delete", (frame) => runHandler(state, frame, handlers.fleet.secret.delete)));
 }
+// `fleet list` speaks the guideline spelling; `fleet logs` / `fleet events`
+// keep --cursor until their endpoints rename (scoped follow-up in the spec).
+const FLAG_STARTING_AFTER = "--starting-after <id>" as const;
 const FLAG_CURSOR_TOKEN = "--cursor <token>" as const;
 const FLAG_FROM_PATH = "--from <path>" as const;
 const FLAG_LIBRARY_ID = "--library <id>" as const;

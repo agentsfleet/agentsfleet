@@ -70,7 +70,9 @@ export const buildFleetHandlers = (
         workspaceId:
           optString(frame.parsed.options, "workspace-id") ??
           optString(frame.parsed.options, "workspaceId"),
-        cursor: optString(frame.parsed.options, FIELD_CURSOR),
+        startingAfter:
+          optString(frame.parsed.options, "startingAfter") ??
+          optString(frame.parsed.options, "starting-after"),
         limit: optString(frame.parsed.options, FIELD_LIMIT),
       }),
   ),

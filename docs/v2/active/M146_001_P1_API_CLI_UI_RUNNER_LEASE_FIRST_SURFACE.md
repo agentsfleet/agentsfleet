@@ -290,17 +290,17 @@ A tenant's API keys are human-created and number in the single digits to low ten
 - **Dimension 8.5** — In JavaScript Object Notation mode the printed object carries the complete item set and `next_cursor: null` → Test `test_api_key_list_json_mode_is_complete` — **DONE**
 - **Dimension 8.6** — The app's key list renders no pagination footer and shows every key → Test `test_api_key_list_view_has_no_pagination_footer` — **DONE**
 
-### §9 — One cursor vocabulary: fleets moves to `starting_after` / `next_cursor`
+### §9 — One cursor vocabulary: fleets moves to `starting_after` / `next_cursor` — **DONE**
 
 `fleets/list.zig` reads the request parameter `cursor` and emits the response field `cursor`. The guidelines require `starting_after` on the request and `next_cursor` on the response, so the shipped handler matches neither, and the CLI's `--cursor <token>` flag inherits the drift. With §7 putting three more reads on the guideline spelling, leaving fleets alone would ship two names for one concept across neighbouring commands.
 
 **Implementation default:** rename in place across all four layers in one slice — request parameter, response field, CLI flag, app client — so no intermediate state has a handler answering one name and a caller sending another. The old spellings are refused, not accepted-and-translated.
 
-- **Dimension 9.1** — `GET /v1/workspaces/{workspace_id}/fleets` accepts `starting_after` and refuses `cursor` → Test `test_fleets_list_accepts_starting_after_and_refuses_cursor`
-- **Dimension 9.2** — The response field is `next_cursor`; no `cursor` key is emitted → Test `test_fleets_list_emits_next_cursor`
-- **Dimension 9.3** — `fleet list` accepts `--starting-after <id>`; `--cursor` is removed outright and fails as an unknown option (amended per Indy's §8 ruling — no tombstone flag, no refusal copy) → Test `test_fleet_list_flag_renamed_to_starting_after`
-- **Dimension 9.4** — The app's fleets client sends `starting_after` and reads `next_cursor`, and the wall's paging still walks every fleet → Test `test_fleets_client_uses_guideline_cursor_names`
-- **Dimension 9.5** — No request parameter or response field named `cursor` survives anywhere in the daemon, the app or the CLI → Test `test_no_bare_cursor_spelling_survives`
+- **Dimension 9.1** — `GET /v1/workspaces/{workspace_id}/fleets` accepts `starting_after` and refuses `cursor` → Test `test_fleets_list_accepts_starting_after_and_refuses_cursor` — **DONE**
+- **Dimension 9.2** — The response field is `next_cursor`; no `cursor` key is emitted → Test `test_fleets_list_emits_next_cursor` — **DONE**
+- **Dimension 9.3** — `fleet list` accepts `--starting-after <id>`; `--cursor` is removed outright and fails as an unknown option (amended per Indy's §8 ruling — no tombstone flag, no refusal copy) → Test `test_fleet_list_flag_renamed_to_starting_after` — **DONE**
+- **Dimension 9.4** — The app's fleets client sends `starting_after` and reads `next_cursor`, and the wall's paging still walks every fleet → Test `test_fleets_client_uses_guideline_cursor_names` — **DONE**
+- **Dimension 9.5** — No request parameter or response field named `cursor` survives anywhere in the daemon, the app or the CLI → Test `test_no_bare_cursor_spelling_survives` — **DONE**
 
 ### §10 — Memory list pages by cursor
 
@@ -641,6 +641,8 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 - **Gate events (mechanical, auto-applied)** — OpenAPI prose gate: two over-length sentences split, `execute`/`hydrate` replaced. URL-shape gate: `leases` registered in `NOUN_FINAL_SEGMENT_ALLOW` with justification — the checker's own designed registration point, as prior milestones did for their collections.
 - **Dead Code Sweep scoping correction** — the app-wide `grep -w` rows for the four generic cell names were unpassable as authored: `origin/main` already carries an unrelated `StatusCell` in the models registry (`ModelsRegistryCells.tsx`), and the api-keys surface owns `KeyActionsCell`. The generic names (`HostCell`, `StatusCell`, `LabelsCell`, `ActionsCell`) now sweep the runners surface — the only home the deleted table's cells ever had — while the runner-named symbols (`RunnerActivityDialog`, `RunnerList`, `RunnerListHandle`) stay app-wide. `test_no_orphaned_runner_table_references` enforces exactly this split with word-boundary matches.
 - **503 failure injection** — `test_runner_read_db_unavailable_is_service_error` drains the harness pool (short acquire budget) so the handler's `pool.acquire` genuinely fails; no new harness machinery.
+- **Dimension 9.5's test home** — `ui/packages/app/tests/cursor-vocabulary.test.ts` (new file, sibling of `runners-surface-invariants.test.ts`). Scoped to the migrated surfaces (fleets list handler, memory handler+sql, `lib/api/{fleets,api_keys,runners,memory}.ts`, `cli/src/commands/{fleet_list,api_key,memory}.ts`, `cli-tree-memory.ts`); lines referencing `QUERY_CURSOR_RETIRED` in `fleets/list.zig` are exempt because that constant IS the refusal.
+- **Integration-run channel (VERIFY-relevant)** — `make test-integration-db` sets no `REDIS_URL_API`, and `TestHarness.start` skips (`error.MissingRedisUrl → SkipZigTest`) without it, so that target silently skips every harness-based HTTP suite while printing success. Full-suite integration proof comes from `make test-integration` (it exports the Redis URL + CA). Surfaced to Indy rather than patched — the make recipe is outside this spec's Files Changed.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
