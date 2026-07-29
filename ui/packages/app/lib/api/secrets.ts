@@ -1,5 +1,4 @@
 import { request } from "./client";
-import { SECRET_FIELD } from "@/lib/types";
 
 // Workspace secret vault. The plaintext body stays opaque — never returned
 // on read — but the list now carries a non-secret metadata *projection* the
@@ -123,21 +122,21 @@ export async function createSecret(
 }
 
 /**
- * Rotate only the api_key of an existing secret — `PATCH …/secrets/{name}`
- * with `{ api_key }`. The server preserves every non-secret field
- * (provider/model/base_url), so this is Replace-key-safe for every kind and
- * cannot corrupt a custom endpoint's `base_url`. A missing name returns a typed
- * 404; an empty/oversized key returns a typed 400.
+ * Replace a stored secret's whole body — `PUT …/secrets/{name}` with
+ * `{ data }`, the same shape `create` sends. Replacement is total: a field
+ * absent from `data` is absent from the stored secret afterwards, which is
+ * the only honest write on a resource that can never be read back. A name the
+ * workspace does not hold returns a typed 404 and creates nothing.
  */
-export async function rotateSecret(
+export async function replaceSecret(
   workspaceId: string,
   name: string,
-  apiKey: string,
+  data: Record<string, unknown>,
   token: string,
 ): Promise<{ name: string }> {
   return request<{ name: string }>(
     `/v1/workspaces/${workspaceId}/secrets/${encodeURIComponent(name)}`,
-    { method: "PATCH", body: JSON.stringify({ [SECRET_FIELD.apiKey]: apiKey }) },
+    { method: "PUT", body: JSON.stringify({ data }) },
     token,
   );
 }

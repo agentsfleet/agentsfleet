@@ -19,7 +19,7 @@ const resetProviderActionMock = vi.fn();
 const createModelEntryActionMock = vi.fn();
 const updateModelEntryActionMock = vi.fn();
 const deleteModelEntryActionMock = vi.fn();
-const rotateSecretActionMock = vi.fn();
+const replaceSecretActionMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   listModelEntriesAction: listModelEntriesActionMock,
@@ -29,7 +29,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: createModelEntryActionMock,
   updateModelEntryAction: updateModelEntryActionMock,
   deleteModelEntryAction: deleteModelEntryActionMock,
-  rotateSecretAction: rotateSecretActionMock,
+  replaceSecretAction: replaceSecretActionMock,
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: vi.fn(),
@@ -72,18 +72,16 @@ async function renderEditDialog(target: TenantModelEntry) {
   );
   const onOpenChange = vi.fn();
   const onSaved = vi.fn();
-  const onPartialSuccess = vi.fn();
   render(
     React.createElement(EditModelEntryDialog, {
       workspaceId: "ws_1",
       target,
       onOpenChange,
       onSaved,
-      onPartialSuccess,
     } as never),
   );
   const dialog = await screen.findByRole("dialog");
-  return { dialog, onOpenChange, onSaved, onPartialSuccess, user: userEvent.setup() };
+  return { dialog, onOpenChange, onSaved, user: userEvent.setup() };
 }
 
 beforeEach(() => {
@@ -97,10 +95,10 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Row actions — Edit", () => {
-  it("saves a model change via PATCH; entering a key also rotates the shared secret", async () => {
+  it("saves a model change via PATCH; entering a key also replaces the shared secret whole", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
     updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
-    rotateSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
+    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
     await renderTable(registry([target]));
 
     const user = userEvent.setup();
@@ -112,14 +110,14 @@ describe("Row actions — Edit", () => {
     // "anthropic" — a <Select>, not a free-text input.
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
-    await user.type(within(dialog).getByLabelText(/new api key/i), "sk-ant-rotated");
+    await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: "claude-opus-4-8" }));
-    await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", "sk-ant-rotated"));
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", { provider: "anthropic", api_key: "sk-ant-rotated" }));
   });
 
-  it("changes only the model when no key is entered — rotate is never called", async () => {
+  it("changes only the model when no key is entered — replace is never called", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
     updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
     const { dialog, onSaved, user } = await renderEditDialog(target);
@@ -129,82 +127,187 @@ describe("Row actions — Edit", () => {
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: "claude-opus-4-8" }));
-    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
-  it("rotates only the key when the model is unchanged — PATCH is never called", async () => {
+  it("replaces only the secret when the model is unchanged — PATCH is never called", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    rotateSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
+    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
     const { dialog, onSaved, user } = await renderEditDialog(target);
 
-    await user.type(within(dialog).getByLabelText(/new api key/i), "sk-ant-rotated");
+    await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", "sk-ant-rotated"));
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", { provider: "anthropic", api_key: "sk-ant-rotated" }));
     expect(updateModelEntryActionMock).not.toHaveBeenCalled();
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
-  it("surfaces a PATCH error and never rotates", async () => {
+  it("a failed replace stops the save before the model write — the table never drifts", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
+    replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
+    const { dialog, onSaved, user } = await renderEditDialog(target);
+
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
+    await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    // The secret writes FIRST. Its failure reports one outcome and the model
+    // write never runs, so no partial state exists for the table to chase.
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(updateModelEntryActionMock).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a replace error", async () => {
+    const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
+    replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
+    const { dialog, onSaved, user } = await renderEditDialog(target);
+
+    await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("a model-write failure after a successful replace reports the model error only", async () => {
+    const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
+    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
     updateModelEntryActionMock.mockResolvedValue({ ok: false, error: "conflict", errorCode: "UZ-MODELS-003" });
     const { dialog, onSaved, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
-    await user.type(within(dialog).getByLabelText(/new api key/i), "sk-ant-rotated");
+    await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
+    // The replaced credential stood (it is valid on its own); the table still
+    // shows the old model because the rename never committed server-side —
+    // consistent without any partial-success callback.
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+    expect(replaceSecretActionMock).toHaveBeenCalledTimes(1);
     expect(onSaved).not.toHaveBeenCalled();
   });
 
-  it("surfaces a rotate error", async () => {
-    const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    rotateSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
-    const { dialog, onSaved, user } = await renderEditDialog(target);
-
-    await user.type(within(dialog).getByLabelText(/new api key/i), "sk-ant-rotated");
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(onSaved).not.toHaveBeenCalled();
-  });
-
-  it("keeps the table in sync when the model rename commits but the key rotation fails", async () => {
-    const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
-    rotateSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
-    const { dialog, onSaved, onPartialSuccess, user } = await renderEditDialog(target);
-
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
-    await user.type(within(dialog).getByLabelText(/new api key/i), "sk-ant-rotated");
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    // The rename already committed server-side — the table must refresh even
-    // though the dialog stays open (rotate failed) and onSaved never fires.
-    await waitFor(() => expect(onPartialSuccess).toHaveBeenCalled());
-    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(onSaved).not.toHaveBeenCalled();
-  });
-
-  it("tracks with an empty provider fallback when the entry has none", async () => {
+  it("an opaque secret hides the key field and points at the CLI; model edits still work", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5", provider: undefined, kind: "custom_secret" });
     updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
-    rotateSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
     const { dialog, onSaved, user } = await renderEditDialog(target);
+
+    // The dashboard cannot recompose an opaque body, so there is no key input
+    // — replacement is the CLI's job and the hint names the command.
+    expect(within(dialog).queryByLabelText(/api key/i)).toBeNull();
+    expect(within(dialog).getByText(/agentsfleet secret update/i)).toBeTruthy();
 
     // No catalogue and no known provider → the model field is a free-text input.
     const model = within(dialog).getByLabelText(/^model$/i) as HTMLInputElement;
     await user.clear(model);
     await user.type(model, "claude-opus-4-8");
-    await user.type(within(dialog).getByLabelText(/new api key/i), "sk-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("a custom endpoint edit replaces base URL and key together in one body", async () => {
+    const target = entry({
+      id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway",
+      provider: "openai-compatible", kind: "custom_endpoint", base_url: "https://old.vllm.corp/v1",
+    });
+    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
+    const { dialog, onSaved, user } = await renderEditDialog(target);
+
+    const baseUrl = within(dialog).getByLabelText(/base url/i) as HTMLInputElement;
+    await user.clear(baseUrl);
+    await user.type(baseUrl, "https://new.vllm.corp/v1");
+    await user.type(within(dialog).getByLabelText(/api key/i), "sk-custom-new");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "vllm-gateway", {
+      provider: "openai-compatible",
+      base_url: "https://new.vllm.corp/v1",
+      api_key: "sk-custom-new",
+    }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("a keyless base-URL change replaces without an api_key — a gateway may need none", async () => {
+    const target = entry({
+      id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway",
+      provider: "openai-compatible", kind: "custom_endpoint", base_url: "https://old.vllm.corp/v1",
+    });
+    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
+    const { dialog, onSaved, user } = await renderEditDialog(target);
+
+    const baseUrl = within(dialog).getByLabelText(/base url/i) as HTMLInputElement;
+    await user.clear(baseUrl);
+    await user.type(baseUrl, "https://new.vllm.corp/v1");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "vllm-gateway", {
+      provider: "openai-compatible",
+      base_url: "https://new.vllm.corp/v1",
+    }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("a non-https base URL is refused client-side — no request is sent", async () => {
+    const target = entry({
+      id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway",
+      provider: "openai-compatible", kind: "custom_endpoint", base_url: "https://old.vllm.corp/v1",
+    });
+    const { dialog, user } = await renderEditDialog(target);
+
+    const baseUrl = within(dialog).getByLabelText(/base url/i) as HTMLInputElement;
+    await user.clear(baseUrl);
+    await user.type(baseUrl, "http://insecure.corp/v1");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("composes an empty provider fallback when a provider-key entry carries none", async () => {
+    const target = entry({ id: "e1", model_id: "claude-sonnet-5", provider: undefined });
+    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
+    const { dialog, onSaved, user } = await renderEditDialog(target);
+
+    // No catalogue and no known provider → the model field is a free-text input.
+    await user.type(within(dialog).getByLabelText(/api key/i), "sk-rotated");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", {
+      provider: "",
+      api_key: "sk-rotated",
+    }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("a cleared model field disables Save — an empty model can never submit", async () => {
+    const target = entry({ id: "e1", model_id: "claude-sonnet-5", provider: undefined });
+    const { dialog, user } = await renderEditDialog(target);
+
+    // Free-text model input (no catalogue, unknown provider): clearing it
+    // renders the empty-model arm and pins the disabled Save.
+    const model = within(dialog).getByLabelText(/^model$/i) as HTMLInputElement;
+    await user.clear(model);
+
+    await waitFor(() => expect((within(dialog).getByRole("button", { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true));
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("a custom endpoint with no stored base URL renders the field empty", async () => {
+    // `base_url` is optional on the entry row; the ?? fallback keeps the
+    // dirty-check well-defined instead of comparing against undefined.
+    const target = entry({
+      id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway",
+      provider: "openai-compatible", kind: "custom_endpoint", base_url: undefined,
+    });
+    const { dialog } = await renderEditDialog(target);
+    expect((within(dialog).getByLabelText(/base url/i) as HTMLInputElement).value).toBe("");
   });
 
   it("Cancel closes the dialog without saving", async () => {
@@ -215,7 +318,7 @@ describe("Row actions — Edit", () => {
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(updateModelEntryActionMock).not.toHaveBeenCalled();
-    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
   });
 });
 

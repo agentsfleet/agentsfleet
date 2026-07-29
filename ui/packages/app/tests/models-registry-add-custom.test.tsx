@@ -13,11 +13,12 @@ import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 const createModelEntryActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
 const createSecretActionMock = vi.fn();
+const replaceSecretActionMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: createModelEntryActionMock,
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
-  rotateSecretAction: vi.fn(),
+  replaceSecretAction: replaceSecretActionMock,
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
@@ -199,7 +200,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
     expect(body.data.api_key).toBe("sk-vllm-key");
   });
 
-  it("errors without writing when the name is owned by a named provider's key (upsert-collision guard)", async () => {
+  it("errors without writing when the name is owned by a named provider's key (name-collision guard)", async () => {
     const anthropicSecret: Secret = { kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: 1 };
     const { user } = await renderDialog([anthropicSecret]);
     const dialog = screen.getByRole("dialog");
@@ -210,8 +211,8 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
     await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    // The secrets POST is a server-side upsert — proceeding would destroy the
-    // anthropic credential's body. The guard must error before any write.
+    // Replacement is total — proceeding would destroy the anthropic
+    // credential's body. The guard must error before any write.
     await waitFor(() => expect(within(dialog).getByText(/different provider/i)).toBeTruthy());
     expect(createSecretActionMock).not.toHaveBeenCalled();
     expect(createModelEntryActionMock).not.toHaveBeenCalled();
@@ -225,6 +226,7 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
       base_url: "https://old.vllm.corp/v1",
       created_at: 1,
     };
+    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
     const { user } = await renderDialog([endpointSecret]);
     const dialog = screen.getByRole("dialog");
 
@@ -234,9 +236,59 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
     await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(createSecretActionMock).toHaveBeenCalled());
-    const [, body] = createSecretActionMock.mock.calls[0] as [string, { data: Record<string, unknown> }];
-    expect(body.data.base_url).toBe("https://new.vllm.corp/v1");
+    // A held name reconfigures via whole-body replace — create claims free
+    // names only and would answer UZ-VAULT-005 here.
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalled());
+    const [, name, data] = replaceSecretActionMock.mock.calls[0] as [string, string, Record<string, unknown>];
+    expect(name).toBe("vllm-gateway");
+    expect(data.base_url).toBe("https://new.vllm.corp/v1");
+    expect(data.provider).toBe("openai-compatible");
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("a failed reconfigure replace surfaces the error and never registers", async () => {
+    const endpointSecret: Secret = {
+      kind: "custom_endpoint",
+      name: "vllm-gateway",
+      provider: "openai-compatible",
+      base_url: "https://old.vllm.corp/v1",
+      created_at: 1,
+    };
+    replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
+    const { user } = await renderDialog([endpointSecret]);
+    const dialog = screen.getByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
+    await pickCustomProvider(user, dialog);
+    await user.type(within(dialog).getByLabelText(/base url/i), "https://new.vllm.corp/v1");
+    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(createModelEntryActionMock).not.toHaveBeenCalled();
+  });
+
+  it("a register failure after a good reconfigure leaves the dialog open", async () => {
+    const endpointSecret: Secret = {
+      kind: "custom_endpoint",
+      name: "vllm-gateway",
+      provider: "openai-compatible",
+      base_url: "https://old.vllm.corp/v1",
+      created_at: 1,
+    };
+    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
+    createModelEntryActionMock.mockResolvedValue({ ok: false, error: "duplicate", errorCode: "UZ-MODELS-003" });
+    const { user } = await renderDialog([endpointSecret]);
+    const dialog = screen.getByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
+    await pickCustomProvider(user, dialog);
+    await user.type(within(dialog).getByLabelText(/base url/i), "https://new.vllm.corp/v1");
+    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
   it("surfaces a store error for the custom shape", async () => {

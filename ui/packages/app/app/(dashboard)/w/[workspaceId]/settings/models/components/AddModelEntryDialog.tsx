@@ -23,7 +23,7 @@ import {
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
 import { createSecretAction } from "@/app/(dashboard)/w/[workspaceId]/secrets/actions";
-import { createModelEntryAction, rotateSecretAction, setProviderSelfManagedAction } from "../actions";
+import { createModelEntryAction, replaceSecretAction, setProviderSelfManagedAction } from "../actions";
 import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";
 import { presentErrorString } from "@/lib/errors";
 import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
@@ -165,11 +165,10 @@ export default function AddModelEntryDialog({
   /** Store (or rotate) the credential, register the entry, optionally activate.
    * Name is the credential's identity, guarded across EVERY stored kind: a
    * name owned by anything other than a same-shaped secret errors instead of
-   * overwriting (the secrets POST is an upsert server-side, so a silent
-   * collision would destroy the original credential's body). Reusing a name
-   * with the SAME named provider rotates the api_key in place; reusing an
-   * OpenAI-compatible name while the compatible provider is selected rewrites
-   * the endpoint's base_url + key together (the custom reconfigure motion). */
+   * being replaced. Reusing a name with the SAME shape replaces the stored
+   * body whole (PUT — create claims free names only and answers UZ-VAULT-005
+   * on a held one): the named-provider motion resends provider + key, and the
+   * custom reconfigure motion resends provider + base_url + key together. */
   async function submit(activate: boolean) {
     const name = keyName.trim();
     const modelId = model.trim();
@@ -190,6 +189,17 @@ export default function AddModelEntryDialog({
         [SECRET_FIELD.baseUrl]: baseUrl.trim(),
       };
       if (key !== "") data[SECRET_FIELD.apiKey] = key;
+      if (existing) {
+        // Reconfiguring a held endpoint replaces the whole body — create
+        // claims free names only, so a POST here would answer UZ-VAULT-005.
+        const replaced = await replaceSecretAction(workspaceId, name, data);
+        if (!replaced.ok) {
+          setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: STORE_ACTION }));
+          return;
+        }
+        if (await doCreateEntry(name, modelId, activate, false)) handleOpenChange(false);
+        return;
+      }
       const created = await createSecretAction(workspaceId, { name, data });
       if (!created.ok) {
         setError(presentErrorString({ errorCode: created.errorCode, message: created.error, action: STORE_ACTION }));
@@ -205,9 +215,12 @@ export default function AddModelEntryDialog({
         setError(NAME_PROVIDER_MISMATCH);
         return;
       }
-      const rotated = await rotateSecretAction(workspaceId, name, key);
-      if (!rotated.ok) {
-        setError(presentErrorString({ errorCode: rotated.errorCode, message: rotated.error, action: STORE_ACTION }));
+      const replaced = await replaceSecretAction(workspaceId, name, {
+        [SECRET_FIELD.provider]: provider.trim(),
+        [SECRET_FIELD.apiKey]: key,
+      });
+      if (!replaced.ok) {
+        setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: STORE_ACTION }));
         return;
       }
       if (await doCreateEntry(name, modelId, activate, false)) handleOpenChange(false);

@@ -131,27 +131,28 @@ describe("secret narrowing helpers", () => {
   });
 });
 
-describe("rotateSecret", () => {
-  it("PATCHes /secrets/:name with a {api_key} body and URL-encoded name", async () => {
+describe("replaceSecret", () => {
+  it("PUTs /secrets/:name with a {data} whole-body payload and URL-encoded name", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ name: "anthropic prod" }) });
-    const { rotateSecret } = await import("./secrets");
-    const res = await rotateSecret("ws_1", "anthropic prod", "sk-ant-rotated", "tok");
+    const { replaceSecret } = await import("./secrets");
+    const body = { provider: "anthropic", api_key: "sk-ant-replaced" };
+    const res = await replaceSecret("ws_1", "anthropic prod", body, "tok");
     expect(res.name).toBe("anthropic prod");
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toContain("/v1/workspaces/ws_1/secrets/anthropic%20prod");
-    expect(init.method).toBe("PATCH");
-    expect(JSON.parse(init.body as string)).toEqual({ api_key: "sk-ant-rotated" });
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body as string)).toEqual({ data: body });
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
   });
 
-  it("propagates a typed 404 when the secret name is missing", async () => {
+  it("propagates a typed 404 when the workspace does not hold the name", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 404,
       json: async () => ({ detail: "not found", error_code: "UZ-VAULT-404" }),
     });
-    const { rotateSecret } = await import("./secrets");
-    const err = (await rotateSecret("ws_1", "ghost", "sk-x", "tok").catch((e) => e)) as ApiError;
+    const { replaceSecret } = await import("./secrets");
+    const err = (await replaceSecret("ws_1", "ghost", { api_key: "sk-x" }, "tok").catch((e: unknown) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(404);
     expect(err.code).toBe("UZ-VAULT-404");
