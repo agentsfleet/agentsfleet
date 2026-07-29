@@ -22,13 +22,15 @@ interface FleetListRow {
 
 interface FleetListResponse {
   readonly items?: ReadonlyArray<FleetListRow>;
-  readonly cursor?: string | null;
+  readonly next_cursor?: string | null;
 }
 
 const FIELD_NAME = "name" as const;
 const FIELD_STATUS = "status" as const;
 const TYPE_STRING = "string" as const;
 const FIELD_FLEET_ID = "fleet_id" as const;
+// Mirrors the daemon's QUERY_STARTING_AFTER (http/pagination.zig).
+const QUERY_STARTING_AFTER = "starting_after" as const;
 
 const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
@@ -52,11 +54,11 @@ const resolveWorkspaceOverride = (
 
 const buildPath = (
   wsId: string,
-  cursor: string | undefined,
+  startingAfter: string | undefined,
   limit: string | undefined,
 ): string => {
   const qs = new URLSearchParams();
-  if (isString(cursor) && cursor.length > 0) qs.set("cursor", cursor);
+  if (isString(startingAfter) && startingAfter.length > 0) qs.set(QUERY_STARTING_AFTER, startingAfter);
   if (isString(limit) && limit.length > 0) qs.set("limit", limit);
   const query = qs.toString();
   return query ? `${wsFleetsPath(wsId)}?${query}` : wsFleetsPath(wsId);
@@ -64,7 +66,7 @@ const buildPath = (
 
 export interface ListEffectFlags {
   readonly workspaceId?: string | undefined;
-  readonly cursor?: string | undefined;
+  readonly startingAfter?: string | undefined;
   readonly limit?: string | undefined;
 }
 
@@ -83,7 +85,7 @@ export const listEffectFromFlags = (
     const wsId = yield* resolveWorkspaceOverride(flags.workspaceId);
     const token = yield* resolveAuthToken;
     const res = yield* http.request<FleetListResponse>({
-      path: buildPath(wsId, flags.cursor, flags.limit),
+      path: buildPath(wsId, flags.startingAfter, flags.limit),
       token,
     });
 
@@ -110,9 +112,9 @@ export const listEffectFromFlags = (
         status: String(z[FIELD_STATUS] ?? ""),
       })),
     );
-    if (res.cursor) {
+    if (res.next_cursor) {
       yield* output.info(
-        ui.dim(`More available. Next: agentsfleet fleet list --cursor ${res.cursor}`),
+        ui.dim(`More available. Next: agentsfleet fleet list --starting-after ${res.next_cursor}`),
       );
     }
   });

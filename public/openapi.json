@@ -4765,7 +4765,7 @@
       "get": {
         "operationId": "list_fleets",
         "summary": "List fleets in a workspace",
-        "description": "Returns visible fleets with the newest fleet first. Omit `cursor` for the first page. Use the returned cursor to read the next page.\n",
+        "description": "Returns visible fleets with the newest fleet first. Omit `starting_after` for the first page. Use the returned `next_cursor` to read the next page.\n",
         "tags": [
           "Fleets"
         ],
@@ -4781,10 +4781,10 @@
             }
           },
           {
-            "name": "cursor",
+            "name": "starting_after",
             "in": "query",
             "required": false,
-            "description": "Opaque page cursor from a prior response's `cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page.\n",
+            "description": "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page. The retired `cursor` spelling is refused.\n",
             "schema": {
               "type": "string"
             }
@@ -4812,7 +4812,7 @@
                   "required": [
                     "items",
                     "total",
-                    "cursor"
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -4825,10 +4825,10 @@
                       "type": "integer",
                       "description": "Count of items in this response (not total across pages)."
                     },
-                    "cursor": {
+                    "next_cursor": {
                       "type": "string",
                       "nullable": true,
-                      "description": "Opaque cursor to fetch the next page. `null` when there are no more pages.\n"
+                      "description": "Opaque token for the next page's `starting_after`. `null` when there are no more pages.\n"
                     }
                   }
                 }

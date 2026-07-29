@@ -119,6 +119,13 @@ test("fleet-key create accepts --workspace / --fleet / --name / --description", 
   expect(calls[0]?.frame.parsed.options.description).toBe("for scouting");
 });
 
+test("test_fleet_list_flag_renamed_to_starting_after", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["list", "--starting-after", "1713700000000:zom_2"], handlers);
+  expect(calls[0]?.name).toBe("fleet.list");
+  expect(calls[0]?.frame.parsed.options.startingAfter).toBe("1713700000000:zom_2");
+});
+
 test("fleet-key add is rejected with no dispatch", async () => {
   const { handlers, calls } = makeSpyTree();
   await expect(dispatch(["fleet-key", "add"], handlers)).rejects.toThrow();
