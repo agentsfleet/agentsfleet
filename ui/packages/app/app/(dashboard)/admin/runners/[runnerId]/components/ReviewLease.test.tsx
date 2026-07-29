@@ -50,6 +50,14 @@ describe("ReviewLease", () => {
     expect(screen.getByText(/Open Fleet/)).toBeTruthy();
   });
 
+  it("should render the failure sentence alone when the daemon recorded no detail line", () => {
+    render(<ReviewLease lease={{ ...BASE, failure_detail: null }} onOpenChange={vi.fn()} />, {
+      wrapper: TooltipProvider,
+    });
+    expect(screen.getByText(/Ran out of memory/)).toBeTruthy();
+    expect(screen.queryByText(/2 GiB memory limit/)).toBeNull();
+  });
+
   it("test_review_lease_never_renders_request_payload", () => {
     for (const outcome of Object.values(LEASE_OUTCOME)) {
       cleanup();

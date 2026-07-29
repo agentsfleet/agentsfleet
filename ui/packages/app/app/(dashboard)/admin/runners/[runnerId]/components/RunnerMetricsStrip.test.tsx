@@ -40,4 +40,16 @@ describe("RunnerMetricsStrip", () => {
     expect(screen.getByText("across 2 Fleets")).toBeTruthy();
     expect(screen.getByText("not renewed")).toBeTruthy();
   });
+
+  it("should dash the heartbeat for a never-seen runner and speak one fleet in the singular", () => {
+    render(
+      <RunnerMetricsStrip
+        runner={{ ...RUNNER, last_seen_at: 0, active_lease_count: 1, active_fleet_count: 1 }}
+      />,
+    );
+    // last_seen_at = 0 is the never-connected sentinel: an honest dash, no
+    // fabricated relative time and no clock detail line.
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.getByText("across 1 Fleet")).toBeTruthy();
+  });
 });

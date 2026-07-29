@@ -59,6 +59,15 @@ describe("listRunnerLeases", () => {
       "tok",
     );
   });
+
+  it("sends the bare first-page read with no query string at all", async () => {
+    await listRunnerLeases("tok", "runner-1");
+    expect(requestMock).toHaveBeenCalledWith(
+      "/v1/fleets/runners/runner-1/leases",
+      { method: "GET" },
+      "tok",
+    );
+  });
 });
 
 describe("createRunner", () => {
