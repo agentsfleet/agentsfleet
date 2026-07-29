@@ -82,4 +82,74 @@ describe("RunnerTile", () => {
     expect(screen.getByText("Idle. No active leases.")).toBeTruthy();
     expect(listRunnerLeasesActionMock).toHaveBeenCalledTimes(1);
   });
+
+  it("should fall back to the idle sentence when the lease read fails", async () => {
+    listRunnerLeasesActionMock.mockResolvedValueOnce({
+      ok: false,
+      errorCode: "UZ-RUN-014",
+      error: "runner read failed",
+    });
+    render(<RunnerTile runner={runner({ liveness: "busy" })} />);
+    // A failed work-line read degrades to idle copy — never an error state on
+    // a card, and never a fabricated fleet name.
+    await waitFor(() => {
+      expect(screen.getByText("Idle. No active leases.")).toBeTruthy();
+    });
+  });
+
+  it("should read idle when the lease page carries no running lease", async () => {
+    listRunnerLeasesActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        items: [{ ...lease("Settled"), outcome: "succeeded" }],
+        total: 1,
+        next_cursor: null,
+      },
+    });
+    render(<RunnerTile runner={runner({ liveness: "busy" })} />);
+    await waitFor(() => {
+      expect(screen.getByText("Idle. No active leases.")).toBeTruthy();
+    });
+  });
+
+  it("should speak in the singular for one running lease and fall back to the fleet id", async () => {
+    listRunnerLeasesActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        items: [{ ...lease("solo"), fleet_name: null, fleet_id: "fleet-solo-id" }],
+        total: 1,
+        next_cursor: null,
+      },
+    });
+    render(<RunnerTile runner={runner({ liveness: "busy" })} />);
+    await waitFor(() => {
+      expect(screen.getByText("1 lease · fleet-solo-id")).toBeTruthy();
+    });
+  });
+
+  it("should read never-connected for a freshly minted runner", () => {
+    render(<RunnerTile runner={runner({ liveness: "registered", last_seen_at: 0 })} />);
+    // The sentence appears in both the work line and the last-seen line —
+    // present is what matters, and no lease read ever fires for it.
+    expect(screen.getAllByText("Never connected.").length).toBeGreaterThan(0);
+    expect(listRunnerLeasesActionMock).not.toHaveBeenCalled();
+  });
+
+  it("should drop a work-line answer that lands after unmount", async () => {
+    let resolveLeases: (value: unknown) => void = () => {};
+    listRunnerLeasesActionMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveLeases = resolve;
+      }),
+    );
+    const { unmount } = render(<RunnerTile runner={runner({ liveness: "busy" })} />);
+    unmount();
+    // The cancelled guard swallows the late answer — no state set on an
+    // unmounted component, nothing thrown.
+    resolveLeases({
+      ok: true,
+      data: { items: [lease("late")], total: 1, next_cursor: null },
+    });
+    await Promise.resolve();
+  });
 });

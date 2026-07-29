@@ -155,17 +155,13 @@ export function RunnerHeader({
       <RunnerActionConfirm
         target={confirmAction}
         error={error}
-        onOpenChange={(open) => {
-          if (!open) setConfirmAction(null);
-        }}
+        onOpenChange={() => setConfirmAction(null)}
         onConfirm={runAction}
       />
       <RunnerActionConfirm
         target={confirmDelete}
         error={error}
-        onOpenChange={(open) => {
-          if (!open) setConfirmDelete(null);
-        }}
+        onOpenChange={() => setConfirmDelete(null)}
         onConfirm={runDelete}
       />
     </div>

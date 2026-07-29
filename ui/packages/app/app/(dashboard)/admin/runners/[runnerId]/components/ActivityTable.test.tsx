@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { RUNNER_LIFECYCLE_EVENT_TYPES, type RunnerEventItem } from "@/lib/api/runners";
 
@@ -16,6 +16,10 @@ vi.mock("@/lib/pagination/use-url-cursor-pages", () => ({
 import { ActivityTable } from "./ActivityTable";
 
 afterEach(() => cleanup());
+
+// Two distinct instants whose order — not magnitude — the sort test pins.
+const OLDER_INSTANT_MS = 1_000;
+const NEWER_INSTANT_MS = 2_000;
 
 function item(overrides: Partial<RunnerEventItem>): RunnerEventItem {
   return {
@@ -110,5 +114,60 @@ describe("ActivityTable", () => {
     for (const header of ["When", "What", "Detail"]) {
       expect(screen.getByRole("columnheader", { name: header })).toBeTruthy();
     }
+  });
+
+  it("should degrade detail honestly — absent metadata, host-only registration, unknown tier tag", () => {
+    render(
+      <ActivityTable
+        initial={{
+          items: [
+            item({ id: "bare", event_type: "runner_online", metadata: null }),
+            item({ id: "host-only", event_type: "runner_registered", metadata: { host_id: "host-x" } }),
+            item({
+              id: "future-tier",
+              event_type: "runner_registered",
+              metadata: { host_id: "host-y", sandbox_tier: "quantum_jail" },
+            }),
+          ],
+          total: 3,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />,
+      { wrapper: TooltipProvider },
+    );
+    // Host-only registration renders the host with no dangling separator.
+    expect(screen.getByText("host-x")).toBeTruthy();
+    // A tier tag minted after this build renders its raw spelling, not nothing.
+    expect(screen.getByText(/quantum_jail/)).toBeTruthy();
+  });
+
+  it("should sort by When through the standard header control, on an uncounted feed", () => {
+    render(
+      <ActivityTable
+        initial={{
+          items: [
+            item({ id: "older", event_type: "runner_online", occurred_at: OLDER_INSTANT_MS }),
+            item({ id: "newer", event_type: "runner_offline", occurred_at: NEWER_INSTANT_MS }),
+          ],
+          // total unknown (null) — the pager renders without a fabricated count.
+          total: null,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />,
+      { wrapper: TooltipProvider },
+    );
+    const orderOf = () =>
+      screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => (row.textContent?.includes("came online") ? "older" : "newer"));
+    fireEvent.click(screen.getByRole("button", { name: /when/i }));
+    const firstSort = orderOf();
+    fireEvent.click(screen.getByRole("button", { name: /when/i }));
+    // Two clicks walk both directions of the same comparator: the order must
+    // invert, proving the column sorts on the record's real timestamp.
+    expect(orderOf()).toEqual([...firstSort].reverse());
   });
 });

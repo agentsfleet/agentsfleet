@@ -1,21 +1,33 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerLease } from "@/lib/api/runners";
 
+const goToPage = vi.fn();
+const changePageSize = vi.fn();
+let mockHasNext = false;
 vi.mock("@/lib/pagination/use-url-cursor-pages", () => ({
   useUrlCursorPages: () => ({
     page: 1,
-    hasNext: false,
+    hasNext: mockHasNext,
     isLoading: false,
-    goToPage: vi.fn(),
-    changePageSize: vi.fn(),
+    goToPage,
+    changePageSize,
   }),
 }));
 
 import { LeaseTable } from "./LeaseTable";
 
 afterEach(() => cleanup());
+
+// Two distinct instants whose order — not magnitude — the sort test pins.
+const OLDER_INSTANT_MS = 1_000;
+const NEWER_INSTANT_MS = 2_000;
+beforeEach(() => {
+  mockHasNext = false;
+  goToPage.mockReset();
+  changePageSize.mockReset();
+});
 
 function lease(overrides: Partial<RunnerLease>): RunnerLease {
   return {
@@ -129,5 +141,89 @@ describe("LeaseTable", () => {
       { wrapper: TooltipProvider },
     );
     expect(screen.getByText("Outcome not recorded")).toBeTruthy();
+  });
+
+  it("test_review_lease_renders_lease_facts (from the row, and released on close)", () => {
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "row-open-1", outcome: "succeeded" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />,
+      { wrapper: TooltipProvider },
+    );
+    // The fencing token lives only in Review lease — absent until a row is
+    // activated, present after, gone again once the panel closes.
+    expect(screen.queryByText("1,884")).toBeNull();
+    fireEvent.click(screen.getByText("Search Services"));
+    expect(screen.getByText("1,884")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /close/i }));
+    expect(screen.queryByText("1,884")).toBeNull();
+  });
+
+  it("should hand the pager to the cursor feed when more pages exist", () => {
+    mockHasNext = true;
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "page-1-lease" })],
+          total: 60,
+          next_cursor: "page-2-cursor",
+        }}
+        pageSize={25}
+      />,
+      { wrapper: TooltipProvider },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(goToPage).toHaveBeenCalledWith(2);
+  });
+
+  it("should show the fleet id when the fleet was deleted out from under its leases", () => {
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "orphanish-1", fleet_name: null, fleet_id: "fleet-gone-1" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />,
+      { wrapper: TooltipProvider },
+    );
+    // The defensive render the cascade failure-mode names: id shown, never a
+    // blank cell and never a fabricated name.
+    expect(screen.getByText("fleet-gone-1")).toBeTruthy();
+  });
+
+  it("should sort by When through the standard header control", () => {
+    render(
+      <LeaseTable
+        initial={{
+          items: [
+            lease({ id: "older", fleet_name: "Alpha Fleet", created_at: OLDER_INSTANT_MS, outcome: "succeeded" }),
+            lease({ id: "newer", fleet_name: "Beta Fleet", created_at: NEWER_INSTANT_MS, outcome: "succeeded" }),
+          ],
+          // total unknown (null) — the pager renders without a fabricated count.
+          total: null,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />,
+      { wrapper: TooltipProvider },
+    );
+    const orderOf = () =>
+      screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => (row.textContent?.includes("Alpha Fleet") ? "older" : "newer"));
+    fireEvent.click(screen.getByRole("button", { name: /when/i }));
+    const firstSort = orderOf();
+    fireEvent.click(screen.getByRole("button", { name: /when/i }));
+    // Two clicks walk both directions of the same comparator: the order must
+    // invert, proving the column sorts on the lease's real timestamp.
+    expect(orderOf()).toEqual([...firstSort].reverse());
   });
 });

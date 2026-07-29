@@ -121,4 +121,85 @@ describe("RunnerHeader", () => {
     expect(await screen.findByRole("button", { name: /copy failed/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /copied/i })).toBeNull();
   });
+
+  it("should close the confirm and refresh when an admin action succeeds", async () => {
+    updateRunnerAdminStateActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { admin_state: "cordoned" },
+    });
+    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Cordon" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cordon" }));
+    await waitFor(() => {
+      expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(detail().id, "cordon");
+      expect(refresh).toHaveBeenCalled();
+    });
+    // Success closes the confirm — no error is left behind.
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+  });
+
+  it("should delete a revoked runner and route back to the wall", async () => {
+    deleteRunnerActionMock.mockResolvedValueOnce({ ok: true, data: undefined });
+    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => {
+      expect(deleteRunnerActionMock).toHaveBeenCalledWith(detail().id);
+      expect(push).toHaveBeenCalledWith("/admin/runners");
+    });
+  });
+
+  it("should surface a delete failure inside the confirm and refresh the header", async () => {
+    deleteRunnerActionMock.mockResolvedValueOnce({
+      ok: false,
+      errorCode: "UZ-RUN-016",
+      error: "Runner must be revoked before deletion",
+    });
+    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => {
+      expect(deleteRunnerActionMock).toHaveBeenCalledTimes(1);
+      expect(refresh).toHaveBeenCalled();
+      expect(push).not.toHaveBeenCalled();
+    });
+    // The failure reads inside the still-open confirm, beside the state the
+    // header just re-read — never a silent close.
+    expect(within(screen.getByRole("alertdialog")).getByRole("alert")).toBeTruthy();
+  });
+
+  it("should not offer delete before the runner is revoked", () => {
+    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  });
+
+  it("should walk away from either confirm without acting when the operator cancels", async () => {
+    // Cancelling the admin-action confirm fires no state change. (An active
+    // runner — a revoked one no longer offers the action buttons.)
+    const { unmount } = render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    let dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+    expect(updateRunnerAdminStateActionMock).not.toHaveBeenCalled();
+    unmount();
+
+    // Cancelling the delete confirm deletes nothing and routes nowhere.
+    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+    expect(deleteRunnerActionMock).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
 });
