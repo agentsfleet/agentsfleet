@@ -36,7 +36,11 @@ const R_CASCADE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc16";
 const R_UNKNOWN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eccff";
 
 // A recognisable non-secret sentinel: the read must never emit the column.
-const SEEDED_TOKEN_HASH = "cafe0000cafe0000cafe0000cafe0000cafe0000cafe0000cafe0000cafe0000";
+// Per-runner unique: fleet.runners carries UNIQUE(token_hash), so one shared
+// seed hash collides the moment a single test seeds two runners on a clean
+// database. Earlier green runs rode pre-existing rows through the seed's
+// ON CONFLICT (id) DO NOTHING; the first clean-state run exposed it.
+const SEEDED_TOKEN_HASH_PREFIX = "cafe0000-seeded-";
 const SEEDED_REQUEST_PAYLOAD = "{\"message\":\"never-on-the-wire\"}";
 const FAILURE_DETAIL_OOM = "Container exceeded its memory limit and was terminated.";
 
@@ -71,9 +75,9 @@ fn seedRunner(conn: anytype, runner_id: []const u8, host_id: []const u8) !void {
         \\INSERT INTO fleet.runners
         \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels,
         \\   last_seen_at, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, 'dev_none', 'active', '["gpu","prod"]'::jsonb, $4, $4, $4)
+        \\VALUES ($1::uuid, $2, $3 || $1, 'dev_none', 'active', '["gpu","prod"]'::jsonb, $4, $4, $4)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ runner_id, host_id, SEEDED_TOKEN_HASH, nowMs() });
+    , .{ runner_id, host_id, SEEDED_TOKEN_HASH_PREFIX, nowMs() });
 }
 
 const LeaseSeed = struct {
@@ -184,7 +188,7 @@ test "integration: test_runner_get_omits_token_hash" {
     defer resp.deinit();
     try resp.expectStatus(.ok);
     try std.testing.expect(!resp.bodyContains("token_hash"));
-    try std.testing.expect(!resp.bodyContains(SEEDED_TOKEN_HASH));
+    try std.testing.expect(!resp.bodyContains(SEEDED_TOKEN_HASH_PREFIX));
     // The record itself is present.
     try std.testing.expect(resp.bodyContains("\"host_id\":\"runner-read-empty\""));
     try std.testing.expect(resp.bodyContains("\"admin_state\":\"active\""));
