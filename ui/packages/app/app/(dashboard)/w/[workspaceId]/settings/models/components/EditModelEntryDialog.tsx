@@ -28,6 +28,11 @@ type Props = {
   target: TenantModelEntry | null;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
+  /** A write committed but the save did not complete — re-read the table so it
+   *  shows what the server actually holds. Distinct from `onSaved`, which also
+   *  means "close the dialog". Mirrors the refresh-even-on-failure idiom the
+   *  table already applies to its own actions (`ModelsRegistryTable.onSwitchEntry`). */
+  onCommitted: () => void;
 };
 
 const EDIT_MODEL_ACTION = "change the model";
@@ -44,20 +49,29 @@ const CUSTOM_SECRET_HINT =
 //
 // The same form as Add, prefilled from the entry row the table already holds
 // — provider, base URL, model — with the key blank because a stored secret is
-// never readable. Replacement is total, so any secret-side change requires
-// the key and sends ONE whole-body write. The secret writes FIRST: a later
-// entry-write failure leaves the table consistent (the rename never
-// committed), so no partial-success path exists.
+// never readable. Replacement is total, so any secret-side change requires the
+// key and sends ONE whole-body write.
+//
+// Save can issue two writes to two different daemon resources, which cannot
+// share a transaction from here. So the order is chosen by what a stranded
+// write costs: the ENTRY writes first because it is the recoverable one — a
+// single row, visible in the table, changed back in two clicks — and the SECRET
+// writes last because it is neither. A secret is shared by every entry
+// referencing it and can never be read back to restore, so a stranded
+// credential rotation is invisible, wide, and permanent. Ordering cannot make
+// the pair atomic; it only decides which half can be left behind.
 function EditForm({
   workspaceId,
   target,
   onOpenChange,
   onSaved,
+  onCommitted,
 }: {
   workspaceId: string;
   target: TenantModelEntry;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
+  onCommitted: () => void;
 }) {
   const uid = useId();
   const [model, setModel] = useState(target.model_id);
@@ -101,6 +115,9 @@ function EditForm({
     setPending(true);
     setError(null);
     try {
+      // EVERY validation runs before EITHER write. A check that fired between
+      // them would strand the first write for a reason the caller could have
+      // been given before anything was written.
       if (secretTouched) {
         if (isCustom && !isHttpsUrl(baseUrl.trim())) {
           setError(BASE_URL_NOT_HTTPS);
@@ -115,13 +132,9 @@ function EditForm({
           setError(KEY_REQUIRED_TO_REPLACE);
           return;
         }
-        const replaced = await replaceSecretAction(workspaceId, target.secret_ref, composeReplacement());
-        if (!replaced.ok) {
-          setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: REPLACE_ACTION }));
-          return;
-        }
-        if (keyEntered) captureKeyRotated(target.provider ?? "");
       }
+
+      // The recoverable write first (see the ordering note above the component).
       if (modelChanged) {
         const updated = await updateModelEntryAction(target.id, { model_id: model.trim() });
         if (!updated.ok) {
@@ -129,6 +142,22 @@ function EditForm({
           return;
         }
         captureModelChanged({ provider: target.provider ?? "", model: model.trim() });
+      }
+
+      // The permanent write last.
+      if (secretTouched) {
+        const replaced = await replaceSecretAction(workspaceId, target.secret_ref, composeReplacement());
+        if (!replaced.ok) {
+          setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: REPLACE_ACTION }));
+          // The entry write above may already have committed. Re-read rather
+          // than narrate it: the table then shows the model the server actually
+          // holds, which is the same "mirror backend reality regardless of
+          // outcome" rule its own actions follow. The dialog stays open on the
+          // error so the credential can be retried.
+          if (modelChanged) onCommitted();
+          return;
+        }
+        if (keyEntered) captureKeyRotated(target.provider ?? "");
       }
       onSaved();
     } finally {
@@ -194,7 +223,7 @@ function EditForm({
   );
 }
 
-export default function EditModelEntryDialog({ workspaceId, target, onOpenChange, onSaved }: Props) {
+export default function EditModelEntryDialog({ workspaceId, target, onOpenChange, onSaved, onCommitted }: Props) {
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -205,6 +234,7 @@ export default function EditModelEntryDialog({ workspaceId, target, onOpenChange
             target={target}
             onOpenChange={onOpenChange}
             onSaved={onSaved}
+            onCommitted={onCommitted}
           />
         ) : null}
       </DialogContent>

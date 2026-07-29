@@ -76,7 +76,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `~/Projects/docs/fleets/secrets.mdx`; `~/Projects/docs/changelog.mdx` | EDIT | Document the replace verb, correct the wrong body, and announce the removal. |
 | `src/agentsfleetd/errors/error_entries.zig` | EDIT | `UZ-VAULT-005`'s hint stops naming the retired `PATCH`/rotate (RULE NLR). |
 | `src/agentsfleetd/secrets/crypto_store_write.zig` | CREATE | The vault write path, split from `crypto_store.zig` at the read/write seam (RULE FLL, 397 > 350). |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx` | EDIT | Drops the `onPartialSuccess` prop the rebuilt Edit dialog no longer takes. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx` | EDIT | Drops `onPartialSuccess` for `onCommitted`, wired to `refresh` — the Edit dialog re-reads the table when a write commits but the save does not complete (Discovery A11). |
 | `docs/architecture/billing_and_provider_keys.md`; `docs/architecture/user_flow.md`; `docs/architecture/product_analytics.md`; `docs/architecture/data_flow.md` | EDIT | Stop describing the field patch; §8.3 carries the whole-body replace, the Edit motion, the `key_rotated` trigger, and the erasure list (Architecture Consult Gate). |
 | `VERSION`; `build.zig.zon`; `cli/package.json` | EDIT | Version 0.25.0 (pre-1.0 breaking) via `make sync-version` at CHORE(close). |
 
@@ -147,8 +147,11 @@ Edit currently offers `model` and a new key, sends two writes to two endpoints, 
 
 The registry entry's `model_id` remains its own write: it is a different resource, and unifying the model field the entry and the secret both carry is named Out of Scope. What goes away is spending two writes on the *secret*, and offering a form that cannot express `provider` or `base_url`.
 
+Two writes to two daemon resources cannot share a transaction from the dashboard, so the order is chosen by what a stranded write costs (Discovery A11). The **entry** writes first because it is recoverable — one row, visible in the table, changed back in two clicks. The **secret** writes last because it is none of those: shared by every entry referencing it, invisible once written, and never readable again to restore. Validations are hoisted above both writes so none can fire between them. If the secret write is the one that fails, the table re-reads rather than the dialog narrating the split — the same "mirror backend reality regardless of outcome" rule `ModelsRegistryTable`'s own actions follow.
+
 - **Dimension 4.1** — Edit renders the Create form prefilled from the held summary and issues no extra read → Test `test_edit_dialog_renders_create_form_prefilled`
-- **Dimension 4.2** — saving writes the secret exactly once with the full body, and a failure reports one outcome rather than a partial one → Test `test_edit_dialog_writes_secret_once`
+- **Dimension 4.2** — saving writes the secret exactly once with the full body → Test `test_edit_dialog_writes_secret_once`
+- **Dimension 4.4** — a failure ahead of the secret write leaves the shared credential untouched; a failed secret write strands only the entry rename and re-reads the table to show it; a validation failure runs before either write → Tests `a failed model write never reaches the credential — nothing is rotated`, `a failed replace strands only the model write, and the table is re-read to show it`, `a validation failure runs before EITHER write`
 - **Dimension 4.3** — Add's existing-name branch replaces the body instead of patching a field → Test `test_add_dialog_replaces_existing_secret`
 
 ### §5 — The CLI coverage floor runs where it can fail the build — **DONE**
@@ -236,8 +239,11 @@ The dashboard's existing rotation event is retained and keeps firing on a save t
 | 3.3 | unit | `test_secret_update_output_modes_omit_secret` | JSON mode emits status and name only; neither renderer's output contains the secret substring |
 | 3.4 | unit | `test_secret_update_renders_missing_secret` | A `UZ-VAULT-003` renders with a `secret list` suggestion and exits non-zero |
 | 4.1 | unit | `test_edit_dialog_renders_create_form_prefilled` | Opening Edit shows provider/base URL/model/key prefilled from the held row and issues no fetch |
-| 4.2 | unit | `test_edit_dialog_writes_secret_once` | Saving calls the replace action exactly once with the full body; a rejected save reports one error and no partial-success callback fires |
+| 4.2 | unit | `test_edit_dialog_writes_secret_once` | Saving calls the replace action exactly once with the full body |
 | 4.3 | unit | `test_add_dialog_replaces_existing_secret` | Add against an existing name calls replace with the full composed body, not a field patch |
+| 4.4 | unit | `a failed model write never reaches the credential — nothing is rotated` | A rejected entry write short-circuits before `replaceSecretAction`; the shared credential is untouched and no re-read fires |
+| 4.4 | unit | `a failed replace strands only the model write, and the table is re-read to show it` | A rejected replace after a committed entry write fires `onCommitted` so the table shows the server's model, and leaves the dialog open on the error |
+| 4.4 | unit | `a validation failure runs before EITHER write` | A non-HTTPS base URL is refused with zero write calls, so no half can be stranded by a check that fired between them |
 | 5.1 | integration | `test_coverage_gate_fails_below_floor` | The enforcing script exits non-zero below the floor and names floor and actual |
 | 5.2 | unit | `test_cli_coverage_floor_met` | The enforcing script exits 0 against the branch |
 | e2e | e2e | `test_secret_update_live_lane` | Against a live daemon: create, update, confirm the name resolves throughout, delete |
@@ -351,7 +357,11 @@ The dashboard's existing rotation event is retained and keeps firing on a save t
 
   Checked via 1Password (`ZMB_CD_DEV` → `planetscale-dev` api connection string): `vault.secrets` holds **167 rows, all `kek_version = 2`, earliest `created_at` Jul 20 2026** — after AAD binding shipped Jul 11. Zero v1 rows, no production. So migration 039 drops `DEFAULT 1`; the read path's version branch and `SecretError.UnsupportedKekVersion` were deleted as now-dead code (the AAD tag is the failsafe); and the three v1-refusal tests were replaced. The lease retry-loop finding is eliminated by construction — the error it looped on no longer exists. (039 also gained `CHECK (kek_version = 2)` at this point; **superseded by A10**, which removes it.)
 
-  Surfaced but NOT fixed here (out of this workstream's scope, its own security spec): connector handles (`github`, `slack`, …) share the `vault.secrets` `(workspace_id, key_name)` space with user secrets — app-dev holds 15 live `github` handles. `create` over a connector name is blocked by the vault's `ON CONFLICT DO NOTHING` (`UZ-VAULT-005`), proven by `a connector-shaped name collides — create is blocked, PUT overwrites`; but `PUT` (an `UPDATE`) overwrites the handle in place, and `delete`+`create` already did so on `main`. A reserved-name guard on the secrets write path plus an installation-ownership check at mint is the fix, deferred to Indy's call.
+  Surfaced but NOT fixed here (out of this workstream's scope, its own security spec): connector handles (`github`, `slack`, …) share the `vault.secrets` `(workspace_id, key_name)` space with user secrets — app-dev holds 15 live `github` handles. `create` over a connector name is blocked by the vault's `ON CONFLICT DO NOTHING` (`UZ-VAULT-005`), proven by `a connector-shaped name collides — create is blocked, PUT overwrites`; but `PUT` (an `UPDATE`) overwrites the handle in place, and `delete`+`create` already did so on `main`. A reserved-name guard on the secrets write path plus an installation-ownership check at mint is the fix. Deferred out of this workstream on Indy's call at REVIEW, after greptile re-raised it:
+
+  > Indy (2026-07-29): "lets skip the secrets > connector one now" — context: whether the connector-name overwrite is fixed in this workstream or specced separately.
+
+  Scope note for whoever picks it up: the guard must cover `DELETE` as well as `PUT`, because `delete`+`create` reaches the same end state in two calls and was already reachable on `main`. Fixing only the replace path leaves the hole open.
 
 - **Authoring verification (Jul 29, 2026)** — read from source on the branch, not from prose: the item route's dispatch is `route_table_invoke.zig:251` and matches on method only, so the matcher needs no change; `sensitive_request.zig:19` classifies `PATCH` on this route as sensitive and must move with the verb; `secret_list.zig:20` projects `kind`, `provider`, `model`, `base_url` — which is what makes a client-side full-body rebuild possible without reading the secret; `EditModelEntryDialog.tsx:72-95` issues two writes for one intent and calls `onPartialSuccess()` between them; `AddModelEntryDialog.tsx:207` calls the same rotate action on an existing name; and the coverage floor was reproduced red at `function=99.97% line=99.74%` against a 100% floor.
 
@@ -372,5 +382,19 @@ The dashboard's existing rotation event is retained and keeps firing on a save t
   Second, R9's Verify command never worked. `zig build test --summary all` prints step names, not test names, so the grep returned 0 — for the old test names as much as the new ones, meaning the ✅ 2 recorded before this amendment was not produced by the command beside it. Corrected to `zig build list-tests`, the repo's own reachability lister, which prints registered test names and returns 2.
 
   Noted, not acted on (out of this amendment's scope): `SELECT_SECRET` still selects `kek_version` and `decryptRowAt` discards it. Harmless, but the column is now write-only on that path.
+
+- **Amendment A11 (REVIEW, Indy-directed) — the Edit dialog writes the recoverable resource first, and shows the stranded half instead of describing it.** Greptile flagged that a successful secret replace followed by a failed model write leaves the credential committed while the save reports failure. Valid, and the ordering this workstream had shipped made it the reachable case.
+
+  The two writes go to different daemon resources (`apiReplaceSecret`, `apiUpdateTenantModelEntry`), so the dashboard cannot make them atomic; ordering only decides which half can be stranded. The two halves are not equivalent. A stranded entry rename is one row, visible in the table, undone in two clicks. A stranded secret replace hits **every entry sharing that secret**, is invisible, and can never be undone — a stored key is not readable, so there is no prior value to restore. This workstream had put the permanent write first, which is backwards; the changelog compounded it by framing the old entry-first order as the bug being fixed.
+
+  The first fix drafted was an error string naming which half landed. Indy rejected it:
+
+  > Indy (2026-07-29): "well saying an error doesnt make sense to me." — context: whether a message explaining the stranded write is an acceptable fix.
+
+  > Indy (2026-07-29): "Okay fix that and push" — context: approving the reorder, the hoisted validations, and the re-read in place of the error prose.
+
+  He is right that an error explaining a broken state is not a fix. `ModelsRegistryTable` already states the alternative in its own comments — *"refresh even on failure (matches ApiKeyList's onConfirm — mirror backend reality regardless of outcome)"* — so the dialog now follows the same rule: the writes swap, every validation hoists above both of them, and the secret-write failure arm calls `onCommitted` (wired to the table's `refresh`) so the committed entry change is **shown** rather than narrated. The error text is unchanged.
+
+  This re-introduces a callback this workstream deleted (`onPartialSuccess`, §4), under different reasoning: not "report a partial success" but "re-read the server after any committed write." Residual, stated rather than hidden: the split is made cheap and visible, not eliminated. Only a daemon endpoint writing both resources in one transaction removes it — both tables live in the same Postgres, so it is possible, and it is out of scope here.
 
 - **Correction to the inherited finding** — M143_002 recorded four red coverage files. Reading `coverage/lcov.info` directly gives six: `cli.ts` (2 lines), `commands/api_key.ts` (27), `commands/connector.ts` (10), `commands/fleet_install.ts` (3), `commands/fleet_schedule.ts` (16), and one uncovered function in `commands/login-helpers.ts`.
