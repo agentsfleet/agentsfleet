@@ -38,6 +38,7 @@ async function loadModule(options: {
   env?: Record<string, string | undefined>;
   pathname?: string;
   withWindow?: boolean;
+  withIdleCallback?: boolean;
   client?: MockClient;
   windowObj?: object;
 } = {}) {
@@ -57,6 +58,17 @@ async function loadModule(options: {
     vi.unstubAllGlobals();
   } else {
     vi.stubGlobal("window", options.windowObj ?? createWindow(options.pathname));
+    if (options.withIdleCallback !== false) {
+      vi.stubGlobal(
+        "requestIdleCallback",
+        vi.fn((callback: () => void) => {
+          callback();
+          return 1;
+        }),
+      );
+    } else {
+      vi.stubGlobal("requestIdleCallback", undefined);
+    }
   }
 
   vi.unstubAllEnvs();
@@ -75,6 +87,13 @@ describe("app analytics", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    vi.stubGlobal(
+      "requestIdleCallback",
+      vi.fn((callback: () => void) => {
+        callback();
+        return 1;
+      }),
+    );
   });
 
   it("resolves enabled config when key is present", async () => {
@@ -181,6 +200,90 @@ describe("app analytics", () => {
       capture_pageview: true,
       capture_pageleave: true,
     }));
+  });
+
+  it("waits for browser idle while preserving early identity, context, and product events", async () => {
+    const client = {
+      init: vi.fn(),
+      capture: vi.fn(),
+      identify: vi.fn(),
+      group: vi.fn(),
+      setPersonProperties: vi.fn(),
+    };
+    const importClient = vi.fn(() => ({ default: client }));
+    let runWhenIdle!: () => void;
+
+    vi.resetModules();
+    vi.doMock("posthog-js", importClient);
+    vi.stubGlobal("window", createWindow("/fleets/zom_1"));
+    vi.stubGlobal(
+      "requestIdleCallback",
+      vi.fn((callback: () => void) => {
+        runWhenIdle = callback;
+        return 1;
+      }),
+    );
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+
+    const mod = await import("../lib/analytics/posthog");
+    const initPromise = mod.initAnalytics();
+    mod.identifyAnalyticsUser({ id: "user_1", email: "user@example.com" });
+    mod.setAnalyticsContext({ workspaceId: "ws_1", workspaceCount: 2 });
+    mod.trackNavigationClicked({
+      source: "sidebar",
+      surface: "desktop",
+      target: "fleets",
+    });
+    mod.captureProductEvent(EVENTS.fleet_viewed, {
+      fleet_id: "zom_1",
+      status: "active",
+    });
+
+    expect(importClient).not.toHaveBeenCalled();
+    expect(client.capture).not.toHaveBeenCalled();
+
+    runWhenIdle();
+    await initPromise;
+
+    expect(importClient).toHaveBeenCalledTimes(1);
+    expect(client.identify).toHaveBeenCalledWith("user_1", {
+      user_id: "user_1",
+      email: "user@example.com",
+    });
+    expect(client.group).toHaveBeenCalledWith("workspace", "ws_1");
+    expect(client.setPersonProperties).toHaveBeenCalledWith({ workspace_count: 2 });
+    expect(client.capture).toHaveBeenCalledWith("navigation_clicked", {
+      path: "/fleets/zom_1",
+      source: "sidebar",
+      surface: "desktop",
+      target: "fleets",
+    });
+    expect(client.capture).toHaveBeenCalledWith(EVENTS.fleet_viewed, {
+      path: "/fleets/zom_1",
+      fleet_id: "zom_1",
+      status: "active",
+    });
+  });
+
+  it("uses a delayed fallback when the browser has no idle callback", async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduleTimeout = vi.spyOn(globalThis, "setTimeout");
+      const { mod, client } = await loadModule({
+        withIdleCallback: false,
+        env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+      });
+
+      const initPromise = mod.initAnalytics();
+      expect(scheduleTimeout).toHaveBeenCalledWith(expect.any(Function), 1_500);
+      expect(client.init).not.toHaveBeenCalled();
+
+      await vi.runAllTimersAsync();
+      await initPromise;
+      expect(client.init).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("identifies the current user and suppresses duplicate identifies", async () => {

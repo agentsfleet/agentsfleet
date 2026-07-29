@@ -10,6 +10,7 @@ import {
   EmptyState,
   PAGINATION_KIND,
   Time,
+  TooltipProvider,
 } from "@agentsfleet/design-system";
 import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
@@ -227,38 +228,40 @@ export function EventsList({ initial, pageSize, fleetId }: EventsListProps) {
   }, [fleetId, runs]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <DataTable
-        className="flex min-h-0 flex-1 flex-col"
-        caption={fleetId ? FLEET_EVENTS_LABEL : WORKSPACE_EVENTS_LABEL}
-        columns={columns}
-        rows={items}
-        rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
-        viewportClassName="min-h-0 flex-1 max-h-none"
-        pagination={{
-          kind: PAGINATION_KIND.page,
-          page: feed.page,
-          pageSize,
-          hasNext: feed.hasNext,
-          totalLabel: "events",
-          onPageChange: feed.goToPage,
-          pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
-          onPageSizeChange: feed.changePageSize,
-          isLoading: feed.isLoading,
-        }}
-        empty={
-          <EmptyState
-            icon={<ActivityIcon size={28} />}
-            title={EVENTS_EMPTY_TITLE}
-            description={EVENTS_EMPTY_DESCRIPTION}
-          />
-        }
-      />
-      <EventDetailsDialog
-        row={selected}
-        onOpenChange={() => setSelected(null)}
-      />
-    </div>
+    <TooltipProvider>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <DataTable
+          className="flex min-h-0 flex-1 flex-col"
+          caption={fleetId ? FLEET_EVENTS_LABEL : WORKSPACE_EVENTS_LABEL}
+          columns={columns}
+          rows={items}
+          rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
+          viewportClassName="min-h-0 flex-1 max-h-none"
+          pagination={{
+            kind: PAGINATION_KIND.page,
+            page: feed.page,
+            pageSize,
+            hasNext: feed.hasNext,
+            totalLabel: "events",
+            onPageChange: feed.goToPage,
+            pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
+            onPageSizeChange: feed.changePageSize,
+            isLoading: feed.isLoading,
+          }}
+          empty={
+            <EmptyState
+              icon={<ActivityIcon size={28} />}
+              title={EVENTS_EMPTY_TITLE}
+              description={EVENTS_EMPTY_DESCRIPTION}
+            />
+          }
+        />
+        <EventDetailsDialog
+          row={selected}
+          onOpenChange={() => setSelected(null)}
+        />
+      </div>
+    </TooltipProvider>
   );
 }
 

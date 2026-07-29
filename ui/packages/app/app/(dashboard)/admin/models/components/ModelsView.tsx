@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { PageHeader, PageLayout, PageTitle, SectionHeader } from "@agentsfleet/design-system";
 import type { AdminModel, AdminModelList, PlatformKey } from "@/lib/api/admin_model_library";
+import AddModelDialogDynamic from "@/components/domain/island-dynamic/AddModelDialogDynamic";
 import CatalogueList from "./CatalogueList";
-import AddModelDialog from "./AddModelDialog";
 
 // One trimmed line — the per-token pricing detail lives in the Create-model
 // dialog, not repeated on the page.
@@ -32,7 +32,7 @@ export default function ModelsView({
       </PageHeader>
 
       <div aria-label="Model catalogue" className="flex min-h-0 flex-1 flex-col gap-xl">
-        <SectionHeader actions={<AddModelDialog onCreated={(m) => setModels((prev) => [...prev, m])} />}>
+        <SectionHeader actions={<AddModelDialogDynamic onCreated={(m) => setModels((prev) => [...prev, m])} />}>
           Manage model library
         </SectionHeader>
         <CatalogueList

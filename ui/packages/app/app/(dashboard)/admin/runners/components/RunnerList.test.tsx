@@ -3,12 +3,10 @@ import { resolve } from "node:path";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
 
-// Real design-system (IconAction + Time render Radix Tooltips), so a
-// TooltipProvider ancestor is mandatory — the dashboard layout mounts one in
-// production; tests must supply their own or the render throws.
+// RunnerList owns the route-local tooltip boundary used by its cells and
+// activity dialog; rendering it directly proves that ownership stays intact.
 vi.mock("@/app/(dashboard)/admin/runners/actions", () => ({
   listRunnersAction: vi.fn(),
   createRunnerAction: vi.fn(),
@@ -33,13 +31,7 @@ function listResponse(items: RunnerListItem[], total = items.length, page = 1): 
 
 async function renderList(initial: RunnerListResponse) {
   const { default: RunnerList } = await import("./RunnerList");
-  render(
-    React.createElement(
-      TooltipProvider,
-      null,
-      React.createElement(RunnerList, { initial } as never),
-    ),
-  );
+  render(React.createElement(RunnerList, { initial } as never));
 }
 
 function rowFor(hostId: string): HTMLElement {

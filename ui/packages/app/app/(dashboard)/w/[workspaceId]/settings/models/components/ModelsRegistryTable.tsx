@@ -13,6 +13,7 @@ import type { TenantModelEntryPageResult } from "@/lib/api/tenant_model_entries"
 import { LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
 import { presentErrorString } from "@/lib/errors";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
+import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
@@ -22,7 +23,7 @@ import { computeNextSort, readErrorCopy, sortValueFor, type SortState } from "./
 import { useStoredSecrets } from "./use-stored-secrets";
 import ModelDetailsDialog from "./ModelDetailsDialog";
 import { CATALOGUE_STATUS } from "./catalogue-status";
-import { maySpeculateOnHover, useModelCatalogue } from "./ModelCatalogueProvider";
+import { useModelCatalogue } from "./ModelCatalogueProvider";
 import {
   ActionsCell,
   ContextCell,

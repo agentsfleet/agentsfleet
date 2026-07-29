@@ -1,4 +1,6 @@
 import React from "react";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
@@ -52,7 +54,7 @@ afterEach(() => {
 
 describe("app shell navigation", () => {
   it("links the product mark directly to the fleet wall", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/w/ws_1/events");
     render(React.createElement(Shell, null, React.createElement("div")));
     expect(screen.getByRole("link", { name: "agentsfleet home" }).getAttribute("href")).toBe(
@@ -61,7 +63,7 @@ describe("app shell navigation", () => {
   });
 
   it("appends the Runners item only when the session holds runner:read", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const markup = renderToStaticMarkup(
       React.createElement(
@@ -81,7 +83,7 @@ describe("app shell navigation", () => {
   });
 
   it("hides the platform surface for a session without operator scopes", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     expect(markup).not.toContain('href="/admin/runners"');
@@ -90,7 +92,7 @@ describe("app shell navigation", () => {
   });
 
   it("appends Fleet library only for platform-library:write", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const withScope = renderToStaticMarkup(
       React.createElement(
@@ -114,7 +116,7 @@ describe("app shell navigation", () => {
   });
 
   it("shows the Platform group open by default for a scoped operator and collapses on demand", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
     render(
@@ -139,7 +141,7 @@ describe("app shell navigation", () => {
   });
 
   it("opens the Platform group when the current route belongs to it", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/admin/runners");
     render(
       React.createElement(
@@ -153,7 +155,7 @@ describe("app shell navigation", () => {
   });
 
   it("renders the mobile navigation button", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
     const hamburger = screen.getByRole("button", { name: /open navigation/i });
@@ -162,7 +164,7 @@ describe("app shell navigation", () => {
   });
 
   it("opens the sidebar navigation from the mobile button", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
@@ -175,7 +177,7 @@ describe("app shell navigation", () => {
   });
 
   it("closes the mobile dialog after navigation", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/fleets");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
@@ -186,7 +188,7 @@ describe("app shell navigation", () => {
   });
 
   it("emits navigation analytics from sidebar and bottom-nav links", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
@@ -207,7 +209,7 @@ describe("app shell navigation", () => {
   });
 
   it("collapses the sidebar and hides navigation labels", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
@@ -225,7 +227,7 @@ describe("app shell navigation", () => {
   });
 
   it("expands the sidebar again when the toggle is clicked twice", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
@@ -237,7 +239,7 @@ describe("app shell navigation", () => {
   });
 
   it("keeps navigation links accessible by name when collapsed", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/w/ws_1");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
@@ -248,7 +250,7 @@ describe("app shell navigation", () => {
   });
 
   it("keeps platform links accessible when the whole sidebar is collapsed", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     const user = userEvent.setup();
     render(
@@ -265,7 +267,7 @@ describe("app shell navigation", () => {
   });
 
   it("hides section labels when collapsed", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
@@ -278,7 +280,7 @@ describe("app shell navigation", () => {
   });
 
   it("renders the active link with pulse styling instead of generic accent", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
     const activeLink = screen.getByRole("link", { name: "Fleets" });
@@ -289,7 +291,7 @@ describe("app shell navigation", () => {
   });
 
   it("renders a left accent bar on the active navigation item", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
     const activeLink = screen.getByRole("link", { name: "Fleets" });
@@ -302,7 +304,7 @@ describe("app shell navigation", () => {
   });
 
   it("keeps the mobile navigation expanded when the desktop sidebar is collapsed", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
@@ -333,8 +335,64 @@ describe("resolveActiveHref — single active winner", () => {
 });
 
 describe("app shell frame", () => {
+  it("test_dashboard_shell_hydrates_only_interactive_islands", () => {
+    const appRoot = resolve(import.meta.dirname, "..");
+    const layout = readFileSync(
+      resolve(appRoot, "app/(dashboard)/layout.tsx"),
+      "utf8",
+    );
+    const frame = readFileSync(
+      resolve(appRoot, "components/layout/ShellFrame.tsx"),
+      "utf8",
+    );
+    const controls = readFileSync(
+      resolve(appRoot, "components/layout/ShellControls.tsx"),
+      "utf8",
+    );
+    const sidebar = readFileSync(
+      resolve(appRoot, "components/layout/SidebarNavigation.tsx"),
+      "utf8",
+    );
+
+    expect(frame.startsWith('"use client"')).toBe(false);
+    expect(frame).toContain("{children}");
+    expect(layout).toContain("<ShellFrame");
+    expect(layout).not.toContain("<TooltipProvider");
+    expect(controls.startsWith('"use client"')).toBe(true);
+    expect(controls).toContain('import("./MobileNavigationDialog")');
+    expect(sidebar).toContain("GettingStartedWidget");
+    expect(sidebar).toContain('from "./GettingStartedWidget"');
+    expect(sidebar).not.toContain("GettingStartedWidgetDynamic");
+    expect(
+      existsSync(resolve(appRoot, "components/layout/Shell.tsx")),
+    ).toBe(false);
+  });
+
+  it("test_shell_respects_session_keeper_verdict", () => {
+    const appRoot = resolve(import.meta.dirname, "..");
+    const rootLayout = readFileSync(
+      resolve(appRoot, "app/layout.tsx"),
+      "utf8",
+    );
+    const dashboardLayout = readFileSync(
+      resolve(appRoot, "app/(dashboard)/layout.tsx"),
+      "utf8",
+    );
+    const frame = readFileSync(
+      resolve(appRoot, "components/layout/ShellFrame.tsx"),
+      "utf8",
+    );
+
+    expect(rootLayout).toContain(
+      'import { AuthProvider, AuthSessionKeeper } from "@/lib/auth/client"',
+    );
+    expect(rootLayout).toContain("<AuthSessionKeeper />");
+    expect(dashboardLayout).not.toContain("AuthSessionKeeper");
+    expect(frame).not.toContain("AuthSessionKeeper");
+  });
+
   it("is a fixed frame whose content region owns the scroll", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     const { container } = render(React.createElement(Shell, null, React.createElement("div")));
 
@@ -356,7 +414,7 @@ describe("app shell frame", () => {
   });
 
   it("lets an ordinary page grow while letting one page claim the region", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
+    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     const { container } = render(React.createElement(Shell, null, React.createElement("div")));
 

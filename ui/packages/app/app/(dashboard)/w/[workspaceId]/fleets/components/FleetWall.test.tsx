@@ -2,7 +2,6 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TooltipProvider } from "@agentsfleet/design-system";
 import type { Fleet } from "@/lib/api/fleets";
 
 vi.mock("next/link", () => ({
@@ -29,11 +28,11 @@ function fleet(over: Partial<Fleet> = {}): Fleet {
 
 function renderWall(fleets: Fleet[], cursor: string | null = null) {
   return render(
-    React.createElement(
-      TooltipProvider,
-      null,
-      React.createElement(FleetWall, { workspaceId: "ws_1", initialFleets: fleets, initialCursor: cursor }),
-    ),
+    React.createElement(FleetWall, {
+      workspaceId: "ws_1",
+      initialFleets: fleets,
+      initialCursor: cursor,
+    }),
   );
 }
 

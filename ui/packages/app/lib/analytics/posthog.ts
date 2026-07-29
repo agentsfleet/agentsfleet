@@ -4,9 +4,8 @@ import { EVENT_PROP_KEYS, type EventName, type EventProps } from "./events";
 
 const POSTHOG_DEFAULT_HOST = "https://us.i.posthog.com";
 const EVENT_NAVIGATION_CLICKED = "navigation_clicked";
-// Set on identify, cleared on reset — lets a signed-out mount after a hard
-// navigation or session expiry detect "this browser still carries a prior
-// session's identity" without reaching into posthog-js internals.
+const ANALYTICS_IDLE_TIMEOUT_MS = 1_500;
+// Lets a signed-out mount detect a prior session without PostHog internals.
 const IDENTIFIED_MARKER_KEY = "uz_analytics_identified";
 
 type AnalyticsValue = string | number | boolean;
@@ -68,32 +67,21 @@ const ALLOWED_PROP_KEYS = new Set<keyof AnalyticsProps>([
 ]);
 
 let analyticsEnabled = false;
-// True when env config says analytics is on, even while the posthog-js chunk
-// is still loading (or failed) — distinguishes "off by config" from "not live
-// yet", which the deferred reset/identify below depend on.
+// Distinguishes disabled config from a client that has not loaded yet.
 let analyticsConfigured = false;
 let posthogClient: PostHogLike | null = null;
 let initialized = false;
 let identifiedUserId: string | null = null;
-// Identity work that raced the posthog-js chunk load; initAnalytics flushes
-// both the moment the client lands so neither is silently lost.
+// Identity work that raced the PostHog client load.
 let pendingIdentify: { id: string; email?: string | null } | null = null;
 let pendingReset = false;
-// The workspace currently bound as the PostHog group — skip redundant group()
-// calls and let resetAnalyticsIdentity() rebind on the next session.
+// The workspace currently bound as the PostHog group.
 let groupedWorkspaceId: string | null = null;
-// Group/person context that raced the posthog-js chunk load; initAnalytics
-// flushes it after identify so person props attach to the identified user.
+// Group/person context that raced the PostHog client load.
 let pendingContext: AnalyticsContext | null = null;
-// Product events that raced the posthog-js chunk load. identify/context are
-// single-slot (latest wins); product events are distinct, so this is a bounded
-// FIFO. Mount-fired call sites (fleet_viewed) can capture before the dynamic
-// import resolves on a cold/direct load — action-fired sites can't, they run
-// after a server round-trip. Without this the cold-load captures would be
-// silently dropped, systematically under-counting first views. Bounded so a
-// stuck or failed load can't grow it without limit.
-const MAX_PENDING_PRODUCT_EVENTS = 20;
-let pendingProductEvents: Array<{ event: string; payload: Record<string, AnalyticsValue> }> = [];
+// Distinct events queue in arrival order and stay bounded if loading stalls.
+const MAX_PENDING_EVENTS = 20;
+let pendingEvents: Array<{ event: string; payload: Record<string, AnalyticsValue> }> = [];
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (value == null || value === "") return fallback;
@@ -129,10 +117,8 @@ function sanitizeProps(properties: Partial<AnalyticsProps>): Record<string, Anal
   return out;
 }
 
-// localStorage can be absent (server, stubbed test windows) or throw on read
-// AND on write (locked-down privacy modes; full quota — posthog-js itself
-// fills storage) — every marker operation is best-effort. lib.dom types it
-// non-nullish, so model the maybe-absent reality structurally.
+// localStorage can be absent or throw in locked-down privacy modes, so every
+// marker operation is best-effort despite the non-null lib.dom type.
 function withMarkerStore<T>(fn: (store: Storage) => T): T | null {
   if (typeof window === "undefined") return null;
   try {
@@ -141,6 +127,29 @@ function withMarkerStore<T>(fn: (store: Storage) => T): T | null {
   } catch {
     return null;
   }
+}
+
+function waitForAnalyticsIdle(): Promise<void> {
+  return new Promise((resolveIdle) => {
+    const requestIdle = (
+      globalThis as {
+        requestIdleCallback?: (callback: () => void, options: { timeout: number }) => number;
+      }
+    ).requestIdleCallback;
+    if (typeof requestIdle === "function") {
+      requestIdle(resolveIdle, { timeout: ANALYTICS_IDLE_TIMEOUT_MS });
+      return;
+    }
+    setTimeout(resolveIdle, ANALYTICS_IDLE_TIMEOUT_MS);
+  });
+}
+
+function captureOrQueue(event: string, payload: Record<string, AnalyticsValue>): void {
+  if (posthogClient !== null) {
+    posthogClient.capture(event, payload);
+    return;
+  }
+  if (pendingEvents.length < MAX_PENDING_EVENTS) pendingEvents.push({ event, payload });
 }
 
 export async function initAnalytics(): Promise<void> {
@@ -153,15 +162,15 @@ export async function initAnalytics(): Promise<void> {
   analyticsEnabled = cfg.enabled;
   if (!cfg.enabled || !cfg.key) return;
   analyticsConfigured = true;
+  await waitForAnalyticsIdle();
 
   let posthog: PostHogLike;
   try {
     const loaded = await import("posthog-js");
     posthog = loaded.default as PostHogLike;
   } catch {
-    // Chunk load failed (offline, blocked client): analytics is off for this
-    // session. A deferred reset keeps its marker, so the identity sweep
-    // retries on the next load instead of being silently lost.
+    // A blocked chunk disables this session; a deferred reset keeps its marker
+    // so the identity sweep retries on the next load.
     analyticsEnabled = false;
     return;
   }
@@ -173,12 +182,8 @@ export async function initAnalytics(): Promise<void> {
     capture_pageleave: true,
   });
   posthogClient = posthog;
-  // Flush identity work that raced the chunk load — replay the reset first,
-  // then any identify that arrived after it. The queue must be captured
-  // before the replay: resetAnalyticsIdentity() clears pendingIdentify, but
-  // a queued identify is always newer than the queued reset (a reset that
-  // follows an identify already cancelled it at call time), so the sign-in
-  // survives the replayed sign-out.
+  // Capture identify before replaying reset: a queued identify is newer than
+  // the queued reset and must survive the replayed sign-out.
   const queuedIdentify = pendingIdentify;
   pendingIdentify = null;
   if (pendingReset) resetAnalyticsIdentity();
@@ -188,15 +193,10 @@ export async function initAnalytics(): Promise<void> {
   const queuedContext = pendingContext;
   pendingContext = null;
   if (queuedContext !== null) setAnalyticsContext(queuedContext);
-  // Flush product events captured before the chunk resolved (mount-fired call
-  // sites like fleet_viewed) — after identify + context so they attach to the
-  // identified person and workspace group. Load-bearing ordering: this capture
-  // MUST stay below the `if (pendingReset) resetAnalyticsIdentity()` above —
-  // that reset empties pendingProductEvents, so reading queuedEvents post-reset
-  // drops a signed-out session's buffer instead of stitching it to the next
-  // identity. Do not hoist this assignment above the reset.
-  const queuedEvents = pendingProductEvents;
-  pendingProductEvents = [];
+  // Read after reset: reset clears pendingEvents so signed-out events cannot
+  // stitch to the next identity. Then flush after identify and context.
+  const queuedEvents = pendingEvents;
+  pendingEvents = [];
   for (const queued of queuedEvents) posthogClient.capture(queued.event, queued.payload);
 }
 
@@ -274,7 +274,7 @@ export function resetAnalyticsIdentity(): void {
   pendingContext = null;
   // Drop any product events buffered against the prior session — they must not
   // stitch onto the next (anonymous or other) identity.
-  pendingProductEvents = [];
+  pendingEvents = [];
   if (analyticsConfigured && posthogClient === null) {
     // posthog-js is still loading (or its import failed — the next load
     // retries): keep the marker and let initAnalytics complete the reset.
@@ -318,16 +318,7 @@ export function captureProductEvent<E extends EventName>(
     }
     if (options?.setPersonProperties) payload.$set = options.setPersonProperties;
     const finalPayload = payload as Record<string, AnalyticsValue>;
-    if (posthogClient === null) {
-      // Racing the chunk load (a mount-fired capture): buffer, don't drop. The
-      // FIFO is bounded — events beyond the cap are dropped rather than grow
-      // memory if the load stalls.
-      if (pendingProductEvents.length < MAX_PENDING_PRODUCT_EVENTS) {
-        pendingProductEvents.push({ event, payload: finalPayload });
-      }
-      return;
-    }
-    posthogClient.capture(event, finalPayload);
+    captureOrQueue(event, finalPayload);
   } catch {
     // Analytics must never break the product flow it instruments — several
     // call sites sit beside one-time secret reveals.
@@ -335,12 +326,12 @@ export function captureProductEvent<E extends EventName>(
 }
 
 export function trackAppEvent(event: string, properties: Partial<AnalyticsProps> = {}): void {
-  if (!analyticsEnabled || !posthogClient || typeof window === "undefined") return;
+  if (!analyticsEnabled || typeof window === "undefined") return;
   const payload = sanitizeProps({
     ...properties,
     path: properties.path ?? window.location.pathname,
   });
-  posthogClient.capture(event, payload);
+  captureOrQueue(event, payload);
 }
 
 export function trackNavigationClicked(properties: Omit<AnalyticsProps, "path">): void {
