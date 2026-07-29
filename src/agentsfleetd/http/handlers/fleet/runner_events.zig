@@ -16,11 +16,15 @@ const Hx = hx_mod.Hx;
 const QUERY_EVENT_TYPE = "event_type";
 const QUERY_SINCE = "since";
 const QUERY_UNTIL = "until";
-const S_BAD_QUERY = "page must be a positive integer; page_size must be between 1 and 100; event_type must be a runner event type; since/until must be millis";
+const S_BAD_QUERY = "page must be a positive integer; page_size must be between 1 and 100; event_type must be a comma-separated set of runner event types; since/until must be millis";
+
+/// A set filter can name at most every tag once — the enum's own cardinality
+/// bounds the parse so a hostile comma chain cannot inflate the allocation.
+const MAX_EVENT_TYPE_TOKENS = std.meta.fields(protocol.RunnerEventType).len;
 
 pub fn innerListFleetRunnerEvents(hx: Hx, req: *httpz.Request, runner_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, runner_id, "runner_id")) return;
-    const q = parseListQuery(req) orelse {
+    const q = parseListQuery(hx.alloc, req) orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, S_BAD_QUERY);
         return;
     };
@@ -52,11 +56,11 @@ const ListQuery = struct {
     filter: runner_events.Filter = .{},
 };
 
-fn parseListQuery(req: *httpz.Request) ?ListQuery {
+fn parseListQuery(alloc: std.mem.Allocator, req: *httpz.Request) ?ListQuery {
     const qs = req.query() catch return null;
     const pp = pagination.parsePageParams(qs) orelse return null;
     var out = ListQuery{ .page = pp.page, .page_size = pp.page_size };
-    if (qs.get(QUERY_EVENT_TYPE)) |raw| out.filter.event_type = std.meta.stringToEnum(protocol.RunnerEventType, raw) orelse return null;
+    if (qs.get(QUERY_EVENT_TYPE)) |raw| out.filter.event_types = parseEventTypeSet(alloc, raw) orelse return null;
     if (qs.get(QUERY_SINCE)) |raw| out.filter.since = std.fmt.parseInt(i64, raw, 10) catch return null;
     if (qs.get(QUERY_UNTIL)) |raw| out.filter.until = std.fmt.parseInt(i64, raw, 10) catch return null;
     if (out.filter.since) |since| {
@@ -65,6 +69,43 @@ fn parseListQuery(req: *httpz.Request) ?ListQuery {
         }
     }
     return out;
+}
+
+/// Parse the comma-separated `event_type` set (the guidelines' multi-value
+/// equality grammar). An empty value, an empty token, an unrecognised tag, or
+/// a chain longer than the enum itself all refuse the whole request — a
+/// partial filter would read as "no such events". Returned slice lives in the
+/// request arena.
+fn parseEventTypeSet(alloc: std.mem.Allocator, raw: []const u8) ?[]const protocol.RunnerEventType {
+    if (raw.len == 0) return null;
+    var out: std.ArrayList(protocol.RunnerEventType) = .empty;
+    defer out.deinit(alloc);
+    var it = std.mem.splitScalar(u8, raw, ',');
+    while (it.next()) |token| {
+        if (token.len == 0) return null;
+        if (out.items.len >= MAX_EVENT_TYPE_TOKENS) return null;
+        const tag = std.meta.stringToEnum(protocol.RunnerEventType, token) orelse return null;
+        out.append(alloc, tag) catch return null;
+    }
+    return out.toOwnedSlice(alloc) catch null;
+}
+
+test "event type set parses single, multi, and refuses bad shapes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const single = parseEventTypeSet(alloc, @tagName(protocol.RunnerEventType.runner_online)).?;
+    try std.testing.expectEqual(@as(usize, 1), single.len);
+    try std.testing.expectEqual(protocol.RunnerEventType.runner_online, single[0]);
+
+    const pair = parseEventTypeSet(alloc, "runner_online,runner_offline").?;
+    try std.testing.expectEqual(@as(usize, 2), pair.len);
+
+    try std.testing.expect(parseEventTypeSet(alloc, "") == null);
+    try std.testing.expect(parseEventTypeSet(alloc, "runner_online,") == null);
+    try std.testing.expect(parseEventTypeSet(alloc, "runner_online,not_a_type") == null);
+    try std.testing.expect(parseEventTypeSet(alloc, ",runner_online") == null);
 }
 
 fn runnerExists(conn: anytype, runner_id: []const u8) !bool {

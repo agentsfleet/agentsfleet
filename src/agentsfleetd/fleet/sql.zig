@@ -157,7 +157,7 @@ pub const SELECT_RUNNER_EVENT_PAGE =
     \\  SELECT id::text, runner_id::text, event_type, occurred_at, metadata::text
     \\  FROM fleet.runner_events
     \\  WHERE runner_id = $1::uuid
-    \\    AND ($2::text IS NULL OR event_type = $2::text)
+    \\    AND ($2::text[] IS NULL OR event_type = ANY($2::text[]))
     \\    AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
     \\    AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
     \\),

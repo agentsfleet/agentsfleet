@@ -55,11 +55,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `src/agentsfleetd/http/routes.zig` | EDIT | Two new `Route` variants: `fleet_runner_get`, `fleet_runner_leases` |
+| `src/agentsfleetd/http/router.zig` | EDIT | `matchV1` arms — GET on the runner path resolves to its own variant so the read scope never rides the write route |
 | `src/agentsfleetd/http/route_matchers_fleet.zig` | EDIT | Segment matchers for the two new paths |
+| `src/agentsfleetd/http/route_matchers.zig` | EDIT | Re-export of the new leases matcher |
 | `src/agentsfleetd/http/route_table.zig` | EDIT | `specFor()` arms for the new variants |
-| `src/agentsfleetd/http/route_table_invoke_runner.zig` | EDIT | Invoke shims; the existing `.PATCH`/`.DELETE` switch gains a `.GET` arm |
+| `src/agentsfleetd/http/route_table_invoke_runner.zig` | EDIT | Two new GET invoke shims (the PATCH/DELETE fan-out is untouched — scope is per-variant, so GET is its own variant, not a switch arm) |
+| `src/agentsfleetd/http/route_table_invoke.zig` | EDIT | Re-exports of the two new invoke shims |
 | `src/agentsfleetd/http/route_scopes.zig` | EDIT | Both new routes require `runner:read`, joining the existing arm |
 | `src/agentsfleetd/http/route_template.zig` | EDIT | Path templates for trace and metric labels |
+| `src/agentsfleetd/http/route_admission.zig` | EDIT | The exhaustive `classFor` switch gains the two variants (`.api`) |
+| `src/agentsfleetd/http/route_trace.zig` | EDIT | The exhaustive `classify` switch gains the two variants |
+| `src/agentsfleetd/http/pagination.zig` | EDIT | Shared `starting_after`/`limit` parameter-name constants for every keyset handler |
+| `src/agentsfleetd/tests.zig` | EDIT | Unit-test discovery for the two new handler files |
+| `src/agentsfleetd/integration_tests.zig` | EDIT | Discovery for the new integration suite |
+| `scripts/check_openapi_url_shape.py` | EDIT | `leases` joins the plural-noun allowlist (the checker's designed registration point) |
+| `public/openapi/components/schemas.yaml` | EDIT | `RunnerDetail` and `RunnerLease` schemas |
 | `src/agentsfleetd/http/handlers/fleet/runner_get.zig` | CREATE | Single-runner operator read with live-lease summary and durable lifetime counters |
 | `src/agentsfleetd/http/handlers/fleet/runner_leases.zig` | CREATE | Keyset lease list joined to its Fleet event for outcome and failure cause |
 | `src/agentsfleetd/http/handlers/fleet/sql.zig` | EDIT | Statements for the two reads, beside the existing runner-page statement |
@@ -101,7 +111,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/e2e/acceptance/runner-detail.spec.ts` | CREATE | End-to-end walk: wall → detail → failed lease → Review lease |
 | `docs/architecture/runner_fleet.md` | EDIT | Records the operator-plane read surface and the lifecycle-versus-work event split |
 | `src/agentsfleetd/fleet_runtime/keyset_cursor.zig` | EDIT | Cursor widens to carry an integer or text sort value beside the row id (§7) |
-| `src/agentsfleetd/http/pagination.zig` | DELETE | Its last caller goes with §7; the page-number helper is retired |
+| `src/agentsfleetd/http/handlers/pagination.zig` | DELETE | Its last caller goes with §7; the page-number helper is retired. (The spec originally named `http/pagination.zig`, which is the still-needed struct-cursor module the library reads use — the page-number helper lives under `handlers/`.) |
 | `src/agentsfleetd/http/handlers/api_keys/list.zig` | EDIT | Page-number paging becomes keyset; the sort allowlist rides the widened cursor |
 | `src/agentsfleetd/http/handlers/fleets/list.zig` | EDIT | Request parameter and response field move to `starting_after` / `next_cursor` (§9) |
 | `src/agentsfleetd/http/handlers/memory/handler.zig` | EDIT | All three query shapes gain a cursor guard (§10) |
@@ -122,7 +132,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/src/program/cli-tree-memory.ts` | EDIT | `memory list` gains `--starting-after` |
 | `cli/src/program/handlers-bind-access.ts` | EDIT | Drops the page bindings |
 | `cli/src/commands/api_key.ts` | EDIT | List follows `next_cursor` instead of taking a page |
-| `cli/src/commands/fleet.ts` | EDIT | Sends `starting_after`, reads `next_cursor` |
+| `cli/src/commands/fleet_list.ts` | EDIT | Sends `starting_after`, reads `next_cursor` (the list command lives here, not in `fleet.ts`) |
 | `cli/src/commands/memory.ts` | EDIT | Sends `starting_after` |
 | `cli/test/api_key.integration.test.ts` | EDIT | Retargeted at the unpaged list |
 | `cli/test/cli-tree.parse.unit.test.ts` | EDIT | Flag surface assertions follow the renames |
@@ -162,7 +172,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Single-runner operator read
+### §1 — Single-runner operator read — **DONE**
 
 `GET /v1/fleets/runners/{runner_id}` does not exist, so the detail page cannot be addressable without it: a refresh or a shared link has nothing to hydrate from. This slice adds the read, returning the runner record with derived liveness, a live-work summary, and lifetime counters computed from durable lease and event state.
 
@@ -170,15 +180,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Implementation default:** counters come from `fleet.runner_leases` joined to `core.fleet_events`, never from the `agentsfleet_runner_*` Prometheus families. Those are process-global and in-memory: zeroed on every `agentsfleetd` restart, capped at 4096 runners with the 4097th collapsing into `runner_id="_other"`, and `active_leases` is documented approximate under more than one replica (`docs/architecture/runner_fleet.md` §Multi-replica).
 
-- **Dimension 1.1** — The read returns the runner record and never emits `token_hash` → Test `test_runner_get_omits_token_hash`
-- **Dimension 1.2** — Liveness is derived by the same `deriveLiveness` the list read uses, agreeing across a matrix of `last_seen_at` and live-lease inputs → Test `test_runner_get_liveness_agrees_with_list`
-- **Dimension 1.3** — An unknown runner id answers 404 `UZ-RUN-014` → Test `test_runner_get_unknown_id_is_not_found`
-- **Dimension 1.4** — The route requires `runner:read`; a principal without it is refused → Test `test_runner_get_requires_runner_read_scope`
-- **Dimension 1.5** — The response carries `active_lease_count` and `active_fleet_count`, the latter counting distinct fleets across live leases only → Test `test_runner_get_counts_distinct_fleets_across_live_leases`
-- **Dimension 1.6** — Lifetime counters split acquired, succeeded, failed and expired from durable state → Test `test_runner_get_lifetime_counters_from_durable_state`
-- **Dimension 1.7** — A lease whose deadline has passed but whose row still reads `active` counts as neither live nor expired until reclaim marks it → Test `test_runner_get_stale_active_lease_is_not_live`
+- **Dimension 1.1** — The read returns the runner record and never emits `token_hash` → Test `test_runner_get_omits_token_hash` — **DONE**
+- **Dimension 1.2** — Liveness is derived by the same `deriveLiveness` the list read uses, agreeing across a matrix of `last_seen_at` and live-lease inputs → Test `test_runner_get_liveness_agrees_with_list` — **DONE**
+- **Dimension 1.3** — An unknown runner id answers 404 `UZ-RUN-014` → Test `test_runner_get_unknown_id_is_not_found` — **DONE**
+- **Dimension 1.4** — The route requires `runner:read`; a principal without it is refused → Test `test_runner_get_requires_runner_read_scope` — **DONE**
+- **Dimension 1.5** — The response carries `active_lease_count` and `active_fleet_count`, the latter counting distinct fleets across live leases only → Test `test_runner_get_counts_distinct_fleets_across_live_leases` — **DONE**
+- **Dimension 1.6** — Lifetime counters split acquired, succeeded, failed and expired from durable state → Test `test_runner_get_lifetime_counters_from_durable_state` — **DONE**
+- **Dimension 1.7** — A lease whose deadline has passed but whose row still reads `active` counts as neither live nor expired until reclaim marks it → Test `test_runner_get_stale_active_lease_is_not_live` — **DONE**
 
-### §2 — Operator-plane lease read
+### §2 — Operator-plane lease read — **DONE**
 
 Nothing in the system exposes a runner's leases to an operator: `POST /v1/runners/me/leases` is the runner's own grant call on the self-plane. This slice adds the read that the Leases view renders, joining each lease to its Fleet event so outcome and failure cause arrive in one round trip.
 
@@ -186,23 +196,23 @@ Nothing in the system exposes a runner's leases to an operator: `POST /v1/runner
 
 **Implementation default:** outcome is derived server-side into a single closed tag rather than shipping raw statuses for the client to combine, so the two surfaces cannot drift on what `expired` means.
 
-- **Dimension 2.1** — The response envelope is exactly `{items, total, next_cursor}`, with `total` declared nullable in the schema → Test `test_runner_leases_envelope_is_items_total_next_cursor`
-- **Dimension 2.2** — `starting_after` plus `limit` pages forward; `limit` defaults to 50 and is refused above 100 → Test `test_runner_leases_keyset_pages_forward`
-- **Dimension 2.3** — Rows sharing one `created_at` millisecond are all returned across page boundaries → Test `test_runner_leases_same_millisecond_rows_are_not_skipped`
-- **Dimension 2.4** — Outcome maps `processed` to succeeded, `fleet_error` to failed, lease `expired` to expired, and a live unexpired `active` lease to running → Test `test_runner_leases_outcome_mapping`
-- **Dimension 2.5** — A failed item carries `failure_label` and `failure_detail` verbatim from its Fleet event → Test `test_runner_leases_failed_item_carries_failure_fields`
-- **Dimension 2.6** — `request_json` is absent from the item shape → Test `test_runner_leases_never_emits_request_payload`
-- **Dimension 2.7** — Items carry `fleet_id`, `workspace_id` and the fleet name so the client builds the Fleet link without a second read → Test `test_runner_leases_carries_fleet_link_fields`
-- **Dimension 2.8** — An expired lease reads expired even when its Fleet event later settled `processed` under the runner that reclaimed it → Test `test_runner_leases_expired_lease_is_not_credited_with_successor_outcome`
+- **Dimension 2.1** — The response envelope is exactly `{items, total, next_cursor}`, with `total` declared nullable in the schema → Test `test_runner_leases_envelope_is_items_total_next_cursor` — **DONE**
+- **Dimension 2.2** — `starting_after` plus `limit` pages forward; `limit` defaults to 50 and is refused above 100 → Test `test_runner_leases_keyset_pages_forward` — **DONE**
+- **Dimension 2.3** — Rows sharing one `created_at` millisecond are all returned across page boundaries → Test `test_runner_leases_same_millisecond_rows_are_not_skipped` — **DONE**
+- **Dimension 2.4** — Outcome maps `processed` to succeeded, `fleet_error` to failed, lease `expired` to expired, and a live unexpired `active` lease to running → Test `test_runner_leases_outcome_mapping` — **DONE**
+- **Dimension 2.5** — A failed item carries `failure_label` and `failure_detail` verbatim from its Fleet event → Test `test_runner_leases_failed_item_carries_failure_fields` — **DONE**
+- **Dimension 2.6** — `request_json` is absent from the item shape → Test `test_runner_leases_never_emits_request_payload` — **DONE**
+- **Dimension 2.7** — Items carry `fleet_id`, `workspace_id` and the fleet name so the client builds the Fleet link without a second read → Test `test_runner_leases_carries_fleet_link_fields` — **DONE**
+- **Dimension 2.8** — An expired lease reads expired even when its Fleet event later settled `processed` under the runner that reclaimed it → Test `test_runner_leases_expired_lease_is_not_credited_with_successor_outcome` — **DONE**
 
-### §3 — Lifecycle-only event filtering
+### §3 — Lifecycle-only event filtering — **DONE**
 
 Activity must exclude exactly two event types. Today `event_type` accepts one value, so the view would need seven calls. This slice widens the parameter to the comma-separated multi-value equality grammar the guidelines §3 already define, leaving single-value callers untouched.
 
-- **Dimension 3.1** — `event_type` accepts a comma-separated set and returns the union → Test `test_runner_events_accepts_comma_separated_type_set`
-- **Dimension 3.2** — An unrecognised tag anywhere in the set is refused with `UZ-REQ-001` and no partial result → Test `test_runner_events_rejects_unknown_type_in_set`
-- **Dimension 3.3** — A single-value request behaves exactly as before → Test `test_runner_events_single_value_filter_unchanged`
-- **Dimension 3.4** — An empty `event_type` value is refused rather than silently meaning "all" → Test `test_runner_events_rejects_empty_type_parameter`
+- **Dimension 3.1** — `event_type` accepts a comma-separated set and returns the union → Test `test_runner_events_accepts_comma_separated_type_set` — **DONE**
+- **Dimension 3.2** — An unrecognised tag anywhere in the set is refused with `UZ-REQ-001` and no partial result → Test `test_runner_events_rejects_unknown_type_in_set` — **DONE**
+- **Dimension 3.3** — A single-value request behaves exactly as before → Test `test_runner_events_single_value_filter_unchanged` — **DONE**
+- **Dimension 3.4** — An empty `event_type` value is refused rather than silently meaning "all" → Test `test_runner_events_rejects_empty_type_parameter` — **DONE**
 
 ### §4 — Runner card wall
 
@@ -414,7 +424,7 @@ Client:
 | Limit out of range | `limit` is zero, negative, non-numeric, or above 100 | 400 `UZ-REQ-001`; message names the accepted range |
 | Unknown event type in set | A caller sends a tag outside the enum | 400 `UZ-REQ-001` with no partial result — never a silent drop that looks like "no such events" |
 | Database unavailable | Pool acquire fails on either new read | 503 through `common.internalDbUnavailable`; the view renders its error state, and the wall stays usable |
-| Fleet deleted under a lease | Cascade removed the fleet after the lease settled | The item is still returned with `fleet_name` null; the row renders the fleet id and suppresses the Fleet link rather than linking to a 404 |
+| Fleet deleted under a lease | Cascade removed the fleet after the lease settled | `runner_leases.fleet_id` is `ON DELETE CASCADE`, so the lease rows leave with their fleet — the list simply stops carrying them and `total` drops. The client still renders a null `fleet_name` defensively (id shown, link suppressed), proven at the component tier |
 | Fleet event missing for a settled lease | Report landed, event row absent | `outcome` is `unknown`; the row says the outcome is not recorded — never a fabricated success |
 | Stale active lease | Deadline passed, reclaim has not run | Counted as neither live nor expired; the strip's live count excludes it and the row reads running until reclaim marks it |
 | Runner with no leases | Freshly enrolled host | 200 `{items: [], total: 0, next_cursor: null}`; the table renders its empty state, never a spinner |
@@ -517,7 +527,7 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | failure | integration | `test_runner_leases_rejects_malformed_cursor` | `starting_after` that is not a lease id this runner owns → 400 `UZ-REQ-001`, no partial page |
 | failure | integration | `test_runner_leases_rejects_limit_out_of_range` | `limit` of 0, -1, `abc` and 101 → 400 each, message names the 1..100 range |
 | failure | integration | `test_runner_read_db_unavailable_is_service_error` | Pool acquire injected to fail on both new reads → 503 with the shared unavailable body, never a 200 with empty items |
-| failure | integration | `test_runner_leases_deleted_fleet_suppresses_link` | Lease whose fleet was cascade-deleted → item returned with `fleet_name` null and the link fields absent |
+| failure | integration | `test_runner_leases_deleted_fleet_cascades_out` | Lease whose fleet is deleted → the cascade removes the lease rows; the read returns an empty page, never an orphan item (RULE TVR — the null-`fleet_name` render is a component-tier test) |
 | failure | integration | `test_runner_leases_missing_event_reads_unknown` | Lease `status='reported'` with no matching Fleet event row → `outcome` is `unknown`, never `succeeded` |
 | failure | integration | `test_runner_leases_empty_returns_empty_envelope` | A runner that has never held a lease → 200 `{items: [], total: 0, next_cursor: null}`, never 204 |
 | failure | unit | `test_runner_header_copy_failure_is_reported` | Clipboard write rejects → the copy control announces the failure and does not show a success state |
@@ -564,7 +574,7 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | `ui/packages/app/tests/runners-list.test.ts` | `test ! -f ui/packages/app/tests/runners-list.test.ts` |
 | `ui/packages/app/tests/runners-list-actions.test.ts` | `test ! -f ui/packages/app/tests/runners-list-actions.test.ts` |
 | `ui/packages/app/tests/runners-list-activity-open-change.test.ts` | `test ! -f ui/packages/app/tests/runners-list-activity-open-change.test.ts` |
-| `src/agentsfleetd/http/pagination.zig` | `test ! -f src/agentsfleetd/http/pagination.zig` |
+| `src/agentsfleetd/http/handlers/pagination.zig` | `test ! -f src/agentsfleetd/http/handlers/pagination.zig` |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -583,6 +593,7 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 
 ## Out of Scope
 
+- **Renaming the remaining `cursor` spellings.** Fleet events, workspace events, billing charges and approvals already page by keyset but spell the request parameter `cursor` (and the CLI's `fleet logs` / `fleet events` / `billing show` carry `--cursor`). They have none of the page-number repeat/skip defect this milestone removes; unifying their spelling to `starting_after`/`next_cursor` is a breaking rename across four endpoint families and three commands that was never reviewed here. Named follow-up; R7/R8/Dimension 9.5 grade the surfaces this spec migrates.
 - **Pagination for secrets, connectors, workspaces, integration grants and fleet keys.** All five are human-authored and small — a workspace holds a handful. `fleet-key` in particular is a per-fleet credential for webhook and external-framework callers (`docs/AUTH.md` §Fleet keys), minted one at a time. Adding paging there would invent a problem.
 - **Making fleet keys a first-class auth principal.** They authenticate through a bespoke handler-local lookup today and never become an `AuthPrincipal`; the v2.1 revamp owns that, per `docs/AUTH.md:362`.
 - **Windowed performance counters and their index.** Lifetime counting ships now; a "last 24 hours" selector needs an index on `fleet.runner_leases (runner_id, created_at)` and a bounded plan, which belongs with the window that motivates it.
@@ -615,6 +626,15 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+
+### Implementation record (agent, EXECUTE)
+
+- **Files Changed additions** — the two new `Route` variants force arms in every exhaustive Route switch; `router.zig`, `route_admission.zig`, `route_trace.zig`, plus the `route_matchers.zig` / `route_table_invoke.zig` re-export façades and the two test-discovery roots joined the table. Compile-forced registration, not scope growth.
+- **Pagination path correction** — the page-number helper is `src/agentsfleetd/http/handlers/pagination.zig`; `src/agentsfleetd/http/pagination.zig` is the struct-cursor module the library reads still use and now also carries the shared `starting_after`/`limit` parameter-name constants. Table, Dead Code Sweep and §7 rows corrected.
+- **Cascade reality (RULE TVR)** — `runner_leases.fleet_id ON DELETE CASCADE` makes an orphan lease row unreachable, so the deleted-fleet failure mode and its integration test were amended to assert the cascade; the null-`fleet_name` defensive render is proven at the component tier instead.
+- **Rubric scope note (pending Indy review, flagged in the PLAN handshake)** — R7/R8 and Dimension 9.5 as authored also match the already-keyset `cursor` spellings on fleet events, workspace events, billing charges, approvals, and the CLI's `fleet logs` / `fleet events` / `billing show` flags — none in Files Changed, none reviewed. The implementation scopes those criteria to the surfaces this spec migrates (fleets list, api-keys, memory, runner reads) and names the remaining spelling sweep as follow-up in Out of Scope. Widening to the full sweep is Indy's call.
+- **Gate events (mechanical, auto-applied)** — OpenAPI prose gate: two over-length sentences split, `execute`/`hydrate` replaced. URL-shape gate: `leases` registered in `NOUN_FINAL_SEGMENT_ALLOW` with justification — the checker's own designed registration point, as prior milestones did for their collections.
+- **503 failure injection** — `test_runner_read_db_unavailable_is_service_error` drains the harness pool (short acquire budget) so the handler's `pool.acquire` genuinely fails; no new harness machinery.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.

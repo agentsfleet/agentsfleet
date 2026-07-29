@@ -22,8 +22,11 @@ pub const META_FROM_ADMIN_STATE = "from_admin_state";
 pub const META_TO_ADMIN_STATE = "to_admin_state";
 pub const META_LAST_SEEN_AT = "last_seen_at";
 
+/// `event_types` is a set filter: empty means unfiltered, one value is the
+/// old single-tag behaviour, several return the union. The handler validates
+/// every tag before this layer sees it.
 pub const Filter = struct {
-    event_type: ?protocol.RunnerEventType = null,
+    event_types: []const protocol.RunnerEventType = &.{},
     since: ?i64 = null,
     until: ?i64 = null,
 };
@@ -53,8 +56,9 @@ pub fn listForRunner(
 ) !RunnerEventPage {
     const offset: i64 = @as(i64, page - 1) * @as(i64, page_size);
     const limit: i64 = page_size;
-    const event_type = eventTypeName(filter);
-    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_EVENT_PAGE, .{ runner_id, event_type, filter.since, filter.until, limit, offset }));
+    const event_types = try eventTypeNames(alloc, filter);
+    defer if (event_types) |names| alloc.free(names);
+    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_EVENT_PAGE, .{ runner_id, event_types, filter.since, filter.until, limit, offset }));
     defer q.deinit();
 
     var items: std.ArrayList(protocol.RunnerEventItem) = .empty;
@@ -72,8 +76,13 @@ pub fn listForRunner(
     return .{ .items = try items.toOwnedSlice(alloc), .total = total };
 }
 
-fn eventTypeName(filter: Filter) ?[]const u8 {
-    return if (filter.event_type) |event_type| @tagName(event_type) else null;
+/// Tag names for the SQL `text[]` bind; null means unfiltered. The tag-name
+/// slices are static, only the outer slice is allocated — caller must free.
+fn eventTypeNames(alloc: std.mem.Allocator, filter: Filter) !?[]const []const u8 {
+    if (filter.event_types.len == 0) return null;
+    const names = try alloc.alloc([]const u8, filter.event_types.len);
+    for (filter.event_types, 0..) |event_type, i| names[i] = @tagName(event_type);
+    return names;
 }
 
 pub fn appendLeaseReleasedBestEffort(

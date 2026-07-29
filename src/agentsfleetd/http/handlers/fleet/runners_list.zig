@@ -193,7 +193,9 @@ fn readItem(alloc: std.mem.Allocator, row: anytype, now_ms: i64) !RunnerItem {
 
 /// Parse the stored labels JSONB (a JSON array of strings) into owned slices.
 /// A malformed value degrades to an empty set rather than failing the read.
-fn parseLabels(alloc: std.mem.Allocator, text: []const u8) []const []const u8 {
+/// Shared with the single-runner read (`runner_get.zig`) so both surfaces
+/// decode labels identically.
+pub fn parseLabels(alloc: std.mem.Allocator, text: []const u8) []const []const u8 {
     return std.json.parseFromSliceLeaky([]const []const u8, alloc, text, .{ .allocate = .alloc_always }) catch &.{};
 }
 

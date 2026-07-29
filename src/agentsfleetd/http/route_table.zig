@@ -175,8 +175,10 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // Operator-plane reads/patch — `runner:{read,write}` (route_scopes);
         // never the runnerBearer plane.
         .fleet_runners_list => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetRunnersList },
+        .fleet_runner_get => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetRunnerGet },
         .fleet_runner_patch => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetRunnerPatch },
         .fleet_runner_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetRunnerEvents },
+        .fleet_runner_leases => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetRunnerLeases },
         // Live SSE streams on this instance — `stream:read` (operator view).
         .fleet_streams_list => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetStreamsList },
         .runner_self => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerSelf },
@@ -242,8 +244,10 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg);
     _ = specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg);
     _ = specFor(.register_runner, &reg);
+    _ = specFor(.{ .fleet_runner_get = "r1" }, &reg);
     _ = specFor(.{ .fleet_runner_patch = "r1" }, &reg);
     _ = specFor(.{ .fleet_runner_events = "r1" }, &reg);
+    _ = specFor(.{ .fleet_runner_leases = "r1" }, &reg);
     _ = specFor(.runner_heartbeat, &reg);
     _ = specFor(.runner_lease, &reg);
     _ = specFor(.runner_report, &reg);
