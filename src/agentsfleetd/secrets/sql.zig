@@ -30,10 +30,39 @@ const INSERT_SECRET_ROW =
 /// one's credential. The affected-row count is the answer — zero means the name
 /// was taken, and no ciphertext was written.
 ///
-/// Rotation is a different verb and uses `INSERT_SECRET`; a create that finds
-/// the name occupied must not quietly become one.
+/// Replacing a held name is `UPDATE_SECRET`; a create that finds the name
+/// occupied must not quietly become one.
 pub const INSERT_SECRET_IF_ABSENT = INSERT_SECRET_ROW ++
     \\ON CONFLICT (workspace_id, key_name) DO NOTHING
+;
+
+/// Replace the body of a secret this workspace already holds.
+///
+/// An UPDATE, deliberately not an upsert. The distinction is a safety property,
+/// not a style choice: zero affected rows means the name is not held, which the
+/// caller reports as 404. An upsert would instead CREATE the row — so a replace
+/// racing a delete would resurrect a credential the operator just removed, and
+/// claiming a name would stop being `create`'s sole job.
+///
+/// The row keeps its `id` and `created_at`; everything the envelope and the
+/// projection describe is rewritten together in this one statement, so the
+/// `meta_*` columns can never describe a body other than the ciphertext beside
+/// them.
+pub const UPDATE_SECRET =
+    \\UPDATE vault.secrets SET
+    \\       encrypted_dek = $3,
+    \\       dek_nonce = $4,
+    \\       dek_tag = $5,
+    \\       nonce = $6,
+    \\       ciphertext = $7,
+    \\       tag = $8,
+    \\       kek_version = $9,
+    \\       updated_at = $10,
+    \\       meta_kind = $11,
+    \\       meta_provider = $12,
+    \\       meta_base_url = $13,
+    \\       meta_has_key = $14
+    \\ WHERE workspace_id = $1 AND key_name = $2
 ;
 
 pub const INSERT_SECRET = INSERT_SECRET_ROW ++

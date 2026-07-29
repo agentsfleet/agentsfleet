@@ -343,7 +343,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
             setEditTarget(null);
             refresh();
           }}
-          onPartialSuccess={refresh}
+          onCommitted={refresh}
         />
         <ConfirmDialog
           open={removeTarget !== null}

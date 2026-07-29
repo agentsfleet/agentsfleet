@@ -65,8 +65,8 @@ test-coverage-all: test-coverage-zig  ## Run coverage gates across Zig, app, web
 	@cd ui/packages/app && bun run test:coverage
 	@echo "→ [website] Running Vitest with --coverage..."
 	@cd ui/packages/website && bun run test:coverage
-	@echo "→ [agentsfleet] Running Bun test --coverage..."
-	@cd cli && bun run test:coverage
+	@echo "→ [agentsfleet] Enforcing the 100% coverage floor (scripts/enforce-coverage.mjs)..."
+	@cd cli && bun run test
 	@echo "→ [design-system] Running Vitest with --coverage..."
 	@cd ui/packages/design-system && bun run test:coverage
 	@echo "✓ All package coverage gates passed"

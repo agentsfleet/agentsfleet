@@ -10,7 +10,7 @@ test "sensitive request cleanup erases store rotate and mint bodies" {
     const before = metrics.snapshot();
     const cases = [_]struct { method: httpz.Method, route: router.Route }{
         .{ .method = .POST, .route = .{ .workspace_secrets = "workspace" } },
-        .{ .method = .PATCH, .route = .{ .workspace_secret = .{ .workspace_id = "workspace", .secret_name = "provider" } } },
+        .{ .method = .PUT, .route = .{ .workspace_secret = .{ .workspace_id = "workspace", .secret_name = "provider" } } },
         .{ .method = .POST, .route = .runner_credentials_mint },
     };
     for (cases) |case| {

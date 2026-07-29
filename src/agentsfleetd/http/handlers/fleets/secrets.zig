@@ -2,7 +2,7 @@
 //
 // POST   /v1/workspaces/{ws}/secrets             → innerStoreSecret
 // GET    /v1/workspaces/{ws}/secrets             → innerListSecrets
-// PATCH  /v1/workspaces/{ws}/secrets/{name}      → innerRotateSecret
+// PUT    /v1/workspaces/{ws}/secrets/{name}      → innerReplaceSecret
 // DELETE /v1/workspaces/{ws}/secrets/{name}      → innerDeleteSecret
 
 const std = @import("std");
@@ -22,8 +22,6 @@ const secret_reference_txn = @import("../../../state/secret_reference_txn.zig");
 const log = logging.scoped(.fleet_secrets_api);
 
 pub const Context = common.Context;
-
-const S_API_KEY = "api_key";
 
 const MAX_SECRET_DATA_LEN: usize = 4 * 1024; // 4KB stringified JSON
 const MAX_SECRET_NAME_LEN: usize = 64;
@@ -75,7 +73,7 @@ pub fn innerStoreSecret(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []cons
             hx.fail(ec.ERR_VAULT_DATA_TOO_LARGE, ec.MSG_SECRET_DATA_TOO_LARGE);
             return;
         },
-        // Creation claims a free name; rotation is PATCH on the named secret.
+        // Creation claims a free name; replacing a body is PUT on the named secret.
         error.SecretNameTaken => {
             hx.fail(ec.ERR_SECRET_NAME_TAKEN, ec.MSG_SECRET_NAME_TAKEN);
             return;
@@ -233,15 +231,22 @@ fn respondSecretList(hx: hx_mod.Hx, creds: []const secret_list.SecretListRow) vo
     };
 }
 
-// ── Rotate Secret Key (PATCH) ──────────────────────────────────────────
+// ── Replace Secret (PUT) ───────────────────────────────────────────────
 
-// Replace-key body: only the secret rotates; provider/model/base_url are
-// preserved by loading the stored object and swapping a single field.
-const RotateBody = struct {
-    api_key: []const u8,
+// Replace body: the same `data` object `create` takes. There is no merge and no
+// privileged field name, so every stored shape — `api_key`, `token`,
+// `api_token`, anything — is equally replaceable. A field absent here is absent
+// from the stored secret afterwards.
+//
+// This replaced a `PATCH {api_key}` that merged one hardcoded field. Merging
+// cannot express intent on a resource the caller can never read back: on a
+// secret keyed anything but `api_key` it added an unused field, left the live
+// credential stale, and answered 200.
+const ReplaceBody = struct {
+    data: std.json.Value,
 };
 
-pub fn innerRotateSecret(
+pub fn innerReplaceSecret(
     hx: hx_mod.Hx,
     req: *httpz.Request,
     workspace_id: []const u8,
@@ -259,15 +264,17 @@ pub fn innerRotateSecret(
     };
     if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return;
 
-    const parsed = std.json.parseFromSlice(RotateBody, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
+    const parsed = std.json.parseFromSlice(ReplaceBody, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON);
         return;
     };
     defer parsed.deinit();
-    if (parsed.value.api_key.len == 0) {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_SECRET_KEY_REQUIRED);
+    // Same shape gate as create — a replace that accepted a shape create
+    // rejects would let the two verbs disagree about what a secret is.
+    vault.validateObject(parsed.value.data) catch {
+        hx.fail(ec.ERR_VAULT_DATA_INVALID, ec.MSG_SECRET_DATA_REQUIRED);
         return;
-    }
+    };
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -279,7 +286,9 @@ pub fn innerRotateSecret(
     const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.principal, workspace_id) orelse return;
     defer access.deinit(hx.alloc);
 
-    rotateSecretKeyOnConn(conn, hx.alloc, workspace_id, secret_name, parsed.value.api_key) catch |err| switch (err) {
+    replaceSecretOnConn(conn, hx.alloc, workspace_id, secret_name, parsed.value.data) catch |err| switch (err) {
+        // Zero affected rows: this workspace holds no such name. Nothing was
+        // written and nothing was created — the statement is an UPDATE.
         error.NotFound => {
             hx.fail(ec.ERR_SECRET_NOT_FOUND, ec.MSG_SECRET_NOT_FOUND);
             return;
@@ -289,42 +298,32 @@ pub fn innerRotateSecret(
             return;
         },
         else => {
-            log.err("rotate_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .name = secret_name, .req_id = hx.req_id });
+            log.err("replace_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .name = secret_name, .req_id = hx.req_id });
             common.internalDbError(hx.res, hx.req_id);
             return;
         },
     };
 
-    log.debug("rotated", .{ .name = secret_name, .workspace = workspace_id });
+    log.debug("replaced", .{ .name = secret_name, .workspace = workspace_id });
     hx.ok(.ok, .{ .name = secret_name });
 }
 
-fn rotateSecretKeyOnConn(
+fn replaceSecretOnConn(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     workspace_id: []const u8,
     secret_name: []const u8,
-    new_key: []const u8,
+    data: std.json.Value,
 ) !void {
-    // Load the existing object, swap ONLY api_key, re-store. A missing row
-    // surfaces error.NotFound (mapped to 404 by the caller).
-    var parsed = vault.loadJson(alloc, conn, workspace_id, secret_name) catch |err| switch (err) {
-        error.NotFound => return error.NotFound,
-        else => return err,
-    };
-    defer parsed.deinit();
-
-    // Own a mutable copy of the key so it can be erased immediately after the
-    // re-store. The dispatcher erases the request body and parse arena later.
-    const key_copy = try alloc.dupe(u8, new_key);
-    defer secure_memory.freeBytes(alloc, key_copy);
-    // The object map is backed by the parse arena — mutate it with that same
-    // allocator so its storage stays single-owner (freed by parsed.deinit()).
-    try parsed.value.object.put(parsed.arena.allocator(), S_API_KEY, .{ .string = key_copy });
-
-    const plaintext = try std.json.Stringify.valueAlloc(alloc, parsed.value, .{});
+    // No read precedes this write, which is the whole design. The former
+    // rotate loaded, merged one field, and re-stored through an upsert — two
+    // autocommit statements with nothing held between them, so a delete
+    // committing in the gap left the upsert with no row to conflict against
+    // and it re-INSERTED the credential that had just been removed. A single
+    // UPDATE has no such gap, and creates nothing when it matches nothing.
+    const plaintext = try std.json.Stringify.valueAlloc(alloc, data, .{});
     defer secure_memory.freeBytes(alloc, plaintext);
     if (plaintext.len > MAX_SECRET_DATA_LEN) return error.DataTooLarge;
 
-    try vault.storeJsonPlaintext(alloc, conn, workspace_id, secret_name, plaintext);
+    try vault.replaceJsonPlaintext(alloc, conn, workspace_id, secret_name, plaintext);
 }

@@ -15,6 +15,7 @@ const CREATED_AT = 1_777_507_200_000;
 const MODEL_KIND = { providerKey: "provider_key" } as const;
 const PROVIDER_MODE = { selfManaged: "self_managed" } as const;
 const listModelEntriesActionMock = vi.fn();
+const replaceSecretActionMock = vi.fn();
 const listSecretsActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
 let unsubscribeRefresh: (() => void) | null = null;
@@ -28,7 +29,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: vi.fn(),
   updateModelEntryAction: vi.fn(),
   deleteModelEntryAction: vi.fn(),
-  rotateSecretAction: vi.fn(),
+  replaceSecretAction: replaceSecretActionMock,
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
