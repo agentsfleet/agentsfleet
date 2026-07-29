@@ -27,7 +27,6 @@ pub const SecretError = error{
     InvalidEnvelope,
     DecryptFailed,
     NotFound,
-    UnsupportedKekVersion,
 };
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.

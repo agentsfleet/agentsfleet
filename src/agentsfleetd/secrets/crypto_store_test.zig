@@ -1,13 +1,10 @@
 const std = @import("std");
-const common = @import("common");
 const pg = @import("pg");
 const base = @import("../db/test_fixtures.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
 const store = @import("crypto_store.zig");
 const metadata = @import("metadata.zig");
-const sql = @import("sql.zig");
 
 /// These tests exercise the ENVELOPE, not the projection: their plaintexts are
 /// opaque byte strings ("secret", "victim-secret"), not credential JSON.
@@ -26,16 +23,12 @@ const ROUNDTRIP = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000002", .w
 const RELOCATE_KEY = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000003", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000003" };
 const RELOCATE_WS = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000004", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000004" };
 const RELOCATE_WS_TARGET = "0195b4ba-8d3a-7f13-8abc-cd0000000014";
-const UNBOUND = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000005", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000005" };
 const MISSING = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000006", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000006" };
-const UNSUPPORTED = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000007", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000007" };
 const WRONG_VERSION = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000008", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000008" };
 const MALFORMED = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000009", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000009" };
 const PAYLOAD_FAILURE = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000010", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000010" };
 const ALLOC_FAIL = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000011", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000011" };
-const VERSION_UNBOUND: i32 = 1;
 const VERSION_BOUND: i32 = 2;
-const VERSION_UNSUPPORTED: i32 = 3;
 const DELETE_ROWS = "DELETE FROM vault.secrets WHERE workspace_id = $1";
 const SELECT_VERSION =
     "SELECT kek_version FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2";
@@ -100,33 +93,6 @@ fn readCiphertext(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []cons
         .wrapped_dek = wrapped_dek,
         .ciphertext = try alloc.dupe(u8, try row.get([]u8, 1)),
     };
-}
-
-fn seedUnboundEnvelope(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8, plaintext: []const u8) !void {
-    var kek = try cp.loadKek();
-    defer std.crypto.secureZero(u8, &kek);
-    var dek: [cp.KEY_LEN]u8 = undefined;
-    defer std.crypto.secureZero(u8, &dek);
-    try common.secureRandomBytes(&dek);
-
-    const wrapped = try cp.encrypt(alloc, &dek, "", &kek);
-    defer wrapped.deinit(alloc);
-    const payload = try cp.encrypt(alloc, plaintext, "", &dek);
-    defer payload.deinit(alloc);
-    const secret_id = try id_format.generateVaultSecretId(alloc);
-    defer alloc.free(secret_id);
-    const now_ms = common.clock.nowMillis();
-    // The four trailing NULLs are the `meta_*` projection columns, deliberately
-    // left unset: this seeds a row as it existed BEFORE
-    // schema/036_vault_secret_metadata.sql, which is the whole point of the
-    // fixture. A row with no projection is exactly what the backfill has to
-    // find and what the read path must degrade to an opaque credential.
-    const no_projection: ?[]const u8 = null;
-    _ = try conn.exec(sql.INSERT_SECRET, .{
-        secret_id,    workspace_id,   key_name,           wrapped.ciphertext, &wrapped.nonce,
-        &wrapped.tag, &payload.nonce, payload.ciphertext, &payload.tag,       VERSION_UNBOUND,
-        now_ms,       no_projection,  no_projection,      no_projection,      @as(?bool, null),
-    });
 }
 
 test "integration: crypto store canonicalizes workspace id and upserts a fresh envelope" {
@@ -256,35 +222,6 @@ test "integration: crypto store rejects an envelope relocated to another workspa
     try std.testing.expectError(cp.SecretError.DecryptFailed, store.load(alloc, handle.conn, RELOCATE_WS_TARGET, "shared"));
 }
 
-test "integration: an unbound (v1) envelope is refused, and replacing it re-seals as bound" {
-    const alloc = std.testing.allocator;
-    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
-    defer {
-        handle.pool.release(handle.conn);
-        handle.pool.deinit();
-    }
-    try seedWorkspace(handle.conn, UNBOUND);
-    defer cleanup(handle.conn, UNBOUND);
-
-    try seedUnboundEnvelope(alloc, handle.conn, UNBOUND.workspace_id, "unbound", "old-secret");
-
-    // There is exactly one supported envelope version. A pre-AAD row is
-    // refused outright — never quietly decrypted under the empty AAD — and
-    // its owner's way forward is to store a new value.
-    try std.testing.expectError(
-        cp.SecretError.UnsupportedKekVersion,
-        store.load(alloc, handle.conn, UNBOUND.workspace_id, "unbound"),
-    );
-
-    // Storing a new value over the held name re-seals it as bound and the
-    // secret serves normally again.
-    try store.store(alloc, handle.conn, UNBOUND.workspace_id, "unbound", "new-secret", OPAQUE);
-    try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, UNBOUND.workspace_id, "unbound"));
-    const loaded = try store.load(alloc, handle.conn, UNBOUND.workspace_id, "unbound");
-    defer alloc.free(loaded);
-    try std.testing.expectEqualStrings("new-secret", loaded);
-}
-
 test "integration: crypto store returns not found for a missing key" {
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
@@ -301,25 +238,11 @@ test "integration: crypto store returns not found for a missing key" {
     );
 }
 
-test "integration: crypto store rejects an unsupported envelope version" {
-    const alloc = std.testing.allocator;
-    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
-    defer {
-        handle.pool.release(handle.conn);
-        handle.pool.deinit();
-    }
-    try seedWorkspace(handle.conn, UNSUPPORTED);
-    defer cleanup(handle.conn, UNSUPPORTED);
-
-    try store.store(alloc, handle.conn, UNSUPPORTED.workspace_id, "unsupported", "secret", OPAQUE);
-    _ = try handle.conn.exec(SET_VERSION, .{ UNSUPPORTED.workspace_id, "unsupported", VERSION_UNSUPPORTED });
-    try std.testing.expectError(
-        cp.SecretError.UnsupportedKekVersion,
-        store.load(alloc, handle.conn, UNSUPPORTED.workspace_id, "unsupported"),
-    );
-}
-
-test "integration: crypto store binds the envelope version" {
+test "integration: the kek_version CHECK forbids any non-current version" {
+    // schema/039 makes v1 (and every non-current version) structurally
+    // impossible: a write that tries to set another version is refused by the
+    // database, not merely refused on read. This is the single guarantee the
+    // decrypt path relies on to skip a version branch entirely.
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
     defer {
@@ -329,13 +252,18 @@ test "integration: crypto store binds the envelope version" {
     try seedWorkspace(handle.conn, WRONG_VERSION);
     defer cleanup(handle.conn, WRONG_VERSION);
 
-    try store.store(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version", "secret", OPAQUE);
-    _ = try handle.conn.exec(SET_VERSION, .{ WRONG_VERSION.workspace_id, "wrong-version", VERSION_UNBOUND });
+    try store.store(alloc, handle.conn, WRONG_VERSION.workspace_id, "pinned", "secret", OPAQUE);
 
-    // The read refuses the relabeled row on version alone — no decrypt is
-    // attempted against a version nothing supports, so a tampered label can
-    // neither decrypt under the wrong AAD nor distinguish envelope contents.
-    try std.testing.expectError(cp.SecretError.UnsupportedKekVersion, store.load(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version"));
+    // Relabeling to v1 violates ck_vault_secrets_kek_version_current, so the
+    // write is rejected and the row stays version 2.
+    const relabel_rejected = if (handle.conn.exec(SET_VERSION, .{ WRONG_VERSION.workspace_id, "pinned", @as(i32, 1) })) |_| false else |_| true;
+    try std.testing.expect(relabel_rejected);
+    try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, WRONG_VERSION.workspace_id, "pinned"));
+
+    // And the secret still decrypts normally — the failed write changed nothing.
+    const loaded = try store.load(alloc, handle.conn, WRONG_VERSION.workspace_id, "pinned");
+    defer alloc.free(loaded);
+    try std.testing.expectEqualStrings("secret", loaded);
 }
 
 test "integration: crypto store rejects a malformed envelope" {

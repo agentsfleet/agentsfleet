@@ -1,12 +1,28 @@
--- 039: drop kek_version's DEFAULT 1 — it named the retired unbound envelope.
+-- 039: retire the v1 envelope entirely.
 --
--- Every writer binds the envelope version explicitly in the same statement as
--- the ciphertext, so this default never fired on a correct write. The only row
--- it could ever produce is one an INSERT that forgot the column would silently
--- mint as version 1 — a format nothing serves and nothing can read (the read
--- path refuses it; there is no converter). Dropping the default turns that mistake into a loud NOT NULL failure
--- at write time instead of an undecryptable credential at use time.
+-- Every vault envelope is AAD-bound (kek_version 2) — the pre-binding v1 format
+-- (`0ff4902ca`, Jul 11 2026) shipped before any secret this deployment holds,
+-- so no v1 row has ever existed here. Pre-production, v1 is removed outright
+-- rather than tolerated:
 --
--- Idempotent: dropping an absent default is a no-op, so this applies cleanly
--- to both a fresh bootstrap and an already-provisioned database.
+--   1. DROP the DEFAULT that still named version 1. Every writer binds the
+--      version explicitly, so the default never fired on a correct write; the
+--      only row it could mint is one a forgotten column would silently create.
+--   2. CHECK that kek_version is the one current version. This makes a v1 (or
+--      any non-current) row structurally impossible — a mistaken write fails
+--      loudly at the database instead of landing a row nothing can decrypt.
+--      The AEAD tag is the ultimate guard (a v1 ciphertext read under the bound
+--      AAD fails authentication), so the check is the single explicit assertion
+--      of the invariant, not a second-guess of it.
+--
+-- Both statements are idempotent: DROP DEFAULT on a column with none is a no-op,
+-- and the constraint add swallows a duplicate. Every existing row is version 2,
+-- so the check validates without a rewrite. A future envelope format changes
+-- this constraint in its own migration, alongside the code that reads it.
 ALTER TABLE vault.secrets ALTER COLUMN kek_version DROP DEFAULT;
+
+DO $$ BEGIN
+  ALTER TABLE vault.secrets
+    ADD CONSTRAINT ck_vault_secrets_kek_version_current CHECK (kek_version = 2);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;

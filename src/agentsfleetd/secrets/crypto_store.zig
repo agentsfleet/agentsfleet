@@ -95,20 +95,11 @@ fn decryptRowAt(
     kek: *const [KEY_LEN]u8,
     col: usize,
 ) ![]u8 {
-    const kek_version = try row.get(i32, col + 6);
-    // Exactly one envelope version is spoken. Anything else — including the
-    // retired pre-AAD version 1 — is refused before any ciphertext is touched.
-    if (kek_version != KEK_VERSION_AAD_BOUND) {
-        log.err("unsupported_kek_version", .{
-            .workspace_id = workspace_id,
-            .key_name = key_name,
-            .kek_version = kek_version,
-            .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED,
-        });
-        return cp.SecretError.UnsupportedKekVersion;
-    }
-
-    const aad = try buildAad(alloc, workspace_id, key_name, kek_version);
+    // Every stored row is kek_version 2 — the DB CHECK (schema/039) makes any
+    // other value impossible, so there is no version to branch on. The AAD
+    // binds that version too, so a row that somehow held a different one would
+    // fail the AEAD tag rather than decrypt (openEnvelopeAt → DecryptFailed).
+    const aad = try buildAad(alloc, workspace_id, key_name, KEK_VERSION_AAD_BOUND);
     defer alloc.free(aad);
     return openEnvelopeAt(alloc, row, workspace_id, key_name, kek, col, aad);
 }
