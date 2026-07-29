@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M143
 **Workstream:** 005
 **Date:** Jul 25, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P1 — the authenticated shell makes every route pay for broad client ownership
 **Categories:** User Interface (UI)
 **Batch:** B4 — cross-cutting application gate after M143_002
@@ -50,8 +50,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |---|---|---|
-| `ui/packages/app/package.json`; `bun.lock` | EDIT | Expose the production route report and authenticated bundle gate, with the official Next.js environment loader available to root- and package-level invocations. |
-| `ui/packages/app/scripts/route-bundle-report.ts`; `route-bundle-report-failures.test.ts`; `route-build-provenance.ts`; `route-build-provenance.test.ts`; `write-route-build-provenance.ts`; `saved-route-bundle-report.ts`; `saved-route-bundle-report.test.ts`; `check-route-bundles.ts`; `check-route-bundles.test.ts`; `ui/packages/app/bundle-budgets.json` | CREATE | Pure report calculation, source/build provenance, saved-report validation against current named limits, build-input adapter, and fail-closed fixtures. |
+| `ui/packages/app/package.json`; `bun.lock` | EDIT | Expose the production route report and authenticated bundle gate, then remove the direct environment-loader dependency and fingerprint wrapper that CI does not need. |
+| `ui/packages/app/scripts/route-bundle-report.ts`; `check-route-bundles.ts`; `ui/packages/app/bundle-budgets.json` | CREATE / EDIT | Keep one pure report calculator and one real-build checker with fail-closed manifest and budget handling. |
+| `ui/packages/app/scripts/route-build-provenance.ts`; `route-build-provenance.test.ts`; `write-route-build-provenance.ts`; `saved-route-bundle-report.ts`; `saved-route-bundle-report.test.ts`; `check-route-bundles.test.ts`; `route-bundle-report-failures.test.ts` | DELETE | Remove superseded fingerprint, saved-report, adapter, and script-local test scaffolding. |
+| `ui/packages/app/tests/build/route-bundle-report.test.ts`; `check-route-bundles.test.ts` | CREATE | Unit-test pure calculation and checker boundaries from the application test tree. |
 | `.github/workflows/test.yml` | EDIT | Run the authenticated bundle gate. **Pre-approved by Indy (Jul 25, 2026)** — the implementing agent does not stop to ask again for this one file and this one purpose. Any other workflow edit still needs its own approval. |
 | `ui/packages/app/app/(dashboard)/layout.tsx` | EDIT | Replace broad client-shell ownership with a server frame and narrow control islands. |
 | `ui/packages/app/components/layout/Shell.tsx` | DELETE | Broad client shell; its structure moves to the server frame and its controls to islands. |
@@ -97,10 +99,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Route bytes become a deterministic release signal
 
-The checker builds a file union from `.next/build-manifest.json` and route client-reference manifests, compresses each emitted file independently, and reports framework, authenticated shared, route incremental, and route total bytes. Missing entries, unreadable chunks, duplicate attribution, a stale build Identifier (ID), or manifest drift fail closed. Generated chunk names are evidence, never pinned source. Continuous Integration (CI) uses the repository's pinned Bun version and frozen lockfile, runs the production build once, and checks that exact `.next` output; the size command never starts a second build or restores a report from cache.
+The checker builds a file union from `.next/build-manifest.json` and route client-reference manifests, compresses each emitted file independently, and reports framework, authenticated shared, route incremental, and route total bytes. Missing entries, unreadable chunks, duplicate attribution, a stale build Identifier (ID), or manifest drift fail closed. Generated chunk names are evidence, never pinned source. Continuous Integration (CI) uses the repository's pinned Bun version and frozen lockfile, runs the production build once, and immediately checks that `.next` output. Two production modules own the complete signal: a pure calculator and the real-build checker.
 
-- **Dimension 1.1** — report calculation is deterministic and fail-closed → Test `test_route_bundle_report_is_deterministic_and_fails_closed` — **DONE**
-- **Dimension 1.2** — the production lane enforces every named authenticated budget → Test `test_authenticated_route_budgets_are_enforced` — **DONE**
+- **Dimension 1.1** — report calculation is deterministic and fail-closed → Test `test_route_bundle_report_is_deterministic_and_fails_closed`
+- **Dimension 1.2** — the production lane enforces every named authenticated budget → Test `test_authenticated_route_budgets_are_enforced`
 
 ### §2 — The dashboard frame returns to server ownership
 
@@ -167,7 +169,7 @@ Golden path: sign-in resolves the M143_002 session state; the server layout fetc
 5. Closed tools may load later; visible tables, cards, and selectors may not.
 6. Route reporting fails closed and never treats missing files as zero bytes.
 7. No new mock server is introduced. Tests use manifest fixtures, existing action seams, and the existing Playwright web server; any contrary need requires an Indy consult before editing.
-8. CI measures one fresh production build under the pinned toolchain; a stale report or second-build substitution cannot pass.
+8. CI builds and checks in one job under the pinned toolchain; the checker never substitutes a second build.
 
 ## Metrics & Observability
 
@@ -199,13 +201,13 @@ Every row is mandatory. Negative rows are not substitutes for Dimension tests.
 
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | Route report is honest | `bun run --cwd ui/packages/app build && bun run --cwd ui/packages/app size` | exit 0; framework, shared, every route, and limits printed | P0 | ✅ fresh build; 133.7 KiB framework and 242.7 KiB shared |
-| R2 | Shared authenticated entry is bounded | `bun ui/packages/app/scripts/check-route-bundles.ts --check test-results/app-route-bundles.json --limit shared` | exit 0; dashboard shared total ≤250 KiB | P0 | ✅ 242.7 KiB ≤250 KiB |
-| R3 | Inner routes are bounded | `bun ui/packages/app/scripts/check-route-bundles.ts --check test-results/app-route-bundles.json --limit incremental` | exit 0; every dashboard route incremental ≤100 KiB | P0 | ✅ largest increment 73.3 KiB |
+| R1 | Route report is honest | `bun run --cwd ui/packages/app build && bun run --cwd ui/packages/app size` | exit 0; framework, shared, every route, and limits printed | P0 | |
+| R2 | Shared authenticated entry is bounded | `bun ui/packages/app/scripts/check-route-bundles.ts --check test-results/app-route-bundles.json --limit shared` | exit 0; dashboard shared total ≤250 KiB | P0 | |
+| R3 | Inner routes are bounded | `bun ui/packages/app/scripts/check-route-bundles.ts --check test-results/app-route-bundles.json --limit incremental` | exit 0; every dashboard route incremental ≤100 KiB | P0 | |
 | R4 | Fluidity acceptance passes | `bun run --cwd ui/packages/app test:e2e:acceptance -- dashboard-performance.spec.ts` | exit 0; no blank route/action loss/duplicate stream | P0 | ✅ 17/17 browser checks passed |
-| R5 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | ✅ 0 unlisted paths |
-| S1 | Repository gates pass | `make harness-verify && make test-unit-all && make test-integration && make lint-all && make memleak && make check-version` | exit 0 | P0 | ✅ every repository target exited 0 |
-| S2 | Secret scan passes | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found across 3,935 commits |
+| R5 | Diff is scoped | `git diff --name-only origin/main` | 0 unlisted paths | P0 | |
+| S1 | Repository gates pass | `make harness-verify && make test-unit-all && make test-integration && make lint-all && make memleak && make check-version` | exit 0 | P0 | |
+| S2 | Secret scan passes | `gitleaks detect` | exit 0 | P0 | |
 
 **Grading protocol (VERIFY):** run commands verbatim; record ✅/❌ and one decisive output line. A report that omits the framework runtime or an authenticated route is a failure even when every printed number passes.
 
@@ -257,6 +259,7 @@ Production references to deleted broad shell/provider paths, superseded eager di
 - **Merged coverage edges** — the expanded suite reached 2,070/2,070 passing with complete line and function coverage, then identified five remaining branch edges: coarse-pointer hover on four eager triggers and a failed onboarding read settling after unmount. Focused interaction tests now cover those user-capability and stale-completion paths.
 - **Intent test file shape** — the first consolidated interaction suite reached 515 lines. It is split by responsibility into fleet dialogs, model/editor dialogs, and shell controls so each suite stays below the TypeScript file limit and remains independently runnable.
 - **Bundle checker file shape** — the first fixture-tested implementation proved the report calculation but combined it with build input/output in a 488-line script. The File & Function Length gate requires the pure report engine to live in `scripts/route-bundle-report.ts`, leaving `check-route-bundles.ts` as the Bun entrypoint. This is a mechanical file-shape split with no new behaviour or surface.
+- **Jul 29 tooling simplification** — Indy challenged why nine files lived under `scripts/` and whether their proofs belonged in unit tests, then directed “go refactor.” The final shape keeps the real-build checker because a fixture cannot prove emitted `.next` bytes, keeps the pure calculator for deterministic unit coverage, moves tests under `tests/build/`, and removes the provenance and saved-report subsystems. CI already owns fresh-build sequencing in one job.
 - **Jul 29 quality-ceiling review** — Indy asked whether a larger refactor would make the application more optimized, concurrent, performant, fluid, fast, and easy to test. The selected answer is a targeted boundary refactor: server ownership for persistent structure, independent client state owners for unrelated interactions, and one resettable intent-loader lifecycle. A whole-application rewrite loses because the authentication keeper, live-stream registries, Server Actions, and design primitives already provide the required concurrency and recovery semantics; replacing them would increase regression surface without reducing authenticated-route ownership.
 - **Consults** — Indy restricted the target to `ui/packages/app`, required fluid inner navigation, prohibited user-experience compromise, and requires consultation before any mock server. Two separate approvals, kept distinct because one does not imply the other: Indy approved the single `.github/workflows/test.yml` edit that adds the bundle gate (Jul 25, 2026), and separately reconfirmed “keep the preapproved bundle size”, meaning the 250/100 KiB limits stand and are not to be relaxed to make the gate pass. Every other CI change remains gated, and a failing budget is fixed by removing bytes rather than by raising a limit.
 - **Batch B4 holds two workstreams** — this one and M143_004. They share a batch but no dependency: M143_004 is infrastructure and depends on nothing, this one is UI and depends on M143_002. Either may land first, and neither blocks the other. Orly's production build found about 134 KiB of framework runtime, about 283 KiB for the lightest authenticated route, and about 107–109 KiB of route-owned code on the heaviest admin routes.
