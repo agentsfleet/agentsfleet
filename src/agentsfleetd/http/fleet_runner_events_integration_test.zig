@@ -243,7 +243,7 @@ fn runnerLastSeen(conn: anytype, runner_id: []const u8) !i64 {
     return row.get(i64, 0);
 }
 
-test "state writes append runner events and history route lists them" {
+test "integration: state writes append runner events and history route lists them" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -274,7 +274,7 @@ test "state writes append runner events and history route lists them" {
     try std.testing.expect(events.bodyContains("\"total\":2"));
 }
 
-test "lease and report append acquire and release events" {
+test "integration: lease and report append acquire and release events" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -326,7 +326,7 @@ test "lease and report append acquire and release events" {
     try std.testing.expect(no_events.bodyContains("\"total\":0"));
 }
 
-test "test_runner_events_accepts_comma_separated_type_set" {
+test "integration: test_runner_events_accepts_comma_separated_type_set" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -360,7 +360,7 @@ test "test_runner_events_accepts_comma_separated_type_set" {
     try std.testing.expect(events.bodyContains("\"total\":2"));
 }
 
-test "test_runner_events_single_value_filter_unchanged" {
+test "integration: test_runner_events_single_value_filter_unchanged" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -389,7 +389,7 @@ test "test_runner_events_single_value_filter_unchanged" {
     try std.testing.expect(events.bodyContains("\"total\":1"));
 }
 
-test "test_runner_events_rejects_unknown_type_in_set" {
+test "integration: test_runner_events_rejects_unknown_type_in_set" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -411,7 +411,7 @@ test "test_runner_events_rejects_unknown_type_in_set" {
     try std.testing.expect(!events.bodyContains("\"items\""));
 }
 
-test "test_runner_events_rejects_empty_type_parameter" {
+test "integration: test_runner_events_rejects_empty_type_parameter" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -433,7 +433,7 @@ test "test_runner_events_rejects_empty_type_parameter" {
     try std.testing.expect(events.bodyContains("UZ-REQ-001"));
 }
 
-test "heartbeat keeps liveness update when runner event insert fails" {
+test "integration: heartbeat keeps liveness update when runner event insert fails" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -453,7 +453,7 @@ test "heartbeat keeps liveness update when runner event insert fails" {
     try std.testing.expectEqual(@as(i64, 0), try eventCount(conn, RUNNER_ID, .runner_online));
 }
 
-test "delete lifecycle: 409 while live, 204 once revoked, cascade clears events, then 404" {
+test "integration: delete lifecycle - 409 while live, 204 once revoked, cascade clears events, then 404" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();

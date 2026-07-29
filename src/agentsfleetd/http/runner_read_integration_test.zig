@@ -169,7 +169,7 @@ fn fetchLeases(h: *TestHarness, runner_id: []const u8, query: ?[]const u8) !std.
     return std.json.parseFromSlice(std.json.Value, ALLOC, resp.body, .{});
 }
 
-test "test_runner_get_omits_token_hash" {
+test "integration: test_runner_get_omits_token_hash" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -190,7 +190,7 @@ test "test_runner_get_omits_token_hash" {
     try std.testing.expect(resp.bodyContains("\"admin_state\":\"active\""));
 }
 
-test "test_runner_get_unknown_id_is_not_found" {
+test "integration: test_runner_get_unknown_id_is_not_found" {
     const h = try startHarness();
     defer h.deinit();
 
@@ -202,7 +202,7 @@ test "test_runner_get_unknown_id_is_not_found" {
     try std.testing.expect(resp.bodyContains("UZ-RUN-014"));
 }
 
-test "test_runner_get_requires_runner_read_scope" {
+test "integration: test_runner_get_requires_runner_read_scope" {
     const h = try startHarness();
     defer h.deinit();
 
@@ -219,7 +219,7 @@ test "test_runner_get_requires_runner_read_scope" {
     try leases.expectStatus(.forbidden);
 }
 
-test "test_runner_get_counts_distinct_fleets_across_live_leases" {
+test "integration: test_runner_get_counts_distinct_fleets_across_live_leases" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -244,7 +244,7 @@ test "test_runner_get_counts_distinct_fleets_across_live_leases" {
     try std.testing.expect(resp.bodyContains("\"liveness\":\"busy\""));
 }
 
-test "test_runner_get_lifetime_counters_from_durable_state" {
+test "integration: test_runner_get_lifetime_counters_from_durable_state" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -285,7 +285,7 @@ test "test_runner_get_lifetime_counters_from_durable_state" {
     try std.testing.expect(resp.bodyContains("\"leases_expired\":2"));
 }
 
-test "test_runner_get_stale_active_lease_is_not_live" {
+test "integration: test_runner_get_stale_active_lease_is_not_live" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -307,7 +307,7 @@ test "test_runner_get_stale_active_lease_is_not_live" {
     try std.testing.expect(resp.bodyContains("\"leases_acquired\":1"));
 }
 
-test "test_runner_leases_envelope_is_items_total_next_cursor" {
+test "integration: test_runner_leases_envelope_is_items_total_next_cursor" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -325,7 +325,7 @@ test "test_runner_leases_envelope_is_items_total_next_cursor" {
     try std.testing.expect(obj.contains("next_cursor"));
 }
 
-test "test_runner_leases_empty_returns_empty_envelope" {
+test "integration: test_runner_leases_empty_returns_empty_envelope" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -408,7 +408,7 @@ fn expectAllUnique(ids: []const []const u8) !void {
     }
 }
 
-test "test_runner_leases_keyset_pages_forward" {
+test "integration: test_runner_leases_keyset_pages_forward" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -435,7 +435,7 @@ test "test_runner_leases_keyset_pages_forward" {
     try expectAllUnique(ids.items);
 }
 
-test "test_runner_leases_same_millisecond_rows_are_not_skipped" {
+test "integration: test_runner_leases_same_millisecond_rows_are_not_skipped" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -460,7 +460,7 @@ test "test_runner_leases_same_millisecond_rows_are_not_skipped" {
     try expectAllUnique(ids.items);
 }
 
-test "test_runner_leases_failed_item_carries_failure_fields" {
+test "integration: test_runner_leases_failed_item_carries_failure_fields" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -483,7 +483,7 @@ test "test_runner_leases_failed_item_carries_failure_fields" {
     try std.testing.expectEqual(@as(i64, 242_000), item.get("wall_ms").?.integer);
 }
 
-test "test_runner_leases_never_emits_request_payload" {
+test "integration: test_runner_leases_never_emits_request_payload" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -502,7 +502,7 @@ test "test_runner_leases_never_emits_request_payload" {
     try std.testing.expect(!resp.bodyContains("never-on-the-wire"));
 }
 
-test "test_runner_leases_carries_fleet_link_fields" {
+test "integration: test_runner_leases_carries_fleet_link_fields" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -521,7 +521,7 @@ test "test_runner_leases_carries_fleet_link_fields" {
     try std.testing.expectEqualStrings("evt-link-1", item.get("event_id").?.string);
 }
 
-test "test_runner_leases_expired_lease_is_not_credited_with_successor_outcome" {
+test "integration: test_runner_leases_expired_lease_is_not_credited_with_successor_outcome" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -554,7 +554,7 @@ test "test_runner_leases_expired_lease_is_not_credited_with_successor_outcome" {
     }
 }
 
-test "test_runner_leases_missing_event_reads_unknown" {
+test "integration: test_runner_leases_missing_event_reads_unknown" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -571,7 +571,7 @@ test "test_runner_leases_missing_event_reads_unknown" {
     try std.testing.expectEqualStrings("unknown", item.get("outcome").?.string);
 }
 
-test "test_runner_leases_deleted_fleet_cascades_out" {
+test "integration: test_runner_leases_deleted_fleet_cascades_out" {
     // The schema's ON DELETE CASCADE removes a deleted fleet's leases, so the
     // read simply stops listing them — there is no orphan row to render.
     const h = try startHarness();
@@ -595,7 +595,7 @@ test "test_runner_leases_deleted_fleet_cascades_out" {
     try std.testing.expect(resp.bodyContains("\"total\":0"));
 }
 
-test "test_runner_leases_rejects_malformed_cursor" {
+test "integration: test_runner_leases_rejects_malformed_cursor" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -621,7 +621,7 @@ test "test_runner_leases_rejects_malformed_cursor" {
     try std.testing.expect(foreign_resp.bodyContains("UZ-REQ-001"));
 }
 
-test "test_runner_leases_rejects_limit_out_of_range" {
+test "integration: test_runner_leases_rejects_limit_out_of_range" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -641,7 +641,7 @@ test "test_runner_leases_rejects_limit_out_of_range" {
     }
 }
 
-test "test_runner_leases_repeated_cursor_is_stable" {
+test "integration: test_runner_leases_repeated_cursor_is_stable" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
@@ -668,7 +668,7 @@ test "test_runner_leases_repeated_cursor_is_stable" {
     try std.testing.expectEqualStrings(first.body, second.body);
 }
 
-test "test_runner_read_db_unavailable_is_service_error" {
+test "integration: test_runner_read_db_unavailable_is_service_error" {
     const h = try startHarness();
     defer h.deinit();
     const conn = try h.acquireConn();
