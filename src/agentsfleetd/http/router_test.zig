@@ -489,3 +489,142 @@ test "runner bundle route extracts the content_hash path param" {
     try std.testing.expect(match("/v1/runners/me/bundles", .GET) == null);
     try std.testing.expect(match("/v1/runners/me/bundles/" ++ hash ++ "/extra", .GET) == null);
 }
+
+const model_library_h = @import("handlers/model_library.zig");
+
+test "match resolves the model library route" {
+    try std.testing.expectEqualDeep(Route.model_library, match(model_library_h.MODEL_LIBRARY_PATH, .GET).?);
+}
+
+test "match resolves tenant billing charges route" {
+    try std.testing.expectEqualDeep(Route.get_tenant_billing_charges, match("/v1/tenants/me/billing/charges", .GET).?);
+}
+
+test "match resolves per-charge telemetry route (carries event_id)" {
+    try std.testing.expectEqualStrings(
+        "evt_42",
+        switch (match("/v1/tenants/me/billing/charges/evt_42/telemetry", .GET).?) {
+            .get_tenant_metering_periods => |event_id| event_id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    // The bare charges collection must NOT match the telemetry route.
+    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42", .GET) == null);
+    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42/metering-periods", .GET) == null);
+}
+
+test "match rejects removed workspace billing routes (pre-v2.0 404s)" {
+    try std.testing.expect(match("/v1/workspaces/ws_1/billing/events", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/billing/scale", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/billing/summary", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/fleets/z_1/billing/summary", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/scoring/config", .GET) == null);
+}
+
+test "match resolves the Fleet library catalog routes" {
+    // The collection carries both the operator's list and the add/refetch write.
+    try std.testing.expectEqualDeep(Route.admin_fleet_library, match("/v1/admin/fleet-libraries", .GET).?);
+    try std.testing.expectEqualDeep(Route.admin_fleet_library, match("/v1/admin/fleet-libraries", .POST).?);
+    switch (match("/v1/workspaces/ws_abc/fleet-libraries", .POST).?) {
+        .workspace_fleet_library => |ws_id| try std.testing.expectEqualStrings("ws_abc", ws_id),
+        else => return error.TestExpectedEqual,
+    }
+    // The per-entry route (M128). The catalog id is a slug — the bundle's SKILL.md
+    // frontmatter name — not a UUID, so the matcher must not demand one.
+    switch (match("/v1/admin/fleet-libraries/zoho-sprint-daily-summarizer", .PATCH).?) {
+        .admin_fleet_library_by_id => |id| try std.testing.expectEqualStrings("zoho-sprint-daily-summarizer", id),
+        else => return error.TestExpectedEqual,
+    }
+    switch (match("/v1/admin/fleet-libraries/github-pr-reviewer", .DELETE).?) {
+        .admin_fleet_library_by_id => |id| try std.testing.expectEqualStrings("github-pr-reviewer", id),
+        else => return error.TestExpectedEqual,
+    }
+    // Deeper still is nobody's route.
+    try std.testing.expect(match("/v1/admin/fleet-libraries/x/y", .GET) == null);
+}
+
+test "match resolves the runner credential-mint route (static, lease_id in body)" {
+    try std.testing.expectEqualDeep(
+        Route.runner_credentials_mint,
+        match(runner_protocol.PATH_RUNNER_CREDENTIALS_MINT, .POST).?,
+    );
+    // A trailing path segment must NOT match — the lease id rides the body.
+    try std.testing.expect(match(runner_protocol.PATH_RUNNER_CREDENTIALS_MINT ++ "/x", .POST) == null);
+}
+
+// ── route tests ───────────────────────────────────────────────────────────────
+
+test "match resolves fleet messages route (workspace-scoped)" {
+    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET).?) {
+        .workspace_fleet_messages => |r| {
+            try std.testing.expectEqualStrings(ws_id, r.workspace_id);
+            try std.testing.expectEqualStrings(zid, r.fleet_id);
+        },
+        else => return error.TestExpectedEqual,
+    }
+    try std.testing.expect(match("/v1/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/fleets/a/b/messages", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer", .POST) == null);
+}
+
+test "match resolves fleet collection as workspace fleet handler" {
+    switch (match("/v1/workspaces/ws_abc/fleets", .POST).?) {
+        .workspace_fleets => |workspace_id| try std.testing.expectEqualStrings("ws_abc", workspace_id),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "match resolves fleet memories collection shape" {
+    const ws_id = "ws_abc";
+    const zid = "z_xyz";
+    switch (match("/v1/workspaces/ws_abc/fleets/z_xyz/memories", .GET).?) {
+        .workspace_fleet_memories => |r| {
+            try std.testing.expectEqualStrings(ws_id, r.workspace_id);
+            try std.testing.expectEqualStrings(zid, r.fleet_id);
+        },
+        else => return error.TestExpectedEqual,
+    }
+    switch (match("/v1/workspaces/ws_abc/fleets/z_xyz/memories", .POST).?) {
+        .workspace_fleet_memories => |r| {
+            try std.testing.expectEqualStrings(ws_id, r.workspace_id);
+            try std.testing.expectEqualStrings(zid, r.fleet_id);
+        },
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "match rejects retired /v1/memory/* paths (pre-v2: 404 with no compat shim)" {
+    try std.testing.expect(match("/v1/memory/store", .POST) == null);
+    try std.testing.expect(match("/v1/memory/recall", .GET) == null);
+    try std.testing.expect(match("/v1/memory/list", .GET) == null);
+    try std.testing.expect(match("/v1/memory/forget", .POST) == null);
+}
+
+test "runner path method split: GET reads, other methods reach the patch variant" {
+    const rid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    switch (match("/v1/fleets/runners/" ++ rid, .GET).?) {
+        .fleet_runner_get => |runner_id| try std.testing.expectEqualStrings(rid, runner_id),
+        else => return error.TestExpectedEqual,
+    }
+    switch (match("/v1/fleets/runners/" ++ rid, .PATCH).?) {
+        .fleet_runner_patch => |runner_id| try std.testing.expectEqualStrings(rid, runner_id),
+        else => return error.TestExpectedEqual,
+    }
+    switch (match("/v1/fleets/runners/" ++ rid, .DELETE).?) {
+        .fleet_runner_patch => |runner_id| try std.testing.expectEqualStrings(rid, runner_id),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "runner leases path resolves on GET only" {
+    const rid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    switch (match("/v1/fleets/runners/" ++ rid ++ "/leases", .GET).?) {
+        .fleet_runner_leases => |runner_id| try std.testing.expectEqualStrings(rid, runner_id),
+        else => return error.TestExpectedEqual,
+    }
+    try std.testing.expect(match("/v1/fleets/runners/" ++ rid ++ "/leases", .POST) == null);
+    try std.testing.expect(match("/v1/fleets/runners/" ++ rid ++ "/leases/x", .GET) == null);
+}

@@ -847,3 +847,188 @@ components:
           type: object
           description: Event-type-specific metadata (e.g. host_id, from/to admin_state). Shape varies by event_type.
           additionalProperties: true
+    RunnerDetail:
+      type: object
+      description: A single runner as the operator plane reads it. Carries the summary fields, a live-work snapshot, and lifetime counters from durable lease and event rows. The auth `token_hash` and stored auth state are never returned.
+      required:
+      - id
+      - host_id
+      - sandbox_tier
+      - admin_state
+      - liveness
+      - labels
+      - last_seen_at
+      - created_at
+      - active_lease_count
+      - active_fleet_count
+      - leases_acquired
+      - leases_succeeded
+      - leases_failed
+      - leases_expired
+      properties:
+        id:
+          type: string
+          format: uuid
+        host_id:
+          type: string
+        sandbox_tier:
+          type: string
+          enum:
+          - landlock_full
+          - container_nested
+          - macos_seatbelt
+          - dev_none
+        admin_state:
+          type: string
+          description: Operator setting. Only `active` accepts runner requests.
+          enum:
+          - active
+          - cordoned
+          - draining
+          - drained
+          - revoked
+        liveness:
+          type: string
+          description: Derived runtime liveness. `registered` = minted, never seen; `busy` = holds a live lease; `online` = heartbeat fresh; `offline` = heartbeat stale.
+          enum:
+          - registered
+          - busy
+          - online
+          - offline
+        labels:
+          type: array
+          items:
+            type: string
+        last_seen_at:
+          type: integer
+          format: int64
+          description: Epoch milliseconds of the last heartbeat; 0 if never seen.
+        created_at:
+          type: integer
+          format: int64
+          description: Epoch milliseconds the runner was registered.
+        active_lease_count:
+          type: integer
+          format: int64
+          description: Leases currently live (status active and deadline in the future). A stale active row past its deadline counts as neither live nor expired until reclaim marks it.
+        active_fleet_count:
+          type: integer
+          format: int64
+          description: Distinct fleets across the live leases only.
+        leases_acquired:
+          type: integer
+          format: int64
+          description: Every lease this runner has ever been issued (lifetime, from durable rows).
+        leases_succeeded:
+          type: integer
+          format: int64
+          description: Reported leases whose Fleet event settled processed.
+        leases_failed:
+          type: integer
+          format: int64
+          description: Reported leases whose Fleet event settled fleet_error.
+        leases_expired:
+          type: integer
+          format: int64
+          description: Leases the runner stopped renewing; the work was re-leased to another runner.
+    RunnerLease:
+      type: object
+      description: One lease joined to its Fleet event. `outcome` is settled server-side into a single closed tag; the event's request payload is never returned.
+      required:
+      - id
+      - fleet_id
+      - fleet_name
+      - workspace_id
+      - event_id
+      - event_type
+      - actor
+      - outcome
+      - failure_label
+      - failure_detail
+      - kind
+      - fencing_token
+      - provider
+      - model
+      - posture
+      - metered_input_tokens
+      - metered_cached_tokens
+      - metered_output_tokens
+      - wall_ms
+      - lease_expires_at
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        fleet_id:
+          type: string
+          format: uuid
+        fleet_name:
+          type: string
+          nullable: true
+          description: The fleet's display name, joined at read time.
+        workspace_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          description: The Fleet event this lease ran.
+        event_type:
+          type: string
+          description: The triggering event's type as recorded on the lease.
+        actor:
+          type: string
+        outcome:
+          type: string
+          description: Settled server-side from the lease's own status first, then the joined event. An expired lease reads expired regardless of how its event later settled under a reclaiming runner; a missing event reads unknown, never a fabricated success.
+          enum:
+          - running
+          - succeeded
+          - failed
+          - expired
+          - unknown
+        failure_label:
+          type: string
+          nullable: true
+          description: The normalized failure class from the joined Fleet event; null when the event did not fail.
+        failure_detail:
+          type: string
+          nullable: true
+          description: The human-readable failure cause recorded on the event, verbatim.
+        kind:
+          type: string
+          description: fresh = first lease for its event; reclaim = re-issue of an expired holder's event under a higher fencing token.
+          enum:
+          - fresh
+          - reclaim
+        fencing_token:
+          type: integer
+          format: int64
+        provider:
+          type: string
+        model:
+          type: string
+        posture:
+          type: string
+        metered_input_tokens:
+          type: integer
+          format: int64
+        metered_cached_tokens:
+          type: integer
+          format: int64
+        metered_output_tokens:
+          type: integer
+          format: int64
+        wall_ms:
+          type: integer
+          format: int64
+          nullable: true
+          description: Wall-clock duration from the joined event; null until settled.
+        lease_expires_at:
+          type: integer
+          format: int64
+          description: Epoch milliseconds the lease deadline elapses.
+        created_at:
+          type: integer
+          format: int64
+          description: Epoch milliseconds the lease was issued.

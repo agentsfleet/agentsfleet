@@ -145,8 +145,10 @@ pub const Route = union(enum) {
     // ({lease_id}); the rest resolve `me` from the token (no runner_id in path).
     register_runner, // POST /v1/runners
     fleet_runners_list, // GET /v1/fleets/runners (platform-admin operator-plane read)
+    fleet_runner_get: []const u8, // GET /v1/fleets/runners/{id} (single-runner operator read; its own variant so the read scope never rides the write route)
     fleet_runner_patch: []const u8, // PATCH /v1/fleets/runners/{id}
     fleet_runner_events: []const u8, // GET /v1/fleets/runners/{id}/events
+    fleet_runner_leases: []const u8, // GET /v1/fleets/runners/{id}/leases (operator-plane lease history)
     fleet_streams_list, // GET /v1/fleets/streams (platform-admin — live SSE streams on this instance)
     runner_self, // GET /v1/runners/me (read-only — no last_seen bump)
     runner_heartbeat, // POST /v1/runners/me/heartbeats

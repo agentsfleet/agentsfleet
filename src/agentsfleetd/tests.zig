@@ -187,6 +187,8 @@ test {
     _ = @import("http/handlers/api_keys/list.zig");
     _ = @import("http/handlers/fleet/runners_list.zig");
     _ = @import("http/handlers/fleet/runners_list_test.zig");
+    _ = @import("http/handlers/fleet/runner_get.zig");
+    _ = @import("http/handlers/fleet/runner_leases.zig");
     _ = @import("http/handlers/model_library.zig");
     _ = @import("http/handlers/model_library_page.zig");
     _ = @import("cmd/serve_caches.zig");

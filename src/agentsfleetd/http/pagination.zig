@@ -37,6 +37,11 @@ const std = @import("std");
 
 const base64 = std.base64.url_safe_no_pad;
 
+/// Canonical Stripe-style paging parameter names (`docs/REST_API_DESIGN_GUIDELINES.md`
+/// §3), shared by every keyset list handler so the spelling exists exactly once.
+pub const QUERY_STARTING_AFTER = "starting_after";
+pub const QUERY_LIMIT = "limit";
+
 /// Cursor payload version. Bumped only when a payload's field set changes
 /// incompatibly; a decoded cursor carrying any other value is rejected, which is
 /// what stops a deploy from silently reinterpreting yesterday's boundary.

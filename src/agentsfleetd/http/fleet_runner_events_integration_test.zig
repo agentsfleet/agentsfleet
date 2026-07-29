@@ -326,6 +326,113 @@ test "lease and report append acquire and release events" {
     try std.testing.expect(no_events.bodyContains("\"total\":0"));
 }
 
+test "test_runner_events_accepts_comma_separated_type_set" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupRegister(conn);
+
+    const register = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    defer register.deinit();
+    try register.expectStatus(.created);
+    const runner_id = try registeredRunnerId(conn);
+    defer ALLOC.free(runner_id);
+
+    const p = try patchPath(runner_id);
+    defer ALLOC.free(p);
+    const cordon = try (try (try h.request(.PATCH, p).bearer(PLATFORM_ADMIN_TOKEN)).json(BODY_CORDON)).send();
+    defer cordon.deinit();
+    try cordon.expectStatus(.ok);
+    const drain = try (try (try h.request(.PATCH, p).bearer(PLATFORM_ADMIN_TOKEN)).json("{\"action\":\"drain\"}")).send();
+    defer drain.deinit();
+    try drain.expectStatus(.ok);
+
+    // Three event types exist; the two-tag set returns exactly their union.
+    const ep = try eventsPathWithQuery(runner_id, "event_type=runner_registered,runner_cordoned&page=1&page_size=10");
+    defer ALLOC.free(ep);
+    const events = try (try h.get(ep).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer events.deinit();
+    try events.expectStatus(.ok);
+    try std.testing.expect(events.bodyContains("\"runner_registered\""));
+    try std.testing.expect(events.bodyContains("\"runner_cordoned\""));
+    try std.testing.expect(!events.bodyContains("\"runner_draining\""));
+    try std.testing.expect(events.bodyContains("\"total\":2"));
+}
+
+test "test_runner_events_single_value_filter_unchanged" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupRegister(conn);
+
+    const register = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    defer register.deinit();
+    try register.expectStatus(.created);
+    const runner_id = try registeredRunnerId(conn);
+    defer ALLOC.free(runner_id);
+
+    const p = try patchPath(runner_id);
+    defer ALLOC.free(p);
+    const cordon = try (try (try h.request(.PATCH, p).bearer(PLATFORM_ADMIN_TOKEN)).json(BODY_CORDON)).send();
+    defer cordon.deinit();
+    try cordon.expectStatus(.ok);
+
+    const ep = try eventsPathWithQuery(runner_id, "event_type=runner_cordoned&page=1&page_size=10");
+    defer ALLOC.free(ep);
+    const events = try (try h.get(ep).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer events.deinit();
+    try events.expectStatus(.ok);
+    try std.testing.expect(events.bodyContains("\"runner_cordoned\""));
+    try std.testing.expect(!events.bodyContains("\"runner_registered\""));
+    try std.testing.expect(events.bodyContains("\"total\":1"));
+}
+
+test "test_runner_events_rejects_unknown_type_in_set" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupRegister(conn);
+
+    const register = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    defer register.deinit();
+    try register.expectStatus(.created);
+    const runner_id = try registeredRunnerId(conn);
+    defer ALLOC.free(runner_id);
+
+    const ep = try eventsPathWithQuery(runner_id, "event_type=runner_online,not_a_type&page=1&page_size=10");
+    defer ALLOC.free(ep);
+    const events = try (try h.get(ep).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer events.deinit();
+    try events.expectStatus(.bad_request);
+    try std.testing.expect(events.bodyContains("UZ-REQ-001"));
+    try std.testing.expect(!events.bodyContains("\"items\""));
+}
+
+test "test_runner_events_rejects_empty_type_parameter" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupRegister(conn);
+
+    const register = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    defer register.deinit();
+    try register.expectStatus(.created);
+    const runner_id = try registeredRunnerId(conn);
+    defer ALLOC.free(runner_id);
+
+    // An empty value must refuse, never silently mean "all".
+    const ep = try eventsPathWithQuery(runner_id, "event_type=&page=1&page_size=10");
+    defer ALLOC.free(ep);
+    const events = try (try h.get(ep).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer events.deinit();
+    try events.expectStatus(.bad_request);
+    try std.testing.expect(events.bodyContains("UZ-REQ-001"));
+}
+
 test "heartbeat keeps liveness update when runner event insert fails" {
     const h = try startHarness();
     defer h.deinit();

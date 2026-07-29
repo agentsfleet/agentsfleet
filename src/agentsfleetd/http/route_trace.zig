@@ -115,8 +115,10 @@ fn classify(route: router.Route) RouteTraits {
         .tenant_api_keys,
         .tenant_api_key_by_id,
         .fleet_runners_list,
+        .fleet_runner_get,
         .fleet_runner_patch,
         .fleet_runner_events,
+        .fleet_runner_leases,
         .fleet_streams_list,
         => .{},
     };
