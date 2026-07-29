@@ -1,28 +1,23 @@
 -- 039: retire the v1 envelope entirely.
 --
--- Every vault envelope is AAD-bound (kek_version 2) — the pre-binding v1 format
--- (`0ff4902ca`, Jul 11 2026) shipped before any secret this deployment holds,
--- so no v1 row has ever existed here. Pre-production, v1 is removed outright
--- rather than tolerated:
+-- Every vault envelope is Additional Authenticated Data (AAD) bound
+-- (kek_version 2) — the pre-binding v1 format (`0ff4902ca`, Jul 11 2026) shipped
+-- before any secret this deployment holds, so no v1 row has ever existed here.
+-- Pre-production, v1 is removed outright rather than tolerated.
 --
---   1. DROP the DEFAULT that still named version 1. Every writer binds the
---      version explicitly, so the default never fired on a correct write; the
---      only row it could mint is one a forgotten column would silently create.
---   2. CHECK that kek_version is the one current version. This makes a v1 (or
---      any non-current) row structurally impossible — a mistaken write fails
---      loudly at the database instead of landing a row nothing can decrypt.
---      The AEAD tag is the ultimate guard (a v1 ciphertext read under the bound
---      AAD fails authentication), so the check is the single explicit assertion
---      of the invariant, not a second-guess of it.
+-- DROP the DEFAULT that still named version 1. That default was the last way a
+-- v1 row could be minted: every writer binds the version explicitly, so it never
+-- fired on a correct write, and the only row it could create is one a forgotten
+-- column would silently insert. `kek_version` is NOT NULL (`schema/002`), so
+-- with the default gone that same forgotten column fails the INSERT outright —
+-- the mistake raises an error instead of landing a row nothing can decrypt.
 --
--- Both statements are idempotent: DROP DEFAULT on a column with none is a no-op,
--- and the constraint add swallows a duplicate. Every existing row is version 2,
--- so the check validates without a rewrite. A future envelope format changes
--- this constraint in its own migration, alongside the code that reads it.
+-- The current version stays a named application constant
+-- (`KEK_VERSION_AAD_BOUND`), NOT a CHECK pinned in this schema — RULE STS, the
+-- same call `schema/017` and `schema/018` record in their own comments. Both
+-- write arms bind it, and the Authenticated Encryption with Associated Data
+-- (AEAD) tag is the failsafe underneath: an envelope read under a version it was
+-- not sealed at fails authentication rather than returning plaintext.
+--
+-- Idempotent: DROP DEFAULT on a column that has none is a no-op.
 ALTER TABLE vault.secrets ALTER COLUMN kek_version DROP DEFAULT;
-
-DO $$ BEGIN
-  ALTER TABLE vault.secrets
-    ADD CONSTRAINT ck_vault_secrets_kek_version_current CHECK (kek_version = 2);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
