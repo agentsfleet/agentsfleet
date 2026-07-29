@@ -18,7 +18,7 @@ vi.mock("next/link", () => ({
 }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
 
-// Partial mock — keep the real DEFAULT_SORT / DEFAULT_PAGE_SIZE the page passes.
+// Partial mock — keep the module's real exports beside the stubbed list read.
 vi.mock("@/lib/api/api_keys", async (orig) => ({
   ...(await orig<typeof import("@/lib/api/api_keys")>()),
   listApiKeys: listApiKeysMock,
@@ -94,7 +94,7 @@ describe("api-keys page", () => {
     await expect(Page()).rejects.toThrow("backend exploded");
   });
 
-  it("operator: renders the API Keys title and lists keys newest-first", async () => {
+  it("operator: renders the API Keys title and every key from the complete read", async () => {
     mockAuth();
     listApiKeysMock.mockResolvedValueOnce({
       items: [
@@ -102,15 +102,16 @@ describe("api-keys page", () => {
         { id: "b", key_name: "old-zapier", active: false, created_at: 1, last_used_at: null, revoked_at: 1 },
       ],
       total: 2,
-      page: 1,
-      page_size: 25,
+      next_cursor: null,
     });
     const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
     const html = renderToStaticMarkup(await Page());
     expect(html).toMatch(/API Keys/);
     expect(html).toContain("ci-runner");
     expect(html).toContain("old-zapier");
-    expect(listApiKeysMock).toHaveBeenCalledWith("tok", expect.objectContaining({ sort: "-created_at" }));
+    // The initial read carries no paging parameters; the client's own default
+    // sort (newest-first) governs.
+    expect(listApiKeysMock).toHaveBeenCalledWith("tok");
   });
 });
 

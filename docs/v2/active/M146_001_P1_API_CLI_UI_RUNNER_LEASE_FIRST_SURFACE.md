@@ -275,20 +275,20 @@ Three reads page by number: `GET /v1/fleets/runners`, `GET /v1/fleets/runners/{r
 - **Dimension 7.9** — Paging the API-keys list by `key_name` returns every key exactly once across pages, including keys sharing a name prefix → Test `test_api_keys_key_name_sort_pages_without_loss` — **DONE**
 - **Dimension 7.10** — `pagination.zig` is deleted and no caller of `parsePageParams` remains anywhere → Test `test_page_param_helper_is_gone` — **DONE**
 
-### §8 — API keys lose their pagination controls entirely
+### §8 — API keys lose their pagination controls entirely — **DONE**
 
 A tenant's API keys are human-created and number in the single digits to low tens; a default page of 25 essentially never fills. Paging controls on that list are ceremony, and §7 removes the parameters the Command-Line Interface (CLI) sends anyway. Rather than translate them into cursor flags nobody will type, both clients drop the controls and follow `next_cursor` to exhaustion, so the list is simply complete.
 
 **Implementation default:** the endpoint keeps the `{items, total, next_cursor}` envelope and its bounded default. The guidelines require that envelope of every list, and an unbounded read is a denial-of-service shape regardless of how small the collection usually is. Only the *clients* stop exposing controls.
 
-**Implementation default:** the retired flags are removed, not aliased. Pre-`2.0.0` carries no compatibility shims, and a flag that silently does nothing is worse than one that fails with a message saying what changed.
+**Implementation default (amended — Indy, see Discovery):** the retired flags are removed outright — no hidden tombstone options, no bespoke refusal copy, no tests of the refusal. An invocation carrying `--page` or `--page-size` fails as an unknown option with a non-zero exit and no request made; R7's grep is the mechanical proof of removal.
 
-- **Dimension 8.1** — `api-key list` refuses `--page` and `--page-size` with a message stating that the list is no longer paged → Test `test_api_key_list_rejects_retired_page_flags`
-- **Dimension 8.2** — `api-key list` returns every key the tenant holds, following `next_cursor` until it is null → Test `test_api_key_list_returns_every_key`
-- **Dimension 8.3** — `--sort` is unchanged and still orders the complete set → Test `test_api_key_list_sort_orders_complete_set`
-- **Dimension 8.4** — Help text and the command tree name no paging flag → Test `test_api_key_list_help_has_no_paging_flags`
-- **Dimension 8.5** — In JavaScript Object Notation mode the printed object carries the complete item set and `next_cursor: null` → Test `test_api_key_list_json_mode_is_complete`
-- **Dimension 8.6** — The app's key list renders no pagination footer and shows every key → Test `test_api_key_list_view_has_no_pagination_footer`
+- **Dimension 8.1** — `--page` and `--page-size` are removed outright; an invocation carrying either is an unknown option: non-zero exit, no request made → Verified by rubric R7's grep (amended per Indy — no dedicated refusal test) — **DONE**
+- **Dimension 8.2** — `api-key list` returns every key the tenant holds, following `next_cursor` until it is null → Test `test_api_key_list_returns_every_key` — **DONE**
+- **Dimension 8.3** — `--sort` is unchanged and still orders the complete set → Test `test_api_key_list_sort_orders_complete_set` — **DONE**
+- **Dimension 8.4** — Help text and the command tree name no paging flag → Verified by rubric R7's grep (amended per Indy — no dedicated help test) — **DONE**
+- **Dimension 8.5** — In JavaScript Object Notation mode the printed object carries the complete item set and `next_cursor: null` → Test `test_api_key_list_json_mode_is_complete` — **DONE**
+- **Dimension 8.6** — The app's key list renders no pagination footer and shows every key → Test `test_api_key_list_view_has_no_pagination_footer` — **DONE**
 
 ### §9 — One cursor vocabulary: fleets moves to `starting_after` / `next_cursor`
 
@@ -298,7 +298,7 @@ A tenant's API keys are human-created and number in the single digits to low ten
 
 - **Dimension 9.1** — `GET /v1/workspaces/{workspace_id}/fleets` accepts `starting_after` and refuses `cursor` → Test `test_fleets_list_accepts_starting_after_and_refuses_cursor`
 - **Dimension 9.2** — The response field is `next_cursor`; no `cursor` key is emitted → Test `test_fleets_list_emits_next_cursor`
-- **Dimension 9.3** — `fleet list` accepts `--starting-after <id>` and refuses `--cursor` with a message naming the replacement → Test `test_fleet_list_flag_renamed_to_starting_after`
+- **Dimension 9.3** — `fleet list` accepts `--starting-after <id>`; `--cursor` is removed outright and fails as an unknown option (amended per Indy's §8 ruling — no tombstone flag, no refusal copy) → Test `test_fleet_list_flag_renamed_to_starting_after`
 - **Dimension 9.4** — The app's fleets client sends `starting_after` and reads `next_cursor`, and the wall's paging still walks every fleet → Test `test_fleets_client_uses_guideline_cursor_names`
 - **Dimension 9.5** — No request parameter or response field named `cursor` survives anywhere in the daemon, the app or the CLI → Test `test_no_bare_cursor_spelling_survives`
 
@@ -505,15 +505,15 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | 7.8 | integration | `test_api_keys_list_uses_keyset_envelope_and_keeps_sorts` | The API-keys read → exactly `{items, total, next_cursor}`; `page=2` → 400; each of the four sort values still orders correctly |
 | 7.9 | integration | `test_api_keys_key_name_sort_pages_without_loss` | 7 keys including two sharing a name prefix, `sort=key_name`, `limit=3` → all 7 across pages, no duplicates |
 | 7.10 | unit | `test_page_param_helper_is_gone` | Repository grep for `parsePageParams` and for `pagination.zig` → 0 matches outside this spec |
-| 8.1 | unit | `test_api_key_list_rejects_retired_page_flags` | `--page 2` and `--page-size 10` → non-zero exit, message states the list is no longer paged, no request made |
+| 8.1 | rubric | R7 grep (amended per Indy — flags removed outright, no refusal test) | `--page 2` / `--page-size 10` → unknown option: non-zero exit, no request made |
 | 8.2 | e2e | `test_api_key_list_returns_every_key` | A tenant holding more keys than one bounded read returns → every key printed, no truncation notice |
 | 8.3 | e2e | `test_api_key_list_sort_orders_complete_set` | `--sort key_name` across a multi-read set → the full set is ordered, not each read separately |
-| 8.4 | unit | `test_api_key_list_help_has_no_paging_flags` | Help output → contains no `--page`, `--page-size`, `--limit` or `--starting-after` |
+| 8.4 | rubric | R7 grep (amended per Indy — no dedicated help test) | Help output and command tree carry no `--page` / `--page-size` |
 | 8.5 | e2e | `test_api_key_list_json_mode_is_complete` | JavaScript Object Notation mode → every key present, `next_cursor` null |
 | 8.6 | unit | `test_api_key_list_view_has_no_pagination_footer` | The app's key list → no pagination control renders, every seeded key is visible |
 | 9.1 | integration | `test_fleets_list_accepts_starting_after_and_refuses_cursor` | `starting_after=<id>` → 200 and correct page; `cursor=<id>` → 400 `UZ-REQ-001` |
 | 9.2 | integration | `test_fleets_list_emits_next_cursor` | A page with more to follow → `next_cursor` present, no `cursor` key anywhere in the body |
-| 9.3 | unit | `test_fleet_list_flag_renamed_to_starting_after` | `--starting-after X` → sends `starting_after`; `--cursor X` → non-zero exit naming the replacement |
+| 9.3 | unit | `test_fleet_list_flag_renamed_to_starting_after` | `--starting-after X` → sends `starting_after`; `--cursor X` → unknown option, non-zero exit (amended per Indy — no bespoke refusal) |
 | 9.4 | unit | `test_fleets_client_uses_guideline_cursor_names` | The app's fleets client → sends `starting_after`, reads `next_cursor`, walks a two-page fixture to completion |
 | 9.5 | unit | `test_no_bare_cursor_spelling_survives` | Repository grep for a `cursor` query parameter or response key → 0 matches in daemon, app and CLI source |
 | 10.1 | integration | `test_memory_keyset_index_migration_registered` | The migration applies, the index exists, and its position in the migration array matches `schema/embed.zig` |
@@ -628,6 +628,11 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 
 ### Implementation record (agent, EXECUTE)
+
+- **§8 tombstone flags rejected by Indy (mid-EXECUTE).** The first cut kept `--page`/`--page-size` as hidden commander options so the refusal could print bespoke "no longer paged" copy, per Dimension 8.1 as authored. Indy killed the shims and their tests:
+  > Indy (2026-07-29): "just remove these flags, no retired or legacy crap or tests const FLAG_RETIRED_PAGE = \"--page <n>\" as const; const FLAG_RETIRED_PAGE_SIZE = \"--page-size <n>\" as const;"
+  Dimensions 8.1 and 8.4 are amended to plain removal proven by rubric R7's grep; commander's stock unknown-option error is the refusal. The same ruling governs §9's `--cursor` rename — no tombstone there either (Dimension 9.3 amended likewise).
+- **OpenAPI path filename** — the api-keys path file is `public/openapi/paths/api-keys.yaml` (hyphen), not the table's `api_keys.yaml`; its keyset migration landed with the §7 server commit.
 
 - **Files Changed additions** — the two new `Route` variants force arms in every exhaustive Route switch; `router.zig`, `route_admission.zig`, `route_trace.zig`, plus the `route_matchers.zig` / `route_table_invoke.zig` re-export façades and the two test-discovery roots joined the table. Compile-forced registration, not scope growth.
 - **Pagination path correction** — the page-number helper is `src/agentsfleetd/http/handlers/pagination.zig`; `src/agentsfleetd/http/pagination.zig` is the struct-cursor module the library reads still use and now also carries the shared `starting_after`/`limit` parameter-name constants. Table, Dead Code Sweep and §7 rows corrected.

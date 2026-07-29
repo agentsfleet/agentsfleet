@@ -8,37 +8,55 @@ import {
   createApiKey,
   revokeApiKey,
   deleteApiKey,
-  DEFAULT_PAGE_SIZE,
   DEFAULT_SORT,
-  MAX_PAGE_SIZE,
 } from "./api_keys";
+
+const keyRow = (id: string) => ({
+  id,
+  key_name: id,
+  active: true,
+  created_at: 1700000000000,
+  last_used_at: null,
+  revoked_at: null,
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requestMock.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
+  requestMock.mockResolvedValue({ items: [], total: 0, next_cursor: null });
 });
 afterEach(() => vi.resetAllMocks());
 
 describe("listApiKeys", () => {
-  it("defaults to page 1, the backend's page size, and newest-first sort", async () => {
+  it("sends no paging parameters and defaults to newest-first sort", async () => {
     await listApiKeys("tok");
     expect(requestMock).toHaveBeenCalledWith(
-      `/v1/api-keys?page=1&page_size=${DEFAULT_PAGE_SIZE}&sort=${DEFAULT_SORT}`,
+      `/v1/api-keys?sort=${encodeURIComponent(DEFAULT_SORT)}`,
       { method: "GET" },
       "tok",
     );
   });
 
-  it("never requests a page size above the backend maximum", async () => {
-    // The UI fixes page_size to the default; the cap is the contract the
-    // backend enforces (DEFAULT_PAGE_SIZE must stay <= MAX_PAGE_SIZE).
-    expect(DEFAULT_PAGE_SIZE).toBeLessThanOrEqual(MAX_PAGE_SIZE);
-    await listApiKeys("tok", { page: 3, sort: "key_name" });
-    expect(requestMock).toHaveBeenCalledWith(
-      "/v1/api-keys?page=3&page_size=25&sort=key_name",
+  it("test_api_key_list_view_walks_next_cursor_to_exhaustion", async () => {
+    requestMock
+      .mockResolvedValueOnce({ items: [keyRow("a")], total: 3, next_cursor: "cur_1" })
+      .mockResolvedValueOnce({ items: [keyRow("b")], total: 3, next_cursor: "cur_2" })
+      .mockResolvedValueOnce({ items: [keyRow("c")], total: 3, next_cursor: null });
+    const res = await listApiKeys("tok", "key_name");
+    expect(res.items.map((item) => item.id)).toEqual(["a", "b", "c"]);
+    expect(res.next_cursor).toBeNull();
+    expect(res.total).toBe(3);
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      "/v1/api-keys?sort=key_name&starting_after=cur_1",
       { method: "GET" },
       "tok",
     );
+    expect(requestMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("refuses a runaway cursor instead of walking forever", async () => {
+    requestMock.mockResolvedValue({ items: [keyRow("x")], total: null, next_cursor: "same" });
+    await expect(listApiKeys("tok")).rejects.toThrow(/did not end/);
   });
 });
 
