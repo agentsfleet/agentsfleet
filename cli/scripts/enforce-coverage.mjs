@@ -66,6 +66,8 @@ function parseSummary() {
   // per-function records are the finest-grained truth the file carries.
   let fnFound = 0, fnHit = 0, lineFound = 0, lineHit = 0;
   let blockFns = new Set(), blockHits = new Set();
+  let sf = null;
+  const uncovered = [];
   const flushBlock = () => {
     fnFound += blockFns.size;
     let hits = 0;
@@ -75,7 +77,7 @@ function parseSummary() {
     blockHits = new Set();
   };
   for (const line of raw.split("\n")) {
-    if (line.startsWith("SF:")) flushBlock();
+    if (line.startsWith("SF:")) { flushBlock(); sf = line.slice(3); }
     else if (line.startsWith("FN:")) blockFns.add(line.slice(3).split(",").slice(1).join(","));
     else if (line.startsWith("FNDA:")) {
       const [count, ...nameParts] = line.slice(5).split(",");
@@ -83,6 +85,10 @@ function parseSummary() {
     }
     else if (line.startsWith("LF:")) lineFound += Number(line.slice(3));
     else if (line.startsWith("LH:")) lineHit += Number(line.slice(3));
+    else if (line.startsWith("DA:")) {
+      const [ln, count] = line.slice(3).split(",");
+      if (Number(count) === 0 && sf) uncovered.push(`${sf}:${ln}`);
+    }
   }
   flushBlock();
   if (lineFound === 0) {
@@ -95,13 +101,13 @@ function parseSummary() {
   // missed. An axis without records to grade it is reported as ungraded
   // rather than guessed.
   const fn = fnFound > 0 ? (fnHit / fnFound) * 100 : null;
-  return { fn, line: (lineHit / lineFound) * 100 };
+  return { fn, line: (lineHit / lineFound) * 100, uncovered };
 }
 
 function main() {
   const threshold = readThreshold();
   runTests();
-  const { fn, line } = parseSummary();
+  const { fn, line, uncovered } = parseSummary();
   const floorFn = threshold.func * 100;
   const floorLine = threshold.line * 100;
   console.log("");
@@ -110,6 +116,10 @@ function main() {
   console.log(`enforce-coverage: actual function=${fnActual} line=${line.toFixed(2)}%`);
   if ((fn !== null && fn < floorFn) || line < floorLine) {
     console.error("enforce-coverage: FAIL — coverage below configured floor");
+    if (line < floorLine && uncovered.length > 0) {
+      console.error(`enforce-coverage: ${uncovered.length} uncovered line(s):`);
+      for (const u of uncovered) console.error(`  ${u}`);
+    }
     process.exit(1);
   }
   console.log("enforce-coverage: PASS");
