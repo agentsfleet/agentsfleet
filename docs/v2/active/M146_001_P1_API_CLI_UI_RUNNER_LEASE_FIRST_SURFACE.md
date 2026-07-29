@@ -116,9 +116,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/fleets/list.zig` | EDIT | Request parameter and response field move to `starting_after` / `next_cursor` (§9) |
 | `src/agentsfleetd/http/handlers/memory/handler.zig` | EDIT | All three query shapes gain a cursor guard (§10) |
 | `src/agentsfleetd/http/handlers/memory/sql.zig` | EDIT | Search, category and recent statements become keyset seeks |
+| `src/agentsfleetd/http/handlers/memory/helpers.zig` | EDIT | `collectEntries` gains a `last_created_at` out-param for cursor building (§10) |
+| `src/agentsfleetd/http/handlers/memory/memories_integration_test.zig` | EDIT | Keyset paging coverage across all three query shapes (§10) |
 | `schema/039_memory_entries_keyset_index.sql` | CREATE | Index supporting `(fleet_id, created_at, key)` ordering |
 | `schema/embed.zig` | EDIT | Registers the new migration in the array |
-| `public/openapi/paths/api_keys.yaml` | EDIT | API-keys list moves to the keyset parameters and envelope |
+| `public/openapi/paths/api-keys.yaml` | EDIT | API-keys list moves to the keyset parameters and envelope (hyphenated filename — corrected in Discovery) |
 | `public/openapi/paths/fleets.yaml` | EDIT | Fleets list renames its parameter and response field |
 | `public/openapi/paths/memory.yaml` | EDIT | Memory list gains cursor paging |
 | `ui/packages/app/lib/api/api_keys.ts` | EDIT | Client drops paging params and follows `next_cursor` to exhaustion (§8) |
@@ -136,6 +138,53 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/src/commands/memory.ts` | EDIT | Sends `starting_after` |
 | `cli/test/api_key.integration.test.ts` | EDIT | Retargeted at the unpaged list |
 | `cli/test/cli-tree.parse.unit.test.ts` | EDIT | Flag surface assertions follow the renames |
+| `src/agentsfleetd/http/handlers/api_keys/sql.zig` | EDIT | Keyset statements — first page plus after-created and after-name seeks — replace the page statement (§7) |
+| `src/agentsfleetd/http/handlers/api_keys/tenant.zig` | EDIT | The list registration follows the keyset read |
+| `src/agentsfleetd/http/handlers/api_keys/tenant_test.zig` | EDIT | Unit coverage follows the keyset envelope |
+| `src/agentsfleetd/http/handlers/api_keys/tenant_integration_test.zig` | EDIT | Keyset paging, sort retention and retired-parameter refusal coverage (§7) |
+| `src/agentsfleetd/http/handlers/fleets/api_integration_test.zig` | EDIT | §9 coverage — `starting_after` accepted, `cursor` refused, `next_cursor` emitted |
+| `src/agentsfleetd/http/handlers/pagination_retirement_test.zig` | CREATE | Dimension 7.10's test home — no `parsePageParams` caller survives |
+| `src/agentsfleetd/http/router_test.zig` | EDIT | Route arms for the two new GET variants |
+| `src/agentsfleetd/errors/internal_op_error_sweep_test.zig` | EDIT | Accounted ratchet update — the rebuilt envelope builders settle the measured count at 90 |
+| `src/lib/contract/runner_events.zig` | EDIT | The shared events wire struct moves `page`/`page_size` to `next_cursor` (§7) |
+| `cli/src/lib/api-paths.ts` | EDIT | Canonical `QUERY_STARTING_AFTER` home; fleet and memory commands import it |
+| `cli/src/constants/api-key.ts` | EDIT | The page-default constants leave with the flags (§8) |
+| `cli/src/program/handlers-bind-fleet.ts` | EDIT | Unreachable dashed-option fallbacks removed (`workspace-id` twin included) |
+| `cli/src/program/handlers-bind-memory.ts` | EDIT | Binds `--starting-after`; dashed fallback removed |
+| `cli/test/memory.unit.test.ts` | EDIT | `--starting-after` and next-page-hint coverage (§10) |
+| `cli/test/cli-alignment.unit.test.ts` | EDIT | Flag-surface alignment follows the renames |
+| `cli/test/api-key-linecov.unit.test.ts` | EDIT | Line coverage follows the depaginated list |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerViewedTracker.tsx` | CREATE | Dimension 5.11's mount capture in its own client component |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerViewedTracker.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/ActivityTable.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/LeaseTable.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/ReviewLease.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerMetricsStrip.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerSubnavigation.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerWall.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerTile.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerStatus.test.tsx` | CREATE | Sibling test |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerDialogs.test.tsx` | CREATE | Coverage for the retained confirm dialog |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/components/ApiKeyList.test.tsx` | EDIT | Footer-free rendering coverage (§8) |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/page.tsx` | EDIT | Fleets wall caller follows the renamed client (§9) |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | EDIT | Server action follows the renamed client (§9) |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.tsx` | EDIT | Walks `next_cursor` instead of `cursor` (§9) |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.test.tsx` | EDIT | Coverage follows the rename |
+| `ui/packages/app/lib/api/list-walk.ts` | CREATE | Shared walk-to-exhaustion helper (bounded, runaway-cursor error) — api-keys and memory both consume it |
+| `ui/packages/app/lib/api/list-walk.test.ts` | CREATE | Sibling test |
+| `ui/packages/app/lib/api/api_keys.test.ts` | EDIT | Client coverage follows the walk refactor (§8) |
+| `ui/packages/app/lib/api/fleets.test.ts` | EDIT | Client coverage follows the rename (§9) |
+| `ui/packages/app/lib/api/memory.test.ts` | EDIT | Client coverage for cursor paging and the walk (§10) |
+| `ui/packages/app/lib/runner-routes.test.ts` | CREATE | Sibling test |
+| `ui/packages/app/lib/types.ts` | EDIT | `FleetListResponse.cursor` becomes `next_cursor` (§9) |
+| `ui/packages/app/tests/api-keys-actions.test.ts` | EDIT | Action-signature coverage follows §8 |
+| `ui/packages/app/tests/api-keys-components.test.ts` | EDIT | Component coverage follows §8 |
+| `ui/packages/app/tests/api-keys-page.test.ts` | EDIT | Page coverage follows §8 |
+| `ui/packages/app/tests/runners-actions.test.ts` | EDIT | Server-action coverage for the new reads |
+| `ui/packages/app/tests/cursor-vocabulary.test.ts` | CREATE | Dimension 9.5's test home (scoped per Discovery) |
+| `ui/packages/app/tests/runners-surface-invariants.test.ts` | CREATE | Dimension 6.5's enforcement — deleted symbols stay deleted |
+| `ui/packages/app/tests/fleets-routes.test.ts` | EDIT | Eight `/memories` mock arms move off the retired envelope onto `{items, total, next_cursor}` (§10) |
 | `~/Projects/docs/changelog.mdx` | EDIT | One `<Update>` covering the runner surface and the paging changes |
 
 ## Applicable Rules
@@ -447,7 +496,7 @@ Client:
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
 | `runner_viewed` | product | A platform operator opens `/admin/runners/{runner_id}`, once per mount, mirroring `fleet_viewed` | `runner_id`, `liveness`, `admin_state` | No `host_id`, no token, no label values, no lease identifiers | `test_runner_viewed_event_properties` |
-| `agentsfleet_http_requests_total` (existing) | ops | Both new routes serve a request | Route template label only, via `route_template.zig` | Route templates carry `{runner_id}`, never a resolved id | `test_runner_read_route_templates_registered` |
+| `agentsfleet_http_requests_total` (existing) | ops | Both new routes serve a request | Route template label only, via `route_template.zig` | Route templates carry `{runner_id}`, never a resolved id | `test_route_template_is_total_and_absolute_for_every_route` + `test_route_template_never_echoes_caller_supplied_bytes` — the exhaustive per-variant walkers cover the two new variants by construction (amended: no bespoke test needed) |
 
 The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec reads durable state and adds no counter. No funnel changes, so no analytics playbook update is required — recorded in Discovery at CHORE(close).
 
@@ -532,7 +581,7 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | failure | integration | `test_runner_leases_empty_returns_empty_envelope` | A runner that has never held a lease → 200 `{items: [], total: 0, next_cursor: null}`, never 204 |
 | failure | unit | `test_runner_header_copy_failure_is_reported` | Clipboard write rejects → the copy control announces the failure and does not show a success state |
 | failure | unit | `test_runner_header_revoke_conflict_surfaces_state` | Revoke answers 409 `UZ-RUN-016` → the header shows the returned administrative state and the error, not a stale badge |
-| regression | integration | `test_runner_list_read_unchanged` | The existing list endpoint → same envelope, same fields, same sort allowlist as before this milestone |
+| regression | integration | Superseded by §7 (amended) | The list envelope and sort allowlist changed deliberately under §7, so "unchanged" is no longer the promised shape to pin; the surviving regression surface — item shape and row identity — is held by `test_runner_list_uses_keyset_envelope`, `test_runner_list_stable_under_concurrent_enrolment`, and the typed app client tests |
 | regression | unit | `test_runner_admin_actions_unchanged` | Cordon, drain, revoke and delete → same confirm copy, same eligibility rules, same error handling as the retired table applied |
 | replay | integration | `test_runner_leases_repeated_cursor_is_stable` | The same `starting_after` requested twice with no writes between → byte-identical pages |
 | e2e | e2e | `runner-detail.spec.ts` | Wall renders → clicking a card lands on that runner's Leases → a failed lease reads its sentence → activating the row opens Review lease |
@@ -589,7 +638,7 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | `ActionsCell` | `grep -rn -w "ActionsCell" 'ui/packages/app/app/(dashboard)/admin/runners' --include="*.ts*"` | 0 matches |
 | `parsePageParams` | `grep -rn -w "parsePageParams" src/ --include="*.zig"` | 0 matches |
 | `PAGE_FIELD` / `PAGE_SIZE_FIELD` | `grep -rn -w "PAGE_FIELD\|PAGE_SIZE_FIELD" cli/src` | 0 matches |
-| `FLAG_CURSOR_TOKEN` | `grep -rn -w "FLAG_CURSOR_TOKEN" cli/src` | 0 matches |
+| `FLAG_CURSOR_TOKEN` | `grep -rn -w "FLAG_CURSOR_TOKEN" cli/src` | Matches only in `cli-tree-fleet.ts` — the definition plus the two kept `--cursor` registrations (`fleet logs`, `fleet events`, per the Out of Scope follow-up); `fleet list` does not reference it (amended — the symbol was to vanish only under the full `--cursor` retirement, which stayed scoped) |
 
 ## Out of Scope
 
@@ -646,6 +695,13 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 - **Shared client walk helper** — the app's walk-to-exhaustion moved to `ui/packages/app/lib/api/list-walk.ts` (+ sibling `list-walk.test.ts`, both new files) once the memory panel became its second consumer; `api_keys.ts` refactored onto it with the same bound and runaway error wording. The memory item wire shape is unchanged — each list statement selects `created_at` solely to build `next_cursor` server-side.
 - **CLI bind-site dead fallbacks removed (Indy question, mid-EXECUTE)** — commander natively camelCases multi-word flags and `cli-tree.ts#normalizeOptions` only ever ADDS a dashed mirror, so the `optString(…, "starting-after") ?? …` dashed fallbacks in `handlers-bind-fleet.ts` / `handlers-bind-memory.ts` were unreachable; both binds now read the single camelCase key (`workspaceId` likewise in the fleet list bind).
 - **Envelope request_id removed with §10** — the memory list envelope becomes exactly `{items, total, next_cursor}`; the previous `request_id` member left the wire, and the app/CLI response types followed (the CLI's JSON mode prints the envelope verbatim either way).
+- **Internal-error sweep ratchet (VERIFY)** — `errors/internal_op_error_sweep_test.zig` fired on the first full unit run of the branch: the rebuilt envelope builders net the measured `internalOperationError()` count 86 → 90 (api-keys cursor-format, three statement arms and row collection; runner list; events page; memory search). All four detail strings are plain caller-loss English, so per the ratchet's own doctrine they are counted, not mudball-ok'd: ledger paragraph added, baseline re-set to the measured 90.
+- **R3 initially hit `ActivityTable.tsx` — fixed by narrowing, not by grading.** The headline map was `Record<RunnerEventType, string>`, and exhaustiveness type-forced entries for the two lease tags (plus a comment spelling them). The map is now keyed on the lifecycle subset type derived from `RUNNER_LIFECYCLE_EVENT_TYPES`, the row filter is a type predicate, and a lease tag cannot be given a headline at compile time. R3 greps clean.
+- **Rubric raw-output partitions (recorded so grading is reproducible):** R4's verbatim sweep hits only `*.test.tsx` fixtures that FEED failure tags to prove the plain sentence renders and the tag does not (`queryByText(/oom_kill/) → null`); components are clean, so R4 grades the grep scoped to non-test sources. R5's single hit is `runners-surface-invariants.test.ts` naming the deleted symbols as its probe list — the enforcement is the only remaining spelling. R6's hits are exactly the refusal constants and messages (`QUERY_PAGE`/`QUERY_PAGE_SIZE`/`MSG_RETIRED_PARAMS`) in the three migrated handlers — the server-side 400s the Interfaces section mandates and Indy's ruling keeps. R8's raw hits partition into (a) the out-of-scope keyset families named in Out of Scope, (b) `QUERY_CURSOR_RETIRED` — the refusal, already exempt, and (c) internal struct members holding the parsed keyset cursor (`q.cursor` / `out.cursor`), whose wire names are proven by the envelope-exactness tests.
+- **`FLAG_CURSOR_TOKEN` sweep row amended** — the symbol survives in `cli-tree-fleet.ts` as the shared registration for the two kept `--cursor` families (`fleet logs`, `fleet events`); the Dead Code Sweep row now expects exactly those hits. Full removal belongs to the bare-`cursor` follow-up parked with Indy.
+- **R9 reconciliation** — EXECUTE-emergent paths added to Files Changed: sibling tests for every created component, the api-keys server split (`sql.zig`/`tenant*.zig`), the §9 fleets-client blast radius (`fleets/page.tsx`, `actions.ts`, `FleetWall*`), the shared wire struct (`src/lib/contract/runner_events.zig`) and `lib/types.ts`, the canonical CLI `api-paths.ts` cursor-parameter home, `pagination_retirement_test.zig` / `router_test.zig` test homes, and the error-sweep ratchet update.
+- **Full-suite unit run caught a stale shared mock the filtered §10 runs could not.** `tests/fleets-routes.test.ts` carried eight `/memories` fetch-mock arms still answering the retired `{items, total, request_id}` envelope; with no `next_cursor` the memory panel's walk never saw the end, hit its 40-page bound, and the view rendered its unavailable state — failing the Memory-view routing test. All eight arms now answer `{items, total, next_cursor: null}`. (The walk's strictness is deliberate: an envelope without `next_cursor` is a non-conforming page, and erroring beats silently truncating.)
+- **Two spec-named tests resolved by amendment, not by writing them (VERIFY test-name sweep, 77/79 present).** `test_runner_list_read_unchanged` asserted the pre-§7 list shape that Indy's widening deliberately replaced — the row now names the surviving regression surface and its holders. `test_runner_read_route_templates_registered` is proven by `route_template_test.zig`'s exhaustive per-variant walkers (`inline for` over every `Route` field), which cover the two new variants by construction — the Metrics row now cites the walkers.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.

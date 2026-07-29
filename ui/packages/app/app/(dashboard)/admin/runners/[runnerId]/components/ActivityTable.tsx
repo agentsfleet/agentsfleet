@@ -27,16 +27,18 @@ import {
 
 // Lifecycle records only, in the same standard table as Leases. The server is
 // asked for the lifecycle type set (RUNNER_LIFECYCLE_EVENT_TYPES, passed by
-// the Server Component), so lease_acquired / lease_released never reach this
-// feed — the Leases table already states each of them once with an outcome.
+// the Server Component), so lease work records never reach this feed — the
+// Leases table already states each of them once with an outcome.
 
-// What each lifecycle record SAYS, in operator words.
-const EVENT_HEADLINES: Record<RunnerEventType, string> = {
+type LifecycleEventType = (typeof RUNNER_LIFECYCLE_EVENT_TYPES)[number];
+type LifecycleEventItem = RunnerEventItem & { event_type: LifecycleEventType };
+
+// What each lifecycle record SAYS, in operator words. Keyed on the lifecycle
+// subset, so a lease work tag cannot be given a headline here at all.
+const EVENT_HEADLINES: Record<LifecycleEventType, string> = {
   runner_registered: "registered",
   runner_online: "came online",
   runner_offline: "went offline",
-  lease_acquired: "acquired a lease",
-  lease_released: "released a lease",
   runner_cordoned: "cordoned",
   runner_draining: "draining",
   runner_drained: "drained",
@@ -83,18 +85,19 @@ function detailFor(item: RunnerEventItem): string {
 
 const LIFECYCLE_SET: ReadonlySet<RunnerEventType> = new Set(RUNNER_LIFECYCLE_EVENT_TYPES);
 
+// The server is asked for the lifecycle set, and the feed holds the same
+// line locally: a work record reaching this table renders nothing rather
+// than reintroducing the doubled count the filter exists to remove.
+function isLifecycleRecord(item: RunnerEventItem): item is LifecycleEventItem {
+  return LIFECYCLE_SET.has(item.event_type);
+}
+
 export function ActivityTable({ initial, pageSize }: { initial: RunnerEventsResponse; pageSize: number }) {
   const feed = useUrlCursorPages(initial.next_cursor, pageSize);
 
-  // The server is asked for the lifecycle set, and the feed holds the same
-  // line locally: a work record reaching this table renders nothing rather
-  // than reintroducing the doubled count the filter exists to remove.
-  const rows = useMemo(
-    () => initial.items.filter((item) => LIFECYCLE_SET.has(item.event_type)),
-    [initial.items],
-  );
+  const rows = useMemo(() => initial.items.filter(isLifecycleRecord), [initial.items]);
 
-  const columns = useMemo<DataTableColumn<RunnerEventItem>[]>(
+  const columns = useMemo<DataTableColumn<LifecycleEventItem>[]>(
     () => [
       {
         key: "when",
