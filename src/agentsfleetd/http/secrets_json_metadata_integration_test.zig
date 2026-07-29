@@ -1,6 +1,7 @@
 const std = @import("std");
 const error_codes = @import("../errors/error_registry.zig");
 const base = @import("secrets_json_integration_test.zig");
+const vault = @import("../state/vault.zig");
 
 test "integration: secret endpoints enforce operator role" {
     base.setTestEncryptionKey();
@@ -331,4 +332,67 @@ test "integration: replace refuses non-JSON bytes and a malformed workspace id" 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     base.cleanupRows(conn);
+}
+
+test "integration: a connector-shaped name collides — create is blocked, PUT overwrites" {
+    // Connector handles (github/slack/…) live in vault.secrets under
+    // key_name = the provider id, the SAME (workspace_id, key_name) space the
+    // workspace secrets API writes. This pins exactly which write verbs a
+    // workspace operator can and cannot use against a connector-owned name, so
+    // the reserved-name question is decided on observed behaviour, not prose.
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const creds_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{base.TEST_WS_ID});
+    defer alloc.free(creds_path);
+    const item_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/github", .{base.TEST_WS_ID});
+    defer alloc.free(item_path);
+
+    // Stand in for a connected GitHub handle: the exact shape the connector
+    // callback stores (integration + installation_id), under key_name "github".
+    {
+        const r = try (try (try h.post(creds_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"name\":\"github\",\"data\":{\"integration\":\"github\",\"installation_id\":\"11111111\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+
+    // create with the same name is REFUSED by the vault's ON CONFLICT DO
+    // NOTHING (UZ-VAULT-005). An operator cannot forge a handle over a
+    // connected name through create — the duplicate guard holds.
+    {
+        const r = try (try (try h.post(creds_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"name\":\"github\",\"data\":{\"integration\":\"github\",\"installation_id\":\"99999999\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.conflict);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_SECRET_NAME_TAKEN));
+    }
+
+    // PUT replace, however, is an UPDATE — it does NOT pass through ON CONFLICT,
+    // so it overwrites the handle in place. This is the surface the reserved-name
+    // question is really about: create is guarded, replace is not.
+    {
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"data\":{\"integration\":\"github\",\"installation_id\":\"99999999\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+    }
+    // The forged installation_id is now what the vault holds under "github".
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        const loaded = vault.loadJson(alloc, conn, base.TEST_WS_ID, "github") catch |err| {
+            base.cleanupRows(conn);
+            return err;
+        };
+        defer loaded.deinit();
+        const installation = loaded.value.object.get("installation_id").?.string;
+        try std.testing.expectEqualStrings("99999999", installation);
+        base.cleanupRows(conn);
+    }
 }

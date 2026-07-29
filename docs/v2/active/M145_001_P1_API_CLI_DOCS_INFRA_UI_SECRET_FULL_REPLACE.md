@@ -64,8 +64,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/api/secrets.ts`; `.../settings/models/actions.ts` | EDIT | `replaceSecret` / `replaceSecretAction` over `PUT`; `rotateSecret` is deleted. |
 | `.../settings/models/components/EditModelEntryDialog.tsx`; `.../AddModelEntryDialog.tsx` | EDIT | Edit becomes the Create form and sends one secret write; Add's existing-name branch replaces instead of patching. |
 | `ui/packages/app/tests/models-registry-add.test.tsx`; `.../models-registry-edit.test.tsx` | EDIT/CREATE | The dialog behaviour both dialogs now share. |
-| `schema/039_vault_kek_default_retire.sql`; `schema/embed.zig` | CREATE/EDIT | §6 — drop the schema default naming the dead envelope version; register the slot. |
-| `src/agentsfleetd/secrets/crypto_store_test.zig` | EDIT | §6 — refusal, relabel, and no-default proofs replace the dual-read round-trip. |
+| `schema/039_vault_kek_default_retire.sql`; `schema/embed.zig` | CREATE/EDIT | §6 — drop the default AND add `CHECK (kek_version = 2)` so v1 is structurally impossible (Discovery A8); register the slot. |
+| `src/agentsfleetd/secrets/crypto_primitives.zig` | EDIT | §6 — remove `SecretError.UnsupportedKekVersion`, dead once the CHECK forbids a non-2 row. |
+| `src/agentsfleetd/secrets/crypto_store_test.zig` | EDIT | §6 — the CHECK-constraint proof replaces the three v1-refusal tests and their fixtures. |
+| `src/agentsfleetd/http/secrets_json_metadata_integration_test.zig` | EDIT | The connector-name collision proof (create blocked, PUT overwrites) added at REVIEW (Discovery A8). |
 | `src/agentsfleetd/fleet/secrets_resolve.zig` | EDIT | Comment-only: "legacy credential" renamed to what it is (RULE NLR touch-it-fix-it). |
 | `.github/workflows/test.yml`; `make/test-unit.mk` | EDIT | Run the enforcing coverage script instead of the non-enforcing one. |
 | `cli/scripts/enforce-coverage.mjs`; `cli/package.json` | EDIT | Amended in at EXECUTE (Discovery A7) — the script grades from lcov records instead of the text table, and the printing `test:coverage` twin is deleted so one enforcing script remains. |
@@ -155,10 +157,10 @@ Gaps are read from `cli/coverage/lcov.info` (`DA:` for lines, `FNDA:` for functi
 
 ### §6 — The vault speaks one envelope version — **DONE**
 
-Envelopes sealed before AAD binding (`0ff4902ca`, Jul 11) are version 1; every write since is version 2, bound to `(workspace_id, key_name)` so relocated ciphertext refuses to decrypt. The read path still accepted both, forever — a compatibility branch with no writer behind it. It is deleted, not converged: reads accept exactly the bound version, a surviving v1 row answers the typed unsupported-version error at its point of use, and its owner replaces the secret. A startup conversion sweep was built and then removed on Indy's direction (Discovery A6); no code converts v1. Migration slot 039 drops `kek_version`'s `DEFAULT 1`, so an INSERT that forgot the column fails loudly instead of silently minting a row nothing can read.
+Envelopes sealed before AAD binding (`0ff4902ca`, Jul 11) were version 1; every write since is version 2, bound to `(workspace_id, key_name)` so relocated ciphertext refuses to decrypt. The read path still tolerated both, forever — a compatibility branch with no writer behind it. Verified against app-dev (Discovery A8): the database holds 167 secrets, all version 2, the earliest created Jul 20 — nine days after binding shipped. v1 has never existed in this deployment, and there is no production yet. So on Indy's direction v1 is removed outright, not tolerated: migration slot 039 drops `kek_version`'s `DEFAULT 1` **and** adds `CHECK (kek_version = 2)`, making a v1 (or any non-current) row structurally impossible — a mistaken write fails at the database instead of landing a row nothing can decrypt. With the version pinned at the DB layer, the read path's version branch is dead code and is deleted; the AAD tag is the ultimate guard, since a v1 ciphertext read under the bound AAD fails authentication (`DecryptFailed`). A startup conversion sweep was built and removed earlier (Discovery A6); no code converts v1 because none can exist.
 
-- **Dimension 6.1** — a v1 envelope is refused with the typed error and never decrypted; storing a new value over the held name re-seals it as bound and it serves again → Test `an unbound (v1) envelope is refused, and replacing it re-seals as bound`
-- **Dimension 6.2** — a bound envelope relabeled v1 is refused on the version alone, with no decrypt attempted → Test `crypto store binds the envelope version`
+- **Dimension 6.1** — a write that sets any non-current `kek_version` is refused by the database, and the row stays version 2 and still decrypts → Test `the kek_version CHECK forbids any non-current version`
+- **Dimension 6.2** — an ordinary secret round-trips at version 2 (the only version) → Test `crypto store canonicalizes workspace id and upserts a fresh envelope`
 - **Dimension 6.3** — `kek_version` carries no schema default → Test `kek_version carries no schema default`
 
 ## Interfaces
@@ -334,7 +336,15 @@ The dashboard's existing rotation event is retained and keeps firing on a save t
 
   > Indy (2026-07-29): "I said i dont want to support this legacy crap what are you trying to fix here KEK_VERSION_LEGACY? … why are we adding so much code" — context: the sweep's ~100 lines against outright refusal.
 
-  Accepted consequence, stated rather than hidden: any v1 row still in an old database answers the typed unsupported-version error at use, and its owner replaces the secret (`delete` + `create`). The changelog's Upgrading note carries one line for it. Also folded under NLR: `fleet/secrets_resolve.zig`'s "legacy credential" comment renamed — the shape is just a credential without an integration field.
+  Superseded by A8: the refuse-on-read behaviour this amendment landed was itself removed once app-dev proved zero v1 rows exist. Also folded under NLR: `fleet/secrets_resolve.zig`'s "legacy credential" comment renamed — the shape is just a credential without an integration field.
+
+- **Amendment A8 (REVIEW, Indy-directed) — v1 is removed structurally after checking app-dev.** The adversarial review (both Claude and Codex) flagged that a v1 secret would fail at the lease point as a non-terminal transient error, retrying forever, and that the refuse-on-read left v1 rows possible. Indy directed checking the database and removing v1 outright.
+
+  > Indy (2026-07-29): "So there will be no v1 secrets. Well the v1 must be removed, since we are not in production yet. and you can check when the database was populated in app-dev and decide."
+
+  Checked via 1Password (`ZMB_CD_DEV` → `planetscale-dev` api connection string): `vault.secrets` holds **167 rows, all `kek_version = 2`, earliest `created_at` Jul 20 2026** — after AAD binding shipped Jul 11. Zero v1 rows, no production. So migration 039 gained `CHECK (kek_version = 2)`, making v1 structurally impossible; the read path's version branch and `SecretError.UnsupportedKekVersion` were deleted as now-dead code (the AAD tag is the failsafe); and the three v1-refusal tests were replaced by one that proves the CHECK. The lease retry-loop finding is eliminated by construction — the error it looped on no longer exists.
+
+  Surfaced but NOT fixed here (out of this workstream's scope, its own security spec): connector handles (`github`, `slack`, …) share the `vault.secrets` `(workspace_id, key_name)` space with user secrets — app-dev holds 15 live `github` handles. `create` over a connector name is blocked by the vault's `ON CONFLICT DO NOTHING` (`UZ-VAULT-005`), proven by `a connector-shaped name collides — create is blocked, PUT overwrites`; but `PUT` (an `UPDATE`) overwrites the handle in place, and `delete`+`create` already did so on `main`. A reserved-name guard on the secrets write path plus an installation-ownership check at mint is the fix, deferred to Indy's call.
 
 - **Authoring verification (Jul 29, 2026)** — read from source on the branch, not from prose: the item route's dispatch is `route_table_invoke.zig:251` and matches on method only, so the matcher needs no change; `sensitive_request.zig:19` classifies `PATCH` on this route as sensitive and must move with the verb; `secret_list.zig:20` projects `kind`, `provider`, `model`, `base_url` — which is what makes a client-side full-body rebuild possible without reading the secret; `EditModelEntryDialog.tsx:72-95` issues two writes for one intent and calls `onPartialSuccess()` between them; `AddModelEntryDialog.tsx:207` calls the same rotate action on an existing name; and the coverage floor was reproduced red at `function=99.97% line=99.74%` against a 100% floor.
 
