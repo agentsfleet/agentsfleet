@@ -17,7 +17,7 @@ const {
   createRunnerMock,
   updateRunnerAdminStateMock,
   deleteRunnerMock,
-  listRunnerEventsMock,
+  listRunnerLeasesMock,
 } = vi.hoisted(() => ({
   hasScopeMock: vi.fn(),
   withTokenMock: vi.fn(),
@@ -25,7 +25,7 @@ const {
   createRunnerMock: vi.fn(),
   updateRunnerAdminStateMock: vi.fn(),
   deleteRunnerMock: vi.fn(),
-  listRunnerEventsMock: vi.fn(),
+  listRunnerLeasesMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
@@ -35,7 +35,7 @@ vi.mock("@/lib/api/runners", () => ({
   createRunner: createRunnerMock,
   updateRunnerAdminState: updateRunnerAdminStateMock,
   deleteRunner: deleteRunnerMock,
-  listRunnerEvents: listRunnerEventsMock,
+  listRunnerLeases: listRunnerLeasesMock,
 }));
 
 import {
@@ -43,7 +43,7 @@ import {
   createRunnerAction,
   updateRunnerAdminStateAction,
   deleteRunnerAction,
-  listRunnerEventsAction,
+  listRunnerLeasesAction,
 } from "@/app/(dashboard)/admin/runners/actions";
 
 beforeEach(() => {
@@ -60,7 +60,7 @@ afterEach(() => vi.resetAllMocks());
 describe("runner server actions — per-scope gate (defence-in-depth)", () => {
   it("listRunnersAction gates on runner:read and fails closed 403 UZ-AUTH-022 without it", async () => {
     hasScopeMock.mockResolvedValueOnce(false);
-    const r = await listRunnersAction({ page: 1 });
+    const r = await listRunnersAction({});
     expect(r).toEqual({
       ok: false,
       error: "Operator scope required: runner:read",
@@ -123,9 +123,9 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     expect(deleteRunnerMock).toHaveBeenCalledWith("tok", "runner-1");
   });
 
-  it("listRunnerEventsAction gates on runner:read and fails closed 403 UZ-AUTH-022 without it", async () => {
+  it("listRunnerLeasesAction gates on runner:read and fails closed 403 UZ-AUTH-022 without it", async () => {
     hasScopeMock.mockResolvedValueOnce(false);
-    const r = await listRunnerEventsAction("runner-1", { page: 1 });
+    const r = await listRunnerLeasesAction("runner-1", {});
     expect(r).toEqual({
       ok: false,
       error: "Operator scope required: runner:read",
@@ -134,15 +134,15 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     });
     expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.RUNNER_READ);
     expect(withTokenMock).not.toHaveBeenCalled();
-    expect(listRunnerEventsMock).not.toHaveBeenCalled();
+    expect(listRunnerLeasesMock).not.toHaveBeenCalled();
   });
 
-  it("listRunnersAction forwards params through withToken to the client when scoped", async () => {
+  it("listRunnersAction forwards keyset params through withToken to the client when scoped", async () => {
     hasScopeMock.mockResolvedValueOnce(true);
-    listRunnersMock.mockResolvedValueOnce({ items: [], total: 0, page: 1, page_size: 25 });
-    const params = { page: 2, page_size: 25, sort: "host_id" as const };
+    listRunnersMock.mockResolvedValueOnce({ items: [], total: 0, next_cursor: null });
+    const params = { starting_after: "cursor-1", limit: 50 };
     const r = await listRunnersAction(params);
-    expect(r).toEqual({ ok: true, data: { items: [], total: 0, page: 1, page_size: 25 } });
+    expect(r).toEqual({ ok: true, data: { items: [], total: 0, next_cursor: null } });
     expect(listRunnersMock).toHaveBeenCalledWith("tok", params);
   });
 
@@ -163,12 +163,12 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     expect(updateRunnerAdminStateMock).toHaveBeenCalledWith("tok", "runner-1", "cordon");
   });
 
-  it("listRunnerEventsAction forwards activity-history paging through withToken when scoped", async () => {
+  it("listRunnerLeasesAction forwards keyset paging through withToken when scoped", async () => {
     hasScopeMock.mockResolvedValueOnce(true);
-    listRunnerEventsMock.mockResolvedValueOnce({ items: [], total: 0, page: 1, page_size: 25 });
-    const params = { page: 2, page_size: 25 };
-    const r = await listRunnerEventsAction("runner-1", params);
-    expect(r).toEqual({ ok: true, data: { items: [], total: 0, page: 1, page_size: 25 } });
-    expect(listRunnerEventsMock).toHaveBeenCalledWith("tok", "runner-1", params);
+    listRunnerLeasesMock.mockResolvedValueOnce({ items: [], total: 0, next_cursor: null });
+    const params = { starting_after: "lease-9", limit: 25 };
+    const r = await listRunnerLeasesAction("runner-1", params);
+    expect(r).toEqual({ ok: true, data: { items: [], total: 0, next_cursor: null } });
+    expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", "runner-1", params);
   });
 });
