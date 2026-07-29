@@ -110,6 +110,14 @@ fn expectServesFilter(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8,
     _ = try conn.exec("SET enable_seqscan = off", .{});
     defer _ = conn.exec("RESET enable_seqscan", .{}) catch |err|
         std.log.warn("reset enable_seqscan ignored: {s}", .{@errorName(err)});
+    // Bitmap scans answer a bare fleet_id filter through ANY fleet-prefixed
+    // index, so a sibling index (the keyset composite pages ride) makes the
+    // planner's bitmap pick arbitrary. Disabling them leaves only ordered
+    // index scans, and the one index supplying the ORDER BY wins — the
+    // fitness question this helper asks, now deterministic among siblings.
+    _ = try conn.exec("SET enable_bitmapscan = off", .{});
+    defer _ = conn.exec("RESET enable_bitmapscan", .{}) catch |err|
+        std.log.warn("reset enable_bitmapscan ignored: {s}", .{@errorName(err)});
     const plan = try planOf(alloc, conn, sql);
     defer alloc.free(plan);
     if (std.mem.indexOf(u8, plan, index_name) == null) {
