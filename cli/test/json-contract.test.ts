@@ -36,7 +36,7 @@ function makeStubHandlers(): Handlers {
       library: noop,
       install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
       kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
-      secret: { create: noop, show: noop, list: noop, delete: noop },
+      secret: { create: noop, update: noop, show: noop, list: noop, delete: noop },
     },
     memory: { list: noop, search: noop },
   };
@@ -76,7 +76,7 @@ describe("CLI tree — every documented route is reachable through commander", (
     ["billing", "show"],
     ["install"], ["list"], ["status"], ["stop"], ["resume"], ["kill"], ["delete"],
     ["logs"], ["events"], ["steer"],
-    ["secret", "create"], ["secret", "show"], ["secret", "list"], ["secret", "delete"],
+    ["secret", "create"], ["secret", "update"], ["secret", "show"], ["secret", "list"], ["secret", "delete"],
   ];
 
   for (const path of expectedCommands) {

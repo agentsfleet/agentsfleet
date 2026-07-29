@@ -27,6 +27,7 @@ import { eventsEffectFromFlags } from "../commands/fleet_events.ts";
 import { steerEffectFromArgs } from "../commands/fleet_steer.ts";
 import {
   secretAddEffectFromFlags,
+  secretUpdateEffectFromFlags,
   secretShowEffectFromName,
   secretListEffect,
   secretDeleteEffectFromName,
@@ -129,10 +130,26 @@ export const buildFleetHandlers = (
       (frame) =>
         secretAddEffectFromFlags({
           name: frame.parsed.positionals[0],
-          data: optString(frame.parsed.options, "data"),
+          data: optString(frame.parsed.options, FIELD_DATA),
           provider: optString(frame.parsed.options, FIELD_PROVIDER),
           // commander stores hyphenated flags under their camelCase key;
           // read both so a future parser tweak can't silently drop the value.
+          baseUrl:
+            optString(frame.parsed.options, FIELD_BASE_URL_CAMEL) ??
+            optString(frame.parsed.options, FIELD_BASE_URL_KEBAB),
+          apiKey:
+            optString(frame.parsed.options, FIELD_API_KEY_CAMEL) ??
+            optString(frame.parsed.options, FIELD_API_KEY_KEBAB),
+          model: optString(frame.parsed.options, FIELD_MODEL),
+        }),
+    ),
+    update: wrapEFn(
+      "fleet.secret.update",
+      (frame) =>
+        secretUpdateEffectFromFlags({
+          name: frame.parsed.positionals[0],
+          data: optString(frame.parsed.options, FIELD_DATA),
+          provider: optString(frame.parsed.options, FIELD_PROVIDER),
           baseUrl:
             optString(frame.parsed.options, FIELD_BASE_URL_CAMEL) ??
             optString(frame.parsed.options, FIELD_BASE_URL_KEBAB),
@@ -153,6 +170,7 @@ export const buildFleetHandlers = (
     ),
   },
 });
+const FIELD_DATA = "data" as const;
 const FIELD_CURSOR = "cursor" as const;
 const FIELD_FROM = "from" as const;
 const FIELD_LIBRARY = "library" as const;

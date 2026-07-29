@@ -24,7 +24,7 @@ import {
   SECRET_FIELD_MODEL,
 } from "../constants/custom-endpoint.ts";
 
-const STDIN_DATA_SENTINEL = "@-";
+const STDIN_SENTINEL = "@-";
 const MISSING_DATA_HINT =
   "missing --data flag. Pipe JSON on stdin with --data=@- or pass --data='{...}'. Stdin form keeps secrets out of shell history.";
 const TYPE_STRING = "string" as const;
@@ -45,7 +45,7 @@ type ParsedData =
   | { readonly ok: false; readonly message: string };
 
 const PROVIDER_ADD_USAGE =
-  `agentsfleet secret create <name> --provider ${OPENAI_COMPATIBLE_PROVIDER} ` +
+  `agentsfleet secret create|update <name> --provider ${OPENAI_COMPATIBLE_PROVIDER} ` +
   `--base-url https://host/v1 --model <m> [--api-key <key>]`;
 
 const parseDataObject = (raw: string): ParsedData => {
@@ -144,7 +144,7 @@ const resolveDataSource = (
         }),
       );
     }
-    if (data !== STDIN_DATA_SENTINEL) return data;
+    if (data !== STDIN_SENTINEL) return data;
     const raw = yield* readStdinJson;
     if (!raw || raw.trim().length === 0) {
       return yield* Effect.fail(

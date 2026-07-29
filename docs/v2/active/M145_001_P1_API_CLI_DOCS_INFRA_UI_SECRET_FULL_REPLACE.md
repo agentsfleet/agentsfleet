@@ -123,7 +123,7 @@ The field patch is removed from every site that names it: the method dispatch, t
 - **Dimension 2.1** — no source file names the field patch: handler, body struct, helper, message constant, and client callers are gone → verified by Rubric R3's repo-wide grep; the method switch answers 405 structurally, and no test memorializes the dead method (Discovery A5)
 - **Dimension 2.2** — the sensitive-request classification follows the method that now carries a secret body → Test `test_put_is_classified_sensitive`
 
-### §3 — The client sends the secret it wants stored
+### §3 — The client sends the secret it wants stored — **DONE**
 
 `agentsfleet secret update <name> --data='{…}'` mirrors `create` exactly, including `--data=@-` for stdin, and reuses `resolveSecretBody` rather than growing a second resolver. The verb is `update` rather than `rotate` because the operation replaces a body; rotation is what a user does with it.
 
