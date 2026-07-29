@@ -72,16 +72,18 @@ async function renderEditDialog(target: TenantModelEntry) {
   );
   const onOpenChange = vi.fn();
   const onSaved = vi.fn();
+  const onCommitted = vi.fn();
   render(
     React.createElement(EditModelEntryDialog, {
       workspaceId: "ws_1",
       target,
       onOpenChange,
       onSaved,
+      onCommitted,
     } as never),
   );
   const dialog = await screen.findByRole("dialog");
-  return { dialog, onOpenChange, onSaved, user: userEvent.setup() };
+  return { dialog, onOpenChange, onSaved, onCommitted, user: userEvent.setup() };
 }
 
 beforeEach(() => {
@@ -144,20 +146,26 @@ describe("Row actions — Edit", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
-  it("a failed replace stops the save before the model write — the table never drifts", async () => {
+  it("a failed replace strands only the model write, and the table is re-read to show it", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
+    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
     replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
-    const { dialog, onSaved, user } = await renderEditDialog(target);
+    const { dialog, onSaved, onCommitted, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
     await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    // The secret writes FIRST. Its failure reports one outcome and the model
-    // write never runs, so no partial state exists for the table to chase.
+    // The entry writes FIRST, so the half left behind is the recoverable one:
+    // one row, visible, changed back in two clicks. The credential — shared,
+    // unreadable, unrestorable — was never rotated.
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(updateModelEntryActionMock).not.toHaveBeenCalled();
+    expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: "claude-opus-4-8" });
+    // The stranded write is SHOWN, not narrated: the table re-reads so it
+    // displays the model the server actually holds.
+    await waitFor(() => expect(onCommitted).toHaveBeenCalled());
+    // Still a failure — the dialog stays open so the credential can be retried.
     expect(onSaved).not.toHaveBeenCalled();
   });
 
@@ -173,22 +181,42 @@ describe("Row actions — Edit", () => {
     expect(onSaved).not.toHaveBeenCalled();
   });
 
-  it("a model-write failure after a successful replace reports the model error only", async () => {
+  it("a failed model write never reaches the credential — nothing is rotated", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
     updateModelEntryActionMock.mockResolvedValue({ ok: false, error: "conflict", errorCode: "UZ-MODELS-003" });
-    const { dialog, onSaved, user } = await renderEditDialog(target);
+    const { dialog, onSaved, onCommitted, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
     await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    // The replaced credential stood (it is valid on its own); the table still
-    // shows the old model because the rename never committed server-side —
-    // consistent without any partial-success callback.
+    // This is what the ordering buys. The permanent write is last, so a failure
+    // ahead of it means the shared credential was never touched — nothing to
+    // strand, nothing to re-read, and every entry referencing the secret keeps
+    // authenticating.
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(replaceSecretActionMock).toHaveBeenCalledTimes(1);
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
+    expect(onCommitted).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("a validation failure runs before EITHER write", async () => {
+    // Hoisting matters once the entry writes first: a check firing between the
+    // two would strand the rename for a reason the caller could have been given
+    // before anything was written.
+    const target = entry({ id: "e1", model_id: "claude-sonnet-5", kind: "custom_endpoint", provider: undefined, base_url: "https://api.example.com", has_key: true });
+    const { dialog, onSaved, onCommitted, user } = await renderEditDialog(target);
+
+    const baseUrl = within(dialog).getByLabelText(/base url/i);
+    await user.clear(baseUrl);
+    await user.type(baseUrl, "http://insecure.example.com");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(updateModelEntryActionMock).not.toHaveBeenCalled();
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
+    expect(onCommitted).not.toHaveBeenCalled();
     expect(onSaved).not.toHaveBeenCalled();
   });
 
