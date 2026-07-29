@@ -77,6 +77,7 @@ export interface BillingHandlers {
 
 export interface FleetSecretHandlers {
   create: CommandHandlerFn;
+  update: CommandHandlerFn;
   show: CommandHandlerFn;
   list: CommandHandlerFn;
   delete: CommandHandlerFn;

@@ -8,14 +8,14 @@ import { SECRETS_LOAD, type SecretsLoad } from "@/app/(dashboard)/w/[workspaceId
 
 const createModelEntryActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
-const rotateSecretActionMock = vi.fn();
+const replaceSecretActionMock = vi.fn();
 const createSecretActionMock = vi.fn();
 let unsubscribeRefresh: (() => void) | null = null;
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: createModelEntryActionMock,
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
-  rotateSecretAction: rotateSecretActionMock,
+  replaceSecretAction: replaceSecretActionMock,
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
@@ -89,7 +89,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   catalogueState.models = [];
   createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
-  rotateSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
+  replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
   createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
   setProviderSelfManagedActionMock.mockResolvedValue({
     ok: true,
@@ -132,7 +132,7 @@ describe("AddModelEntryDialog — unified form shape", () => {
     await waitFor(() =>
       expect(createSecretActionMock).toHaveBeenCalledWith("ws_1", expect.objectContaining({ name: "my-second-anthropic" })),
     );
-    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
   });
 
   it("closes from Cancel without creating a secret or model entry", async () => {
@@ -159,21 +159,21 @@ describe("AddModelEntryDialog — unified form shape", () => {
   });
 });
 
-describe("AddModelEntryDialog — create-or-rotate by name", () => {
-  it("rotates the stored key in place when the name already exists with the same provider", async () => {
+describe("AddModelEntryDialog — create-or-replace by name", () => {
+  it("replaces the stored body whole when the name already exists with the same provider", async () => {
     const { onCreated, onSecretsChanged, user } = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = screen.getByRole("dialog");
 
     await fillKnownForm(user, dialog, { name: "anthropic-prod", key: ROTATED_API_KEY });
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", ROTATED_API_KEY));
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", { provider: "anthropic", api_key: ROTATED_API_KEY }));
     expect(createSecretActionMock).not.toHaveBeenCalled();
     await waitFor(() => expect(createModelEntryActionMock).toHaveBeenCalledWith(
       expect.objectContaining({ secret_ref: "anthropic-prod" }),
     ));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
-    // A rotate leaves the secret's list-visible metadata identical, so the
+    // A same-shape replace leaves the list-visible metadata identical, so the
     // secrets refetch is skipped — only the entries list refreshes.
     expect(onSecretsChanged).not.toHaveBeenCalled();
   });
@@ -187,7 +187,7 @@ describe("AddModelEntryDialog — create-or-rotate by name", () => {
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(within(dialog).getByText(/different provider/i)).toBeTruthy());
-    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
     expect(createSecretActionMock).not.toHaveBeenCalled();
     expect(createModelEntryActionMock).not.toHaveBeenCalled();
   });
@@ -206,16 +206,16 @@ describe("AddModelEntryDialog — create-or-rotate by name", () => {
     await fillKnownForm(user, dialog, { name: "vllm-gateway", key: "sk-ant-e2e-xxxx" });
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    // The secrets POST is an upsert — writing {provider, api_key} over an
-    // endpoint secret would destroy its base_url and break the entries
-    // referencing it. The guard must catch non-provider_key kinds too.
+    // Replacement is total — writing {provider, api_key} over an endpoint
+    // secret would drop its base_url and break the entries referencing it.
+    // The guard must catch non-provider_key kinds too.
     await waitFor(() => expect(within(dialog).getByText(/different provider/i)).toBeTruthy());
-    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
     expect(createSecretActionMock).not.toHaveBeenCalled();
     expect(createModelEntryActionMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces a register error after a successful rotate, and leaves the dialog open", async () => {
+  it("surfaces a register error after a successful replace, and leaves the dialog open", async () => {
     createModelEntryActionMock.mockResolvedValue({ ok: false, error: "duplicate", errorCode: "UZ-MODELS-003" });
     const { user } = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = screen.getByRole("dialog");
@@ -223,13 +223,13 @@ describe("AddModelEntryDialog — create-or-rotate by name", () => {
     await fillKnownForm(user, dialog, { name: "anthropic-prod", key: ROTATED_API_KEY });
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalled());
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalled());
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
-  it("surfaces a rotate error and never registers an entry", async () => {
-    rotateSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
+  it("surfaces a replace error and never registers an entry", async () => {
+    replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
     const { user } = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = screen.getByRole("dialog");
 
@@ -358,7 +358,7 @@ describe("AddModelEntryDialog — the stored-secret list is loaded before submit
     // injected it as a prop and passed.
     //
     // That is not a cosmetic gap. submit() resolves `existing` from this list
-    // to choose rotate-vs-create and to refuse a name owned by a different
+    // to choose replace-vs-create and to refuse a name owned by a different
     // provider, and the secrets POST upserts server-side — so an unloaded list
     // does not mean "no options to pick", it means a re-used name silently
     // overwrites the credential already holding it.

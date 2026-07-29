@@ -162,8 +162,8 @@ jobs:
       - name: Install agentsfleet dependencies
         run: bun install --frozen-lockfile
         working-directory: cli
-      - name: Test agentsfleet
-        run: bun run test:coverage
+      - name: Test agentsfleet (100% coverage floor enforced)
+        run: bun run test
         working-directory: cli
 
   test-unit-website:

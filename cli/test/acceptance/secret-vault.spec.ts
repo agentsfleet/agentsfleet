@@ -54,6 +54,7 @@ const SUB_CREATE = "create" as const;
 const SUB_SHOW = "show" as const;
 const SUB_LIST = "list" as const;
 const SUB_DELETE = "delete" as const;
+const SUB_UPDATE = "update" as const;
 const FLAG_DATA = "--data" as const;
 const FLAG_FORCE = "--force" as const;
 const FLAG_JSON = "--json" as const;
@@ -67,6 +68,7 @@ const KEY_REASON = "reason" as const;
 const STATUS_STORED = "stored" as const;
 const STATUS_SKIPPED = "skipped" as const;
 const STATUS_DELETED = "deleted" as const;
+const STATUS_UPDATED = "updated" as const;
 const REASON_ALREADY_EXISTS = "already_exists" as const;
 
 const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
@@ -100,10 +102,12 @@ const SECRET_PASSWORD_VALUE = `pw-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toS
 // The custom-endpoint secret's api_key is also a planted secret — every
 // leak assertion below proves it never reaches a captured stream (VLT).
 const CUSTOM_API_KEY_VALUE = `sk-custom-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toString(ENC_HEX)}`;
+const SECRET_REPLACED_VALUE = `sk-replaced-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toString(ENC_HEX)}`;
 const SECRET_VALUES: ReadonlyArray<string> = [
   SECRET_TOKEN_VALUE,
   SECRET_PASSWORD_VALUE,
   CUSTOM_API_KEY_VALUE,
+  SECRET_REPLACED_VALUE,
 ];
 
 const secretName = (label: string): string => `${ACCEPTANCE_RUN_PREFIX}-${label}`;
@@ -245,6 +249,20 @@ if (!isLive) {
         }
       });
 
+      it("update replaces the whole body in one call — the name never lapses", async () => {
+        const replacement = JSON.stringify({ api_token: SECRET_REPLACED_VALUE });
+        const result = await run([
+          CMD_SECRET, SUB_UPDATE, roundTripName, FLAG_DATA, replacement, FLAG_JSON,
+        ]);
+        assert.equal(result.code, 0, `update exited ${result.code}: ${result.stderr}`);
+        const parsed = parseJson<Record<string, unknown>>(result.stdout, SUB_UPDATE);
+        assert.equal(parsed[KEY_STATUS], STATUS_UPDATED, `unexpected update status: ${result.stdout}`);
+        assert.equal(parsed[KEY_NAME], roundTripName, `update echoed wrong name: ${result.stdout}`);
+        // Still resolvable under the same name immediately after the replace.
+        const show = await run([CMD_SECRET, SUB_SHOW, roundTripName, FLAG_JSON]);
+        assert.equal(show.code, 0, `post-update show exited ${show.code}: ${show.stderr}`);
+      });
+
       it("delete removes the secret", async () => {
         const result = await run([CMD_SECRET, SUB_DELETE, roundTripName, FLAG_JSON]);
         assert.equal(result.code, 0, `delete exited ${result.code}: ${result.stderr}`);
@@ -314,6 +332,21 @@ if (!isLive) {
         assert.notEqual(result.code, 0, `unknown show should fail; stdout=${result.stdout}`);
         const parsed = parseJson<Record<string, unknown>>(result.stdout, "show-unknown");
         assert.equal(parsed[KEY_EXISTS], false, `expected exists:false: ${result.stdout}`);
+      });
+
+      it("update of an unknown name fails without creating it", async () => {
+        const ghost = secretName(UNKNOWN_NAME_SUFFIX);
+        const result = await run([
+          CMD_SECRET, SUB_UPDATE, ghost, FLAG_DATA, secretPayload(), FLAG_JSON,
+        ]);
+        assert.notEqual(result.code, 0, `unknown update should fail; stdout=${result.stdout}`);
+        const list = await run([CMD_SECRET, SUB_LIST, FLAG_JSON]);
+        const parsed = parseJson<SecretListEnvelope>(list.stdout, SUB_LIST);
+        assert.ok(!listIncludesName(parsed, ghost), `failed update created ${ghost}: ${list.stdout}`);
+      });
+
+      it("update without --data is rejected client-side (no network)", async () => {
+        await runUnroutable([CMD_SECRET, SUB_UPDATE, secretName("upd-nodata"), FLAG_JSON]);
       });
 
       it("create without --data is rejected client-side (no network)", async () => {

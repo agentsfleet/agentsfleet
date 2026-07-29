@@ -44,14 +44,19 @@ test("linux without display under SSH returns ssh-no-display reason", async () =
 });
 
 test("linux with DISPLAY but no xdg-open returns missing-xdg-open", async () => {
-  // Force a fresh PATH that contains no xdg-open binary.
+  // Inject a resolver that reports xdg-open absent so the missing-opener
+  // fall-through is covered on every host. A real PATH override does NOT work:
+  // commandExists spawns `sh` with the inherited process env, not this env, so
+  // the probe sees the runner's real PATH — xdg-open is present on the Linux
+  // Continuous Integration (CI) runner image and absent on macOS, which left
+  // the fall-through uncovered on CI.
   const r = await resolveBrowserCommand(
-    { DISPLAY: ":0", PATH: "/nonexistent-path-uuid-no-binaries" },
+    { DISPLAY: ":0" },
     "linux",
+    async () => false,
   );
-  // Most CI runners have xdg-open installed; the test asserts the
-  // contract — argv is one of [xdg-open]/null; reason is set when null.
-  expect(r.argv === null || r.command === "xdg-open").toBe(true);
+  expect(r.argv).toBeNull();
+  expect(r.reason).toBe("missing-xdg-open");
 });
 
 test("WSL with DISPLAY but no wslview falls through to xdg-open path", async () => {
@@ -92,21 +97,17 @@ test("linux with xdg-open installed resolves to the xdg-open opener", async () =
 });
 
 test("WSL without DISPLAY and without wslview returns wsl-no-wslview", async () => {
+  // Inject a resolver that reports wslview absent so the wsl-no-wslview
+  // fall-through is covered on every host. As above, a PATH override cannot
+  // suppress a global wslview shim on the runner: commandExists probes the real
+  // process env, so only injection makes this path deterministic.
   const r = await resolveBrowserCommand(
-    {
-      WSL_DISTRO_NAME: "wsl-Ubuntu",
-      // No DISPLAY, no WAYLAND_DISPLAY. PATH made empty so commandExists
-      // returns false for wslview.
-      PATH: "/nonexistent-path-uuid-no-binaries",
-    },
+    { WSL_DISTRO_NAME: "wsl-Ubuntu" },
     "linux",
+    async () => false,
   );
-  // CI runners can have a global wslview shim — accept either the
-  // documented reason OR a successful wslview resolution.
-  expect(r.argv === null || r.command === "wslview").toBe(true);
-  if (r.argv === null) {
-    expect(r.reason).toBe("wsl-no-wslview");
-  }
+  expect(r.argv).toBeNull();
+  expect(r.reason).toBe("wsl-no-wslview");
 });
 
 test("BROWSER=off short-circuits to browser-disabled regardless of platform", async () => {

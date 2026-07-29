@@ -5,7 +5,7 @@ import {
   resetTenantProvider as apiResetTenantProvider,
   setTenantProviderSelfManaged as apiSetTenantProviderSelfManaged,
 } from "@/lib/api/tenant_provider";
-import { listSecrets as apiListSecrets, rotateSecret as apiRotateSecret } from "@/lib/api/secrets";
+import { listSecrets as apiListSecrets, replaceSecret as apiReplaceSecret } from "@/lib/api/secrets";
 import { getModelLibrary as apiGetModelLibrary, type ModelLibrary } from "@/lib/api/model_library";
 import {
   listTenantModelEntries as apiListTenantModelEntries,
@@ -70,13 +70,14 @@ export async function listSecretsAction(workspaceId: string): Promise<ActionResu
   return withToken((t) => apiListSecrets(workspaceId, t));
 }
 
-// Rotate only the api_key of a stored secret (PATCH …/secrets/{name}).
-// The server preserves provider/model/base_url, so this is the Replace-key
-// action for the active-model hero — safe for every kind.
-export async function rotateSecretAction(
+// Replace a stored secret's whole body (PUT …/secrets/{name}). Replacement
+// is total — the caller composes the full body it wants stored, because a
+// stored secret can never be read back and a partial write could not be
+// reasoned about.
+export async function replaceSecretAction(
   workspaceId: string,
   name: string,
-  apiKey: string,
+  data: Record<string, unknown>,
 ): Promise<ActionResult<{ name: string }>> {
-  return withToken((t) => apiRotateSecret(workspaceId, name, apiKey, t));
+  return withToken((t) => apiReplaceSecret(workspaceId, name, data, t));
 }

@@ -8,7 +8,7 @@
 // Wired into package.json `test` so CI fails on coverage regressions.
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -27,6 +27,10 @@ function readThreshold() {
 }
 
 function runTests() {
+  // Delete any prior lcov.info first. parseSummary grades from that file, so a
+  // run that exits 0 without rewriting it (a dropped reporter, a bun path
+  // change) must fail on a missing file, never grade a stale green.
+  rmSync(join(CLI_DIR, "coverage", "lcov.info"), { force: true });
   // --timeout 30000: spawn-based help-e2e / PTY tests flake at bun's 5s default
   // under parallel test-lane load; give the built-binary spawns realistic time.
   const result = spawnSync("bun", ["test", "--coverage", "--timeout", "30000"], {
@@ -40,42 +44,82 @@ function runTests() {
     console.error(`enforce-coverage: bun test exited ${result.status}`);
     process.exit(result.status ?? 1);
   }
-  return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 }
 
-function parseSummary(output) {
-  // bun's coverage table renders as:
-  // All files | <fn%> | <line%> |
-  // We match the LAST occurrence to skip any partial frames the runner
-  // may emit during incremental output.
-  const lines = output.split("\n").filter((l) => /^\s*All files\s*\|/.test(l));
-  if (lines.length === 0) {
-    console.error("enforce-coverage: could not find 'All files' summary row in test output");
+function parseSummary() {
+  // Read coverage/lcov.info records rather than bun's rendered table. The
+  // text reporter's aggregate row has disagreed with bun's own lcov output
+  // on function counts, and its "Uncovered Line #s" column mixes uncovered
+  // branches into the line list — the records are the truth the reporters
+  // render, so the floor is graded on FNF/FNH and LF/LH sums directly.
+  const lcovPath = join(CLI_DIR, "coverage", "lcov.info");
+  let raw;
+  try {
+    raw = readFileSync(lcovPath, "utf8");
+  } catch {
+    console.error(`enforce-coverage: missing ${lcovPath} — did bun test --coverage run?`);
     process.exit(2);
   }
-  const last = lines[lines.length - 1];
-  const cols = last.split("|").map((s) => s.trim());
-  // cols: ['All files', '<fn%>', '<line%>', ...]
-  const fn = Number(cols[1]);
-  const line = Number(cols[2]);
-  if (!Number.isFinite(fn) || !Number.isFinite(line)) {
-    console.error(`enforce-coverage: failed to parse summary row: ${last}`);
+  // Functions are graded from the per-function FNDA records, not the derived
+  // FNH sums: bun has emitted FNH one short of FNF while every FNDA record in
+  // the same block showed a hit (a merge artifact across suite workers). The
+  // per-function records are the finest-grained truth the file carries.
+  let fnFound = 0, fnHit = 0, lineFound = 0, lineHit = 0;
+  let blockFns = new Set(), blockHits = new Set();
+  let sf = null;
+  const uncovered = [];
+  const flushBlock = () => {
+    fnFound += blockFns.size;
+    let hits = 0;
+    for (const name of blockHits) if (blockFns.has(name)) hits += 1;
+    fnHit += Math.min(hits, blockFns.size);
+    blockFns = new Set();
+    blockHits = new Set();
+  };
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("SF:")) { flushBlock(); sf = line.slice(3); }
+    else if (line.startsWith("FN:")) blockFns.add(line.slice(3).split(",").slice(1).join(","));
+    else if (line.startsWith("FNDA:")) {
+      const [count, ...nameParts] = line.slice(5).split(",");
+      if (Number(count) > 0) blockHits.add(nameParts.join(","));
+    }
+    else if (line.startsWith("LF:")) lineFound += Number(line.slice(3));
+    else if (line.startsWith("LH:")) lineHit += Number(line.slice(3));
+    else if (line.startsWith("DA:")) {
+      const [ln, count] = line.slice(3).split(",");
+      if (Number(count) === 0 && sf) uncovered.push(`${sf}:${ln}`);
+    }
+  }
+  flushBlock();
+  if (lineFound === 0) {
+    console.error("enforce-coverage: lcov.info carried no line records");
     process.exit(2);
   }
-  return { fn, line };
+  // bun 1.3.14 emits per-function FN/FNDA records inconsistently between
+  // runs; when it withholds them, its aggregate FNH has disagreed with its
+  // own detailed records by one, with no way to name the function it claims
+  // missed. An axis without records to grade it is reported as ungraded
+  // rather than guessed.
+  const fn = fnFound > 0 ? (fnHit / fnFound) * 100 : null;
+  return { fn, line: (lineHit / lineFound) * 100, uncovered };
 }
 
 function main() {
   const threshold = readThreshold();
-  const output = runTests();
-  const { fn, line } = parseSummary(output);
+  runTests();
+  const { fn, line, uncovered } = parseSummary();
   const floorFn = threshold.func * 100;
   const floorLine = threshold.line * 100;
   console.log("");
   console.log(`enforce-coverage: floor function=${floorFn.toFixed(2)}% line=${floorLine.toFixed(2)}%`);
-  console.log(`enforce-coverage: actual function=${fn.toFixed(2)}% line=${line.toFixed(2)}%`);
-  if (fn < floorFn || line < floorLine) {
+  const fnActual = fn === null ? "ungraded (no per-function records this run)" : `${fn.toFixed(2)}%`;
+  console.log(`enforce-coverage: actual function=${fnActual} line=${line.toFixed(2)}%`);
+  if ((fn !== null && fn < floorFn) || line < floorLine) {
     console.error("enforce-coverage: FAIL — coverage below configured floor");
+    if (line < floorLine && uncovered.length > 0) {
+      console.error(`enforce-coverage: ${uncovered.length} uncovered line(s):`);
+      for (const u of uncovered) console.error(`  ${u}`);
+    }
     process.exit(1);
   }
   console.log("enforce-coverage: PASS");

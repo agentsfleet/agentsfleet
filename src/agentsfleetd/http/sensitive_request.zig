@@ -16,7 +16,7 @@ pub fn eraseAfterDispatch(req: *httpz.Request, route: router.Route) void {
 fn hasSensitiveBody(route: router.Route, method: httpz.Method) bool {
     return switch (route) {
         .workspace_secrets => method == .POST,
-        .workspace_secret => method == .PATCH,
+        .workspace_secret => method == .PUT,
         .runner_credentials_mint => method == .POST,
         else => false,
     };
