@@ -360,8 +360,9 @@ describe("app shell frame", () => {
     expect(layout).not.toContain("<TooltipProvider");
     expect(controls.startsWith('"use client"')).toBe(true);
     expect(controls).toContain('import("./MobileNavigationDialog")');
-    expect(sidebar).toContain("GettingStartedWidgetDynamic");
-    expect(sidebar).not.toContain('from "./GettingStartedWidget"');
+    expect(sidebar).toContain("GettingStartedWidget");
+    expect(sidebar).toContain('from "./GettingStartedWidget"');
+    expect(sidebar).not.toContain("GettingStartedWidgetDynamic");
     expect(
       existsSync(resolve(appRoot, "components/layout/Shell.tsx")),
     ).toBe(false);

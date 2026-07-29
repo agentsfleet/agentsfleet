@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { PlusIcon } from "lucide-react";
-import { Spinner, TooltipButton } from "@agentsfleet/design-system";
+import { TooltipButton } from "@agentsfleet/design-system";
 import {
   createIntentModuleLoader,
   INTENT_MODULE_STATUS,
   maySpeculateOnHover,
   useIntentModule,
 } from "./intent-module-loader";
+import { IntentDialogStatus } from "./IntentDialogStatus";
 
 const CREATE_FLEET_LIBRARY_TOOLTIP =
   "Create a fleet library entry from GitHub.";
@@ -59,27 +60,34 @@ export default function AddLibraryDialogDynamic({
     );
   }
 
+  if (activated) {
+    return (
+      <IntentDialogStatus
+        open
+        title={triggerLabel}
+        description="Loading the library entry form…"
+        errorMessage="The library entry form could not be loaded."
+        status={dialog.status}
+        onOpenChange={setActivated}
+        onRetry={() => void addLibraryDialogLoader.retry()}
+      />
+    );
+  }
+
   const failed = dialog.status === INTENT_MODULE_STATUS.error;
-  const loading =
-    activated && dialog.status === INTENT_MODULE_STATUS.loading;
   return (
     <TooltipButton
       type="button"
       size="sm"
       tooltip={CREATE_FLEET_LIBRARY_TOOLTIP}
       aria-label={failed ? `Retry ${triggerLabel}` : undefined}
-      aria-busy={loading}
       onFocus={preloadAddLibraryDialog}
       onPointerEnter={() => {
         if (maySpeculateOnHover()) preloadAddLibraryDialog();
       }}
       onClick={openDialog}
     >
-      {loading ? (
-        <Spinner size="sm" srLabel={`Loading ${triggerLabel}`} />
-      ) : (
-        <PlusIcon size={14} />
-      )}
+      <PlusIcon size={14} />
       {failed ? `Retry ${triggerLabel}` : triggerLabel}
     </TooltipButton>
   );

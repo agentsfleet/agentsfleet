@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { workspaceIdFromPath } from "@/lib/workspace-routes";
@@ -33,6 +33,11 @@ export default function WorkspaceSwitcher({ workspaces }: Props) {
     routedId && !active
       ? "Current workspace"
       : (active?.name ?? (active ? "Unnamed workspace" : "No workspace"));
+
+  useEffect(() => {
+    setOpen(false);
+    setActivated(false);
+  }, [pathname]);
 
   function preloadWorkspaceMenu() {
     void workspaceSwitcherLoader.preload();

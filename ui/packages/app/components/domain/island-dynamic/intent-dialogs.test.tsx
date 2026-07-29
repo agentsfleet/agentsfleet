@@ -21,6 +21,10 @@ const state = vi.hoisted(() => ({
   maySpeculate: true,
   renderedProps: null as Record<string, unknown> | null,
 }));
+const CREATE_FLEET_LIBRARY_LABEL = "Create fleet library";
+const RETRY_CREATE_FLEET_LIBRARY_LABEL = `Retry ${CREATE_FLEET_LIBRARY_LABEL}`;
+const CLOSE_LABEL = "Close";
+const RETRY_LABEL = "Retry";
 
 vi.mock("./intent-module-loader", () => ({
   INTENT_MODULE_STATUS: {
@@ -162,6 +166,38 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("fleet-library intent dialogs", () => {
+  it("opens loading status immediately when defaultOpen activates an unloaded dialog", async () => {
+    const { default: AddLibraryDialog } = await import(
+      "./AddLibraryDialogDynamic"
+    );
+    const loader = latestLoader();
+    const view = render(
+      <AddLibraryDialog workspaceId="ws_1" defaultOpen />,
+    );
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: CREATE_FLEET_LIBRARY_LABEL }),
+    ).toBeNull();
+    expect(loader.preload).toHaveBeenCalledOnce();
+
+    showError(loader);
+    view.rerender(<AddLibraryDialog workspaceId="ws_1" defaultOpen />);
+    expect(screen.getByRole("alert")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: CLOSE_LABEL }));
+    expect(
+      screen.getByRole("button", {
+        name: RETRY_CREATE_FLEET_LIBRARY_LABEL,
+      }),
+    ).toBeTruthy();
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: RETRY_CREATE_FLEET_LIBRARY_LABEL,
+      }),
+    );
+    expect(loader.retry).toHaveBeenCalledOnce();
+  });
+
   it("keeps the add form closed, preloads on open, retries, and forwards props", async () => {
     const { default: AddFleetDialog, preloadAddFleetDialog } = await import(
       "./AddFleetDialogDynamic"
@@ -197,9 +233,9 @@ describe("fleet-library intent dialogs", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "Could not load the fleet library form.",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: CLOSE_LABEL }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
-    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await userEvent.click(screen.getByRole("button", { name: RETRY_LABEL }));
     expect(loader.retry).toHaveBeenCalledOnce();
 
     showLoaded(loader);
@@ -228,7 +264,7 @@ describe("fleet-library intent dialogs", () => {
     expect(await loader.importModule()).toHaveProperty("default");
     const view = render(<AddLibraryDialog workspaceId="ws_1" />);
     const trigger = screen.getByRole("button", {
-      name: "Create fleet library",
+      name: CREATE_FLEET_LIBRARY_LABEL,
     });
 
     preloadAddLibraryDialog();
@@ -244,14 +280,18 @@ describe("fleet-library intent dialogs", () => {
     await userEvent.click(trigger);
     loader.snapshot = { error: null, module: null, status: "loading" };
     view.rerender(<AddLibraryDialog workspaceId="ws_1" />);
-    expect(trigger.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: CREATE_FLEET_LIBRARY_LABEL }),
+    ).toBeNull();
 
     showError(loader);
     view.rerender(
       <AddLibraryDialog workspaceId="ws_1" triggerLabel="Add another" />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Retry Add another" }),
+      screen.getByRole("button", { name: RETRY_LABEL }),
     );
     expect(loader.retry).toHaveBeenCalledOnce();
 

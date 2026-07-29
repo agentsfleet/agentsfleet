@@ -63,6 +63,10 @@ export function ShellControls({
     });
   }, [activeWorkspaceId, workspaces.length]);
 
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   useEffect(
     () => () => {
       shellSidebarState.reset();

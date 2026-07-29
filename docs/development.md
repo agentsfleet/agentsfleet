@@ -158,12 +158,12 @@ authenticated route. The shared entry must stay at or below 250 Kibibytes
 (KiB). Each dashboard route may add at most 100 KiB. Command-line
 authentication may total at most 240 KiB.
 
-The size command fails when a route exceeds its limit. It also fails when the
-build is stale, a manifest entry is missing, or an expected route is absent.
-The checked report lives at the repository root under
-`test-results/app-route-bundles.json`. The build also records a source
-fingerprint inside `.next`; `size` rejects that output after bundle-relevant
-source changes and asks for a fresh build.
+The size command uses `size-limit` and its file plugin. A dynamic configuration
+discovers authenticated routes and emitted chunks from `.next`; only the four
+product budgets are maintained. The command fails when a discovered file set
+exceeds its limit or a required build manifest is absent or malformed.
+Continuous Integration (CI) runs the build and size commands in one job so the
+gate measures the output produced immediately before it.
 
 ## Synced tooling (not repo-owned)
 

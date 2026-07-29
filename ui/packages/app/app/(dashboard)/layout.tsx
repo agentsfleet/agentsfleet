@@ -20,15 +20,15 @@ export default async function DashboardLayout({
           items: [],
           total: 0,
         })),
-        // Operator scopes gate the platform nav per-surface (Shell). Empty set
+        // Operator scopes gate the platform navigation. Empty set
         // for an anonymous/no-token session.
         readSessionScopes(),
       ])
     : [{ items: [], total: 0 }, new Set<string>()];
 
-  // Shell derives the active workspace from the route (`/w/<id>/…`) itself —
-  // no `activeWorkspaceId` prop, no cookie. It wraps both the workspace-scoped
-  // subtree and the tenant/platform pages (settings/api-keys, billing, admin).
+  // Shell controls derive the active workspace from `/w/<id>/…`; no
+  // `activeWorkspaceId` prop or cookie owns navigation state. ShellFrame wraps
+  // both workspace-scoped and tenant/platform pages.
   return (
     <ShellFrame workspaces={listResult.items} operatorScopes={[...scopes]}>
       {children}

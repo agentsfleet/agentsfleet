@@ -29,7 +29,7 @@ import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { SCOPE } from "@/lib/auth/scopes";
 import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
-import GettingStartedWidgetDynamic from "@/components/domain/island-dynamic/GettingStartedWidgetDynamic";
+import GettingStartedWidget from "./GettingStartedWidget";
 import { useShellSidebarCollapsed } from "./shell-sidebar-state";
 import type { OnboardingPollingMode } from "./use-onboarding-progress";
 
@@ -168,7 +168,7 @@ export function SidebarNavigation({
       <NavSection label="Organization" items={ORGANIZATION_NAV} {...shared} />
       <div className="mt-auto">
         {workspaceId && !collapsed ? (
-          <GettingStartedWidgetDynamic
+          <GettingStartedWidget
             workspaceId={workspaceId}
             pollingMode={gettingStartedPolling}
           />
