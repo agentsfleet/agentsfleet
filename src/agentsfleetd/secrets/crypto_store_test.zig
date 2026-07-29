@@ -4,6 +4,7 @@ const base = @import("../db/test_fixtures.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const cp = @import("crypto_primitives.zig");
 const store = @import("crypto_store.zig");
+const write_path = @import("crypto_store_write.zig");
 const metadata = @import("metadata.zig");
 
 /// These tests exercise the ENVELOPE, not the projection: their plaintexts are
@@ -28,14 +29,16 @@ const WRONG_VERSION = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000008"
 const MALFORMED = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000009", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000009" };
 const PAYLOAD_FAILURE = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000010", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000010" };
 const ALLOC_FAIL = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000011", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000011" };
-const VERSION_BOUND: i32 = 2;
+/// The version every write arm binds. Taken from the writer's own constant
+/// rather than restated as a literal: with the version enforced in the
+/// application (RULE STS) and not by a schema CHECK, a test that spelled `2`
+/// itself would keep passing if a writer ever stopped binding it.
+const VERSION_BOUND: i32 = write_path.KEK_VERSION_AAD_BOUND;
 const DELETE_ROWS = "DELETE FROM vault.secrets WHERE workspace_id = $1";
 const SELECT_VERSION =
     "SELECT kek_version FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2";
 const SELECT_CIPHERTEXT =
     "SELECT encrypted_dek, ciphertext FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2";
-const SET_VERSION =
-    "UPDATE vault.secrets SET kek_version = $3 WHERE workspace_id = $1 AND key_name = $2";
 const BREAK_NONCE =
     "UPDATE vault.secrets SET dek_nonce = $3 WHERE workspace_id = $1 AND key_name = $2";
 const BREAK_PAYLOAD_TAG =
@@ -238,11 +241,20 @@ test "integration: crypto store returns not found for a missing key" {
     );
 }
 
-test "integration: the kek_version CHECK forbids any non-current version" {
-    // schema/039 makes v1 (and every non-current version) structurally
-    // impossible: a write that tries to set another version is refused by the
-    // database, not merely refused on read. This is the single guarantee the
-    // decrypt path relies on to skip a version branch entirely.
+test "integration: every write arm binds the current envelope version" {
+    // The current version is an application constant, not a schema CHECK (RULE
+    // STS), so "every stored row is sealed at the current version" is a
+    // guarantee the WRITERS hold. Both arms are exercised, because either one
+    // drifting alone would seal a row the reader cannot open.
+    //
+    // Note what the assertion is NOT: the decrypt path builds its AAD from
+    // `KEK_VERSION_AAD_BOUND` and never reads the stored column, so relabelling
+    // a row changes nothing on read — the label is descriptive, not load-bearing.
+    // That is exactly why a schema CHECK pinning it bought nothing: it guarded a
+    // value no reader consults. What the AEAD tag does guard is the seal itself —
+    // an envelope opened under AAD it was not sealed under fails authentication,
+    // which is what a genuine v1 ciphertext would hit, and what the relocation
+    // tests above already prove.
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
     defer {
@@ -252,18 +264,18 @@ test "integration: the kek_version CHECK forbids any non-current version" {
     try seedWorkspace(handle.conn, WRONG_VERSION);
     defer cleanup(handle.conn, WRONG_VERSION);
 
-    try store.store(alloc, handle.conn, WRONG_VERSION.workspace_id, "pinned", "secret", OPAQUE);
-
-    // Relabeling to v1 violates ck_vault_secrets_kek_version_current, so the
-    // write is rejected and the row stays version 2.
-    const relabel_rejected = if (handle.conn.exec(SET_VERSION, .{ WRONG_VERSION.workspace_id, "pinned", @as(i32, 1) })) |_| false else |_| true;
-    try std.testing.expect(relabel_rejected);
+    // The create arm (INSERT).
+    try store.create(alloc, handle.conn, WRONG_VERSION.workspace_id, "pinned", "secret", OPAQUE);
     try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, WRONG_VERSION.workspace_id, "pinned"));
 
-    // And the secret still decrypts normally — the failed write changed nothing.
+    // The replace arm (UPDATE) — a rewritten body is re-sealed at the same
+    // version, not left carrying whatever the row held before.
+    try store.replace(alloc, handle.conn, WRONG_VERSION.workspace_id, "pinned", "replaced", OPAQUE);
+    try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, WRONG_VERSION.workspace_id, "pinned"));
+
     const loaded = try store.load(alloc, handle.conn, WRONG_VERSION.workspace_id, "pinned");
     defer alloc.free(loaded);
-    try std.testing.expectEqualStrings("secret", loaded);
+    try std.testing.expectEqualStrings("replaced", loaded);
 }
 
 test "integration: crypto store rejects a malformed envelope" {
@@ -381,10 +393,15 @@ test "integration: crypto store store unwinds leak-free at every allocation-fail
     try std.testing.checkAllAllocationFailures(alloc, storeForFailCheck, .{ handle.conn, ALLOC_FAIL.workspace_id, @as([]const u8, "afl-store"), @as([]const u8, "another-secret-value") });
 }
 
-test "integration: kek_version carries no schema default" {
-    // Slot 039 dropped DEFAULT 1: every writer binds the version explicitly,
-    // and the only row a default could ever mint is an unbound one nothing
-    // serves. An INSERT that forgets the column must fail loudly instead.
+test "integration: kek_version carries no schema default and is NOT NULL" {
+    // Slot 039 dropped DEFAULT 1: every writer binds the version explicitly, and
+    // the only row a default could ever mint is an unbound one nothing serves.
+    //
+    // Both halves are asserted because it takes both to make the mistake loud.
+    // No default alone would leave a forgotten column inserting NULL; NOT NULL
+    // alone would leave it inserting 1. Together, an INSERT that omits
+    // `kek_version` raises instead of landing an undecryptable row — which is
+    // the whole job slot 039 does, now that no CHECK restates it.
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
     defer {
@@ -392,11 +409,13 @@ test "integration: kek_version carries no schema default" {
         handle.pool.deinit();
     }
     var q = PgQuery.from(try handle.conn.query(
-        \\SELECT column_default IS NULL FROM information_schema.columns
+        \\SELECT column_default IS NULL, is_nullable = 'NO'
+        \\  FROM information_schema.columns
         \\ WHERE table_schema = 'vault' AND table_name = 'secrets'
         \\   AND column_name = 'kek_version'
     , .{}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.ColumnMissing;
     try std.testing.expect(try row.get(bool, 0));
+    try std.testing.expect(try row.get(bool, 1));
 }
