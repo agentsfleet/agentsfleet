@@ -1,14 +1,25 @@
-// Example/default ACLs for unrestricted connections.
-// This is the canonical tailnet policy. Applied at login.tailscale.com/admin/acls.
+// Canonical tailnet policy for agentsfleet. Applied at login.tailscale.com/admin/acls.
+//
+// Two tags, deliberately distinct:
+//   tag:ci     — ephemeral GitHub Actions nodes. Minted per run by the OAuth
+//                client in .github/workflows/{deploy-dev,release}.yml.
+//   tag:worker — long-lived bare-metal runner hosts (zombie-dev-worker-ant and
+//                zombie-prod-worker-ant), advertised by
+//                playbooks/founding/06_runner_bootstrap_dev/001_playbook.md and
+//                playbooks/founding/07_runner_bootstrap_prod/001_playbook.md.
+//
+// The workers run `tailscale up --ssh`, so tailscaled owns port 22 on their
+// tailnet address. That makes the "ssh" block below — NOT ~/.ssh/authorized_keys —
+// what decides whether CI gets in. The deploy key in the vault is inert on the
+// tailnet path; it only still authenticates against the host's public IP.
+//
+// A tagged node carries no user identity, so it never matches autogroup:member.
+// Granting a laptop access therefore proves nothing about whether CI can
+// connect. The sshTests block near the bottom is what proves that.
 {
 	// Declare static groups of users. Use autogroups for all users or users with a specific role.
 	// "groups": {
 	//   "group:example": ["alice@example.com", "bob@example.com"],
-	// },
-
-	// Define the tags which can be applied to devices and by which users.
-	// "tagOwners": {
-	//   "tag:example": ["autogroup:admin"],
 	// },
 
 	// Define grants that govern access for users, groups, autogroups, tags,
@@ -23,7 +34,7 @@
 		},
 		{
 			"src": ["autogroup:member"],
-			"dst": ["tag:ci"],
+			"dst": ["tag:ci", "tag:worker"],
 			"ip":  ["*"],
 		},
 
@@ -66,14 +77,56 @@
 			"dst":    ["autogroup:self"],
 			"users":  ["autogroup:nonroot", "root"],
 		},
-		// Allow tailnet members to SSH into CI workers.
+		// Tailnet members (laptops) → the bare-metal workers.
+		//
+		// "tag:ci" in this dst is TRANSITIONAL. It keeps human access alive during
+		// the window between this policy landing and both worker nodes being
+		// retagged to tag:worker. Drop it once `tailscale status --json` shows
+		// zombie-{dev,prod}-worker-ant carrying tag:worker.
 		{
 			"action": "accept",
 			"src":    ["autogroup:member"],
-			"dst":    ["tag:ci"],
+			"dst":    ["tag:worker", "tag:ci"],
 			"users":  ["autogroup:nonroot", "root"],
+		},
+		// Ephemeral GitHub Actions node → the bare-metal workers.
+		//
+		// Must be "accept", never "check": a tagged source has no user behind it,
+		// so there is nobody to re-authenticate in a browser and check mode could
+		// never be satisfied.
+		//
+		// Deliberately omits "root". Every deploy step escalates through NOPASSWD
+		// sudo as the deploy user, so CI never needs a root login.
+		{
+			"action": "accept",
+			"src":    ["tag:ci"],
+			"dst":    ["tag:worker"],
+			"users":  ["autogroup:nonroot"],
 		},
 	],
 
-	"tagOwners": {"tag:ci": []},
+	// Assertions evaluated server-side when this policy is saved. An edit that
+	// breaks CI's path to the workers is rejected at save time instead of being
+	// discovered as a red deploy hours later.
+	//
+	// Guards the Jul 28, 2026 outage: RunSSH=true was set on the workers at
+	// 01:03:20Z, handing tailnet port 22 to tailscaled. The ssh block had no rule
+	// matching a tagged source, so every CI deploy died with
+	// "tailnet policy does not permit you to SSH to this node".
+	"sshTests": [
+		{
+			"src":    "tag:ci",
+			"dst":    ["zombie-dev-worker-ant", "zombie-prod-worker-ant"],
+			"accept": ["debian"],
+			"deny":   ["root"],
+		},
+	],
+
+	// autogroup:admin lets a tailnet admin set these tags on a machine from the
+	// admin console (Machines → node → Edit ACL tags). With an empty owner list
+	// only an auth key already carrying the tag can apply it.
+	"tagOwners": {
+		"tag:ci":     ["autogroup:admin"],
+		"tag:worker": ["autogroup:admin"],
+	},
 }

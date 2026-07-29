@@ -7,9 +7,9 @@
 - Vault items in `ZMB_CD_PROD`
 - Tailscale OAuth client secret at `op://ZMB_CD_PROD/tailscale/oauth-secret`
 - 1Password service account token as `OP_SERVICE_ACCOUNT_TOKEN`
-- Tailnet policy grants SSH to `tag:ci` — see `02_preflight/tailnet-policy.hujson` (login.tailscale.com/admin/acls)
+- Tailnet policy carries `tag:worker` in `tagOwners` and an `ssh` grant from `tag:ci` to `tag:worker` — see `02_preflight/tailnet-policy.hujson` (login.tailscale.com/admin/acls)
 
-Without the `ssh` grant for `tag:ci`, the node advertises host keys but every connect fails with `tailnet policy does not permit you to SSH to this node`.
+Two distinct tags: `tag:worker` is the worker host, `tag:ci` is the ephemeral GitHub Actions node that deploys to it. Without the `tag:ci` → `tag:worker` grant the node advertises host keys but every CI connect fails with `tailnet policy does not permit you to SSH to this node`. A grant to `autogroup:member` does not cover CI — a tagged node carries no user identity, so it never matches a member rule.
 
 Bootstrap PROD bare-metal worker nodes so CI can deploy the host-resident `agentsfleet-runner` daemon. After step 0 (human provisions servers), remaining steps run without human intervention.
 
@@ -143,12 +143,14 @@ TS_OAUTH_SECRET=$(op read "op://$VAULT_PROD/tailscale/oauth-secret")
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${HOST}" << REMOTE
 set -euo pipefail
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --auth-key "${TS_OAUTH_SECRET}?ephemeral=false&preauthorized=true" --advertise-tags=tag:ci --hostname "${WORKER_NAME}" --ssh
+sudo tailscale up --auth-key "${TS_OAUTH_SECRET}?ephemeral=false&preauthorized=true" --advertise-tags=tag:worker --hostname "${WORKER_NAME}" --ssh
 tailscale status
 REMOTE
 ```
 
-> **`--ssh` is required.** Without it the node never advertises SSH host keys, and `tailscale ssh root@<node>` fails with `Host key verification failed`. This also depends on the tailnet policy carrying an SSH grant for the tag — see the prerequisite below.
+> **`--ssh` is required.** Without it the node never advertises SSH host keys, and `tailscale ssh root@<node>` fails with `Host key verification failed`.
+>
+> **`--ssh` also hands tailnet port 22 to `tailscaled`.** From that moment the policy `ssh` block — not `~/.ssh/authorized_keys` — decides who gets in, and the vault deploy key goes inert on the tailnet address. Turning it on without the `tag:ci` → `tag:worker` grant already in place takes CI down instantly; that is exactly what happened on Jul 28, 2026. The host's own `sshd` keeps serving the public IP, which stays the break-glass path.
 
 ### Acceptance
 
