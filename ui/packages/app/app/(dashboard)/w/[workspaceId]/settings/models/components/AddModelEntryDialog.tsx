@@ -46,7 +46,7 @@ const NAME_PROVIDER_MISMATCH = "That name is already used by a different provide
 const CREATE_MODEL_TOOLTIP = "Create a model entry for this workspace.";
 const SECRETS_LOADING = "Checking your stored secrets…";
 const SECRETS_LOAD_FAILED =
-  "Couldn't load your stored secrets. Saving is disabled so an existing secret can't be silently overwritten.";
+  "Couldn't load your stored secrets. Saving is disabled until the list loads, so a held name is never routed to the wrong write.";
 
 export default function AddModelEntryDialog({
   workspaceId,
@@ -61,8 +61,9 @@ export default function AddModelEntryDialog({
   /**
    * Whether `secrets` above is trustworthy yet. Anything but `ready` disables
    * Save: submit() resolves rotate-vs-create and the name-ownership guard
-   * from that list, and the secrets POST upserts — an unloaded list would
-   * silently overwrite whatever already holds the typed name.
+   * from that list, and create claims free names only (UZ-VAULT-005 on a held
+   * one) — an unloaded list can't tell create from replace, or run the
+   * same-shape ownership check, so it would route a held name wrong.
    */
   secretsLoad: SecretsLoad;
   onCreated: () => void;
@@ -95,7 +96,7 @@ export default function AddModelEntryDialog({
   // open is worthless if a fast hand can submit before it lands, and the
   // window is not only a race — a failed load would leave the list empty for
   // the whole session. Either way `existing` would resolve to undefined and
-  // the create path's upsert would stomp the stored secret unseen.
+  // without it the flow can't tell a free name from a held one to replace.
   const canSubmit =
     secretsLoad === SECRETS_LOAD.ready &&
     keyName.trim() !== "" &&
@@ -120,10 +121,10 @@ export default function AddModelEntryDialog({
       // no-op against the single-flight guard.
       preload();
       // The stored-secret list is LOAD-BEARING, not decoration: `submit()`
-      // resolves `existing` from it to decide rotate-vs-create and to refuse a
-      // name owned by a different provider. The secrets POST is an upsert
-      // server-side, so an empty list here does not degrade to a picker with
-      // no options — it silently overwrites whatever already holds that name.
+      // resolves `existing` from it to decide replace-vs-create and to refuse a
+      // name owned by a different provider. Create claims free names only, so an
+      // empty list can't tell a held name from a free one — it would route the
+      // write wrong and 409, not silently, but with no way to reach replace.
       // It must be loaded before the dialog can be submitted, not merely after
       // a secret changes.
       onSecretsNeeded();
@@ -132,9 +133,10 @@ export default function AddModelEntryDialog({
     if (!next) reset();
   }
 
-  // `secretsChanged` is false on the rotate branch — a rotate keeps the
-  // secret's list-visible metadata (name/provider/kind) identical, so the
-  // refetch would return the same data.
+  // `secretsChanged` tells the entry-write whether the secrets list must
+  // refetch. A named-provider replace keeps every list-visible field
+  // (name/provider/kind) identical → false. A custom reconfigure rewrites
+  // `base_url` → true, so sibling entries pick up the new endpoint.
   async function doCreateEntry(secretRef: string, modelId: string, activate: boolean, secretsChanged: boolean) {
     const created = await createModelEntryAction({ model_id: modelId, secret_ref: secretRef });
     if (!created.ok) {
@@ -189,12 +191,13 @@ export default function AddModelEntryDialog({
       if (key !== "") data[SECRET_FIELD.apiKey] = key;
       if (existing) {
         // A held endpoint reconfigures via whole-body replace, never create.
+        // base_url is list-visible and can change here, so the list refetches.
         const replaced = await replaceSecretAction(workspaceId, name, data);
         if (!replaced.ok) {
           setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: STORE_ACTION }));
           return;
         }
-        if (await doCreateEntry(name, modelId, activate, false)) handleOpenChange(false);
+        if (await doCreateEntry(name, modelId, activate, true)) handleOpenChange(false);
         return;
       }
       const created = await createSecretAction(workspaceId, { name, data });

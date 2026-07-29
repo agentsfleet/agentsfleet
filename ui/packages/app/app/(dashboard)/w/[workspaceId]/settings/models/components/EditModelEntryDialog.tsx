@@ -32,6 +32,8 @@ type Props = {
 
 const EDIT_MODEL_ACTION = "change the model";
 const REPLACE_ACTION = "replace the credential";
+const KEY_REQUIRED_TO_REPLACE =
+  "Re-enter the API key. Replacing resends the whole credential, and a stored key can never be read back — leaving it blank would delete it.";
 const CUSTOM_SECRET_HINT =
   "This entry uses an opaque secret the dashboard cannot recompose. Replace its value with: agentsfleet secret update";
 
@@ -104,6 +106,15 @@ function EditForm({
           setError(BASE_URL_NOT_HTTPS);
           return;
         }
+        // Whole-body replace cannot preserve a key it can never read back, so a
+        // secret that HAS a stored key must have it re-entered on any change —
+        // otherwise changing only the base URL would silently drop the key and
+        // 401 every model sharing it. (Reachable only for custom endpoints; a
+        // named provider's `secretTouched` already implies a key was typed.)
+        if (target.has_key && !keyEntered) {
+          setError(KEY_REQUIRED_TO_REPLACE);
+          return;
+        }
         const replaced = await replaceSecretAction(workspaceId, target.secret_ref, composeReplacement());
         if (!replaced.ok) {
           setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: REPLACE_ACTION }));
@@ -158,7 +169,7 @@ function EditForm({
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={isCustom ? "Blank for a keyless endpoint" : "Enter the key to replace the credential"}
+              placeholder={target.has_key ? "Re-enter the key (replacing resends the whole credential)" : isCustom ? "Blank for a keyless endpoint" : "Enter the key to replace the credential"}
               spellCheck={false}
               autoComplete="off"
               className="font-mono"

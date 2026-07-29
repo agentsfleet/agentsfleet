@@ -3,8 +3,8 @@
 -- Every writer binds the envelope version explicitly in the same statement as
 -- the ciphertext, so this default never fired on a correct write. The only row
 -- it could ever produce is one an INSERT that forgot the column would silently
--- mint as version 1 — a format nothing serves and only the startup rewrap can
--- read. Dropping the default turns that mistake into a loud NOT NULL failure
+-- mint as version 1 — a format nothing serves and nothing can read (the read
+-- path refuses it; there is no converter). Dropping the default turns that mistake into a loud NOT NULL failure
 -- at write time instead of an undecryptable credential at use time.
 --
 -- Idempotent: dropping an absent default is a no-op, so this applies cleanly
