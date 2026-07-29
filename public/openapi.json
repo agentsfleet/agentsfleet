@@ -1073,7 +1073,7 @@
       "get": {
         "operationId": "list_fleet_memories",
         "summary": "List or search memory entries for a fleet",
-        "description": "Returns memory entries for the fleet. Without `query` this lists most-recent entries (optionally filtered by `category`). With `query`, performs case-insensitive LIKE search across both `key` and `content` (LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry).\n",
+        "description": "Returns memory entries for the fleet, newest-created first. Without `query` this lists entries (optionally filtered by `category`). With `query`, performs case-insensitive LIKE search across both `key` and `content` (LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry). Every shape pages by keyset: pass the previous response's `next_cursor` as `starting_after` to continue the walk. A null `next_cursor` marks the final page.\n",
         "tags": [
           "Memory"
         ],
@@ -1123,6 +1123,15 @@
               "minimum": 1,
               "maximum": 100
             }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Opaque continuation cursor from the previous page's `next_cursor`. The page starts strictly after that entry; an unparseable value is refused with 400.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1142,8 +1151,10 @@
                     "total": {
                       "type": "integer"
                     },
-                    "request_id": {
-                      "type": "string"
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Continuation cursor for the next page, or null on the final page."
                     }
                   }
                 }

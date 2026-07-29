@@ -1,4 +1,5 @@
 import { request } from "./client";
+import { walkList } from "./list-walk";
 import { QUERY_STARTING_AFTER } from "./runners";
 
 // Tenant API keys are tenant-scoped: every endpoint filters by the principal's
@@ -51,26 +52,16 @@ export interface RevokedApiKey {
 }
 
 // A tenant's keys are human-created and number in the low tens, so the client
-// exposes no paging controls: the list is complete by construction, following
-// next_cursor until the server reports the end. The bound stops a runaway
-// cursor from spinning the walk forever — at the server's default page of 50
-// it covers 2,000 keys, far past any real tenant.
-const MAX_LIST_WALK_REQUESTS = 40;
-
+// exposes no paging controls: the list is complete by construction, walking
+// next_cursor until the server reports the end (the shared list-walk bound
+// guards against a runaway cursor).
 export async function listApiKeys(token: string, sort: ApiKeySort = DEFAULT_SORT): Promise<ApiKeyListResponse> {
-  const items: ApiKeyRow[] = [];
-  let total: number | null = null;
-  let cursor: string | null = null;
-  for (let requests = 0; requests < MAX_LIST_WALK_REQUESTS; requests += 1) {
+  const walked = await walkList<ApiKeyRow>("API key list", (cursor) => {
     const qs = new URLSearchParams({ sort });
     if (cursor !== null) qs.set(QUERY_STARTING_AFTER, cursor);
-    const page = await request<ApiKeyListResponse>(`/v1/api-keys?${qs.toString()}`, { method: "GET" }, token);
-    items.push(...page.items);
-    total = page.total ?? total;
-    if (page.next_cursor === null) return { items, total, next_cursor: null };
-    cursor = page.next_cursor;
-  }
-  throw new Error(`the API key list did not end after ${MAX_LIST_WALK_REQUESTS} pages`);
+    return request<ApiKeyListResponse>(`/v1/api-keys?${qs.toString()}`, { method: "GET" }, token);
+  });
+  return { items: walked.items, total: walked.total, next_cursor: null };
 }
 
 export async function createApiKey(

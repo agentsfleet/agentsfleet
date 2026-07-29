@@ -21,6 +21,8 @@ const metrics_memory = @import("../../../observability/metrics_memory.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const schema_migrations = @import("schema").migrations;
 
 const ALLOC = std.testing.allocator;
 
@@ -118,6 +120,12 @@ const SEED_TS_MS: i64 = 1_700_000_000_000;
 /// the runner push is the only writer; here we INSERT under the memory_runtime
 /// role so the surviving GET surface has data to read).
 fn seedEntry(f: Fixture, fleet_id: []const u8, key: []const u8, content: []const u8, category: []const u8) !void {
+    return seedEntryAt(f, fleet_id, key, content, category, SEED_TS_MS);
+}
+
+/// seedEntry with an explicit created_at — the keyset-paging tests order and
+/// seek over (created_at, key), so each test controls the timeline it walks.
+fn seedEntryAt(f: Fixture, fleet_id: []const u8, key: []const u8, content: []const u8, category: []const u8, ts: i64) !void {
     const conn = try f.h.acquireConn();
     defer f.h.releaseConn(conn);
     _ = try conn.exec("SET ROLE memory_runtime", .{});
@@ -130,7 +138,7 @@ fn seedEntry(f: Fixture, fleet_id: []const u8, key: []const u8, content: []const
         \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
         \\ON CONFLICT (key, fleet_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
-    , .{ uid, id, key, content, category, fleet_id, SEED_TS_MS });
+    , .{ uid, id, key, content, category, fleet_id, ts });
 }
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {
@@ -313,6 +321,232 @@ test "integration: memories GET fleet-in-foreign-ws returns 404" {
     const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.not_found);
+}
+
+// ── Keyset paging over (created_at, key) ──
+// Every list shape (recent, category, query) seeks strictly past the
+// starting_after boundary. The shared workspace may carry sibling tests'
+// rows, so walks collect only keys under a per-test-unique prefix and assert
+// exhaustiveness + no-repeat on that set; filtered walks additionally refuse
+// any foreign row, because their filter marker is test-unique.
+
+const KEYSET_INDEX_NAME = "idx_memory_entries_fleet_id_created_at_key";
+const WALK_PAGE_CAP: usize = 12;
+
+/// Walk the memories list to exhaustion via starting_after, collecting keys
+/// beginning with `prefix` into `seen` (duped — the caller's defer frees).
+/// Fails on a key repeating across pages; with `require_prefix`, fails on any
+/// returned key outside the prefix (a filter leak).
+fn walkMemoryKeys(
+    f: Fixture,
+    base_url: []const u8,
+    prefix: []const u8,
+    require_prefix: bool,
+    seen: *std.StringHashMap(void),
+) !void {
+    var next_cursor: ?[]const u8 = null;
+    defer if (next_cursor) |c| ALLOC.free(c);
+    var pages: usize = 0;
+    while (pages < WALK_PAGE_CAP) : (pages += 1) {
+        const url = if (next_cursor) |c|
+            try std.fmt.allocPrint(ALLOC, "{s}&starting_after={s}", .{ base_url, c })
+        else
+            try ALLOC.dupe(u8, base_url);
+        defer ALLOC.free(url);
+
+        const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, r.body, .{});
+        defer parsed.deinit();
+
+        for (parsed.value.object.get("items").?.array.items) |item| {
+            const key = item.object.get("key").?.string;
+            if (!std.mem.startsWith(u8, key, prefix)) {
+                if (require_prefix) return error.ForeignRowInFilteredWalk;
+                continue;
+            }
+            const copy = try ALLOC.dupe(u8, key);
+            const gop = seen.getOrPut(copy) catch |err| {
+                ALLOC.free(copy);
+                return err;
+            };
+            if (gop.found_existing) {
+                ALLOC.free(copy);
+                return error.DuplicateKeyAcrossPages;
+            }
+        }
+
+        if (next_cursor) |c| ALLOC.free(c);
+        next_cursor = null;
+        switch (parsed.value.object.get("next_cursor").?) {
+            .null => return,
+            .string => |s| next_cursor = try ALLOC.dupe(u8, s),
+            else => return error.UnexpectedCursorType,
+        }
+    }
+    return error.WalkDidNotTerminate;
+}
+
+fn freeSeenKeys(seen: *std.StringHashMap(void)) void {
+    var it = seen.keyIterator();
+    while (it.next()) |k| ALLOC.free(k.*);
+    seen.deinit();
+}
+
+test "integration: test_memory_keyset_index_migration_registered" {
+    // Registration half: embed.zig is the single source of truth for the
+    // migration array, so the last entry must be the keyset-index slot.
+    const last = schema_migrations[schema_migrations.len - 1];
+    try std.testing.expectEqual(@as(i32, 39), last.version); // pin test: the slot number is the contract
+    try std.testing.expect(std.mem.indexOf(u8, last.sql, KEYSET_INDEX_NAME) != null);
+
+    // Applied half: the index exists in the harness-migrated database.
+    const f = try fixture();
+    defer f.deinit();
+    const conn = try f.h.acquireConn();
+    defer f.h.releaseConn(conn);
+    var q = PgQuery.from(try conn.query(
+        "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'memory' AND indexname = $1",
+        .{KEYSET_INDEX_NAME},
+    ));
+    defer q.deinit();
+    const row = try q.next() orelse return error.CountRowMissing;
+    try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
+}
+
+test "integration: test_memory_recent_pages_by_cursor" {
+    const f = try fixture();
+    defer f.deinit();
+    const base = clock.nowMillis();
+    var prefix_buf: [64]u8 = undefined;
+    const prefix = try std.fmt.bufPrint(&prefix_buf, "pgr-{d}-", .{base});
+    var key_buf: [96]u8 = undefined;
+    for (0..7) |i| {
+        const key = try std.fmt.bufPrint(&key_buf, "{s}{d}", .{ prefix, i });
+        try seedEntryAt(f, AGENTSFLEET_LOCAL, key, "recent page walk", "core", base + @as(i64, @intCast(i)));
+    }
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
+    defer ALLOC.free(url);
+    const base_url = try std.fmt.allocPrint(ALLOC, "{s}?limit=3", .{url});
+    defer ALLOC.free(base_url);
+
+    var seen = std.StringHashMap(void).init(ALLOC);
+    defer freeSeenKeys(&seen);
+    try walkMemoryKeys(f, base_url, prefix, false, &seen);
+    try std.testing.expectEqual(@as(u32, 7), seen.count());
+
+    // An unparseable continuation is refused, never treated as page one.
+    const bad = try std.fmt.allocPrint(ALLOC, "{s}?starting_after=not-a-cursor", .{url});
+    defer ALLOC.free(bad);
+    const rb = try (try f.h.get(bad).bearer(TOKEN_OPERATOR)).send();
+    defer rb.deinit();
+    try rb.expectStatus(.bad_request);
+}
+
+test "integration: test_memory_category_filter_pages_by_cursor" {
+    const f = try fixture();
+    defer f.deinit();
+    const base = clock.nowMillis();
+    var cat_buf: [64]u8 = undefined;
+    const category = try std.fmt.bufPrint(&cat_buf, "cat-{d}", .{base});
+    var prefix_buf: [64]u8 = undefined;
+    const prefix = try std.fmt.bufPrint(&prefix_buf, "pgc-{d}-", .{base});
+    var key_buf: [96]u8 = undefined;
+    for (0..5) |i| {
+        const key = try std.fmt.bufPrint(&key_buf, "{s}{d}", .{ prefix, i });
+        try seedEntryAt(f, AGENTSFLEET_LOCAL, key, "category page walk", category, base + @as(i64, @intCast(i)));
+    }
+    // A neighbour outside the category must never surface in the walk.
+    try seedEntryAt(f, AGENTSFLEET_LOCAL, "pgc-other-category", "foreign row", "core", base);
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
+    defer ALLOC.free(url);
+    const base_url = try std.fmt.allocPrint(ALLOC, "{s}?category={s}&limit=2", .{ url, category });
+    defer ALLOC.free(base_url);
+
+    var seen = std.StringHashMap(void).init(ALLOC);
+    defer freeSeenKeys(&seen);
+    try walkMemoryKeys(f, base_url, prefix, true, &seen);
+    try std.testing.expectEqual(@as(u32, 5), seen.count());
+}
+
+test "integration: test_memory_search_pages_by_cursor" {
+    const f = try fixture();
+    defer f.deinit();
+    const base = clock.nowMillis();
+    var tok_buf: [64]u8 = undefined;
+    const token = try std.fmt.bufPrint(&tok_buf, "tok{d}", .{base});
+    var prefix_buf: [64]u8 = undefined;
+    const prefix = try std.fmt.bufPrint(&prefix_buf, "pgs-{d}-", .{base});
+    var key_buf: [96]u8 = undefined;
+    var content_buf: [128]u8 = undefined;
+    for (0..5) |i| {
+        const key = try std.fmt.bufPrint(&key_buf, "{s}{d}", .{ prefix, i });
+        const content = try std.fmt.bufPrint(&content_buf, "the fact mentions {s} here", .{token});
+        try seedEntryAt(f, AGENTSFLEET_LOCAL, key, content, "core", base + @as(i64, @intCast(i)));
+    }
+    // A row NOT matching the query must never surface in the walk.
+    try seedEntryAt(f, AGENTSFLEET_LOCAL, "pgs-non-match", "no marker in this one", "core", base);
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
+    defer ALLOC.free(url);
+    const base_url = try std.fmt.allocPrint(ALLOC, "{s}?query={s}&limit=2", .{ url, token });
+    defer ALLOC.free(base_url);
+
+    var seen = std.StringHashMap(void).init(ALLOC);
+    defer freeSeenKeys(&seen);
+    try walkMemoryKeys(f, base_url, prefix, true, &seen);
+    try std.testing.expectEqual(@as(u32, 5), seen.count());
+}
+
+test "integration: test_memory_list_envelope_shape" {
+    const f = try fixture();
+    defer f.deinit();
+    try seedEntry(f, AGENTSFLEET_LOCAL, "env:probe", "envelope probe", "envcat");
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
+    defer ALLOC.free(url);
+    const shapes = [_][]const u8{ "", "?category=envcat", "?query=envelope" };
+    for (shapes) |qs_part| {
+        const full = try std.fmt.allocPrint(ALLOC, "{s}{s}", .{ url, qs_part });
+        defer ALLOC.free(full);
+        const r = try (try f.h.get(full).bearer(TOKEN_OPERATOR)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, r.body, .{});
+        defer parsed.deinit();
+        // Exactly {items, total, next_cursor} on every shape — nothing else.
+        try std.testing.expectEqual(@as(usize, 3), parsed.value.object.count());
+        try std.testing.expect(parsed.value.object.get("items") != null);
+        try std.testing.expect(parsed.value.object.get("total") != null);
+        try std.testing.expect(parsed.value.object.get("next_cursor") != null);
+    }
+}
+
+test "integration: test_memory_same_millisecond_entries_are_not_skipped" {
+    const f = try fixture();
+    defer f.deinit();
+    const base = clock.nowMillis();
+    var prefix_buf: [64]u8 = undefined;
+    const prefix = try std.fmt.bufPrint(&prefix_buf, "pgm-{d}-", .{base});
+    var key_buf: [96]u8 = undefined;
+    for (0..5) |i| {
+        const key = try std.fmt.bufPrint(&key_buf, "{s}{d}", .{ prefix, i });
+        // Every row shares ONE created_at — only the key tiebreaker orders them.
+        try seedEntryAt(f, AGENTSFLEET_LOCAL, key, "same millisecond walk", "core", base);
+    }
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
+    defer ALLOC.free(url);
+    const base_url = try std.fmt.allocPrint(ALLOC, "{s}?limit=2", .{url});
+    defer ALLOC.free(base_url);
+
+    var seen = std.StringHashMap(void).init(ALLOC);
+    defer freeSeenKeys(&seen);
+    try walkMemoryKeys(f, base_url, prefix, false, &seen);
+    try std.testing.expectEqual(@as(u32, 5), seen.count());
 }
 
 // ── The tenant STORE verb is retired (no compat shim) ──

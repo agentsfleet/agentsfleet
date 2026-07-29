@@ -9,7 +9,7 @@ import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { listFleetEvents } from "@/lib/api/events";
 import { listApprovals } from "@/lib/api/approvals";
-import { listMemories } from "@/lib/api/memory";
+import { listAllMemories } from "@/lib/api/memory";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import { EventsList } from "@/components/domain/EventsList";
 import {
@@ -253,9 +253,7 @@ async function loadEventsView({
 }
 
 async function loadMemoryView({ workspaceId, fleet, token }: PageContext) {
-  const memories = await listMemories(workspaceId, fleet.id, token, {
-    limit: 100,
-  }).catch(() => null);
+  const memories = await listAllMemories(workspaceId, fleet.id, token).catch(() => null);
   return (
     <MemoryPanel
       workspaceId={workspaceId}

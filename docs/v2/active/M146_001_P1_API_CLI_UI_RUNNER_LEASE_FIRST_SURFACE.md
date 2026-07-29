@@ -302,7 +302,7 @@ A tenant's API keys are human-created and number in the single digits to low ten
 - **Dimension 9.4** — The app's fleets client sends `starting_after` and reads `next_cursor`, and the wall's paging still walks every fleet → Test `test_fleets_client_uses_guideline_cursor_names` — **DONE**
 - **Dimension 9.5** — No request parameter or response field named `cursor` survives anywhere in the daemon, the app or the CLI → Test `test_no_bare_cursor_spelling_survives` — **DONE**
 
-### §10 — Memory list pages by cursor
+### §10 — Memory list pages by cursor — **DONE**
 
 `agentsfleet memory list` takes `--limit` and nothing else, because the endpoint has no cursor to expose: `handlers/memory/handler.zig` serves three query shapes — text search, category filter, and recent — all bounded by limit alone. Memory entries accumulate per execution, so this is the collection where paging genuinely earns its keep, unlike the human-authored lists §8 depaginates. This slice gives the endpoint keyset paging and the CLI the same `--starting-after` flag §9 standardises.
 
@@ -310,14 +310,14 @@ A tenant's API keys are human-created and number in the single digits to low ten
 
 **Implementation default:** a supporting index lands with it. `schema/010_memory_entries.sql` indexes category and fleet id only, so keyset ordering has nothing to ride. The migration adds one index and touches no column, so no existing row is rewritten.
 
-- **Dimension 10.1** — A migration adds the index supporting `(fleet_id, created_at, key)` ordering, registered in `schema/embed.zig` and the migration array → Test `test_memory_keyset_index_migration_registered`
-- **Dimension 10.2** — The recent path accepts `starting_after` and pages without repeating or skipping an entry → Test `test_memory_recent_pages_by_cursor`
-- **Dimension 10.3** — The category-filtered path pages by cursor while keeping its filter → Test `test_memory_category_filter_pages_by_cursor`
-- **Dimension 10.4** — The text-search path pages by cursor while keeping its query → Test `test_memory_search_pages_by_cursor`
-- **Dimension 10.5** — The response envelope becomes `{items, total, next_cursor}` on every path → Test `test_memory_list_envelope_shape`
-- **Dimension 10.6** — Entries sharing one `created_at` are all returned across page boundaries → Test `test_memory_same_millisecond_entries_are_not_skipped`
-- **Dimension 10.7** — `memory list` accepts `--starting-after <key>` alongside its existing `--limit` → Test `test_memory_list_accepts_starting_after`
-- **Dimension 10.8** — The app's memory panel walks every entry rather than stopping at the first bounded read → Test `test_memory_panel_walks_every_entry`
+- **Dimension 10.1** — A migration adds the index supporting `(fleet_id, created_at, key)` ordering, registered in `schema/embed.zig` and the migration array → Test `test_memory_keyset_index_migration_registered` — **DONE**
+- **Dimension 10.2** — The recent path accepts `starting_after` and pages without repeating or skipping an entry → Test `test_memory_recent_pages_by_cursor` — **DONE**
+- **Dimension 10.3** — The category-filtered path pages by cursor while keeping its filter → Test `test_memory_category_filter_pages_by_cursor` — **DONE**
+- **Dimension 10.4** — The text-search path pages by cursor while keeping its query → Test `test_memory_search_pages_by_cursor` — **DONE**
+- **Dimension 10.5** — The response envelope becomes `{items, total, next_cursor}` on every path → Test `test_memory_list_envelope_shape` — **DONE**
+- **Dimension 10.6** — Entries sharing one `created_at` are all returned across page boundaries → Test `test_memory_same_millisecond_entries_are_not_skipped` — **DONE**
+- **Dimension 10.7** — `memory list` accepts `--starting-after <key>` alongside its existing `--limit` → Test `test_memory_list_accepts_starting_after` — **DONE**
+- **Dimension 10.8** — The app's memory panel walks every entry rather than stopping at the first bounded read → Test `test_memory_panel_walks_every_entry` — **DONE**
 
 ## Interfaces
 
@@ -643,6 +643,9 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 - **503 failure injection** — `test_runner_read_db_unavailable_is_service_error` drains the harness pool (short acquire budget) so the handler's `pool.acquire` genuinely fails; no new harness machinery.
 - **Dimension 9.5's test home** — `ui/packages/app/tests/cursor-vocabulary.test.ts` (new file, sibling of `runners-surface-invariants.test.ts`). Scoped to the migrated surfaces (fleets list handler, memory handler+sql, `lib/api/{fleets,api_keys,runners,memory}.ts`, `cli/src/commands/{fleet_list,api_key,memory}.ts`, `cli-tree-memory.ts`); lines referencing `QUERY_CURSOR_RETIRED` in `fleets/list.zig` are exempt because that constant IS the refusal.
 - **Integration-run channel (VERIFY-relevant)** — `make test-integration-db` sets no `REDIS_URL_API`, and `TestHarness.start` skips (`error.MissingRedisUrl → SkipZigTest`) without it, so that target silently skips every harness-based HTTP suite while printing success. Full-suite integration proof comes from `make test-integration` (it exports the Redis URL + CA). Surfaced to Indy rather than patched — the make recipe is outside this spec's Files Changed.
+- **Shared client walk helper** — the app's walk-to-exhaustion moved to `ui/packages/app/lib/api/list-walk.ts` (+ sibling `list-walk.test.ts`, both new files) once the memory panel became its second consumer; `api_keys.ts` refactored onto it with the same bound and runaway error wording. The memory item wire shape is unchanged — each list statement selects `created_at` solely to build `next_cursor` server-side.
+- **CLI bind-site dead fallbacks removed (Indy question, mid-EXECUTE)** — commander natively camelCases multi-word flags and `cli-tree.ts#normalizeOptions` only ever ADDS a dashed mirror, so the `optString(…, "starting-after") ?? …` dashed fallbacks in `handlers-bind-fleet.ts` / `handlers-bind-memory.ts` were unreachable; both binds now read the single camelCase key (`workspaceId` likewise in the fleet list bind).
+- **Envelope request_id removed with §10** — the memory list envelope becomes exactly `{items, total, next_cursor}`; the previous `request_id` member left the wire, and the app/CLI response types followed (the CLI's JSON mode prints the envelope verbatim either way).
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.

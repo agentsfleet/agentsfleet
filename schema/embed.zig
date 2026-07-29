@@ -44,4 +44,5 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 36, .sql = @embedFile("036_vault_secret_metadata.sql") },
     .{ .version = 37, .sql = @embedFile("037_model_catalogue_revision.sql") },
     .{ .version = 38, .sql = @embedFile("038_tenant_workspace_list_index.sql") },
+    .{ .version = 39, .sql = @embedFile("039_memory_entries_keyset_index.sql") },
 };
