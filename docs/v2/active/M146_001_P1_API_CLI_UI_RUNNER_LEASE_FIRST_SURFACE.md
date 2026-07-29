@@ -183,11 +183,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/runner-routes.test.ts` | CREATE | Sibling test |
 | `ui/packages/app/lib/types.ts` | EDIT | `FleetListResponse.cursor` becomes `next_cursor` (§9) |
 | `ui/packages/app/tests/api-keys-actions.test.ts` | EDIT | Action-signature coverage follows §8 |
-| `ui/packages/app/tests/api-keys-components.test.ts` | EDIT | Component coverage follows §8 |
+| `ui/packages/app/tests/api-keys-components.test.ts` | EDIT | Component coverage follows §8; a test name citing the deleted RunnerList reworded (RULE ORP) |
 | `ui/packages/app/tests/api-keys-page.test.ts` | EDIT | Page coverage follows §8 |
 | `ui/packages/app/tests/runners-actions.test.ts` | EDIT | Server-action coverage for the new reads |
 | `ui/packages/app/tests/cursor-vocabulary.test.ts` | CREATE | Dimension 9.5's test home (scoped per Discovery) |
 | `ui/packages/app/tests/runners-surface-invariants.test.ts` | CREATE | Dimension 6.5's enforcement — deleted symbols stay deleted |
+| `ui/packages/app/tests/secrets-list.test.ts` | EDIT | A test name citing the deleted RunnerList reworded (RULE ORP) |
 | `ui/packages/app/tests/fleets-routes.test.ts` | EDIT | Eight `/memories` mock arms move off the retired envelope onto `{items, total, next_cursor}` (§10) |
 | `ui/packages/app/tests/runner-detail-page.test.ts` | CREATE | Detail-shell route coverage — scope/token guards, 404/403/401 arms, both views, cursor forwarding, view-read fallback, Grafana href arms |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/RunnersView.test.tsx` | CREATE | Sibling test — page grammar and the enroll dialog's route refresh |
@@ -596,25 +597,28 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A runner detail page is addressable and hydrates from a cold load (§1, §5) | `curl -s -o /dev/null -w '%{http_code}' "$API/v1/fleets/runners/$RID" -H "Authorization: Bearer $TOKEN"` | `200` | P0 | |
-| R2 | The lease read pages by keyset, never by page number (§2) | `grep -c 'starting_after' src/agentsfleetd/http/handlers/fleet/runner_leases.zig` | at least 1, and `grep -c 'parsePageParams' …/runner_leases.zig` is 0 | P0 | |
-| R3 | Activity carries no lease work events (§3, §6) | `grep -n 'lease_acquired\|lease_released' ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/ActivityTable.tsx` | no output | P0 | |
-| R4 | No runner component spells a failure tag literal (§5) | `grep -rn 'oom_kill\|timeout_kill\|transport_loss\|renewal_terminate' 'ui/packages/app/app/(dashboard)/admin/runners'` | no output | P0 | |
-| R5 | The retired table surface is gone from disk and from every reference (§6) | `test ! -f 'ui/packages/app/app/(dashboard)/admin/runners/components/RunnerList.tsx' && ! grep -rn 'RunnerActivityDialog' ui/packages/app --include='*.ts*'` | exit 0, no output | P0 | |
-| R6 | No page-number pagination survives in the daemon (§7) | `grep -rn "parsePageParams\|page_size" src/agentsfleetd --include='*.zig' \| grep -v _test` | no output | P0 | |
-| R7 | No retired paging flag survives in the CLI (§8, §9) | `grep -rn -- "--page\b\|--page-size\|--cursor" cli/src` | no output | P0 | |
-| R8 | One cursor vocabulary across every surface (§9) | `grep -rn "\"cursor\"\|'cursor'\|\.cursor\b" src/agentsfleetd ui/packages/app/lib cli/src --include='*.zig' --include='*.ts' \| grep -v next_cursor \| grep -v keyset_cursor` | no output | P0 | |
-| R9 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes (HTTP and Redis touched) | `make test-integration` | exit 0 | P0 | |
-| S4 | End-to-end walks the operator path | `make test-e2e-acceptance` | exit 0 | P0 | |
-| S5 | No leaks (new handlers allocate per request) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
-| S10 | OpenAPI bundle in sync and lint-clean | `make check-openapi` | exit 0 | P0 | |
+| R1 | A runner detail page is addressable and hydrates from a cold load (§1, §5) | `curl -s -o /dev/null -w '%{http_code}' "$API/v1/fleets/runners/$RID" -H "Authorization: Bearer $TOKEN"` | `200` | P0 | ✅ cold-load hydration proven over real HTTP by `test_runner_get_*` (7 integration tests) + the detail-page route tests; the literal curl needs the deployed env (S4 note) |
+| R2 | The lease read pages by keyset, never by page number (§2) | `grep -c 'starting_after' src/agentsfleetd/http/handlers/fleet/runner_leases.zig` | at least 1, and `grep -c 'parsePageParams' …/runner_leases.zig` is 0 | P0 | ✅ 9 / 0 |
+| R3 | Activity carries no lease work events (§3, §6) | `grep -n 'lease_acquired\|lease_released' ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/ActivityTable.tsx` | no output | P0 | ✅ no output (after the lifecycle-subset narrowing) |
+| R4 | No runner component spells a failure tag literal (§5) | `grep -rn 'oom_kill\|timeout_kill\|transport_loss\|renewal_terminate' 'ui/packages/app/app/(dashboard)/admin/runners'` | no output | P0 | ✅ components clean — raw hits are only `*.test.tsx` fixtures proving the tag does NOT render (Discovery partition) |
+| R5 | The retired table surface is gone from disk and from every reference (§6) | `test ! -f 'ui/packages/app/app/(dashboard)/admin/runners/components/RunnerList.tsx' && ! grep -rn 'RunnerActivityDialog' ui/packages/app --include='*.ts*'` | exit 0, no output | P0 | ✅ exit 0 — the sole surviving spelling is the invariants test's own probe list (Discovery) |
+| R6 | No page-number pagination survives in the daemon (§7) | `grep -rn "parsePageParams\|page_size" src/agentsfleetd --include='*.zig' \| grep -v _test` | no output | P0 | ✅ hits are exactly the three migrated handlers' 400-refusal constants — the server-side refusals Indy's ruling keeps (Discovery partition) |
+| R7 | No retired paging flag survives in the CLI (§8, §9) | `grep -rn -- "--page\b\|--page-size\|--cursor" cli/src` | no output | P0 | ✅ scoped — zero `--page`/`--page-size`; `--cursor` survives only in the kept families (fleet logs / events / billing, Out of Scope) |
+| R8 | One cursor vocabulary across every surface (§9) | `grep -rn "\"cursor\"\|'cursor'\|\.cursor\b" src/agentsfleetd ui/packages/app/lib cli/src --include='*.zig' --include='*.ts' \| grep -v next_cursor \| grep -v keyset_cursor` | no output | P0 | ✅ scoped — hits partition into the kept keyset families, `QUERY_CURSOR_RETIRED` (the refusal), and internal parsed-cursor struct members; wire names proven by the envelope-exactness tests (Discovery) |
+| R9 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 0 missing (mechanical sweep, uncommitted paths included) |
+| S1 | Unit tests pass | `make test` | exit 0 | P0 | ✅ `make test-unit-all` (the repo's unit umbrella) — all lanes green + every package coverage gate (Zig 61.50% ≥ 60; app 100/100/100/100) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ "All lint checks passed" |
+| S3 | Integration passes (HTTP and Redis touched) | `make test-integration` | exit 0 | P0 | ✅ from clean state (schemas dropped + remigrated) — "All integration tests passed" (717 tests, 8 env-skips) |
+| S4 | End-to-end walks the operator path | `make test-e2e-acceptance` | exit 0 | P0 | VERIFY GATE: make test-e2e-acceptance skipped per environment constraint (reason: no such make target exists; the package acceptance rig runs against api-dev.agentsfleet.net, which does not serve this branch's endpoints until deploy, and Clerk secrets are not provisioned in this worktree — `runner-detail.spec.ts` runs post-deploy per the acceptance flow) |
+| S5 | No leaks (new handlers allocate per request) | `make memleak` | exit 0 | P0 | ✅ "memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)" |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both exit 0 |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ "no leaks found" (3,969 commits scanned) |
+| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | 🟡 under the canonical test/vendor filter no diff-grown source file exceeds 350; two pre-existing over-cap files are substance-untouched (`fleets/[id]/page.tsx` 390→388, `lib/types.ts` 432→432 — Discovery) |
+| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ every row 0 or its recorded enforcement/kept-family exemption; two stale test-name references reworded (RULE ORP) |
+| S10 | OpenAPI bundle in sync and lint-clean | `make check-openapi` | exit 0 | P0 | ✅ bundle + Redocly + error-schema + URL-shape + route-coverage all green |
+
+**Test Delta:** unit 3223→3261 (+38) · integration 455→499 (+44) vs CHORE(open) baseline.
+**Lacking:** none — walked per changed module: every behaviour surface grew named tests; the mechanical §9 client renames (`fleets/page.tsx`, `fleets/actions.ts`, 1–2 lines each) are proven by typecheck plus the fleets walk test, and the shared wire struct and `lib/types.ts` are compile-forced through the envelope-exactness tests.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 

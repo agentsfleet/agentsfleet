@@ -139,7 +139,7 @@ describe("ApiKeyList component", () => {
     await waitFor(() => expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy());
   });
 
-  it("Revoke and Delete row triggers render the destructive button variant, matching RunnerList's pattern", async () => {
+  it("Revoke and Delete row triggers render the destructive button variant, the shared admin row-trigger pattern", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByLabelText(/Revoke API key ci-runner/i).className).toContain("bg-destructive");
     expect(screen.getByLabelText(/Delete API key old-zapier/i).className).toContain("bg-destructive");
