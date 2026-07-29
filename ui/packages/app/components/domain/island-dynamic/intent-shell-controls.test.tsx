@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 type Snapshot = {
@@ -198,12 +198,14 @@ describe("shell intent controls", () => {
         sidebarNavId="test-sidebar"
       />,
     );
-    expect(state.renderedProps).toMatchObject({
-      open: true,
-      operatorScopes: ["runner:read"],
-      pathname: "/w/ws_active/events",
-      workspaceId: "ws_active",
-    });
+    await waitFor(() =>
+      expect(state.renderedProps).toMatchObject({
+        open: false,
+        operatorScopes: ["runner:read"],
+        pathname: "/w/ws_active/events",
+        workspaceId: "ws_active",
+      }),
+    );
     const restoreFocus = state.renderedProps?.restoreFocus;
     expect(typeof restoreFocus).toBe("function");
     if (typeof restoreFocus === "function") restoreFocus();
@@ -241,6 +243,18 @@ describe("shell intent controls", () => {
     );
     expect(trigger.getAttribute("aria-busy")).toBe("true");
 
+    state.pathname = "/w/ws_missing/fleets";
+    view.rerender(
+      <WorkspaceSwitcher
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("workspace-switcher").getAttribute("aria-busy"),
+      ).not.toBe("true"),
+    );
+
     showError(loader);
     view.rerender(
       <WorkspaceSwitcher
@@ -252,16 +266,22 @@ describe("shell intent controls", () => {
     );
     expect(loader.retry).toHaveBeenCalledOnce();
 
-    state.pathname = "/w/ws_missing/fleets";
     showLoaded(loader);
     view.rerender(
       <WorkspaceSwitcher
         workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
       />,
     );
-    expect(state.renderedProps).toMatchObject({
-      open: true,
-      workspaces: [{ id: "ws_fallback", name: "Fallback", created_at: 1 }],
-    });
+    expect(state.renderedProps).toMatchObject({ open: true });
+
+    state.pathname = "/w/ws_missing/events";
+    view.rerender(
+      <WorkspaceSwitcher
+        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: 1 }]}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-switcher")).toBeTruthy(),
+    );
   });
 });
