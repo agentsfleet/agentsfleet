@@ -23,6 +23,10 @@
 # until a real token brings the runner up green.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/common.sh
+source "$SCRIPT_DIR/../../lib/common.sh"
+
 echo ""
 echo "== Section 4: provision /opt/agentsfleet/.env =="
 
@@ -145,9 +149,11 @@ RUNNER_HOST_ID=${host_id}
 RUNNER_SANDBOX_TIER=${sandbox_tier}
 EOF
 chmod 600 "$env_local"
-scp -i "$ssh_id" "${ssh_opts[@]}" "$env_local" \
+playbooks_ssh_run "scp /opt/agentsfleet/.env to ${ssh_user}@${ssh_host}" \
+  scp -i "$ssh_id" "${ssh_opts[@]}" "$env_local" \
   "${ssh_user}@${ssh_host}:/opt/agentsfleet/.env"
-ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
+playbooks_ssh_run "chmod 600 /opt/agentsfleet/.env" \
+  ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
   "chmod 600 /opt/agentsfleet/.env"
 
 # Sync the source env to the unit's EnvironmentFile, then restart when the runner

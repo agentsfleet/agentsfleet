@@ -7,6 +7,10 @@
 #   - SSH connectivity works via vault key + hostname
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/common.sh
+source "$SCRIPT_DIR/../../lib/common.sh"
+
 echo ""
 echo "== M4_001 Section 1: SSH access =="
 
@@ -92,6 +96,7 @@ else
   else
     echo "  ✗ SSH connectivity failed: ${ssh_user}@${ssh_host}"
     echo "    output: $ssh_result"
+    playbooks_explain_ssh_failure "$ssh_result"
     missing=$((missing + 1))
   fi
 fi
