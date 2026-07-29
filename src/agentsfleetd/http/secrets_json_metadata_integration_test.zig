@@ -104,7 +104,7 @@ test "integration: GET list requires operator role" {
     base.cleanupRows(conn);
 }
 
-test "integration: rotate replaces only the api_key, preserving provider/model/base_url" {
+test "integration: test_put_preserves_sibling_fields — a full-body replace keeps provider/model/base_url" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {

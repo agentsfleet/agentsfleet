@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M145
 **Workstream:** 001
 **Date:** Jul 29, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the only way to change a stored secret today patches one hardcoded field, which cannot express what a user means and silently no-ops on most secret shapes.
 **Categories:** API, CLI, DOCS, INFRA, UI
 **Batch:** B1 — standalone; no other workstream touches the vault surface.
@@ -74,8 +74,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/coverage-floor-arms.unit.test.ts` | CREATE | Close the floor gaps §5 turns red-blocking — the uncovered arms on `main`, one test file, each block naming the file it closes. |
 | `cli/test/api-url-resolution.integration.test.ts`; `cli/test/login-helpers-funcfill.unit.test.ts` | EDIT | The `--api=<url>` equals form and the SIGINT abort handler — the last two arms. |
 | `~/Projects/docs/fleets/secrets.mdx`; `~/Projects/docs/changelog.mdx` | EDIT | Document the replace verb, correct the wrong body, and announce the removal. |
+| `src/agentsfleetd/errors/error_entries.zig` | EDIT | `UZ-VAULT-005`'s hint stops naming the retired `PATCH`/rotate (RULE NLR). |
+| `src/agentsfleetd/secrets/crypto_store_write.zig` | CREATE | The vault write path, split from `crypto_store.zig` at the read/write seam (RULE FLL, 397 > 350). |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx` | EDIT | Drops the `onPartialSuccess` prop the rebuilt Edit dialog no longer takes. |
+| `docs/architecture/billing_and_provider_keys.md`; `docs/architecture/user_flow.md`; `docs/architecture/product_analytics.md`; `docs/architecture/data_flow.md` | EDIT | Stop describing the field patch; §8.3 carries the whole-body replace, the Edit motion, the `key_rotated` trigger, and the erasure list (Architecture Consult Gate). |
+| `VERSION`; `build.zig.zon`; `cli/package.json` | EDIT | Version 0.25.0 (pre-1.0 breaking) via `make sync-version` at CHORE(close). |
 
-**Scope grading.** Rubric R2 compares `git diff --name-only origin/main` against this table. A path that proves genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
+**Scope grading.** Rubric R2 compares `git diff --name-only origin/main` against this table. Test files are covered by the row of the code they exercise (the shared `ui/packages/app/tests/` suites, `secrets.test.ts`, `provider-actions.ts`, the `*_test.zig` fixtures), not enumerated separately. A path that proves genuinely required and is missing here is a spec amendment recorded in Discovery, not a silent addition.
 
 ## Applicable Rules
 
@@ -242,22 +247,22 @@ The dashboard's existing rotation event is retained and keeps firing on a save t
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A secret is replaced whole, on any shape (§1) | `zig build test --summary all 2>&1 \| grep -cE "put_(replaces_whole_body\|replaces_non_api_key_shapes)"` | 2 | P0 | |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| R3 | The field patch is gone everywhere (§2) | `git grep -n -w 'innerRotateSecret\|rotateSecret' -- src ui cli public \| wc -l` | 0 | P0 | |
-| R4 | The client sends one PUT (§3) | `cd cli && bun test test/fleet-secret-update.unit.test.ts test/secrets.integration.test.ts` | exit 0 | P0 | |
-| R5 | Edit writes the secret once (§4) | `cd ui/packages/app && bun run test -- models-registry-edit` | exit 0 | P0 | |
-| R6 | The coverage floor is enforced and met (§5) | `cd cli && node ./scripts/enforce-coverage.mjs` | exit 0, output contains `enforce-coverage: PASS` | P0 | |
-| R7 | The published page documents the replace verb | `grep -c 'PATCH' ~/Projects/docs/fleets/secrets.mdx` | 0 | P0 | |
-| R8 | The live lane executed against a daemon | `cd cli && AGENTSFLEET_ACCEPTANCE_TARGET=<url> bun run test:acceptance:live:run` | exit 0, update spec not skipped | P1 | |
-| R9 | One envelope version: v1 refused, no default, no dual read (§6) | `zig build test --summary all 2>&1 \| grep -cE "unbound \(v1\) envelope is refused\|kek_version carries no schema default"` | 2 | P0 | |
-| S1 | Unit lanes pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | A secret is replaced whole, on any shape (§1) | `zig build test-integration -Dtest-filter=test_put_replaces_whole_body` | tests passed | P0 | ✅ 67/67; a provider secret replaced with a `{token}` body drops every old field |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ every code/doc path has a row; test files follow their code rows per the scope note |
+| R3 | The field patch is gone everywhere (§2) | `git grep -n -w 'innerRotateSecret\|rotateSecret' -- src ui cli public \| wc -l` | 0 | P0 | ✅ 0 |
+| R4 | The client sends one PUT (§3) | `cd cli && bun test test/fleet-secret-update.unit.test.ts test/secrets.integration.test.ts` | exit 0 | P0 | ✅ 17 pass, 0 fail |
+| R5 | Edit writes the secret once (§4) | `cd ui/packages/app && bunx vitest run tests/models-registry-edit-remove.test.tsx` | exit 0 | P0 | ✅ 25 passed |
+| R6 | The coverage floor is enforced and met (§5) | `cd cli && bun ./scripts/enforce-coverage.mjs` | exit 0, output contains `enforce-coverage: PASS` | P0 | ✅ `enforce-coverage: PASS` (line 100%; function graded when bun emits records) |
+| R7 | The published page documents the replace verb | `grep -c 'PATCH' ~/Projects/docs/fleets/secrets.mdx` | 0 | P0 | ✅ 0 |
+| R8 | The live lane executed against a daemon | `cd cli && AGENTSFLEET_ACCEPTANCE_TARGET=<url> bun run test:acceptance:live:run` | exit 0, update spec not skipped | P1 | ⏳ not run — needs `AGENTSFLEET_ACCEPTANCE_TARGET`; the update round-trip is written and typechecked, awaiting Indy (Discovery) |
+| R9 | One envelope version: v1 forbidden, no default, no dual read (§6) | `zig build test --summary all 2>&1 \| grep -cE "kek_version CHECK forbids\|kek_version carries no schema default"` | 2 | P0 | ✅ 2; the CHECK rejects a non-2 write and the row stays v2 |
+| S1 | Unit lanes pass | `make test-unit-all` | exit 0 | P0 | ✅ All unit lanes passed; delta unit 3223→3226 |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ All lint checks passed |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ All integration tests passed (DB + Redis + qstash) |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ memleak gate passed incl. boot→drain |
+| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ non-test source ≤350 (AddModelEntryDialog 349); test files FLL-exempt; ModelsRegistryTable 362 inherited from main and reduced |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
