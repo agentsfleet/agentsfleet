@@ -4329,30 +4329,29 @@
       "get": {
         "operationId": "list_api_keys",
         "summary": "List tenant API keys",
-        "description": "Returns metadata for every tenant API key visible to the caller. Results are always scoped to the caller's tenant; `key_hash` is never returned.",
+        "description": "Returns metadata for every tenant API key visible to the caller, under Stripe-style keyset pagination. The cursor carries the boundary sort value, so every allowlisted sort pages without loss. The retired page and page_size parameters are refused. Results are always scoped to the caller's tenant; `key_hash` is never returned.",
         "tags": [
           "API Keys"
         ],
         "parameters": [
           {
-            "name": "page",
+            "name": "starting_after",
             "in": "query",
             "required": false,
+            "description": "An opaque cursor from a previous page's `next_cursor`, issued under the same sort.",
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1
+              "type": "string"
             }
           },
           {
-            "name": "page_size",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "type": "integer",
               "minimum": 1,
               "maximum": 100,
-              "default": 25
+              "default": 50
             }
           },
           {
@@ -4381,8 +4380,7 @@
                   "required": [
                     "items",
                     "total",
-                    "page",
-                    "page_size"
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -4393,13 +4391,13 @@
                     },
                     "total": {
                       "type": "integer",
-                      "description": "Total rows across all pages for this tenant."
+                      "nullable": true,
+                      "description": "The tenant's full key count; stable across pages."
                     },
-                    "page": {
-                      "type": "integer"
-                    },
-                    "page_size": {
-                      "type": "integer"
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page; null on the final page."
                     }
                   }
                 }
@@ -6839,46 +6837,30 @@
       "get": {
         "operationId": "list_fleet_runners",
         "summary": "List fleet runners",
-        "description": "Platform-admin operator-plane read of the whole fleet. Paginated, read-only. Each row carries a derived `liveness` — never the stored auth state, never the token hash.",
+        "description": "Platform-admin operator-plane read of the whole fleet, newest first over the composite (created_at, id) key. Under keyset pagination a runner enrolled mid-traversal never repeats or hides a row. The retired page, page_size and sort parameters are refused. Each row carries a derived `liveness` — never the stored auth state, never the token hash.",
         "tags": [
           "Fleet"
         ],
         "parameters": [
           {
-            "name": "page",
+            "name": "starting_after",
             "in": "query",
             "required": false,
-            "description": "1-based page number.",
+            "description": "An opaque cursor from a previous page's `next_cursor`.",
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1
+              "type": "string"
             }
           },
           {
-            "name": "page_size",
+            "name": "limit",
             "in": "query",
             "required": false,
             "description": "Rows per page (1-100).",
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 100
-            }
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "description": "Sort order.",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "created_at",
-                "-created_at",
-                "host_id",
-                "-host_id"
-              ]
+              "maximum": 100,
+              "default": 50
             }
           }
         ],
@@ -6892,8 +6874,7 @@
                   "required": [
                     "items",
                     "total",
-                    "page",
-                    "page_size"
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -6904,13 +6885,14 @@
                     },
                     "total": {
                       "type": "integer",
-                      "format": "int64"
+                      "format": "int64",
+                      "nullable": true,
+                      "description": "The full runner count; stable across pages."
                     },
-                    "page": {
-                      "type": "integer"
-                    },
-                    "page_size": {
-                      "type": "integer"
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page; null on the final page."
                     }
                   }
                 }
@@ -7176,7 +7158,7 @@
       "get": {
         "operationId": "list_fleet_runner_events",
         "summary": "List fleet runner events",
-        "description": "Platform-admin read of a single runner's append-only history. Paginated; optionally filtered by event type and an occurred-at millisecond window.",
+        "description": "Platform-admin read of a single runner's append-only history, newest first over the composite (occurred_at, id) key. The retired page and page_size parameters are refused. Optionally filtered by event type and an occurred-at millisecond window.",
         "tags": [
           "Fleet"
         ],
@@ -7192,25 +7174,24 @@
             }
           },
           {
-            "name": "page",
+            "name": "starting_after",
             "in": "query",
             "required": false,
-            "description": "1-based page number.",
+            "description": "An opaque cursor from a previous page's `next_cursor`.",
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1
+              "type": "string"
             }
           },
           {
-            "name": "page_size",
+            "name": "limit",
             "in": "query",
             "required": false,
             "description": "Rows per page (1-100).",
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 100
+              "maximum": 100,
+              "default": 50
             }
           },
           {
@@ -7253,8 +7234,7 @@
                   "required": [
                     "items",
                     "total",
-                    "page",
-                    "page_size"
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -7265,13 +7245,14 @@
                     },
                     "total": {
                       "type": "integer",
-                      "format": "int64"
+                      "format": "int64",
+                      "nullable": true,
+                      "description": "The filtered history's full count; stable across pages."
                     },
-                    "page": {
-                      "type": "integer"
-                    },
-                    "page_size": {
-                      "type": "integer"
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page; null on the final page."
                     }
                   }
                 }

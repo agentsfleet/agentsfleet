@@ -24,19 +24,17 @@
   get:
     operationId: list_fleet_runners
     summary: List fleet runners
-    description: Platform-admin operator-plane read of the whole fleet. Paginated, read-only. Each row carries a derived `liveness` — never the stored auth state, never the token hash.
+    description: Platform-admin operator-plane read of the whole fleet, newest first over the composite (created_at, id) key. Under keyset pagination a runner enrolled mid-traversal never repeats or hides a row. The retired page, page_size and sort parameters are refused. Each row carries a derived `liveness` — never the stored auth state, never the token hash.
     tags:
     - Fleet
     parameters:
-    - name: page
+    - name: starting_after
       in: query
       required: false
-      description: 1-based page number.
+      description: An opaque cursor from a previous page's `next_cursor`.
       schema:
-        type: integer
-        minimum: 1
-        default: 1
-    - name: page_size
+        type: string
+    - name: limit
       in: query
       required: false
       description: Rows per page (1-100).
@@ -44,17 +42,7 @@
         type: integer
         minimum: 1
         maximum: 100
-    - name: sort
-      in: query
-      required: false
-      description: Sort order.
-      schema:
-        type: string
-        enum:
-        - created_at
-        - -created_at
-        - host_id
-        - -host_id
+        default: 50
     responses:
       '200':
         description: A page of fleet runners.
@@ -65,8 +53,7 @@
               required:
               - items
               - total
-              - page
-              - page_size
+              - next_cursor
               properties:
                 items:
                   type: array
@@ -75,10 +62,12 @@
                 total:
                   type: integer
                   format: int64
-                page:
-                  type: integer
-                page_size:
-                  type: integer
+                  nullable: true
+                  description: The full runner count; stable across pages.
+                next_cursor:
+                  type: string
+                  nullable: true
+                  description: Cursor for the next page; null on the final page.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/fleets/runners/{id}:
@@ -256,7 +245,7 @@
   get:
     operationId: list_fleet_runner_events
     summary: List fleet runner events
-    description: Platform-admin read of a single runner's append-only history. Paginated; optionally filtered by event type and an occurred-at millisecond window.
+    description: Platform-admin read of a single runner's append-only history, newest first over the composite (occurred_at, id) key. The retired page and page_size parameters are refused. Optionally filtered by event type and an occurred-at millisecond window.
     tags:
     - Fleet
     parameters:
@@ -267,15 +256,13 @@
       schema:
         type: string
         format: uuid
-    - name: page
+    - name: starting_after
       in: query
       required: false
-      description: 1-based page number.
+      description: An opaque cursor from a previous page's `next_cursor`.
       schema:
-        type: integer
-        minimum: 1
-        default: 1
-    - name: page_size
+        type: string
+    - name: limit
       in: query
       required: false
       description: Rows per page (1-100).
@@ -283,6 +270,7 @@
         type: integer
         minimum: 1
         maximum: 100
+        default: 50
     - name: event_type
       in: query
       required: false
@@ -313,8 +301,7 @@
               required:
               - items
               - total
-              - page
-              - page_size
+              - next_cursor
               properties:
                 items:
                   type: array
@@ -323,9 +310,11 @@
                 total:
                   type: integer
                   format: int64
-                page:
-                  type: integer
-                page_size:
-                  type: integer
+                  nullable: true
+                  description: The filtered history's full count; stable across pages.
+                next_cursor:
+                  type: string
+                  nullable: true
+                  description: Cursor for the next page; null on the final page.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error

@@ -704,3 +704,119 @@ test "integration: test_runner_read_db_unavailable_is_service_error" {
     try leases.expectStatus(.service_unavailable);
     try std.testing.expect(leases.bodyContains("UZ-INTERNAL-001"));
 }
+
+// ── Keyset paging over the runner list ──────────────────────────────────────
+
+fn runnersListPath(query: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(ALLOC, "{s}?{s}", .{ protocol.PATH_FLEET_RUNNERS, query });
+}
+
+test "integration: test_runner_list_uses_keyset_envelope" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    try seedRunner(conn, R_EMPTY, "runner-read-empty");
+
+    const path = try runnersListPath("limit=5");
+    defer ALLOC.free(path);
+    const resp = try getBody(h, path, PLATFORM_ADMIN_TOKEN);
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, resp.body, .{});
+    defer parsed.deinit();
+    const obj = parsed.value.object;
+    try std.testing.expectEqual(@as(usize, 3), obj.count());
+    try std.testing.expect(obj.contains("items"));
+    try std.testing.expect(obj.contains("total"));
+    try std.testing.expect(obj.contains("next_cursor"));
+
+    const retired = try runnersListPath("page=2");
+    defer ALLOC.free(retired);
+    const refused = try getBody(h, retired, PLATFORM_ADMIN_TOKEN);
+    defer refused.deinit();
+    try refused.expectStatus(.bad_request);
+    try std.testing.expect(refused.bodyContains("UZ-REQ-001"));
+}
+
+test "integration: test_runner_list_rejects_retired_sort_parameter" {
+    const h = try startHarness();
+    defer h.deinit();
+
+    const path = try runnersListPath("sort=host_id");
+    defer ALLOC.free(path);
+    const resp = try getBody(h, path, PLATFORM_ADMIN_TOKEN);
+    defer resp.deinit();
+    try resp.expectStatus(.bad_request);
+    try std.testing.expect(resp.bodyContains("UZ-REQ-001"));
+}
+
+test "integration: test_runner_list_stable_under_concurrent_enrolment" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    // Three known runners; the list is global, so assertions are scoped to
+    // this suite's ids rather than to page composition.
+    try seedRunner(conn, R_LEASES, "runner-read-walk-1");
+    try seedRunner(conn, R_COUNTS, "runner-read-walk-2");
+    try seedRunner(conn, R_STALE, "runner-read-walk-3");
+
+    var seen_first: usize = 0;
+    var cursor: ?[]const u8 = null;
+    defer if (cursor) |c| ALLOC.free(c);
+    var walked: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (walked.items) |id| ALLOC.free(id);
+        walked.deinit(ALLOC);
+    }
+    var enrolled_mid_walk = false;
+    while (true) {
+        const query = if (cursor) |c|
+            try std.fmt.allocPrint(ALLOC, "limit=2&starting_after={s}", .{c})
+        else
+            try std.fmt.allocPrint(ALLOC, "limit=2", .{});
+        defer ALLOC.free(query);
+        const path = try runnersListPath(query);
+        defer ALLOC.free(path);
+        const resp = try getBody(h, path, PLATFORM_ADMIN_TOKEN);
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+        const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, resp.body, .{});
+        defer parsed.deinit();
+        const obj = parsed.value.object;
+        for (obj.get("items").?.array.items) |item| {
+            try walked.append(ALLOC, try ALLOC.dupe(u8, item.object.get("id").?.string));
+        }
+        if (!enrolled_mid_walk) {
+            // A runner enrolled mid-traversal lands at the head of a FRESH
+            // read (newest first); the in-flight walk must neither repeat nor
+            // skip anything it already committed to.
+            try seedRunner(conn, R_SAME_MS, "runner-read-walk-lately");
+            enrolled_mid_walk = true;
+        }
+        seen_first += 1;
+        const next = obj.get("next_cursor").?;
+        if (next == .null) break;
+        if (cursor) |c| ALLOC.free(c);
+        cursor = try ALLOC.dupe(u8, next.string);
+    }
+
+    // No id appears twice anywhere in the walk, and every pre-walk runner
+    // appears exactly once.
+    for (walked.items, 0..) |a, i| {
+        for (walked.items[i + 1 ..]) |b| try std.testing.expect(!std.mem.eql(u8, a, b));
+    }
+    const must_appear = [_][]const u8{ R_LEASES, R_COUNTS, R_STALE };
+    for (must_appear) |rid| {
+        var count: usize = 0;
+        for (walked.items) |id| {
+            if (std.mem.eql(u8, id, rid)) count += 1;
+        }
+        try std.testing.expectEqual(@as(usize, 1), count);
+    }
+}

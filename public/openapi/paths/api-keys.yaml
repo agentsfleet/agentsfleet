@@ -58,26 +58,24 @@
   get:
     operationId: list_api_keys
     summary: List tenant API keys
-    description: Returns metadata for every tenant API key visible to the caller. Results are always scoped to the caller's
-      tenant; `key_hash` is never returned.
+    description: Returns metadata for every tenant API key visible to the caller, under Stripe-style keyset pagination. The cursor carries the boundary sort value, so every allowlisted sort pages without loss. The retired page and page_size parameters are refused. Results are always scoped to the caller's tenant; `key_hash` is never returned.
     tags:
     - API Keys
     parameters:
-    - name: page
+    - name: starting_after
       in: query
       required: false
+      description: An opaque cursor from a previous page's `next_cursor`, issued under the same sort.
       schema:
-        type: integer
-        minimum: 1
-        default: 1
-    - name: page_size
+        type: string
+    - name: limit
       in: query
       required: false
       schema:
         type: integer
         minimum: 1
         maximum: 100
-        default: 25
+        default: 50
     - name: sort
       in: query
       required: false
@@ -99,8 +97,7 @@
               required:
               - items
               - total
-              - page
-              - page_size
+              - next_cursor
               properties:
                 items:
                   type: array
@@ -108,11 +105,12 @@
                     $ref: ../components/schemas.yaml#/components/schemas/TenantApiKey
                 total:
                   type: integer
-                  description: Total rows across all pages for this tenant.
-                page:
-                  type: integer
-                page_size:
-                  type: integer
+                  nullable: true
+                  description: The tenant's full key count; stable across pages.
+                next_cursor:
+                  type: string
+                  nullable: true
+                  description: Cursor for the next page; null on the final page.
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':

@@ -66,40 +66,45 @@ pub const DELETE_TENANT_KEY =
     \\LIMIT 1
 ;
 
-/// The tenant key list: one page plus a total that survives an offset past the
-/// end. Two `{s}` slots, both the ORDER BY clause, both fed from
-/// `sortClauseFor`'s fixed allowlist — never from user input. Each supported
-/// ordering is served by an index from schema slot 033, so no sort node runs.
-/// `$1` tenant_id, `$2` limit, `$3` offset.
-pub const SELECT_TENANT_KEY_PAGE_FMT =
-    \\WITH total AS (
-    \\    SELECT COUNT(*)::bigint AS total
-    \\    FROM core.api_keys
-    \\    WHERE tenant_id = $1::uuid
-    \\),
-    \\page AS (
-    \\    SELECT uid, key_name, active, created_at, last_used_at, revoked_at
-    \\    FROM core.api_keys
-    \\    WHERE tenant_id = $1::uuid
-    \\    ORDER BY {s}
-    \\    LIMIT $2 OFFSET $3
-    \\),
-    \\page_rows AS (
-    \\    SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at,
-    \\           (SELECT total FROM total)::bigint AS total, false AS count_only,
-    \\           ROW_NUMBER() OVER (ORDER BY {s})::bigint AS page_ord
-    \\    FROM page
-    \\),
-    \\empty_page AS (
-    \\    SELECT ''::text, ''::text, false, 0::bigint, NULL::bigint, NULL::bigint,
-    \\           total, true, NULL::bigint
-    \\    FROM total
-    \\    WHERE NOT EXISTS (SELECT 1 FROM page)
-    \\)
-    \\SELECT * FROM page_rows
-    \\UNION ALL
-    \\SELECT * FROM empty_page
-    \\ORDER BY count_only ASC, page_ord ASC NULLS LAST
+/// Page-stable total for the tenant key list.
+pub const SELECT_TENANT_KEY_COUNT =
+    \\SELECT COUNT(*)::bigint FROM core.api_keys WHERE tenant_id = $1::uuid
+;
+
+/// One keyset page of the tenant key list. One `{s}` slot — the ORDER BY
+/// clause — fed from `sortSpecFor`'s fixed allowlist, never from user input.
+/// Each supported ordering is served by an index from schema slot 033, so no
+/// sort node runs. `$1` tenant_id, `$2` limit.
+pub const SELECT_TENANT_KEY_KEYSET_FIRST_FMT =
+    \\SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at
+    \\FROM core.api_keys
+    \\WHERE tenant_id = $1::uuid
+    \\ORDER BY {s}
+    \\LIMIT $2
+;
+
+/// Continuation for the created_at orderings. Two `{s}` slots — the row-value
+/// comparator (direction) and the ORDER BY clause — both from the allowlist.
+/// `$1` tenant_id, `$2` boundary created_at, `$3` boundary uid, `$4` limit.
+pub const SELECT_TENANT_KEY_KEYSET_AFTER_CREATED_FMT =
+    \\SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at
+    \\FROM core.api_keys
+    \\WHERE tenant_id = $1::uuid
+    \\  AND (created_at, uid) {s} ($2::bigint, $3::uuid)
+    \\ORDER BY {s}
+    \\LIMIT $4
+;
+
+/// Continuation for the key_name orderings — the boundary sort value is the
+/// text key the cursor carried. Same two allowlist-fed `{s}` slots.
+/// `$1` tenant_id, `$2` boundary key_name, `$3` boundary uid, `$4` limit.
+pub const SELECT_TENANT_KEY_KEYSET_AFTER_NAME_FMT =
+    \\SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at
+    \\FROM core.api_keys
+    \\WHERE tenant_id = $1::uuid
+    \\  AND (key_name, uid) {s} ($2::text, $3::uuid)
+    \\ORDER BY {s}
+    \\LIMIT $4
 ;
 
 // ── Per-fleet keys ──────────────────────────────────────────────────────────

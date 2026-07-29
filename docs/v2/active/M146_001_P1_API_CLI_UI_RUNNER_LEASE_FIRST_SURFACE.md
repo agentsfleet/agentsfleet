@@ -252,7 +252,7 @@ Activity is the second rail item and the last piece of the 8K problem. The old t
 - **Dimension 6.4** — Activity renders through the same `DataTable` as Leases → Test `test_activity_uses_data_table`
 - **Dimension 6.5** — `RunnerList`, `RunnerActivityDialog` and their tests are gone, and no reference to them survives anywhere → Test `test_no_orphaned_runner_table_references`
 
-### §7 — Retire page-number pagination from the daemon
+### §7 — Retire page-number pagination from the daemon — **DONE**
 
 Three reads page by number: `GET /v1/fleets/runners`, `GET /v1/fleets/runners/{runner_id}/events`, and `GET /v1/api-keys`. They are the only callers of `pagination.zig::parsePageParams`, and the guidelines name that shape as legacy not to be copied. Under load a page-number reader silently repeats or skips rows whenever a row is inserted mid-traversal; on a runner acquiring leases continuously that is every few seconds. This slice moves all three to keyset and deletes the helper, so no page-based read survives anywhere in the daemon.
 
@@ -264,16 +264,16 @@ Three reads page by number: `GET /v1/fleets/runners`, `GET /v1/fleets/runners/{r
 
 **Implementation default:** `total` is retained on all three responses. The guidelines allow `integer | null`, and the count these reads already compute is cheap, so every footer's row count survives.
 
-- **Dimension 7.1** — `keyset_cursor.zig` encodes and parses both an integer sort value and a text sort value beside the row id, and still parses every previously-issued `{ts}:{id}` cursor → Test `test_keyset_cursor_roundtrips_integer_and_text_sort_values`
-- **Dimension 7.2** — `GET /v1/fleets/runners` answers `{items, total, next_cursor}` and refuses `page` and `page_size` → Test `test_runner_list_uses_keyset_envelope`
-- **Dimension 7.3** — The runner list pages forward with no duplicate or skipped row when a runner is enrolled mid-traversal → Test `test_runner_list_stable_under_concurrent_enrolment`
-- **Dimension 7.4** — The runner list's `sort` parameter is gone; a request carrying it is refused rather than silently ignored → Test `test_runner_list_rejects_retired_sort_parameter`
-- **Dimension 7.5** — `GET /v1/fleets/runners/{runner_id}/events` answers `{items, total, next_cursor}` and refuses `page` and `page_size` → Test `test_runner_events_uses_keyset_envelope`
-- **Dimension 7.6** — The events read orders by `occurred_at` and returns every record sharing one millisecond across page boundaries → Test `test_runner_events_same_millisecond_rows_are_not_skipped`
-- **Dimension 7.7** — The events read honours the multi-value `event_type` set from §3 while paging by cursor → Test `test_runner_events_type_filter_survives_keyset_paging`
-- **Dimension 7.8** — `GET /v1/api-keys` answers `{items, total, next_cursor}`, refuses `page` and `page_size`, and keeps every value in its sort allowlist working → Test `test_api_keys_list_uses_keyset_envelope_and_keeps_sorts`
-- **Dimension 7.9** — Paging the API-keys list by `key_name` returns every key exactly once across pages, including keys sharing a name prefix → Test `test_api_keys_key_name_sort_pages_without_loss`
-- **Dimension 7.10** — `pagination.zig` is deleted and no caller of `parsePageParams` remains anywhere → Test `test_page_param_helper_is_gone`
+- **Dimension 7.1** — `keyset_cursor.zig` encodes and parses both an integer sort value and a text sort value beside the row id, and still parses every previously-issued `{ts}:{id}` cursor → Test `test_keyset_cursor_roundtrips_integer_and_text_sort_values` — **DONE**
+- **Dimension 7.2** — `GET /v1/fleets/runners` answers `{items, total, next_cursor}` and refuses `page` and `page_size` → Test `test_runner_list_uses_keyset_envelope` — **DONE**
+- **Dimension 7.3** — The runner list pages forward with no duplicate or skipped row when a runner is enrolled mid-traversal → Test `test_runner_list_stable_under_concurrent_enrolment` — **DONE**
+- **Dimension 7.4** — The runner list's `sort` parameter is gone; a request carrying it is refused rather than silently ignored → Test `test_runner_list_rejects_retired_sort_parameter` — **DONE**
+- **Dimension 7.5** — `GET /v1/fleets/runners/{runner_id}/events` answers `{items, total, next_cursor}` and refuses `page` and `page_size` → Test `test_runner_events_uses_keyset_envelope` — **DONE**
+- **Dimension 7.6** — The events read orders by `occurred_at` and returns every record sharing one millisecond across page boundaries → Test `test_runner_events_same_millisecond_rows_are_not_skipped` — **DONE**
+- **Dimension 7.7** — The events read honours the multi-value `event_type` set from §3 while paging by cursor → Test `test_runner_events_type_filter_survives_keyset_paging` — **DONE**
+- **Dimension 7.8** — `GET /v1/api-keys` answers `{items, total, next_cursor}`, refuses `page` and `page_size`, and keeps every value in its sort allowlist working → Test `test_api_keys_list_uses_keyset_envelope_and_keeps_sorts` — **DONE**
+- **Dimension 7.9** — Paging the API-keys list by `key_name` returns every key exactly once across pages, including keys sharing a name prefix → Test `test_api_keys_key_name_sort_pages_without_loss` — **DONE**
+- **Dimension 7.10** — `pagination.zig` is deleted and no caller of `parsePageParams` remains anywhere → Test `test_page_param_helper_is_gone` — **DONE**
 
 ### §8 — API keys lose their pagination controls entirely
 
