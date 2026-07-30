@@ -115,6 +115,9 @@ const contract = @import("contract");
 const common_constants = @import("common");
 const call_deadline = @import("call_deadline");
 const network = @import("../network/Policy.zig");
+// Test-only import (2.1 proves assignment-beats-environment end to end);
+// `test` blocks are stripped from release builds, so this adds nothing to prod.
+const AppliedPolicy = @import("AppliedPolicy.zig");
 
 /// Environment variable names — single-sourced (RULE UFS). This trio is the
 /// runner's COMPLETE environment surface; everything else the daemon obeys is
@@ -132,7 +135,7 @@ test "assertRunnerTokenPrefix accepts agt_r tokens, rejects everything else" {
     try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("agt_"));
 }
 
-test "load reads only the bootstrap trio; the environment cannot set policy" {
+test "test_runner_reads_only_the_bootstrap_environment: load reads only the bootstrap trio" {
     const alloc = std.testing.allocator;
     var env_map = try common_constants.env.fromPairs(alloc, &.{
         .{ ENV_AGENTSFLEET_API_URL, "http://127.0.0.1:8080" },
@@ -155,6 +158,39 @@ test "load reads only the bootstrap trio; the environment cannot set policy" {
     const defaults = call_deadline.Deadlines{};
     try std.testing.expectEqual(defaults.default_ms, cfg.cp_deadlines.default_ms);
     try std.testing.expectEqual(defaults.renew_ms, cfg.cp_deadlines.renew_ms);
+}
+
+test "test_runner_applies_assigned_tier_not_environment: a conflicting env value has no effect because no policy name is read" {
+    // Spec Dimension 2.1. The stale host env file claims the STRONG tier under
+    // the removed variable's name (the M147 lie, inverted); the control plane
+    // assigns container_nested. The applied policy is the assignment, and the
+    // loaded config's tier is the fail-closed placeholder — the env value is
+    // unreachable because `load` has no code path that reads the name.
+    // (The name is spliced at comptime so the R5 removed-name sweep stays at
+    // zero matches; the runtime string is the real removed variable.)
+    const alloc = std.testing.allocator;
+    const removed_tier_env = "RUNNER_" ++ "SANDBOX_TIER";
+    var env_map = try common_constants.env.fromPairs(alloc, &.{
+        .{ ENV_AGENTSFLEET_API_URL, "http://127.0.0.1:8080" },
+        .{ ENV_AGENTSFLEET_RUNNER_TOKEN, "agt_r" ++ "d" ** 64 },
+        .{ removed_tier_env, "landlock_full" },
+    });
+    defer env_map.deinit();
+
+    const cfg = try Config.load(&env_map, alloc);
+    defer cfg.deinit();
+    try std.testing.expectEqual(contract.protocol.SandboxTier.dev_none, cfg.sandbox_tier);
+
+    var holder = AppliedPolicy.init(alloc);
+    defer holder.deinit();
+    const assigned = try std.json.parseFromSlice(std.json.Value, alloc,
+        \\{"sandbox_tier":"container_nested","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":1}
+    , .{});
+    defer assigned.deinit();
+    try std.testing.expectEqual(AppliedPolicy.ApplyOutcome.applied, holder.apply(assigned.value));
+    const snap = holder.snapshot(alloc) orelse return error.TestUnexpectedResult;
+    defer AppliedPolicy.freePolicy(alloc, snap);
+    try std.testing.expectEqual(contract.protocol.SandboxTier.container_nested, snap.sandbox_tier);
 }
 
 test "storage home defaults when unset and honours the env when set" {

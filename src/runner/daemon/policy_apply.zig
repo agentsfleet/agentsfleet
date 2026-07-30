@@ -145,8 +145,33 @@ test "delegated controllers are required only for a Linux tier that builds a cag
     // dev_none builds no cage, so a host with no delegated subtree still runs.
     try std.testing.expect(!controllersRequired(.linux, .dev_none));
     // cgroups are Linux-only: no controller subtree can exist off-linux.
-    try std.testing.expect(!controllersRequired(.macos, .macos_seatbelt));
+    try std.testing.expect(!controllersRequired(.macos, .landlock_full));
     try std.testing.expect(!controllersRequired(.macos, .dev_none));
+}
+
+test "test_startup_logs_the_applied_assignment: a decodable assignment lands on the applied path that emits runner_policy_applied" {
+    // The `runner_policy_applied` event (spec Metrics table) lives on the
+    // `.applied` arm of `applyHeartbeatPolicy` — the only arm that ends with
+    // the holder populated. Driving a valid assignment through and observing
+    // the holder proves the emitting path ran; there is no runtime log capture
+    // in this graph, so the structural proof is the honest one.
+    const alloc = std.testing.allocator;
+    var applied = AppliedPolicy.init(alloc);
+    defer applied.deinit();
+    var gates = Gates{};
+
+    const raw = try std.json.parseFromSlice(std.json.Value, alloc,
+        \\{"sandbox_tier":"dev_none","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":1}
+    , .{});
+    defer raw.deinit();
+
+    // SAFETY: io is only dereferenced by the cgroup-enablement gate, which the
+    // cage-free dev_none tier (Debug-allowed) never reaches.
+    applyHeartbeatPolicy(undefined, alloc, &applied, &gates, raw.value);
+    try std.testing.expectEqual(AppliedPolicy.ApplyOutcome.applied, gates.last_outcome);
+    const snap = applied.snapshot(alloc) orelse return error.TestUnexpectedResult;
+    defer AppliedPolicy.freePolicy(alloc, snap);
+    try std.testing.expectEqual(protocol.SandboxTier.dev_none, snap.sandbox_tier);
 }
 
 test "grow-needs-restart logs once per excursion and re-arms on shrink-back" {
