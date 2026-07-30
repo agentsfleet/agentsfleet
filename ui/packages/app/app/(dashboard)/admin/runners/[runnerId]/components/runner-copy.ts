@@ -23,6 +23,12 @@ export const LEASES_EMPTY_DESCRIPTION = "Work this host runs appears here, newes
 export const ACTIVITY_EMPTY_TITLE = "No lifecycle records yet";
 export const ACTIVITY_EMPTY_DESCRIPTION = "Enrolment, liveness and administrative changes appear here.";
 
+// A failed read is NOT an empty history. The empty states above say "this host
+// has done nothing"; these say "we could not find out", which is the difference
+// between an operator trusting a quiet page and an operator being misled by one.
+export const LEASES_UNAVAILABLE = "Lease history is temporarily unavailable. Try refreshing the page.";
+export const ACTIVITY_UNAVAILABLE = "Activity history is temporarily unavailable. Try refreshing the page.";
+
 export const IDLE_SENTENCE = "Idle. No active leases.";
 export const NEVER_CONNECTED_SENTENCE = "Never connected.";
 export const INSPECT_RUNNER_LABEL = "Inspect runner";

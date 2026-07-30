@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
+import { Alert } from "@agentsfleet/design-system";
 import { ApiError } from "@/lib/api/errors";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
@@ -26,6 +27,7 @@ import RunnerMetricsStrip from "./components/RunnerMetricsStrip";
 import { LeaseTable } from "./components/LeaseTable";
 import { ActivityTable } from "./components/ActivityTable";
 import { RunnerViewedTracker } from "./components/RunnerViewedTracker";
+import { ACTIVITY_UNAVAILABLE, LEASES_UNAVAILABLE } from "./components/runner-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -116,22 +118,31 @@ async function loadRunnerView(
   cursor: string | null,
   pageSize: number,
 ): Promise<ReactNode> {
+  // A failed read resolves to null, never to an empty page: the tables' empty
+  // states mean "this host has no history", and showing that for a database or
+  // network failure tells the operator the opposite of the truth. The strip
+  // still renders on the Leases view — it reads the runner, which succeeded.
   if (view === RUNNER_VIEW.activity) {
     const initial = await listRunnerEvents(token, runner.id, {
       limit: pageSize,
       event_type: RUNNER_LIFECYCLE_EVENT_TYPES.join(","),
       ...(cursor ? { starting_after: cursor } : {}),
-    }).catch(() => ({ items: [], total: null, next_cursor: null }));
+    }).catch(() => null);
+    if (initial === null) return <Alert variant="warning">{ACTIVITY_UNAVAILABLE}</Alert>;
     return <ActivityTable initial={initial} pageSize={pageSize} />;
   }
   const initial = await listRunnerLeases(token, runner.id, {
     limit: pageSize,
     ...(cursor ? { starting_after: cursor } : {}),
-  }).catch(() => ({ items: [], total: null, next_cursor: null }));
+  }).catch(() => null);
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3xl">
       <RunnerMetricsStrip runner={runner} />
-      <LeaseTable initial={initial} pageSize={pageSize} />
+      {initial === null ? (
+        <Alert variant="warning">{LEASES_UNAVAILABLE}</Alert>
+      ) : (
+        <LeaseTable initial={initial} pageSize={pageSize} />
+      )}
     </div>
   );
 }
