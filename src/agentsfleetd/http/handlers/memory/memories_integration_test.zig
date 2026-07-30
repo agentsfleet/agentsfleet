@@ -401,7 +401,7 @@ test "integration: test_memory_keyset_index_migration_registered" {
     // entry; slot 40 (the runner-lease operator read) made tail position
     // transient, while "39 is registered and creates this index" is the
     // durable shape — and it still fails if the slot is renumbered or dropped.
-    const KEYSET_SLOT: i32 = 39; // pin test: the slot number is the promise
+    const KEYSET_SLOT: i32 = 40; // pin test: the slot number is the promise
     var slot_sql: ?[]const u8 = null;
     for (schema_migrations) |m| {
         if (m.version == KEYSET_SLOT) slot_sql = m.sql;
