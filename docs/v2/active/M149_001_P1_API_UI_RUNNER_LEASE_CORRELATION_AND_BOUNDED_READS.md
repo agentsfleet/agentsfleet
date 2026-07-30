@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M149
 **Workstream:** 001
 **Date:** Jul 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing correlation gap plus read paths that grow without bound
 **Categories:** API, UI
 **Batch:** B1 — single workstream, no parallel siblings
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m149-runner-lease-reads
+**Test Baseline:** unit=3266 integration=501
 **Depends on:** none (M148_001 pending touches runner policy, not these read paths)
 **Provenance:** LLM-drafted (Claude Fable 5, Jul 30, 2026) — grounded in a live investigation of runner `ant` on dev; every claim below was verified against code or the live environment that day
 **Canonical architecture:** `docs/architecture/runner_fleet.md` § runner lease surface
