@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M146
 **Workstream:** 001
 **Date:** Jul 29, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — platform operators cannot answer "what is this host doing and why did that run fail" from any existing surface
 **Categories:** API, CLI, UI
 **Batch:** B1 — independent of M145 secret rotation; no shared files
@@ -618,7 +618,7 @@ The four `agentsfleet_runner_*` Prometheus families are unchanged: this spec rea
 | S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ every row 0 or its recorded enforcement/kept-family exemption; two stale test-name references reworded (RULE ORP) |
 | S10 | OpenAPI bundle in sync and lint-clean | `make check-openapi` | exit 0 | P0 | ✅ bundle + Redocly + error-schema + URL-shape + route-coverage all green |
 
-**Test Delta:** unit 3223→3263 (+40) · integration 455→499 (+44) vs CHORE(open) baseline. Re-proven after the REVIEW round (which added slot 041's EXPLAIN test, the cursor-refusal cases, the validator-distinction test, and the CLI hint tests): unit lanes, every package coverage gate, the full integration suite and the memleak gate all green on the same commit.
+**Test Delta:** unit 3223→3263 (+40) · integration 455→499 (+44) vs CHORE(open) baseline, measured on this branch's own commits before integrating `main`. The post-merge tree reads unit=3265 integration=501 because merging `origin/main` brought M145's landed tests with it — that pair is the tree total, not this branch's contribution. Re-proven after the REVIEW round (which added slot 041's EXPLAIN test, the cursor-refusal cases, the validator-distinction test, and the CLI hint tests): unit lanes, every package coverage gate, the full integration suite and the memleak gate all green on the same commit.
 **Lacking:** none — walked per changed module: every behaviour surface grew named tests; the mechanical §9 client renames (`fleets/page.tsx`, `fleets/actions.ts`, 1–2 lines each) are proven by typecheck plus the fleets walk test, and the shared wire struct and `lib/types.ts` are compile-forced through the envelope-exactness tests.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
