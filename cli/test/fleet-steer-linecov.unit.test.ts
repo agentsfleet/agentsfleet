@@ -15,7 +15,7 @@
 //     inside that window.
 
 import { describe, expect, test, setSystemTime } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Redacted } from "effect";
 
 import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
 import {
@@ -23,6 +23,8 @@ import {
   KIND_EVENT_COMPLETE,
   PRE_ID_BUFFER_MAX_BYTES,
   PRE_ID_BUFFER_MAX_FRAMES,
+  STATUS_SSE_DISCONNECTED,
+  openEventTail,
 } from "../src/commands/fleet_steer_events.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { SIGINT } from "../src/constants/signals.ts";
@@ -32,6 +34,8 @@ import {
   FLEET_ID,
   EVENT_ID,
   OTHER_EVENT_ID,
+  TOKEN,
+  WS_ID,
   streamFrom,
   nullOutput,
   makeRecorder,
@@ -259,6 +263,34 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
     expect(Exit.isSuccess(exit2)).toBe(true);
     expect(rec2.stdout.some((l) => l.includes("first-giant"))).toBe(false);
     expect(rec2.stdout.some((l) => l.includes("second-giant"))).toBe(true);
+  });
+});
+
+// ── Already-aborted signal at tail open ───────────────────────────────────
+
+describe("steer — tail opened with an already-aborted signal", () => {
+  test("should deliver the aborted signal to the stream and render nothing", async () => {
+    const rec = makeRecorder();
+    const ctrl = new AbortController();
+    ctrl.abort();
+    let sawAbortedSignal = false;
+    const signalProbe: typeof import("../src/lib/sse.ts").streamGet = async (
+      _url,
+      _headers,
+      _cb,
+      options,
+    ): Promise<void> => {
+      sawAbortedSignal = options?.signal?.aborted === true;
+    };
+    const handle = await Effect.runPromise(
+      openEventTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), signalProbe, ctrl.signal).pipe(
+        Effect.provide(makeLayer(rec)),
+      ),
+    );
+    const outcome = await handle.awaitOutcome();
+    expect(sawAbortedSignal).toBe(true);
+    expect(outcome.kind).toBe(STATUS_SSE_DISCONNECTED);
+    expect(rec.stdout).toEqual([]);
   });
 });
 
