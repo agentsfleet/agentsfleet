@@ -45,6 +45,38 @@ describe("EditPolicyDialog", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
+  it("refuses a bad registry entry in-form and never calls the action", async () => {
+    const onSaved = vi.fn();
+    render(<EditPolicyDialog runnerId="r-edit-3" current={CURRENT} onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
+    fireEvent.change(screen.getByLabelText(/registry allowlist/i), {
+      target: { value: "http://not a host" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
+    await waitFor(() => expect(screen.getByText(/must be a host name/i)).toBeTruthy());
+    expect(updateRunnerPolicyActionMock).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("cancel closes and resets to the stored assignment; a policy-less runner resets to the defaults", async () => {
+    render(<EditPolicyDialog runnerId="r-edit-4" current={CURRENT} onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
+    fireEvent.change(screen.getByLabelText("Workers"), { target: { value: "9" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByLabelText("Workers")).toBeNull());
+    // Re-open: the edit was discarded, the stored assignment is back.
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
+    expect((screen.getByLabelText("Workers") as HTMLInputElement).value).toBe("2");
+    cleanup();
+
+    // A pre-policy row (current = null) opens — and resets — at the defaults.
+    render(<EditPolicyDialog runnerId="r-edit-5" current={null} onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
+    expect((screen.getByLabelText("Workers") as HTMLInputElement).value).toBe("1");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByLabelText("Workers")).toBeNull());
+  });
+
   it("surfaces a refused re-assignment instead of closing", async () => {
     updateRunnerPolicyActionMock.mockResolvedValueOnce({
       ok: false,
@@ -59,8 +91,9 @@ describe("EditPolicyDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
 
     await waitFor(() => expect(updateRunnerPolicyActionMock).toHaveBeenCalled());
+    // The dialog stays open with the error presented (the set happens inside
+    // the transition, so the render is awaited, not assumed).
+    await waitFor(() => expect(screen.getByText(/Runner not found/i)).toBeTruthy());
     expect(onSaved).not.toHaveBeenCalled();
-    // The dialog stays open with the error presented.
-    expect(screen.getByText(/Runner not found/i)).toBeTruthy();
   });
 });

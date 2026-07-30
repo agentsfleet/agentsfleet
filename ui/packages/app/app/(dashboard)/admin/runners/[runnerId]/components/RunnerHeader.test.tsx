@@ -9,9 +9,11 @@ vi.mock("next/navigation", () => ({
 }));
 
 const updateRunnerAdminStateActionMock = vi.fn();
+const updateRunnerPolicyActionMock = vi.fn();
 const deleteRunnerActionMock = vi.fn();
 vi.mock("../../actions", () => ({
   updateRunnerAdminStateAction: (...args: unknown[]) => updateRunnerAdminStateActionMock(...args),
+  updateRunnerPolicyAction: (...args: unknown[]) => updateRunnerPolicyActionMock(...args),
   deleteRunnerAction: (...args: unknown[]) => deleteRunnerActionMock(...args),
   listRunnerLeasesAction: vi.fn(),
   listRunnersAction: vi.fn(),
@@ -106,9 +108,50 @@ describe("RunnerHeader", () => {
     expect(screen.queryByText(/assignment unmet/)).toBeNull();
   });
 
-  it("offers the Edit policy action beside the admin actions", () => {
+  it("a degraded runner with no report yet names the reason without a host-reports line", () => {
+    render(
+      <RunnerHeader
+        runner={detail({ degraded: true, degraded_reason: "no assigned policy", achievable: null })}
+        grafanaHref={null}
+      />,
+    );
+    expect(screen.getByText(/assignment unmet: no assigned policy/)).toBeTruthy();
+    expect(screen.queryByText(/host reports/)).toBeNull();
+  });
+
+  it("an empty controllers list renders as absent in the achievable line", () => {
+    render(
+      <RunnerHeader
+        runner={detail({
+          degraded: true,
+          degraded_reason: "cgroup controllers not delegated",
+          achievable: {
+            landlock: true,
+            seccomp: false,
+            cgroup_controllers: [],
+            bubblewrap: false,
+            egress_enforcement: true,
+          },
+        })}
+        grafanaHref={null}
+      />,
+    );
+    expect(screen.getByText(/seccomp ✗/)).toBeTruthy();
+    expect(screen.getByText(/cgroups ✗/)).toBeTruthy();
+    expect(screen.getByText(/bubblewrap ✗/)).toBeTruthy();
+    expect(screen.getByText(/egress ✓/)).toBeTruthy();
+  });
+
+  it("saving a policy re-assignment refreshes the header (the row must show the new truth)", async () => {
+    updateRunnerPolicyActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { id: "r1", admin_state: "active", assigned_policy: null },
+    });
     render(<RunnerHeader runner={detail()} grafanaHref={null} />);
-    expect(screen.getByRole("button", { name: "Edit policy" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
+    await waitFor(() => expect(updateRunnerPolicyActionMock).toHaveBeenCalled());
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
   it("test_grafana_action_hidden_without_configured_base", () => {

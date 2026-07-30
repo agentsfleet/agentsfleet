@@ -192,6 +192,13 @@ describe("parseRegistryAllowlist", () => {
     expect(r.hosts).toEqual([]);
     expect(r.error).toContain("http://bad url");
   });
+
+  it("refuses more than the shared per-runner cap, naming the bound", () => {
+    const many = Array.from({ length: 33 }, (_, i) => `registry-${i}.example`).join(", ");
+    const r = parseRegistryAllowlist(many);
+    expect(r.hosts).toEqual([]);
+    expect(r.error).toContain("32");
+  });
 });
 
 describe("parseLabels", () => {

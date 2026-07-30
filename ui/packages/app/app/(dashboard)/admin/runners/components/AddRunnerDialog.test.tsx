@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const createRunnerActionMock = vi.fn();
 vi.mock("../actions", () => ({
@@ -29,6 +29,17 @@ function openDialog() {
 }
 
 describe("AddRunnerDialog assigns policy", () => {
+  it("refuses a bad registry entry in-form and never calls the action", async () => {
+    openDialog();
+    fireEvent.change(screen.getByLabelText(/host name/i), { target: { value: "web-prod-1" } });
+    fireEvent.change(screen.getByLabelText(/registry allowlist/i), {
+      target: { value: "http://not a host" },
+    });
+    fireEvent.submit(screen.getByLabelText(/host name/i).closest("form") as HTMLFormElement);
+    await waitFor(() => expect(screen.getByText(/must be a host name/i)).toBeTruthy());
+    expect(createRunnerActionMock).not.toHaveBeenCalled();
+  });
+
   it("test_add_runner_copy_describes_an_assignment", () => {
     // Dimension 4.3 — the selection is an assignment the host must satisfy,
     // never a description of the host.
