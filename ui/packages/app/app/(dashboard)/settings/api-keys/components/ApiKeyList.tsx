@@ -1,7 +1,7 @@
 "use client";
 
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
-import { Badge, Button, DataTable, type DataTableColumn, EmptyState, Time, TooltipProvider } from "@agentsfleet/design-system";
+import { Badge, Button, DataTable, type DataTableColumn, EmptyState, Time } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import {
   DEFAULT_SORT,
@@ -94,36 +94,34 @@ export default function ApiKeyList({
   const sortDirection = sort === "key_name" || sort === "created_at" ? "ascending" : "descending";
 
   return (
-    <TooltipProvider>
-      <div className="space-y-4">
-        <DataTable
-          columns={buildColumns({
-            pending,
-            onRevoke: (k) => setTarget({ ...k, mode: "revoke" }),
-            onDelete: (k) => setTarget({ ...k, mode: "delete" }),
-          })}
-          rows={items}
-          rowKey={(k) => k.id}
-          caption="API keys"
-          sortKey={sortKey}
-          sortDirection={sortDirection}
-          onSortChange={(key) => loadSorted(NEXT_SORT[key as "name" | "activity"][sort])}
-          pagination={false}
-          empty={
-            <EmptyState
-              icon={<KeyRoundIcon size={28} />}
-              title="No API keys yet"
-              description="Create one for outside tools."
-            />
-          }
-        />
+    <div className="space-y-4">
+      <DataTable
+        columns={buildColumns({
+          pending,
+          onRevoke: (k) => setTarget({ ...k, mode: "revoke" }),
+          onDelete: (k) => setTarget({ ...k, mode: "delete" }),
+        })}
+        rows={items}
+        rowKey={(k) => k.id}
+        caption="API keys"
+        sortKey={sortKey}
+        sortDirection={sortDirection}
+        onSortChange={(key) => loadSorted(NEXT_SORT[key as "name" | "activity"][sort])}
+        pagination={false}
+        empty={
+          <EmptyState
+            icon={<KeyRoundIcon size={28} />}
+            title="No API keys yet"
+            description="Create one for outside tools."
+          />
+        }
+      />
 
-        {error && target === null ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error && target === null ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        {/* Open is controlled by `target`; ConfirmDialog only signals dismissal, so clear unconditionally. */}
-        <RevokeConfirm target={target} error={error} onOpenChange={() => { setTarget(null); setError(null); }} onConfirm={onConfirm} />
-      </div>
-    </TooltipProvider>
+      {/* Open is controlled by `target`; ConfirmDialog only signals dismissal, so clear unconditionally. */}
+      <RevokeConfirm target={target} error={error} onOpenChange={() => { setTarget(null); setError(null); }} onConfirm={onConfirm} />
+    </div>
   );
 }
 

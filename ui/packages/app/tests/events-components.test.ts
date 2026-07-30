@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
@@ -62,9 +63,12 @@ function row(over: Partial<EventRow> = {}): EventRow {
   };
 }
 
+// The wrapper stands in for a real ancestor: the root layout mounts the app's
+// one TooltipProvider, which the relative `Time` cells here read from.
 function renderList(initial: EventsPage, fleetId?: string) {
   return render(
     React.createElement(EventsList, { initial, pageSize: 25, fleetId }),
+    { wrapper: TooltipProvider },
   );
 }
 
