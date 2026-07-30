@@ -34,6 +34,28 @@ export const SANDBOX_TIER_DESCRIPTIONS: Record<SandboxTier, string> = {
   dev_none: "No real sandbox — for local development builds only; a non-debug runner build refuses to start with this tier.",
 };
 
+// Egress posture assigned per runner — mirrors `protocol.NetworkPolicy` verbatim
+// (UFS: the tag names are the wire shape). `allow_list_egress` marks the runner
+// degraded until its enforcement ships; the dialog says so when offering it.
+export const NETWORK_POLICIES = ["allow_all", "deny_all_egress", "allow_list_egress"] as const;
+export type NetworkPolicy = (typeof NETWORK_POLICIES)[number];
+
+// Enrollment defaults for the policy fields. Network defaults to the explicit
+// interim open posture — defaulting to the strict allowlist before its
+// enforcement ships would degrade every new runner. `DEFAULT_WORKER_COUNT`
+// mirrors `protocol.DEFAULT_WORKER_COUNT` (UFS cross-runtime name).
+export const DEFAULT_ASSIGNED_NETWORK_POLICY: NetworkPolicy = "allow_all";
+export const DEFAULT_WORKER_COUNT = 1;
+
+// The policy the operator assigns to a runner — mirrors `protocol.AssignedPolicy`
+// verbatim. The host applies exactly this; it never declares its own.
+export interface AssignedPolicy {
+  sandbox_tier: SandboxTier;
+  network_policy: NetworkPolicy;
+  registry_allowlist: string[];
+  worker_count: number;
+}
+
 // Derived runtime liveness — mirrors `protocol.RunnerLiveness` tag names. Never
 // stored; computed server-side from last_seen_at + the live-lease join.
 export const RUNNER_LIVENESS = ["registered", "busy", "online", "offline"] as const;
@@ -77,6 +99,7 @@ export const RUNNER_EVENT_TYPES = [
   "runner_draining",
   "runner_drained",
   "runner_revoked",
+  "runner_policy_assigned",
 ] as const;
 export type RunnerEventType = (typeof RUNNER_EVENT_TYPES)[number];
 
@@ -92,6 +115,7 @@ export const RUNNER_LIFECYCLE_EVENT_TYPES = [
   "runner_draining",
   "runner_drained",
   "runner_revoked",
+  "runner_policy_assigned",
 ] as const satisfies readonly RunnerEventType[];
 
 // Canonical Stripe-style paging parameter names — spelled identically to the
@@ -186,6 +210,7 @@ export interface RunnerLeaseResponse {
 export interface CreatedRunner {
   runner_id: string;
   runner_token: string;
+  assigned_policy: AssignedPolicy;
 }
 
 export interface RunnerAdminStateUpdate {
@@ -259,7 +284,7 @@ export async function listRunnerLeases(
 
 export async function createRunner(
   token: string,
-  body: { host_id: string; sandbox_tier: SandboxTier; labels: string[] },
+  body: { host_id: string; assigned_policy: AssignedPolicy; labels: string[] },
 ): Promise<CreatedRunner> {
   return request<CreatedRunner>(RUNNERS_ENROLLMENT_PATH, { method: "POST", body: JSON.stringify(body) }, token);
 }

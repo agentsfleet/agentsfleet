@@ -201,7 +201,7 @@ describe("admin/runners/[runnerId] page", () => {
       RUNNER.id,
       expect.objectContaining({
         event_type:
-          "runner_registered,runner_online,runner_offline,runner_cordoned,runner_draining,runner_drained,runner_revoked",
+          "runner_registered,runner_online,runner_offline,runner_cordoned,runner_draining,runner_drained,runner_revoked,runner_policy_assigned",
       }),
     );
     expect(listRunnerLeasesMock).not.toHaveBeenCalled();

@@ -717,12 +717,50 @@ components:
             type: string
             enum:
             - api
+    RunnerSandboxTier:
+      type: string
+      description: Isolation strength the operator assigns to a runner. The host applies it and reports what it can deliver. A host that cannot meet the assignment is marked degraded and receives no work.
+      enum:
+      - landlock_full
+      - container_nested
+      - macos_seatbelt
+      - dev_none
+    RunnerNetworkPolicy:
+      type: string
+      description: Network access assigned to a runner's sandboxed work. `allow_all` allows all outbound traffic. `deny_all_egress` allows none. `allow_list_egress` limits outbound traffic to an approved list. That mode is not available yet; a runner assigned it is marked degraded and refuses work.
+      enum:
+      - allow_all
+      - deny_all_egress
+      - allow_list_egress
+    RunnerAssignedPolicy:
+      type: object
+      description: The policy assigned to one runner. agentsfleet delivers it to the host on enrollment and on every heartbeat. The host never declares its own policy.
+      required:
+      - sandbox_tier
+      - network_policy
+      - registry_allowlist
+      - worker_count
+      properties:
+        sandbox_tier:
+          $ref: '#/components/schemas/RunnerSandboxTier'
+        network_policy:
+          $ref: '#/components/schemas/RunnerNetworkPolicy'
+        registry_allowlist:
+          type: array
+          description: Operator registry baseline merged into each lease's egress allowlist. Empty = the runner substitutes its default registry set.
+          items:
+            type: string
+        worker_count:
+          type: integer
+          description: Concurrent workers on the host. Clamped server-side into [1, 64]; the stored (clamped) value is echoed back.
+          minimum: 1
+          maximum: 64
     RunnerRegisterRequest:
       type: object
-      description: Self-reported runner identity at enrollment. `sandbox_tier` is telemetry only — placement keys off operator-assigned trust, not this claim.
+      description: Enrollment input. The operator ASSIGNS the policy here — the selection is an assignment the host must satisfy, not a description of the host.
       required:
       - host_id
-      - sandbox_tier
+      - assigned_policy
       - labels
       properties:
         host_id:
@@ -730,14 +768,8 @@ components:
           minLength: 1
           maxLength: 256
           description: Operator-supplied host identifier for this runner (1-256 chars).
-        sandbox_tier:
-          type: string
-          description: Isolation strength the runner self-reports. Stored as telemetry.
-          enum:
-          - landlock_full
-          - container_nested
-          - macos_seatbelt
-          - dev_none
+        assigned_policy:
+          $ref: '#/components/schemas/RunnerAssignedPolicy'
         labels:
           type: array
           description: Free-form operator labels for placement/grouping.
@@ -749,6 +781,7 @@ components:
       required:
       - runner_id
       - runner_token
+      - assigned_policy
       properties:
         runner_id:
           type: string
@@ -757,6 +790,9 @@ components:
         runner_token:
           type: string
           description: The `agt_r`-prefixed bearer token the runner presents on every later call. Returned once; never retrievable again.
+        assigned_policy:
+          $ref: '#/components/schemas/RunnerAssignedPolicy'
+          x-stability: stable
     RunnerSummary:
       type: object
       description: One fleet row as returned to the operator. `liveness` is derived at read time (never stored); the auth `token_hash` and stored auth state are never returned.
@@ -776,12 +812,7 @@ components:
         host_id:
           type: string
         sandbox_tier:
-          type: string
-          enum:
-          - landlock_full
-          - container_nested
-          - macos_seatbelt
-          - dev_none
+          $ref: '#/components/schemas/RunnerSandboxTier'
         admin_state:
           type: string
           description: Operator setting. Only `active` accepts runner requests.
@@ -839,6 +870,7 @@ components:
           - runner_draining
           - runner_drained
           - runner_revoked
+          - runner_policy_assigned
         occurred_at:
           type: integer
           format: int64
@@ -872,12 +904,7 @@ components:
         host_id:
           type: string
         sandbox_tier:
-          type: string
-          enum:
-          - landlock_full
-          - container_nested
-          - macos_seatbelt
-          - dev_none
+          $ref: '#/components/schemas/RunnerSandboxTier'
         admin_state:
           type: string
           description: Operator setting. Only `active` accepts runner requests.

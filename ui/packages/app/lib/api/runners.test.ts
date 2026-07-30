@@ -71,9 +71,18 @@ describe("listRunnerLeases", () => {
 });
 
 describe("createRunner", () => {
-  it("mints against the enrollment endpoint with the host + tier + labels body", async () => {
+  it("mints against the enrollment endpoint with the host + assigned policy + labels body", async () => {
     requestMock.mockResolvedValueOnce({ runner_id: "r1", runner_token: "agt_rabc" });
-    const body = { host_id: "web-prod-1", sandbox_tier: "landlock_full" as const, labels: ["gpu"] };
+    const body = {
+      host_id: "web-prod-1",
+      assigned_policy: {
+        sandbox_tier: "landlock_full" as const,
+        network_policy: "allow_all" as const,
+        registry_allowlist: ["registry.npmjs.org"],
+        worker_count: 2,
+      },
+      labels: ["gpu"],
+    };
     await createRunner("tok", body);
     expect(requestMock).toHaveBeenCalledWith("/v1/runners", { method: "POST", body: JSON.stringify(body) }, "tok");
   });
@@ -139,8 +148,8 @@ describe("listRunnerEvents", () => {
 });
 
 describe("RUNNER_LIFECYCLE_EVENT_TYPES", () => {
-  it("holds the seven non-lease tags and neither work record", () => {
-    expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(7);
+  it("holds the eight non-lease tags and neither work record", () => {
+    expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(8);
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_acquired");
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_released");
   });
@@ -182,6 +191,7 @@ describe("wire constants mirror the Zig enums", () => {
       "runner_draining",
       "runner_drained",
       "runner_revoked",
+      "runner_policy_assigned",
     ]);
   });
 });
