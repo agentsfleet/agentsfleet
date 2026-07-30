@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import { AuthProvider, AuthSessionKeeper } from "@/lib/auth/client";
 import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 import AnalyticsBootstrap from "@/components/analytics/AnalyticsBootstrap";
@@ -32,7 +33,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <body>
           <AuthSessionKeeper />
           <AnalyticsBootstrap />
-          {children}
+          {/* The app's ONE tooltip provider. `Tooltip` is Radix's Root, which
+              reads provider context unconditionally and THROWS when there is
+              none — so an island rendering a relative `Time` (tooltip on by
+              default) took its whole page down. Mounting it here, above every
+              route group, makes that unrepresentable instead of a rule each
+              new island has to remember. A client component in a Server
+              Component layout: `children` still stream through as slots. */}
+          <TooltipProvider>{children}</TooltipProvider>
         </body>
       </html>
     </AuthProvider>

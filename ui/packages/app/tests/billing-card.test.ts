@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 vi.mock("lucide-react", () => ({
   CoinsIcon: () => React.createElement("svg", { "data-icon": "CoinsIcon" }),
@@ -20,8 +21,12 @@ const HEALTHY: TenantBilling = {
 
 const SUMMARY: ChargeSummary = { spentNanos: 290_000_000, eventCount: 4, meterPct: 6 };
 
+// The wrapper stands in for a real ancestor: the root layout mounts the app's
+// one TooltipProvider, and this card's Buy-credits tooltip reads it from there.
 function renderCard(billing: TenantBilling, summary: ChargeSummary = SUMMARY) {
-  return render(React.createElement(BillingBalanceCard, { billing, summary }));
+  return render(React.createElement(BillingBalanceCard, { billing, summary }), {
+    wrapper: TooltipProvider,
+  });
 }
 
 afterEach(() => cleanup());

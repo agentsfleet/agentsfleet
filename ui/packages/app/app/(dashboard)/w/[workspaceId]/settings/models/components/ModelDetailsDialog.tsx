@@ -11,7 +11,6 @@ import {
   DescriptionList,
   DescriptionTerm,
   Time,
-  TooltipProvider,
 } from "@agentsfleet/design-system";
 import { providerLabel } from "@/lib/api/model_library";
 import type { TenantModelEntry } from "@/lib/types";
@@ -32,9 +31,7 @@ function Details({ target }: { target: TenantModelEntry }) {
             key backs it. */}
         <div className="flex items-center justify-between gap-2">
           <DialogDescription>
-            <TooltipProvider>
-              Added <Time value={new Date(target.created_at)} format="relative" />
-            </TooltipProvider>
+            Added <Time value={new Date(target.created_at)} format="relative" />
           </DialogDescription>
           <Badge variant={target.has_key ? "green" : "default"}>
             {target.has_key ? "In vault" : "Keyless endpoint"}
