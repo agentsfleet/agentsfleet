@@ -34,6 +34,7 @@
 //! lands, "unset" already means "kernel-enforced allowlist" rather than "open".
 
 const std = @import("std");
+const contract = @import("contract");
 const client_errors = @import("../engine/client_errors.zig");
 const log = @import("log").scoped(.egress_policy);
 
@@ -41,46 +42,16 @@ const ALLOW_ALL = "allow_all";
 const DENY_ALL_EGRESS = "deny_all_egress";
 const ALLOW_LIST_EGRESS = "allow_list_egress";
 
+/// The shared wire enum (`contract.protocol.NetworkPolicy`) — the control
+/// plane authors this value and the runner applies it; this namespace keeps the
+/// runner-side parse and posture logging. The methods (`sharesHostNet` /
+/// `enforcesEgress` / `postureLabel`) travel with the enum in the contract.
+pub const Mode = contract.protocol.NetworkPolicy;
+
 /// The fail-closed posture an unset/unrecognized policy resolves to (M100 §2,
-/// Invariant 2). Single-sourced (RULE UFS) — referenced by `fromSlice`'s
-/// fallback and the parse tests so the two can never drift.
-pub const FAIL_CLOSED_DEFAULT: Mode = .allow_list_egress;
-
-pub const Mode = enum {
-    /// Everything outbound allowed (re-shares host netns, `--share-net`).
-    /// Opt-in only — never the unset/typo fallback (Invariant 2).
-    allow_all,
-    /// No outbound traffic: net namespace unshared, no veth.
-    deny_all_egress,
-    /// Outbound only to permitted destinations: own netns + veth + nftables
-    /// allowlist. Opt-in / fail-closed default; fails closed until the
-    /// `EgressScope` wiring lands.
-    allow_list_egress,
-
-    /// The mode re-shares the host network namespace (`--share-net`). Only
-    /// `allow_all` does; `allow_list_egress` keeps its own (filtered) netns and
-    /// `deny_all_egress` has no network at all.
-    pub fn sharesHostNet(self: Mode) bool {
-        return self == .allow_all;
-    }
-
-    /// The mode routes through the kernel-enforced egress boundary
-    /// (`EgressScope`). The supervisor establishes egress iff this is true.
-    pub fn enforcesEgress(self: Mode) bool {
-        return self == .allow_list_egress;
-    }
-
-    /// Operator-facing one-line posture, logged at startup (M100) so
-    /// "is egress open?" is answerable from the boot log. Static strings — no
-    /// allocation, safe to log directly.
-    pub fn postureLabel(self: Mode) []const u8 {
-        return switch (self) {
-            .allow_all => "allow_all (OPEN egress — host netns shared; interim, UNENFORCED)",
-            .deny_all_egress => "deny_all_egress (no outbound network)",
-            .allow_list_egress => "allow_list_egress (strict allowlist — fails closed until EgressScope wiring lands)",
-        };
-    }
-};
+/// Invariant 2). Single-sourced in the contract (RULE UFS) — referenced by
+/// `fromSlice`'s fallback and the parse tests so the two can never drift.
+pub const FAIL_CLOSED_DEFAULT = contract.protocol.FAIL_CLOSED_DEFAULT;
 
 /// Parse `RUNNER_NETWORK_POLICY`. **Unset → `FAIL_CLOSED_DEFAULT`** (never
 /// `allow_all`): a missing policy must not silently open egress (M100 §2,

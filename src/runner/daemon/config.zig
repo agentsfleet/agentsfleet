@@ -263,12 +263,11 @@ fn parseSandboxTier(raw: ?[]const u8) contract.protocol.SandboxTier {
 }
 const DEFAULT_WORKSPACE_BASE = "/tmp/agentsfleet-runner";
 
-/// Worker-pool sizing bounds (RULE UFS: the clamp is single-sourced). Default 1
-/// = today's one-fleet-per-host daemon; MAX caps a misconfigured value so the
-/// pool can never fork unbounded children on one host.
-pub const DEFAULT_WORKER_COUNT: u32 = 1;
-pub const MIN_WORKER_COUNT: u32 = 1;
-pub const MAX_WORKER_COUNT: u32 = 64;
+/// Worker-pool sizing bounds — single-sourced in the shared contract (RULE
+/// UFS) so the assignment surface and the host clamp to the same range.
+pub const DEFAULT_WORKER_COUNT = contract.protocol.DEFAULT_WORKER_COUNT;
+pub const MIN_WORKER_COUNT = contract.protocol.MIN_WORKER_COUNT;
+pub const MAX_WORKER_COUNT = contract.protocol.MAX_WORKER_COUNT;
 
 test "assertRunnerTokenPrefix accepts agt_r tokens, rejects everything else" {
     try assertRunnerTokenPrefix("agt_r" ++ "a" ** 64);

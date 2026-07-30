@@ -249,3 +249,77 @@ test "lease response carries an inline secrets_map across the round-trip" {
     try std.testing.expectEqualStrings(j2, j3);
     try std.testing.expect(p1.value.lease.?.policy.secrets_map != null);
 }
+
+test "assigned-policy vocabulary round-trips via tag names" {
+    inline for (std.meta.fields(protocol.NetworkPolicy)) |f| {
+        try expectStable(protocol.NetworkPolicy, @field(protocol.NetworkPolicy, f.name));
+    }
+    try expectStable(protocol.AssignedPolicy, .{
+        .sandbox_tier = .landlock_full,
+        .network_policy = .allow_all,
+        .registry_allowlist = &.{ "registry.npmjs.org", "pypi.org" },
+        .worker_count = 4,
+    });
+    try expectStable(protocol.CapabilityReport, .{
+        .landlock = true,
+        .seccomp = true,
+        .cgroup_controllers = &.{ "cpu", "memory", "pids" },
+        .bubblewrap = false,
+        .egress_enforcement = false,
+    });
+}
+
+test "heartbeat request: an empty body parses to no capability report (mixed-version safety)" {
+    const a = std.testing.allocator;
+    const p = try std.json.parseFromSlice(protocol.HeartbeatRequest, a, "{}", .{});
+    defer p.deinit();
+    try std.testing.expect(p.value.capability_report == null);
+    try expectStable(protocol.HeartbeatRequest, .{ .capability_report = .{
+        .landlock = true,
+        .seccomp = true,
+        .cgroup_controllers = &.{"cpu"},
+        .bubblewrap = true,
+        .egress_enforcement = false,
+    } });
+}
+
+test "heartbeat and self replies carry the assignment and the degraded verdict" {
+    const assigned = protocol.AssignedPolicy{
+        .sandbox_tier = .landlock_full,
+        .network_policy = .deny_all_egress,
+        .registry_allowlist = &.{},
+        .worker_count = 1,
+    };
+    try expectStable(protocol.HeartbeatResponse, .{
+        .status = .ok,
+        .assigned_policy = assigned,
+        .degraded = true,
+        .degraded_reason = "cgroup controllers not delegated",
+    });
+    // A bare-status reply (the pre-policy shape) still parses — fields default.
+    const a = std.testing.allocator;
+    const p = try std.json.parseFromSlice(protocol.HeartbeatResponse, a,
+        \\{"status":"ok"}
+    , .{});
+    defer p.deinit();
+    try std.testing.expect(p.value.assigned_policy == null);
+    try std.testing.expect(!p.value.degraded);
+    try expectStable(protocol.SelfResponse, .{
+        .id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
+        .status = "active",
+        .host_id = "host-01",
+        .sandbox_tier = "landlock_full",
+        .last_seen_at = 0,
+        .assigned_policy = assigned,
+        .achievable = null,
+        .degraded = false,
+        .degraded_reason = null,
+    });
+}
+
+test "worker-pool bounds are sane; the fail-closed egress default is never open" {
+    try std.testing.expect(protocol.MIN_WORKER_COUNT <= protocol.DEFAULT_WORKER_COUNT);
+    try std.testing.expect(protocol.DEFAULT_WORKER_COUNT <= protocol.MAX_WORKER_COUNT);
+    try std.testing.expect(protocol.FAIL_CLOSED_DEFAULT != .allow_all);
+    try std.testing.expect(!protocol.FAIL_CLOSED_DEFAULT.sharesHostNet());
+}
