@@ -76,6 +76,41 @@ describe("RunnerHeader", () => {
     expect(screen.getByRole("button", { name: /copy runner id/i })).toBeTruthy();
   });
 
+  it("test_degraded_runner_row_states_the_reason (header face)", () => {
+    // Dimensions 4.1/4.2 — a degraded runner is visually distinct (the error
+    // badge) and names the missing mechanism beside what the host reported.
+    render(
+      <RunnerHeader
+        runner={detail({
+          degraded: true,
+          degraded_reason: "landlock unavailable",
+          achievable: {
+            landlock: false,
+            seccomp: true,
+            cgroup_controllers: ["cpu", "memory", "pids"],
+            bubblewrap: true,
+            egress_enforcement: false,
+          },
+        })}
+        grafanaHref={null}
+      />,
+    );
+    expect(screen.getByText("degraded")).toBeTruthy();
+    expect(screen.getByText(/assignment unmet: landlock unavailable/)).toBeTruthy();
+    expect(screen.getByText(/host reports landlock ✗/)).toBeTruthy();
+  });
+
+  it("a healthy runner shows neither the degraded badge nor the mismatch line", () => {
+    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    expect(screen.queryByText("degraded")).toBeNull();
+    expect(screen.queryByText(/assignment unmet/)).toBeNull();
+  });
+
+  it("offers the Edit policy action beside the admin actions", () => {
+    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    expect(screen.getByRole("button", { name: "Edit policy" })).toBeTruthy();
+  });
+
   it("test_grafana_action_hidden_without_configured_base", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} />);
     expect(screen.queryByText("Grafana")).toBeNull();

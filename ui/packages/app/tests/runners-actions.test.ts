@@ -16,6 +16,7 @@ const {
   listRunnersMock,
   createRunnerMock,
   updateRunnerAdminStateMock,
+  updateRunnerPolicyMock,
   deleteRunnerMock,
   listRunnerLeasesMock,
 } = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ const {
   listRunnersMock: vi.fn(),
   createRunnerMock: vi.fn(),
   updateRunnerAdminStateMock: vi.fn(),
+  updateRunnerPolicyMock: vi.fn(),
   deleteRunnerMock: vi.fn(),
   listRunnerLeasesMock: vi.fn(),
 }));
@@ -34,21 +36,26 @@ vi.mock("@/lib/api/runners", () => ({
   listRunners: listRunnersMock,
   createRunner: createRunnerMock,
   updateRunnerAdminState: updateRunnerAdminStateMock,
+  updateRunnerPolicy: updateRunnerPolicyMock,
   deleteRunner: deleteRunnerMock,
   listRunnerLeases: listRunnerLeasesMock,
-  // Enrollment defaults the action folds into assigned_policy — mirror the
-  // real module's values so the forwarded body assertion stays truthful.
-  DEFAULT_ASSIGNED_NETWORK_POLICY: "allow_all",
-  DEFAULT_WORKER_COUNT: 1,
 }));
 
 import {
   listRunnersAction,
   createRunnerAction,
   updateRunnerAdminStateAction,
+  updateRunnerPolicyAction,
   deleteRunnerAction,
   listRunnerLeasesAction,
 } from "@/app/(dashboard)/admin/runners/actions";
+
+const POLICY_TO_ASSIGN = {
+  sandbox_tier: "landlock_full" as const,
+  network_policy: "deny_all_egress" as const,
+  registry_allowlist: ["pypi.org"],
+  worker_count: 2,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -112,6 +119,35 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.RUNNER_WRITE);
     expect(withTokenMock).not.toHaveBeenCalled();
     expect(updateRunnerAdminStateMock).not.toHaveBeenCalled();
+  });
+
+  it("updateRunnerPolicyAction gates on runner:write and fails closed 403 UZ-AUTH-022 without it", async () => {
+    hasScopeMock.mockResolvedValueOnce(false);
+    const r = await updateRunnerPolicyAction("runner-1", POLICY_TO_ASSIGN);
+    expect(r).toEqual({
+      ok: false,
+      error: "Operator scope required: runner:write",
+      status: 403,
+      errorCode: "UZ-AUTH-022",
+    });
+    expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.RUNNER_WRITE);
+    expect(withTokenMock).not.toHaveBeenCalled();
+    expect(updateRunnerPolicyMock).not.toHaveBeenCalled();
+  });
+
+  it("updateRunnerPolicyAction forwards the assignment verbatim through withToken when scoped", async () => {
+    hasScopeMock.mockResolvedValueOnce(true);
+    updateRunnerPolicyMock.mockResolvedValueOnce({
+      id: "runner-1",
+      admin_state: "active",
+      assigned_policy: POLICY_TO_ASSIGN,
+    });
+    const r = await updateRunnerPolicyAction("runner-1", POLICY_TO_ASSIGN);
+    expect(r).toEqual({
+      ok: true,
+      data: { id: "runner-1", admin_state: "active", assigned_policy: POLICY_TO_ASSIGN },
+    });
+    expect(updateRunnerPolicyMock).toHaveBeenCalledWith("tok", "runner-1", POLICY_TO_ASSIGN);
   });
 
   it("deleteRunnerAction gates on runner:write — the same scope as revoke, deliberately — and fails closed without it", async () => {

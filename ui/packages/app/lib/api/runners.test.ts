@@ -12,6 +12,7 @@ import {
   deleteRunner,
   listRunnerEvents,
   parseLabels,
+  parseRegistryAllowlist,
   RUNNER_LIFECYCLE_EVENT_TYPES,
   RUNNER_ADMIN_ACTIONS,
   RUNNER_ADMIN_STATES,
@@ -152,6 +153,25 @@ describe("RUNNER_LIFECYCLE_EVENT_TYPES", () => {
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(8);
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_acquired");
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_released");
+  });
+});
+
+describe("parseRegistryAllowlist", () => {
+  it("trims, splits on comma, dedupes, and accepts host[:port] names", () => {
+    expect(parseRegistryAllowlist(" pypi.org , registry.npmjs.org:5000 , pypi.org ,, ")).toEqual({
+      hosts: ["pypi.org", "registry.npmjs.org:5000"],
+      error: null,
+    });
+  });
+
+  it("treats whitespace-only input as a valid empty set (runner substitutes its defaults)", () => {
+    expect(parseRegistryAllowlist("   ")).toEqual({ hosts: [], error: null });
+  });
+
+  it("rejects an entry with illegal characters, naming the offender", () => {
+    const r = parseRegistryAllowlist("pypi.org, http://bad url");
+    expect(r.hosts).toEqual([]);
+    expect(r.error).toContain("http://bad url");
   });
 });
 
