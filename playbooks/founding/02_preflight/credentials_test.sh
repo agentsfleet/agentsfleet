@@ -224,6 +224,68 @@ test_should_pin_issue_tracker_registration_contracts() {
   fi
 }
 
+# A worker item is only a real worker once it has joined the tailnet: CI reaches
+# workers by tailscale-hostname, never by the provider hostname.
+test_should_report_a_worker_on_the_tailnet_as_onboarded() {
+  local name="test_should_report_a_worker_on_the_tailnet_as_onboarded"
+  local output status=0
+  output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210')" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    bad "$name" "gate failed unexpectedly: $output"
+    return
+  fi
+  if [[ "$output" != *"onboarded: zombie-dev-worker-ant"* ]]; then
+    bad "$name" "a worker with a tailscale-hostname was not reported as onboarded: $output"
+    return
+  fi
+  ok "$name"
+}
+
+# A machine that was never bought is not a credential fault. The gate must name
+# the placeholder without failing, or a full credential set reads as a ready
+# worker — which is exactly how zombie-prod-worker-bird passed for months.
+test_should_report_a_worker_without_tailnet_identity_as_a_non_fatal_placeholder() {
+  local name="test_should_report_a_worker_without_tailnet_identity_as_a_non_fatal_placeholder"
+  local output status=0
+  output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210' \
+    'op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname')" || status=$?
+  if [[ "$output" != *"PLACEHOLDER: zombie-dev-worker-ant"* ]]; then
+    bad "$name" "a worker with no tailscale-hostname was not flagged as a placeholder: $output"
+    return
+  fi
+  if [[ "$status" -ne 0 ]]; then
+    bad "$name" "the placeholder was fatal; a missing machine must not fail the credential gate: $output"
+    return
+  fi
+  ok "$name"
+}
+
+# The duplicate-hostname branch: vault items get made by copying an existing
+# one, which carries the provider hostname over verbatim and leaves two entries
+# pointing at one box. Exercised directly because it only triggers on the prod
+# path, and prod mode reaches out to the Vercel API.
+test_should_name_the_sibling_when_a_placeholder_shares_its_host() {
+  local name="test_should_name_the_sibling_when_a_placeholder_shares_its_host"
+  local output
+  output="$(
+    # Trusted input: the function is lifted verbatim out of the script under test.
+    eval "$(sed -n '/^check_worker_onboarded()/,/^}/p' "$script_under_test")"
+    op_read_with_retry() {
+      case "$1" in
+        */zombie-prod-worker-bird/tailscale-hostname) return 1 ;;
+        */hostname) printf 'one-and-the-same-box\n' ;;
+        *) printf 'stub\n' ;;
+      esac
+    }
+    check_worker_onboarded ZMB_CD_PROD zombie-prod-worker-bird zombie-prod-worker-ant 2>&1
+  )"
+  if [[ "$output" != *"hostname is zombie-prod-worker-ant's host"* ]]; then
+    bad "$name" "shared hostname was not attributed to the sibling worker: $output"
+    return
+  fi
+  ok "$name"
+}
+
 test_should_accept_uuidv7_workspace_pointer
 test_should_reject_missing_workspace_pointer
 test_should_reject_non_uuidv7_workspace_pointer
@@ -232,6 +294,9 @@ test_should_reject_missing_approval_signer
 test_should_reject_missing_canonical_provider_fields
 test_should_scope_deployment_credential_gates
 test_should_pin_issue_tracker_registration_contracts
+test_should_report_a_worker_on_the_tailnet_as_onboarded
+test_should_report_a_worker_without_tailnet_identity_as_a_non_fatal_placeholder
+test_should_name_the_sibling_when_a_placeholder_shares_its_host
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]
