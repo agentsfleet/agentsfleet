@@ -254,6 +254,25 @@ test "a failed frame serialization leaves the eager latch armed for the next fra
     try testing.expect(fwd.eager_first_frame_done);
 }
 
+test "an eager ship rides a deadline capped at the staleness window" {
+    // The cap is pinned to the window: an eager POST may never block the read
+    // loop longer than batching would have (lease-renewal budget protection).
+    try testing.expectEqual(@as(u31, @intCast(forwarders.ACTIVITY_FLUSH_WINDOW_MS)), forwarders.EAGER_DEADLINE_CAP_MS);
+
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
+    defer c.deinit();
+    var fwd = testForwarder(&c);
+    defer fwd.deinit();
+
+    const original = fwd.deadline_ms;
+    try testing.expect(original > forwarders.EAGER_DEADLINE_CAP_MS); // cap binds
+    forwarders.ActivityForwarder.forward(@ptrCast(&fwd), frameFixture()); // eager ship
+    try testing.expectEqual(@as(usize, 0), fwd.count);
+    try testing.expectEqual(original, fwd.deadline_ms); // caller deadline restored after the capped ship
+}
+
 test "a failed chunk serialization leaves the chunk latch armed" {
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();

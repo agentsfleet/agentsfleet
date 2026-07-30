@@ -22,6 +22,9 @@ pub const ACTIVITY_BATCH_MAX_FRAMES: usize = 16;
 pub const ACTIVITY_BATCH_MAX_BYTES: usize = 64 * 1024;
 /// …or when the oldest buffered frame is this stale (live-tail latency budget).
 pub const ACTIVITY_FLUSH_WINDOW_MS: i64 = 1_000;
+/// Deadline cap for the one-shot eager ships — pinned to the staleness window
+/// so an eager POST can never block the read loop longer than batching would.
+pub const EAGER_DEADLINE_CAP_MS: u31 = @intCast(ACTIVITY_FLUSH_WINDOW_MS);
 
 /// Batches the `activity` frames the sandboxed child streams and forwards them
 /// to the control plane per flush window — one POST per batch, not per frame
@@ -75,9 +78,22 @@ pub const ActivityForwarder = struct {
             eager = true;
         }
         const stale = clock.nowMillis() - self.first_buffered_ms >= ACTIVITY_FLUSH_WINDOW_MS;
-        if (eager or self.count >= ACTIVITY_BATCH_MAX_FRAMES or self.buf.items.len >= ACTIVITY_BATCH_MAX_BYTES or stale) {
+        if (self.count >= ACTIVITY_BATCH_MAX_FRAMES or self.buf.items.len >= ACTIVITY_BATCH_MAX_BYTES or stale) {
             self.flush();
+        } else if (eager) {
+            self.flushEager();
         }
+    }
+
+    /// An eager ship rides a deadline capped at the staleness window: the
+    /// perceived-latency win must never spend more of the read loop's renewal
+    /// budget than one batching window would have. A control plane slower than
+    /// the window degrades to the batched cadence instead of stalling renewal.
+    fn flushEager(self: *ActivityForwarder) void {
+        const full = self.deadline_ms;
+        self.deadline_ms = @min(full, EAGER_DEADLINE_CAP_MS);
+        self.flush();
+        self.deadline_ms = full;
     }
 
     /// Tick-driven flush so a quiet child's tail frames still ship within the
