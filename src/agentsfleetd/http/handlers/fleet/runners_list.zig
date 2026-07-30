@@ -126,7 +126,7 @@ fn parseListQuery(req: *httpz.Request) ?ListQuery {
         const parsed = keyset_cursor.parse(raw) catch return null;
         // The id half seeks a ::uuid bind; refusing a non-UUID here keeps a
         // crafted cursor at 400 instead of a Postgres cast error's 500.
-        if (!id_format.isUuidV7(parsed.id)) return null;
+        if (!id_format.isUuid(parsed.id)) return null;
         out.cursor = parsed;
     }
     return out;
