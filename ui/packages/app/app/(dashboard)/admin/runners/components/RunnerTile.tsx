@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, cn, Time } from "@agentsfleet/design-system";
+import { Badge, Card, cn, Time } from "@agentsfleet/design-system";
 import { LEASE_OUTCOME, type RunnerListItem } from "@/lib/api/runners";
 import { runnerPath } from "@/lib/runner-routes";
 import {
@@ -11,7 +11,7 @@ import {
   NEVER_CONNECTED_SENTENCE,
 } from "../[runnerId]/components/runner-copy";
 import { listRunnerLeasesAction } from "../actions";
-import { RunnerStatus, runnerIsAwake } from "./RunnerStatus";
+import { DEGRADED_BADGE_LABEL, RunnerStatus, runnerIsAwake } from "./RunnerStatus";
 
 // One card per runner, mirroring FleetTile's grammar: an absolutely-positioned
 // whole-card link over pointer-events-none content, a bottom-bordered action
@@ -101,10 +101,22 @@ export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
           <ServerGlyph awake={awake} />
           <div className="min-w-0 flex-1">
             <div className="truncate font-mono text-body-sm font-medium">{runner.host_id}</div>
-            <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} className="mt-sm" />
-            <div className="mt-md min-h-5 truncate font-mono text-body-sm text-muted-foreground">
-              {workLine}
+            <div className="mt-sm flex flex-wrap items-center gap-md">
+              <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} />
+              {/* A host that cannot deliver its assignment is visually distinct
+                  and receives no work — the badge is the tile-level face of the
+                  verdict; the reason line below names the missing mechanism. */}
+              {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
             </div>
+            {runner.degraded && runner.degraded_reason ? (
+              <div className="mt-md min-h-5 truncate font-mono text-body-sm text-destructive">
+                {runner.degraded_reason}
+              </div>
+            ) : (
+              <div className="mt-md min-h-5 truncate font-mono text-body-sm text-muted-foreground">
+                {workLine}
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-auto flex items-center justify-between border-t border-border pt-lg font-mono text-label text-muted-foreground tabular-nums">

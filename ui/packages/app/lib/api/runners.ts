@@ -7,19 +7,20 @@ export const HOST_ID_MAX = 256;
 export const HOST_ID_REGEX = new RegExp(`^[A-Za-z0-9_.-]{1,${HOST_ID_MAX}}$`);
 export const LABEL_REGEX = /^[A-Za-z0-9_.-]{1,64}$/;
 
-// Self-reported isolation strength — mirrors `protocol.SandboxTier` verbatim
-// (UFS: the tag names are the wire shape). `dev_none` is dev-only; a release
-// daemon refuses it at boot.
-export const SANDBOX_TIERS = ["landlock_full", "container_nested", "macos_seatbelt", "dev_none"] as const;
+// Assignable isolation strength — mirrors `protocol.SandboxTier` verbatim
+// (UFS: the tag names are the wire shape). Only tiers with real enforcement
+// are assignable (the Seatbelt tier was removed — it never had enforcement
+// code, and a tier that cannot be applied must not be assignable). `dev_none`
+// is dev-only; a release daemon refuses it at boot.
+export const SANDBOX_TIERS = ["landlock_full", "container_nested", "dev_none"] as const;
 export type SandboxTier = (typeof SANDBOX_TIERS)[number];
 
-// Operator-facing labels for the self-reported isolation stack — the raw enum
+// Operator-facing labels for the assignable isolation tiers — the raw enum
 // tags are the wire shape (sent verbatim), these are the human strings the
 // dropdown and list render. Keyed so a new tier can't be added without a label.
 export const SANDBOX_TIER_LABELS: Record<SandboxTier, string> = {
   landlock_full: "Linux · Landlock (full)",
   container_nested: "Nested container",
-  macos_seatbelt: "macOS · Seatbelt",
   dev_none: "None (dev only)",
 };
 
@@ -30,7 +31,6 @@ export const SANDBOX_TIER_LABELS: Record<SandboxTier, string> = {
 export const SANDBOX_TIER_DESCRIPTIONS: Record<SandboxTier, string> = {
   landlock_full: "Bare Linux host with kernel-level Landlock sandboxing — full isolation, eligible for any work.",
   container_nested: "Runner runs inside a container on a Linux host or VM — same full-isolation tier as Landlock.",
-  macos_seatbelt: "macOS's Seatbelt sandbox — weaker isolation; limited to your own workspace's dev work.",
   dev_none: "No real sandbox — for local development builds only; a non-debug runner build refuses to start with this tier.",
 };
 
@@ -40,12 +40,54 @@ export const SANDBOX_TIER_DESCRIPTIONS: Record<SandboxTier, string> = {
 export const NETWORK_POLICIES = ["allow_all", "deny_all_egress", "allow_list_egress"] as const;
 export type NetworkPolicy = (typeof NETWORK_POLICIES)[number];
 
+// Operator-facing labels for the egress postures — the raw tags are the wire
+// shape, these are the strings the select renders. Keyed so a new mode can't
+// be added without a label.
+export const NETWORK_POLICY_LABELS: Record<NetworkPolicy, string> = {
+  allow_all: "Allow all egress",
+  deny_all_egress: "No egress",
+  allow_list_egress: "Allowlist egress",
+};
+
+// One-line descriptions for the egress select. `allow_list_egress` says
+// exactly what assigning it does today: the host cannot enforce it yet, so the
+// runner reads degraded and refuses work until that enforcement ships.
+export const NETWORK_POLICY_DESCRIPTIONS: Record<NetworkPolicy, string> = {
+  allow_all: "All outbound traffic allowed — the interim open posture.",
+  deny_all_egress: "No outbound network at all.",
+  allow_list_egress: "Outbound only to an approved list. Enforcement has not shipped yet — a runner assigned this is degraded and receives no work until it does.",
+};
+
 // Enrollment defaults for the policy fields. Network defaults to the explicit
 // interim open posture — defaulting to the strict allowlist before its
-// enforcement ships would degrade every new runner. `DEFAULT_WORKER_COUNT`
-// mirrors `protocol.DEFAULT_WORKER_COUNT` (UFS cross-runtime name).
+// enforcement ships would degrade every new runner. `DEFAULT_WORKER_COUNT`,
+// `MIN_WORKER_COUNT`, and `MAX_WORKER_COUNT` mirror their `protocol.*`
+// namesakes (UFS cross-runtime names); the server clamps into the same bounds.
 export const DEFAULT_ASSIGNED_NETWORK_POLICY: NetworkPolicy = "allow_all";
 export const DEFAULT_WORKER_COUNT = 1;
+export const MIN_WORKER_COUNT = 1;
+export const MAX_WORKER_COUNT = 64;
+
+// Registry allowlist entries are host[:port] names, one per comma.
+export const REGISTRY_HOST_REGEX = /^[A-Za-z0-9_.-]{1,253}(:[0-9]{1,5})?$/;
+
+/**
+ * Split the free-form registry allowlist field (comma-separated) into a
+ * deduped, validated set — the registry twin of `parseLabels`. An
+ * empty/whitespace-only input is a valid empty set (the runner substitutes its
+ * default registry set).
+ */
+export function parseRegistryAllowlist(raw: string): { hosts: string[]; error: string | null } {
+  const parts = raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  const seen = new Set<string>();
+  for (const p of parts) {
+    if (!REGISTRY_HOST_REGEX.test(p)) {
+      return { hosts: [], error: `Registry "${p}" must be a host name, optionally with a port` };
+    }
+    seen.add(p);
+  }
+  return { hosts: [...seen], error: null };
+}
 
 // The policy the operator assigns to a runner — mirrors `protocol.AssignedPolicy`
 // verbatim. The host applies exactly this; it never declares its own.
@@ -54,6 +96,19 @@ export interface AssignedPolicy {
   network_policy: NetworkPolicy;
   registry_allowlist: string[];
   worker_count: number;
+}
+
+// What the host's kernel can actually enforce — mirrors
+// `protocol.CapabilityReport` verbatim (UFS: field names are the wire shape).
+// Unauthenticated self-assertion; the server reconciles it against the
+// assignment into `degraded`, and the dashboard only ever renders it beside
+// the assignment it was judged against.
+export interface CapabilityReport {
+  landlock: boolean;
+  seccomp: boolean;
+  cgroup_controllers: string[];
+  bubblewrap: boolean;
+  egress_enforcement: boolean;
 }
 
 // Derived runtime liveness — mirrors `protocol.RunnerLiveness` tag names. Never
@@ -141,6 +196,15 @@ export interface RunnerListItem {
   labels: string[];
   last_seen_at: number;
   created_at: number;
+  /** The assignment this host must satisfy. Null only for a pre-policy row —
+   * such a runner reads degraded until an operator assigns a policy. */
+  assigned_policy: AssignedPolicy | null;
+  /** The host's last capability report; null until its first report arrives. */
+  achievable: CapabilityReport | null;
+  /** Assigned exceeds achievable (or no report yet). A degraded runner is issued no work. */
+  degraded: boolean;
+  /** The specific missing mechanism; null when not degraded. */
+  degraded_reason: string | null;
 }
 
 export interface RunnerListResponse {
@@ -216,6 +280,13 @@ export interface CreatedRunner {
 export interface RunnerAdminStateUpdate {
   id: string;
   admin_state: RunnerAdminState;
+}
+
+/** The policy-update PATCH reply: the assignment as stored (worker count clamped). */
+export interface RunnerPolicyUpdate {
+  id: string;
+  admin_state: RunnerAdminState;
+  assigned_policy: AssignedPolicy;
 }
 
 export interface RunnerEventItem {
@@ -297,6 +368,20 @@ export async function updateRunnerAdminState(
   return request<RunnerAdminStateUpdate>(
     `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}`,
     { method: "PATCH", body: JSON.stringify({ action }) },
+    token,
+  );
+}
+
+/** Re-assign a runner's policy. Reaches the host on its next heartbeat — no
+ * host visit, no restart. Idempotent: a same-values PATCH changes nothing. */
+export async function updateRunnerPolicy(
+  token: string,
+  runnerId: string,
+  assigned_policy: AssignedPolicy,
+): Promise<RunnerPolicyUpdate> {
+  return request<RunnerPolicyUpdate>(
+    `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}`,
+    { method: "PATCH", body: JSON.stringify({ assigned_policy }) },
     token,
   );
 }
