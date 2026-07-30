@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { TooltipProvider } from "@agentsfleet/design-system";
 import { AuthProvider, AuthSessionKeeper } from "@/lib/auth/client";
 import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 import AnalyticsBootstrap from "@/components/analytics/AnalyticsBootstrap";
@@ -33,14 +32,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <body>
           <AuthSessionKeeper />
           <AnalyticsBootstrap />
-          {/* The app's ONE tooltip provider. `Tooltip` is Radix's Root, which
-              reads provider context unconditionally and THROWS when there is
-              none — so an island rendering a relative `Time` (tooltip on by
-              default) took its whole page down. Mounting it here, above every
-              route group, makes that unrepresentable instead of a rule each
-              new island has to remember. A client component in a Server
-              Component layout: `children` still stream through as slots. */}
-          <TooltipProvider>{children}</TooltipProvider>
+          {/* No tooltip provider here. It belongs to `(dashboard)/layout.tsx`,
+              not the root: mounting it above EVERY route group pulled the Radix
+              tooltip runtime into the auth bundles — sign-in, sign-up and
+              cli-auth each grew 10–20 kB gzipped for a component none of them
+              render — and broke the size budget. Every tooltip in the app lives
+              under the dashboard. */}
+          {children}
         </body>
       </html>
     </AuthProvider>

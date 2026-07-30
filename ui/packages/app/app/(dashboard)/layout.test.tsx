@@ -3,27 +3,30 @@ import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { Time, TooltipProvider } from "@agentsfleet/design-system";
 
-// The root layout is a Server Component that reads a cookie and mounts Clerk.
-// Neither is what these tests are about, so both are stubbed down to the point
-// where the returned element TREE is inspectable — the tree is the assertion.
-vi.mock("next/headers", () => ({
-  cookies: () => Promise.resolve({ get: () => undefined }),
+// The dashboard layout is a Server Component that authenticates, lists
+// workspaces, and reads operator scopes. None of that is what these tests are
+// about, so each is stubbed to the point where the returned element TREE is
+// inspectable — the tree is the assertion.
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: () => Promise.resolve({ getToken: () => Promise.resolve(null) }),
 }));
-vi.mock("@/lib/auth/client", () => ({
-  AuthProvider: ({ children }: { children: ReactNode }) => children,
-  AuthSessionKeeper: () => null,
+vi.mock("@/lib/workspace", () => ({
+  listTenantWorkspacesCached: () => Promise.resolve({ items: [], total: 0 }),
 }));
-vi.mock("@/components/analytics/AnalyticsBootstrap", () => ({
-  default: () => null,
+vi.mock("@/lib/auth/platform", () => ({
+  readSessionScopes: () => Promise.resolve(new Set<string>()),
+}));
+vi.mock("@/components/layout/ShellFrame", () => ({
+  ShellFrame: ({ children }: { children: ReactNode }) => children,
 }));
 
-import RootLayout from "./layout";
+import DashboardLayout from "./layout";
 
 const CHILD_MARKER = "child-marker";
 
 // Walk the returned tree and collect every node of a given component type.
-// Rendering is not an option here: the layout returns <html><body>, which
-// cannot be mounted into a jsdom body without React complaining about nesting.
+// Rendering is not an option: the layout is async and its shell reaches for
+// browser and Clerk context this test deliberately does not stand up.
 function findAll(node: ReactNode, type: unknown): ReactElement[] {
   if (!React.isValidElement(node)) return [];
   const self = node.type === type ? [node] : [];
@@ -34,9 +37,9 @@ function findAll(node: ReactNode, type: unknown): ReactElement[] {
   return [...self, ...descendants];
 }
 
-describe("root layout — the app's single tooltip provider", () => {
+describe("dashboard layout — the segment's single tooltip provider", () => {
   it("mounts exactly one TooltipProvider", async () => {
-    const tree = await RootLayout({
+    const tree = await DashboardLayout({
       children: React.createElement("div", null, CHILD_MARKER),
     });
 
@@ -47,8 +50,8 @@ describe("root layout — the app's single tooltip provider", () => {
     expect(findAll(tree, TooltipProvider)).toHaveLength(1);
   });
 
-  it("mounts it ABOVE children, so every route group inherits it", async () => {
-    const tree = await RootLayout({
+  it("mounts it ABOVE children, so every dashboard route inherits it", async () => {
+    const tree = await DashboardLayout({
       children: React.createElement("div", null, CHILD_MARKER),
     });
 
@@ -65,7 +68,7 @@ describe("root layout — the app's single tooltip provider", () => {
     // tooltip on for `format="relative"`, and Radix's Root reads provider
     // context unconditionally — so without a provider it THROWS rather than
     // degrading to a plain timestamp, taking the surrounding page down with it.
-    // If Radix ever softens that, this test fails and the root mount stops
+    // If Radix ever softens that, this test fails and the layout mount stops
     // being load-bearing — which is worth being told about.
     const relativeTime = React.createElement(Time, {
       value: new Date(Date.UTC(2026, 0, 2, 3, 4, 5)),
