@@ -38,6 +38,11 @@ export const EVENTS = {
   onboarding_viewed: "onboarding_viewed",
   onboarding_cli_ticked: "onboarding_cli_ticked",
   onboarding_dismissed: "onboarding_dismissed",
+  // The dashboard error boundary rendered. Until this existed the boundary
+  // received the Error and dropped it, so every dashboard failure was invisible
+  // — and the page now tells the user a support agent is working on it, which
+  // is only true if the failure actually reaches somewhere a human reads.
+  dashboard_error_shown: "dashboard_error_shown",
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -103,6 +108,17 @@ export type EventProps = {
   [EVENTS.onboarding_viewed]: { workspace_id: string; completed_steps: number };
   [EVENTS.onboarding_cli_ticked]: { workspace_id: string };
   [EVENTS.onboarding_dismissed]: { workspace_id: string; completed_steps: number };
+  // `error_name` is the error's CLASS ("TypeError"), never its message: a
+  // message is free text and routinely carries a URL, id, or payload fragment
+  // from wherever it was thrown. `digest` is Next's server-error hash — in
+  // production the real message is redacted and this is the only handle that
+  // correlates the browser event with the server log. `attempt` distinguishes
+  // a first failure from one that survived the automatic retries.
+  [EVENTS.dashboard_error_shown]: {
+    error_name: string;
+    digest?: string;
+    attempt: number;
+  };
 };
 
 // Runtime mirror of EventProps — `satisfies` locks every array to that event's
@@ -132,4 +148,5 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.onboarding_viewed]: ["workspace_id", "completed_steps"],
   [EVENTS.onboarding_cli_ticked]: ["workspace_id"],
   [EVENTS.onboarding_dismissed]: ["workspace_id", "completed_steps"],
+  [EVENTS.dashboard_error_shown]: ["error_name", "digest", "attempt"],
 } as const satisfies { [E in EventName]: readonly (keyof EventProps[E])[] };

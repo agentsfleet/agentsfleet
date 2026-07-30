@@ -103,6 +103,8 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
     [],
   );
 
+  // The relative `Time` cells here, and Review lease's own, take tooltip
+  // context from the root layout's single provider — see `app/layout.tsx`.
   return (
     <div>
       <DataTable
