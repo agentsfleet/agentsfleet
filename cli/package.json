@@ -1,6 +1,6 @@
 {
   "name": "@agentsfleet/cli",
-  "version": "0.24.0",
+  "version": "0.26.0",
   "description": "agentsfleet CLI",
   "repository": {
     "type": "git",
@@ -22,8 +22,7 @@
     "bun": ">=1.3.14"
   },
   "scripts": {
-    "test": "npm run build && node ./scripts/enforce-coverage.mjs",
-    "test:coverage": "npm run build && bun test --coverage",
+    "test": "bun run build && bun ./scripts/enforce-coverage.mjs",
     "test:acceptance": "npm run build && bun run test:acceptance:deterministic:run && bun run test:acceptance:live:run",
     "test:acceptance:deterministic": "npm run build && bun run test:acceptance:deterministic:run",
     "test:acceptance:deterministic:run": "bun test/acceptance/run-lane.ts deterministic",

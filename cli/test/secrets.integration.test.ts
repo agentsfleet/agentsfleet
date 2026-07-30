@@ -45,7 +45,57 @@ describe("secret commands", () => {
     });
   });
 
-  test("`secret create` on a taken name is a skip, not a failure — exit 0, no stack, delete named as the way out", async () => {
+  test("`secret update` PUTs the whole body once and prints updated", async () => {
+    await authedScope(async () => {
+      let putBody: string | null = null;
+      const routes: MockRoutes = {
+        // PUT only. A preflight GET or a DELETE would land as an unroutable
+        // request and fail the ledger assertion below.
+        [`PUT /v1/workspaces/${WS_ID}/secrets/github`]: async (_req, _url, body) => {
+          putBody = body;
+          return jsonResponse(200, { name: "github" });
+        },
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["secret", "update", "github", `--data={"token":"ghp_replaced_value"}`],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        expect(out.read()).toMatch(/updated/i);
+        expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+          `PUT /v1/workspaces/${WS_ID}/secrets/github`,
+        ]);
+        const parsed = JSON.parse(putBody ?? "{}") as { data?: Record<string, unknown> };
+        expect(parsed.data).toEqual({ token: "ghp_replaced_value" });
+      });
+    });
+  });
+
+  test("`secret update` surfaces the typed 404 for a name the workspace does not hold", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`PUT /v1/workspaces/${WS_ID}/secrets/ghost`]: () =>
+          jsonResponse(404, {
+            error: { code: "UZ-VAULT-003", message: "secret not found in this workspace" },
+          }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["secret", "update", "ghost", `--data={"token":"x"}`],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).not.toBe(0);
+        expect(`${out.read()}${err.read()}`).toMatch(/UZ-VAULT-003|not found/i);
+      });
+    });
+  });
+
+  test("`secret create` on a taken name is a skip, not a failure — exit 0, no stack, update named as the way out", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
@@ -66,7 +116,7 @@ describe("secret commands", () => {
         const text = out.read();
         expect(text).toMatch(/already exists/i);
         // The recovery is named, because there is no longer a flag for it.
-        expect(text).toMatch(/secret delete github/);
+        expect(text).toMatch(/secret update github/);
         expect(text).not.toMatch(/UZ-VAULT-005/);
         expect(calls.map((c) => c.method)).toEqual(["POST"]);
       });

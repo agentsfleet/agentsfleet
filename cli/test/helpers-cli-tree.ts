@@ -99,6 +99,7 @@ export function makeSpyTree(): SpyTree {
       steer: spy("fleet.steer"),
       secret: {
         create: spy("fleet.secret.create"),
+        update: spy("fleet.secret.update"),
         show: spy("fleet.secret.show"),
         list: spy("fleet.secret.list"),
         delete: spy("fleet.secret.delete"),

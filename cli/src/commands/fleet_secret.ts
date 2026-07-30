@@ -1,15 +1,13 @@
-// `agentsfleet secret create|show|list|delete` — workspace-scoped opaque
-// JSON secrets keyed by `name`. The skill consuming them addresses fields
-// as ${secrets.<name>.<field>}; this CLI does not enforce a schema (the
-// consumer owns it).
+// `agentsfleet secret create|update|show|list|delete` — workspace-scoped
+// opaque JSON secrets keyed by `name`. The skill consuming them addresses
+// fields as ${secrets.<name>.<field>}; this CLI does not enforce a schema
+// (the consumer owns it).
 //
 // `create` claims a name that is free and never overwrites: the endpoint
 // answers `UZ-VAULT-005` on a name this workspace already holds, and a
 // taken name is reported as a skip so re-running a provisioning script is
-// quiet. Replacing a value is `delete` then `create`. This replaced a
-// `--force` flag that relied on the endpoint upserting on
-// (workspace_id, key_name) — it no longer does, so the flag could only
-// have failed.
+// quiet. `update` replaces a held name's whole body in one PUT — the name
+// is never released, so fleets that require it keep resolving.
 
 import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
@@ -29,8 +27,9 @@ import {
   resolveSecretBody,
   type SecretAddFlags,
 } from "./fleet_secret_body.ts";
-
 const TYPE_STRING = "string" as const;
+const METHOD_PUT = "PUT" as const;
+const STATUS_UPDATED = "updated" as const;
 
 const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
@@ -126,7 +125,7 @@ export const secretAddEffectFromFlags = (
         yield* output.printJson({ status: "skipped", name, reason: "already_exists" });
       } else {
         yield* output.info(
-          `Secret '${name}' already exists — skipped. Delete it first to replace its value: agentsfleet secret delete ${name}`,
+          `Secret '${name}' already exists — skipped. Replace its value with: agentsfleet secret update ${name} --data='<json-object>'`,
         );
       }
       return;
@@ -136,6 +135,54 @@ export const secretAddEffectFromFlags = (
       yield* output.printJson({ status: "stored", name });
     } else {
       yield* output.success(`Secret '${name}' stored in vault.`);
+    }
+  });
+
+/**
+ * `agentsfleet secret update <name> --data='<json-object>'` — replace a stored
+ * secret's whole body without releasing the name.
+ *
+ * One PUT, no preflight read and no delete. `delete` then `create` also
+ * replaces a value, but leaves the name unclaimed between the two calls, and
+ * every fleet that requires it fails in that window. Replacement is total —
+ * a field absent from the new body is absent from the stored secret — which
+ * is the only honest write on a resource the client can never read back.
+ * Accepts the same input forms as `create`: `--data` (or `--data=@-` stdin)
+ * and the typed custom-endpoint flags.
+ */
+export const secretUpdateEffectFromFlags = (
+  flags: SecretAddFlags,
+): Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
+    const http = yield* HttpClient;
+
+    const wsId = yield* requireWorkspaceId;
+    const name = yield* requireName(
+      flags.name,
+      "agentsfleet secret update <name> --data='<json-object>'",
+    );
+    // Resolved before the token so a malformed invocation costs no round-trip
+    // and never reaches the vault.
+    const data = yield* resolveSecretBody(flags);
+
+    const token = yield* resolveAuthToken;
+    yield* http.request<unknown>({
+      path: wsSecretPath(wsId, name),
+      method: METHOD_PUT,
+      body: { data },
+      token,
+    });
+
+    if (config.jsonMode) {
+      yield* output.printJson({ status: STATUS_UPDATED, name });
+    } else {
+      yield* output.success(`Secret '${name}' updated. The name stayed claimed throughout.`);
     }
   });
 

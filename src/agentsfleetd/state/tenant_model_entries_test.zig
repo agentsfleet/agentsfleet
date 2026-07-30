@@ -136,8 +136,8 @@ fn seedSecret(conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8) !v
     _ = try conn.exec(
         \\INSERT INTO vault.secrets
         \\  (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag,
-        \\   nonce, ciphertext, tag, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, '', '', '', '', '', '', 0, 0)
+        \\   nonce, ciphertext, tag, kek_version, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, '', '', '', '', '', '', 2, 0, 0)
         \\ON CONFLICT (workspace_id, key_name) DO UPDATE SET updated_at = EXCLUDED.updated_at
     , .{ secret_id, workspace_id, key_name });
 }

@@ -298,7 +298,7 @@ describe("secret create already-exists human mode", () => {
         expect(code).toBe(0);
         const text = out.read();
         expect(text).toMatch(/already exists/i);
-        expect(text).toMatch(/secret delete existing/);
+        expect(text).toMatch(/secret update existing/);
         expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
       });
     });

@@ -301,3 +301,23 @@ describe("withSigintAbort", () => {
     });
   });
 });
+
+test("withSigintAbort aborts the signal on SIGINT and removes its listener after", async () => {
+  const { withSigintAbort } = await import("../src/commands/login-helpers.ts");
+  const before = process.listenerCount("SIGINT");
+  let observed: AbortSignal | null = null;
+  await Effect.runPromise(
+    withSigintAbort((signal) =>
+      Effect.sync(() => {
+        observed = signal;
+        // Fire the handler exactly as an OS SIGINT would, without killing the
+        // test process: emit on the event, not via process.kill.
+        process.emit("SIGINT" as never);
+      }),
+    ),
+  );
+  expect(observed).not.toBeNull();
+  expect((observed as unknown as AbortSignal).aborted).toBe(true);
+  // The release arm removed the listener — no leak across invocations.
+  expect(process.listenerCount("SIGINT")).toBe(before);
+});
