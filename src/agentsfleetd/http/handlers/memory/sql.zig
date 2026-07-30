@@ -7,7 +7,7 @@
 //! created_at rather than updated_at because an upsert moves a row's
 //! updated_at mid-walk, which is exactly the repeat/skip defect cursor paging
 //! exists to remove. Served by idx_memory_entries_fleet_id_created_at_key
-//! (schema slot 039); the trailing created_at column feeds the continuation
+//! (schema slot 040); the trailing created_at column feeds the continuation
 //! cursor and is not part of the wire item.
 //!
 //! Each read has a first-page form and an `_AFTER` form seeking strictly past

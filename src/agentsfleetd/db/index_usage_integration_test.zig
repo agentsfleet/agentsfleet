@@ -37,7 +37,7 @@ const PROBE_FLEET_ROWS: i32 = 20;
 const FLEET_MEM = "0195b4ba-8d3a-7f13-8abc-0000000b0002";
 const MEM_ID_PREFIX = "idxprobe-mem-";
 
-/// The operator lease read's fixture (slot 040). Same doctrine as the memory
+/// The operator lease read's fixture (slot 041). Same doctrine as the memory
 /// probe: fitness is asked with scans disabled, so a couple hundred rows is
 /// enough for the plan to form.
 const LEASE_SEED_ROWS: i32 = 200;

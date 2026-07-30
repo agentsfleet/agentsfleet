@@ -39,7 +39,7 @@ pub const SELECT_RUNNER_KEYSET_AFTER = RUNNER_KEYSET_COLS ++
 /// lifetime counters, all from durable state in one statement.
 ///
 /// The lease subquery aggregates the runner's whole lease history at read time,
-/// over the `(runner_id, created_at)` prefix slot 040 adds. Lifetime counting is
+/// over the `(runner_id, created_at)` prefix slot 041 adds. Lifetime counting is
 /// the deliberate trade, but the cost shape differs from
 /// `core.fleet_activity_counters`, which is maintained incrementally at write
 /// time and read in constant time: this read grows with the runner's history,

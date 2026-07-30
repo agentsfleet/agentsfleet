@@ -150,9 +150,9 @@ test "runner list liveness is bounded by page size" {
     defer alloc.free(plan);
     // The property is "probed per page over the runner_id prefix", not which
     // index supplies that prefix. Two do: slot 018's (runner_id, status) and
-    // slot 040's (runner_id, created_at, id) — the planner picks between them
+    // slot 041's (runner_id, created_at, id) — the planner picks between them
     // on cost, and either keeps the EXISTS bounded by the page. Naming one made
-    // the assertion break the moment slot 040 landed, while the shape it cares
+    // the assertion break the moment slot 041 landed, while the shape it cares
     // about had not changed at all.
     if (std.mem.indexOf(u8, plan, "Index Cond: (runner_id = p.id)") == null) {
         std.debug.print("expected a per-page index probe over runner_id:\n{s}\n", .{plan});
