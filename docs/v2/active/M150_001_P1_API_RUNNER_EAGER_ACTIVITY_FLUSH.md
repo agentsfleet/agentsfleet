@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M150
 **Workstream:** 001
 **Date:** Jul 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing chat latency; the first visible token of every fleet reply arrives up to `ACTIVITY_FLUSH_WINDOW_MS` late
 **Categories:** API
 **Batch:** B1 — standalone; no parallel workstream
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) via `make _lint_zig_test_depth`
+**Branch:** feat/m150-eager-activity-flush
+**Test Baseline:** unit=3266 integration=501
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Fable 5, Jul 30, 2026) — grounded in a source read of `forwarders.zig`, `lease_run.zig`, `bundle_extract.zig`
 **Canonical architecture:** `docs/architecture/data_flow.md` §C. EXECUTE
@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(runner): eager first-frame activity flush cuts perceived reply latency
 - **Intent (one sentence):** The first words of a fleet's chat reply appear the moment the model starts answering instead of up to one flush window later.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN) — Restatement: the runner's activity batcher currently holds the first frame of every run until a cap or the staleness window trips; this change makes the first frame of the lease and the first response chunk each ship the moment they arrive, exactly once, leaving all other batching untouched — so the chat surface shows life and first words at model speed. `ASSUMPTIONS I'M MAKING:` 1. One `ActivityForwarder` instance is constructed per lease and never reused across leases (grounded in `lease_run.zig` construction). 2. `forward()` is invoked from a single reader thread per child pipe, so the latches need no synchronization. 3. A tag comparison on the frame union identifies `fleet_response_chunk` without touching payload bytes.
 
 ## Implementing agent — read these first
 
@@ -55,7 +55,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/runner/daemon/forwarders.zig` | EDIT | two one-shot eager-flush latches on `ActivityForwarder`; flush condition extended |
 | `src/runner/daemon/forwarders_test.zig` | EDIT | new Dimension tests; existing cap/staleness tests pre-consume the latches so they keep proving cap behaviour |
 | `docs/architecture/scaling.md` | EDIT | one line in the per-request volume story: activity POST volume gains at most two eager POSTs per run |
-| `docs/v2/pending/M150_001_P1_API_RUNNER_EAGER_ACTIVITY_FLUSH.md` | EDIT | lifecycle moves (pending → active → done) and Dimension DONE marks |
+| `docs/v2/active/M150_001_P1_API_RUNNER_EAGER_ACTIVITY_FLUSH.md` | EDIT | lifecycle moves (pending → active → done) and Dimension DONE marks |
 
 ## Applicable Rules
 
@@ -70,7 +70,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | PUB / Struct-Shape | no new pub surface | latches are fields on the existing `ActivityForwarder` struct; no new pub fns |
 | File & Function Length (≤350/≤50/≤70) | yes | `forwarders.zig` stays under 350; `forward()` gains ~6 lines, stays under 50 |
 | UFS (repeated/semantic literals) | yes | no new literals; booleans + existing constants only |
-| MILESTONE-ID | yes | the latch comment cites M150_001 |
+| MILESTONE-ID | yes | source stays milestone-free — the latch comment explains the perceived-latency why, never spec lineage |
 | UI Substitution / DESIGN TOKEN / LOGGING / SCHEMA | no | no UI, no new log lines, no schema |
 
 ## Prior-Art / Reference Implementations
