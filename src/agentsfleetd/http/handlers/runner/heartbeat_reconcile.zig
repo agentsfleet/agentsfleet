@@ -34,11 +34,10 @@ pub const Verdict = struct {
     }
 };
 
-/// What each assigned tier needs the host to prove. `dev_none` builds no cage;
-/// `macos_seatbelt` has no enforcement in any runner build (its removal is in
-/// flight), so neither demands a mechanism. A nested-container host runs where
-/// Landlock is typically masked, so the cage there is bubblewrap + seccomp +
-/// controllers without a Landlock demand.
+/// What each assigned tier needs the host to prove. `dev_none` builds no cage,
+/// so it demands no mechanism. A nested-container host runs where Landlock is
+/// typically masked, so the cage there is bubblewrap + seccomp + controllers
+/// without a Landlock demand.
 const TierNeeds = struct {
     landlock: bool = false,
     seccomp: bool = false,
@@ -54,7 +53,7 @@ fn tierNeeds(tier: protocol.SandboxTier) TierNeeds {
     return switch (tier) {
         .landlock_full => .{ .landlock = true, .seccomp = true, .controllers = true, .bubblewrap = true },
         .container_nested => .{ .seccomp = true, .controllers = true, .bubblewrap = true },
-        .macos_seatbelt, .dev_none => .{},
+        .dev_none => .{},
     };
 }
 
@@ -102,7 +101,7 @@ fn assignedWith(tier: protocol.SandboxTier, network: protocol.NetworkPolicy) pro
     return .{ .sandbox_tier = tier, .network_policy = network, .registry_allowlist = &.{}, .worker_count = 1 };
 }
 
-test "a satisfied assignment is not degraded; each missing mechanism names itself" {
+test "test_degraded_runner_names_the_missing_mechanism: a satisfied assignment is not degraded; each miss names itself" {
     try std.testing.expect(!reconcile(assignedWith(.landlock_full, .allow_all), FULL_CAP).degraded);
 
     var no_landlock = FULL_CAP;

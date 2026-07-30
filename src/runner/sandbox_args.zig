@@ -4,7 +4,7 @@
 //! wrap it in bubblewrap — `--unshare-all` (user/pid/net/ipc/uts/cgroup ns),
 //! `--new-session` (detach the controlling terminal), read-only system paths,
 //! read-write workspace, `--die-with-parent` (the sandbox dies if the runner
-//! does), and network per `RUNNER_NETWORK_POLICY`. Every argv entry is dup'd
+//! does), and network per the assigned network policy. Every argv entry is dup'd
 //! into the caller's allocator; the caller frees via `freeArgv` after the fork.
 //!
 //! It also single-sources the child-environment policy (`ENV_PASSTHROUGH_ALLOWLIST`
@@ -31,8 +31,8 @@ const RO_BIND = "--ro-bind";
 /// `/etc/resolv.conf`. Bound only when `EgressScope` supplied host-side paths.
 const ETC_HOSTS = "/etc/hosts";
 const ETC_RESOLV = "/etc/resolv.conf";
-/// The `allow_all` posture (opt-in via `RUNNER_NETWORK_POLICY=allow_all`;
-/// no longer the unset fallback — that fails closed, M100 §2) re-shares the host
+/// The `allow_all` posture (assigned explicitly from the dashboard;
+/// never a fallback — a missing assignment fails closed, M100 §2) re-shares the host
 /// network namespace so the lease has full egress while the filtered-veth
 /// enforcement (`allow_list_egress` + `establishEgress`) is unbuilt (lands 2.0.1).
 const SHARE_NET = "--share-net";

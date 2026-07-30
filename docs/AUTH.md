@@ -377,7 +377,7 @@ The host **never self-registers** (Option B, the GitLab-16 "create runner → au
 Platform operator — dashboard "Add runner" (session JWT, scopes ∋ runner:enroll)  agentsfleetd
    │ server action → POST /v1/runners
    │   Authorization: Bearer <session-JWT>
-   │   { host_id, sandbox_tier, labels[] }
+   │   { host_id, assigned_policy{…}, labels[] }
    ▼
    bearer() chain [bearer_or_api_key, requireScope] gates the route (runner:enroll);
    the handler mints agt_r<random>, stores ONLY sha256(agt_r) in fleet.runners,

@@ -131,27 +131,27 @@ Test files created or updated alongside the edited modules join this table as th
 
 The runner's token already resolves its row. Everything the host currently declares locally can therefore come down that same path. **Implementation default:** deliver policy on both the enrollment response and every heartbeat, rather than enrollment alone, so an operator changing the tier takes effect without a host visit.
 
-- **Dimension 1.1** — The enrollment response carries assigned sandbox tier, network policy, registry allowlist, and worker count → Test `test_enrollment_returns_assigned_policy`
-- **Dimension 1.2** — Every heartbeat response carries the current assigned policy, so a dashboard change reaches the host without redeploying it → Test `test_heartbeat_carries_current_assigned_policy`
-- **Dimension 1.3** — Assigned policy is stored on the runner row, not derived per request → Test `test_assigned_policy_persists_on_the_runner_row`
+- **Dimension 1.1** ✅ DONE — The enrollment response carries assigned sandbox tier, network policy, registry allowlist, and worker count → Test `test_enrollment_returns_assigned_policy`
+- **Dimension 1.2** ✅ DONE — Every heartbeat response carries the current assigned policy, so a dashboard change reaches the host without redeploying it → Test `test_heartbeat_carries_current_assigned_policy`
+- **Dimension 1.3** ✅ DONE — Assigned policy is stored on the runner row, not derived per request → Test `test_assigned_policy_persists_on_the_runner_row`
 
 ### §2 — The runner obeys the assignment, not its environment
 
 Today `RUNNER_SANDBOX_TIER` decides behaviour and the dashboard decides display. After this slice the assignment decides both. **Implementation default:** remove the environment variables outright rather than leaving them as overrides — a fallback path is exactly how the two sources of truth diverged, and pre-2.0.0 carries no compatibility obligation.
 
-- **Dimension 2.1** — The runner applies the assigned tier; the removed variable has no effect because it is no longer read → Test `test_runner_applies_assigned_tier_not_environment`
-- **Dimension 2.2** — Applied policy is logged at startup in terms of what was assigned and by whom → Test `test_startup_logs_the_applied_assignment`
-- **Dimension 2.3** — A malformed or unknown assigned policy fails closed to the safest posture and refuses to lease, never to a permissive default → Test `test_malformed_assignment_fails_closed`
+- **Dimension 2.1** ✅ DONE — The runner applies the assigned tier; the removed variable has no effect because it is no longer read → Test `test_runner_applies_assigned_tier_not_environment`
+- **Dimension 2.2** ✅ DONE — Applied policy is logged at startup in terms of what was assigned and by whom → Test `test_startup_logs_the_applied_assignment`
+- **Dimension 2.3** ✅ DONE — A malformed or unknown assigned policy fails closed to the safest posture and refuses to lease, never to a permissive default → Test `test_malformed_assignment_fails_closed`
 
 ### §3 — Probe what the kernel can actually enforce, and reconcile
 
 The reason M147_001's cgroup gap survived two days is that nothing compared claim against reality. **Implementation default:** probe at startup and report with the first heartbeat, rather than probing per lease — the capabilities are host properties that do not change between leases, and a per-lease probe would put syscalls on the hot path.
 
-- **Dimension 3.1** — The probe reports Landlock availability, seccomp installability, cgroup controllers present in `subtree_control`, bubblewrap presence, and whether kernel-enforced egress is available in this build (`egress_enforcement` — false until the 2.0.1 `EgressScope` wiring lands, so an assigned `allow_list_egress` degrades visibly instead of silently refusing every lease) → Test `test_capability_probe_reports_each_enforcement_mechanism`
-- **Dimension 3.2** — The probe result is sent with the first heartbeat → Test `test_first_heartbeat_carries_the_capability_report`
-- **Dimension 3.3** — Assigned stronger than achievable marks the runner degraded and it is sent no leases → Test `test_unachievable_assignment_marks_runner_degraded`
-- **Dimension 3.4** — A degraded runner records a reason naming the missing mechanism → Test `test_degraded_runner_names_the_missing_mechanism`
-- **Dimension 3.5** — A runner that later satisfies its assignment clears the degraded state on the next heartbeat → Test `test_degraded_clears_when_capability_returns`
+- **Dimension 3.1** ✅ DONE — The probe reports Landlock availability, seccomp installability, cgroup controllers present in `subtree_control`, bubblewrap presence, and whether kernel-enforced egress is available in this build (`egress_enforcement` — false until the 2.0.1 `EgressScope` wiring lands, so an assigned `allow_list_egress` degrades visibly instead of silently refusing every lease) → Test `test_capability_probe_reports_each_enforcement_mechanism`
+- **Dimension 3.2** ✅ DONE — The probe result is sent with the first heartbeat → Test `test_first_heartbeat_carries_the_capability_report`
+- **Dimension 3.3** ✅ DONE — Assigned stronger than achievable marks the runner degraded and it is sent no leases → Test `test_unachievable_assignment_marks_runner_degraded`
+- **Dimension 3.4** ✅ DONE — A degraded runner records a reason naming the missing mechanism → Test `test_degraded_runner_names_the_missing_mechanism`
+- **Dimension 3.5** ✅ DONE — A runner that later satisfies its assignment clears the degraded state on the next heartbeat → Test `test_degraded_clears_when_capability_returns`
 
 ### §4 — The dashboard shows assigned against achievable
 
@@ -159,24 +159,24 @@ An operator must be able to see that the two agree, and see why when they do not
 
 - **Dimension 4.1** — The runner row shows the assigned tier and, when they differ, the achievable one → Test `test_runner_row_shows_assigned_and_achievable`
 - **Dimension 4.2** — A degraded runner is visually distinct and states the missing mechanism → Test `test_degraded_runner_row_states_the_reason`
-- **Dimension 4.3** — Add Runner copy describes the selection as an assignment the host must satisfy, not a description of the host → Test `test_add_runner_copy_describes_an_assignment`
-- **Dimension 4.4** — Add Runner exposes all four policy fields (isolation, network policy, registry allowlist, workers) with safe defaults; network defaults to `allow_all` — the explicit interim posture — because `allow_list_egress` degrades every runner until 2.0.1's egress wiring lands → Test `test_add_runner_exposes_all_policy_fields`
+- **Dimension 4.3** ✅ DONE — Add Runner copy describes the selection as an assignment the host must satisfy, not a description of the host → Test `test_add_runner_copy_describes_an_assignment`
+- **Dimension 4.4** ✅ DONE — Add Runner exposes all four policy fields (isolation, network policy, registry allowlist, workers) with safe defaults; network defaults to `allow_all` — the explicit interim posture — because `allow_list_egress` degrades every runner until 2.0.1's egress wiring lands → Test `test_add_runner_exposes_all_policy_fields`
 
 ### §5 — The environment surface collapses to two
 
 Twelve variables today; four of them are timeouts and four are policy. **Implementation default:** the workspace-base variable stays as an environment variable — it names where the disk is, a genuine host-local fact the control plane cannot know — and is renamed `RUNNER_WORKSPACE_BASE` → `RUNNER_STORAGE_HOME` (Indy, Jul 30, 2026). The four `RUNNER_CP_*_MS` become code defaults with no environment surface.
 
-- **Dimension 5.1** — The runner reads only `AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`, and `RUNNER_STORAGE_HOME` → Test `test_runner_reads_only_the_bootstrap_environment`
+- **Dimension 5.1** ✅ DONE — The runner reads only `AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`, and `RUNNER_STORAGE_HOME` → Test `test_runner_reads_only_the_bootstrap_environment`
 - **Dimension 5.2** — No removed variable name survives anywhere in the repository → Test `test_no_removed_runner_env_names_remain`
-- **Dimension 5.3** — `04_provision_runner_env.sh` writes the reduced set and the provisioned file still brings a runner up → Test `provision_runner_env_test.sh` (extended)
+- **Dimension 5.3** ✅ DONE — `04_provision_runner_env.sh` writes the reduced set and the provisioned file still brings a runner up → Test `provision_runner_env_test.sh` (extended)
 
 ### §6 — The tier vocabulary shrinks to tiers that exist
 
 `macos_seatbelt` has been declared-but-fail-closed since M80_004 deferred it ("seatbelt is deprecated long back"); no enforcement code exists, and a tier that cannot be applied must not be assignable. Removed, not deprecated (NLG — pre-2.0.0). Directed by Indy in-session, Jul 30, 2026.
 
-- **Dimension 6.1** — `SandboxTier` and the dashboard tier list no longer carry `macos_seatbelt`; existing tier tests updated → Test `test_sandbox_tier_vocabulary_excludes_seatbelt`
-- **Dimension 6.2** — No `macos_seatbelt` reference survives outside historical specs and applied migration 017's comment → Test `test_no_seatbelt_references_remain` (the R7 grep)
-- **Dimension 6.3** — A stray stored `macos_seatbelt` row parses fail-closed to the safest posture and refuses to lease — no data migration; Dimension 2.3's decoder covers it → covered by `test_malformed_assignment_fails_closed`
+- **Dimension 6.1** ✅ DONE — `SandboxTier` and the dashboard tier list no longer carry `macos_seatbelt`; existing tier tests updated → Test `test_sandbox_tier_vocabulary_excludes_seatbelt`
+- **Dimension 6.2** ✅ DONE — No `macos_seatbelt` reference survives outside historical specs and applied migration 017's comment → Test `test_no_seatbelt_references_remain` (the R7 grep)
+- **Dimension 6.3** ✅ DONE — A stray stored `macos_seatbelt` row parses fail-closed to the safest posture and refuses to lease — no data migration; Dimension 2.3's decoder covers it → covered by `test_malformed_assignment_fails_closed`
 
 ## Interfaces
 

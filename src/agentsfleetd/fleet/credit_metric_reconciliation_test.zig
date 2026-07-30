@@ -50,7 +50,7 @@ const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd01";
 const COLLISION_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ec0f1";
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
-const RUNNER_HOST_ID = "credit-reconciliation-host";
+const RECON_HOST_ID = "credit-reconciliation-host";
 const FLEET_NAME = "credit-reconciliation-bot";
 
 const LARGE_BALANCE_NANOS: i64 = 1_000_000_000_000;
@@ -110,7 +110,7 @@ fn seedRunner(conn: *pg.Conn) !void {
         \\   last_seen_at, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, 'dev_none', 'active', '[]'::jsonb, NULL, 0, 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ RUNNER_ID, RUNNER_HOST_ID, hash[0..] });
+    , .{ RUNNER_ID, RECON_HOST_ID, hash[0..] });
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
