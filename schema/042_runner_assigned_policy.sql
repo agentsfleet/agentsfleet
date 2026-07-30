@@ -29,3 +29,11 @@ ALTER TABLE fleet.runners ADD COLUMN IF NOT EXISTS capability_report JSONB NULL;
 ALTER TABLE fleet.runners ADD COLUMN IF NOT EXISTS capability_reported_at BIGINT NULL;
 ALTER TABLE fleet.runners ADD COLUMN IF NOT EXISTS degraded BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE fleet.runners ADD COLUMN IF NOT EXISTS degraded_reason TEXT NULL;
+
+-- Backfill: every pre-migration row lacks an assignment (network_policy NULL),
+-- so it starts DEGRADED — the lease gate must fail closed from the moment this
+-- deploys, not from each runner's first post-deploy heartbeat. The reason
+-- string mirrors REASON_NO_ASSIGNED_POLICY (heartbeat_reconcile.zig); the
+-- reconciliation rewrites it verbatim on the next beat either way.
+UPDATE fleet.runners SET degraded = TRUE, degraded_reason = 'no assigned policy'
+WHERE network_policy IS NULL;

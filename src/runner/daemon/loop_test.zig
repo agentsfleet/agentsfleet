@@ -360,6 +360,20 @@ test "a rejected lease returns to the worker loop after one bounded idle" {
     listener.deinit(io);
 }
 
+test "pollVerdict: the runner half of Invariant 2 — degraded or policy-less workers lease nothing" {
+    // Server side, test_unachievable_assignment_marks_runner_degraded proves
+    // the control plane issues a degraded runner nothing; this matrix pins the
+    // runner's own refusal so deleting either half fails a test.
+    try testing.expectEqual(loop.PollVerdict.refuse_degraded, loop.pollVerdict(true, 2, 0));
+    // Degraded wins even while a policy is held — fail-closed precedence.
+    try testing.expectEqual(loop.PollVerdict.refuse_degraded, loop.pollVerdict(true, 8, 7));
+    try testing.expectEqual(loop.PollVerdict.refuse_no_policy, loop.pollVerdict(false, null, 0));
+    // Soft-shrink: a worker at or above the assigned count idles, never leases.
+    try testing.expectEqual(loop.PollVerdict.idle_above_count, loop.pollVerdict(false, 1, 1));
+    try testing.expectEqual(loop.PollVerdict.idle_above_count, loop.pollVerdict(false, 2, 5));
+    try testing.expectEqual(loop.PollVerdict.proceed, loop.pollVerdict(false, 2, 1));
+}
+
 test "drain signal handler requests a graceful drain" {
     defer loop.drain_requested.store(false, .seq_cst);
     loop.drain_requested.store(false, .seq_cst);

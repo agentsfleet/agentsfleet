@@ -34,7 +34,7 @@ import {
 
 export const EDIT_POLICY_LABEL = "Edit policy";
 const EDIT_POLICY_DESCRIPTION =
-  "Re-assign what this host must enforce. The host applies the new assignment on its next heartbeat — no restart needed.";
+  "Re-assign what this host must enforce. The host applies the new assignment on its next heartbeat. One exception: growing the worker count past what the daemon started with takes effect after a runner restart.";
 const SAVE_POLICY_LABEL = "Save assignment";
 const EDIT_POLICY_ERROR_ACTION = "re-assign the policy";
 

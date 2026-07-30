@@ -8965,7 +8965,8 @@
           },
           "registry_allowlist": {
             "type": "array",
-            "description": "Operator registry baseline merged into each lease's egress allowlist. Empty = the runner substitutes its default registry set.",
+            "description": "Operator registry baseline merged into each lease's egress allowlist. Empty = the runner substitutes its default registry set. Entries are `host[:port]` names; at most 32.",
+            "maxItems": 32,
             "items": {
               "type": "string"
             }

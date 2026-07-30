@@ -88,6 +88,9 @@ fn parseCapabilityReport(hx: Hx, req: *httpz.Request) ReportParse {
     if (!common.checkBodySize(req, hx.res, raw, hx.req_id)) return .responded;
     const parsed = std.json.parseFromSliceLeaky(protocol.HeartbeatRequest, hx.alloc, raw, .{ .ignore_unknown_fields = true }) catch return .none;
     const report = parsed.capability_report orelse return .none;
+    // An out-of-bounds controllers list is a malformed report, not a
+    // persistence-amplification channel — same lenient "no report this beat".
+    if (!protocol.capabilityReportBounded(report)) return .none;
     return .{ .report = report };
 }
 

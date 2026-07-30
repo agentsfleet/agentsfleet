@@ -175,9 +175,21 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
         // Copy the status out, apply the policy + verdict while the parse is
         // alive, then free it — the reply's strings live in the parse.
         const status = hb_parsed.value.status;
+        const reply_degraded = hb_parsed.value.degraded;
         policy_apply.applyHeartbeatPolicy(io, alloc, &applied, &gates, hb_parsed.value.assigned_policy);
         policy_apply.noteDegraded(&applied, &gates, hb_parsed.value.degraded, hb_parsed.value.degraded_reason);
         hb_parsed.deinit();
+
+        // A degraded reply can mean the control plane never PERSISTED our
+        // report (its capability write is best-effort and can fail after our
+        // beat got a 200) — and an unchanged probe would then never re-send,
+        // wedging the row degraded until restart. Re-sending is cheap and
+        // idempotent: forget the accepted report so the next beat carries it
+        // again, and the row can only converge.
+        if (reply_degraded) {
+            if (last_report) |r| capability_probe.freeReport(alloc, r);
+            last_report = null;
+        }
 
         switch (status) {
             .stop => {
@@ -224,25 +236,49 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
 /// applied → lease nothing (fail closed). A worker whose index is at or above
 /// the currently assigned count idles — the soft-shrink half of a worker-count
 /// change; nothing in flight is ever touched.
+/// The runner half of Invariant 2 as a pure verdict, so the refuse matrix is
+/// unit-testable without io or a transport: an unmet (degraded) or absent
+/// assignment leases nothing, and a worker above the assigned count idles
+/// (soft-shrink). Precedence is fail-closed: degraded wins over everything.
+pub const PollVerdict = enum { proceed, refuse_degraded, refuse_no_policy, idle_above_count };
+
+const LOG_EVENT_LEASE_REFUSED_NO_POLICY = "lease_refused_no_policy";
+
+pub fn pollVerdict(degraded: bool, assigned_workers: ?u32, worker_index: u32) PollVerdict {
+    if (degraded) return .refuse_degraded;
+    const count = assigned_workers orelse return .refuse_no_policy;
+    if (worker_index >= count) return .idle_above_count;
+    return .proceed;
+}
+
 pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map, applied: *AppliedPolicy, worker_index: u32) void {
-    if (applied.isDegraded()) {
-        // Invariant 2, runner half: an unmet assignment leases nothing. The
-        // control loop already warned with the row's reason; workers just idle.
-        log.debug("lease_refused_degraded", .{ .index = worker_index });
-        sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
-        return;
+    switch (pollVerdict(applied.isDegraded(), applied.currentWorkerCount(), worker_index)) {
+        .refuse_degraded => {
+            // Invariant 2, runner half: an unmet assignment leases nothing. The
+            // control loop already warned with the row's reason; workers just idle.
+            log.debug("lease_refused_degraded", .{ .index = worker_index });
+            sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+            return;
+        },
+        .refuse_no_policy => {
+            log.debug(LOG_EVENT_LEASE_REFUSED_NO_POLICY, .{ .index = worker_index });
+            sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+            return;
+        },
+        .idle_above_count => {
+            log.debug("worker_idle_above_assigned_count", .{ .index = worker_index });
+            sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+            return;
+        },
+        .proceed => {},
     }
+    // A copy failure holds nothing — same fail-closed idle as no policy.
     const pol = applied.snapshot(alloc) orelse {
-        log.debug("lease_refused_no_policy", .{ .index = worker_index });
+        log.debug(LOG_EVENT_LEASE_REFUSED_NO_POLICY, .{ .index = worker_index });
         sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
         return;
     };
     defer AppliedPolicy.freePolicy(alloc, pol);
-    if (worker_index >= pol.worker_count) {
-        log.debug("worker_idle_above_assigned_count", .{ .index = worker_index, .assigned = pol.worker_count });
-        sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
-        return;
-    }
     var eff = cfg;
     eff.sandbox_tier = pol.sandbox_tier;
     eff.network_policy = pol.network_policy;

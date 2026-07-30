@@ -57,8 +57,11 @@ pub fn apply(self: *AppliedPolicy, raw: ?std.json.Value) ApplyOutcome {
     const value = raw orelse return self.store(null, .cleared);
     var arena = std.heap.ArenaAllocator.init(self.alloc);
     defer arena.deinit();
-    const decoded = std.json.parseFromValueLeaky(protocol.AssignedPolicy, arena.allocator(), value, .{ .ignore_unknown_fields = true }) catch
+    var decoded = std.json.parseFromValueLeaky(protocol.AssignedPolicy, arena.allocator(), value, .{ .ignore_unknown_fields = true }) catch
         return self.store(null, .invalid);
+    // The host-side half of the shared clamp: even a compromised or buggy
+    // control plane can never size the pool outside the bounds.
+    decoded.worker_count = std.math.clamp(decoded.worker_count, protocol.MIN_WORKER_COUNT, protocol.MAX_WORKER_COUNT);
     return self.store(decoded, .applied);
 }
 

@@ -12,9 +12,10 @@ pub const INSERT_RUNNER_WITH_EVENT =
     \\WITH inserted AS (
     \\  INSERT INTO fleet.runners
     \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
-    \\   last_seen_at, created_at, updated_at, network_policy, registry_allowlist, worker_count)
+    \\   last_seen_at, created_at, updated_at, network_policy, registry_allowlist, worker_count,
+    \\   degraded, degraded_reason)
     \\VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::jsonb, NULL, $7::bigint, $8::bigint, $8::bigint,
-    \\        $13::text, $14::jsonb, $15::int)
+    \\        $13::text, $14::jsonb, $15::int, $16::bool, $17::text)
     \\  RETURNING id
     \\)
     \\INSERT INTO fleet.runner_events

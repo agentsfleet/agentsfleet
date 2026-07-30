@@ -99,7 +99,69 @@ pub const CapabilityReport = struct {
     egress_enforcement: bool,
 };
 
+/// App-enforced registry-entry grammar (RULE STS: no SQL CHECK): host[:port],
+/// the same shape the dashboard's `REGISTRY_HOST_REGEX` accepts (UFS), so the
+/// raw API cannot store what the dialog would reject. The bounds are caps an
+/// operator never legitimately hits; they exist so a direct `runner:write`
+/// call cannot stuff the per-heartbeat payload — and, once `EgressScope`
+/// lands, the kernel allowlist input — with unbounded arbitrary content.
+pub const MAX_REGISTRY_ENTRIES: usize = 32;
+pub const MAX_REGISTRY_HOST_LEN: usize = 259; // 253-char host + ":" + 5-digit port
+
+/// Capability-report bounds — a runner token must not be a persistence
+/// amplifier: the controllers list is a handful of kernel names, so anything
+/// past these caps is a malformed report (dropped as "no report this beat"),
+/// never a mebibyte JSONB the operator list re-reads on every page.
+pub const MAX_REPORT_CONTROLLERS: usize = 16;
+pub const MAX_CONTROLLER_NAME_LEN: usize = 64;
+
+pub fn capabilityReportBounded(report: CapabilityReport) bool {
+    if (report.cgroup_controllers.len > MAX_REPORT_CONTROLLERS) return false;
+    for (report.cgroup_controllers) |c| {
+        if (c.len == 0 or c.len > MAX_CONTROLLER_NAME_LEN) return false;
+    }
+    return true;
+}
+
+pub fn registryAllowlistValid(entries: []const []const u8) bool {
+    if (entries.len > MAX_REGISTRY_ENTRIES) return false;
+    for (entries) |e| {
+        if (!registryHostValid(e)) return false;
+    }
+    return true;
+}
+
+fn registryHostValid(entry: []const u8) bool {
+    if (entry.len == 0 or entry.len > MAX_REGISTRY_HOST_LEN) return false;
+    const colon = std.mem.indexOfScalar(u8, entry, ':');
+    const host = if (colon) |i| entry[0..i] else entry;
+    if (host.len == 0) return false;
+    for (host) |c| switch (c) {
+        'A'...'Z', 'a'...'z', '0'...'9', '_', '.', '-' => {},
+        else => return false,
+    };
+    if (colon) |i| {
+        const port = entry[i + 1 ..];
+        if (port.len == 0 or port.len > 5) return false;
+        for (port) |c| {
+            if (c < '0' or c > '9') return false;
+        }
+    }
+    return true;
+}
+
 const std = @import("std");
+
+test "registryAllowlistValid accepts host[:port] names and refuses everything else" {
+    try std.testing.expect(registryAllowlistValid(&.{ "pypi.org", "registry.npmjs.org:5000" }));
+    try std.testing.expect(registryAllowlistValid(&.{})); // empty = runner defaults
+    try std.testing.expect(!registryAllowlistValid(&.{"http://pypi.org"})); // scheme
+    try std.testing.expect(!registryAllowlistValid(&.{"py pi.org"})); // space
+    try std.testing.expect(!registryAllowlistValid(&.{""})); // empty entry
+    try std.testing.expect(!registryAllowlistValid(&.{"pypi.org:"})); // bare colon
+    try std.testing.expect(!registryAllowlistValid(&.{"pypi.org:70000x"})); // 6-char port
+    try std.testing.expect(!registryAllowlistValid(&.{"a" ** 260})); // over length
+}
 
 test "test_sandbox_tier_vocabulary_excludes_seatbelt" {
     // §6 Dimension 6.1 — the vocabulary is exactly the enforceable tiers.

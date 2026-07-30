@@ -113,6 +113,10 @@ const PATCH_BOTH =
     \\{"action":"cordon","assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":1}}
 ;
 const PATCH_NEITHER = "{\"labels\":[]}";
+// A scheme-carrying entry the dashboard's grammar refuses — the server must too.
+const PATCH_BAD_REGISTRY =
+    \\{"assigned_policy":{"sandbox_tier":"container_nested","network_policy":"allow_all","registry_allowlist":["http://bad url"],"worker_count":1}}
+;
 
 const PATCH_TO_NESTED =
     \\{"assigned_policy":{"sandbox_tier":"container_nested","network_policy":"deny_all_egress","registry_allowlist":["pypi.org"],"worker_count":2}}
@@ -590,14 +594,46 @@ test "integration: a pre-migration row reads degraded until the dashboard assign
         try std.testing.expect(resp.bodyContains(ec.ERR_INVALID_REQUEST));
     }
 
-    // The operator assigns a policy from the dashboard PATCH; the next beat
-    // delivers it and the reason MOVES (no report yet for a cage-building
-    // tier) — proof the verdict re-reconciles rather than sticking.
+    // The operator assigns a policy from the dashboard PATCH. The verdict is
+    // re-reconciled IN the PATCH request — the reason moves to
+    // no-capability-report on the row immediately, before any beat — and the
+    // next beat delivers the new assignment.
     {
         const resp = try (try (try h.patch(path).bearer(PLATFORM_ADMIN_TOKEN)).json(PATCH_TO_NESTED)).send();
         defer resp.deinit();
         try resp.expectStatus(.ok);
     }
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        const row = try verdictRow(conn, LEGACY_RUNNER_ID);
+        defer row.deinit();
+        try std.testing.expect(row.degraded);
+        try std.testing.expectEqualStrings(reconcile.REASON_NO_CAPABILITY_REPORT, row.reason orelse return error.TestUnexpectedResult);
+    }
+
+    // The PATCH is idempotent: re-sending identical values answers 200 and
+    // emits NO second audit event (the IS DISTINCT FROM guard writes nothing).
+    {
+        const resp = try (try (try h.patch(path).bearer(PLATFORM_ADMIN_TOKEN)).json(PATCH_TO_NESTED)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+    }
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try std.testing.expectEqual(@as(i64, 1), try policyAssignedEventCount(conn, LEGACY_RUNNER_ID));
+    }
+
+    // Registry entries are validated server-side — the raw API cannot store
+    // what the dialog would reject.
+    {
+        const resp = try (try (try h.patch(path).bearer(PLATFORM_ADMIN_TOKEN)).json(PATCH_BAD_REGISTRY)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.bad_request);
+        try std.testing.expect(resp.bodyContains(ec.ERR_INVALID_REQUEST));
+    }
+
     {
         const resp = try heartbeat(h, LEGACY_TOKEN, HB_EMPTY);
         defer resp.deinit();

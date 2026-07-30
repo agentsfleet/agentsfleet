@@ -14,6 +14,9 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const id_format = @import("../../../types/id_format.zig");
 const protocol = @import("contract").protocol;
 const runner_events = @import("../../../fleet/runner_events.zig");
+const policy_row = @import("../runner/assigned_policy_row.zig");
+const reconcile = @import("../runner/heartbeat_reconcile.zig");
+const runner_sql = @import("../runner/sql.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.fleet_runner_patch);
@@ -21,7 +24,9 @@ const log = logging.scoped(.fleet_runner_patch);
 const S_PATCH_BODY = "PATCH body must be exactly one of {\"action\":\"cordon|drain|revoke\"} or {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count}}";
 const S_RUNNER_NOT_FOUND = "Runner not found";
 const S_REVOKED_IS_TERMINAL = "revoked runners cannot transition back to cordoned or draining";
+const S_REVOKED_NO_POLICY = "revoked runners cannot be re-assigned a policy";
 const S_EVENT_ID_MINT_FAILED = "runner event id generation failed";
+const S_BAD_REGISTRY = "registry_allowlist entries must be host[:port] names";
 
 pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, runner_id, "runner_id")) return;
@@ -77,8 +82,18 @@ fn applyAdminAction(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current: prot
 
 /// Re-assign the runner's policy. The write is idempotent (a same-values PATCH
 /// updates nothing and emits no event) and the new assignment reaches the host
-/// on its next heartbeat — no host visit, no restart.
+/// on its next heartbeat — no host visit, no restart. The row's verdict is
+/// re-reconciled against the stored capability report in the same request, so
+/// the degraded flag (and the lease gate reading it) never lags the assignment.
 fn applyPolicyAssignment(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current: protocol.AdminState, requested: protocol.AssignedPolicy) void {
+    if (current == .revoked) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_REVOKED_NO_POLICY);
+        return;
+    }
+    if (!protocol.registryAllowlistValid(requested.registry_allowlist)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_BAD_REGISTRY);
+        return;
+    }
     var stored = requested;
     stored.worker_count = std.math.clamp(stored.worker_count, protocol.MIN_WORKER_COUNT, protocol.MAX_WORKER_COUNT);
     const registry_json = std.json.Stringify.valueAlloc(hx.alloc, stored.registry_allowlist, .{}) catch {
@@ -93,30 +108,55 @@ fn applyPolicyAssignment(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current:
     };
     defer hx.alloc.free(event_row_id);
 
-    var q = PgQuery.from(conn.query(sql.PATCH_RUNNER_ASSIGNED_POLICY, .{
-        runner_id,
-        @tagName(stored.sandbox_tier),
-        @tagName(stored.network_policy),
-        registry_json,
-        @as(i32, @intCast(stored.worker_count)),
-        clock.nowMillis(),
-        event_row_id,
-        @tagName(protocol.RunnerEventType.runner_policy_assigned),
-        runner_events.META_SANDBOX_TIER,
-        runner_events.META_NETWORK_POLICY,
-    }) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    });
-    defer q.deinit();
-    // A null row is a no-op re-assignment (values already match) — success.
-    _ = q.next() catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
+    {
+        var q = PgQuery.from(conn.query(sql.PATCH_RUNNER_ASSIGNED_POLICY, .{
+            runner_id,
+            @tagName(stored.sandbox_tier),
+            @tagName(stored.network_policy),
+            registry_json,
+            @as(i32, @intCast(stored.worker_count)),
+            clock.nowMillis(),
+            event_row_id,
+            @tagName(protocol.RunnerEventType.runner_policy_assigned),
+            runner_events.META_SANDBOX_TIER,
+            runner_events.META_NETWORK_POLICY,
+            runner_events.META_REGISTRY_ALLOWLIST,
+            runner_events.META_WORKER_COUNT,
+        }) catch {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        });
+        defer q.deinit();
+        // A null row is a no-op re-assignment (values already match) — success.
+        _ = q.next() catch {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        };
+    }
 
+    reconcileNow(hx, conn, runner_id, stored);
     log.debug("runner_policy_assigned", .{ .runner_id = runner_id, .sandbox_tier = @tagName(stored.sandbox_tier), .network_policy = @tagName(stored.network_policy), .worker_count = stored.worker_count });
     hx.ok(.ok, protocol.RunnerAdminPatchResponse{ .id = runner_id, .admin_state = current, .assigned_policy = stored });
+}
+
+/// Re-reconcile the fresh assignment against the stored capability report so a
+/// tightened policy degrades the row NOW — the lease gate must never issue
+/// work on a verdict computed for the previous assignment. Best-effort: a read
+/// failure leaves the verdict to the next heartbeat (which self-heals it).
+fn reconcileNow(hx: Hx, conn: *pg.Conn, runner_id: []const u8, stored: protocol.AssignedPolicy) void {
+    const cap = readCapability(hx, conn, runner_id);
+    const verdict = reconcile.reconcile(stored, cap);
+    _ = conn.exec(runner_sql.UPDATE_RUNNER_VERDICT, .{ runner_id, verdict.degraded, verdict.reason, clock.nowMillis() }) catch |err| {
+        log.warn("patch_verdict_persist_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .runner_id = runner_id, .err = @errorName(err) });
+    };
+}
+
+fn readCapability(hx: Hx, conn: *pg.Conn, runner_id: []const u8) ?protocol.CapabilityReport {
+    var q = PgQuery.from(conn.query(sql.SELECT_RUNNER_CAPABILITY, .{runner_id}) catch return null);
+    defer q.deinit();
+    const row = (q.next() catch return null) orelse return null;
+    const raw = row.get(?[]const u8, 0) catch return null;
+    return policy_row.decodeCapability(hx.alloc, raw);
 }
 
 fn parseBody(hx: Hx, req: *httpz.Request) ?protocol.RunnerAdminPatchRequest {

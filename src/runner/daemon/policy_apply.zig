@@ -49,8 +49,16 @@ pub fn noteDegraded(applied: *AppliedPolicy, gates: *Gates, degraded: bool, reas
 }
 
 /// Feed one heartbeat's raw `assigned_policy` into the holder and run the
-/// apply-time gates.
+/// apply-time gates. The release-build dev_none refusal runs BEFORE the holder
+/// publishes: a worker polling between publish and a post-publish clear could
+/// otherwise snapshot the forbidden tier and start one cage-less lease.
 pub fn applyHeartbeatPolicy(io: std.Io, alloc: std.mem.Allocator, applied: *AppliedPolicy, gates: *Gates, raw: ?std.json.Value) void {
+    if (forbiddenTier(alloc, raw)) {
+        applied.clear();
+        log.err("dev_none_rejected_in_release_build", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .sandbox_tier = @tagName(protocol.SandboxTier.dev_none) });
+        gates.last_outcome = .cleared;
+        return;
+    }
     const outcome = applied.apply(raw);
     defer gates.last_outcome = outcome;
     switch (outcome) {
@@ -62,19 +70,23 @@ pub fn applyHeartbeatPolicy(io: std.Io, alloc: std.mem.Allocator, applied: *Appl
     }
 }
 
+/// Pre-publish peek at the assigned tier: true when a release build must
+/// refuse it. A raw value that fails to decode returns false — the full
+/// decode inside `apply` classifies it `.invalid` (also fail-closed).
+fn forbiddenTier(alloc: std.mem.Allocator, raw: ?std.json.Value) bool {
+    const value = raw orelse return false;
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const decoded = std.json.parseFromValueLeaky(protocol.AssignedPolicy, arena.allocator(), value, .{ .ignore_unknown_fields = true }) catch return false;
+    return devNoneForbidden(builtin.mode, decoded.sandbox_tier);
+}
+
 fn runApplyGates(io: std.Io, alloc: std.mem.Allocator, applied: *AppliedPolicy, gates: *Gates) void {
     const snap = applied.snapshot(alloc) orelse return;
     defer AppliedPolicy.freePolicy(alloc, snap);
 
-    // Fail-closed (Invariant 7): a release build refuses the no-isolation
-    // dev_none tier — assignment or not — so it can never become the
-    // production posture. Refusal means "lease nothing", not exit: the
-    // operator can re-assign from the dashboard without a host visit.
-    if (devNoneForbidden(builtin.mode, snap.sandbox_tier)) {
-        applied.clear();
-        log.err("dev_none_rejected_in_release_build", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .sandbox_tier = @tagName(snap.sandbox_tier) });
-        return;
-    }
+    // (The release-build dev_none refusal — Invariant 7 — already ran in
+    // `applyHeartbeatPolicy`, BEFORE the holder published this policy.)
 
     // systemd delegates the controllers but never writes `cgroup.subtree_control`
     // — that is the delegatee's job. Without it every execution scope fails and
