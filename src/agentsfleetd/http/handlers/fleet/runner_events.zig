@@ -10,6 +10,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const paging = @import("../../pagination.zig");
 const keyset_cursor = @import("../../../fleet_runtime/keyset_cursor.zig");
+const id_format = @import("../../../types/id_format.zig");
 const protocol = @import("contract").protocol;
 const runner_events = @import("../../../fleet/runner_events.zig");
 
@@ -22,8 +23,10 @@ const QUERY_PAGE_SIZE = "page_size";
 const S_BAD_QUERY = "limit must be between 1 and 100; starting_after must be a cursor from a previous page; event_type must be a comma-separated set of runner event types; since/until must be millis";
 const S_RETIRED_PARAMS = "page and page_size are retired on this list; page with starting_after and limit";
 
-/// A set filter can name at most every tag once — the enum's own cardinality
-/// bounds the parse so a hostile comma chain cannot inflate the allocation.
+/// The enum's own cardinality bounds the token count, so a hostile comma chain
+/// cannot inflate the allocation. Repeats inside that bound are accepted rather
+/// than refused: the filter matches with `= ANY(...)`, where a duplicate tag
+/// selects exactly the same rows.
 const MAX_EVENT_TYPE_TOKENS = std.meta.fields(protocol.RunnerEventType).len;
 
 pub fn innerListFleetRunnerEvents(hx: Hx, req: *httpz.Request, runner_id: []const u8) void {
@@ -82,6 +85,9 @@ fn parseListQuery(alloc: std.mem.Allocator, req: *httpz.Request) ?ListQuery {
     var out = ListQuery{ .limit = limit };
     if (qs.get(paging.QUERY_STARTING_AFTER)) |raw| {
         const parsed = keyset_cursor.parse(raw) catch return null;
+        // The id half seeks a ::uuid bind; refusing a non-UUID here keeps a
+        // crafted cursor at 400 instead of a Postgres cast error's 500.
+        if (!id_format.isUuidV7(parsed.id)) return null;
         out.cursor = .{ .occurred_at = parsed.created_at_ms, .id = parsed.id };
     }
     if (qs.get(QUERY_EVENT_TYPE)) |raw| out.filter.event_types = parseEventTypeSet(alloc, raw) orelse return null;

@@ -51,7 +51,12 @@ const SUGGEST_MEM_UNAVAILABLE =
 
 const USAGE_LIST =
   "usage: agentsfleet memory list --fleet <id> [--category <name>] [--limit <n>] [--starting-after <key>] [--workspace <id>]";
-const NEXT_PAGE_COMMAND_LIST = "agentsfleet memory list --starting-after" as const;
+// Verb stem only; the emit site appends the resolved --fleet and the cursor, so
+// the printed line is runnable as-is. `memory list` requires --fleet, unlike
+// `fleet list`, whose hint needs no flag beyond the cursor.
+const NEXT_PAGE_COMMAND_LIST = "agentsfleet memory list" as const;
+const FLAG_FLEET = "--fleet" as const;
+const FLAG_STARTING_AFTER = "--starting-after" as const;
 const USAGE_SEARCH =
   "usage: agentsfleet memory search --fleet <id> <query> [--limit <n>] [--workspace <id>]";
 
@@ -257,7 +262,9 @@ const memoryReadEffect = (
     );
     if (isString(req.nextPageCommand) && isString(res.next_cursor) && res.next_cursor.length > 0) {
       yield* output.info(
-        ui.dim(`More available. Next: ${req.nextPageCommand} ${res.next_cursor}`),
+        ui.dim(
+          `More available. Next: ${req.nextPageCommand} ${FLAG_FLEET} ${fleetId} ${FLAG_STARTING_AFTER} ${res.next_cursor}`,
+        ),
       );
     }
   });

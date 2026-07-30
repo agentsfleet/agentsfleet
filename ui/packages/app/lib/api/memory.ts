@@ -35,6 +35,10 @@ export async function listMemories(
   );
 }
 
+// The server's accepted ceiling. The walk asks for full pages so a fleet's
+// memory costs half the round trips the server's default page would.
+const WALK_PAGE_LIMIT = 100;
+
 // The memory panel renders the fleet's whole memory, not the first bounded
 // read — memory entries accumulate per execution, so one page can silently
 // truncate. Walks next_cursor to the end via the shared list-walk bound.
@@ -44,7 +48,10 @@ export async function listAllMemories(
   token: string,
 ): Promise<{ items: MemoryEntry[] }> {
   const walked = await walkList<MemoryEntry>("memory list", (cursor) =>
-    listMemories(workspaceId, fleetId, token, cursor !== null ? { starting_after: cursor } : undefined),
+    listMemories(workspaceId, fleetId, token, {
+      limit: WALK_PAGE_LIMIT,
+      ...(cursor !== null ? { starting_after: cursor } : {}),
+    }),
   );
   return { items: walked.items };
 }

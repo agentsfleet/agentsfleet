@@ -396,10 +396,18 @@ fn freeSeenKeys(seen: *std.StringHashMap(void)) void {
 
 test "integration: test_memory_keyset_index_migration_registered" {
     // Registration half: embed.zig is the single source of truth for the
-    // migration array, so the last entry must be the keyset-index slot.
-    const last = schema_migrations[schema_migrations.len - 1];
-    try std.testing.expectEqual(@as(i32, 39), last.version); // pin test: the slot number is the contract
-    try std.testing.expect(std.mem.indexOf(u8, last.sql, KEYSET_INDEX_NAME) != null);
+    // migration array, so slot 39 must be registered there and must be the slot
+    // that creates the keyset index. This originally asserted 39 was the LAST
+    // entry; slot 40 (the runner-lease operator read) made tail position
+    // transient, while "39 is registered and creates this index" is the
+    // durable shape — and it still fails if the slot is renumbered or dropped.
+    const KEYSET_SLOT: i32 = 39; // pin test: the slot number is the promise
+    var slot_sql: ?[]const u8 = null;
+    for (schema_migrations) |m| {
+        if (m.version == KEYSET_SLOT) slot_sql = m.sql;
+    }
+    try std.testing.expect(slot_sql != null);
+    try std.testing.expect(std.mem.indexOf(u8, slot_sql.?, KEYSET_INDEX_NAME) != null);
 
     // Applied half: the index exists in the harness-migrated database.
     const f = try fixture();

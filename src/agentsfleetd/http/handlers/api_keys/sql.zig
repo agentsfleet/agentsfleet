@@ -73,8 +73,11 @@ pub const SELECT_TENANT_KEY_COUNT =
 
 /// One keyset page of the tenant key list. One `{s}` slot — the ORDER BY
 /// clause — fed from `sortSpecFor`'s fixed allowlist, never from user input.
-/// Each supported ordering is served by an index from schema slot 033, so no
-/// sort node runs. `$1` tenant_id, `$2` limit.
+/// No index serves these orderings, deliberately: schema slot 033 names
+/// `core.api_keys` list sorts as intentionally unindexed because a tenant holds
+/// roughly a hundred human-created keys, which the page limit already covers.
+/// Sorting at that size is free; revisit with slot 033 if key counts climb.
+/// `$1` tenant_id, `$2` limit.
 pub const SELECT_TENANT_KEY_KEYSET_FIRST_FMT =
     \\SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at
     \\FROM core.api_keys

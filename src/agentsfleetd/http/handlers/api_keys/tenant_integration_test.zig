@@ -418,6 +418,29 @@ test "integration: test_api_keys_list_uses_keyset_envelope_and_keeps_sorts" {
     const created_desc = try (try h.get("/v1/api-keys?sort=-created_at&limit=10").bearer(TOKEN_OPERATOR)).send();
     defer created_desc.deinit();
     try created_desc.expectStatus(.ok);
+
+    // Every way a cursor can be wrong answers 400, never a 500 and never a
+    // silent walk of the wrong ordering. The cursor grammar is `{ts}:{id}` for
+    // the created_at orderings and `s:{base64url(name)}:{id}` for the key_name
+    // orderings, so these are hand-written rather than round-tripped.
+    const REFUSED = [_][]const u8{
+        // Timestamp form offered under a name ordering: resuming here would
+        // silently paginate a different order.
+        "/v1/api-keys?sort=key_name&starting_after=1744000000000:0195b4ba-8d3a-7f13-8abc-0000000d0001",
+        // Name form offered under a created_at ordering — the mirror case.
+        "/v1/api-keys?sort=-created_at&starting_after=s:c29ydC1hLWtleQ:0195b4ba-8d3a-7f13-8abc-0000000d0001",
+        // Right form, but the id half is not a uuid: it seeks a ::uuid bind, so
+        // an unguarded value would surface as a cast error's 500.
+        "/v1/api-keys?sort=-created_at&starting_after=1744000000000:not-a-uuid",
+        // Not a cursor at all.
+        "/v1/api-keys?starting_after=garbage",
+    };
+    for (REFUSED) |path| {
+        const refused = try (try h.get(path).bearer(TOKEN_OPERATOR)).send();
+        defer refused.deinit();
+        try refused.expectStatus(.bad_request);
+        try std.testing.expect(refused.bodyContains("UZ-REQ-001"));
+    }
     finalCleanup(h);
 }
 
