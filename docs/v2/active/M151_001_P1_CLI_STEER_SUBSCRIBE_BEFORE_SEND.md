@@ -57,6 +57,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/fleet-steer.integration.test.ts` | EDIT | subscribe-before-send order proven through the injected stream |
 | `cli/test/fleet-steer-linecov.unit.test.ts` | EDIT | buffer/filter/fallback branch coverage |
 | `cli/test/fleet-steer-errors.integration.test.ts` | EDIT | stream-open failure and post-failure paths |
+| `cli/test/fleet-steer-repl.unit.test.ts` | EDIT | two `streamSignals` counts re-pinned: they encoded post-then-subscribe, the order this spec flips |
 | `docs/v2/pending/M151_001_P1_CLI_STEER_SUBSCRIBE_BEFORE_SEND.md` | EDIT | lifecycle moves and Dimension DONE marks |
 | `package.json` + `bun.lock` | EDIT | §4 dependency refresh (folded scope): in-range workspace updates |
 | `cli/package.json` + `cli/bun.lock` | EDIT | §4: posthog-node, oxlint, @clerk/testing in-range; playwright pinned 1.62.1 |
@@ -91,23 +92,23 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 One steer turn becomes: open the stream → POST the message → buffer every arriving frame until the `202`'s `event_id` is known → drop buffered frames for other events, replay the matching ones in arrival order, then continue the existing tail. **Implementation default:** the buffer lives in the events module beside the tail it feeds, capped by named frame-count and byte constants sized to the pre-id window (one `202` round-trip), because a cap without a name is how UFS violations start.
 
-- **Dimension 1.1** — the stream is open before the POST fires (order proven through the injected stream fake) → Test `test_stream_opens_before_post`
-- **Dimension 1.2** — frames arriving before the `event_id` is known are buffered and replayed in arrival order once it is → Test `test_pre_id_frames_replayed_in_order`
-- **Dimension 1.3** — buffered frames for a different event are dropped, never rendered → Test `test_foreign_event_frames_dropped`
-- **Dimension 1.4** — the pre-id buffer is bounded; overflow drops oldest and the tail still functions (durable poll remains the backstop) → Test `test_pre_id_buffer_bounded`
+- **Dimension 1.1** — the stream is open before the POST fires (order proven through the injected stream fake) → Test `test_stream_opens_before_post` — DONE
+- **Dimension 1.2** — frames arriving before the `event_id` is known are buffered and replayed in arrival order once it is → Test `test_pre_id_frames_replayed_in_order` — DONE
+- **Dimension 1.3** — buffered frames for a different event are dropped, never rendered → Test `test_foreign_event_frames_dropped` — DONE
+- **Dimension 1.4** — the pre-id buffer is bounded; overflow drops oldest and the tail still functions (durable poll remains the backstop) → Test `test_pre_id_buffer_bounded` — DONE
 
 ### §2 — Failure paths degrade to today's behaviour
 
 Subscribing earlier must never make steer worse than post-then-subscribe. Every new failure path lands on an existing, tested recovery.
 
-- **Dimension 2.1** — stream fails to open → the turn proceeds exactly as today: POST, then terminal poll; the user sees the same outcome shapes → Test `test_stream_open_failure_degrades_to_poll`
-- **Dimension 2.2** — the POST fails after the stream opened → the stream is closed, no orphan connection, the existing error rendering is unchanged → Test `test_post_failure_closes_stream`
-- **Dimension 2.3** — abort (Ctrl-C) during the pre-id window → interrupted cleanly, stream closed, no buffered frames rendered → Test `test_abort_in_pre_id_window`
+- **Dimension 2.1** — stream fails to open → the turn proceeds exactly as today: POST, then terminal poll; the user sees the same outcome shapes → Test `test_stream_open_failure_degrades_to_poll` — DONE
+- **Dimension 2.2** — the POST fails after the stream opened → the stream is closed, no orphan connection, the existing error rendering is unchanged → Test `test_post_failure_closes_stream` — DONE
+- **Dimension 2.3** — abort (Ctrl-C) during the pre-id window → interrupted cleanly, stream closed, no buffered frames rendered → Test `test_abort_in_pre_id_window` — DONE
 
 ### §3 — Existing surfaces unchanged
 
-- **Dimension 3.1** — REPL multi-turn steer: each turn takes the new order; turn boundaries and prompts render as today → Test: existing `fleet-steer-repl.unit.test.ts` suite passes unmodified
-- **Dimension 3.2** — JSON mode output shape (`{ event_id, ...outcome }`) is byte-identical → Test `test_json_mode_shape_unchanged`
+- **Dimension 3.1** — REPL multi-turn steer: each turn takes the new order; turn boundaries and prompts render as today → Test: existing `fleet-steer-repl.unit.test.ts` suite passes, with its two stream-count assertions updated to the subscribe-first order (every turn opens a tail before its POST, the tail always carries an abort signal for close ownership, and a failed turn's tail is proven closed) — the counts were proxies for the pre-reorder call order this spec exists to flip — DONE
+- **Dimension 3.2** — JSON mode output shape (`{ event_id, ...outcome }`) is byte-identical → Test `test_json_mode_shape_unchanged` — DONE
 
 ### §4 — Dependency refresh (folded scope — owner-directed mid-stream)
 
@@ -160,7 +161,7 @@ No new events or log emits: the change is client-side ordering inside one CLI tu
 | 2.1 | integration (negative) | `test_stream_open_failure_degrades_to_poll` | stream fake fails to open → POST still sent, terminal poll renders today's outcome |
 | 2.2 | integration (negative) | `test_post_failure_closes_stream` | POST fake rejects → stream close-count is 1, existing error surface rendered |
 | 2.3 | unit (negative) | `test_abort_in_pre_id_window` | abort signal fires pre-id → interrupted error, stream closed, zero frames rendered |
-| 3.1 | regression | existing REPL suite | passes unmodified |
+| 3.1 | regression | existing REPL suite | passes; two stream-count assertions re-pinned to subscribe-first (see Dimension 3.1) |
 | 3.2 | regression | `test_json_mode_shape_unchanged` | JSON mode → `{ event_id, ...outcome }` byte-identical to today |
 | 4.1 | regression | `make test-unit-all` + `make lint-all` | bumped toolchain → both exit 0 |
 | 4.2 | build | `cd ui/packages/app && bun run build` | TypeScript 7 via local-CLI backend → exit 0 |
@@ -226,5 +227,6 @@ N/A — no files deleted.
   > Indy (2026-07-30): "i want the deps refresh in your old PR, not a new one." then "m151-steer*" — context: fold into `feat/m151-steer-subscribe-first` instead of a separate chore PR.
   The TypeScript 7 blocker Indy referenced is vercel/next.js issue #95490 (`next build` misdetects TypeScript 7 because the Go-native compiler dropped `lib/typescript.js`), fixed by PR #95639 (canary) and backport PR #95831 → stable in Next.js 16.2.12 behind `experimental.useTypeScriptCli`.
   > Indy (2026-07-30): "keep the simple alias for now, as TS 7.1 will sunset the oxc-parser if we write it today." — context: the bundle-guard test's `typescript-jsapi` (typescript@6) alias is the accepted bridge; no oxc-parser rewrite; migrate to the official TypeScript 7.1 API when it ships (grep `typescript-jsapi`).
+- **Spec amendment (EXECUTE)** — Dimension 3.1 originally claimed the REPL suite would pass unmodified. Two of its `streamSignals` assertions turned out to encode the pre-reorder call order (single-shot turns passed no stream signal; a turn whose POST failed never opened a stream). Subscribe-first necessarily changes both, so the assertions were re-pinned to the new invariant and the failed-turn pin strengthened to prove the tail closes. Every other assertion in the suite — dispatch shape, error surfaces, turn continuation — passes untouched.
 - **Skill-chain outcomes** — (populated as work proceeds)
 - **Deferrals** — (none)
