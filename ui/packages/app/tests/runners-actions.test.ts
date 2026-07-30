@@ -36,6 +36,10 @@ vi.mock("@/lib/api/runners", () => ({
   updateRunnerAdminState: updateRunnerAdminStateMock,
   deleteRunner: deleteRunnerMock,
   listRunnerLeases: listRunnerLeasesMock,
+  // Enrollment defaults the action folds into assigned_policy — mirror the
+  // real module's values so the forwarded body assertion stays truthful.
+  DEFAULT_ASSIGNED_NETWORK_POLICY: "allow_all",
+  DEFAULT_WORKER_COUNT: 1,
 }));
 
 import {
@@ -152,7 +156,18 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     const body = { host_id: "web-prod-1", sandbox_tier: "container_nested" as const, labels: [] };
     const r = await createRunnerAction(body);
     expect(r).toEqual({ ok: true, data: { runner_id: "r1", runner_token: "agt_rabc" } });
-    expect(createRunnerMock).toHaveBeenCalledWith("tok", body);
+    // The action wraps the dialog's tier into the full assignment envelope with
+    // the documented enrollment defaults.
+    expect(createRunnerMock).toHaveBeenCalledWith("tok", {
+      host_id: "web-prod-1",
+      assigned_policy: {
+        sandbox_tier: "container_nested",
+        network_policy: "allow_all",
+        registry_allowlist: [],
+        worker_count: 1,
+      },
+      labels: [],
+    });
   });
 
   it("updateRunnerAdminStateAction forwards the runner state change through withToken when scoped", async () => {

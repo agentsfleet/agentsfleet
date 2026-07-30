@@ -9,6 +9,9 @@ import {
   createRunner,
   updateRunnerAdminState,
   deleteRunner,
+  DEFAULT_ASSIGNED_NETWORK_POLICY,
+  DEFAULT_WORKER_COUNT,
+  type AssignedPolicy,
   type RunnerListResponse,
   type RunnerLeaseResponse,
   type CreatedRunner,
@@ -37,7 +40,17 @@ export async function createRunnerAction(body: {
   sandbox_tier: SandboxTier;
   labels: string[];
 }): Promise<ActionResult<CreatedRunner>> {
-  return requireScope(SCOPE.RUNNER_ENROLL, () => withToken((t) => createRunner(t, body)));
+  // The dialog collects the tier today; the remaining policy fields enroll at
+  // their documented defaults until the full-policy dialog lands.
+  const assigned_policy: AssignedPolicy = {
+    sandbox_tier: body.sandbox_tier,
+    network_policy: DEFAULT_ASSIGNED_NETWORK_POLICY,
+    registry_allowlist: [],
+    worker_count: DEFAULT_WORKER_COUNT,
+  };
+  return requireScope(SCOPE.RUNNER_ENROLL, () =>
+    withToken((t) => createRunner(t, { host_id: body.host_id, assigned_policy, labels: body.labels })),
+  );
 }
 
 export async function updateRunnerAdminStateAction(

@@ -6814,7 +6814,7 @@
       "post": {
         "operationId": "register_runner",
         "summary": "Register a runner",
-        "description": "Enrolls a runner into the fleet. Authed by an existing operator credential (Clerk JWT or `agt_t` API key with admin role) — there is no enrollment token. Mints a durable `agt_r` runner token (returned once) and stores only its SHA-256 hash.",
+        "description": "Enrolls a runner into the fleet and assigns its policy. Requires an existing operator credential (Clerk JWT or `agt_t` API key with admin role); there is no enrollment token. Mints a durable `agt_r` runner token, returned once, and stores only its SHA-256 hash. The host applies the policy assigned here and never declares its own.",
         "tags": [
           "Fleet"
         ],
@@ -6960,7 +6960,7 @@
       "patch": {
         "operationId": "patch_fleet_runner",
         "summary": "Administer a fleet runner",
-        "description": "Platform-admin operator action on a single runner. `cordon` → cordoned, `drain` → draining, `revoke` → revoked (terminal; a revoked runner cannot transition back).",
+        "description": "Platform-admin mutation on a single runner. The body carries exactly one of `action` or `assigned_policy`. `action` moves the admin state: `cordon` to cordoned, `drain` to draining, `revoke` to revoked. Revoked is terminal; a revoked runner cannot transition back. `assigned_policy` re-assigns the runner's policy, and the host picks it up on its next heartbeat. Sending the same policy again changes nothing and records no event.",
         "tags": [
           "Fleet"
         ],
@@ -6982,9 +6982,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "action"
-                ],
+                "description": "Exactly one of `action` or `assigned_policy` must be present; both or neither is a 400.",
                 "properties": {
                   "action": {
                     "type": "string",
@@ -6994,6 +6992,9 @@
                       "drain",
                       "revoke"
                     ]
+                  },
+                  "assigned_policy": {
+                    "$ref": "#/components/schemas/RunnerAssignedPolicy"
                   }
                 }
               }
@@ -7002,7 +7003,7 @@
         },
         "responses": {
           "200": {
-            "description": "The runner's new admin state.",
+            "description": "The runner's admin state, plus the stored assignment on the policy-update path.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7025,6 +7026,10 @@
                         "drained",
                         "revoked"
                       ]
+                    },
+                    "assigned_policy": {
+                      "$ref": "#/components/schemas/RunnerAssignedPolicy",
+                      "x-stability": "stable"
                     }
                   }
                 }
@@ -8924,12 +8929,62 @@
           }
         ]
       },
+      "RunnerSandboxTier": {
+        "type": "string",
+        "description": "Isolation strength the operator assigns to a runner. The host applies it and reports what it can deliver. A host that cannot meet the assignment is marked degraded and receives no work.",
+        "enum": [
+          "landlock_full",
+          "container_nested",
+          "macos_seatbelt",
+          "dev_none"
+        ]
+      },
+      "RunnerNetworkPolicy": {
+        "type": "string",
+        "description": "Network access assigned to a runner's sandboxed work. `allow_all` allows all outbound traffic. `deny_all_egress` allows none. `allow_list_egress` limits outbound traffic to an approved list. That mode is not available yet; a runner assigned it is marked degraded and refuses work.",
+        "enum": [
+          "allow_all",
+          "deny_all_egress",
+          "allow_list_egress"
+        ]
+      },
+      "RunnerAssignedPolicy": {
+        "type": "object",
+        "description": "The policy assigned to one runner. agentsfleet delivers it to the host on enrollment and on every heartbeat. The host never declares its own policy.",
+        "required": [
+          "sandbox_tier",
+          "network_policy",
+          "registry_allowlist",
+          "worker_count"
+        ],
+        "properties": {
+          "sandbox_tier": {
+            "$ref": "#/components/schemas/RunnerSandboxTier"
+          },
+          "network_policy": {
+            "$ref": "#/components/schemas/RunnerNetworkPolicy"
+          },
+          "registry_allowlist": {
+            "type": "array",
+            "description": "Operator registry baseline merged into each lease's egress allowlist. Empty = the runner substitutes its default registry set.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "worker_count": {
+            "type": "integer",
+            "description": "Concurrent workers on the host. Clamped server-side into [1, 64]; the stored (clamped) value is echoed back.",
+            "minimum": 1,
+            "maximum": 64
+          }
+        }
+      },
       "RunnerRegisterRequest": {
         "type": "object",
-        "description": "Self-reported runner identity at enrollment. `sandbox_tier` is telemetry only — placement keys off operator-assigned trust, not this claim.",
+        "description": "Enrollment input. The operator ASSIGNS the policy here — the selection is an assignment the host must satisfy, not a description of the host.",
         "required": [
           "host_id",
-          "sandbox_tier",
+          "assigned_policy",
           "labels"
         ],
         "properties": {
@@ -8939,15 +8994,8 @@
             "maxLength": 256,
             "description": "Operator-supplied host identifier for this runner (1-256 chars)."
           },
-          "sandbox_tier": {
-            "type": "string",
-            "description": "Isolation strength the runner self-reports. Stored as telemetry.",
-            "enum": [
-              "landlock_full",
-              "container_nested",
-              "macos_seatbelt",
-              "dev_none"
-            ]
+          "assigned_policy": {
+            "$ref": "#/components/schemas/RunnerAssignedPolicy"
           },
           "labels": {
             "type": "array",
@@ -8963,7 +9011,8 @@
         "description": "The durable runner identity plus its bearer token. The `runner_token` is returned exactly once; the server stores only its SHA-256 hash.",
         "required": [
           "runner_id",
-          "runner_token"
+          "runner_token",
+          "assigned_policy"
         ],
         "properties": {
           "runner_id": {
@@ -8974,6 +9023,10 @@
           "runner_token": {
             "type": "string",
             "description": "The `agt_r`-prefixed bearer token the runner presents on every later call. Returned once; never retrievable again."
+          },
+          "assigned_policy": {
+            "$ref": "#/components/schemas/RunnerAssignedPolicy",
+            "x-stability": "stable"
           }
         }
       },
@@ -8999,13 +9052,7 @@
             "type": "string"
           },
           "sandbox_tier": {
-            "type": "string",
-            "enum": [
-              "landlock_full",
-              "container_nested",
-              "macos_seatbelt",
-              "dev_none"
-            ]
+            "$ref": "#/components/schemas/RunnerSandboxTier"
           },
           "admin_state": {
             "type": "string",
@@ -9074,13 +9121,7 @@
             "type": "string"
           },
           "sandbox_tier": {
-            "type": "string",
-            "enum": [
-              "landlock_full",
-              "container_nested",
-              "macos_seatbelt",
-              "dev_none"
-            ]
+            "$ref": "#/components/schemas/RunnerSandboxTier"
           },
           "admin_state": {
             "type": "string",
@@ -9308,7 +9349,8 @@
               "runner_cordoned",
               "runner_draining",
               "runner_drained",
-              "runner_revoked"
+              "runner_revoked",
+              "runner_policy_assigned"
             ]
           },
           "occurred_at": {
