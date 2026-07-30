@@ -138,9 +138,8 @@ test "runner boots from a agt_r token straight into the lease loop with no regis
     const cfg = Config{
         .control_plane_url = try alloc.dupe(u8, url),
         .runner_token = try alloc.dupe(u8, contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 64),
-        .host_id = try alloc.dupe(u8, "boot-test-host"),
         .sandbox_tier = .dev_none,
-        .workspace_base = try alloc.dupe(u8, "/tmp/agentsfleet-runner-boot-test"),
+        .storage_home = try alloc.dupe(u8, "/tmp/agentsfleet-runner-boot-test"),
         .network_policy = .deny_all_egress,
         .worker_count = 1,
         .cp_deadlines = .{},
@@ -258,9 +257,8 @@ fn runRejectedTokenLoop(drop_at: u32) !struct { exit: loop.LoopExit, accepts: u3
     const cfg = Config{
         .control_plane_url = try alloc.dupe(u8, url),
         .runner_token = try alloc.dupe(u8, contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 64),
-        .host_id = try alloc.dupe(u8, "reject-test-host"),
         .sandbox_tier = .dev_none,
-        .workspace_base = try alloc.dupe(u8, "/tmp/agentsfleet-runner-reject-test"),
+        .storage_home = try alloc.dupe(u8, "/tmp/agentsfleet-runner-reject-test"),
         .network_policy = .deny_all_egress,
         .worker_count = 1,
         .cp_deadlines = .{},
@@ -326,9 +324,8 @@ test "a rejected lease returns to the worker loop after one bounded idle" {
     const cfg = Config{
         .control_plane_url = try alloc.dupe(u8, url),
         .runner_token = try alloc.dupe(u8, contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 64),
-        .host_id = try alloc.dupe(u8, "lease-reject-host"),
         .sandbox_tier = .dev_none,
-        .workspace_base = try alloc.dupe(u8, "/tmp/agentsfleet-runner-lease-reject"),
+        .storage_home = try alloc.dupe(u8, "/tmp/agentsfleet-runner-lease-reject"),
         .network_policy = .deny_all_egress,
         .worker_count = 1,
         .cp_deadlines = .{},
@@ -343,10 +340,19 @@ test "a rejected lease returns to the worker loop after one bounded idle" {
     defer deadlines.deinit();
     var cp = @import("control_plane_client.zig").init(alloc, io, try deadlines.start(alloc), cfg.control_plane_url);
     defer cp.deinit();
+    // The worker only polls when a policy is applied — hold one, as the
+    // control loop would after a heartbeat delivered the assignment.
+    var applied = @import("AppliedPolicy.zig").init(alloc);
+    defer applied.deinit();
+    const pol = try std.json.parseFromSlice(std.json.Value, alloc,
+        \\{"sandbox_tier":"dev_none","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":1}
+    , .{});
+    defer pol.deinit();
+    try testing.expectEqual(@import("AppliedPolicy.zig").ApplyOutcome.applied, applied.apply(pol.value));
     // A 401 lease must come back to the worker loop after ONE bounded idle —
     // the heartbeat loop owns the process exit; a worker that crashed, spun,
     // or retried inline here would hammer a known-rejected control plane.
-    loop.pollAndProcess(io, alloc, &cp, cfg.runner_token, cfg, &env_map);
+    loop.pollAndProcess(io, alloc, &cp, cfg.runner_token, cfg, &env_map, &applied, 0);
     try testing.expectEqual(@as(u32, 1), stub.accepts.load(.seq_cst));
 
     stub.shutdown(port); // Linux-safe: wake the blocked accept, then join, THEN deinit

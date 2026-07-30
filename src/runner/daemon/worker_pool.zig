@@ -21,6 +21,7 @@ const std = @import("std");
 const logging = @import("log");
 
 const Config = @import("config.zig");
+const AppliedPolicy = @import("AppliedPolicy.zig");
 const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
 const loop = @import("loop.zig");
@@ -41,6 +42,10 @@ const WorkerContext = struct {
     io: std.Io,
     index: u32,
     cfg: Config,
+    /// The control loop's policy holder, borrowed for the pool's lifetime (the
+    /// loop joins the pool before the holder is deinited). Each lease reads a
+    /// snapshot from it; a null holder means lease nothing.
+    applied: *AppliedPolicy,
     /// The ONE process scheduler, borrowed from the runner root. Every worker
     /// arms against it; no worker ever creates its own. The root joins the pool
     /// before deiniting it, so it outlives every worker that can arm.
@@ -98,6 +103,7 @@ pub fn spawn(
     sched: *call_deadline.ProcessScheduler,
     cfg: Config,
     env_map: *const std.process.Environ.Map,
+    applied: *AppliedPolicy,
     stop: *std.atomic.Value(bool),
     drain: *std.atomic.Value(bool),
 ) PoolError!Pool {
@@ -119,6 +125,7 @@ pub fn spawn(
             .io = io,
             .index = @intCast(spawned),
             .cfg = cfg,
+            .applied = applied,
             .sched = sched,
             .env_map = env_map,
             .stop = stop,
@@ -149,7 +156,7 @@ fn workerLoop(ctx: WorkerContext) void {
     defer cp.deinit();
     log.debug("worker_started", .{ .index = ctx.index });
     while (!ctx.stop.load(.seq_cst) and !ctx.drain.load(.seq_cst)) {
-        loop.pollAndProcess(ctx.io, alloc, &cp, ctx.cfg.runner_token, ctx.cfg, ctx.env_map);
+        loop.pollAndProcess(ctx.io, alloc, &cp, ctx.cfg.runner_token, ctx.cfg, ctx.env_map, ctx.applied, ctx.index);
     }
     log.debug("worker_stopped", .{ .index = ctx.index });
 }
