@@ -37,6 +37,15 @@ const PROBE_FLEET_ROWS: i32 = 20;
 const FLEET_MEM = "0195b4ba-8d3a-7f13-8abc-0000000b0002";
 const MEM_ID_PREFIX = "idxprobe-mem-";
 
+/// The operator lease read's fixture (slot 040). Same doctrine as the memory
+/// probe: fitness is asked with scans disabled, so a couple hundred rows is
+/// enough for the plan to form.
+const LEASE_SEED_ROWS: i32 = 200;
+const WS_LEASE = "0195b4ba-8d3a-7f13-8abc-0000000c0001";
+const FLEET_LEASE = "0195b4ba-8d3a-7f13-8abc-0000000c0002";
+const RUNNER_LEASE = "0195b4ba-8d3a-7f13-8abc-0000000c0003";
+const LEASE_EVENT_PREFIX = "idxprobe-evt-";
+
 /// Every index slot 033 creates, in file order. Four, deliberately: the slot
 /// indexes only the reads whose cost grows without bound. List sorts over
 /// runners, fleets and api keys are left unindexed at the ~100-runner scale the
@@ -149,6 +158,47 @@ fn wipeMemory(conn: *pg.Conn) void {
         std.log.warn("memory wipe ignored: {s}", .{@errorName(err)});
 }
 
+/// One runner holding `rows` settled leases against one fleet. `runner_leases`
+/// carries real foreign keys, so the tenant → workspace → fleet → runner chain
+/// is seeded first (the memory fixture above needs none).
+fn seedLeases(conn: *pg.Conn, rows: i32) !void {
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WS_LEASE);
+    try base.seedFleet(conn, FLEET_LEASE, WS_LEASE, "index-probe-fleet", "{}", "# SKILL");
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runners
+        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels,
+        \\   last_seen_at, created_at, updated_at)
+        \\VALUES ($1::uuid, 'idxprobe-host', 'idxprobe-token-040', 'dev_none',
+        \\        'active', '[]'::jsonb, 0, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{RUNNER_LEASE});
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_leases
+        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
+        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
+        \\   last_metered_at_ms, fencing_token, lease_expires_at, status,
+        \\   created_at, updated_at)
+        \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+        \\       $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5 || g,
+        \\       'system', 'chat', '{}', g, 'metered', 'anthropic', 'claude',
+        \\       0, 0, 0, 0, g, g, 'reported', g, g
+        \\FROM generate_series(1, $6::int) g
+        \\ON CONFLICT DO NOTHING
+    , .{ RUNNER_LEASE, FLEET_LEASE, WS_LEASE, base.TEST_TENANT_ID, LEASE_EVENT_PREFIX, rows });
+    _ = try conn.exec("ANALYZE fleet.runner_leases", .{});
+}
+
+fn wipeLeases(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{RUNNER_LEASE}) catch |err|
+        std.log.warn("lease wipe ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_LEASE}) catch |err|
+        std.log.warn("probe runner wipe ignored: {s}", .{@errorName(err)});
+    base.teardownFleets(conn, WS_LEASE);
+    base.teardownWorkspace(conn, WS_LEASE);
+}
+
 test "slot 033 indexes are applied exactly once" {
     const alloc = std.testing.allocator;
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
@@ -227,4 +277,58 @@ test "memory composite has the right shape and serves the fleet filter" {
         \\ORDER BY updated_at DESC, id DESC
         \\LIMIT 50
     , "idx_memory_entries_fleet_id_updated_at_id");
+}
+
+// Slot 040 — why the operator lease read earns two indexes, from the row budget
+// rather than from taste.
+//
+// `fleet.runner_leases` gains one row per lease claim and a second for every
+// reclaim of the same event. Nothing prunes it: no retention sweep touches the
+// table, and the only deletes are tenant offboarding (`state/account_teardown`)
+// and the runner/fleet `ON DELETE CASCADE`s. So a runner's row count is the
+// integral of its whole working life, never a window.
+//
+// The rate follows the lease loop: each of `worker_count` workers runs
+// lease → execute → report independently (`runner/daemon/config.zig`, default 1,
+// `MAX_WORKER_COUNT` 64), and a lease outliving one `LEASE_TTL_MS` (30 s) renews
+// rather than re-claims — so claims track completed events, not ticks. One
+// worker turning a short event every ~30 s accrues ~2.9k rows/day, reaching the
+// spec's motivating runner (4,021 leases) inside two days; at 64 workers the
+// same arithmetic is ~184k rows/day.
+//
+// Both access paths below scaled with that number before this slot. Measured on
+// one runner holding 5,000 leases across 5 fleets, the page read fell
+// 15.94 ms → 0.405 ms: the full-history Seq Scan plus top-N heapsort became a
+// 25-row Index Scan with no sort node, and the per-row reclaim probe became an
+// Index Only Scan instead of ~997 index entries plus heap visits per returned
+// row. The point is the shape, not the milliseconds — before, page cost grew
+// with history; after, it is flat.
+test "runner lease indexes have the right shape and serve the operator read" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    defer wipeLeases(db.conn);
+    try seedLeases(db.conn, LEASE_SEED_ROWS);
+
+    // The page: one runner's history, newest-first over the composite key.
+    try expectIndexShape(alloc, db.conn, "fleet", "idx_runner_leases_runner_id_created_at_id", "runner_id, created_at DESC, id DESC");
+    try expectServesFilter(alloc, db.conn,
+        \\SELECT id::text, fleet_id::text, event_id
+        \\FROM fleet.runner_leases
+        \\WHERE runner_id = '0195b4ba-8d3a-7f13-8abc-0000000c0003'::uuid
+        \\ORDER BY created_at DESC, id DESC
+        \\LIMIT 50
+    , "idx_runner_leases_runner_id_created_at_id");
+
+    // The per-row is_reclaim probe: a lower-fencing sibling of the same
+    // (fleet_id, event_id). Slot 033's fleet index cannot answer it — it
+    // carries status, not event_id.
+    try expectIndexShape(alloc, db.conn, "fleet", "idx_runner_leases_fleet_id_event_id_fencing_token", "fleet_id, event_id, fencing_token");
+    try expectServesFilter(alloc, db.conn,
+        \\SELECT 1
+        \\FROM fleet.runner_leases p
+        \\WHERE p.fleet_id = '0195b4ba-8d3a-7f13-8abc-0000000c0002'::uuid
+        \\  AND p.event_id = 'idxprobe-evt-7'
+        \\  AND p.fencing_token < 4000
+    , "idx_runner_leases_fleet_id_event_id_fencing_token");
 }

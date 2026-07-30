@@ -38,10 +38,12 @@ pub const SELECT_RUNNER_KEYSET_AFTER = RUNNER_KEYSET_COLS ++
 /// The single-runner operator read: the runner row plus a live-work summary and
 /// lifetime counters, all from durable state in one statement.
 ///
-/// The lease subquery scans the runner's whole lease history via the
-/// `(runner_id, status)` index prefix — lifetime counting is the deliberate
-/// trade (a windowed count would need an index that does not exist yet), and it
-/// mirrors how `core.fleet_activity_counters` counts for Fleets. Succeeded and
+/// The lease subquery aggregates the runner's whole lease history at read time,
+/// over the `(runner_id, created_at)` prefix slot 040 adds. Lifetime counting is
+/// the deliberate trade, but the cost shape differs from
+/// `core.fleet_activity_counters`, which is maintained incrementally at write
+/// time and read in constant time: this read grows with the runner's history,
+/// which the windowed-counter follow-up bounds. Succeeded and
 /// failed split on the joined Fleet event's terminal status, and only for
 /// leases the runner actually reported: an `expired` lease never inherits its
 /// successor's outcome, and a stale `active` row past its deadline counts as

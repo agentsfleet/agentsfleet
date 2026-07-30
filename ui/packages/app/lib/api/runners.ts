@@ -234,7 +234,7 @@ export async function listRunners(token: string, params: ListParams = {}): Promi
 }
 
 export async function getRunner(token: string, runnerId: string): Promise<RunnerDetail> {
-  return request<RunnerDetail>(`${FLEET_RUNNERS_PATH}/${runnerId}`, { method: "GET" }, token);
+  return request<RunnerDetail>(`${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}`, { method: "GET" }, token);
 }
 
 export async function listRunnerLeases(
@@ -245,7 +245,7 @@ export async function listRunnerLeases(
   const qs = keysetParams(params);
   const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
   return request<RunnerLeaseResponse>(
-    `${FLEET_RUNNERS_PATH}/${runnerId}/leases${suffix}`,
+    `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}/leases${suffix}`,
     { method: "GET" },
     token,
   );
@@ -264,7 +264,7 @@ export async function updateRunnerAdminState(
   action: RunnerAdminAction,
 ): Promise<RunnerAdminStateUpdate> {
   return request<RunnerAdminStateUpdate>(
-    `${FLEET_RUNNERS_PATH}/${runnerId}`,
+    `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}`,
     { method: "PATCH", body: JSON.stringify({ action }) },
     token,
   );
@@ -272,7 +272,7 @@ export async function updateRunnerAdminState(
 
 /** Retires a revoked runner's record. 409 UZ-RUN-016 if it is not revoked yet. */
 export async function deleteRunner(token: string, runnerId: string): Promise<void> {
-  await request<void>(`${FLEET_RUNNERS_PATH}/${runnerId}`, { method: "DELETE" }, token);
+  await request<void>(`${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}`, { method: "DELETE" }, token);
 }
 
 export async function listRunnerEvents(
@@ -286,7 +286,7 @@ export async function listRunnerEvents(
   if (params.until !== undefined) qs.set("until", String(params.until));
   const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
   return request<RunnerEventsResponse>(
-    `${FLEET_RUNNERS_PATH}/${runnerId}/events${suffix}`,
+    `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}/events${suffix}`,
     { method: "GET" },
     token,
   );

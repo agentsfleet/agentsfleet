@@ -587,6 +587,15 @@ test "integration: test_runner_events_uses_keyset_envelope" {
     defer refused.deinit();
     try refused.expectStatus(.bad_request);
     try std.testing.expect(refused.bodyContains("UZ-REQ-001"));
+
+    // A structurally valid cursor whose id half is not a uuid still seeks a
+    // ::uuid bind, so it is refused at parse — never a cast error's 500.
+    const bad_cursor = try eventsPathWithQuery(RUNNER_ID, "starting_after=1744000000000:not-a-uuid");
+    defer ALLOC.free(bad_cursor);
+    const bad = try (try h.get(bad_cursor).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer bad.deinit();
+    try bad.expectStatus(.bad_request);
+    try std.testing.expect(bad.bodyContains("UZ-REQ-001"));
 }
 
 test "integration: test_runner_events_same_millisecond_rows_are_not_skipped" {

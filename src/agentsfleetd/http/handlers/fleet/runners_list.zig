@@ -20,6 +20,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const paging = @import("../../pagination.zig");
 const keyset_cursor = @import("../../../fleet_runtime/keyset_cursor.zig");
+const id_format = @import("../../../types/id_format.zig");
 const sql = @import("sql.zig");
 const protocol = @import("contract").protocol;
 const constants = @import("common");
@@ -122,7 +123,11 @@ fn parseListQuery(req: *httpz.Request) ?ListQuery {
     const limit = paging.parseLimit(qs.get(paging.QUERY_LIMIT)) catch return null;
     var out: ListQuery = .{ .limit = limit };
     if (qs.get(paging.QUERY_STARTING_AFTER)) |raw| {
-        out.cursor = keyset_cursor.parse(raw) catch return null;
+        const parsed = keyset_cursor.parse(raw) catch return null;
+        // The id half seeks a ::uuid bind; refusing a non-UUID here keeps a
+        // crafted cursor at 400 instead of a Postgres cast error's 500.
+        if (!id_format.isUuidV7(parsed.id)) return null;
+        out.cursor = parsed;
     }
     return out;
 }

@@ -135,21 +135,36 @@ describe("RunnerTile", () => {
     expect(listRunnerLeasesActionMock).not.toHaveBeenCalled();
   });
 
-  it("should drop a work-line answer that lands after unmount", async () => {
-    let resolveLeases: (value: unknown) => void = () => {};
-    listRunnerLeasesActionMock.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveLeases = resolve;
-      }),
-    );
-    const { unmount } = render(<RunnerTile runner={runner({ liveness: "busy" })} />);
-    unmount();
-    // The cancelled guard swallows the late answer — no state set on an
-    // unmounted component, nothing thrown.
-    resolveLeases({
-      ok: true,
-      data: { items: [lease("late")], total: 1, next_cursor: null },
+  it("should ignore a stale work-line answer when the tile switches runners mid-flight", async () => {
+    let resolveFirst: (value: unknown) => void = () => {};
+    listRunnerLeasesActionMock
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { items: [lease("Second Fleet")], total: 1, next_cursor: null },
+      });
+
+    const { rerender } = render(<RunnerTile runner={runner({ id: "first", liveness: "busy" })} />);
+    // Switch runners while the first read is still in flight — the effect's
+    // cleanup marks that first answer stale.
+    rerender(<RunnerTile runner={runner({ id: "second", liveness: "busy" })} />);
+    await waitFor(() => {
+      expect(screen.getByText("1 lease · Second Fleet")).toBeTruthy();
     });
-    await Promise.resolve();
+
+    // The stale answer lands last. Without the cancelled guard it would
+    // overwrite the line the current runner already resolved.
+    resolveFirst({
+      ok: true,
+      data: { items: [lease("Stale Fleet")], total: 1, next_cursor: null },
+    });
+    await waitFor(() => {
+      expect(screen.getByText("1 lease · Second Fleet")).toBeTruthy();
+    });
+    expect(screen.queryByText(/Stale Fleet/)).toBeNull();
   });
 });

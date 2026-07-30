@@ -16,6 +16,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const paging = @import("../../pagination.zig");
 const keyset_cursor = @import("../../../fleet_runtime/keyset_cursor.zig");
+const id_format = @import("../../../types/id_format.zig");
 
 const logging = @import("log");
 const log = logging.scoped(.api_keys_list);
@@ -82,6 +83,9 @@ fn parseListQuery(alloc: std.mem.Allocator, req: *httpz.Request) ?ListQuery {
             .text => spec.key == .key_name,
         };
         if (!matches) return null;
+        // The id half seeks a ::uuid bind; refusing a non-UUID here keeps a
+        // crafted cursor at 400 instead of a Postgres cast error's 500.
+        if (!id_format.isUuidV7(cursor.id)) return null;
         out.cursor = cursor;
     }
     return out;
