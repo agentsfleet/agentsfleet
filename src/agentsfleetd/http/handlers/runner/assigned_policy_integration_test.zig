@@ -26,6 +26,8 @@ const std = @import("std");
 const pg = @import("pg");
 
 const auth_mw = @import("../../../auth/middleware/mod.zig");
+const api_key = @import("../../../auth/api_key.zig");
+const ec = @import("../../../errors/error_registry.zig");
 const serve_runner_lookup = @import("../../../cmd/serve_runner_lookup.zig");
 const base = @import("../../../db/test_fixtures.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -51,6 +53,8 @@ const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fad01";
 
 // One host name per test so residue from an aborted run never cross-fires.
 const HOST_ENROLL = "policy-assign-host-enroll";
+const HOST_LEGACY = "policy-assign-host-legacy";
+const HOST_LENIENT = "policy-assign-host-lenient";
 const HOST_HEARTBEAT = "policy-assign-host-heartbeat";
 const HOST_RESTART = "policy-assign-host-restart";
 const HOST_REPORT = "policy-assign-host-report";
@@ -96,6 +100,19 @@ const BODY_RESTART = registerBody(HOST_RESTART, TIER_LANDLOCK, NETWORK_ALLOW_ALL
 const BODY_REPORT = registerBody(HOST_REPORT, TIER_DEV, NETWORK_ALLOW_ALL, "[]", "1");
 const BODY_DEGRADED = registerBody(HOST_DEGRADED, TIER_LANDLOCK, NETWORK_ALLOW_ALL, "[]", "1");
 const BODY_RECOVERY = registerBody(HOST_RECOVERY, TIER_LANDLOCK, NETWORK_ALLOW_ALL, "[]", "1");
+const BODY_LENIENT = registerBody(HOST_LENIENT, TIER_DEV, NETWORK_ALLOW_ALL, "[]", "1");
+
+// The pre-migration row: a fixed id (so the PATCH can address it) and a fixed
+// bearer, inserted with ONLY the pre-M148 columns — migration 042's defaults
+// fill the rest and network_policy stays NULL.
+const LEGACY_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fae01";
+const LEGACY_TOKEN = protocol.RUNNER_TOKEN_PREFIX ++ "l" ** 60;
+
+// One-of violations for the PATCH body contract: both halves, and neither.
+const PATCH_BOTH =
+    \\{"action":"cordon","assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":1}}
+;
+const PATCH_NEITHER = "{\"labels\":[]}";
 
 const PATCH_TO_NESTED =
     \\{"assigned_policy":{"sandbox_tier":"container_nested","network_policy":"deny_all_egress","registry_allowlist":["pypi.org"],"worker_count":2}}
@@ -111,6 +128,11 @@ const HB_REPORT_FULL =
     \\{"capability_report":{"landlock":true,"seccomp":true,"cgroup_controllers":["cpu","memory","pids"],"bubblewrap":true,"egress_enforcement":false}}
 ;
 const HB_EMPTY = "{}";
+// Shape-invalid: landlock must be a bool. The lenient parse must read this as
+// "no report this beat", never fail the liveness beat or clobber the stored one.
+const HB_REPORT_MALFORMED =
+    \\{"capability_report":{"landlock":"maybe"}}
+;
 
 // Response fragments asserted by substring — std.json serializes struct fields
 // in declaration order, so key:value pairs are stable.
@@ -257,8 +279,8 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM core.fleet_events WHERE workspace_id = $1::uuid", .{WORKSPACE_ID});
     execIgnore(conn,
-        \\DELETE FROM fleet.runners WHERE host_id IN ($1, $2, $3, $4, $5, $6)
-    , .{ HOST_ENROLL, HOST_HEARTBEAT, HOST_RESTART, HOST_REPORT, HOST_DEGRADED, HOST_RECOVERY });
+        \\DELETE FROM fleet.runners WHERE host_id IN ($1, $2, $3, $4, $5, $6, $7, $8)
+    , .{ HOST_ENROLL, HOST_HEARTBEAT, HOST_RESTART, HOST_REPORT, HOST_DEGRADED, HOST_RECOVERY, HOST_LEGACY, HOST_LENIENT });
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
     base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -520,6 +542,125 @@ test "integration: test_unachievable_assignment_marks_runner_degraded" {
         defer resp.deinit();
         try resp.expectStatus(.ok);
         try std.testing.expect(!resp.bodyContains(FRAG_LEASE_NULL));
+    }
+}
+
+test "integration: a pre-migration row reads degraded until the dashboard assigns a policy" {
+    // The rollout case Indy declined to unbrick via env: a runner enrolled
+    // before the policy columns existed has NULL network_policy. It stays
+    // degraded ("no assigned policy"), the dashboard PATCH is the fix path,
+    // and each verdict change is visible on the very next beat.
+    const h = try startHarness();
+    defer h.deinit();
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        teardown(conn);
+        const hash = api_key.sha256Hex(LEGACY_TOKEN);
+        _ = try conn.exec(
+            \\INSERT INTO fleet.runners
+            \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
+            \\   last_seen_at, created_at, updated_at)
+            \\VALUES ($1::uuid, $2, $3, $4, $5, '[]'::jsonb, NULL, 0, 0, 0)
+            \\ON CONFLICT (id) DO NOTHING
+        , .{ LEGACY_RUNNER_ID, HOST_LEGACY, hash[0..], TIER_LANDLOCK, protocol.ADMIN_STATE_ACTIVE });
+    }
+    defer cleanupAll(h);
+
+    // The legacy row heartbeats: no assignment to deliver, degraded with the
+    // no-assigned-policy reason — never a silently defaulted policy.
+    {
+        const resp = try heartbeat(h, LEGACY_TOKEN, HB_EMPTY);
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+        try std.testing.expect(resp.bodyContains(FRAG_DEGRADED_TRUE));
+        try std.testing.expect(resp.bodyContains(reconcile.REASON_NO_ASSIGNED_POLICY));
+        try std.testing.expect(resp.bodyContains("\"assigned_policy\":null"));
+    }
+
+    const path = try patchPath(LEGACY_RUNNER_ID);
+    defer ALLOC.free(path);
+
+    // The PATCH body is EXACTLY one of action / assigned_policy: both and
+    // neither each answer 400 with the invalid-request code.
+    inline for (.{ PATCH_BOTH, PATCH_NEITHER }) |bad| {
+        const resp = try (try (try h.patch(path).bearer(PLATFORM_ADMIN_TOKEN)).json(bad)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.bad_request);
+        try std.testing.expect(resp.bodyContains(ec.ERR_INVALID_REQUEST));
+    }
+
+    // The operator assigns a policy from the dashboard PATCH; the next beat
+    // delivers it and the reason MOVES (no report yet for a cage-building
+    // tier) — proof the verdict re-reconciles rather than sticking.
+    {
+        const resp = try (try (try h.patch(path).bearer(PLATFORM_ADMIN_TOKEN)).json(PATCH_TO_NESTED)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+    }
+    {
+        const resp = try heartbeat(h, LEGACY_TOKEN, HB_EMPTY);
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+        try std.testing.expect(resp.bodyContains(FRAG_TIER_NESTED));
+        try std.testing.expect(resp.bodyContains(FRAG_DEGRADED_TRUE));
+        try std.testing.expect(resp.bodyContains(reconcile.REASON_NO_CAPABILITY_REPORT));
+    }
+
+    // A satisfying report completes the recovery: the once-bricked legacy row
+    // is a healthy assigned runner, all from the dashboard + heartbeats.
+    {
+        const resp = try heartbeat(h, LEGACY_TOKEN, HB_REPORT_FULL);
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+        try std.testing.expect(resp.bodyContains(FRAG_DEGRADED_FALSE));
+    }
+}
+
+test "integration: a malformed capability report never fails the liveness beat" {
+    // The heartbeat's lenient-parse branch: garbage in the report slot reads
+    // as "no report this beat" — the beat succeeds, policy delivery is
+    // unaffected, and the STORED report (and its arrival stamp) is untouched.
+    const h = try startHarness();
+    defer h.deinit();
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        teardown(conn);
+    }
+    defer cleanupAll(h);
+
+    const reg = try register(h, BODY_LENIENT);
+    defer freeRegistered(reg);
+
+    {
+        const resp = try heartbeat(h, reg.runner_token, HB_REPORT_FULL);
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+    }
+    var first: VerdictRow = undefined;
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        first = try verdictRow(conn, reg.runner_id);
+    }
+    defer first.deinit();
+    try std.testing.expect(first.has_report);
+
+    {
+        const resp = try heartbeat(h, reg.runner_token, HB_REPORT_MALFORMED);
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+        try std.testing.expect(resp.bodyContains(FRAG_TIER_DEV));
+        try std.testing.expect(resp.bodyContains(FRAG_DEGRADED_FALSE));
+    }
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        const second = try verdictRow(conn, reg.runner_id);
+        defer second.deinit();
+        try std.testing.expect(second.has_report);
+        try std.testing.expectEqual(first.reported_at, second.reported_at);
     }
 }
 
