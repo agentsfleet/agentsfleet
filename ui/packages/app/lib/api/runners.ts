@@ -102,6 +102,12 @@ export const QUERY_LIMIT = "limit";
 const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
 const RUNNERS_ENROLLMENT_PATH = "/v1/runners";
 
+/// The "never contacted" sentinel for `last_seen_at`, mirroring
+/// `protocol.RUNNER_LAST_SEEN_NEVER` — same name across both runtimes so the
+/// pair stays greppable. A runner is minted with this at registration and
+/// carries it until its first heartbeat, so it is a real state, not a null.
+export const RUNNER_LAST_SEEN_NEVER = 0;
+
 export interface RunnerListItem {
   id: string;
   host_id: string;
