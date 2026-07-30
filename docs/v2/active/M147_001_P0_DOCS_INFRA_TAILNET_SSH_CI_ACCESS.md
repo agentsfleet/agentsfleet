@@ -64,6 +64,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/founding/06_runner_bootstrap_dev/01_ssh_access.sh` | EDIT | Sources the shared helper so a denial in the access gate names its cause. |
 | `playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh` | EDIT | Routes its `scp` and `chmod` through the diagnosing wrapper. |
 | `playbooks/lib/common.sh` | EDIT | Gains `playbooks_explain_ssh_failure` and `playbooks_ssh_run`. |
+| `playbooks/founding/02_preflight/02_credentials.sh` | EDIT | Gains `check_worker_onboarded` so a worker with no tailnet identity is named a placeholder instead of passing as ready. |
+| `playbooks/founding/02_preflight/credentials_test.sh` | EDIT | Three cases covering onboarded, placeholder-non-fatal, and shared-hostname attribution. |
 | `playbooks/lib/common_test.sh` | CREATE | Regression tests for the two new helpers. |
 | `playbooks/founding/02_preflight/tailnet_policy_test.sh` | CREATE | Structural assertions on the canonical policy — the repo-side half of the `sshTests` guarantee, runnable without tailnet credentials. |
 | `make/quality.mk` | EDIT | Adds both new test files to the `check-playbooks` regression list. |
@@ -123,6 +125,16 @@ The outage cost a journal dig on the worker because `scp` reported only exit 255
 - **Dimension 4.3** — An unrecognised failure adds no misleading diagnosis → Test `test_should_stay_silent_on_an_unrecognised_failure`
 - **Dimension 4.4** — The wrapper passes stdout through on success → Test `test_should_pass_stdout_through_when_the_command_succeeds`
 - **Dimension 4.5** — The wrapper preserves the original exit status so `set -e` callers still die → Test `test_should_preserve_exit_status_and_explain_a_policy_denial`
+
+### §5 — A worker with no machine stops reading as ready
+
+`zombie-prod-worker-bird` was created on Mar 14, 2026 by duplicating the `zombie-prod-worker-ant` vault item. The copy carried the provider `hostname`, `deploy-user`, and admin-console credentials over verbatim; only `ssh-private-key` and `runner-token` were regenerated, and `tailscale-hostname` was never added. Its key was installed into `authorized_keys` on ant's box — SSH with bird's key reaches machine-id `38fde3f7bb6e48ed969d2ffc00de192a`, which is ant's. No second machine was ever bought. The credential gate has been passing bird as ready ever since, because a full credential set is indistinguishable from a real worker when nothing checks for a tailnet identity.
+
+**Implementation default:** report, never fail. A machine that was never provisioned is not a credential fault, and failing the gate would block deploys over a host nobody is waiting on. The distinguishing signal is the absence of `tailscale-hostname` — CI reaches workers by their tailnet name and never by the provider hostname, so an item without one cannot be deployed to by definition.
+
+- **Dimension 5.1** — A worker item carrying a `tailscale-hostname` is reported as onboarded → Test `test_should_report_a_worker_on_the_tailnet_as_onboarded`
+- **Dimension 5.2** — A worker item with no `tailscale-hostname` is named a placeholder and does not fail the gate → Test `test_should_report_a_worker_without_tailnet_identity_as_a_non_fatal_placeholder`
+- **Dimension 5.3** — A placeholder sharing a sibling's provider `hostname` says whose box it actually points at → Test `test_should_name_the_sibling_when_a_placeholder_shares_its_host`
 
 ## Interfaces
 
@@ -184,7 +196,11 @@ tailnet policy ssh grant (playbooks/founding/02_preflight/tailnet-policy.hujson)
 | 4.3 | unit | `test_should_stay_silent_on_an_unrecognised_failure` | Input `some unrelated transport error` → stderr is empty. |
 | 4.4 | unit | `test_should_pass_stdout_through_when_the_command_succeeds` | A command printing `remote-ok` and exiting 0 → wrapper exits 0 and reproduces `remote-ok` on stdout. |
 | 4.5 | unit | `test_should_preserve_exit_status_and_explain_a_policy_denial` | A command emitting the denial on stderr and exiting 255 → wrapper exits 255, output carries the description and the `tag:worker` remediation. |
+| 5.1 | unit | `test_should_report_a_worker_on_the_tailnet_as_onboarded` | A worker item whose `tailscale-hostname` resolves → gate output contains `onboarded: zombie-dev-worker-ant`, exit 0. |
+| 5.2 | unit | `test_should_report_a_worker_without_tailnet_identity_as_a_non_fatal_placeholder` | `tailscale-hostname` unreadable → output contains `PLACEHOLDER: zombie-dev-worker-ant` **and** the gate still exits 0. |
+| 5.3 | unit | `test_should_name_the_sibling_when_a_placeholder_shares_its_host` | A placeholder whose `hostname` equals its sibling's → output states the host belongs to `zombie-prod-worker-ant`. |
 | regression | unit | `provision_runner_env_test.sh` (both cases) | The wrapper insertion leaves the deferred-start and restart-and-verify paths of `04_provision_runner_env.sh` behaving identically. |
+| regression | unit | `credentials_test.sh` (eight pre-existing cases) | Adding `check_worker_onboarded` to the dev and prod paths leaves every existing credential assertion passing. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -196,6 +212,7 @@ tailnet policy ssh grant (playbooks/founding/02_preflight/tailnet-policy.hujson)
 | R4 | A policy denial names its cause instead of exiting 255 silently (§4) | `bash playbooks/lib/common_test.sh` | `5 passed, 0 failed` | P0 | |
 | R5 | The live dev worker deploy is green again | `gh run rerun --job "$(gh run view 30464910532 --json jobs --jq '.jobs[] \| select(.name=="deploy-worker-dev") \| .databaseId')" && gh run watch 30464910532` | `deploy-worker-dev` concludes `success` | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R7 | A worker with no machine no longer reads as ready (§5) | `bash playbooks/founding/02_preflight/credentials_test.sh` | `11 passed, 0 failed` | P0 | |
 | S1 | Playbook gate passes end to end | `make check-playbooks` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
@@ -222,6 +239,8 @@ N/A — no files deleted.
 - **Putting the tailnet policy under GitOps.** `tailscale/gitops-acl-action@v1` would test the policy on a Pull Request (PR) and apply it on merge, making the repo copy authoritative instead of a transcription of what somebody pasted. Needs a new OAuth client with `policy_file` scope. Follow-up spec.
 - **Tightening the allow-all network grant.** `grants` still carries `{"src": ["*"], "dst": ["*"], "ip": ["*"]}`, so the tag split constrains SSH but not packet-level reachability. Separate hardening decision.
 - **Dropping the transitional `tag:ci` entry from the member `ssh` rule.** It is removable once both workers carry `tag:worker`; left in place so this spec needs exactly one policy save.
+- **Provisioning a machine for `zombie-prod-worker-bird`.** Buying a server is playbook 07 step 0.0, explicitly human-owned, so bird's onboarding cannot land here. §5 stops it from being reported as a ready worker in the meantime; the vault item stays for whenever a second production box is bought. Bringing it up then needs no policy edit — `dst: ["tag:worker"]` covers it the moment it advertises the tag — but does need `hostname` repointed at the new box, `tailscale-hostname` added, and the entry added to `PROD_WORKER_HOSTS`.
+- **Removing bird's orphaned key from ant's `authorized_keys`.** Bird's distinct `ssh-private-key` authenticates to ant's box today. Harmless while both are ours, but it is a credential with no owning machine. Deliberately untouched: pruning `authorized_keys` on a production host is not something to bundle into an outage fix.
 
 ---
 
