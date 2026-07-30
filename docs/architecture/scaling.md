@@ -101,6 +101,8 @@ The cutover added one hop (the runner long-poll) and removed another (the in-pro
 
 **The lease-poll interval is the floor on pickup latency for an idle fleet**, not a per-message delay — a runner already long-polling returns as soon as work is assignable. Tightening `NO_WORK_RETRY_AFTER_MS` lowers idle pickup latency at the cost of more idle `XREADGROUP` requests; it is the direct trade the old `XREADGROUP BLOCK` knob used to make, now on the runner side.
 
+**Live-tail cadence.** The runner batches activity frames per flush window — one POST per batch — but ships the first frame of a run and the first response chunk eagerly on arrival (at most two eager POSTs per run, one-shot latches in the runner's activity forwarder). The first visible token therefore pays a round-trip, not the staleness window, while the chatty middle of a run keeps the batch economics.
+
 ---
 
 ## Connection budget after the cutover
