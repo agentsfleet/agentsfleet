@@ -65,6 +65,8 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
     const second = rec.stdout.findIndex((l) => l.includes("second words"));
     expect(first).toBeGreaterThanOrEqual(0);
     expect(second).toBeGreaterThan(first);
+    // No overflow → no truncation notice.
+    expect(rec.stdout.some((l) => l.includes("dropped live"))).toBe(false);
   });
 
   test("test_foreign_event_frames_dropped", async () => {
@@ -109,6 +111,8 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
     expect(
       rec.stdout.some((l) => l.endsWith(`line ${PRE_ID_BUFFER_MAX_FRAMES + overflowBy - 1}`)),
     ).toBe(true);
+    // Truncation is never silent: the drop notice names the recovery command.
+    expect(rec.stdout.some((l) => l.includes("dropped live"))).toBe(true);
 
     // Byte bound: two half-cap frames exceed the byte cap; oldest drops.
     // Multi-byte char pins byte semantics — each 💠 is 4 UTF-8 bytes but only
@@ -129,6 +133,7 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
     expect(Exit.isSuccess(exit2)).toBe(true);
     expect(rec2.stdout.some((l) => l.includes("first-giant"))).toBe(false);
     expect(rec2.stdout.some((l) => l.includes("second-giant"))).toBe(true);
+    expect(rec2.stdout.some((l) => l.includes("dropped live"))).toBe(true);
   });
 });
 

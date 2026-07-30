@@ -156,6 +156,7 @@ interface BufferedFrame {
 interface PreIdBuffer {
   readonly cb: StreamGetCallback;
   readonly promote: (filtered: StreamGetCallback) => boolean;
+  readonly droppedCount: () => number;
 }
 
 // Buffers every frame until the event id is known, then hands the stream to a
@@ -164,6 +165,7 @@ interface PreIdBuffer {
 const makePreIdBuffer = (): PreIdBuffer => {
   const entries: BufferedFrame[] = [];
   let totalBytes = 0;
+  let droppedFrames = 0;
   let live: StreamGetCallback | null = null;
   const cb: StreamGetCallback = (event) => {
     if (live) return live(event);
@@ -179,6 +181,7 @@ const makePreIdBuffer = (): PreIdBuffer => {
       const dropped = entries.shift();
       if (!dropped) break;
       totalBytes -= dropped.bytes;
+      droppedFrames += 1;
     }
     return undefined;
   };
@@ -189,7 +192,7 @@ const makePreIdBuffer = (): PreIdBuffer => {
     }
     return true;
   };
-  return Object.freeze({ cb, promote });
+  return Object.freeze({ cb, promote, droppedCount: () => droppedFrames });
 };
 
 // Ready = headers accepted (subscription live) OR the stream settled (a
@@ -257,6 +260,12 @@ export const openEventTail = (
         }),
       );
     const deliverEventId = (id: string): void => {
+      // Overflow must never be silent: a truncated replay with a retained
+      // event_complete would otherwise pass itself off as the whole reply.
+      const dropped = buffer.droppedCount();
+      if (dropped > 0) {
+        printLine(ui.dim(`${dropped} early frame(s) dropped live — full history: agentsfleet events ${fleetId}`));
+      }
       const filtered = makeFrameCallback({ printLine, eventId: id }, (next) => {
         outcome = next;
       });
