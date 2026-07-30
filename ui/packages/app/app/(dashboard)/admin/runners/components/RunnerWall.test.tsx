@@ -35,6 +35,10 @@ describe("RunnerWall", () => {
             labels: [],
             last_seen_at: Date.now(),
             created_at: 2,
+            assigned_policy: null,
+            achievable: null,
+            degraded: false,
+            degraded_reason: null,
           },
           {
             id: "wall-b",
@@ -45,6 +49,10 @@ describe("RunnerWall", () => {
             labels: [],
             last_seen_at: 0,
             created_at: 1,
+            assigned_policy: null,
+            achievable: null,
+            degraded: false,
+            degraded_reason: null,
           },
         ]}
         initialCursor={null}
@@ -67,6 +75,10 @@ describe("RunnerWall", () => {
     labels: [],
     last_seen_at: Date.now(),
     created_at: 3,
+    assigned_policy: null,
+    achievable: null,
+    degraded: false,
+    degraded_reason: null,
   };
 
   it("should append the next page and follow its cursor when Load more succeeds", async () => {

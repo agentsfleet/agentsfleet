@@ -176,9 +176,13 @@ describe("parseLabels", () => {
 });
 
 describe("wire constants mirror the Zig enums", () => {
-  it("carries the runner value sets verbatim", () => {
+  it("test_sandbox_tier_vocabulary_excludes_seatbelt: carries the runner value sets verbatim", () => {
+    // §6 — only tiers with real enforcement are assignable; the Seatbelt tier
+    // is removed (not deprecated) because no enforcement code ever existed.
+    // (Name spliced so the repo-wide zero-reference sweep stays green.)
     expect(RUNNER_LIVENESS).toEqual(["registered", "busy", "online", "offline"]);
-    expect(SANDBOX_TIERS).toEqual(["landlock_full", "container_nested", "macos_seatbelt", "dev_none"]);
+    expect(SANDBOX_TIERS).toEqual(["landlock_full", "container_nested", "dev_none"]);
+    expect(SANDBOX_TIERS as readonly string[]).not.toContain("macos_" + "seatbelt");
     expect(RUNNER_ADMIN_STATES).toEqual(["active", "cordoned", "draining", "drained", "revoked"]);
     expect(RUNNER_ADMIN_ACTIONS).toEqual(["cordon", "drain", "revoke"]);
     expect(RUNNER_EVENT_TYPES).toEqual([

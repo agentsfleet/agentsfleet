@@ -78,7 +78,16 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
 
   it("createRunnerAction gates on runner:enroll and fails closed 403 UZ-AUTH-022 without it", async () => {
     hasScopeMock.mockResolvedValueOnce(false);
-    const body = { host_id: "web-prod-1", sandbox_tier: "landlock_full" as const, labels: ["gpu"] };
+    const body = {
+      host_id: "web-prod-1",
+      assigned_policy: {
+        sandbox_tier: "landlock_full" as const,
+        network_policy: "allow_all" as const,
+        registry_allowlist: [],
+        worker_count: 1,
+      },
+      labels: ["gpu"],
+    };
     const r = await createRunnerAction(body);
     expect(r).toEqual({
       ok: false,
@@ -153,19 +162,20 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
   it("createRunnerAction forwards the mint body through withToken to the client when scoped", async () => {
     hasScopeMock.mockResolvedValueOnce(true);
     createRunnerMock.mockResolvedValueOnce({ runner_id: "r1", runner_token: "agt_rabc" });
-    const body = { host_id: "web-prod-1", sandbox_tier: "container_nested" as const, labels: [] };
+    // The dialog now collects the WHOLE assignment; the action forwards the
+    // envelope verbatim — no defaults injected between the form and the wire.
+    const assigned_policy = {
+      sandbox_tier: "container_nested" as const,
+      network_policy: "deny_all_egress" as const,
+      registry_allowlist: ["pypi.org"],
+      worker_count: 3,
+    };
+    const body = { host_id: "web-prod-1", assigned_policy, labels: [] };
     const r = await createRunnerAction(body);
     expect(r).toEqual({ ok: true, data: { runner_id: "r1", runner_token: "agt_rabc" } });
-    // The action wraps the dialog's tier into the full assignment envelope with
-    // the documented enrollment defaults.
     expect(createRunnerMock).toHaveBeenCalledWith("tok", {
       host_id: "web-prod-1",
-      assigned_policy: {
-        sandbox_tier: "container_nested",
-        network_policy: "allow_all",
-        registry_allowlist: [],
-        worker_count: 1,
-      },
+      assigned_policy,
       labels: [],
     });
   });
