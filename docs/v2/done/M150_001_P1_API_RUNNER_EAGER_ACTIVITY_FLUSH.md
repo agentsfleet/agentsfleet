@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M150
 **Workstream:** 001
 **Date:** Jul 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — customer-facing chat latency; the first visible token of every fleet reply arrives up to `ACTIVITY_FLUSH_WINDOW_MS` late
 **Categories:** API
 **Batch:** B1 — standalone; no parallel workstream
