@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M151
 **Workstream:** 001
 **Date:** Jul 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a fast run can stream its first words before the CLI is listening; those frames are unrecoverable live
 **Categories:** CLI
 **Batch:** B1 — standalone; no parallel workstream
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) via `make _lint_zig_test_depth`
+**Branch:** feat/m151-steer-subscribe-first
+**Test Baseline:** unit=3276 integration=501
 **Depends on:** none (M150_001 shipped the eager first-frame flush this protects)
 **Provenance:** LLM-drafted (Claude Fable 5, Jul 30, 2026) — grounded in a source read of `cli/src/commands/fleet_steer.ts` and `fleet_steer_events.ts`
 **Canonical architecture:** `docs/architecture/data_flow.md` §D. WATCH
