@@ -75,6 +75,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/architecture/runner_fleet.md` | EDIT | Records the inverted direction and the reconciliation loop. |
 | `src/agentsfleetd/http/handlers/runner/sql.zig` | EDIT | New columns cross every runner-row statement: register insert, self select, heartbeat bump, lease-issuance predicate. |
 | `src/agentsfleetd/http/handlers/runner/lease.zig` | EDIT | A degraded runner is issued no lease. |
+| `src/agentsfleetd/http/handlers/runner/heartbeat_reconcile.zig` | CREATE | Pure assigned-vs-achievable reconciliation with the operator-facing reason vocabulary. |
 | `src/agentsfleetd/http/handlers/fleet/sql.zig` | EDIT | The fleet read selects assigned, achievable, and the degraded verdict. |
 | `public/openapi/paths/**` (runner + fleet-runner paths) | EDIT | Path docs pick up the new request/response shapes. |
 | `deploy/baremetal/deploy.sh` | EDIT | The required-env check drops `RUNNER_HOST_ID`. |
