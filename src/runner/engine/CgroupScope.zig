@@ -28,6 +28,10 @@ const S_D = "{d}";
 const S_S_S = "{s}/{s}";
 const S_OOM_KILL = "oom_kill ";
 const S_PIDS_MAX = "max ";
+const F_SUBTREE_CONTROL = "cgroup.subtree_control";
+/// The three controllers every execution scope needs files for: memory.max,
+/// cpu.max, pids.max. Kept in the `+ctrl` write form the kernel expects.
+const S_ENABLE_CONTROLLERS = "+cpu +memory +pids";
 const MAX_CGROUP_PLACEMENT_BYTES = 4096;
 const BYTES_PER_KIB = 1024;
 const log = logging.scoped(.runner_cgroup);
@@ -47,6 +51,44 @@ pub const CgroupMetrics = struct {
     memory_limit_bytes: u64,
     cpu_throttled_ms: u64,
 };
+
+/// Enable the delegated controllers on the runner's cgroup base, so every
+/// execution scope created beneath it actually has `memory.max`, `cpu.max`, and
+/// `pids.max` to write.
+///
+/// systemd's `Delegate=cpu memory pids` only makes the controllers AVAILABLE in
+/// the unit cgroup (`cgroup.controllers`); writing `cgroup.subtree_control` is
+/// the delegatee's job and systemd never does it. Skipping it is silent and
+/// total: `create()` makes the scope directory, then fails writing `memory.max`
+/// because the file does not exist, so every lease is refused
+/// `sandbox_unavailable` while orphan scope directories pile up.
+///
+/// `DelegateSubgroup=runner` keeps the daemon's own process in a child cgroup,
+/// which is what makes this write legal under cgroup v2's no-internal-processes
+/// rule. Idempotent — re-enabling an already-enabled controller is a no-op, so
+/// this is safe across restarts.
+pub fn enableDelegatedControllers(io: std.Io, alloc: std.mem.Allocator) !void {
+    if (builtin.os.tag != .linux) return CgroupError.UnsupportedPlatform;
+
+    const base = try resolveCgroupBase(io, alloc);
+    defer alloc.free(base);
+
+    const path = try std.fmt.allocPrint(alloc, S_S_S, .{ base, F_SUBTREE_CONTROL });
+    defer alloc.free(path);
+
+    const file = std.Io.Dir.openFileAbsolute(io, path, .{ .mode = .write_only }) catch |err| {
+        log.err("subtree_control_open_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .path = path, .err = @errorName(err) });
+        return CgroupError.CgroupWriteFailed;
+    };
+    defer file.close(io);
+
+    file.writeStreamingAll(io, S_ENABLE_CONTROLLERS) catch |err| {
+        log.err("subtree_control_write_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .path = path, .err = @errorName(err) });
+        return CgroupError.CgroupWriteFailed;
+    };
+
+    log.info("cgroup_controllers_enabled", .{ .path = path, .controllers = S_ENABLE_CONTROLLERS });
+}
 
 /// Create a transient cgroup scope for the given execution.
 pub fn create(

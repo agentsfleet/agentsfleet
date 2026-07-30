@@ -16,6 +16,7 @@ const loop = @import("daemon/loop.zig");
 const runner_deadline = @import("daemon/runner_deadline.zig");
 const child_exec = @import("child_exec.zig");
 const client_errors = @import("engine/client_errors.zig");
+const CgroupScope = @import("engine/CgroupScope.zig");
 const version_cmd = @import("cmd/version.zig");
 const registry = @import("cmd/registry.zig");
 
@@ -98,6 +99,21 @@ pub fn main(init: std.process.Init) void {
         std.process.exit(1);
     }
 
+    // systemd delegates the controllers but never writes `cgroup.subtree_control`
+    // — that is the delegatee's job. Without this every execution scope is created
+    // with no memory.max/cpu.max/pids.max to write, CgroupScope.create fails, and
+    // the host accepts leases it can only refuse `sandbox_unavailable` while orphan
+    // scope directories accumulate. Fail closed at startup so a mis-provisioned
+    // host removes itself from the fleet instead of black-holing work: the control
+    // plane re-leases elsewhere, systemd's restart makes it loud, and the deploy
+    // health check catches it. `dev_none` has no cage to build, so it is exempt.
+    if (controllersRequired(builtin.os.tag, cfg.sandbox_tier)) {
+        CgroupScope.enableDelegatedControllers(io, alloc) catch |err| {
+            log.err("cgroup_controllers_unavailable", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err), .sandbox_tier = @tagName(cfg.sandbox_tier) });
+            std.process.exit(1);
+        };
+    }
+
     std.Io.Dir.createDirAbsolute(io, cfg.workspace_base, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => {
@@ -163,6 +179,27 @@ test "release build forbids dev_none and unknown tiers; Debug allows dev_none" {
     // (tested there), so they hit this same release refusal.
     try std.testing.expect(!devNoneForbidden(.Debug, .dev_none)); // dev convenience
     try std.testing.expect(!devNoneForbidden(.ReleaseSafe, .landlock_full)); // a real tier is fine in prod
+}
+
+/// Whether this host must enable the delegated cgroup controllers before leasing.
+/// True only when a cage is actually built on a kernel that has cgroups: control
+/// groups are a Linux mechanism, so a `macos_seatbelt` runner has nothing to
+/// enable, and `dev_none` builds no cage at all. Pure so the matrix is
+/// unit-testable — the os tag is a parameter rather than read from `builtin`.
+fn controllersRequired(os_tag: std.Target.Os.Tag, tier: protocol.SandboxTier) bool {
+    if (os_tag != .linux) return false;
+    return tier != .dev_none;
+}
+
+test "delegated controllers are required only for a Linux tier that builds a cage" {
+    try std.testing.expect(controllersRequired(.linux, .landlock_full));
+    try std.testing.expect(controllersRequired(.linux, .container_nested));
+    // dev_none builds no cage, so a host with no delegated subtree still starts.
+    try std.testing.expect(!controllersRequired(.linux, .dev_none));
+    // cgroups are Linux-only: a seatbelt runner must not fail closed on a
+    // controller subtree that cannot exist on its kernel.
+    try std.testing.expect(!controllersRequired(.macos, .macos_seatbelt));
+    try std.testing.expect(!controllersRequired(.macos, .dev_none));
 }
 
 /// Allocator selected by build mode (M100, Invariant 5). Debug keeps the

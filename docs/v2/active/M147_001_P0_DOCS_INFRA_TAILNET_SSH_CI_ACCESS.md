@@ -66,6 +66,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/lib/common.sh` | EDIT | Gains `playbooks_explain_ssh_failure` and `playbooks_ssh_run`. |
 | `playbooks/founding/02_preflight/02_credentials.sh` | EDIT | Gains `check_worker_onboarded` so a worker with no tailnet identity is named a placeholder instead of passing as ready. |
 | `playbooks/founding/02_preflight/credentials_test.sh` | EDIT | Three cases covering onboarded, placeholder-non-fatal, and shared-hostname attribution. |
+| `src/runner/engine/CgroupScope.zig` | EDIT | Gains `enableDelegatedControllers` — writes `+cpu +memory +pids` to the delegated base so execution scopes have limit files to write. |
+| `src/runner/main.zig` | EDIT | Calls it at startup behind `controllersRequired`, failing closed so a host that cannot build the cage leaves the fleet instead of refusing every lease. |
 | `playbooks/lib/common_test.sh` | CREATE | Regression tests for the two new helpers. |
 | `playbooks/founding/02_preflight/tailnet_policy_test.sh` | CREATE | Structural assertions on the canonical policy — the repo-side half of the `sshTests` guarantee, runnable without tailnet credentials. |
 | `make/quality.mk` | EDIT | Adds both new test files to the `check-playbooks` regression list. |
@@ -75,15 +77,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **`~/Projects/dotfiles/docs/greptile-learnings/RULES.md`** — **UFS** (the denial substring `tailnet policy does not permit` and the tag identifiers are matched in one helper, not repeated per call site); **NDC** (no dead code — the wrapper is called from both scripts it is written for); **NLR** (touch-it-fix-it — the two bootstrap playbooks are corrected together rather than leaving the production one stale); **ORP** (orphan sweep — no file is deleted, so the sweep is a no-op assertion).
 - `~/Projects/dotfiles/dispatch/write_shell.md` — applies to `playbooks/lib/common.sh`, `common_test.sh`, and both edited bootstrap scripts: quoted expansions, array arguments, no untrusted `eval`, repository shell compatibility.
+- `~/Projects/dotfiles/dispatch/write_zig.md` — applies to `src/runner/engine/CgroupScope.zig` and `src/runner/main.zig` (§6): PUB surface justified against an in-tree consumer, `errdefer`/`defer` on every opened handle, the 350-line file cap, and the mandatory cross-compile of both Linux targets.
 - `~/Projects/dotfiles/dispatch/write_documentation.md` — applies to the two bootstrap playbooks and the policy header prose.
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | no — no `*.zig` in the diff | N/A |
-| PUB / Struct-Shape | no — no Zig public surface | N/A |
-| File & Function Length (≤350/≤50/≤70) | yes — `playbooks/lib/common.sh` grows | Both helpers stay well under the function cap; the file stays under 100 lines. Asserted by rubric row S8. |
+| ZIG GATE | yes — `CgroupScope.zig` and `main.zig` (§6) | `make lint-zig` clean; cross-compiled for both `x86_64-linux` and `aarch64-linux`; `make test-unit-agentsfleet-runner` green. |
+| PUB / Struct-Shape | yes — one new `pub fn enableDelegatedControllers` | Justified against an external consumer: `src/runner/main.zig` calls it at startup. No new type, so the file-as-struct shape of `CgroupScope.zig` is unchanged. |
+| File & Function Length (≤350/≤50/≤70) | yes — `playbooks/lib/common.sh` grows, `CgroupScope.zig` sits at 340/350 | Both shell helpers stay well under the function cap. `CgroupScope.zig` ends at 340 lines: the path helper was inlined rather than kept, specifically to leave margin. Flagged in Session Notes — the next addition to that file should split it. Asserted by rubric row S8. |
 | UFS (repeated/semantic literals) | yes | The denial substring and the remediation text live once, in `playbooks_explain_ssh_failure`; call sites pass only the captured output. |
 | UI Substitution / DESIGN TOKEN | no — no `*.tsx`/`*.css` | N/A |
 | LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no — shell diagnostics on stderr, no Zig logging surface, no schema change | N/A |
@@ -135,6 +138,21 @@ The outage cost a journal dig on the worker because `scp` reported only exit 255
 - **Dimension 5.1** — A worker item carrying a `tailscale-hostname` is reported as onboarded → Test `test_should_report_a_worker_on_the_tailnet_as_onboarded`
 - **Dimension 5.2** — A worker item with no `tailscale-hostname` is named a placeholder and does not fail the gate → Test `test_should_report_a_worker_without_tailnet_identity_as_a_non_fatal_placeholder`
 - **Dimension 5.3** — A placeholder sharing a sibling's provider `hostname` says whose box it actually points at → Test `test_should_name_the_sibling_when_a_placeholder_shares_its_host`
+
+### §6 — The runner enables its own delegated controllers
+
+Retagging the workers let the `Verify delegated runner cgroup` step run for the first time — it was added Jul 28 (`c59c133d2`) while CI was already broken, so it had never executed. It failed with `controller 'cpu' is not enabled`, and the check was right.
+
+`systemd`'s `Delegate=cpu memory pids` only makes controllers *available* in the unit cgroup (`cgroup.controllers`); writing `cgroup.subtree_control` is the delegatee's job, and nothing did it — `grep -rn subtree_control src/` found no writer. The consequence was total and silent: `CgroupScope.create()` made the scope directory, then failed writing `memory.max` because the file did not exist, so the daemon refused every lease `sandbox_unavailable` (UZ-RUN-007) while orphan scope directories accumulated. The live dev worker had **97 orphan `exec-*` cgroups** and was rejecting a lease every 5–25 seconds.
+
+The unit was already built for this — `ReadWritePaths=/sys/fs/cgroup/system.slice/agentsfleet-runner.service` grants exactly the write access needed, and `DelegateSubgroup=runner` keeps the daemon out of the base cgroup so the write is legal under cgroup v2's no-internal-processes rule. Only the code was missing.
+
+**Implementation default:** fail closed at startup rather than per lease. A host that cannot build the cage will refuse every lease anyway; exiting means it removes itself from the fleet, the control plane re-leases elsewhere, `systemd`'s restart makes it loud, and the deploy health check catches it — instead of the host black-holing work while reporting healthy. `dev_none` is exempt because it has no cage to build.
+
+**On what is and is not unit-testable here — stated plainly, because getting this wrong is what caused the bug.** Enabling controllers needs a real cgroup-v2 mount with a delegated subtree; no unit test can assert it without one. The existing enforcement lane appeared to cover this and did not: `scripts/cgroup-delegate.sh` *performed the setup itself* — its comment even claims it is "matching the service-owned cgroup subtree used in production", an assumption that was false — and every unprivileged lane `SkipZigTest`s. So the suite proved "given a delegated subtree, limits are enforced" while nobody asserted "the runner establishes its own subtree". The Dimensions below therefore claim only what they prove, and the Linux behaviour is bound to an automated gate that runs on every deploy rather than to a test that would skip.
+
+- **Dimension 6.1** — Controller enablement is attempted only on a Linux host running a tier that builds a cage; `dev_none` and `macos_seatbelt` are exempt, so neither is turned into a startup failure over a subtree that cannot exist → Test `delegated controllers are required only for a Linux tier that builds a cage`
+- **Dimension 6.2** — On a real delegated host the runner enables its own controllers, proven end-to-end by the `Verify delegated runner cgroup` step of `deploy-worker-dev`, which reads `cgroup.subtree_control` back after the deploy. Automated, runs on every deploy, and cannot skip — this is precisely the assertion the old harness never made. Rubric row R8.
 
 ## Interfaces
 
@@ -213,6 +231,8 @@ tailnet policy ssh grant (playbooks/founding/02_preflight/tailnet-policy.hujson)
 | R5 | The live dev worker deploy is green again | `gh run rerun --job "$(gh run view 30464910532 --json jobs --jq '.jobs[] \| select(.name=="deploy-worker-dev") \| .databaseId')" && gh run watch 30464910532` | `deploy-worker-dev` concludes `success` | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | R7 | A worker with no machine no longer reads as ready (§5) | `bash playbooks/founding/02_preflight/credentials_test.sh` | `11 passed, 0 failed` | P0 | |
+| R8 | The runner builds its own resource cage on a real host (§6) | rerun `deploy-worker-dev`; read the `Verify delegated runner cgroup` step | `✓ runner cgroup delegation: /system.slice/agentsfleet-runner.service (cpu memory pids)` | P0 | |
+| R9 | Zig gates clean (§6) | `make lint-zig && make test-unit-agentsfleet-runner && zig build --build-file build_runner.zig -Dtarget=x86_64-linux && zig build --build-file build_runner.zig -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S1 | Playbook gate passes end to end | `make check-playbooks` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
