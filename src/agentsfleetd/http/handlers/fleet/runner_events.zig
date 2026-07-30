@@ -87,7 +87,7 @@ fn parseListQuery(alloc: std.mem.Allocator, req: *httpz.Request) ?ListQuery {
         const parsed = keyset_cursor.parse(raw) catch return null;
         // The id half seeks a ::uuid bind; refusing a non-UUID here keeps a
         // crafted cursor at 400 instead of a Postgres cast error's 500.
-        if (!id_format.isUuidV7(parsed.id)) return null;
+        if (!id_format.isUuid(parsed.id)) return null;
         out.cursor = .{ .occurred_at = parsed.created_at_ms, .id = parsed.id };
     }
     if (qs.get(QUERY_EVENT_TYPE)) |raw| out.filter.event_types = parseEventTypeSet(alloc, raw) orelse return null;

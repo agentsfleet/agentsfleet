@@ -85,7 +85,7 @@ fn parseListQuery(alloc: std.mem.Allocator, req: *httpz.Request) ?ListQuery {
         if (!matches) return null;
         // The id half seeks a ::uuid bind; refusing a non-UUID here keeps a
         // crafted cursor at 400 instead of a Postgres cast error's 500.
-        if (!id_format.isUuidV7(cursor.id)) return null;
+        if (!id_format.isUuid(cursor.id)) return null;
         out.cursor = cursor;
     }
     return out;
