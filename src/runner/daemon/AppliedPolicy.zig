@@ -203,7 +203,7 @@ test "a changed assignment applies; a null one clears; null again is unchanged" 
     try std.testing.expectEqual(ApplyOutcome.unchanged, holder.apply(null));
 }
 
-test "a malformed assignment fails closed: holder empties and leasing has nothing to read" {
+test "test_malformed_assignment_fails_closed: holder empties and leasing has nothing to read" {
     const a = std.testing.allocator;
     var holder = AppliedPolicy.init(a);
     defer holder.deinit();

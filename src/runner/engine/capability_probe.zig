@@ -123,7 +123,7 @@ pub fn parseControllers(alloc: std.mem.Allocator, text: []const u8) ![]const []c
     return list.toOwnedSlice(alloc);
 }
 
-test "assemble mirrors each mechanism independently and pins the egress line" {
+test "test_capability_probe_reports_each_enforcement_mechanism: assemble mirrors each independently and pins the egress line" {
     const none = assemble(.{ .landlock = false, .seccomp = false, .cgroup_controllers = &.{}, .bubblewrap = false });
     try std.testing.expect(!none.landlock and !none.seccomp and !none.bubblewrap);
     try std.testing.expect(!none.egress_enforcement); // not built in any current runner
