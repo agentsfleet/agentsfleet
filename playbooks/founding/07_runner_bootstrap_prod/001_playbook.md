@@ -152,7 +152,9 @@ REMOTE
 >
 > **`--ssh` also hands tailnet port 22 to `tailscaled`.** From that moment the policy `ssh` block — not `~/.ssh/authorized_keys` — decides who gets in, and the vault deploy key goes inert on the tailnet address. Turning it on without the `tag:ci` → `tag:worker` grant already in place takes CI down instantly; that is exactly what happened on Jul 28, 2026. The host's own `sshd` keeps serving the public IP, which stays the break-glass path.
 >
-> **Add the new hostname to `sshTests` before its first CI deploy.** The `sshTests` block in `playbooks/founding/02_preflight/tailnet-policy.hujson` asserts CI's access **per host**, and Tailscale evaluates it when the policy is saved. A worker missing from that list is simply not covered — a later policy edit can keep the listed hosts reachable while silently breaking this one, and the loss shows up as a failed production deploy rather than a rejected save. Listed today: `zombie-dev-worker-ant`, `zombie-prod-worker-ant`. `zombie-prod-worker-bird` has vault entries but is absent from the `PROD_WORKER_HOSTS` repo variable and from the tailnet; add it to both the variable and `sshTests` when it is genuinely brought up.
+> **The tag is what grants CI access — nothing else needs editing per host.** The `sshTests` block in `playbooks/founding/02_preflight/tailnet-policy.hujson` asserts `tag:ci` → `tag:worker`, so a node is covered the moment it advertises `tag:worker` and there is no per-host list to keep in sync. Confirm the tag actually landed with `tailscale status --json` before the first CI deploy: a node that came up under a different tag is not covered, and the deploy will fail with `tailnet policy does not permit you to SSH to this node`.
+>
+> `zombie-prod-worker-bird` has vault entries but is absent from the `PROD_WORKER_HOSTS` repo variable and from the tailnet. Bringing it up means adding it to that variable as well as running this step.
 
 ### Acceptance
 

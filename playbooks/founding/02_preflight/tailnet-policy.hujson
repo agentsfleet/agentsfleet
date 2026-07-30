@@ -113,10 +113,19 @@
 	// 01:03:20Z, handing tailnet port 22 to tailscaled. The ssh block had no rule
 	// matching a tagged source, so every CI deploy died with
 	// "tailnet policy does not permit you to SSH to this node".
+	//
+	// dst is the TAG, not a host list. Two reasons, both load-bearing:
+	//   1. It asserts the rule rather than the current tag assignment, so this
+	//      policy saves cleanly before any node has been moved to tag:worker.
+	//      A host list would assert that zombie-dev-worker-ant is reachable —
+	//      false until that node is retagged — and reject the save.
+	//   2. Every worker present and future is covered the moment it wears
+	//      tag:worker. There is no per-host list to keep in sync, so a new
+	//      worker cannot be silently uncovered.
 	"sshTests": [
 		{
 			"src":    "tag:ci",
-			"dst":    ["zombie-dev-worker-ant", "zombie-prod-worker-ant"],
+			"dst":    ["tag:worker"],
 			"accept": ["debian"],
 			"deny":   ["root"],
 		},

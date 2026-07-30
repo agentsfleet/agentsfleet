@@ -90,15 +90,19 @@ test_member_rule_covers_both_tags_during_retag() {
 
 test_policy_asserts_ci_access_in_sshtests() {
   local name="test_policy_asserts_ci_access_in_sshtests"
+  # dst must be the tag, never a host list. A host list asserts the current tag
+  # ASSIGNMENT ("is zombie-dev-worker-ant reachable?"), which is false until that
+  # node is retagged — so Tailscale rejects the save. The tag asserts the RULE,
+  # which resolves regardless, and covers every future worker for free.
   assert_jq "$name" \
     '[.sshTests[]
       | select(.src == "tag:ci")
-      | select((.dst | index("zombie-dev-worker-ant")) and
-               (.dst | index("zombie-prod-worker-ant")))
+      | select(.dst | index("tag:worker"))
+      | select([.dst[] | select(startswith("tag:") | not)] | length == 0)
       | select(.accept | length > 0)
       | select(.deny | index("root"))]
      | length > 0' \
-    'sshTests must assert tag:ci reaches both workers as a non-root user and is denied root, so Tailscale rejects a policy save that breaks CI' || return
+    'sshTests must assert tag:ci -> tag:worker for a non-root user with root denied, and dst must contain only tags — a hostname there makes the policy save fail until that node is retagged' || return
   ok "$name"
 }
 
