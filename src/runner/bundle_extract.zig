@@ -19,7 +19,7 @@
 //! belt-and-suspenders against a corrupt cache file, not the primary defense (that
 //! lives in `github_source.zig`).
 //!
-//! Caching: the raw tar is cached at `{workspace_base}/.bundle-cache/{hash}.tar`,
+//! Caching: the raw tar is cached at `{storage_home}/.bundle-cache/{hash}.tar`,
 //! keyed by the immutable content hash (lease expiry never invalidates it) and
 //! written atomically (temp + rename). Support files are re-extracted into each
 //! per-lease workspace (tiny — import-capped 256 KiB) rather than RO bind-mounted,
@@ -42,13 +42,13 @@ const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const SKILL_NAME = "SKILL.md";
 const TRIGGER_NAME = "TRIGGER.md";
 
-/// Cache subdir under `workspace_base` holding content-addressed canonical tars.
+/// Cache subdir under `storage_home` holding content-addressed canonical tars.
 /// The leading dot keeps it distinct from per-lease workspace dirs (UUID names),
 /// so the per-lease `deleteTree` cleanup never reaps it.
 const CACHE_SUBDIR = ".bundle-cache";
 const CACHE_SUFFIX = ".tar";
 /// Temp file the download is written to before the atomic rename into the cache.
-/// It lives in the per-lease workspace (same filesystem under `workspace_base`, so
+/// It lives in the per-lease workspace (same filesystem under `storage_home`, so
 /// the rename is atomic) and is auto-reaped by the per-lease cleanup on a crash.
 const CACHE_TMP_NAME = ".bundle-cache.tmp";
 
@@ -83,12 +83,12 @@ pub fn materialize(
     alloc: std.mem.Allocator,
     cp: *control_plane_client,
     runner_token: []const u8,
-    workspace_base: []const u8,
+    storage_home: []const u8,
     workspace_path: []const u8,
     manifest: protocol.BundleManifest,
     deadline_ms: u31,
 ) MaterializeResult {
-    const tar = cacheOrDownload(io, alloc, cp, runner_token, workspace_base, workspace_path, manifest.content_hash, deadline_ms) catch |err| {
+    const tar = cacheOrDownload(io, alloc, cp, runner_token, storage_home, workspace_path, manifest.content_hash, deadline_ms) catch |err| {
         log.warn("bundle_download_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .content_hash = manifest.content_hash, .err = @errorName(err) });
         return .failed;
     };
@@ -114,17 +114,17 @@ fn cacheOrDownload(
     alloc: std.mem.Allocator,
     cp: *control_plane_client,
     runner_token: []const u8,
-    workspace_base: []const u8,
+    storage_home: []const u8,
     workspace_path: []const u8,
     content_hash: []const u8,
     deadline_ms: u31,
 ) !?[]u8 {
-    if (readCache(io, alloc, workspace_base, content_hash)) |cached| {
+    if (readCache(io, alloc, storage_home, content_hash)) |cached| {
         log.debug("bundle_cache_hit", .{ .content_hash = content_hash });
         return cached;
     }
     const tar = (try downloadBundle(cp, alloc, runner_token, content_hash, deadline_ms)) orelse return null;
-    writeCache(io, workspace_base, workspace_path, content_hash, tar) catch |err|
+    writeCache(io, storage_home, workspace_path, content_hash, tar) catch |err|
         log.warn("bundle_cache_write_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .content_hash = content_hash, .err = @errorName(err) });
     return tar;
 }
@@ -153,20 +153,20 @@ fn downloadBundle(cp: *control_plane_client, alloc: std.mem.Allocator, runner_to
 /// (absent, unreadable, oversized). Errors degrade to a miss so the caller
 /// re-downloads — the cache is an optimization, never a hard dependency.
 /// `pub` for the sibling `bundle_extract_test.zig` cache round-trip.
-pub fn readCache(io: std.Io, alloc: std.mem.Allocator, workspace_base: []const u8, content_hash: []const u8) ?[]u8 {
+pub fn readCache(io: std.Io, alloc: std.mem.Allocator, storage_home: []const u8, content_hash: []const u8) ?[]u8 {
     var buf: [std.fs.max_path_bytes]u8 = undefined;
-    const path = cachePath(&buf, workspace_base, content_hash) catch return null;
+    const path = cachePath(&buf, storage_home, content_hash) catch return null;
     return std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(MAX_BUNDLE_TAR_BYTES)) catch null;
 }
 
 /// Persist `tar` to the content-addressed cache atomically: write to a per-lease
-/// temp file, then rename it into `{workspace_base}/.bundle-cache/{hash}.tar`. The
+/// temp file, then rename it into `{storage_home}/.bundle-cache/{hash}.tar`. The
 /// temp lives in `workspace_path` (same filesystem → atomic rename; auto-reaped by
 /// the per-lease cleanup on failure). Concurrent workers racing the same hash are
 /// harmless — the bytes are identical (content-addressed). `pub` for the sibling test.
-pub fn writeCache(io: std.Io, workspace_base: []const u8, workspace_path: []const u8, content_hash: []const u8, tar: []const u8) !void {
+pub fn writeCache(io: std.Io, storage_home: []const u8, workspace_path: []const u8, content_hash: []const u8, tar: []const u8) !void {
     var dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const cache_dir = try std.fmt.bufPrint(&dir_buf, PATH_JOIN_FMT, .{ workspace_base, CACHE_SUBDIR });
+    const cache_dir = try std.fmt.bufPrint(&dir_buf, PATH_JOIN_FMT, .{ storage_home, CACHE_SUBDIR });
     std.Io.Dir.createDirAbsolute(io, cache_dir, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
@@ -179,13 +179,13 @@ pub fn writeCache(io: std.Io, workspace_base: []const u8, workspace_path: []cons
         try file.writeStreamingAll(io, tar);
     }
     var final_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const final_path = try cachePath(&final_buf, workspace_base, content_hash);
+    const final_path = try cachePath(&final_buf, storage_home, content_hash);
     try std.Io.Dir.renameAbsolute(tmp_path, final_path, io);
 }
 
-/// Build `{workspace_base}/.bundle-cache/{content_hash}.tar` into `buf`.
-fn cachePath(buf: []u8, workspace_base: []const u8, content_hash: []const u8) ![]const u8 {
-    return std.fmt.bufPrint(buf, "{s}/{s}/{s}{s}", .{ workspace_base, CACHE_SUBDIR, content_hash, CACHE_SUFFIX });
+/// Build `{storage_home}/.bundle-cache/{content_hash}.tar` into `buf`.
+fn cachePath(buf: []u8, storage_home: []const u8, content_hash: []const u8) ![]const u8 {
+    return std.fmt.bufPrint(buf, "{s}/{s}/{s}{s}", .{ storage_home, CACHE_SUBDIR, content_hash, CACHE_SUFFIX });
 }
 
 /// Untar `tar_bytes` (the daemon-validated canonical bundle) into `workspace_path`,

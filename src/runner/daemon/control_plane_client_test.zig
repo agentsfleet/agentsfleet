@@ -200,9 +200,11 @@ test "two verbs ride one pooled connection (keep-alive reuse)" {
     var c = client.init(alloc, io, try deadlines.start(alloc), url);
 
     const first = try c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS);
-    try testing.expectEqual(.ok, first.status);
+    defer first.deinit();
+    try testing.expectEqual(.ok, first.value.status);
     const second = try c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS);
-    try testing.expectEqual(.ok, second.status);
+    defer second.deinit();
+    try testing.expectEqual(.ok, second.value.status);
 
     // Closing the client closes the pooled connection; the responder sees
     // read()==0 and exits, so the join cannot hang.

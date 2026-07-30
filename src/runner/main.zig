@@ -9,18 +9,14 @@ const std = @import("std");
 const clock = @import("common").clock;
 const builtin = @import("builtin");
 const logging = @import("log");
-const contract = @import("contract");
 
 const Config = @import("daemon/config.zig");
 const loop = @import("daemon/loop.zig");
 const runner_deadline = @import("daemon/runner_deadline.zig");
 const child_exec = @import("child_exec.zig");
 const client_errors = @import("engine/client_errors.zig");
-const CgroupScope = @import("engine/CgroupScope.zig");
 const version_cmd = @import("cmd/version.zig");
 const registry = @import("cmd/registry.zig");
-
-const protocol = contract.protocol;
 
 const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
@@ -79,45 +75,17 @@ pub fn main(init: std.process.Init) void {
     };
     defer cfg.deinit();
 
-    log.info("server_started", .{
-        .host_id = cfg.host_id,
-        .sandbox_tier = @tagName(cfg.sandbox_tier),
-    });
+    // The tier / egress / worker policy is not known here: it is ASSIGNED by
+    // the control plane and arrives with the first heartbeat. The apply-time
+    // gates (release-build dev_none refusal, cgroup controller enablement) run
+    // in the loop when the assignment lands — a failed gate refuses leases and
+    // keeps heartbeating, so the dashboard shows why instead of a crash loop.
+    log.info("server_started", .{ .storage_home = cfg.storage_home });
 
-    // M100: state the resolved egress posture at boot so "is egress open?"
-    // is answerable from the log alone. An unset/typo'd `RUNNER_NETWORK_POLICY`
-    // resolved to the fail-closed default (allow_list_egress) — never open —
-    // per network/Policy.zig; the label says which posture and what it means.
-    log.info("egress_posture_resolved", .{ .posture = cfg.network_policy.postureLabel() });
-
-    // Fail-closed (Invariant 7): a release build is a real deployment, so refuse
-    // the no-isolation `dev_none` tier (or any unrecognized tier) at startup
-    // rather than let it become the production default. Debug builds keep
-    // dev_none for local development. `builtin.mode` matches agentsfleetd's dev gate.
-    if (devNoneForbidden(builtin.mode, cfg.sandbox_tier)) {
-        log.err("dev_none_rejected_in_release_build", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .sandbox_tier = @tagName(cfg.sandbox_tier) });
-        std.process.exit(1);
-    }
-
-    // systemd delegates the controllers but never writes `cgroup.subtree_control`
-    // — that is the delegatee's job. Without this every execution scope is created
-    // with no memory.max/cpu.max/pids.max to write, CgroupScope.create fails, and
-    // the host accepts leases it can only refuse `sandbox_unavailable` while orphan
-    // scope directories accumulate. Fail closed at startup so a mis-provisioned
-    // host removes itself from the fleet instead of black-holing work: the control
-    // plane re-leases elsewhere, systemd's restart makes it loud, and the deploy
-    // health check catches it. `dev_none` has no cage to build, so it is exempt.
-    if (controllersRequired(builtin.os.tag, cfg.sandbox_tier)) {
-        CgroupScope.enableDelegatedControllers(io, alloc) catch |err| {
-            log.err("cgroup_controllers_unavailable", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err), .sandbox_tier = @tagName(cfg.sandbox_tier) });
-            std.process.exit(1);
-        };
-    }
-
-    std.Io.Dir.createDirAbsolute(io, cfg.workspace_base, .default_dir) catch |err| switch (err) {
+    std.Io.Dir.createDirAbsolute(io, cfg.storage_home, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => {
-            log.err("workspace_base_mkdir_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .path = cfg.workspace_base, .err = @errorName(err) });
+            log.err("storage_home_mkdir_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .path = cfg.storage_home, .err = @errorName(err) });
             std.process.exit(1);
         },
     };
@@ -163,43 +131,6 @@ fn dispatchCli(argv: []const [:0]const u8, env_map: *const std.process.Environ.M
     defer deadlines.deinit();
     // register / status / doctor / --help, and unknown → help + non-zero.
     return registry.dispatch(argv, env_map, io, alloc, &deadlines, a1);
-}
-
-/// Startup security gate (Invariant 7): a release build refuses the no-isolation
-/// `dev_none` tier so it can never be the production default. Debug builds allow
-/// it for local development. Pure so the matrix is unit-testable.
-fn devNoneForbidden(mode: std.builtin.OptimizeMode, tier: protocol.SandboxTier) bool {
-    return mode != .Debug and tier == .dev_none;
-}
-
-test "release build forbids dev_none and unknown tiers; Debug allows dev_none" {
-    try std.testing.expect(devNoneForbidden(.ReleaseSafe, .dev_none));
-    try std.testing.expect(devNoneForbidden(.ReleaseFast, .dev_none));
-    // Unknown/typo'd tiers now parse to dev_none in config.parseSandboxTier
-    // (tested there), so they hit this same release refusal.
-    try std.testing.expect(!devNoneForbidden(.Debug, .dev_none)); // dev convenience
-    try std.testing.expect(!devNoneForbidden(.ReleaseSafe, .landlock_full)); // a real tier is fine in prod
-}
-
-/// Whether this host must enable the delegated cgroup controllers before leasing.
-/// True only when a cage is actually built on a kernel that has cgroups: control
-/// groups are a Linux mechanism, so a `macos_seatbelt` runner has nothing to
-/// enable, and `dev_none` builds no cage at all. Pure so the matrix is
-/// unit-testable — the os tag is a parameter rather than read from `builtin`.
-fn controllersRequired(os_tag: std.Target.Os.Tag, tier: protocol.SandboxTier) bool {
-    if (os_tag != .linux) return false;
-    return tier != .dev_none;
-}
-
-test "delegated controllers are required only for a Linux tier that builds a cage" {
-    try std.testing.expect(controllersRequired(.linux, .landlock_full));
-    try std.testing.expect(controllersRequired(.linux, .container_nested));
-    // dev_none builds no cage, so a host with no delegated subtree still starts.
-    try std.testing.expect(!controllersRequired(.linux, .dev_none));
-    // cgroups are Linux-only: a seatbelt runner must not fail closed on a
-    // controller subtree that cannot exist on its kernel.
-    try std.testing.expect(!controllersRequired(.macos, .macos_seatbelt));
-    try std.testing.expect(!controllersRequired(.macos, .dev_none));
 }
 
 /// Allocator selected by build mode (M100, Invariant 5). Debug keeps the

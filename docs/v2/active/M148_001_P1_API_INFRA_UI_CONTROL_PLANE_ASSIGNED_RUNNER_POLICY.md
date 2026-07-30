@@ -89,8 +89,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/runner/sandbox_args_edge_test.zig` | EDIT | Stale Seatbelt comment (§6). |
 | `src/runner/main.zig` (`controllersRequired` tests) | EDIT | Seatbelt test cases reworked (§6) — file already listed above for the probe. |
 | `public/openapi.json` | EDIT | Regenerated from the yaml sources. |
+| `src/runner/daemon/AppliedPolicy.zig` | CREATE | The one holder of the assigned policy: heartbeat-fed, mutex-guarded, fail-closed on malformed input; workers snapshot it per lease. |
+| `src/runner/daemon/control_plane_client.zig` | EDIT | Heartbeat returns the whole parse (policy strings would dangle otherwise) with the policy as raw JSON for lenient decoding. |
+| `src/runner/daemon/worker_pool.zig` | EDIT | Workers carry the policy holder and their index (soft-shrink). |
+| `src/runner/daemon/policy_apply.zig` | CREATE | Apply-time gates split from the loop: release dev_none refusal, one-shot cgroup enablement, grow-needs-restart notice. |
+| `src/runner/daemon/lease_run.zig` | EDIT | Storage-home rename. |
+| `src/runner/bundle_extract.zig` | EDIT | Storage-home rename (bundle cache root). |
 
-Test files created alongside the edited modules join this table as they land; R6 grades against the final table. (Rows above the divider were extended at CHORE(open) — see Discovery.)
+Test files created or updated alongside the edited modules join this table as they land; R6 grades against the final table. (Rows above the divider were extended at CHORE(open) — see Discovery.)
 
 ## Applicable Rules
 

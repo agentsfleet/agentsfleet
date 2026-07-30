@@ -12,6 +12,8 @@ const contract = @import("contract");
 const constants = common;
 
 const Config = @import("config.zig");
+const AppliedPolicy = @import("AppliedPolicy.zig");
+const policy_apply = @import("policy_apply.zig");
 const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
 const client_errors = @import("../engine/client_errors.zig");
@@ -94,6 +96,12 @@ pub var backoff_ms: *const fn (u32) u64 = constants.backoff.ms;
 pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.ProcessScheduler, cfg: Config, env_map: *const std.process.Environ.Map) LoopExit {
     var cp = client_mod.init(alloc, io, sched, cfg.control_plane_url);
     defer cp.deinit();
+    // The one holder of the control-plane-assigned policy. Written by this
+    // loop from each heartbeat reply; read by every worker at its lease
+    // boundary. Null = no applicable assignment = lease nothing (fail closed).
+    var applied = AppliedPolicy.init(alloc);
+    defer applied.deinit();
+    var gates = policy_apply.Gates{};
     const runner_token: []const u8 = cfg.runner_token;
     // Reset only `stop_requested` (set solely by this control loop). `drain_requested`
     // is set by the async SIGTERM/SIGINT handler and is DELIBERATELY not reset here:
@@ -117,7 +125,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
             return .drained;
         }
 
-        const hb = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
+        const hb_parsed = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
             // A 401/403 is a rejected token — retrying can never fix it, so count
             // it apart from transport loss and fail loud once it's clearly not a
             // transient blip. A transport error resets the auth streak (and vice
@@ -146,7 +154,13 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
         heartbeat_errors = 0;
         auth_rejects = 0;
 
-        switch (hb.status) {
+        // Copy the status out, apply the policy while the parse is alive, then
+        // free the parse — the reply's strings live in it (see client comment).
+        const status = hb_parsed.value.status;
+        policy_apply.applyHeartbeatPolicy(io, alloc, &applied, &gates, hb_parsed.value.assigned_policy);
+        hb_parsed.deinit();
+
+        switch (status) {
             .stop => {
                 log.info(EVENT_SERVER_STOPPED, .{ .reason = "fleet_stop" });
                 stop_requested.store(true, .seq_cst);
@@ -160,12 +174,21 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
             .ok => {},
         }
 
-        // First OK heartbeat brings the pool up; later ones are liveness ticks.
+        // The pool comes up on the first OK heartbeat that carries an
+        // applicable policy — the worker count is part of the assignment, so
+        // there is nothing to size the pool with before one arrives.
         if (pool == null) {
-            pool = worker_pool.spawn(io, alloc, sched, cfg, env_map, &stop_requested, &drain_requested) catch |err| {
-                log.err("worker_pool_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
-                return .worker_pool_failed;
-            };
+            if (applied.currentWorkerCount()) |assigned_workers| {
+                var eff = cfg;
+                eff.worker_count = assigned_workers;
+                pool = worker_pool.spawn(io, alloc, sched, eff, env_map, &applied, &stop_requested, &drain_requested) catch |err| {
+                    log.err("worker_pool_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
+                    return .worker_pool_failed;
+                };
+                gates.spawned_workers = assigned_workers;
+            }
+        } else if (applied.currentWorkerCount()) |assigned_workers| {
+            policy_apply.logGrowNeedsRestart(&gates, assigned_workers);
         }
 
         sleepMs(io, @intCast(constants.HEARTBEAT_INTERVAL_MS));
@@ -176,8 +199,31 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
 /// server-supplied (or default) retry interval. Errors back off and return — the
 /// caller's loop retries on the next iteration. Each pool worker calls this in a
 /// loop with its own allocator + client (see `worker_pool.zig`).
-pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
-    const lease_parsed = cp.lease(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
+///
+/// Every lease runs against an EFFECTIVE config: a copy of the bootstrap
+/// config stamped with the applied assignment at this moment. No policy
+/// applied → lease nothing (fail closed). A worker whose index is at or above
+/// the currently assigned count idles — the soft-shrink half of a worker-count
+/// change; nothing in flight is ever touched.
+pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map, applied: *AppliedPolicy, worker_index: u32) void {
+    const pol = applied.snapshot(alloc) orelse {
+        log.debug("lease_refused_no_policy", .{ .index = worker_index });
+        sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+        return;
+    };
+    defer AppliedPolicy.freePolicy(alloc, pol);
+    if (worker_index >= pol.worker_count) {
+        log.debug("worker_idle_above_assigned_count", .{ .index = worker_index, .assigned = pol.worker_count });
+        sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+        return;
+    }
+    var eff = cfg;
+    eff.sandbox_tier = pol.sandbox_tier;
+    eff.network_policy = pol.network_policy;
+    eff.worker_count = pol.worker_count;
+    eff.registry_allowlist = pol.registry_allowlist;
+
+    const lease_parsed = cp.lease(alloc, runner_token, eff.cp_deadlines.default_ms) catch |err| {
         if (err == error.Unauthorized) {
             // A rejected token is permanent — the heartbeat loop owns the
             // loud `token_rejected` exit. Workers stop hammering the control
@@ -201,7 +247,7 @@ pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, run
         return;
     }
 
-    lease_run.executeAndReport(io, alloc, cp, runner_token, cfg, env_map, lease_resp.lease.?);
+    lease_run.executeAndReport(io, alloc, cp, runner_token, eff, env_map, lease_resp.lease.?);
 }
 
 /// Saturate the final ExecutionResult's u64 cumulative splits onto the report's
