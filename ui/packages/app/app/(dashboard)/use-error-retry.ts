@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 
 // Automatic recovery for the dashboard error boundary.
 //
@@ -19,11 +20,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // Which raises the question the counter cannot answer on its own: a boundary
 // that unmounts because the retry WORKED looks exactly like one that unmounts
 // because it is about to remount on a new failure. Left alone, the counter
-// would stay elevated after every successful recovery, so an unrelated failure
-// ten minutes later would start mid-ladder and, eventually, never auto-retry at
-// all. `INCIDENT_WINDOW_MS` settles it by elapsed time instead: failures that
-// arrive close together are the same incident and keep backing off; one that
-// arrives long after the last is a new incident and starts fresh.
+// would stay elevated after every successful recovery, and later failures would
+// start mid-ladder and eventually never auto-retry at all.
+//
+// Two signals decide it, and BOTH are needed:
+//
+//   - **route** — a failure on a different pathname is a different incident,
+//     full stop. This is the exact signal elapsed time cannot supply: a
+//     successful retry followed seconds later by an unrelated route breaking is
+//     common, and time alone reads it as a continuation of the ladder.
+//   - **elapsed time** — the same route failing again long after the last is a
+//     new incident too, not a continuation of one that already resolved.
+//
+// The remaining ambiguity — same route, failing again within the window — is
+// deliberately read as one incident. A route that flaps twice in half a minute
+// is one problem, and backing off is the right response to it.
 
 /** Delay before each automatic attempt. Its length IS the attempt budget. */
 export const RETRY_DELAYS_MS: readonly number[] = [3_000, 6_000, 12_000];
@@ -42,11 +53,13 @@ export const INCIDENT_WINDOW_MS = 30_000;
 // Survive the boundary remount that a failed retry causes.
 let attemptsUsed = 0;
 let lastFailureAt = 0;
+let lastFailurePath: string | null = null;
 
 /** Test seam: this state is intentionally module-level, not React state. */
 export function __resetErrorRetryForTests(): void {
   attemptsUsed = 0;
   lastFailureAt = 0;
+  lastFailurePath = null;
 }
 
 export type ErrorRetry = {
@@ -65,14 +78,21 @@ export type ErrorRetry = {
 };
 
 export function useErrorRetry(reset: () => void): ErrorRetry {
+  const pathname = usePathname();
+
   // Read once per mount: this mount represents one failure, and the value must
   // not change under the countdown that is already scheduled against it. The
-  // staleness check runs in the same initializer so it is decided before any
+  // same-incident test runs in the same initializer so it is decided before any
   // timer is scheduled against the position it returns.
   const [attemptIndex] = useState(() => {
     const now = Date.now();
-    if (lastFailureAt !== 0 && now - lastFailureAt > INCIDENT_WINDOW_MS) attemptsUsed = 0;
+    const continuesLastIncident =
+      lastFailurePath === pathname &&
+      lastFailureAt !== 0 &&
+      now - lastFailureAt <= INCIDENT_WINDOW_MS;
+    if (!continuesLastIncident) attemptsUsed = 0;
     lastFailureAt = now;
+    lastFailurePath = pathname;
     return attemptsUsed;
   });
   const delay = RETRY_DELAYS_MS[attemptIndex];
@@ -88,6 +108,7 @@ export function useErrorRetry(reset: () => void): ErrorRetry {
     // would punish them for helping.
     attemptsUsed = 0;
     lastFailureAt = 0;
+    lastFailurePath = null;
     resetRef.current();
   }, []);
 

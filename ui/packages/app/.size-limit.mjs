@@ -22,7 +22,17 @@ const GZIP = true;
 const BUDGETS = {
   auth: "225 KiB",
   cliAuth: "240 KiB",
-  dashboardShared: "250 KiB",
+  // Raised from 250 KiB when the tooltip provider moved into
+  // `(dashboard)/layout.tsx`. That hoist puts the Radix tooltip runtime
+  // (popper + floating-ui) into the chunk EVERY dashboard route loads, worth
+  // ~18.6 KiB gzipped, where previously only routes rendering a tooltip paid
+  // for it. Measured: 252.04 KiB before, 271.66 KiB after. Bought deliberately
+  // — eight islands each carried their own provider, and an island that forgot
+  // one took its whole page down, because Radix's tooltip Root throws without
+  // provider context rather than degrading. Headroom here is ~4.8 KiB, the same
+  // margin the 250 KiB budget carried; treat a further rise as a real decision,
+  // not a formality.
+  dashboardShared: "270 KiB",
   routeIncremental: "100 KiB",
 };
 const ROUTE_CLASS = {

@@ -3,12 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { EVENTS } from "@/lib/analytics/events";
 
-const { captureProductEventMock } = vi.hoisted(() => ({
+const { captureProductEventMock, pathnameRef } = vi.hoisted(() => ({
   captureProductEventMock: vi.fn(),
+  pathnameRef: { current: "/w/ws_1/fleets" },
 }));
 vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: captureProductEventMock,
 }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => pathnameRef.current,
+}));
+
+const ROUTE_A = "/w/ws_1/fleets";
+const ROUTE_B = "/admin/runners";
 
 import DashboardError from "../app/(dashboard)/error";
 import {
@@ -23,6 +30,7 @@ import {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
+  pathnameRef.current = ROUTE_A;
   __resetErrorRetryForTests();
 });
 afterEach(() => {
@@ -147,6 +155,46 @@ describe("dashboard error boundary — automatic recovery", () => {
     });
     expect(reset).toHaveBeenCalledTimes(2);
     later.unmount();
+  });
+
+  it("does not spend an unrelated route's budget on the previous incident", () => {
+    // Greptile P1 on PR #578, and it was right: the elapsed-time window alone
+    // could not see this. A retry SUCCEEDS, then seconds later a different
+    // route breaks — well inside the incident window, so the counter carried
+    // over and the new failure started mid-ladder, reporting attempts that were
+    // never made for it. Route identity is the signal time cannot supply.
+    const reset = vi.fn();
+    const first = renderBoundary(reset);
+    act(() => {
+      vi.advanceTimersByTime(FIRST_DELAY_MS);
+    });
+    expect(reset).toHaveBeenCalledOnce();
+    first.unmount();
+
+    // …that retry worked. A DIFFERENT route now fails, promptly.
+    pathnameRef.current = ROUTE_B;
+    const unrelated = renderBoundary(reset, new Error("different route"));
+    expect(screen.getByText(/attempt 1 of/i)).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(FIRST_DELAY_MS);
+    });
+    expect(reset).toHaveBeenCalledTimes(2);
+    unrelated.unmount();
+  });
+
+  it("keeps backing off when the SAME route fails again promptly", () => {
+    // The other side of the route check: same pathname inside the window is one
+    // incident, and must still back off rather than restarting the ladder.
+    const reset = vi.fn();
+    const first = renderBoundary(reset);
+    act(() => {
+      vi.advanceTimersByTime(FIRST_DELAY_MS);
+    });
+    first.unmount();
+
+    const second = renderBoundary(reset, new Error("same route again"));
+    expect(screen.getByText(/attempt 2 of/i)).toBeTruthy();
+    second.unmount();
   });
 
   it("counts the wait down in the live region", () => {
