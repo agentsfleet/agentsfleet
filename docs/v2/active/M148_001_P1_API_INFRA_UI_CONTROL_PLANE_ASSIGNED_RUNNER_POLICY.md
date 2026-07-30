@@ -40,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(api,runner,app): the assigned isolation is the applied isolation
 - **Intent (one sentence):** Make the sandbox policy an operator picks in the dashboard the policy the runner actually enforces, and make a host that cannot enforce it visibly refuse work rather than silently accept it.
-- **Handshake (filled at PLAN, Jul 30, 2026):** Today the Add Runner tier selection is decorative — the host obeys its own env file and nothing compares the two. I will make the control plane the single author of runner policy (sandbox tier, network policy, registry allowlist, worker count), deliver it with the runner's identity on enrollment and on every heartbeat, have the runner probe what its kernel can actually enforce and report that upward, and have the control plane reconcile the two: an assignment the host cannot meet marks the runner degraded with the missing mechanism named, the control plane issues it no leases, and the runner refuses to take any. The host environment collapses to `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (+ optional `RUNNER_WORKSPACE_BASE`), and every error path fails closed to the safest posture, mirroring `parseSandboxTier`.
+- **Handshake (filled at PLAN, Jul 30, 2026):** Today the Add Runner tier selection is decorative — the host obeys its own env file and nothing compares the two. I will make the control plane the single author of runner policy (sandbox tier, network policy, registry allowlist, worker count), deliver it with the runner's identity on enrollment and on every heartbeat, have the runner probe what its kernel can actually enforce and report that upward, and have the control plane reconcile the two: an assignment the host cannot meet marks the runner degraded with the missing mechanism named, the control plane issues it no leases, and the runner refuses to take any. The host environment collapses to `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (+ optional `RUNNER_STORAGE_HOME`), and every error path fails closed to the safest posture, mirroring `parseSandboxTier`.
 - `ASSUMPTIONS I'M MAKING:` (1) Wire paths follow the frozen `me`-plane convention — `POST /v1/runners/me/heartbeats`, `GET /v1/runners/me` — not the illustrative `/{id}/` paths this spec first sketched; the Interfaces block below is amended to match `protocol.zig`. (2) `degraded` is a computed reconciliation verdict stored beside `admin_state`, never a new `AdminState` value — cordon/drain/revoke stay pure operator intent. (3) The probe re-runs on each heartbeat tick (cheap kernel reads off the hot path); the wire report is sent when first available or when it changes. (4) Degraded gates only *new* lease issuance; in-flight leases finish under their issue-time policy. (5) `RUNNER_HOST_ID` is removable because the token already resolves the row and its server-side `host_id`; the daemon logs the row's host_id after its first policy fetch instead. (6) Worker-count changes bind at the next loop tick, never by killing live workers.
 
 ## Implementing agent — read these first
@@ -157,9 +157,9 @@ An operator must be able to see that the two agree, and see why when they do not
 
 ### §5 — The environment surface collapses to two
 
-Twelve variables today; four of them are timeouts and four are policy. **Implementation default:** `RUNNER_WORKSPACE_BASE` stays as an environment variable — it names where the disk is, a genuine host-local fact the control plane cannot know. The four `RUNNER_CP_*_MS` become code defaults with no environment surface.
+Twelve variables today; four of them are timeouts and four are policy. **Implementation default:** the workspace-base variable stays as an environment variable — it names where the disk is, a genuine host-local fact the control plane cannot know — and is renamed `RUNNER_WORKSPACE_BASE` → `RUNNER_STORAGE_HOME` (Indy, Jul 30, 2026). The four `RUNNER_CP_*_MS` become code defaults with no environment surface.
 
-- **Dimension 5.1** — The runner reads only `AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`, and `RUNNER_WORKSPACE_BASE` → Test `test_runner_reads_only_the_bootstrap_environment`
+- **Dimension 5.1** — The runner reads only `AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`, and `RUNNER_STORAGE_HOME` → Test `test_runner_reads_only_the_bootstrap_environment`
 - **Dimension 5.2** — No removed variable name survives anywhere in the repository → Test `test_no_removed_runner_env_names_remain`
 - **Dimension 5.3** — `04_provision_runner_env.sh` writes the reduced set and the provisioned file still brings a runner up → Test `provision_runner_env_test.sh` (extended)
 
@@ -196,7 +196,7 @@ PATCH /v1/fleets/runners/{id}   (platform admin)
 runner environment, complete:
   AGENTSFLEET_API_URL         required
   AGENTSFLEET_RUNNER_TOKEN    required
-  RUNNER_WORKSPACE_BASE       optional, host-local path
+  RUNNER_STORAGE_HOME         optional, host-local path (renamed from RUNNER_WORKSPACE_BASE)
 ```
 
 ## Failure Modes
@@ -292,6 +292,7 @@ N/A — no files deleted; `capability_probe.zig` is added.
 | `RUNNER_HOST_ID` | `git grep -n 'RUNNER_HOST_ID' -- . ':!docs/v2/'` | 0 matches |
 | `RUNNER_CP_*_MS` | `git grep -nE 'RUNNER_CP_[A-Z_]+_MS' -- . ':!docs/v2/'` | 0 matches |
 | `macos_seatbelt` | `git grep -rnw 'macos_seatbelt' -- . ':!docs/v2/' ':!schema/017_fleet_runners.sql'` | 0 matches |
+| `RUNNER_WORKSPACE_BASE` (renamed) | `git grep -n 'RUNNER_WORKSPACE_BASE' -- . ':!docs/v2/'` | 0 matches |
 
 ## Out of Scope
 
@@ -332,6 +333,7 @@ N/A — no files deleted; `capability_probe.zig` is added.
   - > Indy (2026-07-30): "All four fields in dialog" — context: Add Runner exposes isolation, network policy, registry allowlist, and workers (Dimension 4.4); network defaults to `allow_all` until 2.0.1's egress wiring.
   - > Indy (2026-07-30): "…an unset or unrecognized RUNNER_NETWORK_POLICY resolves to the fail-closed default allow_list_egress … deliberately refused at src/runner/child_supervisor.zig:133-139 … the unit comment still claims 'allow_all is the current default' — stale since the M100 flip … as an issue, i assume this will go into the db as well." — context: confirmed against the code; the capability report gains `egress_enforcement`, and an assigned `allow_list_egress` reconciles to a degraded row whose reason lands in the database and on the dashboard (§3, Failure Modes). The stale unit comment is cleaned in §5.
   - > Indy (2026-07-30): "In the isolation we must remove macos_seatbelt, since its not valid" — context: §6 added; consistent with the M80_004 / M84_003 deferrals ("seatbelt is deprecated long back"). Removal, not deprecation (NLG).
+  - > Indy (2026-07-30): "Okay keep the directory as RUNNER_STORAGE_HOME?" — context: supersedes the keep-the-name resolution above; the optional env is renamed `RUNNER_WORKSPACE_BASE` → `RUNNER_STORAGE_HOME`. Host-local semantics unchanged; the old name joins the Dead Code Sweep.
   - > Orly (Jul 30, 2026, CHORE(open)): spec instance amended to repo reality before EXECUTE — Interfaces corrected to the frozen `me`-plane paths (`protocol.zig` forbids a runner_id in any path); read-list item 5 repointed at `docs/v2/active/` where M147_001 actually sits; Files Changed extended with the files the R5 removal grep already hits (`deploy.sh`, three playbooks, `provision_runner_env_test.sh`) and the SQL/lease/fleet surfaces the new columns must cross. Also flagged, untouched: M147_001's spec is still `IN_PROGRESS` in `active/` though `enableDelegatedControllers` is merged to main and the branch pruned.
 - **Metrics review** — three operator events declared above; no analytics or funnel playbook update required, as no end-user funnel changes.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
