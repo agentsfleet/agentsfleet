@@ -4,6 +4,11 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 import { LEASE_OUTCOME, type RunnerLease } from "@/lib/api/runners";
 import { ReviewLease } from "./ReviewLease";
 
+// The wrapper here stands in for a real ancestor, not for a missing one:
+// ReviewLease only ever mounts inside LeaseTable, which owns the provider (the
+// EventsList / EventDetailsDialog arrangement). Rendering the dialog alone is
+// the only reason one is needed. LeaseTable's own tests render bare, so a
+// provider going missing from the table is still caught there.
 afterEach(() => cleanup());
 
 const BASE: RunnerLease = {

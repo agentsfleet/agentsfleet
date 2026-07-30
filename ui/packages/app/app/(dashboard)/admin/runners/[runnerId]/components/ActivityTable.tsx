@@ -8,6 +8,7 @@ import {
   EmptyState,
   PAGINATION_KIND,
   Time,
+  TooltipProvider,
 } from "@agentsfleet/design-system";
 import {
   RUNNER_LIFECYCLE_EVENT_TYPES,
@@ -125,31 +126,36 @@ export function ActivityTable({ initial, pageSize }: { initial: RunnerEventsResp
     [],
   );
 
+  // This island supplies its own provider — the dashboard layout is a Server
+  // Component and mounts none, so the relative `Time` cells below would throw
+  // without it.
   return (
-    <DataTable
-      caption={ACTIVITY_TABLE_LABEL}
-      columns={columns}
-      rows={rows}
-      rowKey={(item) => item.id}
-      pagination={{
-        kind: PAGINATION_KIND.page,
-        page: feed.page,
-        pageSize,
-        hasNext: feed.hasNext,
-        total: initial.total ?? undefined,
-        totalLabel: "records",
-        onPageChange: feed.goToPage,
-        pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
-        onPageSizeChange: feed.changePageSize,
-        isLoading: feed.isLoading,
-      }}
-      empty={
-        <EmptyState
-          icon={<ActivityIcon size={28} />}
-          title={ACTIVITY_EMPTY_TITLE}
-          description={ACTIVITY_EMPTY_DESCRIPTION}
-        />
-      }
-    />
+    <TooltipProvider>
+      <DataTable
+        caption={ACTIVITY_TABLE_LABEL}
+        columns={columns}
+        rows={rows}
+        rowKey={(item) => item.id}
+        pagination={{
+          kind: PAGINATION_KIND.page,
+          page: feed.page,
+          pageSize,
+          hasNext: feed.hasNext,
+          total: initial.total ?? undefined,
+          totalLabel: "records",
+          onPageChange: feed.goToPage,
+          pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
+          onPageSizeChange: feed.changePageSize,
+          isLoading: feed.isLoading,
+        }}
+        empty={
+          <EmptyState
+            icon={<ActivityIcon size={28} />}
+            title={ACTIVITY_EMPTY_TITLE}
+            description={ACTIVITY_EMPTY_DESCRIPTION}
+          />
+        }
+      />
+    </TooltipProvider>
   );
 }

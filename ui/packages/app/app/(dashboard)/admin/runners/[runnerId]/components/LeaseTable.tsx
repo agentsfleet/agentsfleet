@@ -10,6 +10,7 @@ import {
   EmptyState,
   PAGINATION_KIND,
   Time,
+  TooltipProvider,
   WakePulse,
 } from "@agentsfleet/design-system";
 import { LEASE_OUTCOME, type RunnerLease, type RunnerLeaseResponse } from "@/lib/api/runners";
@@ -103,36 +104,42 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
     [],
   );
 
+  // The provider is this island's own, not the shell's: the dashboard layout
+  // stays a Server Component, so nothing above supplies one and the relative
+  // `Time` cells below would each throw. It also wraps Review lease, so the
+  // dialog's own relative time is covered by the same delay coordination.
   return (
-    <div>
-      <DataTable
-        caption={LEASES_TABLE_LABEL}
-        columns={columns}
-        rows={rows}
-        rowKey={(lease) => lease.id}
-        onRowClick={(lease) => setSelected(lease)}
-        pagination={{
-          kind: PAGINATION_KIND.page,
-          page: feed.page,
-          pageSize,
-          hasNext: feed.hasNext,
-          total: initial.total ?? undefined,
-          totalLabel: "leases",
-          onPageChange: feed.goToPage,
-          pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
-          onPageSizeChange: feed.changePageSize,
-          isLoading: feed.isLoading,
-        }}
-        empty={
-          <EmptyState
-            icon={<LayoutListIcon size={28} />}
-            title={LEASES_EMPTY_TITLE}
-            description={LEASES_EMPTY_DESCRIPTION}
-          />
-        }
-      />
-      <ReviewLease lease={selected} onOpenChange={() => setSelected(null)} />
-    </div>
+    <TooltipProvider>
+      <div>
+        <DataTable
+          caption={LEASES_TABLE_LABEL}
+          columns={columns}
+          rows={rows}
+          rowKey={(lease) => lease.id}
+          onRowClick={(lease) => setSelected(lease)}
+          pagination={{
+            kind: PAGINATION_KIND.page,
+            page: feed.page,
+            pageSize,
+            hasNext: feed.hasNext,
+            total: initial.total ?? undefined,
+            totalLabel: "leases",
+            onPageChange: feed.goToPage,
+            pageSizeOptions: TABLE_PAGE_SIZE_OPTIONS,
+            onPageSizeChange: feed.changePageSize,
+            isLoading: feed.isLoading,
+          }}
+          empty={
+            <EmptyState
+              icon={<LayoutListIcon size={28} />}
+              title={LEASES_EMPTY_TITLE}
+              description={LEASES_EMPTY_DESCRIPTION}
+            />
+          }
+        />
+        <ReviewLease lease={selected} onOpenChange={() => setSelected(null)} />
+      </div>
+    </TooltipProvider>
   );
 }
 
