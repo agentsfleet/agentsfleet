@@ -8931,11 +8931,10 @@
       },
       "RunnerSandboxTier": {
         "type": "string",
-        "description": "Isolation strength the operator assigns to a runner. The host applies it and reports what it can deliver. A host that cannot meet the assignment is marked degraded and receives no work.",
+        "description": "Isolation strength the operator assigns to a runner. The host applies it and reports what it can deliver. A host that cannot meet the assignment is marked degraded and receives no work. Only tiers with real enforcement are assignable.",
         "enum": [
           "landlock_full",
           "container_nested",
-          "macos_seatbelt",
           "dev_none"
         ]
       },
@@ -9030,9 +9029,45 @@
           }
         }
       },
+      "RunnerCapabilityReport": {
+        "type": "object",
+        "description": "What a runner host's kernel can actually enforce, as the host last reported it. Unauthenticated self-assertion — agentsfleet reconciles it against the assigned policy to compute `degraded`, but a compromised host can lie; placement trust stays operator-assigned.",
+        "required": [
+          "landlock",
+          "seccomp",
+          "cgroup_controllers",
+          "bubblewrap",
+          "egress_enforcement"
+        ],
+        "properties": {
+          "landlock": {
+            "type": "boolean",
+            "description": "The kernel offers Landlock filesystem sandboxing."
+          },
+          "seccomp": {
+            "type": "boolean",
+            "description": "A seccomp system-call filter can be installed."
+          },
+          "cgroup_controllers": {
+            "type": "array",
+            "description": "Controllers present in the delegated cgroup subtree (`cpu`, `memory`, `pids` are required for cage-building tiers).",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bubblewrap": {
+            "type": "boolean",
+            "description": "The bubblewrap sandbox helper is present on the host."
+          },
+          "egress_enforcement": {
+            "type": "boolean",
+            "description": "Kernel-enforced egress allowlisting is available in this runner build. Always false until that wiring ships; a runner assigned `allow_list_egress` reads as degraded rather than silently refusing work."
+          }
+        }
+      },
       "RunnerSummary": {
         "type": "object",
-        "description": "One fleet row as returned to the operator. `liveness` is derived at read time (never stored); the auth `token_hash` and stored auth state are never returned.",
+        "description": "One fleet row as returned to the operator. `liveness` is derived at read time (never stored); the auth `token_hash` and stored auth state are never returned. `assigned_policy` is what the operator assigned. `achievable` is what the host last reported it can enforce. When the two disagree the runner is `degraded` and receives no work.",
         "required": [
           "id",
           "host_id",
@@ -9041,9 +9076,29 @@
           "liveness",
           "labels",
           "last_seen_at",
-          "created_at"
+          "created_at",
+          "degraded"
         ],
         "properties": {
+          "assigned_policy": {
+            "$ref": "#/components/schemas/RunnerAssignedPolicy",
+            "nullable": true,
+            "description": "The assignment this runner must satisfy. Null only for a runner enrolled before policy assignment existed; such a runner reads degraded until an operator assigns a policy."
+          },
+          "achievable": {
+            "$ref": "#/components/schemas/RunnerCapabilityReport",
+            "nullable": true,
+            "description": "The host's last capability report. Null until the runner's first report arrives."
+          },
+          "degraded": {
+            "type": "boolean",
+            "description": "True when the assigned policy exceeds what the host reported it can enforce (or no report has arrived). A degraded runner is issued no leases."
+          },
+          "degraded_reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "The specific missing mechanism (for example `cgroup controllers not delegated`), mapping to a step in the runner bootstrap playbook. Null when not degraded."
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -9095,7 +9150,7 @@
       },
       "RunnerDetail": {
         "type": "object",
-        "description": "A single runner as the operator plane reads it. Carries the summary fields, a live-work snapshot, and lifetime counters from durable lease and event rows. The auth `token_hash` and stored auth state are never returned.",
+        "description": "A single runner as the operator plane reads it. Carries the summary fields (including the assigned-vs-achievable policy pair and the degraded verdict), a live-work snapshot, and lifetime counters from durable lease and event rows. The auth `token_hash` and stored auth state are never returned.",
         "required": [
           "id",
           "host_id",
@@ -9105,6 +9160,7 @@
           "labels",
           "last_seen_at",
           "created_at",
+          "degraded",
           "active_lease_count",
           "active_fleet_count",
           "leases_acquired",
@@ -9113,6 +9169,25 @@
           "leases_expired"
         ],
         "properties": {
+          "assigned_policy": {
+            "$ref": "#/components/schemas/RunnerAssignedPolicy",
+            "nullable": true,
+            "description": "The assignment this runner must satisfy. Null only for a runner enrolled before policy assignment existed; such a runner reads degraded until an operator assigns a policy."
+          },
+          "achievable": {
+            "$ref": "#/components/schemas/RunnerCapabilityReport",
+            "nullable": true,
+            "description": "The host's last capability report. Null until the runner's first report arrives."
+          },
+          "degraded": {
+            "type": "boolean",
+            "description": "True when the assigned policy exceeds what the host reported it can enforce (or no report has arrived). A degraded runner is issued no leases."
+          },
+          "degraded_reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "The specific missing mechanism (for example `cgroup controllers not delegated`), mapping to a step in the runner bootstrap playbook. Null when not degraded."
+          },
           "id": {
             "type": "string",
             "format": "uuid"
