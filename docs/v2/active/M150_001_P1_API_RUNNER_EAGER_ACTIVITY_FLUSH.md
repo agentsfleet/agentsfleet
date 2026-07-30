@@ -83,25 +83,27 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The `ActivityForwarder` gains two boolean latches, both false at construction (one forwarder per lease, so "per lease" is "per instance"). In `forward()`, after the frame is appended: if the first latch is unconsumed, flush eagerly and consume it; if the appended frame is a `fleet_response_chunk` and the second latch is unconsumed, flush eagerly and consume it. A first frame that IS a response chunk consumes both latches with a single POST. All other flush triggers (frame cap, byte cap, staleness) are unchanged. Flush remains best-effort: a failed eager POST is swallowed and the latch stays consumed — no retry, no error propagation. **Implementation default:** check the union tag with a direct tag comparison (the tag names are the wire discriminators), because the frame value is already in scope in `forward()`.
 
-- **Dimension 1.1** — the first frame of a lease flushes on arrival (batch empties after one `forward()`) → Test `test_first_frame_flushes_eagerly`
-- **Dimension 1.2** — the first `fleet_response_chunk` flushes on arrival even when earlier non-chunk frames already consumed the first latch → Test `test_first_chunk_flushes_eagerly_after_earlier_frames`
-- **Dimension 1.3** — latches are one-shot: after both are consumed, frames batch per the existing caps (a second chunk does NOT eager-flush) → Test `test_second_chunk_batches_not_eager`
-- **Dimension 1.4** — a first frame that is a chunk consumes both latches in one POST (at most two eager flushes per lease, proven at the boundary) → Test `test_first_chunk_first_frame_consumes_both_latches`
-- **Dimension 1.5** — a failed eager POST is swallowed and the latch stays consumed; subsequent frames batch normally → Test `test_eager_flush_failure_is_swallowed_and_latched`
+- **Dimension 1.1** — the first frame of a lease flushes on arrival (batch empties after one `forward()`) → Test `test_first_frame_flushes_eagerly` — **DONE**
+- **Dimension 1.2** — the first `fleet_response_chunk` flushes on arrival even when earlier non-chunk frames already consumed the first latch → Test `test_first_chunk_flushes_eagerly_after_earlier_frames` — **DONE**
+- **Dimension 1.3** — latches are one-shot: after both are consumed, frames batch per the existing caps (a second chunk does NOT eager-flush) → Test `test_second_chunk_batches_not_eager` — **DONE**
+- **Dimension 1.4** — a first frame that is a chunk consumes both latches in one POST (at most two eager flushes per lease, proven at the boundary) → Test `test_first_chunk_first_frame_consumes_both_latches` — **DONE**
+- **Dimension 1.5** — a failed eager POST is swallowed and the latch stays consumed; subsequent frames batch normally → Test `test_eager_flush_failure_is_swallowed_and_latched` — **DONE**
+- **Dimension 1.6** — a failed frame serialization (allocation failure) drops the frame BEFORE consuming the latch, so the eager ship is preserved for the next frame → Test `test_serialize_failure_leaves_latch_armed` — **DONE**
 
 ### §2 — Regression alignment of the existing batch proofs
 
 The existing cap and staleness tests assume the first frame buffers. With eager flush they would flush at frame one and stop proving their caps. Each pre-consumes the latches (set both latch fields before the loop — struct fields are directly settable from the sibling test), so the frame-cap, byte-cap, and staleness proofs keep asserting exactly what they assert today.
 
-- **Dimension 2.1** — frame-cap proof still trips at the frame cap with latches pre-consumed → Test `the frame-count cap auto-flushes and resets the batch` (existing, adjusted)
-- **Dimension 2.2** — byte-cap proof still trips before the frame cap with latches pre-consumed → Test `the byte cap auto-flushes before the frame cap` (existing, adjusted)
-- **Dimension 2.3** — staleness proof still ships a buffered frame only past the window with latches pre-consumed → Test `flushIfStale ships a buffered frame once the window passes` (existing, adjusted)
+- **Dimension 2.1** — frame-cap proof still trips at the frame cap with latches pre-consumed → Test `the frame-count cap auto-flushes and resets the batch` (existing, adjusted) — **DONE**
+- **Dimension 2.2** — byte-cap proof still trips before the frame cap with latches pre-consumed → Test `the byte cap auto-flushes before the frame cap` (existing, adjusted) — **DONE**
+- **Dimension 2.3** — staleness proof still ships a buffered frame only past the window with latches pre-consumed → Test `flushIfStale ships a buffered frame once the window passes` (existing, adjusted) — **DONE**
+- **Dimension 2.4** — serialize-and-join proof still asserts comma-separated batch accumulation with latches pre-consumed → Test `frames serialize on arrival and join into one comma-separated batch` (existing, adjusted) — **DONE**
 
 ### §3 — Cadence documentation
 
 `docs/architecture/scaling.md` carries the per-request volume story; the eager path changes that arithmetic by a bounded constant. One sentence records it so the scaling math and the code cannot drift.
 
-- **Dimension 3.1** — scaling.md states the activity batch volume bound: at most two eager POSTs per run, all other frames batched → Test: grep proof in the Acceptance Rubric (R3)
+- **Dimension 3.1** — scaling.md states the activity batch volume bound: at most two eager POSTs per run, all other frames batched → Test: grep proof in the Acceptance Rubric (R3) — **DONE**
 
 ## Interfaces
 
@@ -143,23 +145,25 @@ No new metrics, events, or log lines: the change is flush timing inside an exist
 | 1.3 | unit | `test_second_chunk_batches_not_eager` | after both latches consumed, a further chunk → count grows, no flush until an existing cap trips |
 | 1.4 | unit | `test_first_chunk_first_frame_consumes_both_latches` | first frame is a chunk → one flush, both latches consumed; a following non-chunk frame buffers |
 | 1.5 | unit (negative) | `test_eager_flush_failure_is_swallowed_and_latched` | dead-port POST on the eager flush → no error, batch reset, latch consumed, next frame buffers |
+| 1.6 | unit (negative, injection) | `test_serialize_failure_leaves_latch_armed` | `FailingAllocator` at the serialize site → frame dropped, latch unconsumed, next frame still ships eagerly |
 | 2.1 | unit (regression) | existing frame-cap test, latches pre-consumed | cap-count frames → flush exactly at the cap |
 | 2.2 | unit (regression) | existing byte-cap test, latches pre-consumed | oversized frames → byte cap trips before frame cap |
 | 2.3 | unit (regression) | existing staleness test, latches pre-consumed | one buffered frame → ships only past the window |
+| 2.4 | unit (regression) | existing serialize-and-join test, latches pre-consumed | two frames → one comma-joined batch buffer |
 | 3.1 | docs | rubric R3 grep | scaling.md names the two-eager-POST bound |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Eager-flush behaviour proven (§1: both latches, one-shot, failure-swallowed) | `zig build test 2>&1 \| tail -5` | exit 0 | P0 | |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| R3 | Cadence documented (§3) | `grep -c "eager" docs/architecture/scaling.md` | ≥1 match | P1 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Eager-flush behaviour proven (§1: both latches, one-shot, failure-swallowed) | `zig build --build-file build_runner.zig test --summary all 2>&1 \| tail -3` | exit 0, `0 fail` in the suite line | P0 |  ✅ `384 pass, 7 skip (391 total)`, exit 0 |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ 4 paths, every one in Files Changed |
+| R3 | Cadence documented (§3) | `grep -c "eager" docs/architecture/scaling.md` | ≥1 match | P1 |  ✅ `1` match |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ✅ `✓ All unit lanes passed` (coverage gates 99%+) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 |  ✅ `✓ All lint checks passed` |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 |  ✅ both build graphs × x86_64-linux + aarch64-linux, exit 0 |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 |  ✅ `no leaks found` |
+| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 |  ✅ no output |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -201,5 +205,6 @@ N/A — no files deleted.
 
 - **Consults** — Architecture: `docs/architecture/data_flow.md` §C and `scaling.md` §Event-delivery latency answer the flow; no conflict (doc-silent on flush cadence → §3 lands the doc line in the same PR). Bundle-cache scope check: `bundle_extract.zig` read end-to-end — the cache already exists (content-addressed, atomic, degrade-to-miss), so the second latency item left scope at authoring.
 - **Metrics review** — no analytics/funnel playbook update required: no product or operator signal changes; observable effect is timing on already-published frames.
-- **Skill-chain outcomes** — (populated as work proceeds)
+- **Skill-chain outcomes** — `/write-unit-test`: Change-set mode; diff ledger fully resolved; surfaced one real gap (serialize-failure must leave the latch armed) → became Dimension 1.6. `/write-integration-test`: reasoned N/A — no seam changed (no handler/repo/service/schema/Redis surface; tier-2 trigger paths untouched; the diff's two failure paths are unit-tier with deterministic injection); existing integration suite is the regression gate. gstack `/review`: adversarial + testing + maintainability passes in parallel plus a Codex cross-model pass; six informational findings auto-fixed in-branch (three new hardening tests — chunk-latch serialize failure, staleness re-anchor after eager flush, eager+byte-cap coincidence — one strengthened one-shot assertion, the struct doc trigger enumeration extended, and both latches normalized to the guarded consume-once idiom); suite 387 pass / 0 fail after fixes.
+- **Review INVESTIGATE findings (disposition: Indy)** — F1 (confidence 7/10): with a slow-but-alive control plane (activity POST taking 1–5 s against the 5 s deadline), the up-to-two eager POSTs block the single read-loop thread before the first chunk is read, which can invert the latency win and consume renewal-tick slack; a mode of the pre-existing synchronous-flush design, new in degree not kind. Candidate fixes: tighter sub-window deadline on eager flushes, or skip-eager-after-slow-flush. F2 (confidence 4/10): back-to-back eager POSTs make the pre-existing unfenced out-of-order publish window (deadline-abandoned POST republishing late) the common case at run start; cosmetic on the live tail by design. Neither blocks merge per the reviewing agent; both recorded here for fix-or-defer. F3 (Codex cross-model pass, corroborates F1 with renewal arithmetic and adds one adjacent gap): the CLI steer flow sends the message and only then opens its Server-Sent Events (SSE) stream, so an unusually fast run can publish its first frames before the subscriber exists — pre-existing race; the old staleness hold masked it with a ~1 s margin the eager path removes. Dashboard chat is unaffected (stream already open); the durable `fleet_events.response_text` always carries the full reply. Candidate fix is CLI-side (subscribe before send) — outside this spec's Files-Changed scope, surfaced for a follow-up call. Codex's remaining findings dispositioned in source: dropped-batch-on-failed-send and the dead-port harness are the pre-existing best-effort doctrine and house proof pattern; POST amplification is bounded at +2 per lease behind the existing admission ceiling.
 - **Deferrals** — (none; wake-the-poller is Out of Scope by authoring decision, not a deferral of in-scope work)

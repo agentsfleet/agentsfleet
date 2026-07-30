@@ -27,7 +27,8 @@ pub const ACTIVITY_FLUSH_WINDOW_MS: i64 = 1_000;
 /// to the control plane per flush window — one POST per batch, not per frame
 /// (a chatty fleet run no longer costs one round-trip per tool call). Frames
 /// serialize on arrival (their slices are only valid during `forward`); the
-/// flush fires at the frame/byte caps, when the oldest buffered frame exceeds
+/// flush fires eagerly at the first frame and first response chunk (one-shot
+/// latches), at the frame/byte caps, when the oldest buffered frame exceeds
 /// the window (driven by the supervisor tick), and finally at end of run.
 /// Best-effort by contract — transport errors are swallowed, so a dropped
 /// live-tail batch never disturbs execution.
@@ -42,6 +43,13 @@ pub const ActivityForwarder = struct {
     buf: std.ArrayList(u8) = .empty,
     count: usize = 0,
     first_buffered_ms: i64 = 0,
+    // One-shot eager-flush latches: the first frame of the lease and the first
+    // response chunk each ship on arrival, so the live tail shows the run is
+    // alive — and the reply's first words — at model speed instead of waiting
+    // out the staleness window. Consumed once, never cleared: at most two
+    // eager POSTs per lease, then the frame/byte/staleness caps govern alone.
+    eager_first_frame_done: bool = false,
+    eager_first_chunk_done: bool = false,
 
     pub fn forward(ctx: *anyopaque, frame: contract.activity.ActivityFrame) void {
         const self: *ActivityForwarder = @ptrCast(@alignCast(ctx));
@@ -57,8 +65,17 @@ pub const ActivityForwarder = struct {
             return;
         };
         self.count += 1;
+        var eager = false;
+        if (!self.eager_first_frame_done) {
+            self.eager_first_frame_done = true;
+            eager = true;
+        }
+        if (frame == .fleet_response_chunk and !self.eager_first_chunk_done) {
+            self.eager_first_chunk_done = true;
+            eager = true;
+        }
         const stale = clock.nowMillis() - self.first_buffered_ms >= ACTIVITY_FLUSH_WINDOW_MS;
-        if (self.count >= ACTIVITY_BATCH_MAX_FRAMES or self.buf.items.len >= ACTIVITY_BATCH_MAX_BYTES or stale) {
+        if (eager or self.count >= ACTIVITY_BATCH_MAX_FRAMES or self.buf.items.len >= ACTIVITY_BATCH_MAX_BYTES or stale) {
             self.flush();
         }
     }
