@@ -19,8 +19,9 @@ const channel_prefix = "fleet:";
 const channel_suffix = ":activity";
 
 // Frame kind discriminators carried as the `kind` field on every payload.
-// The dashboard's LiveFrame union (ui/packages/app/lib/api/events.ts)
-// keeps the same set of strings; touch both sides together.
+// The dashboard's LiveFrame union (ui/packages/app/lib/api/events.ts) and the
+// CLI steer tail (cli/src/commands/fleet_steer_events.ts KIND_*) keep the
+// same set of strings; touch all three sides together.
 pub const KIND_EVENT_RECEIVED = "event_received";
 pub const KIND_TOOL_CALL_STARTED = "tool_call_started";
 pub const KIND_TOOL_CALL_PROGRESS = "tool_call_progress";

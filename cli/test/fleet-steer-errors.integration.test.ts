@@ -30,6 +30,7 @@ import {
   FLEET_ID,
   EVENT_ID,
   OTHER_EVENT_ID,
+  POST,
   TOKEN,
   WS_ID,
   streamFrom,
@@ -38,8 +39,6 @@ import {
   makeLayer,
   eventStream,
 } from "./fleet-steer.integration.test.ts";
-
-const POST = "POST";
 
 type StreamGetFn = typeof import("../src/lib/sse.ts").streamGet;
 
@@ -319,6 +318,7 @@ describe("steer — subscribe-first failure paths", () => {
     let closeCount = 0;
     const trackedStream: StreamGetFn = (_url, _headers, _cb, options) =>
       new Promise<void>((resolveStream) => {
+        options?.onOpen?.();
         options?.signal?.addEventListener(
           "abort",
           () => {

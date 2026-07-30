@@ -41,6 +41,10 @@ export const DASHBOARD_URL = "https://dash.steer-test.local";
 // ordering assertions read as data, not as index arithmetic.
 export const CALL_STREAM_OPEN = "stream-open";
 export const CALL_POST = "post-message";
+// Shared across the steer suites (single declaration site).
+export const POST = "POST";
+export const SINGLE_MESSAGE = "go";
+export const postedEvent = <T>(): T => ({ event_id: EVENT_ID } as T);
 
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_steer" }, fn);
@@ -318,12 +322,21 @@ describe("steer — the tail opens before the message posts", () => {
   test("test_stream_opens_before_post", async () => {
     const rec = makeRecorder();
     const calls: string[] = [];
+    // A real handshake takes time: the marker lands only when headers are
+    // accepted (onOpen), so an implementation that merely dispatches the
+    // stream and posts immediately records the POST first and fails here.
+    const HANDSHAKE_DELAY_MS = 10;
     const recordingStream = async (
       _url: string,
       _headers: Record<string, string>,
       cb: StreamGetCallback,
+      options?: { onOpen?: () => void },
     ): Promise<void> => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, HANDSHAKE_DELAY_MS);
+      });
       calls.push(CALL_STREAM_OPEN);
+      options?.onOpen?.();
       cb({ id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } });
     };
     const httpReply = <T>(_input: HttpRequestInput): T => {

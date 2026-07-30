@@ -45,6 +45,10 @@ const BYTES_PER_KIB = 1024;
 // Overflow drops oldest — the durable events poll stays the recovery backstop.
 export const PRE_ID_BUFFER_MAX_FRAMES = 256;
 export const PRE_ID_BUFFER_MAX_BYTES = 256 * BYTES_PER_KIB;
+// Longest the POST will wait for the tail's subscription to be live. A tail
+// that can't open inside this window degrades to post-then-poll; the send is
+// never blocked on a broken stream.
+export const TAIL_OPEN_MAX_WAIT_MS = 2_000;
 
 export const SSE_FALLBACK_TIMEOUT_SECONDS = Math.round(
   SSE_FALLBACK_TIMEOUT_MS / MS_PER_SECOND,
@@ -100,8 +104,11 @@ const makeFrameCallback = (
 ): StreamGetCallback => (event) => {
   const payload = event.data as Record<string, unknown> | null | undefined;
   if (!isRecord(payload)) return undefined;
+  // Frames without an event_id are dropped too: the daemon stamps every
+  // activity frame (activity_publisher), so an id-less frame's ownership is
+  // unknown and rendering it would break the one-event-only invariant.
   const frameEventId = payload["event_id"];
-  if (frameEventId && frameEventId !== handlers.eventId) return undefined;
+  if (frameEventId !== handlers.eventId) return undefined;
   if (event.type === KIND_CHUNK && isString(payload[FIELD_TEXT])) {
     handlers.printLine(`${ui.dim("[claw]")} ${payload[FIELD_TEXT]}`);
     return undefined;
@@ -123,10 +130,22 @@ const makeFrameCallback = (
   return undefined;
 };
 
+// How the pre-send wait ended. A timed-out tail is untrusted for the turn:
+// it may have missed the opening frames, so rendering from it could present
+// a truncated reply as complete — the caller closes it and polls instead.
+export const TAIL_OPENED = "tail_opened" as const;
+export const TAIL_SETTLED = "tail_settled" as const;
+export const TAIL_TIMED_OUT = "tail_timed_out" as const;
+export type TailReadiness =
+  | typeof TAIL_OPENED
+  | typeof TAIL_SETTLED
+  | typeof TAIL_TIMED_OUT;
+
 export interface EventTailHandle {
+  readonly awaitReady: () => Promise<TailReadiness>;
   readonly awaitOutcome: () => Promise<SteerOutcome>;
   readonly deliverEventId: (id: string) => void;
-  readonly close: () => void;
+  readonly close: () => Promise<void>;
 }
 
 interface BufferedFrame {
@@ -148,7 +167,9 @@ const makePreIdBuffer = (): PreIdBuffer => {
   let live: StreamGetCallback | null = null;
   const cb: StreamGetCallback = (event) => {
     if (live) return live(event);
-    const bytes = JSON.stringify(event).length;
+    // Buffer.byteLength counts encoded bytes (not UTF-16 code units), keeping
+    // the cap honest for multi-byte chunk text.
+    const bytes = Buffer.byteLength(JSON.stringify(event));
     entries.push({ frame: event, bytes });
     totalBytes += bytes;
     while (
@@ -169,6 +190,26 @@ const makePreIdBuffer = (): PreIdBuffer => {
     return true;
   };
   return Object.freeze({ cb, promote });
+};
+
+// Ready = headers accepted (subscription live) OR the stream settled (a
+// broken tail must not block the send) OR the bounded wait elapsed. The
+// losing timer is always cleared; the caller branches on which one won.
+const boundedReady = (
+  opened: Promise<void>,
+  finished: Promise<unknown>,
+): (() => Promise<TailReadiness>) => () => {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const bounded = new Promise<TailReadiness>((resolve) => {
+    timer = setTimeout(() => resolve(TAIL_TIMED_OUT), TAIL_OPEN_MAX_WAIT_MS);
+  });
+  return Promise.race([
+    opened.then((): TailReadiness => TAIL_OPENED),
+    finished.then((): TailReadiness => TAIL_SETTLED),
+    bounded,
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 };
 
 const linkedAbort = (signal?: AbortSignal): AbortController => {
@@ -203,7 +244,11 @@ export const openEventTail = (
     let outcome: SteerOutcome = { kind: STATUS_SSE_DISCONNECTED };
     const ctrl = linkedAbort(signal);
     const buffer = makePreIdBuffer();
-    const finished = streamGet(url, headers, buffer.cb, { signal: ctrl.signal })
+    let markOpened: () => void = () => {};
+    const opened = new Promise<void>((resolve) => {
+      markOpened = resolve;
+    });
+    const finished = streamGet(url, headers, buffer.cb, { signal: ctrl.signal, onOpen: markOpened })
       .then((): SteerOutcome | null => null)
       .catch(
         (err): SteerOutcome => ({
@@ -218,11 +263,19 @@ export const openEventTail = (
       if (!buffer.promote(filtered)) ctrl.abort();
     };
     return Object.freeze({
+      awaitReady: boundedReady(opened, finished),
+      // A buffered event_complete wins over a late stream error — the answer
+      // is already known, so no redundant poll.
       awaitOutcome: (): Promise<SteerOutcome> =>
-        finished.then((sseError) => sseError ?? outcome),
+        finished.then((sseError) =>
+          outcome.kind === STATUS_COMPLETE ? outcome : sseError ?? outcome,
+        ),
       deliverEventId,
-      close: (): void => {
+      // Joins the stream's settlement so a failed turn never returns while
+      // its client-side teardown is still in flight.
+      close: (): Promise<void> => {
         ctrl.abort();
+        return finished.then((): void => undefined);
       },
     });
   });
