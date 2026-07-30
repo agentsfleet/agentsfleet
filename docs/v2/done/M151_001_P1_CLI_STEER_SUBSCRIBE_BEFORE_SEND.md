@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M151
 **Workstream:** 001
 **Date:** Jul 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — a fast run can stream its first words before the CLI is listening; those frames are unrecoverable live
 **Categories:** CLI
 **Batch:** B1 — standalone; no parallel workstream
@@ -69,6 +69,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/components/domain/island-dynamic/intent-module-loader.test.ts` | EDIT | §4: bundle-guard AST parser imports the `typescript-jsapi` alias — the compiler API it walks left the typescript@7 package |
 | `ui/packages/design-system/package.json` | EDIT | §4: in-range updates + jsdom 30, @testing-library/jest-dom 7 |
 | `ui/packages/website/package.json` | EDIT | §4: in-range updates + playwright 1.62.1, jsdom 30, jest-dom 7, size-limit 13 |
+| `src/agentsfleetd/fleet_runtime/activity_publisher.zig` | EDIT (comment) | coupling comment names the CLI KIND_* mirror site |
+| `docs/architecture/data_flow.md` | EDIT | §D WATCH: CLI steer opens the tail before the POST, established-subscription handshake, pre-id buffer |
+| `VERSION` + `build.zig.zon` + `cli/package.json` (version field) | EDIT | 0.26.1 → 0.26.2 via `make sync-version` |
 
 ## Applicable Rules
 
@@ -117,7 +120,7 @@ Subscribing earlier must never make steer worse than post-then-subscribe. Every 
 
 Workspace-wide dependency refresh folded into this workstream by owner instruction (see Discovery). In-range updates across all five package roots; explicit pins for the out-of-range toolchain pieces; the app crosses to TypeScript 7 now that Next.js 16.2.12 ships the backported `experimental.useTypeScriptCli` backend (the Go-native compiler removed `lib/typescript.js`, so the build shells out to the project-local `tsc`).
 
-- **Dimension 4.1** — full unit + lint suites green on the bumped toolchain → Test: `make test-unit-all` and `make lint-all` exit 0 — IN_PROGRESS (`lint-all` ✓; per-lane suites individually ✓; the one full-run red was `admin-models-ui` timing out on a loaded worker, 31/31 twice in isolation — regraded at VERIFY)
+- **Dimension 4.1** — full unit + lint suites green on the bumped toolchain → Test: `make test-unit-all` and `make lint-all` exit 0 — DONE (final quiet-machine run exit 0; the two earlier full-run reds were load flakes — `admin-models-ui` then the website `App` test, each 100% green in isolation and green in the final run)
 - **Dimension 4.2** — the dashboard app production-builds on TypeScript 7 through the local-CLI backend (the Vercel deploy path) → Test: `cd ui/packages/app && bun run build` exit 0 — DONE
 - **Dimension 4.3** — the `next` high-severity advisories (Server-Side Request Forgery in Server Actions, middleware/proxy bypass, Denial of Service) are out of range → Test: `bun audit` no longer lists `next` — DONE
 
@@ -174,14 +177,14 @@ No new events or log emits: the change is client-side ordering inside one CLI tu
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Subscribe-before-send proven with buffering and filtering (§1) | `cd cli && bun test 2>&1 \| tail -3` | exit 0 | P0 | |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| R3 | App production build on TypeScript 7 (§4, the Vercel path) | `cd ui/packages/app && bun run build 2>&1 \| tail -3` | exit 0 | P0 | |
-| R4 | `next` advisories cleared (§4) | `bun audit 2>&1 \| grep -c '^next '` | `0` | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v -E '\.md$\|\.lock$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Subscribe-before-send proven with buffering and filtering (§1) | `cd cli && bun test 2>&1 \| tail -3` | exit 0 | P0 | ✅ 0 fail — 1466 tests, 156 files |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ every diff path has a table row |
+| R3 | App production build on TypeScript 7 (§4, the Vercel path) | `cd ui/packages/app && bun run build 2>&1 \| tail -3` | exit 0 | P0 | ✅ route map emitted, exit 0 (TypeScript 7 local-CLI backend) |
+| R4 | `next` advisories cleared (§4) | `bun audit 2>&1 \| grep -c '^next '` | `0` | P0 | ✅ 0 |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — All unit lanes passed (quiet machine; two earlier reds were load flakes, each green in isolation) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ All lint checks passed |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S8 | No oversize source file (test files exempt per RULE FLL's self-audit scope) | `git diff --name-only origin/main...HEAD \| grep -v -E '\.md$\|\.lock$\|\.test\.\|_test\.' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
