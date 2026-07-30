@@ -17,7 +17,9 @@ const RUNNER_KEYSET_COLS =
     \\       EXISTS (
     \\           SELECT 1 FROM fleet.runner_leases l
     \\           WHERE l.runner_id = r.id AND l.status = $1 AND l.lease_expires_at > $2
-    \\       ) AS has_live_lease
+    \\       ) AS has_live_lease,
+    \\       r.network_policy, r.registry_allowlist::text, r.worker_count,
+    \\       r.capability_report::text, r.degraded, r.degraded_reason
     \\FROM fleet.runners r
     \\
 ;
@@ -57,7 +59,9 @@ pub const SELECT_RUNNER_DETAIL =
     \\       r.last_seen_at, r.created_at,
     \\       COALESCE(s.active_count, 0), COALESCE(s.active_fleets, 0),
     \\       COALESCE(s.acquired, 0), COALESCE(s.succeeded, 0),
-    \\       COALESCE(s.failed, 0), COALESCE(s.expired, 0)
+    \\       COALESCE(s.failed, 0), COALESCE(s.expired, 0),
+    \\       r.network_policy, r.registry_allowlist::text, r.worker_count,
+    \\       r.capability_report::text, r.degraded, r.degraded_reason
     \\FROM fleet.runners r
     \\LEFT JOIN (
     \\    SELECT l.runner_id,

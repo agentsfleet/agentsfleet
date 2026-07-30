@@ -13,7 +13,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const sql = @import("sql.zig");
-const runners_list = @import("runners_list.zig");
+const runner_row = @import("runner_row.zig");
 const event_rows = @import("../../../fleet/event_rows.zig");
 const protocol = @import("contract").protocol;
 const constants = @import("common");
@@ -34,6 +34,10 @@ const RunnerDetail = struct {
     labels: []const []const u8,
     last_seen_at: i64,
     created_at: i64,
+    assigned_policy: ?protocol.AssignedPolicy,
+    achievable: ?protocol.CapabilityReport,
+    degraded: bool,
+    degraded_reason: ?[]const u8,
     active_lease_count: i64,
     active_fleet_count: i64,
     leases_acquired: i64,
@@ -68,9 +72,9 @@ pub fn innerGetFleetRunner(hx: Hx, runner_id: []const u8) void {
 
 /// The busy check rides the live-lease count the summary already computed, so
 /// the single read and the list read cannot disagree on what busy means: both
-/// funnel through `runners_list.deriveLiveness`.
+/// funnel through `runner_row.deriveLiveness`.
 fn livenessFromCounts(last_seen_at: i64, active_lease_count: i64, now_ms: i64) protocol.RunnerLiveness {
-    return runners_list.deriveLiveness(last_seen_at, active_lease_count > 0, now_ms);
+    return runner_row.deriveLiveness(last_seen_at, active_lease_count > 0, now_ms);
 }
 
 fn fetchDetail(conn: anytype, alloc: std.mem.Allocator, runner_id: []const u8, now_ms: i64) !RunnerDetail {
@@ -97,12 +101,17 @@ fn fetchDetail(conn: anytype, alloc: std.mem.Allocator, runner_id: []const u8, n
     const leases_succeeded = try row.get(i64, 10);
     const leases_failed = try row.get(i64, 11);
     const leases_expired = try row.get(i64, 12);
+    const tier_raw = try row.get([]u8, 2);
+    // Columns 13–18: the shared M148 policy/verdict tail (same order as the
+    // list statement), decoded by the same helper so the two reads agree.
+    const policy = try runner_row.readPolicyColumns(alloc, row, tier_raw, 13);
+    errdefer if (policy.degraded_reason) |r| alloc.free(r);
 
     const id = try alloc.dupe(u8, try row.get([]u8, 0));
     errdefer alloc.free(id);
     const host_id = try alloc.dupe(u8, try row.get([]u8, 1));
     errdefer alloc.free(host_id);
-    const sandbox_tier = try alloc.dupe(u8, try row.get([]u8, 2));
+    const sandbox_tier = try alloc.dupe(u8, tier_raw);
     errdefer alloc.free(sandbox_tier);
 
     return .{
@@ -111,9 +120,13 @@ fn fetchDetail(conn: anytype, alloc: std.mem.Allocator, runner_id: []const u8, n
         .sandbox_tier = sandbox_tier,
         .admin_state = admin_state,
         .liveness = livenessFromCounts(last_seen_at, active_lease_count, now_ms),
-        .labels = runners_list.parseLabels(alloc, try row.get([]u8, 4)),
+        .labels = runner_row.parseLabels(alloc, try row.get([]u8, 4)),
         .last_seen_at = last_seen_at,
         .created_at = created_at,
+        .assigned_policy = policy.assigned_policy,
+        .achievable = policy.achievable,
+        .degraded = policy.degraded,
+        .degraded_reason = policy.degraded_reason,
         .active_lease_count = active_lease_count,
         .active_fleet_count = active_fleet_count,
         .leases_acquired = leases_acquired,
@@ -136,7 +149,7 @@ test "test_runner_get_liveness_agrees_with_list" {
     for (seen_cases) |last_seen| {
         for (lease_counts) |count| {
             try std.testing.expectEqual(
-                runners_list.deriveLiveness(last_seen, count > 0, TEST_NOW_MS),
+                runner_row.deriveLiveness(last_seen, count > 0, TEST_NOW_MS),
                 livenessFromCounts(last_seen, count, TEST_NOW_MS),
             );
         }
