@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M148
 **Workstream:** 001
 **Date:** Jul 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: the dashboard presents a security property that does not drive runner behaviour, and a host that cannot deliver its claimed isolation keeps accepting work.
 **Categories:** API, INFRA, UI
 **Batch:** B1 — sequenced before any microVM tier; the assignment path must be authoritative before tiers denote different isolation strengths.
-**Branch:** not yet created — assigned at CHORE(open)
-**Test Baseline:** recorded at CHORE(open) from `make _lint_zig_test_depth`
+**Branch:** feat/m148-assigned-runner-policy — worktree `../agentsfleet-m148-assigned-runner-policy`
+**Test Baseline:** unit=3266 integration=501
 **Depends on:** M147_001 — delivers `enableDelegatedControllers`, the cgroup capability §3's probe reads back.
 **Provenance:** agent-generated (design consult with Indy, Jul 30, 2026, arising from the M147_001 cgroup investigation)
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Isolation tiers
@@ -40,7 +40,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(api,runner,app): the assigned isolation is the applied isolation
 - **Intent (one sentence):** Make the sandbox policy an operator picks in the dashboard the policy the runner actually enforces, and make a host that cannot enforce it visibly refuse work rather than silently accept it.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake (filled at PLAN, Jul 30, 2026):** Today the Add Runner tier selection is decorative — the host obeys its own env file and nothing compares the two. I will make the control plane the single author of runner policy (sandbox tier, network policy, registry allowlist, worker count), deliver it with the runner's identity on enrollment and on every heartbeat, have the runner probe what its kernel can actually enforce and report that upward, and have the control plane reconcile the two: an assignment the host cannot meet marks the runner degraded with the missing mechanism named, the control plane issues it no leases, and the runner refuses to take any. The host environment collapses to `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (+ optional `RUNNER_WORKSPACE_BASE`), and every error path fails closed to the safest posture, mirroring `parseSandboxTier`.
+- `ASSUMPTIONS I'M MAKING:` (1) Wire paths follow the frozen `me`-plane convention — `POST /v1/runners/me/heartbeats`, `GET /v1/runners/me` — not the illustrative `/{id}/` paths this spec first sketched; the Interfaces block below is amended to match `protocol.zig`. (2) `degraded` is a computed reconciliation verdict stored beside `admin_state`, never a new `AdminState` value — cordon/drain/revoke stay pure operator intent. (3) The probe re-runs on each heartbeat tick (cheap kernel reads off the hot path); the wire report is sent when first available or when it changes. (4) Degraded gates only *new* lease issuance; in-flight leases finish under their issue-time policy. (5) `RUNNER_HOST_ID` is removable because the token already resolves the row and its server-side `host_id`; the daemon logs the row's host_id after its first policy fetch instead. (6) Worker-count changes bind at the next loop tick, never by killing live workers.
 
 ## Implementing agent — read these first
 
@@ -48,7 +49,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 2. `src/runner/daemon/config.zig` — every environment variable the runner reads, and the parse-and-fail-closed pattern (`parseSandboxTier`) the assigned-policy path should mirror.
 3. `src/agentsfleetd/http/handlers/runner/register.zig` — records the self-reported tier today; becomes the assignment surface.
 4. `ui/packages/app/app/(dashboard)/admin/runners/components/AddRunnerDialog.tsx` — where the operator already selects a tier that currently changes nothing on the host.
-5. `docs/v2/done/M147_001_P0_DOCS_INFRA_TAILNET_SSH_CI_ACCESS.md` §6 — the failure this reconciliation loop is designed to catch on the first heartbeat rather than after two days.
+5. `docs/v2/active/M147_001_P0_DOCS_INFRA_TAILNET_SSH_CI_ACCESS.md` §6 — the failure this reconciliation loop is designed to catch on the first heartbeat rather than after two days. (Path corrected at CHORE(open): the M147_001 spec still sits in `active/` even though its code is merged.)
 
 ## Files Changed (blast radius)
 
@@ -72,6 +73,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh` | EDIT | Writes two variables instead of four. |
 | `deploy/baremetal/agentsfleet-runner.service` | EDIT | The unit comment stops documenting removed variables. |
 | `docs/architecture/runner_fleet.md` | EDIT | Records the inverted direction and the reconciliation loop. |
+| `src/agentsfleetd/http/handlers/runner/sql.zig` | EDIT | New columns cross every runner-row statement: register insert, self select, heartbeat bump, lease-issuance predicate. |
+| `src/agentsfleetd/http/handlers/runner/lease.zig` | EDIT | A degraded runner is issued no lease. |
+| `src/agentsfleetd/http/handlers/fleet/sql.zig` | EDIT | The fleet read selects assigned, achievable, and the degraded verdict. |
+| `public/openapi/paths/**` (runner + fleet-runner paths) | EDIT | Path docs pick up the new request/response shapes. |
+| `deploy/baremetal/deploy.sh` | EDIT | The required-env check drops `RUNNER_HOST_ID`. |
+| `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md` | EDIT | Env-file provisioning prose drops the removed variables. |
+| `playbooks/founding/07_runner_bootstrap_prod/001_playbook.md` | EDIT | Env-file provisioning prose drops the removed variables. |
+| `playbooks/operations/runner_onboarding/001_playbook.md` | EDIT | Env-file provisioning prose drops the removed variables. |
+| `playbooks/founding/06_runner_bootstrap_dev/provision_runner_env_test.sh` | EDIT | Asserts the reduced env set (§5.3). |
+
+Test files created alongside the edited modules join this table as they land; R6 grades against the final table. (Rows above the divider were extended at CHORE(open) — see Discovery.)
 
 ## Applicable Rules
 
@@ -146,13 +158,13 @@ Twelve variables today; four of them are timeouts and four are policy. **Impleme
 ## Interfaces
 
 ```
-GET /v1/runners/self            → 200
+GET /v1/runners/me              → 200
   { id, host_id, status, assigned_policy: {
       sandbox_tier, network_policy, registry_allowlist[], worker_count },
     achievable: { landlock, seccomp, cgroup_controllers[], bubblewrap },
     degraded: bool, degraded_reason: string|null }
 
-POST /v1/runners/{id}/heartbeat
+POST /v1/runners/me/heartbeats
   request  { capability_report?: { landlock, seccomp, cgroup_controllers[], bubblewrap } }
   response { status, assigned_policy: {…}, degraded: bool, degraded_reason: string|null }
 
@@ -289,6 +301,7 @@ N/A — no files deleted; `capability_probe.zig` is added.
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - > Indy (2026-07-30): "Ideally what i select in the Runner must be the one that is used by the runner. and get rid of these gazillion envs?" — context: the origin of this workstream, raised while reviewing why `RUNNER_SANDBOX_TIER` had no effect on runner behaviour during M147_001.
+  - > Orly (Jul 30, 2026, CHORE(open)): spec instance amended to repo reality before EXECUTE — Interfaces corrected to the frozen `me`-plane paths (`protocol.zig` forbids a runner_id in any path); read-list item 5 repointed at `docs/v2/active/` where M147_001 actually sits; Files Changed extended with the files the R5 removal grep already hits (`deploy.sh`, three playbooks, `provision_runner_env_test.sh`) and the SQL/lease/fleet surfaces the new columns must cross. Also flagged, untouched: M147_001's spec is still `IN_PROGRESS` in `active/` though `enableDelegatedControllers` is merged to main and the branch pruned.
 - **Metrics review** — three operator events declared above; no analytics or funnel playbook update required, as no end-user funnel changes.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
