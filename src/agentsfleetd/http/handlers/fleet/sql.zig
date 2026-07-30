@@ -214,12 +214,19 @@ pub const PATCH_RUNNER_ASSIGNED_POLICY =
     \\  INSERT INTO fleet.runner_events
     \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
     \\  SELECT $7::uuid, id::uuid, $8::text, $6::bigint,
-    \\         jsonb_build_object($9::text, $2::text, $10::text, $3::text),
+    \\         jsonb_build_object($9::text, $2::text, $10::text, $3::text,
+    \\                            $11::text, $4::jsonb, $12::text, $5::int),
     \\         NULL, $6::bigint
     \\  FROM updated
     \\  RETURNING id
     \\)
     \\SELECT id FROM updated
+;
+
+/// The stored capability report alone — the PATCH path re-reconciles the new
+/// assignment against it so the verdict never lags the assignment it judges.
+pub const SELECT_RUNNER_CAPABILITY =
+    \\SELECT capability_report::text FROM fleet.runners WHERE id = $1::uuid
 ;
 
 /// Transition a runner's admin state and record the transition atomically.

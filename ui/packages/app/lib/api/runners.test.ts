@@ -9,6 +9,7 @@ import {
   listRunnerLeases,
   createRunner,
   updateRunnerAdminState,
+  updateRunnerPolicy,
   deleteRunner,
   listRunnerEvents,
   parseLabels,
@@ -96,6 +97,24 @@ describe("updateRunnerAdminState", () => {
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/fleets/runners/runner-1",
       { method: "PATCH", body: JSON.stringify({ action: "cordon" }) },
+      "tok",
+    );
+  });
+});
+
+describe("updateRunnerPolicy", () => {
+  it("PATCHes the assigned_policy envelope the server's one-of contract expects", async () => {
+    const assigned_policy = {
+      sandbox_tier: "container_nested" as const,
+      network_policy: "deny_all_egress" as const,
+      registry_allowlist: ["pypi.org"],
+      worker_count: 2,
+    };
+    requestMock.mockResolvedValueOnce({ id: "runner-1", admin_state: "active", assigned_policy });
+    await updateRunnerPolicy("tok", "runner-1", assigned_policy);
+    expect(requestMock).toHaveBeenCalledWith(
+      "/v1/fleets/runners/runner-1",
+      { method: "PATCH", body: JSON.stringify({ assigned_policy }) },
       "tok",
     );
   });

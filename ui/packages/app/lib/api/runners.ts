@@ -68,8 +68,12 @@ export const DEFAULT_WORKER_COUNT = 1;
 export const MIN_WORKER_COUNT = 1;
 export const MAX_WORKER_COUNT = 64;
 
-// Registry allowlist entries are host[:port] names, one per comma.
+// Registry allowlist entries are host[:port] names, one per comma. The server
+// enforces the same grammar and cap (`protocol.MAX_REGISTRY_ENTRIES`, UFS
+// cross-runtime name) — the dialog refuses first so the operator hears it
+// in-form rather than as a 400.
 export const REGISTRY_HOST_REGEX = /^[A-Za-z0-9_.-]{1,253}(:[0-9]{1,5})?$/;
+export const MAX_REGISTRY_ENTRIES = 32;
 
 /**
  * Split the free-form registry allowlist field (comma-separated) into a
@@ -85,6 +89,9 @@ export function parseRegistryAllowlist(raw: string): { hosts: string[]; error: s
       return { hosts: [], error: `Registry "${p}" must be a host name, optionally with a port` };
     }
     seen.add(p);
+  }
+  if (seen.size > MAX_REGISTRY_ENTRIES) {
+    return { hosts: [], error: `At most ${MAX_REGISTRY_ENTRIES} registries per runner` };
   }
   return { hosts: [...seen], error: null };
 }

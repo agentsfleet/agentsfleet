@@ -111,6 +111,9 @@ pub const CapabilityReport = policy.CapabilityReport;
 pub const DEFAULT_WORKER_COUNT = policy.DEFAULT_WORKER_COUNT;
 pub const MIN_WORKER_COUNT = policy.MIN_WORKER_COUNT;
 pub const MAX_WORKER_COUNT = policy.MAX_WORKER_COUNT;
+pub const MAX_REGISTRY_ENTRIES = policy.MAX_REGISTRY_ENTRIES;
+pub const registryAllowlistValid = policy.registryAllowlistValid;
+pub const capabilityReportBounded = policy.capabilityReportBounded;
 
 /// How tenant secrets reach the runner. S0 ships `inline` only (secrets travel
 /// in the lease over TLS, trusted fleet); `scoped`/`proxy` are the reserved

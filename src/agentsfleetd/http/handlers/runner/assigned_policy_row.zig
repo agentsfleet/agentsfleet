@@ -37,12 +37,16 @@ pub fn decodePolicy(
 /// no longer parses, which reads the same: no proven capability.
 pub fn decodeCapability(alloc: std.mem.Allocator, report_json: ?[]const u8) ?protocol.CapabilityReport {
     const raw = report_json orelse return null;
-    return std.json.parseFromSliceLeaky(protocol.CapabilityReport, alloc, raw, .{ .ignore_unknown_fields = true }) catch null;
+    // alloc_always: without it, unescaped parsed strings are SUBSLICES of
+    // `raw` — the borrowed pg row buffer — and dangle once the query drains.
+    return std.json.parseFromSliceLeaky(protocol.CapabilityReport, alloc, raw, .{ .ignore_unknown_fields = true, .allocate = .alloc_always }) catch null;
 }
 
 fn decodeRegistry(alloc: std.mem.Allocator, registry_json: ?[]const u8) ?[]const []const u8 {
     const raw = registry_json orelse return null;
-    return std.json.parseFromSliceLeaky([]const []const u8, alloc, raw, .{}) catch null;
+    // alloc_always: same borrowed-buffer rule as decodeCapability — the
+    // registry hosts must own their bytes past the row's deinit.
+    return std.json.parseFromSliceLeaky([]const []const u8, alloc, raw, .{ .allocate = .alloc_always }) catch null;
 }
 
 /// Clamp a count into the shared bounds — a row edited out-of-band can never

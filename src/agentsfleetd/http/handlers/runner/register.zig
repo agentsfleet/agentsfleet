@@ -24,6 +24,7 @@ const api_key = @import("../../../auth/api_key.zig");
 const protocol = @import("contract").protocol;
 const runner_bearer = @import("../../../auth/middleware/runner_bearer.zig");
 const runner_events = @import("../../../fleet/runner_events.zig");
+const reconcile = @import("heartbeat_reconcile.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_register);
@@ -59,6 +60,10 @@ pub fn innerRegisterRunner(hx: Hx, req: *httpz.Request) void {
         hx.fail(ec.ERR_INVALID_REQUEST, "host_id must be 1-256 chars");
         return;
     }
+    if (!protocol.registryAllowlistValid(body.assigned_policy.registry_allowlist)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "registry_allowlist entries must be host[:port] names");
+        return;
+    }
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -90,6 +95,11 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
     // last_seen_at = RUNNER_LAST_SEEN_NEVER: the runner is minted but has not
     // connected, so the fleet read derives `registered` (not a fake `online`)
     // until its first heartbeat moves last_seen forward. created/updated = now.
+    // The initial verdict is reconciled against NO report: an assignment that
+    // demands enforcement starts degraded ("no capability report"), so the
+    // lease gate refuses work until the host's first report proves the cage —
+    // never a fail-open window between mint and first heartbeat.
+    const verdict = reconcile.reconcile(stored, null);
     _ = conn.exec(sql.INSERT_RUNNER_WITH_EVENT, .{
         runner_id,
         body.host_id,
@@ -106,6 +116,8 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
         @tagName(stored.network_policy),
         registry_json,
         @as(i32, @intCast(stored.worker_count)),
+        verdict.degraded,
+        verdict.reason,
     }) catch return error.DbError;
 
     log.debug("registered", .{
