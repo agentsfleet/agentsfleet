@@ -3,6 +3,7 @@ import { join } from "node:path";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 // The list's server-action module pulls the network client (server-only). The
 // render tests below never invoke an action, so a shallow mock keeps the module
@@ -32,9 +33,12 @@ function makeResponse(row: Partial<ApiKeyRow> = {}): ApiKeyListResponse {
   return { items: [item], total: 1, next_cursor: null };
 }
 
+// The wrapper stands in for a real ancestor: the root layout mounts the app's
+// one TooltipProvider, which the relative `Time` cells here read from.
 function renderList(response: ApiKeyListResponse) {
   return render(
     React.createElement(ApiKeyList, { initial: response }),
+    { wrapper: TooltipProvider },
   );
 }
 

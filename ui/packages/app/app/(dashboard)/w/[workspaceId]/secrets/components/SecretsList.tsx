@@ -10,7 +10,6 @@ import {
   IconAction,
   Spinner,
   Time,
-  TooltipProvider,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
 import { KeyRoundIcon, PencilIcon, PencilLineIcon, Trash2Icon } from "lucide-react";
@@ -295,42 +294,40 @@ export default function SecretsList({
   }
 
   return (
-    <TooltipProvider>
-      <div className="space-y-3">
-        <SecretTable
-          secrets={secrets}
-          pending={pending}
-          target={target}
-          protectedSecretName={protectedSecretName}
-          onEdit={(name) => {
-            setError(null);
-            setEditTarget(name);
-          }}
-          onRename={(name) => {
-            setError(null);
-            setRenameTarget(name);
-          }}
-          onDelete={(name) => {
-            setError(null);
-            setTarget(name);
-          }}
-        />
-        <SecretDialogs
-          workspaceId={workspaceId}
-          editTarget={editTarget}
-          renameTarget={renameTarget}
-          existingNames={secrets.map((s) => s.name)}
-          target={target}
-          error={error}
-          onEditClose={() => setEditTarget(null)}
-          onRenameClose={() => setRenameTarget(null)}
-          onDeleteClose={() => {
-            setTarget(null);
-            setError(null);
-          }}
-          onConfirmDelete={onConfirmDelete}
-        />
-      </div>
-    </TooltipProvider>
+    <div className="space-y-3">
+      <SecretTable
+        secrets={secrets}
+        pending={pending}
+        target={target}
+        protectedSecretName={protectedSecretName}
+        onEdit={(name) => {
+          setError(null);
+          setEditTarget(name);
+        }}
+        onRename={(name) => {
+          setError(null);
+          setRenameTarget(name);
+        }}
+        onDelete={(name) => {
+          setError(null);
+          setTarget(name);
+        }}
+      />
+      <SecretDialogs
+        workspaceId={workspaceId}
+        editTarget={editTarget}
+        renameTarget={renameTarget}
+        existingNames={secrets.map((s) => s.name)}
+        target={target}
+        error={error}
+        onEditClose={() => setEditTarget(null)}
+        onRenameClose={() => setRenameTarget(null)}
+        onDeleteClose={() => {
+          setTarget(null);
+          setError(null);
+        }}
+        onConfirmDelete={onConfirmDelete}
+      />
+    </div>
   );
 }

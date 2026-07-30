@@ -32,6 +32,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <body>
           <AuthSessionKeeper />
           <AnalyticsBootstrap />
+          {/* No tooltip provider here. It belongs to `(dashboard)/layout.tsx`,
+              not the root: mounting it above EVERY route group pulled the Radix
+              tooltip runtime into the auth bundles — sign-in, sign-up and
+              cli-auth each grew 10–20 kB gzipped for a component none of them
+              render — and broke the size budget. Every tooltip in the app lives
+              under the dashboard. */}
           {children}
         </body>
       </html>

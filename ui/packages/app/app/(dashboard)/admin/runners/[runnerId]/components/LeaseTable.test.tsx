@@ -3,6 +3,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerLease } from "@/lib/api/runners";
 
+// The wrapper stands in for a real ancestor, not a missing one: the app mounts
+// exactly one TooltipProvider in `app/layout.tsx`, above every route group, and
+// the relative `Time` cells here — plus Review lease's, through the same tree —
+// read it from there. That the root mounts it at all is guarded once, in
+// `app/layout.test.tsx`, which is the only place the question is still live.
+
 const goToPage = vi.fn();
 const changePageSize = vi.fn();
 let mockHasNext = false;
@@ -71,9 +77,7 @@ describe("LeaseTable", () => {
           next_cursor: null,
         }}
         pageSize={25}
-      />,
-      { wrapper: TooltipProvider },
-    );
+      />, { wrapper: TooltipProvider });
     const rows = screen.getAllByRole("row").slice(1); // drop the header row
     const runningIndexes = rows
       .map((row, index) => (row.textContent?.includes("RUNNING") ? index : -1))
@@ -101,9 +105,7 @@ describe("LeaseTable", () => {
           next_cursor: null,
         }}
         pageSize={25}
-      />,
-      { wrapper: TooltipProvider },
-    );
+      />, { wrapper: TooltipProvider });
     // The shared plain-English sentence renders; the machine tag never does.
     expect(screen.getByText("Ran out of memory")).toBeTruthy();
     expect(screen.getByText("Container exceeded its 2 GiB memory limit and was terminated.")).toBeTruthy();
@@ -119,9 +121,7 @@ describe("LeaseTable", () => {
           next_cursor: null,
         }}
         pageSize={25}
-      />,
-      { wrapper: TooltipProvider },
-    );
+      />, { wrapper: TooltipProvider });
     expect(screen.getByText("Lease not renewed")).toBeTruthy();
     expect(
       screen.getByText("This runner stopped renewing; the work was re-leased to another runner."),
@@ -137,9 +137,7 @@ describe("LeaseTable", () => {
           next_cursor: null,
         }}
         pageSize={25}
-      />,
-      { wrapper: TooltipProvider },
-    );
+      />, { wrapper: TooltipProvider });
     expect(screen.getByText("Outcome not recorded")).toBeTruthy();
   });
 
@@ -152,9 +150,7 @@ describe("LeaseTable", () => {
           next_cursor: null,
         }}
         pageSize={25}
-      />,
-      { wrapper: TooltipProvider },
-    );
+      />, { wrapper: TooltipProvider });
     // The fencing token lives only in Review lease — absent until a row is
     // activated, present after, gone again once the panel closes.
     expect(screen.queryByText("1,884")).toBeNull();
@@ -174,9 +170,7 @@ describe("LeaseTable", () => {
           next_cursor: "page-2-cursor",
         }}
         pageSize={25}
-      />,
-      { wrapper: TooltipProvider },
-    );
+      />, { wrapper: TooltipProvider });
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(goToPage).toHaveBeenCalledWith(2);
   });
@@ -190,9 +184,7 @@ describe("LeaseTable", () => {
           next_cursor: null,
         }}
         pageSize={25}
-      />,
-      { wrapper: TooltipProvider },
-    );
+      />, { wrapper: TooltipProvider });
     // The defensive render the cascade failure-mode names: id shown, never a
     // blank cell and never a fabricated name.
     expect(screen.getByText("fleet-gone-1")).toBeTruthy();
@@ -211,9 +203,7 @@ describe("LeaseTable", () => {
           next_cursor: null,
         }}
         pageSize={25}
-      />,
-      { wrapper: TooltipProvider },
-    );
+      />, { wrapper: TooltipProvider });
     const orderOf = () =>
       screen
         .getAllByRole("row")

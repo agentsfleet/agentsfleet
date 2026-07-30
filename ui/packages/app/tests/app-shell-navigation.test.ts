@@ -357,7 +357,17 @@ describe("app shell frame", () => {
     expect(frame.startsWith('"use client"')).toBe(false);
     expect(frame).toContain("{children}");
     expect(layout).toContain("<ShellFrame");
-    expect(layout).not.toContain("<TooltipProvider");
+    // Reverses the original "no provider in the layout" rule from
+    // `perf(app): make authenticated routes fluid`. That rule was a bundle
+    // argument and it was correct: hoisting the provider moves the Radix
+    // tooltip runtime into the shared chunk every dashboard route loads, worth
+    // ~18.6 KiB gzipped (252.04 → 271.66), and `.size-limit.mjs` was raised to
+    // match. It is paid on purpose. Eight islands each carried their own
+    // provider, and the one that forgot took its whole page down — Radix's
+    // tooltip Root reads provider context unconditionally and THROWS rather
+    // than degrading. Asserted positively so removing the provider fails here
+    // rather than silently reintroducing that crash.
+    expect(layout).toContain("<TooltipProvider");
     expect(controls.startsWith('"use client"')).toBe(true);
     expect(controls).toContain('import("./MobileNavigationDialog")');
     expect(sidebar).toContain("GettingStartedWidget");

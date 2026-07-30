@@ -7,7 +7,6 @@ import {
   EYEBROW_CLASS,
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
   UsageBar,
 } from "@agentsfleet/design-system";
@@ -85,22 +84,20 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
 
 function BuyCreditsButton() {
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {/* A real mailto link, not a disabled control — a control that acts
-           * must not claim `disabled`/`aria-disabled` to assistive tech. Kept
-           * visually muted (outline variant) since there's no in-app purchase
-           * flow yet; the tooltip states exactly what clicking does. */}
-          <Button variant="outline" asChild data-testid="buy-credits-trigger">
-            <a href={`mailto:${SUPPORT_EMAIL}`} aria-describedby="buy-credits-tooltip">
-              <CoinsIcon size={14} aria-hidden="true" />
-              Buy credits
-            </a>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent id="buy-credits-tooltip">{BUY_CREDITS_TOOLTIP}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* A real mailto link, not a disabled control — a control that acts
+         * must not claim `disabled`/`aria-disabled` to assistive tech. Kept
+         * visually muted (outline variant) since there's no in-app purchase
+         * flow yet; the tooltip states exactly what clicking does. */}
+        <Button variant="outline" asChild data-testid="buy-credits-trigger">
+          <a href={`mailto:${SUPPORT_EMAIL}`} aria-describedby="buy-credits-tooltip">
+            <CoinsIcon size={14} aria-hidden="true" />
+            Buy credits
+          </a>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent id="buy-credits-tooltip">{BUY_CREDITS_TOOLTIP}</TooltipContent>
+    </Tooltip>
   );
 }
