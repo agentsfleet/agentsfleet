@@ -112,6 +112,43 @@ check_distinct() {
   fi
 }
 
+# A worker item is a deployable worker only once it has joined the tailnet: CI
+# reaches workers by tailscale-hostname, never by the provider hostname. An item
+# without that field is a PLACEHOLDER — the vault structure is ready but no
+# machine stands behind it. Say so rather than letting a full set of credentials
+# read as a ready worker; a machine that was never bought is not a credential
+# fault, so this never increments `missing`.
+#
+# The optional third argument names a sibling worker to compare against. Vault
+# items get created by duplicating an existing one, which copies the provider
+# `hostname` verbatim — leaving two entries pointed at one box. Naming that
+# explicitly is the difference between "not provisioned yet" and the far more
+# confusing "provisioned, but it is actually the other worker's machine".
+check_worker_onboarded() {
+  local vault="$1"
+  local item="$2"
+  local sibling="${3:-}"
+
+  local ts_host
+  ts_host="$(op_read_with_retry "op://$vault/$item/tailscale-hostname" || true)"
+  if [ -n "$ts_host" ]; then
+    echo "✓ onboarded: $item (on the tailnet)"
+    return
+  fi
+
+  echo "⚠ PLACEHOLDER: $item has no tailscale-hostname — not on the tailnet, not deployable"
+  if [ -n "$sibling" ]; then
+    local own sibling_host
+    own="$(op_read_with_retry "op://$vault/$item/hostname" || true)"
+    sibling_host="$(op_read_with_retry "op://$vault/$sibling/hostname" || true)"
+    if [ -n "$own" ] && [ "$own" = "$sibling_host" ]; then
+      echo "  its hostname is $sibling's host — it has no machine of its own"
+    fi
+  fi
+  echo "  to make it real: provision a server (playbook 07 step 0.0), set hostname,"
+  echo "  then join the tailnet with --advertise-tags=tag:worker --ssh"
+}
+
 check_platform_integrations() {
   local v="$1"
 
@@ -184,7 +221,12 @@ check_prod() {
   check_ref "op://$v/tailscale/oauth-secret"
   check_ref "op://$v/zombie-prod-worker-ant/ssh-private-key"
   check_ref "op://$v/zombie-prod-worker-ant/runner-token"
+  check_worker_onboarded "$v" zombie-prod-worker-ant
+  # bird holds a full credential set but no machine: its hostname is ant's box and
+  # it has never joined the tailnet. Reported, deliberately non-fatal — see
+  # check_worker_onboarded.
   check_ref "op://$v/zombie-prod-worker-bird/ssh-private-key"
+  check_worker_onboarded "$v" zombie-prod-worker-bird zombie-prod-worker-ant
   check_ref "op://$v/discord-ci-webhook/credential"
   check_ref "op://$v/fly-api-token/credential"
   check_ref "op://$v/posthog-prod/credential"
@@ -227,6 +269,7 @@ check_dev() {
   check_ref "op://$v/qstash/next-signing-key"
   check_url_ref "op://$v/qstash/url"
   check_ref "op://$v/zombie-dev-worker-ant/runner-token"
+  check_worker_onboarded "$v" zombie-dev-worker-ant
   check_ref "op://$v/fly-api-token/credential"
   check_ref "op://$v/posthog-dev/credential"
   check_ref "op://$v/grafana-dev/otlp-endpoint"
