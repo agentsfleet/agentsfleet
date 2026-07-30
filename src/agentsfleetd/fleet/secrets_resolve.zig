@@ -70,7 +70,7 @@ pub fn resolveSecretsMap(
 /// emitted into the typed, out-of-band `ExecutionPolicy.mintable` list (id-only —
 /// the stored handle/App config NEVER reaches the child, Invariant 1/VLT); a
 /// static one keeps its stored value in `secrets_map`. Reads the broker's
-/// vault-handle integration field; an absent field (legacy credential) or an
+/// vault-handle integration field; an absent field (plain stored credential) or an
 /// unknown/unregistered id falls through as static (fail safe — never a mint).
 pub fn mintableId(handle: std.json.Value) ?integration.Id {
     const obj = switch (handle) {
@@ -122,10 +122,10 @@ test "test_runner_facing_classify" {
     const gh = try parseValue(arena, "{\"integration\":\"github\",\"installation_id\":\"42\",\"app_id\":\"7\"}");
     try testing.expectEqual(integration.Id.github, mintableId(gh).?);
 
-    // A legacy credential (no integration field) is static — the resolve-as-today
+    // A credential with no integration field is static — the resolve-as-today
     // path (Dimension 4.3); it stays in secrets_map with its stored value.
-    const legacy = try parseValue(arena, "{\"api_token\":\"FlyTokenXyz\"}");
-    try testing.expect(mintableId(legacy) == null);
+    const plain = try parseValue(arena, "{\"api_token\":\"FlyTokenXyz\"}");
+    try testing.expect(mintableId(plain) == null);
 
     // `static` is registered but on_demand=false → static (stored token usable inline).
     const static_handle = try parseValue(arena, "{\"integration\":\"static\",\"token\":\"ghp_abc\"}");

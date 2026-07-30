@@ -1,13 +1,11 @@
 const std = @import("std");
-const common = @import("common");
 const pg = @import("pg");
 const base = @import("../db/test_fixtures.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
 const store = @import("crypto_store.zig");
+const write_path = @import("crypto_store_write.zig");
 const metadata = @import("metadata.zig");
-const sql = @import("sql.zig");
 
 /// These tests exercise the ENVELOPE, not the projection: their plaintexts are
 /// opaque byte strings ("secret", "victim-secret"), not credential JSON.
@@ -26,23 +24,21 @@ const ROUNDTRIP = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000002", .w
 const RELOCATE_KEY = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000003", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000003" };
 const RELOCATE_WS = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000004", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000004" };
 const RELOCATE_WS_TARGET = "0195b4ba-8d3a-7f13-8abc-cd0000000014";
-const LEGACY = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000005", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000005" };
 const MISSING = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000006", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000006" };
-const UNSUPPORTED = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000007", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000007" };
 const WRONG_VERSION = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000008", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000008" };
 const MALFORMED = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000009", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000009" };
 const PAYLOAD_FAILURE = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000010", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000010" };
 const ALLOC_FAIL = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000011", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000011" };
-const VERSION_LEGACY: i32 = 1;
-const VERSION_BOUND: i32 = 2;
-const VERSION_UNSUPPORTED: i32 = 3;
+/// The version every write arm binds. Taken from the writer's own constant
+/// rather than restated as a literal: with the version enforced in the
+/// application (RULE STS) and not by a schema CHECK, a test that spelled `2`
+/// itself would keep passing if a writer ever stopped binding it.
+const VERSION_BOUND: i32 = write_path.KEK_VERSION_AAD_BOUND;
 const DELETE_ROWS = "DELETE FROM vault.secrets WHERE workspace_id = $1";
 const SELECT_VERSION =
     "SELECT kek_version FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2";
 const SELECT_CIPHERTEXT =
     "SELECT encrypted_dek, ciphertext FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2";
-const SET_VERSION =
-    "UPDATE vault.secrets SET kek_version = $3 WHERE workspace_id = $1 AND key_name = $2";
 const BREAK_NONCE =
     "UPDATE vault.secrets SET dek_nonce = $3 WHERE workspace_id = $1 AND key_name = $2";
 const BREAK_PAYLOAD_TAG =
@@ -100,33 +96,6 @@ fn readCiphertext(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []cons
         .wrapped_dek = wrapped_dek,
         .ciphertext = try alloc.dupe(u8, try row.get([]u8, 1)),
     };
-}
-
-fn seedLegacyEnvelope(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8, plaintext: []const u8) !void {
-    var kek = try cp.loadKek();
-    defer std.crypto.secureZero(u8, &kek);
-    var dek: [cp.KEY_LEN]u8 = undefined;
-    defer std.crypto.secureZero(u8, &dek);
-    try common.secureRandomBytes(&dek);
-
-    const wrapped = try cp.encrypt(alloc, &dek, "", &kek);
-    defer wrapped.deinit(alloc);
-    const payload = try cp.encrypt(alloc, plaintext, "", &dek);
-    defer payload.deinit(alloc);
-    const secret_id = try id_format.generateVaultSecretId(alloc);
-    defer alloc.free(secret_id);
-    const now_ms = common.clock.nowMillis();
-    // The four trailing NULLs are the `meta_*` projection columns, deliberately
-    // left unset: this seeds a row as it existed BEFORE
-    // schema/036_vault_secret_metadata.sql, which is the whole point of the
-    // fixture. A row with no projection is exactly what the backfill has to
-    // find and what the read path must degrade to an opaque credential.
-    const no_projection: ?[]const u8 = null;
-    _ = try conn.exec(sql.INSERT_SECRET, .{
-        secret_id,    workspace_id,   key_name,           wrapped.ciphertext, &wrapped.nonce,
-        &wrapped.tag, &payload.nonce, payload.ciphertext, &payload.tag,       VERSION_LEGACY,
-        now_ms,       no_projection,  no_projection,      no_projection,      @as(?bool, null),
-    });
 }
 
 test "integration: crypto store canonicalizes workspace id and upserts a fresh envelope" {
@@ -256,26 +225,6 @@ test "integration: crypto store rejects an envelope relocated to another workspa
     try std.testing.expectError(cp.SecretError.DecryptFailed, store.load(alloc, handle.conn, RELOCATE_WS_TARGET, "shared"));
 }
 
-test "integration: crypto store reads a legacy envelope then rewrites version two" {
-    const alloc = std.testing.allocator;
-    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
-    defer {
-        handle.pool.release(handle.conn);
-        handle.pool.deinit();
-    }
-    try seedWorkspace(handle.conn, LEGACY);
-    defer cleanup(handle.conn, LEGACY);
-
-    try seedLegacyEnvelope(alloc, handle.conn, LEGACY.workspace_id, "legacy", "old-secret");
-    const loaded = try store.load(alloc, handle.conn, LEGACY.workspace_id, "legacy");
-    defer alloc.free(loaded);
-    try std.testing.expectEqualStrings("old-secret", loaded);
-    try std.testing.expectEqual(VERSION_LEGACY, try readVersion(handle.conn, LEGACY.workspace_id, "legacy"));
-
-    try store.store(alloc, handle.conn, LEGACY.workspace_id, "legacy", "new-secret", OPAQUE);
-    try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, LEGACY.workspace_id, "legacy"));
-}
-
 test "integration: crypto store returns not found for a missing key" {
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
@@ -292,25 +241,20 @@ test "integration: crypto store returns not found for a missing key" {
     );
 }
 
-test "integration: crypto store rejects an unsupported envelope version" {
-    const alloc = std.testing.allocator;
-    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
-    defer {
-        handle.pool.release(handle.conn);
-        handle.pool.deinit();
-    }
-    try seedWorkspace(handle.conn, UNSUPPORTED);
-    defer cleanup(handle.conn, UNSUPPORTED);
-
-    try store.store(alloc, handle.conn, UNSUPPORTED.workspace_id, "unsupported", "secret", OPAQUE);
-    _ = try handle.conn.exec(SET_VERSION, .{ UNSUPPORTED.workspace_id, "unsupported", VERSION_UNSUPPORTED });
-    try std.testing.expectError(
-        cp.SecretError.UnsupportedKekVersion,
-        store.load(alloc, handle.conn, UNSUPPORTED.workspace_id, "unsupported"),
-    );
-}
-
-test "integration: crypto store binds the envelope version" {
+test "integration: every write arm binds the current envelope version" {
+    // The current version is an application constant, not a schema CHECK (RULE
+    // STS), so "every stored row is sealed at the current version" is a
+    // guarantee the WRITERS hold. Both arms are exercised, because either one
+    // drifting alone would seal a row the reader cannot open.
+    //
+    // Note what the assertion is NOT: the decrypt path builds its AAD from
+    // `KEK_VERSION_AAD_BOUND` and never reads the stored column, so relabelling
+    // a row changes nothing on read — the label is descriptive, not load-bearing.
+    // That is exactly why a schema CHECK pinning it bought nothing: it guarded a
+    // value no reader consults. What the AEAD tag does guard is the seal itself —
+    // an envelope opened under AAD it was not sealed under fails authentication,
+    // which is what a genuine v1 ciphertext would hit, and what the relocation
+    // tests above already prove.
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
     defer {
@@ -320,9 +264,18 @@ test "integration: crypto store binds the envelope version" {
     try seedWorkspace(handle.conn, WRONG_VERSION);
     defer cleanup(handle.conn, WRONG_VERSION);
 
-    try store.store(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version", "secret", OPAQUE);
-    _ = try handle.conn.exec(SET_VERSION, .{ WRONG_VERSION.workspace_id, "wrong-version", VERSION_LEGACY });
-    try std.testing.expectError(cp.SecretError.DecryptFailed, store.load(alloc, handle.conn, WRONG_VERSION.workspace_id, "wrong-version"));
+    // The create arm (INSERT).
+    try store.create(alloc, handle.conn, WRONG_VERSION.workspace_id, "pinned", "secret", OPAQUE);
+    try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, WRONG_VERSION.workspace_id, "pinned"));
+
+    // The replace arm (UPDATE) — a rewritten body is re-sealed at the same
+    // version, not left carrying whatever the row held before.
+    try store.replace(alloc, handle.conn, WRONG_VERSION.workspace_id, "pinned", "replaced", OPAQUE);
+    try std.testing.expectEqual(VERSION_BOUND, try readVersion(handle.conn, WRONG_VERSION.workspace_id, "pinned"));
+
+    const loaded = try store.load(alloc, handle.conn, WRONG_VERSION.workspace_id, "pinned");
+    defer alloc.free(loaded);
+    try std.testing.expectEqualStrings("replaced", loaded);
 }
 
 test "integration: crypto store rejects a malformed envelope" {
@@ -361,7 +314,8 @@ test "integration: crypto store frees the unwrapped key after payload failure" {
 }
 
 test "crypto store source keeps transient key zeroization" {
-    const store_source = @embedFile("crypto_store.zig");
+    // Read + write halves of the store (RULE FLL split); the invariant spans both.
+    const store_source = @embedFile("crypto_store.zig") ++ @embedFile("crypto_store_write.zig");
     const primitive_source = @embedFile("crypto_primitives.zig");
     // Relational, not a fixed count: EVERY unwrapped Key Encryption Key (KEK) is
     // zeroed. A pinned number says "there are two of these" and has to be edited
@@ -437,4 +391,31 @@ test "integration: crypto store store unwinds leak-free at every allocation-fail
     // every failing run returns OutOfMemory before the INSERT with kek/dek
     // zeroed and no leaked AAD / wrapped-DEK / ciphertext / secret-id buffer.
     try std.testing.checkAllAllocationFailures(alloc, storeForFailCheck, .{ handle.conn, ALLOC_FAIL.workspace_id, @as([]const u8, "afl-store"), @as([]const u8, "another-secret-value") });
+}
+
+test "integration: kek_version carries no schema default and is NOT NULL" {
+    // Slot 039 dropped DEFAULT 1: every writer binds the version explicitly, and
+    // the only row a default could ever mint is an unbound one nothing serves.
+    //
+    // Both halves are asserted because it takes both to make the mistake loud.
+    // No default alone would leave a forgotten column inserting NULL; NOT NULL
+    // alone would leave it inserting 1. Together, an INSERT that omits
+    // `kek_version` raises instead of landing an undecryptable row — which is
+    // the whole job slot 039 does, now that no CHECK restates it.
+    const alloc = std.testing.allocator;
+    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer {
+        handle.pool.release(handle.conn);
+        handle.pool.deinit();
+    }
+    var q = PgQuery.from(try handle.conn.query(
+        \\SELECT column_default IS NULL, is_nullable = 'NO'
+        \\  FROM information_schema.columns
+        \\ WHERE table_schema = 'vault' AND table_name = 'secrets'
+        \\   AND column_name = 'kek_version'
+    , .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.ColumnMissing;
+    try std.testing.expect(try row.get(bool, 0));
+    try std.testing.expect(try row.get(bool, 1));
 }

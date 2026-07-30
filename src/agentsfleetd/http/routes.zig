@@ -87,7 +87,7 @@ pub const Route = union(enum) {
     workspace_fleets: []const u8, // GET|POST /v1/workspaces/{ws}/fleets
     patch_workspace_fleet: matchers.WorkspaceFleetRoute, // PATCH /v1/workspaces/{ws}/fleets/{id}
     workspace_secrets: []const u8, // GET|POST /v1/workspaces/{ws}/secrets
-    workspace_secret: matchers.WorkspaceSecretRoute, // PATCH|DELETE /v1/workspaces/{ws}/secrets/{name}
+    workspace_secret: matchers.WorkspaceSecretRoute, // PUT|DELETE /v1/workspaces/{ws}/secrets/{name}
     // Chat ingress — POST /v1/workspaces/{ws}/fleets/{id}/messages
     workspace_fleet_messages: matchers.WorkspaceFleetRoute,
     workspace_fleet_schedules: matchers.WorkspaceFleetScheduleCollectionRoute, // GET|POST /v1/workspaces/{ws}/fleets/{id}/schedules

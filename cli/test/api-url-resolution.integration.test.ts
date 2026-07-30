@@ -78,6 +78,20 @@ describe("api url resolution drives every fetch from runCli", () => {
     });
   });
 
+  test("honors the --api=<url> equals form at the fetch boundary", async () => {
+    await withFreshStateDir(async () => {
+      const out = bufferStream();
+      const err = bufferStream();
+      const { calls, fetchImpl } = makeFetchRecorder();
+      const code = await runCli(
+        ["--api=http://localhost:4100", "login", "--no-open", "--no-input"],
+        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
+      );
+      expect(code).toBe(130);
+      expect(calls[0]).toEqual({ url: "http://localhost:4100/v1/auth/sessions", method: "POST" });
+    });
+  });
+
   test("honors AGENTSFLEET_API_URL env override at the fetch boundary", async () => {
     await withFreshStateDir(async () => {
       const out = bufferStream();

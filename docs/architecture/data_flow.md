@@ -735,7 +735,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
         materialize; it never contains resolved secret values.)
 
        Plaintext lifetime boundary: vault decrypt buffers and canonical secret
-       JSON are erased before release; secret store, rotate, and credential-mint
+       JSON are erased before release; secret store, replace, and credential-mint
        request bodies are erased by the dispatcher after middleware and handler
        completion; every dispatch-arena page is erased by its backing allocator;
        and lease, mint, runner-registration, or API-key creation JSON response

@@ -137,12 +137,25 @@ export function buildFleetTree(
   // exits non-zero with NO network call (full SSRF check stays server-side).
   secret.command("create <name>")
     .description("Store a secret JSON object")
-    .option("--data <json>", "Secret JSON object, or @- to read stdin")
+    .option(FLAG_DATA_JSON, "Secret JSON object, or @- to read stdin")
     .option(FLAG_PROVIDER, `Provider id (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`, parseStringOption)
-    .option(FLAG_BASE_URL, "Custom endpoint base URL (https; required for a custom-endpoint provider)", parseHttpsUrlOption)
-    .option(FLAG_API_KEY, "Provider API key for the typed custom-endpoint form")
-    .option(FLAG_MODEL_OPT, "Default model identifier for the typed custom-endpoint form", parseStringOption)
+    .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
+    .option(FLAG_API_KEY, DESC_API_KEY)
+    .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
     .action(actionFor("fleet.secret.create", (frame) => runHandler(state, frame, handlers.fleet.secret.create)));
+
+  // Replaces the stored body in place: the name stays claimed for the whole
+  // call, so fleets that require it keep resolving. `delete` + `create` also
+  // replaces a value, but leaves a window where the name does not exist.
+  // Replacement is total — a field absent from the new body is absent after.
+  secret.command("update <name>")
+    .description("Replace a secret's stored body without releasing the name")
+    .option(FLAG_DATA_JSON, "Replacement JSON object, or @- to read stdin")
+    .option(FLAG_PROVIDER, `Provider id (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`, parseStringOption)
+    .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
+    .option(FLAG_API_KEY, DESC_API_KEY)
+    .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
+    .action(actionFor("fleet.secret.update", (frame) => runHandler(state, frame, handlers.fleet.secret.update)));
 
   secret.command("show <name>")
     .description("Confirm a secret exists (never echoes secret bytes)")
@@ -169,6 +182,10 @@ const NAME_DESC =
 const FLAG_LIMIT_N = "--limit <n>" as const;
 const PAGE_SIZE = "Page size" as const;
 const SKILL_BUNDLE_PATH = "Skill bundle path" as const;
+const FLAG_DATA_JSON = "--data <json>" as const;
+const DESC_BASE_URL = "Custom endpoint base URL (https; required for a custom-endpoint provider)" as const;
+const DESC_API_KEY = "Provider API key for the typed custom-endpoint form" as const;
+const DESC_MODEL_OPT = "Default model identifier for the typed custom-endpoint form" as const;
 const FLAG_PROVIDER = "--provider <id>" as const;
 const FLAG_BASE_URL = "--base-url <url>" as const;
 const FLAG_API_KEY = "--api-key <key>" as const;

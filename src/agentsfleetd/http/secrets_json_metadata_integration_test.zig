@@ -1,6 +1,7 @@
 const std = @import("std");
 const error_codes = @import("../errors/error_registry.zig");
 const base = @import("secrets_json_integration_test.zig");
+const vault = @import("../state/vault.zig");
 
 test "integration: secret endpoints enforce operator role" {
     base.setTestEncryptionKey();
@@ -103,7 +104,7 @@ test "integration: GET list requires operator role" {
     base.cleanupRows(conn);
 }
 
-test "integration: rotate replaces only the api_key, preserving provider/model/base_url" {
+test "integration: test_put_preserves_sibling_fields — a full-body replace keeps provider/model/base_url" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {
@@ -130,16 +131,20 @@ test "integration: rotate replaces only the api_key, preserving provider/model/b
         try r.expectStatus(.created);
     }
 
-    const rotate_body = "{\"api_key\":\"" ++ NEW_KEY ++ "\"}";
+    // Replacement is total, so the caller sends every field it wants kept.
+    // Nothing is merged — that is what makes the verb expressible on a secret
+    // nobody can read back.
+    const named_replace = "{\"data\":{\"provider\":\"anthropic\",\"api_key\":\"" ++ NEW_KEY ++ "\",\"model\":\"claude-sonnet-4-6\"}}";
+    const endpoint_replace = "{\"data\":{\"provider\":\"openai-compatible\",\"base_url\":\"https://gw.example.com/v1\",\"model\":\"kimi-k2.6\",\"api_key\":\"" ++ NEW_KEY ++ "\"}}";
     {
-        const r = try (try (try h.patch(named_item).bearer(base.TOKEN_OPERATOR)).json(rotate_body)).send();
+        const r = try (try (try h.put(named_item).bearer(base.TOKEN_OPERATOR)).json(named_replace)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("\"name\":\"anthropic-prod\""));
         try std.testing.expect(!r.bodyContains(NEW_KEY));
     }
     {
-        const r = try (try (try h.patch(endpoint_item).bearer(base.TOKEN_OPERATOR)).json(rotate_body)).send();
+        const r = try (try (try h.put(endpoint_item).bearer(base.TOKEN_OPERATOR)).json(endpoint_replace)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
     }
@@ -171,7 +176,7 @@ test "integration: rotate a missing secret returns typed 404" {
 
     const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/does-not-exist", .{base.TEST_WS_ID});
     defer alloc.free(path);
-    const r = try (try (try h.patch(path).bearer(base.TOKEN_OPERATOR)).json("{\"api_key\":\"sk-whatever\"}")).send();
+    const r = try (try (try h.put(path).bearer(base.TOKEN_OPERATOR)).json("{\"data\":{\"api_key\":\"sk-whatever\"}}")).send();
     defer r.deinit();
     try r.expectStatus(.not_found);
     try std.testing.expect(r.bodyContains(error_codes.ERR_SECRET_NOT_FOUND));
@@ -181,7 +186,7 @@ test "integration: rotate a missing secret returns typed 404" {
     base.cleanupRows(conn);
 }
 
-test "integration: rotate rejects an empty or oversized key without leaking it" {
+test "integration: replace rejects an empty or oversized body without leaking it" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {
@@ -201,18 +206,20 @@ test "integration: rotate rejects an empty or oversized key without leaking it" 
         try r.expectStatus(.created);
     }
     {
-        const r = try (try (try h.patch(item_path).bearer(base.TOKEN_OPERATOR)).json("{\"api_key\":\"\"}")).send();
+        // An empty object is rejected by the same gate `create` uses, so the
+        // two verbs cannot disagree about what a secret is.
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR)).json("{\"data\":{}}")).send();
         defer r.deinit();
         try r.expectStatus(.bad_request);
-        try std.testing.expect(r.bodyContains(error_codes.ERR_INVALID_REQUEST));
+        try std.testing.expect(r.bodyContains(error_codes.ERR_VAULT_DATA_INVALID));
     }
     {
         const filler = try alloc.alloc(u8, 5 * 1024);
         defer alloc.free(filler);
         @memset(filler, 'k');
-        const body = try std.fmt.allocPrint(alloc, "{{\"api_key\":\"{s}\"}}", .{filler});
+        const body = try std.fmt.allocPrint(alloc, "{{\"data\":{{\"api_key\":\"{s}\"}}}}", .{filler});
         defer alloc.free(body);
-        const r = try (try (try h.patch(item_path).bearer(base.TOKEN_OPERATOR)).json(body)).send();
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR)).json(body)).send();
         defer r.deinit();
         try r.expectStatus(.bad_request);
         try std.testing.expect(r.bodyContains(error_codes.ERR_VAULT_DATA_TOO_LARGE));
@@ -244,4 +251,148 @@ test "integration: cross-workspace DELETE is rejected (IDOR guard)" {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     base.cleanupRows(conn);
+}
+
+test "integration: test_put_replaces_whole_body — a dropped field is gone, not retained" {
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const creds_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{base.TEST_WS_ID});
+    defer alloc.free(creds_path);
+    const item_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/shape-shifter", .{base.TEST_WS_ID});
+    defer alloc.free(item_path);
+
+    // Seed a provider-shaped secret: the list projects `provider` for it.
+    {
+        const r = try (try (try h.post(creds_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"name\":\"shape-shifter\",\"data\":{\"provider\":\"anthropic\",\"api_key\":\"sk-seed\",\"model\":\"claude-sonnet-4-6\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+
+    // Replace it with a body that shares no field at all. Under the former
+    // field-merge this was impossible to express; under a whole-body replace
+    // it is the ordinary case, and every old field must vanish.
+    {
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"data\":{\"token\":\"ghp-replaced\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+    }
+
+    // The projection is derived from the stored bytes, so the list is the
+    // observable proof: a secret that was a provider key is now an opaque
+    // custom secret, and `anthropic` is gone rather than merged around.
+    const r = try (try h.get(creds_path).bearer(base.TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"name\":\"shape-shifter\""));
+    try std.testing.expect(!r.bodyContains("\"provider\":\"anthropic\""));
+    try std.testing.expect(!r.bodyContains("ghp-replaced"));
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    base.cleanupRows(conn);
+}
+
+test "integration: replace refuses non-JSON bytes and a malformed workspace id" {
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const item_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/anything", .{base.TEST_WS_ID});
+    defer alloc.free(item_path);
+
+    // The absent-body `orelse` arm is not drivable through TestHarness — its
+    // client requires a body on PUT — and no route in the repo pins that arm.
+    // Bytes that are not JSON: the parse arm answers the malformed-body error.
+    {
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR)).json("not json at all")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_INVALID_REQUEST));
+    }
+    // A workspace id that is not a UUIDv7: refused before any vault touch.
+    {
+        const r = try (try (try h.put("/v1/workspaces/not-a-uuid/secrets/anything").bearer(base.TOKEN_OPERATOR)).json("{\"data\":{\"k\":\"v\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_INVALID_REQUEST));
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    base.cleanupRows(conn);
+}
+
+test "integration: a connector-shaped name collides — create is blocked, PUT overwrites" {
+    // Connector handles (github/slack/…) live in vault.secrets under
+    // key_name = the provider id, the SAME (workspace_id, key_name) space the
+    // workspace secrets API writes. This pins exactly which write verbs a
+    // workspace operator can and cannot use against a connector-owned name, so
+    // the reserved-name question is decided on observed behaviour, not prose.
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const creds_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{base.TEST_WS_ID});
+    defer alloc.free(creds_path);
+    const item_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/github", .{base.TEST_WS_ID});
+    defer alloc.free(item_path);
+
+    // Stand in for a connected GitHub handle: the exact shape the connector
+    // callback stores (integration + installation_id), under key_name "github".
+    {
+        const r = try (try (try h.post(creds_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"name\":\"github\",\"data\":{\"integration\":\"github\",\"installation_id\":\"11111111\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+
+    // create with the same name is REFUSED by the vault's ON CONFLICT DO
+    // NOTHING (UZ-VAULT-005). An operator cannot forge a handle over a
+    // connected name through create — the duplicate guard holds.
+    {
+        const r = try (try (try h.post(creds_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"name\":\"github\",\"data\":{\"integration\":\"github\",\"installation_id\":\"99999999\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.conflict);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_SECRET_NAME_TAKEN));
+    }
+
+    // PUT replace, however, is an UPDATE — it does NOT pass through ON CONFLICT,
+    // so it overwrites the handle in place. This is the surface the reserved-name
+    // question is really about: create is guarded, replace is not.
+    {
+        const r = try (try (try h.put(item_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"data\":{\"integration\":\"github\",\"installation_id\":\"99999999\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+    }
+    // The forged installation_id is now what the vault holds under "github".
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        const loaded = vault.loadJson(alloc, conn, base.TEST_WS_ID, "github") catch |err| {
+            base.cleanupRows(conn);
+            return err;
+        };
+        defer loaded.deinit();
+        const installation = loaded.value.object.get("installation_id").?.string;
+        try std.testing.expectEqualStrings("99999999", installation);
+        base.cleanupRows(conn);
+    }
 }

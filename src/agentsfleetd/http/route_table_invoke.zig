@@ -250,7 +250,7 @@ pub fn invokeWorkspaceSecrets(hx: *Hx, req: *httpz.Request, route: router.Route)
 pub fn invokeWorkspaceSecretItem(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     const r = route.workspace_secret;
     switch (req.method) {
-        .PATCH => fleet_secrets.innerRotateSecret(hx.*, req, r.workspace_id, r.secret_name),
+        .PUT => fleet_secrets.innerReplaceSecret(hx.*, req, r.workspace_id, r.secret_name),
         .DELETE => fleet_secrets.innerDeleteSecret(hx.*, req, r.workspace_id, r.secret_name),
         else => common.respondMethodNotAllowed(hx.res),
     }
