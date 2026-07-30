@@ -26,11 +26,11 @@ import {
 } from "../lib/repl.ts";
 import { exitToCliError, renderCliError } from "../lib/cli-error-render.ts";
 import {
+  openEventTail,
   pollEventTerminal,
   SSE_FALLBACK_TIMEOUT_SECONDS,
   STATUS_COMPLETE,
   STATUS_TIMEOUT,
-  tailEventStream,
   type PolledSteerOutcome,
 } from "./fleet_steer_events.ts";
 
@@ -52,6 +52,17 @@ const failSteerInterrupted = (): Effect.Effect<never, CliError> =>
     new InterruptedError({
       detail: DETAIL_STEER_INTERRUPTED,
       suggestion: SUGGESTION_RERUN_COMMAND,
+    }),
+  );
+
+const failMissingEventId = (): Effect.Effect<never, CliError> =>
+  Effect.fail(
+    new ServerError({
+      detail: "messages response missing event_id",
+      suggestion: "retry; report request_id if the issue persists",
+      code: "BAD_RESPONSE",
+      status: 502,
+      requestId: null,
     }),
   );
 
@@ -80,25 +91,32 @@ const steerTurnEffect = (
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
-    const post = yield* http.request<MessagesResponse>({
-      path: wsFleetMessagesPath(wsId, fleetId),
-      method: "POST",
-      body: { message },
-      token,
-    });
-    if (!post.event_id) {
-      return yield* Effect.fail(
-        new ServerError({
-          detail: "messages response missing event_id",
-          suggestion: "retry; report request_id if the issue persists",
-          code: "BAD_RESPONSE",
-          status: 502,
-          requestId: null,
-        }),
-      );
+    // Subscribe before send: the activity channel has no replay, so the tail
+    // must exist before the daemon can publish the event's first frame.
+    const tail = yield* openEventTail(wsId, fleetId, token, streamGet, signal);
+    const postExit = yield* Effect.exit(
+      http.request<MessagesResponse>({
+        path: wsFleetMessagesPath(wsId, fleetId),
+        method: "POST",
+        body: { message },
+        token,
+      }),
+    );
+    if (Exit.isFailure(postExit)) {
+      tail.close();
+      return yield* Effect.failCause(postExit.cause);
     }
-
-    const streamOutcome = yield* tailEventStream(wsId, fleetId, post.event_id, token, streamGet, signal);
+    const post = postExit.value;
+    if (!post.event_id) {
+      tail.close();
+      return yield* failMissingEventId();
+    }
+    if (signal?.aborted) {
+      tail.close();
+      return yield* failSteerInterrupted();
+    }
+    tail.deliverEventId(post.event_id);
+    const streamOutcome = yield* Effect.promise(() => tail.awaitOutcome());
     let outcome: RenderableSteerOutcome;
     if (streamOutcome.kind === STATUS_COMPLETE) {
       outcome = streamOutcome;
