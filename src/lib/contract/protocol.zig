@@ -140,13 +140,19 @@ pub const ADMIN_STATE_ACTIVE = @tagName(AdminState.active);
 /// are wire enum values, so std.json accepts/serializes the tag names verbatim.
 pub const RunnerAdminAction = enum { cordon, drain, revoke };
 
+/// PATCH body: exactly one of `action` (admin-state transition) or
+/// `assigned_policy` (policy re-assignment — reaches the host on its next
+/// heartbeat, no host visit). Both-or-neither is a 400; the handler enforces it.
 pub const RunnerAdminPatchRequest = struct {
-    action: RunnerAdminAction,
+    action: ?RunnerAdminAction = null,
+    assigned_policy: ?AssignedPolicy = null,
 };
 
 pub const RunnerAdminPatchResponse = struct {
     id: []const u8,
     admin_state: AdminState,
+    /// Present on the policy-update path: the assignment as stored.
+    assigned_policy: ?AssignedPolicy = null,
 };
 
 pub const RunnerEventType = runner_events.RunnerEventType;
@@ -182,10 +188,11 @@ pub const RUNNER_LEASE_STATUS_EXPIRED = "expired";
 /// POST /v1/runners — register. Auth: an existing credential —
 /// `Bearer <Clerk JWT | agt_t api_key>` (via bearer_or_api_key), not an
 /// enrollment token. The response's runner_token identifies the runner on
-/// every later call.
+/// every later call. The operator ASSIGNS the policy here; the host never
+/// declares one.
 pub const RegisterRequest = struct {
     host_id: []const u8,
-    sandbox_tier: SandboxTier,
+    assigned_policy: AssignedPolicy,
     labels: []const []const u8,
 };
 
@@ -194,6 +201,9 @@ pub const RegisterRequest = struct {
 pub const RegisterResponse = struct {
     runner_id: []const u8,
     runner_token: []const u8,
+    /// The assignment as stored (worker_count clamped into the shared bounds),
+    /// echoed so the enrolling operator sees exactly what the host will apply.
+    assigned_policy: AssignedPolicy,
 };
 
 /// POST /v1/runners/me/heartbeats request (Bearer runner_token). The capability

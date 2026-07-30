@@ -6,13 +6,15 @@
 //! never resolve another runner's row.
 
 /// Enrol a runner and record the enrolment event atomically, so a registered
-/// runner always has the audit row that explains where it came from.
+/// runner always has the audit row that explains where it came from. The
+/// operator's ASSIGNED policy lands on the row here — the host never writes it.
 pub const INSERT_RUNNER_WITH_EVENT =
     \\WITH inserted AS (
     \\  INSERT INTO fleet.runners
     \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
-    \\   last_seen_at, created_at, updated_at)
-    \\VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::jsonb, NULL, $7::bigint, $8::bigint, $8::bigint)
+    \\   last_seen_at, created_at, updated_at, network_policy, registry_allowlist, worker_count)
+    \\VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::jsonb, NULL, $7::bigint, $8::bigint, $8::bigint,
+    \\        $13::text, $14::jsonb, $15::int)
     \\  RETURNING id
     \\)
     \\INSERT INTO fleet.runner_events
@@ -26,7 +28,17 @@ pub const INSERT_RUNNER_WITH_EVENT =
 /// `GET /v1/runners/me`. Deliberately omits `token_hash` — the self read is
 /// used by the operator CLI's `status`, and a credential must never round-trip.
 pub const SELECT_RUNNER_SELF =
-    \\SELECT id::text, admin_state, host_id, sandbox_tier, last_seen_at
+    \\SELECT id::text, admin_state, host_id, sandbox_tier, last_seen_at,
+    \\       network_policy, registry_allowlist::text, worker_count,
+    \\       capability_report::text, degraded, degraded_reason
+    \\FROM fleet.runners WHERE id = $1::uuid
+;
+
+/// Heartbeat's policy read — the assignment plus the reconciled verdict, so
+/// every beat can carry the current policy back to the host.
+pub const SELECT_RUNNER_ASSIGNED_POLICY =
+    \\SELECT sandbox_tier, network_policy, registry_allowlist::text, worker_count,
+    \\       degraded, degraded_reason
     \\FROM fleet.runners WHERE id = $1::uuid
 ;
 
