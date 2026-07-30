@@ -148,10 +148,16 @@ pub fn genId(alloc: std.mem.Allocator) []const u8 {
 /// Returns true iff the row stream drained cleanly to its end — callers that
 /// treat "zero rows" as a signal (the zero-hit search counter) must not count
 /// a truncated collect as an empty result.
+///
+/// `last_created_at` receives the final appended row's created_at (column 4,
+/// selected by every list statement solely for the continuation cursor — it is
+/// not part of the wire item). Paired with that row's key it forms the
+/// (created_at, key) keyset boundary the handler formats into next_cursor.
 pub fn collectEntries(
     alloc: std.mem.Allocator,
     q: *PgQuery,
     entries: *std.ArrayList(MemoryEntry),
+    last_created_at: *i64,
 ) bool {
     collect: while (true) {
         const row = q.next() catch break :collect;
@@ -169,6 +175,7 @@ pub fn collectEntries(
             break :collect;
         };
         const updated_at = r.get(i64, 3) catch continue;
+        const created_at = r.get(i64, 4) catch continue;
         entries.append(alloc, .{
             .key = key,
             .content = content,
@@ -178,6 +185,7 @@ pub fn collectEntries(
             log.warn(S_COLLECT_TRUNCATED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_append", .collected = entries.items.len });
             break :collect;
         };
+        last_created_at.* = created_at;
     }
     return false;
 }

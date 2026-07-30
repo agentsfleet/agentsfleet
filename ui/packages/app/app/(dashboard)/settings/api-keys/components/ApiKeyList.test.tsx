@@ -29,7 +29,7 @@ function makeResponse(row: Partial<ApiKeyRow> = {}): ApiKeyListResponse {
     revoked_at: null,
     ...row,
   };
-  return { items: [item], total: 1, page: 1, page_size: 25 };
+  return { items: [item], total: 1, next_cursor: null };
 }
 
 function renderList(response: ApiKeyListResponse) {

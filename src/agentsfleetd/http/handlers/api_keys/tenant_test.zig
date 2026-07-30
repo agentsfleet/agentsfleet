@@ -44,14 +44,14 @@ test "generateRawKey output is high-entropy across calls" {
     try testing.expect(!std.mem.eql(u8, k1, k2));
 }
 
-test "sortClauseFor recognizes exactly the allowed keys and rejects everything else" {
-    try testing.expect(api_keys.sortClauseFor("created_at") != null);
-    try testing.expect(api_keys.sortClauseFor("-created_at") != null);
-    try testing.expect(api_keys.sortClauseFor("key_name") != null);
-    try testing.expect(api_keys.sortClauseFor("-key_name") != null);
-    try testing.expect(api_keys.sortClauseFor("id") == null);
-    try testing.expect(api_keys.sortClauseFor("") == null);
-    try testing.expect(api_keys.sortClauseFor("created_at; DROP TABLE") == null);
+test "sortSpecFor recognizes exactly the allowed keys and rejects everything else" {
+    try testing.expect(api_keys.sortSpecFor("created_at") != null);
+    try testing.expect(api_keys.sortSpecFor("-created_at") != null);
+    try testing.expect(api_keys.sortSpecFor("key_name") != null);
+    try testing.expect(api_keys.sortSpecFor("-key_name") != null);
+    try testing.expect(api_keys.sortSpecFor("id") == null);
+    try testing.expect(api_keys.sortSpecFor("") == null);
+    try testing.expect(api_keys.sortSpecFor("created_at; DROP TABLE") == null);
 }
 
 test "KEY_PREFIX is sourced from the middleware — no divergence between auth and issuance" {

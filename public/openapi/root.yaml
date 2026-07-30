@@ -233,6 +233,8 @@ paths:
     $ref: ./paths/fleet.yaml#/~1v1~1fleets~1runners
   /v1/fleets/runners/{id}:
     $ref: ./paths/fleet.yaml#/~1v1~1fleets~1runners~1{id}
+  /v1/fleets/runners/{id}/leases:
+    $ref: ./paths/fleet.yaml#/~1v1~1fleets~1runners~1{id}~1leases
   /v1/fleets/runners/{id}/events:
     $ref: ./paths/fleet.yaml#/~1v1~1fleets~1runners~1{id}~1events
   /v1/models:

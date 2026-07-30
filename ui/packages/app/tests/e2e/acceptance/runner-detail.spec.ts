@@ -1,0 +1,186 @@
+/**
+ * runner-detail.spec.ts — the operator's runner triage walk, end to end.
+ *
+ * Wire: seed a fleet whose SKILL.md carries valid frontmatter and an EMPTY
+ * body → steer it once from the console → the runner leases the delivery and
+ * fails closed before any model call (child_exec's no-instructions branch
+ * reports a startup-posture failure) → the operator opens /admin/runners,
+ * clicks the host's card, lands on that runner's Leases, reads the failure
+ * as the shared plain-English sentence, and opens Review lease from the row.
+ *
+ * The empty-body failure is the one deterministic, model-free way to place a
+ * failed lease on a runner from the outside: the self-plane lease protocol is
+ * runner-token-only, and a healthy seeded fleet would settle succeeded. The
+ * arrangement half runs as the regular tenant; the walk half re-signs-in as
+ * the operator fixture — the only identity whose scopes open /admin surfaces.
+ */
+import { expect, test } from "@playwright/test";
+import { LEASE_OUTCOME, type RunnerLeaseResponse, type RunnerListResponse } from "@/lib/api/runners";
+import { failureSentenceFor } from "@/lib/events/event-summary";
+import { SOURCE_KIND_UPLOAD } from "@/lib/types";
+import { clientFor } from "./fixtures/api-client";
+import { signInAs } from "./fixtures/auth";
+import { FIXTURE_KEY } from "./fixtures/constants";
+import { getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
+import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+
+const FLEET_NAME_PREFIX = "runner-detail-";
+const RENDER_TIMEOUT_MS = 15_000;
+// The failure must ride delivery → lease → child start → terminal report →
+// event settle. No model round-trip is involved, but the pipeline crosses the
+// queue and the runner heartbeat cadence, so this leg gets its own budget.
+const LEASE_SETTLE_TIMEOUT_MS = 120_000;
+const LEASE_POLL_INTERVAL_MS = 2_000;
+const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
+// The no-instructions branch reports this class; the UI must render the
+// shared sentence for it and never the tag itself.
+const EXPECTED_FAILURE_TAG = "startup_posture";
+
+interface OnboardTemplateResp {
+  id: string;
+}
+
+interface CreateFleetResp {
+  fleet_id: string;
+  name: string;
+}
+
+// Frontmatter satisfies the importer (name, description, semver version);
+// the body after it is deliberately empty, which the runner refuses to
+// execute as a generic chat — the delivery fails closed at startup.
+function emptyBodySkillMd(name: string): string {
+  return [
+    "---",
+    `name: ${name}`,
+    "description: Fixture skill with an empty body; every delivery fails its startup check.",
+    "version: 0.1.0",
+    "---",
+    "",
+  ].join("\n");
+}
+
+function triggerMd(name: string): string {
+  return [
+    "---",
+    `name: ${name}`,
+    "",
+    "x-agentsfleet:",
+    "  triggers:",
+    "    - type: cron",
+    '      schedule: "0 0 * * *"',
+    "  budget:",
+    "    daily_dollars: 1.0",
+    "---",
+    "",
+  ].join("\n");
+}
+
+interface FailedLeaseLocation {
+  runnerId: string;
+  hostId: string;
+}
+
+// The lease read is per-runner, and which enrolled host takes the delivery is
+// the scheduler's call — so the poll walks every runner's first lease page
+// until the fleet's failed lease surfaces somewhere.
+async function findFailedLease(fleetId: string): Promise<FailedLeaseLocation | null> {
+  const operator = clientFor(FIXTURE_KEY.operator);
+  const runners = await operator.get<RunnerListResponse>(FLEET_RUNNERS_PATH);
+  for (const runner of runners.items) {
+    const leases = await operator.get<RunnerLeaseResponse>(
+      `${FLEET_RUNNERS_PATH}/${runner.id}/leases?limit=50`,
+    );
+    const failed = leases.items.find(
+      (lease) => lease.fleet_id === fleetId && lease.outcome === LEASE_OUTCOME.failed,
+    );
+    if (failed) return { runnerId: runner.id, hostId: runner.host_id };
+  }
+  return null;
+}
+
+test.describe("runner detail", () => {
+  test("wall → detail → failed lease sentence → Review lease", async ({ page }) => {
+    test.setTimeout(LEASE_SETTLE_TIMEOUT_MS + 120_000);
+
+    // ── Arrange: a delivery that fails at startup, as the regular tenant ──
+    const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    const tag = Math.random().toString(36).slice(2, 8);
+    const name = `${FLEET_NAME_PREFIX}${tag}`;
+    const tenant = clientFor(FIXTURE_KEY.regular);
+    const library = await tenant.post<OnboardTemplateResp>(
+      `/v1/workspaces/${ws}/fleet-libraries`,
+      {
+        source_kind: SOURCE_KIND_UPLOAD,
+        skill_markdown: emptyBodySkillMd(name),
+        trigger_markdown: triggerMd(name),
+      },
+    );
+    const fleet = await tenant.post<CreateFleetResp>(`/v1/workspaces/${ws}/fleets`, {
+      tenant_library_id: library.id,
+      name,
+    });
+    await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.fleet_id);
+
+    await signInAs(page, FIXTURE_KEY.regular);
+    await page.goto(workspaceHref(ws, `fleets/${fleet.fleet_id}`));
+    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.fleet_id}`));
+
+    const composer = page.getByLabel("Chat composer");
+    await expect(composer).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await composer.getByPlaceholder(/message this fleet/i).fill(`fail-${tag}`);
+    await composer.getByRole("button", { name: /send/i }).click();
+
+    // The settle proves the new operator-plane lease read end-to-end: the
+    // failed lease must surface through GET /v1/fleets/runners/{id}/leases.
+    let location: FailedLeaseLocation | null = null;
+    await expect
+      .poll(
+        async () => {
+          location = await findFailedLease(fleet.fleet_id);
+          return location !== null;
+        },
+        { timeout: LEASE_SETTLE_TIMEOUT_MS, intervals: [LEASE_POLL_INTERVAL_MS] },
+      )
+      .toBe(true);
+    const { runnerId, hostId } = location!;
+
+    // ── Walk: the operator's triage path ──
+    await signInAs(page, FIXTURE_KEY.operator);
+    await page.goto("/admin/runners");
+    const card = page.getByRole("link", {
+      name: new RegExp(`^Inspect runner: ${hostId}`),
+    });
+    await expect(card).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await card.click();
+
+    // The whole card links to the addressable detail page, landing on Leases.
+    await expect(page).toHaveURL(new RegExp(`/admin/runners/${runnerId}$`), {
+      timeout: RENDER_TIMEOUT_MS,
+    });
+    const leases = page.getByRole("table", { name: "Runner leases" });
+    await expect(leases).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+
+    // The failed row reads the shared sentence; the machine tag never renders.
+    const failedRow = leases
+      .getByRole("row")
+      .filter({ hasText: name })
+      .filter({ hasText: failureSentenceFor(EXPECTED_FAILURE_TAG) })
+      .first();
+    await expect(failedRow).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expect(page.getByText(EXPECTED_FAILURE_TAG)).toHaveCount(0);
+
+    // Activating the row opens Review lease with the lease's facts.
+    await failedRow.click();
+    const review = page.getByRole("dialog", { name: "Review lease" });
+    await expect(review).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expect(review.getByText("Fencing token")).toBeVisible();
+    await expect(review.getByText(failureSentenceFor(EXPECTED_FAILURE_TAG))).toBeVisible();
+    await expect(review.getByText(/request_json|request payload/i)).toHaveCount(0);
+  });
+
+  test.afterEach(async () => {
+    const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, FLEET_NAME_PREFIX);
+  });
+});

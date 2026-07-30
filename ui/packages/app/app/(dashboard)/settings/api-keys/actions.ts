@@ -7,13 +7,13 @@ import {
   revokeApiKey,
   deleteApiKey,
   type ApiKeyListResponse,
+  type ApiKeySort,
   type CreatedApiKey,
   type RevokedApiKey,
-  type ListParams,
 } from "@/lib/api/api_keys";
 
-export async function listApiKeysAction(params: ListParams): Promise<ActionResult<ApiKeyListResponse>> {
-  return withToken((t) => listApiKeys(t, params));
+export async function listApiKeysAction(sort?: ApiKeySort): Promise<ActionResult<ApiKeyListResponse>> {
+  return withToken((t) => listApiKeys(t, sort));
 }
 
 export async function createApiKeyAction(body: {

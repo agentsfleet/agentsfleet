@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { ApiError } from "@/lib/api/errors";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
-import { listRunners, DEFAULT_PAGE_SIZE, DEFAULT_SORT } from "@/lib/api/runners";
+import { listRunners } from "@/lib/api/runners";
 import RunnersView from "./components/RunnersView";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export default async function RunnersPage() {
 
   let data;
   try {
-    data = await listRunners(token, { page: 1, page_size: DEFAULT_PAGE_SIZE, sort: DEFAULT_SORT });
+    data = await listRunners(token);
   } catch (e) {
     if (e instanceof ApiError && e.status === 403) redirect(NOT_ADMIN);
     if (e instanceof ApiError && e.status === 401) redirect("/sign-in");

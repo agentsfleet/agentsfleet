@@ -248,7 +248,7 @@ test("workspace secrets --json returns status=redirect", async () => {
   });
 });
 
-// ── fleet list: paginated list with cursor/limit flags ──────────────────
+// ── fleet list: paginated list with starting-after/limit flags ──────────
 
 test("fleet list calls the paginated endpoint and prints rows", async () => {
   await withStateDir(async () => {
@@ -273,7 +273,7 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
             { fleet_id: "zom_2", name: "beta", status: "paused" },
           ],
           total: 2,
-          cursor: "1713700000000:zom_2",
+          next_cursor: "1713700000000:zom_2",
         }),
       };
     });
@@ -288,11 +288,11 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
     const text = out.read();
     assert.ok(text.includes("alpha"));
     assert.ok(text.includes("beta"));
-    assert.ok(text.includes("agentsfleet fleet list --cursor"));
+    assert.ok(text.includes("agentsfleet fleet list --starting-after"));
   });
 });
 
-test("fleet list --json returns the raw envelope incl. cursor", async () => {
+test("fleet list --json returns the raw envelope incl. next_cursor", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
@@ -305,7 +305,7 @@ test("fleet list --json returns the raw envelope incl. cursor", async () => {
       status: 200,
       statusText: "OK",
       headers: makeHeaders([["content-type", "application/json"]]),
-      text: async () => JSON.stringify({ items: [], total: 0, cursor: null }),
+      text: async () => JSON.stringify({ items: [], total: 0, next_cursor: null }),
     }));
     await runCli(["--json", "list"], {
       stdout: out.stream,
@@ -314,7 +314,7 @@ test("fleet list --json returns the raw envelope incl. cursor", async () => {
       fetchImpl,
     });
     const parsed = JSON.parse(out.read());
-    assert.deepEqual(parsed, { items: [], total: 0, cursor: null });
+    assert.deepEqual(parsed, { items: [], total: 0, next_cursor: null });
   });
 });
 

@@ -38,7 +38,7 @@ const FIXTURE_ITEMS = [
 const FIXTURE_ENVELOPE = {
   items: FIXTURE_ITEMS,
   total: FIXTURE_ITEMS.length,
-  request_id: "req_mem_unit",
+  next_cursor: null,
 };
 
 describe("memory — ValidationError guards", () => {
@@ -83,6 +83,55 @@ describe("memory — ValidationError guards", () => {
   });
 });
 
+describe("test_memory_list_accepts_starting_after", () => {
+  test("--starting-after and --limit both reach the request", async () => {
+    const cap = newCapture();
+    const paths: string[] = [];
+    const exit = await runWith(
+      memoryListEffectFromFlags({
+        fleetId: FLEET_ID,
+        startingAfter: "1765500100000:greeting_style",
+        limit: "5",
+      }),
+      { http: httpLayerReturning(FIXTURE_ENVELOPE, paths), cap },
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    // URLSearchParams percent-encodes the cursor's ':' separator.
+    expect(paths[0]).toContain("starting_after=1765500100000%3Agreeting_style");
+    expect(paths[0]).toContain("limit=5");
+  });
+});
+
+describe("memory list — the next-page hint is runnable", () => {
+  const NEXT = "1765500100000:greeting_style";
+  const MORE_ENVELOPE = { ...FIXTURE_ENVELOPE, next_cursor: NEXT };
+
+  test("a non-null next_cursor prints a hint carrying --fleet and the cursor", async () => {
+    const cap = newCapture();
+    const exit = await runWith(memoryListEffectFromFlags({ fleetId: FLEET_ID }), {
+      http: httpLayerReturning(MORE_ENVELOPE, []),
+      cap,
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const hint = cap.infos.find((line) => line.includes("More available"));
+    expect(hint).toBeDefined();
+    // The printed line has to run as-is. `memory list` refuses without
+    // --fleet, so a hint that names only the cursor walks the operator into a
+    // usage error instead of the next page.
+    expect(hint).toContain(`--fleet ${FLEET_ID}`);
+    expect(hint).toContain(`--starting-after ${NEXT}`);
+  });
+
+  test("search prints no hint — that verb exposes no cursor flag", async () => {
+    const cap = newCapture();
+    await runWith(memorySearchEffectFromArgs("terse", { fleetId: FLEET_ID }), {
+      http: httpLayerReturning(MORE_ENVELOPE, []),
+      cap,
+    });
+    expect(cap.infos.some((line) => line.includes("More available"))).toBe(false);
+  });
+});
+
 describe("test_memory_list_table_newest_first", () => {
   test("three fixture rows render in response (newest-first) order with rendered timestamps", async () => {
     const cap = newCapture();
@@ -118,7 +167,7 @@ describe("test_memory_search_matches", () => {
   test("query is forwarded on the wire and only response rows render", async () => {
     const cap = newCapture();
     const paths: string[] = [];
-    const oneMatch = { items: [FIXTURE_ITEMS[0]], total: 1, request_id: "req_mem_search" };
+    const oneMatch = { items: [FIXTURE_ITEMS[0]], total: 1, next_cursor: null };
     const exit = await runWith(
       memorySearchEffectFromArgs("acme", { fleetId: FLEET_ID }),
       { http: httpLayerReturning(oneMatch, paths), cap },
@@ -188,7 +237,7 @@ describe("memory — JSON mode passthrough", () => {
     const cap = newCapture();
     const exit = await runWith(
       memoryListEffectFromFlags({ fleetId: FLEET_ID, stdoutIsTty: true }),
-      { http: httpLayerReturning({ items: 5, total: 5, request_id: "req_mem_bad" }, []), cap },
+      { http: httpLayerReturning({ items: 5, total: 5, next_cursor: null }, []), cap },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(cap.tables).toHaveLength(0);

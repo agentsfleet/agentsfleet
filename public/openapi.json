@@ -1073,7 +1073,7 @@
       "get": {
         "operationId": "list_fleet_memories",
         "summary": "List or search memory entries for a fleet",
-        "description": "Returns memory entries for the fleet. Without `query` this lists most-recent entries (optionally filtered by `category`). With `query`, performs case-insensitive LIKE search across both `key` and `content` (LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry).\n",
+        "description": "Returns memory entries for the fleet, newest-created first. Without `query` this lists entries (optionally filtered by `category`). With `query`, performs case-insensitive LIKE search across both `key` and `content` (LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry). Every shape pages by keyset: pass the previous response's `next_cursor` as `starting_after` to continue the walk. A null `next_cursor` marks the final page.\n",
         "tags": [
           "Memory"
         ],
@@ -1123,6 +1123,15 @@
               "minimum": 1,
               "maximum": 100
             }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Opaque continuation cursor from the previous page's `next_cursor`. The page starts strictly after that entry; an unparseable value is refused with 400.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1142,8 +1151,10 @@
                     "total": {
                       "type": "integer"
                     },
-                    "request_id": {
-                      "type": "string"
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Continuation cursor for the next page, or null on the final page."
                     }
                   }
                 }
@@ -4330,30 +4341,29 @@
       "get": {
         "operationId": "list_api_keys",
         "summary": "List tenant API keys",
-        "description": "Returns metadata for every tenant API key visible to the caller. Results are always scoped to the caller's tenant; `key_hash` is never returned.",
+        "description": "Returns metadata for every tenant API key visible to the caller, under Stripe-style keyset pagination. The cursor carries the boundary sort value, so every allowlisted sort pages without loss. The retired page and page_size parameters are refused. Results are always scoped to the caller's tenant; `key_hash` is never returned.",
         "tags": [
           "API Keys"
         ],
         "parameters": [
           {
-            "name": "page",
+            "name": "starting_after",
             "in": "query",
             "required": false,
+            "description": "An opaque cursor from a previous page's `next_cursor`, issued under the same sort.",
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1
+              "type": "string"
             }
           },
           {
-            "name": "page_size",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "type": "integer",
               "minimum": 1,
               "maximum": 100,
-              "default": 25
+              "default": 50
             }
           },
           {
@@ -4382,8 +4392,7 @@
                   "required": [
                     "items",
                     "total",
-                    "page",
-                    "page_size"
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -4394,13 +4403,13 @@
                     },
                     "total": {
                       "type": "integer",
-                      "description": "Total rows across all pages for this tenant."
+                      "nullable": true,
+                      "description": "The tenant's full key count; stable across pages."
                     },
-                    "page": {
-                      "type": "integer"
-                    },
-                    "page_size": {
-                      "type": "integer"
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page; null on the final page."
                     }
                   }
                 }
@@ -4768,7 +4777,7 @@
       "get": {
         "operationId": "list_fleets",
         "summary": "List fleets in a workspace",
-        "description": "Returns visible fleets with the newest fleet first. Omit `cursor` for the first page. Use the returned cursor to read the next page.\n",
+        "description": "Returns visible fleets with the newest fleet first. Omit `starting_after` for the first page. Use the returned `next_cursor` to read the next page.\n",
         "tags": [
           "Fleets"
         ],
@@ -4784,10 +4793,10 @@
             }
           },
           {
-            "name": "cursor",
+            "name": "starting_after",
             "in": "query",
             "required": false,
-            "description": "Opaque page cursor from a prior response's `cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page.\n",
+            "description": "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page. The retired `cursor` spelling is refused.\n",
             "schema": {
               "type": "string"
             }
@@ -4815,7 +4824,7 @@
                   "required": [
                     "items",
                     "total",
-                    "cursor"
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -4828,10 +4837,10 @@
                       "type": "integer",
                       "description": "Count of items in this response (not total across pages)."
                     },
-                    "cursor": {
+                    "next_cursor": {
                       "type": "string",
                       "nullable": true,
-                      "description": "Opaque cursor to fetch the next page. `null` when there are no more pages.\n"
+                      "description": "Opaque token for the next page's `starting_after`. `null` when there are no more pages.\n"
                     }
                   }
                 }
@@ -6840,46 +6849,30 @@
       "get": {
         "operationId": "list_fleet_runners",
         "summary": "List fleet runners",
-        "description": "Platform-admin operator-plane read of the whole fleet. Paginated, read-only. Each row carries a derived `liveness` — never the stored auth state, never the token hash.",
+        "description": "Platform-admin operator-plane read of the whole fleet, newest first over the composite (created_at, id) key. Under keyset pagination a runner enrolled mid-traversal never repeats or hides a row. The retired page, page_size and sort parameters are refused. Each row carries a derived `liveness` — never the stored auth state, never the token hash.",
         "tags": [
           "Fleet"
         ],
         "parameters": [
           {
-            "name": "page",
+            "name": "starting_after",
             "in": "query",
             "required": false,
-            "description": "1-based page number.",
+            "description": "An opaque cursor from a previous page's `next_cursor`.",
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1
+              "type": "string"
             }
           },
           {
-            "name": "page_size",
+            "name": "limit",
             "in": "query",
             "required": false,
             "description": "Rows per page (1-100).",
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 100
-            }
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "description": "Sort order.",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "created_at",
-                "-created_at",
-                "host_id",
-                "-host_id"
-              ]
+              "maximum": 100,
+              "default": 50
             }
           }
         ],
@@ -6893,8 +6886,7 @@
                   "required": [
                     "items",
                     "total",
-                    "page",
-                    "page_size"
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -6905,13 +6897,14 @@
                     },
                     "total": {
                       "type": "integer",
-                      "format": "int64"
+                      "format": "int64",
+                      "nullable": true,
+                      "description": "The full runner count; stable across pages."
                     },
-                    "page": {
-                      "type": "integer"
-                    },
-                    "page_size": {
-                      "type": "integer"
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page; null on the final page."
                     }
                   }
                 }
@@ -6925,6 +6918,45 @@
       }
     },
     "/v1/fleets/runners/{id}": {
+      "get": {
+        "operationId": "get_fleet_runner",
+        "summary": "Get a fleet runner",
+        "description": "Platform-admin read of a single runner. Carries the summary fields, a live-work snapshot, and lifetime counters from durable lease and event rows — never from in-memory metrics. The runner detail page loads from this read.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Runner id (UUIDv7).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runner.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No runner with this id (`UZ-RUN-014`).",
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "patch": {
         "operationId": "patch_fleet_runner",
         "summary": "Administer a fleet runner",
@@ -7047,11 +7079,11 @@
         }
       }
     },
-    "/v1/fleets/runners/{id}/events": {
+    "/v1/fleets/runners/{id}/leases": {
       "get": {
-        "operationId": "list_fleet_runner_events",
-        "summary": "List fleet runner events",
-        "description": "Platform-admin read of a single runner's append-only history. Paginated; optionally filtered by event type and an occurred-at millisecond window.",
+        "operationId": "list_fleet_runner_leases",
+        "summary": "List a runner's leases",
+        "description": "Platform-admin read of a single runner's lease history, newest first. Each lease is joined to its Fleet event, so outcome and failure cause arrive in one round trip. Stripe-style keyset pagination — `starting_after` is a lease id from a previous page's `next_cursor`.",
         "tags": [
           "Fleet"
         ],
@@ -7067,45 +7099,120 @@
             }
           },
           {
-            "name": "page",
+            "name": "starting_after",
             "in": "query",
             "required": false,
-            "description": "1-based page number.",
+            "description": "A lease id this runner holds; the page starts strictly after it. A lease id the runner does not hold is refused.",
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1
+              "type": "string",
+              "format": "uuid"
             }
           },
           {
-            "name": "page_size",
+            "name": "limit",
             "in": "query",
             "required": false,
             "description": "Rows per page (1-100).",
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 100
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of leases.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RunnerLease"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "format": "int64",
+                      "nullable": true,
+                      "description": "The runner's full lease count; stable across pages."
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "The last lease id of a full page; null on the final page."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No runner with this id (`UZ-RUN-014`).",
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/fleets/runners/{id}/events": {
+      "get": {
+        "operationId": "list_fleet_runner_events",
+        "summary": "List fleet runner events",
+        "description": "Platform-admin read of a single runner's append-only history, newest first over the composite (occurred_at, id) key. The retired page and page_size parameters are refused. Optionally filtered by event type and an occurred-at millisecond window.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Runner id (UUIDv7).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "An opaque cursor from a previous page's `next_cursor`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Rows per page (1-100).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
             }
           },
           {
             "name": "event_type",
             "in": "query",
             "required": false,
-            "description": "Filter to a single runner event type.",
+            "description": "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "runner_registered",
-                "runner_online",
-                "runner_offline",
-                "lease_acquired",
-                "lease_released",
-                "runner_cordoned",
-                "runner_draining",
-                "runner_drained",
-                "runner_revoked"
-              ]
+              "type": "string"
             }
           },
           {
@@ -7139,8 +7246,7 @@
                   "required": [
                     "items",
                     "total",
-                    "page",
-                    "page_size"
+                    "next_cursor"
                   ],
                   "properties": {
                     "items": {
@@ -7151,13 +7257,14 @@
                     },
                     "total": {
                       "type": "integer",
-                      "format": "int64"
+                      "format": "int64",
+                      "nullable": true,
+                      "description": "The filtered history's full count; stable across pages."
                     },
-                    "page": {
-                      "type": "integer"
-                    },
-                    "page_size": {
-                      "type": "integer"
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page; null on the final page."
                     }
                   }
                 }
@@ -8936,6 +9043,238 @@
             "type": "integer",
             "format": "int64",
             "description": "Epoch milliseconds the runner was registered."
+          }
+        }
+      },
+      "RunnerDetail": {
+        "type": "object",
+        "description": "A single runner as the operator plane reads it. Carries the summary fields, a live-work snapshot, and lifetime counters from durable lease and event rows. The auth `token_hash` and stored auth state are never returned.",
+        "required": [
+          "id",
+          "host_id",
+          "sandbox_tier",
+          "admin_state",
+          "liveness",
+          "labels",
+          "last_seen_at",
+          "created_at",
+          "active_lease_count",
+          "active_fleet_count",
+          "leases_acquired",
+          "leases_succeeded",
+          "leases_failed",
+          "leases_expired"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "sandbox_tier": {
+            "type": "string",
+            "enum": [
+              "landlock_full",
+              "container_nested",
+              "macos_seatbelt",
+              "dev_none"
+            ]
+          },
+          "admin_state": {
+            "type": "string",
+            "description": "Operator setting. Only `active` accepts runner requests.",
+            "enum": [
+              "active",
+              "cordoned",
+              "draining",
+              "drained",
+              "revoked"
+            ]
+          },
+          "liveness": {
+            "type": "string",
+            "description": "Derived runtime liveness. `registered` = minted, never seen; `busy` = holds a live lease; `online` = heartbeat fresh; `offline` = heartbeat stale.",
+            "enum": [
+              "registered",
+              "busy",
+              "online",
+              "offline"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "last_seen_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds of the last heartbeat; 0 if never seen."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds the runner was registered."
+          },
+          "active_lease_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Leases currently live (status active and deadline in the future). A stale active row past its deadline counts as neither live nor expired until reclaim marks it."
+          },
+          "active_fleet_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Distinct fleets across the live leases only."
+          },
+          "leases_acquired": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Every lease this runner has ever been issued (lifetime, from durable rows)."
+          },
+          "leases_succeeded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Reported leases whose Fleet event settled processed."
+          },
+          "leases_failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Reported leases whose Fleet event settled fleet_error."
+          },
+          "leases_expired": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Leases the runner stopped renewing; the work was re-leased to another runner."
+          }
+        }
+      },
+      "RunnerLease": {
+        "type": "object",
+        "description": "One lease joined to its Fleet event. `outcome` is settled server-side into a single closed tag; the event's request payload is never returned.",
+        "required": [
+          "id",
+          "fleet_id",
+          "fleet_name",
+          "workspace_id",
+          "event_id",
+          "event_type",
+          "actor",
+          "outcome",
+          "failure_label",
+          "failure_detail",
+          "kind",
+          "fencing_token",
+          "provider",
+          "model",
+          "posture",
+          "metered_input_tokens",
+          "metered_cached_tokens",
+          "metered_output_tokens",
+          "wall_ms",
+          "lease_expires_at",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fleet_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fleet_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "The fleet's display name, joined at read time."
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event_id": {
+            "type": "string",
+            "description": "The Fleet event this lease ran."
+          },
+          "event_type": {
+            "type": "string",
+            "description": "The triggering event's type as recorded on the lease."
+          },
+          "actor": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "description": "Settled server-side from the lease's own status first, then the joined event. An expired lease reads expired regardless of how its event later settled under a reclaiming runner; a missing event reads unknown, never a fabricated success.",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed",
+              "expired",
+              "unknown"
+            ]
+          },
+          "failure_label": {
+            "type": "string",
+            "nullable": true,
+            "description": "The normalized failure class from the joined Fleet event; null when the event did not fail."
+          },
+          "failure_detail": {
+            "type": "string",
+            "nullable": true,
+            "description": "The human-readable failure cause recorded on the event, verbatim."
+          },
+          "kind": {
+            "type": "string",
+            "description": "fresh = first lease for its event; reclaim = re-issue of an expired holder's event under a higher fencing token.",
+            "enum": [
+              "fresh",
+              "reclaim"
+            ]
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "posture": {
+            "type": "string"
+          },
+          "metered_input_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "metered_cached_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "metered_output_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "wall_ms": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Wall-clock duration from the joined event; null until settled."
+          },
+          "lease_expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds the lease deadline elapses."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds the lease was issued."
           }
         }
       },

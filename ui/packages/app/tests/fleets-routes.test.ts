@@ -147,7 +147,7 @@ describe("fleets routes", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+          json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {
@@ -665,7 +665,7 @@ describe("fleets routes", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+          json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
       return {
@@ -873,7 +873,7 @@ describe("fleets routes", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+          json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {
@@ -917,7 +917,7 @@ describe("fleets routes", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+          json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {
@@ -968,7 +968,7 @@ describe("fleets routes", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+          json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {
@@ -1009,7 +1009,7 @@ describe("fleets routes", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+          json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {
@@ -1053,7 +1053,7 @@ describe("fleets routes", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+          json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {
@@ -1096,7 +1096,7 @@ describe("fleets routes", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ items: [], total: 0, request_id: "req_1" }),
+          json: async () => ({ items: [], total: 0, next_cursor: null }),
         };
       }
       if (url.includes("/events")) {
