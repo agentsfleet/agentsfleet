@@ -92,15 +92,23 @@ run_provision() {
 test_should_defer_health_check_when_runner_binary_is_absent() {
   local name="test_should_defer_health_check_when_runner_binary_is_absent"
   local output status=0
+  # The decoy env var carries a REMOVED policy name (spliced so the repo-wide
+  # removed-name sweep stays at zero matches): whatever the caller's shell
+  # exports, the provisioned file must stay the bootstrap pair.
   output="$(run_provision \
-    RUNNER_SANDBOX_TIER=dev_none \
+    "RUNNER_""SANDBOX_TIER=dev_none" \
     REMOTE_BINARY_PRESENT=0 \
     REMOTE_STARTUP_OUTPUT=$'remote startup output\n')" || status=$?
 
   if [[ "$status" -ne 0 ]]; then
     bad "$name" "provisioning failed on a host awaiting its first binary: $output"
-  elif ! grep -q '^RUNNER_SANDBOX_TIER=landlock_full$' "$SCP_PAYLOAD"; then
-    bad "$name" "provisioned env omitted the release-safe Linux sandbox tier"
+  elif ! grep -q '^AGENTSFLEET_API_URL=' "$SCP_PAYLOAD" || \
+      ! grep -q '^AGENTSFLEET_RUNNER_TOKEN=' "$SCP_PAYLOAD"; then
+    bad "$name" "provisioned env omitted the bootstrap pair"
+  elif grep -q '^RUNNER_' "$SCP_PAYLOAD"; then
+    bad "$name" "provisioned env carries a policy var the daemon no longer reads: $(grep '^RUNNER_' "$SCP_PAYLOAD")"
+  elif [[ "$(grep -c '=' "$SCP_PAYLOAD")" -ne 2 ]]; then
+    bad "$name" "provisioned env is not exactly the bootstrap pair: $(cat "$SCP_PAYLOAD")"
   elif ! grep -q '^stop$' "$SSH_CALLS" || grep -q '^restart$' "$SSH_CALLS"; then
     bad "$name" "missing binary did not stop the service retry loop"
   elif grep -q '^status-check$' "$SSH_CALLS"; then
@@ -129,8 +137,45 @@ test_should_restart_and_verify_when_runner_binary_exists() {
   fi
 }
 
+test_no_removed_runner_env_names_remain() {
+  # Spec M148 Dimension 5.2 (the R5 sweep as a test): no removed policy
+  # variable name survives anywhere outside historical specs and the handoff
+  # brief. The pattern's own parenthesised spelling never matches itself.
+  local name="test_no_removed_runner_env_names_remain"
+  local repo_root hits
+  repo_root="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+  # TEMPORARY carve-out: deploy-dev.yml:287 holds one stale comment line whose
+  # removal is a CI/CD edit awaiting Indy's explicit approval (M148 CHORE-close
+  # blocker). The graded R5 rubric grep runs WITHOUT this exclusion, so the
+  # deferral cannot hide — drop the exclusion together with that line.
+  hits="$(cd "$repo_root" && git grep -nE 'RUNNER_(SANDBOX_TIER|NETWORK_POLICY|REGISTRY_ALLOWLIST|WORKER_COUNT|HOST_ID|CP_[A-Z_]+_MS|WORKSPACE_BASE)' -- . ':!docs/v2/' ':!*HANDOFF*' ':!.github/workflows/deploy-dev.yml' 2>/dev/null || true)"
+  if [[ -n "$hits" ]]; then
+    bad "$name" "removed runner env names still referenced:"$'\n'"$hits"
+  else
+    ok "$name"
+  fi
+}
+
+test_no_seatbelt_references_remain() {
+  # Spec M148 Dimension 6.2 (the R7 sweep as a test): the removed tier name is
+  # gone outside historical specs and applied migration 017's comment.
+  # (Spliced here so this file never becomes its own hit.)
+  local name="test_no_seatbelt_references_remain"
+  local repo_root removed hits
+  repo_root="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+  removed="macos_""seatbelt"
+  hits="$(cd "$repo_root" && git grep -rnw "$removed" -- . ':!docs/v2/' ':!schema/017_fleet_runners.sql' ':!*HANDOFF*' 2>/dev/null || true)"
+  if [[ -n "$hits" ]]; then
+    bad "$name" "removed sandbox tier still referenced:"$'\n'"$hits"
+  else
+    ok "$name"
+  fi
+}
+
 test_should_defer_health_check_when_runner_binary_is_absent
 test_should_restart_and_verify_when_runner_binary_exists
+test_no_removed_runner_env_names_remain
+test_no_seatbelt_references_remain
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

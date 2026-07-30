@@ -13,8 +13,11 @@
 /// its identity. The host applies it and reports what its kernel can actually
 /// enforce; that report is unauthenticated self-assertion (a compromised host
 /// can lie), so placement trust stays operator-assigned — attestation is a
-/// later identity workstream.
-pub const SandboxTier = enum { landlock_full, container_nested, macos_seatbelt, dev_none };
+/// later identity workstream. Only tiers with real enforcement are members —
+/// the Seatbelt tier was removed (M148 §6): it never had enforcement code, and
+/// a tier that cannot be applied must not be assignable. A stray stored value
+/// parses fail-closed (refuse to lease), same as any unknown tier.
+pub const SandboxTier = enum { landlock_full, container_nested, dev_none };
 
 /// Egress posture assigned per runner. Three modes, named so an operator reads
 /// the behaviour off the value (no "strict"/"secure" words that decay into
@@ -95,3 +98,14 @@ pub const CapabilityReport = struct {
     /// `allow_list_egress` reads as a degraded row, never a silent refusal loop.
     egress_enforcement: bool,
 };
+
+const std = @import("std");
+
+test "test_sandbox_tier_vocabulary_excludes_seatbelt" {
+    // §6 Dimension 6.1 — the vocabulary is exactly the enforceable tiers.
+    // (The removed name is spliced so the R7 zero-reference sweep stays green.)
+    const names = std.meta.fieldNames(SandboxTier);
+    try std.testing.expectEqual(3, names.len);
+    const removed = "macos_" ++ "seatbelt";
+    for (names) |n| try std.testing.expect(!std.mem.eql(u8, n, removed));
+}

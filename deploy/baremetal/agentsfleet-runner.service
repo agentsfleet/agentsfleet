@@ -24,30 +24,22 @@ TimeoutStopSec=300
 KillMode=mixed
 
 # Required runner config — provisioned per host into the env file below by the
-# runner bootstrap playbook (never committed; the runner-token is a secret):
+# runner bootstrap playbook (never committed; the runner-token is a secret).
+# The environment carries ONLY the bootstrap trio; everything else (sandbox
+# tier, network policy, registry allowlist, worker count) is ASSIGNED by the
+# control plane per runner and delivered with its identity — change it from
+# the dashboard, never from this file:
 #   AGENTSFLEET_API_URL       — agentsfleetd HTTPS API base, e.g. https://api.agentsfleet.net
 #   AGENTSFLEET_RUNNER_TOKEN  — pre-minted `agt_r…` token (Option B): the platform
 #                          admin mints it via `POST /v1/runners` on the live
 #                          control plane and stores it in 1Password under
 #                          `…/agent-…-worker-ant/runner-token`; the daemon
-#                          authenticates with it directly and NEVER self-registers
-#   RUNNER_HOST_ID       — stable machine identifier (reuse the host's vault
-#                          `hostname` field for consistency)
-#   (optional) RUNNER_SANDBOX_TIER (prod should set landlock_full; release
-#                                   builds reject dev_none),
-#              RUNNER_WORKSPACE_BASE,
-#              RUNNER_NETWORK_POLICY (allow_all is the current default and gives
-#                                    full outbound egress; deny_all_egress gives
-#                                    no outbound egress; allow_list_egress is the
-#                                    enforced allow-list posture and currently
-#                                    fails closed until egress wiring lands),
-#              RUNNER_WORKER_COUNT  (concurrent leased agents per host; default 1
-#                                    = one agent at a time. Size to the host's
-#                                    spare cores/memory; clamped to [1, 64]. A
-#                                    larger N lifts per-host throughput but widens
-#                                    the failure domain — one host loss drops N
-#                                    in-flight runs, not 1, all re-leased to
-#                                    healthy hosts)
+#                          authenticates with it directly and NEVER self-registers.
+#                          The token resolves the runner row server-side, so no
+#                          host identifier is read from this file.
+#   (optional) RUNNER_STORAGE_HOME — host-local root for per-lease scratch
+#                          workspaces and the bundle cache (a disk fact the
+#                          control plane cannot know); defaults sanely when unset
 # Bootstrap order (chicken-and-egg): the updated agentsfleetd (with the platform-
 # admin enrollment gate) must be deployed FIRST; only then can an admin mint a
 # `agt_r` for this host. Until that's done, DEV_WORKER_READY stays `false`.

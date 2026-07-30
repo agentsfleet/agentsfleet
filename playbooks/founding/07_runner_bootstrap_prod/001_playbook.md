@@ -226,7 +226,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${WORKER_NAME}" \
 
 ## 4.0 Agent: Bootstrap `/opt/agentsfleet/`
 
-**Goal:** Server directory structure is created, deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/agentsfleet/.env` is populated from vault with the three runner env vars the Option B daemon requires (`AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
+**Goal:** Server directory structure is created, deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/agentsfleet/.env` is populated from vault with the bootstrap pair the Option B daemon requires (`AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`). Policy is assigned per runner from the dashboard, never provisioned through the environment.
 
 ### 4.1 Create directory structure + copy deploy artifacts
 
@@ -249,11 +249,12 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAM
 ### 4.2 Populate `/opt/agentsfleet/.env` from vault
 
 ```bash
-# The runner daemon needs exactly three env vars (Option B contract):
+# The runner daemon reads exactly the bootstrap pair (Option B contract) —
+# the token resolves the runner row server-side, so no host identifier is
+# provisioned; sandbox tier, network policy, registry allowlist, and worker
+# count are assigned per runner from the dashboard:
 #   - AGENTSFLEET_API_URL       — control-plane base, prod: https://api.agentsfleet.net
 #   - AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (vault field: runner-token)
-#   - RUNNER_HOST_ID       — stable machine identifier (reuse vault: hostname or
-#                            ${WORKER_NAME} if no hostname field exists yet)
 #
 # A real prod `agt_r` requires the platform-admin enrollment gate on the live
 # prod control plane. Store a placeholder (`agt_rFAKE_…`) until that's ready;
@@ -263,14 +264,12 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAM
 KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 USER=$(op read "op://$VAULT_PROD/${WORKER_NAME}/deploy-user")
 RUNNER_TOKEN=$(op read "op://$VAULT_PROD/${WORKER_NAME}/runner-token")
-HOST_ID="${WORKER_NAME}"
 API_URL="https://api.agentsfleet.net"
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" << EOF
 cat > /opt/agentsfleet/.env << 'ENVFILE'
 AGENTSFLEET_API_URL=${API_URL}
 AGENTSFLEET_RUNNER_TOKEN=${RUNNER_TOKEN}
-RUNNER_HOST_ID=${HOST_ID}
 ENVFILE
 chmod 600 /opt/agentsfleet/.env
 EOF
@@ -394,7 +393,7 @@ No manual steps after bootstrap — the fleet is fully CI-managed. The env file 
 1.0  Agent: Verify SSH key from vault reaches each server
 2.0  Agent: Install Tailscale + join tailnet (switch to hostname, drop public IP)
 3.0  Agent: Install runtime deps (bubblewrap, git, openssl, ca-certificates)
-4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/agentsfleet/deploy/, provision /opt/agentsfleet/.env (AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
+4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/agentsfleet/deploy/, provision /opt/agentsfleet/.env (AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN), install systemd unit
 5.0  Agent: Build + scp the agentsfleet-runner binary, run deploy.sh runner, verify agentsfleet-runner.service is active
 --- After ALL nodes pass step 5 with a real admin-minted agt_r in vault ---
 5.1  Agent: gh variable set PROD_WORKER_READY=true
