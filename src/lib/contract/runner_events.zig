@@ -26,6 +26,5 @@ pub const RunnerEventItem = struct {
 pub const RunnerEventsResponse = struct {
     items: []const RunnerEventItem,
     total: i64,
-    page: i32,
-    page_size: i32,
+    next_cursor: ?[]const u8,
 };

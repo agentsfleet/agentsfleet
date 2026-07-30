@@ -304,15 +304,162 @@ test "integration: GET /v1/api-keys rejects malformed pagination params with 400
     };
     defer h.deinit();
 
-    // A non-numeric page_size now fails closed (400 UZ-REQ-001) instead of
-    // silently defaulting — consistent with the out-of-range rejection.
+    // page_size is a retired parameter: refused outright (400 UZ-REQ-001),
+    // never silently ignored.
     const bad_size = try (try h.get("/v1/api-keys?page_size=abc").bearer(TOKEN_OPERATOR)).send();
     defer bad_size.deinit();
     try bad_size.expectStatus(.bad_request);
 
-    // page below 1 is a 400 as well, not a silent clamp to page 1.
+    // page is equally retired — refused, not clamped or defaulted.
     const bad_page = try (try h.get("/v1/api-keys?page=0").bearer(TOKEN_OPERATOR)).send();
     defer bad_page.deinit();
     try bad_page.expectStatus(.bad_request);
+    finalCleanup(h);
+}
+
+// ── Keyset paging with the sort allowlist ───────────────────────────────────
+
+fn mintKey(h: *TestHarness, key_name: []const u8) !void {
+    const body = try std.fmt.allocPrint(ALLOC, "{{\"key_name\":\"{s}\"}}", .{key_name});
+    defer ALLOC.free(body);
+    const resp = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR)).json(body)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.created);
+}
+
+/// Walk the key list to exhaustion under `sort`, returning ids in arrival
+/// order and asserting every non-final page is `limit` long.
+fn walkKeys(h: *TestHarness, sort: []const u8, limit: usize) !std.ArrayList([]const u8) {
+    var ids: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (ids.items) |id| ALLOC.free(id);
+        ids.deinit(ALLOC);
+    }
+    var cursor: ?[]const u8 = null;
+    defer if (cursor) |c| ALLOC.free(c);
+    while (true) {
+        const path = if (cursor) |c|
+            try std.fmt.allocPrint(ALLOC, "/v1/api-keys?sort={s}&limit={d}&starting_after={s}", .{ sort, limit, c })
+        else
+            try std.fmt.allocPrint(ALLOC, "/v1/api-keys?sort={s}&limit={d}", .{ sort, limit });
+        defer ALLOC.free(path);
+        const resp = try (try h.get(path).bearer(TOKEN_OPERATOR)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+        const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, resp.body, .{});
+        defer parsed.deinit();
+        const obj = parsed.value.object;
+        const items = obj.get("items").?.array;
+        for (items.items) |item| {
+            try ids.append(ALLOC, try ALLOC.dupe(u8, item.object.get("id").?.string));
+        }
+        const next = obj.get("next_cursor").?;
+        if (next == .null) break;
+        try std.testing.expectEqual(limit, items.items.len);
+        if (cursor) |c| ALLOC.free(c);
+        cursor = try ALLOC.dupe(u8, next.string);
+    }
+    return ids;
+}
+
+fn freeWalkedIds(ids: *std.ArrayList([]const u8)) void {
+    for (ids.items) |id| ALLOC.free(id);
+    ids.deinit(ALLOC);
+}
+
+test "integration: test_api_keys_list_uses_keyset_envelope_and_keeps_sorts" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    try mintKey(h, "sort-b-key");
+    try mintKey(h, "sort-a-key");
+    try mintKey(h, "sort-c-key");
+
+    const list_resp = try (try h.get("/v1/api-keys?limit=10").bearer(TOKEN_OPERATOR)).send();
+    defer list_resp.deinit();
+    try list_resp.expectStatus(.ok);
+    const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, list_resp.body, .{});
+    defer parsed.deinit();
+    const obj = parsed.value.object;
+    try std.testing.expectEqual(@as(usize, 3), obj.count());
+    try std.testing.expect(obj.contains("items"));
+    try std.testing.expect(obj.contains("total"));
+    try std.testing.expect(obj.contains("next_cursor"));
+
+    // The retired page spelling is refused.
+    const retired = try (try h.get("/v1/api-keys?page=2").bearer(TOKEN_OPERATOR)).send();
+    defer retired.deinit();
+    try retired.expectStatus(.bad_request);
+    try std.testing.expect(retired.bodyContains("UZ-REQ-001"));
+
+    // Every allowlisted sort still orders: name ascending leads with a, name
+    // descending leads with c.
+    const asc = try (try h.get("/v1/api-keys?sort=key_name&limit=10").bearer(TOKEN_OPERATOR)).send();
+    defer asc.deinit();
+    try asc.expectStatus(.ok);
+    const asc_parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, asc.body, .{});
+    defer asc_parsed.deinit();
+    const asc_items = asc_parsed.value.object.get("items").?.array;
+    try std.testing.expectEqualStrings("sort-a-key", asc_items.items[0].object.get("key_name").?.string);
+
+    const desc = try (try h.get("/v1/api-keys?sort=-key_name&limit=10").bearer(TOKEN_OPERATOR)).send();
+    defer desc.deinit();
+    try desc.expectStatus(.ok);
+    const desc_parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, desc.body, .{});
+    defer desc_parsed.deinit();
+    const desc_items = desc_parsed.value.object.get("items").?.array;
+    try std.testing.expectEqualStrings("sort-c-key", desc_items.items[0].object.get("key_name").?.string);
+
+    const created_asc = try (try h.get("/v1/api-keys?sort=created_at&limit=10").bearer(TOKEN_OPERATOR)).send();
+    defer created_asc.deinit();
+    try created_asc.expectStatus(.ok);
+    const created_desc = try (try h.get("/v1/api-keys?sort=-created_at&limit=10").bearer(TOKEN_OPERATOR)).send();
+    defer created_desc.deinit();
+    try created_desc.expectStatus(.ok);
+
+    // Every way a cursor can be wrong answers 400, never a 500 and never a
+    // silent walk of the wrong ordering. The cursor grammar is `{ts}:{id}` for
+    // the created_at orderings and `s:{base64url(name)}:{id}` for the key_name
+    // orderings, so these are hand-written rather than round-tripped.
+    const REFUSED = [_][]const u8{
+        // Timestamp form offered under a name ordering: resuming here would
+        // silently paginate a different order.
+        "/v1/api-keys?sort=key_name&starting_after=1744000000000:0195b4ba-8d3a-7f13-8abc-0000000d0001",
+        // Name form offered under a created_at ordering — the mirror case.
+        "/v1/api-keys?sort=-created_at&starting_after=s:c29ydC1hLWtleQ:0195b4ba-8d3a-7f13-8abc-0000000d0001",
+        // Right form, but the id half is not a uuid: it seeks a ::uuid bind, so
+        // an unguarded value would surface as a cast error's 500.
+        "/v1/api-keys?sort=-created_at&starting_after=1744000000000:not-a-uuid",
+        // Not a cursor at all.
+        "/v1/api-keys?starting_after=garbage",
+    };
+    for (REFUSED) |path| {
+        const refused = try (try h.get(path).bearer(TOKEN_OPERATOR)).send();
+        defer refused.deinit();
+        try refused.expectStatus(.bad_request);
+        try std.testing.expect(refused.bodyContains("UZ-REQ-001"));
+    }
+    finalCleanup(h);
+}
+
+test "integration: test_api_keys_key_name_sort_pages_without_loss" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    // Seven keys, two sharing a name prefix — the composite (key_name, uid)
+    // boundary must not lose either of them at a page edge.
+    const names = [_][]const u8{ "walk-a", "walk-b", "walk-dup", "walk-dup-2", "walk-e", "walk-f", "walk-g" };
+    for (names) |name| try mintKey(h, name);
+
+    var ids = try walkKeys(h, "key_name", 3);
+    defer freeWalkedIds(&ids);
+    try std.testing.expectEqual(@as(usize, 7), ids.items.len);
+    for (ids.items, 0..) |a, i| {
+        for (ids.items[i + 1 ..]) |b| try std.testing.expect(!std.mem.eql(u8, a, b));
+    }
     finalCleanup(h);
 }

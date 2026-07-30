@@ -73,7 +73,7 @@ export async function FleetsData({ workspaceId }: { workspaceId: string }) {
           <FleetWall
             workspaceId={workspaceId}
             initialFleets={page.items}
-            initialCursor={page.cursor}
+            initialCursor={page.next_cursor}
           />
         </section>
       </Section>

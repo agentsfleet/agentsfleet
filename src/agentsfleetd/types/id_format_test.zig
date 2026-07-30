@@ -105,6 +105,33 @@ test "the canonical lowercase spelling is accepted" {
     try std.testing.expect(id.isUuidV7("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99"));
 }
 
+test "isUuid accepts any canonical uuid; isUuidV7 accepts only what we mint" {
+    // The two guards answer different questions, and confusing them is a real
+    // defect either way round. `isUuid` asks "will this survive a ::uuid bind"
+    // — the check a stored id read back into a keyset cursor needs. `isUuidV7`
+    // asks "is this the shape we mint", which is stricter on both the version
+    // and the variant nibble: a v4 id, or a v7-versioned id whose variant came
+    // from a hash, is castable but not ours. Guarding a cursor with the
+    // stricter one refuses rows that exist.
+    const v7 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
+    try std.testing.expect(id.isUuid(v7));
+    try std.testing.expect(id.isUuidV7(v7));
+
+    const v4 = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+    try std.testing.expect(id.isUuid(v4));
+    try std.testing.expect(!id.isUuidV7(v4));
+
+    // Version nibble 7, variant nibble outside 8/9/a/b — what a hash-derived
+    // fixture id looks like.
+    const v7_odd_variant = "0195b4ba-8d3a-7f13-2abc-2b3e1e0a6f99";
+    try std.testing.expect(id.isUuid(v7_odd_variant));
+    try std.testing.expect(!id.isUuidV7(v7_odd_variant));
+
+    // Neither accepts a non-uuid, which is the whole point of the cursor guard.
+    try std.testing.expect(!id.isUuid("not-a-uuid"));
+    try std.testing.expect(!id.isUuid("0195b4ba8d3a7f138abc2b3e1e0a6f99"));
+}
+
 test "an uppercase spelling of a valid id is rejected, not normalized" {
     // Postgres folds these to one row on ::uuid; Redis dedupe keys, cache keys
     // and std.mem.eql see two. Accepting both spellings is the aliasing bug.

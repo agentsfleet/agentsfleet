@@ -1,7 +1,7 @@
 // External-fleet memory API — workspace-scoped /memories resource.
 //
 //   GET    /v1/workspaces/{ws}/fleets/{zid}/memories        → innerListMemories
-//                                                              query: query?, category?, limit?
+//                                                              query: query?, category?, limit?, starting_after?
 //   DELETE /v1/workspaces/{ws}/fleets/{zid}/memories/{key}  → innerDeleteMemory
 //
 // Memory is *stored* only by the runner-plane capture push (the single fenced
@@ -28,6 +28,8 @@ const common = @import("../common.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const fleet_memory = @import("../../../memory/fleet_memory.zig");
 const metrics_memory = @import("../../../observability/metrics_memory.zig");
+const keyset_cursor = @import("../../../fleet_runtime/keyset_cursor.zig");
+const paging = @import("../../pagination.zig");
 
 const h = @import("helpers.zig");
 const Hx = h.Hx;
@@ -46,17 +48,26 @@ const S_MEMORY_KEY_LENGTH_INVALID = "memory key must be 1..255 chars";
 // ── List / Search ─────────────────────────────────────────────────────────
 // `?query=...` flips behaviour from list-most-recent to fuzzy LIKE search
 // across both key and content. `?category=...` filters by category in the
-// list path.
+// list path. All three shapes page by keyset over (created_at, key):
+// `?starting_after=<next_cursor>` seeks strictly past the cursor row, so a
+// filtered or searched list is walkable to completion, not silently truncated
+// at one bounded read.
 
-pub fn innerListMemories(
-    hx: Hx,
-    req: *httpz.Request,
-    workspace_id: []const u8,
-    fleet_id: []const u8,
-) void {
+/// Parsed list-read query surface. `after` is the decoded keyset boundary;
+/// its `id` field carries the entry key (the per-fleet tiebreaker).
+const ListParams = struct {
+    query_text: ?[]const u8,
+    category: ?[]const u8,
+    limit: i64,
+    after: ?keyset_cursor.Cursor,
+};
+
+/// Reads and validates the query string. Emits the 400 and returns null on
+/// any invalid parameter — the caller just returns.
+fn parseListParams(hx: Hx, req: *httpz.Request) ?ListParams {
     const qs = req.query() catch {
         hx.fail(ec.ERR_INVALID_REQUEST, "malformed query string");
-        return;
+        return null;
     };
     const query_text: ?[]const u8 = blk: {
         const q = qs.get("query") orelse break :blk null;
@@ -69,11 +80,80 @@ pub fn innerListMemories(
         break :blk c;
     };
     const default_limit: i64 = if (query_text != null) h.DEFAULT_RECALL_LIMIT else h.DEFAULT_LIST_LIMIT;
-    const limit_raw = parseLimitQs(qs.get("limit"), default_limit) catch {
+    const limit_raw = parseLimitQs(qs.get(paging.QUERY_LIMIT), default_limit) catch {
         hx.fail(ec.ERR_INVALID_REQUEST, "limit must be a positive integer");
-        return;
+        return null;
     };
-    const limit = @min(limit_raw, h.MAX_RECALL_LIMIT);
+    const after: ?keyset_cursor.Cursor = blk: {
+        const raw = qs.get(paging.QUERY_STARTING_AFTER) orelse break :blk null;
+        if (raw.len == 0) break :blk null;
+        break :blk keyset_cursor.parse(raw) catch {
+            hx.fail(ec.ERR_INVALID_REQUEST, paging.MSG_INVALID_CURSOR);
+            return null;
+        };
+    };
+    return .{
+        .query_text = query_text,
+        .category = category_opt,
+        .limit = @min(limit_raw, h.MAX_RECALL_LIMIT),
+        .after = after,
+    };
+}
+
+fn fetchSearch(hx: Hx, conn: anytype, fleet_scope: []const u8, p: ListParams, entries: *std.ArrayList(MemoryEntry), last_created_at: *i64) ?bool {
+    const escaped = h.escapeLikePattern(hx.alloc, p.query_text.?) catch {
+        common.internalOperationError(hx.res, S_MEMORY_SEARCH_FAILED, hx.req_id);
+        return null;
+    };
+    const like_pat = std.fmt.allocPrint(hx.alloc, "%{s}%", .{escaped}) catch {
+        common.internalOperationError(hx.res, S_MEMORY_SEARCH_FAILED, hx.req_id);
+        return null;
+    };
+    const result = if (p.after) |a|
+        conn.query(sql.SEARCH_ENTRIES_AFTER, .{ fleet_scope, like_pat, a.created_at_ms, a.id, p.limit })
+    else
+        conn.query(sql.SEARCH_ENTRIES, .{ fleet_scope, like_pat, p.limit });
+    var q = PgQuery.from(result catch {
+        hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory search failed");
+        return null;
+    });
+    defer q.deinit();
+    return h.collectEntries(hx.alloc, &q, entries, last_created_at);
+}
+
+fn fetchCategory(hx: Hx, conn: anytype, fleet_scope: []const u8, p: ListParams, entries: *std.ArrayList(MemoryEntry), last_created_at: *i64) ?bool {
+    const result = if (p.after) |a|
+        conn.query(sql.SELECT_ENTRIES_IN_CATEGORY_AFTER, .{ fleet_scope, p.category.?, a.created_at_ms, a.id, p.limit })
+    else
+        conn.query(sql.SELECT_ENTRIES_IN_CATEGORY, .{ fleet_scope, p.category.?, p.limit });
+    var q = PgQuery.from(result catch {
+        hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
+        return null;
+    });
+    defer q.deinit();
+    return h.collectEntries(hx.alloc, &q, entries, last_created_at);
+}
+
+fn fetchRecent(hx: Hx, conn: anytype, fleet_scope: []const u8, p: ListParams, entries: *std.ArrayList(MemoryEntry), last_created_at: *i64) ?bool {
+    const result = if (p.after) |a|
+        conn.query(sql.SELECT_RECENT_ENTRIES_AFTER, .{ fleet_scope, a.created_at_ms, a.id, p.limit })
+    else
+        conn.query(sql.SELECT_RECENT_ENTRIES, .{ fleet_scope, p.limit });
+    var q = PgQuery.from(result catch {
+        hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
+        return null;
+    });
+    defer q.deinit();
+    return h.collectEntries(hx.alloc, &q, entries, last_created_at);
+}
+
+pub fn innerListMemories(
+    hx: Hx,
+    req: *httpz.Request,
+    workspace_id: []const u8,
+    fleet_id: []const u8,
+) void {
+    const p = parseListParams(hx, req) orelse return;
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -91,47 +171,37 @@ pub fn innerListMemories(
 
     var entries: std.ArrayList(MemoryEntry) = .empty;
     defer entries.deinit(hx.alloc);
+    var last_created_at: i64 = 0;
 
-    if (query_text) |qt| {
-        const escaped = h.escapeLikePattern(hx.alloc, qt) catch {
-            common.internalOperationError(hx.res, S_MEMORY_SEARCH_FAILED, hx.req_id);
-            return;
-        };
-        const like_pat = std.fmt.allocPrint(hx.alloc, "%{s}%", .{escaped}) catch {
-            common.internalOperationError(hx.res, S_MEMORY_SEARCH_FAILED, hx.req_id);
-            return;
-        };
-        var q = PgQuery.from(conn.query(sql.SEARCH_ENTRIES, .{ fleet_scope, like_pat, limit }) catch {
-            hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory search failed");
-            return;
-        });
-        defer q.deinit();
-        const clean = h.collectEntries(hx.alloc, &q, &entries);
-        // A search that matched nothing is a recall-miss signal (substring
-        // search came up dry) — the list/category paths never count here, and
-        // neither does a truncated collect: a database blip or OOM must not
-        // fabricate recall-miss evidence.
-        if (clean and entries.items.len == 0) metrics_memory.incSearchZeroHit();
-    } else if (category_opt) |cat| {
-        var q = PgQuery.from(conn.query(sql.SELECT_ENTRIES_IN_CATEGORY, .{ fleet_scope, cat, limit }) catch {
-            hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
-            return;
-        });
-        defer q.deinit();
-        _ = h.collectEntries(hx.alloc, &q, &entries);
-    } else {
-        var q = PgQuery.from(conn.query(sql.SELECT_RECENT_ENTRIES, .{ fleet_scope, limit }) catch {
-            hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
-            return;
-        });
-        defer q.deinit();
-        _ = h.collectEntries(hx.alloc, &q, &entries);
-    }
+    const clean = (if (p.query_text != null)
+        fetchSearch(hx, conn, fleet_scope, p, &entries, &last_created_at)
+    else if (p.category != null)
+        fetchCategory(hx, conn, fleet_scope, p, &entries, &last_created_at)
+    else
+        fetchRecent(hx, conn, fleet_scope, p, &entries, &last_created_at)) orelse return;
+
+    // A search that matched nothing is a recall-miss signal (substring search
+    // came up dry) — the list/category paths never count here, and neither
+    // does a truncated collect: a database blip or OOM must not fabricate
+    // recall-miss evidence. Nor does an empty CONTINUATION page: walking past
+    // the last match is pagination reaching its end, not a failed recall.
+    if (p.query_text != null and p.after == null and clean and entries.items.len == 0)
+        metrics_memory.incSearchZeroHit();
+
+    // A full page means the walk may continue; the boundary is the last row's
+    // (created_at, key). Arena-allocated — freed with the request.
+    const next_cursor: ?[]const u8 = if (entries.items.len > 0 and entries.items.len == @as(usize, @intCast(p.limit)))
+        keyset_cursor.format(hx.alloc, .{
+            .created_at_ms = last_created_at,
+            .id = entries.items[entries.items.len - 1].key,
+        }) catch null
+    else
+        null;
 
     hx.ok(.ok, .{
         .items = entries.items,
         .total = entries.items.len,
-        .request_id = hx.req_id,
+        .next_cursor = next_cursor,
     });
 }
 

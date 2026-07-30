@@ -103,8 +103,10 @@ pub fn templateFor(route: router.Route) []const u8 {
 
         .fleet_bundles => "/v1/fleets/bundles",
         .fleet_runners_list => "/v1/fleets/runners",
+        .fleet_runner_get => "/v1/fleets/runners/{runner_id}",
         .fleet_runner_patch => "/v1/fleets/runners/{runner_id}",
         .fleet_runner_events => "/v1/fleets/runners/{runner_id}/events",
+        .fleet_runner_leases => "/v1/fleets/runners/{runner_id}/leases",
         .fleet_streams_list => "/v1/fleets/streams",
 
         .register_runner => protocol.PATH_RUNNERS,

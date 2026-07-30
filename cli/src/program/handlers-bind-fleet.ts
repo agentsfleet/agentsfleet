@@ -68,10 +68,10 @@ export const buildFleetHandlers = (
     "fleet.list",
     (frame) =>
       listEffectFromFlags({
-        workspaceId:
-          optString(frame.parsed.options, "workspace-id") ??
-          optString(frame.parsed.options, "workspaceId"),
-        cursor: optString(frame.parsed.options, FIELD_CURSOR),
+        // Commander's native camelCase keys — normalizeOptions only ever ADDS
+        // a dashed mirror, so the camelCase read is the complete one.
+        workspaceId: optString(frame.parsed.options, "workspaceId"),
+        startingAfter: optString(frame.parsed.options, "startingAfter"),
         limit: optString(frame.parsed.options, FIELD_LIMIT),
       }),
   ),

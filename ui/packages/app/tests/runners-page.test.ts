@@ -16,18 +16,17 @@ vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
 vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
 
-// Partial mock — keep the real DEFAULT_SORT / DEFAULT_PAGE_SIZE the page passes.
 vi.mock("@/lib/api/runners", async (orig) => ({
   ...(await orig<typeof import("@/lib/api/runners")>()),
   listRunners: listRunnersMock,
 }));
 
-// Stub the client list so the page test stays focused on page-level guards.
-vi.mock("@/app/(dashboard)/admin/runners/components/RunnerList", () => ({
+// Stub the client wall so the page test stays focused on page-level guards.
+vi.mock("@/app/(dashboard)/admin/runners/components/RunnersView", () => ({
   default: ({ initial }: { initial: { items: Array<{ host_id: string }> } }) =>
     React.createElement(
       "div",
-      { "data-runner-list": "1" },
+      { "data-runner-wall": "1" },
       initial.items.map((i) => React.createElement("span", { key: i.host_id }, i.host_id)),
     ),
 }));
@@ -79,7 +78,7 @@ describe("admin/runners page", () => {
     await expect(Page()).rejects.toThrow("backend exploded");
   });
 
-  it("platform admin: lists the fleet, requesting the default newest-first sort", async () => {
+  it("platform admin: renders the wall from the keyset first page, no paging params sent", async () => {
     mockAuth();
     listRunnersMock.mockResolvedValueOnce({
       items: [
@@ -95,16 +94,13 @@ describe("admin/runners page", () => {
         },
       ],
       total: 1,
-      page: 1,
-      page_size: 25,
+      next_cursor: null,
     });
     const { default: Page } = await import("../app/(dashboard)/admin/runners/page");
     const html = renderToStaticMarkup(await Page());
     expect(html).toContain("web-prod-1");
-    expect(html).toMatch(/Runners/);
-    expect(listRunnersMock).toHaveBeenCalledWith(
-      "tok",
-      expect.objectContaining({ page: 1, page_size: 25, sort: "-created_at" }),
-    );
+    expect(html).toContain("data-runner-wall");
+    // The initial read is the keyset first page: no page, page_size or sort.
+    expect(listRunnersMock).toHaveBeenCalledWith("tok");
   });
 });

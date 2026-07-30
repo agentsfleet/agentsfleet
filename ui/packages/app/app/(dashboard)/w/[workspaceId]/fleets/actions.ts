@@ -25,7 +25,7 @@ import type {
 
 export async function listFleetsAction(
   workspaceId: string,
-  opts?: { cursor?: string; limit?: number },
+  opts?: { starting_after?: string; limit?: number },
 ): Promise<ActionResult<FleetListResponse>> {
   return withToken((t) => apiListFleets(workspaceId, t, opts));
 }

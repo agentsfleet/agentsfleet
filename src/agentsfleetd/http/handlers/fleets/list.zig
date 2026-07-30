@@ -1,8 +1,9 @@
 //! GET /v1/workspaces/{ws}/fleets — paginated list of fleets in a workspace.
 //!
-//! Composite keyset pagination: cursor encodes (created_at_ms, id) so multiple
-//! fleets installed on the same millisecond are not silently skipped. See
-//! `src/agentsfleetd/fleet_runtime/keyset_cursor.zig` for the cursor format.
+//! Composite keyset pagination: `starting_after` carries (created_at_ms, id)
+//! so multiple fleets installed on the same millisecond are not silently
+//! skipped; the response reports the continuation as `next_cursor`. See
+//! `src/agentsfleetd/fleet_runtime/keyset_cursor.zig` for the token format.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -15,6 +16,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const keyset_cursor = @import("../../../fleet_runtime/keyset_cursor.zig");
+const paging = @import("../../pagination.zig");
 const sql = @import("sql.zig");
 
 const log = logging.scoped(.fleet_api);
@@ -24,6 +26,11 @@ const Hx = hx_mod.Hx;
 const DEFAULT_LIST_PAGE_LIMIT: u32 = 20;
 const MAX_LIST_PAGE_LIMIT: u32 = 100;
 
+// The pre-guideline spelling. Refused outright so a caller still sending it
+// learns the rename instead of silently reading page one forever.
+const QUERY_CURSOR_RETIRED = "cursor";
+const MSG_RETIRED_CURSOR_PARAM = "cursor is retired on this list; page with starting_after";
+
 pub fn innerListFleets(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
@@ -31,8 +38,14 @@ pub fn innerListFleets(hx: Hx, req: *httpz.Request, workspace_id: []const u8) vo
     }
 
     const qs = req.query() catch null;
+    if (qs) |q| {
+        if (q.get(QUERY_CURSOR_RETIRED) != null) {
+            hx.fail(ec.ERR_INVALID_REQUEST, MSG_RETIRED_CURSOR_PARAM);
+            return;
+        }
+    }
     const limit = if (qs) |q| parseLimitFromQs(q) else DEFAULT_LIST_PAGE_LIMIT;
-    const cursor = if (qs) |q| q.get("cursor") else null;
+    const cursor = if (qs) |q| q.get(paging.QUERY_STARTING_AFTER) else null;
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -47,7 +60,7 @@ pub fn innerListFleets(hx: Hx, req: *httpz.Request, workspace_id: []const u8) vo
 
     const page = fetchFleetPageOnConn(conn, hx.alloc, workspace_id, cursor, limit) catch |err| {
         if (err == error.InvalidCursor) {
-            hx.fail(ec.ERR_INVALID_REQUEST, "Invalid cursor format");
+            hx.fail(ec.ERR_INVALID_REQUEST, paging.MSG_INVALID_CURSOR);
             return;
         }
         log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
@@ -102,7 +115,7 @@ fn writeListResponse(hx: Hx, page: FleetPage) void {
         };
     }
 
-    hx.ok(.ok, .{ .items = items, .total = items.len, .cursor = page.next_cursor });
+    hx.ok(.ok, .{ .items = items, .total = items.len, .next_cursor = page.next_cursor });
 }
 
 /// Wire shape per row — `triggers` projects `config_json->'x-agentsfleet'->'triggers'`
@@ -121,7 +134,7 @@ const FleetListItem = struct {
 };
 
 fn parseLimitFromQs(qs: anytype) u32 {
-    const limit_str = qs.get("limit") orelse return DEFAULT_LIST_PAGE_LIMIT;
+    const limit_str = qs.get(paging.QUERY_LIMIT) orelse return DEFAULT_LIST_PAGE_LIMIT;
     const parsed = std.fmt.parseInt(u32, limit_str, 10) catch return DEFAULT_LIST_PAGE_LIMIT;
     // Treat limit=0 as the default. With LIMIT 0 the cursor guard reports
     // no more pages, so callers would stop paginating even when rows exist.

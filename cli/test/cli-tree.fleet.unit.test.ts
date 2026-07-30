@@ -37,18 +37,18 @@ test("fleet update <id> accepts --from <path>", async () => {
   expect(calls[0]?.frame.parsed.options.from).toBe("/tmp/skill");
 });
 
-test("list accepts --workspace-id / --cursor / --limit", async () => {
+test("list accepts --workspace-id / --starting-after / --limit", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
     "list",
     "--workspace-id", VALID_ID,
-    "--cursor", "tok-1",
+    "--starting-after", "tok-1",
     "--limit", "50",
   ], handlers);
   expect(calls[0]?.name).toBe("fleet.list");
   expect(calls[0]?.frame.parsed.options.workspaceId).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options["workspace-id"]).toBe(VALID_ID);
-  expect(calls[0]?.frame.parsed.options.cursor).toBe("tok-1");
+  expect(calls[0]?.frame.parsed.options.startingAfter).toBe("tok-1");
   expect(calls[0]?.frame.parsed.options.limit).toBe(50);
 });
 

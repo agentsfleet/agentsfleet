@@ -31,6 +31,9 @@ export const buildMemoryHandlers = (
     memoryListEffectFromFlags({
       ...sharedFlags(frame, stdoutIsTty()),
       category: optString(frame.parsed.options, "category"),
+      // Commander's native key for `--starting-after` — normalizeOptions only
+      // ever ADDS a dashed mirror, so the camelCase read is the complete one.
+      startingAfter: optString(frame.parsed.options, "startingAfter"),
     }),
   ),
   search: wrapEFn("memory.search", (frame) =>

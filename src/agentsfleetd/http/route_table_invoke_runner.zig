@@ -11,9 +11,11 @@ const hx_mod = @import("handlers/hx.zig");
 const runner_register = @import("handlers/runner/register.zig");
 const fleet_runners_list = @import("handlers/fleet/runners_list.zig");
 const fleet_streams_list = @import("handlers/fleet/streams_list.zig");
+const fleet_runner_get = @import("handlers/fleet/runner_get.zig");
 const fleet_runner_patch = @import("handlers/fleet/runner_patch.zig");
 const fleet_runner_delete = @import("handlers/fleet/runner_delete.zig");
 const fleet_runner_events = @import("handlers/fleet/runner_events.zig");
+const fleet_runner_leases = @import("handlers/fleet/runner_leases.zig");
 const runner_self = @import("handlers/runner/self.zig");
 const runner_heartbeat = @import("handlers/runner/heartbeat.zig");
 const runner_lease = @import("handlers/runner/lease.zig");
@@ -61,9 +63,19 @@ pub fn invokeFleetRunnerPatch(hx: *Hx, req: *httpz.Request, route: router.Route)
     }
 }
 
+pub fn invokeFleetRunnerGet(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
+    fleet_runner_get.innerGetFleetRunner(hx.*, route.fleet_runner_get);
+}
+
 pub fn invokeFleetRunnerEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (!common.requireMethod(hx.res, req.method, .GET)) return;
     fleet_runner_events.innerListFleetRunnerEvents(hx.*, req, route.fleet_runner_events);
+}
+
+pub fn invokeFleetRunnerLeases(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
+    fleet_runner_leases.innerListRunnerLeases(hx.*, req, route.fleet_runner_leases);
 }
 
 pub fn invokeRunnerSelf(hx: *Hx, req: *httpz.Request, route: router.Route) void {

@@ -334,6 +334,7 @@ pub const matchQStashScheduleIngress = webhook.matchQStashScheduleIngress;
 
 pub const matchFleetRunner = fleet.matchFleetRunner;
 pub const matchFleetRunnerEvents = fleet.matchFleetRunnerEvents;
+pub const matchFleetRunnerLeases = fleet.matchFleetRunnerLeases;
 pub const WorkspaceFleetMemoryRoute = fleet.WorkspaceFleetMemoryRoute;
 pub const matchWorkspaceFleetMemoryItem = fleet.matchWorkspaceFleetMemoryItem;
 

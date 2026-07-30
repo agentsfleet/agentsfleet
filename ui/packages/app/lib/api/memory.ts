@@ -1,32 +1,59 @@
 import { request } from "./client";
+import { walkList } from "./list-walk";
+import { QUERY_STARTING_AFTER } from "./runners";
 import type { MemoryEntry } from "../types";
 
 export type { MemoryEntry };
 
-// The tenant memory surface (M131 §5) — the console's first dashboard caller of
-// the memory read (the CLI already lists memories). The read is `fleet:read`,
-// limit-only, max 100; the forget is `fleet:write`.
+// The tenant memory surface — the console's dashboard caller of the memory
+// read (the CLI also lists memories). The read is `fleet:read` and pages by
+// keyset (`starting_after` → `next_cursor`, newest-created first); the forget
+// is `fleet:write`.
 
 export type MemoryListResponse = {
   items: MemoryEntry[];
   total: number;
-  request_id: string;
+  next_cursor: string | null;
 };
 
-// GET …/fleets/{id}/memories — what the fleet knows. `content` is the entry
-// body (the column name is `content`, not `text`).
+// GET …/fleets/{id}/memories — one bounded page of what the fleet knows.
+// `content` is the entry body (the column name is `content`, not `text`).
 export async function listMemories(
   workspaceId: string,
   fleetId: string,
   token: string,
-  opts?: { limit?: number },
+  opts?: { limit?: number; starting_after?: string },
 ): Promise<MemoryListResponse> {
-  const qs = opts?.limit != null ? `?limit=${opts.limit}` : "";
+  const qs = new URLSearchParams();
+  if (opts?.limit != null) qs.set("limit", String(opts.limit));
+  if (opts?.starting_after != null) qs.set(QUERY_STARTING_AFTER, opts.starting_after);
+  const q = qs.toString();
   return request<MemoryListResponse>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/memories${qs}`,
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/memories${q ? `?${q}` : ""}`,
     { method: "GET" },
     token,
   );
+}
+
+// The server's accepted ceiling. The walk asks for full pages so a fleet's
+// memory costs half the round trips the server's default page would.
+const WALK_PAGE_LIMIT = 100;
+
+// The memory panel renders the fleet's whole memory, not the first bounded
+// read — memory entries accumulate per execution, so one page can silently
+// truncate. Walks next_cursor to the end via the shared list-walk bound.
+export async function listAllMemories(
+  workspaceId: string,
+  fleetId: string,
+  token: string,
+): Promise<{ items: MemoryEntry[] }> {
+  const walked = await walkList<MemoryEntry>("memory list", (cursor) =>
+    listMemories(workspaceId, fleetId, token, {
+      limit: WALK_PAGE_LIMIT,
+      ...(cursor !== null ? { starting_after: cursor } : {}),
+    }),
+  );
+  return { items: walked.items };
 }
 
 // DELETE …/fleets/{id}/memories/{key} — the operator's correction path when a

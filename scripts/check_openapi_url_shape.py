@@ -48,6 +48,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "snapshots",         # immutable workspace-owned Fleet Bundle source copies
     "workspaces",        # core.workspaces
     "runners",           # core runner fleet — enrollment (POST /v1/runners) + operator plane (GET /v1/fleets/runners)
+    "leases",            # fleet.runner_leases — per-runner lease history (GET /v1/fleets/runners/{id}/leases)
     "api-keys",          # api keys collection
     "fleet-keys",        # fleet keys collection
     "platform-keys",     # admin platform keys

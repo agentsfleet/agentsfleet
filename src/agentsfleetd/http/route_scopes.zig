@@ -136,7 +136,7 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         },
         .admin_model_by_id => &MODEL_ADMIN,
         .register_runner => &RUNNER_ENROLL,
-        .fleet_runners_list, .fleet_runner_events => &RUNNER_READ,
+        .fleet_runners_list, .fleet_runner_get, .fleet_runner_events, .fleet_runner_leases => &RUNNER_READ,
         .fleet_runner_patch => &RUNNER_WRITE,
         .fleet_streams_list => &STREAM_READ,
 

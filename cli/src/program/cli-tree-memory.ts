@@ -21,9 +21,11 @@ import type { ActionDispatch, Handlers, ProgramState } from "./cli-tree-types.ts
 // Declared before use (owner preference for this file; the sibling tree
 // files keep their bottom-declared blocks).
 const FLAG_LIMIT_N = "--limit <n>" as const;
+const FLAG_STARTING_AFTER = "--starting-after <key>" as const;
 const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
 const FLAG_FLEET_ID = "--fleet <id>" as const;
 const MAX_ENTRIES = "Max entries to return" as const;
+const NEXT_CURSOR_FROM_A_PREVIOUS_PAGE = "Next cursor from a previous page" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
 const FLEET_ID = "Fleet ID" as const;
 
@@ -45,6 +47,7 @@ export function buildMemoryTree(
     .option(FLAG_FLEET_ID, FLEET_ID, parseIdOption)
     .option("--category <name>", "Filter by category")
     .option(FLAG_LIMIT_N, MAX_ENTRIES, parseIntOption(MEMORY_LIMIT_BOUNDS))
+    .option(FLAG_STARTING_AFTER, NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
     .action(actionFor("memory.list", (frame) => runHandler(state, frame, handlers.memory.list)));
 
