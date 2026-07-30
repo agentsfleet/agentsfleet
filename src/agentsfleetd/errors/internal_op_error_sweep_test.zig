@@ -80,10 +80,21 @@
 // Stripping the workspace fleet-library detail route (no product caller was
 // ever built) removed gallery_detail.zig and its 2 sites. Re-tightened
 // immediately (88 -> 86) — the ratchet's own doctrine above.
+//
+// The pagination retirement rebuilt the three page-number reads onto keyset
+// and gave the memory list its cursor. The rewritten envelope builders answer
+// allocation faults with what the caller lost, in plain English — "Failed to
+// build the key list" (api_keys/list.zig: cursor formatting, the three
+// statement arms, row collection), "Failed to build the runner list"
+// (runners_list.zig), "Failed to build the events page" (runner_events.zig),
+// "Failed to process the memory search" (memory/handler.zig). No schema
+// names, no @errorName, no allocator language, so counted rather than
+// mudball-ok'd; the retired page-number builders' sites left with them, and
+// the measured count settles at 90 (86 -> 90).
 const std = @import("std");
 const common = @import("common");
 
-const BASELINE_CALL_SITE_COUNT: usize = 86;
+const BASELINE_CALL_SITE_COUNT: usize = 90;
 const CALL_SITE_NEEDLE = "internalOperationError(";
 const HANDLERS_DIR_PATH = "src/agentsfleetd/http/handlers";
 // `http/server.zig` sits one level above `http/handlers/` (the dispatcher,

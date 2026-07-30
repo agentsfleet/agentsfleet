@@ -24,19 +24,17 @@
   get:
     operationId: list_fleet_runners
     summary: List fleet runners
-    description: Platform-admin operator-plane read of the whole fleet. Paginated, read-only. Each row carries a derived `liveness` — never the stored auth state, never the token hash.
+    description: Platform-admin operator-plane read of the whole fleet, newest first over the composite (created_at, id) key. Under keyset pagination a runner enrolled mid-traversal never repeats or hides a row. The retired page, page_size and sort parameters are refused. Each row carries a derived `liveness` — never the stored auth state, never the token hash.
     tags:
     - Fleet
     parameters:
-    - name: page
+    - name: starting_after
       in: query
       required: false
-      description: 1-based page number.
+      description: An opaque cursor from a previous page's `next_cursor`.
       schema:
-        type: integer
-        minimum: 1
-        default: 1
-    - name: page_size
+        type: string
+    - name: limit
       in: query
       required: false
       description: Rows per page (1-100).
@@ -44,17 +42,7 @@
         type: integer
         minimum: 1
         maximum: 100
-    - name: sort
-      in: query
-      required: false
-      description: Sort order.
-      schema:
-        type: string
-        enum:
-        - created_at
-        - -created_at
-        - host_id
-        - -host_id
+        default: 50
     responses:
       '200':
         description: A page of fleet runners.
@@ -65,8 +53,7 @@
               required:
               - items
               - total
-              - page
-              - page_size
+              - next_cursor
               properties:
                 items:
                   type: array
@@ -75,13 +62,41 @@
                 total:
                   type: integer
                   format: int64
-                page:
-                  type: integer
-                page_size:
-                  type: integer
+                  nullable: true
+                  description: The full runner count; stable across pages.
+                next_cursor:
+                  type: string
+                  nullable: true
+                  description: Cursor for the next page; null on the final page.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/fleets/runners/{id}:
+  get:
+    operationId: get_fleet_runner
+    summary: Get a fleet runner
+    description: Platform-admin read of a single runner. Carries the summary fields, a live-work snapshot, and lifetime counters from durable lease and event rows — never from in-memory metrics. The runner detail page loads from this read.
+    tags:
+    - Fleet
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: Runner id (UUIDv7).
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: The runner.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/RunnerDetail
+      '404':
+        description: No runner with this id (`UZ-RUN-014`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
   patch:
     operationId: patch_fleet_runner
     summary: Administer a fleet runner
@@ -165,11 +180,11 @@
       '409':
         description: Active runner must be revoked before deletion (`UZ-RUN-016`).
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/fleets/runners/{id}/events:
+/v1/fleets/runners/{id}/leases:
   get:
-    operationId: list_fleet_runner_events
-    summary: List fleet runner events
-    description: Platform-admin read of a single runner's append-only history. Paginated; optionally filtered by event type and an occurred-at millisecond window.
+    operationId: list_fleet_runner_leases
+    summary: List a runner's leases
+    description: Platform-admin read of a single runner's lease history, newest first. Each lease is joined to its Fleet event, so outcome and failure cause arrive in one round trip. Stripe-style keyset pagination — `starting_after` is a lease id from a previous page's `next_cursor`.
     tags:
     - Fleet
     parameters:
@@ -180,15 +195,14 @@
       schema:
         type: string
         format: uuid
-    - name: page
+    - name: starting_after
       in: query
       required: false
-      description: 1-based page number.
+      description: A lease id this runner holds; the page starts strictly after it. A lease id the runner does not hold is refused.
       schema:
-        type: integer
-        minimum: 1
-        default: 1
-    - name: page_size
+        type: string
+        format: uuid
+    - name: limit
       in: query
       required: false
       description: Rows per page (1-100).
@@ -196,22 +210,73 @@
         type: integer
         minimum: 1
         maximum: 100
+        default: 50
+    responses:
+      '200':
+        description: A page of leases.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - total
+              - next_cursor
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/RunnerLease
+                total:
+                  type: integer
+                  format: int64
+                  nullable: true
+                  description: The runner's full lease count; stable across pages.
+                next_cursor:
+                  type: string
+                  nullable: true
+                  description: The last lease id of a full page; null on the final page.
+      '404':
+        description: No runner with this id (`UZ-RUN-014`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/fleets/runners/{id}/events:
+  get:
+    operationId: list_fleet_runner_events
+    summary: List fleet runner events
+    description: Platform-admin read of a single runner's append-only history, newest first over the composite (occurred_at, id) key. The retired page and page_size parameters are refused. Optionally filtered by event type and an occurred-at millisecond window.
+    tags:
+    - Fleet
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: Runner id (UUIDv7).
+      schema:
+        type: string
+        format: uuid
+    - name: starting_after
+      in: query
+      required: false
+      description: An opaque cursor from a previous page's `next_cursor`.
+      schema:
+        type: string
+    - name: limit
+      in: query
+      required: false
+      description: Rows per page (1-100).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
     - name: event_type
       in: query
       required: false
-      description: Filter to a single runner event type.
+      description: 'Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request.'
       schema:
         type: string
-        enum:
-        - runner_registered
-        - runner_online
-        - runner_offline
-        - lease_acquired
-        - lease_released
-        - runner_cordoned
-        - runner_draining
-        - runner_drained
-        - runner_revoked
     - name: since
       in: query
       required: false
@@ -236,8 +301,7 @@
               required:
               - items
               - total
-              - page
-              - page_size
+              - next_cursor
               properties:
                 items:
                   type: array
@@ -246,9 +310,11 @@
                 total:
                   type: integer
                   format: int64
-                page:
-                  type: integer
-                page_size:
-                  type: integer
+                  nullable: true
+                  description: The filtered history's full count; stable across pages.
+                next_cursor:
+                  type: string
+                  nullable: true
+                  description: Cursor for the next page; null on the final page.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error

@@ -148,7 +148,7 @@ describe("SecretsList component", () => {
     }
   });
 
-  it("delete row trigger renders the destructive button variant, matching RunnerList's pattern", async () => {
+  it("delete row trigger renders the destructive button variant, the shared admin row-trigger pattern", async () => {
     await renderList();
     expect(screen.getByLabelText(/Delete secret fly/i).className).toContain("bg-destructive");
   });

@@ -5,22 +5,31 @@ import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
 import {
   listRunners,
+  listRunnerLeases,
   createRunner,
   updateRunnerAdminState,
   deleteRunner,
-  listRunnerEvents,
   type RunnerListResponse,
+  type RunnerLeaseResponse,
   type CreatedRunner,
   type RunnerAdminAction,
   type RunnerAdminStateUpdate,
-  type RunnerEventsResponse,
   type ListParams,
-  type EventListParams,
+  type LeaseListParams,
   type SandboxTier,
 } from "@/lib/api/runners";
 
 export async function listRunnersAction(params: ListParams): Promise<ActionResult<RunnerListResponse>> {
   return requireScope(SCOPE.RUNNER_READ, () => withToken((t) => listRunners(t, params)));
+}
+
+// The busy tile's work line and the lease table both read this; the detail
+// page itself fetches server-side for the cursor the URL names.
+export async function listRunnerLeasesAction(
+  runnerId: string,
+  params: LeaseListParams,
+): Promise<ActionResult<RunnerLeaseResponse>> {
+  return requireScope(SCOPE.RUNNER_READ, () => withToken((t) => listRunnerLeases(t, runnerId, params)));
 }
 
 export async function createRunnerAction(body: {
@@ -43,11 +52,4 @@ export async function updateRunnerAdminStateAction(
 // gating it higher would be backwards.
 export async function deleteRunnerAction(runnerId: string): Promise<ActionResult<void>> {
   return requireScope(SCOPE.RUNNER_WRITE, () => withToken((t) => deleteRunner(t, runnerId)));
-}
-
-export async function listRunnerEventsAction(
-  runnerId: string,
-  params: EventListParams,
-): Promise<ActionResult<RunnerEventsResponse>> {
-  return requireScope(SCOPE.RUNNER_READ, () => withToken((t) => listRunnerEvents(t, runnerId, params)));
 }

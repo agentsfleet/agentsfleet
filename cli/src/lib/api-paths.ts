@@ -1,8 +1,12 @@
 // All fleet-scoped paths are workspace-scoped. Identity (workspace_id,
 // fleet_id, grant_id) goes in the URL path; query params are reserved
-// for pagination (page, limit, cursor) and search.
+// for pagination (starting_after, limit) and search.
 
 export const WORKSPACES_PATH = "/v1/workspaces/";
+
+// Mirrors the daemon's QUERY_STARTING_AFTER (http/pagination.zig) — the
+// keyset paging request parameter every cursor-paged list accepts.
+export const QUERY_STARTING_AFTER = "starting_after";
 export const WEBHOOKS_PATH = "/v1/webhooks/";
 
 // Flat (non-workspace-scoped) routes the CLI hits directly. Centralised

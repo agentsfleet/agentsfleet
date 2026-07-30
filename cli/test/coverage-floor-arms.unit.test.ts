@@ -72,19 +72,16 @@ describe("api_key floor arms", () => {
     expect(paths).toEqual([]);
   });
 
-  test("list rejects an out-of-range page and an unknown sort, sending nothing", async () => {
+  test("list rejects an unknown sort, sending nothing", async () => {
+    // The page-range arm this test also carried is gone with the flags: the
+    // list takes no paging arguments at all, so there is no out-of-range page
+    // to reject. `sort` is the only argument left to validate.
     const cap = newCapture();
     const paths: string[] = [];
-    const range = await runWith(
-      apiKeyListEffectFromArgs({ page: "0", pageSize: undefined, sort: undefined }),
-      { cap, http: httpLayerReturning({ items: [] }, paths) },
-    );
-    expect(failureOf(range)?.detail).toContain("page must be an integer");
-
-    const sort = await runWith(
-      apiKeyListEffectFromArgs({ page: undefined, pageSize: undefined, sort: "bogus" }),
-      { cap, http: httpLayerReturning({ items: [] }, paths) },
-    );
+    const sort = await runWith(apiKeyListEffectFromArgs({ sort: "bogus" }), {
+      cap,
+      http: httpLayerReturning({ items: [] }, paths),
+    });
     expect(failureOf(sort)?.detail).toContain("sort must be one of");
     expect(paths).toEqual([]);
   });
@@ -96,7 +93,7 @@ describe("api_key floor arms", () => {
 
     for (const effect of [
       apiKeyCreateEffectFromArgs({ name: "ci-key", description: undefined }),
-      apiKeyListEffectFromArgs({ page: undefined, pageSize: undefined, sort: undefined }),
+      apiKeyListEffectFromArgs({ sort: undefined }),
       apiKeyRevokeEffectFromId(VALID_ID),
       apiKeyDeleteEffectFromId(VALID_ID),
     ]) {
@@ -110,7 +107,7 @@ describe("api_key floor arms", () => {
   test("an empty key list reports itself in human mode instead of a bare table", async () => {
     const cap = newCapture();
     const exit = await runWith(
-      apiKeyListEffectFromArgs({ page: undefined, pageSize: undefined, sort: undefined }),
+      apiKeyListEffectFromArgs({ sort: undefined }),
       { cap, http: httpLayerReturning({ items: [] }, []) },
     );
     expect(Exit.isSuccess(exit)).toBe(true);

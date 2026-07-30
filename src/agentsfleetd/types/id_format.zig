@@ -116,6 +116,16 @@ pub fn isSupportedWorkspaceId(id: []const u8) bool {
     return isUuidV7(id);
 }
 
+/// Canonical UUID text of any version or variant — the check a value needs to
+/// pass before it is bound to a `::uuid` parameter, where a malformed value
+/// raises a cast error the caller sees as a 500. Deliberately looser than
+/// `isUuidV7`: that is the shape we MINT, while a stored id read back into a
+/// keyset cursor only has to be castable. Refusing a row that exists is worse
+/// than the 500 the guard prevents.
+pub fn isUuid(id: []const u8) bool {
+    return isCanonicalUuid(id);
+}
+
 pub fn isUuidV7(id: []const u8) bool {
     if (!isCanonicalUuid(id)) return false;
     if (id[VERSION_CHAR_INDEX] != VERSION_CHAR) return false;

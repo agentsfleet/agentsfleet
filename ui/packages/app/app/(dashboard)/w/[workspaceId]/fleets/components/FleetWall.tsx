@@ -50,7 +50,7 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
   function loadMore(next: string) {
     setError(null);
     startTransition(async () => {
-      const result = await listFleetsAction(workspaceId, { cursor: next });
+      const result = await listFleetsAction(workspaceId, { starting_after: next });
       if (!result.ok) {
         setError(
           presentErrorString({
@@ -62,7 +62,7 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
         return;
       }
       setFleets((prev) => [...prev, ...result.data.items]);
-      setCursor(result.data.cursor);
+      setCursor(result.data.next_cursor);
     });
   }
 

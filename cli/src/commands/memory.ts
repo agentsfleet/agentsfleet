@@ -17,7 +17,7 @@ import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
-import { wsFleetMemoriesPath } from "../lib/api-paths.ts";
+import { QUERY_STARTING_AFTER, wsFleetMemoriesPath } from "../lib/api-paths.ts";
 import { ui } from "../output/index.ts";
 import {
   ConfigError,
@@ -50,7 +50,13 @@ const SUGGEST_MEM_UNAVAILABLE =
   "retry shortly — the memory backend is temporarily unavailable";
 
 const USAGE_LIST =
-  "usage: agentsfleet memory list --fleet <id> [--category <name>] [--limit <n>] [--workspace <id>]";
+  "usage: agentsfleet memory list --fleet <id> [--category <name>] [--limit <n>] [--starting-after <key>] [--workspace <id>]";
+// Verb stem only; the emit site appends the resolved --fleet and the cursor, so
+// the printed line is runnable as-is. `memory list` requires --fleet, unlike
+// `fleet list`, whose hint needs no flag beyond the cursor.
+const NEXT_PAGE_COMMAND_LIST = "agentsfleet memory list" as const;
+const FLAG_FLEET = "--fleet" as const;
+const FLAG_STARTING_AFTER = "--starting-after" as const;
 const USAGE_SEARCH =
   "usage: agentsfleet memory search --fleet <id> <query> [--limit <n>] [--workspace <id>]";
 
@@ -74,13 +80,14 @@ interface MemoryRow {
 interface MemoryListResponse {
   readonly items?: ReadonlyArray<MemoryRow>;
   readonly total?: number;
-  readonly request_id?: string;
+  readonly next_cursor?: string | null;
 }
 
 export interface MemoryReadFlags {
   readonly fleetId?: string | undefined;
   readonly category?: string | undefined;
   readonly limit?: string | undefined;
+  readonly startingAfter?: string | undefined;
   readonly workspaceId?: string | undefined;
   // Bind-site stdout.isTTY read: `false` means piped/redirected → emit the
   // JSON envelope (7 Pillars auto-JSON). `undefined` (direct Effect callers,
@@ -158,6 +165,7 @@ interface MemoryQueryParams {
   readonly query: string | undefined;
   readonly category: string | undefined;
   readonly limit: string | undefined;
+  readonly startingAfter: string | undefined;
 }
 
 const buildPath = (wsId: string, fleetId: string, params: MemoryQueryParams): string => {
@@ -166,6 +174,8 @@ const buildPath = (wsId: string, fleetId: string, params: MemoryQueryParams): st
   // the wire param shares the table-field name by design — one const serves both
   if (isString(params.category) && params.category.length > 0) qs.set(FIELD_CATEGORY, params.category);
   if (isString(params.limit) && params.limit.length > 0) qs.set("limit", params.limit);
+  if (isString(params.startingAfter) && params.startingAfter.length > 0)
+    qs.set(QUERY_STARTING_AFTER, params.startingAfter);
   const q = qs.toString();
   const base = wsFleetMemoriesPath(wsId, fleetId);
   return q ? `${base}?${q}` : base;
@@ -199,6 +209,9 @@ interface MemoryRequestSpec extends MemoryQueryParams {
   readonly stdoutIsTty: boolean | undefined;
   readonly usage: string;
   readonly emptyMessage: string;
+  // Command stem for the table-mode "More available" hint; undefined for
+  // verbs that expose no cursor flag (search pages server-side only).
+  readonly nextPageCommand: string | undefined;
 }
 
 const memoryReadEffect = (
@@ -247,6 +260,13 @@ const memoryReadEffect = (
         [FIELD_PREVIEW]: previewText(m.content),
       })),
     );
+    if (isString(req.nextPageCommand) && isString(res.next_cursor) && res.next_cursor.length > 0) {
+      yield* output.info(
+        ui.dim(
+          `More available. Next: ${req.nextPageCommand} ${FLAG_FLEET} ${fleetId} ${FLAG_STARTING_AFTER} ${res.next_cursor}`,
+        ),
+      );
+    }
   });
 
 export const memoryListEffectFromFlags = (
@@ -258,9 +278,11 @@ export const memoryListEffectFromFlags = (
     query: undefined,
     category: flags.category,
     limit: flags.limit,
+    startingAfter: flags.startingAfter,
     stdoutIsTty: flags.stdoutIsTty,
     usage: USAGE_LIST,
     emptyMessage: EMPTY_LIST_MESSAGE,
+    nextPageCommand: NEXT_PAGE_COMMAND_LIST,
   });
 
 export const memorySearchEffectFromArgs = (
@@ -277,9 +299,11 @@ export const memorySearchEffectFromArgs = (
         query: trimmed,
         category: undefined,
         limit: flags.limit,
+        startingAfter: undefined,
         stdoutIsTty: flags.stdoutIsTty,
         usage: USAGE_SEARCH,
         emptyMessage: `No memories matched "${trimmed}".`,
+        nextPageCommand: undefined,
       })
     : Effect.fail(
         new ValidationError({ detail: "search query is required", suggestion: USAGE_SEARCH }),

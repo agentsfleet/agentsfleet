@@ -26,13 +26,17 @@ describe("listFleets", () => {
     await expect(listFleets("ws_1", "bad")).rejects.toBeInstanceOf(ApiError);
   });
 
-  it("appends cursor + limit query params when paginating", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) });
+  it("test_fleets_client_uses_guideline_cursor_names", async () => {
+    // Sends the guideline request spelling, never the retired one, and reads
+    // the continuation from next_cursor.
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: "cur_3" }) });
     const { listFleets } = await import("./fleets");
-    await listFleets("ws_1", "tok", { cursor: "cur_2", limit: 10 });
+    const res = await listFleets("ws_1", "tok", { starting_after: "cur_2", limit: 10 });
     const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain("cursor=cur_2");
+    expect(url).toContain("starting_after=cur_2");
+    expect(url).not.toContain("cursor=cur_2");
     expect(url).toContain("limit=10");
+    expect(res.next_cursor).toBe("cur_3");
   });
 });
 

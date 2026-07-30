@@ -11,16 +11,13 @@ import {
   TENANT_API_KEYS_PATH,
   tenantApiKeyPath,
 } from "../lib/api-paths.ts";
-import { INTEGER_RE, validateRequiredId } from "../program/validators.ts";
-import { ValidationError, type CliError } from "../errors/index.ts";
+import { validateRequiredId } from "../program/validators.ts";
+import { UnexpectedError, ValidationError, type CliError } from "../errors/index.ts";
 import {
   API_KEY_CREATED_AT,
   API_KEY_KEY_NAME,
   API_KEY_SORTS,
   API_KEY_SORT_CREATED_AT_DESC,
-  DEFAULT_API_KEY_PAGE,
-  DEFAULT_API_KEY_PAGE_SIZE,
-  MAX_API_KEY_PAGE_SIZE,
 } from "../constants/api-key.ts";
 
 export interface ApiKeyCreateArgs {
@@ -29,8 +26,6 @@ export interface ApiKeyCreateArgs {
 }
 
 export interface ApiKeyListArgs {
-  readonly page: string | undefined;
-  readonly pageSize: string | undefined;
   readonly sort: string | undefined;
 }
 
@@ -52,9 +47,8 @@ interface ApiKeyRow {
 
 interface ApiKeyListResponse {
   readonly items?: ReadonlyArray<ApiKeyRow>;
-  readonly total?: number;
-  readonly page?: number;
-  readonly page_size?: number;
+  readonly total?: number | null;
+  readonly next_cursor?: string | null;
 }
 
 interface RevokedApiKey {
@@ -67,8 +61,14 @@ const KEY_NAME = API_KEY_KEY_NAME;
 const CREATED_AT = API_KEY_CREATED_AT;
 const DEFAULT_SORT = API_KEY_SORT_CREATED_AT_DESC;
 const API_KEY_ID = "api_key_id" as const;
-const PAGE_FIELD = "page" as const;
-const PAGE_SIZE_FIELD = "page_size" as const;
+// Mirrors the daemon's QUERY_STARTING_AFTER (http/pagination.zig).
+const QUERY_STARTING_AFTER = "starting_after" as const;
+const QUERY_SORT = "sort" as const;
+// The list has no paging controls; the client follows next_cursor until the
+// server reports the end. The bound exists so a server that never returns a
+// null cursor cannot spin the walk forever — at the server's default page of
+// 50 it covers 2,000 keys, far past any real tenant.
+const MAX_LIST_WALK_REQUESTS = 40;
 const STATUS_ACTIVE = "active" as const;
 const STATUS_REVOKED = "revoked" as const;
 const TIME_NEVER = "never" as const;
@@ -106,34 +106,6 @@ const requireValidId = (
     return raw;
   });
 
-const parseBoundedInt = (
-  raw: string | undefined,
-  fallback: number,
-  fieldName: string,
-  min: number,
-  max: number,
-): Effect.Effect<number, ValidationError> => {
-  if (raw === undefined) return Effect.succeed(fallback);
-  if (!INTEGER_RE.test(raw)) {
-    return Effect.fail(
-      new ValidationError({
-        detail: `${fieldName} must be an integer between ${min} and ${max}`,
-        suggestion: `pass --${fieldName.replace("_", "-")} <${min}..${max}>`,
-      }),
-    );
-  }
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
-    return Effect.fail(
-      new ValidationError({
-        detail: `${fieldName} must be an integer between ${min} and ${max}`,
-        suggestion: `pass --${fieldName.replace("_", "-")} <${min}..${max}>`,
-      }),
-    );
-  }
-  return Effect.succeed(parsed);
-};
-
 const parseSort = (raw: string | undefined): Effect.Effect<string, ValidationError> => {
   if (raw === undefined) return Effect.succeed(DEFAULT_SORT);
   if (SORTS.has(raw)) return Effect.succeed(raw);
@@ -150,13 +122,28 @@ const formatTime = (
   missing: string,
 ): string => (value ? new Date(value).toISOString() : missing);
 
-const queryForList = (page: number, pageSize: number, sort: string): string => {
+const queryForList = (sort: string, startingAfter: string | undefined): string => {
   const query = new URLSearchParams();
-  query.set(PAGE_FIELD, String(page));
-  query.set(PAGE_SIZE_FIELD, String(pageSize));
-  query.set("sort", sort);
+  query.set(QUERY_SORT, sort);
+  if (startingAfter !== undefined) query.set(QUERY_STARTING_AFTER, startingAfter);
   return `${TENANT_API_KEYS_PATH}?${query.toString()}`;
 };
+
+const LIST_TABLE_COLUMNS = [
+  { key: KEY_NAME, label: "NAME" },
+  { key: "status", label: "STATUS" },
+  { key: "last_used_at", label: "LAST_USED" },
+  { key: CREATED_AT, label: "CREATED" },
+  { key: API_KEY_ID, label: "API_KEY_ID" },
+];
+
+const listTableRow = (key: ApiKeyRow) => ({
+  key_name: key.key_name ?? "",
+  status: key.active === false ? STATUS_REVOKED : STATUS_ACTIVE,
+  last_used_at: formatTime(key.last_used_at, TIME_NEVER),
+  created_at: formatTime(key.created_at, TIME_MISSING),
+  api_key_id: key.id ?? "",
+});
 
 export const apiKeyCreateEffectFromArgs = (
   args: ApiKeyCreateArgs,
@@ -210,52 +197,44 @@ export const apiKeyListEffectFromArgs = (
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const page = yield* parseBoundedInt(
-      args.page,
-      DEFAULT_API_KEY_PAGE,
-      PAGE_FIELD,
-      1,
-      Number.MAX_SAFE_INTEGER,
-    );
-    const pageSize = yield* parseBoundedInt(
-      args.pageSize,
-      DEFAULT_API_KEY_PAGE_SIZE,
-      PAGE_SIZE_FIELD,
-      1,
-      MAX_API_KEY_PAGE_SIZE,
-    );
     const sort = yield* parseSort(args.sort);
 
-    const res = yield* http.request<ApiKeyListResponse>({
-      path: queryForList(page, pageSize, sort),
-      token,
-    });
-    const keys = res.items ?? [];
+    // The list is complete by construction: follow next_cursor until the
+    // server reports the end. Each page arrives in the requested sort, so
+    // the concatenation preserves the global order.
+    const keys: ApiKeyRow[] = [];
+    let total: number | null = null;
+    let cursor: string | undefined;
+    let completed = false;
+    for (let requests = 0; requests < MAX_LIST_WALK_REQUESTS && !completed; requests += 1) {
+      const res = yield* http.request<ApiKeyListResponse>({
+        path: queryForList(sort, cursor),
+        token,
+      });
+      keys.push(...(res.items ?? []));
+      total = res.total ?? total;
+      const next = res.next_cursor ?? null;
+      if (next === null) completed = true;
+      else cursor = next;
+    }
+    if (!completed) {
+      return yield* Effect.fail(
+        new UnexpectedError({
+          detail: `the API key list did not end after ${MAX_LIST_WALK_REQUESTS} pages`,
+          suggestion: "retry; if it persists, report the server's runaway next_cursor",
+        }),
+      );
+    }
 
     if (config.jsonMode) {
-      yield* output.printJson(res);
+      yield* output.printJson({ items: keys, total: total ?? keys.length, next_cursor: null });
       return;
     }
     if (keys.length === 0) {
       yield* output.info("no API keys found");
       return;
     }
-    yield* output.printTable(
-      [
-        { key: KEY_NAME, label: "NAME" },
-        { key: "status", label: "STATUS" },
-        { key: "last_used_at", label: "LAST_USED" },
-        { key: CREATED_AT, label: "CREATED" },
-        { key: API_KEY_ID, label: "API_KEY_ID" },
-      ],
-      keys.map((key) => ({
-        key_name: key.key_name ?? "",
-        status: key.active === false ? STATUS_REVOKED : STATUS_ACTIVE,
-        last_used_at: formatTime(key.last_used_at, TIME_NEVER),
-        created_at: formatTime(key.created_at, TIME_MISSING),
-        api_key_id: key.id ?? "",
-      })),
-    );
+    yield* output.printTable(LIST_TABLE_COLUMNS, keys.map(listTableRow));
   });
 
 export const apiKeyRevokeEffectFromId = (

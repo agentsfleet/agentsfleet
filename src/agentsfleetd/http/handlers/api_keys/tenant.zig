@@ -26,7 +26,7 @@ const tenant_api_key = @import("../../../auth/middleware/tenant_api_key.zig");
 const api_keys_list = @import("list.zig");
 
 pub const innerListApiKeys = api_keys_list.innerListApiKeys;
-pub const sortClauseFor = api_keys_list.sortClauseFor;
+pub const sortSpecFor = api_keys_list.sortSpecFor;
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.api_keys);

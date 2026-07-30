@@ -67,12 +67,12 @@ describe("FleetWall", () => {
   });
 
   it("appends the next page on Load more", async () => {
-    listFleetsAction.mockResolvedValue({ ok: true, data: { items: [fleet({ id: "f2", name: "beta" })], cursor: null } });
+    listFleetsAction.mockResolvedValue({ ok: true, data: { items: [fleet({ id: "f2", name: "beta" })], next_cursor: null } });
     const user = userEvent.setup();
     renderWall([fleet()], "cur_1");
     await user.click(screen.getByRole("button", { name: /load more/i }));
     await waitFor(() => expect(screen.getAllByTestId("tile")).toHaveLength(2));
-    expect(listFleetsAction).toHaveBeenCalledWith("ws_1", { cursor: "cur_1" });
+    expect(listFleetsAction).toHaveBeenCalledWith("ws_1", { starting_after: "cur_1" });
   });
 
   it("surfaces an error when Load more fails", async () => {
