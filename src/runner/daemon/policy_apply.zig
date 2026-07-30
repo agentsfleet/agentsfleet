@@ -28,7 +28,25 @@ pub const Gates = struct {
     last_outcome: AppliedPolicy.ApplyOutcome = .unchanged,
     spawned_workers: ?u32 = null,
     grow_logged: bool = false,
+    degraded_logged: bool = false,
 };
+
+const ERR_EXEC_ASSIGNMENT_UNACHIEVABLE = client_errors.ERR_EXEC_ASSIGNMENT_UNACHIEVABLE;
+
+/// Record the control plane's degraded verdict from a heartbeat reply. The
+/// holder's flag gates every worker's next poll; the warn fires once per
+/// excursion, naming the missing mechanism the row carries.
+pub fn noteDegraded(applied: *AppliedPolicy, gates: *Gates, degraded: bool, reason: ?[]const u8) void {
+    applied.setDegraded(degraded);
+    if (degraded) {
+        if (!gates.degraded_logged) {
+            log.warn("runner_assignment_unachievable", .{ .error_code = ERR_EXEC_ASSIGNMENT_UNACHIEVABLE, .reason = reason orelse "unspecified", .action = "fix the host or relax the assignment from the dashboard" });
+            gates.degraded_logged = true;
+        }
+    } else {
+        gates.degraded_logged = false;
+    }
+}
 
 /// Feed one heartbeat's raw `assigned_policy` into the holder and run the
 /// apply-time gates.

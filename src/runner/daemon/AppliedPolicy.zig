@@ -14,6 +14,11 @@ const AppliedPolicy = @This();
 mutex: common.Mutex = .{},
 alloc: std.mem.Allocator,
 current: ?protocol.AssignedPolicy = null,
+/// Control-plane verdict from the last heartbeat: assigned exceeds what this
+/// host can enforce. Workers refuse to lease while set — the runner-side half
+/// of "an unmet assignment leases nothing" (the control plane also issues
+/// nothing). Atomic: read per poll, written only by the control loop.
+degraded: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
 /// The heartbeat reply as the daemon reads it (the client parses into this).
 /// `assigned_policy` stays RAW JSON: a malformed assignment must fail closed
@@ -61,6 +66,14 @@ pub fn apply(self: *AppliedPolicy, raw: ?std.json.Value) ApplyOutcome {
 /// a new assignment arrives.
 pub fn clear(self: *AppliedPolicy) void {
     _ = self.store(null, .cleared);
+}
+
+pub fn setDegraded(self: *AppliedPolicy, v: bool) void {
+    self.degraded.store(v, .seq_cst);
+}
+
+pub fn isDegraded(self: *AppliedPolicy) bool {
+    return self.degraded.load(.seq_cst);
 }
 
 /// Deep copy of the held policy for one lease, or null when nothing is held

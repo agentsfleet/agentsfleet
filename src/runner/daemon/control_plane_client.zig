@@ -100,12 +100,12 @@ pub fn lease(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, 
         ClientError.MalformedResponse;
 }
 
-/// POST /v1/runners/me/heartbeats → liveness, fleet directives, the current
-/// assignment (`AppliedPolicy.HeartbeatReplyRaw`). Returns the whole parse —
-/// the caller deinits AFTER copying what it keeps; the reply's strings live
-/// in the parse allocation.
-pub fn heartbeat(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31) !std.json.Parsed(AppliedPolicy.HeartbeatReplyRaw) {
-    const res = try self.post(alloc, protocol.PATH_RUNNER_HEARTBEATS, runner_token, "", deadline_ms);
+/// POST /v1/runners/me/heartbeats → capability report up, assignment + verdict
+/// down. Caller deinits AFTER copying what it keeps (strings live in the parse).
+pub fn heartbeat(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31, capability_report: ?protocol.CapabilityReport) !std.json.Parsed(AppliedPolicy.HeartbeatReplyRaw) {
+    const body = try std.json.Stringify.valueAlloc(alloc, protocol.HeartbeatRequest{ .capability_report = capability_report }, .{});
+    defer alloc.free(body);
+    const res = try self.post(alloc, protocol.PATH_RUNNER_HEARTBEATS, runner_token, body, deadline_ms);
     defer alloc.free(res.body);
     try checkStatus(res.status);
     return std.json.parseFromSlice(AppliedPolicy.HeartbeatReplyRaw, alloc, res.body, .{ .allocate = .alloc_always, .ignore_unknown_fields = true }) catch

@@ -14,6 +14,7 @@ const constants = common;
 const Config = @import("config.zig");
 const AppliedPolicy = @import("AppliedPolicy.zig");
 const policy_apply = @import("policy_apply.zig");
+const capability_probe = @import("../engine/capability_probe.zig");
 const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
 const client_errors = @import("../engine/client_errors.zig");
@@ -119,13 +120,24 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
 
     var heartbeat_errors: u32 = 0;
     var auth_rejects: u32 = 0;
+    // The last capability report the control plane ACCEPTED — the next tick
+    // re-sends only on change (or on the retry after a failed beat, since a
+    // failed beat never updates this).
+    var last_report: ?contract.protocol.CapabilityReport = null;
+    defer if (last_report) |r| capability_probe.freeReport(alloc, r);
     while (true) {
         if (drain_requested.load(.seq_cst)) {
             log.info(EVENT_SERVER_STOPPED, .{ .reason = "signal_drain" });
             return .drained;
         }
 
-        const hb_parsed = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
+        // Probe every tick — cheap availability asks, no installs — so a
+        // capability lost under a live daemon degrades on the next beat.
+        const report = capability_probe.collect(io, alloc);
+        const send_report = last_report == null or !capability_probe.eql(last_report.?, report);
+
+        const hb_parsed = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms, if (send_report) report else null) catch |err| {
+            capability_probe.freeReport(alloc, report);
             // A 401/403 is a rejected token — retrying can never fix it, so count
             // it apart from transport loss and fail loud once it's clearly not a
             // transient blip. A transport error resets the auth streak (and vice
@@ -153,11 +165,18 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
         };
         heartbeat_errors = 0;
         auth_rejects = 0;
+        if (send_report) {
+            if (last_report) |r| capability_probe.freeReport(alloc, r);
+            last_report = report;
+        } else {
+            capability_probe.freeReport(alloc, report);
+        }
 
-        // Copy the status out, apply the policy while the parse is alive, then
-        // free the parse — the reply's strings live in it (see client comment).
+        // Copy the status out, apply the policy + verdict while the parse is
+        // alive, then free it — the reply's strings live in the parse.
         const status = hb_parsed.value.status;
         policy_apply.applyHeartbeatPolicy(io, alloc, &applied, &gates, hb_parsed.value.assigned_policy);
+        policy_apply.noteDegraded(&applied, &gates, hb_parsed.value.degraded, hb_parsed.value.degraded_reason);
         hb_parsed.deinit();
 
         switch (status) {
@@ -206,6 +225,13 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
 /// the currently assigned count idles — the soft-shrink half of a worker-count
 /// change; nothing in flight is ever touched.
 pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map, applied: *AppliedPolicy, worker_index: u32) void {
+    if (applied.isDegraded()) {
+        // Invariant 2, runner half: an unmet assignment leases nothing. The
+        // control loop already warned with the row's reason; workers just idle.
+        log.debug("lease_refused_degraded", .{ .index = worker_index });
+        sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+        return;
+    }
     const pol = applied.snapshot(alloc) orelse {
         log.debug("lease_refused_no_policy", .{ .index = worker_index });
         sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));

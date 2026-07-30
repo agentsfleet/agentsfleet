@@ -184,7 +184,8 @@ fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]cons
     try dup(alloc, list, "--");
 }
 
-fn bwrapPath(io: std.Io) ?[]const u8 {
+/// First present bubblewrap binary, or null. Pub for the capability probe.
+pub fn bwrapPath(io: std.Io) ?[]const u8 {
     for (BWRAP_PATHS) |p| {
         std.Io.Dir.accessAbsolute(io, p, .{}) catch continue;
         return p;
