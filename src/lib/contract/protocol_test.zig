@@ -30,14 +30,41 @@ test "runner protocol enums round-trip via their tag names" {
 }
 
 test "register request and response round-trip (no runner_id; token is in the header)" {
+    const assigned = protocol.AssignedPolicy{
+        .sandbox_tier = .landlock_full,
+        .network_policy = .allow_all,
+        .registry_allowlist = &.{"registry.npmjs.org"},
+        .worker_count = 2,
+    };
     try expectStable(protocol.RegisterRequest, .{
         .host_id = "host-01",
-        .sandbox_tier = .macos_seatbelt,
+        .assigned_policy = assigned,
         .labels = &.{ "linux", "gpu" },
     });
     try expectStable(protocol.RegisterResponse, .{
         .runner_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
         .runner_token = "rt_secret",
+        .assigned_policy = assigned,
+    });
+}
+
+test "runner admin patch bodies round-trip in both one-of shapes" {
+    try expectStable(protocol.RunnerAdminPatchRequest, .{ .action = .cordon });
+    try expectStable(protocol.RunnerAdminPatchRequest, .{ .assigned_policy = .{
+        .sandbox_tier = .container_nested,
+        .network_policy = .deny_all_egress,
+        .registry_allowlist = &.{},
+        .worker_count = 1,
+    } });
+    try expectStable(protocol.RunnerAdminPatchResponse, .{
+        .id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
+        .admin_state = .active,
+        .assigned_policy = .{
+            .sandbox_tier = .landlock_full,
+            .network_policy = .allow_all,
+            .registry_allowlist = &.{"pypi.org"},
+            .worker_count = 4,
+        },
     });
 }
 
