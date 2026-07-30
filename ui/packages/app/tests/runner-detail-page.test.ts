@@ -231,19 +231,24 @@ describe("admin/runners/[runnerId] page", () => {
     );
   });
 
-  it("renders the empty page rather than failing the shell when a view read errors", async () => {
+  it("says the history is unavailable when a view read errors, never an empty history", async () => {
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);
     listRunnerLeasesMock.mockRejectedValueOnce(new Error("lease read down"));
     const Page = await loadPage();
     const html = renderToStaticMarkup(await Page(pageProps()));
-    expect(html).toContain('data-lease-table="0"');
+    // An empty table would read as "this host has never held a lease", which is
+    // the opposite of what happened. The shell and the strip still render.
+    expect(html).toContain("Lease history is temporarily unavailable");
+    expect(html).not.toContain("data-lease-table");
+    expect(html).toContain('data-runner-strip="1"');
 
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);
     listRunnerEventsMock.mockRejectedValueOnce(new Error("events read down"));
     const activityHtml = renderToStaticMarkup(await Page(pageProps({ view: "activity" })));
-    expect(activityHtml).toContain('data-activity-table="0"');
+    expect(activityHtml).toContain("Activity history is temporarily unavailable");
+    expect(activityHtml).not.toContain("data-activity-table");
   });
 
   it("builds the Grafana link only against a configured base, with the runner filter appended", async () => {
