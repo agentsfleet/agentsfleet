@@ -1,5 +1,5 @@
-// HTTP integration tests for the fleets CRUD API — focused on cursor
-// pagination on GET /v1/workspaces/{ws}/fleets.
+// HTTP integration tests for the fleets CRUD API — focused on keyset
+// pagination (starting_after / next_cursor) on GET /v1/workspaces/{ws}/fleets.
 //
 // Requires TEST_DATABASE_URL — skipped gracefully otherwise.
 
@@ -106,9 +106,9 @@ fn templateInstallBody(conn: *pg.Conn, alloc: std.mem.Allocator, name: []const u
     return .{ .id = id, .body = body };
 }
 
-// ── Cursor pagination roundtrip + invalid-cursor handling ────────────────────
+// ── Keyset pagination roundtrip + invalid-cursor handling ────────────────────
 
-test "integration: fleets list — cursor pagination roundtrip" {
+test "integration: fleets list — keyset pagination roundtrip" {
     const alloc = std.testing.allocator;
     const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -123,10 +123,10 @@ test "integration: fleets list — cursor pagination roundtrip" {
     const ids = try seedFleets(alloc, conn, 5, now_ms);
     defer freeIds(alloc, ids);
 
-    // Full cursor round-trip: 5 fleets seeded, limit=2 means pages of
+    // Full keyset round-trip: 5 fleets seeded, limit=2 means pages of
     // 2 + 2 + 1. Walk every page, accumulate ids, and assert:
     //   (a) continuation has no overlap with prior pages,
-    //   (b) last page carries cursor=null,
+    //   (b) last page carries next_cursor=null,
     //   (c) union of ids across pages == seeded set (order agnostic).
     var seen_ids = std.StringHashMap(void).init(alloc);
     defer {
@@ -141,7 +141,7 @@ test "integration: fleets list — cursor pagination roundtrip" {
     var page_count: usize = 0;
     while (page_count < 10) : (page_count += 1) { // hard cap guards runaway loop
         const url = if (next_cursor) |c|
-            try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=2&cursor={s}", .{ TEST_WORKSPACE_ID, c })
+            try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=2&starting_after={s}", .{ TEST_WORKSPACE_ID, c })
         else
             try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=2", .{TEST_WORKSPACE_ID});
         defer alloc.free(url);
@@ -162,7 +162,7 @@ test "integration: fleets list — cursor pagination roundtrip" {
             try std.testing.expect(!gop.found_existing); // (a) no overlap across pages
         }
 
-        const cursor_node = parsed.value.object.get("cursor").?;
+        const cursor_node = parsed.value.object.get("next_cursor").?;
         switch (cursor_node) {
             .null => {
                 next_cursor = null;
@@ -179,8 +179,8 @@ test "integration: fleets list — cursor pagination roundtrip" {
     // correctness (no cross-page overlap, terminal cursor) is what this test owns.
     for (ids) |seeded| try std.testing.expect(seen_ids.contains(seeded));
 
-    // Bad cursor → 400.
-    const url_bad = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?cursor=not-a-cursor", .{TEST_WORKSPACE_ID});
+    // Malformed continuation token → 400.
+    const url_bad = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?starting_after=not-a-cursor", .{TEST_WORKSPACE_ID});
     defer alloc.free(url_bad);
     const r_bad = try (try h.get(url_bad).bearer(TOKEN_USER)).send();
     defer r_bad.deinit();
@@ -192,6 +192,96 @@ test "integration: fleets list — cursor pagination roundtrip" {
     const r_anon = try h.get(url_anon).send();
     defer r_anon.deinit();
     try r_anon.expectStatus(.unauthorized);
+}
+
+// The list read speaks the Stripe-style request vocabulary: `starting_after`
+// pages forward, and the pre-guideline `cursor` parameter is refused outright
+// so a stale caller learns the rename instead of silently reading page one
+// forever.
+test "integration: test_fleets_list_accepts_starting_after_and_refuses_cursor" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = clock.nowMillis();
+    try seedWorkspace(conn, now_ms);
+    const ids = try seedFleets(alloc, conn, 3, now_ms);
+    defer freeIds(alloc, ids);
+
+    // First page yields the continuation token (3+ rows exist, so a page of 2
+    // is full and carries one).
+    const url_first = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=2", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url_first);
+    const r_first = try (try h.get(url_first).bearer(TOKEN_USER)).send();
+    defer r_first.deinit();
+    try r_first.expectStatus(.ok);
+    const parsed_first = try std.json.parseFromSlice(std.json.Value, alloc, r_first.body, .{});
+    defer parsed_first.deinit();
+    const token = switch (parsed_first.value.object.get("next_cursor").?) {
+        .string => |s| s,
+        else => return error.MissingContinuation,
+    };
+
+    // `starting_after=<token>` → 200 with the page strictly after the token:
+    // no id from page one repeats.
+    const url_after = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=2&starting_after={s}", .{ TEST_WORKSPACE_ID, token });
+    defer alloc.free(url_after);
+    const r_after = try (try h.get(url_after).bearer(TOKEN_USER)).send();
+    defer r_after.deinit();
+    try r_after.expectStatus(.ok);
+    const parsed_after = try std.json.parseFromSlice(std.json.Value, alloc, r_after.body, .{});
+    defer parsed_after.deinit();
+    const first_items = parsed_first.value.object.get("items").?.array;
+    const after_items = parsed_after.value.object.get("items").?.array;
+    for (after_items.items) |after_item| {
+        const after_id = after_item.object.get("id").?.string;
+        for (first_items.items) |first_item| {
+            try std.testing.expect(!std.mem.eql(u8, after_id, first_item.object.get("id").?.string));
+        }
+    }
+
+    // The same token under the retired spelling is refused, never translated.
+    const url_retired = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?cursor={s}", .{ TEST_WORKSPACE_ID, token });
+    defer alloc.free(url_retired);
+    const r_retired = try (try h.get(url_retired).bearer(TOKEN_USER)).send();
+    defer r_retired.deinit();
+    try r_retired.expectStatus(.bad_request);
+    try r_retired.expectErrorCode("UZ-REQ-001");
+}
+
+// The response's continuation field is `next_cursor`; no key named `cursor`
+// appears anywhere in the body.
+test "integration: test_fleets_list_emits_next_cursor" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = clock.nowMillis();
+    try seedWorkspace(conn, now_ms);
+    const ids = try seedFleets(alloc, conn, 3, now_ms);
+    defer freeIds(alloc, ids);
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=2", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    const r = try (try h.get(url).bearer(TOKEN_USER)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+
+    // A full page with rows behind it carries a string continuation.
+    try std.testing.expect(r.bodyContains("\"next_cursor\":\""));
+    // The retired key is gone: `"next_cursor"` is the only spelling in the
+    // body that contains the word, so a bare quoted `"cursor"` must not match.
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"cursor\"") == null);
 }
 
 test "integration: fleets list — projects triggers array from config_json" {

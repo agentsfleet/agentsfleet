@@ -119,6 +119,20 @@ test("fleet-key create accepts --workspace / --fleet / --name / --description", 
   expect(calls[0]?.frame.parsed.options.description).toBe("for scouting");
 });
 
+test("test_fleet_list_flag_renamed_to_starting_after", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["list", "--starting-after", "1713700000000:zom_2"], handlers);
+  expect(calls[0]?.name).toBe("fleet.list");
+  expect(calls[0]?.frame.parsed.options.startingAfter).toBe("1713700000000:zom_2");
+});
+
+test("memory list --starting-after parses into the frame", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["memory", "list", "--fleet", VALID_ID, "--starting-after", "1713700000000:goal"], handlers);
+  expect(calls[0]?.name).toBe("memory.list");
+  expect(calls[0]?.frame.parsed.options.startingAfter).toBe("1713700000000:goal");
+});
+
 test("fleet-key add is rejected with no dispatch", async () => {
   const { handlers, calls } = makeSpyTree();
   await expect(dispatch(["fleet-key", "add"], handlers)).rejects.toThrow();
@@ -153,18 +167,10 @@ test("api-key create accepts --name / --description", async () => {
   expect(calls[0]?.frame.parsed.options.description).toBe("build automation");
 });
 
-test("api-key list accepts pagination and sort flags", async () => {
+test("api-key list accepts the sort flag", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch([
-    "api-key", "list",
-    "--page", "2",
-    "--page-size", "50",
-    "--sort", "key_name",
-  ], handlers);
+  await dispatch(["api-key", "list", "--sort", "key_name"], handlers);
   expect(calls[0]?.name).toBe("api-key.list");
-  expect(calls[0]?.frame.parsed.options.page).toBe(2);
-  expect(calls[0]?.frame.parsed.options.pageSize).toBe(50);
-  expect(calls[0]?.frame.parsed.options["page-size"]).toBe(50);
   expect(calls[0]?.frame.parsed.options.sort).toBe("key_name");
 });
 

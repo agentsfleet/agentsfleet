@@ -22,8 +22,11 @@ pub const META_FROM_ADMIN_STATE = "from_admin_state";
 pub const META_TO_ADMIN_STATE = "to_admin_state";
 pub const META_LAST_SEEN_AT = "last_seen_at";
 
+/// `event_types` is a set filter: empty means unfiltered, one value is the
+/// old single-tag behaviour, several return the union. The handler validates
+/// every tag before this layer sees it.
 pub const Filter = struct {
-    event_type: ?protocol.RunnerEventType = null,
+    event_types: []const protocol.RunnerEventType = &.{},
     since: ?i64 = null,
     until: ?i64 = null,
 };
@@ -31,6 +34,12 @@ pub const Filter = struct {
 const RunnerEventPage = struct {
     items: []protocol.RunnerEventItem,
     total: i64,
+};
+
+/// Keyset boundary for the events read — the previous page's last row.
+pub const EventCursor = struct {
+    occurred_at: i64,
+    id: []const u8,
 };
 
 pub fn eventTypeForAdminState(state: protocol.AdminState) protocol.RunnerEventType {
@@ -48,32 +57,40 @@ pub fn listForRunner(
     alloc: std.mem.Allocator,
     runner_id: []const u8,
     filter: Filter,
-    page: i32,
-    page_size: i32,
+    cursor: ?EventCursor,
+    limit: i64,
 ) !RunnerEventPage {
-    const offset: i64 = @as(i64, page - 1) * @as(i64, page_size);
-    const limit: i64 = page_size;
-    const event_type = eventTypeName(filter);
-    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_EVENT_PAGE, .{ runner_id, event_type, filter.since, filter.until, limit, offset }));
+    const event_types = try eventTypeNames(alloc, filter);
+    defer if (event_types) |names| alloc.free(names);
+
+    const total = blk: {
+        var count_q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_EVENT_COUNT, .{ runner_id, event_types, filter.since, filter.until }));
+        defer count_q.deinit();
+        const row = (try count_q.next()) orelse break :blk 0;
+        break :blk try row.get(i64, 0);
+    };
+
+    var q = if (cursor) |c|
+        PgQuery.from(try conn.query(sql.SELECT_RUNNER_EVENT_KEYSET_AFTER, .{ runner_id, event_types, filter.since, filter.until, c.occurred_at, c.id, limit }))
+    else
+        PgQuery.from(try conn.query(sql.SELECT_RUNNER_EVENT_KEYSET_FIRST, .{ runner_id, event_types, filter.since, filter.until, limit }));
     defer q.deinit();
 
     var items: std.ArrayList(protocol.RunnerEventItem) = .empty;
     errdefer items.deinit(alloc);
-    var total: i64 = 0;
     while (try q.next()) |row| {
-        const row_total = try row.get(i64, 5);
-        if (try row.get(bool, 6)) {
-            total = row_total;
-            continue;
-        }
-        if (total == 0) total = row_total;
         try items.append(alloc, try readItem(alloc, row));
     }
     return .{ .items = try items.toOwnedSlice(alloc), .total = total };
 }
 
-fn eventTypeName(filter: Filter) ?[]const u8 {
-    return if (filter.event_type) |event_type| @tagName(event_type) else null;
+/// Tag names for the SQL `text[]` bind; null means unfiltered. The tag-name
+/// slices are static, only the outer slice is allocated — caller must free.
+fn eventTypeNames(alloc: std.mem.Allocator, filter: Filter) !?[]const []const u8 {
+    if (filter.event_types.len == 0) return null;
+    const names = try alloc.alloc([]const u8, filter.event_types.len);
+    for (filter.event_types, 0..) |event_type, i| names[i] = @tagName(event_type);
+    return names;
 }
 
 pub fn appendLeaseReleasedBestEffort(

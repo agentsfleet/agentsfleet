@@ -1,79 +1,57 @@
-import React from "react";
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import { TooltipProvider } from "@agentsfleet/design-system";
-import type { RunnerListItem, RunnerEventsResponse } from "@/lib/api/runners";
-import { RunnerActivityDialog } from "./RunnerDialogs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { RunnerListItem } from "@/lib/api/runners";
+import { RunnerActionConfirm } from "./RunnerDialogs";
+import { ACTION_CONFIG, DELETE_ACTION_CONFIG, actionsFor, canDelete } from "./RunnerListCells";
+
+afterEach(() => cleanup());
 
 const RUNNER: RunnerListItem = {
-  id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
-  host_id: "web-active-1",
+  id: "r-dialog-1",
+  host_id: "host-1",
   sandbox_tier: "landlock_full",
   admin_state: "active",
   liveness: "online",
   labels: [],
-  last_seen_at: 1_716_500_000_000,
-  created_at: 1_716_000_000_000,
+  last_seen_at: 0,
+  created_at: 0,
 };
 
-const NO_ACTIVITY = "No activity yet.";
-// Skeleton's only stable render signature (design-system Skeleton.tsx).
-const SKELETON_SELECTOR = ".animate-pulse";
+describe("runner admin actions", () => {
+  it("test_runner_admin_actions_unchanged", () => {
+    // The exact confirm copy the retired table applied, unchanged.
+    expect(ACTION_CONFIG.cordon.title).toBe("Cordon this runner?");
+    expect(ACTION_CONFIG.drain.title).toBe("Drain this runner?");
+    expect(ACTION_CONFIG.revoke.title).toBe("Revoke this runner?");
+    expect(ACTION_CONFIG.revoke.intent).toBe("destructive");
+    expect(DELETE_ACTION_CONFIG.title).toBe("Delete this runner?");
 
-function eventsResponse(items: RunnerEventsResponse["items"]): RunnerEventsResponse {
-  return { items, total: items.length, page: 1, page_size: 25 };
-}
-
-function renderDialog(props: { data: RunnerEventsResponse | null; error?: string | null; pending?: boolean }) {
-  render(
-    <TooltipProvider>
-      <RunnerActivityDialog
-        runner={RUNNER}
-        data={props.data}
-        error={props.error ?? null}
-        pending={props.pending ?? false}
-        onOpenChange={() => {}}
-        onPage={() => {}}
-        onPageSizeChange={() => {}}
-      />
-    </TooltipProvider>,
-  );
-}
-
-afterEach(cleanup);
-
-describe("RunnerActivityDialog body states", () => {
-  it("test_shows_skeleton_while_events_load", () => {
-    renderDialog({ data: null, pending: true });
-    expect(document.querySelectorAll(SKELETON_SELECTOR).length).toBeGreaterThan(0);
-    expect(screen.queryByText(NO_ACTIVITY)).toBeNull();
+    // The same eligibility rules: cordon only while active, drain until
+    // draining, revoke until revoked, delete only once revoked.
+    expect(actionsFor("active")).toEqual(["cordon", "drain", "revoke"]);
+    expect(actionsFor("cordoned")).toEqual(["drain", "revoke"]);
+    expect(actionsFor("draining")).toEqual(["revoke"]);
+    expect(actionsFor("drained")).toEqual(["revoke"]);
+    expect(actionsFor("revoked")).toEqual([]);
+    expect(canDelete("revoked")).toBe(true);
+    expect(canDelete("active")).toBe(false);
   });
 
-  it("test_empty_page_shows_no_activity_not_skeleton", () => {
-    renderDialog({ data: eventsResponse([]) });
-    expect(screen.getByText(NO_ACTIVITY)).toBeTruthy();
-    expect(document.querySelectorAll(SKELETON_SELECTOR).length).toBe(0);
-  });
-
-  it("test_loaded_events_render_without_skeleton", () => {
-    renderDialog({
-      data: eventsResponse([
-        {
-          id: "0190bbbb-bbbb-7bbb-bbbb-bbbbbbbbbbbb",
-          runner_id: RUNNER.id,
-          event_type: "runner_registered",
-          occurred_at: 1_716_000_000_000,
-          metadata: { host_id: RUNNER.host_id },
-        },
-      ]),
-    });
-    expect(screen.getByText("runner_registered")).toBeTruthy();
-    expect(document.querySelectorAll(SKELETON_SELECTOR).length).toBe(0);
-  });
-
-  it("test_error_replaces_skeleton", () => {
-    renderDialog({ data: null, error: "could not load runner activity" });
-    expect(screen.getByText("could not load runner activity")).toBeTruthy();
-    expect(document.querySelectorAll(SKELETON_SELECTOR).length).toBe(0);
+  it("renders the target's copy and confirms with its own handler", () => {
+    const onConfirm = vi.fn();
+    render(
+      <RunnerActionConfirm
+        target={{ runner: RUNNER, action: "cordon", ...ACTION_CONFIG.cordon }}
+        error={null}
+        onOpenChange={vi.fn()}
+        onConfirm={onConfirm}
+      />,
+    );
+    expect(screen.getByText("Cordon this runner?")).toBeTruthy();
+    expect(screen.getByText(ACTION_CONFIG.cordon.description)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cordon" }));
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "cordon", runner: RUNNER }),
+    );
   });
 });

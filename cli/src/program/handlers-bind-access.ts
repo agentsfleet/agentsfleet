@@ -30,10 +30,6 @@ export const buildAccessHandlers = (
       "api-key.list",
       (frame) =>
         apiKeyListEffectFromArgs({
-          page: optString(frame.parsed.options, "page"),
-          pageSize:
-            optString(frame.parsed.options, "pageSize") ??
-            optString(frame.parsed.options, "page-size"),
           sort: optString(frame.parsed.options, "sort"),
         }),
     ),

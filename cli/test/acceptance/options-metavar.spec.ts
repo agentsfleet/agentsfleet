@@ -121,7 +121,7 @@ function runEnv(extra?: Record<string, string>): Record<string, string> {
 describe("--help bodies use angle-bracket metavar convention", () => {
   type HelpCase = readonly [string, ReadonlyArray<string>, ReadonlyArray<string>];
   const cases: ReadonlyArray<HelpCase> = [
-    ["agentsfleet list --help",                 ["list", "--help"],                 ["--limit <n>", "--cursor <token>", "--workspace-id <id>"]],
+    ["agentsfleet list --help",                 ["list", "--help"],                 ["--limit <n>", "--starting-after <id>", "--workspace-id <id>"]],
     ["agentsfleet logs --help",                 ["logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--fleet <id>"]],
     ["agentsfleet events --help",               ["events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
     ["agentsfleet install --help",              ["install", "--help"],              ["--library <id>", "--name <name>"]],
@@ -190,15 +190,15 @@ describe("option values flow end-to-end into the wire request", () => {
     return runEnv({ AGENTSFLEET_API_URL: requireStub().baseUrl, ...(extra ?? {}) });
   }
 
-  it("fleet list --limit 25 --cursor abc123 → GET .../fleets?cursor=abc123&limit=25", async () => {
+  it("fleet list --limit 25 --starting-after abc123 → GET .../fleets?starting_after=abc123&limit=25", async () => {
     clear();
-    const result = await runFleetctl(["list", "--limit", "25", "--cursor", "abc123", "--json"], { env: apiEnv() });
+    const result = await runFleetctl(["list", "--limit", "25", "--starting-after", "abc123", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
     const hit = captured.find((c) => c.url.includes("/fleets") && c.method === "GET");
     assert.ok(hit, `no /fleets GET captured: ${JSON.stringify(captured)}`);
     assert.match(hit.url, /[?&]limit=25(&|$)/);
-    assert.match(hit.url, /[?&]cursor=abc123(&|$)/);
+    assert.match(hit.url, /[?&]starting_after=abc123(&|$)/);
   });
 
   it("fleet logs <id> --limit 50 → GET .../fleets/<id>/events?limit=50", async () => {

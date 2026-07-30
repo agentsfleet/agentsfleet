@@ -152,36 +152,39 @@ pub const SELECT_BUDGET_POLICY_AND_DRAIN =
 /// One page of a runner's event history, with a total that survives an offset
 /// past the end. Every filter is optional at the SQL level (`$n IS NULL OR …`)
 /// so one statement serves the filtered and unfiltered reads alike.
-pub const SELECT_RUNNER_EVENT_PAGE =
-    \\WITH filtered AS (
-    \\  SELECT id::text, runner_id::text, event_type, occurred_at, metadata::text
-    \\  FROM fleet.runner_events
-    \\  WHERE runner_id = $1::uuid
-    \\    AND ($2::text IS NULL OR event_type = $2::text)
-    \\    AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
-    \\    AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
-    \\),
-    \\page AS (
-    \\  SELECT id, runner_id, event_type, occurred_at, metadata,
-    \\    COUNT(*) OVER()::bigint AS total,
-    \\    false AS count_only,
-    \\    ROW_NUMBER() OVER (ORDER BY occurred_at DESC, id DESC)::bigint AS page_ord
-    \\  FROM filtered
-    \\  ORDER BY occurred_at DESC, id DESC
-    \\  LIMIT $5::bigint OFFSET $6::bigint
-    \\),
-    \\total_row AS (
-    \\  SELECT NULL::text AS id, NULL::text AS runner_id, NULL::text AS event_type,
-    \\    0::bigint AS occurred_at, NULL::text AS metadata,
-    \\    (SELECT COUNT(*)::bigint FROM filtered) AS total,
-    \\    true AS count_only,
-    \\    NULL::bigint AS page_ord
-    \\  WHERE NOT EXISTS (SELECT 1 FROM page)
-    \\)
-    \\SELECT * FROM page
-    \\UNION ALL
-    \\SELECT * FROM total_row
-    \\ORDER BY count_only ASC, page_ord ASC NULLS LAST
+/// Filtered total for the runner-events read; the same predicate set as the
+/// page statements so `total` always describes the filtered history.
+pub const SELECT_RUNNER_EVENT_COUNT =
+    \\SELECT COUNT(*)::bigint FROM fleet.runner_events
+    \\WHERE runner_id = $1::uuid
+    \\  AND ($2::text[] IS NULL OR event_type = ANY($2::text[]))
+    \\  AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
+    \\  AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
+;
+
+/// One keyset page of runner events, newest first over `(occurred_at, id)` —
+/// rides `runner_events_runner_idx (runner_id, occurred_at DESC, id DESC)`.
+const RUNNER_EVENT_KEYSET_COLS =
+    \\SELECT id::text, runner_id::text, event_type, occurred_at, metadata::text
+    \\FROM fleet.runner_events
+    \\WHERE runner_id = $1::uuid
+    \\  AND ($2::text[] IS NULL OR event_type = ANY($2::text[]))
+    \\  AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
+    \\  AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
+    \\
+;
+
+/// `$5` limit.
+pub const SELECT_RUNNER_EVENT_KEYSET_FIRST = RUNNER_EVENT_KEYSET_COLS ++
+    \\ORDER BY occurred_at DESC, id DESC
+    \\LIMIT $5::bigint
+;
+
+/// `$5` boundary occurred_at, `$6` boundary event row id, `$7` limit.
+pub const SELECT_RUNNER_EVENT_KEYSET_AFTER = RUNNER_EVENT_KEYSET_COLS ++
+    \\  AND (occurred_at, id) < ($5::bigint, $6::uuid)
+    \\ORDER BY occurred_at DESC, id DESC
+    \\LIMIT $7::bigint
 ;
 
 /// Record an operator-plane runner event. `dedup_key` is NULL here — only the
