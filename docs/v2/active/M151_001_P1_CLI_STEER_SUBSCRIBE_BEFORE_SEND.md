@@ -58,6 +58,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/fleet-steer-linecov.unit.test.ts` | EDIT | buffer/filter/fallback branch coverage |
 | `cli/test/fleet-steer-errors.integration.test.ts` | EDIT | stream-open failure and post-failure paths |
 | `docs/v2/pending/M151_001_P1_CLI_STEER_SUBSCRIBE_BEFORE_SEND.md` | EDIT | lifecycle moves and Dimension DONE marks |
+| `package.json` + `bun.lock` | EDIT | §4 dependency refresh (folded scope): in-range workspace updates |
+| `cli/package.json` + `cli/bun.lock` | EDIT | §4: posthog-node, oxlint, @clerk/testing in-range; playwright pinned 1.62.1 |
+| `ui/packages/app/package.json` | EDIT | §4: next 16.2.12 (clears three high advisories), TypeScript 7.0.2 + oxlint-tsgolint 7.0.2001, react 19.2.8, playwright 1.62.1, dev majors; adds `typescript-jsapi` (typescript@6 alias) |
+| `ui/packages/app/next.config.ts` | EDIT | §4: `experimental.useTypeScriptCli` — TypeScript 7 has no JavaScript compiler API |
+| `ui/packages/app/components/domain/island-dynamic/intent-module-loader.test.ts` | EDIT | §4: bundle-guard AST parser imports the `typescript-jsapi` alias — the compiler API it walks left the typescript@7 package |
+| `ui/packages/design-system/package.json` | EDIT | §4: in-range updates + jsdom 30, @testing-library/jest-dom 7 |
+| `ui/packages/website/package.json` | EDIT | §4: in-range updates + playwright 1.62.1, jsdom 30, jest-dom 7, size-limit 13 |
 
 ## Applicable Rules
 
@@ -101,6 +108,14 @@ Subscribing earlier must never make steer worse than post-then-subscribe. Every 
 
 - **Dimension 3.1** — REPL multi-turn steer: each turn takes the new order; turn boundaries and prompts render as today → Test: existing `fleet-steer-repl.unit.test.ts` suite passes unmodified
 - **Dimension 3.2** — JSON mode output shape (`{ event_id, ...outcome }`) is byte-identical → Test `test_json_mode_shape_unchanged`
+
+### §4 — Dependency refresh (folded scope — owner-directed mid-stream)
+
+Workspace-wide dependency refresh folded into this workstream by owner instruction (see Discovery). In-range updates across all five package roots; explicit pins for the out-of-range toolchain pieces; the app crosses to TypeScript 7 now that Next.js 16.2.12 ships the backported `experimental.useTypeScriptCli` backend (the Go-native compiler removed `lib/typescript.js`, so the build shells out to the project-local `tsc`).
+
+- **Dimension 4.1** — full unit + lint suites green on the bumped toolchain → Test: `make test-unit-all` and `make lint-all` exit 0 — IN_PROGRESS (`lint-all` ✓; per-lane suites individually ✓; the one full-run red was `admin-models-ui` timing out on a loaded worker, 31/31 twice in isolation — regraded at VERIFY)
+- **Dimension 4.2** — the dashboard app production-builds on TypeScript 7 through the local-CLI backend (the Vercel deploy path) → Test: `cd ui/packages/app && bun run build` exit 0 — DONE
+- **Dimension 4.3** — the `next` high-severity advisories (Server-Side Request Forgery in Server Actions, middleware/proxy bypass, Denial of Service) are out of range → Test: `bun audit` no longer lists `next` — DONE
 
 ## Interfaces
 
@@ -147,6 +162,9 @@ No new events or log emits: the change is client-side ordering inside one CLI tu
 | 2.3 | unit (negative) | `test_abort_in_pre_id_window` | abort signal fires pre-id → interrupted error, stream closed, zero frames rendered |
 | 3.1 | regression | existing REPL suite | passes unmodified |
 | 3.2 | regression | `test_json_mode_shape_unchanged` | JSON mode → `{ event_id, ...outcome }` byte-identical to today |
+| 4.1 | regression | `make test-unit-all` + `make lint-all` | bumped toolchain → both exit 0 |
+| 4.2 | build | `cd ui/packages/app && bun run build` | TypeScript 7 via local-CLI backend → exit 0 |
+| 4.3 | audit | `bun audit` | `next` absent from the advisory listing |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -154,6 +172,8 @@ No new events or log emits: the change is client-side ordering inside one CLI tu
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Subscribe-before-send proven with buffering and filtering (§1) | `cd cli && bun test 2>&1 \| tail -3` | exit 0 | P0 | |
 | R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R3 | App production build on TypeScript 7 (§4, the Vercel path) | `cd ui/packages/app && bun run build 2>&1 \| tail -3` | exit 0 | P0 | |
+| R4 | `next` advisories cleared (§4) | `bun audit 2>&1 \| grep -c '^next '` | `0` | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
@@ -173,6 +193,8 @@ N/A — no files deleted.
 - **Dashboard changes** — the browser stream is already open before the user types; nothing to do.
 - **Replayable activity channel** — a server-side redesign the platform deliberately rejected (`data_flow.md`: durable history is the recovery source); this spec closes the gap client-side.
 - **Changelog `<Update>`** — rides CHORE(close) in `~/Projects/docs` (cross-repo, own-branch flow).
+- **Held-back dependency majors (§4)** — `@assistant-ui/react` 0.14→0.15 (pre-1.0 runtime chat surface; breakage would be runtime-visible, not compile-visible), the exact-pinned `@radix-ui/*` set (deliberate pins), and `happy-dom` 20.11.1 (attempted, reverted to 20.10.6: its detached browser now performs real navigation fetches on anchor click, so the sidebar docs link pulls the live docs site and a relative fetch dies on the default `localhost:3000` window origin — crashed the app coverage lane). Each needs its own verified pass.
+- **`react-router` advisory** — the React Server Components-mode Cross-Site Request Forgery advisory's patched line sits above the react-router-dom 7.x range this repo can reach in-range; tracked for its own bump decision.
 
 ---
 
@@ -199,5 +221,10 @@ N/A — no files deleted.
 
 - **Consults** — Architecture: `data_flow.md` §D WATCH + §Two streams answer the flow; no conflict (the channel is deliberately non-replayable; this spec works with that grain). Origin: surfaced as finding F3 during the M150_001 review (greptile P1 + Codex cross-model pass), recorded in that spec's Discovery with an Indy go-ahead to spec the CLI fix as its own workstream.
 - **Metrics review** — no analytics/funnel playbook update required: no signal changes.
+- **Folded scope (§4)** — owner-directed mid-stream fold-in of the dependency refresh:
+  > Indy (2026-07-30): "just bump typescript playwright and other pacakges and ensure we succeed in test so that gives us confidence in deployment of vercel? does vercel support typescript 7 i heard there was a pull request pending and a blocker?" — context: dependency refresh requested while M151 was in EXECUTE.
+  > Indy (2026-07-30): "i want the deps refresh in your old PR, not a new one." then "m151-steer*" — context: fold into `feat/m151-steer-subscribe-first` instead of a separate chore PR.
+  The TypeScript 7 blocker Indy referenced is vercel/next.js issue #95490 (`next build` misdetects TypeScript 7 because the Go-native compiler dropped `lib/typescript.js`), fixed by PR #95639 (canary) and backport PR #95831 → stable in Next.js 16.2.12 behind `experimental.useTypeScriptCli`.
+  > Indy (2026-07-30): "keep the simple alias for now, as TS 7.1 will sunset the oxc-parser if we write it today." — context: the bundle-guard test's `typescript-jsapi` (typescript@6) alias is the accepted bridge; no oxc-parser rewrite; migrate to the official TypeScript 7.1 API when it ships (grep `typescript-jsapi`).
 - **Skill-chain outcomes** — (populated as work proceeds)
 - **Deferrals** — (none)

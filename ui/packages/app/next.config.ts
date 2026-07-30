@@ -16,6 +16,13 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
 
+  // TypeScript 7 ships a Go-native compiler with no lib/typescript.js, so the
+  // build must shell out to the project-local tsc CLI instead of loading the
+  // retired JavaScript compiler API (vercel/next.js#95831, stable in 16.2.12).
+  experimental: {
+    useTypeScriptCli: true,
+  },
+
   // Same-origin proxy for API calls. Browser hits /backend/v1/... (no CORS);
   // Next.js server forwards to the real backend. Uses the same env var as
   // lib/api/client.ts so a single value drives both server-side and
