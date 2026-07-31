@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M152
 **Workstream:** 001
 **Date:** Jul 31, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the daemon leaks heap on every Clerk signup webhook and during every credential-vendor outage; operator-facing memory growth
 **Categories:** API
 **Batch:** B1 — single workstream
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m152-audit-remediation
+**Test Baseline:** unit=3276 integration=501
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-fable-5, Jul 31, 2026) — sourced from the Jul 30, 2026 four-agent audit of `src/agentsfleetd/{auth,cli,cmd,config,credentials,cron,crypto,db,errors,events}`; every finding was grep-verified against `main`
 **Canonical architecture:** `docs/architecture/memory.md` (allocator ownership) · `docs/architecture/concurrency.md` (stop paths)
