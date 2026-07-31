@@ -70,11 +70,13 @@ store: TokenCache,
 /// precomputable offline.
 fp_seed: u64,
 /// Single-flight registry for cold-miss mints (`broker_flight.zig`): a key
-/// present here is being minted right now; losers wait on the condition and
+/// present here is being minted right now; losers poll for its removal and
 /// re-read the cache. The mutex guards `inflight` and nothing else.
 inflight_mutex: common.Mutex = .{},
-inflight_cond: common.Condition = .{},
 inflight: std.StringHashMapUnmanaged(void) = .empty,
+/// Bounded loser wait (`broker_flight.zig` owns the default and rationale);
+/// a test injects a short bound to prove the timeout without a 30 s park.
+loser_wait_bound_ms: i64 = flight.LOSER_WAIT_BOUND_MS,
 
 /// `registry` is injected (production passes `integration.REGISTRY`) so a test can
 /// supply a fake-id registry and prove dispatch is data-driven. `deps` carries the

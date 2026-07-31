@@ -4,12 +4,18 @@ lint-zig.py — deterministic Zig discipline checks.
 
 Two modes:
 
-  python3 lint-zig.py [ROOT]                       -> pg-drain check (default)
+  python3 lint-zig.py [ROOT]           -> pg-drain + allocating-writer (default)
   python3 lint-zig.py --discipline [--roster P] ROOT
                                                     -> ghostty-derived A5/A2 checks
 
 pg-drain: every conn.query() call has a .drain() in the same function block.
   Suppress with:  // check-pg-drain: ok — <reason>
+
+allocating-writer: every std.Io.Writer.Allocating binding pairs with
+  `defer <name>.deinit()` (or errdefer) in the same function — `.fromArrayList`
+  takes ownership and resets the source list, so a list-level defer frees
+  nothing and the accumulated bytes leak on error paths.
+  Suppress with:  // check-allocating-writer: ok — <reason>
 
 discipline (rules A1-A6 / C1-C5 in dispatch/write_zig.md), roster-scoped by
 audits/zig-discipline-roster.txt:
@@ -98,8 +104,10 @@ def check_pg_drain(path: Path):
 def run_pg_drain(root: str) -> int:
     files = find_zig_files(root)
     all_errors = []
+    writer_errors = []
     for f in sorted(files):
         all_errors.extend(check_pg_drain(f))
+        writer_errors.extend(check_allocating_writer(f))
     if all_errors:
         print("FAIL pg-drain check — conn.query() without .drain():")
         for e in all_errors:
@@ -108,9 +116,60 @@ def run_pg_drain(root: str) -> int:
         print("Fix: add 'try result.drain();' or 'result.drain() catch {};' before deinit().")
         print("Alt: use conn.exec() for DDL/INSERT/UPDATE — it handles drain internally.")
         print("Suppress a false positive with: // check-pg-drain: ok — <reason>")
+    if writer_errors:
+        print("FAIL allocating-writer check — Writer.Allocating without deinit pairing:")
+        for e in writer_errors:
+            print(e)
+        print(f"\n{len(writer_errors)} violation(s) found.")
+        print("Fix: pair every binding with `defer <name>.deinit()` (or errdefer).")
+        print("Note: `.fromArrayList` takes OWNERSHIP and resets the source list, so a")
+        print("      pre-existing `defer list.deinit()` frees nothing.")
+        print("Suppress a false positive with: // check-allocating-writer: ok — <reason>")
+    if all_errors or writer_errors:
         return 1
-    print(f"✓ pg-drain check passed ({len(files)} files scanned)")
+    print(f"✓ pg-drain + allocating-writer checks passed ({len(files)} files scanned)")
     return 0
+
+
+# --- allocating-writer check (runs in default mode alongside pg-drain) -------
+
+AW_SUPPRESS = "// check-allocating-writer: ok"
+# `var aw: std.Io.Writer.Allocating = ...` (decl-literal form) and
+# `var aw = std.Io.Writer.Allocating.init/fromArrayList(...)` (qualified form).
+AW_TYPED = re.compile(r"(?:var|const)\s+(\w+)\s*:\s*std\.Io\.Writer\.Allocating\s*=")
+AW_QUALIFIED = re.compile(r"(?:var|const)\s+(\w+)\s*=\s*(?:try\s+)?std\.Io\.Writer\.Allocating\.")
+
+
+def check_allocating_writer_text(text, label):
+    """Every `std.Io.Writer.Allocating` binding needs `defer <n>.deinit()`."""
+    errors = []
+    for lineno, fn_name, body, _ in extract_functions(text):
+        if AW_SUPPRESS in body:
+            continue
+        code = "\n".join(re.sub(r"//.*", "", ln) for ln in body.splitlines())
+        bindings = {m.group(1) for m in AW_TYPED.finditer(code)}
+        bindings |= {m.group(1) for m in AW_QUALIFIED.finditer(code)}
+        for binding in sorted(bindings):
+            # "defer x.deinit(" is a substring of "errdefer x.deinit(" — one
+            # containment test accepts both spellings.
+            if f"defer {binding}.deinit(" not in code:
+                errors.append(
+                    f"  {label}:{lineno}: fn {fn_name} — Writer.Allocating `{binding}` "
+                    f"without `defer {binding}.deinit()` / errdefer"
+                )
+    return errors
+
+
+def check_allocating_writer(path: Path):
+    try:
+        text = path.read_text()
+    except Exception:
+        return []
+    return check_allocating_writer_text(text, str(path))
+
+
+# Fixture proof that this checker bites lives in
+# scripts/check_allocating_writer_test.py (SCRIPT_SELF_TESTS discovery).
 
 
 # --- discipline checks (ghostty-derived A5/A2) ------------------------------

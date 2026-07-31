@@ -51,6 +51,14 @@ const MS_PER_SECOND: i64 = 1000;
 /// floor re-mints early, never late — mirrors the github mint's local-expiry floor.
 /// Pub for the sibling test file, which pins the fallback behavior against it.
 pub const DEFAULT_ACCESS_TTL_MS: i64 = 5 * 60 * 1000;
+/// Upper bound accepted for a provider `expires_in` (seconds): ten years, far
+/// past any real access-token lifetime. Beyond it — or negative, non-finite,
+/// or non-numeric — the body is malformed input, never trusted into timestamp
+/// arithmetic (`@intFromFloat` of a hostile float is a panic, and an
+/// overflowing `now + ttl` is one too).
+pub const MAX_EXPIRES_IN_S: i64 = 10 * 365 * 24 * 60 * 60;
+/// Floats at/above this magnitude cannot be converted to i64 without trapping.
+const MAX_SAFE_FLOAT_I64: f64 = 9.0e18;
 
 /// Mint a fresh access token from the handle's refresh token. `reconnect_required`
 /// when the handle lacks a refresh token or the vendor reports `invalid_grant`
@@ -136,7 +144,15 @@ fn parseAccess(ctx: MintCtx, posted_refresh_token: []const u8, body: []const u8)
         else => return .{ .mint_failed = .permanent },
     };
     const tok = strField(obj, RESP_FIELD_ACCESS_TOKEN) orelse return .{ .mint_failed = .permanent };
-    const ttl_ms = if (intField(obj, RESP_FIELD_EXPIRES_IN)) |secs| secs * MS_PER_SECOND else DEFAULT_ACCESS_TTL_MS;
+    // Absent `expires_in` → conservative default. PRESENT but non-numeric,
+    // negative, non-finite, or beyond the cap → malformed body, same as a
+    // missing access token — never fed into ttl arithmetic.
+    const ttl_ms = ttl: {
+        const v = obj.get(RESP_FIELD_EXPIRES_IN) orelse break :ttl DEFAULT_ACCESS_TTL_MS;
+        const secs = intValue(v) orelse return .{ .mint_failed = .permanent };
+        if (secs < 0 or secs > MAX_EXPIRES_IN_S) return .{ .mint_failed = .permanent };
+        break :ttl secs * MS_PER_SECOND;
+    };
     const owned_tok = try ctx.alloc.dupe(u8, tok);
     errdefer ctx.alloc.free(owned_tok);
     // A response refresh token that is absent, EMPTY (a malformed provider or
@@ -181,10 +197,14 @@ fn strField(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
     };
 }
 
-fn intField(obj: std.json.ObjectMap, key: []const u8) ?i64 {
-    return switch (obj.get(key) orelse return null) {
+/// A JSON number as i64, or null when it is not one — including a float that
+/// is non-finite or outside the safely-convertible range, where
+/// `@intFromFloat` would be safety-checked illegal behavior on
+/// provider-controlled bytes.
+fn intValue(value: std.json.Value) ?i64 {
+    return switch (value) {
         .integer => |n| n,
-        .float => |n| @intFromFloat(n),
+        .float => |n| if (std.math.isFinite(n) and @abs(n) < MAX_SAFE_FLOAT_I64) @intFromFloat(n) else null,
         else => null,
     };
 }

@@ -144,3 +144,29 @@ test "extractCustomClaims rejects malformed and non-object JSON" {
     try std.testing.expectError(jwks.VerifyError.TokenMalformed, extractCustomClaims(std.testing.allocator, "[1,2,3]"));
     try std.testing.expectError(jwks.VerifyError.TokenMalformed, extractCustomClaims(std.testing.allocator, "null"));
 }
+
+test "claim materialization survives allocation failure without leaking" {
+    // checkAllAllocationFailures fails each internal allocation in turn and
+    // asserts the error return leaks nothing — the deterministic proof that
+    // duplicateClaims' errdefer ladder frees every earlier dupe (and the
+    // scopes slice) when a later dupe fails.
+    const json =
+        \\{"sub":"user_1","tenant_id":"tenant_a","org_id":"org_1","workspaceId":"ws_a","aud":"https://api.agentsfleet.net","scope":"fleet:read secret:write"}
+    ;
+    const Probe = struct {
+        fn freeAll(alloc: std.mem.Allocator, c: IdentityClaims) void {
+            if (c.tenant_id) |v| alloc.free(v);
+            if (c.org_id) |v| alloc.free(v);
+            if (c.workspace_id) |v| alloc.free(v);
+            if (c.audience) |v| alloc.free(v);
+            if (c.scopes) |v| alloc.free(v);
+        }
+        fn run(alloc: std.mem.Allocator, payload: []const u8) !void {
+            const clerk = try extractClerkClaims(alloc, payload);
+            freeAll(alloc, clerk);
+            const custom = try extractCustomClaims(alloc, payload);
+            freeAll(alloc, custom);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{json});
+}

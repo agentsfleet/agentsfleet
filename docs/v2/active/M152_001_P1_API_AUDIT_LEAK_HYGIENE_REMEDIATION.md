@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** fix(agentsfleetd): close audit leak class, cap outbound reads, fold duplicates
 - **Intent (one sentence):** the daemon stops leaking under webhook traffic and vendor outages, cannot be panicked by hostile provider responses, and sheds the dead surface and duplicated validation the audit exposed.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN, Jul 31 2026): every audited finding is closed in kind at its site, mirroring a proven in-repo pattern, with a test in the same commit; the daemon must stop leaking under webhook traffic and vendor outages and must survive hostile provider input. `ASSUMPTIONS I'M MAKING:` (1) all 46 findings including lows are in scope; (2) root-cause files outside the ten folders are in scope where a finding lands there; (3) the four extra `Writer.Allocating` sites the new lint exposed (`http/test_harness_server`, `http/test_http_message`, `http/handlers/cross_workspace_idor_test`, `runner/cmd/help`) fold in — the lint invariant is incoherent with known-red sites; (4) the Clerk worker bound stays inside the auth portability wall (no `call_deadline` import) — bounded in-flight count + bounded shutdown drain instead of a joinable deadline-armed worker; the alternative is recorded in Discovery for Indy.
 
 ## Implementing agent — read these first
 
@@ -76,6 +76,9 @@ All paths below are under `src/agentsfleetd/` unless rooted otherwise.
 | `state/tenant_billing_rates.zig` + `fleet/service.zig` | EDIT | receive relocated pin tests |
 | `cron/{Service,QStashClient,Credentials,FireQueue}.zig` | EDIT | de-pub constants; finalize fallback logs + preserves original error; buffer sized to data; oversized-token distinct outcome; reply-free allocator alignment |
 | `lint-zig.py` (repo root) | EDIT | new check: `fromArrayList` without adjacent deinit/errdefer fails lint |
+| `scripts/check_allocating_writer_test.py` | CREATE | fixture proof the new check bites (SCRIPT_SELF_TESTS discovery) |
+| `make/quality.mk` | EDIT | pg-drain recipe names the allocating-writer check |
+| `http/{test_harness_server,test_http_message}.zig` + `http/handlers/cross_workspace_idor_test.zig` + `src/runner/cmd/help.zig` | EDIT | same leak class exposed by the new lint — folded to keep the invariant coherent |
 | Sibling `*_test.zig` of the rows above | EDIT | per-Dimension tests; allocation-failure sweeps |
 
 ## Applicable Rules
@@ -105,14 +108,14 @@ All paths below are under `src/agentsfleetd/` unless rooted otherwise.
 
 Close every audited leak: the three `Writer.Allocating.fromArrayList` sites (ownership transfer makes the original list's deinit a no-op), the five multi-dupe errdefer-ladder gaps, and the OpenTelemetry (OTel) exporter install seam that drops its config on failure outcomes and re-parses the environment three times. Then mechanize the class. **Implementation default:** fix shape is the `metrics_render.zig` pattern — adjacent `defer`/`errdefer aw.deinit()` — because it is the proven in-repo idiom.
 
-- **Dimension 1.1** — Clerk fetch frees its accumulator on success, fetch-error, and Out of Memory (OOM) paths → Test `test_clerk_fetch_frees_body_all_paths`
-- **Dimension 1.2** — mint post frees its accumulator on every early exit (deadline fire, reset, OOM) → Test `test_mint_post_frees_body_on_error`
-- **Dimension 1.3** — JWKS fetch frees the partial body when the fetch errors mid-stream → Test `test_jwks_fetch_frees_partial_on_error`
-- **Dimension 1.4** — auth claim materialization (claims, standard-claims, oidc verified-set) survives `checkAllAllocationFailures` with zero leaks → Test `test_auth_claim_ladders_alloc_failure`
-- **Dimension 1.5** — database URL parse survives `checkAllAllocationFailures` → Test `test_pool_parse_url_alloc_failure`
-- **Dimension 1.6** — fleet-set enumerate survives `checkAllAllocationFailures` → Test `test_fleet_set_enumerate_alloc_failure`
-- **Dimension 1.7** — exporter config is parsed once per boot and owned (freed) on every install outcome including already-running and spawn-failed → Test `test_otlp_install_failure_frees_config`
-- **Dimension 1.8** — `lint-zig.py` fails a fixture containing `fromArrayList` with no adjacent deinit/errdefer and passes the fixed sites → Test `test_lint_fromarraylist_check`
+- **Dimension 1.1** — Clerk fetch frees its accumulator on success, fetch-error, and Out of Memory (OOM) paths (implemented by deleting the accumulator: the body is never read, so fetch stream-discards) → Test `test_clerk_fetch_frees_body_all_paths` — **DONE**
+- **Dimension 1.2** — mint post frees its accumulator on every early exit (deadline fire, reset, OOM) → Test `test_mint_post_frees_body_on_error` — **DONE**
+- **Dimension 1.3** — JWKS fetch frees the partial body when the fetch errors mid-stream → Test `test_jwks_fetch_frees_partial_on_error` — **DONE**
+- **Dimension 1.4** — auth claim materialization (claims, standard-claims, oidc verified-set) survives `checkAllAllocationFailures` with zero leaks; OOM now propagates as OOM instead of collapsing into token-malformed (error-class fix the sweep forced) → Test `test_auth_claim_ladders_alloc_failure` — **DONE**
+- **Dimension 1.5** — database URL parse survives `checkAllAllocationFailures` → Test `test_pool_parse_url_alloc_failure` — **DONE**
+- **Dimension 1.6** — fleet-set enumerate survives an injected-allocation-failure sweep with zero leaks (integration tier; the cache swallows refresh errors by design, so the sweep drives the backing leak detector, not error propagation) → Test `test_fleet_set_enumerate_alloc_failure` — **DONE**
+- **Dimension 1.7** — exporter config is parsed once per boot and owned (freed) on every install outcome including already-running and spawn-failed → Test `test_otlp_install_failure_frees_config` — **DONE**
+- **Dimension 1.8** — `lint-zig.py` fails a fixture containing `fromArrayList` with no adjacent deinit/errdefer and passes the fixed sites → Test `test_lint_fromarraylist_check` — **DONE**
 
 ### §2 — Outbound hardening
 
@@ -120,7 +123,7 @@ Outbound HTTP reads reject at named byte caps (mirror the QStash client's capped
 
 - **Dimension 2.1** — JWKS and Clerk responses larger than their named caps are rejected with the connection cleaned up → Test `test_outbound_reads_reject_over_cap`
 - **Dimension 2.2** — `expires_in` of non-finite, negative, or over-range value returns `.mint_failed = .permanent`, never a panic → Test `test_expires_in_hostile_values_permanent`
-- **Dimension 2.3** — Clerk metadata work runs on a bounded worker with a fetch deadline; shutdown joins it; burst beyond the bound is rejected or queued at a named limit → Test `test_clerk_worker_bounded_joins_at_shutdown`
+- **Dimension 2.3** — Clerk metadata fetches are bounded by a named in-flight cap (burst beyond it is rejected and logged) and shutdown performs a bounded drain; stragglers own only self-lifetime memory. The deadline-armed joinable-worker alternative needs a `call_deadline` import through the auth portability wall — recorded in Discovery for Indy's call. → Test `test_clerk_worker_bounded_drains_at_shutdown`
 - **Dimension 2.4** — a single-flight waiter whose winner never finishes wakes at a named deadline and returns transient failure → Test `test_flight_waiter_bounded_wait`
 - **Dimension 2.5** — JWKS verifier init propagates allocation failure as an error (no `@panic`), cascading through the oidc verifier init → Test `test_verifier_init_oom_errors`
 
@@ -224,7 +227,7 @@ No other product/operator signal changes; no analytics/funnel playbook update re
 | 1.8 | unit | `test_lint_fromarraylist_check` | leaking fixture fails, fixed sites pass |
 | 2.1 | unit | `test_outbound_reads_reject_over_cap` | JWKS and Clerk bodies > cap → error, cleanup, no unbounded growth |
 | 2.2 | unit | `test_expires_in_hostile_values_permanent` | 1e300 / NaN / negative → `.mint_failed = .permanent` |
-| 2.3 | integration | `test_clerk_worker_bounded_joins_at_shutdown` | worker joined at shutdown; burst beyond bound handled at named limit |
+| 2.3 | unit | `test_clerk_worker_bounded_drains_at_shutdown` | burst beyond the in-flight cap rejected; shutdown drain returns once in-flight work completes |
 | 2.4 | unit | `test_flight_waiter_bounded_wait` | stuck winner → waiter returns transient at deadline |
 | 2.5 | unit | `test_verifier_init_oom_errors` | failing allocator → error, not abort |
 | 3.1 | unit | `test_credential_frees_zeroize_leak_free` | teardown through zeroizing free; testing allocator reports no leak |
@@ -314,7 +317,7 @@ De-pub-only items (per-signal OTel fns, `ArgvIter`, `SYNC_LEASE_MS`, `MAX_RESPON
 
 ## Discovery (consult log)
 
-- **Consults** —
+- **Consults** — Clerk worker bound (Dimension 2.3): the deadline-armed joinable worker (mirroring the credentials/cron exchanges) requires importing `call_deadline` + `http_pin` into `src/agentsfleetd/auth/`, which the `auth-only-tests` portability aggregate deliberately excludes. Chosen: bounded in-flight cap + bounded shutdown drain, all std+common — stragglers touch only self-owned memory. Flag for Indy: if widening the auth dependency surface is acceptable, the deadline-armed worker is the stronger long-term shape. · Flight waiter (Dimension 2.4): `std.Io.Condition` (0.16) has no timed wait; losers now poll on a short cadence with a deadline, and the no-longer-consumed `inflight_cond` was removed rather than kept as dead concurrent code.
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Deferrals** —

@@ -303,8 +303,8 @@ fn sendReq(alloc: std.mem.Allocator, url: []const u8, method: std.http.Method, t
         hdrs[hc] = .{ .name = "content-type", .value = "application/json" };
         hc += 1;
     }
-    var resp_buf: std.ArrayList(u8) = .empty;
-    var w: std.Io.Writer.Allocating = .fromArrayList(alloc, &resp_buf);
+    var w: std.Io.Writer.Allocating = .init(alloc);
+    defer w.deinit();
     const result = try client.fetch(.{ .location = .{ .url = url }, .method = method, .payload = body, .extra_headers = hdrs[0..hc], .response_writer = &w.writer });
     return .{ .status = @intFromEnum(result.status), .body = try w.toOwnedSlice() };
 }

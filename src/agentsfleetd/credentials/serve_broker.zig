@@ -177,9 +177,12 @@ pub const HttpClientExchange = struct {
         const auth: ?[]u8 = if (req.bearer) |b| try std.fmt.allocPrint(alloc, "Bearer {s}", .{b}) else null;
         defer if (auth) |a| alloc.free(a);
 
-        // BUFFER GATE: ArrayList(u8) for the response body — fetch streams into it.
-        var body: std.ArrayList(u8) = .empty;
-        var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
+        // BUFFER GATE: Allocating writer for the response body — fetch streams
+        // into it. The defer covers every early exit below (pin/arm refusal,
+        // fetch failure); after a successful toOwnedSlice it frees an empty
+        // writer (no-op).
+        var aw: std.Io.Writer.Allocating = .init(alloc);
+        defer aw.deinit();
 
         var headers: [4]std.http.Header = undefined;
         var n: usize = 0;

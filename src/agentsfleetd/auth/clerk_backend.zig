@@ -233,21 +233,19 @@ fn runFetchBlocking(
     var client: std.http.Client = .{ .allocator = alloc, .io = constants.globalIo() };
     defer client.deinit();
 
-    var body: std.ArrayList(u8) = .empty;
-    defer body.deinit(alloc);
-    var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
-
     const headers: [2]std.http.Header = .{
         .{ .name = "content-type", .value = "application/json" },
         .{ .name = "authorization", .value = auth_header },
     };
 
+    // Only the status is inspected; omitting response_writer makes fetch
+    // stream-and-discard the body, so nothing is retained regardless of how
+    // large Clerk's response is.
     const result = client.fetch(.{
         .location = .{ .url = url },
         .method = METADATA_HTTP_METHOD,
         .payload = payload,
         .extra_headers = &headers,
-        .response_writer = &aw.writer,
     }) catch |err| return mapFetchError(err);
 
     return mapStatus(@intFromEnum(result.status), url);
@@ -279,6 +277,54 @@ fn mapFetchError(err: anyerror) PatchError {
         => PatchError.ConnectFailed,
         else => PatchError.RequestFailed,
     };
+}
+
+// In-file tests: runFetchBlocking is deliberately private, and the property
+// under proof is allocator-visible only from inside this module.
+fn testBoundPort(handle: std.Io.net.Socket.Handle) !u16 {
+    // SAFETY: getsockname fills sa before sa.port is read on success.
+    var sa: std.posix.sockaddr.in = undefined;
+    var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
+    if (std.c.getsockname(handle, @ptrCast(&sa), &len) != 0) return error.GetSockNameFailed;
+    return std.mem.bigToNative(u16, sa.port);
+}
+
+const TestOkServer = struct {
+    fn run(listener: *std.Io.net.Server, io: std.Io) void {
+        const conn = listener.accept(io) catch return;
+        defer conn.close(io);
+        var buf: [2048]u8 = undefined;
+        _ = std.posix.read(conn.socket.handle, &buf) catch return;
+        const resp: []const u8 = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok";
+        var sent: usize = 0;
+        while (sent < resp.len) {
+            const rc = std.posix.system.write(conn.socket.handle, resp[sent..].ptr, resp.len - sent);
+            if (std.posix.errno(rc) != .SUCCESS) return;
+            sent += @intCast(rc);
+        }
+    }
+};
+
+test "fetch error path retains nothing under the leak-detecting allocator" {
+    // Connection refused: the fetch owns no accumulator at all, so the
+    // testing.allocator leak detector proves the error path retains nothing.
+    const r = runFetchBlocking(std.testing.allocator, "http://127.0.0.1:9/users/u/metadata", "Bearer t", "{}");
+    if (r) |_| return error.TestUnexpectedResult else |_| {}
+}
+
+test "fetch success path retains nothing under the leak-detecting allocator" {
+    const io = constants.globalIo();
+    var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", 0) catch return error.SkipZigTest;
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = testBoundPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, TestOkServer.run, .{ &listener, io }) catch return error.SkipZigTest;
+
+    var url_buf: [64]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/users/u/metadata", .{port});
+    const r = runFetchBlocking(std.testing.allocator, url, "Bearer t", "{}");
+    server.join();
+    try r; // 200 → success; the response body was streamed and discarded
 }
 
 test {
