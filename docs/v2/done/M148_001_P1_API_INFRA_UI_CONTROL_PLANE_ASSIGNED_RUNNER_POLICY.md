@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M148
 **Workstream:** 001
 **Date:** Jul 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing: the dashboard presents a security property that does not drive runner behaviour, and a host that cannot deliver its claimed isolation keeps accepting work.
 **Categories:** API, INFRA, UI
 **Batch:** B1 — sequenced before any microVM tier; the assignment path must be authoritative before tiers denote different isolation strengths.
@@ -288,7 +288,7 @@ runner environment, complete:
 | R2 | An unmet assignment leases nothing (§3) | `make test-integration` | exit 0, `test_unachievable_assignment_marks_runner_degraded` passes | P0 | ✅ full `make test-integration` (clean reset) exit 0 — degraded arc leases null with work available, then leases after recovery |
 | R3 | Policy failure is never permissive (§2, §3) | `make test-unit-agentsfleet-runner` | exit 0, `test_malformed_assignment_fails_closed` passes | P0 | ✅ `make test-unit-agentsfleet-runner` exit 0 — `test_malformed_assignment_fails_closed` |
 | R4 | The environment surface is three names (§5) | `make test-unit-agentsfleet-runner` | exit 0, `test_runner_reads_only_the_bootstrap_environment` passes | P0 | ✅ `make test-unit-agentsfleet-runner` exit 0 — `test_runner_reads_only_the_bootstrap_environment` |
-| R5 | No removed variable survives (§5) | `git grep -nE 'RUNNER_(SANDBOX_TIER\|NETWORK_POLICY\|REGISTRY_ALLOWLIST\|WORKER_COUNT\|HOST_ID\|CP_[A-Z_]+_MS)' -- . ':!docs/v2/'` | 0 matches | P0 | ❌ 1 hit — `.github/workflows/deploy-dev.yml:287` (one stale comment line; CI/CD edit awaiting Indy approval) |
+| R5 | No removed variable survives (§5) | `git grep -nE 'RUNNER_(SANDBOX_TIER\|NETWORK_POLICY\|REGISTRY_ALLOWLIST\|WORKER_COUNT\|HOST_ID\|CP_[A-Z_]+_MS)' -- . ':!docs/v2/'` | 0 matches | P0 | ✅ 0 matches — the workflow comment line removed with Indy's explicit approval (Jul 31, 2026); sweep-test carve-out dropped |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 88 diff paths, all in the (amended) Files Changed table |
 | R7 | `macos_seatbelt` is gone (§6) | `git grep -rnw 'macos_seatbelt' -- . ':!docs/v2/' ':!schema/017_fleet_runners.sql'` | 0 matches | P0 | ✅ 0 matches (HANDOFF deleted at close; `openapi.json` regenerated) |
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | ✅ `make test-unit-all` exit 0 — "All unit lanes passed" + "All package coverage gates passed" (the spec's `make test` does not exist; tier-1 command per `docs/VERIFY_TIERS.md`) |
@@ -297,7 +297,7 @@ runner environment, complete:
 | S4 | e2e walks the operator path | `make test-e2e` | exit 0 | P0 | ⏭ VERIFY GATE: `make test-e2e` skipped per environment constraint — no such target exists in the repo (see Test Delta note); unit + wire faces green |
 | S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets compile; linux test graph ends in the documented "unable to execute binaries" PASS signal |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `gitleaks detect` — no leaks found (4012 commits scanned) |
-| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ Dead Code Sweep greps all 0 except the one R5 workflow-comment line awaiting Indy |
+| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ Dead Code Sweep greps all 0 |
 
 **Test Delta (VERIFY):** baseline `unit=3266 integration=501` → final `unit=3296 integration=509` (+30 unit, +8 integration) — positive growth on a code-adding diff, no justification needed. **Spec-instance notes recorded at VERIFY:** S1's command is `make test-unit-all` (`make test` does not exist in this repo — `docs/VERIFY_TIERS.md` tier 1); S4's `make test-e2e` target does not exist either (the Playwright acceptance lanes are `bun run test:e2e:*` needing a live deployed stack) — 4.1/4.2 are covered at the unit tier (`RunnerTile`/`RunnerHeader` spec-named tests) and at the wire tier (the degraded arc asserts the fleet list + detail payloads); an acceptance run against dev post-merge is the follow-up surface.
 
@@ -363,6 +363,7 @@ N/A — no files deleted; `capability_probe.zig` is added.
   - > Indy (2026-07-30): "In the isolation we must remove macos_seatbelt, since its not valid" — context: §6 added; consistent with the M80_004 / M84_003 deferrals ("seatbelt is deprecated long back"). Removal, not deprecation (NLG).
   - > Indy (2026-07-30): "Okay keep the directory as RUNNER_STORAGE_HOME?" — context: supersedes the keep-the-name resolution above; the optional env is renamed `RUNNER_WORKSPACE_BASE` → `RUNNER_STORAGE_HOME`. Host-local semantics unchanged; the old name joins the Dead Code Sweep.
   - > Orly (Jul 30, 2026, CHORE(open)): spec instance amended to repo reality before EXECUTE — Interfaces corrected to the frozen `me`-plane paths (`protocol.zig` forbids a runner_id in any path); read-list item 5 repointed at `docs/v2/active/` where M147_001 actually sits; Files Changed extended with the files the R5 removal grep already hits (`deploy.sh`, three playbooks, `provision_runner_env_test.sh`) and the SQL/lease/fleet surfaces the new columns must cross. Also flagged, untouched: M147_001's spec is still `IN_PROGRESS` in `active/` though `enableDelegatedControllers` is merged to main and the branch pruned.
+  - > Indy (2026-07-31): "1. Yes 2. Yes move it to /done in your PR 3. Explain this hearbeat issue" — context: (1) approves deleting the stale `RUNNER_HOST_ID` workflow comment (`.github/workflows/deploy-dev.yml`) — the one CI/CD edit in this branch; (2) directs moving the stale `M147_001` spec to `done/` inside this PR; (3) the heartbeat-vs-PATCH verdict race is explained below and recorded as a follow-up candidate (no in-milestone fix directed).
 - **Metrics review** — three operator events declared above; no analytics or funnel playbook update required, as no end-user funnel changes.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
   - > Orly (Jul 31, 2026, VERIFY): `/write-unit-test` — diff ledger resolved; gaps closed same-day (registry/policy-form failure paths, `updateRunnerPolicyAction` gates, header degraded render, tile degraded tests, `pollVerdict` matrix). Two recorded non-gaps: exhaustive allocation-failure injection on `runner_row.readItem` (covered by the deterministic errdefer leak test; A6 tripwires scope to roster'd multi-step inits) and Dimensions 4.1/4.2's e2e tier (no `make test-e2e` target exists in the repo — see rubric S4).
