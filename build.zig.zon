@@ -26,8 +26,8 @@
         // branch (see the fork's CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin and
         // return to upstream once it offers a threaded-Io timed wait.
         .pg = .{
-            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=patch/agentsfleet-0.16#4749b7dd97ce75a02e316aa054d8aa5845d96359",
-            .hash = "pg-0.0.0-Wp_7gUC1BgDSgdQimbojEOODY3IPYv0ozwwrZinEF-Tv",
+            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=patch/agentsfleet-0.16#b85d6081f558e311ea09fce1ed5661eeca608eda",
+            .hash = "pg-0.0.0-Wp_7gT61BgCvgRPnB0kKTcBT4txtgXI8ZCdCgDMLPBIR",
         },
         .posthog = .{
             .url = "git+https://github.com/agentsfleet/posthog-zig.git#v0.2.0",
