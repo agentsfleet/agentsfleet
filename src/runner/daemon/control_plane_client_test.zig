@@ -142,7 +142,7 @@ test "a hung control plane surfaces a transport error within the armed deadline"
     // the socket down and bound the read (SO_RCVTIMEO was rejected — the
     // threaded Io recv path panics on its EAGAIN; see call_deadline.zig).
     const t0 = common.clock.nowMillis();
-    try testing.expectError(error.RequestFailed, c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS));
+    try testing.expectError(error.RequestFailed, c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS, null));
     const elapsed = common.clock.nowMillis() - t0;
     try testing.expect(elapsed < DEADLINE_PROBE_BOUND_MS);
 }
@@ -199,10 +199,12 @@ test "two verbs ride one pooled connection (keep-alive reuse)" {
     defer deadlines.deinit();
     var c = client.init(alloc, io, try deadlines.start(alloc), url);
 
-    const first = try c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS);
-    try testing.expectEqual(.ok, first.status);
-    const second = try c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS);
-    try testing.expectEqual(.ok, second.status);
+    const first = try c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS, null);
+    defer first.deinit();
+    try testing.expectEqual(.ok, first.value.status);
+    const second = try c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS, null);
+    defer second.deinit();
+    try testing.expectEqual(.ok, second.value.status);
 
     // Closing the client closes the pooled connection; the responder sees
     // read()==0 and exits, so the join cannot hang.

@@ -6,13 +6,16 @@
 //! never resolve another runner's row.
 
 /// Enrol a runner and record the enrolment event atomically, so a registered
-/// runner always has the audit row that explains where it came from.
+/// runner always has the audit row that explains where it came from. The
+/// operator's ASSIGNED policy lands on the row here — the host never writes it.
 pub const INSERT_RUNNER_WITH_EVENT =
     \\WITH inserted AS (
     \\  INSERT INTO fleet.runners
     \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
-    \\   last_seen_at, created_at, updated_at)
-    \\VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::jsonb, NULL, $7::bigint, $8::bigint, $8::bigint)
+    \\   last_seen_at, created_at, updated_at, network_policy, registry_allowlist, worker_count,
+    \\   degraded, degraded_reason)
+    \\VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::jsonb, NULL, $7::bigint, $8::bigint, $8::bigint,
+    \\        $13::text, $14::jsonb, $15::int, $16::bool, $17::text)
     \\  RETURNING id
     \\)
     \\INSERT INTO fleet.runner_events
@@ -26,8 +29,40 @@ pub const INSERT_RUNNER_WITH_EVENT =
 /// `GET /v1/runners/me`. Deliberately omits `token_hash` — the self read is
 /// used by the operator CLI's `status`, and a credential must never round-trip.
 pub const SELECT_RUNNER_SELF =
-    \\SELECT id::text, admin_state, host_id, sandbox_tier, last_seen_at
+    \\SELECT id::text, admin_state, host_id, sandbox_tier, last_seen_at,
+    \\       network_policy, registry_allowlist::text, worker_count,
+    \\       capability_report::text, degraded, degraded_reason
     \\FROM fleet.runners WHERE id = $1::uuid
+;
+
+/// Heartbeat's policy read — assignment, stored capability, and the prior
+/// verdict, so every beat reconciles and carries the current truth back.
+pub const SELECT_RUNNER_ASSIGNED_POLICY =
+    \\SELECT sandbox_tier, network_policy, registry_allowlist::text, worker_count,
+    \\       degraded, degraded_reason, capability_report::text
+    \\FROM fleet.runners WHERE id = $1::uuid
+;
+
+/// Store a fresh capability report and the reconciled verdict in one write.
+pub const UPDATE_RUNNER_CAPABILITY_AND_VERDICT =
+    \\UPDATE fleet.runners
+    \\SET capability_report = $2::jsonb, capability_reported_at = $3::bigint,
+    \\    degraded = $4::bool, degraded_reason = $5::text, updated_at = $3::bigint
+    \\WHERE id = $1::uuid
+;
+
+/// Re-reconcile against the stored report (no fresh report this beat); the
+/// guard makes a steady state write nothing at all.
+pub const UPDATE_RUNNER_VERDICT =
+    \\UPDATE fleet.runners
+    \\SET degraded = $2::bool, degraded_reason = $3::text, updated_at = $4::bigint
+    \\WHERE id = $1::uuid
+    \\  AND (degraded IS DISTINCT FROM $2::bool OR degraded_reason IS DISTINCT FROM $3::text)
+;
+
+/// The lease gate's single-column read: a degraded runner is issued nothing.
+pub const SELECT_RUNNER_DEGRADED =
+    \\SELECT degraded FROM fleet.runners WHERE id = $1::uuid
 ;
 
 /// Resolve a live lease's billing scope before minting a credential for it.

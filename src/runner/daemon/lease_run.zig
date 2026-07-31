@@ -100,7 +100,7 @@ pub fn executeAndReport(
     // Back off on a workspace-prep failure before returning: otherwise a
     // persistent failure (e.g. an unwritable workspace base) hot-spins the
     // worker's poll loop — amplified ×worker_count under the pool.
-    const workspace_path = prepareWorkspace(io, &ws_buf, cfg.workspace_base, payload.lease_id) orelse {
+    const workspace_path = prepareWorkspace(io, &ws_buf, cfg.storage_home, payload.lease_id) orelse {
         sleepMs(io, constants.backoff.ms(0));
         return;
     };
@@ -178,7 +178,7 @@ pub fn executeAndReport(
 /// returns without executing. Retry deferred (spec Failure Modes).
 fn materializeBundle(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, workspace_path: []const u8, payload: protocol.LeasePayload) bool {
     const manifest = payload.bundle orelse return true;
-    switch (bundle_extract.materialize(io, alloc, cp, runner_token, cfg.workspace_base, workspace_path, manifest, cfg.cp_deadlines.default_ms)) {
+    switch (bundle_extract.materialize(io, alloc, cp, runner_token, cfg.storage_home, workspace_path, manifest, cfg.cp_deadlines.default_ms)) {
         .ready => return true,
         .failed => {
             reportStartupFailure(alloc, cp, runner_token, payload, cfg.cp_deadlines.report_ms, DETAIL_BUNDLE_MATERIALIZE);

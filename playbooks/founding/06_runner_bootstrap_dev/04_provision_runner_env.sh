@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Section 4: provision the agentsfleet-runner env file from vault.
-# Idempotent. Writes /opt/agentsfleet/.env on the dev worker host with the four
-# vars the runner daemon requires (see deploy/baremetal/agentsfleet-runner.service):
+# Idempotent. Writes /opt/agentsfleet/.env on the dev worker host with the
+# bootstrap pair the runner daemon requires (see
+# deploy/baremetal/agentsfleet-runner.service) — policy (tier, egress,
+# registry, workers) is ASSIGNED from the dashboard per runner and never
+# provisioned through the environment:
 #   AGENTSFLEET_API_URL       — control-plane base URL (literal for dev)
-#   AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (Option B; vault: runner-token)
-#   RUNNER_HOST_ID            — stable machine id; must equal the minted fleet host_id
-#                               (vault: tailscale-hostname = agent-…-worker-ant)
-#   RUNNER_SANDBOX_TIER       — landlock_full for this bare-metal Linux host
+#   AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (Option B; vault: runner-token);
+#                               resolves the runner row server-side, so no host
+#                               identifier is written here
 #
 # Pre-Option-B, the daemon self-registered with a agt_t API key and minted
 # its own agt_r. Post-Option-B (commit c1ac7343), the platform admin pre-mints
@@ -32,7 +34,6 @@ echo "== Section 4: provision /opt/agentsfleet/.env =="
 
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 api_url="${AGENTSFLEET_API_URL:-https://api-dev.agentsfleet.net}"
-sandbox_tier="landlock_full"
 missing=0
 
 declare -A OP_CACHE_VALUE
@@ -102,12 +103,6 @@ fi
 ssh_key="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key")"
 ssh_host="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname")"
 ssh_user="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/deploy-user")"
-# RUNNER_HOST_ID must equal the fleet host_id the admin minted (POST /v1/runners):
-# the tailscale hostname (agent-…-worker-ant). Reuse ssh_host rather than the
-# provider-DNS `hostname` field — the daemon's copy is local-only (host_id never
-# crosses the wire; the heartbeat is identified by the token), but matching keeps
-# the host's logs and the dashboard fleet list naming the runner the same way.
-host_id="$ssh_host"
 runner_token="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/runner-token")"
 
 # Fail loud on a stale pre-Option-B token so a wrong shape is caught here, not
@@ -145,8 +140,6 @@ env_local=$(mktemp)
 cat > "$env_local" <<EOF
 AGENTSFLEET_API_URL=${api_url}
 AGENTSFLEET_RUNNER_TOKEN=${runner_token}
-RUNNER_HOST_ID=${host_id}
-RUNNER_SANDBOX_TIER=${sandbox_tier}
 EOF
 chmod 600 "$env_local"
 playbooks_ssh_run "scp /opt/agentsfleet/.env to ${ssh_user}@${ssh_host}" \

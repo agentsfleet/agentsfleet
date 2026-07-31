@@ -6814,7 +6814,7 @@
       "post": {
         "operationId": "register_runner",
         "summary": "Register a runner",
-        "description": "Enrolls a runner into the fleet. Authed by an existing operator credential (Clerk JWT or `agt_t` API key with admin role) — there is no enrollment token. Mints a durable `agt_r` runner token (returned once) and stores only its SHA-256 hash.",
+        "description": "Enrolls a runner into the fleet and assigns its policy. Requires an existing operator credential (Clerk JWT or `agt_t` API key with admin role); there is no enrollment token. Mints a durable `agt_r` runner token, returned once, and stores only its SHA-256 hash. The host applies the policy assigned here and never declares its own.",
         "tags": [
           "Fleet"
         ],
@@ -6960,7 +6960,7 @@
       "patch": {
         "operationId": "patch_fleet_runner",
         "summary": "Administer a fleet runner",
-        "description": "Platform-admin operator action on a single runner. `cordon` → cordoned, `drain` → draining, `revoke` → revoked (terminal; a revoked runner cannot transition back).",
+        "description": "Platform-admin mutation on a single runner. The body carries exactly one of `action` or `assigned_policy`. `action` moves the admin state: `cordon` to cordoned, `drain` to draining, `revoke` to revoked. Revoked is terminal; a revoked runner cannot transition back. `assigned_policy` re-assigns the runner's policy, and the host picks it up on its next heartbeat. Sending the same policy again changes nothing and records no event.",
         "tags": [
           "Fleet"
         ],
@@ -6982,9 +6982,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "action"
-                ],
+                "description": "Exactly one of `action` or `assigned_policy` must be present; both or neither is a 400.",
                 "properties": {
                   "action": {
                     "type": "string",
@@ -6994,6 +6992,9 @@
                       "drain",
                       "revoke"
                     ]
+                  },
+                  "assigned_policy": {
+                    "$ref": "#/components/schemas/RunnerAssignedPolicy"
                   }
                 }
               }
@@ -7002,7 +7003,7 @@
         },
         "responses": {
           "200": {
-            "description": "The runner's new admin state.",
+            "description": "The runner's admin state, plus the stored assignment on the policy-update path.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7025,6 +7026,10 @@
                         "drained",
                         "revoked"
                       ]
+                    },
+                    "assigned_policy": {
+                      "$ref": "#/components/schemas/RunnerAssignedPolicy",
+                      "x-stability": "stable"
                     }
                   }
                 }
@@ -8924,12 +8929,62 @@
           }
         ]
       },
+      "RunnerSandboxTier": {
+        "type": "string",
+        "description": "Isolation strength the operator assigns to a runner. The host applies it and reports what it can deliver. A host that cannot meet the assignment is marked degraded and receives no work. Only tiers with real enforcement are assignable.",
+        "enum": [
+          "landlock_full",
+          "container_nested",
+          "dev_none"
+        ]
+      },
+      "RunnerNetworkPolicy": {
+        "type": "string",
+        "description": "Network access assigned to a runner's sandboxed work. `allow_all` allows all outbound traffic. `deny_all_egress` allows none. `allow_list_egress` limits outbound traffic to an approved list. That mode is not available yet; a runner assigned it is marked degraded and refuses work.",
+        "enum": [
+          "allow_all",
+          "deny_all_egress",
+          "allow_list_egress"
+        ]
+      },
+      "RunnerAssignedPolicy": {
+        "type": "object",
+        "description": "The policy assigned to one runner. agentsfleet delivers it to the host on enrollment and on every heartbeat. The host never declares its own policy.",
+        "required": [
+          "sandbox_tier",
+          "network_policy",
+          "registry_allowlist",
+          "worker_count"
+        ],
+        "properties": {
+          "sandbox_tier": {
+            "$ref": "#/components/schemas/RunnerSandboxTier"
+          },
+          "network_policy": {
+            "$ref": "#/components/schemas/RunnerNetworkPolicy"
+          },
+          "registry_allowlist": {
+            "type": "array",
+            "description": "Operator registry baseline merged into each lease's egress allowlist. Empty = the runner substitutes its default registry set. Entries are `host[:port]` names; at most 32.",
+            "maxItems": 32,
+            "items": {
+              "type": "string"
+            }
+          },
+          "worker_count": {
+            "type": "integer",
+            "description": "Concurrent workers on the host. Clamped server-side into [1, 64]; the stored (clamped) value is echoed back.",
+            "minimum": 1,
+            "maximum": 64
+          }
+        }
+      },
       "RunnerRegisterRequest": {
         "type": "object",
-        "description": "Self-reported runner identity at enrollment. `sandbox_tier` is telemetry only — placement keys off operator-assigned trust, not this claim.",
+        "description": "Enrollment input. The operator ASSIGNS the policy here — the selection is an assignment the host must satisfy, not a description of the host.",
         "required": [
           "host_id",
-          "sandbox_tier",
+          "assigned_policy",
           "labels"
         ],
         "properties": {
@@ -8939,15 +8994,8 @@
             "maxLength": 256,
             "description": "Operator-supplied host identifier for this runner (1-256 chars)."
           },
-          "sandbox_tier": {
-            "type": "string",
-            "description": "Isolation strength the runner self-reports. Stored as telemetry.",
-            "enum": [
-              "landlock_full",
-              "container_nested",
-              "macos_seatbelt",
-              "dev_none"
-            ]
+          "assigned_policy": {
+            "$ref": "#/components/schemas/RunnerAssignedPolicy"
           },
           "labels": {
             "type": "array",
@@ -8963,7 +9011,8 @@
         "description": "The durable runner identity plus its bearer token. The `runner_token` is returned exactly once; the server stores only its SHA-256 hash.",
         "required": [
           "runner_id",
-          "runner_token"
+          "runner_token",
+          "assigned_policy"
         ],
         "properties": {
           "runner_id": {
@@ -8974,12 +9023,52 @@
           "runner_token": {
             "type": "string",
             "description": "The `agt_r`-prefixed bearer token the runner presents on every later call. Returned once; never retrievable again."
+          },
+          "assigned_policy": {
+            "$ref": "#/components/schemas/RunnerAssignedPolicy",
+            "x-stability": "stable"
+          }
+        }
+      },
+      "RunnerCapabilityReport": {
+        "type": "object",
+        "description": "What a runner host's kernel can actually enforce, as the host last reported it. Unauthenticated self-assertion — agentsfleet reconciles it against the assigned policy to compute `degraded`, but a compromised host can lie; placement trust stays operator-assigned.",
+        "required": [
+          "landlock",
+          "seccomp",
+          "cgroup_controllers",
+          "bubblewrap",
+          "egress_enforcement"
+        ],
+        "properties": {
+          "landlock": {
+            "type": "boolean",
+            "description": "The kernel offers Landlock filesystem sandboxing."
+          },
+          "seccomp": {
+            "type": "boolean",
+            "description": "A seccomp system-call filter can be installed."
+          },
+          "cgroup_controllers": {
+            "type": "array",
+            "description": "Controllers present in the delegated cgroup subtree (`cpu`, `memory`, `pids` are required for cage-building tiers).",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bubblewrap": {
+            "type": "boolean",
+            "description": "The bubblewrap sandbox helper is present on the host."
+          },
+          "egress_enforcement": {
+            "type": "boolean",
+            "description": "Kernel-enforced egress allowlisting is available in this runner build. Always false until that wiring ships; a runner assigned `allow_list_egress` reads as degraded rather than silently refusing work."
           }
         }
       },
       "RunnerSummary": {
         "type": "object",
-        "description": "One fleet row as returned to the operator. `liveness` is derived at read time (never stored); the auth `token_hash` and stored auth state are never returned.",
+        "description": "One fleet row as returned to the operator. `liveness` is derived at read time (never stored); the auth `token_hash` and stored auth state are never returned. `assigned_policy` is what the operator assigned. `achievable` is what the host last reported it can enforce. When the two disagree the runner is `degraded` and receives no work.",
         "required": [
           "id",
           "host_id",
@@ -8988,9 +9077,29 @@
           "liveness",
           "labels",
           "last_seen_at",
-          "created_at"
+          "created_at",
+          "degraded"
         ],
         "properties": {
+          "assigned_policy": {
+            "$ref": "#/components/schemas/RunnerAssignedPolicy",
+            "nullable": true,
+            "description": "The assignment this runner must satisfy. Null only for a runner enrolled before policy assignment existed; such a runner reads degraded until an operator assigns a policy."
+          },
+          "achievable": {
+            "$ref": "#/components/schemas/RunnerCapabilityReport",
+            "nullable": true,
+            "description": "The host's last capability report. Null until the runner's first report arrives."
+          },
+          "degraded": {
+            "type": "boolean",
+            "description": "True when the assigned policy exceeds what the host reported it can enforce (or no report has arrived). A degraded runner is issued no leases."
+          },
+          "degraded_reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "The specific missing mechanism (for example `cgroup controllers not delegated`), mapping to a step in the runner bootstrap playbook. Null when not degraded."
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -8999,13 +9108,7 @@
             "type": "string"
           },
           "sandbox_tier": {
-            "type": "string",
-            "enum": [
-              "landlock_full",
-              "container_nested",
-              "macos_seatbelt",
-              "dev_none"
-            ]
+            "$ref": "#/components/schemas/RunnerSandboxTier"
           },
           "admin_state": {
             "type": "string",
@@ -9048,7 +9151,7 @@
       },
       "RunnerDetail": {
         "type": "object",
-        "description": "A single runner as the operator plane reads it. Carries the summary fields, a live-work snapshot, and lifetime counters from durable lease and event rows. The auth `token_hash` and stored auth state are never returned.",
+        "description": "A single runner as the operator plane reads it. Carries the summary fields (including the assigned-vs-achievable policy pair and the degraded verdict), a live-work snapshot, and lifetime counters from durable lease and event rows. The auth `token_hash` and stored auth state are never returned.",
         "required": [
           "id",
           "host_id",
@@ -9058,6 +9161,7 @@
           "labels",
           "last_seen_at",
           "created_at",
+          "degraded",
           "active_lease_count",
           "active_fleet_count",
           "leases_acquired",
@@ -9066,6 +9170,25 @@
           "leases_expired"
         ],
         "properties": {
+          "assigned_policy": {
+            "$ref": "#/components/schemas/RunnerAssignedPolicy",
+            "nullable": true,
+            "description": "The assignment this runner must satisfy. Null only for a runner enrolled before policy assignment existed; such a runner reads degraded until an operator assigns a policy."
+          },
+          "achievable": {
+            "$ref": "#/components/schemas/RunnerCapabilityReport",
+            "nullable": true,
+            "description": "The host's last capability report. Null until the runner's first report arrives."
+          },
+          "degraded": {
+            "type": "boolean",
+            "description": "True when the assigned policy exceeds what the host reported it can enforce (or no report has arrived). A degraded runner is issued no leases."
+          },
+          "degraded_reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "The specific missing mechanism (for example `cgroup controllers not delegated`), mapping to a step in the runner bootstrap playbook. Null when not degraded."
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -9074,13 +9197,7 @@
             "type": "string"
           },
           "sandbox_tier": {
-            "type": "string",
-            "enum": [
-              "landlock_full",
-              "container_nested",
-              "macos_seatbelt",
-              "dev_none"
-            ]
+            "$ref": "#/components/schemas/RunnerSandboxTier"
           },
           "admin_state": {
             "type": "string",
@@ -9308,7 +9425,8 @@
               "runner_cordoned",
               "runner_draining",
               "runner_drained",
-              "runner_revoked"
+              "runner_revoked",
+              "runner_policy_assigned"
             ]
           },
           "occurred_at": {

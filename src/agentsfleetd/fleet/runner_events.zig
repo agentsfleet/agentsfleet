@@ -14,6 +14,9 @@ const log = logging.scoped(.fleet_runner_events);
 
 pub const META_HOST_ID = "host_id";
 pub const META_SANDBOX_TIER = "sandbox_tier";
+pub const META_NETWORK_POLICY = "network_policy";
+pub const META_REGISTRY_ALLOWLIST = "registry_allowlist";
+pub const META_WORKER_COUNT = "worker_count";
 pub const META_LEASE_ID = "lease_id";
 pub const META_FLEET_ID = "fleet_id";
 pub const META_AGENTSFLEET_EVENT_ID = "event_id";

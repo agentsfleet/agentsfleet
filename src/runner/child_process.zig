@@ -115,18 +115,19 @@ test "forkExec env filter forwards only the allowlist and drops daemon vars" {
     // Allowlisted (forwarded) …
     try daemon.put("HOME", "/home/runner");
     try daemon.put("PATH", "/usr/bin:/bin");
-    // … and daemon-only vars that must NEVER reach the child.
+    // … and daemon-only vars that must NEVER reach the child (the names are
+    // arbitrary daemon-side residents; the allowlist is what's under test).
     try daemon.put("AGENTSFLEET_RUNNER_TOKEN", "agt_rsuper_secret");
-    try daemon.put("RUNNER_HOST_ID", "host-1");
-    try daemon.put("RUNNER_NETWORK_POLICY", "registry_allowlist");
+    try daemon.put("RUNNER_DAEMON_ONLY_A", "host-1");
+    try daemon.put("RUNNER_DAEMON_ONLY_B", "registry_allowlist");
 
     var child = try buildChildEnviron(alloc, &daemon);
     defer child.deinit();
 
     try testing.expectEqualStrings("/home/runner", child.get("HOME").?);
     try testing.expectEqualStrings("/usr/bin:/bin", child.get("PATH").?);
-    try testing.expect(child.get("RUNNER_HOST_ID") == null);
-    try testing.expect(child.get("RUNNER_NETWORK_POLICY") == null);
+    try testing.expect(child.get("RUNNER_DAEMON_ONLY_A") == null);
+    try testing.expect(child.get("RUNNER_DAEMON_ONLY_B") == null);
     // An allowlisted-but-unset var is simply absent (pass-through-if-set).
     try testing.expect(child.get("SSL_CERT_FILE") == null);
 }

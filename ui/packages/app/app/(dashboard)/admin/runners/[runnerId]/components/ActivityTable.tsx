@@ -45,6 +45,7 @@ const EVENT_HEADLINES: Record<LifecycleEventType, string> = {
   runner_draining: "draining",
   runner_drained: "drained",
   runner_revoked: "revoked",
+  runner_policy_assigned: "policy assigned",
 };
 
 // Metadata keys the daemon writes (fleet/runner_events.zig META_*), spelled
