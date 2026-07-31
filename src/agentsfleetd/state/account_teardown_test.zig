@@ -25,6 +25,8 @@ const TENANT_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000001";
 const USER_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000002";
 const WORKSPACE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000003";
 const FLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000004";
+/// The fleet the caller never enumerated — a latecomer to the same tenant.
+const RACE_FLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000005";
 
 fn countMemory(conn: *pg.Conn, fleet_id: []const u8) !i64 {
     var q = PgQuery.from(try conn.query(
@@ -53,8 +55,12 @@ fn cleanup(conn: *pg.Conn) void {
         "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid",
         "DELETE FROM core.fleets WHERE id = $1::uuid",
     };
-    inline for (stmts) |s| {
-        _ = conn.exec(s, .{FLEET_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    // Both fleets: a test that fails between seeding the latecomer and purging
+    // it would otherwise strand a row the next run's workspace delete trips on.
+    inline for (.{ FLEET_ID, RACE_FLEET_ID }) |fleet_id| {
+        inline for (stmts) |s| {
+            _ = conn.exec(s, .{fleet_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+        }
     }
     _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.memberships WHERE user_id = $1::uuid", .{USER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
@@ -153,7 +159,7 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
 /// Full unwind: the production purge itself (gates included via its bypass),
 /// then belt-and-braces sweeps for partially-seeded state.
 fn cleanupRollbackAccount(conn: *pg.Conn) void {
-    _ = teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC) catch |err|
+    _ = teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC, &.{}) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
     execIgnoreTd(conn, "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid", RB_FLEET_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", RB_EVENT_ID);
@@ -193,7 +199,7 @@ test "integration: a mid-purge failure rolls back — no partial deletes, conn s
     _ = try conn.exec("CREATE TRIGGER trg_test_block_user_delete BEFORE DELETE ON core.users FOR EACH ROW EXECUTE FUNCTION core.test_block_user_delete()", .{});
     defer dropUserDeleteInjection(conn);
 
-    try std.testing.expectError(error.PG, teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC));
+    try std.testing.expectError(error.PG, teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC, &.{}));
 
     // No partial deletes: the memory row deleted before the failure is back,
     // and the user row was never reached.
@@ -220,8 +226,8 @@ test "integration: purge succeeds for an account with approval gates (append-onl
     // The gate row would abort the workspace delete on its FK if the purge
     // could not remove it — the append-only trigger raises on DELETE unless
     // the purge transaction sets the bypass.
-    const purged = try teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC);
-    try std.testing.expect(purged);
+    const purged = try teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC, &.{});
+    try std.testing.expect(purged.purged);
 
     try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, RB_OIDC));
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM core.fleet_approval_gates WHERE id = $1::uuid", RB_GATE_ID));
@@ -238,6 +244,72 @@ fn countByUuid(conn: *pg.Conn, sql: []const u8, id: []const u8) !i64 {
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowMissing;
     return row.get(i64, 0);
+}
+
+test "integration: a fleet the caller never enumerated is reported, not absorbed" {
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    cleanup(conn);
+    defer cleanup(conn);
+
+    _ = try conn.exec(
+        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'teardown-race', 0, 0)
+    , .{TENANT_ID});
+    _ = try conn.exec(
+        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-race@test.fleet', 0, 0)
+    , .{ USER_ID, TENANT_ID, OIDC });
+    try base.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
+    // Two fleets, but the caller only ever saw one — the shape a fleet created
+    // between the enumeration and the purge leaves behind. Its upstream timer
+    // was never retired and the row that named it is about to be deleted.
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "teardown-race-known", "{}", "# z");
+    try base.seedFleet(conn, RACE_FLEET_ID, WORKSPACE_ID, "teardown-race-latecomer", "{}", "# z");
+
+    const enumerated = [_][]const u8{FLEET_ID};
+    const result = try teardown.purgeByOidcSubject(conn, std.testing.allocator, OIDC, &enumerated);
+
+    try std.testing.expect(result.purged);
+    // Identity, not cardinality. The count of fleets at purge time (2) exceeds
+    // the enumerated count (1) here, so a count comparison would also fire —
+    // but it answers by naming which fleets went unhandled, which is what stays
+    // correct when a create and a delete offset each other.
+    try std.testing.expectEqual(@as(i64, 1), result.unenumerated_fleets);
+    try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, OIDC));
+}
+
+test "integration: a fully enumerated tenant reports no unhandled fleets" {
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    cleanup(conn);
+    defer cleanup(conn);
+
+    _ = try conn.exec(
+        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'teardown-clean', 0, 0)
+    , .{TENANT_ID});
+    _ = try conn.exec(
+        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-clean@test.fleet', 0, 0)
+    , .{ USER_ID, TENANT_ID, OIDC });
+    try base.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "teardown-clean", "{}", "# z");
+
+    // The ordinary path: everything the purge erases was handled upstream
+    // first. Without this the race arm could fire on every deletion and the
+    // signal would mean nothing.
+    const enumerated = [_][]const u8{FLEET_ID};
+    const result = try teardown.purgeByOidcSubject(conn, std.testing.allocator, OIDC, &enumerated);
+
+    try std.testing.expect(result.purged);
+    try std.testing.expectEqual(@as(i64, 0), result.unenumerated_fleets);
 }
 
 test "integration: purgeByOidcSubject removes the account's memory entries" {
@@ -270,8 +342,8 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
     try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, FLEET_ID));
 
     // Purge the account by its oidc_subject.
-    const purged = try teardown.purgeByOidcSubject(conn, std.testing.allocator, OIDC);
-    try std.testing.expect(purged);
+    const purged = try teardown.purgeByOidcSubject(conn, std.testing.allocator, OIDC, &.{});
+    try std.testing.expect(purged.purged);
 
     // The memory row is gone (regression target) and the cascade reached the
     // user — proving every statement before the user delete (incl. memory) ran.

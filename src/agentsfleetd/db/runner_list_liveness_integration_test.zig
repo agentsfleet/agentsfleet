@@ -118,7 +118,7 @@ test "runner list liveness is bounded by page size" {
         \\    WHERE l.runner_id = p.id AND l.status = 'active'
         \\      AND l.lease_expires_at > 1) AS has_live_lease
         \\FROM page p
-    );
+    , .{});
     defer alloc.free(plan);
     // The property is "probed per page over the runner_id prefix", not which
     // index supplies that prefix. Two do: slot 018's (runner_id, status) and

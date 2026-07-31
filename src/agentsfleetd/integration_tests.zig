@@ -34,6 +34,8 @@ test {
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
     _ = @import("fleet/liveness_sweeper_integration_test.zig");
+    _ = @import("fleet/runner_counters_integration_test.zig");
+    _ = @import("fleet/retention_sweeper_integration_test.zig");
     _ = @import("cron/fire_queue_integration_test.zig");
     _ = @import("http/fleet_operator_integration_test.zig");
     _ = @import("http/fleet_runner_events_integration_test.zig");

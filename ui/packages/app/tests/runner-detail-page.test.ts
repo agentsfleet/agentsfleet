@@ -231,6 +231,51 @@ describe("admin/runners/[runnerId] page", () => {
     );
   });
 
+  it("narrows the lease read to the workspace the URL names", async () => {
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockResolvedValueOnce(EMPTY_PAGE);
+    const Page = await loadPage();
+    renderToStaticMarkup(await Page(pageProps({ workspace: "ws-0123456789" })));
+    expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, {
+      limit: 25,
+      workspace_id: "ws-0123456789",
+    });
+  });
+
+  it("composes the workspace filter with the cursor trail rather than replacing it", async () => {
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockResolvedValueOnce(EMPTY_PAGE);
+    const Page = await loadPage();
+    renderToStaticMarkup(
+      await Page(pageProps({ workspace: "ws-0123456789", c: "lease-cursor-1", cps: "25" })),
+    );
+    expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, {
+      limit: 25,
+      starting_after: "lease-cursor-1",
+      workspace_id: "ws-0123456789",
+    });
+  });
+
+  it.each([
+    ["empty", ""],
+    ["repeated", ["ws-a", "ws-b"]],
+  ])(
+    "fails closed to the unfiltered feed for a %s workspace param",
+    async (_name, value) => {
+      mockAuth();
+      getRunnerMock.mockResolvedValueOnce(RUNNER);
+      listRunnerLeasesMock.mockResolvedValueOnce(EMPTY_PAGE);
+      const Page = await loadPage();
+      renderToStaticMarkup(await Page(pageProps({ workspace: value })));
+      // No `workspace_id` key at all — an unfiltered read. Sending an empty or
+      // ambiguous value onward would earn a 400 from the daemon's validator and
+      // render the error state for what is really just a malformed link.
+      expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, { limit: 25 });
+    },
+  );
+
   it("says the history is unavailable when a view read errors, never an empty history", async () => {
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);
@@ -249,6 +294,49 @@ describe("admin/runners/[runnerId] page", () => {
     const activityHtml = renderToStaticMarkup(await Page(pageProps({ view: "activity" })));
     expect(activityHtml).toContain("Activity history is temporarily unavailable");
     expect(activityHtml).not.toContain("data-activity-table");
+  });
+
+  it("offers a way out when the server refuses the address, instead of telling the operator to refresh", async () => {
+    // A 400 is the URL's fault, not the server's: a hand-edited workspace
+    // filter, or a bookmarked cursor whose lease retention has since deleted.
+    // Refreshing replays the same bad address forever, and the control that
+    // could clear the filter lives inside the table — which is exactly what
+    // does not render on a failed read. Without a link here the page is a dead
+    // end reachable from a stale bookmark.
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockRejectedValueOnce(
+      new ApiError("workspace_id must be a workspace id", 400, "UZ-REQ-001"),
+    );
+    const Page = await loadPage();
+    const html = renderToStaticMarkup(
+      await Page(pageProps({ workspace: "not-a-uuid" })),
+    );
+
+    expect(html).toContain("its workspace filter or page cursor is no longer valid");
+    expect(html).toContain("Show the newest leases instead");
+    expect(html).toContain(`href="/admin/runners/${RUNNER.id}"`);
+    // Not the transient copy: that one says to refresh, which cannot work here.
+    expect(html).not.toContain("Lease history is temporarily unavailable");
+    expect(html).not.toContain("data-lease-table");
+    expect(html).toContain('data-runner-strip="1"');
+  });
+
+  it("keeps the try-refreshing copy for a genuinely transient failure", async () => {
+    // The counterpart to the test above: a read that failed rather than one
+    // that was refused. Refreshing IS the right move here, so the recovery link
+    // must not appear — otherwise every blip invites the operator to throw away
+    // the filter they meant to keep.
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockRejectedValueOnce(
+      new ApiError("upstream unavailable", 503, "UZ-INTERNAL-002"),
+    );
+    const Page = await loadPage();
+    const html = renderToStaticMarkup(await Page(pageProps()));
+
+    expect(html).toContain("Lease history is temporarily unavailable");
+    expect(html).not.toContain("Show the newest leases instead");
   });
 
   it("builds the Grafana link only against a configured base, with the runner filter appended", async () => {
