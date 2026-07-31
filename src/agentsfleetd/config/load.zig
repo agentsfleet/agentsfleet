@@ -1,7 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const S_T = " \t";
-const S_T_R_N = " \t\r\n";
+/// The one whitespace trim set env-value parsing uses (RULE UFS — consumed by
+/// the dotenv gate, env_vars, and the runtime loader; no re-spelled copies).
+pub const TRIM_SET = " \t\r\n";
+const S_T_R_N = TRIM_SET;
 
 const LoadError = error{
     InvalidDotenvLine,

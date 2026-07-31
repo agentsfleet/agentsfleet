@@ -157,11 +157,11 @@ Remove or de-pub every grep-confirmed dead symbol from the audit: the uncalled m
 
 Single-source every duplicated helper the audit found, keeping behavior pinned by the existing suites.
 
-- **Dimension 6.1** — constant-time compare exists only in `crypto/hmac_sig.zig`; the straggler handler caller migrates; the auth copy is deleted → Test `test_constant_time_eql_single_source`
-- **Dimension 6.2** — trim-set and loader size defaults have one named owner each; the test file's re-declared copies are gone → Test `test_config_constants_single_owner`
-- **Dimension 6.3** — EXPLAIN scaffolding lives in `db/test_fixtures.zig`; the four index suites and the pool-test conn helper consume shared fixtures; fleet-set-cache fixtures are schema-qualified and clean up fully → Test the four suites + fleet-set suite green with zero leftover rows
-- **Dimension 6.4** — the JWKS test fixture is single-sourced in the new fixtures module; three consumers → Test `test_jwks_fixture_single_source`
-- **Dimension 6.5** — error-entry constructor helpers exist once; both entry files consume them → Test existing registry suite green
+- **Dimension 6.1** — constant-time compare exists only in `crypto/hmac_sig.zig`; the straggler handler caller migrates; the auth copy is deleted → Test `test_constant_time_eql_single_source` — **DONE**
+- **Dimension 6.2** — trim-set and loader size defaults have one named owner each; the test file's re-declared copies are gone → Test `test_config_constants_single_owner` — **DONE**
+- **Dimension 6.3** — EXPLAIN scaffolding lives in `db/test_fixtures.zig`; the four index suites and the pool-test conn helper consume shared fixtures; fleet-set-cache fixtures are schema-qualified and clean up fully → Test the four suites + fleet-set suite green with zero leftover rows — **DONE** (suite-green proof lands with the VERIFY-stage `make test-integration` run)
+- **Dimension 6.4** — the JWKS test fixture is single-sourced in the new fixtures module; three consumers → Test `test_jwks_fixture_single_source` — **DONE**
+- **Dimension 6.5** — error-entry constructor helpers exist once; both entry files consume them → Test existing registry suite green — **DONE**
 
 ### §7 — Remaining hygiene
 

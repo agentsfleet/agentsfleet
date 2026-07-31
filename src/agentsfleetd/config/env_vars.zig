@@ -6,7 +6,7 @@ const queue_redis = @import("../queue/redis.zig");
 
 const EnvMap = common.env.Map;
 
-const S_T_R_N = " \t\r\n";
+const S_T_R_N = @import("load.zig").TRIM_SET;
 const PANIC_OOM = "OOM";
 
 pub const EnvVarsErrors = error{

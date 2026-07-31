@@ -9,10 +9,8 @@
 //! self-skips otherwise.
 
 const std = @import("std");
-const common = @import("common");
 const pg = @import("pg");
 const base = @import("test_fixtures.zig");
-const PgQuery = @import("pg_query.zig").PgQuery;
 
 const IndexRef = struct { schema: []const u8, name: []const u8 };
 
@@ -37,38 +35,12 @@ const SEED_ROWS: i32 = 200;
 const MEM_SEED_ROWS: i32 = 200;
 const PROBE_FLEET_ROWS: i32 = 20;
 
-const TestDb = struct {
-    pool: *pg.Pool,
-    conn: *pg.Conn,
-
-    fn open(alloc: std.mem.Allocator) !?TestDb {
-        if (common.env.testLiveValue("LIVE_DB") == null) return null;
-        const ctx = (try base.openTestConn(alloc)) orelse return null;
-        return .{ .pool = ctx.pool, .conn = ctx.conn };
-    }
-
-    fn close(self: TestDb) void {
-        self.pool.release(self.conn);
-        self.pool.deinit();
-    }
-};
+// Shared setup + EXPLAIN reader live in test_fixtures.zig (Dimension 6.3).
+const TestDb = base.TestDb;
+const planOf = base.planOf;
 
 fn indexExists(conn: *pg.Conn, ref: IndexRef) !bool {
     return (try base.indexCount(conn, ref.schema, ref.name)) > 0;
-}
-
-fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8) ![]u8 {
-    const explain = try std.fmt.allocPrint(alloc, "EXPLAIN (COSTS OFF) {s}", .{sql});
-    defer alloc.free(explain);
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(alloc);
-    var q = PgQuery.from(try conn.query(explain, .{}));
-    defer q.deinit();
-    while (try q.next()) |row| {
-        try out.appendSlice(alloc, try row.get([]const u8, 0));
-        try out.append(alloc, '\n');
-    }
-    return out.toOwnedSlice(alloc);
 }
 
 /// The index exists in `schema` and indexes exactly `want_columns` — read

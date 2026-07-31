@@ -31,10 +31,8 @@
 //! self-skips otherwise.
 
 const std = @import("std");
-const common = @import("common");
 const pg = @import("pg");
 const base = @import("test_fixtures.zig");
-const PgQuery = @import("pg_query.zig").PgQuery;
 
 /// Enough rows for the query to be planned and for the fixture to be legible;
 /// no longer sized to move PostgreSQL's cost model, because these assertions no
@@ -49,35 +47,9 @@ const FLEET_PROBE = "0195b4ba-8d3a-7f13-8abc-0000000c0002";
 const RUNNER_PROBE = "0195b4ba-8d3a-7f13-8abc-0000000c0003";
 const NAME_PREFIX = "idxprobe-fleet-";
 
-const TestDb = struct {
-    pool: *pg.Pool,
-    conn: *pg.Conn,
-
-    fn open(alloc: std.mem.Allocator) !?TestDb {
-        if (common.env.testLiveValue("LIVE_DB") == null) return null;
-        const ctx = (try base.openTestConn(alloc)) orelse return null;
-        return .{ .pool = ctx.pool, .conn = ctx.conn };
-    }
-
-    fn close(self: TestDb) void {
-        self.pool.release(self.conn);
-        self.pool.deinit();
-    }
-};
-
-fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8) ![]u8 {
-    const explain = try std.fmt.allocPrint(alloc, "EXPLAIN (COSTS OFF) {s}", .{sql});
-    defer alloc.free(explain);
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(alloc);
-    var q = PgQuery.from(try conn.query(explain, .{}));
-    defer q.deinit();
-    while (try q.next()) |row| {
-        try out.appendSlice(alloc, try row.get([]const u8, 0));
-        try out.append(alloc, '\n');
-    }
-    return out.toOwnedSlice(alloc);
-}
+// Shared setup + EXPLAIN reader live in test_fixtures.zig (Dimension 6.3).
+const TestDb = base.TestDb;
+const planOf = base.planOf;
 
 /// The index exists in `schema` and indexes exactly `want_columns`, in that
 /// order and those directions. Reads the KEY columns structurally from the
