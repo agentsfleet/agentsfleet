@@ -120,9 +120,9 @@ The daemon runs with the environment systemd gives it, which contains no `HOME`.
 The failure that took the dev fleet down logged an error code and nothing else, which is why diagnosis needed a host login rather than a journal read. The same failure reaches the user as *"This fleet needs instructions before it can respond."* — the chat surface recognises five exact runner cause lines and blames the fleet for everything else, so a runner-side fault is reported as the user's misconfiguration, with a raw internal error identifier appended. An error that is caught must be named, and a cause the surface cannot classify must not be attributed to the user. **Implementation default:** log the error name alongside the existing code, keep the returned error unchanged because callers already branch on it, and invert the chat surface's default so an unrecognised cause reads as a runner-side failure rather than a missing-instructions one.
 
 - **Dimension 3.1** — The config-load failure log carries the underlying error name → Test `test_config_load_failure_names_error`
-- **Dimension 3.2** — A startup-posture failure whose cause is unrecognised reads as a runner-side failure, not a missing-instructions one → Test `test_unrecognised_cause_is_not_blamed_on_the_fleet`
-- **Dimension 3.3** — A fleet genuinely lacking instructions still gets the instructions sentence → Test `test_missing_instructions_keeps_its_sentence`
-- **Dimension 3.4** — No raw internal error identifier reaches the chat surface → Test `test_raw_error_identifier_never_shown`
+- **Dimension 3.2** — **DONE** — A startup-posture failure whose cause is unrecognised reads as a runner-side failure, not a missing-instructions one → Test `test_unrecognised_cause_is_not_blamed_on_the_fleet`
+- **Dimension 3.3** — **DONE** — A fleet genuinely lacking instructions still gets the instructions sentence → Test `test_missing_instructions_keeps_its_sentence`
+- **Dimension 3.4** — **DONE** — No raw internal error identifier reaches the chat surface → Test `test_raw_error_identifier_never_shown`
 
 ### §4 — Execution cgroups are reclaimed
 
@@ -145,9 +145,9 @@ Two defects: the gate returns on the first missing controller, so a host missing
 
 An operator cannot assign a policy without resizing the window, because the dialog body does not scroll and the footer falls below the fold. The three isolation options wrap two-then-one, leaving an orphan card. Both are on the only path that makes a runner useful. **Implementation default:** constrain the dialog body's height and scroll it, matching the sibling dialog, rather than shortening the copy — the copy is load-bearing operator guidance.
 
-- **Dimension 6.1** — The dialog body scrolls and the footer stays reachable on a short viewport → Test `test_policy_dialog_body_scrolls`
-- **Dimension 6.2** — The three isolation options occupy one row at the breakpoint → Test `test_isolation_options_share_one_row`
-- **Dimension 6.3** — The add-runner dialog carries the same scroll affordance → Test `test_add_runner_dialog_body_scrolls`
+- **Dimension 6.1** — **DONE** — The dialog body scrolls and the footer stays reachable on a short viewport → Test `test_policy_dialog_body_scrolls`
+- **Dimension 6.2** — **DONE** — The three isolation options occupy one row at the breakpoint → Test `test_isolation_options_share_one_row`
+- **Dimension 6.3** — **DONE** — The add-runner dialog carries the same scroll affordance → Test `test_add_runner_dialog_body_scrolls`
 
 ## Interfaces
 
