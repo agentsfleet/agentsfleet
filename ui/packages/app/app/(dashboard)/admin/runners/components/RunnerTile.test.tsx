@@ -24,6 +24,10 @@ function runner(overrides: Partial<RunnerListItem> = {}): RunnerListItem {
     labels: ["gpu"],
     last_seen_at: Date.now(),
     created_at: Date.now(),
+    assigned_policy: null,
+    achievable: null,
+    degraded: false,
+    degraded_reason: null,
     ...overrides,
   };
 }
@@ -59,6 +63,23 @@ describe("RunnerTile", () => {
     render(<RunnerTile runner={runner()} />);
     const link = screen.getByRole("link");
     expect(link.getAttribute("href")).toBe("/admin/runners/r-tile-1");
+  });
+
+  it("test_degraded_runner_row_states_the_reason", () => {
+    // Dimensions 4.1/4.2 (tile face) — a degraded runner is visually distinct
+    // and names the specific missing mechanism in place of the work line.
+    render(
+      <RunnerTile
+        runner={runner({ degraded: true, degraded_reason: "landlock unavailable" })}
+      />,
+    );
+    expect(screen.getByText("degraded")).toBeTruthy();
+    expect(screen.getByText("landlock unavailable")).toBeTruthy();
+  });
+
+  it("a healthy runner shows no degraded badge", () => {
+    render(<RunnerTile runner={runner()} />);
+    expect(screen.queryByText("degraded")).toBeNull();
   });
 
   it("test_runner_tile_states_current_work_or_idle", async () => {

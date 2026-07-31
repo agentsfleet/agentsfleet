@@ -232,21 +232,32 @@ A runner needs a `agt_r` token before it can pull work. The **platform admin pre
  (dashboard session; metadata.platform_admin=true)
    │ "Add runner" server action → POST /v1/runners   🔒 GATE 1 — who may enroll:
    │   Authorization: Bearer <session-JWT>           platform_admin claim required
-   │   { host_id, sandbox_tier, labels[] }           (tenant admin / agt_t → 403)
+   │   { host_id, assigned_policy{sandbox_tier,     (tenant admin / agt_t → 403)
+   │     network_policy, registry_allowlist[],
+   │     worker_count}, labels[] }
    ├────────────────────────────────────────────────►│ mint agt_r (256-bit random)
-   │                                                  │ store sha256(agt_r) + last_seen_at=0 in fleet.runners
-   │◀──────────────────────────────────────────────────┤ 201 { runner_id, runner_token: agt_r }  (revealed once)
+   │                                                  │ store sha256(agt_r) + last_seen_at=0 + the ASSIGNED policy in fleet.runners
+   │◀──────────────────────────────────────────────────┤ 201 { runner_id, runner_token: agt_r, assigned_policy }  (revealed once)
    │ admin installs agt_r on the host (vault → env AGENTSFLEET_RUNNER_TOKEN)
    ▼
  host: agentsfleet-runner
- (env AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN=agt_r…)
-   │ boot: validate agt_r prefix, NO register call
+ (env AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN=agt_r… [+ optional RUNNER_STORAGE_HOME])
+   │ boot: validate agt_r prefix, NO register call; probe kernel capability
    │ steady loop — Authorization: Bearer agt_r         🔒 GATE 2 — per-call auth:
    │      ◀── heartbeat · lease · report · activity ─┤ sha256(Bearer) == token_hash (timing-safe)
-   │      eligibility: sandbox_tier + scope + secret_delivery   🔒 GATE 3 — blast radius
+   │      heartbeat ▲ capability report · ▼ assigned policy + degraded verdict
+   │      eligibility: assigned tier + scope + secret_delivery   🔒 GATE 3 — blast radius
 ```
 
-`agentsfleetd` owns the Postgres pool, the Redis pool, and the Vault API; `agentsfleet-runner` owns none of them and holds only the `agt_r` token. Rotating a token swaps `token_hash`; revoking sets `admin_state='revoked'` (M84_002) so the next call gets a 401. The runner's env is `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (matching the `agentsfleetd` / `agentsfleet` convention), and `AGENTSFLEET_RUNNER_TOKEN` holds the minted `agt_r` directly — there is no bootstrap credential on the host and no datastore secret.
+`agentsfleetd` owns the Postgres pool, the Redis pool, and the Vault API; `agentsfleet-runner` owns none of them and holds only the `agt_r` token. Rotating a token swaps `token_hash`; revoking sets `admin_state='revoked'` (M84_002) so the next call gets a 401. The runner's COMPLETE env is `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (+ the optional host-local `RUNNER_STORAGE_HOME`) — there is no bootstrap credential on the host, no datastore secret, and **no policy in the environment** (M148; §Assigned policy and reconciliation).
+
+## Assigned policy and reconciliation (M148)
+
+Configuration flows **down**: sandbox tier, network policy, registry allowlist, and worker count are attributes the control plane ASSIGNS to the runner row — written at enrollment, mutable via `PATCH /v1/fleets/runners/{id} {assigned_policy}` — and delivered with the runner's identity on the enrollment read and **every heartbeat reply**, so a dashboard change reaches the host within one beat with no host visit. The host never declares policy: the per-policy environment variables that once did are removed outright, not deprecated, so there is no fallback path for two sources of truth to diverge through — the failure this design removes (a dev worker advertised `landlock_full` while refusing every lease for two days, because the dashboard's tier and the host's env file were different values nothing compared).
+
+Capability flows **up**: at startup and per heartbeat tick the daemon probes what the kernel can actually enforce — Landlock ABI, seccomp installability, delegated cgroup `subtree_control` controllers, bubblewrap presence, and `egress_enforcement` (pinned false until the `EgressScope` wiring ships) — and sends the report on the first beat and whenever it changes (`capability_probe.zig`). The heartbeat handler reconciles assigned against achievable (`heartbeat_reconcile.zig`, a pure verdict function) into the row's `degraded` + `degraded_reason`, the reason naming the one missing mechanism in operator vocabulary ("cgroup controllers not delegated" maps to a bootstrap playbook step).
+
+The verdict gates work on **both sides, fail-closed**: the control plane's lease handler issues nothing to a degraded row (an unreadable verdict also issues nothing), and the runner's workers refuse to lease while the reply says degraded or while no decodable assignment is held (`AppliedPolicy` holds nothing on a malformed policy — never the previous value, never a permissive default). A policy re-assignment re-reconciles the verdict **in the PATCH request** against the stored report, so a tightening the host provably cannot meet degrades the row (and closes the lease gate) immediately; the residual window is the documented heartbeat granularity — a host that CAN meet the new policy keeps executing under its issue-time policy until the next beat delivers the change, and the lease gate's read races a concurrent verdict write by at most one lease. Both bounds are deliberate (assumption: in-flight leases finish under issue-time policy), not oversights. Assigned and achievable live in **separate columns** that never overwrite each other, so no code path can let a self-report become the assignment. Recovery is just reconciliation: a later report that satisfies the assignment clears the verdict on that heartbeat and leasing resumes. In-flight leases always finish under their issue-time policy; a change binds at the next lease boundary. The report remains unauthenticated self-assertion — a compromised host can lie — so placement trust stays operator-assigned; attestation is a separate workstream.
 
 ## Runner state — three categories, no JSONB status
 
@@ -490,16 +501,15 @@ The reclaim shift is the load-bearing one: moving the processor off-platform mea
 
 ## Sandbox tiers
 
-A runner reports its isolation strength at registration. Assignment (and later the scheduler) refuses to place other-tenant or production work on a weak tier. The reported tier is telemetry; trust for placement is operator-assigned, not self-claimed. A production startup guard refuses `dev_none` (or an unknown tier) in a release build, so the weakest tier cannot become the production default.
+The control plane ASSIGNS a tier to each runner row (Add Runner / the fleet PATCH) and delivers it with the runner's identity on enrollment and every heartbeat; the host applies it, probes what its kernel can actually enforce, and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation). The capability report stays unauthenticated self-assertion, so trust for placement remains operator-assigned, not host-claimed. A production startup guard refuses `dev_none` (or an unknown tier) in a release build, so the weakest tier cannot become the production default. Only tiers with real enforcement are assignable.
 
 | `sandbox_tier` | Where | Eligible for |
 |---|---|---|
 | `landlock_full` | Linux host | any work |
 | `container_nested` | runner inside a container on a Linux host or VM (Virtual Machine) | any work — full sandbox, nested |
-| `macos_seatbelt` | macOS, Seatbelt profile (weaker) | own-tenant / dev work |
 | `dev_none` | no real sandbox; refused in release builds | own-tenant dev work |
 
-On a Mac, running `agentsfleet-runner` inside a Linux VM (Docker Desktop / OrbStack / Lima) is how a laptop earns `container_nested` instead of the degraded `macos_seatbelt`.
+On a Mac, running `agentsfleet-runner` inside a Linux VM (Docker Desktop / OrbStack / Lima) is how a laptop earns `container_nested` — there is no macOS-native tier (the Seatbelt tier was removed: it never had enforcement code, and a tier that cannot be applied must not be assignable).
 
 > **Tiers ≠ egress policy.** `sandbox_tier` reports *isolation strength* (filesystem / syscall / process) — it is **orthogonal** to network egress. `landlock_full` does not constrain which hosts the child reaches (Landlock governs the filesystem; its recent network support is TCP *port* binding/connect only, not host allowlisting). `container_nested` gives a ready net-namespace boundary that the egress model can build on, but still needs the allowlist. So none of the tiers substitutes for the egress model below.
 

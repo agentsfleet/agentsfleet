@@ -19,7 +19,7 @@ const TEST_ISSUER = scope_fixtures.ISSUER;
 const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 const REGISTER_HOST = "host-event-register-test";
 const REGISTER_BODY =
-    \\{"host_id":"host-event-register-test","sandbox_tier":"dev_none","labels":[]}
+    \\{"host_id":"host-event-register-test","assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":1},"labels":[]}
 ;
 const BODY_CORDON = "{\"action\":\"cordon\"}";
 

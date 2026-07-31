@@ -13,6 +13,10 @@ import {
 
 const STATUS_SEPARATOR = " · ";
 
+// One label for the degraded verdict everywhere it renders (tile, header) —
+// the badge itself is the design-system `error` fill; this is just the word.
+export const DEGRADED_BADGE_LABEL = "degraded";
+
 export function runnerIsAwake(adminState: RunnerAdminState, liveness: RunnerLiveness): boolean {
   return adminState === RUNNER_ADMIN_STATE.active && (liveness === "busy" || liveness === "online");
 }

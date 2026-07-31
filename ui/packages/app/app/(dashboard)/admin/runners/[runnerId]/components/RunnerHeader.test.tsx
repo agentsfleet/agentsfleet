@@ -8,10 +8,25 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh, push }),
 }));
 
+// The edit-policy dialog is a dynamic island (it carries the react-hook-form +
+// zod stack off the detail route's critical path). The header's own duty is
+// wiring its onSaved to a route refresh, which this stub lets the test drive —
+// the dialog's own behaviour is covered in EditPolicyDialog.test.tsx.
+vi.mock("@/components/domain/island-dynamic/EditPolicyDialogDynamic", async () => {
+  const { Button } = await import("@agentsfleet/design-system");
+  return {
+    default: ({ onSaved }: { onSaved: () => void }) => (
+      <Button onClick={onSaved}>Edit policy</Button>
+    ),
+  };
+});
+
 const updateRunnerAdminStateActionMock = vi.fn();
+const updateRunnerPolicyActionMock = vi.fn();
 const deleteRunnerActionMock = vi.fn();
 vi.mock("../../actions", () => ({
   updateRunnerAdminStateAction: (...args: unknown[]) => updateRunnerAdminStateActionMock(...args),
+  updateRunnerPolicyAction: (...args: unknown[]) => updateRunnerPolicyActionMock(...args),
   deleteRunnerAction: (...args: unknown[]) => deleteRunnerActionMock(...args),
   listRunnerLeasesAction: vi.fn(),
   listRunnersAction: vi.fn(),
@@ -38,6 +53,10 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     labels: ["gpu", "prod"],
     last_seen_at: Date.now(),
     created_at: Date.now(),
+    assigned_policy: null,
+    achievable: null,
+    degraded: false,
+    degraded_reason: null,
     active_lease_count: 2,
     active_fleet_count: 2,
     leases_acquired: 4021,
@@ -70,6 +89,77 @@ describe("RunnerHeader", () => {
     // through the copy control.
     expect(screen.queryByText("01J2WQ8F3K7VZ9XB4N6MTYD5AR")).toBeNull();
     expect(screen.getByRole("button", { name: /copy runner id/i })).toBeTruthy();
+  });
+
+  it("test_degraded_runner_row_states_the_reason (header face)", () => {
+    // Dimensions 4.1/4.2 — a degraded runner is visually distinct (the error
+    // badge) and names the missing mechanism beside what the host reported.
+    render(
+      <RunnerHeader
+        runner={detail({
+          degraded: true,
+          degraded_reason: "landlock unavailable",
+          achievable: {
+            landlock: false,
+            seccomp: true,
+            cgroup_controllers: ["cpu", "memory", "pids"],
+            bubblewrap: true,
+            egress_enforcement: false,
+          },
+        })}
+        grafanaHref={null}
+      />,
+    );
+    expect(screen.getByText("degraded")).toBeTruthy();
+    expect(screen.getByText(/assignment unmet: landlock unavailable/)).toBeTruthy();
+    expect(screen.getByText(/host reports landlock ✗/)).toBeTruthy();
+  });
+
+  it("a healthy runner shows neither the degraded badge nor the mismatch line", () => {
+    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    expect(screen.queryByText("degraded")).toBeNull();
+    expect(screen.queryByText(/assignment unmet/)).toBeNull();
+  });
+
+  it("a degraded runner with no report yet names the reason without a host-reports line", () => {
+    render(
+      <RunnerHeader
+        runner={detail({ degraded: true, degraded_reason: "no assigned policy", achievable: null })}
+        grafanaHref={null}
+      />,
+    );
+    expect(screen.getByText(/assignment unmet: no assigned policy/)).toBeTruthy();
+    expect(screen.queryByText(/host reports/)).toBeNull();
+  });
+
+  it("an empty controllers list renders as absent in the achievable line", () => {
+    render(
+      <RunnerHeader
+        runner={detail({
+          degraded: true,
+          degraded_reason: "cgroup controllers not delegated",
+          achievable: {
+            landlock: true,
+            seccomp: false,
+            cgroup_controllers: [],
+            bubblewrap: false,
+            egress_enforcement: true,
+          },
+        })}
+        grafanaHref={null}
+      />,
+    );
+    expect(screen.getByText(/seccomp ✗/)).toBeTruthy();
+    expect(screen.getByText(/cgroups ✗/)).toBeTruthy();
+    expect(screen.getByText(/bubblewrap ✗/)).toBeTruthy();
+    expect(screen.getByText(/egress ✓/)).toBeTruthy();
+  });
+
+  it("saving a policy re-assignment refreshes the header (the row must show the new truth)", async () => {
+    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    // The island stub fires onSaved directly — the wiring under test.
+    fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
   it("test_grafana_action_hidden_without_configured_base", () => {

@@ -14,18 +14,22 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const id_format = @import("../../../types/id_format.zig");
 const protocol = @import("contract").protocol;
 const runner_events = @import("../../../fleet/runner_events.zig");
+const policy_row = @import("../runner/assigned_policy_row.zig");
+const reconcile = @import("../runner/heartbeat_reconcile.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.fleet_runner_patch);
 
-const S_PATCH_BODY = "PATCH body must be {\"action\":\"cordon|drain|revoke\"}";
+const S_PATCH_BODY = "PATCH body must be exactly one of {\"action\":\"cordon|drain|revoke\"} or {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count}}";
 const S_RUNNER_NOT_FOUND = "Runner not found";
 const S_REVOKED_IS_TERMINAL = "revoked runners cannot transition back to cordoned or draining";
+const S_REVOKED_NO_POLICY = "revoked runners cannot be re-assigned a policy";
+const S_EVENT_ID_MINT_FAILED = "runner event id generation failed";
+const S_BAD_REGISTRY = "registry_allowlist entries must be host[:port] names";
 
 pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, runner_id, "runner_id")) return;
     const body = parseBody(hx, req) orelse return;
-    const target = stateForAction(body.action);
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -40,12 +44,21 @@ pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8)
         hx.fail(ec.ERR_RUNNER_NOT_FOUND, S_RUNNER_NOT_FOUND);
         return;
     };
+    if (body.assigned_policy) |requested| {
+        applyPolicyAssignment(hx, conn, runner_id, current, requested);
+        return;
+    }
+    applyAdminAction(hx, conn, runner_id, current, body.action.?);
+}
+
+fn applyAdminAction(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current: protocol.AdminState, action: protocol.RunnerAdminAction) void {
+    const target = stateForAction(action);
     if (current == .revoked and target != .revoked) {
         hx.fail(ec.ERR_INVALID_REQUEST, S_REVOKED_IS_TERMINAL);
         return;
     }
     const event_row_id = id_format.generateRunnerEventId(hx.alloc) catch {
-        common.internalOperationError(hx.res, "runner event id generation failed", hx.req_id);
+        common.internalOperationError(hx.res, S_EVENT_ID_MINT_FAILED, hx.req_id);
         return;
     };
     defer hx.alloc.free(event_row_id);
@@ -66,6 +79,80 @@ pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8)
     writeResponse(hx, runner_id, target);
 }
 
+/// Re-assign the runner's policy. The write is idempotent (a same-values PATCH
+/// updates nothing and emits no event) and the new assignment reaches the host
+/// on its next heartbeat — no host visit, no restart. The row's verdict is
+/// re-reconciled against the stored capability report in the same request, so
+/// the degraded flag (and the lease gate reading it) never lags the assignment.
+fn applyPolicyAssignment(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current: protocol.AdminState, requested: protocol.AssignedPolicy) void {
+    if (current == .revoked) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_REVOKED_NO_POLICY);
+        return;
+    }
+    if (!protocol.registryAllowlistValid(requested.registry_allowlist)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_BAD_REGISTRY);
+        return;
+    }
+    var stored = requested;
+    stored.worker_count = std.math.clamp(stored.worker_count, protocol.MIN_WORKER_COUNT, protocol.MAX_WORKER_COUNT);
+    const registry_json = std.json.Stringify.valueAlloc(hx.alloc, stored.registry_allowlist, .{}) catch {
+        // mudball-ok: OOM-only failure stringifying an already-validated payload; detail stays plain English
+        common.internalOperationError(hx.res, "runner policy update failed", hx.req_id);
+        return;
+    };
+    const event_row_id = id_format.generateRunnerEventId(hx.alloc) catch {
+        // mudball-ok: id mint is OOM/entropy-only; same plain detail as the admin-action path
+        common.internalOperationError(hx.res, S_EVENT_ID_MINT_FAILED, hx.req_id);
+        return;
+    };
+    defer hx.alloc.free(event_row_id);
+
+    // Reconcile the NEW assignment against the row's stored capability report
+    // BEFORE the write, so the verdict rides the same statement. A read
+    // failure yields a null report, which reconciles to degraded — the
+    // fail-closed answer, never an assumed-healthy one.
+    const verdict = reconcile.reconcile(stored, readCapability(hx, conn, runner_id));
+
+    {
+        var q = PgQuery.from(conn.query(sql.PATCH_RUNNER_ASSIGNED_POLICY, .{
+            runner_id,
+            @tagName(stored.sandbox_tier),
+            @tagName(stored.network_policy),
+            registry_json,
+            @as(i32, @intCast(stored.worker_count)),
+            clock.nowMillis(),
+            event_row_id,
+            @tagName(protocol.RunnerEventType.runner_policy_assigned),
+            runner_events.META_SANDBOX_TIER,
+            runner_events.META_NETWORK_POLICY,
+            runner_events.META_REGISTRY_ALLOWLIST,
+            runner_events.META_WORKER_COUNT,
+            verdict.degraded,
+            verdict.reason,
+        }) catch {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        });
+        defer q.deinit();
+        // A null row is a no-op re-assignment (values already match) — success.
+        _ = q.next() catch {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        };
+    }
+
+    log.debug("runner_policy_assigned", .{ .runner_id = runner_id, .sandbox_tier = @tagName(stored.sandbox_tier), .network_policy = @tagName(stored.network_policy), .worker_count = stored.worker_count, .degraded = verdict.degraded });
+    hx.ok(.ok, protocol.RunnerAdminPatchResponse{ .id = runner_id, .admin_state = current, .assigned_policy = stored });
+}
+
+fn readCapability(hx: Hx, conn: *pg.Conn, runner_id: []const u8) ?protocol.CapabilityReport {
+    var q = PgQuery.from(conn.query(sql.SELECT_RUNNER_CAPABILITY, .{runner_id}) catch return null);
+    defer q.deinit();
+    const row = (q.next() catch return null) orelse return null;
+    const raw = row.get(?[]const u8, 0) catch return null;
+    return policy_row.decodeCapability(hx.alloc, raw);
+}
+
 fn parseBody(hx: Hx, req: *httpz.Request) ?protocol.RunnerAdminPatchRequest {
     const raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, S_PATCH_BODY);
@@ -76,12 +163,18 @@ fn parseBody(hx: Hx, req: *httpz.Request) ?protocol.RunnerAdminPatchRequest {
         return null;
     }
     if (!common.checkBodySize(req, hx.res, raw, hx.req_id)) return null;
-    const parsed = std.json.parseFromSlice(protocol.RunnerAdminPatchRequest, hx.alloc, raw, .{}) catch {
+    // Leaky on the request arena: the assigned_policy variant carries slices
+    // that must outlive this function; they die with the request.
+    const parsed = std.json.parseFromSliceLeaky(protocol.RunnerAdminPatchRequest, hx.alloc, raw, .{}) catch {
         hx.fail(ec.ERR_INVALID_REQUEST, S_PATCH_BODY);
         return null;
     };
-    defer parsed.deinit();
-    return .{ .action = parsed.value.action };
+    const exactly_one = (parsed.action != null) != (parsed.assigned_policy != null);
+    if (!exactly_one) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_PATCH_BODY);
+        return null;
+    }
+    return parsed;
 }
 
 fn stateForAction(action: protocol.RunnerAdminAction) protocol.AdminState {

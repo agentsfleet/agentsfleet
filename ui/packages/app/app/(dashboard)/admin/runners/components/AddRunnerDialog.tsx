@@ -1,7 +1,7 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useState, useTransition } from "react";
+import { useForm, type Control } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -22,46 +22,46 @@ import {
   FormLabel,
   FormMessage,
   Input,
-  OptionCard,
-  RadioGroup,
   Spinner,
   TooltipButton,
 } from "@agentsfleet/design-system";
 import { InfoIcon, PlusIcon } from "lucide-react";
-import {
-  HOST_ID_REGEX,
-  SANDBOX_TIERS,
-  SANDBOX_TIER_DESCRIPTIONS,
-  SANDBOX_TIER_LABELS,
-  parseLabels,
-  type CreatedRunner,
-  type SandboxTier,
-} from "@/lib/api/runners";
+import { HOST_ID_REGEX, parseLabels, type CreatedRunner } from "@/lib/api/runners";
 import { presentErrorString } from "@/lib/errors";
 import { createRunnerAction } from "../actions";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
+import {
+  POLICY_FORM_DEFAULTS,
+  PolicyFields,
+  policyFormSchema,
+  policyFromForm,
+  type PolicyFormValues,
+} from "./PolicyFields";
 
-const DEFAULT_TIER: SandboxTier = "landlock_full";
 const RUNNER_TOKEN_WARNING = "Runner token is shown once. Copy it now.";
 const CREATE_RUNNER_TOOLTIP = "Enroll a host to run fleets.";
+// The selection is an assignment the host must satisfy — never a description
+// of the host (Dimension 4.3); the per-field copy in PolicyFields agrees.
+const CREATE_RUNNER_DESCRIPTION =
+  "A runner is a host you enroll to run fleet work. The policy you pick here is assigned to the host — it applies exactly this, and reports what it can actually enforce.";
 
-const schema = z.object({
+const schema = policyFormSchema.extend({
   host_id: z.string().trim().regex(HOST_ID_REGEX, "1–256 characters: letters, digits, dot, hyphen, underscore"),
-  sandbox_tier: z.enum(SANDBOX_TIERS),
   labels: z.string().trim(),
 });
 type FormValues = z.infer<typeof schema>;
+
+const FORM_DEFAULTS: FormValues = { host_id: "", labels: "", ...POLICY_FORM_DEFAULTS };
 
 export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [created, setCreated] = useState<CreatedRunner | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const isolationModeLabelId = useId();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { host_id: "", sandbox_tier: DEFAULT_TIER, labels: "" },
+    defaultValues: FORM_DEFAULTS,
   });
 
   // Single dismissal path. Outside-click / Escape are locked during reveal (see
@@ -76,22 +76,28 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
     setOpen(false);
     setCreated(null);
     setApiError(null);
-    form.reset({ host_id: "", sandbox_tier: DEFAULT_TIER, labels: "" });
+    form.reset(FORM_DEFAULTS);
     if (minted) onCreated();
   }
 
   function onSubmit(values: FormValues) {
     setApiError(null);
-    const parsed = parseLabels(values.labels);
-    if (parsed.error) {
-      setApiError(parsed.error);
+    const parsedLabels = parseLabels(values.labels);
+    if (parsedLabels.error) {
+      setApiError(parsedLabels.error);
       return;
     }
+    const assignment = policyFromForm(values);
+    if (assignment.error !== null || assignment.policy === null) {
+      setApiError(assignment.error);
+      return;
+    }
+    const assigned_policy = assignment.policy;
     startTransition(async () => {
       const r = await createRunnerAction({
         host_id: values.host_id.trim(),
-        sandbox_tier: values.sandbox_tier,
-        labels: parsed.labels,
+        assigned_policy,
+        labels: parsedLabels.labels,
       });
       if (!r.ok) {
         setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "enroll the runner" }));
@@ -102,7 +108,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
       setCreated(r.data);
       captureProductEvent(EVENTS.runner_token_minted, {
         runner_id: r.data.runner_id,
-        sandbox_tier: values.sandbox_tier,
+        sandbox_tier: assigned_policy.sandbox_tier,
       });
     });
   }
@@ -173,9 +179,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
           <>
             <DialogHeader>
               <DialogTitle>Create runner</DialogTitle>
-              <DialogDescription>
-                A runner is a host you enroll to run fleet work.
-              </DialogDescription>
+              <DialogDescription>{CREATE_RUNNER_DESCRIPTION}</DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form
@@ -198,38 +202,9 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="sandbox_tier"
-                  render={({ field }) => (
-                    <FormItem>
-                      {/* RadioGroup's root renders a <div role="radiogroup">, not a
-                          labelable HTML element — FormLabel's htmlFor (built for a
-                          single input/button/select) can't auto-focus it, so the
-                          group is named directly via aria-labelledby instead. */}
-                      <FormLabel id={isolationModeLabelId}>Isolation mode</FormLabel>
-                      <FormControl>
-                        <RadioGroup
-                          value={field.value}
-                          onValueChange={field.onChange}
-                          aria-labelledby={isolationModeLabelId}
-                          className="sm:grid-cols-2"
-                        >
-                          {SANDBOX_TIERS.map((t) => (
-                            <OptionCard
-                              key={t}
-                              value={t}
-                              label={SANDBOX_TIER_LABELS[t]}
-                              description={SANDBOX_TIER_DESCRIPTIONS[t]}
-                            />
-                          ))}
-                        </RadioGroup>
-                      </FormControl>
-                      <FormDescription>How the host isolates fleet work — self-reported.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* One boundary cast: FormValues extends PolicyFormValues, but
+                    react-hook-form's Control generic is invariant. */}
+                <PolicyFields control={form.control as unknown as Control<PolicyFormValues>} />
                 <FormField
                   control={form.control}
                   name="labels"

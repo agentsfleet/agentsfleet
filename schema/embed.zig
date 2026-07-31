@@ -47,4 +47,5 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 39, .sql = @embedFile("039_vault_kek_default_retire.sql") },
     .{ .version = 40, .sql = @embedFile("040_memory_entries_keyset_index.sql") },
     .{ .version = 41, .sql = @embedFile("041_runner_leases_operator_read_indexes.sql") },
+    .{ .version = 42, .sql = @embedFile("042_runner_assigned_policy.sql") },
 };

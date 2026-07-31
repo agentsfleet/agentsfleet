@@ -9,6 +9,7 @@
 const std = @import("std");
 const testing = std.testing;
 const Config = @import("config.zig");
+const AppliedPolicy = @import("AppliedPolicy.zig");
 const worker_pool = @import("worker_pool.zig");
 const dts = @import("deadline_test_support.zig");
 
@@ -19,9 +20,8 @@ fn staticCfg(worker_count: u32) Config {
     return .{
         .control_plane_url = "http://127.0.0.1:0",
         .runner_token = "agt_rtest",
-        .host_id = "pool-test-host",
         .sandbox_tier = .dev_none,
-        .workspace_base = "/tmp/agentsfleet-runner-pool-test",
+        .storage_home = "/tmp/agentsfleet-runner-pool-test",
         .network_policy = .deny_all_egress,
         .worker_count = worker_count,
         .cp_deadlines = .{},
@@ -43,8 +43,10 @@ test "pool spawns worker_count threads and joins them all cleanly" {
     var stop = std.atomic.Value(bool).init(true);
     var drain = std.atomic.Value(bool).init(false);
 
+    var applied = AppliedPolicy.init(testing.allocator);
+    defer applied.deinit();
     const cfg = staticCfg(4);
-    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), cfg, &env_map, &stop, &drain);
+    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), cfg, &env_map, &applied, &stop, &drain);
     try testing.expectEqual(@as(usize, 4), pool.threads.len); // one handle per worker
     try pool.join(); // must return .ok — a hang is a stuck worker; an error is a leaked worker
 }
@@ -61,7 +63,9 @@ test "pool drains via the drain flag as well as stop" {
     var stop = std.atomic.Value(bool).init(false);
     var drain = std.atomic.Value(bool).init(true);
 
-    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(2), &env_map, &stop, &drain);
+    var applied = AppliedPolicy.init(testing.allocator);
+    defer applied.deinit();
+    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(2), &env_map, &applied, &stop, &drain);
     try testing.expectEqual(@as(usize, 2), pool.threads.len);
     try pool.join();
 }
@@ -78,7 +82,9 @@ test "single-worker pool is the degenerate N=1 case" {
     var stop = std.atomic.Value(bool).init(true);
     var drain = std.atomic.Value(bool).init(false);
 
-    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(1), &env_map, &stop, &drain);
+    var applied = AppliedPolicy.init(testing.allocator);
+    defer applied.deinit();
+    var pool = try worker_pool.spawn(io, testing.allocator, try deadlines.start(testing.allocator), staticCfg(1), &env_map, &applied, &stop, &drain);
     try testing.expectEqual(@as(usize, 1), pool.threads.len);
     try pool.join();
 }
