@@ -61,14 +61,10 @@ test "configFromEnv returns the full config with the default service_name" {
         .{ "GRAFANA_OTLP_API_KEY", "secret-key" },
     });
     defer env_map.deinit();
-    const cfg = configFromEnv(&env_map, alloc).?;
-    // endpoint/instance_id/api_key are owned copies; service_name here is the
-    // static default (NOT allocated), so it must NOT be freed.
-    defer {
-        alloc.free(cfg.endpoint);
-        alloc.free(cfg.instance_id);
-        alloc.free(cfg.api_key);
-    }
+    var cfg = configFromEnv(&env_map, alloc).?;
+    // Every field is an owned copy — the default service_name is duped too,
+    // so deinit frees unconditionally.
+    defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("https://otlp.example", cfg.endpoint);
     try std.testing.expectEqualStrings("agentsfleetd", cfg.service_name);
 }
@@ -82,14 +78,8 @@ test "configFromEnv honors an OTEL_SERVICE_NAME override" {
         .{ "OTEL_SERVICE_NAME", "custom-name" },
     });
     defer env_map.deinit();
-    const cfg = configFromEnv(&env_map, alloc).?;
-    // Override path: service_name is an owned copy too — free all four.
-    defer {
-        alloc.free(cfg.endpoint);
-        alloc.free(cfg.instance_id);
-        alloc.free(cfg.api_key);
-        alloc.free(cfg.service_name);
-    }
+    var cfg = configFromEnv(&env_map, alloc).?;
+    defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("custom-name", cfg.service_name);
 }
 

@@ -14,7 +14,12 @@ pub fn parseStandardClaims(
     expected_issuer: ?[]const u8,
     expected_audience: ?[]const u8,
 ) !VerifiedClaims {
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, payload_raw, .{}) catch return VerifyError.TokenMalformed;
+    // OOM is a resource failure, not evidence the token is malformed — collapse
+    // only real parse errors (RULE ECL; also required by allocation-failure sweeps).
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, payload_raw, .{}) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return VerifyError.TokenMalformed,
+    };
     defer parsed.deinit();
 
     if (parsed.value != .object) return VerifyError.TokenMalformed;
@@ -35,9 +40,13 @@ pub fn parseStandardClaims(
     const now_s = clock.nowSeconds();
     if (exp <= now_s) return VerifyError.TokenExpired;
 
+    const subject_owned = try alloc.dupe(u8, subject);
+    errdefer alloc.free(subject_owned);
+    const issuer_owned = try alloc.dupe(u8, issuer);
+
     return .{
-        .subject = try alloc.dupe(u8, subject),
-        .issuer = try alloc.dupe(u8, issuer),
+        .subject = subject_owned,
+        .issuer = issuer_owned,
         .claims_json = payload_raw,
     };
 }

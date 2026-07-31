@@ -86,8 +86,12 @@ pub fn extractCustomClaims(alloc: std.mem.Allocator, claims_json: []const u8) !C
 }
 
 fn parseClaimsObject(alloc: std.mem.Allocator, claims_json: []const u8) !std.json.Parsed(std.json.Value) {
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, claims_json, .{}) catch
-        return jwks.VerifyError.TokenMalformed;
+    // OOM is a resource failure, not evidence the claims are malformed —
+    // collapse only real parse errors (RULE ECL).
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, claims_json, .{}) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return jwks.VerifyError.TokenMalformed,
+    };
     if (parsed.value != .object) {
         parsed.deinit();
         return jwks.VerifyError.TokenMalformed;
@@ -104,11 +108,21 @@ fn duplicateClaims(alloc: std.mem.Allocator, view: struct {
 }) !IdentityClaims {
     errdefer if (view.scopes) |v| alloc.free(v);
 
+    // One errdefer per acquisition: a failed later dupe frees every earlier
+    // one instead of leaking it inside a half-built struct literal.
+    const tenant_id = if (view.tenant_id) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (tenant_id) |v| alloc.free(v);
+    const org_id = if (view.org_id) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (org_id) |v| alloc.free(v);
+    const workspace_id = if (view.workspace_id) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (workspace_id) |v| alloc.free(v);
+    const audience = if (view.audience) |v| try alloc.dupe(u8, v) else null;
+
     return .{
-        .tenant_id = if (view.tenant_id) |v| try alloc.dupe(u8, v) else null,
-        .org_id = if (view.org_id) |v| try alloc.dupe(u8, v) else null,
-        .workspace_id = if (view.workspace_id) |v| try alloc.dupe(u8, v) else null,
-        .audience = if (view.audience) |v| try alloc.dupe(u8, v) else null,
+        .tenant_id = tenant_id,
+        .org_id = org_id,
+        .workspace_id = workspace_id,
+        .audience = audience,
         .scopes = view.scopes,
     };
 }

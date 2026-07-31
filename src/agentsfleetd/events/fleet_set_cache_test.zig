@@ -255,3 +255,29 @@ test "integration: a fleet appearing bumps the version exactly once" {
     try testing.expectEqual(@as(usize, 1), snap.fleet_ids.len);
     try testing.expectEqualStrings(FLEET_ONE, snap.fleet_ids[0]);
 }
+
+test "integration: enumerate frees every id when an allocation fails mid-refresh" {
+    // refreshIfStale swallows refresh errors internally (a failed refresh is a
+    // retry-next-tick event), so this sweep injects a failure at every cache
+    // allocation index and lets the BACKING testing.allocator's leak detector
+    // prove each failure path freed everything — including the dupe orphaned
+    // by a failed append, which the list-level errdefer alone cannot free.
+    const db = TestDb.open() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer db.close();
+    try seed(db.conn);
+    defer cleanup(db.conn);
+
+    const SWEEP_BOUND = 32; // comfortably past every cache-side allocation
+    var fail_index: usize = 0;
+    while (fail_index < SWEEP_BOUND) : (fail_index += 1) {
+        var failing = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = fail_index });
+        var cache = FleetSetCache.init(failing.allocator(), common.globalIo());
+        defer cache.deinit();
+        cache.retain(WS_A) catch continue; // injected failure before any refresh
+        defer cache.release(WS_A);
+        cache.refreshIfStale(db.conn, WS_A, now());
+    }
+}

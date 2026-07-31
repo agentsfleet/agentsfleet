@@ -122,18 +122,28 @@ pub fn parseUrl(alloc: std.mem.Allocator, url: []const u8) !pg.Pool.Opts {
 
     // `.size` / `.timeout` (pool acquire timeout) default here and are
     // overwritten from env-resolved sizing (resolveSizing) in initFromEnvForRole.
+    // One errdefer per dupe: a failed later dupe frees every earlier one
+    // instead of leaking it inside a half-built struct literal.
+    const host_owned = try alloc.dupe(u8, host);
+    errdefer alloc.free(host_owned);
+    const username_owned = try alloc.dupe(u8, username);
+    errdefer alloc.free(username_owned);
+    const password_owned = try alloc.dupe(u8, password);
+    errdefer alloc.free(password_owned);
+    const database_owned = try alloc.dupe(u8, dbname);
+
     return pg.Pool.Opts{
         .size = POOL_SIZE_DEFAULT,
         .timeout = ACQUIRE_TIMEOUT_MS_DEFAULT,
         .connect = .{
-            .host = try alloc.dupe(u8, host),
+            .host = host_owned,
             .port = port,
             .tls = tls,
         },
         .auth = .{
-            .username = try alloc.dupe(u8, username),
-            .password = try alloc.dupe(u8, password),
-            .database = try alloc.dupe(u8, dbname),
+            .username = username_owned,
+            .password = password_owned,
+            .database = database_owned,
             .timeout = CONNECT_TIMEOUT_MS_DEFAULT,
         },
     };
@@ -260,6 +270,22 @@ test "parseUrl dupes the connect strings and frees clean under testing.allocator
     try std.testing.expectEqualStrings("secret", opts.auth.password.?);
     try std.testing.expectEqualStrings("appdb", opts.auth.database.?);
     try std.testing.expect(opts.connect.tls == .off); // sslmode=disable
+}
+
+test "parseUrl survives allocation failure without leaking (errdefer ladder)" {
+    // checkAllAllocationFailures fails each of the four dupes in turn and
+    // asserts the error return leaks nothing — the proof that a failed later
+    // dupe frees every earlier one instead of leaking it in the return literal.
+    const Probe = struct {
+        fn run(alloc: std.mem.Allocator) !void {
+            const opts = try parseUrl(alloc, "postgres://alice:secret@db.example.com:6543/appdb?sslmode=disable");
+            alloc.free(opts.connect.host.?);
+            alloc.free(opts.auth.username);
+            alloc.free(opts.auth.password.?);
+            alloc.free(opts.auth.database.?);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{});
 }
 
 test "parseSizeStr accepts a clean u32 and rejects blank/garbage" {

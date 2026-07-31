@@ -92,79 +92,44 @@ pub fn initTelemetry(env_map: *const EnvMap, alloc: std.mem.Allocator) Telemetry
 /// by all three exporters (RULE UFS).
 const R_FLUSH_SPAWN_FAILED = "flush_thread_spawn_failed";
 
-pub fn initOtelLogs(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) void {
-    if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        switch (otel_logs.install(io, cfg)) {
-            .installed => log.info("startup.otel_logs_ok", .{}),
-            .already_running => log.info("startup.otel_logs_already_running", .{}),
-            .spawn_failed => log.warn("startup.otel_logs_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
-        }
+/// Owns the single parsed Grafana OTLP config; the three installed exporters
+/// borrow it. `deinit` uninstalls all three (reverse order) FIRST, then frees
+/// the config — no exporter thread can still read it when the free runs.
+pub const OtelExporters = struct {
+    cfg: ?otlp_config.GrafanaOtlpConfig = null,
+
+    pub fn deinit(self: *OtelExporters, alloc: std.mem.Allocator) void {
+        if (otel_metrics.isInstalled()) otel_metrics.uninstall();
+        if (otel_traces.isInstalled()) otel_traces.uninstall();
+        if (otel_logs.isInstalled()) otel_logs.uninstall();
+        if (self.cfg) |*cfg| cfg.deinit(alloc);
+        self.* = undefined;
     }
-}
+};
 
-pub fn deinitOtelLogs() void {
-    if (otel_logs.isInstalled()) {
-        otel_logs.uninstall();
-    }
-}
-
-// ---------------------------------------------------------------------------
-// OTLP trace exporter
-// ---------------------------------------------------------------------------
-
-pub fn initOtelTraces(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) void {
-    if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        switch (otel_traces.install(io, cfg)) {
-            .installed => log.info("startup.otel_traces_ok", .{}),
-            .already_running => log.info("startup.otel_traces_already_running", .{}),
-            .spawn_failed => log.warn("startup.otel_traces_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
-        }
-    }
-}
-
-pub fn deinitOtelTraces() void {
-    if (otel_traces.isInstalled()) {
-        otel_traces.uninstall();
-    }
-}
-
-// ---------------------------------------------------------------------------
-// OTLP metric exporter
-// ---------------------------------------------------------------------------
-
-pub fn initOtelMetrics(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) void {
-    if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        switch (otel_metrics.install(io, cfg)) {
-            .installed => log.info("startup.otel_metrics_ok", .{}),
-            .already_running => log.info("startup.otel_metrics_already_running", .{}),
-            .spawn_failed => log.warn("startup.otel_metrics_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
-        }
-    } else {
-        // Self-serve signal: the disabled reason lives in the startup log, not a
-        // ticket — same shared GRAFANA_OTLP_* gate as traces/logs.
-        log.info("startup.otel_metrics_disabled", .{ .reason = "no GRAFANA_OTLP_ENDPOINT" });
-    }
-}
-
-pub fn deinitOtelMetrics() void {
-    if (otel_metrics.isInstalled()) {
-        otel_metrics.uninstall();
+fn logInstallOutcome(comptime event_prefix: []const u8, outcome: anytype) void {
+    switch (outcome) {
+        .installed => log.info(event_prefix ++ "_ok", .{}),
+        .already_running => log.info(event_prefix ++ "_already_running", .{}),
+        .spawn_failed => log.warn(event_prefix ++ "_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
     }
 }
 
 /// Install all three OTLP exporters (logs/traces/metrics) under the shared
-/// GRAFANA_OTLP_* gate. Pair with `deinitOtelExporters` via `defer`.
-pub fn initOtelExporters(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) void {
-    initOtelLogs(io, env_map, alloc);
-    initOtelTraces(io, env_map, alloc);
-    initOtelMetrics(io, env_map, alloc);
-}
-
-/// Uninstall all three OTLP exporters (reverse order).
-pub fn deinitOtelExporters() void {
-    deinitOtelMetrics();
-    deinitOtelTraces();
-    deinitOtelLogs();
+/// GRAFANA_OTLP_* gate, from ONE env parse. The returned handle owns the
+/// config on every outcome (installed, already-running, spawn-failed); pair
+/// with `handle.deinit(alloc)` via `defer`.
+pub fn initOtelExporters(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) OtelExporters {
+    const cfg = otlp_config.configFromEnv(env_map, alloc) orelse {
+        // Self-serve signal: the disabled reason lives in the startup log, not
+        // a ticket — one shared GRAFANA_OTLP_* gate for all three signals.
+        log.info("startup.otel_disabled", .{ .reason = "no GRAFANA_OTLP_ENDPOINT" });
+        return .{};
+    };
+    logInstallOutcome("startup.otel_logs", otel_logs.install(io, cfg));
+    logInstallOutcome("startup.otel_traces", otel_traces.install(io, cfg));
+    logInstallOutcome("startup.otel_metrics", otel_metrics.install(io, cfg));
+    return .{ .cfg = cfg };
 }
 
 // ---------------------------------------------------------------------------

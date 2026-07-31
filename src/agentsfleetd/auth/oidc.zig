@@ -125,6 +125,9 @@ pub const Verifier = struct {
         errdefer {
             alloc.free(verified.subject);
             alloc.free(verified.issuer);
+            // Only the extract calls below can error before the success-path
+            // free at the end of this block, so this never double-frees.
+            alloc.free(verified.claims_json);
         }
 
         const normalized = switch (self.provider) {

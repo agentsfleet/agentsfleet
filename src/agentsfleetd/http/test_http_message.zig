@@ -105,9 +105,10 @@ pub const Request = struct {
         var response = try req.receiveHead(&head_buffer);
         const headers = try alloc.dupe(u8, response.head.bytes);
         errdefer alloc.free(headers);
-        var buf: std.ArrayList(u8) = .empty;
-        defer buf.deinit(alloc);
-        var writer: std.Io.Writer.Allocating = .fromArrayList(alloc, &buf);
+        // The defer frees the partial body when streamRemaining errors below;
+        // after a successful toOwnedSlice it frees an empty writer (no-op).
+        var writer: std.Io.Writer.Allocating = .init(alloc);
+        defer writer.deinit();
         var transfer_buffer: [4096]u8 = undefined;
         _ = response.reader(&transfer_buffer).streamRemaining(&writer.writer) catch |err| switch (err) {
             error.ReadFailed => return response.bodyErr().?,

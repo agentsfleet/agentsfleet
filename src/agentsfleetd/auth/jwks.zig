@@ -260,8 +260,11 @@ pub const Verifier = struct {
         var client: std.http.Client = .{ .allocator = self.alloc, .io = common.globalIo() };
         defer client.deinit();
 
-        var body: std.ArrayList(u8) = .empty;
-        var aw: std.Io.Writer.Allocating = .fromArrayList(self.alloc, &body);
+        // The defer also covers the fetch-error and non-ok paths, where the
+        // partially-written body would otherwise be abandoned; after a
+        // successful toOwnedSlice it frees an empty writer (no-op).
+        var aw: std.Io.Writer.Allocating = .init(self.alloc);
+        defer aw.deinit();
 
         const result = client.fetch(.{
             .location = .{ .url = self.jwks_url },
@@ -269,17 +272,17 @@ pub const Verifier = struct {
             .response_writer = &aw.writer,
         }) catch return VerifyError.JwksFetchFailed;
 
-        if (result.status != .ok) {
-            const slice = aw.toOwnedSlice() catch return VerifyError.JwksFetchFailed;
-            self.alloc.free(slice);
-            return VerifyError.JwksFetchFailed;
-        }
+        if (result.status != .ok) return VerifyError.JwksFetchFailed;
         return aw.toOwnedSlice() catch return VerifyError.JwksFetchFailed;
     }
 };
 
 pub fn parseJwks(alloc: std.mem.Allocator, raw: []const u8) !JwksCache {
-    const parsed = std.json.parseFromSlice(JwkDoc, alloc, raw, .{ .ignore_unknown_fields = true }) catch return VerifyError.JwksParseFailed;
+    // OOM is a resource failure, not a malformed key set (RULE ECL).
+    const parsed = std.json.parseFromSlice(JwkDoc, alloc, raw, .{ .ignore_unknown_fields = true }) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return VerifyError.JwksParseFailed,
+    };
     defer parsed.deinit();
 
     var keys: std.ArrayList(JwkKey) = .empty;

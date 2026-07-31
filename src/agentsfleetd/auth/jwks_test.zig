@@ -1,6 +1,7 @@
 const std = @import("std");
 const jwks = @import("jwks.zig");
-const clock = @import("common").clock;
+const common = @import("common");
+const clock = common.clock;
 
 const VerifyError = jwks.VerifyError;
 const Verifier = jwks.Verifier;
@@ -686,4 +687,70 @@ test "verifyAndDecode: completely empty bearer value" {
     var v = makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.InvalidAuthorization, v.verifyAndDecode(std.testing.allocator, "Bearer  "));
+}
+
+test "parseStandardClaims survives allocation failure without leaking" {
+    // The subject/issuer dupes carry an errdefer ladder: a failed issuer dupe
+    // frees the subject instead of leaking it inside the return literal.
+    const Probe = struct {
+        fn run(alloc: std.mem.Allocator) !void {
+            const raw = try alloc.dupe(u8, "{\"sub\":\"u\",\"iss\":\"i\",\"exp\":99999999999}");
+            var caller_owns_raw = true;
+            defer if (caller_owns_raw) alloc.free(raw);
+            const v = try parseStandardClaims(alloc, raw, null, null);
+            caller_owns_raw = false; // transferred into v.claims_json
+            alloc.free(v.subject);
+            alloc.free(v.issuer);
+            alloc.free(v.claims_json);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{});
+}
+
+// A JWKS endpoint that dies mid-body: valid head promising 4096 bytes, 128
+// sent, then close. The fetch fails and the partially-written body must be
+// freed — before the deinit pairing fix this exact path leaked every retry.
+const PartialJwksServer = struct {
+    fn run(listener: *std.Io.net.Server, io: std.Io) void {
+        const conn = listener.accept(io) catch return;
+        defer conn.close(io);
+        var buf: [2048]u8 = undefined;
+        _ = std.posix.read(conn.socket.handle, &buf) catch return;
+        // Truncated CHUNKED framing: one full chunk lands in the accumulator,
+        // the terminal chunk never arrives — a guaranteed hard read error
+        // (std's fetch tolerates a short content-length body).
+        const head: []const u8 = "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n80\r\n" ++ ("x" ** 128) ++ "\r\n";
+        var sent: usize = 0;
+        while (sent < head.len) {
+            const rc = std.posix.system.write(conn.socket.handle, head[sent..].ptr, head.len - sent);
+            if (std.posix.errno(rc) != .SUCCESS) return;
+            sent += @intCast(rc);
+        }
+    }
+};
+
+fn partialServerPort(handle: std.Io.net.Socket.Handle) !u16 {
+    // SAFETY: getsockname fills sa before sa.port is read on success.
+    var sa: std.posix.sockaddr.in = undefined;
+    var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
+    if (std.c.getsockname(handle, @ptrCast(&sa), &len) != 0) return error.GetSockNameFailed;
+    return std.mem.bigToNative(u16, sa.port);
+}
+
+test "jwks fetch frees the partial body when the endpoint dies mid-stream" {
+    const io = common.globalIo();
+    var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", 0) catch return error.SkipZigTest;
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, PartialJwksServer.run, .{ &listener, io }) catch return error.SkipZigTest;
+
+    var url_buf: [48]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/jwks.json", .{port});
+    var v = Verifier.init(std.testing.allocator, .{ .jwks_url = url });
+    defer v.deinit();
+    const r = v.checkJwksConnectivity();
+    server.join();
+    // testing.allocator's leak detector is the real assertion here.
+    try std.testing.expectError(VerifyError.JwksFetchFailed, r);
 }
