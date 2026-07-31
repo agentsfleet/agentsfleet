@@ -46,28 +46,23 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 1. `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` — the conventions this spec **amends**: the `uid` rule and the migration model both change. Read it before authoring any statement, and amend it in the same landing.
 2. `src/agentsfleetd/cmd/common.zig` — the migration array plus the named slot-version constants renumbering invalidates (RULE MIG).
-3. `src/agentsfleetd/state/fleet_events_store.zig` — the list query whose select list carries the payload columns; the shape to mirror when splitting list from detail.
-4. `src/agentsfleetd/state/account_teardown.zig` — the hand-maintained delete order that the foreign-key work is meant to shrink.
-5. `docs/architecture/scaling.md` §Which recurring Postgres reads are index-served — the standard this repository already holds indexes to: asserted against the plan, not merely created.
+3. `src/agentsfleetd/state/fleet_events_store.zig` and `account_teardown.zig` — the list query whose select list carries the payload columns, and the hand-maintained delete order the foreign-key work shrinks.
+4. `docs/architecture/scaling.md` §Which recurring Postgres reads are index-served — the standard this repository already holds indexes to: asserted against the plan, not merely created.
 
 ## Files Changed (blast radius)
 
 | File | Action | Why |
 |------|--------|-----|
 | `schema/001_*.sql` … `schema/046_*.sql` | DELETE | All 45 shipped slots retire; the rebuild re-authors from empty |
-| `schema/{0,1,2,3,4,5,6,7}*.sql` | CREATE | Renumbered by dependency layer, gaps of 10; patch-only slots folded into what they patched |
-| `schema/embed.zig` | EDIT | Single source of truth for the slot list and version numbers |
-| `src/agentsfleetd/cmd/common.zig` | EDIT | Migration array plus the named slot-version constants (RULE MIG) |
-| `src/agentsfleetd/state/*.zig` | EDIT | Every store selecting `uid` or a renamed money table |
-| `src/agentsfleetd/fleet/*.zig` | EDIT | Lease, renewal, settle and reclaim statements touching renamed tables and the dropped lease payload column |
-| `src/agentsfleetd/state/account_teardown.zig` | EDIT | Delete order shrinks to what no cascade covers |
+| `schema/1*.sql` … `schema/8*.sql` | CREATE | Renumbered by dependency layer, gaps of 10; patch-only slots folded into what they patched |
+| `schema/embed.zig`, `src/agentsfleetd/cmd/common.zig` | EDIT | The slot list, the migration array, and the named slot-version constants (RULE MIG) |
+| `src/agentsfleetd/state/*.zig` | EDIT | Every store selecting `uid` or a renamed money table; `account_teardown.zig`'s delete order shrinks to what no cascade covers |
 | `src/agentsfleetd/state/fleet_metering_store.zig` | DELETE | The accrual read retires with its table |
-| `src/agentsfleetd/http/handlers/tenant_billing.zig` | EDIT | Drops the accrual endpoint handler |
-| `src/agentsfleetd/http/handlers/fleets/events.zig` | EDIT | List stops selecting bodies; gains the single-event detail read |
+| `src/agentsfleetd/fleet/*.zig` | EDIT | Lease, renewal, settle and reclaim statements touching renamed tables and the dropped lease payload column |
+| `src/agentsfleetd/http/handlers/**` | EDIT | Accrual endpoint dropped (`tenant_billing.zig`); list loses bodies and gains a detail read (`fleets/events.zig`) |
 | `src/agentsfleetd/db/test_fixtures*.zig` | EDIT | Fixtures follow the real schema (RULE ITF, RULE TFX) |
 | `public/openapi.json` | EDIT | Accrual endpoint removed; event detail added |
-| `ui/packages/app/components/domain/EventDetailsDialog.tsx` | EDIT | Fetches the body on expand instead of reading it off the list row |
-| `ui/packages/app/lib/api/*.ts` | EDIT | Client for the new detail read; accrual client retired |
+| `ui/packages/app/**` | EDIT | The dialog fetches the body on expand instead of reading it off the list row; accrual client retired |
 | `docs/architecture/data_flow.md` | EDIT | Records the list/detail split and the retained partition option |
 | `~/Projects/docs/changelog.mdx` | EDIT | User-visible: an endpoint is removed, the events list gets faster |
 
@@ -119,7 +114,7 @@ The waste is the smaller half of the argument. The **correctness** half is recor
 
 ### §3 — Money consolidated behind referential integrity
 
-Money lives in three schemas and the ledger carries `workspace_id` and `fleet_id` as text with no foreign key — which is why the counter trigger runs a regular expression on every renewal, and why erasure needs a hand-maintained delete order. Consolidating the wallet and ledger into `billing` with real foreign keys makes ownership a database fact.
+Money lives in three schemas and the ledger carries `workspace_id` and `fleet_id` as text with no foreign key — which is why the counter trigger runs a regular expression on every renewal, and why erasure needs a hand-maintained delete order. Consolidating the wallet and ledger into `billing` with real foreign keys makes ownership a database fact. The *privilege* half of the same idea — `api_runtime` holding direct grants on the wallet and the secret store — is M154_002, landing in this PR.
 
 - **Dimension 3.1** — the ledger resolves to a tenant, a workspace and a fleet through foreign keys, all typed as identifiers → Test `test_ledger_rows_resolve_to_tenant_by_foreign_key`
 - **Dimension 3.2** — the counter trigger carries no pattern match, because its input is no longer text → Test `test_counter_trigger_has_no_regex`
@@ -187,7 +182,6 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 | Erasure misses a table | A table is added later without a tenant-resolving foreign key | The erasure test enumerates tables from the catalogue and fails on any that retains rows |
 | Detail read crosses a workspace | A caller requests an event identifier belonging to another workspace | 404, identical to an unknown identifier — no existence disclosure |
 | Reclaim after event delete | An expired lease is reclaimed for an event whose row is gone | Reclaim finds no body and fails the re-delivery cleanly rather than delivering an empty event |
-| Renewal replay | A runner re-sends a renewal for the same lease | Cumulative-difference metering charges approximately zero, unchanged by this spec |
 | Index without a reader | A future index is added with no query behind it | The named-reader test fails on any index with no citation |
 
 ## Invariants
@@ -266,8 +260,7 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `metering_periods` | `grep -rn -w "metering_periods" src/ ui/ public/ \| head` | 0 matches |
-| `fleet_metering_store` | `grep -rn -w "fleet_metering_store" src/ \| head` | 0 matches |
+| `metering_periods`, `fleet_metering_store` | `grep -rnE -w "metering_periods\|fleet_metering_store" src/ ui/ public/ \| head` | 0 matches |
 | `fleet_execution_telemetry` | `grep -rn -w "fleet_execution_telemetry" src/ \| head` | 0 matches |
 | `uid` | `grep -rn -w "uid" src/ schema/ \| head` | 0 matches |
 
@@ -279,6 +272,9 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 - **`billing.usage_rollup`** — deferred with partitioning; the ledger is already bounded per event, so the rollup is an optimisation without a forcing reason today.
 - **Durable outbox to Elastic or Loki** — M155, together with the accrual detail this milestone removes from Postgres. Approval gates get no retention policy at all until Indy sets one; the table is a compliance record.
 - **Horizontal sharding** — explicitly rejected: every hot query is already tenant, workspace or fleet scoped, and write rate sits far below single-node capacity. Partitioning addresses retention, never throughput.
+- **Privilege split for the wallet and secret store** — M154_002, same PR.
+- **Row-Level Security** — its own milestone. This one is the prerequisite (policies need every row to resolve to a tenant); the cost there is transaction discipline on every pooled read, not the policies.
+- **Running the dev teardown** — Indy calls it manually. This milestone is proven against local Docker Postgres only; `playbooks/operations/teardown/database/02_teardown.sh` is not invoked by any step here.
 
 ---
 
@@ -308,9 +304,13 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
 
-  > Indy (2026-07-31): "1. rollit up to this PR" — context: `billing.usage_rollup`, originally accepted INTO this milestone while it was believed to be required. Superseded below once that premise was withdrawn.
+  > Indy (2026-07-31): "1. rollit up to this PR" — `billing.usage_rollup`, accepted while believed required; superseded once that premise was withdrawn.
 
-  > Indy (2026-07-31): "Okay go" — context: acking the revised scope after the authoring agent argued *against* its own earlier recommendation. Covers all three: (a) delete `fleet.metering_periods` and its endpoint rather than partition and retain it — it is derived data with no product consumer; (b) defer `billing.usage_rollup` to M155 — the ledger is already bounded at three rows per event, so the rollup lost its forcing reason; (c) carry `event_created_at` only, deferring partitioning and retention machinery until a measurement demands it.
+  > Indy (2026-07-31): "Okay go" — acks the revised scope after the authoring agent argued *against* its own earlier recommendation: (a) delete `fleet.metering_periods` and its endpoint rather than partition and retain it — derived data, no product consumer; (b) defer `billing.usage_rollup` to M155 — the ledger is already bounded at three rows per event, so the rollup lost its forcing reason; (c) carry `event_created_at` only, deferring partitioning machinery until a measurement demands it.
+
+  > Indy (2026-08-01): "Just fold it into these" — the `vault` / `billing` privilege split (§3.4–3.5) joins this milestone rather than waiting for the Row-Level Security work.
+
+  > Indy (2026-08-01): "Okay we move the RLS to later" — Row-Level Security is a separate milestone. This one is its prerequisite: policies need every protected row to resolve to a tenant, which §3 delivers.
 
 - **Upstream landing mid-authoring (M149, PR #584)** — the audit behind this spec ran against a tree eleven commits stale. M149 landed before CHORE(open) and invalidated three claims, all corrected above rather than carried: (a) *"nothing is ever pruned"* is false — a thirty-day retention sweep over runner leases and runner events now ships, with a comptime proof it cannot reach live work; it is preserved verbatim and this milestone adds no retention anywhere else. (b) The slot count is forty-five, of which fourteen — not eleven — are patch-only. (c) `schema/043_runner_lifetime_counters.sql` independently reached §2's conclusion for one table and recorded the *correctness* reason this spec had only argued on cost: a second unique key breaks concurrent first-touch upserts, because `ON CONFLICT` can arbitrate only one constraint. §2 now generalises an upstream decision instead of overriding a convention alone.
 
