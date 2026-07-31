@@ -15,6 +15,7 @@ test {
     _ = @import("daemon/control_plane_client_test.zig");
     _ = @import("daemon/config.zig");
     _ = @import("daemon/loop.zig");
+    _ = @import("daemon/startup.zig");
     _ = @import("daemon/loop_test.zig");
     _ = @import("daemon/lease_run.zig");
     _ = @import("daemon/forwarders.zig");
@@ -44,6 +45,7 @@ test {
     _ = @import("engine/credential_request.zig");
     _ = @import("UsageSnapshot.zig");
     _ = @import("engine/runner.zig");
+    _ = @import("engine/runner_capture.zig");
     _ = @import("engine/types.zig");
     _ = @import("engine/context_budget.zig");
     _ = @import("engine/tool_bridge.zig");
