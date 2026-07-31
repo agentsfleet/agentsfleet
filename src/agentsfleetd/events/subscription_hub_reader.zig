@@ -108,9 +108,10 @@ fn pushOne(sub: *Hub.Subscription, channel: []const u8, payload: []const u8) voi
 fn reconnect(hub: *Hub) void {
     log.warn("hub_connection_lost", .{ .live_channels = hub.channelCount() });
     dropConn(hub);
-    while (!hub.stopped.load(.acquire)) {
+    while (!hub.stopped.load(.acquire)) { // safe because: pairs with stop()'s release via swap.
         var i: usize = 0;
         while (i < RECONNECT_SLICES_PER_ATTEMPT) : (i += 1) {
+            // safe because: pairs with stop()'s release via swap.
             if (hub.stopped.load(.acquire)) return;
             common.sleepNanos(RECONNECT_SLICE_MS * std.time.ns_per_ms);
         }
@@ -168,29 +169,7 @@ fn resubscribeAll(hub: *Hub, fresh: redis_subscriber) bool {
         conn.deinit();
         return false; // no scheduler → no bounded send; fail the attempt, never send unbounded
     };
-    for (before) |name| {
-        // Stop is checked BETWEEN sends: each send is individually bounded, so
-        // without this a shutdown racing a large sweep would wait out the
-        // deadline once per channel — multiplying stop latency by channel count.
-        if (hub.stopped.load(.acquire)) {
-            sweep_owner.endAttempt();
-            conn.deinit();
-            return false;
-        }
-        var guard = sched.arm(sweep_owner.target(sweep_generation), hub.send_timeout_ms) catch {
-            sweep_owner.endAttempt();
-            conn.deinit();
-            return false; // arming refused → the attempt fails closed; the redial loop retries
-        };
-        const sent = conn.sendSubscribe(name);
-        _ = guard.finish();
-        sent catch |err| {
-            log.warn(S_RESUBSCRIBE_FAILED, .{ .channel = name, .err = @errorName(err) });
-            sweep_owner.endAttempt();
-            conn.deinit();
-            return false;
-        };
-    }
+    if (!sendSubscribesBounded(hub, &conn, &sweep_owner, sweep_generation, sched, before)) return false;
     // Quiescent before the move: every guard above is finished, and retiring
     // the generation makes any copied target inert.
     sweep_owner.endAttempt();
@@ -213,6 +192,46 @@ fn resubscribeAll(hub: *Hub, fresh: redis_subscriber) bool {
     for (after) |name| {
         if (containsName(before, name)) continue;
         hub.wireSendSubscribe(name); // send failure logs + heals via the reader's next read
+    }
+    return true;
+}
+
+/// The bounded per-channel subscribe sweep, split from `resubscribeAll` by
+/// the function-length cap. On any failure it retires the sweep generation
+/// AND consumes `conn` (deinit) — exactly what the inline loop did — so the
+/// caller simply propagates `false`. On success `conn` stays live for the
+/// install phase.
+fn sendSubscribesBounded(
+    hub: *Hub,
+    conn: *redis_subscriber,
+    sweep_owner: *call_deadline.SocketOwner,
+    sweep_generation: u64,
+    sched: *call_deadline.ProcessScheduler,
+    names: []const []const u8,
+) bool {
+    for (names) |name| {
+        // Stop is checked BETWEEN sends: each send is individually bounded, so
+        // without this a shutdown racing a large sweep would wait out the
+        // deadline once per channel — multiplying stop latency by channel count.
+        // safe because: pairs with stop()'s release via swap.
+        if (hub.stopped.load(.acquire)) {
+            sweep_owner.endAttempt();
+            conn.deinit();
+            return false;
+        }
+        var guard = sched.arm(sweep_owner.target(sweep_generation), hub.send_timeout_ms) catch {
+            sweep_owner.endAttempt();
+            conn.deinit();
+            return false; // arming refused → the attempt fails closed; the redial loop retries
+        };
+        const sent = conn.sendSubscribe(name);
+        _ = guard.finish();
+        sent catch |err| {
+            log.warn(S_RESUBSCRIBE_FAILED, .{ .channel = name, .err = @errorName(err) });
+            sweep_owner.endAttempt();
+            conn.deinit();
+            return false;
+        };
     }
     return true;
 }

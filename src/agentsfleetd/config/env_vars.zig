@@ -7,6 +7,7 @@ const queue_redis = @import("../queue/redis.zig");
 const EnvMap = common.env.Map;
 
 const S_T_R_N = @import("load.zig").TRIM_SET;
+// (EnvVars below is pub: doctor's role-env check names it in a signature.)
 const PANIC_OOM = "OOM";
 
 pub const EnvVarsErrors = error{
@@ -15,7 +16,7 @@ pub const EnvVarsErrors = error{
     RedisApiTlsRequired,
 };
 
-const EnvVars = struct {
+pub const EnvVars = struct {
     const Self = @This();
 
     db_api: ?[]const u8,

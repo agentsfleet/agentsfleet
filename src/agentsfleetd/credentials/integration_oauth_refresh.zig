@@ -25,7 +25,12 @@ const FIELD_REFRESH_TOKEN = integration.FIELD_REFRESH_TOKEN;
 /// wrong data center's accounts server fails `invalid_grant` exactly like the
 /// initial exchange would.
 const FIELD_ACCOUNTS_BASE: []const u8 = "accounts_base";
-const ZOHO_TOKEN_PATH: []const u8 = "/oauth/v2/token";
+/// Optional vault-handle field overriding the token path appended to
+/// `accounts_base` — per-handle configuration, not a provider branch.
+const FIELD_TOKEN_PATH: []const u8 = "token_path";
+/// Default token path under `accounts_base` (the Zoho shape) when the handle
+/// carries no `token_path` of its own.
+const DEFAULT_TOKEN_PATH: []const u8 = "/oauth/v2/token";
 
 /// Token-endpoint response fields. The token twins reuse the vault-handle
 /// field names — RFC 6749 names both sides of the wire identically.
@@ -78,9 +83,10 @@ pub fn mint(ctx: MintCtx, cfg: OAuth2Refresh) anyerror!Outcome {
 
     // The handle's own accounts_base (multi-DC providers) wins over the
     // single-region default — refreshing at the wrong data center fails
-    // invalid_grant exactly like the initial exchange would.
+    // invalid_grant exactly like the initial exchange would. The token path
+    // rides the handle too (default: the Zoho shape).
     const owned_endpoint: ?[]u8 = if (strField(obj, FIELD_ACCOUNTS_BASE)) |base|
-        try std.fmt.allocPrint(ctx.alloc, "{s}{s}", .{ base, ZOHO_TOKEN_PATH })
+        try std.fmt.allocPrint(ctx.alloc, "{s}{s}", .{ base, strField(obj, FIELD_TOKEN_PATH) orelse DEFAULT_TOKEN_PATH })
     else
         null;
     defer if (owned_endpoint) |ep| ctx.alloc.free(ep);

@@ -190,8 +190,8 @@ fn enqueueOwned(self: *Self, copy: []u8) void {
 
 fn noteDrop(self: *Self) void {
     self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
     self.drops += 1;
-    self.mutex.unlock(self.io);
     metrics.incSseDroppedFrames();
 }
 

@@ -8,6 +8,9 @@ const Service = @This();
 
 const std = @import("std");
 const common = @import("common");
+const logging = @import("log");
+
+const log = logging.scoped(.cron_service);
 
 const QStashClient = @import("QStashClient.zig");
 const Store = @import("Store.zig");
@@ -22,6 +25,7 @@ const DETAIL_RATE_LIMITED = "QStash rate limited the schedule mutation";
 const DETAIL_UNAVAILABLE = "QStash schedule mutation did not complete";
 const DETAIL_MALFORMED = "QStash returned an invalid schedule response";
 const DETAIL_OUT_OF_MEMORY = "Schedule synchronization exhausted local memory";
+const DETAIL_CREDENTIAL_INVALID = "QStash credential from the vault exceeds the supported length";
 
 store: Store,
 qstash: QStashClient,
@@ -214,13 +218,7 @@ fn applyClaimed(self: Service, alloc: std.mem.Allocator, owned: model.Schedule) 
         .active => self.qstash.upsert(alloc, self.qstash_token, schedule),
         .paused, .deleting => self.qstash.delete(alloc, self.qstash_token, schedule.schedule_id),
     } catch |err| {
-        _ = try self.store.finalizeFailureState(
-            schedule.schedule_id,
-            schedule.generation,
-            token,
-            DETAIL_OUT_OF_MEMORY,
-            common.clock.nowMillis(),
-        );
+        self.fallbackFinalizeState(schedule.schedule_id, schedule.generation, token, DETAIL_OUT_OF_MEMORY, err);
         return err;
     };
     if (provider != .success) return self.finishFailure(alloc, schedule, token, provider);
@@ -239,10 +237,26 @@ fn finishSuccess(self: Service, alloc: std.mem.Allocator, schedule: model.Schedu
         token,
         common.clock.nowMillis(),
     ) catch |err| {
-        _ = try self.store.finalizeSuccessState(schedule.schedule_id, schedule.generation, token, common.clock.nowMillis());
+        self.fallbackFinalizeState(schedule.schedule_id, schedule.generation, token, null, err);
         return err;
     };
     return .{ .schedule = finalized orelse return error.MutationLost };
+}
+
+/// Best-effort state write after the row-returning finalize failed. Returns
+/// void by construction so the caller's ORIGINAL error always surfaces: a
+/// fallback failure or a lease lost mid-recovery is logged, never propagated.
+/// Pub for the service suite, which pins the lease-lost path (Dimension 7.5).
+pub fn fallbackFinalizeState(self: Service, schedule_id: []const u8, generation: i64, token: []const u8, failure_detail: ?[]const u8, original: anyerror) void {
+    const now_ms = common.clock.nowMillis();
+    const lease_held = (if (failure_detail) |detail|
+        self.store.finalizeFailureState(schedule_id, generation, token, detail, now_ms)
+    else
+        self.store.finalizeSuccessState(schedule_id, generation, token, now_ms)) catch |fb_err| {
+        log.warn("cron_finalize_fallback_failed", .{ .schedule_id = schedule_id, .err = @errorName(fb_err), .original = @errorName(original) });
+        return;
+    };
+    if (!lease_held) log.warn("cron_finalize_lease_lost", .{ .schedule_id = schedule_id, .original = @errorName(original) });
 }
 
 fn finishFailure(
@@ -261,7 +275,7 @@ fn finishFailure(
         detail,
         common.clock.nowMillis(),
     ) catch |err| {
-        _ = try self.store.finalizeFailureState(schedule.schedule_id, schedule.generation, token, detail, common.clock.nowMillis());
+        self.fallbackFinalizeState(schedule.schedule_id, schedule.generation, token, detail, err);
         return err;
     };
     return .{ .provider_failed = .{
@@ -273,6 +287,7 @@ fn finishFailure(
 fn failureDetail(cause: QStashClient.Outcome) []const u8 {
     return switch (cause) {
         .invalid_request => DETAIL_INVALID,
+        .credential_invalid => DETAIL_CREDENTIAL_INVALID,
         .rate_limited => DETAIL_RATE_LIMITED,
         .unavailable => DETAIL_UNAVAILABLE,
         .malformed_response => DETAIL_MALFORMED,

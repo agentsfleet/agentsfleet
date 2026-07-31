@@ -27,14 +27,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
     while (true) {
         log.info("migrate.connect_start", .{ .role = S_MIGRATOR, .attempt = attempt, .max_attempts = max_migrate_attempts });
         const pool = db.initFromEnvForRole(io, env_map, alloc, .migrator) catch |err| {
-            if (attempt < max_migrate_attempts and isRetryable(err)) {
-                log.warn("migrate.connect_retry", .{
-                    .attempt = attempt,
-                    .max_attempts = max_migrate_attempts,
-                    .err = @errorName(err),
-                    .delay_ms = retry_delay_ms,
-                });
-                constants.sleepNanos(retry_delay_ms * std.time.ns_per_ms);
+            if (backoffForRetry("migrate.connect_retry", err, attempt)) {
                 attempt += 1;
                 continue;
             }
@@ -49,14 +42,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
         log.info("migrate.run_start", .{ .attempt = attempt, .max_attempts = max_migrate_attempts });
         common.runCanonicalMigrations(pool) catch |err| {
             pool.deinit();
-            if (attempt < max_migrate_attempts and isRetryable(err)) {
-                log.warn("migrate.run_retry", .{
-                    .attempt = attempt,
-                    .max_attempts = max_migrate_attempts,
-                    .err = @errorName(err),
-                    .delay_ms = retry_delay_ms,
-                });
-                constants.sleepNanos(retry_delay_ms * std.time.ns_per_ms);
+            if (backoffForRetry("migrate.run_retry", err, attempt)) {
                 attempt += 1;
                 continue;
             }
@@ -70,6 +56,20 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
         break;
     }
     log.info("migrate.completed", .{ .attempt = attempt, .max_attempts = max_migrate_attempts });
+}
+
+/// True when the failed attempt should retry after the backoff sleep; the
+/// caller owns its terminal log + exit (their fields differ per stage).
+fn backoffForRetry(comptime retry_msg: []const u8, err: anyerror, attempt: u32) bool {
+    if (attempt >= max_migrate_attempts or !isRetryable(err)) return false;
+    log.warn(retry_msg, .{
+        .attempt = attempt,
+        .max_attempts = max_migrate_attempts,
+        .err = @errorName(err),
+        .delay_ms = retry_delay_ms,
+    });
+    constants.sleepNanos(retry_delay_ms * std.time.ns_per_ms);
+    return true;
 }
 
 fn isRetryable(err: anyerror) bool {

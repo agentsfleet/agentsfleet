@@ -167,13 +167,13 @@ Single-source every duplicated helper the audit found, keeping behavior pinned b
 
 The audited low-severity drift, fixed in kind.
 
-- **Dimension 7.1** — events hygiene: drop-note lock uses defer; three weak-ordering loads carry safe-because comments; post-stop publish increments the drop counter instead of enqueueing → Test `test_bus_post_stop_counts_drop`
-- **Dimension 7.2** — structure-only refactors (serve/doctor/migrate run splits, inspect split, resubscribe split, audit-event preamble extraction, pin-test relocations) change no behavior: full suite green, no fn over cap in touched files → Test `make test` + length check rubric row
-- **Dimension 7.3** — mint telemetry is truthful: real latency from the injected clock; cache-dupe OOM emits a mint-failed event; an oversized vault token logs a config-shaped error distinct from a provider reject → Test `test_broker_telemetry_truthful`
-- **Dimension 7.4** — a malformed dotenv line fails boot naming the line number → Test `test_dotenv_error_names_line`
-- **Dimension 7.5** — a lost lease during finalize fallback is logged and the original provider/store error is preserved → Test `test_finalize_fallback_preserves_error`
-- **Dimension 7.6** — the OAuth token path is per-handle configuration with the current value as default; existing providers unchanged → Test `test_token_path_per_handle_default`
-- **Dimension 7.7** — fire-queue reply frees use the connection's allocator by construction, not by caller convention → Test existing fire-queue suite green under testing allocator
+- **Dimension 7.1** — events hygiene: drop-note lock uses defer; three weak-ordering loads carry safe-because comments; post-stop publish increments the drop counter instead of enqueueing → Test `test_bus_post_stop_counts_drop` — **DONE**
+- **Dimension 7.2** — structure-only refactors (serve/doctor/migrate run splits, inspect split, resubscribe split, audit-event preamble extraction, pin-test relocations) change no behavior: full suite green, no fn over cap in touched files → Test `make test` + length check rubric row — **DONE** (residual: `serve.run` is down from 290 to ~180 lines via the new `serve_boot.zig` prologue split; the remainder is the defer-ordered resource graph whose full split would restructure shutdown choreography — flagged in Discovery for Indy)
+- **Dimension 7.3** — mint telemetry is truthful: real latency from the injected clock; cache-dupe OOM emits a mint-failed event; an oversized vault token logs a config-shaped error distinct from a provider reject → Test `test_broker_telemetry_truthful` — **DONE** (the oversized QStash token gets a distinct `credential_invalid` outcome + config-shaped persisted detail — the client is deliberately log-free)
+- **Dimension 7.4** — a malformed dotenv line fails boot naming the line number → Test `test_dotenv_error_names_line` — **DONE**
+- **Dimension 7.5** — a lost lease during finalize fallback is logged and the original provider/store error is preserved → Test `test_finalize_fallback_preserves_error` — **DONE** (preservation is structural: the fallback helper returns void so the caller's `return err` cannot be masked; lease loss and fallback failure both log)
+- **Dimension 7.6** — the OAuth token path is per-handle configuration with the current value as default; existing providers unchanged → Test `test_token_path_per_handle_default` — **DONE**
+- **Dimension 7.7** — fire-queue reply frees use the connection's allocator by construction, not by caller convention → Test existing fire-queue suite green under testing allocator — **DONE**
 
 ## Interfaces
 
@@ -325,4 +325,4 @@ De-pub-only items (per-signal OTel fns, `ArgvIter`, `SYNC_LEASE_MS`, `MAX_RESPON
 - **Consults** — Clerk worker bound (Dimension 2.3): the deadline-armed joinable worker (mirroring the credentials/cron exchanges) requires importing `call_deadline` + `http_pin` into `src/agentsfleetd/auth/`, which the `auth-only-tests` portability aggregate deliberately excludes. Chosen: bounded in-flight cap + bounded shutdown drain, all std+common — stragglers touch only self-owned memory. Flag for Indy: if widening the auth dependency surface is acceptable, the deadline-armed worker is the stronger long-term shape. · Flight waiter (Dimension 2.4): `std.Io.Condition` (0.16) has no timed wait; losers now poll on a short cadence with a deadline, and the no-longer-consumed `inflight_cond` was removed rather than kept as dead concurrent code.
 - **Metrics review** —
 - **Skill-chain outcomes** —
-- **Deferrals** —
+- **Deferrals** — none acked. FLAG for Indy (Dimension 7.2 residual): 🎯 `cmd/serve.zig run()` still ~180 lines after the `serve_boot.zig` prologue extraction · 🔧 a full ≤50 split requires moving the boot resource graph (pools, hub, streams, registry, server) into an owner struct whose deinit re-encodes today's defer order — multi-file, touches shutdown choreography · 🏆 fn-cap compliance and a testable boot seam · ⚠️ if not fixed: one function stays over the cap; the ordering-sensitive teardown remains proven by the existing lifecycle integration tests either way.

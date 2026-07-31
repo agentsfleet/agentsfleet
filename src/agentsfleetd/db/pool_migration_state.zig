@@ -110,6 +110,39 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
         return err;
     };
 
+    const counts = try countApplied(conn, migrations, has_migrations);
+    const failed = if (has_failures)
+        hasFailedMigrationRecords(conn, has_migrations) catch |err| {
+            if (err == error.PG) logPgErrorContext(conn, "inspect.has_failed_migrations");
+            return err;
+        }
+    else
+        false;
+
+    var lock_available = true;
+    if (counts.applied_versions < migrations.len) {
+        lock_available = migration_lock.probeAvailable(conn) catch false;
+    }
+
+    return .{
+        .expected_versions = @intCast(migrations.len),
+        .applied_versions = counts.applied_versions,
+        .latest_expected_version = counts.latest_expected,
+        .latest_applied_version = counts.latest_applied,
+        .has_failed_migrations = failed,
+        .lock_available = lock_available,
+        .has_newer_schema_version = counts.has_noncanonical or counts.latest_applied > counts.latest_expected,
+    };
+}
+
+const AppliedCounts = struct {
+    applied_versions: u32,
+    latest_expected: i32,
+    latest_applied: i32,
+    has_noncanonical: bool,
+};
+
+fn countApplied(conn: *Conn, migrations: []const Migration, has_migrations: bool) !AppliedCounts {
     var applied_versions: u32 = 0;
     var latest_expected: i32 = 0;
     const applied = if (has_migrations)
@@ -131,26 +164,10 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
         }
     else
         0;
-    const failed = if (has_failures)
-        hasFailedMigrationRecords(conn, has_migrations) catch |err| {
-            if (err == error.PG) logPgErrorContext(conn, "inspect.has_failed_migrations");
-            return err;
-        }
-    else
-        false;
-
-    var lock_available = true;
-    if (applied_versions < migrations.len) {
-        lock_available = migration_lock.probeAvailable(conn) catch false;
-    }
-
     return .{
-        .expected_versions = @intCast(migrations.len),
         .applied_versions = applied_versions,
-        .latest_expected_version = latest_expected,
-        .latest_applied_version = latest_applied,
-        .has_failed_migrations = failed,
-        .lock_available = lock_available,
-        .has_newer_schema_version = applied.has_noncanonical or latest_applied > latest_expected,
+        .latest_expected = latest_expected,
+        .latest_applied = latest_applied,
+        .has_noncanonical = applied.has_noncanonical,
     };
 }

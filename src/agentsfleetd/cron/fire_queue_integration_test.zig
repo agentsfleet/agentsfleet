@@ -120,7 +120,7 @@ test "fire queue: signed and provider identities each suppress replay atomically
     defer deleteKeys(&client, alloc, &keys);
     defer clearReadyMark(&client, alloc, fleet_id);
 
-    const queue = FireQueue.init(alloc, &client);
+    const queue = FireQueue.init(&client);
     try std.testing.expectEqual(FireQueue.Outcome.enqueued, try queue.enqueue(
         fleet_id,
         WORKSPACE_ID,
@@ -181,7 +181,7 @@ test "fire queue: 100 simultaneous copies append exactly once without a process 
     var gate = std.atomic.Value(bool).init(false);
     var counts: Counts = .{};
     const worker: Worker = .{
-        .queue = FireQueue.init(alloc, &client),
+        .queue = FireQueue.init(&client),
         .fleet_id = fleet_id,
         .ready = &ready,
         .gate = &gate,

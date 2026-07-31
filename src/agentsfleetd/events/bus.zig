@@ -96,7 +96,10 @@ pub const Bus = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        if (self.len >= CAPACITY) {
+        // safe because: read under the same mutex stop() holds for its store,
+        // so ordering is mutex-given. A post-stop publish counts as a drop —
+        // nothing may enqueue once the consumer has been told to exit.
+        if (!self.running.load(.monotonic) or self.len >= CAPACITY) {
             self.dropped += 1;
             return;
         }
@@ -222,6 +225,16 @@ test "integration: stop never loses the wakeup under repeated start/stop" {
         thread.join();
         try std.testing.expectEqual(@as(usize, 0), bus.pendingCount());
     }
+}
+
+test "a publish after stop counts a drop and enqueues nothing (Dimension 7.1)" {
+    var bus = Bus.init();
+    bus.stop();
+
+    bus.publish(BusEvent.init("late", "run-x", "post-stop"));
+
+    try std.testing.expectEqual(@as(usize, 0), bus.pendingCount());
+    try std.testing.expectEqual(@as(u64, 1), bus.droppedCount());
 }
 
 test "integration: emit is ignored after uninstall" {
