@@ -128,7 +128,9 @@ describe("steerEffectFromArgs REPL dispatch", () => {
     expect(rec.requests).toHaveLength(1);
     expect(rec.requests[0]?.method).toBe(POST);
     expect(rec.requests[0]?.body).toEqual({ message: "howdy" });
-    expect(rec.streamSignals).toHaveLength(0);
+    // Subscribe-first: even a single-shot turn opens its tail before the
+    // POST, and the tail always carries an abort signal for close ownership.
+    expect(rec.streamSignals).toHaveLength(1);
   });
 
   test("--tty forces prompt loop for piped stdin and exits on EOF", async () => {
@@ -184,7 +186,10 @@ describe("steerEffectFromArgs REPL dispatch", () => {
       { message: "second" },
     ]);
     expect(rec.stderr.join("\n")).toContain("messages response missing event_id");
-    expect(rec.streamSignals).toHaveLength(1);
+    // Subscribe-first: the failed turn opened a tail too (before its POST
+    // came back without an event_id) — and the failure closed it.
+    expect(rec.streamSignals).toHaveLength(2);
+    expect(rec.streamSignals[0]?.aborted).toBe(true);
   });
 
   test("REPL reports non-CliError turn failures as unexpected errors", async () => {
