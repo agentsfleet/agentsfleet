@@ -338,3 +338,145 @@ test "integration: cgroup memory.max OOM-kills an over-budget child, attributed 
     const result = supervisor_result.classify(alloc, .{}, .{ .exited = 0 }, &scope_opt);
     try std.testing.expectEqual(types.FailureClass.oom_kill, result.failureClass().?);
 }
+
+// ── Delegated-subtree enablement + scope reclaim ─────────────────────────────
+//
+// These prove the two halves of the cgroup lifecycle the daemon owns: writing
+// `cgroup.subtree_control` (which systemd never does for a delegatee) and
+// removing an execution scope afterwards. Both are Linux-only and both skip
+// without real delegation, so they are green in CI's delegated container and
+// silent on a developer's laptop.
+
+const RECLAIM_EXEC_ID: types.ExecutionId = [_]u8{0xc3} ** 16;
+/// Same identifier the scope itself uses to derive `memory_limit_bytes`
+/// (`engine/CgroupScope.zig`), so the expectation cannot drift from the code.
+const BYTES_PER_KIB: u64 = 1024;
+const RECLAIM_MEM_MB: u64 = 64;
+const RECLAIM_PIDS: u64 = 16;
+const EXEC_SCOPE_PREFIX = "exec-";
+
+test "integration: enabling the delegated controllers is idempotent across restarts" {
+    try requireCgroupDelegation();
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = threadedIo(&threaded);
+    defer threaded.deinit();
+
+    // The daemon does this at startup, so a restart re-runs it against a subtree
+    // that may already carry the controllers. Re-enabling an enabled controller
+    // is a kernel no-op; if it were not, every restart would fail here.
+    try CgroupScope.enableDelegatedControllers(io, alloc);
+    try CgroupScope.enableDelegatedControllers(io, alloc);
+
+    const base = try CgroupScope.resolveCgroupBase(io, alloc);
+    defer alloc.free(base);
+    const subtree = try std.fmt.allocPrint(alloc, "{s}/cgroup.subtree_control", .{base});
+    defer alloc.free(subtree);
+
+    const file = try std.Io.Dir.openFileAbsolute(io, subtree, .{});
+    defer file.close(io);
+    var reader = file.reader(io, &.{});
+    var buf: [MAX_CGROUP_PLACEMENT_BYTES]u8 = undefined;
+    const len = try reader.interface.readSliceShort(&buf);
+    const enabled = buf[0..len];
+
+    for ([_][]const u8{ "cpu", "memory", "pids" }) |controller| {
+        if (std.mem.indexOf(u8, enabled, controller) == null) {
+            std.debug.print("controller '{s}' absent from subtree_control '{s}'\n", .{ controller, enabled });
+            return error.ControllerNotEnabled;
+        }
+    }
+}
+
+test "integration: destroying a scope removes its directory and leaves no orphan" {
+    try requireCgroupDelegation();
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = threadedIo(&threaded);
+    defer threaded.deinit();
+
+    try CgroupScope.enableDelegatedControllers(io, alloc);
+
+    const limits = types.ResourceLimits{
+        .memory_limit_mb = RECLAIM_MEM_MB,
+        .cpu_limit_percent = FULL_CPU,
+        .pids_limit = RECLAIM_PIDS,
+    };
+    var scope = try CgroupScope.create(io, alloc, RECLAIM_EXEC_ID, limits);
+
+    // Copy the path: destroy frees the scope's own copy.
+    const scope_path = try alloc.dupe(u8, scope.path);
+    defer alloc.free(scope_path);
+    std.Io.Dir.accessAbsolute(io, scope_path, .{}) catch return error.ScopeNotCreated;
+
+    _ = scope.destroy(limits);
+
+    // The regression: reclaim used a recursive tree delete, which the kernel
+    // refuses because the control files inside a cgroup cannot be unlinked. Every
+    // teardown failed with PermissionDenied and the directories accumulated —
+    // 25 of them were resident on the dev host when this was found.
+    if (std.Io.Dir.accessAbsolute(io, scope_path, .{})) |_| {
+        std.debug.print("scope survived destroy: {s}\n", .{scope_path});
+        return error.ScopeNotReclaimed;
+    } else |_| {}
+}
+
+test "integration: no exec- scope directory survives a create/destroy cycle" {
+    try requireCgroupDelegation();
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = threadedIo(&threaded);
+    defer threaded.deinit();
+
+    try CgroupScope.enableDelegatedControllers(io, alloc);
+    const base = try CgroupScope.resolveCgroupBase(io, alloc);
+    defer alloc.free(base);
+
+    const limits = types.ResourceLimits{
+        .memory_limit_mb = RECLAIM_MEM_MB,
+        .cpu_limit_percent = FULL_CPU,
+        .pids_limit = RECLAIM_PIDS,
+    };
+    var scope = try CgroupScope.create(io, alloc, RECLAIM_EXEC_ID, limits);
+    _ = scope.destroy(limits);
+
+    // Sweep the delegated base: the daemon's own `runner` leaf is expected, any
+    // leftover `exec-` sibling is a leaked lease scope.
+    var dir = try std.Io.Dir.openDirAbsolute(io, base, .{ .iterate = true });
+    defer dir.close(io);
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        if (std.mem.startsWith(u8, entry.name, EXEC_SCOPE_PREFIX)) {
+            std.debug.print("orphan execution scope: {s}/{s}\n", .{ base, entry.name });
+            return error.OrphanScopeLeaked;
+        }
+    }
+}
+
+test "integration: a failed reclaim still returns the lease's own metrics" {
+    try requireCgroupDelegation();
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = threadedIo(&threaded);
+    defer threaded.deinit();
+
+    try CgroupScope.enableDelegatedControllers(io, alloc);
+
+    const limits = types.ResourceLimits{
+        .memory_limit_mb = RECLAIM_MEM_MB,
+        .cpu_limit_percent = FULL_CPU,
+        .pids_limit = RECLAIM_PIDS,
+    };
+    var scope = try CgroupScope.create(io, alloc, RECLAIM_EXEC_ID, limits);
+
+    // Remove the directory out from under destroy() so its reclaim must fail.
+    // The lease's outcome must not move because of it: a teardown problem is
+    // logged, never folded into what the caller reports about the run.
+    std.Io.Dir.deleteDirAbsolute(io, scope.path) catch return error.SetupRemoveFailed;
+
+    const metrics = scope.destroy(limits);
+    try std.testing.expectEqual(
+        RECLAIM_MEM_MB * BYTES_PER_KIB * BYTES_PER_KIB,
+        metrics.memory_limit_bytes,
+    );
+}
