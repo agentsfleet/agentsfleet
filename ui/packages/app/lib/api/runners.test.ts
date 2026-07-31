@@ -70,6 +70,28 @@ describe("listRunnerLeases", () => {
       "tok",
     );
   });
+
+  it("narrows the page to one workspace, riding beside the keyset params", async () => {
+    await listRunnerLeases("tok", "runner-1", {
+      starting_after: "lease-9",
+      limit: 25,
+      workspace_id: "01J2WQ8F3K7VZ9XB4N6MTYD5AR",
+    });
+    expect(requestMock).toHaveBeenCalledWith(
+      "/v1/fleets/runners/runner-1/leases?starting_after=lease-9&limit=25&workspace_id=01J2WQ8F3K7VZ9XB4N6MTYD5AR",
+      { method: "GET" },
+      "tok",
+    );
+  });
+
+  it("sends no workspace filter for an empty id — an unfiltered read, never `workspace_id=`", async () => {
+    await listRunnerLeases("tok", "runner-1", { limit: 25, workspace_id: "" });
+    expect(requestMock).toHaveBeenCalledWith(
+      "/v1/fleets/runners/runner-1/leases?limit=25",
+      { method: "GET" },
+      "tok",
+    );
+  });
 });
 
 describe("createRunner", () => {

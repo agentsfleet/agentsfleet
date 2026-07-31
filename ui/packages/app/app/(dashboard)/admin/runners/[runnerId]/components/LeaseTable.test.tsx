@@ -22,6 +22,17 @@ vi.mock("@/lib/pagination/use-url-cursor-pages", () => ({
   }),
 }));
 
+// The workspace filter reads and writes the URL itself, so the router trio is
+// mocked at the source rather than through a second hook mock.
+const routerPush = vi.fn();
+let mockSearch = "";
+const MOCK_PATHNAME = "/runners/runner-under-test";
+vi.mock("next/navigation", () => ({
+  usePathname: () => MOCK_PATHNAME,
+  useRouter: () => ({ push: routerPush }),
+  useSearchParams: () => new URLSearchParams(mockSearch),
+}));
+
 import { LeaseTable } from "./LeaseTable";
 
 afterEach(() => cleanup());
@@ -31,8 +42,10 @@ const OLDER_INSTANT_MS = 1_000;
 const NEWER_INSTANT_MS = 2_000;
 beforeEach(() => {
   mockHasNext = false;
+  mockSearch = "";
   goToPage.mockReset();
   changePageSize.mockReset();
+  routerPush.mockReset();
 });
 
 function lease(overrides: Partial<RunnerLease>): RunnerLease {
@@ -188,6 +201,80 @@ describe("LeaseTable", () => {
     // The defensive render the cascade failure-mode names: id shown, never a
     // blank cell and never a fabricated name.
     expect(screen.getByText("fleet-gone-1")).toBeTruthy();
+  });
+
+  it("renders the workspace cell as a shortened link carrying the full id", () => {
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "ws-cell-1", workspace_id: "ws-0123456789" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />, { wrapper: TooltipProvider });
+    expect(screen.getByText("Workspace")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "ws-01234…" });
+    expect(link.getAttribute("href")).toBe("/w/ws-0123456789/fleets");
+    expect(link.getAttribute("title")).toBe("ws-0123456789");
+    // No filter in the URL — no chip to clear.
+    expect(screen.queryByRole("button", { name: "Clear workspace filter" })).toBeNull();
+  });
+
+  it("opens the workspace, not Review lease, when the workspace link is clicked", () => {
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "ws-link-1", workspace_id: "ws-0123456789" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />, { wrapper: TooltipProvider });
+    fireEvent.click(screen.getByRole("link", { name: "ws-01234…" }));
+    // The cell sits inside a row whose own click means "review this lease".
+    // Leaving for the workspace is a different intent, so the link stops the
+    // click travelling — otherwise the operator lands on the fleet wall with a
+    // panel they never asked for left open behind them.
+    expect(screen.queryByText("1,884")).toBeNull();
+  });
+
+  it("filters to a row's workspace and drops the cursor trail with the old result set", () => {
+    mockSearch = "c=page-2-cursor&cps=25";
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "ws-filter-1", workspace_id: "ws-0123456789" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />, { wrapper: TooltipProvider });
+    fireEvent.click(screen.getByRole("button", { name: "Show only this workspace" }));
+    expect(routerPush).toHaveBeenCalledTimes(1);
+    const url = routerPush.mock.calls[0]?.[0] as string;
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.get("workspace")).toBe("ws-0123456789");
+    expect(params.getAll("c")).toHaveLength(0);
+    expect(params.get("cps")).toBeNull();
+    // The funnel narrows the feed; it must not also open Review lease.
+    expect(screen.queryByText("1,884")).toBeNull();
+  });
+
+  it("shows the active filter as a chip and clears back to the unfiltered feed", () => {
+    mockSearch = "workspace=ws-0123456789";
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "ws-chip-1", workspace_id: "ws-0123456789" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />, { wrapper: TooltipProvider });
+    expect(screen.getByText("Workspace ws-01234…")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Clear workspace filter" }));
+    expect(routerPush).toHaveBeenCalledWith(MOCK_PATHNAME, { scroll: true });
   });
 
   it("should sort by When through the standard header control", () => {

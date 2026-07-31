@@ -5,6 +5,7 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
 import { listWorkspaces } from "./fixtures/seed";
+import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { installViaUI } from "./fixtures/install-ui";
 import {
@@ -26,6 +27,11 @@ const ACTION_TIMEOUT_MS = 60_000;
 const MENU_CLICK_TIMEOUT_MS = 5_000;
 const MENU_CLICK_ATTEMPTS = 3;
 const TEMP_DIR_PREFIX = "agentsfleet-operator-journey-";
+// Shared by the fleet-name generator and the afterEach sweep — one literal,
+// so the sweep can never drift from what the journey actually names. The
+// seeded fleet carries a live cron trigger; a leaked row keeps waking
+// runners until something deletes it.
+const JOURNEY_FLEET_PREFIX = "journey-fleet";
 
 interface CliFleetListResponse {
   items?: Array<{ id?: string; name?: string; status?: string }>;
@@ -118,29 +124,44 @@ async function deleteFleetWithApiKey(
   await fetch(fleetUrl, { method: "DELETE", headers }).catch(() => undefined);
 }
 
+// Resolve a created workspace's id by its (unique-per-run) name. The browser
+// flow only ever surfaces names; the API is the id source of record.
+async function workspaceIdByName(name: string): Promise<string> {
+  const workspace = (await listWorkspaces(FIXTURE_KEY.admin)).find((w) => w.name === name);
+  if (!workspace) {
+    throw new Error(`operator-journey: workspace '${name}' not found via API`);
+  }
+  return workspace.id;
+}
+
 test.describe("operator journey", () => {
   test.setTimeout(JOURNEY_TIMEOUT_MS);
 
   let createdApiKeyName: string | null = null;
-  let createdApiKeyRaw: string | null = null;
   let createdTempRoot: string | null = null;
-  let activeWorkspaceId: string | null = null;
-  let createdFleetId: string | null = null;
+  let createdWorkspaceIds: string[] = [];
 
   test.afterEach(async () => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (apiUrl && createdApiKeyRaw && activeWorkspaceId && createdFleetId) {
-      await deleteFleetWithApiKey(apiUrl, createdApiKeyRaw, activeWorkspaceId, createdFleetId);
+    // The fleet outlives more failure modes than the API key: it exists
+    // before the key is minted, and installViaUI can die after the server
+    // created it but before the id is readable from the URL. Sweeping by
+    // name-prefix with the admin fixture JWT across every workspace this
+    // run created depends on neither, so a journey that fails anywhere
+    // after fleet creation still tears down its cron-carrying rows.
+    for (const wsId of createdWorkspaceIds) {
+      await cleanWorkspaceFleets(FIXTURE_KEY.admin, wsId, `${JOURNEY_FLEET_PREFIX}-`).catch(
+        (err: unknown) => {
+          console.error(`[e2e:journey] fleet sweep failed for workspace ${wsId}:`, err);
+        },
+      );
     }
-    createdApiKeyRaw = null;
-    createdFleetId = null;
+    createdWorkspaceIds = [];
     await deleteApiKeyByNameDirect(createdApiKeyName);
     createdApiKeyName = null;
     if (createdTempRoot) {
       await fs.rm(createdTempRoot, { recursive: true, force: true }).catch(() => undefined);
       createdTempRoot = null;
     }
-    activeWorkspaceId = null;
   });
 
   test("operator switches workspace, installs a Fleet, visits settings, mints an API key, uses it from command line, then halts the Fleet", async ({ page }) => {
@@ -150,30 +171,26 @@ test.describe("operator journey", () => {
 
     const primaryWorkspaceName = uniqueName("journey-primary");
     const secondaryWorkspaceName = uniqueName("journey-secondary");
-    const fleetName = uniqueName("journey-fleet");
+    const fleetName = uniqueName(JOURNEY_FLEET_PREFIX);
     const apiKeyName = uniqueName("journey-key");
 
     await signInAs(page, FIXTURE_KEY.admin);
     await gotoWorkspace(page, FIXTURE_KEY.admin, "fleets");
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
 
+    // Resolve each workspace id via the API the moment the browser creates
+    // it — before any fleet can exist — so the afterEach sweep knows every
+    // workspace this run owns even when the journey dies mid-flight. The
+    // workspace is the URL segment (`/w/<id>/…`) — there is no implicit
+    // "active workspace" to read from a settings page — so the secondary id
+    // is what the nav hrefs, the onboard, and the CLI below all target.
     await createWorkspaceFromSwitcher(page, primaryWorkspaceName);
+    createdWorkspaceIds.push(await workspaceIdByName(primaryWorkspaceName));
     await createWorkspaceFromSwitcher(page, secondaryWorkspaceName);
+    const wsId = await workspaceIdByName(secondaryWorkspaceName);
+    createdWorkspaceIds.push(wsId);
     await switchWorkspace(page, primaryWorkspaceName);
     await switchWorkspace(page, secondaryWorkspaceName);
-
-    // Resolve the active (secondary) workspace id via the API so the nav hrefs,
-    // the onboard, and the CLI all target the same workspace the browser
-    // switched to. Post-M118 the workspace is the URL segment (`/w/<id>/…`) —
-    // there is no implicit "active workspace" to read from a settings page.
-    const installWorkspace = (await listWorkspaces(FIXTURE_KEY.admin)).find(
-      (workspace) => workspace.name === secondaryWorkspaceName,
-    );
-    if (!installWorkspace) {
-      throw new Error(`operator-journey: workspace '${secondaryWorkspaceName}' not found via API`);
-    }
-    const wsId = installWorkspace.id;
-    activeWorkspaceId = wsId;
 
     await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets"));
     await page.getByRole("link", { name: /install a fleet/i }).first().click();
@@ -182,7 +199,6 @@ test.describe("operator journey", () => {
       handle: FIXTURE_KEY.admin,
       workspaceId: wsId,
     });
-    createdFleetId = fleetId;
     // The detail page opens on Chat — the conversation card is the
     // post-install scaffolding assertion.
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
@@ -214,17 +230,16 @@ test.describe("operator journey", () => {
     await expect(revealField).toBeVisible();
     const rawApiKey = await revealField.inputValue();
     expect(rawApiKey.startsWith("agt_t")).toBe(true);
-    createdApiKeyRaw = rawApiKey;
 
     const { root: tempRoot, stateDir } = await makeCliStateDir(TEMP_DIR_PREFIX);
     createdTempRoot = tempRoot;
-    await writeCliState(stateDir, activeWorkspaceId, rawApiKey, apiUrl, secondaryWorkspaceName);
+    await writeCliState(stateDir, wsId, rawApiKey, apiUrl, secondaryWorkspaceName);
     await closeApiKeyReveal(page);
     const commandEnv = cliEnv({
       AGENTSFLEET_STATE_DIR: stateDir,
       AGENTSFLEET_API_URL: apiUrl,
     });
-    const cli = await spawnAgentsfleet(["--json", "list", "--workspace-id", activeWorkspaceId, "--limit", "10"], commandEnv);
+    const cli = await spawnAgentsfleet(["--json", "list", "--workspace-id", wsId, "--limit", "10"], commandEnv);
     if (cli.code !== 0) {
       throw new Error(`agentsfleet list failed with API key auth (exit ${cli.code}):\n${cli.stderr}`);
     }
@@ -246,8 +261,7 @@ test.describe("operator journey", () => {
     await expectDetailKilled(page);
     await page.goto(workspaceHref(wsId, "fleets"));
     await expectRowState(page, fleetId, "failed");
-    await deleteFleetWithApiKey(apiUrl, rawApiKey, activeWorkspaceId, fleetId);
-    createdFleetId = null;
+    await deleteFleetWithApiKey(apiUrl, rawApiKey, wsId, fleetId);
 
     await page.goto("/settings/api-keys");
     await expect(page.getByText(apiKeyName, { exact: true })).toBeVisible();
@@ -257,7 +271,7 @@ test.describe("operator journey", () => {
     await page.getByRole("alertdialog").getByRole("button", { name: /^revoke$/i }).click();
 
     const revokedCli = await spawnAgentsfleet(
-      ["list", "--workspace-id", activeWorkspaceId, "--limit", "1"],
+      ["list", "--workspace-id", wsId, "--limit", "1"],
       cliEnv({
         ...commandEnv,
         AGENTSFLEET_NO_RETRY: "1",
@@ -274,7 +288,6 @@ test.describe("operator journey", () => {
     await del.click();
     await page.getByRole("alertdialog").getByRole("button", { name: /^delete$/i }).click();
     await expect(page.getByText(apiKeyName, { exact: true })).toHaveCount(0);
-    createdApiKeyRaw = null;
     createdApiKeyName = null;
   });
 });

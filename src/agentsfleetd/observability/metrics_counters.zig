@@ -28,6 +28,16 @@ pub const READY_DEPTH_HELP = "Fleets in the shared readiness index, sampled by t
 pub const READY_WRITE_FAILURES_NAME = "agentsfleet_fleet_ready_write_failures_total";
 pub const READY_WRITE_FAILURES_HELP = "Readiness index writes (mark or clear) that failed against Redis. Unlabelled: which of the two failed does not change the operator's response, and the log line carries it.";
 
+// ── Runner maintenance ──────────────────────────────────────────────────────
+// Unlabelled like the lease-poll families: both describe control-plane
+// housekeeping, not any one tenant's work; the log lines carry the per-table
+// and per-tenant breakdowns.
+
+pub const RETENTION_SWEPT_NAME = "agentsfleet_runner_retention_swept_total";
+pub const RETENTION_SWEPT_HELP = "Terminal runner lease/event rows deleted by the retention sweep. A flat line on a busy control plane means the sweeper is not running.";
+pub const TEARDOWN_UNREGISTER_FAILURES_NAME = "agentsfleet_account_teardown_unregister_failures_total";
+pub const TEARDOWN_UNREGISTER_FAILURES_HELP = "Schedule unregister calls that failed during an account purge. Non-zero means an erased tenant may still have a firing timer upstream; the log line names the tenant.";
+
 pub const Snapshot = struct {
     api_backpressure_rejections_total: u64,
     api_in_flight_requests: u64,
@@ -42,6 +52,9 @@ pub const Snapshot = struct {
     lease_poll_db_roundtrips_total: u64 = 0,
     fleet_ready_depth: u64 = 0,
     fleet_ready_write_failures_total: u64 = 0,
+    // Runner maintenance counters.
+    runner_retention_swept_total: u64 = 0,
+    account_teardown_unregister_failures_total: u64 = 0,
     // Signup funnel counters.
     signup_bootstrapped_total: u64 = 0,
     signup_replayed_total: u64 = 0,
@@ -72,6 +85,8 @@ var g_lease_poll_candidates_scanned_total = std.atomic.Value(u64).init(0);
 var g_lease_poll_db_roundtrips_total = std.atomic.Value(u64).init(0);
 var g_fleet_ready_depth = std.atomic.Value(u64).init(0);
 var g_fleet_ready_write_failures_total = std.atomic.Value(u64).init(0);
+var g_runner_retention_swept_total = std.atomic.Value(u64).init(0);
+var g_account_teardown_unregister_failures_total = std.atomic.Value(u64).init(0);
 
 // safe because: every store/load below is an independent stat counter or
 // gauge — readers (the /metrics scrape) tolerate staleness, and no other
@@ -151,6 +166,16 @@ pub fn incReadyWriteFailure() void {
     _ = g_fleet_ready_write_failures_total.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 
+/// One retention cycle deletes rows in batches; the sweeper reports the cycle's
+/// combined count once so the series moves in sweep-sized steps.
+pub fn addRetentionSwept(rows: u64) void {
+    _ = g_runner_retention_swept_total.fetchAdd(rows, .monotonic); // safe because: see module note above
+}
+
+pub fn incTeardownUnregisterFailure() void {
+    _ = g_account_teardown_unregister_failures_total.fetchAdd(1, .monotonic); // safe because: see module note above
+}
+
 fn loadStat(counter: *std.atomic.Value(u64)) u64 {
     return counter.load(.acquire); // safe because: scrape-time read of an independent stat counter; see module note
 }
@@ -178,6 +203,8 @@ pub fn snapshot() Snapshot {
     s.lease_poll_db_roundtrips_total = loadStat(&g_lease_poll_db_roundtrips_total);
     s.fleet_ready_depth = loadStat(&g_fleet_ready_depth);
     s.fleet_ready_write_failures_total = loadStat(&g_fleet_ready_write_failures_total);
+    s.runner_retention_swept_total = loadStat(&g_runner_retention_swept_total);
+    s.account_teardown_unregister_failures_total = loadStat(&g_account_teardown_unregister_failures_total);
     return s;
 }
 
@@ -189,4 +216,10 @@ pub fn resetLeasePollMetricsForTest() void {
     g_lease_poll_db_roundtrips_total.store(0, .release);
     g_fleet_ready_depth.store(0, .release);
     g_fleet_ready_write_failures_total.store(0, .release);
+}
+
+/// Test-only reset for the runner-maintenance family, same isolation rationale.
+pub fn resetRunnerMaintenanceMetricsForTest() void {
+    g_runner_retention_swept_total.store(0, .release); // safe because: single-threaded test reset
+    g_account_teardown_unregister_failures_total.store(0, .release);
 }
