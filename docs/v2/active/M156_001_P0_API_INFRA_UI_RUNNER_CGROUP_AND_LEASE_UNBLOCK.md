@@ -104,7 +104,7 @@ Host capability is knowable the moment the daemon starts; nothing about it depen
 
 - **Dimension 1.1** — On Linux, startup writes the controller set to the delegated base before the control loop begins → Test `test_startup_enables_delegated_controllers`
 - **Dimension 1.2** — **DONE** — A cgroup base that is not delegated is classified distinctly from a write failure → Test `test_not_delegated_is_distinct_from_write_failure`
-- **Dimension 1.3** — Enablement is idempotent across a restart → Test `test_enable_controllers_is_idempotent`
+- **Dimension 1.3** — **DONE** — Enablement is idempotent across a restart → Test `test_enable_controllers_is_idempotent`
 - **Dimension 1.4** — **DONE** — The lazy call site and its one-shot gate field no longer exist → Test `test_policy_apply_has_no_controller_gate`
 
 ### §2 — A lease can load its config under systemd
@@ -128,9 +128,9 @@ The failure that took the dev fleet down logged an error code and nothing else, 
 
 Teardown removes an execution scope with a recursive tree delete, but a cgroup's control files cannot be unlinked, so every reclaim fails and the directories accumulate — 25 were resident on the dev host at diagnosis. A cgroup is emptied of processes and then removed as a directory. **Implementation default:** remove the scope directory directly and treat a still-populated scope as a distinct, retryable outcome, because a scope with live processes is a supervision bug, not a filesystem one.
 
-- **Dimension 4.1** — A process-empty scope is removed at teardown → Test `test_destroy_removes_empty_scope`
-- **Dimension 4.2** — Teardown leaves no `exec-*` directory behind after a completed lease → Test `test_no_orphan_scope_after_lease`
-- **Dimension 4.3** — A reclaim failure is logged with the reason and does not mask the lease's own outcome → Test `test_reclaim_failure_preserves_lease_result`
+- **Dimension 4.1** — **DONE** — A process-empty scope is removed at teardown → Test `test_destroy_removes_empty_scope`
+- **Dimension 4.2** — **DONE** — Teardown leaves no `exec-*` directory behind after a completed lease → Test `test_no_orphan_scope_after_lease`
+- **Dimension 4.3** — **DONE** — A reclaim failure is logged with the reason and does not mask the lease's own outcome → Test `test_reclaim_failure_preserves_lease_result`
 
 ### §5 — The readiness gate proves the host, before and after
 
