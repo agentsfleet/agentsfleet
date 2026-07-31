@@ -498,7 +498,21 @@ flowchart TD
 | `OIDC_JWKS_URL`   | env var → serve_cfg   | **Optional override.** Where to fetch the signing keys; defaults to the value derived from `OIDC_ISSUER`. Set only for a non-standard JWKS path (e.g. a `custom` provider). Cached for 6 h, refreshed on `kid` miss.   |
 | `OIDC_AUDIENCE`   | env var → serve_cfg   | Required value of `aud` claim. **Strict** — see audience-mismatch note below.   |
 
-### The audience claim — why the UI cannot send `__session` directly
+#### How the key set is fetched (`auth/jwks_fetch.zig`)
+
+The fetch advertises `accept-encoding: gzip, deflate` — the Zig HTTP client's
+default — and real providers honour it: Clerk answers `content-encoding: gzip`.
+The body is therefore read through `readerDecompressing`, **not** `reader`,
+which the standard library documents as returning still-encoded bytes whenever
+a content-encoding was negotiated. Reading raw here hands the JSON parser gzip
+bytes; every token then fails verification and every authenticated route
+answers `503 UZ-AUTH-004` while sign-in itself still appears to work. That is
+the failure signature to recognise: *signed in, but nothing loads.*
+
+`JWKS_MAX_RESPONSE_BYTES` bounds the **decompressed** stream, not the wire. A
+wire-byte cap is not a bound at all here — a few hundred bytes of deflated
+filler inflates past any such limit. An encoding the client never advertised is
+refused rather than decoded.
 
 The Zig backend enforces `aud=https://api.agentsfleet.net` on every JWT it accepts. Clerk's `__session` cookie has either no audience or a Clerk-default audience — it would 401 against this verifier. The cookie is therefore *only* an instruction to Clerk FAPI to mint a real API-audience JWT (via the "api" JWT template). The minted JWT is what the backend trusts.
 
