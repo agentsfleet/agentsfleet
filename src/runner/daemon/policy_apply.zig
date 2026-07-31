@@ -167,6 +167,14 @@ test "test_startup_logs_the_applied_assignment: a decodable assignment lands on 
     // the holder populated. Driving a valid assignment through and observing
     // the holder proves the emitting path ran; there is no runtime log capture
     // in this graph, so the structural proof is the honest one.
+    //
+    // `dev_none` is the only tier that builds no cage, so it is the only one
+    // that reaches that arm without sending the Linux cgroup gate through the
+    // `undefined` io below — which makes the expected outcome build-mode
+    // dependent, because Invariant 7 refuses dev_none in a release build. The
+    // memleak lane pins ReleaseSafe on Linux (valgrind needs an optimised
+    // binary), so each mode asserts its own arm instead of the Debug one
+    // twice; both arms run the function, which is what the leak gate needs.
     const alloc = std.testing.allocator;
     var applied = AppliedPolicy.init(alloc);
     defer applied.deinit();
@@ -178,8 +186,16 @@ test "test_startup_logs_the_applied_assignment: a decodable assignment lands on 
     defer raw.deinit();
 
     // SAFETY: io is only dereferenced by the cgroup-enablement gate, which the
-    // cage-free dev_none tier (Debug-allowed) never reaches.
+    // cage-free dev_none tier never reaches on either arm.
     applyHeartbeatPolicy(undefined, alloc, &applied, &gates, raw.value);
+
+    if (devNoneForbidden(builtin.mode, .dev_none)) {
+        // Release arm: refused BEFORE the holder published, so no worker can
+        // snapshot the forbidden tier between publish and clear.
+        try std.testing.expectEqual(AppliedPolicy.ApplyOutcome.cleared, gates.last_outcome);
+        try std.testing.expect(applied.snapshot(alloc) == null);
+        return;
+    }
     try std.testing.expectEqual(AppliedPolicy.ApplyOutcome.applied, gates.last_outcome);
     const snap = applied.snapshot(alloc) orelse return error.TestUnexpectedResult;
     defer AppliedPolicy.freePolicy(alloc, snap);

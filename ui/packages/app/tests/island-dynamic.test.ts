@@ -77,6 +77,13 @@ const ISLANDS: Island[] = [
     callSite: "app/(dashboard)/admin/runners/components/RunnersView.tsx",
     rawComponent: "AddRunnerDialog",
   },
+  {
+    name: "EditPolicyDialog",
+    shim: "EditPolicyDialogDynamic",
+    rawImportFragment: "admin/runners/components/EditPolicyDialog",
+    callSite: "app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.tsx",
+    rawComponent: "EditPolicyDialog",
+  },
 ];
 
 describe("interaction-only islands are excluded from the route's initial chunk", () => {
@@ -110,6 +117,8 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", ()
 vi.mock("@/components/layout/CreateWorkspaceDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/admin/runners/components/AddRunnerDialog", () => ({ default: () => null }));
+// Named export — the shim's `.then` mapper reads `mod.EditPolicyDialog`, not `default`.
+vi.mock("@/app/(dashboard)/admin/runners/components/EditPolicyDialog", () => ({ EditPolicyDialog: () => null }));
 
 // 5.2 — the shim mounts its inner component after the dynamic-load tick. Mock
 // next/dynamic so the mount path is deterministic without the Next.js loader
@@ -139,6 +148,7 @@ import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddSecr
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
 import AddRunnerDialogDynamic from "@/components/domain/island-dynamic/AddRunnerDialogDynamic";
+import EditPolicyDialogDynamic from "@/components/domain/island-dynamic/EditPolicyDialogDynamic";
 
 afterEach(() => cleanup());
 
@@ -186,6 +196,14 @@ describe("dynamic island shims mount their inner component", () => {
     [
       "AddRunnerDialogDynamic",
       React.createElement(AddRunnerDialogDynamic, { onCreated: noop }),
+    ],
+    [
+      "EditPolicyDialogDynamic",
+      React.createElement(EditPolicyDialogDynamic, {
+        runnerId: "run_1",
+        current: null,
+        onSaved: noop,
+      }),
     ],
   ];
 
