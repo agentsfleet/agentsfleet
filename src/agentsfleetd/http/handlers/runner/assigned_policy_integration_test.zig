@@ -551,9 +551,12 @@ test "integration: test_unachievable_assignment_marks_runner_degraded" {
 
 test "integration: a pre-migration row reads degraded until the dashboard assigns a policy" {
     // The rollout case Indy declined to unbrick via env: a runner enrolled
-    // before the policy columns existed has NULL network_policy. It stays
-    // degraded ("no assigned policy"), the dashboard PATCH is the fix path,
-    // and each verdict change is visible on the very next beat.
+    // before the policy columns existed has NULL network_policy. Migration 042
+    // deliberately does NOT backfill it (Indy: "yes done by hand") — the row
+    // starts at the column default, the operator's manual patch (the statement
+    // documented in 042_runner_assigned_policy.sql, proven here) marks it
+    // degraded, the dashboard PATCH is the fix path, and each verdict change
+    // is visible on the very next beat.
     const h = try startHarness();
     defer h.deinit();
     {
@@ -568,6 +571,29 @@ test "integration: a pre-migration row reads degraded until the dashboard assign
             \\VALUES ($1::uuid, $2, $3, $4, $5, '[]'::jsonb, NULL, 0, 0, 0)
             \\ON CONFLICT (id) DO NOTHING
         , .{ LEGACY_RUNNER_ID, HOST_LEGACY, hash[0..], TIER_LANDLOCK, protocol.ADMIN_STATE_ACTIVE });
+
+        // No backfill: the freshly migrated row reads NOT degraded — pins the
+        // deliberate absence so a silently re-added backfill (or a flipped
+        // column default) fails here, not in a rollout.
+        {
+            const before = try verdictRow(conn, LEGACY_RUNNER_ID);
+            defer before.deinit();
+            try std.testing.expect(!before.degraded);
+        }
+
+        // The operator's manual patch — the exact statement 042 documents,
+        // with the reason bound to the canonical constant so the documented
+        // remedy can never drift from what reconciliation writes.
+        _ = try conn.exec(
+            \\UPDATE fleet.runners SET degraded = TRUE, degraded_reason = $1
+            \\WHERE network_policy IS NULL
+        , .{reconcile.REASON_NO_ASSIGNED_POLICY});
+        {
+            const after = try verdictRow(conn, LEGACY_RUNNER_ID);
+            defer after.deinit();
+            try std.testing.expect(after.degraded);
+            try std.testing.expectEqualStrings(reconcile.REASON_NO_ASSIGNED_POLICY, after.reason orelse return error.TestUnexpectedResult);
+        }
     }
     defer cleanupAll(h);
 
