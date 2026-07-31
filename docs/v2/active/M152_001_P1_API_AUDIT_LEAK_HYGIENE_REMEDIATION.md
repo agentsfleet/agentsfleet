@@ -151,7 +151,7 @@ One predicate, one parser, one grammar: doctor and the runtime loader validate 6
 
 Remove or de-pub every grep-confirmed dead symbol from the audit: the uncalled migration-lock wrapper, the unused role variant and its env mapping, the unused row alias and test-only counter, the duplicate namespace constant, dead re-exports, per-signal exporter functions, iterator, lease/response/vault-key constants, the dead bearer-prefix constant, and the compat-alias fixture ids. De-pub items are proven by zlint unused-decls; deletions by the Dead Code Sweep greps.
 
-- **Dimension 5.1** — every listed symbol is removed or de-pub'd; sweep greps return zero; lint stays green → Test Dead Code Sweep greps + `make lint`
+- **Dimension 5.1** — every listed symbol is removed or de-pub'd; sweep greps return zero; lint stays green → Test Dead Code Sweep greps + `make lint` — **DONE** (per-signal exporter fns were already deleted by §1.7's preflight rework; `constantTimeEql` copy lands with §6.1)
 
 ### §6 — Duplication folds
 
@@ -287,9 +287,9 @@ N/A — no files deleted (the new fixtures module is a CREATE).
 | `DbRole.callback` variant | `grep -rn "\.callback" src/agentsfleetd/db/ \| head` | 0 matches |
 | jwks `getInt` re-export | `grep -rn "jwks\.getInt" src/ \| head` | 0 matches |
 | `BEARER_PREFIX` (errors) | `grep -rnw "BEARER_PREFIX" src/agentsfleetd/errors/ \| head` | 0 matches |
-| duplicate namespace constant | `grep -rnw "NAMESPACE_DEV\|NAMESPACE_PROD" src/ \| head` | matches for exactly one surviving name |
+| duplicate namespace constant | `grep -rnw "NAMESPACE_DEV\|NAMESPACE_PROD" src/ \| head` | 0 matches (both collapsed into the single `CLAIM_NAMESPACE` owner — the pair were identical, so neither env-suffixed name was honest) |
 | auth `constantTimeEql` copy | `grep -rn "constantTimeEql" src/agentsfleetd/auth/api_key.zig \| head` | 0 matches |
-| `TEST_TENANT_ID` alias (uc1) | `grep -rnw "TEST_TENANT_ID" src/agentsfleetd/db/test_fixtures_uc1.zig \| head` | 0 matches |
+| `TEST_TENANT_ID` alias (uc1) | `grep -rn "^pub const TEST_TENANT_ID" src/agentsfleetd/db/test_fixtures_uc1.zig \| head` | 0 matches (the surviving `TENANT_ID` legitimately re-exports `base.TEST_TENANT_ID`) |
 
 De-pub-only items (per-signal OTel fns, `ArgvIter`, `SYNC_LEASE_MS`, `MAX_RESPONSE_BYTES`, `DEADLINE_MS`, `VAULT_KEY`, `sessionIdHash`, splitter `count`, pool `Row`) are proven by zlint unused-decls staying green with `pub` removed.
 

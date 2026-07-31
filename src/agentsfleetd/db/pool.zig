@@ -21,7 +21,6 @@ const log = logging.scoped(.db);
 
 pub const Pool = pg.Pool;
 pub const Conn = pg.Conn;
-pub const Row = pg.Row;
 
 const S_SSLMODE = "sslmode=";
 
@@ -55,14 +54,12 @@ const ROLE_ENV_NAME_MAX = 64;
 pub const DbRole = enum {
     default,
     api,
-    callback,
     migrator,
 };
 
 pub fn roleEnvVarName(role: DbRole) []const u8 {
     return switch (role) {
         .api => "DATABASE_URL_API",
-        .callback => "DATABASE_URL_CALLBACK",
         .migrator => "DATABASE_URL_MIGRATOR",
         .default => "DATABASE_URL",
     };

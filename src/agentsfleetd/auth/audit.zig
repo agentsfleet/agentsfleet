@@ -64,7 +64,7 @@ pub fn sessionIdPrefix(id: []const u8) []const u8 {
 ///
 /// The pepper is the `AUDIT_LOG_PEPPER` value loaded at boot in
 /// `src/config/runtime_loader.zig`; held in agentsfleetd process memory only.
-pub fn sessionIdHash(pepper: []const u8, session_id: []const u8) [hmac_sig.MAC_LEN]u8 {
+fn sessionIdHash(pepper: []const u8, session_id: []const u8) [hmac_sig.MAC_LEN]u8 {
     return hmac_sig.computeMac(pepper, &.{session_id});
 }
 

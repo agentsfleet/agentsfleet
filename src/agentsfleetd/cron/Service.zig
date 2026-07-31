@@ -15,7 +15,7 @@ const id_format = @import("../types/id_format.zig");
 const model = @import("model.zig");
 const validate = @import("validate.zig");
 
-pub const SYNC_LEASE_MS: i64 = 15_000;
+const SYNC_LEASE_MS: i64 = 15_000;
 
 const DETAIL_INVALID = "QStash rejected the schedule parameters";
 const DETAIL_RATE_LIMITED = "QStash rate limited the schedule mutation";

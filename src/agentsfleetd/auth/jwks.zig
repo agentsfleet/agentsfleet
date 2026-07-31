@@ -23,7 +23,6 @@ pub const decodeBase64UrlOwned = jwks_token.decodeBase64UrlOwned;
 pub const verifyRs256 = jwks_crypto.verifyRs256;
 pub const parseStandardClaims = jwks_standard_claims.parseStandardClaims;
 pub const getString = jwks_standard_claims.getString;
-pub const getInt = jwks_standard_claims.getInt;
 
 const jwks_standard_claims = @import("jwks_standard_claims.zig");
 

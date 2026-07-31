@@ -6,6 +6,15 @@ const sql_splitter = @import("sql_splitter.zig");
 const SqlStatementSplitter = sql_splitter.SqlStatementSplitter;
 const SplitError = sql_splitter.SplitError;
 
+/// Statement counter local to the suite — production callers never counted,
+/// so the counting loop lives with its only consumers.
+fn countStatements(sql: []const u8) u32 {
+    var s = SqlStatementSplitter.init(sql);
+    var n: u32 = 0;
+    while (s.next() != null) : (n += 1) {}
+    return n;
+}
+
 test "splits simple statements on semicolons" {
     var s = SqlStatementSplitter.init("CREATE TABLE t (id INT); INSERT INTO t VALUES (1);");
     try std.testing.expectEqualStrings("CREATE TABLE t (id INT)", s.next().?);
@@ -51,7 +60,7 @@ test "tagged dollar-quoted function body with internal semicolons is one stateme
     const stmt = s.next().?;
     try std.testing.expect(std.mem.endsWith(u8, stmt, "LANGUAGE plpgsql"));
     try std.testing.expect(s.next() == null);
-    try std.testing.expectEqual(@as(u32, 1), SqlStatementSplitter.count(
+    try std.testing.expectEqual(@as(u32, 1), countStatements(
         "CREATE FUNCTION g() RETURNS void AS $fn_1$ BEGIN PERFORM 1; END; $fn_1$ LANGUAGE plpgsql;",
     ));
 }
@@ -122,7 +131,7 @@ test "a long run of empty statements neither recurses nor yields statements" {
     const flood = try alloc.alloc(u8, 100_000);
     defer alloc.free(flood);
     @memset(flood, ';');
-    try std.testing.expectEqual(@as(u32, 0), SqlStatementSplitter.count(flood));
+    try std.testing.expectEqual(@as(u32, 0), countStatements(flood));
     try SqlStatementSplitter.validate(flood);
 }
 
@@ -254,10 +263,10 @@ test "trailing content without semicolon is returned" {
 }
 
 test "count returns correct number of statements" {
-    try std.testing.expectEqual(@as(u32, 3), SqlStatementSplitter.count("A; B; C;"));
-    try std.testing.expectEqual(@as(u32, 1), SqlStatementSplitter.count("SELECT 1;"));
-    try std.testing.expectEqual(@as(u32, 0), SqlStatementSplitter.count("-- comment only"));
-    try std.testing.expectEqual(@as(u32, 1), SqlStatementSplitter.count("-- comment\nSELECT 1;"));
+    try std.testing.expectEqual(@as(u32, 3), countStatements("A; B; C;"));
+    try std.testing.expectEqual(@as(u32, 1), countStatements("SELECT 1;"));
+    try std.testing.expectEqual(@as(u32, 0), countStatements("-- comment only"));
+    try std.testing.expectEqual(@as(u32, 1), countStatements("-- comment\nSELECT 1;"));
 }
 
 test "inline comment after SQL is included in statement" {

@@ -30,8 +30,8 @@ const CRON_HEADER_BUFFER_LEN: usize = 256;
 const RESPONSE_HEAD_BUFFER_LEN: usize = 8 * 1024;
 const RESPONSE_TRANSFER_BUFFER_LEN: usize = 4 * 1024;
 const DRAIN_CHUNK_BYTES: usize = 1024;
-pub const MAX_RESPONSE_BYTES: usize = 16 * 1024;
-pub const DEADLINE_MS: u31 = 10_000;
+const MAX_RESPONSE_BYTES: usize = 16 * 1024;
+const DEADLINE_MS: u31 = 10_000;
 
 const Scheduler = call_deadline.ProcessScheduler;
 
