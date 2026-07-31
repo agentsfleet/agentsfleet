@@ -17,7 +17,7 @@ const child_process = @import("child_process.zig");
 const sandbox = @import("sandbox_args.zig");
 
 const HOME = "HOME";
-const HOME_VALUE = "/run/agent";
+const HOME_VALUE = "/run/agentsfleet";
 const DENIED_VAR = "AGENTSFLEET_RUNNER_TOKEN";
 const DENIED_VALUE = "agt_r_not_a_real_token";
 const OFF_ALLOWLIST_VAR = "SHELL";

@@ -67,9 +67,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/runners/components/PolicyFields.tsx` | EDIT | The three isolation options stop wrapping two-then-one. |
 | `ui/packages/app/components/domain/fleetFailureCopy.tsx` | EDIT | An unclassifiable cause stops being reported as the user's missing instructions, and no raw error identifier is shown. |
 | `ui/packages/app/components/domain/fleetFailureCopy.test.ts` | EDIT | Covers the inverted default and the preserved missing-instructions case. |
-| `src/runner/engine/cgroup_scope_test.zig` | CREATE | Unit coverage for reclaim classification and the not-delegated error. |
-| `ui/packages/app/app/(dashboard)/admin/runners/components/EditPolicyDialog.test.tsx` | EDIT | Asserts the scroll affordance on the dialog body. |
-| `ui/packages/app/app/(dashboard)/admin/runners/components/PolicyFields.test.tsx` | EDIT | Asserts the isolation options share one row at the breakpoint. |
+| `src/runner/engine/cgroup_scope_test.zig` | CREATE | Unit coverage for delegated-base resolution and the not-delegated classification. |
+| `src/runner/daemon/startup.zig` | CREATE | Startup steps split out of `main.zig` so the enablement step is testable. |
+| `src/runner/engine/runner_capture.zig` | CREATE | Progress-fd wiring extracted from `runner.zig`, which sat at the length cap. |
+| `src/runner/child_process_test.zig` | CREATE | Proves `HOME` crosses into the child and credentials never do. |
+| `src/runner/sec_enforcement_integration_test.zig` | EDIT | Linux-gated proofs for controller enablement and scope reclaim. |
+| `src/runner/daemon/loop.zig` | EDIT | Drops the `io` argument the removed cgroup gate required. |
+| `src/runner/tests.zig` | EDIT | Test-root discovery for the new modules. |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/EditPolicyDialog.test.tsx` | EDIT | Asserts the scroll affordance and the one-row isolation grid on the rendered dialog. |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/AddRunnerDialog.test.tsx` | EDIT | Asserts the same scroll affordance on the create dialog. |
+| `deploy/baremetal/deploy_test.sh` | EDIT | Asserts the unit defines `HOME` inside a runtime directory it also makes writable. |
 
 ## Applicable Rules
 
@@ -234,19 +241,19 @@ No product analytics event is added, renamed, or removed; the dashboard change i
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A restarted runner has the controller set enabled before its first beat (§1) | `systemctl restart agentsfleet-runner && sleep 2 && cat /sys/fs/cgroup/system.slice/agentsfleet-runner.service/cgroup.subtree_control` | `cpu memory pids` | P0 | |
-| R2 | A lease completes with no config-load failure (§2, §3) | `journalctl -u agentsfleet-runner --since -10min \| grep -c config_load_failed` | `0` | P0 | |
-| R3 | No execution cgroup is left behind (§4) | `find /sys/fs/cgroup/system.slice/agentsfleet-runner.service -maxdepth 1 -name 'exec-*' \| wc -l` | `0` | P0 | |
-| R4 | The gate names every missing controller and rejects an incapable host (§5) | `bash playbooks/founding/06_runner_bootstrap_dev/deploy_readiness_test.sh` | exit 0 | P0 | |
-| R5 | The policy dialog is usable on a short viewport (§6) | `make test-unit-app` | exit 0 | P1 | |
-| R6 | Exactly one controller-enablement call site remains | `grep -rn "enableDelegatedControllers" src/ \| grep -v "CgroupScope.zig" \| wc -l` | `1` | P0 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
+| R1 | A restarted runner has the controller set enabled before its first beat (§1) | `systemctl restart agentsfleet-runner && sleep 2 && cat /sys/fs/cgroup/system.slice/agentsfleet-runner.service/cgroup.subtree_control` | `cpu memory pids` | P0 | ⏳ host command — proven by the dev deploy |
+| R2 | A lease completes with no config-load failure (§2, §3) | `journalctl -u agentsfleet-runner --since -10min \| grep -c config_load_failed` | `0` | P0 | ⏳ host command — proven by the dev deploy |
+| R3 | No execution cgroup is left behind (§4) | `find /sys/fs/cgroup/system.slice/agentsfleet-runner.service -maxdepth 1 -name 'exec-*' \| wc -l` | `0` | P0 | ⏳ host command — proven by the dev deploy |
+| R4 | The gate names every missing controller and rejects an incapable host (§5) | `bash playbooks/founding/06_runner_bootstrap_dev/deploy_readiness_test.sh` | exit 0 | P0 | ✅ `10 passed, 0 failed` |
+| R5 | The policy dialog is usable on a short viewport (§6) | `make test-unit-app` | exit 0 | P1 | ✅ `Tests 2155 passed (2155)` |
+| R6 | Exactly one production call site enables the controllers (§1) | `grep -rn "enableDelegatedControllers(" src/ --include="*.zig" \| grep -v CgroupScope.zig \| grep -v _test.zig \| wc -l` | `1` | P0 | ✅ `1` |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ listed-not-changed: none / changed-not-listed: none |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 (`make test-unit-all`) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `All lint checks passed` |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
 | S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ exit 0 both targets; linux test graph 0 compile errors |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ exit 0 |
 | S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
