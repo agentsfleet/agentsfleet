@@ -45,6 +45,31 @@ describe("EditPolicyDialog", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
+  // Reported from a real assignment attempt: the dialog could not be scrolled,
+  // so "Save assignment" sat below the fold and the policy could only be saved
+  // by maximising the window. Assigning a policy is the one action that makes a
+  // runner able to take work, so an unreachable footer blocks the whole flow.
+  it("test_policy_dialog_body_scrolls: keeps the footer reachable on a short viewport", () => {
+    render(<EditPolicyDialog runnerId="r-edit-2" current={CURRENT} onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
+
+    const dialogClasses = screen.getByRole("dialog").className;
+    expect(dialogClasses).toContain("max-h-svh");
+    expect(dialogClasses).toContain("overflow-y-auto");
+  });
+
+  // Three isolation tiers in a two-column grid wrapped the third onto its own
+  // row, reading as an afterthought rather than a peer of the other two.
+  it("test_isolation_options_share_one_row: the tier options resolve to one column each", () => {
+    render(<EditPolicyDialog runnerId="r-edit-5" current={CURRENT} onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
+
+    const group = screen.getByRole("radiogroup", { name: /isolation to assign/i });
+    expect(group.className).toContain("sm:grid-cols-3");
+    // Pinned against the tier list: a fourth tier would re-orphan the layout.
+    expect(screen.getAllByRole("radio")).toHaveLength(3);
+  });
+
   it("refuses a bad registry entry in-form and never calls the action", async () => {
     const onSaved = vi.fn();
     render(<EditPolicyDialog runnerId="r-edit-3" current={CURRENT} onSaved={onSaved} />);
