@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M152
 **Workstream:** 001
 **Date:** Jul 31, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the daemon leaks heap on every Clerk signup webhook and during every credential-vendor outage; operator-facing memory growth
 **Categories:** API
 **Batch:** B1 — single workstream
