@@ -578,3 +578,34 @@ test "credential teardown routes through the zeroizing free, leak-free (Dimensio
     alloc.free(r.ok.token);
     b.deinit();
 }
+
+// Deterministic advancing clock for the latency-telemetry test: each call
+// moves 5 ms, so any span measured across the mint is strictly positive.
+var fake_clock_ms = std.atomic.Value(i64).init(0);
+
+fn fakeAdvancingClock() i64 {
+    return fake_clock_ms.fetchAdd(5, .monotonic);
+}
+
+test "mint telemetry is truthful: injected clock yields a real latency (Dimension 7.3)" {
+    const alloc = std.testing.allocator;
+    fake_clock_ms.store(0, .monotonic);
+    var rec = testing.RecordingMetrics{};
+    var b = try CredentialBroker.init(alloc, FAKE_REGISTRY, .{
+        .platform = .{},
+        .http = integration.nullDeps().http,
+        .sign = testing.fakeSign,
+        .metrics = rec.sink(),
+    });
+    defer b.deinit();
+    b.latency_clock = &fakeAdvancingClock;
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+
+    const r = try b.mint(alloc, "ws-latency", "github", h.value, 0);
+    try std.testing.expect(r == .ok);
+    alloc.free(r.ok.token);
+    // Pre-fix every event carried latency_ms = 0 regardless of duration.
+    try std.testing.expect(rec.last_latency_ms > 0);
+    try std.testing.expectEqualStrings("ok", rec.last_outcome);
+}

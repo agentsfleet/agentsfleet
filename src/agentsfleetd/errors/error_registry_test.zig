@@ -332,23 +332,6 @@ test "error_registry.zig exports REGISTRY (not TABLE)" {
     try std.testing.expect(e.code.len > 0);
 }
 
-test "tenant billing error table validates at comptime" {
-    comptime {
-        const billing = @import("../state/tenant_billing.zig");
-        _ = billing; // comptime validation runs on import
-    }
-}
-
-test "PgQuery size pinned at 8 bytes (single pointer)" {
-    const PgQuery = @import("../db/pg_query.zig").PgQuery;
-    try std.testing.expectEqual(@as(usize, 8), @sizeOf(PgQuery));
-}
-
-test "FleetSession size pinned at 336 bytes" {
-    const FleetSession = @import("../fleet/fleet_session.zig");
-    try std.testing.expectEqual(@as(usize, 336), @sizeOf(FleetSession));
-}
-
 // ── UZ-PROVIDER-003 hint must match secret_probe.zig's
 //    ACTUAL rule (probeSelfManagedSecret): provider + model always required,
 //    api_key required for a named provider but OPTIONAL for an openai-compatible

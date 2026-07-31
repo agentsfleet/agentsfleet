@@ -99,12 +99,14 @@ pub const RecordingMetrics = struct {
     count: usize = 0,
     last_outcome: []const u8 = "",
     last_hit: bool = false,
+    last_latency_ms: i64 = 0,
 
     fn onMint(ptr: *anyopaque, ev: integration.MintEvent) void {
         const self: *RecordingMetrics = @ptrCast(@alignCast(ptr));
         self.count += 1;
         self.last_outcome = ev.outcome;
         self.last_hit = ev.cache_hit;
+        self.last_latency_ms = ev.latency_ms;
     }
 
     pub fn sink(self: *RecordingMetrics) integration.Metrics {

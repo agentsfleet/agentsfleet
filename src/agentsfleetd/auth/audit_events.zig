@@ -58,6 +58,18 @@ pub const AuditCtx = struct {
 
 // ── Emitters ─────────────────────────────────────────────────────────────
 
+/// The per-event preamble every emit repeats: the keyed session-id hash,
+/// computed once into value storage the caller's log line borrows.
+const Preamble = struct { hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 };
+
+fn preamble(ctx: AuditCtx, session_id: []const u8) Preamble {
+    // SAFETY: hash_buf is fully written by sessionIdHashHex on the next line
+    // before any read.
+    var p: Preamble = .{ .hash_buf = undefined };
+    _ = audit.sessionIdHashHex(&p.hash_buf, ctx.audit_log_pepper, session_id);
+    return p;
+}
+
 pub fn emitSessionCreated(
     ctx: AuditCtx,
     session_id: []const u8,
@@ -66,8 +78,8 @@ pub fn emitSessionCreated(
     user_agent: []const u8,
     request_id: []const u8,
 ) void {
-    var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
-    const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
+    const pre = preamble(ctx, session_id);
+    const sid_hash = pre.hash_buf[0..];
     audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_CREATED,
         .ts_ms = clock.nowMillis(),
@@ -93,8 +105,8 @@ pub fn emitSessionApproved(
     user_agent: []const u8,
     request_id: []const u8,
 ) void {
-    var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
-    const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
+    const pre = preamble(ctx, session_id);
+    const sid_hash = pre.hash_buf[0..];
     audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_APPROVED,
         .ts_ms = clock.nowMillis(),
@@ -121,8 +133,8 @@ pub fn emitSessionVerifyFailed(
     user_agent: []const u8,
     request_id: []const u8,
 ) void {
-    var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
-    const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
+    const pre = preamble(ctx, session_id);
+    const sid_hash = pre.hash_buf[0..];
     audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_VERIFY_FAILED,
         .ts_ms = clock.nowMillis(),
@@ -149,8 +161,8 @@ pub fn emitSessionVerified(
     user_agent: []const u8,
     request_id: []const u8,
 ) void {
-    var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
-    const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
+    const pre = preamble(ctx, session_id);
+    const sid_hash = pre.hash_buf[0..];
     audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_VERIFIED,
         .ts_ms = clock.nowMillis(),
@@ -174,8 +186,8 @@ pub fn emitSessionConsumed(
     consumed_client_fingerprint_hex: []const u8,
     request_id: []const u8,
 ) void {
-    var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
-    const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
+    const pre = preamble(ctx, session_id);
+    const sid_hash = pre.hash_buf[0..];
     audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_CONSUMED,
         .ts_ms = clock.nowMillis(),
@@ -193,8 +205,8 @@ pub fn emitSessionConsumedReplay(
     replay_within_ms: i64,
     request_id: []const u8,
 ) void {
-    var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
-    const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
+    const pre = preamble(ctx, session_id);
+    const sid_hash = pre.hash_buf[0..];
     audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_CONSUMED_REPLAY,
         .ts_ms = clock.nowMillis(),
@@ -214,8 +226,8 @@ pub fn emitSessionAborted(
     derived_ip: trusted_ip.DerivedClientIp,
     request_id: []const u8,
 ) void {
-    var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
-    const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
+    const pre = preamble(ctx, session_id);
+    const sid_hash = pre.hash_buf[0..];
     audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_ABORTED,
         .ts_ms = clock.nowMillis(),

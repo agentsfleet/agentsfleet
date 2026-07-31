@@ -40,13 +40,12 @@ const DEDUP_AND_APPEND =
     \\return 1
 ;
 
-alloc: std.mem.Allocator,
 client: *queue_redis.Client,
 
 pub const Outcome = enum { enqueued, duplicate };
 
-pub fn init(alloc: std.mem.Allocator, client: *queue_redis.Client) FireQueue {
-    return .{ .alloc = alloc, .client = client };
+pub fn init(client: *queue_redis.Client) FireQueue {
+    return .{ .client = client };
 }
 
 pub fn enqueue(
@@ -78,7 +77,9 @@ pub fn enqueue(
         "EVAL",            DEDUP_AND_APPEND,  "3",   signed_key,   provider_key, stream_key,
         DEDUP_TTL_SECONDS, STREAM_MAX_LENGTH, actor, workspace_id, request_json, created_at,
     });
-    defer response.deinit(self.alloc);
+    // The reply was allocated by the client; free with ITS allocator by
+    // construction — no caller-supplied twin to drift (Dimension 7.7).
+    defer response.deinit(self.client.alloc);
     return switch (response) {
         .integer => |value| switch (value) {
             0 => .duplicate,

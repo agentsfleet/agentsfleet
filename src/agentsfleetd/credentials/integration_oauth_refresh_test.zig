@@ -168,6 +168,24 @@ test "oauth2_refresh mint: a handle with accounts_base refreshes at ITS data cen
     try std.testing.expectEqualStrings("https://accounts.zoho.eu/oauth/v2/token", vendor.url);
 }
 
+test "oauth2_refresh mint: token path is per-handle config, defaulting to the Zoho shape (Dimension 7.6)" {
+    const alloc = std.testing.allocator;
+    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_alt\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ "}" };
+    defer vendor.deinit();
+    // A provider whose token endpoint lives at a non-Zoho path configures it
+    // on the HANDLE — no provider branch in the strategy.
+    const handle_custom_path = "{\"integration\":\"zoho\",\"refresh_token\":\"rt_zoho_abc\",\"accounts_base\":\"https://accounts.example.com\",\"token_path\":\"/oauth2/token\"}";
+    var h = try testing.parse(alloc, handle_custom_path);
+    defer h.deinit();
+
+    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
+    try std.testing.expect(out == .ok);
+    defer alloc.free(out.ok.token);
+    try std.testing.expectEqualStrings("https://accounts.example.com/oauth2/token", vendor.url);
+    // The default-path behavior (no token_path on the handle) is pinned by the
+    // accounts_base test above: ".../oauth/v2/token".
+}
+
 test "oauth2_refresh mint: a handle without accounts_base falls back to cfg.token_endpoint" {
     const alloc = std.testing.allocator;
     var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_default\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ "}" };
