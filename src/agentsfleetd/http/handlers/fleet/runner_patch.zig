@@ -16,7 +16,6 @@ const protocol = @import("contract").protocol;
 const runner_events = @import("../../../fleet/runner_events.zig");
 const policy_row = @import("../runner/assigned_policy_row.zig");
 const reconcile = @import("../runner/heartbeat_reconcile.zig");
-const runner_sql = @import("../runner/sql.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.fleet_runner_patch);
@@ -108,6 +107,12 @@ fn applyPolicyAssignment(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current:
     };
     defer hx.alloc.free(event_row_id);
 
+    // Reconcile the NEW assignment against the row's stored capability report
+    // BEFORE the write, so the verdict rides the same statement. A read
+    // failure yields a null report, which reconciles to degraded — the
+    // fail-closed answer, never an assumed-healthy one.
+    const verdict = reconcile.reconcile(stored, readCapability(hx, conn, runner_id));
+
     {
         var q = PgQuery.from(conn.query(sql.PATCH_RUNNER_ASSIGNED_POLICY, .{
             runner_id,
@@ -122,6 +127,8 @@ fn applyPolicyAssignment(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current:
             runner_events.META_NETWORK_POLICY,
             runner_events.META_REGISTRY_ALLOWLIST,
             runner_events.META_WORKER_COUNT,
+            verdict.degraded,
+            verdict.reason,
         }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return;
@@ -134,21 +141,8 @@ fn applyPolicyAssignment(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current:
         };
     }
 
-    reconcileNow(hx, conn, runner_id, stored);
-    log.debug("runner_policy_assigned", .{ .runner_id = runner_id, .sandbox_tier = @tagName(stored.sandbox_tier), .network_policy = @tagName(stored.network_policy), .worker_count = stored.worker_count });
+    log.debug("runner_policy_assigned", .{ .runner_id = runner_id, .sandbox_tier = @tagName(stored.sandbox_tier), .network_policy = @tagName(stored.network_policy), .worker_count = stored.worker_count, .degraded = verdict.degraded });
     hx.ok(.ok, protocol.RunnerAdminPatchResponse{ .id = runner_id, .admin_state = current, .assigned_policy = stored });
-}
-
-/// Re-reconcile the fresh assignment against the stored capability report so a
-/// tightened policy degrades the row NOW — the lease gate must never issue
-/// work on a verdict computed for the previous assignment. Best-effort: a read
-/// failure leaves the verdict to the next heartbeat (which self-heals it).
-fn reconcileNow(hx: Hx, conn: *pg.Conn, runner_id: []const u8, stored: protocol.AssignedPolicy) void {
-    const cap = readCapability(hx, conn, runner_id);
-    const verdict = reconcile.reconcile(stored, cap);
-    _ = conn.exec(runner_sql.UPDATE_RUNNER_VERDICT, .{ runner_id, verdict.degraded, verdict.reason, clock.nowMillis() }) catch |err| {
-        log.warn("patch_verdict_persist_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .runner_id = runner_id, .err = @errorName(err) });
-    };
 }
 
 fn readCapability(hx: Hx, conn: *pg.Conn, runner_id: []const u8) ?protocol.CapabilityReport {
