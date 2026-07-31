@@ -28,6 +28,7 @@ test {
     _ = @import("child_supervisor_test.zig");
     _ = @import("credential_mint_e2e_test.zig");
     _ = @import("child_process.zig");
+    _ = @import("child_process_test.zig");
     _ = @import("child_exec.zig");
     _ = @import("cmd/version.zig");
     _ = @import("cmd/args.zig");
@@ -47,6 +48,7 @@ test {
     _ = @import("engine/context_budget.zig");
     _ = @import("engine/tool_bridge.zig");
     _ = @import("engine/CgroupScope.zig");
+    _ = @import("engine/cgroup_scope_test.zig");
     _ = @import("engine/landlock.zig");
     _ = @import("engine/seccomp.zig");
     _ = @import("engine/stream_redactor.zig");

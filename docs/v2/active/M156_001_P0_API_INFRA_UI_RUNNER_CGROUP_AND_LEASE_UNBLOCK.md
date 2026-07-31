@@ -103,16 +103,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 Host capability is knowable the moment the daemon starts; nothing about it depends on which policy the control plane later assigns. Moving enablement to startup makes `subtree_control` a post-condition of an active unit, which is what the readiness gate and the capability probe both already assume. **Implementation default:** enablement runs unconditionally on Linux at startup and a failure is logged and non-fatal, because a `dev_none` host builds no cage and must still start; the leasing refusal stays where it is, driven by the reconciliation.
 
 - **Dimension 1.1** — On Linux, startup writes the controller set to the delegated base before the control loop begins → Test `test_startup_enables_delegated_controllers`
-- **Dimension 1.2** — A cgroup base that is not delegated is classified distinctly from a write failure → Test `test_not_delegated_is_distinct_from_write_failure`
+- **Dimension 1.2** — **DONE** — A cgroup base that is not delegated is classified distinctly from a write failure → Test `test_not_delegated_is_distinct_from_write_failure`
 - **Dimension 1.3** — Enablement is idempotent across a restart → Test `test_enable_controllers_is_idempotent`
-- **Dimension 1.4** — The lazy call site and its one-shot gate field no longer exist → Test `test_policy_apply_has_no_controller_gate`
+- **Dimension 1.4** — **DONE** — The lazy call site and its one-shot gate field no longer exist → Test `test_policy_apply_has_no_controller_gate`
 
 ### §2 — A lease can load its config under systemd
 
 The daemon runs with the environment systemd gives it, which contains no `HOME`. The passthrough allowlist forwards `HOME` only when the daemon has it set, so the sandboxed child inherits nothing and its config load fails closed — killing every lease at init. The unit is the right place to fix it: the allowlist is already correct. **Implementation default:** the unit sets `HOME` to a root-owned directory that exists on a bare-metal host, because the daemon runs without a `User=` and systemd supplies no home for it.
 
-- **Dimension 2.1** — The unit defines `HOME` → Test `test_unit_defines_home`
-- **Dimension 2.2** — The passthrough allowlist forwards `HOME` when the daemon has it → Test `test_home_reaches_sandboxed_child`
+- **Dimension 2.1** — **DONE** — The unit defines `HOME` → Test `test_unit_defines_home`
+- **Dimension 2.2** — **DONE** — The passthrough allowlist forwards `HOME` when the daemon has it → Test `test_home_reaches_sandboxed_child`
 - **Dimension 2.3** — A lease completes without a config-load failure on a host with the unit installed → Test `test_lease_runs_with_unit_environment`
 
 ### §3 — A failed config load names its cause, to the operator and to the user

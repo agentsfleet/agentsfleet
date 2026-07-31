@@ -140,8 +140,10 @@ pub fn executeInner(
     hydrated_memory: []const protocol.MemoryDelta,
 ) !InnerResult {
     // 1. Build config from env defaults + fleet_config overrides.
-    var cfg = Config.load(alloc) catch {
-        log.err("config_load_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
+    // Name the error: in the sandboxed child the usual cause is an environment
+    // the cage did not carry (NoHomeDir when HOME is unset on the daemon).
+    var cfg = Config.load(alloc) catch |err| {
+        log.err("config_load_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         return RunnerError.FleetInitFailed;
     };
     defer cfg.deinit();
