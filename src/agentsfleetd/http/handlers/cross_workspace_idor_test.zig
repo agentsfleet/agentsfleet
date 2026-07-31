@@ -238,7 +238,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         // is absent does not crash anything; the field is only read by the
         // auth-session handlers.
         .session_store = undefined,
-        .verifier = oidc.Verifier.init(alloc, .{ .provider = .clerk, .jwks_url = TEST_JWKS_URL, .issuer = TEST_ISSUER, .audience = TEST_AUDIENCE, .inline_jwks_json = TEST_JWKS }),
+        .verifier = try oidc.Verifier.init(alloc, .{ .provider = .clerk, .jwks_url = TEST_JWKS_URL, .issuer = TEST_ISSUER, .audience = TEST_AUDIENCE, .inline_jwks_json = TEST_JWKS }),
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .registry = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.

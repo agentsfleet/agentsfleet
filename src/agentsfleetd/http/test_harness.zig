@@ -207,7 +207,7 @@ pub const TestHarness = struct {
             // captures the stable pointer; the pointee is initialized before any
             // auth-session handler reads it.
             .session_store = undefined,
-            .verifier = oidc.Verifier.init(alloc, .{
+            .verifier = try oidc.Verifier.init(alloc, .{
                 .provider = .clerk,
                 .jwks_url = "https://test.invalid/jwks",
                 .issuer = cfg.issuer,

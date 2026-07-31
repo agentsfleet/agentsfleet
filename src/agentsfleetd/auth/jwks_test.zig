@@ -30,7 +30,7 @@ const WRONG_KID_JWKS =
     \\{"keys":[{"kty":"RSA","kid":"wrong-kid","use":"sig","alg":"RS256","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB"}]}
 ;
 
-fn makeTestVerifier(inline_jwks: ?[]const u8) Verifier {
+fn makeTestVerifier(inline_jwks: ?[]const u8) error{OutOfMemory}!Verifier {
     return Verifier.init(std.testing.allocator, .{
         .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
         .issuer = "https://clerk.dev.agentsfleet.net",
@@ -133,7 +133,7 @@ test "parseJwks: non-RSA key is skipped" {
 // ── Full verifyAndDecode edge cases ────────────────────────────────────
 
 test "verifyAndDecode: valid token" {
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     const vc = try v.verifyAndDecode(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN);
     defer freeClaims(vc);
@@ -142,25 +142,25 @@ test "verifyAndDecode: valid token" {
 }
 
 test "verifyAndDecode: expired token" {
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.TokenExpired, v.verifyAndDecode(std.testing.allocator, "Bearer " ++ TEST_EXPIRED_TOKEN));
 }
 
 test "verifyAndDecode: missing Authorization header" {
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.InvalidAuthorization, v.verifyAndDecode(std.testing.allocator, ""));
 }
 
 test "verifyAndDecode: garbage token" {
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.InvalidAuthorization, v.verifyAndDecode(std.testing.allocator, "not-a-bearer"));
 }
 
 test "verifyAndDecode: Bearer with no token" {
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.InvalidAuthorization, v.verifyAndDecode(std.testing.allocator, "Bearer "));
 }
@@ -168,14 +168,14 @@ test "verifyAndDecode: Bearer with no token" {
 test "verifyAndDecode: token with wrong kid" {
     // The forced kid-miss refresh re-reads the same wrong-kid key set, so the
     // outcome is still JwkNotFound — pins that a refresh is not a free pass.
-    var v = makeTestVerifier(WRONG_KID_JWKS);
+    var v = try makeTestVerifier(WRONG_KID_JWKS);
     defer v.deinit();
     try std.testing.expectError(VerifyError.JwkNotFound, v.verifyAndDecode(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN));
 }
 
 test "verifyAndDecode: kid miss on fresh cache forces refresh (key rotation)" {
     const alloc = std.testing.allocator;
-    var v = makeTestVerifier(WRONG_KID_JWKS);
+    var v = try makeTestVerifier(WRONG_KID_JWKS);
     defer v.deinit();
     // Prime the cache with the pre-rotation key set (token's kid absent).
     try v.checkJwksConnectivity();
@@ -190,7 +190,7 @@ test "verifyAndDecode: kid miss on fresh cache forces refresh (key rotation)" {
 
 test "verifyAndDecode: kid-miss refresh is rate-limited within the window" {
     const alloc = std.testing.allocator;
-    var v = makeTestVerifier(WRONG_KID_JWKS);
+    var v = try makeTestVerifier(WRONG_KID_JWKS);
     defer v.deinit();
     try v.checkJwksConnectivity();
     alloc.free(v.inline_jwks_json.?);
@@ -208,7 +208,7 @@ test "verifyAndDecode: kid-miss refresh is rate-limited within the window" {
 
 test "verifyAndDecode: failed refresh serves stale keys (identity provider down)" {
     const alloc = std.testing.allocator;
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     try v.checkJwksConnectivity();
     // Identity provider goes dark: no inline fixture, no fetchable URL.
@@ -226,13 +226,13 @@ test "verifyAndDecode: failed refresh serves stale keys (identity provider down)
 
 test "verifyAndDecode: no cache and unreachable endpoint fails closed" {
     const alloc = std.testing.allocator;
-    var v = Verifier.init(alloc, .{ .jwks_url = "" });
+    var v = try Verifier.init(alloc, .{ .jwks_url = "" });
     defer v.deinit();
     try std.testing.expectError(VerifyError.JwksFetchFailed, v.verifyAndDecode(alloc, "Bearer " ++ TEST_VALID_TOKEN));
 }
 
 test "concurrent verifies on a cold cache fetch exactly once (single-flight)" {
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
 
     const THREADS = 8;
@@ -256,7 +256,7 @@ test "concurrent verifies on a cold cache fetch exactly once (single-flight)" {
 }
 
 test "verifyAndDecode: audience mismatch" {
-    var v = Verifier.init(std.testing.allocator, .{
+    var v = try Verifier.init(std.testing.allocator, .{
         .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
         .issuer = "https://clerk.dev.agentsfleet.net",
         .audience = "https://wrong-audience.example.com",
@@ -267,7 +267,7 @@ test "verifyAndDecode: audience mismatch" {
 }
 
 test "verifyAndDecode: issuer mismatch" {
-    var v = Verifier.init(std.testing.allocator, .{
+    var v = try Verifier.init(std.testing.allocator, .{
         .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
         .issuer = "https://wrong-issuer.example.com",
         .audience = "https://api.agentsfleet.net",
@@ -280,7 +280,7 @@ test "verifyAndDecode: issuer mismatch" {
 test "verifyAndDecode: tampered payload (signature invalid)" {
     // Take valid token, modify one char in the payload segment
     const tampered = TEST_HEADER ++ "." ++ "eXJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJpYXQiOjE3MDQwNjcyMDAsIm9yZ19pZCI6Im9yZ18xIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoidGVuYW50X2EifSwiZXhwIjo0MTAyNDQ0ODAwfQ" ++ "." ++ TEST_SIG_VALID;
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     const result = v.verifyAndDecode(std.testing.allocator, "Bearer " ++ tampered);
     // Could be SignatureInvalid or TokenMalformed depending on what the tampered base64 decodes to
@@ -288,7 +288,7 @@ test "verifyAndDecode: tampered payload (signature invalid)" {
 }
 
 test "verifyAndDecode: token with only two segments" {
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.TokenMalformed, v.verifyAndDecode(std.testing.allocator, "Bearer aaa.bbb"));
 }
@@ -308,7 +308,7 @@ test "decodeBase64UrlOwned: invalid characters" {
 // ── Inline JWKS and env var source tests ───────────────────────────────
 
 test "verifier uses inline JWKS over URL" {
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     // If inline JWKS works, we can verify without network. This is the happy path.
     const vc = try v.verifyAndDecode(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN);
@@ -317,7 +317,7 @@ test "verifier uses inline JWKS over URL" {
 }
 
 test "verifier with empty URL and no inline JWKS fails" {
-    var v = Verifier.init(std.testing.allocator, .{
+    var v = try Verifier.init(std.testing.allocator, .{
         .jwks_url = "",
         .issuer = "https://clerk.dev.agentsfleet.net",
     });
@@ -333,7 +333,7 @@ test "OWASP: alg:none attack rejected" {
     const header_none = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0";
     // {"sub":"admin","iss":"https://clerk.dev.agentsfleet.net","aud":"https://api.agentsfleet.net","exp":4102444800}
     const payload = "eyJzdWIiOiJhZG1pbiIsImlzcyI6Imh0dHBzOi8vY2xlcmsuZGV2LmFnZW50c2ZsZWV0Lm5ldCIsImF1ZCI6Imh0dHBzOi8vYXBpLmFnZW50c2ZsZWV0Lm5ldCIsImV4cCI6NDEwMjQ0NDgwMH0";
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     // alg:none with empty signature
     try std.testing.expectError(VerifyError.UnsupportedAlgorithm, v.verifyAndDecode(
@@ -347,7 +347,7 @@ test "OWASP: alg:HS256 switching attack rejected" {
     // {"alg":"HS256","typ":"JWT","kid":"test-kid-static"}
     const header_hs = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9";
     const payload = "eyJzdWIiOiJhZG1pbiIsImlzcyI6Imh0dHBzOi8vY2xlcmsuZGV2LmFnZW50c2ZsZWV0Lm5ldCIsImF1ZCI6Imh0dHBzOi8vYXBpLmFnZW50c2ZsZWV0Lm5ldCIsImV4cCI6NDEwMjQ0NDgwMH0";
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.UnsupportedAlgorithm, v.verifyAndDecode(
         std.testing.allocator,
@@ -361,7 +361,7 @@ test "OWASP: alg:none with kid still rejected" {
     // {"alg":"none","kid":"test-kid-static"}
     const header = "eyJhbGciOiJub25lIiwia2lkIjoidGVzdC1raWQtc3RhdGljIn0";
     const payload = "eyJzdWIiOiJ1c2VyIiwiaXNzIjoiaHR0cHM6Ly9jbGVyay5kZXYuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwfQ";
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     // Empty signature segment "." is rejected by splitJwt before alg check
     const result = v.verifyAndDecode(
@@ -666,7 +666,7 @@ test "verifyAndDecode: header without kid field" {
     // {"alg":"RS256","typ":"JWT"} — no kid
     const header_no_kid = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9";
     const payload = "eyJzdWIiOiJ1c2VyIiwiaXNzIjoiaHR0cHM6Ly9jbGVyay5kZXYuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwfQ";
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.MissingKeyId, v.verifyAndDecode(
         std.testing.allocator,
@@ -677,14 +677,14 @@ test "verifyAndDecode: header without kid field" {
 test "verifyAndDecode: header is not valid JSON" {
     // "not json" base64url encoded
     const bad_header = "bm90IGpzb24";
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     const result = v.verifyAndDecode(std.testing.allocator, "Bearer " ++ bad_header ++ ".cGF5bG9hZA.c2ln");
     try std.testing.expect(std.meta.isError(result));
 }
 
 test "verifyAndDecode: completely empty bearer value" {
-    var v = makeTestVerifier(null);
+    var v = try makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.InvalidAuthorization, v.verifyAndDecode(std.testing.allocator, "Bearer  "));
 }
@@ -747,10 +747,77 @@ test "jwks fetch frees the partial body when the endpoint dies mid-stream" {
 
     var url_buf: [48]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/jwks.json", .{port});
-    var v = Verifier.init(std.testing.allocator, .{ .jwks_url = url });
+    var v = try Verifier.init(std.testing.allocator, .{ .jwks_url = url });
     defer v.deinit();
     const r = v.checkJwksConnectivity();
     server.join();
     // testing.allocator's leak detector is the real assertion here.
     try std.testing.expectError(VerifyError.JwksFetchFailed, r);
+}
+
+// A JWKS endpoint that streams far past the named cap: the client must
+// reject at JWKS_MAX_RESPONSE_BYTES instead of accumulating without bound.
+const OverCapJwksServer = struct {
+    const TOTAL_BYTES: usize = 300 * 1024; // past the 256 KiB cap
+
+    fn run(listener: *std.Io.net.Server, io: std.Io) void {
+        const conn = listener.accept(io) catch return;
+        defer conn.close(io);
+        var buf: [2048]u8 = undefined;
+        _ = std.posix.read(conn.socket.handle, &buf) catch return;
+        const head: []const u8 = "HTTP/1.1 200 OK\r\ncontent-length: 307200\r\n\r\n";
+        writeAllFd(conn.socket.handle, head) catch return;
+        const filler = [_]u8{'x'} ** 4096;
+        var sent: usize = 0;
+        while (sent < TOTAL_BYTES) : (sent += filler.len) {
+            // The client hangs up at the cap; the resulting write error ends us.
+            writeAllFd(conn.socket.handle, &filler) catch return;
+        }
+    }
+
+    fn writeAllFd(fd: std.posix.fd_t, bytes: []const u8) !void {
+        var sent: usize = 0;
+        while (sent < bytes.len) {
+            const rc = std.posix.system.write(fd, bytes[sent..].ptr, bytes.len - sent);
+            if (std.posix.errno(rc) != .SUCCESS) return error.WriteFailed;
+            sent += @intCast(rc);
+        }
+    }
+};
+
+test "jwks fetch rejects a response larger than the named cap" {
+    const io = common.globalIo();
+    var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", 0) catch return error.SkipZigTest;
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, OverCapJwksServer.run, .{ &listener, io }) catch return error.SkipZigTest;
+
+    var url_buf: [48]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/jwks.json", .{port});
+    var v = try Verifier.init(std.testing.allocator, .{ .jwks_url = url });
+    defer v.deinit();
+    const r = v.checkJwksConnectivity();
+    server.join();
+    // The cap rejection surfaces as a fetch failure; the accumulated prefix
+    // is freed (testing.allocator's leak detector is the second assertion).
+    try std.testing.expectError(VerifyError.JwksFetchFailed, r);
+}
+
+test "verifier init survives allocation failure without leaking (no panic)" {
+    // Boot-path OOM is an error the caller reports, never a process abort:
+    // the sweep proves both the error return and the errdefer ladder across
+    // the four config dupes.
+    const Probe = struct {
+        fn run(alloc: std.mem.Allocator) !void {
+            var v = try Verifier.init(alloc, .{
+                .jwks_url = "https://idp.example/jwks.json",
+                .issuer = "https://idp.example",
+                .audience = "https://api.example",
+                .inline_jwks_json = "{\"keys\":[]}",
+            });
+            v.deinit();
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{});
 }

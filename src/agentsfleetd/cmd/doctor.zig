@@ -275,7 +275,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
                 if (oidc_provider) |provider| {
                     try appendFmtCheck(alloc, &results, S_OIDC_PROVIDER, true, &ok, "OIDC_PROVIDER={s}", .{@tagName(provider)});
                 }
-                var verifier = oidc_auth.Verifier.init(alloc, .{ .provider = oidc_provider orelse .clerk, .jwks_url = url });
+                var verifier = try oidc_auth.Verifier.init(alloc, .{ .provider = oidc_provider orelse .clerk, .jwks_url = url });
                 defer verifier.deinit();
                 var jwks_ok = true;
                 verifier.checkJwksConnectivity() catch {

@@ -10,11 +10,10 @@ const ec = @import("auth_codes");
 const jwks_types = @import("jwks_types.zig");
 const jwks_token = @import("jwks_token.zig");
 const jwks_crypto = @import("jwks_crypto.zig");
+const jwks_fetch = @import("jwks_fetch.zig");
 const MS_PER_SECOND = 1000;
 
 const log = logging.scoped(.auth);
-
-const PANIC_OOM = "oom";
 
 pub const VerifyError = jwks_types.VerifyError;
 pub const VerifiedClaims = jwks_types.VerifiedClaims;
@@ -76,13 +75,21 @@ pub const Verifier = struct {
     last_refresh_attempt_ms: i64 = 0,
     refresh_fetch_count: u64 = 0,
 
-    pub fn init(alloc: std.mem.Allocator, cfg: Config) Verifier {
+    pub fn init(alloc: std.mem.Allocator, cfg: Config) error{OutOfMemory}!Verifier {
+        // Boot-path OOM is an error the caller reports, never a process abort.
+        const jwks_url = try alloc.dupe(u8, cfg.jwks_url);
+        errdefer alloc.free(jwks_url);
+        const issuer = if (cfg.issuer) |v| try alloc.dupe(u8, v) else null;
+        errdefer if (issuer) |v| alloc.free(v);
+        const audience = if (cfg.audience) |v| try alloc.dupe(u8, v) else null;
+        errdefer if (audience) |v| alloc.free(v);
+        const inline_jwks_json = if (cfg.inline_jwks_json) |v| try alloc.dupe(u8, v) else null;
         return .{
             .alloc = alloc,
-            .jwks_url = alloc.dupe(u8, cfg.jwks_url) catch @panic(PANIC_OOM),
-            .issuer = if (cfg.issuer) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
-            .audience = if (cfg.audience) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
-            .inline_jwks_json = if (cfg.inline_jwks_json) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
+            .jwks_url = jwks_url,
+            .issuer = issuer,
+            .audience = audience,
+            .inline_jwks_json = inline_jwks_json,
             .cache_ttl_ms = cfg.cache_ttl_ms,
         };
     }
@@ -255,25 +262,13 @@ pub const Verifier = struct {
 
         if (self.jwks_url.len == 0) return VerifyError.JwksFetchFailed;
 
-        // JWKS fetch is cached (TTL) so this runs rarely — a blocking one-shot
-        // GET on the process-global io is appropriate.
-        var client: std.http.Client = .{ .allocator = self.alloc, .io = common.globalIo() };
-        defer client.deinit();
-
-        // The defer also covers the fetch-error and non-ok paths, where the
-        // partially-written body would otherwise be abandoned; after a
-        // successful toOwnedSlice it frees an empty writer (no-op).
-        var aw: std.Io.Writer.Allocating = .init(self.alloc);
-        defer aw.deinit();
-
-        const result = client.fetch(.{
-            .location = .{ .url = self.jwks_url },
-            .method = .GET,
-            .response_writer = &aw.writer,
-        }) catch return VerifyError.JwksFetchFailed;
-
-        if (result.status != .ok) return VerifyError.JwksFetchFailed;
-        return aw.toOwnedSlice() catch return VerifyError.JwksFetchFailed;
+        // Capped, redirect-following GET (jwks_fetch.zig): the identity
+        // provider URL is config-controlled, so the read is bounded by a
+        // named cap, never trusted.
+        return jwks_fetch.fetchCapped(self.alloc, self.jwks_url) catch |err| switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => VerifyError.JwksFetchFailed,
+        };
     }
 };
 

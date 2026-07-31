@@ -98,10 +98,10 @@ pub const Verifier = struct {
     provider: Provider,
     inner: jwks.Verifier,
 
-    pub fn init(alloc: std.mem.Allocator, cfg: Config) Verifier {
+    pub fn init(alloc: std.mem.Allocator, cfg: Config) error{OutOfMemory}!Verifier {
         return .{
             .provider = cfg.provider,
-            .inner = jwks.Verifier.init(alloc, .{
+            .inner = try jwks.Verifier.init(alloc, .{
                 .jwks_url = cfg.jwks_url,
                 .issuer = cfg.issuer,
                 .audience = cfg.audience,
@@ -163,7 +163,7 @@ const TEST_VALID_TOKEN =
 test "verifyAuthorization happy path via vendor-neutral oidc facade" {
     const providers = [_]Provider{ .clerk, .custom };
     for (providers) |provider| {
-        var verifier = Verifier.init(std.testing.allocator, .{
+        var verifier = try Verifier.init(std.testing.allocator, .{
             .provider = provider,
             .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
             .issuer = "https://clerk.dev.agentsfleet.net",
@@ -188,7 +188,7 @@ test "verifyAuthorization happy path via vendor-neutral oidc facade" {
 }
 
 test "verifyAuthorization rejects invalid jwt_oidc token" {
-    var verifier = Verifier.init(std.testing.allocator, .{
+    var verifier = try Verifier.init(std.testing.allocator, .{
         .provider = .clerk,
         .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
         .issuer = "https://clerk.dev.agentsfleet.net",
@@ -220,7 +220,7 @@ test "parseProvider is case-insensitive and supportedProviderList is stable" {
 test "verifyAuthorization returns null scopes when token has no scope claim" {
     const providers = [_]Provider{ .clerk, .custom };
     for (providers) |provider| {
-        var verifier = Verifier.init(std.testing.allocator, .{
+        var verifier = try Verifier.init(std.testing.allocator, .{
             .provider = provider,
             .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
             .issuer = "https://clerk.dev.agentsfleet.net",
