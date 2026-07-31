@@ -256,3 +256,9 @@ test "sliceRatesWithoutCatalogue: which branches price without a catalogue read"
     // ever returned a value, the platform branch would price from a constant.
     try std.testing.expect(sliceRatesWithoutCatalogue(.platform, POST_TRIAL_NOW_MS) == null);
 }
+
+test "tenant billing error table validates at comptime (pin relocated beside its owner)" {
+    comptime {
+        _ = billing; // comptime validation runs on import
+    }
+}

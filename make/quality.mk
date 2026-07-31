@@ -59,9 +59,9 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 	@echo "✓ [agentsfleet] Lint passed"
 
 _lint_zig_pg_drain:
-	@echo "→ [zig] Checking pg query drain discipline..."
+	@echo "→ [zig] Checking pg drain + allocating-writer discipline..."
 	@python3 lint-zig.py src
-	@echo "✓ [zig] pg-drain check passed"
+	@echo "✓ [zig] pg-drain + allocating-writer checks passed"
 
 # Roster-scoped ghostty-derived discipline (A5 poison + ownership phrase blocking
 # inside audits/zig-discipline-roster.txt; A2 errdefer heuristic advisory), plus

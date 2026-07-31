@@ -149,3 +149,7 @@ test "integration: PgQuery with RETURNING clause from DML" {
     try std.testing.expect(id > 0);
     try std.testing.expectEqualStrings("hello", try row.get([]const u8, 1));
 }
+
+test "PgQuery size pinned at 8 bytes (single pointer)" {
+    try std.testing.expectEqual(@as(usize, 8), @sizeOf(PgQuery));
+}

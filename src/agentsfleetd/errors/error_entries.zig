@@ -57,7 +57,7 @@ pub const UNKNOWN = Entry{
     .docs_uri = ERROR_DOCS_BASE ++ S_UZ_INTERNAL_003,
 };
 
-fn e(
+pub fn e(
     comptime code: []const u8,
     comptime status: std.http.Status,
     comptime title: []const u8,
@@ -74,7 +74,7 @@ fn e(
 
 /// Like e(), plus a curated `user_message` — see the module doc for when to
 /// reach for this instead of e().
-fn eu(
+pub fn eu(
     comptime code: []const u8,
     comptime status: std.http.Status,
     comptime title: []const u8,

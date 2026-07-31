@@ -19,6 +19,7 @@ const std = @import("std");
 const constants = @import("common");
 const logging = @import("log");
 const ec = @import("auth_codes");
+const worker_slots = @import("clerk_fetch_worker.zig");
 
 const log = logging.scoped(.clerk_backend);
 
@@ -75,62 +76,9 @@ pub fn patchUserPublicMetadata(
     return postMetadataMerge(alloc, url, auth_header, payload);
 }
 
-/// Split out so tests can drive the payload shape without an HTTP client.
-pub fn renderMetadataPayload(
-    alloc: std.mem.Allocator,
-    tenant_id: ?[]const u8,
-    scopes: ?[]const u8,
-) PatchError![]u8 {
-    var aw: std.Io.Writer.Allocating = .init(alloc);
-    defer aw.deinit();
-    const w = &aw.writer;
-
-    w.writeAll("{\"public_metadata\":{") catch return PatchError.SerializationFailed;
-    var first = true;
-    if (tenant_id) |v| {
-        writeJsonKeyValue(w, &first, "tenant_id", v) catch return PatchError.SerializationFailed;
-    }
-    if (scopes) |v| {
-        writeJsonKeyValue(w, &first, "scopes", v) catch return PatchError.SerializationFailed;
-    }
-    w.writeAll("}}") catch return PatchError.SerializationFailed;
-    return aw.toOwnedSlice() catch return PatchError.OutOfMemory;
-}
-
-fn writeJsonKeyValue(w: anytype, first: *bool, key: []const u8, value: []const u8) !void {
-    if (!first.*) try w.writeAll(",");
-    first.* = false;
-    try w.writeAll("\"");
-    try w.writeAll(key);
-    try w.writeAll("\":\"");
-    try writeJsonEscaped(w, value);
-    try w.writeAll("\"");
-}
-
-/// Minimal JSON string-body escaper. Our values are either UUID v7
-/// strings (`0195b4ba-…`, no special chars) or the space-delimited scope
-/// claim (`"fleet:admin credential:write …"`, ASCII). Escaping `"`, `\`,
-/// and ASCII control chars is sufficient — we never pass non-ASCII or
-/// Unicode surrogate pairs through this path.
-fn writeJsonEscaped(w: anytype, value: []const u8) !void {
-    for (value) |c| switch (c) {
-        '"' => try w.writeAll("\\\""),
-        '\\' => try w.writeAll("\\\\"),
-        '\n' => try w.writeAll("\\n"),
-        '\r' => try w.writeAll("\\r"),
-        '\t' => try w.writeAll("\\t"),
-        // All ASCII control bytes outside the explicit \n/\r/\t branches,
-        // plus DEL (0x7f). JSON permits bare DEL but downstream log
-        // pipelines + operator consoles routinely choke on it, so we
-        // escape defensively.
-        0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F, 0x7F => {
-            var buf: [7]u8 = undefined;
-            const hex = std.fmt.bufPrint(&buf, "\\u{x:0>4}", .{c}) catch @panic("bufPrint failed: stack buffer sized incorrectly at compile time");
-            try w.writeAll(hex);
-        },
-        else => try w.writeAll(&[_]u8{c}),
-    };
-}
+/// Payload rendering lives in clerk_metadata_payload.zig (pure, split by
+/// concern); re-exported here so consumers keep one import surface.
+pub const renderMetadataPayload = @import("clerk_metadata_payload.zig").renderMetadataPayload;
 
 /// Work item owned exclusively by the detached worker thread. The worker
 /// runs the HTTP fetch, logs the outcome, increments a metric on failure,
@@ -155,6 +103,7 @@ fn freeFetchJob(job: *FetchJob) void {
 }
 
 fn fetchWorker(job: *FetchJob) void {
+    defer worker_slots.releaseSlot();
     defer freeFetchJob(job);
     runFetchBlocking(std.heap.c_allocator, job.url, job.auth_header, job.payload) catch |err| {
         log.warn("fetch_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .url = job.url });
@@ -182,6 +131,18 @@ fn postMetadataMerge(
     _ = _caller_alloc;
     const stable = std.heap.c_allocator;
 
+    // Bounded fire-and-forget: claim a slot before allocating anything. A
+    // burst beyond the budget drops the metadata write (best-effort, dashboard
+    // -repairable) instead of growing detached threads without limit.
+    if (!worker_slots.tryAcquireSlot()) {
+        log.warn("fetch_rejected_at_bound", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .bound = worker_slots.MAX_IN_FLIGHT_FETCHES,
+        });
+        return PatchError.RequestFailed;
+    }
+    errdefer worker_slots.releaseSlot();
+
     const job = try prepareFetchJob(stable, url, auth_header, payload);
     errdefer freeFetchJob(job);
 
@@ -190,9 +151,8 @@ fn postMetadataMerge(
         return PatchError.RequestFailed;
     };
     thread.detach();
-    // Worker owns `job` now — erdefer above is not invoked because
-    // spawn succeeded, and no further error paths remain in this
-    // function.
+    // Worker owns `job` and the slot now — the errdefers above are not
+    // invoked because spawn succeeded, and no error paths remain here.
 }
 
 /// Build a fully-initialized `*FetchJob` or bubble up OutOfMemory. All
@@ -233,21 +193,19 @@ fn runFetchBlocking(
     var client: std.http.Client = .{ .allocator = alloc, .io = constants.globalIo() };
     defer client.deinit();
 
-    var body: std.ArrayList(u8) = .empty;
-    defer body.deinit(alloc);
-    var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
-
     const headers: [2]std.http.Header = .{
         .{ .name = "content-type", .value = "application/json" },
         .{ .name = "authorization", .value = auth_header },
     };
 
+    // Only the status is inspected; omitting response_writer makes fetch
+    // stream-and-discard the body, so nothing is retained regardless of how
+    // large Clerk's response is.
     const result = client.fetch(.{
         .location = .{ .url = url },
         .method = METADATA_HTTP_METHOD,
         .payload = payload,
         .extra_headers = &headers,
-        .response_writer = &aw.writer,
     }) catch |err| return mapFetchError(err);
 
     return mapStatus(@intFromEnum(result.status), url);
@@ -279,6 +237,67 @@ fn mapFetchError(err: anyerror) PatchError {
         => PatchError.ConnectFailed,
         else => PatchError.RequestFailed,
     };
+}
+
+// In-file tests: runFetchBlocking is deliberately private, and the property
+// under proof is allocator-visible only from inside this module.
+fn testBoundPort(handle: std.Io.net.Socket.Handle) !u16 {
+    // SAFETY: getsockname fills sa before sa.port is read on success.
+    var sa: std.posix.sockaddr.in = undefined;
+    var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
+    if (std.c.getsockname(handle, @ptrCast(&sa), &len) != 0) return error.GetSockNameFailed;
+    return std.mem.bigToNative(u16, sa.port);
+}
+
+const TestOkServer = struct {
+    fn run(listener: *std.Io.net.Server, io: std.Io) void {
+        const conn = listener.accept(io) catch return;
+        defer conn.close(io);
+        var buf: [2048]u8 = undefined;
+        _ = std.posix.read(conn.socket.handle, &buf) catch return;
+        const resp: []const u8 = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok";
+        var sent: usize = 0;
+        while (sent < resp.len) {
+            const rc = std.posix.system.write(conn.socket.handle, resp[sent..].ptr, resp.len - sent);
+            if (std.posix.errno(rc) != .SUCCESS) return;
+            sent += @intCast(rc);
+        }
+    }
+};
+
+test "burst beyond the worker budget is rejected before any allocation" {
+    // Saturate the shared slot budget, then submit: the reject fires before
+    // the job is built, so nothing is allocated and nothing is spawned.
+    var claimed: u32 = 0;
+    while (worker_slots.tryAcquireSlot()) claimed += 1;
+    defer {
+        var i: u32 = 0;
+        while (i < claimed) : (i += 1) worker_slots.releaseSlot();
+    }
+    const r = postMetadataMerge(std.testing.allocator, "http://127.0.0.1:9/u", "Bearer t", "{}");
+    try std.testing.expectError(PatchError.RequestFailed, r);
+}
+
+test "fetch error path retains nothing under the leak-detecting allocator" {
+    // Connection refused: the fetch owns no accumulator at all, so the
+    // testing.allocator leak detector proves the error path retains nothing.
+    const r = runFetchBlocking(std.testing.allocator, "http://127.0.0.1:9/users/u/metadata", "Bearer t", "{}");
+    if (r) |_| return error.TestUnexpectedResult else |_| {}
+}
+
+test "fetch success path retains nothing under the leak-detecting allocator" {
+    const io = constants.globalIo();
+    var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", 0) catch return error.SkipZigTest;
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = testBoundPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, TestOkServer.run, .{ &listener, io }) catch return error.SkipZigTest;
+
+    var url_buf: [64]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/users/u/metadata", .{port});
+    const r = runFetchBlocking(std.testing.allocator, url, "Bearer t", "{}");
+    server.join();
+    try r; // 200 → success; the response body was streamed and discarded
 }
 
 test {

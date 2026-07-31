@@ -57,6 +57,28 @@ pub fn resolveRedisUrl(env_map: *const EnvMap, alloc: std.mem.Allocator, role: r
     return url;
 }
 
+const SCHEME_PLAIN = "redis://";
+const SCHEME_TLS = "rediss://";
+
+fn restAfterScheme(url: []const u8) ?[]const u8 {
+    if (std.mem.startsWith(u8, url, SCHEME_PLAIN)) return url[SCHEME_PLAIN.len..];
+    if (std.mem.startsWith(u8, url, SCHEME_TLS)) return url[SCHEME_TLS.len..];
+    return null;
+}
+
+/// Username in the URL's userinfo — the single extraction `parseRedisUrl` and
+/// the doctor's ACL parity check share, so the two can never drift. Colonless
+/// userinfo is a password for the default user (Redis AUTH convention), so the
+/// username is null there. Returns a slice into `url`.
+pub fn usernameFromUrl(url: []const u8) ?[]const u8 {
+    const rest = restAfterScheme(url) orelse return null;
+    const at = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return null;
+    const userpass = rest[0..at];
+    const colon = std.mem.indexOfScalar(u8, userpass, ':') orelse return null;
+    if (colon == 0) return null;
+    return userpass[0..colon];
+}
+
 pub fn parseRedisUrl(alloc: std.mem.Allocator, url: []const u8) !Config {
     var host_owned: ?[]u8 = null;
     var username_owned: ?[]u8 = null;
@@ -69,19 +91,14 @@ pub fn parseRedisUrl(alloc: std.mem.Allocator, url: []const u8) !Config {
         if (password_owned) |v| alloc.free(v);
     }
 
-    const rest = if (std.mem.startsWith(u8, url, "redis://")) blk: {
-        cfg.use_tls = false;
-        break :blk url["redis://".len..];
-    } else if (std.mem.startsWith(u8, url, "rediss://")) blk: {
-        cfg.use_tls = true;
-        break :blk url["rediss://".len..];
-    } else return error.InvalidRedisUrl;
+    const rest = restAfterScheme(url) orelse return error.InvalidRedisUrl;
+    cfg.use_tls = std.mem.startsWith(u8, url, SCHEME_TLS);
 
     const at_pos = std.mem.lastIndexOfScalar(u8, rest, '@');
     const hostpath = if (at_pos) |at| blk: {
         const userpass = rest[0..at];
+        if (usernameFromUrl(url)) |u| username_owned = try alloc.dupe(u8, u);
         if (std.mem.indexOfScalar(u8, userpass, ':')) |colon| {
-            if (colon > 0) username_owned = try alloc.dupe(u8, userpass[0..colon]);
             password_owned = try alloc.dupe(u8, userpass[colon + 1 ..]);
         } else {
             password_owned = try alloc.dupe(u8, userpass);

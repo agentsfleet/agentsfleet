@@ -98,10 +98,10 @@ pub const Verifier = struct {
     provider: Provider,
     inner: jwks.Verifier,
 
-    pub fn init(alloc: std.mem.Allocator, cfg: Config) Verifier {
+    pub fn init(alloc: std.mem.Allocator, cfg: Config) error{OutOfMemory}!Verifier {
         return .{
             .provider = cfg.provider,
-            .inner = jwks.Verifier.init(alloc, .{
+            .inner = try jwks.Verifier.init(alloc, .{
                 .jwks_url = cfg.jwks_url,
                 .issuer = cfg.issuer,
                 .audience = cfg.audience,
@@ -125,6 +125,9 @@ pub const Verifier = struct {
         errdefer {
             alloc.free(verified.subject);
             alloc.free(verified.issuer);
+            // Only the extract calls below can error before the success-path
+            // free at the end of this block, so this never double-frees.
+            alloc.free(verified.claims_json);
         }
 
         const normalized = switch (self.provider) {
@@ -151,16 +154,15 @@ pub const Verifier = struct {
     }
 };
 
-const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","kid":"test-kid-static","use":"sig","alg":"RS256","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB"}]}
-;
-const TEST_VALID_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9" ++ ".eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJpYXQiOjE3MDQwNjcyMDAsIm9yZ19pZCI6Im9yZ18xIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoidGVuYW50X2EifSwiZXhwIjo0MTAyNDQ0ODAwfQ" ++ ".pU5Y3T5yhLjleABex4K0fsyfjrxHDFa-8sjbI5hQhPHVw7P-WF_72VbWoCa9sVPi5cwGU0tbj8rZY2BMhq36_xZxwh7l4Z9SdguVGCiceDuqhhtRxA8vdPIlolrrykxAuEvlyeHRiE1uOzSvSGZZFCHvkgVK06SwC4oK1NlSgFx_cjKYbY0NychCG0XxLrl5XUoR79va4-9HGRMDYaTFRMutwMzFF_4iCbpn3RHl-qu9_RAabJrsQkeCmYYXaQKLt_aVVfrBMQWOwJDvCuTaeJcRGJefKmNdc-aM8mqBjZX9RIocD_hp5ADxY9HZdBFtGz7OAofgM2ZqVeJPkvNKfQ";
+// Single-sourced in jwks_test_fixtures.zig (Dimension 6.4).
+const test_fx = @import("jwks_test_fixtures.zig");
+const TEST_JWKS = test_fx.TEST_JWKS;
+const TEST_VALID_TOKEN = test_fx.TEST_VALID_TOKEN;
 
 test "verifyAuthorization happy path via vendor-neutral oidc facade" {
     const providers = [_]Provider{ .clerk, .custom };
     for (providers) |provider| {
-        var verifier = Verifier.init(std.testing.allocator, .{
+        var verifier = try Verifier.init(std.testing.allocator, .{
             .provider = provider,
             .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
             .issuer = "https://clerk.dev.agentsfleet.net",
@@ -185,7 +187,7 @@ test "verifyAuthorization happy path via vendor-neutral oidc facade" {
 }
 
 test "verifyAuthorization rejects invalid jwt_oidc token" {
-    var verifier = Verifier.init(std.testing.allocator, .{
+    var verifier = try Verifier.init(std.testing.allocator, .{
         .provider = .clerk,
         .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
         .issuer = "https://clerk.dev.agentsfleet.net",
@@ -217,7 +219,7 @@ test "parseProvider is case-insensitive and supportedProviderList is stable" {
 test "verifyAuthorization returns null scopes when token has no scope claim" {
     const providers = [_]Provider{ .clerk, .custom };
     for (providers) |provider| {
-        var verifier = Verifier.init(std.testing.allocator, .{
+        var verifier = try Verifier.init(std.testing.allocator, .{
             .provider = provider,
             .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
             .issuer = "https://clerk.dev.agentsfleet.net",

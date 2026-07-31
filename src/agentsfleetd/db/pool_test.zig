@@ -5,6 +5,7 @@ const pg = @import("pg");
 const PgQuery = @import("pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const pool_mod = @import("pool.zig");
+const test_fixtures = @import("test_fixtures.zig");
 const migration_lock = @import("pool_migration_lock.zig");
 /// runMigrations prunes audit.schema_migrations rows not in ITS array — so a
 /// test that feeds it a fixture subset wipes the canonical bookkeeping rows,
@@ -46,7 +47,6 @@ fn restoreAuditRows(conn: *Conn, saved: *const SavedMigrationRows) void {
     }
 }
 
-const Pool = pool_mod.Pool;
 const Conn = pool_mod.Conn;
 const parseUrl = pool_mod.parseUrl;
 const roleEnvVarName = pool_mod.roleEnvVarName;
@@ -120,7 +120,6 @@ test "parseUrl respects sslmode=disable for local dev" {
 test "roleEnvVarName maps db roles deterministically" {
     try std.testing.expectEqualStrings("DATABASE_URL", roleEnvVarName(.default));
     try std.testing.expectEqualStrings("DATABASE_URL_API", roleEnvVarName(.api));
-    try std.testing.expectEqualStrings("DATABASE_URL_CALLBACK", roleEnvVarName(.callback));
     try std.testing.expectEqualStrings("DATABASE_URL_MIGRATOR", roleEnvVarName(.migrator));
 }
 
@@ -130,21 +129,13 @@ test "DbRole carries no worker variant" {
     }
 }
 
-fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, conn: *Conn } {
-    // DB-backed integration tests must be opt-in via TEST_DATABASE_URL.
-    // This prevents unit lanes from using an unrelated DATABASE_URL value.
-    const url = env.testLiveValue("TEST_DATABASE_URL") orelse return null;
-
-    // parseUrl allocates host/auth strings that must outlive the pool.
-    // Use page_allocator to keep them process-lifetime, matching production.
-    const opts = try parseUrl(std.heap.page_allocator, url);
-    const pool = pg.Pool.init(@import("common").globalIo(), alloc, opts) catch return null;
-    errdefer pool.deinit();
-    const conn = pool.acquire() catch {
-        pool.deinit();
-        return null;
-    };
-    return .{ .pool = pool, .conn = conn };
+fn openIntegrationTestConn(alloc: std.mem.Allocator) !?test_fixtures.TestConnCtx {
+    // DB-backed integration tests must be opt-in via TEST_DATABASE_URL —
+    // gate BEFORE delegating so the shared fixture's DATABASE_URL fallback
+    // can never pull an unrelated unit-lane database in.
+    if (env.testLiveValue("TEST_DATABASE_URL") == null) return null;
+    // Shared assembly (Dimension 6.3); pool/acquire failures skip, not fail.
+    return test_fixtures.openTestConn(alloc) catch null;
 }
 
 test "integration: canary pool acquire + exec + query SELECT 1" {

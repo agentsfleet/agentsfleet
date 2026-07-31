@@ -12,8 +12,11 @@ test {
     _ = @import("audit_events.zig");
     _ = @import("claims.zig");
     _ = @import("clerk_backend.zig");
+    _ = @import("clerk_fetch_worker.zig");
+    _ = @import("clerk_metadata_payload.zig");
     _ = @import("cross_tenant_audit.zig");
     _ = @import("jwks.zig");
+    _ = @import("jwks_test_fixtures.zig");
     _ = @import("oidc.zig");
     _ = @import("principal.zig");
     _ = @import("scopes.zig");

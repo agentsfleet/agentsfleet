@@ -14,6 +14,9 @@ pub fn computeMac(secret: []const u8, parts: []const []const u8) [MAC_LEN]u8 {
     var h = HmacSha256.init(secret);
     for (parts) |p| h.update(p);
     h.final(&mac);
+    // std's final does not scrub the key pads; erase the keyed state so the
+    // dead stack frame never holds secret-derived bytes.
+    std.crypto.secureZero(u8, std.mem.asBytes(&h));
     return mac;
 }
 

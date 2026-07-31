@@ -55,14 +55,9 @@ fn tryAcquire(conn: *Conn) !bool {
     return row.get(bool, 0);
 }
 
-/// Acquire under the production bound; fails fast instead of hanging.
-pub fn acquire(conn: *Conn) !void {
-    return acquireBounded(conn, MAX_ATTEMPTS, RETRY_MS);
-}
-
-/// Acquire under an injected bound so tests fail fast (and so the production
-/// path stays a one-liner over the same loop). `error.MigrationLockUnavailable`
-/// once the bound is exhausted.
+/// Acquire under an injected bound so tests fail fast. Production passes
+/// `MAX_ATTEMPTS`/`RETRY_MS`. `error.MigrationLockUnavailable` once the
+/// bound is exhausted.
 ///
 /// A query error from `tryAcquire` (connection drop, network blip) is
 /// DELIBERATELY fatal: it propagates immediately rather than counting as a

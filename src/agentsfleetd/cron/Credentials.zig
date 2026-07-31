@@ -8,7 +8,7 @@ const pg = @import("pg");
 const secure_memory = @import("../secrets/secure_memory.zig");
 const vault = @import("../state/vault.zig");
 
-pub const VAULT_KEY = "qstash";
+const VAULT_KEY = "qstash";
 const TOKEN_FIELD = "token";
 const CURRENT_SIGNING_KEY_FIELD = "current_signing_key";
 const NEXT_SIGNING_KEY_FIELD = "next_signing_key";

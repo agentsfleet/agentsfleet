@@ -25,6 +25,7 @@ const http_pin = @import("http_pin");
 
 const integration = @import("integration.zig");
 const vault = @import("../state/vault.zig");
+const secure_memory = @import("../secrets/secure_memory.zig");
 const rs256_sign = @import("../auth/crypto/rs256_sign.zig");
 
 const log = logging.scoped(.credential_broker);
@@ -87,7 +88,9 @@ pub const Built = struct {
     pub fn deinit(self: *Built, alloc: std.mem.Allocator) void {
         if (self.github_app) |a| {
             alloc.free(a.app_id);
-            alloc.free(a.private_key_pem);
+            // Zeroize secret material on release; @constCast is sound — the
+            // pem/secret are our own mutable dupes (load paths).
+            secure_memory.freeBytes(alloc, @constCast(a.private_key_pem));
             if (a.app_slug) |s| alloc.free(s);
         }
         freeOauthApp(alloc, self.zoho_app);
@@ -99,7 +102,7 @@ pub const Built = struct {
 fn freeOauthApp(alloc: std.mem.Allocator, app: ?integration.OauthApp) void {
     if (app) |a| {
         alloc.free(a.client_id);
-        alloc.free(a.client_secret);
+        secure_memory.freeBytes(alloc, @constCast(a.client_secret));
     }
 }
 
@@ -177,9 +180,12 @@ pub const HttpClientExchange = struct {
         const auth: ?[]u8 = if (req.bearer) |b| try std.fmt.allocPrint(alloc, "Bearer {s}", .{b}) else null;
         defer if (auth) |a| alloc.free(a);
 
-        // BUFFER GATE: ArrayList(u8) for the response body — fetch streams into it.
-        var body: std.ArrayList(u8) = .empty;
-        var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
+        // BUFFER GATE: Allocating writer for the response body — fetch streams
+        // into it. The defer covers every early exit below (pin/arm refusal,
+        // fetch failure); after a successful toOwnedSlice it frees an empty
+        // writer (no-op).
+        var aw: std.Io.Writer.Allocating = .init(alloc);
+        defer aw.deinit();
 
         var headers: [4]std.http.Header = undefined;
         var n: usize = 0;

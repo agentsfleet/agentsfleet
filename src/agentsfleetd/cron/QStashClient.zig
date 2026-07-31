@@ -25,13 +25,14 @@ const DELIVERY_RETRIES = "3";
 const AUTHORIZATION_FORMAT = "Bearer {s}";
 const ENDPOINT_FORMAT = "{s}{s}{s}";
 
-const AUTHORIZATION_BUFFER_LEN: usize = 1024;
+/// Pub for the sibling suite: the oversized-token fixture derives from it.
+pub const AUTHORIZATION_BUFFER_LEN: usize = 1024;
 const CRON_HEADER_BUFFER_LEN: usize = 256;
 const RESPONSE_HEAD_BUFFER_LEN: usize = 8 * 1024;
 const RESPONSE_TRANSFER_BUFFER_LEN: usize = 4 * 1024;
 const DRAIN_CHUNK_BYTES: usize = 1024;
-pub const MAX_RESPONSE_BYTES: usize = 16 * 1024;
-pub const DEADLINE_MS: u31 = 10_000;
+const MAX_RESPONSE_BYTES: usize = 16 * 1024;
+const DEADLINE_MS: u31 = 10_000;
 
 const Scheduler = call_deadline.ProcessScheduler;
 
@@ -66,6 +67,9 @@ pub const Outcome = enum {
     rate_limited,
     unavailable,
     malformed_response,
+    /// The vault-loaded token cannot form an authorization header (oversized)
+    /// — an operator config fault, distinct from a provider reject.
+    credential_invalid,
 };
 
 pub fn init(exchange: Exchange, api_base: []const u8, destination_url: []const u8) QStashClient {
@@ -92,7 +96,7 @@ pub fn upsert(
 
     var authorization_buffer: [AUTHORIZATION_BUFFER_LEN]u8 = undefined;
     defer std.crypto.secureZero(u8, &authorization_buffer);
-    const authorization = std.fmt.bufPrint(&authorization_buffer, AUTHORIZATION_FORMAT, .{token}) catch return .invalid_request;
+    const authorization = std.fmt.bufPrint(&authorization_buffer, AUTHORIZATION_FORMAT, .{token}) catch return .credential_invalid;
     var cron_buffer: [CRON_HEADER_BUFFER_LEN]u8 = undefined;
     const cron = std.fmt.bufPrint(&cron_buffer, "CRON_TZ={s} {s}", .{ schedule.timezone, schedule.cron }) catch return .invalid_request;
     const headers = [_]std.http.Header{
@@ -125,7 +129,7 @@ pub fn delete(
     defer alloc.free(url);
     var authorization_buffer: [AUTHORIZATION_BUFFER_LEN]u8 = undefined;
     defer std.crypto.secureZero(u8, &authorization_buffer);
-    const authorization = std.fmt.bufPrint(&authorization_buffer, AUTHORIZATION_FORMAT, .{token}) catch return .invalid_request;
+    const authorization = std.fmt.bufPrint(&authorization_buffer, AUTHORIZATION_FORMAT, .{token}) catch return .credential_invalid;
     const headers = [_]std.http.Header{.{ .name = AUTHORIZATION_HEADER, .value = authorization }};
     const response = self.exchange.call(alloc, .{
         .url = url,
