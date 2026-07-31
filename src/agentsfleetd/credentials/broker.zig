@@ -54,7 +54,9 @@ const TokenVal = struct {
     expires_at_ms: i64,
 
     pub fn removedFromCache(self: *TokenVal, allocator: std.mem.Allocator) void {
-        allocator.free(self.token);
+        // @constCast is sound: the token is always our own mutable dupe
+        // (cacheMinted), typed const only for the read path.
+        secure_memory.freeBytes(allocator, @constCast(self.token));
     }
 };
 
@@ -164,8 +166,10 @@ pub fn mint(
 /// rotated refresh token when the exchange rotated it (RULE OWN: one free path
 /// per allocation, proven leak-free under `std.testing.allocator`).
 fn finishColdMint(self: *CredentialBroker, alloc: std.mem.Allocator, key: []const u8, id_name: []const u8, minted: integration.Minted, now_ms: i64) integration.MintResult {
-    defer self.alloc.free(minted.token); // runMint handed us an owned copy
-    defer if (minted.rotated_refresh_token) |rt| self.alloc.free(rt);
+    // runMint handed us owned copies; zeroize on release. The @constCast is
+    // sound: every strategy dupes into fresh mutable memory.
+    defer secure_memory.freeBytes(self.alloc, @constCast(minted.token));
+    defer if (minted.rotated_refresh_token) |rt| secure_memory.freeBytes(self.alloc, @constCast(rt));
     const tok = alloc.dupe(u8, minted.token) catch return .{ .mint_failed = .transient };
     // Degrade, don't fail, when only the ROTATED copy cannot be duped: the
     // exchange already consumed the old refresh token and the caller's access
@@ -330,6 +334,7 @@ fn parseIntegration(handle: std.json.Value) ?integration.Id {
 const std = @import("std");
 const common = @import("common");
 const cache = @import("cache");
+const secure_memory = @import("../secrets/secure_memory.zig");
 const flight = @import("broker_flight.zig");
 const integration = @import("integration.zig");
 const Spec = integration.Spec;

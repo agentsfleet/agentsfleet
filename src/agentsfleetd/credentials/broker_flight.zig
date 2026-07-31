@@ -12,6 +12,7 @@
 const CredentialBroker = @import("broker.zig");
 const common = @import("common");
 const clock = common.clock;
+const secure_memory = @import("../secrets/secure_memory.zig");
 const std = @import("std");
 
 /// How a cold-miss flight claim resolved. Only `won_registered` owns a map
@@ -85,7 +86,7 @@ pub fn cacheMinted(self: *CredentialBroker, key: []const u8, token: []const u8, 
     const owned = self.alloc.dupe(u8, token) catch return;
     self.store.put(key, .{ .token = owned, .expires_at_ms = expires_at_ms }, .{
         .ttl = ttlSeconds(expires_at_ms, now_ms),
-    }) catch self.alloc.free(owned);
+    }) catch secure_memory.freeBytes(self.alloc, owned);
 }
 
 /// Floor for the cache.zig TTL (seconds); the broker's own `now_ms` skew

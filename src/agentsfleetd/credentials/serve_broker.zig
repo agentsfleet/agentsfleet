@@ -25,6 +25,7 @@ const http_pin = @import("http_pin");
 
 const integration = @import("integration.zig");
 const vault = @import("../state/vault.zig");
+const secure_memory = @import("../secrets/secure_memory.zig");
 const rs256_sign = @import("../auth/crypto/rs256_sign.zig");
 
 const log = logging.scoped(.credential_broker);
@@ -87,7 +88,9 @@ pub const Built = struct {
     pub fn deinit(self: *Built, alloc: std.mem.Allocator) void {
         if (self.github_app) |a| {
             alloc.free(a.app_id);
-            alloc.free(a.private_key_pem);
+            // Zeroize secret material on release; @constCast is sound — the
+            // pem/secret are our own mutable dupes (load paths).
+            secure_memory.freeBytes(alloc, @constCast(a.private_key_pem));
             if (a.app_slug) |s| alloc.free(s);
         }
         freeOauthApp(alloc, self.zoho_app);
@@ -99,7 +102,7 @@ pub const Built = struct {
 fn freeOauthApp(alloc: std.mem.Allocator, app: ?integration.OauthApp) void {
     if (app) |a| {
         alloc.free(a.client_id);
-        alloc.free(a.client_secret);
+        secure_memory.freeBytes(alloc, @constCast(a.client_secret));
     }
 }
 

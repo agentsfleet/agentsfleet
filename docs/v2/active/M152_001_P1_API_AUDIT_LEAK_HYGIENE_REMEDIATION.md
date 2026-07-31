@@ -136,8 +136,8 @@ Outbound HTTP reads reject at named byte caps (mirror the QStash client's capped
 
 Secret material is zeroed before release everywhere it is owned: credential teardown (private-key material, client secrets, cached/minted tokens) routes through the existing zeroizing free, and the keyed Hash-based Message Authentication Code (HMAC) state is zeroed after finalization — matching what the vault load path already does.
 
-- **Dimension 3.1** — credential secret frees route through `secure_memory` and remain leak-free under the testing allocator → Test `test_credential_frees_zeroize_leak_free`
-- **Dimension 3.2** — MAC computation still matches known vectors after state zeroing (regression) → Test `test_hmac_vectors_unchanged`
+- **Dimension 3.1** — credential secret frees route through `secure_memory` and remain leak-free under the testing allocator → Test `test_credential_frees_zeroize_leak_free` — **DONE**
+- **Dimension 3.2** — MAC computation still matches known vectors after state zeroing (regression) → Test `test_hmac_vectors_unchanged` — **DONE**
 
 ### §4 — Validation drift
 
