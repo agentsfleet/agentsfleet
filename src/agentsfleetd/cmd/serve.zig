@@ -4,6 +4,7 @@ const runtime_config = @import("../config/runtime.zig");
 const env_vars = @import("../config/env_vars.zig");
 const balance_policy = @import("../config/balance_policy.zig");
 const oidc_auth = @import("../auth/oidc.zig");
+const clerk_fetch_worker = @import("../auth/clerk_fetch_worker.zig");
 const http_server = @import("../http/server.zig");
 const http_handler = @import("../http/handler.zig");
 const session_store_redis = @import("../session/session_store_redis.zig");
@@ -49,6 +50,9 @@ const svix_signature = auth_mw.svix_signature_mod;
 pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
     var otel_exporters = preflight.initOtelExporters(io, env_map, alloc);
     defer otel_exporters.deinit(alloc);
+    // Bounded wait for in-flight Clerk metadata workers; stragglers own only
+    // self-lifetime memory, so timing out cannot free state under them.
+    defer clerk_fetch_worker.drainForShutdown();
     log.info("startup.serve_start", .{});
 
     const serve_port_override = serve_args.parseServeArgOverrides(argv) catch |err| {
@@ -234,7 +238,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     if (serve_cfg.oidc_enabled) {
         log.info("startup.oidc_init_start", .{ .provider = @tagName(serve_cfg.oidc_provider), .jwks_url = serve_cfg.oidc_jwks_url orelse "" });
     }
-    var oidc = if (serve_cfg.oidc_enabled) oidc_auth.Verifier.init(alloc, .{
+    var oidc = if (serve_cfg.oidc_enabled) try oidc_auth.Verifier.init(alloc, .{
         .provider = serve_cfg.oidc_provider,
         .jwks_url = serve_cfg.oidc_jwks_url orelse "",
         .issuer = serve_cfg.oidc_issuer,

@@ -540,3 +540,27 @@ test "broker_cold_miss_guard_unavailable_fails_transient_without_minting" {
     try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
     try std.testing.expectEqual(@as(usize, 0), fake_calls.load(.monotonic));
 }
+
+test "flight loser wakes at the bound and fails closed when the winner never ends" {
+    // A wedged winner (e.g. a custom strategy with no deadline of its own)
+    // must not park losers forever: past loser_wait_bound_ms the claim
+    // resolves .unavailable and the caller returns a transient failure.
+    const alloc = std.testing.allocator;
+    var b = try brokerWith(alloc, FAKE_REGISTRY);
+    defer b.deinit();
+    b.loser_wait_bound_ms = 50;
+
+    const flight = @import("broker_flight.zig");
+    try std.testing.expectEqual(flight.FlightClaim.won_registered, flight.beginFlight(&b, "stuck-key"));
+
+    const Loser = struct {
+        fn run(broker: *CredentialBroker, out: *flight.FlightClaim) void {
+            out.* = flight.beginFlight(broker, "stuck-key");
+        }
+    };
+    var claim: flight.FlightClaim = .lost;
+    const t = try std.Thread.spawn(.{}, Loser.run, .{ &b, &claim });
+    t.join();
+    try std.testing.expectEqual(flight.FlightClaim.unavailable, claim);
+    flight.endFlight(&b, "stuck-key");
+}

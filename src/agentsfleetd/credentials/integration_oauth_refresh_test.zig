@@ -256,3 +256,37 @@ test "oauth2_refresh mint: a transport error is a transient mint_failed (failure
     try std.testing.expect(out == .mint_failed);
     try std.testing.expectEqual(Retry.transient, out.mint_failed);
 }
+
+test "oauth2_refresh mint: hostile expires_in values are permanent failures, never panics" {
+    // A provider-controlled number must not reach @intFromFloat or ttl
+    // arithmetic: huge float, negative, over-cap int, and non-numeric all
+    // classify as a malformed body (permanent), exactly like a missing token.
+    const alloc = std.testing.allocator;
+    const hostile_bodies = [_][]const u8{
+        "{\"access_token\":\"at\",\"expires_in\":1e300}",
+        "{\"access_token\":\"at\",\"expires_in\":-5}",
+        "{\"access_token\":\"at\",\"expires_in\":99999999999999}",
+        "{\"access_token\":\"at\",\"expires_in\":\"soon\"}",
+    };
+    for (hostile_bodies) |body| {
+        var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = body };
+        defer vendor.deinit();
+        var h = try testing.parse(alloc, HANDLE_ZOHO);
+        defer h.deinit();
+        const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
+        try std.testing.expect(out == .mint_failed);
+        try std.testing.expectEqual(Retry.permanent, out.mint_failed);
+    }
+}
+
+test "oauth2_refresh mint: an in-range float expires_in is accepted" {
+    const alloc = std.testing.allocator;
+    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ ".0}" };
+    defer vendor.deinit();
+    var h = try testing.parse(alloc, HANDLE_ZOHO);
+    defer h.deinit();
+    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
+    try std.testing.expect(out == .ok);
+    defer alloc.free(out.ok.token);
+    try std.testing.expectEqual(TEST_NOW_MS + TEST_EXPIRES_IN_S * MS_PER_S, out.ok.expires_at_ms);
+}

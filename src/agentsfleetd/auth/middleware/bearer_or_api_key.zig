@@ -134,7 +134,7 @@ const test_fixtures = struct {
     }
 };
 
-fn makeVerifier() oidc.Verifier {
+fn makeVerifier() error{OutOfMemory}!oidc.Verifier {
     return oidc.Verifier.init(testing.allocator, .{
         .provider = .clerk,
         .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
@@ -157,7 +157,7 @@ fn runOne(mw: *BearerOrApiKey, ht: anytype) !struct { outcome: chain.Outcome, ct
 
 test "bearer_or_api_key routes a valid JWT to the OIDC path" {
     test_fixtures.reset();
-    var verifier = makeVerifier();
+    var verifier = try makeVerifier();
     defer verifier.deinit();
 
     var ht = httpz.testing.init(.{});
@@ -180,7 +180,7 @@ test "bearer_or_api_key routes a valid JWT to the OIDC path" {
 
 test "bearer_or_api_key short-circuits with 401 when Authorization header is missing" {
     test_fixtures.reset();
-    var verifier = makeVerifier();
+    var verifier = try makeVerifier();
     defer verifier.deinit();
 
     var ht = httpz.testing.init(.{});
@@ -208,7 +208,7 @@ test "bearer_or_api_key short-circuits with 401 when no verifier is configured" 
 
 test "bearer_or_api_key short-circuits with 503 when JWKS fetch fails" {
     test_fixtures.reset();
-    var verifier = oidc.Verifier.init(testing.allocator, .{
+    var verifier = try oidc.Verifier.init(testing.allocator, .{
         .provider = .clerk,
         .jwks_url = "http://127.0.0.1:1/unreachable.json",
         .issuer = "https://clerk.dev.agentsfleet.net",

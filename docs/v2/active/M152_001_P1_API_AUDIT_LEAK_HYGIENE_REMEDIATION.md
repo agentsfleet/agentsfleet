@@ -59,6 +59,11 @@ All paths below are under `src/agentsfleetd/` unless rooted otherwise.
 | `auth/{oidc,claims,jwks_standard_claims}.zig` | EDIT | errdefer ladders; namespace-constant collapse; fallible-init cascade |
 | `auth/{api_key,audit,audit_events,bearer_or_api_key,jwks_test}.zig` | EDIT | duplicate compare deleted; de-pub; preamble extraction; redundant re-parse dropped; fixture consumption; safe-because |
 | `auth/jwks_test_fixtures.zig` | CREATE | single-source the triplicated JWKS test fixture |
+| `auth/jwks_fetch.zig` | CREATE | bounded JWKS transport split from jwks.zig by concern (file cap) |
+| `auth/clerk_fetch_worker.zig` | CREATE | bounded in-flight accounting + shutdown drain for the Clerk workers |
+| `auth/clerk_metadata_payload.zig` | CREATE | pure payload rendering split from clerk_backend (file cap) |
+| `auth/tests.zig` | EDIT | portability aggregate discovers the new modules |
+| `http/test_harness.zig` + `http/runner_enrollment_integration_test.zig` | EDIT | fallible verifier-init cascade |
 | `http/handlers/integration_grants/handler.zig` | EDIT | migrate straggler caller to canonical compare |
 | `credentials/{serve_broker,broker}.zig` | EDIT | free accumulator on error exits; zeroized frees; truthful telemetry; de-pub |
 | `credentials/{broker_flight,integration_oauth_refresh}.zig` | EDIT | bounded waiter wait; range-clamp `expires_in`; token path per handle |
@@ -121,11 +126,11 @@ Close every audited leak: the three `Writer.Allocating.fromArrayList` sites (own
 
 Outbound HTTP reads reject at named byte caps (mirror the QStash client's capped-read shape); provider-controlled numbers are range-clamped; the per-webhook detached thread becomes a bounded worker with a timeout and a named stop path joined at shutdown; single-flight waiters cannot park forever; boot-path OOM returns an error instead of aborting.
 
-- **Dimension 2.1** — JWKS and Clerk responses larger than their named caps are rejected with the connection cleaned up → Test `test_outbound_reads_reject_over_cap`
-- **Dimension 2.2** — `expires_in` of non-finite, negative, or over-range value returns `.mint_failed = .permanent`, never a panic → Test `test_expires_in_hostile_values_permanent`
-- **Dimension 2.3** — Clerk metadata fetches are bounded by a named in-flight cap (burst beyond it is rejected and logged) and shutdown performs a bounded drain; stragglers own only self-lifetime memory. The deadline-armed joinable-worker alternative needs a `call_deadline` import through the auth portability wall — recorded in Discovery for Indy's call. → Test `test_clerk_worker_bounded_drains_at_shutdown`
-- **Dimension 2.4** — a single-flight waiter whose winner never finishes wakes at a named deadline and returns transient failure → Test `test_flight_waiter_bounded_wait`
-- **Dimension 2.5** — JWKS verifier init propagates allocation failure as an error (no `@panic`), cascading through the oidc verifier init → Test `test_verifier_init_oom_errors`
+- **Dimension 2.1** — JWKS responses larger than the named cap are rejected (bounded chunked read in the new `jwks_fetch.zig`); the Clerk side retains zero bytes by construction (stream-discard, §1.1) → Test `test_outbound_reads_reject_over_cap` — **DONE**
+- **Dimension 2.2** — `expires_in` of non-finite, negative, or over-range value returns `.mint_failed = .permanent`, never a panic; in-range floats still accepted → Test `test_expires_in_hostile_values_permanent` — **DONE**
+- **Dimension 2.3** — Clerk metadata fetches are bounded by a named in-flight cap (burst beyond it is rejected and logged) and shutdown performs a bounded drain; stragglers own only self-lifetime memory. The deadline-armed joinable-worker alternative needs a `call_deadline` import through the auth portability wall — recorded in Discovery for Indy's call. → Test `test_clerk_worker_bounded_drains_at_shutdown` — **DONE**
+- **Dimension 2.4** — a single-flight waiter whose winner never finishes wakes at a named deadline and returns transient failure (deadline-tracked poll; the condition variable it replaced was removed as dead concurrent code) → Test `test_flight_waiter_bounded_wait` — **DONE**
+- **Dimension 2.5** — JWKS verifier init propagates allocation failure as an error (no `@panic`), cascading through the oidc verifier init and every caller → Test `test_verifier_init_oom_errors` — **DONE**
 
 ### §3 — Secret hygiene
 
