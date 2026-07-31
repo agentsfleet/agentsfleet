@@ -30,10 +30,19 @@ ALTER TABLE fleet.runners ADD COLUMN IF NOT EXISTS capability_reported_at BIGINT
 ALTER TABLE fleet.runners ADD COLUMN IF NOT EXISTS degraded BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE fleet.runners ADD COLUMN IF NOT EXISTS degraded_reason TEXT NULL;
 
--- Backfill: every pre-migration row lacks an assignment (network_policy NULL),
--- so it starts DEGRADED — the lease gate must fail closed from the moment this
--- deploys, not from each runner's first post-deploy heartbeat. The reason
--- string mirrors REASON_NO_ASSIGNED_POLICY (heartbeat_reconcile.zig); the
--- reconciliation rewrites it verbatim on the next beat either way.
-UPDATE fleet.runners SET degraded = TRUE, degraded_reason = 'no assigned policy'
-WHERE network_policy IS NULL;
+-- No backfill — deliberate (Indy, Jul 31, 2026: "yes done by hand"). A
+-- pre-migration row keeps the column default degraded = FALSE until either
+-- its first post-upgrade heartbeat reconciles it (a live, upgraded host) or
+-- the operator runs the manual patch below. The manual statement is what
+-- covers the rows a heartbeat never repairs: a dormant host, or a daemon
+-- still running the pre-policy binary — both otherwise read healthy while
+-- carrying no assignment. Run it once, right after deploying:
+--
+--   UPDATE fleet.runners SET degraded = TRUE, degraded_reason = 'no assigned policy'
+--   WHERE network_policy IS NULL;
+--
+-- The reason string mirrors REASON_NO_ASSIGNED_POLICY (heartbeat_reconcile.zig);
+-- reconciliation rewrites it verbatim on the next beat either way. The
+-- statement is idempotent and self-limiting: it only ever matches rows that
+-- genuinely lack an assignment. Proven against the real schema by
+-- assigned_policy_integration_test.zig.
