@@ -1049,3 +1049,62 @@ test "jwks fetch still refuses an oversize uncompressed body as a cap refusal" {
     server.join();
     try std.testing.expectError(jwks_fetch.FetchError.ResponseTooLarge, r);
 }
+
+test "jwks fetch accepts a decoded body of exactly the cap" {
+    const alloc = std.testing.allocator;
+    const io = common.globalIo();
+
+    // The boundary the cap's comparison turns on: `> CAP` accepts exactly CAP,
+    // `>= CAP` would refuse it. Nothing else in the suite pins which one ships.
+    const at_cap = try alloc.alloc(u8, jwks_fetch.JWKS_MAX_RESPONSE_BYTES);
+    defer alloc.free(at_cap);
+    @memset(at_cap, BOMB_FILL_BYTE);
+    var gzip_buf: [GZIP_SCRATCH_LEN]u8 = undefined;
+    const body = try gzipInto(alloc, &gzip_buf, at_cap);
+    var head_buf: [HEAD_SCRATCH_LEN]u8 = undefined;
+    const head = try std.fmt.bufPrint(&head_buf, HEAD_GZIP_FMT, .{body.len});
+
+    var addr = try std.Io.net.IpAddress.parseIp4(LOOPBACK_HOST, 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, CannedJwksServer.run, .{ &listener, io, head, body }) catch
+        return error.SkipZigTest;
+
+    var url_buf: [URL_BUFFER_LEN]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, LOOPBACK_URL_FMT, .{port});
+    const fetched = jwks_fetch.fetchCapped(alloc, url);
+    server.join();
+    const bytes = try fetched;
+    defer alloc.free(bytes);
+    try std.testing.expectEqual(jwks_fetch.JWKS_MAX_RESPONSE_BYTES, bytes.len);
+}
+
+test "jwks fetch refuses an encoding it never advertised" {
+    const alloc = std.testing.allocator;
+    const io = common.globalIo();
+
+    // The client advertises gzip/deflate/identity. A provider answering zstd
+    // is misbehaving; the fetch must refuse rather than mis-decode or size a
+    // window for it. Refused at receiveHead, surfacing as a transport fault.
+    const body = TEST_JWKS;
+    var head_buf: [HEAD_SCRATCH_LEN]u8 = undefined;
+    const head = try std.fmt.bufPrint(
+        &head_buf,
+        "HTTP/1.1 200 OK\r\ncontent-encoding: zstd\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n",
+        .{body.len},
+    );
+
+    var addr = try std.Io.net.IpAddress.parseIp4(LOOPBACK_HOST, 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, CannedJwksServer.run, .{ &listener, io, head, body }) catch
+        return error.SkipZigTest;
+
+    var url_buf: [URL_BUFFER_LEN]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, LOOPBACK_URL_FMT, .{port});
+    const r = jwks_fetch.fetchCapped(alloc, url);
+    server.join();
+    try std.testing.expectError(jwks_fetch.FetchError.FetchFailed, r);
+}
