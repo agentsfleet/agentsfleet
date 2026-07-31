@@ -20,8 +20,9 @@
 
 const EventEnvelope = @import("event_envelope.zig");
 const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
-const FailureClass = @import("execution_result.zig").FailureClass;
 const runner_events = @import("runner_events.zig");
+const policy = @import("protocol_policy.zig");
+const reports = @import("protocol_report.zig");
 const memory = @import("protocol_memory.zig");
 const credentials = @import("protocol_credentials.zig");
 
@@ -92,32 +93,27 @@ pub const RUNNER_LEASE_ACTIVITY_SUFFIX = "activity";
 /// window while actively executing, to push its kill deadline forward.
 pub const RUNNER_LEASE_RENEW_SUFFIX = "renew";
 
-/// renew reply (200): the authoritative new kill deadline (epoch ms). The runner
-/// retargets its child wall-clock deadline to this. A non-200 (`UZ-RUN-010`
-/// max-runtime, `011` lease_lost, `012` no-credits) means stop renewing and kill
-/// the child — the run is over.
-pub const RenewResponse = struct {
-    lease_expires_at: i64,
-};
+// Renewal + report metering sub-protocol lives in `protocol_report.zig` (RULE
+// FLL); re-exported here so `protocol.RenewRequest` (and siblings) are unchanged.
+pub const RenewResponse = reports.RenewResponse;
+pub const RenewRequest = reports.RenewRequest;
 
-/// renew request body — the runner's **cumulative** token counts for the run so
-/// far (NOT deltas). The control plane charges the diff since the lease's
-/// last-metered cursor inside the fenced renewal CTE, then advances the cursor;
-/// so a fail-safe retry that re-sends the same cumulatives a few ms later
-/// charges ≈0 (cumulative-diff idempotency). Additive + defaulted to 0: an empty
-/// body or an older-runner body parses to all-zero → run-fee-only metering,
-/// never a negative charge. Counts are audit data, not secrets — safe to log.
-pub const RenewRequest = struct {
-    input_tokens: u32 = 0,
-    cached_input_tokens: u32 = 0,
-    output_tokens: u32 = 0,
-};
-
-/// Isolation strength a runner *self-reports* at enrollment. Stored as telemetry
-/// only — placement keys off operator-assigned trust, not this claim (a runner
-/// can lie about its tier). The trust/attestation model lands in a later
-/// identity + scheduler workstream.
-pub const SandboxTier = enum { landlock_full, container_nested, macos_seatbelt, dev_none };
+// Assigned-policy vocabulary + payloads live in `protocol_policy.zig` (RULE
+// FLL); re-exported here so `protocol.SandboxTier` (and siblings) keep their
+// names. The tier is control-plane-ASSIGNED (not self-reported telemetry) from
+// the policy workstream on; the capability report stays unauthenticated
+// self-assertion, so placement trust remains operator-assigned.
+pub const SandboxTier = policy.SandboxTier;
+pub const NetworkPolicy = policy.NetworkPolicy;
+pub const FAIL_CLOSED_DEFAULT = policy.FAIL_CLOSED_DEFAULT;
+pub const AssignedPolicy = policy.AssignedPolicy;
+pub const CapabilityReport = policy.CapabilityReport;
+pub const DEFAULT_WORKER_COUNT = policy.DEFAULT_WORKER_COUNT;
+pub const MIN_WORKER_COUNT = policy.MIN_WORKER_COUNT;
+pub const MAX_WORKER_COUNT = policy.MAX_WORKER_COUNT;
+pub const MAX_REGISTRY_ENTRIES = policy.MAX_REGISTRY_ENTRIES;
+pub const registryAllowlistValid = policy.registryAllowlistValid;
+pub const capabilityReportBounded = policy.capabilityReportBounded;
 
 /// How tenant secrets reach the runner. S0 ships `inline` only (secrets travel
 /// in the lease over TLS, trusted fleet); `scoped`/`proxy` are the reserved
@@ -147,13 +143,19 @@ pub const ADMIN_STATE_ACTIVE = @tagName(AdminState.active);
 /// are wire enum values, so std.json accepts/serializes the tag names verbatim.
 pub const RunnerAdminAction = enum { cordon, drain, revoke };
 
+/// PATCH body: exactly one of `action` (admin-state transition) or
+/// `assigned_policy` (policy re-assignment — reaches the host on its next
+/// heartbeat, no host visit). Both-or-neither is a 400; the handler enforces it.
 pub const RunnerAdminPatchRequest = struct {
-    action: RunnerAdminAction,
+    action: ?RunnerAdminAction = null,
+    assigned_policy: ?AssignedPolicy = null,
 };
 
 pub const RunnerAdminPatchResponse = struct {
     id: []const u8,
     admin_state: AdminState,
+    /// Present on the policy-update path: the assignment as stored.
+    assigned_policy: ?AssignedPolicy = null,
 };
 
 pub const RunnerEventType = runner_events.RunnerEventType;
@@ -189,10 +191,11 @@ pub const RUNNER_LEASE_STATUS_EXPIRED = "expired";
 /// POST /v1/runners — register. Auth: an existing credential —
 /// `Bearer <Clerk JWT | agt_t api_key>` (via bearer_or_api_key), not an
 /// enrollment token. The response's runner_token identifies the runner on
-/// every later call.
+/// every later call. The operator ASSIGNS the policy here; the host never
+/// declares one.
 pub const RegisterRequest = struct {
     host_id: []const u8,
-    sandbox_tier: SandboxTier,
+    assigned_policy: AssignedPolicy,
     labels: []const []const u8,
 };
 
@@ -201,13 +204,29 @@ pub const RegisterRequest = struct {
 pub const RegisterResponse = struct {
     runner_id: []const u8,
     runner_token: []const u8,
+    /// The assignment as stored (worker_count clamped into the shared bounds),
+    /// echoed so the enrolling operator sees exactly what the host will apply.
+    assigned_policy: AssignedPolicy,
 };
 
-/// POST /v1/runners/me/heartbeats reply (Bearer runner_token; `me` resolves from
-/// the token). The request body is empty in S0 — capacity/version land in a
-/// later fleet/heartbeat workstream.
+/// POST /v1/runners/me/heartbeats request (Bearer runner_token). The capability
+/// report rides the first heartbeat and any tick where the probe result
+/// changed. Defaulted so an older runner's empty body parses to null — the row
+/// then reads degraded with a no-capability-report reason, never a crash.
+pub const HeartbeatRequest = struct {
+    capability_report: ?CapabilityReport = null,
+};
+
+/// POST /v1/runners/me/heartbeats reply (`me` resolves from the token). Carries
+/// the current assignment on every beat, so a dashboard change reaches the host
+/// within one heartbeat with no host visit. `assigned_policy` is null only for
+/// a row assigned before the policy columns existed — the runner then fails
+/// closed and refuses to lease, and the row reads degraded.
 pub const HeartbeatResponse = struct {
     status: HeartbeatStatus,
+    assigned_policy: ?AssignedPolicy = null,
+    degraded: bool = false,
+    degraded_reason: ?[]const u8 = null,
 };
 
 /// GET /v1/runners/me reply (Bearer runner_token). The runner's own registration
@@ -219,6 +238,11 @@ pub const SelfResponse = struct {
     host_id: []const u8,
     sandbox_tier: []const u8,
     last_seen_at: i64,
+    assigned_policy: ?AssignedPolicy = null,
+    /// The host's stored capability report — what it can actually enforce.
+    achievable: ?CapabilityReport = null,
+    degraded: bool = false,
+    degraded_reason: ?[]const u8 = null,
 };
 
 /// The work half of a lease. `fencing_token` is a monotonic guard: report must
@@ -267,60 +291,11 @@ pub const LeaseResponse = struct {
     retry_after_ms: ?u32 = null,
 };
 
-/// Latency telemetry the runner observed for one execution.
-pub const ReportTelemetry = struct {
-    time_to_first_token_ms: u32,
-    wall_ms: u64,
-};
-
-/// Session resume cursor written to `core.fleet_sessions.context_json`.
-pub const ReportCheckpoint = struct {
-    last_event_id: []const u8,
-    last_response: []const u8,
-};
-
-/// POST /v1/runners/me/reports (Bearer runner_token) — one batched write keyed
-/// by `event_id`. `fencing_token` is echoed and recorded, and the control plane
-/// verifies it at report: a reclaimed holder (token below the fleet's live
-/// fencing sequence) is fenced UZ-RUN-005. No runner_id: the token owns the identity.
-pub const ReportRequest = struct {
-    lease_id: []const u8,
-    event_id: []const u8,
-    fencing_token: u64,
-    outcome: Outcome,
-    /// Granular failure cause when the execution failed, the runner's own
-    /// `FailureClass` carried verbatim (std.json renders it via @tagName).
-    /// Optional + defaulted so a mixed-version fleet is safe: an older runner
-    /// omits it and the control plane treats absent as "reason unknown". The
-    /// coarse `outcome` above stays the binary processed/fleet_error verdict.
-    failure_reason: ?FailureClass = null,
-    /// Human-readable cause line from the classification site (which check
-    /// failed, and why). Defaulted empty so an older runner omits it safely;
-    /// persisted only when the outcome is a failure (same trust boundary as
-    /// `failure_reason`).
-    failure_detail: []const u8 = "",
-    response_text: []const u8,
-    /// Billing token count → `fleet_execution_telemetry.token_count`.
-    tokens: u64,
-    /// The runner's **cumulative** token counts for the whole run (NOT deltas) —
-    /// the same three fields `RenewRequest` carries, so the report-settle can
-    /// charge the final slice (the diff since the lease's last-metered cursor)
-    /// and the per-renewal debits + settle sum to the real total. Additive +
-    /// defaulted to 0: an older runner that omits them settles run-fee-only.
-    input_tokens: u32 = 0,
-    cached_input_tokens: u32 = 0,
-    output_tokens: u32 = 0,
-    telemetry: ReportTelemetry,
-    checkpoint: ReportCheckpoint,
-};
-
-/// report reply. S0 reproduces the direct worker's finalize() writes (terminal
-/// status + telemetry actuals + session checkpoint) then XACKs; true
-/// idempotency (`INSERT … ON CONFLICT`) + fencing verification are the later
-/// `agentsfleetd` lease/report logic.
-pub const ReportResponse = struct {
-    ok: bool,
-};
+// The report family also lives in `protocol_report.zig` (RULE FLL).
+pub const ReportTelemetry = reports.ReportTelemetry;
+pub const ReportCheckpoint = reports.ReportCheckpoint;
+pub const ReportRequest = reports.ReportRequest;
+pub const ReportResponse = reports.ReportResponse;
 
 // Durable fleet-memory wire sub-protocol lives in `protocol_memory.zig` (RULE
 // FLL); re-exported here so `protocol.MemoryDelta` (and siblings) are unchanged.

@@ -220,7 +220,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no zombie-dev-worker-ant
 
 ## 4.0 Agent: Bootstrap `/opt/agentsfleet/`
 
-**Goal:** Server directory structure is created, repo deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/agentsfleet/.env` is populated with the four runner env vars the daemon requires (`AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`, `RUNNER_HOST_ID`, `RUNNER_SANDBOX_TIER`).
+**Goal:** Server directory structure is created, repo deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/agentsfleet/.env` is populated with the bootstrap pair the daemon requires (`AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`). Policy — sandbox tier, network policy, registry allowlist, worker count — is assigned per runner from the dashboard and never provisioned through the environment.
 
 ### 4.1 Create directory structure + copy deploy artifacts
 
@@ -243,11 +243,14 @@ ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/agentsfleet/deploy/
 ### 4.2 Populate `/opt/agentsfleet/.env` from vault
 
 ```bash
-# The runner daemon needs four env vars on this release-built Linux host:
+# The runner daemon reads only the bootstrap pair on this release-built host:
 #   - AGENTSFLEET_API_URL       — control-plane base, dev: https://api-dev.agentsfleet.net
-#   - AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (vault field: runner-token)
-#   - RUNNER_HOST_ID            — stable machine identifier (reuse vault: hostname)
-#   - RUNNER_SANDBOX_TIER       — landlock_full (release builds reject dev_none)
+#   - AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (vault field: runner-token);
+#                                 it resolves the runner row server-side, so no
+#                                 host identifier is provisioned here
+# Sandbox tier, network policy, registry allowlist, and worker count are
+# ASSIGNED to the runner row at enrollment (Add Runner) and re-assignable from
+# the dashboard; they reach the host with its identity on every heartbeat.
 #
 # A real agt_r requires the platform-admin enrollment gate (M80_005) served by
 # a live dev control plane. Until that's wired, store a placeholder
@@ -256,15 +259,12 @@ ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/agentsfleet/deploy/
 # until the placeholder is swapped for a real admin-minted token.
 
 RUNNER_TOKEN=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/runner-token")
-HOST_ID=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/hostname")
 API_URL="https://api-dev.agentsfleet.net"
 
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << EOF
 cat > /opt/agentsfleet/.env << 'ENVFILE'
 AGENTSFLEET_API_URL=${API_URL}
 AGENTSFLEET_RUNNER_TOKEN=${RUNNER_TOKEN}
-RUNNER_HOST_ID=${HOST_ID}
-RUNNER_SANDBOX_TIER=landlock_full
 ENVFILE
 chmod 600 /opt/agentsfleet/.env
 EOF
@@ -404,7 +404,7 @@ rotation reaches the host without a separate manual provisioning run.
 1.0  Agent: Verify SSH key from vault reaches server
 2.0  Agent: Install Tailscale + join tailnet (switch to hostname, drop public IP)
 3.0  Agent: Install runtime deps (bubblewrap, git, openssl, ca-certificates)
-4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/agentsfleet/deploy/, provision /opt/agentsfleet/.env (AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
+4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/agentsfleet/deploy/, provision /opt/agentsfleet/.env (AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN), install systemd unit
 5.0  Agent: Build + scp the agentsfleet-runner binary, run deploy.sh runner, gh variable set DEV_WORKER_READY=true (only with a real agt_r in vault)
 --- CI-automated after this point ---
 ```

@@ -189,7 +189,7 @@ sync_env() {
   # startup check (getRequired in src/runner/daemon/config.zig) would catch
   # this too, but a 1/FAILURE systemd loop with `MissingEnvVar` is a confusing
   # surface for an operator — die here with the specific missing keys instead.
-  local required=(AGENTSFLEET_API_URL AGENTSFLEET_RUNNER_TOKEN RUNNER_HOST_ID)
+  local required=(AGENTSFLEET_API_URL AGENTSFLEET_RUNNER_TOKEN)
   local missing=()
   local k
   for k in "${required[@]}"; do

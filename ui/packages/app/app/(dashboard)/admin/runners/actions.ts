@@ -8,15 +8,17 @@ import {
   listRunnerLeases,
   createRunner,
   updateRunnerAdminState,
+  updateRunnerPolicy,
   deleteRunner,
+  type AssignedPolicy,
   type RunnerListResponse,
   type RunnerLeaseResponse,
   type CreatedRunner,
   type RunnerAdminAction,
   type RunnerAdminStateUpdate,
+  type RunnerPolicyUpdate,
   type ListParams,
   type LeaseListParams,
-  type SandboxTier,
 } from "@/lib/api/runners";
 
 export async function listRunnersAction(params: ListParams): Promise<ActionResult<RunnerListResponse>> {
@@ -34,10 +36,22 @@ export async function listRunnerLeasesAction(
 
 export async function createRunnerAction(body: {
   host_id: string;
-  sandbox_tier: SandboxTier;
+  assigned_policy: AssignedPolicy;
   labels: string[];
 }): Promise<ActionResult<CreatedRunner>> {
-  return requireScope(SCOPE.RUNNER_ENROLL, () => withToken((t) => createRunner(t, body)));
+  return requireScope(SCOPE.RUNNER_ENROLL, () =>
+    withToken((t) =>
+      createRunner(t, { host_id: body.host_id, assigned_policy: body.assigned_policy, labels: body.labels }),
+    ),
+  );
+}
+
+/** Re-assign a runner's policy; the host applies it on its next heartbeat. */
+export async function updateRunnerPolicyAction(
+  runnerId: string,
+  assignedPolicy: AssignedPolicy,
+): Promise<ActionResult<RunnerPolicyUpdate>> {
+  return requireScope(SCOPE.RUNNER_WRITE, () => withToken((t) => updateRunnerPolicy(t, runnerId, assignedPolicy)));
 }
 
 export async function updateRunnerAdminStateAction(

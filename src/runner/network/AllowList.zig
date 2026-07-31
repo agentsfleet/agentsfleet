@@ -6,10 +6,10 @@
 //! first-seen, validated, fail-closed on a malformed entry. File-as-struct
 //! (`@This()`), std idiom.
 //!
-//! The registry baseline is fed from OUTSIDE — `RUNNER_REGISTRY_ALLOWLIST` →
-//! `daemon/config` → `build(registry, …)`. It is never a compile-time source;
-//! `DEFAULT_REGISTRY` is the fallback the daemon substitutes only when the
-//! operator sets nothing.
+//! The registry baseline is fed from OUTSIDE — the control-plane-assigned
+//! `registry_allowlist` → the lease's effective config → `build(registry, …)`.
+//! It is never a compile-time source; `DEFAULT_REGISTRY` is the fallback the
+//! daemon substitutes only when the assignment names no registries.
 
 const AllowList = @This();
 
@@ -17,9 +17,9 @@ const AllowList = @This();
 names: []const []const u8,
 alloc: std.mem.Allocator,
 
-/// Fallback registry baseline — the daemon feeds this in when
-/// `RUNNER_REGISTRY_ALLOWLIST` is unset. NOT the authoritative source: the
-/// operator overrides it from outside. Single-sourced here (RULE UFS).
+/// Fallback registry baseline — the daemon feeds this in when the assigned
+/// `registry_allowlist` is empty. NOT the authoritative source: the operator
+/// overrides it from the dashboard. Single-sourced here (RULE UFS).
 pub const DEFAULT_REGISTRY = [_][]const u8{
     "registry.npmjs.org",
     "pypi.org",

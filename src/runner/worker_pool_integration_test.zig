@@ -19,6 +19,7 @@ const build_options = @import("build_options");
 
 const protocol = contract.protocol;
 const Config = @import("daemon/config.zig");
+const AppliedPolicy = @import("daemon/AppliedPolicy.zig");
 const worker_pool = @import("daemon/worker_pool.zig");
 const dts = @import("daemon/deadline_test_support.zig");
 
@@ -155,9 +156,9 @@ test "worker pool runs N leases concurrently and reports them all, then drains c
     const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}", .{port});
     defer alloc.free(url);
     const cfg = stubCfg(url);
-    // main.zig creates the workspace base; the pool driver bypasses main, so
+    // main.zig creates the storage home; the pool driver bypasses main, so
     // make it here or every prepareWorkspace fails and no lease executes.
-    std.Io.Dir.createDirAbsolute(io, cfg.workspace_base, .default_dir) catch |err| switch (err) {
+    std.Io.Dir.createDirAbsolute(io, cfg.storage_home, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
     };
@@ -167,10 +168,21 @@ test "worker pool runs N leases concurrently and reports them all, then drains c
     var stop = std.atomic.Value(bool).init(false);
     var drain = std.atomic.Value(bool).init(false);
 
+    // Workers lease only against an applied policy — hold the one this stub
+    // run assigns, as the control loop would after its first heartbeat.
+    var applied = AppliedPolicy.init(alloc);
+    defer applied.deinit();
+    const policy_json = std.fmt.comptimePrint(
+        \\{{"sandbox_tier":"dev_none","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":{d}}}
+    , .{WORKER_COUNT});
+    const pol = try std.json.parseFromSlice(std.json.Value, alloc, policy_json, .{});
+    defer pol.deinit();
+    try std.testing.expectEqual(AppliedPolicy.ApplyOutcome.applied, applied.apply(pol.value));
+
     // The pool borrows the one process scheduler, owned here as main.zig owns it.
     var deadlines: dts.TestScheduler = .{};
     defer deadlines.deinit();
-    var pool = try worker_pool.spawn(io, alloc, try deadlines.start(alloc), cfg, &env_map, &stop, &drain);
+    var pool = try worker_pool.spawn(io, alloc, try deadlines.start(alloc), cfg, &env_map, &applied, &stop, &drain);
 
     // Wait for all N reports (the pool executed and reported N leases), bounded.
     var waited: u64 = 0;
@@ -234,9 +246,8 @@ fn stubCfg(url: []const u8) Config {
     return .{
         .control_plane_url = url,
         .runner_token = contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 8,
-        .host_id = "pool-integ-host",
         .sandbox_tier = .dev_none,
-        .workspace_base = "/tmp/agentsfleet-runner-pool-integ",
+        .storage_home = "/tmp/agentsfleet-runner-pool-integ",
         .network_policy = .deny_all_egress,
         .registry_allowlist = &.{},
         .cp_deadlines = .{},

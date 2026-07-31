@@ -17,7 +17,9 @@ const RUNNER_KEYSET_COLS =
     \\       EXISTS (
     \\           SELECT 1 FROM fleet.runner_leases l
     \\           WHERE l.runner_id = r.id AND l.status = $1 AND l.lease_expires_at > $2
-    \\       ) AS has_live_lease
+    \\       ) AS has_live_lease,
+    \\       r.network_policy, r.registry_allowlist::text, r.worker_count,
+    \\       r.capability_report::text, r.degraded, r.degraded_reason
     \\FROM fleet.runners r
     \\
 ;
@@ -57,7 +59,9 @@ pub const SELECT_RUNNER_DETAIL =
     \\       r.last_seen_at, r.created_at,
     \\       COALESCE(s.active_count, 0), COALESCE(s.active_fleets, 0),
     \\       COALESCE(s.acquired, 0), COALESCE(s.succeeded, 0),
-    \\       COALESCE(s.failed, 0), COALESCE(s.expired, 0)
+    \\       COALESCE(s.failed, 0), COALESCE(s.expired, 0),
+    \\       r.network_policy, r.registry_allowlist::text, r.worker_count,
+    \\       r.capability_report::text, r.degraded, r.degraded_reason
     \\FROM fleet.runners r
     \\LEFT JOIN (
     \\    SELECT l.runner_id,
@@ -184,6 +188,53 @@ pub const SELECT_RUNNER_EXISTS =
 
 pub const SELECT_RUNNER_ADMIN_STATE =
     \\SELECT admin_state FROM fleet.runners WHERE id = $1::uuid
+;
+
+/// Re-assign a runner's policy, its reconciled verdict, and the audit event
+/// atomically.
+///
+/// `FOR UPDATE` serialises concurrent operator PATCHes; the `IS DISTINCT FROM`
+/// guard makes a same-values re-assignment write nothing at all — no row, no
+/// event — so the PATCH is idempotent and the history holds real changes only.
+///
+/// The verdict (`$13`/`$14`, computed by the caller against the row's stored
+/// capability report) rides the SAME `UPDATE` as the assignment: a tightened
+/// policy can never land beside a stale healthy verdict, which the lease gate
+/// would read as "issue work". One statement, so there is no window and no
+/// best-effort second write to fail.
+pub const PATCH_RUNNER_ASSIGNED_POLICY =
+    \\WITH current_p AS (
+    \\  SELECT id, sandbox_tier, network_policy, registry_allowlist, worker_count
+    \\  FROM fleet.runners WHERE id = $1::uuid FOR UPDATE
+    \\), updated AS (
+    \\  UPDATE fleet.runners r
+    \\  SET sandbox_tier = $2::text, network_policy = $3::text,
+    \\      registry_allowlist = $4::jsonb, worker_count = $5::int, updated_at = $6::bigint,
+    \\      degraded = $13::bool, degraded_reason = $14::text
+    \\  FROM current_p c
+    \\  WHERE r.id = c.id
+    \\    AND (c.sandbox_tier IS DISTINCT FROM $2::text
+    \\      OR c.network_policy IS DISTINCT FROM $3::text
+    \\      OR c.registry_allowlist IS DISTINCT FROM $4::jsonb
+    \\      OR c.worker_count IS DISTINCT FROM $5::int)
+    \\  RETURNING r.id::text
+    \\), event AS (
+    \\  INSERT INTO fleet.runner_events
+    \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+    \\  SELECT $7::uuid, id::uuid, $8::text, $6::bigint,
+    \\         jsonb_build_object($9::text, $2::text, $10::text, $3::text,
+    \\                            $11::text, $4::jsonb, $12::text, $5::int),
+    \\         NULL, $6::bigint
+    \\  FROM updated
+    \\  RETURNING id
+    \\)
+    \\SELECT id FROM updated
+;
+
+/// The stored capability report alone — the PATCH path re-reconciles the new
+/// assignment against it so the verdict never lags the assignment it judges.
+pub const SELECT_RUNNER_CAPABILITY =
+    \\SELECT capability_report::text FROM fleet.runners WHERE id = $1::uuid
 ;
 
 /// Transition a runner's admin state and record the transition atomically.

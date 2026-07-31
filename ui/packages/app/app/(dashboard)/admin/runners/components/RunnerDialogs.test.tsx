@@ -15,6 +15,10 @@ const RUNNER: RunnerListItem = {
   labels: [],
   last_seen_at: 0,
   created_at: 0,
+  assigned_policy: null,
+  achievable: null,
+  degraded: false,
+  degraded_reason: null,
 };
 
 describe("runner admin actions", () => {

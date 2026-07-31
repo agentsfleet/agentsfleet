@@ -2,7 +2,7 @@
   post:
     operationId: register_runner
     summary: Register a runner
-    description: Enrolls a runner into the fleet. Authed by an existing operator credential (Clerk JWT or `agt_t` API key with admin role) — there is no enrollment token. Mints a durable `agt_r` runner token (returned once) and stores only its SHA-256 hash.
+    description: Enrolls a runner into the fleet and assigns its policy. Requires an existing operator credential (Clerk JWT or `agt_t` API key with admin role); there is no enrollment token. Mints a durable `agt_r` runner token, returned once, and stores only its SHA-256 hash. The host applies the policy assigned here and never declares its own.
     tags:
     - Fleet
     requestBody:
@@ -100,7 +100,7 @@
   patch:
     operationId: patch_fleet_runner
     summary: Administer a fleet runner
-    description: Platform-admin operator action on a single runner. `cordon` → cordoned, `drain` → draining, `revoke` → revoked (terminal; a revoked runner cannot transition back).
+    description: 'Platform-admin mutation on a single runner. The body carries exactly one of `action` or `assigned_policy`. `action` moves the admin state: `cordon` to cordoned, `drain` to draining, `revoke` to revoked. Revoked is terminal; a revoked runner cannot transition back. `assigned_policy` re-assigns the runner''s policy, and the host picks it up on its next heartbeat. Sending the same policy again changes nothing and records no event.'
     tags:
     - Fleet
     parameters:
@@ -117,8 +117,7 @@
         application/json:
           schema:
             type: object
-            required:
-            - action
+            description: Exactly one of `action` or `assigned_policy` must be present; both or neither is a 400.
             properties:
               action:
                 type: string
@@ -127,9 +126,11 @@
                 - cordon
                 - drain
                 - revoke
+              assigned_policy:
+                $ref: ../components/schemas.yaml#/components/schemas/RunnerAssignedPolicy
     responses:
       '200':
-        description: The runner's new admin state.
+        description: The runner's admin state, plus the stored assignment on the policy-update path.
         content:
           application/json:
             schema:
@@ -149,6 +150,9 @@
                   - draining
                   - drained
                   - revoked
+                assigned_policy:
+                  $ref: ../components/schemas.yaml#/components/schemas/RunnerAssignedPolicy
+                  x-stability: stable
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
   delete:

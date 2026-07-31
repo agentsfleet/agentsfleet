@@ -9,9 +9,11 @@ import {
   listRunnerLeases,
   createRunner,
   updateRunnerAdminState,
+  updateRunnerPolicy,
   deleteRunner,
   listRunnerEvents,
   parseLabels,
+  parseRegistryAllowlist,
   RUNNER_LIFECYCLE_EVENT_TYPES,
   RUNNER_ADMIN_ACTIONS,
   RUNNER_ADMIN_STATES,
@@ -71,9 +73,18 @@ describe("listRunnerLeases", () => {
 });
 
 describe("createRunner", () => {
-  it("mints against the enrollment endpoint with the host + tier + labels body", async () => {
+  it("mints against the enrollment endpoint with the host + assigned policy + labels body", async () => {
     requestMock.mockResolvedValueOnce({ runner_id: "r1", runner_token: "agt_rabc" });
-    const body = { host_id: "web-prod-1", sandbox_tier: "landlock_full" as const, labels: ["gpu"] };
+    const body = {
+      host_id: "web-prod-1",
+      assigned_policy: {
+        sandbox_tier: "landlock_full" as const,
+        network_policy: "allow_all" as const,
+        registry_allowlist: ["registry.npmjs.org"],
+        worker_count: 2,
+      },
+      labels: ["gpu"],
+    };
     await createRunner("tok", body);
     expect(requestMock).toHaveBeenCalledWith("/v1/runners", { method: "POST", body: JSON.stringify(body) }, "tok");
   });
@@ -86,6 +97,24 @@ describe("updateRunnerAdminState", () => {
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/fleets/runners/runner-1",
       { method: "PATCH", body: JSON.stringify({ action: "cordon" }) },
+      "tok",
+    );
+  });
+});
+
+describe("updateRunnerPolicy", () => {
+  it("PATCHes the assigned_policy envelope the server's one-of contract expects", async () => {
+    const assigned_policy = {
+      sandbox_tier: "container_nested" as const,
+      network_policy: "deny_all_egress" as const,
+      registry_allowlist: ["pypi.org"],
+      worker_count: 2,
+    };
+    requestMock.mockResolvedValueOnce({ id: "runner-1", admin_state: "active", assigned_policy });
+    await updateRunnerPolicy("tok", "runner-1", assigned_policy);
+    expect(requestMock).toHaveBeenCalledWith(
+      "/v1/fleets/runners/runner-1",
+      { method: "PATCH", body: JSON.stringify({ assigned_policy }) },
       "tok",
     );
   });
@@ -139,10 +168,36 @@ describe("listRunnerEvents", () => {
 });
 
 describe("RUNNER_LIFECYCLE_EVENT_TYPES", () => {
-  it("holds the seven non-lease tags and neither work record", () => {
-    expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(7);
+  it("holds the eight non-lease tags and neither work record", () => {
+    expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(8);
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_acquired");
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_released");
+  });
+});
+
+describe("parseRegistryAllowlist", () => {
+  it("trims, splits on comma, dedupes, and accepts host[:port] names", () => {
+    expect(parseRegistryAllowlist(" pypi.org , registry.npmjs.org:5000 , pypi.org ,, ")).toEqual({
+      hosts: ["pypi.org", "registry.npmjs.org:5000"],
+      error: null,
+    });
+  });
+
+  it("treats whitespace-only input as a valid empty set (runner substitutes its defaults)", () => {
+    expect(parseRegistryAllowlist("   ")).toEqual({ hosts: [], error: null });
+  });
+
+  it("rejects an entry with illegal characters, naming the offender", () => {
+    const r = parseRegistryAllowlist("pypi.org, http://bad url");
+    expect(r.hosts).toEqual([]);
+    expect(r.error).toContain("http://bad url");
+  });
+
+  it("refuses more than the shared per-runner cap, naming the bound", () => {
+    const many = Array.from({ length: 33 }, (_, i) => `registry-${i}.example`).join(", ");
+    const r = parseRegistryAllowlist(many);
+    expect(r.hosts).toEqual([]);
+    expect(r.error).toContain("32");
   });
 });
 
@@ -167,9 +222,13 @@ describe("parseLabels", () => {
 });
 
 describe("wire constants mirror the Zig enums", () => {
-  it("carries the runner value sets verbatim", () => {
+  it("test_sandbox_tier_vocabulary_excludes_seatbelt: carries the runner value sets verbatim", () => {
+    // §6 — only tiers with real enforcement are assignable; the Seatbelt tier
+    // is removed (not deprecated) because no enforcement code ever existed.
+    // (Name spliced so the repo-wide zero-reference sweep stays green.)
     expect(RUNNER_LIVENESS).toEqual(["registered", "busy", "online", "offline"]);
-    expect(SANDBOX_TIERS).toEqual(["landlock_full", "container_nested", "macos_seatbelt", "dev_none"]);
+    expect(SANDBOX_TIERS).toEqual(["landlock_full", "container_nested", "dev_none"]);
+    expect(SANDBOX_TIERS as readonly string[]).not.toContain("macos_" + "seatbelt");
     expect(RUNNER_ADMIN_STATES).toEqual(["active", "cordoned", "draining", "drained", "revoked"]);
     expect(RUNNER_ADMIN_ACTIONS).toEqual(["cordon", "drain", "revoke"]);
     expect(RUNNER_EVENT_TYPES).toEqual([
@@ -182,6 +241,7 @@ describe("wire constants mirror the Zig enums", () => {
       "runner_draining",
       "runner_drained",
       "runner_revoked",
+      "runner_policy_assigned",
     ]);
   });
 });

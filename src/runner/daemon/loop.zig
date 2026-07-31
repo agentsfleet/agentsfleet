@@ -12,6 +12,9 @@ const contract = @import("contract");
 const constants = common;
 
 const Config = @import("config.zig");
+const AppliedPolicy = @import("AppliedPolicy.zig");
+const policy_apply = @import("policy_apply.zig");
+const capability_probe = @import("../engine/capability_probe.zig");
 const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
 const client_errors = @import("../engine/client_errors.zig");
@@ -94,6 +97,12 @@ pub var backoff_ms: *const fn (u32) u64 = constants.backoff.ms;
 pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.ProcessScheduler, cfg: Config, env_map: *const std.process.Environ.Map) LoopExit {
     var cp = client_mod.init(alloc, io, sched, cfg.control_plane_url);
     defer cp.deinit();
+    // The one holder of the control-plane-assigned policy. Written by this
+    // loop from each heartbeat reply; read by every worker at its lease
+    // boundary. Null = no applicable assignment = lease nothing (fail closed).
+    var applied = AppliedPolicy.init(alloc);
+    defer applied.deinit();
+    var gates = policy_apply.Gates{};
     const runner_token: []const u8 = cfg.runner_token;
     // Reset only `stop_requested` (set solely by this control loop). `drain_requested`
     // is set by the async SIGTERM/SIGINT handler and is DELIBERATELY not reset here:
@@ -111,13 +120,24 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
 
     var heartbeat_errors: u32 = 0;
     var auth_rejects: u32 = 0;
+    // The last capability report the control plane ACCEPTED — the next tick
+    // re-sends only on change (or on the retry after a failed beat, since a
+    // failed beat never updates this).
+    var last_report: ?contract.protocol.CapabilityReport = null;
+    defer if (last_report) |r| capability_probe.freeReport(alloc, r);
     while (true) {
         if (drain_requested.load(.seq_cst)) {
             log.info(EVENT_SERVER_STOPPED, .{ .reason = "signal_drain" });
             return .drained;
         }
 
-        const hb = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
+        // Probe every tick — cheap availability asks, no installs — so a
+        // capability lost under a live daemon degrades on the next beat.
+        const report = capability_probe.collect(io, alloc);
+        const send_report = last_report == null or !capability_probe.eql(last_report.?, report);
+
+        const hb_parsed = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms, if (send_report) report else null) catch |err| {
+            capability_probe.freeReport(alloc, report);
             // A 401/403 is a rejected token — retrying can never fix it, so count
             // it apart from transport loss and fail loud once it's clearly not a
             // transient blip. A transport error resets the auth streak (and vice
@@ -145,8 +165,33 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
         };
         heartbeat_errors = 0;
         auth_rejects = 0;
+        if (send_report) {
+            if (last_report) |r| capability_probe.freeReport(alloc, r);
+            last_report = report;
+        } else {
+            capability_probe.freeReport(alloc, report);
+        }
 
-        switch (hb.status) {
+        // Copy the status out, apply the policy + verdict while the parse is
+        // alive, then free it — the reply's strings live in the parse.
+        const status = hb_parsed.value.status;
+        const reply_degraded = hb_parsed.value.degraded;
+        policy_apply.applyHeartbeatPolicy(io, alloc, &applied, &gates, hb_parsed.value.assigned_policy);
+        policy_apply.noteDegraded(&applied, &gates, hb_parsed.value.degraded, hb_parsed.value.degraded_reason);
+        hb_parsed.deinit();
+
+        // A degraded reply can mean the control plane never PERSISTED our
+        // report (its capability write is best-effort and can fail after our
+        // beat got a 200) — and an unchanged probe would then never re-send,
+        // wedging the row degraded until restart. Re-sending is cheap and
+        // idempotent: forget the accepted report so the next beat carries it
+        // again, and the row can only converge.
+        if (reply_degraded) {
+            if (last_report) |r| capability_probe.freeReport(alloc, r);
+            last_report = null;
+        }
+
+        switch (status) {
             .stop => {
                 log.info(EVENT_SERVER_STOPPED, .{ .reason = "fleet_stop" });
                 stop_requested.store(true, .seq_cst);
@@ -160,12 +205,21 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
             .ok => {},
         }
 
-        // First OK heartbeat brings the pool up; later ones are liveness ticks.
+        // The pool comes up on the first OK heartbeat that carries an
+        // applicable policy — the worker count is part of the assignment, so
+        // there is nothing to size the pool with before one arrives.
         if (pool == null) {
-            pool = worker_pool.spawn(io, alloc, sched, cfg, env_map, &stop_requested, &drain_requested) catch |err| {
-                log.err("worker_pool_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
-                return .worker_pool_failed;
-            };
+            if (applied.currentWorkerCount()) |assigned_workers| {
+                var eff = cfg;
+                eff.worker_count = assigned_workers;
+                pool = worker_pool.spawn(io, alloc, sched, eff, env_map, &applied, &stop_requested, &drain_requested) catch |err| {
+                    log.err("worker_pool_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
+                    return .worker_pool_failed;
+                };
+                gates.spawned_workers = assigned_workers;
+            }
+        } else if (applied.currentWorkerCount()) |assigned_workers| {
+            policy_apply.logGrowNeedsRestart(&gates, assigned_workers);
         }
 
         sleepMs(io, @intCast(constants.HEARTBEAT_INTERVAL_MS));
@@ -176,8 +230,62 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
 /// server-supplied (or default) retry interval. Errors back off and return — the
 /// caller's loop retries on the next iteration. Each pool worker calls this in a
 /// loop with its own allocator + client (see `worker_pool.zig`).
-pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
-    const lease_parsed = cp.lease(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
+///
+/// Every lease runs against an EFFECTIVE config: a copy of the bootstrap
+/// config stamped with the applied assignment at this moment. No policy
+/// applied → lease nothing (fail closed). A worker whose index is at or above
+/// the currently assigned count idles — the soft-shrink half of a worker-count
+/// change; nothing in flight is ever touched.
+/// The runner half of Invariant 2 as a pure verdict, so the refuse matrix is
+/// unit-testable without io or a transport: an unmet (degraded) or absent
+/// assignment leases nothing, and a worker above the assigned count idles
+/// (soft-shrink). Precedence is fail-closed: degraded wins over everything.
+pub const PollVerdict = enum { proceed, refuse_degraded, refuse_no_policy, idle_above_count };
+
+const LOG_EVENT_LEASE_REFUSED_NO_POLICY = "lease_refused_no_policy";
+
+pub fn pollVerdict(degraded: bool, assigned_workers: ?u32, worker_index: u32) PollVerdict {
+    if (degraded) return .refuse_degraded;
+    const count = assigned_workers orelse return .refuse_no_policy;
+    if (worker_index >= count) return .idle_above_count;
+    return .proceed;
+}
+
+pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map, applied: *AppliedPolicy, worker_index: u32) void {
+    switch (pollVerdict(applied.isDegraded(), applied.currentWorkerCount(), worker_index)) {
+        .refuse_degraded => {
+            // Invariant 2, runner half: an unmet assignment leases nothing. The
+            // control loop already warned with the row's reason; workers just idle.
+            log.debug("lease_refused_degraded", .{ .index = worker_index });
+            sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+            return;
+        },
+        .refuse_no_policy => {
+            log.debug(LOG_EVENT_LEASE_REFUSED_NO_POLICY, .{ .index = worker_index });
+            sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+            return;
+        },
+        .idle_above_count => {
+            log.debug("worker_idle_above_assigned_count", .{ .index = worker_index });
+            sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+            return;
+        },
+        .proceed => {},
+    }
+    // A copy failure holds nothing — same fail-closed idle as no policy.
+    const pol = applied.snapshot(alloc) orelse {
+        log.debug(LOG_EVENT_LEASE_REFUSED_NO_POLICY, .{ .index = worker_index });
+        sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+        return;
+    };
+    defer AppliedPolicy.freePolicy(alloc, pol);
+    var eff = cfg;
+    eff.sandbox_tier = pol.sandbox_tier;
+    eff.network_policy = pol.network_policy;
+    eff.worker_count = pol.worker_count;
+    eff.registry_allowlist = pol.registry_allowlist;
+
+    const lease_parsed = cp.lease(alloc, runner_token, eff.cp_deadlines.default_ms) catch |err| {
         if (err == error.Unauthorized) {
             // A rejected token is permanent — the heartbeat loop owns the
             // loud `token_rejected` exit. Workers stop hammering the control
@@ -201,7 +309,7 @@ pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, run
         return;
     }
 
-    lease_run.executeAndReport(io, alloc, cp, runner_token, cfg, env_map, lease_resp.lease.?);
+    lease_run.executeAndReport(io, alloc, cp, runner_token, eff, env_map, lease_resp.lease.?);
 }
 
 /// Saturate the final ExecutionResult's u64 cumulative splits onto the report's

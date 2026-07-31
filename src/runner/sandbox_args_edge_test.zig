@@ -30,9 +30,8 @@ fn cfgWithTier(tier: contract.protocol.SandboxTier) Config {
     return Config{
         .control_plane_url = "http://127.0.0.1:8080",
         .runner_token = "agt_rtest",
-        .host_id = "host-edge",
         .sandbox_tier = tier,
-        .workspace_base = "/tmp/agentsfleet-runner",
+        .storage_home = "/tmp/agentsfleet-runner",
         .network_policy = .deny_all_egress,
         .worker_count = 1,
         .cp_deadlines = .{},
