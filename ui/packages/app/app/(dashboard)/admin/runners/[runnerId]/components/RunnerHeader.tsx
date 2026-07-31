@@ -12,7 +12,7 @@ import {
   type RunnerDetail,
   type RunnerListItem,
 } from "@/lib/api/runners";
-import { EditPolicyDialog } from "../../components/EditPolicyDialog";
+import EditPolicyDialogDynamic from "@/components/domain/island-dynamic/EditPolicyDialogDynamic";
 import { runnersIndexPath } from "@/lib/runner-routes";
 import { presentErrorString } from "@/lib/errors";
 import {
@@ -132,7 +132,7 @@ export function RunnerHeader({
           <CopyButton value={runner.id} label={COPY_RUNNER_ID_LABEL} className="ml-md" />
         </nav>
         <div aria-label={RUNNER_ACTIONS_LABEL} className="flex flex-wrap items-center justify-end gap-sm">
-          <EditPolicyDialog
+          <EditPolicyDialogDynamic
             runnerId={runner.id}
             current={runner.assigned_policy}
             onSaved={() => router.refresh()}

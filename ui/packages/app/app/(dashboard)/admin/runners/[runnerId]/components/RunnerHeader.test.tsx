@@ -8,6 +8,19 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh, push }),
 }));
 
+// The edit-policy dialog is a dynamic island (it carries the react-hook-form +
+// zod stack off the detail route's critical path). The header's own duty is
+// wiring its onSaved to a route refresh, which this stub lets the test drive —
+// the dialog's own behaviour is covered in EditPolicyDialog.test.tsx.
+vi.mock("@/components/domain/island-dynamic/EditPolicyDialogDynamic", async () => {
+  const { Button } = await import("@agentsfleet/design-system");
+  return {
+    default: ({ onSaved }: { onSaved: () => void }) => (
+      <Button onClick={onSaved}>Edit policy</Button>
+    ),
+  };
+});
+
 const updateRunnerAdminStateActionMock = vi.fn();
 const updateRunnerPolicyActionMock = vi.fn();
 const deleteRunnerActionMock = vi.fn();
@@ -143,14 +156,9 @@ describe("RunnerHeader", () => {
   });
 
   it("saving a policy re-assignment refreshes the header (the row must show the new truth)", async () => {
-    updateRunnerPolicyActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: { id: "r1", admin_state: "active", assigned_policy: null },
-    });
     render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    // The island stub fires onSaved directly — the wiring under test.
     fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
-    await waitFor(() => expect(updateRunnerPolicyActionMock).toHaveBeenCalled());
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 

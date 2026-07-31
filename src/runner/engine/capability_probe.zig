@@ -88,8 +88,13 @@ fn landlockAvailable() bool {
 
 fn seccompAvailable() bool {
     if (builtin.os.tag != .linux) return false;
-    const rc = std.os.linux.prctl(PR_GET_SECCOMP, 0, 0, 0, 0);
-    return std.os.linux.E.init(rc) == .SUCCESS;
+    // A raw syscall returns the result, or a NEGATIVE errno. `PR_GET_SECCOMP`
+    // answers the current mode (0/1/2) when the kernel has seccomp and
+    // -EINVAL when it does not, so non-negative IS the availability answer —
+    // the same signed-return read `landlockAvailable` above uses, and one
+    // that does not depend on a std errno-decode helper's spelling.
+    const signed: isize = @bitCast(std.os.linux.prctl(PR_GET_SECCOMP, 0, 0, 0, 0));
+    return signed >= 0;
 }
 
 fn collectControllers(io: std.Io, alloc: std.mem.Allocator) []const []const u8 {
