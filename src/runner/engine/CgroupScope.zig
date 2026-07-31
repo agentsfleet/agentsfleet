@@ -226,7 +226,9 @@ pub fn delegatedCgroupPath(placement: []const u8) ?[]const u8 {
     return null;
 }
 
-fn resolveCgroupBase(io: std.Io, alloc: std.mem.Allocator) ![]u8 {
+/// Absolute path of the runner's delegated cgroup base. Pub for the
+/// capability probe, which reads what the subtree actually enables.
+pub fn resolveCgroupBase(io: std.Io, alloc: std.mem.Allocator) ![]u8 {
     const file = std.Io.Dir.openFileAbsolute(io, CGROUP_PROC_PATH, .{}) catch return CgroupError.CgroupReadFailed;
     defer file.close(io);
 

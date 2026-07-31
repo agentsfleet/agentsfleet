@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M147
 **Workstream:** 001
 **Date:** Jul 29, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE — closed via the M148_001 PR per Indy (Jul 31, 2026): its code (`enableDelegatedControllers` and the tailnet/CI access work) merged to main earlier and the branch was pruned; only this spec-file bookkeeping was outstanding.
 **Priority:** P0 — `deploy-worker-dev` has failed on every push to `main` since Jul 28, 2026; the bare-metal runner has shipped no build since.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — standalone; no other workstream touches the tailnet policy.

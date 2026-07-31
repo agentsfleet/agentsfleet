@@ -53,9 +53,12 @@ cd ui/packages/app
 ```
 AGENTSFLEET_API_URL=http://agentsfleetd:3000        # compose service name; http://localhost:3000 if on host
 AGENTSFLEET_RUNNER_TOKEN=agt_r…                  # mint via §3 below; a fake agt_r verifies structure only
-RUNNER_HOST_ID=local-dev-runner
-RUNNER_SANDBOX_TIER=dev_none               # local default; landlock_full needs a hardened Linux container
 ```
+
+That pair is the runner's complete environment. The sandbox tier (and the rest
+of the policy) is assigned in the Create runner dialog and delivered with the
+token's identity — pick `dev_none` there for a local runner (`landlock_full`
+needs a hardened Linux container).
 
 The runner binary is Linux-only (bubblewrap + Landlock), so a local runner runs
 inside a Linux container joined to the compose network — hence the `agentsfleetd:3000`
@@ -106,8 +109,8 @@ then sign in again. `runner:write` includes `runner:read`.
 | `sandbox_tier` | `landlock_full` (bare-metal Linux) · `dev_none` (local) |
 | `labels` | `dev` |
 
-`host_id` must equal the `RUNNER_HOST_ID` the daemon will report (keeps the host
-logs and the fleet list in agreement). The `agt_r` is revealed **once** — copy it
+`host_id` is how the fleet list names the host (the daemon no longer reports
+one — its token resolves the row). The `agt_r` is revealed **once** — copy it
 immediately (dismissal locked during reveal; the raw value is dropped on close).
 
 ### Acceptance
@@ -182,16 +185,16 @@ SESSION_ID=$(printf 'Authorization: Bearer %s\n' "$CLERK_SECRET" | curl -fsS -X 
   "https://api.clerk.com/v1/sessions" -d "user_id=$USER_ID" | jq -r '.id')
 ADMIN_JWT=$(printf 'Authorization: Bearer %s\n' "$CLERK_SECRET" | curl -fsS -X POST -H @- \
   "https://api.clerk.com/v1/sessions/$SESSION_ID/tokens" | jq -r '.jwt')
-RUNNER_HOST_ID=$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname')
-export RUNNER_HOST_ID
+WORKER_HOST_ID=$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname')
+export WORKER_HOST_ID
 
 FIRST_SEEN=$(printf 'Authorization: Bearer %s\n' "$ADMIN_JWT" | curl -fsS -H @- \
   "$API_BASE/v1/fleets/runners" | jq -er \
-  '.items[] | select(.host_id == env.RUNNER_HOST_ID and (.liveness == "online" or .liveness == "busy")) | .last_seen_at')
+  '.items[] | select(.host_id == env.WORKER_HOST_ID and (.liveness == "online" or .liveness == "busy")) | .last_seen_at')
 sleep 12
 SECOND_SEEN=$(printf 'Authorization: Bearer %s\n' "$ADMIN_JWT" | curl -fsS -H @- \
   "$API_BASE/v1/fleets/runners" | jq -er \
-  '.items[] | select(.host_id == env.RUNNER_HOST_ID and (.liveness == "online" or .liveness == "busy")) | .last_seen_at')
+  '.items[] | select(.host_id == env.WORKER_HOST_ID and (.liveness == "online" or .liveness == "busy")) | .last_seen_at')
 test "$SECOND_SEEN" -gt "$FIRST_SEEN"
 echo "runner online; last_seen_at advanced"
 # Expected: runner online; last_seen_at advanced

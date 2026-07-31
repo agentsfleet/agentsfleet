@@ -100,17 +100,16 @@ pub fn lease(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, 
         ClientError.MalformedResponse;
 }
 
-/// POST /v1/runners/me/heartbeats → signal liveness + receive fleet directives.
-/// Request body is empty in S0 (capacity/version fields are a later workstream).
-/// Returns the parsed HeartbeatResponse so the daemon can act on status==drain/stop.
-pub fn heartbeat(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31) !protocol.HeartbeatResponse {
-    const res = try self.post(alloc, protocol.PATH_RUNNER_HEARTBEATS, runner_token, "", deadline_ms);
+/// POST /v1/runners/me/heartbeats → capability report up, assignment + verdict
+/// down. Caller deinits AFTER copying what it keeps (strings live in the parse).
+pub fn heartbeat(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31, capability_report: ?protocol.CapabilityReport) !std.json.Parsed(AppliedPolicy.HeartbeatReplyRaw) {
+    const body = try std.json.Stringify.valueAlloc(alloc, protocol.HeartbeatRequest{ .capability_report = capability_report }, .{});
+    defer alloc.free(body);
+    const res = try self.post(alloc, protocol.PATH_RUNNER_HEARTBEATS, runner_token, body, deadline_ms);
     defer alloc.free(res.body);
     try checkStatus(res.status);
-    const parsed = std.json.parseFromSlice(protocol.HeartbeatResponse, alloc, res.body, .{}) catch
-        return ClientError.MalformedResponse;
-    defer parsed.deinit();
-    return parsed.value;
+    return std.json.parseFromSlice(AppliedPolicy.HeartbeatReplyRaw, alloc, res.body, .{ .allocate = .alloc_always, .ignore_unknown_fields = true }) catch
+        ClientError.MalformedResponse;
 }
 
 /// GET /v1/runners/me → the runner's own row, read-only (no liveness bump). The
@@ -346,5 +345,6 @@ const deadline = @import("control_plane_deadline.zig");
 const http_pin = @import("http_pin");
 const client_errors = @import("../engine/client_errors.zig");
 const protocol = @import("contract").protocol;
+const AppliedPolicy = @import("AppliedPolicy.zig");
 
 const log = logging.scoped(.fleet_runner);

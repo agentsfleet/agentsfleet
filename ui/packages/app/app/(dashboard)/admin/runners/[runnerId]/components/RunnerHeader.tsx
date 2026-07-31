@@ -7,10 +7,12 @@ import { ExternalLinkIcon } from "lucide-react";
 import { Badge, Button, CopyButton } from "@agentsfleet/design-system";
 import {
   SANDBOX_TIER_LABELS,
+  type CapabilityReport,
   type RunnerAdminAction,
   type RunnerDetail,
   type RunnerListItem,
 } from "@/lib/api/runners";
+import EditPolicyDialogDynamic from "@/components/domain/island-dynamic/EditPolicyDialogDynamic";
 import { runnersIndexPath } from "@/lib/runner-routes";
 import { presentErrorString } from "@/lib/errors";
 import {
@@ -25,7 +27,7 @@ import {
   type RunnerDeleteConfirmTarget,
 } from "../../components/RunnerDialogs";
 import { updateRunnerAdminStateAction, deleteRunnerAction } from "../../actions";
-import { RunnerStatus } from "../../components/RunnerStatus";
+import { DEGRADED_BADGE_LABEL, RunnerStatus } from "../../components/RunnerStatus";
 import {
   COPY_RUNNER_ID_LABEL,
   OPEN_GRAFANA_LABEL,
@@ -41,6 +43,26 @@ import {
 // rather than 26 characters of visible text. Identity — status, isolation
 // tier, labels — is one line below; enrolment is not repeated here because
 // Activity's registered record carries it with the real date.
+
+const ASSIGNMENT_UNMET_PREFIX = "assignment unmet: ";
+const ACHIEVABLE_PREFIX = "host reports";
+const MECHANISM_YES = "✓";
+const MECHANISM_NO = "✗";
+
+// The host's own report, rendered verbatim beside the assignment it failed —
+// what the kernel can actually enforce, mechanism by mechanism. No derived
+// "achievable tier": deriving one client-side would re-implement the server's
+// reconciliation and drift from it.
+function describeAchievable(cap: CapabilityReport): string {
+  const controllers = cap.cgroup_controllers.length > 0 ? cap.cgroup_controllers.join(",") : MECHANISM_NO;
+  return (
+    `${ACHIEVABLE_PREFIX} landlock ${cap.landlock ? MECHANISM_YES : MECHANISM_NO}` +
+    ` · seccomp ${cap.seccomp ? MECHANISM_YES : MECHANISM_NO}` +
+    ` · cgroups ${controllers}` +
+    ` · bubblewrap ${cap.bubblewrap ? MECHANISM_YES : MECHANISM_NO}` +
+    ` · egress ${cap.egress_enforcement ? MECHANISM_YES : MECHANISM_NO}`
+  );
+}
 
 export function RunnerHeader({
   runner,
@@ -110,6 +132,11 @@ export function RunnerHeader({
           <CopyButton value={runner.id} label={COPY_RUNNER_ID_LABEL} className="ml-md" />
         </nav>
         <div aria-label={RUNNER_ACTIONS_LABEL} className="flex flex-wrap items-center justify-end gap-sm">
+          <EditPolicyDialogDynamic
+            runnerId={runner.id}
+            current={runner.assigned_policy}
+            onSaved={() => router.refresh()}
+          />
           {actionsFor(runner.admin_state).map((action) => (
             <Button
               key={action}
@@ -142,14 +169,28 @@ export function RunnerHeader({
         </div>
       </div>
 
-      <div className="mb-2xl flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">
-        <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} />
-        <span className="inline-flex flex-wrap gap-sm">
-          <Badge>{SANDBOX_TIER_LABELS[runner.sandbox_tier]}</Badge>
-          {runner.labels.map((label) => (
-            <Badge key={label}>{label}</Badge>
-          ))}
-        </span>
+      <div className="mb-2xl flex flex-col gap-md">
+        <div className="flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">
+          <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} />
+          <span className="inline-flex flex-wrap gap-sm">
+            <Badge>{SANDBOX_TIER_LABELS[runner.sandbox_tier]}</Badge>
+            {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
+            {runner.labels.map((label) => (
+              <Badge key={label}>{label}</Badge>
+            ))}
+          </span>
+        </div>
+        {/* The mismatch line renders ONLY when a real verdict contradicts a real
+            assignment: the reason names the specific missing mechanism, and the
+            achievable line states what the host reported — assigned against
+            achievable, side by side (Dimensions 4.1 / 4.2). */}
+        {runner.degraded && runner.degraded_reason ? (
+          <p className="font-mono text-body-sm text-destructive">
+            {ASSIGNMENT_UNMET_PREFIX}
+            {runner.degraded_reason}
+            {runner.achievable ? ` · ${describeAchievable(runner.achievable)}` : ""}
+          </p>
+        ) : null}
       </div>
 
       <RunnerActionConfirm

@@ -13,6 +13,9 @@ pub const RunnerEventType = enum {
     runner_draining,
     runner_drained,
     runner_revoked,
+    /// An operator re-assigned the runner's policy (tier / network / registry /
+    /// workers) via the fleet PATCH — a security-posture change worth auditing.
+    runner_policy_assigned,
 };
 
 pub const RunnerEventItem = struct {

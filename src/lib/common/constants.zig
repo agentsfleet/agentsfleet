@@ -102,7 +102,7 @@ pub const RUNNER_OFFLINE_AFTER_MS: i64 = LEASE_TTL_MS * 3;
 /// only has to keep an *idle* host live: it MUST stay below `RUNNER_OFFLINE_AFTER_MS`
 /// (the comptime assertion below enforces it) so an idle host always heartbeats
 /// before the fleet read would derive it offline. One stream per host regardless
-/// of `RUNNER_WORKER_COUNT`.
+/// of the assigned worker count.
 pub const HEARTBEAT_INTERVAL_MS: i64 = 10_000;
 
 comptime {

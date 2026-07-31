@@ -43,7 +43,7 @@ const API_KEY_ROW_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001";
 const AGT_T_KEY = auth_mw.tenant_api_key.TENANT_KEY_PREFIX ++ "c" ** 48;
 
 const REGISTER_BODY =
-    \\{"host_id":"host-enroll-test","sandbox_tier":"dev_none","labels":[]}
+    \\{"host_id":"host-enroll-test","assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":1},"labels":[]}
 ;
 
 const TEST_JWKS = scope_fixtures.JWKS;

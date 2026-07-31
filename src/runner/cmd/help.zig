@@ -32,7 +32,7 @@ const FLAGS =
     \\Environment:
     \\  AGENTSFLEET_API_URL        control-plane base URL
     \\  AGENTSFLEET_RUNNER_TOKEN   this host's agt_r token (daemon/status/doctor)
-    \\  RUNNER_HOST_ID        stable host identifier (daemon)
+    \\  RUNNER_STORAGE_HOME   host-local scratch/cache root (optional)
     \\
 ;
 

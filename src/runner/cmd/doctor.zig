@@ -48,7 +48,7 @@ fn reachCheck(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proces
     if (api == null or token == null) return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "skipped — api/token unset" };
     var client = Client.init(alloc, io, sched, api.?);
     defer client.deinit();
-    _ = client.heartbeat(alloc, token.?, call_deadline.DEFAULT_DEADLINE_MS) catch |err|
+    const probe = client.heartbeat(alloc, token.?, call_deadline.DEFAULT_DEADLINE_MS, null) catch |err|
         return .{
             .name = CHECK_CONTROL_PLANE,
             .ok = false,
@@ -63,6 +63,7 @@ fn reachCheck(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proces
                 else => "unreachable — could not connect (dial/TLS/transport failed)",
             },
         };
+    probe.deinit();
     return .{ .name = CHECK_CONTROL_PLANE, .ok = true, .detail = "reachable; token valid" };
 }
 

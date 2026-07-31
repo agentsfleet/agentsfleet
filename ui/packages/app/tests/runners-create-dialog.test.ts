@@ -101,10 +101,17 @@ describe("AddRunnerDialog component", () => {
 
     const field = await screen.findByLabelText("Runner token");
     expect((field as HTMLInputElement).value).toBe("agt_rdeadbeef");
-    // host trimmed, labels deduped + parsed, default tier passed through.
+    // host trimmed, labels deduped + parsed, and the FULL assignment envelope
+    // at its documented defaults (M148: the dialog assigns policy; the action
+    // forwards it verbatim).
     expect(createRunnerActionMock).toHaveBeenCalledWith({
       host_id: "web-prod-1",
-      sandbox_tier: "landlock_full",
+      assigned_policy: {
+        sandbox_tier: "landlock_full",
+        network_policy: "allow_all",
+        registry_allowlist: [],
+        worker_count: 1,
+      },
       labels: ["gpu", "us-east"],
     });
 
@@ -131,20 +138,24 @@ describe("AddRunnerDialog component", () => {
     expect(screen.getByText("Runner token is shown once. Copy it now.")).toBeTruthy();
   });
 
-  it("isolation mode's radiogroup has an accessible name and keeps its self-reported disclaimer", async () => {
+  it("isolation radiogroup has an accessible name and reads as an assignment, never self-reported", async () => {
     await openDialog();
     // Named via aria-labelledby (a div[role=radiogroup] isn't a labelable
     // HTML element, so FormLabel's htmlFor can't reach it) — not a duplicated
     // literal aria-label string.
-    expect(screen.getByRole("radiogroup", { name: /isolation mode/i })).toBeTruthy();
-    expect(screen.getByText(/how the host isolates fleet work — self-reported/i)).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: /isolation to assign/i })).toBeTruthy();
+    // M148 Dimension 4.3: the copy describes an assignment the host must
+    // satisfy; the pre-inversion self-reported framing is gone.
+    expect(screen.getByText(/the isolation this host must enforce/i)).toBeTruthy();
+    expect(screen.queryByText(/self-reported/i)).toBeNull();
   });
 
-  it("isolation mode renders as four OptionCards; picking one is passed to the create call", async () => {
+  it("isolation renders one OptionCard per assignable tier; picking one rides the assignment envelope", async () => {
     createRunnerActionMock.mockResolvedValue(MINTED);
     const { user } = await openDialog();
     const allRadios = screen.getAllByRole("radio");
-    expect(allRadios).toHaveLength(4);
+    // Three assignable tiers (M148 §6 removed the never-enforced Seatbelt one).
+    expect(allRadios).toHaveLength(3);
     // Length just asserted above — the indexed access is safe.
     expect(allRadios[0]!.getAttribute("data-state")).toBe("checked"); // default: landlock_full
 
@@ -157,7 +168,12 @@ describe("AddRunnerDialog component", () => {
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
     expect(createRunnerActionMock).toHaveBeenCalledWith({
       host_id: "web-prod-1",
-      sandbox_tier: "container_nested",
+      assigned_policy: {
+        sandbox_tier: "container_nested",
+        network_policy: "allow_all",
+        registry_allowlist: [],
+        worker_count: 1,
+      },
       labels: [],
     });
   });
