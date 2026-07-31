@@ -25,9 +25,17 @@
         // pool exhaustion 500s instead of waiting. Patched to bounded-poll the exhaustion
         // branch (see the fork's CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin and
         // return to upstream once it offers a threaded-Io timed wait.
+        //
+        // Pinned by tag AND commit, like nullclaw above. The `#<commit>` is not
+        // decoration: `zig fetch` given `?ref=<tag>` alone resolved to the upstream
+        // base 52b9f8a instead of the tagged commit, silently yielding plain
+        // upstream — no pool-acquire patch, and translate_c back on codeberg. The
+        // hash is the backstop that turns such a mis-pin into a build failure
+        // rather than a quiet regression. Tags are `v0.0.0-af.N`, one per fork
+        // commit this repository consumes.
         .pg = .{
-            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=patch/agentsfleet-0.16#b85d6081f558e311ea09fce1ed5661eeca608eda",
-            .hash = "pg-0.0.0-Wp_7gT61BgCvgRPnB0kKTcBT4txtgXI8ZCdCgDMLPBIR",
+            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=v0.0.0-af.3#1dea0f9f91bfec3fa49a163c1e6615d4ab7a9b55",
+            .hash = "pg-0.0.0-Wp_7gRO-BgAwfz7gC8A6NYUp-bQRInfmUGxAgu5dVKyf",
         },
         .posthog = .{
             .url = "git+https://github.com/agentsfleet/posthog-zig.git#v0.2.0",
