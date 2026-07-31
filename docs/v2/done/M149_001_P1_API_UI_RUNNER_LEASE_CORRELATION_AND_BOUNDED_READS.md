@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M149
 **Workstream:** 001
 **Date:** Jul 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing correlation gap plus read paths that grow without bound
 **Categories:** API, UI
 **Batch:** B1 — single workstream, no parallel siblings
@@ -81,6 +81,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `schema/046_runner_retention_sweep_indexes.sql` | CREATE | §8.4: sweep-shaped composites `(status, updated_at)` + `(event_type, occurred_at)`, EXPLAIN-measured (Discovery C13) |
 | `schema/embed.zig` | EDIT | register the four migrations (043–046; slot 042 stays vacant for M148) |
 | `public/openapi/paths/fleet.yaml` | EDIT | document the lease-list workspace filter |
+| `public/openapi/components/schemas.yaml` | EDIT | §9 mechanical: `total` and `leases_acquired` described the retired read-time shape |
 | `public/openapi.json` | EDIT | regenerated bundle |
 | `src/agentsfleetd/db/index_usage_integration_test.zig` | EDIT | plan proofs for the new reads |
 | `src/agentsfleetd/fleet/runner_counters_integration_test.zig` | CREATE | counter exactness under churn/retry |
@@ -319,16 +320,16 @@ real name wins — a spec that names a test nobody wrote proves nothing.
 | R3 | Activity filtered reads index-served (§2) | `make test-integration` | both plan tests passed | P0 | ✅ `events composite has the right shape and serves the filtered feed…OK` (asserts both the page and count statements) |
 | R4 | Chat copy split (§4) | `make test-unit-app` | both copy tests passed | P1 | ✅ `Tests 2110 passed (2110)` — run through `make test-unit-all`, which contains the app lane |
 | R5 | Teardown purges Upstash QStash end-to-end (§7) | `make test-integration` | all three §7 tests passed | P0 | ✅ all three `identity_events_clerk_integration_test…OK` |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 54 files, 0 missing (regraded after §8). One is outside the workstream and labelled as such in the table: the C11 harness gate, landed in its own commit. |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `UNIT_ALL_EXIT=0` · `✓ All package coverage gates passed` (regraded after §8; test depth unit=3298 integration=511, +32/+10 over baseline) |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `LINT_EXIT=0` · `✓ All lint checks passed` (regraded after §8) |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `735 passed; 8 skipped; 0 failed.` exit 0 (regraded after §8; all eight §8 tests present and `OK`) — see the grading note below on the command actually run |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 55 files, 0 missing (regraded after §9; the round added `public/openapi/components/schemas.yaml`, now carrying its own row). One is outside the workstream and labelled as such in the table: the C11 harness gate, landed in its own commit. |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `UNIT_ALL_EXIT=0` · `✓ All package coverage gates passed` (regraded after §9; test depth unit=3304 integration=513, +38/+12 over baseline) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `LINT_EXIT=0` · `✓ All lint checks passed` (regraded after §9) |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `739 passed; 8 skipped; 0 failed.` exit 0 (regraded after §9; all nine §9 tests present and `OK`) — see the grading note below on the command actually run |
 | S4 | E2E walks the operator path | `make acceptance-e2e` | exit 0 | P0 | ❌ — the acceptance tier drives the DEPLOYED dev environment, whose daemon predates this branch and so does not serve Dimension 1.4's `workspace_id` filter. Nothing runnable locally can turn it green; only a deploy can. Indy's call, quoted in Deferrals: ship it red and run the test in the follow-up Pull Request after deploying. The Pull Request carries the `Orly-Override` trailer with that reason. |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ `MEMLEAK_EXIT=0` · `memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` (regraded after §8) |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ `MEMLEAK_EXIT=0` · `memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` (regraded after §9) |
 | S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ `XCC x86_64-linux=0 aarch64-linux=0` |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` |
 
-**Grading deviation, disclosed:** R1/R2/R3/R5/S3 were graded from the compiled integration binary run directly, not from `make test-integration` verbatim. That command wraps `zig build test-integration`, whose result protocol is corrupted by test-binary log noise — it prints `failed command:` on fully green runs and printed a passing marker on a genuinely red run earlier in this stream (Discovery C7). The binary was run with the exact environment the make target exports (`LIVE_DB`, `TEST_DATABASE_URL`, `TEST_REDIS_TLS_URL`, `REDIS_URL_API`, `REDIS_TLS_CA_CERT_FILE`, both `AGENTSFLEET_QSTASH_LIVE_*`, `AGENTSFLEET_RUNNER_BIN`) via the three-step direct-run recipe in C17 — reset, migrate, run; C10's two-step version is incomplete and produced 566 failures. Grading from the wrapper would have been grading from a known-unreliable reporter. Every graded row above was re-taken on the post-§8 diff, one heavy job at a time.
+**Grading deviation, disclosed:** R1/R2/R3/R5/S3 were graded from the compiled integration binary run directly, not from `make test-integration` verbatim. That command wraps `zig build test-integration`, whose result protocol is corrupted by test-binary log noise — it prints `failed command:` on fully green runs and printed a passing marker on a genuinely red run earlier in this stream (Discovery C7). The binary was run with the exact environment the make target exports (`LIVE_DB`, `TEST_DATABASE_URL`, `TEST_REDIS_TLS_URL`, `REDIS_URL_API`, `REDIS_TLS_CA_CERT_FILE`, both `AGENTSFLEET_QSTASH_LIVE_*`, `AGENTSFLEET_RUNNER_BIN`) via the three-step direct-run recipe in C17 — reset, migrate, run; C10's two-step version is incomplete and produced 566 failures. Grading from the wrapper would have been grading from a known-unreliable reporter. Every graded row above was re-taken on the post-§9 diff, one heavy job at a time.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
