@@ -25,18 +25,23 @@ Everything is committed and pushed. Remaining work = babysit only.
   the 9th was `bundle-size-app` (the Edit-policy dialog put react-hook-form +
   zod on the runner detail route's critical path, +33 kB over its 102.4 kB
   budget → now a dynamic island like the sibling add-runner dialog, 44.95 kB).
-- ⏳ **UNCOMMITTED, UNPUSHED**: greptile P1 #1's fix (see below). Local lint +
-  agentsfleetd units pass; `make test-integration` was still running in the
-  background when this was written (log:
-  `<session-scratchpad>/itest_patch.log`, task `bvj5piv77`).
+- ✅ Greptile round 1 (review 4825008900): both P1s triaged, REPLIED, and
+  history-written. #1's atomic-verdict fix is committed + pushed as
+  `6533bce35` (`make test-integration` exit 0 over it, plus lint-zig and the
+  agentsfleetd unit lane).
+- ⏳ **ONLY REMAINING WORK**: poll CI on `6533bce35` (round 2 — the round-1
+  failures were all fixed in `c99f8d3c6`), watch for a greptile re-review of
+  the new SHAs, and close out when two consecutive polls are empty with CI
+  green on BOTH PRs.
 
 ## Greptile triage state (PR #581, review id 4825008900)
 
-Two P1 line comments. Neither has been REPLIED to yet — replies are owed via
-`greptile-triage.md`'s Tier 1 templates, with the fix SHA.
+Two P1 line comments — BOTH replied (Tier 1) and history-written to both
+`greptile-history.md` files (`fix` + `already-fixed`). Nothing owed unless
+greptile re-flags on the new SHAs.
 
 1. **`runner_patch.zig:151` — "Stale verdict leaves leasing enabled"**:
-   VALID & ACTIONABLE, **fix written, not yet committed**. My `reconcileNow`
+   VALID & ACTIONABLE, **fixed in `6533bce35`**, replied. My `reconcileNow`
    wrote the verdict in a separate best-effort statement, so a failed verdict
    write left a tightened assignment beside a stale healthy verdict and the
    lease gate would issue work. Fixed by making it ATOMIC: the caller
@@ -46,7 +51,7 @@ Two P1 line comments. Neither has been REPLIED to yet — replies are owed via
    gone. A capability read failure yields a null report → reconciles degraded
    (fail-closed), never assumed-healthy.
 2. **`loop.zig:223` — "Worker-count increases remain unapplied"**: VALID BUT
-   INTENTIONAL + already disclosed. Spec assumption (6): worker-count changes
+   INTENTIONAL + already disclosed; replied with that evidence, no code change. Spec assumption (6): worker-count changes
    bind at the next loop tick and the pool is spawned once; the Codex review
    raised the same point and the Edit-policy dialog copy now states it
    ("growing the worker count past what the daemon started with takes effect
@@ -55,28 +60,21 @@ Two P1 line comments. Neither has been REPLIED to yet — replies are owed via
 
 ## Working tree
 
-Branch `feat/m148-assigned-runner-policy` @ `c99f8d3c6` pushed;
+Branch `feat/m148-assigned-runner-policy` @ `6533bce35` pushed;
 worktree `~/Projects/agentsfleet-m148-assigned-runner-policy`.
-Uncommitted: `src/agentsfleetd/http/handlers/fleet/{runner_patch,sql}.zig`
-(the atomic-verdict fix above) + this handoff file.
+Clean at `6533bce35` apart from this handoff file. Nothing is unpushed.
 
 ## Next steps (in order)
 
-1. Confirm the background `make test-integration` (task `bvj5piv77`) exit 0.
-   If red, fix before pushing — the PATCH statement changed shape.
-2. Commit the atomic-verdict fix; push.
-3. Reply to BOTH greptile comments per `greptile-triage.md` Tier 1 templates
-   (fix SHA for #1, the intentional-and-disclosed evidence for #2), then write
-   the history lines to BOTH `$HOME/.gstack/projects/<slug>/greptile-history.md`
-   and `$HOME/.gstack/greptile-history.md`
-   (`fix|already-fixed` + `correctness`/`other`).
-4. Re-poll CI on PR #581 (`gh pr checks 581`) — expect the previously failing
-   9 to go green on `c99f8d3c6`+. Fix anything caused by our diff; surface
-   anything pre-existing to Indy rather than fixing blind.
-5. Keep polling per the cadence table until **two consecutive empty polls AND
+1. `gh pr checks 581` on `6533bce35` — the 9 round-1 failures should be green
+   (8 shared the Zig errno fix, 1 the bundle island). Fix only what our diff
+   caused; surface anything pre-existing to Indy rather than fixing blind.
+2. Walk greptile again (review ids + review bodies + top-level issue comments)
+   for a re-review of `c99f8d3c6`/`6533bce35`; triage per `greptile-triage.md`.
+3. Keep polling per the cadence table until **two consecutive empty polls AND
    ci=green** on #581, and #167 green too. Then post the final BABYSIT REPORT
    and add it to the PR's Session Notes.
-6. Delete this handoff file before merge.
+4. Delete this handoff file before merge.
 
 ## Risks/gotchas
 
@@ -111,17 +109,17 @@ Uncommitted: `src/agentsfleetd/http/handlers/fleet/{runner_patch,sql}.zig`
 > https://github.com/agentsfleet/agentsfleet/pull/581 open; docs PR
 > https://github.com/agentsfleet/docs/pull/167 open). Read
 > `HANDOFF_Jul_31_09_10.md` at the worktree root first — the spec is already
-> in `docs/v2/done/` and all implementation is done; this is `kishore-babysit-prs`
-> work only. Do, in order: (1) confirm the backgrounded `make test-integration`
-> passed (re-run it if the session lost the task) — it covers an uncommitted
-> atomic-verdict fix to `runner_patch.zig` + `fleet/sql.zig`; (2) commit and
-> push that fix; (3) reply to BOTH greptile P1 comments on #581 per
-> `greptile-triage.md` Tier 1 templates — #1 is fixed (cite the SHA), #2
-> (worker-count growth needs a restart) is intentional, spec-documented, and
-> already disclosed in the Edit-policy dialog copy, so reply with that evidence
-> and do NOT implement live pool growth; write the history lines to both
-> greptile-history files; (4) re-poll CI until two consecutive empty polls with
-> ci=green on both PRs, fixing only failures our diff caused; (5) post the final
-> BABYSIT REPORT into the PR's Session Notes and delete the handoff file.
+> in `docs/v2/done/`, all implementation is done, both greptile P1s are fixed
+> and replied, and everything is pushed at `6533bce35`. This is
+> `kishore-babysit-prs` work ONLY. Do, in order: (1) `gh pr checks 581` — the
+> nine round-1 failures were all fixed in `c99f8d3c6` (a Linux-only Zig errno
+> spelling + a route bundle budget), so expect green; fix only failures our
+> diff caused and surface pre-existing ones to Indy; (2) walk greptile again
+> (review ids + review bodies + top-level issue comments) for a re-review of
+> the new SHAs and triage per `greptile-triage.md` — do NOT implement live
+> worker-pool growth, that P1 is intentional, spec-documented, and disclosed in
+> the dialog copy; (3) keep polling the cadence until two consecutive empty
+> polls with ci=green on BOTH #581 and #167; (4) post the final BABYSIT REPORT
+> into the PR's Session Notes and delete the handoff file.
 > Do not re-litigate closed decisions — every Indy quote is in the spec's
 > Discovery.
