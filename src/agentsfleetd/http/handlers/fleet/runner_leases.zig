@@ -27,7 +27,7 @@ const log = logging.scoped(.fleet_runner_leases);
 const Hx = hx_mod.Hx;
 
 const MSG_BAD_LIMIT = "limit must be an integer between 1 and 100";
-const MSG_BAD_CURSOR = "starting_after must be a lease id held by this runner";
+const MSG_BAD_CURSOR = "starting_after must be a lease id held by this runner, and must match workspace_id when that filter is set";
 const MSG_BAD_WORKSPACE = "workspace_id must be a workspace id";
 const QUERY_WORKSPACE_ID = "workspace_id";
 
@@ -103,7 +103,7 @@ pub fn innerListRunnerLeases(hx: Hx, req: *httpz.Request, runner_id: []const u8)
 
     var boundary_created_at: ?i64 = null;
     if (starting_after) |cursor| {
-        boundary_created_at = resolveCursor(conn, cursor, runner_id) catch |err| {
+        boundary_created_at = resolveCursor(conn, cursor, runner_id, workspace_id) catch |err| {
             return failRead(hx, err);
         } orelse {
             hx.fail(ec.ERR_INVALID_REQUEST, MSG_BAD_CURSOR);
@@ -135,9 +135,12 @@ fn fetchLeaseTotal(conn: anytype, runner_id: []const u8, workspace_id: ?[]const 
 }
 
 /// Resolve `starting_after` to the boundary sort key; null means the lease id
-/// is not one this runner holds.
-fn resolveCursor(conn: anytype, lease_id: []const u8, runner_id: []const u8) !?i64 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_CURSOR, .{ lease_id, runner_id }));
+/// is not one this runner holds *on the stream being paged* — the workspace
+/// filter scopes the cursor exactly as it scopes the page, so a cursor from
+/// another workspace is refused instead of seeking this page past a boundary
+/// that was never on it.
+fn resolveCursor(conn: anytype, lease_id: []const u8, runner_id: []const u8, workspace_id: ?[]const u8) !?i64 {
+    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_CURSOR, .{ lease_id, runner_id, workspace_id }));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     return try row.get(i64, 0);

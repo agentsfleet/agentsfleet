@@ -150,10 +150,16 @@ pub const SELECT_RUNNER_LEASE_PAGE_AFTER =
 
 /// Resolve a `starting_after` lease id to the composite sort key the page seek
 /// needs. Scoped to the runner so a lease id from another runner is refused
-/// rather than silently seeking into a foreign history.
+/// rather than silently seeking into a foreign history — and scoped to the
+/// SAME workspace filter the page carries (RULE KYS: a keyset cursor names a
+/// position in one ordered stream, and the filter is part of what defines it).
+/// Without `$3` a cursor taken from workspace A would resolve to A's timestamp
+/// and then seek B's page past it, silently dropping every B row newer than
+/// that instant. `$1` lease id, `$2` runner id, `$3` workspace id or NULL.
 pub const SELECT_RUNNER_LEASE_CURSOR =
     \\SELECT l.created_at FROM fleet.runner_leases l
     \\WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
+    \\  AND ($3::uuid IS NULL OR l.workspace_id = $3::uuid)
 ;
 
 // ── Operator-plane runner mutations ─────────────────────────────────────────

@@ -44,6 +44,7 @@ const R_SAME_MS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc14";
 const R_OUTCOME = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc15";
 const R_CASCADE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc16";
 const R_FILTER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc17";
+const R_CURSOR = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc18";
 const R_UNKNOWN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eccff";
 // Well-formed workspace id that no seed ever creates.
 const WS_UNKNOWN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eccfd";
@@ -238,7 +239,7 @@ fn cleanup(conn: anytype) void {
         std.log.warn("metering cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE event_id LIKE $1", .{SETTLED_EVENT_PREFIX ++ "%"}) catch |err|
         std.log.warn("telemetry cleanup ignored: {s}", .{@errorName(err)});
-    const runner_ids = [_][]const u8{ R_LEASES, R_COUNTS, R_STALE, R_EMPTY, R_SAME_MS, R_OUTCOME, R_CASCADE, R_FILTER };
+    const runner_ids = [_][]const u8{ R_LEASES, R_COUNTS, R_STALE, R_EMPTY, R_SAME_MS, R_OUTCOME, R_CASCADE, R_FILTER, R_CURSOR };
     for (runner_ids) |rid| {
         _ = conn.exec("DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{rid}) catch |err|
             std.log.warn("lease cleanup ignored: {s}", .{@errorName(err)});
@@ -785,6 +786,83 @@ test "integration: test_runner_leases_workspace_filter_scopes_rows_and_total" {
     const obj_all = unfiltered.value.object;
     try std.testing.expectEqual(@as(usize, ws_a_pool.len + ws_b_pool.len), obj_all.get("items").?.array.items.len);
     try std.testing.expectEqual(@as(i64, ws_a_pool.len + ws_b_pool.len), obj_all.get("total").?.integer);
+}
+
+// Workspace A's two leases are OLDER than workspace B's two, so a cursor
+// carried across the filter boundary lands past everything B holds.
+const CURSOR_A_OLDER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf21";
+const CURSOR_A_NEWER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf22";
+const CURSOR_B_OLDER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf23";
+const CURSOR_B_NEWER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf24";
+const CURSOR_EVENT_PREFIX = "evt-cur-";
+/// Steps that put B's pair strictly after A's in the newest-first stream.
+const CURSOR_B_STEP_OFFSET: i64 = 10;
+
+fn seedCursorLease(conn: anytype, lease_id: []const u8, fleet_id: []const u8, workspace_id: []const u8, event_suffix: []const u8, step: i64) !void {
+    const event_id = try std.fmt.allocPrint(ALLOC, CURSOR_EVENT_PREFIX ++ "{s}", .{event_suffix});
+    defer ALLOC.free(event_id);
+    try seedLease(conn, .{
+        .lease_id = lease_id,
+        .runner_id = R_CURSOR,
+        .fleet_id = fleet_id,
+        .workspace_id = workspace_id,
+        .event_id = event_id,
+        .status = protocol.RUNNER_LEASE_STATUS_EXPIRED,
+        .lease_expires_at = LEASE_CREATED_BASE_MS,
+        .created_at = LEASE_CREATED_BASE_MS + step * LEASE_CREATED_STEP_MS,
+    });
+}
+
+test "integration: test_runner_leases_cursor_is_scoped_to_the_workspace_filter" {
+    // RULE KYS: a keyset cursor names a position in ONE ordered stream, and the
+    // workspace filter is part of what defines that stream. Resolving the
+    // boundary on (id, runner_id) alone let a cursor from workspace A seek
+    // workspace B's page past A's timestamp — B's newer rows vanished from the
+    // page while `total` still counted them. Refusing the foreign cursor is the
+    // only answer that cannot silently drop rows.
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    try base.seedWorkspace(conn, WS_B);
+    try base.seedFleet(conn, FLEET_C, WS_B, "runner-read-fleet-c", "{}", "");
+    try seedRunner(conn, R_CURSOR, "runner-read-cursor");
+
+    try seedCursorLease(conn, CURSOR_A_OLDER, FLEET_A, WS, "a-0", 0);
+    try seedCursorLease(conn, CURSOR_A_NEWER, FLEET_A, WS, "a-1", 1);
+    try seedCursorLease(conn, CURSOR_B_OLDER, FLEET_C, WS_B, "b-0", CURSOR_B_STEP_OFFSET);
+    try seedCursorLease(conn, CURSOR_B_NEWER, FLEET_C, WS_B, "b-1", CURSOR_B_STEP_OFFSET + 1);
+
+    // The regression: A's newest lease as a cursor on B's filtered page. Before
+    // the fix this answered 200 with zero items and `"total":2` — the page and
+    // its own count disagreed, and neither said anything was skipped.
+    const foreign = try leasesPath(R_CURSOR, "workspace_id=" ++ WS_B ++ "&starting_after=" ++ CURSOR_A_NEWER);
+    defer ALLOC.free(foreign);
+    const foreign_resp = try getBody(h, foreign, PLATFORM_ADMIN_TOKEN);
+    defer foreign_resp.deinit();
+    try foreign_resp.expectStatus(.bad_request);
+    try std.testing.expect(foreign_resp.bodyContains("UZ-REQ-001"));
+    try std.testing.expect(foreign_resp.bodyContains("must match workspace_id"));
+
+    // The filter and the cursor compose when the cursor is on the filtered
+    // stream: B's newest as the boundary yields exactly B's older row.
+    const composed = try fetchLeases(h, R_CURSOR, "workspace_id=" ++ WS_B ++ "&starting_after=" ++ CURSOR_B_NEWER);
+    defer composed.deinit();
+    const composed_items = composed.value.object.get("items").?.array;
+    try std.testing.expectEqual(@as(usize, 1), composed_items.items.len);
+    try std.testing.expectEqualStrings(CURSOR_B_OLDER, composed_items.items[0].object.get("id").?.string);
+    try std.testing.expectEqualStrings(WS_B, composed_items.items[0].object.get("workspace_id").?.string);
+
+    // Unfiltered, the cursor still spans workspaces exactly as before — the
+    // scoping is the filter's, not a new restriction on the whole stream.
+    const spanning = try fetchLeases(h, R_CURSOR, "starting_after=" ++ CURSOR_B_OLDER);
+    defer spanning.deinit();
+    const spanning_items = spanning.value.object.get("items").?.array;
+    try std.testing.expectEqual(@as(usize, 2), spanning_items.items.len);
+    try std.testing.expectEqualStrings(CURSOR_A_NEWER, spanning_items.items[0].object.get("id").?.string);
+    try std.testing.expectEqualStrings(CURSOR_A_OLDER, spanning_items.items[1].object.get("id").?.string);
 }
 
 test "integration: test_runner_leases_rejects_malformed_workspace_filter" {

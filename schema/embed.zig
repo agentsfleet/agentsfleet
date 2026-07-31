@@ -51,4 +51,5 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 43, .sql = @embedFile("043_runner_lifetime_counters.sql") },
     .{ .version = 44, .sql = @embedFile("044_runner_events_read_index.sql") },
     .{ .version = 45, .sql = @embedFile("045_runner_retention_delete_grants.sql") },
+    .{ .version = 46, .sql = @embedFile("046_runner_retention_sweep_indexes.sql") },
 };

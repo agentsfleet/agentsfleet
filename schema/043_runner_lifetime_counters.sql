@@ -38,6 +38,28 @@ GRANT SELECT, INSERT, UPDATE ON fleet.runner_lifetime_counters TO api_runtime;
 -- literals below mirror values already frozen in existing rows (written by the
 -- application's named constants); the runtime increments never read them, so
 -- they cannot drift forward — they describe history, not vocabulary.
+--
+-- The conflict arm takes GREATEST, not the recount, and that is load-bearing
+-- twice over.
+--
+-- 1. It makes this statement the ONE safe repair for the rolling-deploy gap.
+--    `release_command` applies this migration while the old machines are still
+--    serving, and only the replaced ones carry the tally arms — so a lease
+--    acquired by an old replica after this snapshot is counted by nobody, and
+--    the tallies sit permanently low by however many leases the rollout
+--    overlapped. Re-running the statement any time before the retention sweep
+--    prunes (30 days) recomputes exactly those, and takes them.
+-- 2. It stops that repair from ever becoming destructive. Once retention has
+--    deleted a runner's aged history, a recount is SMALLER than the truth --
+--    lifetime tallies count transitions, not surviving rows. An absolute
+--    assignment would silently zero a mature runner's totals; GREATEST cannot
+--    lower anything, so the statement is safe to re-run at any age, and the
+--    monotonicity the counters promise holds in the one place that could break
+--    it.
+--
+-- A resident reconciler is deliberately NOT shipped for the same reason: after
+-- the first prune a recount is no longer a source of truth, so nothing that
+-- recounts on a schedule can be left running.
 INSERT INTO fleet.runner_lifetime_counters
     (uid, runner_id, acquired, succeeded, failed, expired, created_at, updated_at)
 SELECT r.id, r.id,
@@ -52,8 +74,8 @@ SELECT r.id, r.id,
          ON e.fleet_id = l.fleet_id AND e.event_id = l.event_id
  GROUP BY r.id, r.created_at, r.updated_at
 ON CONFLICT (uid) DO UPDATE
-   SET acquired  = EXCLUDED.acquired,
-       succeeded = EXCLUDED.succeeded,
-       failed    = EXCLUDED.failed,
-       expired   = EXCLUDED.expired,
-       updated_at = EXCLUDED.updated_at;
+   SET acquired  = GREATEST(fleet.runner_lifetime_counters.acquired,  EXCLUDED.acquired),
+       succeeded = GREATEST(fleet.runner_lifetime_counters.succeeded, EXCLUDED.succeeded),
+       failed    = GREATEST(fleet.runner_lifetime_counters.failed,    EXCLUDED.failed),
+       expired   = GREATEST(fleet.runner_lifetime_counters.expired,   EXCLUDED.expired),
+       updated_at = GREATEST(fleet.runner_lifetime_counters.updated_at, EXCLUDED.updated_at);

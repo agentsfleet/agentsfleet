@@ -221,7 +221,7 @@ test "integration: purge succeeds for an account with approval gates (append-onl
     // could not remove it — the append-only trigger raises on DELETE unless
     // the purge transaction sets the bypass.
     const purged = try teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC);
-    try std.testing.expect(purged);
+    try std.testing.expect(purged.purged);
 
     try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, RB_OIDC));
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM core.fleet_approval_gates WHERE id = $1::uuid", RB_GATE_ID));
@@ -271,7 +271,7 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
 
     // Purge the account by its oidc_subject.
     const purged = try teardown.purgeByOidcSubject(conn, std.testing.allocator, OIDC);
-    try std.testing.expect(purged);
+    try std.testing.expect(purged.purged);
 
     // The memory row is gone (regression target) and the cascade reached the
     // user — proving every statement before the user delete (incl. memory) ran.

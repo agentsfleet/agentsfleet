@@ -555,9 +555,21 @@ test "clerk webhook: user.deleted purges an account that still owns fleets" {
 const OIDC_DELETE_SCHED: []const u8 = "oidc-clerk-http-del-sched-04";
 const OIDC_DELETE_REPLAY: []const u8 = "oidc-clerk-http-del-replay-05";
 const OIDC_DELETE_FAIL: []const u8 = "oidc-clerk-http-del-fail-06";
+const OIDC_DELETE_STRAND: []const u8 = "oidc-clerk-http-del-strand-07";
+const OIDC_DELETE_NOCREDS: []const u8 = "oidc-clerk-http-del-nocreds-08";
+const OIDC_DELETE_ONESLOT: []const u8 = "oidc-clerk-http-del-oneslot-09";
 const SCHED_FLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000904";
 const SCHED_SCHEDULE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000905";
 const SCHED_LEASE_TOKEN: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000906";
+const SCHED_SCHEDULE_ID_TWO: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000907";
+const SCHED_LEASE_TOKEN_TWO: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000908";
+/// Two schedules on the fleet, so both must reach the provider.
+const STRANDED_EXPECTED_DELETES: u32 = 2;
+/// Ceiling on the pool-drain loop — the harness pool is far smaller.
+const MAX_HELD_CONNS: usize = 32;
+/// A short acquire budget so a regression fails fast instead of stalling on
+/// the two-second production default.
+const FAST_ACQUIRE_TIMEOUT_NS: u64 = 200 * std.time.ns_per_ms;
 const QSTASH_API_BASE: []const u8 = "https://qstash.teardown.test";
 const SCHED_CRON: []const u8 = "0 9 * * *";
 const SCHED_TIMEZONE: []const u8 = "Asia/Kolkata";
@@ -573,11 +585,12 @@ const PROVIDER_FAILURE_STATUS: u16 = 500;
 /// by observation rather than by reading the handler top to bottom.
 ///
 /// The probe deliberately rides its OWN connection, not the harness pool. This
-/// callback fires on the request thread while `runDelete` already holds a pool
-/// slot and `cron_sync.removeAll` holds a second; reaching for a third from in
-/// here would put the assertion in competition with the code it is measuring,
-/// and a starved pool would surface as an unrelated `ConnectionBusy` somewhere
-/// later in the suite rather than as a failure of this test.
+/// callback fires on the request thread mid-unregister, and reaching into the
+/// pool from here would put the assertion in competition with the code it is
+/// measuring — a starved pool would surface as an unrelated `ConnectionBusy`
+/// somewhere later in the suite rather than as a failure of this test. Its
+/// independence is also what lets the single-slot test below drain the harness
+/// pool without blinding this probe.
 const FakeQStash = struct {
     probe: *pg.Conn,
     status: std.atomic.Value(u16) = .init(204),
@@ -633,21 +646,26 @@ fn seedFleetWithSchedule(h: *TestHarness, conn: *pg.Conn, oidc_subject: []const 
     const ws = try fetchWorkspaceId(conn, ALLOC, oidc_subject);
     defer ALLOC.free(ws);
     try insertFleet(conn, ws, SCHED_FLEET_ID);
+    try addSyncedSchedule(h, SCHED_SCHEDULE_ID, SCHED_LEASE_TOKEN);
+}
 
+/// One more SYNCED schedule on the same fleet. Two is the minimum that can show
+/// whether a failed unregister strands its siblings.
+fn addSyncedSchedule(h: *TestHarness, schedule_id: []const u8, lease_token: []const u8) !void {
     const store = Store.init(h.ctx.pool);
     var created = switch (try store.create(ALLOC, .{
         .fleet_id = SCHED_FLEET_ID,
         .source = .api,
-        .source_key = SCHED_SCHEDULE_ID,
+        .source_key = schedule_id,
         .cron = SCHED_CRON,
         .timezone = SCHED_TIMEZONE,
         .message = SCHED_MESSAGE,
-    }, SCHED_SCHEDULE_ID, SCHED_LEASE_TOKEN, SCHED_CREATED_AT_MS, SCHED_LEASE_UNTIL_MS)) {
+    }, schedule_id, lease_token, SCHED_CREATED_AT_MS, SCHED_LEASE_UNTIL_MS)) {
         .created => |schedule| schedule,
         else => return error.ScheduleCreateFailed,
     };
     defer created.deinit(ALLOC);
-    var synced = (try store.finalizeSuccess(ALLOC, SCHED_SCHEDULE_ID, created.generation, SCHED_LEASE_TOKEN, SCHED_SYNCED_AT_MS)) orelse
+    var synced = (try store.finalizeSuccess(ALLOC, schedule_id, created.generation, lease_token, SCHED_SYNCED_AT_MS)) orelse
         return error.ScheduleFinalizeFailed;
     synced.deinit(ALLOC);
 }
@@ -845,4 +863,143 @@ test "integration: a provider unregister failure is counted, and the purge still
     defer cleanupAccount(conn, OIDC_DELETE_FAIL);
     try std.testing.expectEqual(@as(i64, 0), try countSchedules(conn));
     try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, OIDC_DELETE_FAIL));
+}
+
+test "integration: a failed unregister does not strand the schedules behind it" {
+    // `removeAll` used to return on the FIRST provider failure, so schedule two
+    // was never attempted — and the purge then deleted the row naming it. One
+    // transient 500 leaked every timer behind it, permanently and silently.
+    // Two schedules, provider failing for all of them: both must still be
+    // called.
+    var setup = TeardownSetup.init() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer setup.deinit();
+    {
+        const conn = try setup.h.acquireConn();
+        defer setup.h.releaseConn(conn);
+        cleanupAccount(conn, OIDC_DELETE_STRAND);
+    }
+    try bootstrapAccount(setup.h, OIDC_DELETE_STRAND, "msg_del_strand_create", "delstrand@acme.test");
+    {
+        const conn = try setup.h.acquireConn();
+        defer setup.h.releaseConn(conn);
+        try seedFleetWithSchedule(setup.h, conn, OIDC_DELETE_STRAND);
+        try addSyncedSchedule(setup.h, SCHED_SCHEDULE_ID_TWO, SCHED_LEASE_TOKEN_TWO);
+        try std.testing.expectEqual(@as(i64, STRANDED_EXPECTED_DELETES), try countSchedules(conn));
+    }
+    setup.fake.status.store(PROVIDER_FAILURE_STATUS, .release);
+
+    const resp = try deliverUserDeleted(setup.h, OIDC_DELETE_STRAND, "msg_del_strand_delete");
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+
+    // The assertion the old shape fails: every schedule reached the provider,
+    // not just the one before the first failure.
+    try std.testing.expectEqual(STRANDED_EXPECTED_DELETES, setup.fake.deletes.load(.acquire));
+    try std.testing.expect(metrics.snapshot().account_teardown_unregister_failures_total >= 1);
+
+    const conn = try setup.h.acquireConn();
+    defer setup.h.releaseConn(conn);
+    defer cleanupAccount(conn, OIDC_DELETE_STRAND);
+    try std.testing.expectEqual(@as(i64, 0), try countSchedules(conn));
+    try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, OIDC_DELETE_STRAND));
+}
+
+test "integration: teardown unregisters with only one pool connection free" {
+    // The pool-exhaustion class, made deterministic. `runDelete` used to hold a
+    // connection across the whole unregister pass while `cron_sync` reached for
+    // a second, so a request needed TWO slots at once. Production defaults to
+    // four slots and a two-second acquire timeout while admitting far more
+    // concurrent handlers, which meant a handful of simultaneous deletions
+    // could each hold one slot, time every nested acquire out, and purge
+    // anyway — timers alive, retry state erased, nothing logged as unusual.
+    //
+    // One free slot is the smallest fixture that tells the two shapes apart:
+    // the staged version completes, the nested one cannot.
+    var setup = TeardownSetup.init() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer setup.deinit();
+    {
+        const conn = try setup.h.acquireConn();
+        defer setup.h.releaseConn(conn);
+        cleanupAccount(conn, OIDC_DELETE_ONESLOT);
+    }
+    try bootstrapAccount(setup.h, OIDC_DELETE_ONESLOT, "msg_del_oneslot_create", "deloneslot@acme.test");
+    {
+        const conn = try setup.h.acquireConn();
+        defer setup.h.releaseConn(conn);
+        try seedFleetWithSchedule(setup.h, conn, OIDC_DELETE_ONESLOT);
+    }
+
+    // Take everything, then hand exactly one back.
+    setup.h.pool._timeout = FAST_ACQUIRE_TIMEOUT_NS;
+    var held: [MAX_HELD_CONNS]?*pg.Conn = @splat(null);
+    var held_count: usize = 0;
+    while (held_count < MAX_HELD_CONNS) {
+        held[held_count] = setup.h.pool.acquire() catch break;
+        held_count += 1;
+    }
+    try std.testing.expect(held_count >= 1);
+    held_count -= 1;
+    setup.h.pool.release(held[held_count].?);
+    held[held_count] = null;
+    defer for (held[0..held_count]) |maybe| {
+        if (maybe) |c| setup.h.pool.release(c);
+    };
+
+    const resp = try deliverUserDeleted(setup.h, OIDC_DELETE_ONESLOT, "msg_del_oneslot_delete");
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+
+    // The provider heard about it on one slot. A zero here means the nested
+    // acquire timed out and the timer outlived the account.
+    try std.testing.expect(setup.fake.deletes.load(.acquire) >= 1);
+    try std.testing.expectEqual(@as(u64, 0), metrics.snapshot().account_teardown_unregister_failures_total);
+}
+
+test "integration: missing provider credentials count as a leak, not as silence" {
+    // QStash credentials go absent after a startup vault or database fault.
+    // Teardown mapped that to `.unconfigured` and said nothing, which is only
+    // true when nothing was ever registered — but the schedule ROWS are right
+    // there, and the timers they name were registered during an earlier healthy
+    // run. A transient restart fault therefore turned every subsequent account
+    // deletion into an invisible upstream leak. The purge still proceeds
+    // (erasure wins); what changes is that the leak is now counted.
+    var setup = TeardownSetup.init() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer setup.deinit();
+    {
+        const conn = try setup.h.acquireConn();
+        defer setup.h.releaseConn(conn);
+        cleanupAccount(conn, OIDC_DELETE_NOCREDS);
+    }
+    try bootstrapAccount(setup.h, OIDC_DELETE_NOCREDS, "msg_del_nocreds_create", "delnocreds@acme.test");
+    {
+        const conn = try setup.h.acquireConn();
+        defer setup.h.releaseConn(conn);
+        try seedFleetWithSchedule(setup.h, conn, OIDC_DELETE_NOCREDS);
+    }
+    // Exactly the state a startup credential-load failure leaves behind.
+    setup.h.ctx.qstash_credentials = null;
+
+    const resp = try deliverUserDeleted(setup.h, OIDC_DELETE_NOCREDS, "msg_del_nocreds_delete");
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    try std.testing.expect(resp.bodyContains("\"deleted\":true"));
+
+    // Nothing could be sent, and that is precisely what must be counted.
+    try std.testing.expectEqual(@as(u32, 0), setup.fake.deletes.load(.acquire));
+    try std.testing.expect(metrics.snapshot().account_teardown_unregister_failures_total >= 1);
+
+    const conn = try setup.h.acquireConn();
+    defer setup.h.releaseConn(conn);
+    defer cleanupAccount(conn, OIDC_DELETE_NOCREDS);
+    try std.testing.expectEqual(@as(i64, 0), try countSchedules(conn));
+    try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, OIDC_DELETE_NOCREDS));
 }

@@ -25,6 +25,7 @@ const schema = @import("schema");
 const protocol = @import("contract").protocol;
 const fleet_sql = @import("../fleet/sql.zig");
 const operator_sql = @import("../http/handlers/fleet/sql.zig");
+const retention_sweeper = @import("../fleet/retention_sweeper.zig");
 const PgQuery = @import("pg_query.zig").PgQuery;
 
 /// The migration slot this suite covers.
@@ -398,6 +399,58 @@ test "counter and retention slots are registered in the migration array" {
     try std.testing.expect(slotSql(43) != null);
     try std.testing.expect(slotSql(44) != null);
     try std.testing.expect(slotSql(45) != null);
+    try std.testing.expect(slotSql(46) != null);
+}
+
+/// Slot 046's pair, named once because the shape assertions and the fitness
+/// probes below both spell them.
+const RETENTION_LEASES_INDEX = "idx_runner_leases_status_updated_at";
+const RETENTION_EVENTS_INDEX = "idx_runner_events_type_occurred_at";
+/// Below every seeded row's clock, so NOTHING qualifies — the steady-state
+/// cycle, and the only bind that discriminates.
+///
+/// With a cutoff that matches everything, `LIMIT` short-circuits after the
+/// first batch on any index that can reach the rows at all, so slot 018's
+/// `(runner_id, status)` looks free and the planner takes it even though it
+/// cannot bound the age predicate. That is exactly how the pre-046 sequential
+/// scan looked acceptable. Proving emptiness is the work every cycle does once
+/// the backlog drains, and only an index leading with the sweep's own predicate
+/// can do it without walking the table.
+const RETENTION_CUTOFF_PROBE: i64 = 1;
+const RETENTION_BATCH_PROBE: i64 = 1000;
+
+test "retention sweep deletes ride their own indexes, not a whole-table scan" {
+    // The sweeper's predicates are status/tag + age across ALL runners, so no
+    // runner-leading index can serve them: before slot 046 both DELETEs planned
+    // as `Seq Scan`, hourly, on every replica. Asked with the production
+    // statements verbatim and their real bind shapes — parameter arrays, which
+    // is precisely why slot 046 ships full composites and not partial indexes
+    // (spec Discovery C2).
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    defer wipeLeases(db.conn);
+    defer wipeRunnerEvents(db.conn);
+    try seedLeases(db.conn, LEASE_SEED_ROWS);
+    wipeRunnerEvents(db.conn);
+    try seedRunnerEvents(db.conn, EVENT_SEED_ROWS);
+
+    try expectIndexShape(alloc, db.conn, "fleet", RETENTION_LEASES_INDEX, "status, updated_at");
+    try expectIndexShape(alloc, db.conn, "fleet", RETENTION_EVENTS_INDEX, "event_type, occurred_at");
+
+    const terminal = [_][]const u8{
+        protocol.RUNNER_LEASE_STATUS_REPORTED,
+        protocol.RUNNER_LEASE_STATUS_EXPIRED,
+    };
+    try expectServesFilter(alloc, db.conn, retention_sweeper.DELETE_TERMINAL_LEASES_BATCH, .{
+        &terminal, RETENTION_CUTOFF_PROBE, RETENTION_BATCH_PROBE,
+    }, RETENTION_LEASES_INDEX);
+
+    var per_lease_tags: [protocol.PER_LEASE_EVENT_TYPES.len][]const u8 = undefined;
+    inline for (protocol.PER_LEASE_EVENT_TYPES, 0..) |event_type, i| per_lease_tags[i] = @tagName(event_type);
+    try expectServesFilter(alloc, db.conn, retention_sweeper.DELETE_AGED_RUNNER_EVENTS_BATCH, .{
+        &per_lease_tags, RETENTION_CUTOFF_PROBE, RETENTION_BATCH_PROBE,
+    }, RETENTION_EVENTS_INDEX);
 }
 
 test "lifetime counter table keys one bigint tally row per runner" {
