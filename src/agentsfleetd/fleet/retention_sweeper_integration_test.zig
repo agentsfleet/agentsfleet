@@ -35,6 +35,9 @@ const RETENTION_WINDOW_MS: i64 = 30 * std.time.ms_per_day;
 /// Seed aged rows one full day past the window so clock skew between the
 /// test's cutoff and the sweeper's cannot flip eligibility.
 const AGE_SAFETY_MS: i64 = std.time.ms_per_day;
+/// Mirrors the sweeper's per-statement ceiling, pinned here for the same reason
+/// the window is: a change there must fail this suite rather than pass quietly.
+const DELETE_BATCH_LIMIT: i64 = 1000;
 const EVENT_PREFIX = "evt-ret-";
 const AGED_EVENT_ROWS = 4;
 const RECENT_EVENT_ROWS = 2;
@@ -122,12 +125,10 @@ fn agedTerminalLeaseCount(conn: *pg.Conn, cutoff: i64) !i64 {
 
 /// Only the per-work tags are eligible; lifecycle rows of any age are not.
 fn agedEventCount(conn: *pg.Conn, cutoff: i64) !i64 {
-    var per_lease_tags: [protocol.PER_LEASE_EVENT_TYPES.len][]const u8 = undefined;
-    inline for (protocol.PER_LEASE_EVENT_TYPES, 0..) |event_type, i| per_lease_tags[i] = @tagName(event_type);
     return scalarI64(conn,
         \\SELECT COUNT(*)::bigint FROM fleet.runner_events
         \\WHERE event_type = ANY($1::text[]) AND occurred_at < $2
-    , .{ &per_lease_tags, cutoff });
+    , .{ &retention_sweeper.PER_LEASE_EVENT_TAGS, cutoff });
 }
 
 fn eventCountOfType(conn: *pg.Conn, event_type: protocol.RunnerEventType) !i64 {
@@ -139,6 +140,47 @@ fn eventCountOfType(conn: *pg.Conn, event_type: protocol.RunnerEventType) !i64 {
 
 fn leaseExists(conn: *pg.Conn, lease_id: []const u8) !bool {
     return (try scalarI64(conn, "SELECT COUNT(*)::bigint FROM fleet.runner_leases WHERE id = $1::uuid", .{lease_id})) == 1;
+}
+
+/// Same question asked on a connection of its own — the suite's own connection
+/// is inside an open transaction whenever a test is holding row locks, and a
+/// read there would see that transaction's own uncommitted view.
+fn leaseExistsOn(pool: *pg.Pool, lease_id: []const u8) !bool {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    return leaseExists(conn, lease_id);
+}
+
+fn leaseStatus(conn: *pg.Conn, lease_id: []const u8) ![]const u8 {
+    var q = PgQuery.from(try conn.query("SELECT status FROM fleet.runner_leases WHERE id = $1::uuid", .{lease_id}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    // Valid until the next query on this connection, which is all any caller
+    // here needs — every use is an immediate comparison.
+    return row.get([]const u8, 0);
+}
+
+/// The runner's lifetime `expired` tally, or zero before the row exists.
+fn lifetimeExpiredCount(conn: *pg.Conn) !i64 {
+    return scalarI64(conn,
+        \\SELECT COALESCE((SELECT expired FROM fleet.runner_lifetime_counters WHERE uid = $1::uuid), 0)::bigint
+    , .{RUNNER_ID});
+}
+
+/// Bulk-seed aged terminal leases in one statement. Row-at-a-time seeding of a
+/// batch-crossing fixture costs more than the test proves; the ids are minted
+/// with the version and variant nibbles the schema's UUIDv7 CHECK requires.
+fn seedAgedLeaseBulk(conn: *pg.Conn, aged_at: i64, count: i64) !void {
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_leases (id, runner_id, fleet_id, workspace_id, tenant_id,
+        \\   event_id, actor, event_type, request_json, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   fencing_token, lease_expires_at, status, created_at, updated_at)
+        \\SELECT overlay(overlay(gen_random_uuid()::text placing '7' from 15) placing '8' from 20)::uuid,
+        \\       $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'evt-ret-bulk-' || g, 'steer:retention-test', 'chat',
+        \\       '{}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $5, $6, $5, $5
+        \\FROM generate_series(1, $7::bigint) AS g
+    , .{ RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, aged_at, protocol.RUNNER_LEASE_STATUS_REPORTED, count });
 }
 
 fn runnerEventCount(conn: *pg.Conn) !i64 {
@@ -190,8 +232,10 @@ test "one sweep deletes aged terminal history and spares live and in-window rows
     try std.testing.expectEqual(eligible_leases, totals.leases_deleted);
     try std.testing.expectEqual(eligible_events, totals.events_deleted);
 
-    // Aged terminal rows are gone; the live-old and in-window terminal rows
-    // survive.
+    // Aged terminal rows are gone; the in-window terminal row survives. The
+    // aged `active` row also survives this pass — the expiry arm reaped it
+    // moments before, stamping a fresh `updated_at` that puts it outside the
+    // delete predicate until its own window elapses (see the reaping test).
     try std.testing.expect(!try leaseExists(ctx.conn, L_AGED_REPORTED_ONE));
     try std.testing.expect(!try leaseExists(ctx.conn, L_AGED_REPORTED_TWO));
     try std.testing.expect(!try leaseExists(ctx.conn, L_AGED_EXPIRED));
@@ -211,6 +255,128 @@ test "one sweep deletes aged terminal history and spares live and in-window rows
     const again = try retention_sweeper.sweepOnce(ctx.pool);
     try std.testing.expectEqual(@as(i64, 0), again.leases_deleted);
     try std.testing.expectEqual(@as(i64, 0), again.events_deleted);
+
+    cleanup(ctx.conn);
+}
+
+test "an abandoned lease is reaped by age; live work is left alone" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+    cleanup(ctx.conn);
+    try setupBase(ctx.conn);
+
+    const now_ms = clock.nowMillis();
+    const aged_at = now_ms - RETENTION_WINDOW_MS - AGE_SAFETY_MS;
+    // The zombie: a runner died holding this, the event settled elsewhere so
+    // nothing ever redelivered, and the fleet was never used again. None of the
+    // three ordinary writers can reach it.
+    try seedLease(ctx.conn, L_ACTIVE_OLD, EVENT_PREFIX ++ "zombie", protocol.RUNNER_LEASE_STATUS_ACTIVE, aged_at, aged_at);
+    // Live work, renewing now. `updated_at` is what the arm reads, so this is
+    // the row that proves the reaper cannot reach anything a runner still holds
+    // — the whole safety argument, stated as a row rather than as a comment.
+    try seedLease(ctx.conn, L_RECENT_REPORTED, EVENT_PREFIX ++ "live", protocol.RUNNER_LEASE_STATUS_ACTIVE, aged_at, now_ms);
+
+    const expired_before = try lifetimeExpiredCount(ctx.conn);
+    const totals = try retention_sweeper.sweepOnce(ctx.pool);
+
+    try std.testing.expectEqual(@as(i64, 1), totals.leases_expired);
+    try std.testing.expectEqualStrings(protocol.RUNNER_LEASE_STATUS_EXPIRED, try leaseStatus(ctx.conn, L_ACTIVE_OLD));
+    try std.testing.expectEqualStrings(protocol.RUNNER_LEASE_STATUS_ACTIVE, try leaseStatus(ctx.conn, L_RECENT_REPORTED));
+
+    // The transition is counted exactly once, by the same tally arm shape
+    // `reclaim` uses — the counters describe transitions, and a reaping is one.
+    try std.testing.expectEqual(expired_before + 1, try lifetimeExpiredCount(ctx.conn));
+
+    // The reaped row is NOT deleted in the same cycle: the flip stamped
+    // `updated_at`, so it now serves the readable window every settled lease
+    // gets. Deleting it here would erase a run's record the instant the system
+    // noticed it, which is the opposite of what retention promises.
+    try std.testing.expect(try leaseExists(ctx.conn, L_ACTIVE_OLD));
+    try std.testing.expectEqual(@as(i64, 0), totals.leases_deleted);
+
+    // Converges: nothing is active-and-aged any more, so a second cycle is a
+    // no-op rather than re-counting the same transition.
+    const again = try retention_sweeper.sweepOnce(ctx.pool);
+    try std.testing.expectEqual(@as(i64, 0), again.leases_expired);
+    try std.testing.expectEqual(expired_before + 1, try lifetimeExpiredCount(ctx.conn));
+
+    cleanup(ctx.conn);
+}
+
+test "a sweeper skips rows another sweeper holds instead of blocking on them" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+    cleanup(ctx.conn);
+    try setupBase(ctx.conn);
+
+    const now_ms = clock.nowMillis();
+    const aged_at = now_ms - RETENTION_WINDOW_MS - AGE_SAFETY_MS;
+    try seedLease(ctx.conn, L_AGED_REPORTED_ONE, EVENT_PREFIX ++ "held", protocol.RUNNER_LEASE_STATUS_REPORTED, aged_at, aged_at);
+    try seedLease(ctx.conn, L_AGED_REPORTED_TWO, EVENT_PREFIX ++ "free", protocol.RUNNER_LEASE_STATUS_REPORTED, aged_at, aged_at);
+
+    // Stand in for the other replica's sweeper mid-batch: its rows are locked,
+    // uncommitted. Without SKIP LOCKED this connection's sweep would wait on
+    // that transaction — paying the full search and deleting nothing — which is
+    // exactly the convoy three replicas on one hourly schedule would form.
+    _ = try ctx.conn.exec("BEGIN", .{});
+    {
+        // Scoped so the cursor closes before the sweep runs on another
+        // connection — the row lock belongs to the open transaction and outlives
+        // this block, which is the whole point.
+        var held = PgQuery.from(try ctx.conn.query(
+            "SELECT id FROM fleet.runner_leases WHERE id = $1::uuid FOR UPDATE",
+            .{L_AGED_REPORTED_ONE},
+        ));
+        defer held.deinit();
+        _ = try held.next();
+        held.drain();
+    }
+
+    const totals = try retention_sweeper.sweepOnce(ctx.pool);
+
+    // It took the free row and stepped over the held one — disjoint batches,
+    // no block. The assertion that it returned at all is half the proof.
+    try std.testing.expect(!try leaseExistsOn(ctx.pool, L_AGED_REPORTED_TWO));
+    try std.testing.expect(totals.leases_deleted >= 1);
+
+    _ = try ctx.conn.exec("ROLLBACK", .{});
+    // Released, so the next cycle claims what it skipped: skipping defers work,
+    // it never drops it.
+    try std.testing.expect(try leaseExists(ctx.conn, L_AGED_REPORTED_ONE));
+    const after = try retention_sweeper.sweepOnce(ctx.pool);
+    try std.testing.expect(after.leases_deleted >= 1);
+    try std.testing.expect(!try leaseExists(ctx.conn, L_AGED_REPORTED_ONE));
+
+    cleanup(ctx.conn);
+}
+
+test "a full batch keeps sweeping, and the cycle says it was saturated" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+    cleanup(ctx.conn);
+    try setupBase(ctx.conn);
+
+    // One row past a single batch's ceiling: enough to prove the loop continues
+    // past a full batch, which every fixture until now was too small to reach —
+    // they all drained on the first statement and left the continue-arm and the
+    // saturation flag untested.
+    const now_ms = clock.nowMillis();
+    const aged_at = now_ms - RETENTION_WINDOW_MS - AGE_SAFETY_MS;
+    try seedAgedLeaseBulk(ctx.conn, aged_at, DELETE_BATCH_LIMIT + 1);
+
+    const cutoff = clock.nowMillis() - RETENTION_WINDOW_MS;
+    const eligible = try agedTerminalLeaseCount(ctx.conn, cutoff);
+    try std.testing.expect(eligible > DELETE_BATCH_LIMIT);
+
+    const totals = try retention_sweeper.sweepOnce(ctx.pool);
+    try std.testing.expectEqual(eligible, totals.leases_deleted);
+    try std.testing.expectEqual(@as(i64, 0), try agedTerminalLeaseCount(ctx.conn, cutoff));
+    // Drained inside the cycle's ceiling, so the sweeper may idle the full
+    // interval — saturation is reserved for a backlog that outran the cycle.
+    try std.testing.expect(!totals.saturated);
 
     cleanup(ctx.conn);
 }

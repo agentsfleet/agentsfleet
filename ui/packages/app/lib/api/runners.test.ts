@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The workspace-filter fixture, in the shape the daemon actually accepts.
+const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0011";
+
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 vi.mock("./client", () => ({ request: requestMock }));
 
@@ -72,13 +75,16 @@ describe("listRunnerLeases", () => {
   });
 
   it("narrows the page to one workspace, riding beside the keyset params", async () => {
+    // A real workspace id: the daemon validates this parameter as a lowercase
+    // dashed UUIDv7 and answers 400 UZ-REQ-001 for anything else, so a fixture
+    // in some other shape would document a request the API refuses.
     await listRunnerLeases("tok", "runner-1", {
       starting_after: "lease-9",
       limit: 25,
-      workspace_id: "01J2WQ8F3K7VZ9XB4N6MTYD5AR",
+      workspace_id: WORKSPACE_ID,
     });
     expect(requestMock).toHaveBeenCalledWith(
-      "/v1/fleets/runners/runner-1/leases?starting_after=lease-9&limit=25&workspace_id=01J2WQ8F3K7VZ9XB4N6MTYD5AR",
+      `/v1/fleets/runners/runner-1/leases?starting_after=lease-9&limit=25&workspace_id=${WORKSPACE_ID}`,
       { method: "GET" },
       "tok",
     );

@@ -29,6 +29,17 @@ export const ACTIVITY_EMPTY_DESCRIPTION = "Enrolment, liveness and administrativ
 export const LEASES_UNAVAILABLE = "Lease history is temporarily unavailable. Try refreshing the page.";
 export const ACTIVITY_UNAVAILABLE = "Activity history is temporarily unavailable. Try refreshing the page.";
 
+// A refused request is the third case, and it is neither of the two above. The
+// address bar carries a workspace filter or a page cursor the server will not
+// accept — a hand-edited link, or a bookmark whose lease has since aged out of
+// the retention window. Refreshing replays the same bad address forever, so the
+// copy above would send the operator in a circle; this one offers the only move
+// that works. The controls that could clear the filter live inside the table,
+// which is exactly what does not render when the read fails.
+export const LEASES_LINK_STALE =
+  "This link asks for leases the server will not serve — its workspace filter or page cursor is no longer valid.";
+export const RESET_LEASE_VIEW_LABEL = "Show the newest leases instead";
+
 // The workspace filter's vocabulary, plus the URL search param it rides on.
 // The param name lives here — the one module the Server Component page and the
 // client table both already read — so the reader and the writer can never

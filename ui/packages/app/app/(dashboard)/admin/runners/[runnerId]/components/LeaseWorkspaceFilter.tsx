@@ -21,7 +21,7 @@ import {
 // dropped in the same navigation — its cursors cannot page the new feed.
 
 /** Leading characters shown for a workspace id; the full id rides the title. */
-export const WORKSPACE_ID_DISPLAY_CHARS = 8;
+const WORKSPACE_ID_DISPLAY_CHARS = 8;
 const TRUNCATION_ELLIPSIS = "…";
 
 export function shortWorkspaceId(workspaceId: string): string {

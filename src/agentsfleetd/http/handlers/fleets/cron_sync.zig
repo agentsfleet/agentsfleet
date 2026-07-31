@@ -27,6 +27,7 @@ const SOURCE_KEY = "trigger:cron";
 /// afterwards.
 const LOG_UNREGISTER_FAILED = "schedule_unregister_failed";
 const LOG_UNREGISTER_UNCONFIGURED = "schedule_unregister_unconfigured";
+const LOG_UNREGISTER_UNREADABLE = "schedule_unregister_unreadable";
 const DETAIL_BUSY = "Declarative cron synchronization lease is busy";
 const DETAIL_INVALID = "Declarative cron trigger is invalid";
 const DETAIL_OPERATION = "Declarative cron synchronization failed";
@@ -90,7 +91,20 @@ pub fn syncStoredFleet(hx: Hx, workspace_id: []const u8, fleet_id: []const u8) R
 /// an `.unconfigured` from this function always means the stronger thing:
 /// schedules existed and NONE of them were retired.
 pub fn removeAll(hx: Hx, fleet_id: []const u8) Result {
-    const schedules = Store.init(hx.ctx.pool).list(hx.alloc, fleet_id) catch return .internal;
+    const schedules = Store.init(hx.ctx.pool).list(hx.alloc, fleet_id) catch |err| {
+        // The enumeration itself failed, so this process never learned which
+        // schedules exist — and teardown erases the rows moments later. Nothing
+        // downstream can name them, which is why the failure is logged with its
+        // own event and its own cause rather than reaching the caller as a bare
+        // `.internal` it would misreport as a provider fault.
+        log.warn(LOG_UNREGISTER_UNREADABLE, .{
+            .error_code = ec.ERR_INTERNAL_DB_QUERY,
+            .fleet_id = fleet_id,
+            .err = @errorName(err),
+            .req_id = hx.req_id,
+        });
+        return .internal;
+    };
     defer {
         for (schedules) |*schedule| schedule.deinit(hx.alloc);
         hx.alloc.free(schedules);
@@ -99,12 +113,19 @@ pub fn removeAll(hx: Hx, fleet_id: []const u8) Result {
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io, .sched = hx.ctx.deadline_scheduler };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = serviceFromContext(hx, &exchange, &destination_buffer) orelse {
-        log.warn(LOG_UNREGISTER_UNCONFIGURED, .{
-            .error_code = ec.ERR_SCHEDULE_NOT_CONFIGURED,
-            .fleet_id = fleet_id,
-            .schedules = schedules.len,
-            .req_id = hx.req_id,
-        });
+        // Every schedule leaks at once here, so every identifier is emitted —
+        // a count would say how many timers were abandoned without saying which,
+        // and the rows that could answer that are about to be deleted. The ids
+        // are in hand; the only reason not to write them down is haste.
+        for (schedules) |schedule| {
+            log.warn(LOG_UNREGISTER_UNCONFIGURED, .{
+                .error_code = ec.ERR_SCHEDULE_NOT_CONFIGURED,
+                .fleet_id = fleet_id,
+                .schedule_id = schedule.schedule_id,
+                .schedules = schedules.len,
+                .req_id = hx.req_id,
+            });
+        }
         return .unconfigured;
     };
     var first_failure: ?Result = null;

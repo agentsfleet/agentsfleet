@@ -374,7 +374,7 @@ fn seedRunnerEvents(conn: *pg.Conn, rows: i32) !void {
         \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
         \\       $1::uuid,
         \\       CASE WHEN g % $2::int = 0 THEN $3::text ELSE $4::text END,
-        \\       1750000000000 + g, '{}'::jsonb, NULL, 1750000000000 + g
+        \\       $6::bigint + g, '{}'::jsonb, NULL, $6::bigint + g
         \\FROM generate_series(1, $5::int) g
     , .{
         RUNNER_EVENTS,
@@ -382,6 +382,7 @@ fn seedRunnerEvents(conn: *pg.Conn, rows: i32) !void {
         @tagName(protocol.RunnerEventType.runner_offline),
         @tagName(protocol.RunnerEventType.lease_acquired),
         rows,
+        DETAIL_PROBE_NOW_MS,
     });
     _ = try conn.exec("ANALYZE fleet.runner_events", .{});
 }
@@ -446,11 +447,30 @@ test "retention sweep deletes ride their own indexes, not a whole-table scan" {
         &terminal, RETENTION_CUTOFF_PROBE, RETENTION_BATCH_PROBE,
     }, RETENTION_LEASES_INDEX);
 
-    var per_lease_tags: [protocol.PER_LEASE_EVENT_TYPES.len][]const u8 = undefined;
-    inline for (protocol.PER_LEASE_EVENT_TYPES, 0..) |event_type, i| per_lease_tags[i] = @tagName(event_type);
     try expectServesFilter(alloc, db.conn, retention_sweeper.DELETE_AGED_RUNNER_EVENTS_BATCH, .{
-        &per_lease_tags, RETENTION_CUTOFF_PROBE, RETENTION_BATCH_PROBE,
+        &retention_sweeper.PER_LEASE_EVENT_TAGS, RETENTION_CUTOFF_PROBE, RETENTION_BATCH_PROBE,
     }, RETENTION_EVENTS_INDEX);
+
+    // The abandoned-lease reaper searches the same way the lease delete does —
+    // one status value plus an age bound — so it rides the same composite. It
+    // runs on every replica every cycle like its siblings, which is why it is
+    // pinned here rather than assumed to inherit their plan.
+    // The reaper gets a floor, not a named index, and the difference is
+    // deliberate. Its predicate selects `active` — live work plus the rare
+    // stranded row, a small set — so either candidate index scans few entries;
+    // both were observed on this fixture. Pinning one would encode a planner
+    // preference this statement does not depend on, and would fail on a fixture
+    // whose status mix differs rather than on a real regression. What must never
+    // happen is the whole-table walk the deletes above are pinned against, and
+    // that is what this asks.
+    const abandoned = [_][]const u8{protocol.RUNNER_LEASE_STATUS_ACTIVE};
+    try expectPlanOmits(alloc, db.conn, retention_sweeper.EXPIRE_ABANDONED_ACTIVE_LEASES_BATCH, .{
+        &abandoned,
+        RETENTION_CUTOFF_PROBE,
+        protocol.RUNNER_LEASE_STATUS_EXPIRED,
+        RETENTION_BATCH_PROBE,
+        RETENTION_CUTOFF_PROBE,
+    }, "Seq Scan on runner_leases");
 }
 
 test "lifetime counter table keys one bigint tally row per runner" {

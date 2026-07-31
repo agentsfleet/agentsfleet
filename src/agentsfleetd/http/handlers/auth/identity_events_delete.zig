@@ -49,12 +49,15 @@ pub fn runDelete(hx: Hx, oidc_subject: []const u8) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const result = account_teardown.purgeByOidcSubject(conn, hx.alloc, oidc_subject) catch |err| {
+    const result = account_teardown.purgeByOidcSubject(conn, hx.alloc, oidc_subject, fleet_ids orelse &.{}) catch |err| {
         log.warn("delete_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .oidc = oidc_subject, .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
-    reportPurgeRace(hx, oidc_subject, if (fleet_ids) |ids| ids.len else 0, result);
+    // Only when the enumeration itself succeeded. A failed enumeration already
+    // counted itself, and every fleet would be unenumerated by definition —
+    // reporting it again would bill one incident to the metric twice.
+    if (fleet_ids != null) reportPurgeRace(hx, oidc_subject, result);
 
     log.debug("user_deleted", .{ .oidc = oidc_subject, .purged = result.purged, .req_id = hx.req_id });
     hx.ok(.ok, .{ .deleted = true });
@@ -85,14 +88,17 @@ fn enumerateTenantFleets(hx: Hx, oidc_subject: []const u8) ?[][]const u8 {
 /// window needs a tenant-level deleting marker every write path honours, which
 /// is a security boundary this workstream does not open; naming the leak is
 /// what makes it reconcilable in the meantime.
-fn reportPurgeRace(hx: Hx, oidc_subject: []const u8, unregistered: usize, result: account_teardown.PurgeResult) void {
-    if (result.fleets_at_purge <= @as(i64, @intCast(unregistered))) return;
+///
+/// The purge answers by identity (fleets it erased that the enumeration never
+/// named), so a create that a concurrent delete offsets cannot hide inside an
+/// unchanged count.
+fn reportPurgeRace(hx: Hx, oidc_subject: []const u8, result: account_teardown.PurgeResult) void {
+    if (result.unenumerated_fleets == 0) return;
     metrics.incTeardownUnregisterFailure();
     log.warn("delete_schedule_purge_race", .{
         .error_code = ec.ERR_SCHEDULE_PROVIDER_UNAVAILABLE,
         .oidc = oidc_subject,
-        .unregistered = unregistered,
-        .fleets_at_purge = result.fleets_at_purge,
+        .unenumerated_fleets = result.unenumerated_fleets,
         .req_id = hx.req_id,
     });
 }

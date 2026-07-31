@@ -296,6 +296,49 @@ describe("admin/runners/[runnerId] page", () => {
     expect(activityHtml).not.toContain("data-activity-table");
   });
 
+  it("offers a way out when the server refuses the address, instead of telling the operator to refresh", async () => {
+    // A 400 is the URL's fault, not the server's: a hand-edited workspace
+    // filter, or a bookmarked cursor whose lease retention has since deleted.
+    // Refreshing replays the same bad address forever, and the control that
+    // could clear the filter lives inside the table — which is exactly what
+    // does not render on a failed read. Without a link here the page is a dead
+    // end reachable from a stale bookmark.
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockRejectedValueOnce(
+      new ApiError("workspace_id must be a workspace id", 400, "UZ-REQ-001"),
+    );
+    const Page = await loadPage();
+    const html = renderToStaticMarkup(
+      await Page(pageProps({ workspace: "not-a-uuid" })),
+    );
+
+    expect(html).toContain("its workspace filter or page cursor is no longer valid");
+    expect(html).toContain("Show the newest leases instead");
+    expect(html).toContain(`href="/admin/runners/${RUNNER.id}"`);
+    // Not the transient copy: that one says to refresh, which cannot work here.
+    expect(html).not.toContain("Lease history is temporarily unavailable");
+    expect(html).not.toContain("data-lease-table");
+    expect(html).toContain('data-runner-strip="1"');
+  });
+
+  it("keeps the try-refreshing copy for a genuinely transient failure", async () => {
+    // The counterpart to the test above: a read that failed rather than one
+    // that was refused. Refreshing IS the right move here, so the recovery link
+    // must not appear — otherwise every blip invites the operator to throw away
+    // the filter they meant to keep.
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockRejectedValueOnce(
+      new ApiError("upstream unavailable", 503, "UZ-INTERNAL-002"),
+    );
+    const Page = await loadPage();
+    const html = renderToStaticMarkup(await Page(pageProps()));
+
+    expect(html).toContain("Lease history is temporarily unavailable");
+    expect(html).not.toContain("Show the newest leases instead");
+  });
+
   it("builds the Grafana link only against a configured base, with the runner filter appended", async () => {
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);

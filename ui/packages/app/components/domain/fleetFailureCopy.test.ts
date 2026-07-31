@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MessageState } from "@assistant-ui/react";
 import {
@@ -86,5 +88,47 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
         failedEvent({ failureLabel: "oom_kill", failureDetail: "killed at 2 GiB" }),
       ),
     ).toBe("Ran out of memory — killed at 2 GiB");
+  });
+
+  // The refusal list is a hand-copy of cause lines the runner emits, in another
+  // language, matched by exact string. Nothing but this test connects the two:
+  // reword a line on the runner side and every refusal silently reverts to
+  // "this fleet needs instructions" — the exact bug the split was written to
+  // fix, reappearing with no failing test to announce it.
+  //
+  // Derived from the runner source rather than from a second copy of the list,
+  // so the assertion cannot pass by agreeing with itself.
+  it("carries exactly the runner's own startup-posture refusal lines", () => {
+    const runnerRoot = resolve(process.cwd(), "../../../src/runner");
+    const sources = readdirSync(runnerRoot, { recursive: true, encoding: "utf8" })
+      .filter((name) => name.endsWith(".zig"))
+      .map((name) => readFileSync(join(runnerRoot, name), "utf8"));
+    const all = sources.join("\n");
+
+    // Every `DETAIL_*` literal the runner declares, by name.
+    const literals = new Map<string, string>();
+    for (const match of all.matchAll(/const (DETAIL_\w+) = "([^"]*)"/g)) {
+      const name = match[1];
+      const text = match[2];
+      if (name === undefined || text === undefined) continue;
+      literals.set(name, text);
+    }
+    expect(literals.size).toBeGreaterThan(0);
+
+    // Only the ones emitted under `.startup_posture`. A cause line raised under
+    // another class — `landlock_deny`, say — is not a refusal to start and must
+    // NOT appear in the chat copy's list.
+    const refusals = new Set<string>();
+    for (const match of all.matchAll(
+      /failedDetailed\([^,]+,\s*\.startup_posture,\s*(?:\w+\.)?(DETAIL_\w+)\s*\)/g,
+    )) {
+      const name = match[1];
+      if (name === undefined) continue;
+      const literal = literals.get(name);
+      expect(literal, `${name} is emitted but never declared`).toBeDefined();
+      if (literal !== undefined) refusals.add(literal);
+    }
+
+    expect([...refusals].sort()).toEqual([...RUNNER_REFUSAL_DETAILS].sort());
   });
 });

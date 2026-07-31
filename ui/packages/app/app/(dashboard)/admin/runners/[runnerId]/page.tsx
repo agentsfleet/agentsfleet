@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { Alert } from "@agentsfleet/design-system";
@@ -12,7 +13,7 @@ import {
   RUNNER_LIFECYCLE_EVENT_TYPES,
   type RunnerDetail,
 } from "@/lib/api/runners";
-import { resolveRunnerView, RUNNER_VIEW, type RunnerView } from "@/lib/runner-routes";
+import { resolveRunnerView, runnerPath, RUNNER_VIEW, type RunnerView } from "@/lib/runner-routes";
 import {
   CURSOR_PAGE_SIZE_PARAM,
   CURSOR_TRAIL_PARAM,
@@ -29,11 +30,17 @@ import { ActivityTable } from "./components/ActivityTable";
 import { RunnerViewedTracker } from "./components/RunnerViewedTracker";
 import {
   ACTIVITY_UNAVAILABLE,
+  LEASES_LINK_STALE,
   LEASES_UNAVAILABLE,
+  RESET_LEASE_VIEW_LABEL,
   WORKSPACE_FILTER_PARAM,
 } from "./components/runner-copy";
 
 export const dynamic = "force-dynamic";
+
+// Distinguishes "the server refused this address" from "the read failed", which
+// `null` alone cannot carry.
+const REFUSED = Symbol("leases-refused");
 
 const NOT_ADMIN = "/settings?notice=runners-platform-admin-only";
 
@@ -149,15 +156,30 @@ async function loadRunnerView(
     limit: pageSize,
     ...(cursor ? { starting_after: cursor } : {}),
     ...(workspaceFilter ? { workspace_id: workspaceFilter } : {}),
-  }).catch(() => null);
+  }).catch((error: unknown) => (isRefusedRequest(error) ? REFUSED : null));
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3xl">
       <RunnerMetricsStrip runner={runner} />
-      {initial === null ? (
+      {initial === REFUSED ? (
+        <Alert variant="warning">
+          {LEASES_LINK_STALE}{" "}
+          <Link className="underline" href={runnerPath(runner.id, RUNNER_VIEW.leases)}>
+            {RESET_LEASE_VIEW_LABEL}
+          </Link>
+        </Alert>
+      ) : initial === null ? (
         <Alert variant="warning">{LEASES_UNAVAILABLE}</Alert>
       ) : (
         <LeaseTable initial={initial} pageSize={pageSize} />
       )}
     </div>
   );
+}
+
+// The server refused the address, rather than failing to answer it: the
+// workspace filter is malformed, or the cursor names a lease outside the
+// filtered stream or already pruned by retention. Retrying cannot fix any of
+// them, so this case gets a way out instead of an invitation to refresh.
+function isRefusedRequest(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 400;
 }
