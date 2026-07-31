@@ -144,11 +144,7 @@ test_no_removed_runner_env_names_remain() {
   local name="test_no_removed_runner_env_names_remain"
   local repo_root hits
   repo_root="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-  # TEMPORARY carve-out: deploy-dev.yml:287 holds one stale comment line whose
-  # removal is a CI/CD edit awaiting Indy's explicit approval (M148 CHORE-close
-  # blocker). The graded R5 rubric grep runs WITHOUT this exclusion, so the
-  # deferral cannot hide — drop the exclusion together with that line.
-  hits="$(cd "$repo_root" && git grep -nE 'RUNNER_(SANDBOX_TIER|NETWORK_POLICY|REGISTRY_ALLOWLIST|WORKER_COUNT|HOST_ID|CP_[A-Z_]+_MS|WORKSPACE_BASE)' -- . ':!docs/v2/' ':!*HANDOFF*' ':!.github/workflows/deploy-dev.yml' 2>/dev/null || true)"
+  hits="$(cd "$repo_root" && git grep -nE 'RUNNER_(SANDBOX_TIER|NETWORK_POLICY|REGISTRY_ALLOWLIST|WORKER_COUNT|HOST_ID|CP_[A-Z_]+_MS|WORKSPACE_BASE)' -- . ':!docs/v2/' ':!*HANDOFF*' 2>/dev/null || true)"
   if [[ -n "$hits" ]]; then
     bad "$name" "removed runner env names still referenced:"$'\n'"$hits"
   else
