@@ -16,14 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M154
 **Workstream:** 001
 **Date:** Jul 31, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the events list detoasts full payloads on every page today, and a public endpoint ships with no consumer
 **Categories:** API, DOCS, SQL, UI
 **Batch:** B1 — single stream; the rebuild is atomic by construction
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
-**Depends on:** None — the dev database is torn down and rebuilt from empty; production is not deployed
-**Provenance:** LLM-drafted (Claude Opus 5, Jul 31, 2026), from a live audit of all 42 schema slots and their call sites
+**Branch:** feat/m154-schema-rebuild
+**Test Baseline:** unit=3344 integration=510
+**Depends on:** M149_001 (landed) — shipped slots 043–046, the runner retention sweeper, and the lifetime-counter table whose single-unique-index shape §2 generalises
+**Provenance:** LLM-drafted (Claude Opus 5, Jul 31, 2026), from a live audit of all 45 schema slots and their call sites
 **Canonical architecture:** `docs/architecture/scaling.md` §Which recurring Postgres reads are index-served · `docs/architecture/billing_and_provider_keys.md`
 
 ---
@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Problem:** Three symptoms, all observable today. Opening the events list ships up to 200 full event payloads and 200 full agent answers to render a table of timestamps and costs — so the page slows in proportion to how chatty the agents are, not how many rows exist. Erasing an account depends on a hand-maintained fourteen-statement delete order, because the money rows carry no foreign key to a tenant; a table added without one is silently missed. And a public billing endpoint returns per-renewal accrual detail that no product surface has ever called.
 
-**Solution summary:** The dev database is torn down, so the schema is re-authored from empty rather than patched. Every table drops the `uid` plus duplicate-twin pattern for a single `id UUID PRIMARY KEY`; the money tables consolidate into `billing` behind real foreign keys so erasure becomes a cascade; the unread accrual table and its endpoint are removed rather than carried; the events list stops selecting bodies and gains a single-event detail read for the expand interaction. Slots are renumbered by dependency layer and the eleven patch-only slots fold into the base statements they patch. Partitioning and retention are deliberately **not** built — only the column that keeps them available later.
+**Solution summary:** The dev database is torn down, so the schema is re-authored from empty rather than patched. Every table drops the `uid` plus duplicate-twin pattern for a single `id UUID PRIMARY KEY`; the money tables consolidate into `billing` behind real foreign keys so erasure becomes a cascade; the unread accrual table and its endpoint are removed rather than carried; the events list stops selecting bodies and gains a single-event detail read for the expand interaction. Slots are renumbered by dependency layer and the fourteen patch-only slots fold into the base statements they patch. M149's runner retention sweeper is **preserved verbatim** — it is the one retention policy that already exists and it keeps its behaviour, window, and comptime proof. Partitioning is deliberately **not** built; only the stable key that keeps it available later.
 
 ## PR Intent & comprehension handshake
 
@@ -54,7 +54,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/0*.sql` … `schema/042_*.sql` | DELETE | All 42 shipped slots retire; the rebuild re-authors from empty |
+| `schema/001_*.sql` … `schema/046_*.sql` | DELETE | All 45 shipped slots retire; the rebuild re-authors from empty |
 | `schema/{0,1,2,3,4,5,6,7}*.sql` | CREATE | Renumbered by dependency layer, gaps of 10; patch-only slots folded into what they patched |
 | `schema/embed.zig` | EDIT | Single source of truth for the slot list and version numbers |
 | `src/agentsfleetd/cmd/common.zig` | EDIT | Migration array plus the named slot-version constants (RULE MIG) |
@@ -94,14 +94,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `schema/037_model_catalogue_revision.sql` — the house style this rebuild holds to: every constraint and every omitted index carries the reason it exists or does not. Slots that merely declare a table are the ones this milestone is replacing.
-- **Reference:** `schema/033_hot_path_indexes.sql` and `041_runner_leases_operator_read_indexes.sql` — the index standard: measured plans, named queries, and an explicit note on what was deliberately left unindexed.
-- **Divergence:** `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` is prior art this spec **overrides** on two points (identity key, migration model). The override is argued in Decomposition and lands as a doc amendment, not a silent deviation.
+- **Reference:** `schema/033_hot_path_indexes.sql`, `041_runner_leases_operator_read_indexes.sql`, and `043_runner_lifetime_counters.sql` — the index standard (measured plans, named queries, an explicit note on what was left unindexed) and the single-unique-index shape §2 generalises.
+- **Divergence:** `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` is prior art this spec **overrides** on two points (identity key, migration model), argued in Decomposition and landing as a doc amendment, not a silent deviation.
 
 ## Sections (implementation slices)
 
 ### §1 — Renumber by dependency layer
 
-Slots are ordered by chronology today, so a reader cannot tell what depends on what, and eleven of them exist only to patch earlier ones. Renumbering by layer with gaps of 10 makes the dependency order readable and leaves room to insert without renumbering the world. **Implementation default:** layers `0xx` substrate, `1xx` identity, `2xx` secrets, `3xx` catalogue, `4xx` fleets, `5xx` runner control plane, `6xx` money, `7xx` history — because that is the order a fresh database must create them in.
+Slots are ordered by chronology today, so a reader cannot tell what depends on what, and fourteen of the forty-five exist only to patch earlier ones. Renumbering by layer with gaps of 10 makes the dependency order readable and leaves room to insert without renumbering the world. **Implementation default:** layers `1xx` substrate, `2xx` identity, `3xx` secrets, `4xx` catalogue, `5xx` fleets, `6xx` runner control plane, `7xx` money, `8xx` history — because that is the order a fresh database must create them in. Numbering starts at `1xx` rather than `0xx` so that no new slot can share a name with a retired one, which makes retirement a one-glob assertion instead of a judgement call.
 
 - **Dimension 1.1** — every patch-only slot's effect is present in the base statement it patched, and the patch slot is gone → Test `test_no_alter_or_drop_statements_in_schema`
 - **Dimension 1.2** — the named slot-version constants in `common.zig` resolve to the renumbered slots that carry those tables (RULE MIG) → Test `test_named_migration_versions_match_slots`
@@ -109,7 +109,9 @@ Slots are ordered by chronology today, so a reader cannot tell what depends on w
 
 ### §2 — One identity key per table
 
-Roughly twenty-two tables carry `uid` plus a duplicate twin holding the same value, costing two btree indexes on the same sixteen bytes and sixteen duplicated heap bytes per row — on the unbounded tables permanently. Nothing reads `uid`: every query selects the twin, and every foreign key points at the `UNIQUE` side. Collapsing to one column named `id` removes the redundancy and makes the primary key the thing foreign keys reference.
+Roughly twenty-two tables carry `uid` plus a duplicate twin holding the same value, costing two btree indexes on the same sixteen bytes and sixteen duplicated heap bytes per row — on the unbounded tables permanently. Nothing reads `uid`: every query selects the twin, and every foreign key points at the `UNIQUE` side.
+
+The waste is the smaller half of the argument. The **correctness** half is recorded upstream in `schema/043_runner_lifetime_counters.sql`, which deliberately ships one unique index because a second one breaks concurrent first-touch upserts: `ON CONFLICT` arbitrates exactly one constraint, so two sessions inserting a brand-new row race to a duplicate-key error on the *other* index instead of taking the update arm. Every table still carrying the dual-key shape has that latent race. This Section generalises the decision slot 043 already made table-by-table. **Implementation default:** one column named `id`, because that is the name the API already exposes and the name every foreign key should reference.
 
 - **Dimension 2.1** — no table declares a generated identity column or a unique constraint duplicating its primary key → Test `test_no_duplicate_identity_columns`
 - **Dimension 2.2** — every foreign key references a primary key, not a secondary unique constraint → Test `test_foreign_keys_reference_primary_keys`
@@ -154,28 +156,26 @@ The list select carries the event body and the full agent answer on every row, u
 - **Dimension 7.1** — the list query selects no body column, and the rendered table is unchanged → Test `test_events_list_selects_no_payload_columns`
 - **Dimension 7.2** — a single-event detail read returns the body and the answer, scoped to the caller's workspace → Test `test_event_detail_returns_body_scoped_to_workspace`
 - **Dimension 7.3** — the lease carries no body copy, and reclaiming an expired lease still re-delivers the original event → Test `test_reclaim_redelivers_event_without_lease_payload_copy`
+- **Dimension 7.4** — reclaim's lifetime-tally arm still rides the same statement as the status flip, so the counter cannot drift from the rows it counts → Test `test_reclaim_tally_stays_in_the_status_flip_statement`
 
 ## Interfaces
 
 ```
-REMOVED  GET /v1/tenants/me/billing/charges/{event_id}/telemetry
-         Per-renewal accrual detail. No product surface calls it; pre-2.0, so it
-         is removed outright rather than answering 410.
+REMOVED    GET /v1/tenants/me/billing/charges/{event_id}/telemetry
+           Per-renewal accrual detail; no product surface calls it. Pre-2.0, so
+           removed outright rather than answering 410.
 
-ADDED    GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}
-         200 → the full event row including request body and response text.
-         404 → unknown event, or an event outside the caller's workspace (the
-               two are indistinguishable to the caller, per existing practice).
-         Authorization: the same workspace check the list read performs.
+ADDED      GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}
+           200 → the full event row including request body and response text.
+           404 → unknown event, OR one outside the caller's workspace — the two
+                 are indistinguishable to the caller (existing practice).
+           Authorization: the same workspace check the list read performs.
 
 UNCHANGED  GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events
            GET /v1/workspaces/{workspace_id}/events
-           Same response shape minus `request_json` and `response_text`, which
-           move to the detail read above.
-
+           Same shape minus `request_json` / `response_text` (see ADDED above).
 UNCHANGED  GET /v1/tenants/me/billing/charges
-           Response shape and cursor semantics are untouched; only the index
-           beneath the keyset changes.
+           Shape and cursor semantics untouched; only the index beneath changes.
 ```
 
 ## Failure Modes
@@ -195,9 +195,8 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 1. **One identity column per table** — no generated identity column, no unique constraint duplicating the primary key; asserted from the catalogue by test, not by review.
 2. **Every money row resolves to a tenant through a foreign key** — enumerated from the catalogue; a money table without that path fails the test.
 3. **Every index has a named reader** — each index carries the query it serves; the test fails on any index with no citation in the slot that creates it.
-4. **No `ALTER` or `DROP` statement exists in `schema/`** — pre-2.0 teardown posture (RULE SCH); a grep-backed test enforces it.
-5. **The list read touches no body column** — asserted against the query plan and the select list, so a future widening fails rather than silently regressing.
-6. **The wallet drain equals the ledger sum** — the reconciliation the accrual table was thought to provide is proven against the ledger directly.
+4. **No `ALTER` or `DROP` statement exists in `schema/`, and no new slot reuses a retired number** — pre-2.0 teardown posture (RULE SCH); both grep-backed. **The list read touches no body column** — asserted against the plan and the select list, so a future widening fails rather than silently regressing.
+5. **The wallet drain equals the ledger sum** — the reconciliation the accrual table was thought to provide is proven against the ledger directly.
 
 ## Metrics & Observability
 
@@ -230,6 +229,7 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 | 7.1 | integration | `test_events_list_selects_no_payload_columns` | A page of 200 events returns no body or answer field; the plan reads no oversized-attribute storage |
 | 7.2 | e2e | `test_event_detail_returns_body_scoped_to_workspace` | Expanding a row fetches the body; the same identifier from another workspace answers 404 |
 | 7.3 | integration | `test_reclaim_redelivers_event_without_lease_payload_copy` | An expired lease is reclaimed and the re-delivered event body matches the original byte for byte |
+| 7.4 | integration | `test_reclaim_tally_stays_in_the_status_flip_statement` | Reclaiming N leases increments the expired tally by exactly N, with no separate statement |
 | regression | integration | `test_charges_response_shape_unchanged` | The charges endpoint returns the same fields and cursor semantics as before the rebuild |
 | regression | e2e | `test_events_list_renders_identically` | The rendered events table is unchanged after the payload columns leave the list read |
 
@@ -260,7 +260,7 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 | File to delete | Verify |
 |----------------|--------|
 | `src/agentsfleetd/state/fleet_metering_store.zig` | `test ! -f src/agentsfleetd/state/fleet_metering_store.zig` |
-| every retired `schema/0NN_*.sql` slot | `test -z "$(ls schema/0[0-4][0-9]_*.sql 2>/dev/null)"` |
+| every retired `schema/0NN_*.sql` slot (001–046) | `test -z "$(ls schema/0*.sql 2>/dev/null)"` |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -274,11 +274,11 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 ## Out of Scope
 
 - **Payload offload to object storage** — event bodies stay in Postgres this milestone; the content-hash offload lands in M155 beside the outbox.
-- **Partitioning and retention** — only the stable partition key is carried. The machinery is deferred until a measurement demands it; the rationale is in Decomposition.
+- **Partitioning** — only the stable partition key is carried. The machinery is deferred until a measurement demands it; the rationale is in Decomposition.
+- **New retention policies** — M149 already ships a thirty-day sweep over runner leases and runner events, with a comptime proof that an age-keyed sweep cannot reach live work. That behaviour, its window, and its proof are **preserved unchanged**; this milestone adds no retention anywhere else.
 - **`billing.usage_rollup`** — deferred with partitioning; the ledger is already bounded per event, so the rollup is an optimisation without a forcing reason today.
-- **Durable outbox to Elastic or Loki** — M155, together with the accrual detail this milestone removes from Postgres.
+- **Durable outbox to Elastic or Loki** — M155, together with the accrual detail this milestone removes from Postgres. Approval gates get no retention policy at all until Indy sets one; the table is a compliance record.
 - **Horizontal sharding** — explicitly rejected: every hot query is already tenant, workspace or fleet scoped, and write rate sits far below single-node capacity. Partitioning addresses retention, never throughput.
-- **Approval-gate retention** — the table is a compliance record; no retention policy is set until Indy sets one.
 
 ---
 
@@ -311,6 +311,8 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
   > Indy (2026-07-31): "1. rollit up to this PR" — context: `billing.usage_rollup`, originally accepted INTO this milestone while it was believed to be required. Superseded below once that premise was withdrawn.
 
   > Indy (2026-07-31): "Okay go" — context: acking the revised scope after the authoring agent argued *against* its own earlier recommendation. Covers all three: (a) delete `fleet.metering_periods` and its endpoint rather than partition and retain it — it is derived data with no product consumer; (b) defer `billing.usage_rollup` to M155 — the ledger is already bounded at three rows per event, so the rollup lost its forcing reason; (c) carry `event_created_at` only, deferring partitioning and retention machinery until a measurement demands it.
+
+- **Upstream landing mid-authoring (M149, PR #584)** — the audit behind this spec ran against a tree eleven commits stale. M149 landed before CHORE(open) and invalidated three claims, all corrected above rather than carried: (a) *"nothing is ever pruned"* is false — a thirty-day retention sweep over runner leases and runner events now ships, with a comptime proof it cannot reach live work; it is preserved verbatim and this milestone adds no retention anywhere else. (b) The slot count is forty-five, of which fourteen — not eleven — are patch-only. (c) `schema/043_runner_lifetime_counters.sql` independently reached §2's conclusion for one table and recorded the *correctness* reason this spec had only argued on cost: a second unique key breaks concurrent first-touch upserts, because `ON CONFLICT` can arbitrate only one constraint. §2 now generalises an upstream decision instead of overriding a convention alone.
 
   **Premise corrections made during authoring** (recorded so a pickup agent does not re-derive them):
   - The ledger is **not** unbounded per event. `renewal.zig` and `renewal_settle.zig` both accumulate into one row via `ON CONFLICT (event_id, charge_type) DO UPDATE … +=`, capping it at three rows per event. An earlier proposal to make it append-only was withdrawn — it would have turned three rows into thousands.
