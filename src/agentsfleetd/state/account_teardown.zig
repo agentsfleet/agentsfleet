@@ -64,18 +64,32 @@ pub const PurgeResult = struct {
     /// False when the subject was unknown or already purged — the idempotent
     /// replay case.
     purged: bool = false,
-    /// Fleets present at purge time, counted INSIDE the purge transaction. The
-    /// caller compares it against what it managed to unregister: a higher
-    /// number means a fleet was created after the enumeration and its upstream
-    /// timer went to the grave with the row that named it.
-    fleets_at_purge: i64 = 0,
+    /// Fleets erased by this purge that the caller never named in `enumerated`,
+    /// counted INSIDE the purge transaction. Non-zero means a fleet appeared
+    /// after the caller's enumeration and its upstream timer went to the grave
+    /// with the row that named it.
+    ///
+    /// Identity, not cardinality: a count comparison reads clean whenever a
+    /// fleet is created and another deleted in the same window, which is
+    /// exactly when a leak is most likely and least visible.
+    unenumerated_fleets: i64 = 0,
 };
 
 /// Purge the tenant owning `oidc_subject` plus all dependent rows, in one
 /// transaction. Idempotent: an unknown or already-purged subject is a no-op
 /// returning `.purged = false`. A mid-purge failure rolls back so Clerk can
 /// retry.
-pub fn purgeByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject: []const u8) !PurgeResult {
+///
+/// `enumerated` is the fleet-id set the caller already handled upstream; every
+/// fleet this purge erases that is absent from it is reported back through
+/// `unenumerated_fleets`. Pass an empty slice to have the whole tenant counted
+/// as unhandled.
+pub fn purgeByOidcSubject(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    oidc_subject: []const u8,
+    enumerated: []const []const u8,
+) !PurgeResult {
     const tenant_id = (try fetchTenantId(conn, alloc, oidc_subject)) orelse return .{};
     defer alloc.free(tenant_id);
 
@@ -91,20 +105,25 @@ pub fn purgeByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject
     errdefer conn.rollback() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
     _ = try conn.exec(approval_gate_db.SET_GATE_PURGE_BYPASS_SQL, .{});
     // Read inside the transaction, before anything is deleted: this is the
-    // authoritative count of what the purge is about to erase, and the only
+    // authoritative view of what the purge is about to erase, and the only
     // place a fleet created after the caller's enumeration becomes visible.
-    const fleets_at_purge = try countTenantFleets(conn, tenant_id);
+    const unenumerated = try countUnenumeratedFleets(conn, tenant_id, enumerated);
     for (PURGE_STATEMENTS) |stmt| {
         _ = try conn.exec(stmt, .{tenant_id});
     }
     _ = try conn.exec(S_COMMIT, .{});
-    return .{ .purged = true, .fleets_at_purge = fleets_at_purge };
+    return .{ .purged = true, .unenumerated_fleets = unenumerated };
 }
 
-fn countTenantFleets(conn: *pg.Conn, tenant_id: []const u8) !i64 {
+/// Tenant fleets whose id is absent from `enumerated`. Compared as text so the
+/// bound array needs no element cast; the scan is bounded by one tenant's
+/// fleets. An empty `enumerated` counts every fleet, which is the truthful
+/// answer when the caller handled none of them.
+fn countUnenumeratedFleets(conn: *pg.Conn, tenant_id: []const u8, enumerated: []const []const u8) !i64 {
     var q = PgQuery.from(try conn.query(
-        "SELECT COUNT(*)::bigint FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT,
-        .{tenant_id},
+        "SELECT COUNT(*)::bigint FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT ++
+            " AND id::text <> ALL($2::text[])",
+        .{ tenant_id, enumerated },
     ));
     defer q.deinit();
     const row = (try q.next()) orelse return 0;

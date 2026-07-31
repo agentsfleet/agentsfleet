@@ -34,7 +34,9 @@ pub const READY_WRITE_FAILURES_HELP = "Readiness index writes (mark or clear) th
 // and per-tenant breakdowns.
 
 pub const RETENTION_SWEPT_NAME = "agentsfleet_runner_retention_swept_total";
-pub const RETENTION_SWEPT_HELP = "Terminal runner lease/event rows deleted by the retention sweep. A flat line on a busy control plane means the sweeper is not running.";
+pub const RETENTION_SWEPT_HELP = "Terminal runner lease/event rows deleted by the retention sweep. A flat line on a busy control plane means the sweeper is not running OR is failing every cycle — read it beside the failures counter, which tells the two apart.";
+pub const RETENTION_SWEEP_FAILURES_NAME = "agentsfleet_runner_retention_sweep_failures_total";
+pub const RETENTION_SWEEP_FAILURES_HELP = "Retention sweep cycles that ended in an error. Rising means history is no longer being pruned; the log line carries the error.";
 pub const TEARDOWN_UNREGISTER_FAILURES_NAME = "agentsfleet_account_teardown_unregister_failures_total";
 pub const TEARDOWN_UNREGISTER_FAILURES_HELP = "Schedule unregister calls that failed during an account purge. Non-zero means an erased tenant may still have a firing timer upstream; the log line names the tenant.";
 
@@ -54,6 +56,7 @@ pub const Snapshot = struct {
     fleet_ready_write_failures_total: u64 = 0,
     // Runner maintenance counters.
     runner_retention_swept_total: u64 = 0,
+    runner_retention_sweep_failures_total: u64 = 0,
     account_teardown_unregister_failures_total: u64 = 0,
     // Signup funnel counters.
     signup_bootstrapped_total: u64 = 0,
@@ -86,6 +89,7 @@ var g_lease_poll_db_roundtrips_total = std.atomic.Value(u64).init(0);
 var g_fleet_ready_depth = std.atomic.Value(u64).init(0);
 var g_fleet_ready_write_failures_total = std.atomic.Value(u64).init(0);
 var g_runner_retention_swept_total = std.atomic.Value(u64).init(0);
+var g_runner_retention_sweep_failures_total = std.atomic.Value(u64).init(0);
 var g_account_teardown_unregister_failures_total = std.atomic.Value(u64).init(0);
 
 // safe because: every store/load below is an independent stat counter or
@@ -172,6 +176,13 @@ pub fn addRetentionSwept(rows: u64) void {
     _ = g_runner_retention_swept_total.fetchAdd(rows, .monotonic); // safe because: see module note above
 }
 
+/// A cycle that ended in an error. Counted per cycle, not per statement: the
+/// operator's question is "is retention still running", and one series that
+/// answers it beats one that varies with how far a cycle got.
+pub fn incRetentionSweepFailure() void {
+    _ = g_runner_retention_sweep_failures_total.fetchAdd(1, .monotonic); // safe because: see module note above
+}
+
 pub fn incTeardownUnregisterFailure() void {
     _ = g_account_teardown_unregister_failures_total.fetchAdd(1, .monotonic); // safe because: see module note above
 }
@@ -204,6 +215,7 @@ pub fn snapshot() Snapshot {
     s.fleet_ready_depth = loadStat(&g_fleet_ready_depth);
     s.fleet_ready_write_failures_total = loadStat(&g_fleet_ready_write_failures_total);
     s.runner_retention_swept_total = loadStat(&g_runner_retention_swept_total);
+    s.runner_retention_sweep_failures_total = loadStat(&g_runner_retention_sweep_failures_total);
     s.account_teardown_unregister_failures_total = loadStat(&g_account_teardown_unregister_failures_total);
     return s;
 }
@@ -221,5 +233,6 @@ pub fn resetLeasePollMetricsForTest() void {
 /// Test-only reset for the runner-maintenance family, same isolation rationale.
 pub fn resetRunnerMaintenanceMetricsForTest() void {
     g_runner_retention_swept_total.store(0, .release); // safe because: single-threaded test reset
+    g_runner_retention_sweep_failures_total.store(0, .release);
     g_account_teardown_unregister_failures_total.store(0, .release);
 }

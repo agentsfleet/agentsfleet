@@ -195,15 +195,7 @@ fn acquireLeaseViaWritePath(conn: anytype, w: WriteLease) !void {
 fn expireLatestActiveFleetA(conn: anytype) !void {
     const prior = (try reclaim.reclaimPriorActive(conn, ALLOC, FLEET_A)) orelse
         return error.NoActiveLeaseToReclaim;
-    ALLOC.free(prior.lease_id);
-    ALLOC.free(prior.event_id);
-    ALLOC.free(prior.actor);
-    ALLOC.free(prior.event_type);
-    ALLOC.free(prior.request_json);
-    ALLOC.free(prior.workspace_id);
-    ALLOC.free(prior.tenant_id);
-    ALLOC.free(prior.posture);
-    ALLOC.free(prior.model);
+    prior.deinit(ALLOC);
 }
 
 const EventSeed = struct {

@@ -1004,7 +1004,7 @@ components:
         leases_acquired:
           type: integer
           format: int64
-          description: Every lease this runner has ever been issued (lifetime, from durable rows).
+          description: Every lease this runner has ever been issued. Counted as each lease is acquired, so retention pruning never lowers it.
         leases_succeeded:
           type: integer
           format: int64

@@ -147,15 +147,7 @@ fn settleLease(conn: *pg.Conn, lease_id: []const u8, succeeded: bool) !renewal_s
 fn expireLatestActive(conn: *pg.Conn) !void {
     const prior = (try reclaim.reclaimPriorActive(conn, ALLOC, FLEET_ID)) orelse
         return error.NoActiveLeaseToReclaim;
-    ALLOC.free(prior.lease_id);
-    ALLOC.free(prior.event_id);
-    ALLOC.free(prior.actor);
-    ALLOC.free(prior.event_type);
-    ALLOC.free(prior.request_json);
-    ALLOC.free(prior.workspace_id);
-    ALLOC.free(prior.tenant_id);
-    ALLOC.free(prior.posture);
-    ALLOC.free(prior.model);
+    prior.deinit(ALLOC);
 }
 
 /// The slot carrying the counter table and its backfill.
@@ -202,6 +194,19 @@ fn expectSameCounters(want: Counters, got: Counters) !void {
     try std.testing.expectEqual(want.succeeded, got.succeeded);
     try std.testing.expectEqual(want.failed, got.failed);
     try std.testing.expectEqual(want.expired, got.expired);
+}
+
+/// Counter rows for this runner. One, always — the table keys on `uid`, which
+/// IS the runner id, so a second row would mean the single-key rewrite (C4)
+/// had been undone.
+fn counterRowCount(conn: *pg.Conn) !i64 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT COUNT(*)::bigint FROM fleet.runner_lifetime_counters WHERE runner_id = $1::uuid",
+        .{RUNNER_ID},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return 0;
+    return row.get(i64, 0);
 }
 
 fn counterRow(conn: *pg.Conn) !Counters {
@@ -378,13 +383,19 @@ test "counter row equals a recount after concurrent acquire and settle cycles" {
     cleanup(ctx.conn);
     try setupBase(ctx.conn);
 
-    // One serial acquire+settle materializes the counter row before the race.
-    // The table carries TWO unique indexes over the same value (the generated
-    // uid primary key and the runner_id UNIQUE the tally arms arbitrate on),
-    // and ON CONFLICT can arbitrate only one of them — concurrent FIRST-touch
-    // inserts can therefore die on the uid key instead of taking the update
-    // arm. With the row present, every racing write goes through the update
-    // arm, which is the sustained-increment invariant this test pins.
+    // One serial acquire+settle materializes the counter row before the race,
+    // so what this test pins is the SUSTAINED-increment invariant: every racing
+    // write takes the `ON CONFLICT (uid)` update arm and none is lost.
+    //
+    // The other half — concurrent FIRST touch of a runner with no counter row —
+    // is pinned separately by `concurrent first touches of a new runner's
+    // counter row all land`, because it exercises a different failure. Slot 43
+    // originally carried two unique keys over the same value (a generated uid
+    // plus a `runner_id` UNIQUE) and `ON CONFLICT` arbitrates exactly one, so
+    // first-touch racers died on the other index instead of updating. The
+    // shipped table has ONE unique key — `uid` IS the runner id, plain primary
+    // key plus `CHECK (uid = runner_id)` — and that test is what would fail if
+    // a second one were ever reintroduced (spec Discovery C4).
     try acquireLease(ctx.conn, LEASE_POOL[0], EVENT_PREFIX ++ "conc-seed", 1);
     try std.testing.expect((try settleLease(ctx.conn, LEASE_POOL[0], true)).claimed);
 
@@ -408,6 +419,45 @@ test "counter row equals a recount after concurrent acquire and settle cycles" {
     const raced: i64 = N_WORKERS * CYCLES_PER_WORKER;
     try expectCountersMatchRecount(ctx.conn, @divExact(raced, 2) + 1, @divExact(raced, 2));
     try std.testing.expectEqual(raced + 1, try leaseCount(ctx.conn, protocol.RUNNER_LEASE_STATUS_REPORTED));
+
+    cleanup(ctx.conn);
+}
+
+test "concurrent first touches of a new runner's counter row all land" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+    cleanup(ctx.conn);
+    try setupBase(ctx.conn);
+
+    // Deliberately NO serial seed: every worker races to create the counter row
+    // itself. This is the half its sibling test cannot reach — with the row
+    // already present, every write takes the update arm and a table with two
+    // unique keys over the same value would never be caught. Here the losers of
+    // the insert race are the whole point: with a second unique key they die on
+    // the index `ON CONFLICT` is not arbitrating, which was a live 500 under
+    // concurrent acquire (spec Discovery C4).
+    try std.testing.expectError(error.CounterRowMissing, counterRow(ctx.conn));
+
+    var workers: [N_WORKERS]CycleWorker = undefined;
+    var threads: [N_WORKERS]std.Thread = undefined;
+    for (&workers, &threads, 0..) |*worker, *thread, i| {
+        worker.* = .{ .pool = ctx.pool, .index = i };
+        thread.* = try std.Thread.spawn(.{}, CycleWorker.run, .{worker});
+    }
+    for (&threads) |*thread| thread.join();
+    for (&workers, 0..) |worker, i| {
+        if (worker.err) |err| {
+            std.debug.print("first-touch worker {d} failed: {s}\n", .{ i, @errorName(err) });
+            return error.CycleWorkerFailed;
+        }
+    }
+
+    // One row, and every racing acquire counted in it: the insert race resolves
+    // to a single winner and N-1 updates, never to a lost tally or an error.
+    const raced: i64 = N_WORKERS * CYCLES_PER_WORKER;
+    try expectCountersMatchRecount(ctx.conn, @divExact(raced, 2), @divExact(raced, 2));
+    try std.testing.expectEqual(@as(i64, 1), try counterRowCount(ctx.conn));
 
     cleanup(ctx.conn);
 }

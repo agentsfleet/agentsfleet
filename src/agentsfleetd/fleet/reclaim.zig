@@ -31,6 +31,16 @@ pub const PriorLease = struct {
     tenant_id: []const u8,
     posture: []const u8,
     model: []const u8,
+
+    /// Release every field. Production callers hand this an arena that frees
+    /// wholesale, but tests own the allocation individually — and enumerating
+    /// ten fields at each call site means a field added to the RETURNING list
+    /// above leaks in whichever site nobody remembered to update.
+    pub fn deinit(self: PriorLease, alloc: std.mem.Allocator) void {
+        inline for (@typeInfo(PriorLease).@"struct".fields) |field| {
+            if (field.type == []const u8) alloc.free(@field(self, field.name));
+        }
+    }
 };
 
 /// Atomically reclaim the fleet's latest `active` lease: one statement selects
