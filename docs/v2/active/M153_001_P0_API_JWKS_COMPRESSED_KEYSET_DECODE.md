@@ -86,22 +86,22 @@ The transport reads through the decompressing reader, so a provider that honours
 
 **Implementation default:** keep the client's default `accept-encoding` negotiation and decode the result, rather than suppressing compression with an `omit` header. Suppressing it would also work, but it makes the daemon pay full wire cost on every refresh and leaves the same trap armed for the next reader of this file.
 
-- **Dimension 1.1** — a `content-encoding: gzip` key set parses into usable keys → Test `test_jwks_fetch_decodes_gzip_keyset`
-- **Dimension 1.2** — an uncompressed (`identity`) key set still parses, unchanged → Test `test_jwks_fetch_reads_identity_keyset`
+- **Dimension 1.1** — DONE — a `content-encoding: gzip` key set parses into usable keys → Test `jwks fetch decodes a gzip-encoded key set and verifies a real token`
+- **Dimension 1.2** — DONE — an uncompressed (`identity`) key set still parses, unchanged → Test `jwks fetch success path delivers the key set byte-intact over loopback` (pre-existing; now the identity-path regression anchor)
 
 ### §2 — Keep the read bounded after decoding
 
 M152's cap exists so a config-controlled endpoint cannot make the daemon accumulate without limit. Decoding moves the threat: a small compressed body can inflate past any wire-byte cap. The cap therefore counts decompressed bytes, which bounds both the honest oversize response and the hostile bomb.
 
-- **Dimension 2.1** — a small gzip body that inflates past the cap is rejected, and the partial accumulation is freed → Test `test_jwks_fetch_rejects_decompression_bomb`
-- **Dimension 2.2** — an uncompressed body past the cap is still rejected (M152's guarantee, unbroken) → Test `test_jwks_fetch_rejects_oversize_identity_body`
+- **Dimension 2.1** — DONE — a small gzip body that inflates past the cap is rejected, and the partial accumulation is freed → Test `jwks fetch rejects a compressed body that inflates past the cap`
+- **Dimension 2.2** — DONE — an uncompressed body past the cap is still rejected (M152's guarantee, unbroken) → Test `jwks fetch still refuses an oversize uncompressed body as a cap refusal`
 
 ### §3 — Prove the failure classes stay distinct
 
 A cap rejection and a transport fault are different operator situations: the first says the provider sent something implausible, the second says the network or provider is down. They already map to different `FetchError` variants, and the decoding path must not collapse them — including when the decompressor itself rejects malformed bytes.
 
-- **Dimension 3.1** — a body whose declared encoding does not match its bytes fails as a transport fault, never as a silent empty key set → Test `test_jwks_fetch_rejects_malformed_gzip`
-- **Dimension 3.2** — an endpoint that dies mid-body still frees the partial accumulation on the decoding path → Test `test_jwks_fetch_frees_partial_body_when_compressed`
+- **Dimension 3.1** — DONE — a body whose declared encoding does not match its bytes fails as a transport fault, never as a silent empty key set → Test `jwks fetch keeps the cap refusal distinct from a transport fault`
+- **Dimension 3.2** — DONE — an endpoint that dies mid-body still frees the partial accumulation on the decoding path → Test `jwks fetch frees the partial body when a compressed stream dies mid-body`
 
 ## Interfaces
 
@@ -146,22 +146,23 @@ Callers unchanged:
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_jwks_fetch_decodes_gzip_keyset` | Local listener returns a valid key set with `content-encoding: gzip`; the fetched body parses through `parseJwks` and yields exactly one Rivest–Shamir–Adleman (RSA) key whose `kid` matches the fixture. |
-| 1.2 | unit | `test_jwks_fetch_reads_identity_keyset` | Same key set served uncompressed parses identically — regression guard that decoding did not break the plain path. |
-| 2.1 | unit | `test_jwks_fetch_rejects_decompression_bomb` | A body of a few kibibytes of deflated zeroes inflating past `JWKS_MAX_RESPONSE_BYTES` returns `ResponseTooLarge`; the testing allocator reports no leak. |
-| 2.2 | unit | `test_jwks_fetch_rejects_oversize_identity_body` | The existing over-cap uncompressed server still yields a cap rejection — M152's guarantee is unbroken. |
-| 3.1 | unit | `test_jwks_fetch_rejects_malformed_gzip` | A response declaring `content-encoding: gzip` whose body is plain text returns `FetchFailed`, not an empty key set and not `ResponseTooLarge`. |
-| 3.2 | unit | `test_jwks_fetch_frees_partial_body_when_compressed` | A listener that sends a valid gzip head then drops the connection returns `FetchFailed` with no leak reported. |
-| — | integration | `test_verifier_verifies_token_against_compressed_keyset` | Through the real `Verifier`: a token signed by the fixture key verifies when the key set is served gzip-encoded — proves the repair at the layer the middleware actually calls, not just the transport. |
-| — | regression | existing `jwks_test.zig` suite | Every pre-existing JWKS test stays green; the partial-body and over-cap leak tests from M152 are untouched in behaviour. |
+| 1.1 | integration | `jwks fetch decodes a gzip-encoded key set and verifies a real token` | Loopback listener serves the fixture key set gzip-encoded with `content-encoding: gzip`; a real token verifies through the live `Verifier` and yields subject `user_test`. Covers the transport and the layer the middleware actually calls in one walk, so no separate verifier row is needed. |
+| 1.2 | unit | `jwks fetch success path delivers the key set byte-intact over loopback` | Pre-existing test, unchanged: the same key set served uncompressed still verifies a real token — the identity path did not regress. |
+| 2.1 | unit | `jwks fetch rejects a compressed body that inflates past the cap` | 300 KiB of one repeated byte, gzipped to a few hundred wire bytes (asserted under the cap on the wire), returns `ResponseTooLarge`; the testing allocator reports no leak. |
+| 2.2 | unit | `jwks fetch still refuses an oversize uncompressed body as a cap refusal` | The over-cap uncompressed server yields `ResponseTooLarge` asserted directly on `fetchCapped` — M152's guarantee, and the variant the `Verifier` would otherwise hide. |
+| 3.1 | unit | `jwks fetch keeps the cap refusal distinct from a transport fault` | A response declaring `content-encoding: gzip` whose body is plain JSON returns `FetchFailed` — not `ResponseTooLarge`, and not a silently-accepted key set. |
+| 3.2 | unit | `jwks fetch frees the partial body when a compressed stream dies mid-body` | A listener promising a full gzip body then hanging up halfway returns `FetchFailed` with no leak reported. |
+| — | regression | pre-fix run of the four new tests | Reverting `jwks_fetch.zig` to the pre-fix transport fails all four new tests (gzip decode dies on `UnexpectedToken`; the bomb and malformed cases return raw bytes; the truncated case leaks) — the tests pin the fix rather than passing either way. |
+| — | regression | existing `jwks_test.zig` suite | Every pre-existing JWKS test stays green; the M152 partial-body and over-cap leak tests are unchanged in behaviour. |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A gzip-encoded key set parses; the outage path is closed (§1) | `zig build test-agentsfleetd -- jwks` | exit 0, `test_jwks_fetch_decodes_gzip_keyset` passes | P0 | |
-| R2 | The cap bounds decompressed bytes, not wire bytes (§2) | `zig build test-agentsfleetd -- jwks` | exit 0, `test_jwks_fetch_rejects_decompression_bomb` passes | P0 | |
-| R3 | Failure classes stay distinct (§3) | `zig build test-agentsfleetd -- jwks` | exit 0, `test_jwks_fetch_rejects_malformed_gzip` passes | P0 | |
+| R1 | A gzip-encoded key set parses and a real token verifies; the outage path is closed (§1) | `zig build test-auth --summary all` | exit 0, `232 pass` with `232 total` | P0 | |
+| R2 | The cap bounds decompressed bytes, not wire bytes (§2) | `zig build test-auth --summary all` | exit 0; the bomb test passes | P0 | |
+| R3 | Failure classes stay distinct (§3) | `zig build test-auth --summary all` | exit 0; the malformed-gzip test passes | P0 | |
+| R4b | The new tests fail against the pre-fix transport | restore `git show HEAD~:src/agentsfleetd/auth/jwks_fetch.zig`, run `zig build test-auth` | `4 fail`, then restore and re-run for `232 pass` | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test-unit-agentsfleetd` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
