@@ -1108,3 +1108,34 @@ test "jwks fetch refuses an encoding it never advertised" {
     server.join();
     try std.testing.expectError(jwks_fetch.FetchError.FetchFailed, r);
 }
+
+test "jwks fetch treats a non-200 key-set response as a transport fault" {
+    const alloc = std.testing.allocator;
+    const io = common.globalIo();
+
+    // A rotated or mistyped issuer leaves the well-known path answering 404.
+    // That must read as "provider unreachable", not as an empty key set —
+    // an empty set would fail every token with a kid miss instead.
+    const head = "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+
+    var addr = try std.Io.net.IpAddress.parseIp4(LOOPBACK_HOST, 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, CannedJwksServer.run, .{ &listener, io, head, "" }) catch
+        return error.SkipZigTest;
+
+    var url_buf: [URL_BUFFER_LEN]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, LOOPBACK_URL_FMT, .{port});
+    const r = jwks_fetch.fetchCapped(alloc, url);
+    server.join();
+    try std.testing.expectError(jwks_fetch.FetchError.FetchFailed, r);
+}
+
+test "jwks fetch rejects an unparseable issuer url without touching the network" {
+    // A malformed OIDC_ISSUER must fail closed at parse time rather than
+    // reaching the socket layer. No listener is started: reaching the network
+    // would hang this test rather than pass it.
+    const r = jwks_fetch.fetchCapped(std.testing.allocator, "not-a-url");
+    try std.testing.expectError(jwks_fetch.FetchError.FetchFailed, r);
+}
