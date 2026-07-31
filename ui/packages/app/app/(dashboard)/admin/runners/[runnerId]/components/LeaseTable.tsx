@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { LayoutListIcon } from "lucide-react";
+import Link from "next/link";
+import { FunnelIcon, LayoutListIcon } from "lucide-react";
 import {
   Badge,
   type BadgeVariant,
   DataTable,
   type DataTableColumn,
   EmptyState,
+  IconAction,
   PAGINATION_KIND,
   Time,
   WakePulse,
@@ -17,15 +19,23 @@ import { failureSentenceFor } from "@/lib/events/event-summary";
 import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
 import { formatMs } from "@/lib/utils";
+import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
+import {
+  LeaseWorkspaceFilter,
+  shortWorkspaceId,
+  useLeaseWorkspaceFilter,
+} from "./LeaseWorkspaceFilter";
 import { ReviewLease } from "./ReviewLease";
 import {
   EXPIRED_ROW_DETAIL,
   EXPIRED_ROW_SENTENCE,
+  FILTER_BY_WORKSPACE_LABEL,
   LEASES_EMPTY_DESCRIPTION,
   LEASES_EMPTY_TITLE,
   LEASES_TABLE_LABEL,
   OUTCOME_LABELS,
   UNKNOWN_OUTCOME_SENTENCE,
+  WORKSPACE_LABEL,
 } from "./runner-copy";
 
 const VALUE_UNKNOWN = "—";
@@ -39,10 +49,12 @@ const SETTLED_OUTCOME_VARIANT: Partial<Record<RunnerLease["outcome"], BadgeVaria
 // live leases ordered first within the fetched page, every failed row reading
 // the shared plain-English sentence — never the raw tag — and every row
 // opening Review lease. The page itself is fetched by the Server Component
-// for the cursor the URL names; this table only renders and pages it.
+// for the cursor — and workspace filter — the URL names; this table only
+// renders, pages and re-filters it.
 export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse; pageSize: number }) {
   const [selected, setSelected] = useState<RunnerLease | null>(null);
   const feed = useUrlCursorPages(initial.next_cursor, pageSize);
+  const workspaceFilter = useLeaseWorkspaceFilter();
 
   // Live work leads: within the page, every running row precedes every
   // settled row, each group keeping the server's newest-first order.
@@ -60,6 +72,12 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
         cell: (lease) => (
           <span className="truncate font-mono text-sm">{lease.fleet_name ?? lease.fleet_id}</span>
         ),
+      },
+      {
+        key: "workspace",
+        header: WORKSPACE_LABEL,
+        hideOnMobile: true,
+        cell: (lease) => <WorkspaceCell lease={lease} onFilter={workspaceFilter.filterTo} />,
       },
       {
         key: "work",
@@ -100,13 +118,16 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
         cell: (lease) => <OutcomeCell lease={lease} />,
       },
     ],
-    [],
+    [workspaceFilter.filterTo],
   );
 
   // The relative `Time` cells here, and Review lease's own, take tooltip
   // context from the root layout's single provider — see `app/layout.tsx`.
   return (
     <div>
+      {workspaceFilter.active !== null ? (
+        <LeaseWorkspaceFilter workspaceId={workspaceFilter.active} onClear={workspaceFilter.clear} />
+      ) : null}
       <DataTable
         caption={LEASES_TABLE_LABEL}
         columns={columns}
@@ -135,6 +156,40 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
       />
       <ReviewLease lease={selected} onOpenChange={() => setSelected(null)} />
     </div>
+  );
+}
+
+// The workspace cell carries two affordances: the id opens the workspace's
+// fleet wall, the funnel narrows this table to the row's workspace. Both stop
+// propagation — a click on the row itself means "review this lease", and
+// neither of these is that.
+function WorkspaceCell({
+  lease,
+  onFilter,
+}: {
+  lease: RunnerLease;
+  onFilter: (workspaceId: string) => void;
+}) {
+  return (
+    <span className="flex min-w-0 items-center gap-md">
+      <Link
+        className="truncate font-mono text-sm text-pulse no-underline"
+        href={workspacePath(lease.workspace_id, DEFAULT_WORKSPACE_SUBPATH)}
+        title={lease.workspace_id}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {shortWorkspaceId(lease.workspace_id)}
+      </Link>
+      <IconAction
+        label={FILTER_BY_WORKSPACE_LABEL}
+        onClick={(event) => {
+          event.stopPropagation();
+          onFilter(lease.workspace_id);
+        }}
+      >
+        <FunnelIcon />
+      </IconAction>
+    </span>
   );
 }
 

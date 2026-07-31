@@ -48,4 +48,7 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 40, .sql = @embedFile("040_memory_entries_keyset_index.sql") },
     .{ .version = 41, .sql = @embedFile("041_runner_leases_operator_read_indexes.sql") },
     .{ .version = 42, .sql = @embedFile("042_runner_assigned_policy.sql") },
+    .{ .version = 43, .sql = @embedFile("043_runner_lifetime_counters.sql") },
+    .{ .version = 44, .sql = @embedFile("044_runner_events_read_index.sql") },
+    .{ .version = 45, .sql = @embedFile("045_runner_retention_delete_grants.sql") },
 };

@@ -1,7 +1,7 @@
 /**
  * Authenticated e2e harness — global teardown.
  *
- * Counterpart to global-setup.ts. Two jobs:
+ * Counterpart to global-setup.ts. Three jobs:
  *
  * 1. Session revocation. globalSetup mints a Clerk session per fixture user;
  *    without revoking them, every suite run leaves N more sessions in the
@@ -16,6 +16,14 @@
  *    previous crashed one. Clerk's user.deleted webhook then hard-purges the
  *    bootstrapped tenant daemon-side (state/account_teardown.zig).
  *
+ * 3. Leaked-fleet sweep. Per-spec afterEach cleanup misses whenever a run
+ *    crashes or CI is interrupted, and a leaked fixture fleet is not inert:
+ *    its seeded cron trigger keeps waking runners until the row is deleted.
+ *    sweepLeakedFixtureFleets (fixtures/teardown.ts) reaps the known seed
+ *    prefixes in every persistent fixture workspace and empties the
+ *    journey-owned per-run workspaces, behind the same destructive-target
+ *    guard the per-spec cleanup uses.
+ *
  * Runs automatically as Playwright's globalTeardown, and directly by hand:
  *
  *   cd ui/packages/app/tests/e2e/acceptance && bun global-teardown.ts
@@ -26,6 +34,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { deleteUser, listUsersByQuery, revokeSession } from "./fixtures/clerk-admin";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
+import { sweepLeakedFixtureFleets } from "./fixtures/teardown";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
@@ -105,6 +114,17 @@ export default async function globalTeardown(): Promise<void> {
     await sweepStaleFixtureUsers();
   } catch (err) {
     console.error("[e2e:sweep] sweep failed:", err);
+  }
+  try {
+    // The sweep authenticates off the fixture JWT cache; a run that never
+    // finished global-setup has nothing to sweep with.
+    if (fs.existsSync(JWT_CACHE_PATH)) {
+      await sweepLeakedFixtureFleets();
+    } else {
+      console.log("[e2e:sweep] fixture JWT cache missing — skipping leaked-fleet sweep");
+    }
+  } catch (err) {
+    console.error("[e2e:sweep] leaked-fleet sweep failed:", err);
   }
 }
 

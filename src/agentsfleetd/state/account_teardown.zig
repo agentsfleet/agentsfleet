@@ -85,6 +85,34 @@ pub fn purgeByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject
     return true;
 }
 
+/// Fleet ids owned by the subject's tenant, resolved while the rows still
+/// exist — the purge below erases them, so the caller collects these FIRST to
+/// unregister upstream schedule timers (the rows cascade away; the provider
+/// registration does not). Null = unknown/already-purged subject. Caller frees
+/// each id and the slice.
+pub fn fleetIdsByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject: []const u8) !?[][]const u8 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT z.id::text FROM core.fleets z WHERE z.workspace_id IN " ++
+            "(SELECT w.workspace_id FROM core.workspaces w WHERE w.tenant_id = " ++
+            "(SELECT u.tenant_id FROM core.users u WHERE u.oidc_subject = $1))",
+        .{oidc_subject},
+    ));
+    defer q.deinit();
+    var ids: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (ids.items) |id| alloc.free(id);
+        ids.deinit(alloc);
+    }
+    while (try q.next()) |row| {
+        try ids.append(alloc, try alloc.dupe(u8, try row.get([]const u8, 0)));
+    }
+    if (ids.items.len == 0) {
+        ids.deinit(alloc);
+        return null;
+    }
+    return try ids.toOwnedSlice(alloc);
+}
+
 /// Resolve the subject's tenant_id as text. Caller owns the returned slice.
 fn fetchTenantId(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject: []const u8) !?[]u8 {
     var q = PgQuery.from(try conn.query(

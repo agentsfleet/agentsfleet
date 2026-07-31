@@ -164,6 +164,8 @@ fn appendLeasePollFamilies(writer: anytype, s: mc.Snapshot) !void {
     try appendMetric(writer, mc.DB_ROUNDTRIPS_NAME, S_COUNTER, mc.DB_ROUNDTRIPS_HELP, s.lease_poll_db_roundtrips_total);
     try appendMetric(writer, mc.READY_DEPTH_NAME, S_GAUGE, mc.READY_DEPTH_HELP, s.fleet_ready_depth);
     try appendMetric(writer, mc.READY_WRITE_FAILURES_NAME, S_COUNTER, mc.READY_WRITE_FAILURES_HELP, s.fleet_ready_write_failures_total);
+    try appendMetric(writer, mc.RETENTION_SWEPT_NAME, S_COUNTER, mc.RETENTION_SWEPT_HELP, s.runner_retention_swept_total);
+    try appendMetric(writer, mc.TEARDOWN_UNREGISTER_FAILURES_NAME, S_COUNTER, mc.TEARDOWN_UNREGISTER_FAILURES_HELP, s.account_teardown_unregister_failures_total);
 }
 
 /// Redis request-path pool — emitted only when a Pool has been registered

@@ -1,0 +1,22 @@
+-- Index support for the runner activity feed's type-filtered reads.
+--
+-- The operator page requests only the rare runner-lifecycle tags, but the
+-- table is dominated by the two per-lease tags (one lease_acquired + one
+-- lease_released per lease). The only index, (runner_id, occurred_at DESC,
+-- id DESC), forces the filtered page to walk and discard the bulk to fill 25
+-- rows, and the filtered COUNT(*) to walk everything — both grow with lease
+-- history.
+--
+-- A partial index excluding the two high-volume tags was considered and
+-- rejected: the reads bind the tag list as a parameter array
+-- (event_type = ANY($n)), and the planner cannot prove a parameter satisfies
+-- a partial-index predicate, so generic plans would fall off the index. The
+-- full composite stays usable for any parameterized tag set; its write cost
+-- is one extra entry per event insert, and the retention sweep bounds its
+-- size.
+--
+-- Additive-only: one index, no table or column change, no row rewrite.
+-- RULE SGR: no GRANT lines — an index is not a grantable object; access runs
+-- through api_runtime's existing table grants from slot 021.
+CREATE INDEX IF NOT EXISTS idx_runner_events_runner_id_type_occurred_at_id
+    ON fleet.runner_events (runner_id, event_type, occurred_at DESC, id DESC);

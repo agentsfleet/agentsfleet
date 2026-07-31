@@ -29,6 +29,15 @@ export const ACTIVITY_EMPTY_DESCRIPTION = "Enrolment, liveness and administrativ
 export const LEASES_UNAVAILABLE = "Lease history is temporarily unavailable. Try refreshing the page.";
 export const ACTIVITY_UNAVAILABLE = "Activity history is temporarily unavailable. Try refreshing the page.";
 
+// The workspace filter's vocabulary, plus the URL search param it rides on.
+// The param name lives here — the one module the Server Component page and the
+// client table both already read — so the reader and the writer can never
+// spell it apart.
+export const WORKSPACE_FILTER_PARAM = "workspace";
+export const WORKSPACE_LABEL = "Workspace";
+export const FILTER_BY_WORKSPACE_LABEL = "Show only this workspace";
+export const CLEAR_WORKSPACE_FILTER_LABEL = "Clear workspace filter";
+
 export const IDLE_SENTENCE = "Idle. No active leases.";
 export const NEVER_CONNECTED_SENTENCE = "Never connected.";
 export const INSPECT_RUNNER_LABEL = "Inspect runner";

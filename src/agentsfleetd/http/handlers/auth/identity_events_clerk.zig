@@ -26,7 +26,7 @@ const common = @import("../common.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const svix_verify = @import("../../../auth/crypto/svix_verify.zig");
 const signup_bootstrap = @import("../../../state/signup_bootstrap.zig");
-const account_teardown = @import("../../../state/account_teardown.zig");
+const identity_delete = @import("identity_events_delete.zig");
 const metrics = @import("../../../observability/metrics_counters.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const clerk_backend = @import("../../../auth/clerk_backend.zig");
@@ -122,7 +122,7 @@ pub fn innerClerkWebhook(hx: Hx, req: *httpz.Request) void {
 
     const event = parsed.value;
     if (std.mem.eql(u8, event.type, "user.deleted")) {
-        runDelete(hx, event.data.id);
+        identity_delete.runDelete(hx, event.data.id);
         return;
     }
     if (!std.mem.eql(u8, event.type, "user.created")) {
@@ -314,22 +314,4 @@ fn captureSignupEvent(hx: Hx, oidc_subject: []const u8, email: []const u8, boots
         .created = bootstrap.created,
         .request_id = hx.req_id,
     });
-}
-
-fn runDelete(hx: Hx, oidc_subject: []const u8) void {
-    const conn = hx.ctx.pool.acquire() catch {
-        log.warn("delete_pool_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .oidc = oidc_subject, .req_id = hx.req_id });
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    const purged = account_teardown.purgeByOidcSubject(conn, hx.alloc, oidc_subject) catch |err| {
-        log.warn("delete_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .oidc = oidc_subject, .err = @errorName(err), .req_id = hx.req_id });
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-
-    log.debug("user_deleted", .{ .oidc = oidc_subject, .purged = purged, .req_id = hx.req_id });
-    hx.ok(.ok, .{ .deleted = true });
 }

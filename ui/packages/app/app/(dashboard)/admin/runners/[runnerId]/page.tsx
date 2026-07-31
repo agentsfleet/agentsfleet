@@ -27,7 +27,11 @@ import RunnerMetricsStrip from "./components/RunnerMetricsStrip";
 import { LeaseTable } from "./components/LeaseTable";
 import { ActivityTable } from "./components/ActivityTable";
 import { RunnerViewedTracker } from "./components/RunnerViewedTracker";
-import { ACTIVITY_UNAVAILABLE, LEASES_UNAVAILABLE } from "./components/runner-copy";
+import {
+  ACTIVITY_UNAVAILABLE,
+  LEASES_UNAVAILABLE,
+  WORKSPACE_FILTER_PARAM,
+} from "./components/runner-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -65,11 +69,12 @@ export default async function RunnerDetailPage({
   const cursor = cursorForTrail(
     cursorTrailFrom(query[CURSOR_TRAIL_PARAM], pageSize, query[CURSOR_PAGE_SIZE_PARAM]),
   );
+  const workspaceFilter = workspaceFilterFrom(query[WORKSPACE_FILTER_PARAM]);
 
   const runner = await loadRunner(runnerId, token);
   if (!runner) notFound();
 
-  const content = await loadRunnerView(view, runner, token, cursor, pageSize);
+  const content = await loadRunnerView(view, runner, token, cursor, pageSize, workspaceFilter);
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -97,6 +102,14 @@ export default async function RunnerDetailPage({
   );
 }
 
+// The workspace filter rides the URL the way the cursor trail does. Anything
+// but a single non-empty value — absent, empty, repeated — fails closed to
+// unfiltered, mirroring `pageSizeFrom`.
+function workspaceFilterFrom(value: string | string[] | undefined): string | null {
+  if (typeof value !== "string") return null;
+  return value.length > 0 ? value : null;
+}
+
 async function loadRunner(runnerId: string, token: string): Promise<RunnerDetail | null> {
   try {
     return await getRunner(token, runnerId);
@@ -117,6 +130,7 @@ async function loadRunnerView(
   token: string,
   cursor: string | null,
   pageSize: number,
+  workspaceFilter: string | null,
 ): Promise<ReactNode> {
   // A failed read resolves to null, never to an empty page: the tables' empty
   // states mean "this host has no history", and showing that for a database or
@@ -134,6 +148,7 @@ async function loadRunnerView(
   const initial = await listRunnerLeases(token, runner.id, {
     limit: pageSize,
     ...(cursor ? { starting_after: cursor } : {}),
+    ...(workspaceFilter ? { workspace_id: workspaceFilter } : {}),
   }).catch(() => null);
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3xl">

@@ -7088,7 +7088,7 @@
       "get": {
         "operationId": "list_fleet_runner_leases",
         "summary": "List a runner's leases",
-        "description": "Platform-admin read of a single runner's lease history, newest first. Each lease is joined to its Fleet event, so outcome and failure cause arrive in one round trip. Stripe-style keyset pagination — `starting_after` is a lease id from a previous page's `next_cursor`.",
+        "description": "Platform-admin read of a single runner's lease history, newest first. Each lease is joined to its Fleet event, so outcome and failure cause arrive in one round trip. Stripe-style keyset pagination — `starting_after` is a lease id from a previous page's `next_cursor`.\n\nSettled leases are retained for 30 days. A background sweep deletes them past that window, along with the matching activity records. A lease still running or renewing is never swept. The lifetime totals on `GET /v1/fleets/runners/{id}` are unaffected. They count transitions as they happen, not surviving rows. A long-lived runner's `leases_acquired` will therefore exceed what this endpoint returns.\n",
         "tags": [
           "Fleet"
         ],
@@ -7108,6 +7108,16 @@
             "in": "query",
             "required": false,
             "description": "A lease id this runner holds; the page starts strictly after it. A lease id the runner does not hold is refused.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "required": false,
+            "description": "Narrow the page and total to leases owned by one workspace. A malformed id is refused; an unknown one matches nothing.",
             "schema": {
               "type": "string",
               "format": "uuid"

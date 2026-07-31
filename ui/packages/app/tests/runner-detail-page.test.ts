@@ -231,6 +231,51 @@ describe("admin/runners/[runnerId] page", () => {
     );
   });
 
+  it("narrows the lease read to the workspace the URL names", async () => {
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockResolvedValueOnce(EMPTY_PAGE);
+    const Page = await loadPage();
+    renderToStaticMarkup(await Page(pageProps({ workspace: "ws-0123456789" })));
+    expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, {
+      limit: 25,
+      workspace_id: "ws-0123456789",
+    });
+  });
+
+  it("composes the workspace filter with the cursor trail rather than replacing it", async () => {
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockResolvedValueOnce(EMPTY_PAGE);
+    const Page = await loadPage();
+    renderToStaticMarkup(
+      await Page(pageProps({ workspace: "ws-0123456789", c: "lease-cursor-1", cps: "25" })),
+    );
+    expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, {
+      limit: 25,
+      starting_after: "lease-cursor-1",
+      workspace_id: "ws-0123456789",
+    });
+  });
+
+  it.each([
+    ["empty", ""],
+    ["repeated", ["ws-a", "ws-b"]],
+  ])(
+    "fails closed to the unfiltered feed for a %s workspace param",
+    async (_name, value) => {
+      mockAuth();
+      getRunnerMock.mockResolvedValueOnce(RUNNER);
+      listRunnerLeasesMock.mockResolvedValueOnce(EMPTY_PAGE);
+      const Page = await loadPage();
+      renderToStaticMarkup(await Page(pageProps({ workspace: value })));
+      // No `workspace_id` key at all — an unfiltered read. Sending an empty or
+      // ambiguous value onward would earn a 400 from the daemon's validator and
+      // render the error state for what is really just a malformed link.
+      expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, { limit: 25 });
+    },
+  );
+
   it("says the history is unavailable when a view read errors, never an empty history", async () => {
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);

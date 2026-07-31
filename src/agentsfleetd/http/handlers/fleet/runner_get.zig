@@ -14,7 +14,6 @@ const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const sql = @import("sql.zig");
 const runner_row = @import("runner_row.zig");
-const event_rows = @import("../../../fleet/event_rows.zig");
 const protocol = @import("contract").protocol;
 const constants = @import("common");
 const logging = @import("log");
@@ -82,10 +81,6 @@ fn fetchDetail(conn: anytype, alloc: std.mem.Allocator, runner_id: []const u8, n
         runner_id,
         protocol.RUNNER_LEASE_STATUS_ACTIVE,
         now_ms,
-        protocol.RUNNER_LEASE_STATUS_REPORTED,
-        event_rows.STATUS_PROCESSED,
-        event_rows.STATUS_FLEET_ERROR,
-        protocol.RUNNER_LEASE_STATUS_EXPIRED,
     }));
     defer q.deinit();
 
