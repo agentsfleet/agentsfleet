@@ -17,6 +17,21 @@ test "computeMac: known vector (RFC-style)" {
     try std.testing.expectEqualSlices(u8, &mac, &decoded);
 }
 
+test "computeMac: RFC 4231 vector unchanged after keyed-state zeroing (Dimension 3.2)" {
+    // Fixed external vector (RFC 4231 test case 2) so a state-scrub regression
+    // that corrupts the digest — not merely leaks it — fails loudly.
+    const mac = hs.computeMac("Jefe", &.{"what do ya want for nothing?"});
+    var buf: [hs.MAC_LEN * 2]u8 = undefined;
+    const hex = hs.encodeMacHex(&buf, "", mac);
+    try std.testing.expectEqualStrings(
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+        hex,
+    );
+    // A second computation from fresh state is unaffected by the prior scrub.
+    const again = hs.computeMac("Jefe", &.{"what do ya want for nothing?"});
+    try std.testing.expectEqualSlices(u8, &mac, &again);
+}
+
 test "computeMac: same inputs → same output (determinism)" {
     const a = hs.computeMac("k", &.{ "foo", ":", "bar" });
     const b = hs.computeMac("k", &.{ "foo", ":", "bar" });

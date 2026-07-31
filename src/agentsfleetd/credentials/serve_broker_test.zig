@@ -106,6 +106,30 @@ const PartialVendor = struct {
     }
 };
 
+test "Built.deinit zeroizes and frees every platform secret, leak-free (Dimension 3.1)" {
+    const alloc = testing.allocator;
+    // Field-by-field with an errdefer ladder (A2): a later dupe failure must
+    // not leak the earlier ones even inside the test.
+    const app_id = try alloc.dupe(u8, "12345");
+    errdefer alloc.free(app_id);
+    const pem = try alloc.dupe(u8, "fake-pem-material");
+    errdefer alloc.free(pem);
+    const slug = try alloc.dupe(u8, "my-app");
+    errdefer alloc.free(slug);
+    const cid = try alloc.dupe(u8, "client-id");
+    errdefer alloc.free(cid);
+    const csec = try alloc.dupe(u8, "client-secret-material");
+    var built = serve_broker.Built{
+        // deinit never reads deps — it frees only the owned secret bytes.
+        .deps = undefined,
+        .github_app = .{ .app_id = app_id, .private_key_pem = pem, .app_slug = slug },
+        .zoho_app = .{ .client_id = cid, .client_secret = csec },
+    };
+    // Teardown routes the pem + client secret through secure_memory.freeBytes;
+    // std.testing.allocator proves the zeroizing path frees everything.
+    built.deinit(alloc);
+}
+
 test "exchange frees the partial response body when the vendor dies mid-stream" {
     const io = common.globalIo();
     var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);

@@ -564,3 +564,17 @@ test "flight loser wakes at the bound and fails closed when the winner never end
     try std.testing.expectEqual(flight.FlightClaim.unavailable, claim);
     flight.endFlight(&b, "stuck-key");
 }
+
+test "credential teardown routes through the zeroizing free, leak-free (Dimension 3.1)" {
+    const alloc = std.testing.allocator;
+    var b = try brokerWith(alloc, FAKE_REGISTRY);
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+    // Cold mint caches a token copy; teardown releases it via
+    // secure_memory.freeBytes (removedFromCache). std.testing.allocator
+    // proves the zeroizing path frees the cached bytes and the mint copies.
+    const r = try b.mint(alloc, "ws-zeroize", "github", h.value, 0);
+    try std.testing.expect(r == .ok);
+    alloc.free(r.ok.token);
+    b.deinit();
+}
