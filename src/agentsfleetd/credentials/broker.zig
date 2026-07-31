@@ -128,17 +128,17 @@ pub fn mint(
         return .unknown_integration;
     };
     var key_buf: [512]u8 = undefined;
-    const key = writeKey(&key_buf, workspace, @tagName(id), self.identityFingerprint(handle)) orelse return .{ .mint_failed = .permanent };
+    const key = writeKey(&key_buf, workspace, @tagName(id), self.identityFingerprint(handle)) orelse {
+        self.emit(@tagName(id), OUTCOME_MINT_FAILED, false, self.latency_clock() - t0);
+        return .{ .mint_failed = .permanent };
+    };
 
     if (self.cachedToken(alloc, key, @tagName(id), now_ms, t0)) |res| return res;
 
-    // Single-flight (broker_flight.zig): exactly one cold-miss mint per key.
-    // A loser waits, then re-reads what the winner cached; a winner that
-    // cached nothing (mint failed) frees the next waiter to take its own
-    // flight through the loop. If the guard cannot be established at all
-    // (allocation failure), fail closed rather than mint unguarded — a
-    // concurrent unguarded mint reuses the refresh token and can cost the
-    // whole token family (see beginFlight).
+    // Single-flight (broker_flight.zig, full rationale there): exactly one
+    // cold-miss mint per key; losers re-read what the winner cached. An
+    // unestablishable guard fails closed — an unguarded concurrent mint can
+    // cost the whole token family.
     var claim = flight.beginFlight(self, key);
     while (claim == .lost) {
         if (self.cachedToken(alloc, key, @tagName(id), now_ms, t0)) |res| return res;

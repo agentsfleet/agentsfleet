@@ -39,7 +39,9 @@ pub const GrafanaOtlpConfig = struct {
     /// Frees every env-owned field. Only `configFromEnv` results may be
     /// passed — hand-built configs with static strings must not call this
     /// (`configFromEnv` dupes `service_name` even when the env override is
-    /// absent, precisely so this free is unconditional).
+    /// absent, precisely so this free is unconditional). ONLY call on
+    /// `configFromEnv` results — a hand-built config carrying the static
+    /// field defaults must never deinit (invalid free of a constant).
     pub fn deinit(self: *GrafanaOtlpConfig, alloc: std.mem.Allocator) void {
         alloc.free(self.endpoint);
         alloc.free(self.instance_id);

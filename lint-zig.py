@@ -76,7 +76,7 @@ def check_pg_drain(path: Path):
             continue
         # Strip line comments so a comment mentioning `defer q.deinit()` cannot
         # mask a genuine missing pair (and a commented-out query cannot trip us).
-        code = "\n".join(re.sub(r"//.*", "", ln) for ln in body.splitlines())
+        code = "\n".join(re.sub(r"(?<!:)//.*", "", ln) for ln in body.splitlines())
         has_query = "conn.query(" in code
         has_pgquery = "PgQuery.from(" in code
         if not has_query and not has_pgquery:
@@ -146,7 +146,7 @@ def check_allocating_writer_text(text, label):
     for lineno, fn_name, body, _ in extract_functions(text):
         if AW_SUPPRESS in body:
             continue
-        code = "\n".join(re.sub(r"//.*", "", ln) for ln in body.splitlines())
+        code = "\n".join(re.sub(r"(?<!:)//.*", "", ln) for ln in body.splitlines())
         bindings = {m.group(1) for m in AW_TYPED.finditer(code)}
         bindings |= {m.group(1) for m in AW_QUALIFIED.finditer(code)}
         for binding in sorted(bindings):

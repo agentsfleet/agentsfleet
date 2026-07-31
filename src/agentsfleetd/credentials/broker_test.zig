@@ -609,3 +609,30 @@ test "mint telemetry is truthful: injected clock yields a real latency (Dimensio
     try std.testing.expect(rec.last_latency_ms > 0);
     try std.testing.expectEqualStrings("ok", rec.last_outcome);
 }
+
+test "mint telemetry: a cache-dupe OOM still emits mint_failed with the hit flag (review find)" {
+    const alloc = std.testing.allocator;
+    var rec = testing.RecordingMetrics{};
+    var b = try CredentialBroker.init(alloc, FAKE_REGISTRY, .{
+        .platform = .{},
+        .http = integration.nullDeps().http,
+        .sign = testing.fakeSign,
+        .metrics = rec.sink(),
+    });
+    defer b.deinit();
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+
+    // Warm the cache with a successful cold mint.
+    const warm = try b.mint(alloc, "ws-oom-emit", "github", h.value, 0);
+    try std.testing.expect(warm == .ok);
+    alloc.free(warm.ok.token);
+
+    // Hit path with a failing caller allocator: the dupe OOMs — the event
+    // must still fire (a silent failure hides real mint churn).
+    var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
+    const r = try b.mint(failing.allocator(), "ws-oom-emit", "github", h.value, 0);
+    try std.testing.expect(r == .mint_failed);
+    try std.testing.expectEqualStrings("mint_failed", rec.last_outcome);
+    try std.testing.expect(rec.last_hit);
+}

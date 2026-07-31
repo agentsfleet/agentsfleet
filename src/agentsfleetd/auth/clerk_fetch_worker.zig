@@ -85,6 +85,9 @@ test "drainForShutdown returns once a held slot is released by a worker" {
     };
     const t = try std.Thread.spawn(.{}, Worker.run, .{});
     drainForShutdown();
-    t.join();
+    // Asserted BEFORE join: a drain that returns without waiting reads the
+    // slot the worker still holds for ~50 ms and fails here — join() alone
+    // would mask a no-op drain by doing the waiting itself.
     try std.testing.expectEqual(@as(u32, 0), in_flight.load(.monotonic));
+    t.join();
 }

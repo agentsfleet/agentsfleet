@@ -308,3 +308,39 @@ test "oauth2_refresh mint: an in-range float expires_in is accepted" {
     defer alloc.free(out.ok.token);
     try std.testing.expectEqual(TEST_NOW_MS + TEST_EXPIRES_IN_S * MS_PER_S, out.ok.expires_at_ms);
 }
+
+test "oauth2_refresh mint: a malformed token_path fails closed, never reshapes the endpoint" {
+    const alloc = std.testing.allocator;
+    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{}" };
+    defer vendor.deinit();
+    inline for (.{ "oauth2/token", "/token?x=1", "/token#f", "/tok en" }) |bad| {
+        const handle = "{\"integration\":\"zoho\",\"refresh_token\":\"rt\",\"accounts_base\":\"https://accounts.example.com\",\"token_path\":\"" ++ bad ++ "\"}";
+        var h = try testing.parse(alloc, handle);
+        defer h.deinit();
+        const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
+        try std.testing.expect(out == .mint_failed);
+        try std.testing.expectEqual(integration.Retry.permanent, out.mint_failed);
+    }
+    // The exchange never fired for any malformed shape.
+    try std.testing.expectEqual(@as(usize, 0), vendor.calls);
+}
+
+test "oauth2_refresh mint: a string-typed expires_in parses (provider compat, review find)" {
+    const alloc = std.testing.allocator;
+    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_str\",\"expires_in\":\"" ++ TEST_EXPIRES_IN_TEXT ++ "\"}" };
+    defer vendor.deinit();
+    var h = try testing.parse(alloc, HANDLE_ZOHO);
+    defer h.deinit();
+    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
+    try std.testing.expect(out == .ok);
+    defer alloc.free(out.ok.token);
+    try std.testing.expectEqual(TEST_NOW_MS + TEST_EXPIRES_IN_S * MS_PER_S, out.ok.expires_at_ms);
+    // A hostile string stays permanent — same clamp as numeric shapes.
+    var vendor2 = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_bad\",\"expires_in\":\"999999999999999999999\"}" };
+    defer vendor2.deinit();
+    var h2 = try testing.parse(alloc, HANDLE_ZOHO);
+    defer h2.deinit();
+    const out2 = try mint(refreshCtx(alloc, h2.value, &vendor2), TEST_CFG);
+    try std.testing.expect(out2 == .mint_failed);
+    try std.testing.expectEqual(integration.Retry.permanent, out2.mint_failed);
+}

@@ -810,3 +810,50 @@ test "verifier init survives allocation failure without leaking (no panic)" {
     };
     try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{});
 }
+
+// One-shot server delivering the canonical key set with correct framing — the
+// success-path twin of PartialJwksServer (review find: the rewritten capped
+// reader had only failure-path coverage).
+const OkJwksServer = struct {
+    fn run(listener: *std.Io.net.Server, io: std.Io) void {
+        const conn = listener.accept(io) catch return;
+        defer conn.close(io);
+        var buf: [2048]u8 = undefined;
+        _ = std.posix.read(conn.socket.handle, &buf) catch return;
+        const resp: []const u8 = std.fmt.comptimePrint(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n",
+            .{TEST_JWKS.len},
+        ) ++ TEST_JWKS;
+        var sent: usize = 0;
+        while (sent < resp.len) {
+            const rc = std.posix.system.write(conn.socket.handle, resp[sent..].ptr, resp.len - sent);
+            if (std.posix.errno(rc) != .SUCCESS) return;
+            sent += @intCast(rc);
+        }
+    }
+};
+
+test "jwks fetch success path delivers the key set byte-intact over loopback" {
+    const io = common.globalIo();
+    var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, OkJwksServer.run, .{ &listener, io }) catch return error.SkipZigTest;
+
+    var url_buf: [64]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/jwks.json", .{port});
+    var v = try Verifier.init(std.testing.allocator, .{
+        .jwks_url = url,
+        .issuer = "https://clerk.dev.agentsfleet.net",
+        .audience = "https://api.agentsfleet.net",
+    });
+    defer v.deinit();
+    try v.checkJwksConnectivity();
+    server.join();
+    // A REAL token verifies against the FETCHED (not inline) key set — the
+    // capped chunk reader delivered the body byte-intact, not merely un-huge.
+    const vc = try v.verifyAndDecode(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN);
+    defer freeClaims(vc);
+    try std.testing.expectEqualStrings("user_test", vc.subject);
+}

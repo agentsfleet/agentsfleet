@@ -5,6 +5,7 @@ const common = @import("common");
 const QStashClient = @import("QStashClient.zig");
 const Service = @import("Service.zig");
 const support = @import("test_support.zig");
+const model = @import("model.zig");
 
 const POOL_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-105000000301";
 const POOL_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-105000000302";
@@ -347,4 +348,55 @@ test "service concurrency: 100 simultaneous syncs make one provider call" {
     try std.testing.expectEqual(@as(u32, 1), counts.synced.load(.acquire));
     try std.testing.expectEqual(@as(u32, CONTENDERS - 1), counts.busy.load(.acquire));
     try std.testing.expectEqual(@as(u32, 0), counts.errors.load(.acquire));
+}
+
+test "service: finalize fallback writes state under a live lease, touches nothing on a lost one (Dimension 7.5)" {
+    const alloc = std.testing.allocator;
+    var fixture = (try support.Fixture.open(RECOVER_WORKSPACE_ID, RECOVER_FLEET_ID)) orelse return error.SkipZigTest;
+    defer fixture.deinit();
+    var fake: Fake = .{};
+    const service = Service.init(fixture.store, client(&fake), TOKEN);
+
+    var created = try service.create(alloc, .{
+        .fleet_id = RECOVER_FLEET_ID,
+        .source = .api,
+        .source_key = "api:fallback-proof",
+        .cron = "0 9 * * *",
+        .timezone = "Asia/Kolkata",
+        .message = "summarize",
+    });
+    defer created.deinit(alloc);
+    const schedule_id = switch (created) {
+        .schedule => |s| s.schedule_id,
+        else => return error.UnexpectedOutcome,
+    };
+    const generation = switch (created) {
+        .schedule => |s| s.generation,
+        else => unreachable,
+    };
+
+    // (a) Lease lost mid-recovery: a bogus token matches no row. The helper
+    // returns void BY TYPE (it cannot mask the caller's original error) and
+    // must leave the synced row untouched.
+    service.fallbackFinalizeState(schedule_id, generation, "bogus-lease-token", "unwritten detail", error.ProviderExploded);
+    var after_lost = (try fixture.store.get(alloc, RECOVER_FLEET_ID, schedule_id)).?;
+    defer after_lost.deinit(alloc);
+    try std.testing.expectEqual(model.SyncStatus.synced, after_lost.sync_status);
+
+    // (b) Live lease: claim the row, run the failure fallback with the REAL
+    // token — the state write lands: status failed, detail preserved.
+    const now_ms = common.clock.nowMillis();
+    var claim = try fixture.store.claimCurrent(alloc, RECOVER_FLEET_ID, schedule_id, "fallback-lease", now_ms + 15_000, now_ms);
+    switch (claim) {
+        .claimed => |*s| {
+            const claimed_generation = s.generation;
+            s.deinit(alloc);
+            service.fallbackFinalizeState(schedule_id, claimed_generation, "fallback-lease", "provider exploded during finalize", error.StoreExploded);
+        },
+        else => return error.UnexpectedOutcome,
+    }
+    var after_write = (try fixture.store.get(alloc, RECOVER_FLEET_ID, schedule_id)).?;
+    defer after_write.deinit(alloc);
+    try std.testing.expectEqual(model.SyncStatus.failed, after_write.sync_status);
+    try std.testing.expectEqualStrings("provider exploded during finalize", after_write.last_error.?);
 }

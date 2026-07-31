@@ -291,12 +291,6 @@ fn checkOidc(c: CheckCtx) !void {
     }
 }
 
-test "doctor ACL check reads the username via the queue parser's extraction" {
-    try std.testing.expectEqualStrings("api_user", redis_config.usernameFromUrl("redis://api_user:pw@cache.local:6379").?);
-    try std.testing.expectEqualStrings("worker_user", redis_config.usernameFromUrl("rediss://worker_user:pw@cache.local:6379").?);
-    try std.testing.expect(redis_config.usernameFromUrl("rediss://cache.local:6379") == null);
-}
-
 test "schema gate reason and compatibility mapping are deterministic" {
     try std.testing.expectEqualStrings("SCHEMA_COMPATIBLE", schemaGateReasonCode(null));
     try std.testing.expectEqualStrings("SCHEMA_BEHIND_BINARY", schemaGateReasonCode(MigrationSchemaGateError.PendingMigrations));

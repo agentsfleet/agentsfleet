@@ -84,9 +84,13 @@ pub fn mint(ctx: MintCtx, cfg: OAuth2Refresh) anyerror!Outcome {
     // The handle's own accounts_base (multi-DC providers) wins over the
     // single-region default — refreshing at the wrong data center fails
     // invalid_grant exactly like the initial exchange would. The token path
-    // rides the handle too (default: the Zoho shape).
+    // rides the handle too (default: the Zoho shape) and is shape-checked so
+    // a future handle writer can never widen where platform credentials are
+    // POSTed (leading '/', no query/fragment/whitespace).
+    const token_path = strField(obj, FIELD_TOKEN_PATH) orelse DEFAULT_TOKEN_PATH;
+    if (!isValidTokenPath(token_path)) return .{ .mint_failed = .permanent };
     const owned_endpoint: ?[]u8 = if (strField(obj, FIELD_ACCOUNTS_BASE)) |base|
-        try std.fmt.allocPrint(ctx.alloc, "{s}{s}", .{ base, strField(obj, FIELD_TOKEN_PATH) orelse DEFAULT_TOKEN_PATH })
+        try std.fmt.allocPrint(ctx.alloc, "{s}{s}", .{ base, token_path })
     else
         null;
     defer if (owned_endpoint) |ep| ctx.alloc.free(ep);
@@ -196,6 +200,14 @@ fn isInvalidGrant(alloc: std.mem.Allocator, body: []const u8) bool {
     return std.mem.eql(u8, err, ERR_INVALID_GRANT);
 }
 
+fn isValidTokenPath(p: []const u8) bool {
+    if (p.len == 0 or p[0] != '/') return false;
+    for (p) |c| {
+        if (c == '?' or c == '#' or c == ' ' or c == '\t' or c == '\r' or c == '\n') return false;
+    }
+    return true;
+}
+
 fn strField(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
     return switch (obj.get(key) orelse return null) {
         .string => |s| s,
@@ -206,11 +218,14 @@ fn strField(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
 /// A JSON number as i64, or null when it is not one — including a float that
 /// is non-finite or outside the safely-convertible range, where
 /// `@intFromFloat` would be safety-checked illegal behavior on
-/// provider-controlled bytes.
+/// provider-controlled bytes. String-typed numerics parse: real OAuth
+/// servers emit `"expires_in":"3600"`, and rejecting them would kill mints
+/// that succeeded before the hostile-input hardening (review find).
 fn intValue(value: std.json.Value) ?i64 {
     return switch (value) {
         .integer => |n| n,
         .float => |n| if (std.math.isFinite(n) and @abs(n) < MAX_SAFE_FLOAT_I64) @intFromFloat(n) else null,
+        .string, .number_string => |s| std.fmt.parseInt(i64, s, 10) catch null,
         else => null,
     };
 }
