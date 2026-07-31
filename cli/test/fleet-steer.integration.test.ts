@@ -11,6 +11,13 @@ import { Readable, Writable } from "node:stream";
 
 import { runCli } from "../src/cli.ts";
 import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
+import {
+  KIND_CHUNK,
+  KIND_EVENT_COMPLETE,
+  KIND_TOOL_CALL_COMPLETED,
+  KIND_TOOL_CALL_STARTED,
+  STATUS_COMPLETE,
+} from "../src/commands/fleet_steer_events.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
@@ -27,8 +34,17 @@ export const WS_ID = "01910000-0000-7000-8000-000000a6e711";
 export const FLEET_ID = "01910000-0000-7000-8000-000000a67e57";
 export const TOKEN = "test.jwt.token";
 export const EVENT_ID = "1729874000000-abc";
+export const OTHER_EVENT_ID = "1729874000000-other";
 export const API_URL = "https://api.steer-test.local";
 export const DASHBOARD_URL = "https://dash.steer-test.local";
+// Call-order markers shared with the failure-path suite: fakes push these so
+// ordering assertions read as data, not as index arithmetic.
+export const CALL_STREAM_OPEN = "stream-open";
+export const CALL_POST = "post-message";
+// Shared across the steer suites (single declaration site).
+export const POST = "POST";
+export const SINGLE_MESSAGE = "go";
+export const postedEvent = <T>(): T => ({ event_id: EVENT_ID } as T);
 
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_steer" }, fn);
@@ -152,8 +168,8 @@ describe("steer — SSE frame callbacks", () => {
   test("chunk event prints claw-prefixed text (lines 93-94)", async () => {
     const rec = makeRecorder();
     const events = [
-      { id: null, type: "chunk", data: { event_id: EVENT_ID, text: "hello from claw" } },
-      { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+      { id: null, type: KIND_CHUNK, data: { event_id: EVENT_ID, text: "hello from claw" } },
+      { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "ping", {}, {
@@ -169,8 +185,8 @@ describe("steer — SSE frame callbacks", () => {
   test("tool_call_started prints tool name with 'starting' suffix (lines 97-98)", async () => {
     const rec = makeRecorder();
     const events = [
-      { id: null, type: "tool_call_started", data: { event_id: EVENT_ID, name: "read_file" } },
-      { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+      { id: null, type: KIND_TOOL_CALL_STARTED, data: { event_id: EVENT_ID, name: "read_file" } },
+      { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "go", {}, {
@@ -186,8 +202,8 @@ describe("steer — SSE frame callbacks", () => {
   test("tool_call_completed prints tool name, 'done', and ms (lines 101-103)", async () => {
     const rec = makeRecorder();
     const events = [
-      { id: null, type: "tool_call_completed", data: { event_id: EVENT_ID, name: "write_file", ms: 42 } },
-      { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+      { id: null, type: KIND_TOOL_CALL_COMPLETED, data: { event_id: EVENT_ID, name: "write_file", ms: 42 } },
+      { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "go", {}, {
@@ -204,7 +220,7 @@ describe("steer — SSE frame callbacks", () => {
     const rec = makeRecorder();
     const events = [
       { id: null, type: "unknown_event_xyz", data: { event_id: EVENT_ID } },
-      { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+      { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "go", {}, {
@@ -223,7 +239,7 @@ describe("steer — terminal status checks (lines 65-67, 247-252)", () => {
   test("fleet_error status is terminal; renderOutcome fails with ConfigError", async () => {
     const rec = makeRecorder();
     const events = [
-      { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.FLEET_ERROR } },
+      { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.FLEET_ERROR } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "go", {}, {
@@ -239,7 +255,7 @@ describe("steer — terminal status checks (lines 65-67, 247-252)", () => {
   test("gate_blocked status is terminal; renderOutcome fails with ConfigError", async () => {
     const rec = makeRecorder();
     const events = [
-      { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.GATE_BLOCKED } },
+      { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.GATE_BLOCKED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "go", {}, {
@@ -259,7 +275,7 @@ describe("steer — json mode renderOutcome (lines 127, 231)", () => {
   test("json mode outputs structured JSON with event_id and outcome", async () => {
     const rec = makeRecorder();
     const events = [
-      { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+      { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "go", {}, {
@@ -273,6 +289,68 @@ describe("steer — json mode renderOutcome (lines 127, 231)", () => {
     expect(jsonOut).toBeDefined();
     const parsed = JSON.parse(jsonOut ?? "{}") as Record<string, unknown>;
     expect(parsed["event_id"]).toBe(EVENT_ID);
-    expect(parsed["kind"]).toBe("complete");
+    expect(parsed["kind"]).toBe(STATUS_COMPLETE);
+  });
+
+  test("test_json_mode_shape_unchanged", async () => {
+    const rec = makeRecorder();
+    const events = [
+      { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+    ] satisfies Parameters<StreamGetCallback>[0][];
+    const exit = await Effect.runPromiseExit(
+      steerEffectFromArgs(FLEET_ID, "go", {}, {
+        stdin: streamFrom([], false),
+        stdout: nullOutput(),
+        streamGet: eventStream(events),
+      }).pipe(Effect.provide(makeLayer(rec, undefined, true))),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    // pin test: literal is the contract — the serialized string is public CLI
+    // output; consumers parse it byte-for-byte.
+    const expected = JSON.stringify({
+      event_id: EVENT_ID,
+      kind: STATUS_COMPLETE,
+      status: EVENT_STATUS.PROCESSED,
+    });
+    expect(rec.stdout).toContain(expected);
+  });
+});
+
+// ── Integration: subscribe-before-send ordering ───────────────────────────
+
+describe("steer — the tail opens before the message posts", () => {
+  test("test_stream_opens_before_post", async () => {
+    const rec = makeRecorder();
+    const calls: string[] = [];
+    // A real handshake takes time: the marker lands only when headers are
+    // accepted (onOpen), so an implementation that merely dispatches the
+    // stream and posts immediately records the POST first and fails here.
+    const HANDSHAKE_DELAY_MS = 10;
+    const recordingStream = async (
+      _url: string,
+      _headers: Record<string, string>,
+      cb: StreamGetCallback,
+      options?: { onOpen?: () => void },
+    ): Promise<void> => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, HANDSHAKE_DELAY_MS);
+      });
+      calls.push(CALL_STREAM_OPEN);
+      options?.onOpen?.();
+      cb({ id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } });
+    };
+    const httpReply = <T>(_input: HttpRequestInput): T => {
+      calls.push(CALL_POST);
+      return { event_id: EVENT_ID } as T;
+    };
+    const exit = await Effect.runPromiseExit(
+      steerEffectFromArgs(FLEET_ID, "go", {}, {
+        stdin: streamFrom([], false),
+        stdout: nullOutput(),
+        streamGet: recordingStream,
+      }).pipe(Effect.provide(makeLayer(rec, httpReply))),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(calls).toEqual([CALL_STREAM_OPEN, CALL_POST]);
   });
 });

@@ -25,6 +25,10 @@ export interface StreamGetOptions {
   timeoutMs?: number;
   fetchImpl?: FetchImpl;
   signal?: AbortSignal;
+  // Fires once when the response headers are accepted and the body stream
+  // exists. The server subscribes to the activity channel before it writes
+  // SSE headers, so this callback firing means the subscription is live.
+  onOpen?: () => void;
 }
 
 // onEvent may return `false` to stop the stream early. Any other value
@@ -70,6 +74,7 @@ export async function streamGet(
     if (res.body === null) {
       throw new ApiError("response body is not streamable", { code: "NO_STREAM_BODY" });
     }
+    options.onOpen?.();
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";

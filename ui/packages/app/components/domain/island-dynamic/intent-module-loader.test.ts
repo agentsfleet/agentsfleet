@@ -1,6 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import ts from "typescript";
+// The bundle guard below AST-walks production sources, which needs the
+// JavaScript compiler API that the Go-native typescript@7 no longer ships —
+// `typescript-jsapi` aliases typescript@6 purely as this test's parser.
+import ts from "typescript-jsapi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import {

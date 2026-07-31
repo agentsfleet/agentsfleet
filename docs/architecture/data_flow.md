@@ -820,10 +820,20 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 
 ```
    CLI       agentsfleet steer <fleet_id> "<message>"   (batch mode)
-               → opens GET /v1/.../fleets/{id}/events/stream (SSE)
+               → opens GET /v1/.../fleets/{id}/events/stream (SSE) BEFORE
+                 posting the message, and waits (bounded, 2 s) for response
+                 headers — the server SUBSCRIBEs before it writes SSE
+                 headers, so headers-received means the subscription is
+                 live and the POST cannot race the event's first frame.
                → server SUBSCRIBE fleet:{id}:activity on a dedicated
                  Redis connection held outside the request-handler pool
                  (SUBSCRIBE blocks the conn).
+               → frames arriving before the 202 names the event wait in a
+                 bounded client-side buffer (drop-oldest) and replay in
+                 order once the id is known; a tail that misses the ready
+                 bound is closed unheard and the durable events list alone
+                 decides the outcome (a late tail must never pass a
+                 truncated reply off as complete).
                → forward each PUBLISH as an SSE frame, one per line:
                    id:<seq>\nevent:<kind>\ndata:<json>\n\n
                → on disconnect: UNSUBSCRIBE, close.

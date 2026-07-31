@@ -26,12 +26,15 @@ import {
 } from "../lib/repl.ts";
 import { exitToCliError, renderCliError } from "../lib/cli-error-render.ts";
 import {
+  openEventTail,
   pollEventTerminal,
   SSE_FALLBACK_TIMEOUT_SECONDS,
   STATUS_COMPLETE,
   STATUS_TIMEOUT,
-  tailEventStream,
+  TAIL_TIMED_OUT,
+  type EventTailHandle,
   type PolledSteerOutcome,
+  type TailReadiness,
 } from "./fleet_steer_events.ts";
 
 const TAG_FIELD = "_tag";
@@ -55,6 +58,17 @@ const failSteerInterrupted = (): Effect.Effect<never, CliError> =>
     }),
   );
 
+const failMissingEventId = (): Effect.Effect<never, CliError> =>
+  Effect.fail(
+    new ServerError({
+      detail: "messages response missing event_id",
+      suggestion: "retry; report request_id if the issue persists",
+      code: "BAD_RESPONSE",
+      status: 502,
+      requestId: null,
+    }),
+  );
+
 interface MessagesResponse {
   readonly event_id?: string;
 }
@@ -70,6 +84,10 @@ export interface SteerOptions {
   readonly forceTty?: boolean;
 }
 
+// Subscribe before send: the activity channel has no replay, so the tail must
+// exist before the daemon can publish the event's first frame. Acquire/release
+// structurally guarantees the tail closes on every exit — success, typed
+// failure, or defect — so no path (present or future) can leak the stream.
 const steerTurnEffect = (
   wsId: string,
   fleetId: string,
@@ -78,8 +96,31 @@ const steerTurnEffect = (
   streamGet: StreamGetFn,
   signal?: AbortSignal,
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
+  Effect.acquireUseRelease(
+    openEventTail(wsId, fleetId, token, streamGet, signal),
+    (tail) => steerTurnWithTail(wsId, fleetId, message, token, tail, signal),
+    (tail) => Effect.promise(() => tail.close()),
+  );
+
+const steerTurnWithTail = (
+  wsId: string,
+  fleetId: string,
+  message: string,
+  token: Redacted.Redacted<string>,
+  tail: EventTailHandle,
+  signal?: AbortSignal,
+): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
+    // Headers-received means the server's subscription is live (it subscribes
+    // before writing SSE headers), so a POST sent after this point cannot
+    // race the event's first frame. Bounded: a tail that can't open inside
+    // TAIL_OPEN_MAX_WAIT_MS degrades to post-then-poll.
+    const readiness = yield* Effect.promise(() => tail.awaitReady());
+    if (signal?.aborted) {
+      // Cancelled before the send — the fleet must not execute the message.
+      return yield* failSteerInterrupted();
+    }
     const post = yield* http.request<MessagesResponse>({
       path: wsFleetMessagesPath(wsId, fleetId),
       method: "POST",
@@ -87,29 +128,42 @@ const steerTurnEffect = (
       token,
     });
     if (!post.event_id) {
-      return yield* Effect.fail(
-        new ServerError({
-          detail: "messages response missing event_id",
-          suggestion: "retry; report request_id if the issue persists",
-          code: "BAD_RESPONSE",
-          status: 502,
-          requestId: null,
-        }),
-      );
-    }
-
-    const streamOutcome = yield* tailEventStream(wsId, fleetId, post.event_id, token, streamGet, signal);
-    let outcome: RenderableSteerOutcome;
-    if (streamOutcome.kind === STATUS_COMPLETE) {
-      outcome = streamOutcome;
-    } else {
-      if (signal?.aborted) return yield* failSteerInterrupted();
-      outcome = yield* pollEventTerminal(wsId, fleetId, post.event_id, token, signal);
+      return yield* failMissingEventId();
     }
     if (signal?.aborted) {
       return yield* failSteerInterrupted();
     }
+    const outcome = yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, post.event_id, token, signal);
+    if (signal?.aborted) {
+      return yield* failSteerInterrupted();
+    }
     yield* renderOutcome(outcome, post.event_id, fleetId);
+  });
+
+// A tail that never became ready may have missed the event's opening frames;
+// rendering from it could pass a truncated reply off as complete. It is
+// closed unheard and the durable poll is authoritative for the outcome.
+const resolveSteerOutcome = (
+  tail: EventTailHandle,
+  readiness: TailReadiness,
+  wsId: string,
+  fleetId: string,
+  eventId: string,
+  token: Redacted.Redacted<string>,
+  signal?: AbortSignal,
+): Effect.Effect<RenderableSteerOutcome, CliError, CliConfig | HttpClient | Output> =>
+  Effect.gen(function* () {
+    if (readiness === TAIL_TIMED_OUT) {
+      yield* Effect.promise(() => tail.close());
+      return yield* pollEventTerminal(wsId, fleetId, eventId, token, signal);
+    }
+    tail.deliverEventId(eventId);
+    const streamOutcome = yield* Effect.promise(() => tail.awaitOutcome());
+    if (streamOutcome.kind === STATUS_COMPLETE) {
+      return streamOutcome;
+    }
+    if (signal?.aborted) return yield* failSteerInterrupted();
+    return yield* pollEventTerminal(wsId, fleetId, eventId, token, signal);
   });
 
 const renderOutcome = (
