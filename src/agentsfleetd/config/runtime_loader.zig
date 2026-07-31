@@ -128,7 +128,7 @@ const EncryptionConfig = struct {
 pub fn loadEncryption(env_map: *const EnvMap, alloc: Allocator) !EncryptionConfig {
     const master_key = try env.requiredEnvOwned(env_map, alloc, "ENCRYPTION_MASTER_KEY", ValidationError.MissingEncryptionMasterKey);
     errdefer alloc.free(master_key);
-    if (master_key.len != 64 or !validate.isHexString(master_key)) return ValidationError.InvalidEncryptionMasterKey;
+    if (!validate.isValid64HexKey(master_key)) return ValidationError.InvalidEncryptionMasterKey;
 
     return .{ .master_key = master_key };
 }
@@ -156,11 +156,11 @@ const AuthPeppersConfig = struct {
 pub fn loadAuthPeppers(env_map: *const EnvMap, alloc: Allocator) !AuthPeppersConfig {
     const session_code = try env.requiredEnvOwned(env_map, alloc, "AUTH_SESSION_CODE_PEPPER", ValidationError.MissingAuthSessionCodePepper);
     errdefer alloc.free(session_code);
-    if (session_code.len != 64 or !validate.isHexString(session_code)) return ValidationError.InvalidAuthSessionCodePepper;
+    if (!validate.isValid64HexKey(session_code)) return ValidationError.InvalidAuthSessionCodePepper;
 
     const audit_log = try env.requiredEnvOwned(env_map, alloc, "AUDIT_LOG_PEPPER", ValidationError.MissingAuditLogPepper);
     errdefer alloc.free(audit_log);
-    if (audit_log.len != 64 or !validate.isHexString(audit_log)) return ValidationError.InvalidAuditLogPepper;
+    if (!validate.isValid64HexKey(audit_log)) return ValidationError.InvalidAuditLogPepper;
 
     return .{ .session_code_pepper = session_code, .audit_log_pepper = audit_log };
 }

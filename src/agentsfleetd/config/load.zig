@@ -35,11 +35,25 @@ pub fn applyEnvSources(
     return merged;
 }
 
+/// One env-boolean grammar for every boolean env var: trimmed, then
+/// case-insensitive true/false or exact 1/0. Callers pick their own policy
+/// for `.invalid` (permissive fallthrough vs strict boot error).
+pub const EnvBool = enum { yes, no, invalid };
+
+pub fn parseEnvBool(raw: []const u8) EnvBool {
+    const trimmed = std.mem.trim(u8, raw, S_T_R_N);
+    if (std.ascii.eqlIgnoreCase(trimmed, VAL_TRUE) or std.mem.eql(u8, trimmed, VAL_ONE)) return .yes;
+    if (std.ascii.eqlIgnoreCase(trimmed, VAL_FALSE) or std.mem.eql(u8, trimmed, VAL_ZERO)) return .no;
+    return .invalid;
+}
+
 fn shouldLoadDotEnvLocal(env_map: *const std.process.Environ.Map) bool {
     if (env_map.get(ENV_AGENTSFLEETD_LOAD_DOTENV)) |raw| {
-        const trimmed = std.mem.trim(u8, raw, S_T_R_N);
-        if (std.ascii.eqlIgnoreCase(trimmed, VAL_TRUE) or std.mem.eql(u8, trimmed, VAL_ONE)) return true;
-        if (std.ascii.eqlIgnoreCase(trimmed, VAL_FALSE) or std.mem.eql(u8, trimmed, VAL_ZERO)) return false;
+        switch (parseEnvBool(raw)) {
+            .yes => return true,
+            .no => return false,
+            .invalid => {},
+        }
     }
     if (env_map.get(ENV_AGENTSFLEETD_ENV_MODE)) |raw| {
         const trimmed = std.mem.trim(u8, raw, S_T_R_N);
@@ -80,6 +94,16 @@ fn stripOptionalQuotes(raw: []const u8) []const u8 {
         }
     }
     return raw;
+}
+
+test "parseEnvBool: one trimmed grammar for every boolean env var (Dimension 4.3)" {
+    try std.testing.expectEqual(EnvBool.yes, parseEnvBool(" true"));
+    try std.testing.expectEqual(EnvBool.yes, parseEnvBool("TRUE"));
+    try std.testing.expectEqual(EnvBool.yes, parseEnvBool("1"));
+    try std.testing.expectEqual(EnvBool.no, parseEnvBool("false\n"));
+    try std.testing.expectEqual(EnvBool.no, parseEnvBool("\t0"));
+    try std.testing.expectEqual(EnvBool.invalid, parseEnvBool("yes"));
+    try std.testing.expectEqual(EnvBool.invalid, parseEnvBool(""));
 }
 
 test "stripOptionalQuotes handles quoted and raw values" {

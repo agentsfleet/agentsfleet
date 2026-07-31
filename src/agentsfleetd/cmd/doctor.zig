@@ -4,7 +4,9 @@ const constants = @import("common");
 const db = @import("../db/pool.zig");
 const oidc_auth = @import("../auth/oidc.zig");
 const env_vars = @import("../config/env_vars.zig");
+const validate = @import("../config/runtime_validate.zig");
 const queue_redis = @import("../queue/redis.zig");
+const redis_config = @import("../queue/redis_config.zig");
 const common = @import("common.zig");
 const doctor_args = @import("doctor_args.zig");
 const doctor_render = @import("doctor_render.zig");
@@ -53,20 +55,6 @@ fn schemaGateReasonCode(err: ?MigrationSchemaGateError) []const u8 {
         };
     }
     return "SCHEMA_COMPATIBLE";
-}
-
-fn redisUsernameFromUrl(url: []const u8) ?[]const u8 {
-    const rest = if (std.mem.startsWith(u8, url, "redis://"))
-        url["redis://".len..]
-    else if (std.mem.startsWith(u8, url, "rediss://"))
-        url["rediss://".len..]
-    else
-        return null;
-    const at = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return null;
-    const userpass = rest[0..at];
-    const colon = std.mem.indexOfScalar(u8, userpass, ':') orelse return null;
-    if (colon == 0) return null;
-    return userpass[0..colon];
 }
 
 fn ensureSchemaCompatible(state: db.MigrationState) MigrationSchemaGateError!void {
@@ -183,7 +171,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
             try appendCheck(alloc, &results, "redis_api_ready", false, "Redis API readiness (PING + XGROUP)", &ok);
             break :redis_api_check;
         };
-        const expected = if (redis_api_url) |u| redisUsernameFromUrl(u) else null;
+        const expected = if (redis_api_url) |u| redis_config.usernameFromUrl(u) else null;
         if (expected) |user| {
             const actual = client.aclWhoAmI() catch {
                 try appendCheck(alloc, &results, "redis_api_acl_probe", false, "Redis API ACL identity probe failed (ACL WHOAMI)", &ok);
@@ -203,7 +191,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         const key: ?[]const u8 = constants.env.owned(env_map, alloc, "ENCRYPTION_MASTER_KEY") catch null;
         if (key) |k| {
             defer alloc.free(k);
-            if (k.len == 64) {
+            if (validate.isValid64HexKey(k)) {
                 try appendCheck(alloc, &results, S_ENCRYPTION_MASTER_KEY, true, "ENCRYPTION_MASTER_KEY set", &ok);
             } else {
                 try appendCheck(alloc, &results, S_ENCRYPTION_MASTER_KEY, false, "ENCRYPTION_MASTER_KEY must be 64 hex chars", &ok);
@@ -217,7 +205,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         const key: ?[]const u8 = constants.env.owned(env_map, alloc, "AUTH_SESSION_CODE_PEPPER") catch null;
         if (key) |k| {
             defer alloc.free(k);
-            if (k.len == 64) {
+            if (validate.isValid64HexKey(k)) {
                 try appendCheck(alloc, &results, S_AUTH_SESSION_CODE_PEPPER, true, "AUTH_SESSION_CODE_PEPPER set", &ok);
             } else {
                 try appendCheck(alloc, &results, S_AUTH_SESSION_CODE_PEPPER, false, "AUTH_SESSION_CODE_PEPPER must be 64 hex chars", &ok);
@@ -231,7 +219,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         const key: ?[]const u8 = constants.env.owned(env_map, alloc, "AUDIT_LOG_PEPPER") catch null;
         if (key) |k| {
             defer alloc.free(k);
-            if (k.len == 64) {
+            if (validate.isValid64HexKey(k)) {
                 try appendCheck(alloc, &results, S_AUDIT_LOG_PEPPER, true, "AUDIT_LOG_PEPPER set", &ok);
             } else {
                 try appendCheck(alloc, &results, S_AUDIT_LOG_PEPPER, false, "AUDIT_LOG_PEPPER must be 64 hex chars", &ok);
@@ -303,10 +291,10 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     if (!ok) std.process.exit(1);
 }
 
-test "redisUsernameFromUrl parses user for redis and rediss" {
-    try std.testing.expectEqualStrings("api_user", redisUsernameFromUrl("redis://api_user:pw@cache.local:6379").?);
-    try std.testing.expectEqualStrings("worker_user", redisUsernameFromUrl("rediss://worker_user:pw@cache.local:6379").?);
-    try std.testing.expect(redisUsernameFromUrl("rediss://cache.local:6379") == null);
+test "doctor ACL check reads the username via the queue parser's extraction" {
+    try std.testing.expectEqualStrings("api_user", redis_config.usernameFromUrl("redis://api_user:pw@cache.local:6379").?);
+    try std.testing.expectEqualStrings("worker_user", redis_config.usernameFromUrl("rediss://worker_user:pw@cache.local:6379").?);
+    try std.testing.expect(redis_config.usernameFromUrl("rediss://cache.local:6379") == null);
 }
 
 test "schema gate reason and compatibility mapping are deterministic" {
