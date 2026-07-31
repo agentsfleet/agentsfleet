@@ -1,6 +1,7 @@
 const std = @import("std");
 const common = @import("common");
 const redis = @import("redis.zig");
+const redis_config = @import("redis_config.zig");
 
 /// Zig 0.16 moved sockets under `std.Io.net` (io-threaded Stream/Server).
 const net = std.Io.net;
@@ -24,6 +25,30 @@ test "parseRedisUrl handles redis URL variants" {
     const tls = try redis.testing.parseRedisUrl(alloc, "rediss://default:secret@upstash.local:6379");
     defer redis.testing.deinitConfig(alloc, tls);
     try std.testing.expect(tls.use_tls);
+}
+
+test "usernameFromUrl matches parseRedisUrl for every URL shape (Dimension 4.2)" {
+    // The doctor's ACL parity check reads the username through this same
+    // extraction, so a mismatch here is a doctor-vs-daemon drift.
+    const alloc = std.testing.allocator;
+    const shapes = [_][]const u8{
+        "redis://user:pass@cache.local:6380",
+        "rediss://worker:pw@cache.local:6379/0",
+        "redis://passonly@cache.local:6379", // colonless userinfo → password, no username
+        "redis://:pass@cache.local:6379", // empty username
+        "rediss://cache.local:6379", // no userinfo
+        "redis://u:p@w@cache.local:6379", // '@' inside the password
+    };
+    for (shapes) |url| {
+        const cfg = try redis.testing.parseRedisUrl(alloc, url);
+        defer redis.testing.deinitConfig(alloc, cfg);
+        const extracted = redis_config.usernameFromUrl(url);
+        if (cfg.username) |parsed| {
+            try std.testing.expectEqualStrings(parsed, extracted.?);
+        } else {
+            try std.testing.expect(extracted == null);
+        }
+    }
 }
 
 test "parseRedisUrl supports rediss default port" {

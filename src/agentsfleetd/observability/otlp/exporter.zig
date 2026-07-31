@@ -70,7 +70,10 @@ pub fn Exporter(comptime hooks: Hooks) type {
 
         pub const InstallOutcome = enum { installed, already_running, spawn_failed };
 
-        /// Install the exporter and start its sole consumer thread.
+        /// Install the exporter and start its sole consumer thread. `cfg` is
+        /// BORROWED: the caller keeps its slices alive until after
+        /// `uninstall()` returns and frees them itself (`preflight.OtelExporters`
+        /// owns that lifetime in production).
         pub fn install(io: std.Io, cfg: config.GrafanaOtlpConfig) InstallOutcome {
             if (g_state.cmpxchgStrong(.stopped, .starting, .acq_rel, .acquire) != null) {
                 return .already_running;

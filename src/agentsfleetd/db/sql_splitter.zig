@@ -261,14 +261,6 @@ pub const SqlStatementSplitter = struct {
         }
     }
 
-    /// Count total statements without side effects.
-    pub fn count(sql: []const u8) u32 {
-        var splitter = SqlStatementSplitter.init(sql);
-        var n: u32 = 0;
-        while (splitter.next() != null) : (n += 1) {}
-        return n;
-    }
-
     /// Structural scan with no allocation: a named error when the input ends
     /// inside a string, quoted identifier, dollar-quote, or block comment. A
     /// migration either splits correctly or fails here — never a silent

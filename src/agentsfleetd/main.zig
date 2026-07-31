@@ -191,8 +191,13 @@ pub fn main(init: std.process.Init) void {
         .debug_leak_checked => gpa.allocator(),
         .release_smp => std.heap.smp_allocator,
     };
-    var dotenv_overlay = config_load.applyEnvSources(io, env_map, alloc) catch |err| {
-        logging.fatalStderr("fatal: failed loading env sources: {}\n", .{err});
+    var dotenv_diag: config_load.DotenvDiagnostic = .{};
+    var dotenv_overlay = config_load.applyEnvSources(io, env_map, alloc, &dotenv_diag) catch |err| {
+        if (dotenv_diag.line != 0) {
+            logging.fatalStderr("fatal: failed loading env sources: {} (.env.local line {d})\n", .{ err, dotenv_diag.line });
+        } else {
+            logging.fatalStderr("fatal: failed loading env sources: {}\n", .{err});
+        }
         std.process.exit(1);
     };
     defer if (dotenv_overlay) |*m| m.deinit();

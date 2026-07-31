@@ -54,7 +54,8 @@ const TokenVal = struct {
     expires_at_ms: i64,
 
     pub fn removedFromCache(self: *TokenVal, allocator: std.mem.Allocator) void {
-        allocator.free(self.token);
+        // @constCast is sound: the token is our own mutable dupe (cacheMinted).
+        secure_memory.freeBytes(allocator, @constCast(self.token));
     }
 };
 
@@ -70,11 +71,15 @@ store: TokenCache,
 /// precomputable offline.
 fp_seed: u64,
 /// Single-flight registry for cold-miss mints (`broker_flight.zig`): a key
-/// present here is being minted right now; losers wait on the condition and
+/// present here is being minted right now; losers poll for its removal and
 /// re-read the cache. The mutex guards `inflight` and nothing else.
 inflight_mutex: common.Mutex = .{},
-inflight_cond: common.Condition = .{},
 inflight: std.StringHashMapUnmanaged(void) = .empty,
+/// Bounded loser wait (`broker_flight.zig` owns the default and rationale);
+/// a test injects a short bound to prove the timeout without a 30 s park.
+loser_wait_bound_ms: i64 = flight.LOSER_WAIT_BOUND_MS,
+/// Injectable mint-latency clock; expiry math stays on the caller's `now_ms`.
+latency_clock: *const fn () i64 = &common.clock.nowMillis,
 
 /// `registry` is injected (production passes `integration.REGISTRY`) so a test can
 /// supply a fake-id registry and prove dispatch is data-driven. `deps` carries the
@@ -117,41 +122,42 @@ pub fn mint(
     handle: std.json.Value,
     now_ms: i64,
 ) !integration.MintResult {
+    const t0 = self.latency_clock();
     const id = parseIntegration(handle) orelse {
-        self.emit(integration_id, OUTCOME_UNKNOWN, false);
+        self.emit(integration_id, OUTCOME_UNKNOWN, false, self.latency_clock() - t0);
         return .unknown_integration;
     };
     var key_buf: [512]u8 = undefined;
-    const key = writeKey(&key_buf, workspace, @tagName(id), self.identityFingerprint(handle)) orelse return .{ .mint_failed = .permanent };
+    const key = writeKey(&key_buf, workspace, @tagName(id), self.identityFingerprint(handle)) orelse {
+        self.emit(@tagName(id), OUTCOME_MINT_FAILED, false, self.latency_clock() - t0);
+        return .{ .mint_failed = .permanent };
+    };
 
-    if (self.cachedToken(alloc, key, @tagName(id), now_ms)) |res| return res;
+    if (self.cachedToken(alloc, key, @tagName(id), now_ms, t0)) |res| return res;
 
-    // Single-flight (broker_flight.zig): exactly one cold-miss mint per key.
-    // A loser waits, then re-reads what the winner cached; a winner that
-    // cached nothing (mint failed) frees the next waiter to take its own
-    // flight through the loop. If the guard cannot be established at all
-    // (allocation failure), fail closed rather than mint unguarded — a
-    // concurrent unguarded mint reuses the refresh token and can cost the
-    // whole token family (see beginFlight).
+    // Single-flight (broker_flight.zig, full rationale there): exactly one
+    // cold-miss mint per key; losers re-read what the winner cached. An
+    // unestablishable guard fails closed — an unguarded concurrent mint can
+    // cost the whole token family.
     var claim = flight.beginFlight(self, key);
     while (claim == .lost) {
-        if (self.cachedToken(alloc, key, @tagName(id), now_ms)) |res| return res;
+        if (self.cachedToken(alloc, key, @tagName(id), now_ms, t0)) |res| return res;
         claim = flight.beginFlight(self, key);
     }
     if (claim == .unavailable) {
-        self.emit(@tagName(id), OUTCOME_MINT_FAILED, false);
+        self.emit(@tagName(id), OUTCOME_MINT_FAILED, false, self.latency_clock() - t0);
         return .{ .mint_failed = .transient };
     }
     defer flight.endFlight(self, key);
 
     switch (self.runMint(id, handle, now_ms)) {
-        .ok => |minted| return self.finishColdMint(alloc, key, @tagName(id), minted, now_ms),
+        .ok => |minted| return self.finishColdMint(alloc, key, @tagName(id), minted, now_ms, t0),
         .reconnect_required => {
-            self.emit(@tagName(id), OUTCOME_RECONNECT, false);
+            self.emit(@tagName(id), OUTCOME_RECONNECT, false, self.latency_clock() - t0);
             return .reconnect_required;
         },
         .mint_failed => |retry| {
-            self.emit(@tagName(id), OUTCOME_MINT_FAILED, false);
+            self.emit(@tagName(id), OUTCOME_MINT_FAILED, false, self.latency_clock() - t0);
             return .{ .mint_failed = retry };
         },
     }
@@ -161,10 +167,16 @@ pub fn mint(
 /// here exactly once; the caller receives independent dupes — including the
 /// rotated refresh token when the exchange rotated it (RULE OWN: one free path
 /// per allocation, proven leak-free under `std.testing.allocator`).
-fn finishColdMint(self: *CredentialBroker, alloc: std.mem.Allocator, key: []const u8, id_name: []const u8, minted: integration.Minted, now_ms: i64) integration.MintResult {
-    defer self.alloc.free(minted.token); // runMint handed us an owned copy
-    defer if (minted.rotated_refresh_token) |rt| self.alloc.free(rt);
-    const tok = alloc.dupe(u8, minted.token) catch return .{ .mint_failed = .transient };
+fn finishColdMint(self: *CredentialBroker, alloc: std.mem.Allocator, key: []const u8, id_name: []const u8, minted: integration.Minted, now_ms: i64, t0: i64) integration.MintResult {
+    // runMint handed us owned copies; zeroize on release. The @constCast is
+    // sound: every strategy dupes into fresh mutable memory.
+    defer secure_memory.freeBytes(self.alloc, @constCast(minted.token));
+    defer if (minted.rotated_refresh_token) |rt| secure_memory.freeBytes(self.alloc, @constCast(rt));
+    const tok = alloc.dupe(u8, minted.token) catch {
+        // A dupe OOM still emits: a silent failure would hide real mint churn.
+        self.emit(id_name, OUTCOME_MINT_FAILED, false, self.latency_clock() - t0);
+        return .{ .mint_failed = .transient };
+    };
     // Degrade, don't fail, when only the ROTATED copy cannot be duped: the
     // exchange already consumed the old refresh token and the caller's access
     // token is in hand. Failing here would waste the mint AND have the retry
@@ -177,18 +189,21 @@ fn finishColdMint(self: *CredentialBroker, alloc: std.mem.Allocator, key: []cons
     // Cache LAST: a mint that fails closed above must not leave a warm entry
     // (a hit reports no rotated token, so the caller would never re-persist).
     flight.cacheMinted(self, key, minted.token, minted.expires_at_ms, now_ms);
-    self.emit(id_name, OUTCOME_OK, false);
+    self.emit(id_name, OUTCOME_OK, false, self.latency_clock() - t0);
     return .{ .ok = .{ .token = tok, .expires_at_ms = minted.expires_at_ms, .rotated_refresh_token = rotated } };
 }
 
 /// Fresh-enough cached token for `key`, duped into `alloc`. Null on a miss or
 /// a skew-expired entry (the caller re-mints; the put overwrites).
-fn cachedToken(self: *CredentialBroker, alloc: std.mem.Allocator, key: []const u8, id_name: []const u8, now_ms: i64) ?integration.MintResult {
+fn cachedToken(self: *CredentialBroker, alloc: std.mem.Allocator, key: []const u8, id_name: []const u8, now_ms: i64, t0: i64) ?integration.MintResult {
     const entry = self.store.get(key) orelse return null;
     defer entry.release();
     if (now_ms >= entry.value.expires_at_ms - EXPIRY_SKEW_MS) return null;
-    const tok = alloc.dupe(u8, entry.value.token) catch return .{ .mint_failed = .transient };
-    self.emit(id_name, OUTCOME_OK, true);
+    const tok = alloc.dupe(u8, entry.value.token) catch {
+        self.emit(id_name, OUTCOME_MINT_FAILED, true, self.latency_clock() - t0);
+        return .{ .mint_failed = .transient };
+    };
+    self.emit(id_name, OUTCOME_OK, true, self.latency_clock() - t0);
     // A hit did no exchange, so rotated_refresh_token stays null.
     return .{ .ok = .{ .token = tok, .expires_at_ms = entry.value.expires_at_ms } };
 }
@@ -209,11 +224,11 @@ fn runMint(self: *CredentialBroker, id: integration.Id, handle: std.json.Value, 
     return spec.mint.run(ctx) catch .{ .mint_failed = .transient };
 }
 
-fn emit(self: *CredentialBroker, integration_name: []const u8, outcome: []const u8, cache_hit: bool) void {
+fn emit(self: *CredentialBroker, integration_name: []const u8, outcome: []const u8, cache_hit: bool, latency_ms: i64) void {
     self.deps.metrics.onMint(.{
         .integration = integration_name,
         .outcome = outcome,
-        .latency_ms = 0,
+        .latency_ms = latency_ms,
         .cache_hit = cache_hit,
     });
 }
@@ -328,6 +343,7 @@ fn parseIntegration(handle: std.json.Value) ?integration.Id {
 const std = @import("std");
 const common = @import("common");
 const cache = @import("cache");
+const secure_memory = @import("../secrets/secure_memory.zig");
 const flight = @import("broker_flight.zig");
 const integration = @import("integration.zig");
 const Spec = integration.Spec;

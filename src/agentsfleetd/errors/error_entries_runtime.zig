@@ -2,41 +2,14 @@
 ///
 /// Sibling of error_entries.zig (control-plane entries). Split for the
 /// 350-line file cap. Both arrays are concatenated by error_registry.zig.
-const std = @import("std");
 const entries = @import("error_entries.zig");
 const Entry = entries.Entry;
-const ERROR_DOCS_BASE = entries.ERROR_DOCS_BASE;
 
 const S_ALREADY_RESOLVED_USER_MSG = "Someone already resolved this. Refresh to see the outcome and who resolved it.";
 
-fn e(
-    comptime code: []const u8,
-    comptime status: std.http.Status,
-    comptime title: []const u8,
-    comptime hint_text: []const u8,
-) Entry {
-    return .{
-        .code = code,
-        .http_status = status,
-        .title = title,
-        .hint = hint_text,
-        .docs_uri = ERROR_DOCS_BASE ++ code,
-    };
-}
-
-/// Like e(), plus a curated `user_message` — see error_entries.zig's module
-/// doc for when to reach for this instead of e().
-fn eu(
-    comptime code: []const u8,
-    comptime status: std.http.Status,
-    comptime title: []const u8,
-    comptime hint_text: []const u8,
-    comptime user_message_text: []const u8,
-) Entry {
-    var entry = e(code, status, title, hint_text);
-    entry.user_message = user_message_text;
-    return entry;
-}
+// Entry constructors are single-sourced in error_entries.zig (Dimension 6.5).
+const e = entries.e;
+const eu = entries.eu;
 
 pub const ENTRIES_RUNTIME = [_]Entry{
     // ── SANDBOX ──────────────────────────────────────────────────────────────

@@ -7,7 +7,6 @@
 const base = @import("test_fixtures.zig");
 const pg = @import("pg");
 
-pub const TEST_TENANT_ID = base.TEST_TENANT_ID;
 pub const TENANT_ID = base.TEST_TENANT_ID;
 
 // Segment 5 (aa01–aa04) identifies UC1 workspaces; easy to grep and clean.

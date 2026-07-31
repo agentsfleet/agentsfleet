@@ -67,7 +67,7 @@ fn freePrincipal(p: oidc.Principal) void {
 }
 
 fn verify(token: []const u8) !oidc.Principal {
-    var verifier = oidc.Verifier.init(ALLOC, .{
+    var verifier = try oidc.Verifier.init(ALLOC, .{
         .jwks_url = "https://test.invalid/jwks",
         .issuer = TEST_ISSUER,
         .audience = TEST_AUDIENCE,

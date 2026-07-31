@@ -288,7 +288,9 @@ fn enumerate(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8)
     }
     while (try q.next()) |row| {
         const id = try row.get([]const u8, 0);
-        try ids.append(alloc, try alloc.dupe(u8, id));
+        // Reserve BEFORE duping: the append cannot fail once ownership exists.
+        try ids.ensureUnusedCapacity(alloc, 1);
+        ids.appendAssumeCapacity(try alloc.dupe(u8, id));
     }
     if (ids.items.len == MAX_FANNED_IN_FLEETS) {
         log.warn("fleet_set_truncated_at_cap", .{

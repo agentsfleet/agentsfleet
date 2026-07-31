@@ -21,13 +21,8 @@ pub fn sha256Hex(input: []const u8) [64]u8 {
     return std.fmt.bytesToHex(digest, .lower);
 }
 
-/// XOR accumulation — constant time regardless of first differing byte (RULE CTM).
-pub fn constantTimeEql(a: []const u8, b: []const u8) bool {
-    if (a.len != b.len) return false;
-    var diff: u8 = 0;
-    for (a, b) |x, y| diff |= x ^ y;
-    return diff == 0;
-}
+// Constant-time compare lives ONLY in crypto/hmac_sig.zig (canonical source);
+// the former local copy is deleted, callers import the `hmac_sig` module.
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -65,37 +60,4 @@ test "sha256Hex: output contains only lowercase hex chars" {
         const is_hex = (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f');
         try std.testing.expect(is_hex);
     }
-}
-
-test "constantTimeEql: equal slices" {
-    try std.testing.expect(constantTimeEql("abc", "abc"));
-}
-
-test "constantTimeEql: different slices same length" {
-    try std.testing.expect(!constantTimeEql("abc", "abd"));
-}
-
-test "constantTimeEql: different lengths" {
-    try std.testing.expect(!constantTimeEql("abc", "abcd"));
-}
-
-test "constantTimeEql: empty strings are equal" {
-    try std.testing.expect(constantTimeEql("", ""));
-}
-
-test "constantTimeEql: only last byte differs returns false (RULE CTM — no short-circuit)" {
-    // XOR accumulation means last-byte difference is caught even if first N-1 bytes match.
-    try std.testing.expect(!constantTimeEql("abc1", "abc2"));
-}
-
-test "constantTimeEql: only first byte differs returns false" {
-    try std.testing.expect(!constantTimeEql("Xbc", "abc"));
-}
-
-test "constantTimeEql: single char equal" {
-    try std.testing.expect(constantTimeEql("x", "x"));
-}
-
-test "constantTimeEql: single char different" {
-    try std.testing.expect(!constantTimeEql("x", "y"));
 }

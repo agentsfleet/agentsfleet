@@ -39,8 +39,8 @@ const FLAGS =
 /// Build the full help text. Pure (allocates only the result) so the golden
 /// test can compare it byte-for-byte. Command rows come from the register.
 pub fn render(alloc: std.mem.Allocator) ![]u8 {
-    var list: std.ArrayList(u8) = .empty;
-    var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &list);
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    defer aw.deinit();
     const w = &aw.writer;
     try w.writeAll(HEADER);
     inline for (std.meta.fields(registry.Command)) |f| {

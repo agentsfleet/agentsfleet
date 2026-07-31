@@ -35,10 +35,10 @@ const CLAIM_SCOPES = "scopes";
 const CLAIM_SCP = "scp";
 const CLAIM_AUD = "aud";
 
-// JWT claim namespace prefixes — these must match the identity provider's
-// custom claim configuration (Clerk/Auth0). Not user-configurable.
-const NAMESPACE_DEV = "https://agentsfleet.net/";
-const NAMESPACE_PROD = "https://agentsfleet.net/";
+// JWT claim namespace prefix — must match the identity provider's custom
+// claim configuration (Clerk/Auth0). Not user-configurable. One value for
+// every environment (the former DEV/PROD pair were identical).
+const CLAIM_NAMESPACE = "https://agentsfleet.net/";
 
 /// Extract Clerk-specific claims from a verified JWT payload.
 /// Looks for `org_id` at top level and `tenant_id`/`workspace_id`
@@ -86,8 +86,12 @@ pub fn extractCustomClaims(alloc: std.mem.Allocator, claims_json: []const u8) !C
 }
 
 fn parseClaimsObject(alloc: std.mem.Allocator, claims_json: []const u8) !std.json.Parsed(std.json.Value) {
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, claims_json, .{}) catch
-        return jwks.VerifyError.TokenMalformed;
+    // OOM is a resource failure, not evidence the claims are malformed —
+    // collapse only real parse errors (RULE ECL).
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, claims_json, .{}) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return jwks.VerifyError.TokenMalformed,
+    };
     if (parsed.value != .object) {
         parsed.deinit();
         return jwks.VerifyError.TokenMalformed;
@@ -104,11 +108,21 @@ fn duplicateClaims(alloc: std.mem.Allocator, view: struct {
 }) !IdentityClaims {
     errdefer if (view.scopes) |v| alloc.free(v);
 
+    // One errdefer per acquisition: a failed later dupe frees every earlier
+    // one instead of leaking it inside a half-built struct literal.
+    const tenant_id = if (view.tenant_id) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (tenant_id) |v| alloc.free(v);
+    const org_id = if (view.org_id) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (org_id) |v| alloc.free(v);
+    const workspace_id = if (view.workspace_id) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (workspace_id) |v| alloc.free(v);
+    const audience = if (view.audience) |v| try alloc.dupe(u8, v) else null;
+
     return .{
-        .tenant_id = if (view.tenant_id) |v| try alloc.dupe(u8, v) else null,
-        .org_id = if (view.org_id) |v| try alloc.dupe(u8, v) else null,
-        .workspace_id = if (view.workspace_id) |v| try alloc.dupe(u8, v) else null,
-        .audience = if (view.audience) |v| try alloc.dupe(u8, v) else null,
+        .tenant_id = tenant_id,
+        .org_id = org_id,
+        .workspace_id = workspace_id,
+        .audience = audience,
         .scopes = view.scopes,
     };
 }
@@ -138,8 +152,7 @@ fn getClerkWorkspaceId(obj: std.json.ObjectMap) ?[]const u8 {
 fn getCustomTenantId(obj: std.json.ObjectMap) ?[]const u8 {
     return getFirstValue(obj, &.{
         CLAIM_TENANT_ID,
-        NAMESPACE_DEV ++ CLAIM_TENANT_ID,
-        NAMESPACE_PROD ++ CLAIM_TENANT_ID,
+        CLAIM_NAMESPACE ++ CLAIM_TENANT_ID,
     }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 
@@ -147,8 +160,7 @@ fn getCustomOrgId(obj: std.json.ObjectMap) ?[]const u8 {
     return getFirstValue(obj, &.{
         CLAIM_ORG_ID,
         CLAIM_ORGANIZATION_ID,
-        NAMESPACE_DEV ++ CLAIM_ORGANIZATION_ID,
-        NAMESPACE_PROD ++ CLAIM_ORGANIZATION_ID,
+        CLAIM_NAMESPACE ++ CLAIM_ORGANIZATION_ID,
     }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 
@@ -156,10 +168,8 @@ fn getCustomWorkspaceId(obj: std.json.ObjectMap) ?[]const u8 {
     return getFirstValue(obj, &.{
         CLAIM_WORKSPACE_ID,
         CLAIM_WORKSPACE_CAMEL,
-        NAMESPACE_DEV ++ CLAIM_WORKSPACE_ID,
-        NAMESPACE_DEV ++ CLAIM_WORKSPACE_CAMEL,
-        NAMESPACE_PROD ++ CLAIM_WORKSPACE_ID,
-        NAMESPACE_PROD ++ CLAIM_WORKSPACE_CAMEL,
+        CLAIM_NAMESPACE ++ CLAIM_WORKSPACE_ID,
+        CLAIM_NAMESPACE ++ CLAIM_WORKSPACE_CAMEL,
     }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 

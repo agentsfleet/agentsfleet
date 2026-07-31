@@ -103,18 +103,15 @@ fn waitForServer(alloc: std.mem.Allocator, port: u16, timeout_ms: u32, bind_fail
         if (bind_failed.load(.seq_cst)) return error.ServerBindRace;
         var client: std.http.Client = .{ .allocator = alloc, .io = common.globalIo() };
         defer client.deinit();
-        var buf: std.ArrayList(u8) = .empty;
-        var writer: std.Io.Writer.Allocating = .fromArrayList(alloc, &buf);
+        // Only the status matters; omitting response_writer makes fetch
+        // stream-and-discard the body, so a failed poll retains nothing.
         const result = client.fetch(.{
             .location = .{ .url = url },
             .method = .GET,
-            .response_writer = &writer.writer,
         }) catch {
             common.sleepNanos(poll_interval_ms * std.time.ns_per_ms);
             continue;
         };
-        const body = writer.toOwnedSlice() catch &.{};
-        alloc.free(body);
         if (@intFromEnum(result.status) == 200) return;
         common.sleepNanos(poll_interval_ms * std.time.ns_per_ms);
     }

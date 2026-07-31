@@ -10,6 +10,10 @@
 //! what the winner cached.
 
 const CredentialBroker = @import("broker.zig");
+const common = @import("common");
+const clock = common.clock;
+const secure_memory = @import("../secrets/secure_memory.zig");
+const std = @import("std");
 
 /// How a cold-miss flight claim resolved. Only `won_registered` owns a map
 /// entry and may `endFlight` it — a claim that never registered must not
@@ -18,23 +22,45 @@ const CredentialBroker = @import("broker.zig");
 /// to prevent.
 pub const FlightClaim = enum { won_registered, lost, unavailable };
 
+/// Loser wait bound (ms): 3× the serve layer's 10 s per-attempt mint deadline,
+/// so a healthy winner ALWAYS resolves first and only a wedged one (e.g. a
+/// custom strategy without its own deadline) trips it. Lives on
+/// `CredentialBroker.loser_wait_bound_ms` so a test injects a short bound.
+pub const LOSER_WAIT_BOUND_MS: i64 = 30_000;
+
+/// Poll cadence while a loser waits out a winner. std.Io.Condition (0.16) has
+/// no timed wait, so losers re-check on this cadence instead of parking
+/// unbounded on a condition — mints are cold-miss-only, so the wakeup latency
+/// is noise against the winner's network round trip.
+const WAITER_POLL_NS: u64 = 5 * std.time.ns_per_ms;
+
 /// `lost` → another flight for the key completed while we waited; the caller
 /// re-reads the cache (and contends again if the winner cached nothing).
 ///
-/// `unavailable` → the flight bookkeeping itself could not be allocated, so the
-/// mint FAILS CLOSED (`.mint_failed = .transient`) instead of flying unguarded.
-/// Degrading to an unguarded mint would let every concurrent caller under memory
-/// pressure mint at once; against a rotating provider they all post the SAME
-/// refresh token, its reuse detection fires, and it revokes the whole token
-/// family — which costs a human a manual reconnect of the workspace integration.
-/// A transient failure costs one retry (the caller already backs off on
-/// `.transient`). Integrity wins over availability here: of the two failure
-/// modes, we take the self-healing one.
+/// `unavailable` → the flight bookkeeping could not be allocated, OR the
+/// winner outlived `loser_wait_bound_ms`. Either way the mint FAILS CLOSED
+/// (`.mint_failed = .transient`) instead of flying unguarded or parking
+/// forever. Degrading to an unguarded mint would let every concurrent caller
+/// under memory pressure mint at once; against a rotating provider they all
+/// post the SAME refresh token, its reuse detection fires, and it revokes the
+/// whole token family — which costs a human a manual reconnect of the
+/// workspace integration. A transient failure costs one retry (the caller
+/// already backs off on `.transient`). Integrity wins over availability here.
 pub fn beginFlight(self: *CredentialBroker, key: []const u8) FlightClaim {
     self.inflight_mutex.lock();
     defer self.inflight_mutex.unlock();
     if (self.inflight.contains(key)) {
-        while (self.inflight.contains(key)) self.inflight_cond.wait(&self.inflight_mutex);
+        // Monotonic elapsed: an adjustable wall clock stepping backward must
+        // not stretch the bound past its nominal value (greptile P1, PR #582).
+        const deadline_ms = clock.nowMonotonicMillis() + self.loser_wait_bound_ms;
+        while (self.inflight.contains(key)) {
+            if (clock.nowMonotonicMillis() >= deadline_ms) return .unavailable;
+            // Sleep outside the lock so the winner's endFlight can remove the
+            // key; the loop's contains() re-check is the wait predicate.
+            self.inflight_mutex.unlock();
+            common.sleepNanos(WAITER_POLL_NS);
+            self.inflight_mutex.lock();
+        }
         return .lost;
     }
     const owned = self.alloc.dupe(u8, key) catch return .unavailable;
@@ -45,14 +71,14 @@ pub fn beginFlight(self: *CredentialBroker, key: []const u8) FlightClaim {
     return .won_registered;
 }
 
-/// Release a `won_registered` flight for `key` and wake every waiter (each
-/// re-reads the cache; on a failed mint the first one through takes its own
-/// flight). Only a registered winner calls this — no other claim owns an entry.
+/// Release a `won_registered` flight for `key`; polling losers observe the
+/// removal on their next re-check (each re-reads the cache; on a failed mint
+/// the first one through takes its own flight). Only a registered winner
+/// calls this — no other claim owns an entry.
 pub fn endFlight(self: *CredentialBroker, key: []const u8) void {
     self.inflight_mutex.lock();
     defer self.inflight_mutex.unlock();
     if (self.inflight.fetchRemove(key)) |kv| self.alloc.free(kv.key);
-    self.inflight_cond.broadcast();
 }
 
 /// Store a freshly-minted token (cache.zig owns the duped bytes; frees via
@@ -62,7 +88,7 @@ pub fn cacheMinted(self: *CredentialBroker, key: []const u8, token: []const u8, 
     const owned = self.alloc.dupe(u8, token) catch return;
     self.store.put(key, .{ .token = owned, .expires_at_ms = expires_at_ms }, .{
         .ttl = ttlSeconds(expires_at_ms, now_ms),
-    }) catch self.alloc.free(owned);
+    }) catch secure_memory.freeBytes(self.alloc, owned);
 }
 
 /// Floor for the cache.zig TTL (seconds); the broker's own `now_ms` skew

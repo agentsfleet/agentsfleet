@@ -15,6 +15,22 @@ pub fn nowMillis() i64 {
     return @intCast(@divTrunc(nowNanos(), std.time.ns_per_ms));
 }
 
+/// Monotonic milliseconds since an arbitrary fixed point (boot). Unlike
+/// `nowMillis`, this never steps backward under an admin/NTP clock
+/// adjustment, so it is the correct source for elapsed-time bounds (a wait
+/// deadline must hold its nominal duration even if the wall clock is set
+/// back). Reads `CLOCK_MONOTONIC` directly, mirroring `nowNanos`.
+pub fn nowMonotonicMillis() i64 {
+    // SAFETY: clock_gettime fully populates ts before sec/nsec are read.
+    var ts: std.posix.timespec = undefined;
+    return switch (std.posix.errno(std.posix.system.clock_gettime(.MONOTONIC, &ts))) {
+        .SUCCESS => @as(i64, @intCast(ts.sec)) * std.time.ms_per_s + @divTrunc(@as(i64, @intCast(ts.nsec)), std.time.ns_per_ms),
+        // MONOTONIC can only fail with EFAULT/EINVAL — both programmer errors
+        // given the stack timespec + hard-coded clock id.
+        else => unreachable,
+    };
+}
+
 /// Wall-clock seconds since the Unix epoch. Drop-in replacement for the
 /// `std.time.timestamp()` removed in Zig 0.16.
 pub fn nowSeconds() i64 {
@@ -86,4 +102,15 @@ test "nowMillis returns wall-clock time, not a small monotonic counter" {
     // nanos and millis agree in magnitude (nanos ≈ millis × 1e6).
     const ns = nowNanos();
     try std.testing.expect(ns > @as(i128, ms) * std.time.ns_per_ms - std.time.ns_per_s);
+}
+
+test "nowMonotonicMillis is non-decreasing and boot-relative, not wall time" {
+    const a = nowMonotonicMillis();
+    const b = nowMonotonicMillis();
+    // Monotonic never steps backward across two reads.
+    try std.testing.expect(b >= a);
+    // Boot-relative, NOT epoch wall time — the whole point of using it for
+    // elapsed bounds is that it is immune to a wall-clock set-back. A boot
+    // uptime is far below the Jan-2020 epoch-ms floor nowMillis asserts.
+    try std.testing.expect(a < 1_577_836_800_000);
 }

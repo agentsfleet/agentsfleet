@@ -1,6 +1,11 @@
 const std = @import("std");
 const constants = @import("common");
 const preflight = @import("preflight.zig");
+const cmd_common = @import("common.zig");
+const otlp_config = @import("../observability/otlp/config.zig");
+const otel_logs = @import("../observability/otel_logs.zig");
+const otel_traces = @import("../observability/otel_traces.zig");
+const otel_metrics = @import("../observability/otel_metrics.zig");
 
 // `initPostHog` and `parseMigrateOnStart` read an injected `common.env.Map` rather
 // than the process environment, so each test builds the exact environment it means.
@@ -88,4 +93,53 @@ test "installSignalHandlers routes a delivered INT to the given handler" {
     // delivered INT would terminate the test runner instead of failing this test.
     try std.posix.raise(std.posix.SIG.INT);
     try std.testing.expect(test_signal_received.load(.acquire));
+}
+
+// ---------------------------------------------------------------------------
+// OTLP exporter config ownership
+// ---------------------------------------------------------------------------
+
+test "initOtelExporters owns the config on the already-running path (no leak)" {
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{
+        .{ "GRAFANA_OTLP_ENDPOINT", "https://otlp.example" },
+        .{ "GRAFANA_OTLP_INSTANCE_ID", "12345" },
+        .{ "GRAFANA_OTLP_API_KEY", "k" },
+    });
+    defer env.deinit();
+
+    // Force .already_running on all three installs. The handle must still own
+    // and free the freshly parsed config — before the ownership fix this path
+    // dropped it on the floor (and spawn_failed nulled it without freeing).
+    const static_cfg: otlp_config.GrafanaOtlpConfig = .{ .endpoint = "e", .instance_id = "i", .api_key = "k" };
+    otel_logs.testSetInstalled(static_cfg);
+    defer otel_logs.testClear();
+    otel_traces.testSetInstalled(static_cfg);
+    defer otel_traces.testClear();
+    otel_metrics.testSetInstalled(static_cfg);
+    defer otel_metrics.testClear();
+
+    var handle = preflight.initOtelExporters(constants.globalIo(), &env, alloc);
+    handle.deinit(alloc); // testing.allocator's leak detector is the assertion
+}
+
+test "initOtelExporters returns an empty handle when unconfigured (deinit safe)" {
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{});
+    defer env.deinit();
+    var handle = preflight.initOtelExporters(constants.globalIo(), &env, alloc);
+    handle.deinit(alloc);
+}
+
+test "migrateOnStartEnabledFromEnv accepts the shared trimmed grammar (Dimension 4.3)" {
+    // Pre-fix this site parsed untrimmed while the dotenv gate trimmed —
+    // " true" enabled one boolean and boot-errored the other.
+    const alloc = std.testing.allocator;
+    var padded = try constants.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", " true" }});
+    defer padded.deinit();
+    try std.testing.expect(try cmd_common.migrateOnStartEnabledFromEnv(&padded, alloc));
+
+    var padded_zero = try constants.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", " 0\t" }});
+    defer padded_zero.deinit();
+    try std.testing.expect(!try cmd_common.migrateOnStartEnabledFromEnv(&padded_zero, alloc));
 }

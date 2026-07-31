@@ -189,9 +189,13 @@ fn enqueueOwned(self: *Self, copy: []u8) void {
 }
 
 fn noteDrop(self: *Self) void {
-    self.mutex.lockUncancelable(self.io);
-    self.drops += 1;
-    self.mutex.unlock(self.io);
+    {
+        self.mutex.lockUncancelable(self.io);
+        defer self.mutex.unlock(self.io);
+        self.drops += 1;
+    }
+    // Outside the lock, as before the defer hygiene fix — the metrics
+    // counter must never contend with the subscription mutex.
     metrics.incSseDroppedFrames();
 }
 

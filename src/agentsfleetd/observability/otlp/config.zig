@@ -35,6 +35,21 @@ pub const GrafanaOtlpConfig = struct {
     service_version: []const u8 = build_options.version,
     /// `service.instance.id` — emitted only when an operator supplied one.
     service_instance_id: ?[]const u8 = null,
+
+    /// Frees every env-owned field. Only `configFromEnv` results may be
+    /// passed — hand-built configs with static strings must not call this
+    /// (`configFromEnv` dupes `service_name` even when the env override is
+    /// absent, precisely so this free is unconditional). ONLY call on
+    /// `configFromEnv` results — a hand-built config carrying the static
+    /// field defaults must never deinit (invalid free of a constant).
+    pub fn deinit(self: *GrafanaOtlpConfig, alloc: std.mem.Allocator) void {
+        alloc.free(self.endpoint);
+        alloc.free(self.instance_id);
+        alloc.free(self.api_key);
+        alloc.free(self.service_name);
+        if (self.service_instance_id) |v| alloc.free(v);
+        self.* = undefined;
+    }
 };
 
 /// Try to load Grafana OTLP config from environment. Returns null when not configured.
@@ -54,8 +69,22 @@ pub fn configFromEnv(env_map: *const EnvMap, alloc: std.mem.Allocator) ?GrafanaO
         alloc.free(instance_id);
         return null;
     };
-    var cfg: GrafanaOtlpConfig = .{ .endpoint = endpoint, .instance_id = instance_id, .api_key = api_key };
-    if (env_resolve.config(env_map, alloc, ENV_SERVICE_NAME)) |service_name| cfg.service_name = service_name;
+    // service_name is ALWAYS owned (the default is duped) so deinit frees it
+    // unconditionally; an OOM here degrades to "not configured", matching the
+    // `config` env-resolution policy of the three loads above.
+    const service_name = env_resolve.config(env_map, alloc, ENV_SERVICE_NAME) orelse
+        alloc.dupe(u8, semconv.SCOPE_NAME) catch {
+        alloc.free(endpoint);
+        alloc.free(instance_id);
+        alloc.free(api_key);
+        return null;
+    };
+    var cfg: GrafanaOtlpConfig = .{
+        .endpoint = endpoint,
+        .instance_id = instance_id,
+        .api_key = api_key,
+        .service_name = service_name,
+    };
     cfg.service_instance_id = trustedInstanceId(env_map, alloc);
     return cfg;
 }

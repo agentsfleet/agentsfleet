@@ -38,7 +38,7 @@ pub fn innerQStashSchedule(hx: Hx, req: *httpz.Request) void {
     };
     const service = FireService.init(
         FireStore.init(hx.ctx.pool),
-        FireQueue.init(hx.ctx.alloc, hx.ctx.queue),
+        FireQueue.init(hx.ctx.queue),
         QStashVerifier.init(destination, credentials.current_signing_key, credentials.next_signing_key),
     );
     const outcome = service.process(hx.alloc, request) catch |err| {

@@ -20,10 +20,17 @@ const oidc = @import("../auth/oidc.zig");
 const runtime_types = @import("runtime_types.zig");
 const env = @import("runtime_env_parse.zig");
 const validate = @import("runtime_validate.zig");
+const config_load = @import("load.zig");
 
 const ValidationError = runtime_types.ValidationError;
 
-const S_T_R_N = " \t\r\n";
+const S_T_R_N = config_load.TRIM_SET;
+
+/// Default caps for the API HTTP pool (overridable via API_MAX_CLIENTS /
+/// API_MAX_IN_FLIGHT_REQUESTS). Single owners — the loader tests reference
+/// these names instead of re-declaring the values (RULE UFS).
+pub const API_MAX_CLIENTS_DEFAULT: u32 = 1024;
+pub const API_MAX_IN_FLIGHT_DEFAULT: u32 = 256;
 
 /// Default ceiling on concurrent Server-Sent-Events streams per instance,
 /// overridable via SSE_MAX_STREAMS (0 rejected). Each live stream costs one
@@ -53,8 +60,8 @@ pub fn loadSizes(env_map: *const EnvMap, alloc: Allocator) !SizesConfig {
     const port = try env.parseU16Env(env_map, alloc, "PORT", 3000, ValidationError.InvalidPort);
     const threads = try env.parseI16Env(env_map, alloc, "API_HTTP_THREADS", 1, ValidationError.InvalidApiHttpThreads);
     const workers = try env.parseI16Env(env_map, alloc, "API_HTTP_WORKERS", 1, ValidationError.InvalidApiHttpWorkers);
-    const max_clients = try env.parseU32Env(env_map, alloc, "API_MAX_CLIENTS", 1024, ValidationError.InvalidApiMaxClients);
-    const max_inflight = try env.parseU32Env(env_map, alloc, "API_MAX_IN_FLIGHT_REQUESTS", 256, ValidationError.InvalidApiMaxInFlightRequests);
+    const max_clients = try env.parseU32Env(env_map, alloc, "API_MAX_CLIENTS", API_MAX_CLIENTS_DEFAULT, ValidationError.InvalidApiMaxClients);
+    const max_inflight = try env.parseU32Env(env_map, alloc, "API_MAX_IN_FLIGHT_REQUESTS", API_MAX_IN_FLIGHT_DEFAULT, ValidationError.InvalidApiMaxInFlightRequests);
     const sse_max_streams = try env.parseU32Env(env_map, alloc, "SSE_MAX_STREAMS", SSE_MAX_STREAMS_DEFAULT, ValidationError.InvalidSseMaxStreams);
     const queue_depth = try env.parseOptionalI64Env(env_map, alloc, "READY_MAX_QUEUE_DEPTH", ValidationError.InvalidReadyMaxQueueDepth);
     const queue_age = try env.parseOptionalI64Env(env_map, alloc, "READY_MAX_QUEUE_AGE_MS", ValidationError.InvalidReadyMaxQueueAgeMs);
@@ -128,7 +135,7 @@ const EncryptionConfig = struct {
 pub fn loadEncryption(env_map: *const EnvMap, alloc: Allocator) !EncryptionConfig {
     const master_key = try env.requiredEnvOwned(env_map, alloc, "ENCRYPTION_MASTER_KEY", ValidationError.MissingEncryptionMasterKey);
     errdefer alloc.free(master_key);
-    if (master_key.len != 64 or !validate.isHexString(master_key)) return ValidationError.InvalidEncryptionMasterKey;
+    if (!validate.isValid64HexKey(master_key)) return ValidationError.InvalidEncryptionMasterKey;
 
     return .{ .master_key = master_key };
 }
@@ -156,11 +163,11 @@ const AuthPeppersConfig = struct {
 pub fn loadAuthPeppers(env_map: *const EnvMap, alloc: Allocator) !AuthPeppersConfig {
     const session_code = try env.requiredEnvOwned(env_map, alloc, "AUTH_SESSION_CODE_PEPPER", ValidationError.MissingAuthSessionCodePepper);
     errdefer alloc.free(session_code);
-    if (session_code.len != 64 or !validate.isHexString(session_code)) return ValidationError.InvalidAuthSessionCodePepper;
+    if (!validate.isValid64HexKey(session_code)) return ValidationError.InvalidAuthSessionCodePepper;
 
     const audit_log = try env.requiredEnvOwned(env_map, alloc, "AUDIT_LOG_PEPPER", ValidationError.MissingAuditLogPepper);
     errdefer alloc.free(audit_log);
-    if (audit_log.len != 64 or !validate.isHexString(audit_log)) return ValidationError.InvalidAuditLogPepper;
+    if (!validate.isValid64HexKey(audit_log)) return ValidationError.InvalidAuditLogPepper;
 
     return .{ .session_code_pepper = session_code, .audit_log_pepper = audit_log };
 }

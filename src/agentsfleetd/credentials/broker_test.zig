@@ -540,3 +540,99 @@ test "broker_cold_miss_guard_unavailable_fails_transient_without_minting" {
     try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
     try std.testing.expectEqual(@as(usize, 0), fake_calls.load(.monotonic));
 }
+
+test "flight loser wakes at the bound and fails closed when the winner never ends" {
+    // A wedged winner (e.g. a custom strategy with no deadline of its own)
+    // must not park losers forever: past loser_wait_bound_ms the claim
+    // resolves .unavailable and the caller returns a transient failure.
+    const alloc = std.testing.allocator;
+    var b = try brokerWith(alloc, FAKE_REGISTRY);
+    defer b.deinit();
+    b.loser_wait_bound_ms = 50;
+
+    const flight = @import("broker_flight.zig");
+    try std.testing.expectEqual(flight.FlightClaim.won_registered, flight.beginFlight(&b, "stuck-key"));
+
+    const Loser = struct {
+        fn run(broker: *CredentialBroker, out: *flight.FlightClaim) void {
+            out.* = flight.beginFlight(broker, "stuck-key");
+        }
+    };
+    var claim: flight.FlightClaim = .lost;
+    const t = try std.Thread.spawn(.{}, Loser.run, .{ &b, &claim });
+    t.join();
+    try std.testing.expectEqual(flight.FlightClaim.unavailable, claim);
+    flight.endFlight(&b, "stuck-key");
+}
+
+test "credential teardown routes through the zeroizing free, leak-free (Dimension 3.1)" {
+    const alloc = std.testing.allocator;
+    var b = try brokerWith(alloc, FAKE_REGISTRY);
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+    // Cold mint caches a token copy; teardown releases it via
+    // secure_memory.freeBytes (removedFromCache). std.testing.allocator
+    // proves the zeroizing path frees the cached bytes and the mint copies.
+    const r = try b.mint(alloc, "ws-zeroize", "github", h.value, 0);
+    try std.testing.expect(r == .ok);
+    alloc.free(r.ok.token);
+    b.deinit();
+}
+
+// Deterministic advancing clock for the latency-telemetry test: each call
+// moves 5 ms, so any span measured across the mint is strictly positive.
+var fake_clock_ms = std.atomic.Value(i64).init(0);
+
+fn fakeAdvancingClock() i64 {
+    return fake_clock_ms.fetchAdd(5, .monotonic);
+}
+
+test "mint telemetry is truthful: injected clock yields a real latency (Dimension 7.3)" {
+    const alloc = std.testing.allocator;
+    fake_clock_ms.store(0, .monotonic);
+    var rec = testing.RecordingMetrics{};
+    var b = try CredentialBroker.init(alloc, FAKE_REGISTRY, .{
+        .platform = .{},
+        .http = integration.nullDeps().http,
+        .sign = testing.fakeSign,
+        .metrics = rec.sink(),
+    });
+    defer b.deinit();
+    b.latency_clock = &fakeAdvancingClock;
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+
+    const r = try b.mint(alloc, "ws-latency", "github", h.value, 0);
+    try std.testing.expect(r == .ok);
+    alloc.free(r.ok.token);
+    // Pre-fix every event carried latency_ms = 0 regardless of duration.
+    try std.testing.expect(rec.last_latency_ms > 0);
+    try std.testing.expectEqualStrings("ok", rec.last_outcome);
+}
+
+test "mint telemetry: a cache-dupe OOM still emits mint_failed with the hit flag (review find)" {
+    const alloc = std.testing.allocator;
+    var rec = testing.RecordingMetrics{};
+    var b = try CredentialBroker.init(alloc, FAKE_REGISTRY, .{
+        .platform = .{},
+        .http = integration.nullDeps().http,
+        .sign = testing.fakeSign,
+        .metrics = rec.sink(),
+    });
+    defer b.deinit();
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+
+    // Warm the cache with a successful cold mint.
+    const warm = try b.mint(alloc, "ws-oom-emit", "github", h.value, 0);
+    try std.testing.expect(warm == .ok);
+    alloc.free(warm.ok.token);
+
+    // Hit path with a failing caller allocator: the dupe OOMs — the event
+    // must still fire (a silent failure hides real mint churn).
+    var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
+    const r = try b.mint(failing.allocator(), "ws-oom-emit", "github", h.value, 0);
+    try std.testing.expect(r == .mint_failed);
+    try std.testing.expectEqualStrings("mint_failed", rec.last_outcome);
+    try std.testing.expect(rec.last_hit);
+}
