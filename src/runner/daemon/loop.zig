@@ -176,7 +176,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
         // alive, then free it — the reply's strings live in the parse.
         const status = hb_parsed.value.status;
         const reply_degraded = hb_parsed.value.degraded;
-        policy_apply.applyHeartbeatPolicy(io, alloc, &applied, &gates, hb_parsed.value.assigned_policy);
+        policy_apply.applyHeartbeatPolicy(alloc, &applied, &gates, hb_parsed.value.assigned_policy);
         policy_apply.noteDegraded(&applied, &gates, hb_parsed.value.degraded, hb_parsed.value.degraded_reason);
         hb_parsed.deinit();
 

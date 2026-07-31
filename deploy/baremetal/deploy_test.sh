@@ -16,6 +16,13 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
+readonly RUNNER_UNIT="$SCRIPT_DIR/agentsfleet-runner.service"
+readonly HOME_ENV_PREFIX="Environment=HOME="
+# The runtime directory systemd creates for the unit. HOME must resolve inside a
+# path that survives the unit's own ProtectHome=yes and ProtectSystem=strict —
+# a home under /root or /home is unreadable to the service and would put the
+# daemon back in the state where every lease dies at config load.
+readonly RUNNER_RUNTIME_DIR="/run/agent"
 
 # The install + restart calls deploy.sh would make on a real host. Stubbed onto
 # PATH so a test can assert a deploy never reached them.
@@ -249,8 +256,32 @@ test_deploy_acquires_lock_when_free() {
   fi
 }
 
+# The sandboxed child resolves the NullClaw config directory from HOME, which it
+# inherits through the passthrough allowlist (src/runner/sandbox_args.zig). systemd
+# hands a User=-less service no HOME of its own, so the unit has to supply one or
+# the child's config load fails closed and no lease can run.
+test_unit_defines_home() {
+  local name="test_unit_defines_home"
+
+  local home_line
+  home_line="$(grep -E "^${HOME_ENV_PREFIX}" "$RUNNER_UNIT" || true)"
+  if [[ -z "$home_line" ]]; then
+    bad "$name" "$RUNNER_UNIT sets no ${HOME_ENV_PREFIX}<path>; every lease would fail at config load"
+    return
+  fi
+
+  local home_value="${home_line#"$HOME_ENV_PREFIX"}"
+  if [[ "$home_value" != "$RUNNER_RUNTIME_DIR"* ]]; then
+    bad "$name" "HOME=$home_value is outside $RUNNER_RUNTIME_DIR — ProtectHome/ProtectSystem leave it unwritable"
+    return
+  fi
+
+  ok "$name"
+}
+
 # ── Runner ───────────────────────────────────────────────────────────────────
 
+test_unit_defines_home
 test_deploy_version_substring_not_equal_reinstalls
 test_deploy_version_exact_match_skips
 test_deploy_malformed_version_reinstalls
