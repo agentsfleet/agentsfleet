@@ -50,9 +50,11 @@ pub fn beginFlight(self: *CredentialBroker, key: []const u8) FlightClaim {
     self.inflight_mutex.lock();
     defer self.inflight_mutex.unlock();
     if (self.inflight.contains(key)) {
-        const deadline_ms = clock.nowMillis() + self.loser_wait_bound_ms;
+        // Monotonic elapsed: an adjustable wall clock stepping backward must
+        // not stretch the bound past its nominal value (greptile P1, PR #582).
+        const deadline_ms = clock.nowMonotonicMillis() + self.loser_wait_bound_ms;
         while (self.inflight.contains(key)) {
-            if (clock.nowMillis() >= deadline_ms) return .unavailable;
+            if (clock.nowMonotonicMillis() >= deadline_ms) return .unavailable;
             // Sleep outside the lock so the winner's endFlight can remove the
             // key; the loop's contains() re-check is the wait predicate.
             self.inflight_mutex.unlock();
