@@ -190,11 +190,18 @@ pub const SELECT_RUNNER_ADMIN_STATE =
     \\SELECT admin_state FROM fleet.runners WHERE id = $1::uuid
 ;
 
-/// Re-assign a runner's policy and record the change atomically.
+/// Re-assign a runner's policy, its reconciled verdict, and the audit event
+/// atomically.
 ///
 /// `FOR UPDATE` serialises concurrent operator PATCHes; the `IS DISTINCT FROM`
 /// guard makes a same-values re-assignment write nothing at all — no row, no
 /// event — so the PATCH is idempotent and the history holds real changes only.
+///
+/// The verdict (`$13`/`$14`, computed by the caller against the row's stored
+/// capability report) rides the SAME `UPDATE` as the assignment: a tightened
+/// policy can never land beside a stale healthy verdict, which the lease gate
+/// would read as "issue work". One statement, so there is no window and no
+/// best-effort second write to fail.
 pub const PATCH_RUNNER_ASSIGNED_POLICY =
     \\WITH current_p AS (
     \\  SELECT id, sandbox_tier, network_policy, registry_allowlist, worker_count
@@ -202,7 +209,8 @@ pub const PATCH_RUNNER_ASSIGNED_POLICY =
     \\), updated AS (
     \\  UPDATE fleet.runners r
     \\  SET sandbox_tier = $2::text, network_policy = $3::text,
-    \\      registry_allowlist = $4::jsonb, worker_count = $5::int, updated_at = $6::bigint
+    \\      registry_allowlist = $4::jsonb, worker_count = $5::int, updated_at = $6::bigint,
+    \\      degraded = $13::bool, degraded_reason = $14::text
     \\  FROM current_p c
     \\  WHERE r.id = c.id
     \\    AND (c.sandbox_tier IS DISTINCT FROM $2::text
