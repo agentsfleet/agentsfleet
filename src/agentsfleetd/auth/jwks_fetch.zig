@@ -1,6 +1,7 @@
 //! Bounded JSON Web Key Set (JWKS) transport, split from jwks.zig by concern
-//! (and the file cap): one blocking GET whose body read rejects at a named
-//! byte cap. std + common only — same portability wall as the rest of
+//! (and the file cap): one blocking GET that decodes the negotiated
+//! content-encoding and rejects at a named cap on the DECODED bytes. std +
+//! common only — same portability wall as the rest of
 //! `src/agentsfleetd/auth/`.
 
 const std = @import("std");
