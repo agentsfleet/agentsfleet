@@ -857,3 +857,195 @@ test "jwks fetch success path delivers the key set byte-intact over loopback" {
     defer freeClaims(vc);
     try std.testing.expectEqualStrings("user_test", vc.subject);
 }
+
+// ── Compressed transport ───────────────────────────────────────────────
+//
+// Every test above either injects `inline_jwks_json` or serves an
+// uncompressed body, so none of them ever exercised a negotiated
+// content-encoding. The client advertises `accept-encoding: gzip, deflate`
+// by default and real providers honour it — which is how a raw-reader body
+// read shipped: the fetch handed gzip bytes to a JSON parser and took every
+// token verification down with it. These tests fetch over real HTTP with
+// real compression so that path cannot regress silently again.
+
+const jwks_fetch = @import("jwks_fetch.zig");
+
+const LOOPBACK_HOST = "127.0.0.1";
+const LOOPBACK_URL_FMT = "http://127.0.0.1:{d}/jwks.json";
+const URL_BUFFER_LEN = 64;
+const REQUEST_SCRATCH_LEN = 2048;
+const GZIP_SCRATCH_LEN = 4096;
+const HEAD_SCRATCH_LEN = 256;
+const HEAD_GZIP_FMT =
+    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n" ++
+    "content-encoding: gzip\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n";
+/// Inflates past `JWKS_MAX_RESPONSE_BYTES` from a few hundred wire bytes —
+/// the decompression bomb in miniature. A wire-byte cap never sees it.
+const BOMB_INFLATED_LEN: usize = 300 * 1024;
+const BOMB_FILL_BYTE: u8 = 'A';
+
+/// Gzip `raw` into `out_buf` and return the encoded slice. Compressed
+/// fixtures are produced from the same bytes the assertions read, so no
+/// opaque binary blob enters the repo and the expected plaintext is visible
+/// at the call site.
+fn gzipInto(alloc: std.mem.Allocator, out_buf: []u8, raw: []const u8) ![]u8 {
+    const window = try alloc.alloc(u8, std.compress.flate.max_window_len);
+    defer alloc.free(window);
+    var out: std.Io.Writer = .fixed(out_buf);
+    var c = try std.compress.flate.Compress.init(&out, window, .gzip, .default);
+    try c.writer.writeAll(raw);
+    try c.finish();
+    return out.buffered();
+}
+
+/// Serves one canned head + body over loopback, then closes. `body` may be
+/// short of what the head promises — that is the mid-stream death case.
+const CannedJwksServer = struct {
+    fn run(listener: *std.Io.net.Server, io: std.Io, head: []const u8, body: []const u8) void {
+        const conn = listener.accept(io) catch return;
+        defer conn.close(io);
+        var buf: [REQUEST_SCRATCH_LEN]u8 = undefined;
+        _ = std.posix.read(conn.socket.handle, &buf) catch return;
+        OverCapJwksServer.writeAllFd(conn.socket.handle, head) catch return;
+        OverCapJwksServer.writeAllFd(conn.socket.handle, body) catch return;
+    }
+};
+
+test "jwks fetch decodes a gzip-encoded key set and verifies a real token" {
+    const alloc = std.testing.allocator;
+    const io = common.globalIo();
+
+    var gzip_buf: [GZIP_SCRATCH_LEN]u8 = undefined;
+    const body = try gzipInto(alloc, &gzip_buf, TEST_JWKS);
+    // The fixture must actually be compressed, or the test proves nothing.
+    try std.testing.expect(body.len > 2 and body[0] == 0x1f and body[1] == 0x8b);
+    var head_buf: [HEAD_SCRATCH_LEN]u8 = undefined;
+    const head = try std.fmt.bufPrint(&head_buf, HEAD_GZIP_FMT, .{body.len});
+
+    var addr = try std.Io.net.IpAddress.parseIp4(LOOPBACK_HOST, 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, CannedJwksServer.run, .{ &listener, io, head, body }) catch
+        return error.SkipZigTest;
+
+    var url_buf: [URL_BUFFER_LEN]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, LOOPBACK_URL_FMT, .{port});
+    var v = try Verifier.init(alloc, .{
+        .jwks_url = url,
+        .issuer = "https://clerk.dev.agentsfleet.net",
+        .audience = "https://api.agentsfleet.net",
+    });
+    defer v.deinit();
+    try v.checkJwksConnectivity();
+    server.join();
+
+    // The whole point: a real token verifies against a key set that arrived
+    // compressed. Before the decoding read this raised JwksParseFailed and
+    // every authenticated route answered 503.
+    const vc = try v.verifyAndDecode(alloc, "Bearer " ++ TEST_VALID_TOKEN);
+    defer freeClaims(vc);
+    try std.testing.expectEqualStrings("user_test", vc.subject);
+}
+
+test "jwks fetch rejects a compressed body that inflates past the cap" {
+    const alloc = std.testing.allocator;
+    const io = common.globalIo();
+
+    const inflated = try alloc.alloc(u8, BOMB_INFLATED_LEN);
+    defer alloc.free(inflated);
+    @memset(inflated, BOMB_FILL_BYTE);
+    var gzip_buf: [GZIP_SCRATCH_LEN]u8 = undefined;
+    const body = try gzipInto(alloc, &gzip_buf, inflated);
+    // A wire-byte cap would wave this through: it is orders of magnitude
+    // under JWKS_MAX_RESPONSE_BYTES on the wire and far over it decoded.
+    try std.testing.expect(body.len < jwks_fetch.JWKS_MAX_RESPONSE_BYTES);
+    var head_buf: [HEAD_SCRATCH_LEN]u8 = undefined;
+    const head = try std.fmt.bufPrint(&head_buf, HEAD_GZIP_FMT, .{body.len});
+
+    var addr = try std.Io.net.IpAddress.parseIp4(LOOPBACK_HOST, 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, CannedJwksServer.run, .{ &listener, io, head, body }) catch
+        return error.SkipZigTest;
+
+    var url_buf: [URL_BUFFER_LEN]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, LOOPBACK_URL_FMT, .{port});
+    // Asserted through fetchCapped, not the Verifier: the Verifier collapses
+    // every transport outcome into JwksFetchFailed, which cannot tell a cap
+    // refusal from an unreachable provider (Invariant 2).
+    const r = jwks_fetch.fetchCapped(alloc, url);
+    server.join();
+    try std.testing.expectError(jwks_fetch.FetchError.ResponseTooLarge, r);
+}
+
+test "jwks fetch keeps the cap refusal distinct from a transport fault" {
+    const alloc = std.testing.allocator;
+    const io = common.globalIo();
+
+    // Declares gzip, sends plain text: the decoder rejects it. That is a
+    // transport fault, NOT a size refusal, and never a silent empty key set.
+    const body = TEST_JWKS;
+    var head_buf: [HEAD_SCRATCH_LEN]u8 = undefined;
+    const head = try std.fmt.bufPrint(&head_buf, HEAD_GZIP_FMT, .{body.len});
+
+    var addr = try std.Io.net.IpAddress.parseIp4(LOOPBACK_HOST, 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, CannedJwksServer.run, .{ &listener, io, head, body }) catch
+        return error.SkipZigTest;
+
+    var url_buf: [URL_BUFFER_LEN]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, LOOPBACK_URL_FMT, .{port});
+    const r = jwks_fetch.fetchCapped(alloc, url);
+    server.join();
+    try std.testing.expectError(jwks_fetch.FetchError.FetchFailed, r);
+}
+
+test "jwks fetch frees the partial body when a compressed stream dies mid-body" {
+    const alloc = std.testing.allocator;
+    const io = common.globalIo();
+
+    var gzip_buf: [GZIP_SCRATCH_LEN]u8 = undefined;
+    const full = try gzipInto(alloc, &gzip_buf, TEST_JWKS);
+    var head_buf: [HEAD_SCRATCH_LEN]u8 = undefined;
+    // Head promises the whole body; the server sends half and hangs up.
+    const head = try std.fmt.bufPrint(&head_buf, HEAD_GZIP_FMT, .{full.len});
+    const truncated = full[0 .. full.len / 2];
+
+    var addr = try std.Io.net.IpAddress.parseIp4(LOOPBACK_HOST, 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, CannedJwksServer.run, .{ &listener, io, head, truncated }) catch
+        return error.SkipZigTest;
+
+    var url_buf: [URL_BUFFER_LEN]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, LOOPBACK_URL_FMT, .{port});
+    const r = jwks_fetch.fetchCapped(alloc, url);
+    server.join();
+    // The decompression buffer and the partial accumulation both have exactly
+    // one owner; testing.allocator's leak detector is the second assertion.
+    try std.testing.expectError(jwks_fetch.FetchError.FetchFailed, r);
+}
+
+test "jwks fetch still refuses an oversize uncompressed body as a cap refusal" {
+    const alloc = std.testing.allocator;
+    const io = common.globalIo();
+    var addr = try std.Io.net.IpAddress.parseIp4(LOOPBACK_HOST, 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = partialServerPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, OverCapJwksServer.run, .{ &listener, io }) catch
+        return error.SkipZigTest;
+
+    var url_buf: [URL_BUFFER_LEN]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, LOOPBACK_URL_FMT, .{port});
+    // M152's guarantee, unbroken by the move to decompressed accounting: the
+    // identity path still refuses at the cap, and still as ResponseTooLarge.
+    const r = jwks_fetch.fetchCapped(alloc, url);
+    server.join();
+    try std.testing.expectError(jwks_fetch.FetchError.ResponseTooLarge, r);
+}
