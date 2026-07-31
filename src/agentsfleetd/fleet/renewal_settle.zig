@@ -55,8 +55,10 @@ pub const SettleOutcome = struct {
 // active→reported AND advances the lease cursor (clamped `GREATEST(old, $n)`
 // so a regressed report never rewinds it); `ext_aff` advances the slot cursor
 // the same way; `wallet`/`ledger`/`breakdown` are the guard-gated money
-// writes. The trailing SELECT returns the charged nanos + whether the claim
-// flipped a row (the report-won signal).
+// writes; `tally` bumps the runner's lifetime succeeded/failed counter
+// ($18 picks the column), gated `FROM claim` so a fenced retry that claims
+// nothing also counts nothing. The trailing SELECT returns the charged nanos
+// + whether the claim flipped a row (the report-won signal).
 const CLAIM_SETTLE_SQL =
     \\WITH probe AS (
     \\    SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
@@ -141,6 +143,18 @@ const CLAIM_SETTLE_SQL =
     \\           g.d_in, g.d_cached, g.d_out, g.d_ms, g.run_fee, g.token_cost, g.charged, $3
     \\    FROM guard g
     \\    RETURNING event_id
+    \\), tally AS (
+    \\    INSERT INTO fleet.runner_lifetime_counters
+    \\      (uid, runner_id, acquired, succeeded, failed, expired, created_at, updated_at)
+    \\    SELECT $2::uuid, $2::uuid, 0,
+    \\           CASE WHEN $18::boolean THEN 1 ELSE 0 END,
+    \\           CASE WHEN $18::boolean THEN 0 ELSE 1 END,
+    \\           0, $3, $3
+    \\    FROM claim
+    \\    ON CONFLICT (uid) DO UPDATE
+    \\       SET succeeded = fleet.runner_lifetime_counters.succeeded + EXCLUDED.succeeded,
+    \\           failed    = fleet.runner_lifetime_counters.failed + EXCLUDED.failed,
+    \\           updated_at = EXCLUDED.updated_at
     \\)
     \\SELECT (SELECT charged FROM guard)          AS charged,
     \\       (SELECT count(*) FROM claim)::bigint AS claimed
@@ -157,6 +171,7 @@ pub fn claimAndSettle(
     runner_id: []const u8,
     now_ms: i64,
     meter: renewal.MeterInputs,
+    succeeded: bool,
 ) !SettleOutcome {
     const ledger_uid_value = try id_format.generateUuidV7();
     const breakdown_uid_value = try id_format.generateUuidV7();
@@ -180,6 +195,7 @@ pub fn claimAndSettle(
         TOKENS_PER_MTOK,
         ledger_uid,
         breakdown_uid,
+        succeeded,
     }));
     defer q.deinit();
     const row = try q.next() orelse return .{ .claimed = false, .charged_nanos = 0 };

@@ -184,6 +184,8 @@ export const RUNNER_LIFECYCLE_EVENT_TYPES = [
 // daemon's `QUERY_STARTING_AFTER` / `QUERY_LIMIT` (http/pagination.zig).
 export const QUERY_STARTING_AFTER = "starting_after";
 export const QUERY_LIMIT = "limit";
+/** Lease-list filter parameter: only leases held for this workspace. */
+export const QUERY_WORKSPACE_ID = "workspace_id";
 
 const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
 const RUNNERS_ENROLLMENT_PATH = "/v1/runners";
@@ -327,6 +329,8 @@ export interface EventListParams {
 export interface LeaseListParams {
   starting_after?: string;
   limit?: number;
+  /** When set, the page holds only leases for this workspace. */
+  workspace_id?: string;
 }
 
 function keysetParams(params: ListParams): URLSearchParams {
@@ -352,6 +356,7 @@ export async function listRunnerLeases(
   params: LeaseListParams = {},
 ): Promise<RunnerLeaseResponse> {
   const qs = keysetParams(params);
+  if (params.workspace_id) qs.set(QUERY_WORKSPACE_ID, params.workspace_id);
   const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
   return request<RunnerLeaseResponse>(
     `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}/leases${suffix}`,

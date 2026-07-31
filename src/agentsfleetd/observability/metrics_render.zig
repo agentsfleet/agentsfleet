@@ -166,6 +166,17 @@ fn appendLeasePollFamilies(writer: anytype, s: mc.Snapshot) !void {
     try appendMetric(writer, mc.READY_WRITE_FAILURES_NAME, S_COUNTER, mc.READY_WRITE_FAILURES_HELP, s.fleet_ready_write_failures_total);
 }
 
+/// Control-plane housekeeping: retention pruning and account-teardown purge
+/// health. Its own block because these describe background maintenance rather
+/// than lease-poll cost — filing them under the poll families put a name on
+/// them that no longer described what they measure. Same unlabelled discipline:
+/// nothing here varies per fleet, workspace, tenant, or runner.
+fn appendRunnerMaintenanceFamilies(writer: anytype, s: mc.Snapshot) !void {
+    try appendMetric(writer, mc.RETENTION_SWEPT_NAME, S_COUNTER, mc.RETENTION_SWEPT_HELP, s.runner_retention_swept_total);
+    try appendMetric(writer, mc.RETENTION_SWEEP_FAILURES_NAME, S_COUNTER, mc.RETENTION_SWEEP_FAILURES_HELP, s.runner_retention_sweep_failures_total);
+    try appendMetric(writer, mc.TEARDOWN_UNREGISTER_FAILURES_NAME, S_COUNTER, mc.TEARDOWN_UNREGISTER_FAILURES_HELP, s.account_teardown_unregister_failures_total);
+}
+
 /// Redis request-path pool — emitted only when a Pool has been registered
 /// (early-boot scrapes pre-registration emit no lines; downstream scrapers
 /// treat absent series as zero, matching the no-pool-yet reality).
@@ -277,6 +288,7 @@ pub fn renderPrometheus(
     try appendMetric(writer, "agentsfleet_fleet_triggered_total", S_COUNTER, "Total fleet webhook triggers accepted.", s.fleet_triggered_total);
 
     try appendLeasePollFamilies(writer, s);
+    try appendRunnerMaintenanceFamilies(writer, s);
     try appendLibraryFamilies(writer);
     try appendRedisPoolFamilies(writer);
     try msm.renderPrometheus(writer);

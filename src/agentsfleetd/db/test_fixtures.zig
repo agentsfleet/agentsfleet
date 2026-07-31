@@ -295,13 +295,16 @@ pub const TestDb = struct {
 };
 
 /// Read an `EXPLAIN` plan back as one text blob. Caller owns the result.
-/// Shared by the four index/liveness suites (Dimension 6.3).
-pub fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8) ![]u8 {
+/// Shared by the four index/liveness suites (Dimension 6.3). `args` bind
+/// through the extended protocol, so a parameterized production statement
+/// (`$n` placeholders) plans exactly as it executes — pass `.{}` for literal
+/// SQL, which is what a plan proof over a statement with no binds wants.
+pub fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8, args: anytype) ![]u8 {
     const explain = try std.fmt.allocPrint(alloc, "EXPLAIN (COSTS OFF) {s}", .{sql});
     defer alloc.free(explain);
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
-    var q = PgQuery.from(try conn.query(explain, .{}));
+    var q = PgQuery.from(try conn.query(explain, args));
     defer q.deinit();
     while (try q.next()) |row| {
         try out.appendSlice(alloc, try row.get([]const u8, 0));

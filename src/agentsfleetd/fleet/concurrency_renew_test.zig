@@ -293,7 +293,7 @@ const Reporter = struct {
     fn run(h: *TestHarness, slot: *ReportSlot) void {
         const conn = acquireRetry(h) orelse return;
         defer h.releaseConn(conn);
-        const out = renewal_settle.claimAndSettle(conn, LEASE_ID, RUNNER_ID, NOW_MS, METER) catch return;
+        const out = renewal_settle.claimAndSettle(conn, LEASE_ID, RUNNER_ID, NOW_MS, METER, true) catch return;
         slot.* = .{ .ran = true, .claimed = out.claimed, .charged = out.charged_nanos };
     }
 };
@@ -462,7 +462,7 @@ const SettleWorker = struct {
     fn run(h: *TestHarness, lease_id: []const u8, slot: *SettleSlot) void {
         const conn = acquireRetry(h) orelse return;
         defer h.releaseConn(conn);
-        const out = renewal_settle.claimAndSettle(conn, lease_id, RUNNER_ID, NOW_MS, METER) catch return;
+        const out = renewal_settle.claimAndSettle(conn, lease_id, RUNNER_ID, NOW_MS, METER, true) catch return;
         slot.* = .{ .ran = true, .claimed = out.claimed, .charged = out.charged_nanos };
     }
 };

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The workspace-filter fixture, in the shape the daemon actually accepts.
+const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0011";
+
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 vi.mock("./client", () => ({ request: requestMock }));
 
@@ -66,6 +69,31 @@ describe("listRunnerLeases", () => {
     await listRunnerLeases("tok", "runner-1");
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/fleets/runners/runner-1/leases",
+      { method: "GET" },
+      "tok",
+    );
+  });
+
+  it("narrows the page to one workspace, riding beside the keyset params", async () => {
+    // A real workspace id: the daemon validates this parameter as a lowercase
+    // dashed UUIDv7 and answers 400 UZ-REQ-001 for anything else, so a fixture
+    // in some other shape would document a request the API refuses.
+    await listRunnerLeases("tok", "runner-1", {
+      starting_after: "lease-9",
+      limit: 25,
+      workspace_id: WORKSPACE_ID,
+    });
+    expect(requestMock).toHaveBeenCalledWith(
+      `/v1/fleets/runners/runner-1/leases?starting_after=lease-9&limit=25&workspace_id=${WORKSPACE_ID}`,
+      { method: "GET" },
+      "tok",
+    );
+  });
+
+  it("sends no workspace filter for an empty id — an unfiltered read, never `workspace_id=`", async () => {
+    await listRunnerLeases("tok", "runner-1", { limit: 25, workspace_id: "" });
+    expect(requestMock).toHaveBeenCalledWith(
+      "/v1/fleets/runners/runner-1/leases?limit=25",
       { method: "GET" },
       "tok",
     );
