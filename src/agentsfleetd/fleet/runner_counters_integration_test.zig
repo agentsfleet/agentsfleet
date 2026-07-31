@@ -308,8 +308,20 @@ test "the migration backfill reconstructs the tallies and is idempotent on reapp
     try expectSameCounters(live, rebuilt);
     try expectCountersMatchRecount(ctx.conn, 2, 1);
 
-    // Reapply. The DO UPDATE arm assigns the recount rather than adding to it,
-    // so a re-run migration is a no-op and never doubles a live runner's tally.
+    // Reapply. The DO UPDATE arm takes GREATEST of the stored tally and the
+    // recount rather than adding to it, so a re-run is a no-op on unchanged
+    // history and never doubles a live runner's tally.
+    _ = try ctx.conn.exec(backfill, .{});
+    try expectSameCounters(rebuilt, try counterRow(ctx.conn));
+
+    // And once retention has pruned, where the recount stops being a source of
+    // truth: lifetime tallies count transitions, not surviving rows. An
+    // absolute assignment would silently zero a mature runner's totals here.
+    // GREATEST cannot lower anything, which is what keeps this statement safe
+    // to hand an operator as the repair for the rolling-deploy gap — the
+    // window where `release_command` has applied the migration but replicas
+    // without the tally arms are still writing leases.
+    _ = try ctx.conn.exec("DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{RUNNER_ID});
     _ = try ctx.conn.exec(backfill, .{});
     try expectSameCounters(rebuilt, try counterRow(ctx.conn));
 

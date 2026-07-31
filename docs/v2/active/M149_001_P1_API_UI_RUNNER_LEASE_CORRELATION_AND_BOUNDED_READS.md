@@ -63,15 +63,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/fleet/reclaim.zig` | EDIT | expired tally arm with the active→expired flip |
 | `src/agentsfleetd/fleet/retention_sweeper.zig` | CREATE | terminal lease/event retention sweep (new sweeper) |
 | `src/agentsfleetd/cmd/serve_background.zig` | EDIT | register the retention sweeper |
-| `src/agentsfleetd/state/account_teardown.zig` | EDIT | resolve the tenant's fleet ids pre-purge for schedule unregistering |
+| `src/agentsfleetd/state/account_teardown.zig` | EDIT | resolve the tenant's fleet ids pre-purge for schedule unregistering; §8: `PurgeResult` counts the tenant's fleets inside the purge transaction so an enumeration-fence race is visible |
+| `src/agentsfleetd/state/account_teardown_test.zig` | EDIT | §8: callers follow `purgeByOidcSubject`'s `PurgeResult` shape |
 | `src/agentsfleetd/http/handlers/auth/identity_events_clerk.zig` | EDIT | route the `user.deleted` arm to its own module after the length split |
-| `src/agentsfleetd/http/handlers/auth/identity_events_delete.zig` | CREATE | the `user.deleted` arm: unregister Upstash QStash schedules before purge; emit failure signal |
+| `src/agentsfleetd/http/handlers/auth/identity_events_delete.zig` | CREATE | the `user.deleted` arm: unregister Upstash QStash schedules before purge; emit failure signal; §8.5: three staged steps so no pool connection is held across provider round trips |
+| `src/agentsfleetd/http/handlers/fleets/cron_sync.zig` | EDIT | §8.3: `removeAll` attempts every schedule past a failure, logs each failed `fleet_id`+`schedule_id` before the purge erases them; `.unconfigured` decided after the empty-list check |
+| `src/lib/contract/runner_events.zig` | EDIT | §8.6: `PER_LEASE_EVENT_TYPES` — the one definition of which event tags retention may prune |
+| `src/lib/contract/protocol.zig` | EDIT | §8.6: re-export `PER_LEASE_EVENT_TYPES` for the sweeper and its tests |
 | `src/agentsfleetd/observability/metrics_counters.zig` | EDIT | retention + teardown-failure operational counters |
 | `src/agentsfleetd/observability/metrics_render.zig` | EDIT | render the two new families |
 | `schema/043_runner_lifetime_counters.sql` | CREATE | per-runner lifetime counter table + in-migration backfill (slot 030 shape) |
 | `schema/044_runner_events_read_index.sql` | CREATE | composite index for the lifecycle-tag activity reads |
 | `schema/045_runner_retention_delete_grants.sql` | CREATE | DELETE grants the retention sweep needs |
-| `schema/embed.zig` | EDIT | register the three migrations |
+| `schema/046_runner_retention_sweep_indexes.sql` | CREATE | §8.4: sweep-shaped composites `(status, updated_at)` + `(event_type, occurred_at)`, EXPLAIN-measured (Discovery C13) |
+| `schema/embed.zig` | EDIT | register the four migrations (043–046; slot 042 stays vacant for M148) |
 | `public/openapi/paths/fleet.yaml` | EDIT | document the lease-list workspace filter |
 | `public/openapi.json` | EDIT | regenerated bundle |
 | `src/agentsfleetd/db/index_usage_integration_test.zig` | EDIT | plan proofs for the new reads |
@@ -99,6 +104,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts` | EDIT | shared sweep helpers the global teardown calls |
 | `deploy/baremetal/agentsfleet-runner.service` | EDIT | comment-only: stale "allow_all is the current default" claim (Indy-approved deploy-config edit, Jul 30, 2026) |
 | `docs/architecture/runner_fleet.md` | EDIT | counters, retention, and purge flow become the documented shape |
+| `docs/v2/active/M149_001_P1_API_UI_RUNNER_LEASE_CORRELATION_AND_BOUNDED_READS.md` | EDIT | this spec — lifecycle moves, Dimension DONE marks, rubric grades, Discovery |
+| `scripts/check_lane_concurrency_test.py` | EDIT | **not part of this workstream** — a flaky harness gate that blocked every commit on this branch; deleted on Indy's direction and replaced with a structural assertion (Discovery C11). Its own commit, `test(harness): assert lane fan-out structurally, not with a stopwatch`. |
 
 New unit/integration test files colocate with the files above per repo convention and are in scope.
 
@@ -173,7 +180,7 @@ Leaked fixture fleets carry live cron schedules that hammer runners around the c
 
 ### §6 — Retention sweep for terminal runner rows
 
-A background sweeper (registered like the liveness/reclaim sweepers) deletes terminal-status `fleet.runner_leases` and `fleet.runner_events` rows older than the retention window, in bounded batches. **Implementation default:** 30-day window as a named constant, terminal statuses only, because lifetime tallies now live in §3's counters and the operator surface pages newest-first.
+A background sweeper (registered like the liveness/reclaim sweepers) deletes terminal-status `fleet.runner_leases` and `fleet.runner_events` rows older than the retention window, in bounded batches. **Implementation default:** 30-day window as a named constant, terminal statuses only, because lifetime tallies now live in §3's counters and the operator surface pages newest-first. **Post-REVIEW hardening (§8):** the window measures from settlement (`updated_at`), not acquisition; only the per-lease event tags are eligible — lifecycle history is kept at any age; both DELETEs ride slot 046's composites and take `FOR UPDATE SKIP LOCKED` so per-replica sweepers claim disjoint batches.
 
 - **Dimension 6.1** — rows older than the window with terminal status are deleted; each cycle emits an operational counter → Test `sweep loop reports deleted rows to the retention metric` — **DONE**
 - **Dimension 6.2** — active/renewing leases and in-window rows are never touched (negative) → Test `one sweep deletes aged terminal history and spares live and in-window rows` — **DONE**
@@ -186,11 +193,27 @@ Teardown today deletes schedule rows by cascade but never unregisters the Upstas
 - **Dimension 7.2** — replaying the same `user.deleted` twice is a no-op the second time → Test `replaying user.deleted is a no-op the second time` — **DONE**
 - **Dimension 7.3** — an unregister failure logs a registered error code, increments a failure counter, and does not abort the row purge → Test `a provider unregister failure is counted, and the purge still happens` — **DONE**
 
+### §8 — REVIEW findings, remediated in-stream (post-REVIEW expansion)
+
+REVIEW — gstack `/review` (structured) plus a Codex cross-model pass — returned nine findings against the completed 21 Dimensions. **Indy chose "Fix everything now" (Jul 31, 2026):** a deliberate expansion of the workstream after REVIEW, recorded here so the diff and the spec agree (Discovery C12) — not drift. Every Dimension below carries a test that was first run against the reverted fix and reproduced the defect it exists for. The expansion added schema slot 046; slot 042 stays vacant for M148.
+
+- **Dimension 8.1** — the lease keyset cursor is scoped to the workspace filter: a cursor naming a lease outside the filtered stream is refused with 400, never used to seek the page past a boundary that was never on it → Test `integration: test_runner_leases_cursor_is_scoped_to_the_workspace_filter` — **DONE**
+- **Dimension 8.2** — retention measures from settlement (`updated_at`), not acquisition: a lease acquired outside the window but settled inside it survives the sweep → fixture `L_AGED_SETTLED_RECENT` inside `one sweep deletes aged terminal history and spares live and in-window rows` — **DONE**
+- **Dimension 8.3** — `cron_sync.removeAll` attempts every schedule after a failure and logs each failed `fleet_id` + `schedule_id` *before* the purge erases them; `.unconfigured` is counted and logged, never silent, and provably means "schedules existed and none were retired" because the empty list answers `.skipped` before credentials resolve → Tests `integration: a failed unregister does not strand the schedules behind it` + `integration: missing provider credentials count as a leak, not as silence` — **DONE**
+- **Dimension 8.4** — both retention DELETEs are index-served by slot 046 and concurrent sweepers take disjoint batches (`FOR UPDATE SKIP LOCKED`) → Tests `retention sweep deletes ride their own indexes, not a whole-table scan` + the slot-046 arm of `counter and retention slots are registered in the migration array` — **DONE**
+- **Dimension 8.5** — teardown holds no pool connection across provider round trips: enumerate, unregister, and purge are three staged steps, so four concurrent deletions can no longer exhaust a four-slot pool and skip every unregister → Test `integration: teardown unregisters with only one pool connection free` — **DONE**
+- **Dimension 8.6** — only the per-lease event tags (`PER_LEASE_EVENT_TYPES`) are swept; lifecycle history survives at any age, and a live lease can never age into the cutoff — `comptime`-proven (`MAX_RUNTIME_MS < RETENTION_WINDOW_MS` or the build fails) → Test: the lifecycle-survival assertions inside 8.2's sweep test — **DONE**
+- **Dimension 8.7** — the slot-043 backfill's conflict arm takes `GREATEST`: reapplied after retention has pruned history, it can never lower a tally → Test: the reapply-after-prune arm of `the migration backfill reconstructs the tallies and is idempotent on reapply` — **DONE**
+
+In passing (the enumeration-fence finding): `purgeByOidcSubject` returns `PurgeResult{ purged, fleets_at_purge }` counted *inside* the purge transaction, and the delete arm logs `delete_schedule_purge_race` + increments the failure counter when the purge saw more fleets than were unregistered — a fleet created between enumeration and purge is now counted and logged instead of silently losing its upstream timer. Fully closing that window needs a tenant-level deleting marker every write path honours — a security boundary this workstream does not open, named as such in the code.
+
 ## Interfaces
 
 ```
 GET /v1/fleets/runners/{runner_id}/leases?workspace_id=<uuid>   (new optional filter;
     malformed value → 400 with a registered UZ- code; response shape unchanged)
+    starting_after composes with workspace_id (§8.1): the cursor must name a
+    lease on the filtered stream; one outside it → the same 400
 fleet.runner_lifetime_counters — one row per runner; monotonic acquired/succeeded/
     failed/expired tallies; written only by the lease write paths and the backfill
 No other wire shapes change: runner detail/lease/event response fields stay as-is.
@@ -206,13 +229,16 @@ No other wire shapes change: runner detail/lease/event response fields stay as-i
 | Upstash QStash unregister fails | provider 5xx/timeout during teardown | log registered code + increment failure counter; purge proceeds (erasure wins). A later replay cannot retry it — the rows are gone — so the counter is the reconciliation signal |
 | Backfill rerun on populated counters | migration reapplied | idempotent upsert from recount; second run changes nothing |
 | Fixture cleanup hits state machine | fleet not yet killed at delete | existing kill-then-delete helper path; teardown tolerates per-fleet failure and reports count |
+| Cursor crosses the workspace filter | operator replays a `next_cursor` under a different filter | 400 + registered code (§8.1) — refused rather than silently seeking the filtered page past a foreign boundary |
+| Concurrent sweepers on every replica | each replica runs its own hourly sweep | `FOR UPDATE SKIP LOCKED` — disjoint batches, no lock convoy; both DELETEs plan onto slot 046 (§8.4) |
+| Pool exhaustion during concurrent deletions | four `user.deleted` requests on a four-slot pool | staged teardown holds one slot at a time (§8.5); unregister proven to reach the provider with one free slot |
 
 ## Invariants
 
 1. The runner detail read never scans `fleet.runner_leases` — enforced by a plan-proof integration test that fails on regression.
-2. Lifetime counters are monotonic and equal a recount after any churn sequence — enforced by the churn integration test.
-3. Retention deletes only terminal-status rows older than the named window — enforced by the SQL predicate plus the negative test.
-4. Every row on a workspace-filtered page carries the filtered `workspace_id` — enforced by the filter integration test.
+2. Lifetime counters are monotonic and equal a recount after any churn sequence — enforced by the churn integration test; the backfill's `GREATEST` arm cannot lower a tally even reapplied after retention pruning (§8.7).
+3. Retention deletes only terminal-status leases whose settlement (`updated_at`) predates the named window, and only per-lease event tags — lifecycle history survives at any age, and a live lease cannot age into the cutoff (`comptime`-proven, §8.6) — enforced by the SQL predicates plus the negative test.
+4. Every row on a workspace-filtered page carries the filtered `workspace_id`, and the cursor that pages it belongs to the same filtered stream (§8.1) — enforced by the filter and cursor integration tests.
 5. After teardown replay, the tenant has zero fleets, schedule rows, and Upstash QStash registrations — enforced by the extended teardown integration test.
 
 ## Metrics & Observability
@@ -253,6 +279,13 @@ real name wins — a spec that names a test nobody wrote proves nothing.
 | 7.1 | integration | `teardown unregisters the tenant's schedules BEFORE it purges the rows` | tenant with a synced schedule → the faked provider is called, and the row it names is still on disk at that moment |
 | 7.2 | integration | `replaying user.deleted is a no-op the second time` | second `user.deleted` → 200, zero additional provider calls, account still gone |
 | 7.3 | integration | `a provider unregister failure is counted, and the purge still happens` | forced provider 500 → failure counter incremented, response still 200, schedule and account rows gone |
+| 8.1 | integration | `integration: test_runner_leases_cursor_is_scoped_to_the_workspace_filter` | a cursor minted under workspace A replayed on a B-filtered page → 400 + code; the reverted fix reproduced `200` with `{"items":[],"total":2}` — a page disagreeing with its own count |
+| 8.2 | integration | `one sweep deletes aged terminal history and spares live and in-window rows` (fixture `L_AGED_SETTLED_RECENT`) | lease acquired 31 days ago, settled today → survives the sweep; the reverted fix deleted it (`expected 3, found 4`) |
+| 8.3 | integration | `integration: a failed unregister does not strand the schedules behind it` + `integration: missing provider credentials count as a leak, not as silence` | first schedule's remove fails → every sibling still attempted, per-schedule identifiers logged pre-purge; absent credentials → counted + logged, never silent |
+| 8.4 | integration | `retention sweep deletes ride their own indexes, not a whole-table scan` + `counter and retention slots are registered in the migration array` | both sweep DELETEs plan onto slot 046's composites under a below-every-row cutoff; slot 046 resolves through `schema.migrations` |
+| 8.5 | integration | `integration: teardown unregisters with only one pool connection free` | harness pool drained to one free slot → the unregister still reaches the provider and the purge completes |
+| 8.6 | integration + build | lifecycle-survival assertions inside 8.2's sweep test; `comptime` assert in `retention_sweeper.zig` | aged `lease_acquired` rows deleted while the aged `runner_registered` row survives; `MAX_RUNTIME_MS >= RETENTION_WINDOW_MS` fails every build |
+| 8.7 | integration | `the migration backfill reconstructs the tallies and is idempotent on reapply` (reapply-after-prune arm) | history pruned, slot-043 upsert reapplied → no tally lowered |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -263,16 +296,16 @@ real name wins — a spec that names a test nobody wrote proves nothing.
 | R3 | Activity filtered reads index-served (§2) | `make test-integration` | both plan tests passed | P0 | ✅ `events composite has the right shape and serves the filtered feed…OK` (asserts both the page and count statements) |
 | R4 | Chat copy split (§4) | `make test-unit-app` | both copy tests passed | P1 | ✅ `Tests 2110 passed (2110)` — run through `make test-unit-all`, which contains the app lane |
 | R5 | Teardown purges Upstash QStash end-to-end (§7) | `make test-integration` | all three §7 tests passed | P0 | ✅ all three `identity_events_clerk_integration_test…OK` |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `UNIT_ALL_EXIT=0` · `✓ All package coverage gates passed` |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `LINT_EXIT=0` · `✓ All lint checks passed` |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `730 passed; 8 skipped; 0 failed.` — see the grading note below on the command actually run |
-| S4 | E2E walks the operator path | `make acceptance-e2e` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ `MEMLEAK_EXIT=0` · all four lanes ✓ · `378 passed; 7 skipped; 0 failed` |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 54 files, 0 missing (regraded after §8). One is outside the workstream and labelled as such in the table: the C11 harness gate, landed in its own commit. |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `UNIT_ALL_EXIT=0` · `✓ All package coverage gates passed` (regraded after §8; test depth unit=3298 integration=511, +32/+10 over baseline) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `LINT_EXIT=0` · `✓ All lint checks passed` (regraded after §8) |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `735 passed; 8 skipped; 0 failed.` exit 0 (regraded after §8; all eight §8 tests present and `OK`) — see the grading note below on the command actually run |
+| S4 | E2E walks the operator path | `make acceptance-e2e` | exit 0 | P0 | ❌ — Dimension 1.4's walk runs against dev, whose daemon predates this branch (Deferrals: Indy chose the unconditional test knowingly). Grades ❌ until this branch's daemon deploys there; the honest red. Ship-gate passage requires an `Orly-Override` trailer carrying Indy's own reason — owed by Indy, not invented here. |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ `MEMLEAK_EXIT=0` · `memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` (regraded after §8) |
 | S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ `XCC x86_64-linux=0 aarch64-linux=0` |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` |
 
-**Grading deviation, disclosed:** R1/R2/R3/R5/S3 were graded from the compiled integration binary run directly, not from `make test-integration` verbatim. That command wraps `zig build test-integration`, whose result protocol is corrupted by test-binary log noise — it prints `failed command:` on fully green runs and printed a passing marker on a genuinely red run earlier in this stream (Discovery C7). The binary was run with the exact environment the make target exports (`LIVE_DB`, `TEST_DATABASE_URL`, `TEST_REDIS_TLS_URL`, `REDIS_URL_API`, `REDIS_TLS_CA_CERT_FILE`, both `AGENTSFLEET_QSTASH_LIVE_*`, `AGENTSFLEET_RUNNER_BIN`) against a database reset with `make down` first (C10). Grading from the wrapper would have been grading from a known-unreliable reporter.
+**Grading deviation, disclosed:** R1/R2/R3/R5/S3 were graded from the compiled integration binary run directly, not from `make test-integration` verbatim. That command wraps `zig build test-integration`, whose result protocol is corrupted by test-binary log noise — it prints `failed command:` on fully green runs and printed a passing marker on a genuinely red run earlier in this stream (Discovery C7). The binary was run with the exact environment the make target exports (`LIVE_DB`, `TEST_DATABASE_URL`, `TEST_REDIS_TLS_URL`, `REDIS_URL_API`, `REDIS_TLS_CA_CERT_FILE`, both `AGENTSFLEET_QSTASH_LIVE_*`, `AGENTSFLEET_RUNNER_BIN`) via the three-step direct-run recipe in C17 — reset, migrate, run; C10's two-step version is incomplete and produced 566 failures. Grading from the wrapper would have been grading from a known-unreliable reporter. Every graded row above was re-taken on the post-§8 diff, one heavy job at a time.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -344,7 +377,19 @@ N/A — no files deleted.
 
 **C10 — Running the integration binary directly skips the database reset the make target performs.** Three consecutive direct binary runs against one database produced growing and *differing* failure sets (`credentials_mint` × 7, `budget_gate`, `workspace_onboarding`, `request_header_size`). Settled by building the merge base `91c90fd4d` in a throwaway worktree and running the same isolated tests against the same database: **identical 7 failures on code that predates this branch**, so nothing here caused them. After a reset, the same suite reports **730 passed / 8 skipped / 0 failed**.
 
-The cause is not a repo defect — that was this spec's first reading of it, and it was wrong. `make/test-integration.mk:204` sets `TEST_STATE_DEP := $(if $(KEEP_TEST_STATE),_ensure-test-infra,_reset-test-db)`, and `_reset-test-db` drops every schema and flushes Redis ahead of all three public integration targets. The residue was self-inflicted: Gotcha C7 forces integration truth to come from the compiled binary rather than the `zig build` wrapper, and running the binary directly bypasses that prerequisite. **Recipe for a direct run: `make _reset-test-db` first.** Nobody could have noticed the gap while 521 of 738 tests were skipping (C9).
+The cause is not a repo defect — that was this spec's first reading of it, and it was wrong. `make/test-integration.mk:204` sets `TEST_STATE_DEP := $(if $(KEEP_TEST_STATE),_ensure-test-infra,_reset-test-db)`, and `_reset-test-db` drops every schema and flushes Redis ahead of all three public integration targets. The residue was self-inflicted: Gotcha C7 forces integration truth to come from the compiled binary rather than the `zig build` wrapper, and running the binary directly bypasses that prerequisite. ~~Recipe for a direct run: `make _reset-test-db` first.~~ **That recipe is incomplete — C17 carries the corrected one.** Nobody could have noticed the gap while 521 of 738 tests were skipping (C9).
+
+**C12 — "Fix everything now": the post-REVIEW expansion, recorded.** REVIEW ran gstack `/review` (structured) plus a Codex cross-model pass over the completed 21 Dimensions and returned nine findings. **Indy chose "Fix everything now" (Jul 31, 2026)** over deferring any of them. §8's seven Dimensions are that decision's record — a deliberate expansion of the workstream after REVIEW, not scope drift: same surface, same PR budget, and every fix's test was first run against the reverted fix to reproduce the defect (8.1: `200` with `{"items":[],"total":2}` — a page silently disagreeing with its own count; 8.2: `expected 3, found 4` — the settled-recent lease deleted). The expansion added schema slot 046; slot 042 stays vacant for M148.
+
+**C13 — The sweep indexes were measured, and the single-runner fixture is a trap.** EXPLAIN ANALYZE on the steady-state cycle — the one that finds nothing, which is the worst case once the backlog drains because `LIMIT` can never short-circuit: leases at 50,000 rows, `Seq Scan` 37.9 ms → `(status, updated_at)` Index Scan 0.56 ms; events at 100,000 rows / 201 runners, `runner_events_runner_idx` 4.76 ms → `(event_type, occurred_at)` 0.36 ms. Two traps recorded for the next measurer: (1) on a single-runner fixture the planner *prefers* the runner-leading index and the new events index reads as redundant — only at real runner cardinality does a runner-leading index show as unable to bound `occurred_at` across segments; (2) a probe cutoff that matches every seeded row lets `LIMIT` short-circuit on any index and the plan stops discriminating — the plan test's cutoff sits *below* every seeded row. Full composites, not partial: the sweep binds its status/tag sets as parameter arrays, so C2's reasoning applies verbatim. Both DELETEs also take `FOR UPDATE SKIP LOCKED` so each replica's sweeper claims a disjoint batch instead of blocking on its siblings' row locks.
+
+**C14 — "A long-running lease loses its activity" is impossible by construction — now a build-time proof.** The Codex finding had two halves. The real half: pruning *all* events by age blanked the Activity feed for every runner enrolled before the window — the lifecycle tags are that view's entire content. Sweep eligibility now derives from `PER_LEASE_EVENT_TYPES` (`lease_acquired`, `lease_released`) — one definition in `src/lib/contract/runner_events.zig`, so a new tag cannot be added without deciding which side of retention it lands on. The impossible half: a live lease reaching the 30-day cutoff. Renewal clamps to `created_at + MAX_RUNTIME_MS` (12 hours) and is refused past it, after which reclaim flips the row to expired — so no live lease, nor any event belonging to one, can age into the window. That impossibility is now a `comptime` assertion in `retention_sweeper.zig`: growing `MAX_RUNTIME_MS` to or past `RETENTION_WINDOW_MS` fails the build instead of silently arming the sweep against live work.
+
+**C15 — The backfill's conflict arm takes `GREATEST`; the rolling-deploy race stays open, deliberately.** Full closure of the race — old replicas without tally arms writing leases while slot 043 applies — needs either slot 030's trigger shape (rejected by C1 on RULE STS grounds) or a per-lease counted-mark column; both redesign §3 after it shipped, for a one-time undercount of a display counter during a single rollout. What was fixed is the dangerous half: the conflict arm's absolute recount was simultaneously the only exact repair for the deploy window *and* a statement that silently zeroes a mature runner's lifetime tallies once retention has pruned — a recount of surviving rows is smaller than the truth, because tallies count transitions, not rows. `GREATEST` keeps it the exact repair inside the window and makes it incapable of lowering anything at any age, which is where Invariant 2 could actually break. No resident reconciler ships for the same reason: after the first prune, a recount is no longer a source of truth, so nothing that recounts on a schedule can be left running. The reasoning lives in `schema/043` itself; the reapply-after-prune arm of the backfill test proves it.
+
+**C16 — The fourth lease index, considered and rejected.** A `(runner_id, workspace_id, created_at, id)` composite would serve the workspace-filtered lease page directly. Rejected: §6's retention bounds what the filtered page can walk — slot 041's runner-leading index walks at most one runner's 30-day window to apply the workspace predicate — while a fourth index on the fleet schema's hottest write path would tax every acquire and settle forever. The plan proofs (`the lease pager's exact total never walks the runner's whole history`, both binds) hold without it.
+
+**C17 — The corrected integration recipe: three steps, and the migrate step is not optional.** C10's recipe was incomplete: `make _reset-test-db` *drops* every schema, and the public make targets re-migrate afterwards as a prerequisite — the direct-binary path C7 forces does not. Followed verbatim, C10's version produced **566 failures** against a schema-less database. A direct run is: (1) `make _reset-test-db`; (2) `DATABASE_URL_MIGRATOR=<url> zig build run -- migrate`; (3) `zig build test-integration-bin`, then run `./zig-out/bin/agentsfleetd-integration-tests` with the full environment the make target exports — C9's `REDIS_URL_API` included, or 521 of 743 tests skip while the summary still reads green. Current source under that recipe: **735 passed / 8 skipped / 0 failed, exit 0** (opening baseline 730/8/0 of 738).
 
 ### Metrics review
 
@@ -353,6 +398,8 @@ Two operational counters added, both already declared in Metrics & Observability
 ### Skill-chain outcomes
 
 Recorded during VERIFY and CHORE(close), in the order `AGENTS.md` mandates: `/write-unit-test`, `/write-integration-test`, gstack `/review`, then `kishore-babysit-prs`.
+
+**Round 1 (Jul 31, 2026):** `/write-unit-test` + `/write-integration-test` clean. gstack `/review` (structured) + Codex cross-model pass → nine findings → Indy: "Fix everything now" (C12) → all remediations landed as §8, each proven to fail with its fix reverted. A second `/review` runs on the post-§8 diff before CHORE(close); its outcome is recorded below when it completes. `kishore-babysit-prs` follows the push.
 
 ### Deferrals
 

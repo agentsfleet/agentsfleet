@@ -27,6 +27,7 @@ const L_AGED_REPORTED_TWO = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0f02";
 const L_AGED_EXPIRED = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0f03";
 const L_ACTIVE_OLD = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0f04";
 const L_RECENT_REPORTED = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0f05";
+const L_AGED_SETTLED_RECENT = "0195b4ba-8d3a-7f13-8abc-3c0e1e0d0f06";
 
 /// Mirrors the sweeper's retention window; a drift there is a behavior change
 /// this suite must surface, so the value is pinned rather than imported.
@@ -37,6 +38,9 @@ const AGE_SAFETY_MS: i64 = std.time.ms_per_day;
 const EVENT_PREFIX = "evt-ret-";
 const AGED_EVENT_ROWS = 4;
 const RECENT_EVENT_ROWS = 2;
+/// A tag outside `PER_LEASE_EVENT_TYPES` — the enrolment record the operator
+/// Activity feed renders, which retention must never delete at any age.
+const LIFECYCLE_EVENT_TYPE: protocol.RunnerEventType = .runner_registered;
 const METRIC_POLL_ATTEMPTS = 500;
 const METRIC_POLL_STEP_NS: u64 = 20 * std.time.ns_per_ms;
 
@@ -49,25 +53,30 @@ fn seedRunner(conn: *pg.Conn) !void {
     , .{RUNNER_ID});
 }
 
-fn seedLease(conn: *pg.Conn, lease_id: []const u8, event_id: []const u8, status: []const u8, created_at: i64) !void {
+/// `created_at` and `updated_at` are bound SEPARATELY and deliberately. The
+/// first revision of this fixture bound one timestamp to both columns, which
+/// made the suite structurally unable to tell the acquisition clock from the
+/// settlement clock — it passed against a sweeper reading either. Retention
+/// measures from `updated_at`, so every caller states both.
+fn seedLease(conn: *pg.Conn, lease_id: []const u8, event_id: []const u8, status: []const u8, created_at: i64, updated_at: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases (id, runner_id, fleet_id, workspace_id, tenant_id,
         \\   event_id, actor, event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'steer:retention-test', 'chat',
-        \\   '{}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $7, $8, $7, $7)
+        \\   '{}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $7, $8, $7, $9)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ lease_id, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, event_id, created_at, status });
+    , .{ lease_id, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, event_id, created_at, status, updated_at });
 }
 
-fn seedEvent(conn: *pg.Conn, occurred_at: i64) !void {
+fn seedEvent(conn: *pg.Conn, event_type: protocol.RunnerEventType, occurred_at: i64) !void {
     const event_uid = try id_format.generateUuidV7();
     const event_id: []const u8 = &event_uid;
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_events (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
         \\VALUES ($1::uuid, $2::uuid, $3::text, $4::bigint, '{}'::jsonb, NULL, $4::bigint)
-    , .{ event_id, RUNNER_ID, @tagName(protocol.RunnerEventType.lease_acquired), occurred_at });
+    , .{ event_id, RUNNER_ID, @tagName(event_type), occurred_at });
 }
 
 fn setupBase(conn: *pg.Conn) !void {
@@ -98,7 +107,8 @@ fn scalarI64(conn: *pg.Conn, sql: []const u8, args: anytype) !i64 {
 
 /// Sweep-eligible lease rows table-wide, with the sweeper's own predicate —
 /// the totals assertion counts what the sweep counts, so residue from an
-/// earlier crashed suite cannot skew equality.
+/// earlier crashed suite cannot skew equality. Keyed on `updated_at`, the
+/// settlement clock the sweeper measures.
 fn agedTerminalLeaseCount(conn: *pg.Conn, cutoff: i64) !i64 {
     const terminal = [_][]const u8{
         protocol.RUNNER_LEASE_STATUS_REPORTED,
@@ -106,12 +116,25 @@ fn agedTerminalLeaseCount(conn: *pg.Conn, cutoff: i64) !i64 {
     };
     return scalarI64(conn,
         \\SELECT COUNT(*)::bigint FROM fleet.runner_leases
-        \\WHERE status = ANY($1::text[]) AND created_at < $2
+        \\WHERE status = ANY($1::text[]) AND updated_at < $2
     , .{ &terminal, cutoff });
 }
 
+/// Only the per-work tags are eligible; lifecycle rows of any age are not.
 fn agedEventCount(conn: *pg.Conn, cutoff: i64) !i64 {
-    return scalarI64(conn, "SELECT COUNT(*)::bigint FROM fleet.runner_events WHERE occurred_at < $1", .{cutoff});
+    var per_lease_tags: [protocol.PER_LEASE_EVENT_TYPES.len][]const u8 = undefined;
+    inline for (protocol.PER_LEASE_EVENT_TYPES, 0..) |event_type, i| per_lease_tags[i] = @tagName(event_type);
+    return scalarI64(conn,
+        \\SELECT COUNT(*)::bigint FROM fleet.runner_events
+        \\WHERE event_type = ANY($1::text[]) AND occurred_at < $2
+    , .{ &per_lease_tags, cutoff });
+}
+
+fn eventCountOfType(conn: *pg.Conn, event_type: protocol.RunnerEventType) !i64 {
+    return scalarI64(conn,
+        \\SELECT COUNT(*)::bigint FROM fleet.runner_events
+        \\WHERE runner_id = $1::uuid AND event_type = $2::text
+    , .{ RUNNER_ID, @tagName(event_type) });
 }
 
 fn leaseExists(conn: *pg.Conn, lease_id: []const u8) !bool {
@@ -122,21 +145,28 @@ fn runnerEventCount(conn: *pg.Conn) !i64 {
     return scalarI64(conn, "SELECT COUNT(*)::bigint FROM fleet.runner_events WHERE runner_id = $1::uuid", .{RUNNER_ID});
 }
 
-/// Aged terminal history plus the two rows the sweep must spare: a still-live
-/// old lease and an in-window terminal one, with events on both sides of the
-/// window. Returns the aged instant used.
+/// Aged terminal history plus every row the sweep must spare: a still-live old
+/// lease, an in-window terminal one, a lease acquired before the window but
+/// SETTLED inside it, aged per-work events, in-window per-work events, and an
+/// aged lifecycle event. Returns the aged instant used.
 fn seedRetentionFixture(conn: *pg.Conn) !i64 {
     const now_ms = clock.nowMillis();
     const aged_at = now_ms - RETENTION_WINDOW_MS - AGE_SAFETY_MS;
-    try seedLease(conn, L_AGED_REPORTED_ONE, EVENT_PREFIX ++ "aged-1", protocol.RUNNER_LEASE_STATUS_REPORTED, aged_at);
-    try seedLease(conn, L_AGED_REPORTED_TWO, EVENT_PREFIX ++ "aged-2", protocol.RUNNER_LEASE_STATUS_REPORTED, aged_at);
-    try seedLease(conn, L_AGED_EXPIRED, EVENT_PREFIX ++ "aged-3", protocol.RUNNER_LEASE_STATUS_EXPIRED, aged_at);
-    try seedLease(conn, L_ACTIVE_OLD, EVENT_PREFIX ++ "live-1", protocol.RUNNER_LEASE_STATUS_ACTIVE, aged_at);
-    try seedLease(conn, L_RECENT_REPORTED, EVENT_PREFIX ++ "recent-1", protocol.RUNNER_LEASE_STATUS_REPORTED, now_ms);
+    try seedLease(conn, L_AGED_REPORTED_ONE, EVENT_PREFIX ++ "aged-1", protocol.RUNNER_LEASE_STATUS_REPORTED, aged_at, aged_at);
+    try seedLease(conn, L_AGED_REPORTED_TWO, EVENT_PREFIX ++ "aged-2", protocol.RUNNER_LEASE_STATUS_REPORTED, aged_at, aged_at);
+    try seedLease(conn, L_AGED_EXPIRED, EVENT_PREFIX ++ "aged-3", protocol.RUNNER_LEASE_STATUS_EXPIRED, aged_at, aged_at);
+    try seedLease(conn, L_ACTIVE_OLD, EVENT_PREFIX ++ "live-1", protocol.RUNNER_LEASE_STATUS_ACTIVE, aged_at, aged_at);
+    try seedLease(conn, L_RECENT_REPORTED, EVENT_PREFIX ++ "recent-1", protocol.RUNNER_LEASE_STATUS_REPORTED, now_ms, now_ms);
+    // Acquired before the window, settled inside it: the row the retention
+    // promise is actually about. A sweep keyed on `created_at` deletes it.
+    try seedLease(conn, L_AGED_SETTLED_RECENT, EVENT_PREFIX ++ "settled-1", protocol.RUNNER_LEASE_STATUS_REPORTED, aged_at, now_ms);
     var i: usize = 0;
-    while (i < AGED_EVENT_ROWS) : (i += 1) try seedEvent(conn, aged_at + @as(i64, @intCast(i)));
+    while (i < AGED_EVENT_ROWS) : (i += 1) try seedEvent(conn, .lease_acquired, aged_at + @as(i64, @intCast(i)));
     i = 0;
-    while (i < RECENT_EVENT_ROWS) : (i += 1) try seedEvent(conn, now_ms + @as(i64, @intCast(i)));
+    while (i < RECENT_EVENT_ROWS) : (i += 1) try seedEvent(conn, .lease_acquired, now_ms + @as(i64, @intCast(i)));
+    // The runner's enrolment, older than the window. Sweeping it by age is what
+    // blanked the operator Activity feed for every long-lived runner.
+    try seedEvent(conn, LIFECYCLE_EVENT_TYPE, aged_at);
     return aged_at;
 }
 
@@ -161,13 +191,21 @@ test "one sweep deletes aged terminal history and spares live and in-window rows
     try std.testing.expectEqual(eligible_events, totals.events_deleted);
 
     // Aged terminal rows are gone; the live-old and in-window terminal rows
-    // survive, and only the in-window events remain.
+    // survive.
     try std.testing.expect(!try leaseExists(ctx.conn, L_AGED_REPORTED_ONE));
     try std.testing.expect(!try leaseExists(ctx.conn, L_AGED_REPORTED_TWO));
     try std.testing.expect(!try leaseExists(ctx.conn, L_AGED_EXPIRED));
     try std.testing.expect(try leaseExists(ctx.conn, L_ACTIVE_OLD));
     try std.testing.expect(try leaseExists(ctx.conn, L_RECENT_REPORTED));
-    try std.testing.expectEqual(@as(i64, RECENT_EVENT_ROWS), try runnerEventCount(ctx.conn));
+    // The retention promise, stated as a row: acquired before the window,
+    // settled inside it, therefore kept. This is the assertion a `created_at`
+    // sweep fails and the old one-timestamp fixture could not express.
+    try std.testing.expect(try leaseExists(ctx.conn, L_AGED_SETTLED_RECENT));
+    // Per-work events: only the in-window ones remain. The aged lifecycle row
+    // is untouched, so a runner enrolled before the window still has a feed.
+    try std.testing.expectEqual(@as(i64, RECENT_EVENT_ROWS), try eventCountOfType(ctx.conn, .lease_acquired));
+    try std.testing.expectEqual(@as(i64, 1), try eventCountOfType(ctx.conn, LIFECYCLE_EVENT_TYPE));
+    try std.testing.expectEqual(@as(i64, RECENT_EVENT_ROWS + 1), try runnerEventCount(ctx.conn));
 
     // A second cycle finds nothing left to do — the sweep converges.
     const again = try retention_sweeper.sweepOnce(ctx.pool);
