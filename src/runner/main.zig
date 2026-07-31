@@ -12,9 +12,9 @@ const logging = @import("log");
 
 const Config = @import("daemon/config.zig");
 const loop = @import("daemon/loop.zig");
+const startup = @import("daemon/startup.zig");
 const runner_deadline = @import("daemon/runner_deadline.zig");
 const child_exec = @import("child_exec.zig");
-const CgroupScope = @import("engine/CgroupScope.zig");
 const client_errors = @import("engine/client_errors.zig");
 const version_cmd = @import("cmd/version.zig");
 const registry = @import("cmd/registry.zig");
@@ -83,21 +83,10 @@ pub fn main(init: std.process.Init) void {
     // so the dashboard shows why instead of a crash loop.
     log.info("server_started", .{ .storage_home = cfg.storage_home });
 
-    // Which controllers the delegated subtree carries is a HOST fact, settled
-    // before any assignment exists — so it is enabled here rather than on the
-    // first cage-building heartbeat. systemd's `Delegate=` only makes the
-    // controllers available in the unit cgroup; writing `cgroup.subtree_control`
-    // is the delegatee's job and systemd never does it. Enabling at startup is
-    // what makes a populated subtree a post-condition of the daemon being up —
-    // which is what `engine/capability_probe.zig` reports upward and what the
-    // runner bootstrap playbook's readiness gate asserts after a deploy.
-    // Non-fatal by design: a `dev_none` host builds no cage and must still boot,
-    // and it is the heartbeat reconciliation — not this call — that refuses
-    // leases on a host which cannot deliver its assigned isolation.
-    CgroupScope.enableDelegatedControllers(io, alloc) catch |err| switch (err) {
-        error.UnsupportedPlatform => {}, // no cgroup hierarchy off Linux
-        else => log.err("cgroup_controllers_unavailable", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) }),
-    };
+    // Before the loop, so a populated cgroup subtree is a post-condition of the
+    // daemon being up rather than a race with the first assignment. Non-fatal —
+    // see `daemon/startup.zig` for why.
+    startup.enableResourceControl(io, alloc);
 
     std.Io.Dir.createDirAbsolute(io, cfg.storage_home, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},

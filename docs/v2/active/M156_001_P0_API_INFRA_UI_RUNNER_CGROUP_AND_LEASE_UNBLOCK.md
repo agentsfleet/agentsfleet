@@ -102,7 +102,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Host capability is knowable the moment the daemon starts; nothing about it depends on which policy the control plane later assigns. Moving enablement to startup makes `subtree_control` a post-condition of an active unit, which is what the readiness gate and the capability probe both already assume. **Implementation default:** enablement runs unconditionally on Linux at startup and a failure is logged and non-fatal, because a `dev_none` host builds no cage and must still start; the leasing refusal stays where it is, driven by the reconciliation.
 
-- **Dimension 1.1** — On Linux, startup writes the controller set to the delegated base before the control loop begins → Test `test_startup_enables_delegated_controllers`
+- **Dimension 1.1** — **DONE** — On Linux, startup writes the controller set to the delegated base before the control loop begins → Test `test_startup_enables_delegated_controllers`
 - **Dimension 1.2** — **DONE** — A cgroup base that is not delegated is classified distinctly from a write failure → Test `test_not_delegated_is_distinct_from_write_failure`
 - **Dimension 1.3** — **DONE** — Enablement is idempotent across a restart → Test `test_enable_controllers_is_idempotent`
 - **Dimension 1.4** — **DONE** — The lazy call site and its one-shot gate field no longer exist → Test `test_policy_apply_has_no_controller_gate`
@@ -113,13 +113,13 @@ The daemon runs with the environment systemd gives it, which contains no `HOME`.
 
 - **Dimension 2.1** — **DONE** — The unit defines `HOME` → Test `test_unit_defines_home`
 - **Dimension 2.2** — **DONE** — The passthrough allowlist forwards `HOME` when the daemon has it → Test `test_home_reaches_sandboxed_child`
-- **Dimension 2.3** — A lease completes without a config-load failure on a host with the unit installed → Test `test_lease_runs_with_unit_environment`
+- **Dimension 2.3** — **DONE** — `HOME` resolves inside a runtime directory the unit itself creates and makes writable, and the hardening that forces that choice is still in place → Test `test_unit_home_is_backed_by_a_writable_runtime_dir`
 
 ### §3 — A failed config load names its cause, to the operator and to the user
 
 The failure that took the dev fleet down logged an error code and nothing else, which is why diagnosis needed a host login rather than a journal read. The same failure reaches the user as *"This fleet needs instructions before it can respond."* — the chat surface recognises five exact runner cause lines and blames the fleet for everything else, so a runner-side fault is reported as the user's misconfiguration, with a raw internal error identifier appended. An error that is caught must be named, and a cause the surface cannot classify must not be attributed to the user. **Implementation default:** log the error name alongside the existing code, keep the returned error unchanged because callers already branch on it, and invert the chat surface's default so an unrecognised cause reads as a runner-side failure rather than a missing-instructions one.
 
-- **Dimension 3.1** — The config-load failure log carries the underlying error name → Test `test_config_load_failure_names_error`
+- **Dimension 3.1** — **DONE** — The config-load failure log carries the underlying error name → Test `test_config_load_failure_names_error`
 - **Dimension 3.2** — **DONE** — A startup-posture failure whose cause is unrecognised reads as a runner-side failure, not a missing-instructions one → Test `test_unrecognised_cause_is_not_blamed_on_the_fleet`
 - **Dimension 3.3** — **DONE** — A fleet genuinely lacking instructions still gets the instructions sentence → Test `test_missing_instructions_keeps_its_sentence`
 - **Dimension 3.4** — **DONE** — No raw internal error identifier reaches the chat surface → Test `test_raw_error_identifier_never_shown`
@@ -205,13 +205,13 @@ No product analytics event is added, renamed, or removed; the dashboard change i
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_startup_enables_delegated_controllers` | The startup path invokes enablement before the loop handoff on a Linux target. |
+| 1.1 | unit | `test_startup_enables_delegated_controllers` | The startup step is inert off-Linux and reports every real enablement failure, including a lost delegation. Ordering is structural: `daemon/startup.zig` is the sole call site and `main.zig` invokes it before the loop handoff. |
 | 1.2 | unit | `test_not_delegated_is_distinct_from_write_failure` | A base resolving outside the delegated subgroup yields the not-delegated classification, not a write failure. |
 | 1.3 | integration | `test_enable_controllers_is_idempotent` | Enabling twice against a real delegated cgroup leaves the same controller set and returns success both times. |
 | 1.4 | unit | `test_policy_apply_has_no_controller_gate` | Applying a cage-tier policy performs no cgroup work and the gate struct carries no enablement field. |
 | 2.1 | unit | `test_unit_defines_home` | The shipped unit file defines `HOME`. |
 | 2.2 | unit | `test_home_reaches_sandboxed_child` | With `HOME` set in the parent environment, the child's environ contains it; with it unset, the child's environ omits it and no other variable is substituted. |
-| 2.3 | integration | `test_lease_runs_with_unit_environment` | A lease executed with the unit's environment reaches completion with no `config_load_failed`. |
+| 2.3 | unit | `test_unit_home_is_backed_by_a_writable_runtime_dir` | `HOME` is derived from the unit's own `RuntimeDirectory`, that path is in `ReadWritePaths`, and `ProtectHome=yes` still holds. A rename of the runtime directory that orphans `HOME` fails. |
 | 3.1 | unit | `test_config_load_failure_names_error` | An injected config-load failure produces a log record carrying the underlying error name alongside the existing code. |
 | 3.2 | unit | `test_unrecognised_cause_is_not_blamed_on_the_fleet` | A startup-posture failure carrying a cause outside the known set renders the runner-side sentence, not the missing-instructions one. |
 | 3.3 | unit | `test_missing_instructions_keeps_its_sentence` | A startup-posture failure with no cause still renders the missing-instructions sentence. |
