@@ -25,7 +25,8 @@ const DELIVERY_RETRIES = "3";
 const AUTHORIZATION_FORMAT = "Bearer {s}";
 const ENDPOINT_FORMAT = "{s}{s}{s}";
 
-const AUTHORIZATION_BUFFER_LEN: usize = 1024;
+/// Pub for the sibling suite: the oversized-token fixture derives from it.
+pub const AUTHORIZATION_BUFFER_LEN: usize = 1024;
 const CRON_HEADER_BUFFER_LEN: usize = 256;
 const RESPONSE_HEAD_BUFFER_LEN: usize = 8 * 1024;
 const RESPONSE_TRANSFER_BUFFER_LEN: usize = 4 * 1024;

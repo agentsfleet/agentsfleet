@@ -210,3 +210,15 @@ test "qstash client (live): a real qstash dev server accepts the schedule lifecy
     const removed = try client.delete(std.testing.allocator, token, SCHEDULE_ID);
     try std.testing.expectEqual(QStashClient.Outcome.success, removed);
 }
+
+test "qstash client: an oversized vault token is credential_invalid, never sent (Dimension 7.3)" {
+    // Config fault, not a provider reject: the exchange must never fire, and
+    // the outcome is distinct from invalid_request so the operator-facing
+    // detail names the credential instead of the schedule parameters.
+    var fake: Fake = .{};
+    const client = QStashClient.init(fake.exchange(), "https://qstash.test", DESTINATION);
+    const oversized = "x" ** (QStashClient.AUTHORIZATION_BUFFER_LEN * 2); // always past the buffer
+    try std.testing.expectEqual(.credential_invalid, try client.upsert(std.testing.allocator, oversized, schedule()));
+    try std.testing.expectEqual(.credential_invalid, try client.delete(std.testing.allocator, oversized, SCHEDULE_ID));
+    try std.testing.expectEqual(@as(usize, 0), fake.calls);
+}

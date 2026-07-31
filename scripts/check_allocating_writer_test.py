@@ -63,6 +63,16 @@ COMMENTED_OUT = (
     "}\n"
 )
 
+# A URL literal shares the line with the deinit: the comment-strip must not
+# treat "://" as a line comment and delete the pairing (review find).
+URL_ON_DEINIT_LINE = (
+    "fn urlLine() !void {\n"
+    "    var aw: std.Io.Writer.Allocating = .init(alloc);\n"
+    '    const u = "https://example.com"; defer aw.deinit();\n'
+    "    _ = u;\n"
+    "}\n"
+)
+
 
 class AllocatingWriterCheckTest(unittest.TestCase):
     def test_flags_from_array_list_with_noop_list_defer(self):
@@ -82,6 +92,9 @@ class AllocatingWriterCheckTest(unittest.TestCase):
 
     def test_ignores_commented_out_bindings(self):
         self.assertEqual(0, len(check(COMMENTED_OUT, "fixture")))
+
+    def test_url_literal_does_not_eat_the_deinit(self):
+        self.assertEqual(0, len(check(URL_ON_DEINIT_LINE, "fixture")))
 
     def test_live_tree_is_clean(self):
         violations = []

@@ -33,8 +33,6 @@ const log = logging.scoped(.agentsfleetd);
 
 const EnvMap = common.env.Map;
 
-const S_API = "api";
-
 const webhook_sig = auth_mw.webhook_sig_mod;
 const svix_signature = auth_mw.svix_signature_mod;
 
@@ -72,7 +70,6 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // Defer order: clear FIRST at scope exit so a mid-shutdown /metrics
     // scrape can't dereference a deinit'd Pool.
     defer metrics.clearRegisteredRedisPool();
-    log.info("startup.redis_connect_ok", .{ .role = S_API });
 
     const migrate_on_start = preflight.parseMigrateOnStart(env_map, alloc) catch std.process.exit(1);
     preflight.checkMigrations(io, env_map, alloc, api_pool, migrate_on_start) catch std.process.exit(1);

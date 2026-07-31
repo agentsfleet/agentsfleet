@@ -75,7 +75,7 @@ All paths below are under `src/agentsfleetd/` unless rooted otherwise.
 | `queue/redis_config.zig` | EDIT | expose username parse for doctor parity |
 | `db/{pool,pool_migration_lock,pool_migration_state,sql_splitter,pg_query}.zig` | EDIT | URL-parse ladder; dead role/alias/wrapper removal; fn split; relocated pin test |
 | `db/{test_fixtures,test_fixtures_uc1,pool_test}.zig` + the four index/liveness `db/*_integration_test.zig` suites | EDIT | shared EXPLAIN scaffolding; alias + dead ids dropped; conn-helper fold |
-| `events/{fleet_set_cache,subscription,subscription_hub,subscription_hub_reader,bus}.zig` | EDIT | enumerate ladder; lock defer; safe-because; fn split; post-stop drops counted |
+| `events/{fleet_set_cache,subscription,subscription_hub_reader,bus}.zig` | EDIT | enumerate ladder; lock defer; safe-because; fn split; post-stop drops counted (the hub itself needed no edit — its audited items landed in the reader) |
 | `events/fleet_set_cache_test.zig` | EDIT | schema-qualified fixtures; complete cleanup |
 | `errors/{error_registry,error_entries,error_entries_runtime,error_registry_test}.zig` | EDIT | dead constant dropped; stale comment fixed; helpers single-sourced; foreign pin tests relocated |
 | `state/tenant_billing_rates.zig` + `fleet/service.zig` | EDIT | receive relocated pin tests |
@@ -84,6 +84,9 @@ All paths below are under `src/agentsfleetd/` unless rooted otherwise.
 | `scripts/check_allocating_writer_test.py` | CREATE | fixture proof the new check bites (SCRIPT_SELF_TESTS discovery) |
 | `make/quality.mk` | EDIT | pg-drain recipe names the allocating-writer check |
 | `http/{test_harness_server,test_http_message}.zig` + `http/handlers/cross_workspace_idor_test.zig` + `src/runner/cmd/help.zig` | EDIT | same leak class exposed by the new lint — folded to keep the invariant coherent |
+| `main.zig` | EDIT | consumes the dotenv diagnostic — boot error names the line |
+| `cmd/serve_boot.zig` | CREATE | process-exiting boot prologue split out of serve.run (fn cap) |
+| `credentials/testing.zig` | EDIT | RecordingMetrics captures latency for the telemetry proof |
 | Sibling `*_test.zig` of the rows above | EDIT | per-Dimension tests; allocation-failure sweeps |
 
 ## Applicable Rules
@@ -171,7 +174,7 @@ The audited low-severity drift, fixed in kind.
 - **Dimension 7.2** — structure-only refactors (serve/doctor/migrate run splits, inspect split, resubscribe split, audit-event preamble extraction, pin-test relocations) change no behavior: full suite green, no fn over cap in touched files → Test `make test` + length check rubric row — **DONE** (residual: `serve.run` is down from 290 to ~180 lines via the new `serve_boot.zig` prologue split; the remainder is the defer-ordered resource graph whose full split would restructure shutdown choreography — flagged in Discovery for Indy)
 - **Dimension 7.3** — mint telemetry is truthful: real latency from the injected clock; cache-dupe OOM emits a mint-failed event; an oversized vault token logs a config-shaped error distinct from a provider reject → Test `test_broker_telemetry_truthful` — **DONE** (the oversized QStash token gets a distinct `credential_invalid` outcome + config-shaped persisted detail — the client is deliberately log-free)
 - **Dimension 7.4** — a malformed dotenv line fails boot naming the line number → Test `test_dotenv_error_names_line` — **DONE**
-- **Dimension 7.5** — a lost lease during finalize fallback is logged and the original provider/store error is preserved → Test `test_finalize_fallback_preserves_error` — **DONE** (preservation is structural: the fallback helper returns void so the caller's `return err` cannot be masked; lease loss and fallback failure both log)
+- **Dimension 7.5** — a lost lease during finalize fallback is logged and the original provider/store error is preserved → Test `test_finalize_fallback_preserves_error` — **DONE** (void-by-type: the caller's `return err` cannot be masked; review-hardened test proves the live-lease fallback WRITES failed+detail and the lost-lease path touches nothing)
 - **Dimension 7.6** — the OAuth token path is per-handle configuration with the current value as default; existing providers unchanged → Test `test_token_path_per_handle_default` — **DONE**
 - **Dimension 7.7** — fire-queue reply frees use the connection's allocator by construction, not by caller convention → Test existing fire-queue suite green under testing allocator — **DONE**
 
@@ -228,7 +231,7 @@ No other product/operator signal changes; no analytics/funnel playbook update re
 | 1.4 | unit | `test_auth_claim_ladders_alloc_failure` | `checkAllAllocationFailures` over the three claim fns: zero leaks, state rolled back |
 | 1.5 | unit | `test_pool_parse_url_alloc_failure` | every allocation-failure point frees earlier dupes |
 | 1.6 | unit | `test_fleet_set_enumerate_alloc_failure` | append-failure frees the orphan dupe |
-| 1.7 | unit | `test_otlp_install_failure_frees_config` | already-running and spawn-failed outcomes free the config; one env parse per boot |
+| 1.7 | unit | `test_otlp_install_failure_frees_config` | already-running outcome freed under the leak detector; spawn-failed + one-parse-per-boot hold structurally (the returned handle owns cfg on every outcome; one configFromEnv call site) — noted per review |
 | 1.8 | unit | `test_lint_fromarraylist_check` | leaking fixture fails, fixed sites pass |
 | 2.1 | unit | `test_outbound_reads_reject_over_cap` | JWKS and Clerk bodies > cap → error, cleanup, no unbounded growth |
 | 2.2 | unit | `test_expires_in_hostile_values_permanent` | 1e300 / NaN / negative → `.mint_failed = .permanent` |
@@ -258,17 +261,17 @@ No other product/operator signal changes; no analytics/funnel playbook update re
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Leak class closed under injection (§1) | `make test` | exit 0 incl. the eight §1 tests | P0 | |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 non-`*_test.zig` paths missing from the table | P0 | |
-| R3 | Secret zeroization present at teardown (§3) | `grep -rn "secure_memory" src/agentsfleetd/credentials/ \| wc -l` | ≥ 2 matches | P1 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean (incl. new check) | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes (db/events/cron touched) | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks (allocator wiring touched) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | Leak class closed under injection (§1) | `make test-unit-all` | exit 0 incl. the eight §1 tests | P0 | ✅ exit 0 — `All unit lanes passed` (first run tripped one flaky UI vitest, `fleets-install-entry-gate.test.ts`, 22/22 green in isolation and on rerun; no TypeScript in this diff) |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 non-`*_test.zig` paths missing from the table | P0 | ✅ every diff path has a table row (three rows added during EXECUTE: `main.zig`, `cmd/serve_boot.zig`, `credentials/testing.zig`) |
+| R3 | Secret zeroization present at teardown (§3) | `grep -rn "secure_memory" src/agentsfleetd/credentials/ \| wc -l` | ≥ 2 matches | P1 | ✅ 11 matches |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — `All package coverage gates passed` / `All unit lanes passed` |
+| S2 | Lint clean (incl. new check) | `make lint-all` | exit 0 | P0 | ✅ exit 0 — `4 passed, 0 failed, 2 skipped` / `All lint checks passed` |
+| S3 | Integration passes (db/events/cron touched) | `make test-integration` | exit 0 | P0 | ✅ exit 0 — `✓ [agentsfleetd] Full integration suite passed` (also the 6.3 suite-green proof) |
+| S5 | No leaks (allocator wiring touched) | `make memleak` | exit 0 | P0 | ✅ exit 0 — `✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ exit 0 both targets, re-verified after every Section |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` (4032 commits scanned) |
+| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| grep -vE '(^\|/)(tests?)/\|_test\.zig$\|tests\.zig$\|.*test.*\.zig$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output (mirrors the FLL gate's test-pattern exemption) | P0 | ✅ no output |
+| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ all eight greps 0 matches |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -324,5 +327,6 @@ De-pub-only items (per-signal OTel fns, `ArgvIter`, `SYNC_LEASE_MS`, `MAX_RESPON
 
 - **Consults** — Clerk worker bound (Dimension 2.3): the deadline-armed joinable worker (mirroring the credentials/cron exchanges) requires importing `call_deadline` + `http_pin` into `src/agentsfleetd/auth/`, which the `auth-only-tests` portability aggregate deliberately excludes. Chosen: bounded in-flight cap + bounded shutdown drain, all std+common — stragglers touch only self-owned memory. Flag for Indy: if widening the auth dependency surface is acceptable, the deadline-armed worker is the stronger long-term shape. · Flight waiter (Dimension 2.4): `std.Io.Condition` (0.16) has no timed wait; losers now poll on a short cadence with a deadline, and the no-longer-consumed `inflight_cond` was removed rather than kept as dead concurrent code.
 - **Metrics review** —
-- **Skill-chain outcomes** —
+- **Review consults (adversarial pass, for Indy)** — (1) Clerk worker slots (Dimension 2.3): the portability-wall design has no per-fetch deadline, so a blackholed Clerk endpoint can wedge all 8 slots and silently disable signup-metadata writes for the process lifetime (the pre-M152 code leaked threads but kept serving). Recommended follow-up: a std-only slot LEASE (per-slot claim timestamp, expired slots reclaimable) restores availability without breaching the wall — Indy picks fix-now vs follow-up. (2) The mint token-exchange (`serve_broker.postImpl`) remains the one outbound read without a byte cap (deadline-bounded only, allowlisted endpoints); capping it adds a fourth copy of the capped-read pattern, so it belongs to the already-deferred outbound-exchange unification rather than this diff.
+- **Skill-chain outcomes** — `/write-unit-test`: diff ledger fully resolved; two gaps it exposed were closed in-tree (oversized-QStash-credential test, finalize-fallback observable-state test). `/write-integration-test`: three `make test-integration` passes green (one clean-state, two shared) incl. the review-hardened suites. gstack `/review`: four-agent army (adversarial + testing + maintainability + security) + Codex cross-model (timed out at its 5-minute cap, non-blocking) — 24 findings; 12 fixed in-tree (double boot log, assertion-free tests, JWKS success-path coverage, string expires_in compat, token_path shape guard, lint comment-strip hole + pinning fixture, emit-on-OOM observability, noteDrop lock scope, oversized-token constant coupling, otlp deinit doc, spec table drift), 2 recorded as Discovery consults for Indy (Clerk slot lease, mint-exchange byte cap), the rest documented in PR Session Notes with reasons.
 - **Deferrals** — none acked. FLAG for Indy (Dimension 7.2 residual): 🎯 `cmd/serve.zig run()` still ~180 lines after the `serve_boot.zig` prologue extraction · 🔧 a full ≤50 split requires moving the boot resource graph (pools, hub, streams, registry, server) into an owner struct whose deinit re-encodes today's defer order — multi-file, touches shutdown choreography · 🏆 fn-cap compliance and a testable boot seam · ⚠️ if not fixed: one function stays over the cap; the ordering-sensitive teardown remains proven by the existing lifecycle integration tests either way.
