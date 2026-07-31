@@ -136,10 +136,10 @@ Teardown removes an execution scope with a recursive tree delete, but a cgroup's
 
 Two defects: the gate returns on the first missing controller, so a host missing all three reports only `cpu`; and it runs only after the runner is deployed, so a host that cannot enforce limits still receives one. **Implementation default:** the pre-deploy probe reads the root controller set and the parent slice's `subtree_control` — the two things that are true independent of the daemon — while the post-deploy check keeps asserting the delegated subtree.
 
-- **Dimension 5.1** — Every missing controller is reported, not the first → Test `test_gate_reports_all_missing_controllers`
-- **Dimension 5.2** — A host missing a controller at the root fails before deployment → Test `test_pre_deploy_probe_rejects_incapable_host`
-- **Dimension 5.3** — A capable host passes the pre-deploy probe → Test `test_pre_deploy_probe_accepts_capable_host`
-- **Dimension 5.4** — The post-deploy check still fails a runner whose delegated subtree is empty → Test `test_post_deploy_check_requires_delegated_subtree`
+- **Dimension 5.1** — **DONE** — Every missing controller is reported, not the first → Test `test_gate_reports_all_missing_controllers`
+- **Dimension 5.2** — **DONE** — A host missing a controller at the root fails before deployment → Test `test_pre_deploy_probe_rejects_incapable_host`
+- **Dimension 5.3** — **DONE** — A capable host passes the pre-deploy probe → Test `test_pre_deploy_probe_accepts_capable_host`
+- **Dimension 5.4** — **DONE** — The post-deploy check still fails a runner whose delegated subtree is empty → Test `test_post_deploy_check_requires_delegated_subtree`
 
 ### §6 — The policy dialog is reachable and its options are legible
 
