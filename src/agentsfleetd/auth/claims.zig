@@ -35,10 +35,10 @@ const CLAIM_SCOPES = "scopes";
 const CLAIM_SCP = "scp";
 const CLAIM_AUD = "aud";
 
-// JWT claim namespace prefixes — these must match the identity provider's
-// custom claim configuration (Clerk/Auth0). Not user-configurable.
-const NAMESPACE_DEV = "https://agentsfleet.net/";
-const NAMESPACE_PROD = "https://agentsfleet.net/";
+// JWT claim namespace prefix — must match the identity provider's custom
+// claim configuration (Clerk/Auth0). Not user-configurable. One value for
+// every environment (the former DEV/PROD pair were identical).
+const CLAIM_NAMESPACE = "https://agentsfleet.net/";
 
 /// Extract Clerk-specific claims from a verified JWT payload.
 /// Looks for `org_id` at top level and `tenant_id`/`workspace_id`
@@ -152,8 +152,7 @@ fn getClerkWorkspaceId(obj: std.json.ObjectMap) ?[]const u8 {
 fn getCustomTenantId(obj: std.json.ObjectMap) ?[]const u8 {
     return getFirstValue(obj, &.{
         CLAIM_TENANT_ID,
-        NAMESPACE_DEV ++ CLAIM_TENANT_ID,
-        NAMESPACE_PROD ++ CLAIM_TENANT_ID,
+        CLAIM_NAMESPACE ++ CLAIM_TENANT_ID,
     }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 
@@ -161,8 +160,7 @@ fn getCustomOrgId(obj: std.json.ObjectMap) ?[]const u8 {
     return getFirstValue(obj, &.{
         CLAIM_ORG_ID,
         CLAIM_ORGANIZATION_ID,
-        NAMESPACE_DEV ++ CLAIM_ORGANIZATION_ID,
-        NAMESPACE_PROD ++ CLAIM_ORGANIZATION_ID,
+        CLAIM_NAMESPACE ++ CLAIM_ORGANIZATION_ID,
     }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 
@@ -170,10 +168,8 @@ fn getCustomWorkspaceId(obj: std.json.ObjectMap) ?[]const u8 {
     return getFirstValue(obj, &.{
         CLAIM_WORKSPACE_ID,
         CLAIM_WORKSPACE_CAMEL,
-        NAMESPACE_DEV ++ CLAIM_WORKSPACE_ID,
-        NAMESPACE_DEV ++ CLAIM_WORKSPACE_CAMEL,
-        NAMESPACE_PROD ++ CLAIM_WORKSPACE_ID,
-        NAMESPACE_PROD ++ CLAIM_WORKSPACE_CAMEL,
+        CLAIM_NAMESPACE ++ CLAIM_WORKSPACE_ID,
+        CLAIM_NAMESPACE ++ CLAIM_WORKSPACE_CAMEL,
     }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 

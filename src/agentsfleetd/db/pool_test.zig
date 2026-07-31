@@ -120,7 +120,6 @@ test "parseUrl respects sslmode=disable for local dev" {
 test "roleEnvVarName maps db roles deterministically" {
     try std.testing.expectEqualStrings("DATABASE_URL", roleEnvVarName(.default));
     try std.testing.expectEqualStrings("DATABASE_URL_API", roleEnvVarName(.api));
-    try std.testing.expectEqualStrings("DATABASE_URL_CALLBACK", roleEnvVarName(.callback));
     try std.testing.expectEqualStrings("DATABASE_URL_MIGRATOR", roleEnvVarName(.migrator));
 }
 

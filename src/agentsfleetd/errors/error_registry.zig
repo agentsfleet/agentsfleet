@@ -284,9 +284,7 @@ pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolve
 pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
 pub const MSG_APPROVAL_INVALID_DECISION = "Decision must be 'approve' or 'deny'";
 pub const MSG_APPROVAL_CONDITION_INVALID = "Gate condition is invalid. Use field == 'value' or field != 'value' (single-quoted).";
-// Webhook signature messages
 // Webhook constants
-pub const BEARER_PREFIX = "Bearer ";
 pub const DEDUP_TTL_SECONDS: u32 = 86400;
 /// Redis key prefix for webhook idempotency slots (RULE UFS — one site; both
 /// webhook handlers + tests import it).
