@@ -20,10 +20,17 @@ const oidc = @import("../auth/oidc.zig");
 const runtime_types = @import("runtime_types.zig");
 const env = @import("runtime_env_parse.zig");
 const validate = @import("runtime_validate.zig");
+const config_load = @import("load.zig");
 
 const ValidationError = runtime_types.ValidationError;
 
-const S_T_R_N = " \t\r\n";
+const S_T_R_N = config_load.TRIM_SET;
+
+/// Default caps for the API HTTP pool (overridable via API_MAX_CLIENTS /
+/// API_MAX_IN_FLIGHT_REQUESTS). Single owners — the loader tests reference
+/// these names instead of re-declaring the values (RULE UFS).
+pub const API_MAX_CLIENTS_DEFAULT: u32 = 1024;
+pub const API_MAX_IN_FLIGHT_DEFAULT: u32 = 256;
 
 /// Default ceiling on concurrent Server-Sent-Events streams per instance,
 /// overridable via SSE_MAX_STREAMS (0 rejected). Each live stream costs one
@@ -53,8 +60,8 @@ pub fn loadSizes(env_map: *const EnvMap, alloc: Allocator) !SizesConfig {
     const port = try env.parseU16Env(env_map, alloc, "PORT", 3000, ValidationError.InvalidPort);
     const threads = try env.parseI16Env(env_map, alloc, "API_HTTP_THREADS", 1, ValidationError.InvalidApiHttpThreads);
     const workers = try env.parseI16Env(env_map, alloc, "API_HTTP_WORKERS", 1, ValidationError.InvalidApiHttpWorkers);
-    const max_clients = try env.parseU32Env(env_map, alloc, "API_MAX_CLIENTS", 1024, ValidationError.InvalidApiMaxClients);
-    const max_inflight = try env.parseU32Env(env_map, alloc, "API_MAX_IN_FLIGHT_REQUESTS", 256, ValidationError.InvalidApiMaxInFlightRequests);
+    const max_clients = try env.parseU32Env(env_map, alloc, "API_MAX_CLIENTS", API_MAX_CLIENTS_DEFAULT, ValidationError.InvalidApiMaxClients);
+    const max_inflight = try env.parseU32Env(env_map, alloc, "API_MAX_IN_FLIGHT_REQUESTS", API_MAX_IN_FLIGHT_DEFAULT, ValidationError.InvalidApiMaxInFlightRequests);
     const sse_max_streams = try env.parseU32Env(env_map, alloc, "SSE_MAX_STREAMS", SSE_MAX_STREAMS_DEFAULT, ValidationError.InvalidSseMaxStreams);
     const queue_depth = try env.parseOptionalI64Env(env_map, alloc, "READY_MAX_QUEUE_DEPTH", ValidationError.InvalidReadyMaxQueueDepth);
     const queue_age = try env.parseOptionalI64Env(env_map, alloc, "READY_MAX_QUEUE_AGE_MS", ValidationError.InvalidReadyMaxQueueAgeMs);

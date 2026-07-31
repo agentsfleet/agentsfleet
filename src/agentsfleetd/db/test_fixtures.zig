@@ -259,7 +259,11 @@ pub const TEST_PLATFORM_CAP_TOKENS = provider_fixtures.TEST_PLATFORM_CAP_TOKENS;
 /// Uses page_allocator for URL parse results so they outlive the pool. pg.Pool
 /// stores shallow references to host/auth strings — if parsed via an arena that
 /// is freed first, pool.release() crashes on non-idle connections.
-pub fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
+/// Named so suites can spell the return type (anonymous structs don't unify
+/// across functions).
+pub const TestConnCtx = struct { pool: *pg.Pool, conn: *pg.Conn };
+
+pub fn openTestConn(alloc: std.mem.Allocator) !?TestConnCtx {
     const url = env.testLiveValue("TEST_DATABASE_URL") orelse
         env.testLiveValue("DATABASE_URL") orelse return null;
 
@@ -270,6 +274,40 @@ pub fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *
     const conn = try pool.acquire();
     dropInjectedFaultConstraints(conn);
     return .{ .pool = pool, .conn = conn };
+}
+
+/// LIVE_DB-gated pool+conn pair — the shared setup the index/liveness plan
+/// suites use (formerly four identical local copies; Dimension 6.3).
+pub const TestDb = struct {
+    pool: *pg.Pool,
+    conn: *pg.Conn,
+
+    pub fn open(alloc: std.mem.Allocator) !?TestDb {
+        if (env.testLiveValue("LIVE_DB") == null) return null;
+        const ctx = (try openTestConn(alloc)) orelse return null;
+        return .{ .pool = ctx.pool, .conn = ctx.conn };
+    }
+
+    pub fn close(self: TestDb) void {
+        self.pool.release(self.conn);
+        self.pool.deinit();
+    }
+};
+
+/// Read an `EXPLAIN` plan back as one text blob. Caller owns the result.
+/// Shared by the four index/liveness suites (Dimension 6.3).
+pub fn planOf(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8) ![]u8 {
+    const explain = try std.fmt.allocPrint(alloc, "EXPLAIN (COSTS OFF) {s}", .{sql});
+    defer alloc.free(explain);
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(alloc);
+    var q = PgQuery.from(try conn.query(explain, .{}));
+    defer q.deinit();
+    while (try q.next()) |row| {
+        try out.appendSlice(alloc, try row.get([]const u8, 0));
+        try out.append(alloc, '\n');
+    }
+    return out.toOwnedSlice(alloc);
 }
 
 /// Validate + canonical-stringify a JSON object and persist it through the

@@ -10,8 +10,9 @@ const common = @import("common");
 const oidc = @import("../auth/oidc.zig");
 const runtime = @import("runtime.zig");
 const loader = @import("runtime_loader.zig");
-const DEFAULT_MAX_CLIENTS = 1024;
-const DEFAULT_MAX_IN_FLIGHT = 256;
+// Single owners live on the loader — no re-declared copies (Dimension 6.2).
+const DEFAULT_MAX_CLIENTS = loader.API_MAX_CLIENTS_DEFAULT;
+const DEFAULT_MAX_IN_FLIGHT = loader.API_MAX_IN_FLIGHT_DEFAULT;
 
 const ServeConfig = runtime.ServeConfig;
 const ValidationError = runtime.ValidationError;

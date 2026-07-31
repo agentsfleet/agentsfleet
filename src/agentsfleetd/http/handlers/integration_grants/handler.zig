@@ -15,6 +15,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const grant_notifier = @import("../../../fleet_runtime/notifications/grant_notifier.zig");
 const api_key = @import("../../../auth/api_key.zig");
+const hs = @import("hmac_sig");
 const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
 
 const log = logging.scoped(.integration_grants);
@@ -74,7 +75,7 @@ fn fleetFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u8
     const stored_hash = row.get([]u8, 0) catch return null;
     const fleet_id = row.get([]u8, 1) catch return null;
     const workspace_id = row.get([]u8, 2) catch return null;
-    if (!api_key.constantTimeEql(computed_hash, stored_hash)) return null;
+    if (!hs.constantTimeEql(computed_hash, stored_hash)) return null;
 
     // Best-effort: record last use time. Failure is not fatal.
     _ = conn.exec(
