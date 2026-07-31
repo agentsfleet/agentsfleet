@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M153
 **Workstream:** 001
 **Date:** Jul 31, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — every authenticated request on dev returns 503; the dashboard is unusable for every signed-in operator
 **Categories:** API
 **Batch:** B1 — single workstream, no parallel peer
-**Branch:** feat/m153-jwks-decompress — added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m153-jwks-decompress
+**Test Baseline:** unit=3335 integration=510
 **Depends on:** M152_001 (this repairs the bounded-transport rewrite that milestone introduced)
 **Provenance:** agent-generated (pre-spec, live diagnosis of run 30614520801 + standalone reproduction against the dev identity provider)
 **Canonical architecture:** `docs/AUTH.md` §Backend validation (the common path)
