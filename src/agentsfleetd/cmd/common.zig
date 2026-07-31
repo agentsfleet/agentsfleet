@@ -1,6 +1,7 @@
 const db = @import("../db/pool.zig");
 const std = @import("std");
 const common = @import("common");
+const config_load = @import("../config/load.zig");
 const logging = @import("log");
 const log = logging.scoped(.agentsfleetd);
 
@@ -48,12 +49,13 @@ pub fn migrateOnStartEnabledFromEnv(env_map: *const EnvMap, alloc: std.mem.Alloc
     const raw = (try common.env.owned(env_map, alloc, "MIGRATE_ON_START")) orelse return false;
     defer alloc.free(raw);
 
-    if (std.mem.eql(u8, raw, "1")) return true;
-    if (std.mem.eql(u8, raw, "0")) return false;
-    if (std.ascii.eqlIgnoreCase(raw, "true")) return true;
-    if (std.ascii.eqlIgnoreCase(raw, "false")) return false;
-
-    return MigrationGuardError.InvalidMigrateOnStart;
+    // Shared grammar with every other boolean env var (config/load.zig);
+    // this strict caller turns `.invalid` into a boot error.
+    return switch (config_load.parseEnvBool(raw)) {
+        .yes => true,
+        .no => false,
+        .invalid => MigrationGuardError.InvalidMigrateOnStart,
+    };
 }
 
 fn decideServeMigrationPolicy(

@@ -15,3 +15,13 @@ test "isHexString validates encryption key format" {
     try std.testing.expect(!validate.isHexString("abcxyz"));
     try std.testing.expect(validate.isHexString("")); // vacuously true; load() length-checks separately
 }
+
+test "doctor and loader share the 64-hex predicate: 64-char non-hex rejected (Dimension 4.1)" {
+    // Pre-fix the doctor length-checked only, green-lighting keys the daemon
+    // rejects at boot. Both callers now route through this one predicate.
+    const non_hex_64 = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+    const hex_64 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    try std.testing.expect(!validate.isValid64HexKey(non_hex_64));
+    try std.testing.expect(!validate.isValid64HexKey("abc123")); // right charset, wrong length
+    try std.testing.expect(validate.isValid64HexKey(hex_64));
+}

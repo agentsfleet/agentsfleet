@@ -19,6 +19,15 @@ pub fn isHexString(s: []const u8) bool {
     return true;
 }
 
+/// Hex width of a 32-byte secret key.
+const SECRET_KEY_HEX_LEN: usize = 64;
+
+/// The one 64-hex secret predicate the loader AND doctor share — a key the
+/// doctor green-lights must never be rejected by the daemon at boot.
+pub fn isValid64HexKey(s: []const u8) bool {
+    return s.len == SECRET_KEY_HEX_LEN and isHexString(s);
+}
+
 pub fn printValidationError(err: ValidationError) void {
     switch (err) {
         ValidationError.OidcRequired => logging.fatalStderr("fatal: OIDC is required — set OIDC_ISSUER and OIDC_AUDIENCE (OIDC_JWKS_URL optional, derived from issuer)\n", .{}),

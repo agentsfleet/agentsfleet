@@ -143,9 +143,9 @@ Secret material is zeroed before release everywhere it is owned: credential tear
 
 One predicate, one parser, one grammar: doctor and the runtime loader validate 64-hex secrets with the same shared predicate; doctor's Redis username extraction delegates to the queue module's URL parser; environment booleans parse with a single shared grammar.
 
-- **Dimension 4.1** — doctor rejects a 64-char non-hex key exactly as the loader does, via one shared predicate → Test `test_doctor_rejects_non_hex_key`
-- **Dimension 4.2** — doctor's Redis username matches the queue parser's for every URL shape including colonless userinfo → Test `test_doctor_redis_username_parity`
-- **Dimension 4.3** — the two env-boolean call sites accept the identical (trimmed) grammar → Test `test_env_bool_single_grammar`
+- **Dimension 4.1** — doctor rejects a 64-char non-hex key exactly as the loader does, via one shared predicate → Test `test_doctor_rejects_non_hex_key` — **DONE**
+- **Dimension 4.2** — doctor's Redis username matches the queue parser's for every URL shape including colonless userinfo → Test `test_doctor_redis_username_parity` — **DONE**
+- **Dimension 4.3** — the two env-boolean call sites accept the identical (trimmed) grammar → Test `test_env_bool_single_grammar` — **DONE**
 
 ### §5 — Dead surface sweep
 

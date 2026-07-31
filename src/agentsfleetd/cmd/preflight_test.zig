@@ -1,6 +1,7 @@
 const std = @import("std");
 const constants = @import("common");
 const preflight = @import("preflight.zig");
+const cmd_common = @import("common.zig");
 const otlp_config = @import("../observability/otlp/config.zig");
 const otel_logs = @import("../observability/otel_logs.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
@@ -128,4 +129,17 @@ test "initOtelExporters returns an empty handle when unconfigured (deinit safe)"
     defer env.deinit();
     var handle = preflight.initOtelExporters(constants.globalIo(), &env, alloc);
     handle.deinit(alloc);
+}
+
+test "migrateOnStartEnabledFromEnv accepts the shared trimmed grammar (Dimension 4.3)" {
+    // Pre-fix this site parsed untrimmed while the dotenv gate trimmed —
+    // " true" enabled one boolean and boot-errored the other.
+    const alloc = std.testing.allocator;
+    var padded = try constants.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", " true" }});
+    defer padded.deinit();
+    try std.testing.expect(try cmd_common.migrateOnStartEnabledFromEnv(&padded, alloc));
+
+    var padded_zero = try constants.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", " 0\t" }});
+    defer padded_zero.deinit();
+    try std.testing.expect(!try cmd_common.migrateOnStartEnabledFromEnv(&padded_zero, alloc));
 }
