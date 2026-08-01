@@ -1,0 +1,22 @@
+{
+  "set": "calibration",
+  "epoch_ms": 1754000000000,
+  "seeds": [
+    { "id": "calib-spike-01", "class": "obvious_spike", "service": "checkout", "offset_ms": 600000, "duration_ms": 300000, "magnitude_pct": 50 },
+    { "id": "calib-spike-02", "class": "obvious_spike", "service": "billing", "offset_ms": 1800000, "duration_ms": 240000, "magnitude_pct": 30 },
+    { "id": "calib-burn-01", "class": "slow_burn", "service": "worker", "offset_ms": 3000000, "duration_ms": 1800000, "magnitude_pct": 9 },
+    { "id": "calib-burn-02", "class": "slow_burn", "service": "gateway", "offset_ms": 5400000, "duration_ms": 2400000, "magnitude_pct": 11 },
+    { "id": "calib-trace-01", "class": "trace_failure", "service": "checkout", "offset_ms": 8400000, "duration_ms": 600000, "magnitude_pct": 20 },
+    { "id": "calib-trace-02", "class": "trace_failure", "service": "billing", "offset_ms": 9600000, "duration_ms": 480000, "magnitude_pct": 24 },
+    { "id": "calib-deploy-01", "class": "deploy_regression", "service": "gateway", "offset_ms": 10800000, "duration_ms": 900000, "magnitude_pct": 18 },
+    { "id": "calib-deploy-02", "class": "deploy_regression", "service": "worker", "offset_ms": 12600000, "duration_ms": 720000, "magnitude_pct": 26 },
+    { "id": "calib-clean-01", "class": "obvious_spike", "service": "gateway", "offset_ms": 14400000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "calib-clean-02", "class": "slow_burn", "service": "checkout", "offset_ms": 15000000, "duration_ms": 600000, "magnitude_pct": 0, "clean": true },
+    { "id": "calib-clean-03", "class": "trace_failure", "service": "worker", "offset_ms": 15600000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "calib-clean-04", "class": "deploy_regression", "service": "billing", "offset_ms": 16200000, "duration_ms": 480000, "magnitude_pct": 0, "clean": true },
+    { "id": "calib-clean-05", "class": "obvious_spike", "service": "worker", "offset_ms": 16800000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "calib-clean-06", "class": "slow_burn", "service": "billing", "offset_ms": 17400000, "duration_ms": 600000, "magnitude_pct": 0, "clean": true },
+    { "id": "calib-clean-07", "class": "trace_failure", "service": "gateway", "offset_ms": 18000000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "calib-clean-08", "class": "deploy_regression", "service": "checkout", "offset_ms": 18600000, "duration_ms": 480000, "magnitude_pct": 0, "clean": true }
+  ]
+}

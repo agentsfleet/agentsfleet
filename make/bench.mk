@@ -6,7 +6,7 @@
 #   Tier-2  hey HTTP loadgen          (requires `hey` in PATH — mise installs it)
 # =============================================================================
 
-.PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _memleak-lane _memleak-boot-drain
+.PHONY: memleak bench bench-redis bench-incident _bench-micro _bench-loadgen _memleak-lane _memleak-boot-drain
 
 # One definition shared by every valgrind invocation below, so a lane can never
 # drift onto different flags than the ones that were reviewed.
@@ -118,6 +118,36 @@ _memleak-boot-drain: _ensure-test-infra
 bench:  ## Run Tier-1 zbench micro + Tier-2 hey HTTP loadgen.
 	@$(MAKE) _bench-micro
 	@$(MAKE) _bench-loadgen
+
+# ── Incident-response benchmark ──────────────────────────────────────────────
+# SEED_MANIFEST selects the manifest half (eval is the scored set; the spelled
+# out file name also works). BENCH_RUNS optionally points at a findings file —
+# without it the target proves harness health + prints the corpus hash line
+# that the reproducibility rubric compares across runs.
+BENCH_INCIDENT_DIR := bench/incident-response
+SEED_MANIFEST ?= eval
+ifeq ($(SEED_MANIFEST),eval)
+BENCH_INCIDENT_MANIFEST := $(BENCH_INCIDENT_DIR)/seeds/evaluation.json
+else
+BENCH_INCIDENT_MANIFEST := $(BENCH_INCIDENT_DIR)/seeds/$(SEED_MANIFEST).json
+endif
+
+bench-incident:  ## Incident-response benchmark: harness tests, corpus hash, scoring (SEED_MANIFEST=eval, BENCH_RUNS=<findings.json>)
+	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@echo "→ [bench-incident] harness unit tests..."
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build -Dwith-bench-tools=true bench-incident-test
+	@echo "→ [bench-incident] corpus + score ($(SEED_MANIFEST))..."
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build -Dwith-bench-tools=true bench-incident -- \
+	   --evaluation $(BENCH_INCIDENT_MANIFEST) \
+	   --calibration $(BENCH_INCIDENT_DIR)/seeds/calibration.json \
+	   --baseline $(BENCH_INCIDENT_DIR)/baseline.json \
+	   --freeze $(BENCH_INCIDENT_DIR)/freeze.json \
+	   $(if $(BENCH_RUNS),--runs $(BENCH_RUNS),)
+	@echo "✓ [bench-incident] passed"
 
 bench-redis:  ## Redis XADD concurrency bench (skip-by-default unless BENCH_REDIS=1; needs local Redis).
 	@mkdir -p .tmp "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
