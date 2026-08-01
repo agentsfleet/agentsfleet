@@ -63,6 +63,7 @@ test "should pass the stop gate for self_managed at zero balance (no upfront cha
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
             0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
+            null, // open-ended trial — these cases pin the gate, not the boundary
         );
     try std.testing.expectEqual(@as(i64, 0), est_total);
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, est_total, "test_gate_exact");
@@ -103,6 +104,7 @@ test "should block the stop gate when balance is one nano below the estimate pos
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
             0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
+            null, // open-ended trial — these cases pin the gate, not the boundary
         );
     // Provision the exact estimate first: the billing row must exist for the
     // trial probe, and est_total is non-negative in both eras (0 while the

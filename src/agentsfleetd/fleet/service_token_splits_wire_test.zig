@@ -208,7 +208,7 @@ fn freeTrialActive(conn: *pg.Conn) !bool {
 // handlers use (zero rates inside the free trial, registry rates after) —
 // sliceCharge with no elapsed run time isolates the token component.
 fn expectedTokenCost(conn: *pg.Conn, d_in: i64, d_cached: i64, d_out: i64) i64 {
-    const resolved = billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL, clock.nowMillis()) catch null;
+    const resolved = billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL, null, clock.nowMillis()) catch null;
     const rates = resolved orelse
         billing_rates.SliceRates{
             .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC,

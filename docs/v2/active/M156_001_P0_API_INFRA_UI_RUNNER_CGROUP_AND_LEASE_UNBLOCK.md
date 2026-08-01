@@ -16,9 +16,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M156
 **Workstream:** 001
 **Date:** Jul 31, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P0 — the dev fleet leases nothing; three deploy jobs are red and every lease dies at init.
-**Categories:** API, INFRA, UI
+**Categories:** API, DOCS, INFRA, SQL, UI
 **Batch:** B1 — single stream; the runner change gates the gate change, which gates the acceptance jobs.
 **Branch:** feat/m156-runner-cgroup-lease-unblock
 **Test Baseline:** unit=3372 integration=522
@@ -67,6 +67,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/runners/components/PolicyFields.tsx` | EDIT | The three isolation options stop wrapping two-then-one. |
 | `ui/packages/app/components/domain/fleetFailureCopy.tsx` | EDIT | An unclassifiable cause stops being reported as the user's missing instructions, and no raw error identifier is shown. |
 | `ui/packages/app/components/domain/fleetFailureCopy.test.ts` | EDIT | Covers the inverted default and the preserved missing-instructions case. |
+| `schema/014_tenant_billing.sql` | EDIT | Carries the per-tenant free-trial boundary; NULL means open-ended. |
+| `src/agentsfleetd/state/tenant_billing.zig` | EDIT | Trial state reads from the row rather than a build-time constant. |
+| `src/agentsfleetd/state/tenant_billing_store.zig` | EDIT | Loads the new column. |
+| `src/agentsfleetd/state/tenant_billing_rates.zig` | EDIT | Stage pricing consults the tenant's own boundary. |
+| `src/agentsfleetd/http/handlers/tenant_billing_integration_test.zig` | EDIT | Prices against an injected post-trial clock and a seeded rate row. |
+| `src/agentsfleetd/fleet/service_renew_integration_test.zig` | EDIT | Same — asserts the refusal instead of skipping on the wall clock. |
+| `ui/packages/app/lib/types.ts` | EDIT | Drops the build-time trial constant. |
+| `ui/packages/website/src/lib/rates.ts` | EDIT | Drops the constant and its display mirror. |
 | `src/runner/engine/cgroup_scope_test.zig` | CREATE | Unit coverage for delegated-base resolution and the not-delegated classification. |
 | `src/runner/daemon/startup.zig` | CREATE | Startup steps split out of `main.zig` so the enablement step is testable. |
 | `src/runner/engine/runner_capture.zig` | CREATE | Progress-fd wiring extracted from `runner.zig`, which sat at the length cap. |
@@ -155,6 +163,16 @@ An operator cannot assign a policy without resizing the window, because the dial
 - **Dimension 6.1** — **DONE** — The dialog body scrolls and the footer stays reachable on a short viewport → Test `test_policy_dialog_body_scrolls`
 - **Dimension 6.2** — **DONE** — The three isolation options occupy one row at the breakpoint → Test `test_isolation_options_share_one_row`
 - **Dimension 6.3** — **DONE** — The add-runner dialog carries the same scroll affordance → Test `test_add_runner_dialog_body_scrolls`
+
+### §7 — The free trial is a tenant fact, not a build-time date
+
+The trial boundary was a constant compiled into three runtimes (`tenant_billing.zig`, `types.ts`, `rates.ts`) with a fourth copy as display prose. It expired at `2026-08-01T00:00:00Z` and took the integration suite red across every branch — two billing tests had been skipping their real assertions behind `free_trial_active` and executed for the first time, against fixtures that seed no rate catalogue. The date being global also meant no tenant could be on a different footing from any other. **Implementation default:** the boundary moves to a nullable column on the tenant's billing row where `NULL` means open-ended, because that is the shape that lets a trial end per account without another cross-runtime constant to keep in sync.
+
+- **Dimension 7.1** — The trial boundary is stored per tenant and `NULL` reads as open-ended → Test `test_null_boundary_is_an_open_trial`
+- **Dimension 7.2** — A tenant past its own boundary is charged the standard rate → Test `test_tenant_past_its_boundary_is_charged`
+- **Dimension 7.3** — Stage pricing consults the tenant's boundary, not a build-time constant → Test `test_stage_charge_reads_the_tenant_boundary`
+- **Dimension 7.4** — The two billing suites assert against an injected clock and a seeded rate row, so no wall-clock date can silence them → Test `test_billing_suites_are_clock_independent`
+- **Dimension 7.5** — No build-time trial constant survives in any runtime → Test `test_no_build_time_trial_constant`
 
 ## Interfaces
 
@@ -309,6 +327,14 @@ N/A — no files deleted.
   - > Indy (2026-07-31): "Approve both (Recommended)" — context: acking the `deploy/baremetal/agentsfleet-runner.service` deploy-config edit (§2, `HOME`) and the `.github/workflows/deploy-dev.yml` CI/CD edit (§5, pre-deploy host probe), both otherwise blocked by Hard Safety.
   - > Indy (2026-07-31): "Same tree, no worktree" — context: CHORE(open) implements on a branch in the existing checkout rather than hydrating a fourth worktree.
   - > Indy (2026-08-01): "This fleet needs instructions before it can respond. — FleetInitFailed (That is the error i see now when i type Hello in a fleet)" — context: the user-facing arm of the same `HOME` defect. `fleetFailureCopy.tsx` classifies only five exact runner cause lines and defaults everything else to blaming the fleet, so a runner-side fault is reported as the user's misconfiguration with a raw error identifier appended. Folded into §3 as Dimensions 3.2–3.4 rather than tracked separately.
-- **Metrics review** — pending implementation.
-- **Skill-chain outcomes** — pending: `/write-unit-test`, `/write-integration-test`, gstack `/review`, `kishore-babysit-prs`.
+  - > Indy (2026-08-01): "Per-tenant trial in the database" + "Fold into #585" — context: the free-trial boundary expiring at `2026-08-01T00:00:00Z` took the integration suite red on every branch. Indy chose a per-tenant nullable boundary over pushing the date, and folding it into this milestone rather than a separate spec. Noted at the time: this widens M156 into billing and turns `free_trial_ends_at_ms` nullable on a public response; safe pre-`2.0.0` (RULE NLG — no external consumers), so no compatibility shim.
+- **Flagged, not fixed** — `.github/workflows/deploy-dev.yml` is 772 lines against the S8 length check; it was already 762 on `main` and this diff adds 10, eight of them comments. Splitting a workflow is a CI/CD structural change out of scope here. `ui/packages/website/src/lib/rates.ts` cites `scripts/audit-cross-tier-rates.sh` as the enforcer of cross-tier rate parity — that script does not exist, so the pinning is convention-only and nothing catches drift.
+- **Metrics review** — no product analytics event added, renamed, or removed; the dialog change is a layout fix on an existing surface, so no funnel playbook update is required. Four operator-facing events declared in the Metrics table, each with a test.
+- **Skill-chain outcomes**
+  - `/write-unit-test` — ledger 14/14, no `won't-test` rows, ~60% negative-path. **Red-green proved on the parent commit**: the HOME test, four gate tests and three dialog tests all fail there, and `fleetFailureCopy` fails with `expected 'This fleet needs instructions…' to be 'The runner refused this run…'` — the reported symptom verbatim. The twelve pre-existing failure-copy tests still pass on the parent, confirming the narrower fix preserved the genuine missing-instructions case.
+  - `/write-integration-test` — Hardening lane. T9 out of scope (no lease-supervision code changed). Four Linux-gated cgroup proofs added; CI runs that lane privileged under `scripts/cgroup-delegate.sh`, which places the test process in a `runner-test/runner` leaf — so they execute rather than skip. Reclaim adds no concurrency risk: one `destroy()` per lease via `defer` (RULE OWN).
+  - gstack `/review` — run inline (the operating model restricts Agent use to explicit requests). Two findings, both resolved: widening `resolveCgroupBase` to `CgroupNotDelegated` is safe (nothing branches on `CgroupReadFailed`); and `isInternalIdentifier`'s whitespace rule, true for all 37 `DETAIL_*` lines but undefended — a future one-word cause would be hidden from the user *and* misread as a runner refusal. Guarded by a source-derived test.
+  - `kishore-babysit-prs` — three polls. Found `test-integration` red and traced it to the free-trial expiry rather than this diff; §7 is the resulting fix.
+- **Process note** — two earlier commits on this branch (`51c843989`, `5e45d962b`) carry messages claiming they recorded skill-chain outcomes here. Their diffs did not: a scripted string replacement silently no-opped on a non-matching pattern and the content never landed. Caught when the length gate forced a re-read of this section. The outcomes above are the real record; the lesson is to verify a write landed rather than trust the commit.
+- **LENGTH GATE: SKIPPED per user override** (reason: Indy chose to fold the per-tenant free-trial work into this milestone rather than split it into M157, accepting a spec past the 320-line bound. Recorded 2026-08-01 after a compression pass left it 19 lines over; the alternative offered was a separate spec with the code still shipping in the same Pull Request.)
 - **Deferrals** — none.
