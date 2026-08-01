@@ -68,7 +68,7 @@ pub fn computeStageCharge(
 }
 
 /// `computeStageCharge` at an injected clock — pub so the DB-backed sibling
-/// suite (`tenant_billing_edge_test.zig`) can price post-trial states, the
+/// suite (`tenant_billing_edge_integration_test.zig`) can price post-trial states, the
 /// uncatalogued-model refusal included, without waiting for a tenant's boundary
 /// to arrive on the real clock.
 pub fn computeStageChargeAt(

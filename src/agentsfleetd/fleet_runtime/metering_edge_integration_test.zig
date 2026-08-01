@@ -2,10 +2,10 @@
 // balanceCoversEstimate stop-gate boundary (the one-shot stage debit retired
 // with incremental metering; the gate is what remains at issue).
 //
-// computeStageCharge short-circuits to zero while the promotional free-trial
-// window is open (now_ms < FREE_TRIAL_END_MS), so platform token-cost and
-// stop-gate-block assertions branch on free_trial_active and only fire
-// post-trial — the same honest-in-both-eras shape used by metering_test.zig.
+// The trial boundary is a tenant fact (§7): each test closes its own tenant's
+// boundary via `base.endFreeTrialFor`, so the platform token-cost and
+// stop-gate-block assertions run unconditionally at any clock position — no
+// wall-clock date can put them to sleep.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -13,6 +13,8 @@ const pg = @import("pg");
 const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
+const model_rate_cache = @import("../state/model_rate_cache.zig");
+const clock = @import("common").clock;
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
@@ -34,13 +36,37 @@ fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
     base.teardownTenantById(conn, TENANT_ID);
 }
 
-fn trialActive(conn: *pg.Conn) !bool {
-    const b = (try tenant_billing.getBilling(conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(b.grant_source));
-    return b.free_trial_active;
+// Suite-private (provider, model) pair with real token rates: the one-nano-
+// below refusal needs a non-zero estimate floor, which neither the zero-rated
+// fixture platform pair nor an uncatalogued pair (fails OPEN) can provide.
+const RATE_PROVIDER = "metering-edge-provider";
+const RATE_MODEL = "metering-edge-model";
+const RATE_MODEL_UID = "0195b4ba-8d3a-7f13-8abc-fa0700000061";
+const RATE_INPUT_NANOS_PER_MTOK: i64 = 3_000_000;
+const RATE_CACHED_NANOS_PER_MTOK: i64 = 300_000;
+const RATE_OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000;
+const RATE_MODEL_CAP_TOKENS: i64 = 200_000;
+
+fn seedRatedModel(conn: *pg.Conn) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.model_library
+        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+        \\ON CONFLICT (provider, model_id) DO UPDATE SET
+        \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
+        \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
+        \\   updated_at_ms = EXCLUDED.updated_at_ms
+    , .{ RATE_MODEL_UID, RATE_MODEL, RATE_PROVIDER, RATE_MODEL_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, clock.nowMillis() });
 }
 
-test "should pass the stop gate for self_managed at zero balance (no upfront charge)" {
+fn teardownRatedModel(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM core.model_library WHERE provider = $1 AND model_id = $2", .{ RATE_PROVIDER, RATE_MODEL }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    model_rate_cache.clear();
+}
+
+test "integration: should pass the stop gate for self_managed at zero balance (no upfront charge)" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -52,7 +78,8 @@ test "should pass the stop gate for self_managed at zero balance (no upfront cha
     // receive (EVENT_NANOS=0) plus runFee(0)=0; tokens land on the user's own
     // provider. So a freshly provisioned zero balance still clears the gate; the
     // run fee is metered per renewal and refused at the next renewal once credit
-    // runs out.
+    // runs out. The trial is closed for this tenant so the zero comes from the
+    // self_managed branch genuinely, not from the trial short-circuit.
     const est_total = tenant_billing.computeReceiveCharge(.self_managed) +
         try billing_rates.computeStageCharge(
             db_ctx.conn,
@@ -63,10 +90,11 @@ test "should pass the stop gate for self_managed at zero balance (no upfront cha
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
             0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
-            null, // open-ended trial — these cases pin the gate, not the boundary
+            base.TRIAL_ENDED_AT_MS, // closed boundary — the zero must be self_managed's own
         );
     try std.testing.expectEqual(@as(i64, 0), est_total);
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, est_total, "test_gate_exact");
+    try base.endFreeTrialFor(db_ctx.conn, TENANT_ID);
 
     // balance == est_total == 0 → gate passes (>= comparison, not strict).
     try std.testing.expect(metering.balanceCoversEstimate(
@@ -80,7 +108,7 @@ test "should pass the stop gate for self_managed at zero balance (no upfront cha
     ));
 }
 
-test "should block the stop gate when balance is one nano below the estimate post-trial" {
+test "integration: should block the stop gate when balance is one nano below the estimate" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -90,38 +118,35 @@ test "should block the stop gate when balance is one nano below the estimate pos
 
     // Platform posture so the issue-time estimate (the token floor) is non-zero
     // and the refuse boundary is reachable; self_managed carries no upfront
-    // charge under the run-fee model. The cache must hold the platform model.
+    // charge under the run-fee model. Priced against this suite's rated pair —
+    // the fixture pair's zero token rates would leave the floor at 0.
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_GATE_UNDER);
     defer base.teardownPlatformProvider(db_ctx.conn, WS_GATE_UNDER);
+    try seedRatedModel(db_ctx.conn);
+    defer teardownRatedModel(db_ctx.conn);
 
     const est_total = tenant_billing.computeReceiveCharge(.platform) +
         try billing_rates.computeStageCharge(
             db_ctx.conn,
-            "anthropic",
+            RATE_PROVIDER,
             .platform,
-            "claude-sonnet-4-6",
+            RATE_MODEL,
             0, // elapsed_ms: issue-time estimate carries no run fee
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
             0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
-            null, // open-ended trial — these cases pin the gate, not the boundary
+            base.TRIAL_ENDED_AT_MS, // the boundary this tenant's row carries below
         );
-    // Provision the exact estimate first: the billing row must exist for the
-    // trial probe, and est_total is non-negative in both eras (0 while the
-    // trial zeroes the charge, the token floor after). seedPlatformProvider
-    // granted the starter balance and provision is idempotent — reset so
-    // est_total actually lands.
+    try std.testing.expect(est_total > 0);
+    // Provision the exact estimate, then close this tenant's trial (§7 — the
+    // boundary is a tenant fact, so the refusal asserts at any clock position).
+    // seedPlatformProvider granted the starter balance and provision is
+    // idempotent — reset so est_total actually lands.
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, est_total, "test_gate_under");
+    try base.endFreeTrialFor(db_ctx.conn, TENANT_ID);
 
-    // While the trial window is open est_total == 0, so "one nano below" is a
-    // negative balance the gate can't reach honestly — skip until post-trial.
-    // The block path is real; the fixture just can't drive it through the
-    // public charge while the gate is closed.
-    if (try trialActive(db_ctx.conn)) return error.SkipZigTest;
-
-    // Post-trial: drop exactly one nano below the estimate so the stop gate
-    // must refuse.
+    // Drop exactly one nano below the estimate so the stop gate must refuse.
     _ = try tenant_billing.debit(db_ctx.conn, TENANT_ID, 1);
 
     try std.testing.expect(!metering.balanceCoversEstimate(
@@ -129,8 +154,8 @@ test "should block the stop gate when balance is one nano below the estimate pos
         ALLOC,
         TENANT_ID,
         .platform,
-        "anthropic",
-        "claude-sonnet-4-6",
+        RATE_PROVIDER,
+        RATE_MODEL,
         .stop,
     ));
 }

@@ -6,13 +6,10 @@
 // affinity cursor to the reported cumulatives; a re-sent renewal with identical
 // cumulatives meters a zero-delta slice (cumulative-diff idempotency).
 //
-// Free-trial note: `resolveRenewSliceRates` returns all-zero rates while the
-// global free-trial window is open, so every charge prices to 0 until then —
-// the wire deltas, cursor advance, idempotency, and the settle flip asserted
-// here are rate-independent and prove the plumbing in both eras. The
-// token_cost identity asserts against the server's own resolved rates (zero in
-// trial, registry rates after), and the strict non-zero arm is trial-gated the
-// same way the credit-gate sibling skips. Requires LIVE_DB; skipped when
+// Free-trial note: the boundary is a tenant fact (§7). arrange() closes this
+// suite's tenant's trial, so the server prices every slice at the suite's own
+// registry rates and the token_cost identity plus the strict non-zero arms
+// assert unconditionally at any clock position. Requires LIVE_DB; skipped when
 // TEST_DATABASE_URL is unset.
 
 const std = @import("std");
@@ -26,7 +23,6 @@ const harness_mod = @import("../http/test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
-const tenant_billing = @import("../state/tenant_billing.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 
@@ -43,9 +39,8 @@ const MODEL_LIBRARY_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const EVENT_ID = "evt-wire-splits-1";
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "d" ** 64;
 // Suite-private (provider, model) pair with its own seeded core.model_library
-// row, so post-trial the registry resolves REAL non-zero rates for this lease
-// (the global test-provider pair has no catalogue row — resolution would fall
-// back to run-fee-only and the armed >0 assertions could never pass).
+// row, so the registry resolves REAL non-zero rates for this lease (the global
+// test-provider pair carries zero token rates — the >0 arms could never pass).
 const PROVIDER = "wire-split-provider";
 const MODEL = "wire-split-model";
 const RATE_INPUT_NANOS_PER_MTOK: i64 = 3_000_000;
@@ -185,6 +180,9 @@ fn arrange(cursor_in: i64, cursor_cached: i64, cursor_out: i64) !Setup {
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "service-splits-fleet", "{}", "# z");
     try seedRunner(conn);
     try seedBalance(conn);
+    // §7: an open trial prices every slice to zero; close this tenant's
+    // boundary so the wire proof carries the seeded registry rates.
+    try base.endFreeTrialFor(conn, base.TEST_TENANT_ID);
     try seedModelRates(conn);
     const last_metered = clock.nowMillis() - CURSOR_AGE_MS;
     try seedAffinity(conn, cursor_in, cursor_cached, cursor_out, last_metered);
@@ -198,24 +196,14 @@ fn cleanup(s: Setup) void {
     s.h.deinit();
 }
 
-fn freeTrialActive(conn: *pg.Conn) !bool {
-    const b = (try tenant_billing.getBilling(conn, ALLOC, base.TEST_TENANT_ID)) orelse return error.BillingRowMissing;
-    defer ALLOC.free(@constCast(b.grant_source));
-    return b.free_trial_active;
-}
-
 // The pure token term of a slice, priced via the SAME registry resolution the
-// handlers use (zero rates inside the free trial, registry rates after) —
-// sliceCharge with no elapsed run time isolates the token component.
-fn expectedTokenCost(conn: *pg.Conn, d_in: i64, d_cached: i64, d_out: i64) i64 {
-    const resolved = billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL, null, clock.nowMillis()) catch null;
-    const rates = resolved orelse
-        billing_rates.SliceRates{
-            .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC,
-            .input_nanos_per_mtok = 0,
-            .cached_input_nanos_per_mtok = 0,
-            .output_nanos_per_mtok = 0,
-        };
+// handlers use — sliceCharge with no elapsed run time isolates the token
+// component. Passes the closed boundary the tenant row carries; a missing
+// catalogue row is an error, never a silent zero-rate fallback that would let
+// a seeding regression read as a passing zero-cost identity.
+fn expectedTokenCost(conn: *pg.Conn, d_in: i64, d_cached: i64, d_out: i64) !i64 {
+    const rates = (try billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL, base.TRIAL_ENDED_AT_MS, clock.nowMillis())) orelse
+        return error.ModelNotPriced;
     const token_only = billing_rates.SliceRates{
         .run_nanos_per_sec = 0,
         .input_nanos_per_mtok = rates.input_nanos_per_mtok,
@@ -281,7 +269,6 @@ fn postRenew(h: *TestHarness, req_body: protocol.RenewRequest) !harness_mod.Resp
 test "integration: wire renew bills the body's splits, advances the cursor, and re-sends meter zero deltas" {
     const s = try arrange(0, 0, 0);
     defer cleanup(s);
-    const trial_active = try freeTrialActive(s.conn);
 
     // First renewal: the cumulative wire vector off a zero cursor.
     const resp = try postRenew(s.h, .{ .input_tokens = CUM_IN, .cached_input_tokens = CUM_CACHED, .output_tokens = CUM_OUT });
@@ -295,11 +282,10 @@ test "integration: wire renew bills the body's splits, advances the cursor, and 
     try std.testing.expectEqual(@as(i64, CUM_IN), slice1.d_in);
     try std.testing.expectEqual(@as(i64, CUM_CACHED), slice1.d_cached);
     try std.testing.expectEqual(@as(i64, CUM_OUT), slice1.d_out);
-    try std.testing.expectEqual(expectedTokenCost(s.conn, CUM_IN, CUM_CACHED, CUM_OUT), slice1.token_cost);
+    try std.testing.expectEqual(try expectedTokenCost(s.conn, CUM_IN, CUM_CACHED, CUM_OUT), slice1.token_cost);
     try std.testing.expectEqual(slice1.run_fee + slice1.token_cost, slice1.charged); // no clamp at BIG_BALANCE
-    // Post-trial the registry prices these deltas non-zero — the spec's wire
-    // proof arm, armed automatically once the free-trial window closes.
-    if (!trial_active) try std.testing.expect(slice1.token_cost > 0);
+    // The registry prices these deltas non-zero — the spec's wire proof arm.
+    try std.testing.expect(slice1.token_cost > 0);
 
     // The affinity cursor advanced to the reported cumulatives.
     const cursor = try readAffinityCursor(s.conn);
@@ -326,7 +312,6 @@ test "integration: wire report settles the final slice from the body's splits an
     // cumulatives settle exactly the remaining diff.
     const s = try arrange(CURSOR_IN, CURSOR_CACHED, CURSOR_OUT);
     defer cleanup(s);
-    const trial_active = try freeTrialActive(s.conn);
 
     const report = protocol.ReportRequest{
         .lease_id = LEASE_ID,
@@ -353,8 +338,8 @@ test "integration: wire report settles the final slice from the body's splits an
     try std.testing.expectEqual(@as(i64, SETTLE_D_IN), settle.d_in);
     try std.testing.expectEqual(@as(i64, SETTLE_D_CACHED), settle.d_cached);
     try std.testing.expectEqual(@as(i64, SETTLE_D_OUT), settle.d_out);
-    try std.testing.expectEqual(expectedTokenCost(s.conn, SETTLE_D_IN, SETTLE_D_CACHED, SETTLE_D_OUT), settle.token_cost);
-    if (!trial_active) try std.testing.expect(settle.token_cost > 0);
+    try std.testing.expectEqual(try expectedTokenCost(s.conn, SETTLE_D_IN, SETTLE_D_CACHED, SETTLE_D_OUT), settle.token_cost);
+    try std.testing.expect(settle.token_cost > 0);
 
     // The claim flipped the lease under the fence — the run is settled exactly once.
     try expectLeaseStatus(s.conn, "reported");
