@@ -150,8 +150,7 @@ fn storeDeltas(hx: Hx, conn: *pg.Conn, fleet_id: []const u8, deltas: []const pro
             log.warn("memory_push_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .stored = counts.stored, .cap = protocol.MAX_MEMORY_PUSH_BYTES });
             break;
         }
-        const id = h.genId(hx.alloc);
-        adapter.storeEntry(conn, id, fleet_id, d.key, d.content, d.category, ts_ms) catch {
+        adapter.storeEntry(conn, fleet_id, d.key, d.content, d.category, ts_ms) catch {
             metrics_memory.incMemoryPushFailure();
             log.warn("memory_store_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .fleet_id = fleet_id });
             hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory store failed");

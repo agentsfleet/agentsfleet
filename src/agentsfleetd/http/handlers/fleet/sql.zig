@@ -172,19 +172,19 @@ pub const SELECT_RUNNER_LEASE_CURSOR =
 /// separate read, and a live runner cannot be deleted out from under its leases.
 pub const DELETE_RUNNER_IF_IN_STATE =
     \\WITH current_row AS (
-    \\    SELECT uid, admin_state
+    \\    SELECT id, admin_state
     \\    FROM fleet.runners
     \\    WHERE id = $1::uuid
     \\), deleted AS (
     \\    DELETE FROM fleet.runners r
     \\    USING current_row c
-    \\    WHERE r.uid = c.uid AND c.admin_state = $2::text
-    \\    RETURNING r.uid::text
+    \\    WHERE r.id = c.id AND c.admin_state = $2::text
+    \\    RETURNING r.id::text
     \\)
-    \\SELECT d.uid, TRUE AS changed
+    \\SELECT d.id, TRUE AS changed
     \\FROM deleted d
     \\UNION ALL
-    \\SELECT c.uid::text, FALSE AS changed
+    \\SELECT c.id::text, FALSE AS changed
     \\FROM current_row c
     \\WHERE NOT EXISTS (SELECT 1 FROM deleted)
     \\LIMIT 1

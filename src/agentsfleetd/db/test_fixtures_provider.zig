@@ -74,9 +74,9 @@ pub fn seedPlatformProviderWithKey(
     defer alloc.free(caps_uid);
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens,
+        \\  (id, model_id, provider, context_cap_tokens,
         \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
-        \\   created_at_ms, updated_at_ms)
+        \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, $5, $5)
         \\ON CONFLICT (provider, model_id) DO NOTHING
     , .{ caps_uid, TEST_PLATFORM_MODEL, TEST_PROVIDER_NAME, TEST_PLATFORM_CAP_TOKENS, clock.nowMillis() });

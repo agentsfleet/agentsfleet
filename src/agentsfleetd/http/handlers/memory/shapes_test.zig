@@ -46,33 +46,6 @@ test "empty content (0 bytes) is rejected by len == 0 guard" {
     try std.testing.expectEqual(@as(usize, 0), empty.len);
 }
 
-// ── genId produces well-formed IDs ───────────────────────────────────────────
-
-test "genId returns non-empty string" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    try std.testing.expect(h.genId(arena.allocator()).len > 0);
-}
-
-test "genId format has exactly two hyphens (ts-hi-lo)" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const id = h.genId(arena.allocator());
-    var count: usize = 0;
-    for (id) |c| if (c == '-') {
-        count += 1;
-    };
-    try std.testing.expectEqual(@as(usize, 2), count);
-}
-
-test "two sequential genId calls produce distinct values" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const id1 = h.genId(arena.allocator());
-    const id2 = h.genId(arena.allocator());
-    try std.testing.expect(!std.mem.eql(u8, id1, id2));
-}
-
 // ── escapeLikePattern ────────────────────────────────────────────────────────
 
 test "escapeLikePattern plain string unchanged" {
@@ -145,15 +118,4 @@ test "tenant list empty result (total=0, items=[]) parses correctly" {
     defer p.deinit();
     try std.testing.expectEqual(@as(usize, 0), p.value.total);
     try std.testing.expectEqual(@as(usize, 0), p.value.items.len);
-}
-
-// ── Memory safety — helpers do not leak ──────────────────────────────────────
-
-test "200 genId calls via arena leave no leaks" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    var i: usize = 0;
-    while (i < 200) : (i += 1) {
-        try std.testing.expect(h.genId(arena.allocator()).len > 0);
-    }
 }

@@ -20,7 +20,7 @@ pub const REVISION_TABLE = "core.model_catalogue_revision";
 /// The four rate columns, optionally table-qualified.
 ///
 /// A joined read cannot reuse the unqualified list: `core.model_library` and
-/// `core.model_catalogue_revision` both carry `updated_at_ms`, so an unqualified
+/// `core.model_catalogue_revision` both carry `updated_at`, so an unqualified
 /// projection across the two is one added column away from an ambiguity error.
 /// Generating both spellings from one source keeps the qualified variant from
 /// drifting when a rate column is added.
@@ -49,14 +49,14 @@ const SELECT_LIBRARY_HEAD = "SELECT model_id, provider, ";
 
 /// Every catalogue row for the admin list, ordered by the (provider, model_id) identity.
 pub const LIST_ADMIN =
-    "SELECT uid::text, provider, model_id, " ++ RATE_COLUMNS ++
+    "SELECT id::text, provider, model_id, " ++ RATE_COLUMNS ++
     FROM_TABLE ++
     "\n ORDER BY provider, model_id";
 
-/// The catalogue as the authenticated library read serves it, plus updated_at_ms
+/// The catalogue as the authenticated library read serves it, plus updated_at
 /// per row (the max drives the response's version stamp).
 pub const LIST_LIBRARY =
-    SELECT_LIBRARY_HEAD ++ RATE_COLUMNS ++ ", updated_at_ms" ++
+    SELECT_LIBRARY_HEAD ++ RATE_COLUMNS ++ ", updated_at" ++
     FROM_TABLE ++
     "\n ORDER BY model_id";
 
@@ -94,24 +94,24 @@ const KEY_INDENT = "\n       ";
 
 /// The page order.
 ///
-/// The tiebreak is `uid`, NOT `(provider, model_id)`. Normalization is
+/// The tiebreak is `id`, NOT `(provider, model_id)`. Normalization is
 /// many-to-one, so two rows distinct in the table can share a display/vendor key
 /// pair after folding — a key that is unique before normalization is not unique
 /// in this sort, and a keyset whose last component can repeat either skips rows
 /// or loops on them.
 ///
-/// `uid` is ordered natively rather than as `uid::text COLLATE "C"`: for
+/// `id` is ordered natively rather than as `id::text COLLATE "C"`: for
 /// canonical lowercase UUIDs the two sequences are identical (the hex alphabet
 /// sorts the same by byte and by ASCII), and the cast would force a per-row
 /// conversion. Same reasoning as `tenant_model_entries/sql.zig`.
 const ORDER_BY_LIBRARY_KEYSET =
-    "\n ORDER BY " ++ DISPLAY_KEY ++ COLLATE_C_SEP ++ VENDOR_KEY ++ COLLATE_C_SEP ++ "uid";
+    "\n ORDER BY " ++ DISPLAY_KEY ++ COLLATE_C_SEP ++ VENDOR_KEY ++ COLLATE_C_SEP ++ "id";
 
 /// The page projection: the wire columns, plus the two normalized keys and the
-/// uid the next cursor is built from. `uid` never reaches `LibraryRow` — it is
+/// id the next cursor is built from. `id` never reaches `LibraryRow` — it is
 /// the sort tiebreak and rides the cursor opaquely, nothing more.
 const SELECT_LIBRARY_PAGE =
-    SELECT_LIBRARY_HEAD ++ RATE_COLUMNS ++ ", updated_at_ms, uid::text," ++
+    SELECT_LIBRARY_HEAD ++ RATE_COLUMNS ++ ", updated_at, id::text," ++
     KEY_INDENT ++ DISPLAY_KEY ++ " AS display_key," ++
     KEY_INDENT ++ VENDOR_KEY ++ " AS vendor_key" ++
     FROM_TABLE;
@@ -128,10 +128,10 @@ pub const LIST_LIBRARY_PAGE_FIRST =
 
 /// Resume after a cursor. The row-wise comparison is the seek predicate: strictly
 /// greater on the first key that differs, which is exactly the order above.
-/// `$2` display_key, `$3` vendor_key, `$4` uid, `$5` limit+1.
+/// `$2` display_key, `$3` vendor_key, `$4` id, `$5` limit+1.
 pub const LIST_LIBRARY_PAGE_AFTER =
     SELECT_LIBRARY_PAGE ++ WHERE_LIBRARY_FILTERS ++
-    "\n   AND (" ++ DISPLAY_KEY ++ COLLATE_C_SEP ++ VENDOR_KEY ++ COLLATE_C_SEP ++ "uid)" ++
+    "\n   AND (" ++ DISPLAY_KEY ++ COLLATE_C_SEP ++ VENDOR_KEY ++ COLLATE_C_SEP ++ "id)" ++
     "\n     > ($2::text" ++ COLLATE_C_SEP ++ "$3::text" ++ COLLATE_C_SEP ++ "$4::uuid)" ++
     ORDER_BY_LIBRARY_KEYSET ++ "\n LIMIT $5";
 
@@ -140,14 +140,14 @@ pub const LIST_LIBRARY_PAGE_AFTER =
 pub const CAP_FOR =
     "SELECT context_cap_tokens FROM " ++ TABLE ++ " WHERE provider = $1 AND model_id = $2 LIMIT 1";
 
-/// True-row probe: is the uid the (provider, model) the active
+/// True-row probe: is the id the (provider, model) the active
 /// platform_provider_defaults row resolves to? (The delete-guard.)
 pub const IS_REFERENCED_BY_ACTIVE_DEFAULT =
     "SELECT 1\n  FROM " ++ TABLE ++ " mc" ++
     \\
     \\  JOIN core.platform_provider_defaults plk
     \\    ON plk.provider = mc.provider AND plk.model = mc.model_id AND plk.active = true
-    \\ WHERE mc.uid = $1::uuid
+    \\ WHERE mc.id = $1::uuid
     \\ LIMIT 1
     ;
 
@@ -156,27 +156,27 @@ pub const IS_REFERENCED_BY_ACTIVE_DEFAULT =
 pub const INSERT_ROW =
     "INSERT INTO " ++ TABLE ++
     \\
-    \\  (uid, model_id, provider, context_cap_tokens,
+    \\  (id, model_id, provider, context_cap_tokens,
     \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
-    \\   created_at_ms, updated_at_ms)
+    \\   created_at, updated_at)
     \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
     \\ON CONFLICT (provider, model_id) DO NOTHING
     ;
 
-/// Update caps/rates of the row identified by uid. Affected 0 → no such uid
+/// Update caps/rates of the row identified by id. Affected 0 → no such id
 /// (caller → 404).
 pub const UPDATE_RATES =
     UPDATE_CLAUSE ++ TABLE ++
     \\
     \\   SET context_cap_tokens = $2, input_nanos_per_mtok = $3,
     \\       cached_input_nanos_per_mtok = $4, output_nanos_per_mtok = $5,
-    \\       updated_at_ms = $6
-    \\ WHERE uid = $1::uuid
+    \\       updated_at = $6
+    \\ WHERE id = $1::uuid
     ;
 
-/// Delete the row identified by uid. Affected 0 → no such uid (caller → 404).
+/// Delete the row identified by id. Affected 0 → no such id (caller → 404).
 pub const DELETE_BY_UID =
-    "DELETE FROM " ++ TABLE ++ " WHERE uid = $1::uuid";
+    "DELETE FROM " ++ TABLE ++ " WHERE id = $1::uuid";
 
 /// One model's rate PLUS the catalogue generation it is read at, in ONE
 /// statement (model_rate_cache.zig).
@@ -256,6 +256,6 @@ pub const LOCK_REVISION = SELECT_REVISION ++ " FOR UPDATE";
 /// application boundary — exactly the lost update the lock prevents.
 pub const BUMP_REVISION =
     UPDATE_CLAUSE ++ REVISION_TABLE ++
-    "\n   SET revision = revision + 1, updated_at_ms = $1" ++
+    "\n   SET revision = revision + 1, updated_at = $1" ++
     "\n" ++ WHERE_SINGLETON ++
     "\nRETURNING revision";

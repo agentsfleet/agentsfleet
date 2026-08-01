@@ -47,7 +47,7 @@ pub fn seed(alloc: std.mem.Allocator, conn: *pg.Conn, webhook_secret: []const u8
     const scopes: []const []const u8 = &.{};
     _ = try conn.exec(
         \\INSERT INTO core.connector_installs
-        \\  (uid, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
+        \\  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::text[], $7, $7)
         \\ON CONFLICT (provider, external_account_id) DO UPDATE SET workspace_id = EXCLUDED.workspace_id, updated_at = EXCLUDED.updated_at
     , .{ INSTALL_UID, PROVIDER, INSTALLATION_ID, WORKSPACE_ID, "", scopes, now });
