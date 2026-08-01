@@ -1,0 +1,65 @@
+name: Set up Bun + Playwright browsers
+description: >
+  The one Bun + Playwright preamble every DEV acceptance job uses: pin Bun,
+  install dependencies BEFORE any secret is loaded (uniform posture — no
+  postinstall script ever sees a loaded secret), resolve the Playwright
+  version, restore the browser cache keyed on real inputs only, and install
+  Chromium (with system deps only on a cache miss). Extracted from three
+  near-identical copies in deploy-dev.yml; drift between them is what this
+  action exists to prevent.
+
+inputs:
+  working-directory:
+    description: Bun project directory (owns the Playwright dependency)
+    required: true
+  cache-prefix:
+    description: Cache key namespace (e.g. playwright-app, playwright-agentsfleet)
+    required: true
+  lock-file:
+    description: Lockfile path (from repo root) whose hash keys the cache
+    required: true
+  bun-version:
+    description: Bun toolchain pin
+    required: false
+    default: 1.3.14
+
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    - name: Install dependencies (BEFORE any secret load)
+      shell: bash
+      run: bun install --frozen-lockfile
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Resolve Playwright version
+      id: playwright-version
+      shell: bash
+      run: |
+        PLAYWRIGHT_VERSION="$(bunx playwright --version | awk '{print $2}')"
+        test -n "$PLAYWRIGHT_VERSION"
+        echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Restore Playwright browser cache
+      id: playwright-cache
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/ms-playwright
+        # Real inputs only: the project's lockfile plus the Playwright version
+        # whose browser build the cache stores. Exact match or a fresh install
+        # — no fallback prefixes, never a silently stale partial restore.
+        key: ${{ runner.os }}-${{ inputs.cache-prefix }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles(inputs.lock-file) }}
+
+    - name: Install Playwright browsers
+      shell: bash
+      run: |
+        if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+          bunx playwright install chromium
+        else
+          bunx playwright install --with-deps chromium
+        fi
+      working-directory: ${{ inputs.working-directory }}
