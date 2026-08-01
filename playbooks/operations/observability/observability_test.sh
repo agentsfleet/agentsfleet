@@ -102,7 +102,13 @@ if [ "$write_status" -eq 1 ]; then
 fi
 STUB
 
-chmod +x "$stub_dir/op" "$stub_dir/curl"
+cat >"$stub_dir/rg" <<'STUB'
+#!/usr/bin/env bash
+echo "ERROR: production playbooks must not require rg" >&2
+exit 127
+STUB
+
+chmod +x "$stub_dir/op" "$stub_dir/curl" "$stub_dir/rg"
 
 run_script() {
   : >"$calls"
@@ -120,7 +126,7 @@ run_script() {
 test_should_validate_assets() {
   local name="test_should_validate_assets"
   local output status=0
-  output="$(bash "$PROVIDER_DIR/assets_check.sh")" || status=$?
+  output="$(run_script bash "$PROVIDER_DIR/assets_check.sh")" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
   else
