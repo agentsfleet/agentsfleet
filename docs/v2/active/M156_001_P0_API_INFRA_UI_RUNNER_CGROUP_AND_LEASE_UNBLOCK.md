@@ -250,7 +250,7 @@ No product analytics event is added, renamed, or removed; the dashboard change i
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ listed-not-changed: none / changed-not-listed: none |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 (`make test-unit-all`) |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `All lint checks passed` |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 — `Full integration suite passed` |
 | S5 | No leaks | `make memleak` | exit 0 | P0 | |
 | S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ exit 0 both targets; linux test graph 0 compile errors |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ exit 0 |
