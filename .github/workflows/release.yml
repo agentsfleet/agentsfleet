@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  # ── 0a. Credential gate — all PROD vault items must exist ─────────────────
+  # ── 0a. Credential gate — initial PROD deployment inputs must exist ───────
   check-credentials:
     runs-on: ubuntu-latest
     steps:
@@ -22,9 +22,9 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ENV=prod ./playbooks/founding/02_preflight/00_gate.sh
+        run: ENV=prod STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
 
-  # ── 0b. Tag / version contract ─────────────────────────────────────────
+  # ── 0b. Tag and version agreement ───────────────────────────────────────
   verify-tag:
     runs-on: ubuntu-latest
     needs: check-credentials
@@ -269,8 +269,8 @@ jobs:
   # ── 3. CLI: publish @agentsfleet/cli to npm ─────────────────────────
   # Tag lifecycle:
   #   - Release publishes to `next` dist-tag (--tag next)
-  #   - After acceptance testing, promote manually:
-  #     npm dist-tag add @agentsfleet/cli@<ver> latest
+  #   - Post-Release Verification installs the exact version on every target
+  #     and promotes it to `latest` only after live production acceptance
   #   - Users installing without a tag pin (`npm install -g @agentsfleet/cli`)
   #     resolve `latest`, not `next`
   npm:
@@ -390,8 +390,11 @@ jobs:
           GRAFANA_OTLP_ENDPOINT: op://${{ vars.VAULT_PROD }}/grafana-prod/otlp-endpoint
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_PROD }}/grafana-prod/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_PROD }}/grafana-prod/api-key
-          PLATFORM_ADMIN_WORKSPACE_ID: op://${{ vars.VAULT_PROD }}/agentsfleet-admin/platform_admin_workspace_id
           OIDC_ISSUER: op://${{ vars.VAULT_PROD }}/clerk-prod/issuer
+          R2_ACCOUNT_ID: op://${{ vars.VAULT_PROD }}/cloudflare-r2/account-id
+          R2_ACCESS_KEY_ID: op://${{ vars.VAULT_PROD }}/cloudflare-r2/access-key-id
+          R2_SECRET_ACCESS_KEY: op://${{ vars.VAULT_PROD }}/cloudflare-r2/secret-access-key
+          R2_BUCKET: op://${{ vars.VAULT_PROD }}/cloudflare-r2/bucket
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
@@ -407,13 +410,16 @@ jobs:
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
             CLERK_WEBHOOK_SECRET="$CLERK_WEBHOOK_SECRET" \
-            PLATFORM_ADMIN_WORKSPACE_ID="$PLATFORM_ADMIN_WORKSPACE_ID" \
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api.agentsfleet.net" \
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
+            R2_ACCOUNT_ID="$R2_ACCOUNT_ID" \
+            R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
+            R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+            R2_BUCKET="$R2_BUCKET" \
             --stage \
             --app "${{ vars.FLY_APP_PROD }}"
         env:
@@ -455,18 +461,35 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
-      - name: Ensure restart-policy always on prod machines
-        # Set restart-policy=always so Fly self-heals the machine on crash.
+      - name: Enforce PROD API machine count
         run: |
           APP="${{ vars.FLY_APP_PROD }}"
-          for MID in $(flyctl machine list --app "$APP" --json | jq -r '.[].id'); do
-            flyctl machine update "$MID" --restart always --app "$APP" --yes
+          DESIRED_API_MACHINES=3
+          flyctl scale count "$DESIRED_API_MACHINES" \
+            --app "$APP" \
+            --process-group app \
+            --yes
+
+          for attempt in $(seq 1 12); do
+            MACHINES="$(flyctl machine list --app "$APP" --json)"
+            TOTAL="$(printf '%s' "$MACHINES" | jq 'length')"
+            RUNNING="$(printf '%s' "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
+            echo "API machines (attempt $attempt/12): $RUNNING/$TOTAL running; expected $DESIRED_API_MACHINES"
+            if [ "$TOTAL" -eq "$DESIRED_API_MACHINES" ] && \
+               [ "$RUNNING" -eq "$DESIRED_API_MACHINES" ]; then
+              break
+            fi
+            sleep 5
           done
+
+          test "$TOTAL" -eq "$DESIRED_API_MACHINES"
+          test "$RUNNING" -eq "$DESIRED_API_MACHINES"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
       - name: Ensure cloudflared-prod tunnel is running
-        # cloudflared-prod bridges Cloudflare Edge to agentsfleetd-prod.internal:3000 over 6PN.
+        # cloudflared-prod bridges Cloudflare Edge to
+        # agentsfleetd-prod.internal:3000 over Fly's private IPv6 network (6PN).
         # If its machines are stopped/crashed, every /healthz poll returns status=000.
         # Restart stopped machines or deploy from scratch if no machines exist.
         # Sync TUNNEL_TOKEN from vault on every deploy so a rotated secret is always
@@ -522,9 +545,7 @@ jobs:
           fi
           curl -sf https://api.agentsfleet.net/readyz | jq -e '.ready == true'
 
-  # ── 7. Deploy: canary worker (first host) ───────────────────────────────
-  # Skips until production worker bootstrap is complete (M4_002).
-  # Enable by setting PROD_WORKER_READY=true in GitHub → Settings → Variables.
+  # ── 7. Deploy: canary runner (first host) ────────────────────────────────
   deploy-worker-canary-prod:
     runs-on: ubuntu-latest
     needs: deploy-fly-prod
@@ -534,7 +555,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Load PROD worker secrets from 1Password
+      - uses: actions/download-artifact@v8
+        with:
+          name: agentsfleet-runner-linux-amd64
+          path: dist
+
+      - name: Extract runner binary
+        run: tar -xzf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist
+
+      - name: Load Tailscale credentials from 1Password
         uses: 1password/load-secrets-action@v4
         with:
           export-env: true
@@ -542,52 +571,34 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
           TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
-          DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Parse canary host from fleet config
         id: canary
-        run: |
-          HOSTS='${{ vars.PROD_WORKER_HOSTS }}'
-          CANARY=$(echo "$HOSTS" | jq -r '.[0]')
-          {
-            echo "name=$(echo "$CANARY" | jq -r '.name')"
-            echo "host=$(echo "$CANARY" | jq -r '.host')"
-            echo "vault_key=$(echo "$CANARY" | jq -r '.vault_key')"
-            echo "fleet_count=$(echo "$HOSTS" | jq 'length')"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Load canary SSH key
-        uses: 1password/load-secrets-action@v4
-        with:
-          export-env: true
+        run: echo "vault_key=$(printf '%s' "$PROD_WORKER_HOSTS" | jq -er 'select(type == "array" and length > 0) | .[0].vault_key')" >> "$GITHUB_OUTPUT"
         env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          WORKER_SSH_KEY: op://${{ vars.VAULT_PROD }}/${{ steps.canary.outputs.vault_key }}/ssh-private-key
-          WORKER_DEPLOY_USER: op://${{ vars.VAULT_PROD }}/${{ steps.canary.outputs.vault_key }}/deploy-user
+          PROD_WORKER_HOSTS: ${{ vars.PROD_WORKER_HOSTS }}
 
       - name: Join Tailscale network
-        # Non-expiring Tailscale OAuth client (replaces the static authkey that
-        # hit Tailscale's 90-day cap). Mints an ephemeral tag:ci node per run.
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ env.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ env.TS_OAUTH_SECRET }}
           tags: tag:ci
 
-      - name: Deploy canary worker
+      - name: Deploy and verify canary runner
         run: |
-          KEY_FILE="$RUNNER_TEMP/worker-canary.key"
-          printf '%s\n' "$WORKER_SSH_KEY" > "$KEY_FILE"
-          chmod 600 "$KEY_FILE"
-          VERSION="${GITHUB_REF#refs/tags/}"
-          HOST="${{ steps.canary.outputs.host }}"
-          NAME="${{ steps.canary.outputs.name }}"
-
-          echo "Deploying canary: $NAME ($HOST) ..."
-          ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$WORKER_DEPLOY_USER@$HOST" \
-            "cd /opt/agentsfleet/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh runner $VERSION"
-          rm -f "$KEY_FILE"
-          echo "✓ Canary $NAME deployed"
+          ENV=prod \
+          WORKER_ITEM="${{ steps.canary.outputs.vault_key }}" \
+          RUNNER_BINARY=dist/agentsfleet-runner-linux-amd64 \
+          RUNNER_VERSION="${GITHUB_REF#refs/tags/}" \
+          VAULT_PROD="${{ vars.VAULT_PROD }}" \
+            ./playbooks/lib/runner/deploy.sh
+          ENV=prod \
+          WORKER_ITEM="${{ steps.canary.outputs.vault_key }}" \
+          VAULT_PROD="${{ vars.VAULT_PROD }}" \
+            ./playbooks/lib/runner/verify.sh
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
   # ── 8. Deploy: remaining fleet (with approval gate) ─────────────────────
   deploy-worker-fleet-prod:
@@ -599,7 +610,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Load PROD worker secrets from 1Password
+      - uses: actions/download-artifact@v8
+        with:
+          name: agentsfleet-runner-linux-amd64
+          path: dist
+
+      - name: Extract runner binary
+        run: tar -xzf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist
+
+      - name: Load Tailscale credentials from 1Password
         uses: 1password/load-secrets-action@v4
         with:
           export-env: true
@@ -607,11 +626,8 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
           TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
-          DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Join Tailscale network
-        # Non-expiring Tailscale OAuth client (replaces the static authkey that
-        # hit Tailscale's 90-day cap). Mints an ephemeral tag:ci node per run.
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ env.TS_OAUTH_CLIENT_ID }}
@@ -621,54 +637,25 @@ jobs:
       - name: Deploy remaining fleet sequentially
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          PROD_WORKER_HOSTS: ${{ vars.PROD_WORKER_HOSTS }}
         run: |
-          HOSTS='${{ vars.PROD_WORKER_HOSTS }}'
-          TOTAL=$(echo "$HOSTS" | jq 'length')
-          VERSION="${GITHUB_REF#refs/tags/}"
-          SUMMARY=""
-          FAILED=0
+          printf '%s' "$PROD_WORKER_HOSTS" |
+            jq -e 'type == "array" and length > 0' >/dev/null
+          mapfile -t workers < <(
+            printf '%s' "$PROD_WORKER_HOSTS" |
+              jq -r '.[1:][] | .vault_key'
+          )
 
-          # Skip index 0 (canary, already deployed)
-          for i in $(seq 1 $((TOTAL - 1))); do
-            ENTRY=$(echo "$HOSTS" | jq -r ".[$i]")
-            NAME=$(echo "$ENTRY" | jq -r '.name')
-            HOST=$(echo "$ENTRY" | jq -r '.host')
-            VAULT_KEY=$(echo "$ENTRY" | jq -r '.vault_key')
-
-            echo "Deploying $NAME ($HOST) [$((i+1))/$TOTAL] ..."
-            KEY_FILE="$RUNNER_TEMP/worker-${NAME}.key"
-            SSH_KEY=$(op read "op://${{ vars.VAULT_PROD }}/${VAULT_KEY}/ssh-private-key")
-            DEPLOY_USER=$(op read "op://${{ vars.VAULT_PROD }}/${VAULT_KEY}/deploy-user")
-            printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
-            chmod 600 "$KEY_FILE"
-
-            if ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$DEPLOY_USER@$HOST" \
-              "cd /opt/agentsfleet/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh runner $VERSION"; then
-              echo "✓ $NAME deployed"
-              SUMMARY="${SUMMARY}✅ ${NAME}\\n"
-            else
-              echo "✗ $NAME deploy failed"
-              SUMMARY="${SUMMARY}❌ ${NAME}\\n"
-              FAILED=$((FAILED + 1))
-            fi
-            rm -f "$KEY_FILE"
+          for worker in "${workers[@]}"; do
+            echo "Deploying $worker"
+            ENV=prod \
+            WORKER_ITEM="$worker" \
+            RUNNER_BINARY=dist/agentsfleet-runner-linux-amd64 \
+            RUNNER_VERSION="${GITHUB_REF#refs/tags/}" \
+            VAULT_PROD="${{ vars.VAULT_PROD }}" \
+              ./playbooks/lib/runner/deploy.sh
+            ENV=prod \
+            WORKER_ITEM="$worker" \
+            VAULT_PROD="${{ vars.VAULT_PROD }}" \
+              ./playbooks/lib/runner/verify.sh
           done
-
-          # Post fleet-level Discord summary
-          if [[ -n "${DISCORD_WEBHOOK_URL:-}" ]]; then
-            if [[ "$FAILED" -eq 0 ]]; then
-              COLOR=3066993
-              MSG="✅ **Fleet rollout complete** — ${VERSION}\\n${SUMMARY}"
-            else
-              COLOR=15158332
-              MSG="⚠️ **Fleet rollout partial** — ${VERSION} (${FAILED} failed)\\n${SUMMARY}"
-            fi
-            curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d "{\"embeds\":[{\"description\":\"$MSG\",\"color\":$COLOR}]}" \
-              || echo "Warning: Discord fleet summary failed (non-fatal)"
-          fi
-
-          if [[ "$FAILED" -gt 0 ]]; then
-            exit 1
-          fi

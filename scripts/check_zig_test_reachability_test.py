@@ -251,12 +251,10 @@ class TestMakeWiring(unittest.TestCase):
         self.assertIn("$(MAKE) _lint_zig_test_depth", test_unit_mk)
         self.assertIn(f"_lint_zig_test_depth: {CHECKER_TARGET}", self.reachability_mk)
 
-    def test_git_dependent_gates_fail_closed_on_an_empty_scan(self):
-        """The CI container runs as root over a runner-owned checkout, so plain git
-        exits 128 ("dubious ownership"). A `for f in $(git ...)` loop then iterates
-        nothing and the gate prints ✓ having inspected zero files — which is what
-        _zig_line_limit_check did in CI. Every git call takes -c safe.directory, and
-        every scan asserts it matched something."""
+    def test_repository_scans_fail_closed_on_an_empty_scan(self):
+        """Git-backed scans are safe in the Continuous Integration (CI) container,
+        while the playbook scan uses rg so untracked files are included. Both scans
+        must reject an empty result rather than claiming success over zero files."""
         for call in ("ls-files '*.zig'", "grep -hoE 'playbooks/"):
             self.assertNotIn(
                 f"git {call}",
@@ -268,7 +266,9 @@ class TestMakeWiring(unittest.TestCase):
         self.assertIn("listed zero Zig files", line_limit)
 
         playbooks = self.quality_mk.split("check-playbooks:")[1]
-        self.assertIn("git -c safe.directory='*' grep", playbooks)
+        self.assertIn("rg --hidden -o --no-filename", playbooks)
+        self.assertIn("--glob '!docs/v2/**'", playbooks)
+        self.assertIn("--glob '!.git/**'", playbooks)
         self.assertIn("matched nothing", playbooks)
 
 

@@ -14,6 +14,7 @@ import acceptanceConfig from "../playwright.acceptance.config";
 
 const REPO_ROOT = path.join(__dirname, "../../../..");
 const DEPLOY_DEV_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/deploy-dev.yml");
+const POST_RELEASE_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/post-release.yml");
 const SMOKE_POST_DEPLOY_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/smoke-post-deploy.yml");
 
 const RAW_RESULTS_DIR = "playwright-acceptance-results";
@@ -23,6 +24,10 @@ const PHANTOM_LOCK = "ui/packages/app/bun.lock";
 
 function deployDevYaml(): string {
   return fs.readFileSync(DEPLOY_DEV_WORKFLOW, "utf8");
+}
+
+function postReleaseYaml(): string {
+  return fs.readFileSync(POST_RELEASE_WORKFLOW, "utf8");
 }
 
 describe("browser cache and evidence in the deployment workflow", () => {
@@ -103,8 +108,32 @@ describe("the notification verdict consumes every gate", () => {
     expect(workflow).toContain('[ "$QA_RESULT" = success ]');
     expect(workflow).toContain('[ "$ACCEPTANCE_RESULT" = success ]');
     expect(workflow).toContain('[ "$CLI_RESULT" = success ]');
-    expect(workflow).toContain('[ "$WORKER_RESULT" = success ] || [ "$WORKER_RESULT" = skipped ]');
+    expect(workflow).toContain('[ "$WORKER_READY" = true ]');
+    expect(workflow).toContain('[ "$WORKER_RESULT" = success ]');
     expect(workflow).toContain("✅ DEV deploy green");
     expect(workflow).toContain("❌ DEV deploy not releasable");
+  });
+});
+
+describe("post-release promotion follows exact-version acceptance", () => {
+  it("pins installation and acceptance to the triggering release", () => {
+    const workflow = postReleaseYaml();
+    expect(workflow).toContain("ref: ${{ github.event.workflow_run.head_sha }}");
+    expect(workflow).toContain('test "$(npm view "@agentsfleet/cli@$VERSION" version)" = "$VERSION"');
+    expect(workflow).toContain(
+      "npm install -g @agentsfleet/cli@${{ needs.resolve-release.outputs.version }}",
+    );
+    expect(workflow).not.toContain("npm install -g @agentsfleet/cli@latest");
+  });
+
+  it("blocks latest promotion behind successful production acceptance", () => {
+    const workflow = postReleaseYaml();
+    expect(workflow).toContain("if: vars.PROD_WORKER_READY == 'true'");
+    expect(workflow).toContain("needs: [resolve-release, verify-npm, cli-acceptance-prod]");
+    expect(workflow).toContain('npm dist-tag add "@agentsfleet/cli@$VERSION" latest');
+
+    const promotion = workflow.split("  promote-latest:")[1]?.split("\n  summary:")[0];
+    expect(promotion).toBeDefined();
+    expect(promotion).not.toContain("if: always()");
   });
 });

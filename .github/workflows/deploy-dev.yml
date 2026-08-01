@@ -1,11 +1,7 @@
 name: deploy (dev)
 
-# Triggers on every push to main.
-# Flow: compile binaries (Debian bookworm container, matching runtime GLIBC)
-#       → push dev-latest image to GHCR
-#       → fly deploy agentsfleetd-dev (API)
-#       → SSH deploy zombie-dev-worker-ant (bare-metal worker, Tailscale)
-#       → wait /healthz green (via Cloudflare Tunnel) → QA smoke → Discord notify
+# A clean rebuild runs twice: first with DEV_WORKER_READY=false for the control
+# plane, then with it true after the runner bootstrap.
 
 on:
   push:
@@ -22,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── 0. Credential gate — all DEV vault items must exist ─────────────────
+  # ── 0. Credential gate — initial DEV deployment inputs must exist ───────
   check-credentials:
     runs-on: ubuntu-latest
     steps:
@@ -35,7 +31,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ENV=dev ./playbooks/founding/02_preflight/00_gate.sh
+        run: ENV=dev STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
 
   # ── 1a. Compile linux/amd64 binaries (Alpine — musl-native static OpenSSL) ─
   # Build inside Alpine so static OpenSSL archives are musl-compatible.
@@ -118,8 +114,11 @@ jobs:
           GRAFANA_OTLP_ENDPOINT: op://${{ vars.VAULT_DEV }}/grafana-dev/otlp-endpoint
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_DEV }}/grafana-dev/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_DEV }}/grafana-dev/api-key
-          PLATFORM_ADMIN_WORKSPACE_ID: op://${{ vars.VAULT_DEV }}/agentsfleet-admin/platform_admin_workspace_id
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
+          R2_ACCOUNT_ID: op://${{ vars.VAULT_DEV }}/cloudflare-r2/account-id
+          R2_ACCESS_KEY_ID: op://${{ vars.VAULT_DEV }}/cloudflare-r2/access-key-id
+          R2_SECRET_ACCESS_KEY: op://${{ vars.VAULT_DEV }}/cloudflare-r2/secret-access-key
+          R2_BUCKET: op://${{ vars.VAULT_DEV }}/cloudflare-r2/bucket
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
@@ -136,13 +135,16 @@ jobs:
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
             CLERK_WEBHOOK_SECRET="$CLERK_WEBHOOK_SECRET" \
-            PLATFORM_ADMIN_WORKSPACE_ID="$PLATFORM_ADMIN_WORKSPACE_ID" \
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api-dev.agentsfleet.net" \
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
+            R2_ACCOUNT_ID="$R2_ACCOUNT_ID" \
+            R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
+            R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+            R2_BUCKET="$R2_BUCKET" \
             --stage \
             --app "${{ vars.FLY_APP_DEV }}"
         env:
@@ -192,14 +194,10 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
-  # ── 3. Deploy DEV worker to bare-metal via Tailscale SSH ─────────────────
-  # Skips until zombie-dev-worker-ant bootstrap is complete (M4_001).
-  # Enable by setting DEV_WORKER_READY=true in GitHub → Settings → Variables.
+  # ── 3. Deploy DEV runner over Tailscale SSH ───────────────────────────────
   deploy-worker-dev:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # needs push-dev so the bare-metal worker and Fly.io API always move together:
-    # if Docker push fails the worker binary is not updated either, keeping DEV consistent.
     needs: [compile-dev, push-dev]
     if: vars.DEV_WORKER_READY == 'true'
     steps:
@@ -210,7 +208,7 @@ jobs:
           name: dev-binaries
           path: dist
 
-      - name: Load DEV worker secrets from 1Password
+      - name: Load Tailscale credentials from 1Password
         uses: 1password/load-secrets-action@v4
         with:
           export-env: true
@@ -218,94 +216,27 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
           TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
-          WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/ssh-private-key
-          WORKER_ANT_HOST: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/tailscale-hostname
-          WORKER_ANT_USER: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/deploy-user
-          DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Join Tailscale network
-        # Non-expiring Tailscale OAuth client (replaces the static authkey that
-        # hit Tailscale's 90-day cap). Mints an ephemeral tag:ci node per run.
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ env.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ env.TS_OAUTH_SECRET }}
           tags: tag:ci
 
-      # Section 3 hard-fails on /opt/agentsfleet/.env, and Section 4 is the script that
-      # writes it — so readiness gated on an artifact no CI step produced, and the job
-      # could never pass on a host that had not been hand-provisioned. Idempotent:
-      # re-running it rewrites the same env file from vault. It restarts an installed
-      # runner, or defers startup to deploy.sh when the binary is not installed yet.
-      - name: Provision runner env file from vault
-        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-
-      - name: Verify worker host readiness
-        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-
-      - name: Deploy runner to bare-metal
-        timeout-minutes: 8
+      - name: Deploy runner
         run: |
-          ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
-          printf '%s\n' "$WORKER_ANT_SSH_KEY" > "$ANT_KEY"
-          chmod 600 "$ANT_KEY"
-          SSH="ssh -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
-          SCP="scp -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15"
-          TARGET="${WORKER_ANT_USER}@${WORKER_ANT_HOST}"
-          VERSION="dev-${GITHUB_SHA::7}"
-
-          # Stage binaries, deploy script, and systemd units on the server
-          $SSH "$TARGET" "mkdir -p /opt/agentsfleet/bin /opt/agentsfleet/deploy"
-          $SCP dist/agentsfleet-runner-linux-amd64 "$TARGET:/opt/agentsfleet/bin/agentsfleet-runner"
-          $SCP deploy/baremetal/deploy.sh     "$TARGET:/opt/agentsfleet/deploy/deploy.sh"
-          $SCP deploy/baremetal/*.service     "$TARGET:/opt/agentsfleet/deploy/"
-          $SSH "$TARGET" "chmod +x /opt/agentsfleet/deploy/deploy.sh /opt/agentsfleet/bin/*"
-
-          # Log binary type and shared library deps for diagnostics
-          $SSH "$TARGET" "file /opt/agentsfleet/bin/agentsfleet-runner && ldd /opt/agentsfleet/bin/agentsfleet-runner 2>&1 || true"
-
-          # Write Discord webhook to server env file. deploy.sh sources this file
-          # at startup so the value never appears in sudo's argument list and stays
-          # out of ps/cmdline output. Cleanup runs in a separate always step below.
-          $SSH "$TARGET" "printf 'DISCORD_WEBHOOK_URL=%s\n' '$DISCORD_WEBHOOK_URL' > /opt/agentsfleet/.discord-env && chmod 600 /opt/agentsfleet/.discord-env"
-
-          # ── Diagnostics: verify sudo works without password prompt ──
-          echo "::group::sudo diagnostics"
-          $SSH "$TARGET" "echo 'ssh ok'; sudo -n true && echo 'sudo NOPASSWD ok' || echo 'FAIL: sudo requires password'"
-          $SSH "$TARGET" "sudo -n id && echo 'sudo id ok' || echo 'FAIL: sudo -n id failed'"
-          $SSH "$TARGET" "systemctl is-active agentsfleet-runner.service 2>&1 || echo 'runner: not active (first deploy?)'"
-          echo "::endgroup::"
-
-          # Deploy the runner. DRAIN_TIMEOUT=60 keeps drain within CI budget.
-          # deploy.sh sources /opt/agentsfleet/.discord-env for DISCORD_WEBHOOK_URL.
-          # NOTE: the runner needs the bootstrap pair in /etc/default/agentsfleet-runner:
-          #   AGENTSFLEET_API_URL, AGENTSFLEET_RUNNER_TOKEN (a pre-minted agt_r; Option B)
-          # — written by the "Provision runner env file from vault" step above
-          # (playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh),
-          # which deploy.sh then copies from /opt/agentsfleet/.env on every run.
-          # This job is enabled per repo variable DEV_WORKER_READY.
-          echo ">>> deploying runner..."
-          $SSH "$TARGET" \
-            "sudo DRAIN_TIMEOUT=60 /opt/agentsfleet/deploy/deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner"
-
-      - name: Verify delegated runner cgroup
-        run: REQUIRE_RUNNER_CGROUP_DELEGATION=1 VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh
+          RUNNER_BINARY=dist/agentsfleet-runner-linux-amd64 \
+          RUNNER_VERSION="dev-${GITHUB_SHA::7}" \
+          VAULT_DEV="${{ vars.VAULT_DEV }}" \
+            ./playbooks/founding/05_runner_bootstrap_dev/deploy.sh
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
-      - name: Clean up Discord env file on server
-        if: always()
-        run: |
-          ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
-          if [ -f "$ANT_KEY" ] && [ -n "${WORKER_ANT_USER:-}" ] && [ -n "${WORKER_ANT_HOST:-}" ]; then
-            ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-              "${WORKER_ANT_USER}@${WORKER_ANT_HOST}" "rm -f /opt/agentsfleet/.discord-env" || true
-          fi
-          rm -f "$ANT_KEY"
+      - name: Verify runner
+        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/05_runner_bootstrap_dev/00_gate.sh
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
   # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
   verify-dev:
@@ -324,8 +255,8 @@ jobs:
 
       - name: Ensure cloudflared-dev tunnel is running
         # cloudflared-dev is a separate Fly app that bridges Cloudflare Edge to
-        # agentsfleetd-dev.internal:3000 over 6PN. If its machines are stopped/crashed
-        # every /healthz poll returns status=000 (no route). Restart or deploy if needed.
+        # agentsfleetd-dev.internal:3000 over Fly's private IPv6 network (6PN).
+        # If its machines are stopped or crashed, /healthz has no route.
         # Sync TUNNEL_TOKEN from vault on every deploy so a rotated secret is always
         # pushed before we check tunnel health — prevents "Invalid tunnel secret" failures.
         run: |
@@ -360,10 +291,8 @@ jobs:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
       - name: Pre-warm agentsfleetd-dev machines
-        # min_machines_running is enforced eventually; auto_start_machines is
-        # a no-op for 6PN ingress (cloudflared bypasses the Fly proxy). Issue
-        # an explicit start to all machines before polling /healthz so the
-        # gate is deterministic instead of waiting on Fly to converge.
+        # Private 6PN ingress bypasses Fly's public proxy. Explicitly start all
+        # machines before polling /healthz so cold rebuilds are deterministic.
         run: |
           APP="${{ vars.FLY_APP_DEV }}"
           echo "Starting all machines for $APP..."
@@ -507,6 +436,7 @@ jobs:
   acceptance-e2e-dev:
     runs-on: ubuntu-latest
     needs: verify-dev
+    if: vars.DEV_WORKER_READY == 'true'
     # Hard release budget: the suite fails fast on a dead prerequisite (the
     # preflight project) and never retries deterministic failures, so a run
     # that needs more than 10 minutes IS a release-readiness failure.
@@ -604,14 +534,13 @@ jobs:
   # ── 4b. agentsfleet acceptance against api-dev ─────────────────────────────
   # Drives the published-shape CLI surface end-to-end against the freshly
   # deployed api-dev. Mirrors acceptance-e2e-dev's structure: load Clerk DEV
-  # credentials AFTER `bun install` (WS-E #C2 — postinstall sees no Clerk
-  # admin key). The lifecycle-after-login spec uses Playwright Chromium to
-  # drive the dashboard's /cli-auth/{session_id} handoff page (lands in
-  # the M65_001 sibling); skips automatically when AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL
-  # is unset.
+  # Credentials load after dependency installation so package scripts never
+  # receive the Clerk administrator key. Playwright drives the dashboard's
+  # /cli-auth/{session_id} handoff page.
   cli-acceptance-dev:
     runs-on: ubuntu-latest
     needs: verify-dev
+    if: vars.DEV_WORKER_READY == 'true'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
@@ -620,7 +549,7 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Install agentsfleet dependencies (BEFORE secret load — WS-E #C2)
+      - name: Install agentsfleet dependencies before loading secrets
         run: bun install --frozen-lockfile
         working-directory: cli
 
@@ -721,6 +650,7 @@ jobs:
           ACCEPTANCE_RESULT: ${{ needs.acceptance-e2e-dev.result }}
           CLI_RESULT: ${{ needs.cli-acceptance-dev.result }}
           WORKER_RESULT: ${{ needs.deploy-worker-dev.result }}
+          WORKER_READY: ${{ vars.DEV_WORKER_READY }}
           REF_NAME: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -729,8 +659,14 @@ jobs:
             echo "dev_release_acceptance_summary job=${entry%%=*} result=${entry#*=} commit=$SHORT_SHA"
           done
 
-          if [ "$QA_RESULT" = success ] && [ "$ACCEPTANCE_RESULT" = success ] && [ "$CLI_RESULT" = success ] \
-            && { [ "$WORKER_RESULT" = success ] || [ "$WORKER_RESULT" = skipped ]; }; then
+          if [ "$WORKER_READY" != true ] && [ "$QA_RESULT" = success ] \
+            && [ "$ACCEPTANCE_RESULT" = skipped ] && [ "$CLI_RESULT" = skipped ] \
+            && [ "$WORKER_RESULT" = skipped ]; then
+            COLOR=3066993
+            MESSAGE="✅ DEV control plane green — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nrunner-dependent jobs: intentionally skipped\\n→ complete runner bootstrap"
+          elif [ "$WORKER_READY" = true ] && [ "$QA_RESULT" = success ] \
+            && [ "$ACCEPTANCE_RESULT" = success ] && [ "$CLI_RESULT" = success ] \
+            && [ "$WORKER_RESULT" = success ]; then
             COLOR=3066993
             MESSAGE="✅ DEV deploy green — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: passed | acceptance-e2e: passed | cli-acceptance: passed | worker: ${WORKER_RESULT}\\n→ ready for tag release"
           else

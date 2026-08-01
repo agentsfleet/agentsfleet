@@ -1,134 +1,58 @@
-# Playbook 011: Database Teardown
+# Database Teardown
 
-## Purpose
+**Owners:** 🤠 Indy authorizes and types the target; 🦉 Orly executes and
+verifies.
+**Scope:** exactly one of development or production per run.
 
-Permanently delete all data from PlanetScale databases (DEV and/or PROD). This is a **destructive, irreversible operation** that removes all schemas and tables.
+This permanently drops every user-created schema and every table in `public`
+from the selected PlanetScale database. The gate reads the migrator connection
+string from 1Password, runs `teardown.sql` in `postgres:18-alpine`, and verifies
+the result.
 
-## When to Use
+## Before running
 
-- Complete database reset before re-migration
-- Cleaning up after testing in DEV
-- Emergency data purge (PROD - extreme caution)
+1. Stop traffic and every writer in the selected environment.
+2. Confirm Docker and authenticated 1Password Command-Line Interface (CLI)
+   access.
+3. Confirm the selected vault item has `migrator-connection-string`.
+4. Confirm the target with 🤠 Indy. Production approval is separate from
+   development approval.
 
-## Prerequisites
+## Execute
 
-1. Docker available for the psql container (`postgres:18-alpine`, pinned to match `03_verify.sh`)
-2. 1Password CLI access (desktop app integration or `OP_SERVICE_ACCOUNT_TOKEN`)
-3. Required environment approvals set
-
-## Required Environment Variables
-
-| Variable | Value | Purpose |
-|----------|-------|---------|
-| `ALLOW_DATABASE_TEARDOWN` | `1` | Approve destructive database operation |
-| `ENV` | `dev` / `prod` | Target environment (**must be explicit - no "all" allowed**) |
-
-## Usage
-
-### Check credentials only (dry run)
+Development:
 
 ```bash
-cd playbooks/operations/teardown/database
-ENV=dev ./01_credential_check.sh
+ALLOW_VAULT_READS=1 \
+ALLOW_DATABASE_TEARDOWN=1 \
+ENV=dev \
+  ./playbooks/operations/teardown/database/00_gate.sh
 ```
 
-### Teardown DEV
-
-**Must run separately from PROD for safety:**
+Production:
 
 ```bash
-cd playbooks/operations/teardown/database
-ALLOW_DATABASE_TEARDOWN=1 ENV=dev ./00_gate.sh
+ALLOW_VAULT_READS=1 \
+ALLOW_DATABASE_TEARDOWN=1 \
+ENV=prod \
+  ./playbooks/operations/teardown/database/00_gate.sh
 ```
 
-### Teardown PROD
+The gate rejects `ENV=all`, checks credentials, prompts for the full
+environment name, executes the teardown, and runs verification. It forwards
+the database URL to the container by environment name, so the credential does
+not appear in process arguments.
 
-**Must run separately from DEV for safety:**
+## What remains
 
-```bash
-cd playbooks/operations/teardown/database
-ALLOW_DATABASE_TEARDOWN=1 ENV=prod ./00_gate.sh
-```
+`teardown.sql` discovers user schemas from the catalog instead of maintaining
+a static schema list. It excludes PostgreSQL system schemas and
+PlanetScale-managed schemas. Database-level application roles remain because
+dropping schemas does not remove roles.
 
-### Teardown BOTH
+## After verification
 
-**No "all" option - intentional safety measure. Run separately:**
-
-```bash
-# First, teardown DEV
-ALLOW_DATABASE_TEARDOWN=1 ENV=dev ./00_gate.sh
-
-# Then, separately, teardown PROD  
-ALLOW_DATABASE_TEARDOWN=1 ENV=prod ./00_gate.sh
-```
-
-### Verify Teardown
-
-Check what objects remain after teardown:
-
-```bash
-ENV=dev ./03_verify.sh
-ENV=prod ./03_verify.sh
-```
-
-## Shared Teardown SQL
-
-The `teardown.sql` file in this directory is used by:
-- **This playbook** for PlanetScale teardown (via psql container)
-- **`make _reset-test-db`** for local test database reset
-
-This ensures consistency between local integration testing and production teardowns.
-
-## Safety Mechanisms
-
-1. **No "all" option**: Must explicitly target `ENV=dev` or `ENV=prod` separately - prevents accidental mass destruction
-2. **Explicit approval required**: `ALLOW_DATABASE_TEARDOWN=1` must be set
-3. **Typed confirmation**: Must type the environment name ("DEVELOPMENT" or "PRODUCTION") to proceed
-4. **Credential verification**: Checks 1Password items exist before attempting connection
-5. **Docker isolation**: Uses containerized psql - no local PostgreSQL installation required
-
-## What Gets Dropped
-
-The teardown drops these schemas and all their contents:
-
-- `core` - tenants, workspaces, agents, sessions, activity events
-- `billing` - entitlements, billing state, credit state
-- `agent` - agent-related tables
-- `audit` - audit trails, ops access events
-- `vault` - secrets, workspace skill secrets
-- `ops_ro` - readonly ops schema
-- `memory` - memory entries
-- All tables in `public` schema
-
-## Post-Teardown
-
-After teardown, you must re-run database migrations to restore the schema:
-
-```bash
-# For local development
-make migrate
-
-# For deployed environments
-# (Use the appropriate deployment playbook)
-```
-
-## Troubleshooting
-
-### "MISSING APPROVAL"
-
-Set the required environment variable:
-```bash
-export ALLOW_DATABASE_TEARDOWN=1
-```
-
-### Connection failures
-
-- Verify PlanetScale credentials in 1Password vaults (ZMB_CD_DEV / ZMB_CD_PROD)
-- Check network connectivity to PlanetScale hosts
-- Ensure Docker daemon is running
-
-## Security Notes
-
-- Connection strings are read dynamically from 1Password - never hardcoded
-- Passwords are passed via environment variables to containers (not command line)
-- No credentials are logged or persisted to disk
+Keep traffic stopped until the selected environment has been rebuilt and its
+migrations are green. Continue with founding step 04 for development or step
+07 for production. Do not use a production teardown as part of a routine
+deployment.
