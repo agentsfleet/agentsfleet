@@ -40,50 +40,47 @@ pub const SELECT_RUNNER_KEYSET_AFTER = RUNNER_KEYSET_COLS ++
 /// The single-runner operator read: the runner row plus a live-work summary and
 /// lifetime counters, all from durable state in one statement.
 ///
-/// The lease subquery aggregates the runner's whole lease history at read time,
-/// over the `(runner_id, created_at)` prefix slot 041 adds. Lifetime counting is
-/// the deliberate trade, but the cost shape differs from
-/// `core.fleet_activity_counters`, which is maintained incrementally at write
-/// time and read in constant time: this read grows with the runner's history,
-/// which the windowed-counter follow-up bounds. Succeeded and
-/// failed split on the joined Fleet event's terminal status, and only for
-/// leases the runner actually reported: an `expired` lease never inherits its
-/// successor's outcome, and a stale `active` row past its deadline counts as
-/// neither live nor expired until reclaim marks it.
+/// Lifetime tallies come from `fleet.runner_lifetime_counters`, maintained by
+/// the lease write paths in the same statements that write each transition —
+/// the read is a one-to-one join, constant in the runner's history (the shape
+/// `core.fleet_activity_counters` established). Only the live-now summary
+/// still looks at `fleet.runner_leases`, scoped to currently-active rows via
+/// the `(runner_id, status)` index — a set bounded by the worker count, never
+/// by history. The counters survive retention pruning: they count transitions,
+/// not surviving rows.
 ///
-/// `$1` runner id, `$2` active lease status, `$3` now_ms, `$4` reported lease
-/// status, `$5` processed event status, `$6` fleet_error event status,
-/// `$7` expired lease status.
+/// `$1` runner id, `$2` active lease status, `$3` now_ms.
 pub const SELECT_RUNNER_DETAIL =
     \\SELECT r.id::text, r.host_id, r.sandbox_tier, r.admin_state, r.labels::text,
     \\       r.last_seen_at, r.created_at,
     \\       COALESCE(s.active_count, 0), COALESCE(s.active_fleets, 0),
-    \\       COALESCE(s.acquired, 0), COALESCE(s.succeeded, 0),
-    \\       COALESCE(s.failed, 0), COALESCE(s.expired, 0),
+    \\       COALESCE(c.acquired, 0), COALESCE(c.succeeded, 0),
+    \\       COALESCE(c.failed, 0), COALESCE(c.expired, 0),
     \\       r.network_policy, r.registry_allowlist::text, r.worker_count,
     \\       r.capability_report::text, r.degraded, r.degraded_reason
     \\FROM fleet.runners r
     \\LEFT JOIN (
     \\    SELECT l.runner_id,
-    \\           COUNT(*) FILTER (WHERE l.status = $2 AND l.lease_expires_at > $3)::bigint AS active_count,
-    \\           COUNT(DISTINCT l.fleet_id) FILTER (WHERE l.status = $2 AND l.lease_expires_at > $3)::bigint AS active_fleets,
-    \\           COUNT(*)::bigint AS acquired,
-    \\           COUNT(*) FILTER (WHERE l.status = $4 AND e.status = $5)::bigint AS succeeded,
-    \\           COUNT(*) FILTER (WHERE l.status = $4 AND e.status = $6)::bigint AS failed,
-    \\           COUNT(*) FILTER (WHERE l.status = $7)::bigint AS expired
+    \\           COUNT(*)::bigint AS active_count,
+    \\           COUNT(DISTINCT l.fleet_id)::bigint AS active_fleets
     \\    FROM fleet.runner_leases l
-    \\    LEFT JOIN core.fleet_events e ON e.fleet_id = l.fleet_id AND e.event_id = l.event_id
-    \\    WHERE l.runner_id = $1::uuid
+    \\    WHERE l.runner_id = $1::uuid AND l.status = $2 AND l.lease_expires_at > $3
     \\    GROUP BY l.runner_id
     \\) s ON s.runner_id = r.id
+    \\LEFT JOIN fleet.runner_lifetime_counters c ON c.runner_id = r.id
     \\WHERE r.id = $1::uuid
 ;
 
 /// Existence probe plus the page-stable lease total in one round trip: no row
 /// means the runner id does not resolve (404), a row carries the count every
-/// page of the lease list reports as `total`.
+/// page of the lease list reports as `total`. The NULL-guarded `$2` scopes the
+/// total to one workspace when the list is filtered, so the pager and the rows
+/// always describe the same set. Retention bounds the per-runner row count the
+/// COUNT walks.
 pub const SELECT_RUNNER_LEASE_TOTAL =
-    \\SELECT (SELECT COUNT(*) FROM fleet.runner_leases l WHERE l.runner_id = r.id)::bigint
+    \\SELECT (SELECT COUNT(*) FROM fleet.runner_leases l
+    \\        WHERE l.runner_id = r.id
+    \\          AND ($2::uuid IS NULL OR l.workspace_id = $2::uuid))::bigint
     \\FROM fleet.runners r
     \\WHERE r.id = $1::uuid
 ;
@@ -99,7 +96,10 @@ pub const SELECT_RUNNER_LEASE_TOTAL =
 ///
 /// Both fleet joins are LEFT so a decode never fabricates: a missing event row
 /// reads as an unknown outcome, never a success.
-/// `$1` runner id, `$2` limit.
+///
+/// The NULL-guarded workspace parameter narrows the page to one workspace when
+/// the operator filters; unfiltered calls bind NULL and pay nothing.
+/// `$1` runner id, `$2` workspace id or NULL, `$3` limit.
 pub const SELECT_RUNNER_LEASE_PAGE_FIRST =
     \\SELECT l.id::text, l.fleet_id::text, f.name, l.workspace_id::text,
     \\       l.event_id, l.event_type, l.actor, l.status,
@@ -116,15 +116,16 @@ pub const SELECT_RUNNER_LEASE_PAGE_FIRST =
     \\LEFT JOIN core.fleets f ON f.id = l.fleet_id
     \\LEFT JOIN core.fleet_events e ON e.fleet_id = l.fleet_id AND e.event_id = l.event_id
     \\WHERE l.runner_id = $1::uuid
+    \\  AND ($2::uuid IS NULL OR l.workspace_id = $2::uuid)
     \\ORDER BY l.created_at DESC, l.id DESC
-    \\LIMIT $2
+    \\LIMIT $3
 ;
 
 /// The cursored continuation of `SELECT_RUNNER_LEASE_PAGE_FIRST`. The caller
 /// resolves `starting_after` (a lease id) to its `(created_at, id)` pair first;
 /// the row-value comparison then seeks strictly past it in the same composite
-/// order. `$1` runner id, `$2` boundary created_at, `$3` boundary lease id,
-/// `$4` limit.
+/// order. `$1` runner id, `$2` workspace id or NULL, `$3` boundary created_at,
+/// `$4` boundary lease id, `$5` limit.
 pub const SELECT_RUNNER_LEASE_PAGE_AFTER =
     \\SELECT l.id::text, l.fleet_id::text, f.name, l.workspace_id::text,
     \\       l.event_id, l.event_type, l.actor, l.status,
@@ -141,17 +142,24 @@ pub const SELECT_RUNNER_LEASE_PAGE_AFTER =
     \\LEFT JOIN core.fleets f ON f.id = l.fleet_id
     \\LEFT JOIN core.fleet_events e ON e.fleet_id = l.fleet_id AND e.event_id = l.event_id
     \\WHERE l.runner_id = $1::uuid
-    \\  AND (l.created_at, l.id) < ($2::bigint, $3::uuid)
+    \\  AND ($2::uuid IS NULL OR l.workspace_id = $2::uuid)
+    \\  AND (l.created_at, l.id) < ($3::bigint, $4::uuid)
     \\ORDER BY l.created_at DESC, l.id DESC
-    \\LIMIT $4
+    \\LIMIT $5
 ;
 
 /// Resolve a `starting_after` lease id to the composite sort key the page seek
 /// needs. Scoped to the runner so a lease id from another runner is refused
-/// rather than silently seeking into a foreign history.
+/// rather than silently seeking into a foreign history — and scoped to the
+/// SAME workspace filter the page carries (RULE KYS: a keyset cursor names a
+/// position in one ordered stream, and the filter is part of what defines it).
+/// Without `$3` a cursor taken from workspace A would resolve to A's timestamp
+/// and then seek B's page past it, silently dropping every B row newer than
+/// that instant. `$1` lease id, `$2` runner id, `$3` workspace id or NULL.
 pub const SELECT_RUNNER_LEASE_CURSOR =
     \\SELECT l.created_at FROM fleet.runner_leases l
     \\WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
+    \\  AND ($3::uuid IS NULL OR l.workspace_id = $3::uuid)
 ;
 
 // ── Operator-plane runner mutations ─────────────────────────────────────────

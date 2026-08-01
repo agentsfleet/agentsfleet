@@ -280,32 +280,9 @@ pub const RELEASE_AFFINITY_SLOT =
 
 // ── Lease row ───────────────────────────────────────────────────────────────
 
-/// Open a lease and record the event that opened it, atomically. Writing the
-/// lease and its audit trail in one statement means an observer can never see a
-/// lease with no corresponding event, or the reverse.
-pub const INSERT_LEASE_WITH_EVENT =
-    \\WITH inserted AS (
-    \\  INSERT INTO fleet.runner_leases
-    \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id,
-    \\   actor, event_type, request_json, event_created_at,
-    \\   posture, provider, model,
-    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
-    \\   fencing_token, lease_expires_at, status,
-    \\   created_at, updated_at)
-    \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-    \\        $7, $8, $9, $10, $11, $12, $13,
-    \\        0, 0, 0, $17,
-    \\        $14, $15, $16, $17, $17)
-    \\  RETURNING id, runner_id, fleet_id, event_id
-    \\)
-    \\INSERT INTO fleet.runner_events
-    \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-    \\SELECT $18::uuid, runner_id, $19::text, $17::bigint,
-    \\       jsonb_build_object($20::text, id::text, $21::text, fleet_id::text, $22::text, event_id, $23::text, $24::text),
-    \\       NULL, $17::bigint
-    \\FROM inserted
-;
-
+/// Split to a sibling for the file-length budget; re-exported so query text
+/// stays reachable through this module (RULE SQLMOD).
+pub const INSERT_LEASE_WITH_EVENT = @import("sql_lease_row.zig").INSERT_LEASE_WITH_EVENT;
 // ── Lease assignment ────────────────────────────────────────────────────────
 
 /// Eligible active fleets for one lease poll, sticky-first and bounded.

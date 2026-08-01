@@ -14,8 +14,15 @@
  * arrangement half runs as the regular tenant; the walk half re-signs-in as
  * the operator fixture — the only identity whose scopes open /admin surfaces.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { LEASE_OUTCOME, type RunnerLeaseResponse, type RunnerListResponse } from "@/lib/api/runners";
+import {
+  CLEAR_WORKSPACE_FILTER_LABEL,
+  LEASES_EMPTY_TITLE,
+  LEASES_TABLE_LABEL,
+  WORKSPACE_FILTER_PARAM,
+  WORKSPACE_LABEL,
+} from "@/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy";
 import { failureSentenceFor } from "@/lib/events/event-summary";
 import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor } from "./fixtures/api-client";
@@ -99,51 +106,89 @@ async function findFailedLease(fleetId: string): Promise<FailedLeaseLocation | n
   return null;
 }
 
+// Well-formed UUIDv7 that no workspace owns: the daemon refuses a MALFORMED
+// filter with a 400, but an unknown one must simply match nothing — an empty
+// page, never an error state (Dimension 1.2's other half, seen from the UI).
+const UNOWNED_WORKSPACE_ID = "01890a5d-ac96-774b-bcce-b302099a8057";
+
+// Mirror of the workspace cell's own truncation. Importing the constant would
+// drag a "use client" module — React and next/navigation with it — into the
+// Playwright process; the sibling unit test pins the two against each other.
+const WORKSPACE_ID_DISPLAY_CHARS = 8;
+function shortWorkspaceId(workspaceId: string): string {
+  return workspaceId.length > WORKSPACE_ID_DISPLAY_CHARS
+    ? `${workspaceId.slice(0, WORKSPACE_ID_DISPLAY_CHARS)}…`
+    : workspaceId;
+}
+
+// Each workspace cell carries its full id in `title`. A filtered page whose
+// rows disagree with the filter is exactly the bug this dimension exists to
+// catch — the chip rendering is not, on its own, proof the READ narrowed.
+async function expectEveryRowInWorkspace(table: Locator, workspaceId: string): Promise<void> {
+  const workspaceLinks = table.getByRole("link");
+  const count = await workspaceLinks.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index += 1) {
+    await expect(workspaceLinks.nth(index)).toHaveAttribute("title", workspaceId);
+  }
+}
+
+interface SeededFailedLease extends FailedLeaseLocation {
+  workspaceId: string;
+  fleetName: string;
+}
+
+// Arrange, as the regular tenant: a delivery that fails at startup, settled
+// onto whichever runner the scheduler picked. Both walks below start here —
+// each needs one failed lease, on a known runner, in a known workspace.
+async function seedFailedLease(page: Page): Promise<SeededFailedLease> {
+  const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+  const tag = Math.random().toString(36).slice(2, 8);
+  const name = `${FLEET_NAME_PREFIX}${tag}`;
+  const tenant = clientFor(FIXTURE_KEY.regular);
+  const library = await tenant.post<OnboardTemplateResp>(
+    `/v1/workspaces/${ws}/fleet-libraries`,
+    {
+      source_kind: SOURCE_KIND_UPLOAD,
+      skill_markdown: emptyBodySkillMd(name),
+      trigger_markdown: triggerMd(name),
+    },
+  );
+  const fleet = await tenant.post<CreateFleetResp>(`/v1/workspaces/${ws}/fleets`, {
+    tenant_library_id: library.id,
+    name,
+  });
+  await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.fleet_id);
+
+  await signInAs(page, FIXTURE_KEY.regular);
+  await page.goto(workspaceHref(ws, `fleets/${fleet.fleet_id}`));
+  await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.fleet_id}`));
+
+  const composer = page.getByLabel("Chat composer");
+  await expect(composer).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+  await composer.getByPlaceholder(/message this fleet/i).fill(`fail-${tag}`);
+  await composer.getByRole("button", { name: /send/i }).click();
+
+  // The settle proves the new operator-plane lease read end-to-end: the
+  // failed lease must surface through GET /v1/fleets/runners/{id}/leases.
+  let location: FailedLeaseLocation | null = null;
+  await expect
+    .poll(
+      async () => {
+        location = await findFailedLease(fleet.fleet_id);
+        return location !== null;
+      },
+      { timeout: LEASE_SETTLE_TIMEOUT_MS, intervals: [LEASE_POLL_INTERVAL_MS] },
+    )
+    .toBe(true);
+  return { ...location!, workspaceId: ws, fleetName: name };
+}
+
 test.describe("runner detail", () => {
   test("wall → detail → failed lease sentence → Review lease", async ({ page }) => {
     test.setTimeout(LEASE_SETTLE_TIMEOUT_MS + 120_000);
 
-    // ── Arrange: a delivery that fails at startup, as the regular tenant ──
-    const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const tag = Math.random().toString(36).slice(2, 8);
-    const name = `${FLEET_NAME_PREFIX}${tag}`;
-    const tenant = clientFor(FIXTURE_KEY.regular);
-    const library = await tenant.post<OnboardTemplateResp>(
-      `/v1/workspaces/${ws}/fleet-libraries`,
-      {
-        source_kind: SOURCE_KIND_UPLOAD,
-        skill_markdown: emptyBodySkillMd(name),
-        trigger_markdown: triggerMd(name),
-      },
-    );
-    const fleet = await tenant.post<CreateFleetResp>(`/v1/workspaces/${ws}/fleets`, {
-      tenant_library_id: library.id,
-      name,
-    });
-    await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.fleet_id);
-
-    await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(workspaceHref(ws, `fleets/${fleet.fleet_id}`));
-    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.fleet_id}`));
-
-    const composer = page.getByLabel("Chat composer");
-    await expect(composer).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await composer.getByPlaceholder(/message this fleet/i).fill(`fail-${tag}`);
-    await composer.getByRole("button", { name: /send/i }).click();
-
-    // The settle proves the new operator-plane lease read end-to-end: the
-    // failed lease must surface through GET /v1/fleets/runners/{id}/leases.
-    let location: FailedLeaseLocation | null = null;
-    await expect
-      .poll(
-        async () => {
-          location = await findFailedLease(fleet.fleet_id);
-          return location !== null;
-        },
-        { timeout: LEASE_SETTLE_TIMEOUT_MS, intervals: [LEASE_POLL_INTERVAL_MS] },
-      )
-      .toBe(true);
-    const { runnerId, hostId } = location!;
+    const { runnerId, hostId, fleetName: name } = await seedFailedLease(page);
 
     // ── Walk: the operator's triage path ──
     await signInAs(page, FIXTURE_KEY.operator);
@@ -177,6 +222,48 @@ test.describe("runner detail", () => {
     await expect(review.getByText("Fencing token")).toBeVisible();
     await expect(review.getByText(failureSentenceFor(EXPECTED_FAILURE_TAG))).toBeVisible();
     await expect(review.getByText(/request_json|request payload/i)).toHaveCount(0);
+  });
+
+  test("test_lease_table_workspace_filter_deep_link: the filter is addressable state", async ({
+    page,
+  }) => {
+    test.setTimeout(LEASE_SETTLE_TIMEOUT_MS + 120_000);
+
+    const { runnerId, workspaceId, fleetName } = await seedFailedLease(page);
+    await signInAs(page, FIXTURE_KEY.operator);
+
+    const detailPath = `/admin/runners/${runnerId}`;
+    const leases = page.getByRole("table", { name: LEASES_TABLE_LABEL });
+    const seededRow = leases.getByRole("row").filter({ hasText: fleetName });
+    const chip = page.getByText(`${WORKSPACE_LABEL} ${shortWorkspaceId(workspaceId)}`);
+
+    // ── Deep link: the URL alone puts the table in the filtered state ──
+    await page.goto(`${detailPath}?${WORKSPACE_FILTER_PARAM}=${workspaceId}`);
+    await expect(leases).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expect(chip).toBeVisible();
+    await expect(seededRow).toHaveCount(1);
+    await expectEveryRowInWorkspace(leases, workspaceId);
+
+    // ── Reload: the filter lives in the URL, not in component state ──
+    await page.reload();
+    await expect(leases).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expect(page).toHaveURL(
+      new RegExp(`[?&]${WORKSPACE_FILTER_PARAM}=${workspaceId}(&|$)`),
+    );
+    await expect(chip).toBeVisible();
+    await expect(seededRow).toHaveCount(1);
+
+    // ── Clearing is a navigation, so Back returns to the filtered feed ──
+    await page.getByRole("button", { name: CLEAR_WORKSPACE_FILTER_LABEL }).click();
+    await expect(page).toHaveURL(new RegExp(`${detailPath}$`), { timeout: RENDER_TIMEOUT_MS });
+    await expect(chip).toBeHidden();
+    await page.goBack();
+    await expect(chip).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+
+    // ── Negative: a well-formed id nobody owns is an empty page, not an error ──
+    await page.goto(`${detailPath}?${WORKSPACE_FILTER_PARAM}=${UNOWNED_WORKSPACE_ID}`);
+    await expect(page.getByText(LEASES_EMPTY_TITLE)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expect(seededRow).toHaveCount(0);
   });
 
   test.afterEach(async () => {

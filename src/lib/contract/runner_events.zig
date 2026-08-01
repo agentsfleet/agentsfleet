@@ -18,6 +18,16 @@ pub const RunnerEventType = enum {
     runner_policy_assigned,
 };
 
+/// The per-work tags: one `lease_acquired` + one `lease_released` per lease.
+/// They dominate the table by construction and restate what the lease row
+/// already carries, so retention prunes these and only these. The remaining
+/// tags are the runner's lifecycle history — the operator Activity feed's
+/// entire content, emitted per state transition rather than per unit of work —
+/// and are kept, or a runner enrolled before the window would render an empty
+/// feed forever. One definition, so a new per-work tag cannot be added without
+/// deciding which side it lands on.
+pub const PER_LEASE_EVENT_TYPES = [_]RunnerEventType{ .lease_acquired, .lease_released };
+
 pub const RunnerEventItem = struct {
     id: []const u8,
     runner_id: []const u8,

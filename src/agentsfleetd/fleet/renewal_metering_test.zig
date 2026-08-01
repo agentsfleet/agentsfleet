@@ -222,7 +222,7 @@ test "renews + settle sum to the real total (ms-precision, non-second-aligned)" 
     const t3 = ISSUE_MS + 60_000; // settle at report
     try std.testing.expect(try renewal.renew(s.conn, LEASE_ID, RUNNER_ID, t1, meterOf(300, 100, 200)) == .renewed);
     try std.testing.expect(try renewal.renew(s.conn, LEASE_ID, RUNNER_ID, t2, meterOf(700, 250, 500)) == .renewed);
-    _ = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, t3, meterOf(TEST_TOKEN_COUNT, 500, 800));
+    _ = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, t3, meterOf(TEST_TOKEN_COUNT, 500, 800), true);
 
     // Per-slice debits telescope to one slice over the full run (elapsed t3-ISSUE, final cumulatives).
     const total = billing_rates.sliceCharge(RATES, t3 - ISSUE_MS, 1000, 500, 800);
@@ -286,7 +286,7 @@ test "claim+settle on a never-renewed run flips reported + charges the whole sli
     // under the fence AND charges the full run as one final slice (the run
     // finished inside one renewal window, so it was never /renew'd).
 
-    const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(400, 0, 350));
+    const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(400, 0, 350), true);
     const expected = billing_rates.sliceCharge(RATES, NOW_MS - ISSUE_MS, 400, 0, 350);
 
     try std.testing.expect(out.claimed); // the active→reported flip won the fence
@@ -306,7 +306,7 @@ test "claim+settle is fenced: a superseded holder claims nothing and charges not
     // guard fails: no active→reported flip, no debit, no telemetry.
     try seedAffinity(s.conn, 9, 0, 0, 0, ISSUE_MS);
 
-    const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(400, 0, 350));
+    const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(400, 0, 350), true);
 
     try std.testing.expect(!out.claimed); // fenced out — the current holder wins
     try std.testing.expectEqual(@as(i64, 0), out.charged_nanos);
@@ -324,7 +324,7 @@ test "claim+settle on an already-reported lease claims nothing — no double-set
     // off the same cursor (double-charge). This pins that filter.
     try seedLease(s.conn, 1, "reported");
 
-    const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(400, 0, 350));
+    const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(400, 0, 350), true);
 
     try std.testing.expect(!out.claimed); // status ≠ active → no re-claim
     try std.testing.expectEqual(@as(i64, 0), out.charged_nanos); // no second slice
@@ -337,7 +337,7 @@ test "claim+settle clamps an exhausting final slice to the remaining balance" {
     defer cleanup(s);
     try seedBalance(s.conn, TEST_CHARGE_NANOS); // far below the slice the run will compute
 
-    const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(1000, 500, 800));
+    const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(1000, 500, 800), true);
 
     // The settle CTE's `LEAST(slice, balance)` clamp (moved with the FLL split):
     // the wallet floors at 0 and the ledger records the CLAMPED drain, not the

@@ -77,7 +77,7 @@ fn expectServesOrdering(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u
     defer _ = conn.exec("RESET enable_seqscan", .{}) catch |err|
         std.log.warn("reset enable_seqscan ignored: {s}", .{@errorName(err)});
 
-    const plan = try planOf(alloc, conn, sql);
+    const plan = try planOf(alloc, conn, sql, .{});
     defer alloc.free(plan);
     if (std.mem.indexOf(u8, plan, index_name) == null) {
         std.debug.print("expected index {s} in plan:\n{s}\n", .{ index_name, plan });

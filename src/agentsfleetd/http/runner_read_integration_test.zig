@@ -13,6 +13,12 @@ const TestHarness = harness_mod.TestHarness;
 const base = @import("../db/test_fixtures.zig");
 const protocol = @import("contract").protocol;
 const event_rows = @import("../fleet/event_rows.zig");
+const fleet_sql = @import("../fleet/sql.zig");
+const fleet_runner_events = @import("../fleet/runner_events.zig");
+const assign = @import("../fleet/assign.zig");
+const renewal_settle = @import("../fleet/renewal_settle.zig");
+const reclaim = @import("../fleet/reclaim.zig");
+const id_format = @import("../types/id_format.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -25,6 +31,10 @@ const WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc01";
 const FLEET_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc02";
 const FLEET_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc03";
 const FLEET_CASCADE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc04";
+// A second workspace (its own fleet) for the lease-list ownership filter.
+const WS_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc05";
+const FLEET_C = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc06";
+const AFFINITY_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc07";
 
 const R_LEASES = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc10";
 const R_COUNTS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc11";
@@ -33,7 +43,11 @@ const R_EMPTY = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc13";
 const R_SAME_MS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc14";
 const R_OUTCOME = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc15";
 const R_CASCADE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc16";
+const R_FILTER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc17";
+const R_CURSOR = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc18";
 const R_UNKNOWN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eccff";
+// Well-formed workspace id that no seed ever creates.
+const WS_UNKNOWN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eccfd";
 
 // A recognisable non-secret sentinel: the read must never emit the column.
 // Per-runner unique: fleet.runners carries UNIQUE(token_hash), so one shared
@@ -89,6 +103,7 @@ const LeaseSeed = struct {
     lease_expires_at: i64,
     created_at: i64,
     fencing_token: i64 = 1,
+    workspace_id: []const u8 = WS,
 };
 
 fn seedLease(conn: anytype, seed: LeaseSeed) !void {
@@ -104,10 +119,83 @@ fn seedLease(conn: anytype, seed: LeaseSeed) !void {
         \\        0, $8, $9, $10, $11, $11)
         \\ON CONFLICT (id) DO NOTHING
     , .{
-        seed.lease_id,         seed.runner_id, seed.fleet_id,          WS,
+        seed.lease_id,         seed.runner_id, seed.fleet_id,          seed.workspace_id,
         base.TEST_TENANT_ID,   seed.event_id,  SEEDED_REQUEST_PAYLOAD, seed.fencing_token,
         seed.lease_expires_at, seed.status,    seed.created_at,
     });
+}
+
+// ── Real write-path seeding (lifetime counters) ─────────────────────────────
+// The detail read's acquired/succeeded/failed/expired now come from
+// `fleet.runner_lifetime_counters`, which only the production lease statements
+// maintain — a bare row INSERT leaves no tally. Counter-asserting tests
+// therefore drive the real statements: acquire via INSERT_LEASE_WITH_EVENT,
+// settle via claimAndSettle, expire via reclaimPriorActive.
+
+/// Event ids whose settles write audit rows this suite must clear.
+const SETTLED_EVENT_PREFIX = "evt-life-";
+
+/// Fence anchor for FLEET_A: seq 1 ≤ every seeded fencing token, so each
+/// settle's guard holds and its tally arm is reached.
+fn seedAffinityFleetA(conn: anytype) !void {
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_affinity
+        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, 0, 0, 0, $4, 0, 0)
+        \\ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = 1
+    , .{ AFFINITY_A, FLEET_A, R_COUNTS, nowMs() });
+}
+
+const WriteLease = struct {
+    lease_id: []const u8,
+    runner_id: []const u8,
+    event_id: []const u8,
+    fencing_token: i64 = 1,
+    lease_expires_at: i64,
+};
+
+/// The production acquire statement with the exact bind order
+/// `service_lease_row.insertLeaseRow` uses — lease row, audit event, and the
+/// acquired tally land atomically.
+fn acquireLeaseViaWritePath(conn: anytype, w: WriteLease) !void {
+    const audit_uid = try id_format.generateUuidV7();
+    const audit_id: []const u8 = &audit_uid;
+    _ = try conn.exec(fleet_sql.INSERT_LEASE_WITH_EVENT, .{
+        w.lease_id,
+        w.runner_id,
+        FLEET_A,
+        WS,
+        base.TEST_TENANT_ID,
+        w.event_id,
+        "system",
+        "chat",
+        SEEDED_REQUEST_PAYLOAD,
+        nowMs(),
+        "metered",
+        "anthropic",
+        "claude",
+        w.fencing_token,
+        w.lease_expires_at,
+        protocol.RUNNER_LEASE_STATUS_ACTIVE,
+        nowMs(),
+        audit_id,
+        @tagName(protocol.RunnerEventType.lease_acquired),
+        fleet_runner_events.META_LEASE_ID,
+        fleet_runner_events.META_FLEET_ID,
+        fleet_runner_events.META_AGENTSFLEET_EVENT_ID,
+        fleet_runner_events.META_KIND,
+        @tagName(assign.Kind.fresh),
+    });
+}
+
+/// Expire FLEET_A's newest active lease through the production reclaim path,
+/// freeing the returned envelope (only the tally side effect matters here).
+fn expireLatestActiveFleetA(conn: anytype) !void {
+    const prior = (try reclaim.reclaimPriorActive(conn, ALLOC, FLEET_A)) orelse
+        return error.NoActiveLeaseToReclaim;
+    prior.deinit(ALLOC);
 }
 
 const EventSeed = struct {
@@ -138,7 +226,12 @@ fn seedWorkspaceAndFleets(conn: anytype) !void {
 }
 
 fn cleanup(conn: anytype) void {
-    const runner_ids = [_][]const u8{ R_LEASES, R_COUNTS, R_STALE, R_EMPTY, R_SAME_MS, R_OUTCOME, R_CASCADE };
+    // Settles through the real write path leave audit rows keyed by event id.
+    _ = conn.exec("DELETE FROM fleet.metering_periods WHERE event_id LIKE $1", .{SETTLED_EVENT_PREFIX ++ "%"}) catch |err|
+        std.log.warn("metering cleanup ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE event_id LIKE $1", .{SETTLED_EVENT_PREFIX ++ "%"}) catch |err|
+        std.log.warn("telemetry cleanup ignored: {s}", .{@errorName(err)});
+    const runner_ids = [_][]const u8{ R_LEASES, R_COUNTS, R_STALE, R_EMPTY, R_SAME_MS, R_OUTCOME, R_CASCADE, R_FILTER, R_CURSOR };
     for (runner_ids) |rid| {
         _ = conn.exec("DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{rid}) catch |err|
             std.log.warn("lease cleanup ignored: {s}", .{@errorName(err)});
@@ -147,6 +240,8 @@ fn cleanup(conn: anytype) void {
     }
     base.teardownFleets(conn, WS);
     base.teardownWorkspace(conn, WS);
+    base.teardownFleets(conn, WS_B);
+    base.teardownWorkspace(conn, WS_B);
     base.teardownTenant(conn);
 }
 
@@ -256,27 +351,39 @@ test "integration: test_runner_get_lifetime_counters_from_durable_state" {
     defer cleanup(conn);
     try seedWorkspaceAndFleets(conn);
     try seedRunner(conn, R_COUNTS, "runner-read-counts");
+    try seedAffinityFleetA(conn);
 
-    const settled_at = nowMs() - LIVE_WINDOW_MS;
-    // 4 reported leases whose events settled processed.
-    const processed_ids = [_][]const u8{
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd11",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd12",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd13",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd14",
+    // Seven leases through the REAL acquire statement (tallying acquired);
+    // ascending fencing tokens so the reclaims below expire the two newest.
+    const lease_pool = [_][]const u8{
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd31",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd32",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd33",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd34",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd35",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd36",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd37",
     };
-    for (processed_ids, 0..) |lease_id, i| {
-        const event_id = try std.fmt.allocPrint(ALLOC, "evt-life-ok-{d}", .{i});
+    const settled_at = nowMs() - LIVE_WINDOW_MS;
+    for (lease_pool, 0..) |lease_id, i| {
+        const event_id = try std.fmt.allocPrint(ALLOC, SETTLED_EVENT_PREFIX ++ "{d}", .{i});
         defer ALLOC.free(event_id);
-        try seedLease(conn, .{ .lease_id = lease_id, .runner_id = R_COUNTS, .fleet_id = FLEET_A, .event_id = event_id, .status = protocol.RUNNER_LEASE_STATUS_REPORTED, .lease_expires_at = settled_at, .created_at = LEASE_CREATED_BASE_MS + 10 + @as(i64, @intCast(i)) });
-        try seedFleetEvent(conn, .{ .fleet_id = FLEET_A, .event_id = event_id, .status = event_rows.STATUS_PROCESSED });
+        try acquireLeaseViaWritePath(conn, .{
+            .lease_id = lease_id,
+            .runner_id = R_COUNTS,
+            .event_id = event_id,
+            .fencing_token = @as(i64, @intCast(i + 1)),
+            .lease_expires_at = settled_at,
+        });
     }
-    // 1 reported lease whose event settled fleet_error.
-    try seedLease(conn, .{ .lease_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd15", .runner_id = R_COUNTS, .fleet_id = FLEET_A, .event_id = "evt-life-bad", .status = protocol.RUNNER_LEASE_STATUS_REPORTED, .lease_expires_at = settled_at, .created_at = LEASE_CREATED_BASE_MS + 20 });
-    try seedFleetEvent(conn, .{ .fleet_id = FLEET_A, .event_id = "evt-life-bad", .status = event_rows.STATUS_FLEET_ERROR, .failure_label = "oom_kill", .failure_detail = FAILURE_DETAIL_OOM });
-    // 2 expired leases.
-    try seedLease(conn, .{ .lease_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd16", .runner_id = R_COUNTS, .fleet_id = FLEET_B, .event_id = "evt-life-exp-1", .status = protocol.RUNNER_LEASE_STATUS_EXPIRED, .lease_expires_at = settled_at, .created_at = LEASE_CREATED_BASE_MS + 21 });
-    try seedLease(conn, .{ .lease_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd17", .runner_id = R_COUNTS, .fleet_id = FLEET_B, .event_id = "evt-life-exp-2", .status = protocol.RUNNER_LEASE_STATUS_EXPIRED, .lease_expires_at = settled_at, .created_at = LEASE_CREATED_BASE_MS + 22 });
+    // Four settle succeeded, one failed — the exactly-once tally rides the
+    // claim CTE; two expire through the reclaim statement's tally arm.
+    for (lease_pool[0..4]) |lease_id| {
+        try std.testing.expect((try renewal_settle.claimAndSettle(conn, lease_id, R_COUNTS, nowMs(), .{}, true)).claimed);
+    }
+    try std.testing.expect((try renewal_settle.claimAndSettle(conn, lease_pool[4], R_COUNTS, nowMs(), .{}, false)).claimed);
+    try expireLatestActiveFleetA(conn);
+    try expireLatestActiveFleetA(conn);
 
     const path = try runnerPath(R_COUNTS);
     defer ALLOC.free(path);
@@ -287,6 +394,8 @@ test "integration: test_runner_get_lifetime_counters_from_durable_state" {
     try std.testing.expect(resp.bodyContains("\"leases_succeeded\":4"));
     try std.testing.expect(resp.bodyContains("\"leases_failed\":1"));
     try std.testing.expect(resp.bodyContains("\"leases_expired\":2"));
+    // Every lease reached a terminal state, so the live-now summary is empty.
+    try std.testing.expect(resp.bodyContains("\"active_lease_count\":0"));
 }
 
 test "integration: test_runner_get_stale_active_lease_is_not_live" {
@@ -298,8 +407,15 @@ test "integration: test_runner_get_stale_active_lease_is_not_live" {
     try seedWorkspaceAndFleets(conn);
     try seedRunner(conn, R_STALE, "runner-read-stale");
 
-    // Deadline passed, row still active: neither live nor expired.
-    try seedLease(conn, .{ .lease_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd21", .runner_id = R_STALE, .fleet_id = FLEET_A, .event_id = "evt-stale-1", .status = protocol.RUNNER_LEASE_STATUS_ACTIVE, .lease_expires_at = nowMs() - LIVE_WINDOW_MS, .created_at = LEASE_CREATED_BASE_MS + 30 });
+    // Acquired through the real write path (so the counter row exists), then
+    // its deadline passes while the row stays active: neither live nor
+    // expired — only reclaim, not the clock, moves the expired tally.
+    try acquireLeaseViaWritePath(conn, .{
+        .lease_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd21",
+        .runner_id = R_STALE,
+        .event_id = SETTLED_EVENT_PREFIX ++ "stale-1",
+        .lease_expires_at = nowMs() - LIVE_WINDOW_MS,
+    });
 
     const path = try runnerPath(R_STALE);
     defer ALLOC.free(path);
@@ -597,6 +713,188 @@ test "integration: test_runner_leases_deleted_fleet_cascades_out" {
     try resp.expectStatus(.ok);
     try std.testing.expect(resp.bodyContains("\"items\":[]"));
     try std.testing.expect(resp.bodyContains("\"total\":0"));
+}
+
+// ── Workspace ownership filter over the lease list ──────────────────────────
+
+const FILTER_EVENT_PREFIX = "evt-flt-";
+
+test "integration: test_runner_leases_workspace_filter_scopes_rows_and_total" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    try base.seedWorkspace(conn, WS_B);
+    try base.seedFleet(conn, FLEET_C, WS_B, "runner-read-fleet-c", "{}", "");
+    try seedRunner(conn, R_FILTER, "runner-read-filter");
+
+    // One runner serving two workspaces: three leases in the first, two in
+    // the second. The filter must scope BOTH the rows and the pager's total
+    // to one workspace, so a page never disagrees with its own count.
+    const ws_a_pool = [_][]const u8{
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf01",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf02",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf03",
+    };
+    for (ws_a_pool, 0..) |lease_id, i| {
+        const event_id = try std.fmt.allocPrint(ALLOC, FILTER_EVENT_PREFIX ++ "a-{d}", .{i});
+        defer ALLOC.free(event_id);
+        try seedLease(conn, .{ .lease_id = lease_id, .runner_id = R_FILTER, .fleet_id = FLEET_A, .event_id = event_id, .status = protocol.RUNNER_LEASE_STATUS_EXPIRED, .lease_expires_at = LEASE_CREATED_BASE_MS, .created_at = LEASE_CREATED_BASE_MS + @as(i64, @intCast(i)) * LEASE_CREATED_STEP_MS });
+    }
+    const ws_b_pool = [_][]const u8{
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf04",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf05",
+    };
+    for (ws_b_pool, 0..) |lease_id, i| {
+        const event_id = try std.fmt.allocPrint(ALLOC, FILTER_EVENT_PREFIX ++ "b-{d}", .{i});
+        defer ALLOC.free(event_id);
+        try seedLease(conn, .{ .lease_id = lease_id, .runner_id = R_FILTER, .fleet_id = FLEET_C, .workspace_id = WS_B, .event_id = event_id, .status = protocol.RUNNER_LEASE_STATUS_EXPIRED, .lease_expires_at = LEASE_CREATED_BASE_MS, .created_at = LEASE_CREATED_BASE_MS + (10 + @as(i64, @intCast(i))) * LEASE_CREATED_STEP_MS });
+    }
+
+    const filtered_a = try fetchLeases(h, R_FILTER, "workspace_id=" ++ WS);
+    defer filtered_a.deinit();
+    const obj_a = filtered_a.value.object;
+    const items_a = obj_a.get("items").?.array;
+    try std.testing.expectEqual(@as(usize, ws_a_pool.len), items_a.items.len);
+    try std.testing.expectEqual(@as(i64, ws_a_pool.len), obj_a.get("total").?.integer);
+    for (items_a.items) |item| {
+        try std.testing.expectEqualStrings(WS, item.object.get("workspace_id").?.string);
+    }
+
+    const filtered_b = try fetchLeases(h, R_FILTER, "workspace_id=" ++ WS_B);
+    defer filtered_b.deinit();
+    const obj_b = filtered_b.value.object;
+    try std.testing.expectEqual(@as(usize, ws_b_pool.len), obj_b.get("items").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, ws_b_pool.len), obj_b.get("total").?.integer);
+    for (obj_b.get("items").?.array.items) |item| {
+        try std.testing.expectEqualStrings(WS_B, item.object.get("workspace_id").?.string);
+    }
+
+    // Unfiltered, the same runner still reports its whole history.
+    const unfiltered = try fetchLeases(h, R_FILTER, null);
+    defer unfiltered.deinit();
+    const obj_all = unfiltered.value.object;
+    try std.testing.expectEqual(@as(usize, ws_a_pool.len + ws_b_pool.len), obj_all.get("items").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, ws_a_pool.len + ws_b_pool.len), obj_all.get("total").?.integer);
+}
+
+// Workspace A's two leases are OLDER than workspace B's two, so a cursor
+// carried across the filter boundary lands past everything B holds.
+const CURSOR_A_OLDER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf21";
+const CURSOR_A_NEWER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf22";
+const CURSOR_B_OLDER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf23";
+const CURSOR_B_NEWER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf24";
+const CURSOR_EVENT_PREFIX = "evt-cur-";
+/// Steps that put B's pair strictly after A's in the newest-first stream.
+const CURSOR_B_STEP_OFFSET: i64 = 10;
+
+fn seedCursorLease(conn: anytype, lease_id: []const u8, fleet_id: []const u8, workspace_id: []const u8, event_suffix: []const u8, step: i64) !void {
+    const event_id = try std.fmt.allocPrint(ALLOC, CURSOR_EVENT_PREFIX ++ "{s}", .{event_suffix});
+    defer ALLOC.free(event_id);
+    try seedLease(conn, .{
+        .lease_id = lease_id,
+        .runner_id = R_CURSOR,
+        .fleet_id = fleet_id,
+        .workspace_id = workspace_id,
+        .event_id = event_id,
+        .status = protocol.RUNNER_LEASE_STATUS_EXPIRED,
+        .lease_expires_at = LEASE_CREATED_BASE_MS,
+        .created_at = LEASE_CREATED_BASE_MS + step * LEASE_CREATED_STEP_MS,
+    });
+}
+
+test "integration: test_runner_leases_cursor_is_scoped_to_the_workspace_filter" {
+    // RULE KYS: a keyset cursor names a position in ONE ordered stream, and the
+    // workspace filter is part of what defines that stream. Resolving the
+    // boundary on (id, runner_id) alone let a cursor from workspace A seek
+    // workspace B's page past A's timestamp — B's newer rows vanished from the
+    // page while `total` still counted them. Refusing the foreign cursor is the
+    // only answer that cannot silently drop rows.
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    try base.seedWorkspace(conn, WS_B);
+    try base.seedFleet(conn, FLEET_C, WS_B, "runner-read-fleet-c", "{}", "");
+    try seedRunner(conn, R_CURSOR, "runner-read-cursor");
+
+    try seedCursorLease(conn, CURSOR_A_OLDER, FLEET_A, WS, "a-0", 0);
+    try seedCursorLease(conn, CURSOR_A_NEWER, FLEET_A, WS, "a-1", 1);
+    try seedCursorLease(conn, CURSOR_B_OLDER, FLEET_C, WS_B, "b-0", CURSOR_B_STEP_OFFSET);
+    try seedCursorLease(conn, CURSOR_B_NEWER, FLEET_C, WS_B, "b-1", CURSOR_B_STEP_OFFSET + 1);
+
+    // The regression: A's newest lease as a cursor on B's filtered page. Before
+    // the fix this answered 200 with zero items and `"total":2` — the page and
+    // its own count disagreed, and neither said anything was skipped.
+    const foreign = try leasesPath(R_CURSOR, "workspace_id=" ++ WS_B ++ "&starting_after=" ++ CURSOR_A_NEWER);
+    defer ALLOC.free(foreign);
+    const foreign_resp = try getBody(h, foreign, PLATFORM_ADMIN_TOKEN);
+    defer foreign_resp.deinit();
+    try foreign_resp.expectStatus(.bad_request);
+    try std.testing.expect(foreign_resp.bodyContains("UZ-REQ-001"));
+    try std.testing.expect(foreign_resp.bodyContains("must match workspace_id"));
+
+    // The filter and the cursor compose when the cursor is on the filtered
+    // stream: B's newest as the boundary yields exactly B's older row.
+    const composed = try fetchLeases(h, R_CURSOR, "workspace_id=" ++ WS_B ++ "&starting_after=" ++ CURSOR_B_NEWER);
+    defer composed.deinit();
+    const composed_items = composed.value.object.get("items").?.array;
+    try std.testing.expectEqual(@as(usize, 1), composed_items.items.len);
+    try std.testing.expectEqualStrings(CURSOR_B_OLDER, composed_items.items[0].object.get("id").?.string);
+    try std.testing.expectEqualStrings(WS_B, composed_items.items[0].object.get("workspace_id").?.string);
+
+    // Unfiltered, the cursor still spans workspaces exactly as before — the
+    // scoping is the filter's, not a new restriction on the whole stream.
+    const spanning = try fetchLeases(h, R_CURSOR, "starting_after=" ++ CURSOR_B_OLDER);
+    defer spanning.deinit();
+    const spanning_items = spanning.value.object.get("items").?.array;
+    try std.testing.expectEqual(@as(usize, 2), spanning_items.items.len);
+    try std.testing.expectEqualStrings(CURSOR_A_NEWER, spanning_items.items[0].object.get("id").?.string);
+    try std.testing.expectEqualStrings(CURSOR_A_OLDER, spanning_items.items[1].object.get("id").?.string);
+}
+
+test "integration: test_runner_leases_rejects_malformed_workspace_filter" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    try seedRunner(conn, R_EMPTY, "runner-read-empty");
+
+    const path = try leasesPath(R_EMPTY, "workspace_id=not-a-workspace");
+    defer ALLOC.free(path);
+    const resp = try getBody(h, path, PLATFORM_ADMIN_TOKEN);
+    defer resp.deinit();
+    try resp.expectStatus(.bad_request);
+    try std.testing.expect(resp.bodyContains("UZ-REQ-001"));
+    try std.testing.expect(resp.bodyContains("workspace_id must be a workspace id"));
+}
+
+test "integration: test_runner_leases_unknown_workspace_filter_returns_empty_page" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    try seedRunner(conn, R_OUTCOME, "runner-read-outcome");
+    // The runner holds history — a well-formed but unknown workspace filter
+    // simply matches none of it: an empty page, never an error.
+    try seedLease(conn, .{ .lease_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf11", .runner_id = R_OUTCOME, .fleet_id = FLEET_A, .event_id = FILTER_EVENT_PREFIX ++ "known-1", .status = protocol.RUNNER_LEASE_STATUS_EXPIRED, .lease_expires_at = LEASE_CREATED_BASE_MS, .created_at = LEASE_CREATED_BASE_MS });
+
+    const path = try leasesPath(R_OUTCOME, "workspace_id=" ++ WS_UNKNOWN);
+    defer ALLOC.free(path);
+    const resp = try getBody(h, path, PLATFORM_ADMIN_TOKEN);
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    try std.testing.expect(resp.bodyContains("\"items\":[]"));
+    try std.testing.expect(resp.bodyContains("\"total\":0"));
+    try std.testing.expect(resp.bodyContains("\"next_cursor\":null"));
 }
 
 test "integration: test_runner_leases_rejects_malformed_cursor" {
