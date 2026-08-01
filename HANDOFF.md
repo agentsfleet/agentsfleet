@@ -1,4 +1,4 @@
-# Handoff — M154 schema rebuild (all three commits landed; database now proving the SQL)
+# Handoff — M154 schema rebuild (production SQL converted; test fixtures remain)
 
 Ephemeral. Delete at CHORE(close); this briefs the next agent, never the Pull Request.
 
@@ -8,12 +8,13 @@ Rebuilding `schema/` from empty while the dev database is undeployed. Two workst
 
 - ✅ **M154_001 + M154_002** specs committed, `docs/v2/active/`, `Status: IN_PROGRESS`
 - ✅ **All 38 slots authored**; 45 old `schema/0*.sql` deleted; version == slot number
-- ✅ **Everything is committed.** Five commits of real work; working tree clean.
+- ✅ **Everything is committed.** Nine commits of real work; working tree clean.
 - ✅ **The migration RUNS.** All 38 slots applied clean on the first attempt against local
   Docker Postgres; 32 tables exist. This was the milestone's largest unproven surface.
 - ✅ **The budget apportionment is PROVEN** — 7/7 against a live database.
-- 🔶 **The integration suite is the current front.** Last full run: **152 pass, 535 skip,
-  76 fail, 8 leaks**. Every failure so far is a caller still on a retired column name, not a
+- ✅ **Every production statement is on the rebuilt columns** (see below).
+- 🔶 **The integration suite is the current front**, and what is left in it is test
+  fixtures. Every failure seen so far is a caller on a retired column name, never a
   design fault in the schema.
 
 ## Commits on `feat/m154-schema-rebuild`
@@ -25,7 +26,11 @@ Rebuilding `schema/` from empty while the dev database is undeployed. Two workst
 | `3e130df6` | lease/claim layer — claim slot, lease row, reclaim's event join |
 | `585464147` | budget apportionment tests + the floor-arm defect fix |
 | `ef2974e4f` | the two fenced money statements |
-| `77ee71867` | last production statements off the retired columns |
+| `77ee71867` | last inline production statements off the retired columns |
+| `7c7bc8fa2` | fleet create + workspace lookups onto the identity columns |
+| `0b07918ee` | the live-database failure taxonomy, recorded here |
+| `dc60fd39b` | grants and gates: one identity column named `id`, no alias |
+| `2b61aea0d` | the seven unconverted `sql.zig` modules, incl. signup bootstrap |
 
 Branch not pushed. PR not opened. One PR for the milestone, at CHORE(close).
 
@@ -87,6 +92,39 @@ that fixture is the adversarial case, not the typical one. It is pinned delibera
 the test says so. If the error direction ever matters, the fix is storing the
 run-fee/token-cost split so the time-proportional half apportions exactly.
 
+## All production SQL is converted; the tail is test fixtures
+
+Every statement in the 62 production files is on the rebuilt columns, verified by
+grepping the full retired-name set. Two hits look like misses and are not: a local
+variable named `uid` holding `principal.user_id` in `handlers/fleets/messages.zig`,
+and `billing.tenant_wallet.tenant_id`, which genuinely is that table's key.
+
+Seven `sql.zig` modules had never been touched and were the reason so much failed:
+`cron`, `api_keys`, `state/model_library`, both connector modules,
+`handlers/fleet`, and `state/sql.zig` — the last of which meant **account creation
+could not complete**, since `core.tenants`, `core.users`, `core.memberships` and
+`core.workspaces` were each addressed by their retired twin.
+
+### The test-fixture sweep, and why it is not a `sed`
+
+RULE SQLMOD exempts test fixtures from living in `sql.zig`, so 116 test files carry
+inline SQL that no module change reaches. Roughly 350 edits across ~60 files:
+
+| pattern | hits / files | rule |
+|---|---|---|
+| `\buid\b` | 148 / 46 | → `id`, **except** `runner_lifetime_counters` (parent-keyed on `runner_id`, has neither) and `runner_affinity` (keyed on `fleet_id`) |
+| `request_json` | 59 / 41 | **drop only on `fleet.runner_leases`** — it is still a real column on `core.fleet_events`, which is where the body lives |
+| `_at_ms` | 63 / 29 | `last_metered_at_ms` → `last_metered_at`; `created_at_ms`/`updated_at_ms` → unsuffixed |
+| `fleet_execution_telemetry` | 41 / 17 | → `billing.usage_ledger`, and the insert must now supply `event_created_at` and `last_charged_at`, both NOT NULL |
+| `metering_periods` | 31 / 12 | table is **gone** — delete the statement, do not rename it |
+| `occurred_at` | 12 / 4 | drop from the column list AND drop the duplicated value; no bind renumbers |
+| `core.tenants (tenant_id` | 14 / 9 | → `(id` |
+| `core.workspaces (workspace_id` | 7 / 5 | → `(id` |
+| `INSERT INTO core.fleets` | ~34 files | needs `tenant_id`; derive it from the workspace row so the composite foreign key cannot be fed a mismatched tenant |
+
+Many of these sit in teardown helpers that swallow their errors, so a stale
+statement is invisible rather than red — grep, do not rely on the suite going green.
+
 ## The remaining failures, counted
 
 Read them from Postgres, not from Zig stack traces — the traces point at the seed helper,
@@ -120,35 +158,19 @@ Last run (before the fleet-create fix landed), 74 failures across ~28 files:
 
 ## Next Steps
 
-1. **`core.integration_grants` is the next coherent unit, and it is PRODUCTION.** The table
-   collapsed `uid` + a `grant_id` text twin into one `id`, and `requested_at` became
-   `created_at`. **The public field name `grant_id` is unchanged and aliased at the
-   boundary** (schema/540 says so explicitly), so this is the same wire-versus-column split
-   as `occurred_at` — every site needs reading, none can be swept. Roughly 15 production
-   files carry the token, but many are the `/…/grants/{grant_id}` path parameter and must
-   NOT change: `fleet_runtime/sql.zig`, `integration_grants/handler.zig`,
-   `webhooks/grant_approval.zig`, `webhooks/sql.zig:25,32`, `approvals/{list,detail}.zig`,
-   `approval_gate_db_reads.zig`, `notifications/grant_notifier.zig`. Do it in one pass or
-   not at all — a half-converted statement set is worse than an unconverted one.
-2. **The other identity collapses**, each its own small unit: `memory.memory_entries.uid`
-   (28 failures), `core.model_library.uid` (18), `core.api_keys.uid` (3),
-   `core.model_catalogue_revision.updated_at_ms` (6).
-3. **Then the test sweep** — ~34 files `INSERT INTO core.fleets` without `tenant_id`,
-   ~13 touch `core.workspaces` identity columns, and several still insert
-   `runner_leases.request_json` or `runner_affinity.id`. Mostly mechanical, but read each:
-   many teardown helpers swallow errors, so a stale statement is invisible rather than red.
-   `http/handlers/integration_grants/workspace.zig:174-207` has an inline test block that
-   seeds through unqualified `tenants` / `workspaces` (search-path dependent) as well.
-3. **`db/pool_test.zig:366`** — `schema_checks` still lists `ops_ro`, which slot 100
+1. **The test-fixture sweep above** is the whole remaining tail. Work it pattern by
+   pattern, building between, and read each site — the table tells you which rule
+   applies.
+2. **`db/pool_test.zig:366`** — `schema_checks` still lists `ops_ro`, which slot 100
    deliberately no longer creates ("no schema is created that holds no tables"). Drop it and
    add `memory`, which is a first-class schema now.
-4. **`events/fleet_set_cache_test.zig:110-125`** — its own inline seed carries all three
+3. **`events/fleet_set_cache_test.zig:110-125`** — its own inline seed carries all three
    identity-column bugs.
-5. **§7.1 / §7.2 not started** — the events list must stop selecting `request_json` /
+4. **§7.1 / §7.2 not started** — the events list must stop selecting `request_json` /
    `response_text`, and the single-event detail read must be added, with handlers, OpenAPI
    and the UI dialog. `state/fleet_events_store.zig`'s `EVENTS_SELECT` still selects bodies.
-6. **8 leaks** reported by the last run — not yet triaged.
-7. Then: changelog + `~/Projects/docs` pages, `docs/architecture/**` diff, CHORE(close).
+5. **8 leaks** reported by the last run — not yet triaged.
+6. Then: changelog + `~/Projects/docs` pages, `docs/architecture/**` diff, CHORE(close).
 
 ## Risks / Gotchas
 
