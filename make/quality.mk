@@ -311,7 +311,8 @@ check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate 
 	@# themselves). Excludes docs/v2/: specs are historical records that
 	@# intentionally cite now-moved paths.
 	@FAIL=0; \
-	REFS=$$(rg --hidden -o --no-filename 'playbooks/[A-Za-z0-9_./-]+' . --glob '!docs/v2/**' --glob '!.git/**' | sed 's/[.,):]*$$//' | sort -u); \
+	REFS=$$(git grep -h -E 'playbooks/[A-Za-z0-9_./-]+' -- . ':(exclude)docs/v2/**' | \
+	awk '{ text = $$0; while (match(text, /playbooks\/[A-Za-z0-9_.\/-]+/)) { ref = substr(text, RSTART, RLENGTH); sub(/[.,):]*$$/, "", ref); print ref; text = substr(text, RSTART + RLENGTH); } }' | sort -u); \
 	if [ -z "$$REFS" ]; then echo "✗ [playbooks] reference scan matched nothing"; exit 1; fi; \
 	for ref in $$REFS; do \
 	  [ -e "$$ref" ] || { echo "✗ broken playbooks/ reference: $$ref"; FAIL=1; }; \
