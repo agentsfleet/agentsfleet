@@ -1,7 +1,7 @@
 //! Centralized SQL for admin platform provider defaults.
 
 pub const SELECT_WORKSPACE_EXISTS =
-    "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 LIMIT 1";
+    "SELECT 1 FROM core.workspaces WHERE id = $1::uuid LIMIT 1";
 
 pub const UPSERT_ACTIVE_DEFAULT =
     \\INSERT INTO core.platform_provider_defaults

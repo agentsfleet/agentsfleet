@@ -55,11 +55,12 @@ pub const SELECT_FLEET_PAGE_AFTER = PAGE_COLS ++
 
 pub const INSERT_FLEET =
     \\INSERT INTO core.fleets
-    \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
-    \\   status, required_tags, bundle_content_hash,
+    \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown,
+    \\   config_json, status, required_tags, bundle_content_hash,
     \\   bundle_snapshot_key, created_at, updated_at)
-    \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8::text[],
-    \\        $9, $10, $11, $11)
+    \\SELECT $1::uuid, w.id, w.tenant_id, $3, $4, $5, $6::jsonb, $7, $8::text[],
+    \\       $9, $10, $11, $11
+    \\FROM core.workspaces w WHERE w.id = $2::uuid
 ;
 
 /// Status flip, guarded on the expected current status so a concurrent
