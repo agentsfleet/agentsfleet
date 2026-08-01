@@ -425,7 +425,15 @@ test "integration: a body carrying an id cannot move the slug" {
     defer freeRow(alloc, after);
     try std.testing.expectEqualStrings("Renamed", after.name);
 
-    var q = PgQuery.from(try conn.query("SELECT count(*)::bigint FROM core.fleet_library", .{}));
+    // Count only the rows this PATCH could have produced — the probe and the
+    // id the body tried to smuggle in. A whole-table count is order-dependent:
+    // sibling suites' async onboards can land rows here mid-test, and under a
+    // shuffled seed that read as this test creating a second row (CI seed
+    // 0x8b08451c, count 3≠1) when it had created exactly one.
+    var q = PgQuery.from(try conn.query(
+        "SELECT count(*)::bigint FROM core.fleet_library WHERE id = $1 OR id = $2",
+        .{ PROBE_ID, "hijacked" },
+    ));
     defer q.deinit();
     const row = try q.next() orelse return error.CountMissing;
     try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
