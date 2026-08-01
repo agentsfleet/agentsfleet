@@ -73,7 +73,7 @@ fn expectServesFilter(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8,
     _ = try conn.exec("SET enable_bitmapscan = off", .{});
     defer _ = conn.exec("RESET enable_bitmapscan", .{}) catch |err|
         std.log.warn("reset enable_bitmapscan ignored: {s}", .{@errorName(err)});
-    const plan = try planOf(alloc, conn, sql);
+    const plan = try planOf(alloc, conn, sql, .{});
     defer alloc.free(plan);
     if (std.mem.indexOf(u8, plan, index_name) == null) {
         std.debug.print("expected index {s} in plan:\n{s}\n", .{ index_name, plan });

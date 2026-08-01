@@ -9,11 +9,14 @@
  *
  * Tenant/workspace itself is preserved across runs (idempotent bootstrap);
  * only fleets/credentials/events get torn down.
+ *
+ * global-teardown's backstop sweep (sweepLeakedFixtureFleets) lives here
+ * too, next to the destructive-target guard every deletion must share.
  */
 import { clientFor } from "./api-client";
 import type { ClientHandle } from "./api-client";
-import { listFleets } from "./seed";
-import { AGENTSFLEET_STATUS } from "./constants";
+import { listFleets, listWorkspaces } from "./seed";
+import { AGENTSFLEET_STATUS, FIXTURE_KEYS } from "./constants";
 
 /**
  * agentsfleetd enforces a state-machine transition before delete:
@@ -74,4 +77,63 @@ export async function cleanWorkspaceFleets(
     }
   }
   return removed;
+}
+
+/**
+ * Seed prefixes known to leak. Every spec that seeds one of these also
+ * cleans it in afterEach, but afterEach never runs for a crashed run or an
+ * interrupted CI job — and a leaked fleet is not inert: its seeded cron
+ * trigger keeps waking runners until someone deletes the row. The
+ * global-teardown sweep reaps them across every persistent fixture
+ * workspace as the backstop.
+ */
+export const LEAKED_FLEET_PREFIXES = [
+  "lifecycle-",
+  "journey-fleet-",
+  "steer-probe-",
+  "login-lifecycle-",
+  "thread-spec-",
+  "thread-revisit-",
+] as const;
+
+// operator-journey mints these workspaces outright (a fresh pair per run),
+// so every fleet inside one is a fixture row by construction — sweep them
+// whole rather than by prefix.
+export const JOURNEY_WORKSPACE_RE = /^journey-(primary|secondary)-[0-9a-f]{8}$/;
+
+/**
+ * Backstop sweep for global-teardown: reap leaked fleets across all
+ * persistent fixture users. Per-fixture and per-workspace failures log and
+ * continue — one dead tenant must not shield another tenant's leaks — and
+ * the same destructive-target guard as cleanWorkspaceFleets runs before any
+ * listing or deletion.
+ */
+export async function sweepLeakedFixtureFleets(): Promise<void> {
+  assertDestructiveTargetIsSafe();
+  let removed = 0;
+  for (const key of FIXTURE_KEYS) {
+    const workspaces = await listWorkspaces(key).catch((err: unknown) => {
+      console.error(`[e2e:sweep] workspace listing failed for fixture '${key}':`, err);
+      return [];
+    });
+    for (const workspace of workspaces) {
+      try {
+        if (JOURNEY_WORKSPACE_RE.test(workspace.name ?? "")) {
+          removed += await cleanWorkspaceFleets(key, workspace.id);
+          continue;
+        }
+        // One fleet listing per prefix — teardown cadence, so clarity beats
+        // shaving round-trips.
+        for (const prefix of LEAKED_FLEET_PREFIXES) {
+          removed += await cleanWorkspaceFleets(key, workspace.id, prefix);
+        }
+      } catch (err) {
+        console.error(
+          `[e2e:sweep] fleet sweep failed in workspace ${workspace.id} ('${key}'):`,
+          err,
+        );
+      }
+    }
+  }
+  console.log(`[e2e:sweep] done — ${removed} leaked fixture fleet(s) removed`);
 }

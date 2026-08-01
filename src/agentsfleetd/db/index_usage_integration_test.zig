@@ -22,6 +22,11 @@ const std = @import("std");
 const pg = @import("pg");
 const base = @import("test_fixtures.zig");
 const schema = @import("schema");
+const protocol = @import("contract").protocol;
+const fleet_sql = @import("../fleet/sql.zig");
+const operator_sql = @import("../http/handlers/fleet/sql.zig");
+const retention_sweeper = @import("../fleet/retention_sweeper.zig");
+const PgQuery = @import("pg_query.zig").PgQuery;
 
 /// The migration slot this suite covers.
 const SLOT_VERSION: i32 = 33;
@@ -43,6 +48,9 @@ const WS_LEASE = "0195b4ba-8d3a-7f13-8abc-0000000c0001";
 const FLEET_LEASE = "0195b4ba-8d3a-7f13-8abc-0000000c0002";
 const RUNNER_LEASE = "0195b4ba-8d3a-7f13-8abc-0000000c0003";
 const LEASE_EVENT_PREFIX = "idxprobe-evt-";
+/// Slot 041's page index, named once because both the shape assertion and the
+/// fitness probe below spell it.
+const LEASES_BY_RUNNER_INDEX = "idx_runner_leases_runner_id_created_at_id";
 
 /// Every index slot 033 creates, in file order. Four, deliberately: the slot
 /// indexes only the reads whose cost grows without bound. List sorts over
@@ -86,7 +94,7 @@ fn expectIndexShape(alloc: std.mem.Allocator, conn: *pg.Conn, schema_name: []con
 /// `index_name` CAN serve `sql`'s filter: with sequential scans disabled the
 /// planner reaches for it. Size independent — this asks whether the index fits
 /// the query, not whether the cost model prefers it at some row count.
-fn expectServesFilter(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8, index_name: []const u8) !void {
+fn expectServesFilter(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8, args: anytype, index_name: []const u8) !void {
     _ = try conn.exec("SET enable_seqscan = off", .{});
     defer _ = conn.exec("RESET enable_seqscan", .{}) catch |err|
         std.log.warn("reset enable_seqscan ignored: {s}", .{@errorName(err)});
@@ -98,11 +106,32 @@ fn expectServesFilter(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8,
     _ = try conn.exec("SET enable_bitmapscan = off", .{});
     defer _ = conn.exec("RESET enable_bitmapscan", .{}) catch |err|
         std.log.warn("reset enable_bitmapscan ignored: {s}", .{@errorName(err)});
-    const plan = try planOf(alloc, conn, sql);
+    const plan = try planOf(alloc, conn, sql, args);
     defer alloc.free(plan);
     if (std.mem.indexOf(u8, plan, index_name) == null) {
         std.debug.print("expected index {s} in plan:\n{s}\n", .{ index_name, plan });
         return error.IndexNotChosen;
+    }
+}
+
+/// The negative variant of `expectServesFilter`. Disabling sequential scans
+/// only prices them out — PostgreSQL still emits a Seq Scan when NO index can
+/// serve a table's access. So `marker` (e.g. "Seq Scan on runner_leases")
+/// surviving in the forced plan means some leg of `sql` can only be answered
+/// by walking that table's whole history, which is exactly the shape this
+/// helper exists to refuse. Size independent, like the positive variant.
+fn expectPlanOmits(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8, args: anytype, marker: []const u8) !void {
+    _ = try conn.exec("SET enable_seqscan = off", .{});
+    defer _ = conn.exec("RESET enable_seqscan", .{}) catch |err|
+        std.log.warn("reset enable_seqscan ignored: {s}", .{@errorName(err)});
+    _ = try conn.exec("SET enable_bitmapscan = off", .{});
+    defer _ = conn.exec("RESET enable_bitmapscan", .{}) catch |err|
+        std.log.warn("reset enable_bitmapscan ignored: {s}", .{@errorName(err)});
+    const plan = try planOf(alloc, conn, sql, args);
+    defer alloc.free(plan);
+    if (std.mem.indexOf(u8, plan, marker) != null) {
+        std.debug.print("plan must not contain \"{s}\":\n{s}\n", .{ marker, plan });
+        return error.ForcedTableScanInPlan;
     }
 }
 
@@ -247,7 +276,7 @@ test "memory composite has the right shape and serves the fleet filter" {
         \\WHERE fleet_id = '0195b4ba-8d3a-7f13-8abc-0000000b0002'::uuid
         \\ORDER BY updated_at DESC, id DESC
         \\LIMIT 50
-    , "idx_memory_entries_fleet_id_updated_at_id");
+    , .{}, "idx_memory_entries_fleet_id_updated_at_id");
 }
 
 // Slot 040 — why the operator lease read earns two indexes, from the row budget
@@ -282,14 +311,14 @@ test "runner lease indexes have the right shape and serve the operator read" {
     try seedLeases(db.conn, LEASE_SEED_ROWS);
 
     // The page: one runner's history, newest-first over the composite key.
-    try expectIndexShape(alloc, db.conn, "fleet", "idx_runner_leases_runner_id_created_at_id", "runner_id, created_at DESC, id DESC");
+    try expectIndexShape(alloc, db.conn, "fleet", LEASES_BY_RUNNER_INDEX, "runner_id, created_at DESC, id DESC");
     try expectServesFilter(alloc, db.conn,
         \\SELECT id::text, fleet_id::text, event_id
         \\FROM fleet.runner_leases
         \\WHERE runner_id = '0195b4ba-8d3a-7f13-8abc-0000000c0003'::uuid
         \\ORDER BY created_at DESC, id DESC
         \\LIMIT 50
-    , "idx_runner_leases_runner_id_created_at_id");
+    , .{}, LEASES_BY_RUNNER_INDEX);
 
     // The per-row is_reclaim probe: a lower-fencing sibling of the same
     // (fleet_id, event_id). Slot 033's fleet index cannot answer it — it
@@ -301,5 +330,239 @@ test "runner lease indexes have the right shape and serve the operator read" {
         \\WHERE p.fleet_id = '0195b4ba-8d3a-7f13-8abc-0000000c0002'::uuid
         \\  AND p.event_id = 'idxprobe-evt-7'
         \\  AND p.fencing_token < 4000
-    , "idx_runner_leases_fleet_id_event_id_fencing_token");
+    , .{}, "idx_runner_leases_fleet_id_event_id_fencing_token");
+}
+
+// ── Slots 043–045 — lifetime counters, the events read index, delete grants ──
+//
+// Slot 043 replaces the detail read's whole-history aggregation with a
+// write-time tally table; slot 044 lets the type-filtered event feed stop
+// walking the per-lease bulk; slot 045 grants the retention sweep its DELETEs.
+// The counter maintenance itself is proven in
+// `fleet/runner_counters_integration_test.zig`; here the catalog shape and the
+// planner fitness of the read paths are pinned.
+
+/// The runner whose seeded event history the slot 044 plan proofs read. Not
+/// shared with the lease fixture: `runner_events` needs no fleet graph, so this
+/// probe seeds only the runner row.
+const RUNNER_EVENTS = "0195b4ba-8d3a-7f13-8abc-0000000d0001";
+const EVENT_SEED_ROWS: i32 = 200;
+/// Every fiftieth seeded event carries a rare lifecycle tag; the rest are the
+/// per-lease bulk the filtered read must be able to skip.
+const RARE_EVENT_EVERY: i32 = 50;
+const EVENTS_INDEX = "idx_runner_events_runner_id_type_occurred_at_id";
+const EVENT_PAGE_LIMIT: i64 = 25;
+/// Any instant works for the detail plan probe — the plan's shape, not the
+/// rows it would return, is under test.
+const DETAIL_PROBE_NOW_MS: i64 = 1_750_000_000_000;
+const SEQ_SCAN_LEASES_MARKER = "Seq Scan on runner_leases";
+
+/// Mixed event history for one runner: the per-lease bulk plus a sprinkle of
+/// rare lifecycle tags, mirroring the real table's distribution in miniature.
+fn seedRunnerEvents(conn: *pg.Conn, rows: i32) !void {
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runners
+        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels,
+        \\   last_seen_at, created_at, updated_at)
+        \\VALUES ($1::uuid, 'idxprobe-events-host', 'idxprobe-token-events', 'dev_none',
+        \\        'active', '[]'::jsonb, 0, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{RUNNER_EVENTS});
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_events
+        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+        \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+        \\       $1::uuid,
+        \\       CASE WHEN g % $2::int = 0 THEN $3::text ELSE $4::text END,
+        \\       $6::bigint + g, '{}'::jsonb, NULL, $6::bigint + g
+        \\FROM generate_series(1, $5::int) g
+    , .{
+        RUNNER_EVENTS,
+        RARE_EVENT_EVERY,
+        @tagName(protocol.RunnerEventType.runner_offline),
+        @tagName(protocol.RunnerEventType.lease_acquired),
+        rows,
+        DETAIL_PROBE_NOW_MS,
+    });
+    _ = try conn.exec("ANALYZE fleet.runner_events", .{});
+}
+
+fn wipeRunnerEvents(conn: *pg.Conn) void {
+    // The runner delete cascades the seeded events with it.
+    _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_EVENTS}) catch |err|
+        std.log.warn("events probe wipe ignored: {s}", .{@errorName(err)});
+}
+
+test "counter and retention slots are registered in the migration array" {
+    // Reading through `schema.migrations` rather than the files proves each
+    // slot is wired into `schema/embed.zig` — an unregistered slot never runs
+    // at all, and would otherwise fail only at first deploy.
+    try std.testing.expect(slotSql(43) != null);
+    try std.testing.expect(slotSql(44) != null);
+    try std.testing.expect(slotSql(45) != null);
+    try std.testing.expect(slotSql(46) != null);
+}
+
+/// Slot 046's pair, named once because the shape assertions and the fitness
+/// probes below both spell them.
+const RETENTION_LEASES_INDEX = "idx_runner_leases_status_updated_at";
+const RETENTION_EVENTS_INDEX = "idx_runner_events_type_occurred_at";
+/// Below every seeded row's clock, so NOTHING qualifies — the steady-state
+/// cycle, and the only bind that discriminates.
+///
+/// With a cutoff that matches everything, `LIMIT` short-circuits after the
+/// first batch on any index that can reach the rows at all, so slot 018's
+/// `(runner_id, status)` looks free and the planner takes it even though it
+/// cannot bound the age predicate. That is exactly how the pre-046 sequential
+/// scan looked acceptable. Proving emptiness is the work every cycle does once
+/// the backlog drains, and only an index leading with the sweep's own predicate
+/// can do it without walking the table.
+const RETENTION_CUTOFF_PROBE: i64 = 1;
+const RETENTION_BATCH_PROBE: i64 = 1000;
+
+test "retention sweep deletes ride their own indexes, not a whole-table scan" {
+    // The sweeper's predicates are status/tag + age across ALL runners, so no
+    // runner-leading index can serve them: before slot 046 both DELETEs planned
+    // as `Seq Scan`, hourly, on every replica. Asked with the production
+    // statements verbatim and their real bind shapes — parameter arrays, which
+    // is precisely why slot 046 ships full composites and not partial indexes
+    // (spec Discovery C2).
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    defer wipeLeases(db.conn);
+    defer wipeRunnerEvents(db.conn);
+    try seedLeases(db.conn, LEASE_SEED_ROWS);
+    wipeRunnerEvents(db.conn);
+    try seedRunnerEvents(db.conn, EVENT_SEED_ROWS);
+
+    try expectIndexShape(alloc, db.conn, "fleet", RETENTION_LEASES_INDEX, "status, updated_at");
+    try expectIndexShape(alloc, db.conn, "fleet", RETENTION_EVENTS_INDEX, "event_type, occurred_at");
+
+    const terminal = [_][]const u8{
+        protocol.RUNNER_LEASE_STATUS_REPORTED,
+        protocol.RUNNER_LEASE_STATUS_EXPIRED,
+    };
+    try expectServesFilter(alloc, db.conn, retention_sweeper.DELETE_TERMINAL_LEASES_BATCH, .{
+        &terminal, RETENTION_CUTOFF_PROBE, RETENTION_BATCH_PROBE,
+    }, RETENTION_LEASES_INDEX);
+
+    try expectServesFilter(alloc, db.conn, retention_sweeper.DELETE_AGED_RUNNER_EVENTS_BATCH, .{
+        &retention_sweeper.PER_LEASE_EVENT_TAGS, RETENTION_CUTOFF_PROBE, RETENTION_BATCH_PROBE,
+    }, RETENTION_EVENTS_INDEX);
+
+    // The abandoned-lease reaper searches the same way the lease delete does —
+    // one status value plus an age bound — so it rides the same composite. It
+    // runs on every replica every cycle like its siblings, which is why it is
+    // pinned here rather than assumed to inherit their plan.
+    // The reaper gets a floor, not a named index, and the difference is
+    // deliberate. Its predicate selects `active` — live work plus the rare
+    // stranded row, a small set — so either candidate index scans few entries;
+    // both were observed on this fixture. Pinning one would encode a planner
+    // preference this statement does not depend on, and would fail on a fixture
+    // whose status mix differs rather than on a real regression. What must never
+    // happen is the whole-table walk the deletes above are pinned against, and
+    // that is what this asks.
+    const abandoned = [_][]const u8{protocol.RUNNER_LEASE_STATUS_ACTIVE};
+    try expectPlanOmits(alloc, db.conn, retention_sweeper.EXPIRE_ABANDONED_ACTIVE_LEASES_BATCH, .{
+        &abandoned,
+        RETENTION_CUTOFF_PROBE,
+        protocol.RUNNER_LEASE_STATUS_EXPIRED,
+        RETENTION_BATCH_PROBE,
+        RETENTION_CUTOFF_PROBE,
+    }, "Seq Scan on runner_leases");
+}
+
+test "lifetime counter table keys one bigint tally row per runner" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+
+    // Column list and types read structurally from the catalog, in table
+    // order — a rename, a dropped tally, or a type narrowing fails here.
+    var q = PgQuery.from(try db.conn.query(
+        \\SELECT string_agg(column_name || ' ' || data_type, ', ' ORDER BY ordinal_position)
+        \\FROM information_schema.columns
+        \\WHERE table_schema = 'fleet' AND table_name = 'runner_lifetime_counters'
+    , .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.CounterTableMissing;
+    const got = (try row.get(?[]const u8, 0)) orelse return error.CounterTableMissing;
+    try std.testing.expectEqualStrings(
+        "uid uuid, runner_id uuid, acquired bigint, succeeded bigint, " ++
+            "failed bigint, expired bigint, created_at bigint, updated_at bigint",
+        got,
+    );
+}
+
+test "events composite has the right shape and serves the filtered feed" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    wipeRunnerEvents(db.conn);
+    try seedRunnerEvents(db.conn, EVENT_SEED_ROWS);
+
+    try std.testing.expectEqual(@as(i64, 1), try base.indexCount(db.conn, "fleet", EVENTS_INDEX));
+    try expectIndexShape(alloc, db.conn, "fleet", EVENTS_INDEX, "runner_id, event_type, occurred_at DESC, id DESC");
+
+    // The production statements verbatim, with the operator page's real bind
+    // shape: a rare-tag text[] and open time bounds. Before this slot both
+    // reads had to walk the per-lease bulk through the unfiltered composite.
+    const rare_tags = [_][]const u8{
+        @tagName(protocol.RunnerEventType.runner_offline),
+        @tagName(protocol.RunnerEventType.runner_drained),
+    };
+    const open_bound: ?i64 = null;
+    try expectServesFilter(alloc, db.conn, fleet_sql.SELECT_RUNNER_EVENT_COUNT, .{
+        RUNNER_EVENTS, &rare_tags, open_bound, open_bound,
+    }, EVENTS_INDEX);
+    try expectServesFilter(alloc, db.conn, fleet_sql.SELECT_RUNNER_EVENT_KEYSET_FIRST, .{
+        RUNNER_EVENTS, &rare_tags, open_bound, open_bound, EVENT_PAGE_LIMIT,
+    }, EVENTS_INDEX);
+
+    wipeRunnerEvents(db.conn);
+}
+
+test "runner detail read never forces a full lease-history scan" {
+    // The detail statement's two lease legs — the live-now summary and (since
+    // slot 043) nothing else — must both be index-servable. A Seq Scan on
+    // runner_leases surviving the forced plan would mean the read still walks
+    // the runner's whole history, the exact cost slot 043 exists to retire.
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    try seedLeases(db.conn, LEASE_SEED_ROWS);
+
+    try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_DETAIL, .{
+        RUNNER_LEASE, protocol.RUNNER_LEASE_STATUS_ACTIVE, DETAIL_PROBE_NOW_MS,
+    }, SEQ_SCAN_LEASES_MARKER);
+
+    wipeLeases(db.conn);
+}
+
+test "the lease pager's exact total never walks the runner's whole history" {
+    // The pager keeps an exact count rather than degrading to "load more", so
+    // that count must not become the page's cost centre. Both binds of the one
+    // production statement are asked: NULL (the operator's default view) and a
+    // real workspace id (the §1 filter).
+    //
+    // Deliberately asked as "no full scan" rather than "uses index X". TWO
+    // indexes legitimately cover `(runner_id, …)` here — slot 041's page
+    // composite and slot 033's `(runner_id, status)` — and the planner picks
+    // the narrower one for a bare count, correctly. Pinning either name would
+    // fail the day the other becomes cheaper, which is a planner preference,
+    // not a regression. What must never change is that some index serves it.
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    defer wipeLeases(db.conn);
+    try seedLeases(db.conn, LEASE_SEED_ROWS);
+
+    const unfiltered: ?[]const u8 = null;
+    try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_LEASE_TOTAL, .{
+        RUNNER_LEASE, unfiltered,
+    }, SEQ_SCAN_LEASES_MARKER);
+    try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_LEASE_TOTAL, .{
+        RUNNER_LEASE, WS_LEASE,
+    }, SEQ_SCAN_LEASES_MARKER);
 }

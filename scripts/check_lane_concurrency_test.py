@@ -117,16 +117,27 @@ class TestMemleakLaneBinaries(unittest.TestCase):
             return result, events
 
     def test_lib_lane_gates_binaries_concurrently(self) -> None:
-        result, events = self.run_lane(["alpha", "beta", "gamma"])
-        self.assertEqual(result.returncode, 0, result.stderr)
-        starts = [stamp for kind, _, stamp in events if kind == "start"]
-        ends = [stamp for kind, _, stamp in events if kind == "end"]
-        self.assertEqual(len(starts), 3, "every binary must have run")
-        # Serial execution cannot start the third binary before the first ends.
-        self.assertLessEqual(
-            max(starts),
-            min(ends),
-            "a binary started only after another had finished — the lane is still serial",
+        # Asserted structurally, like every other gate in this file, rather than
+        # by timing a real lane run. The wall-clock form measured `date +%s`
+        # stamps around a one-second sleep, which cannot resolve overlap once
+        # process spawn costs more than a second — and the pre-commit hook runs
+        # this inside `make -j` across five targets plus `zig build test-auth`,
+        # so it failed there while passing standalone. A gate that blocks a
+        # commit on how busy the machine is measures the machine, not the lane.
+        lane = MEMLEAK_LANE.read_text(encoding="utf-8")
+        # Each binary is dispatched in the background...
+        self.assertIn(
+            'gate_one "$binary" > "$log_dir/$binary.log" 2>&1 &',
+            lane,
+            "the per-binary gate is no longer backgrounded — the lane is serial again",
+        )
+        # ...and every one of their verdicts is still collected. Backgrounding
+        # without this would be faster and worthless: a leaking binary's failure
+        # would never reach the lane's exit status.
+        self.assertIn(
+            'wait "${pids[index]}" || status=1',
+            lane,
+            "per-binary verdicts are no longer aggregated after the fan-out",
         )
 
     def test_a_failing_binary_fails_the_lane(self) -> None:

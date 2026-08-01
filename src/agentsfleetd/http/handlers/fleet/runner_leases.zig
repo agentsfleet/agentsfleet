@@ -27,7 +27,9 @@ const log = logging.scoped(.fleet_runner_leases);
 const Hx = hx_mod.Hx;
 
 const MSG_BAD_LIMIT = "limit must be an integer between 1 and 100";
-const MSG_BAD_CURSOR = "starting_after must be a lease id held by this runner";
+const MSG_BAD_CURSOR = "starting_after must be a lease id held by this runner, and must match workspace_id when that filter is set";
+const MSG_BAD_WORKSPACE = "workspace_id must be a workspace id";
+const QUERY_WORKSPACE_ID = "workspace_id";
 
 /// The one closed outcome vocabulary for a lease, derived here and nowhere
 /// else. An expired lease reads expired regardless of how its event later
@@ -76,6 +78,15 @@ pub fn innerListRunnerLeases(hx: Hx, req: *httpz.Request, runner_id: []const u8)
             return;
         }
     }
+    // Optional ownership filter. A malformed id is refused; an unknown-but-
+    // well-formed one simply matches nothing (an empty page, not an error).
+    const workspace_id = if (qs) |q| q.get(QUERY_WORKSPACE_ID) else null;
+    if (workspace_id) |ws| {
+        if (!id_format.isUuidV7(ws)) {
+            hx.fail(ec.ERR_INVALID_REQUEST, MSG_BAD_WORKSPACE);
+            return;
+        }
+    }
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -83,7 +94,7 @@ pub fn innerListRunnerLeases(hx: Hx, req: *httpz.Request, runner_id: []const u8)
     };
     defer hx.ctx.pool.release(conn);
 
-    const total = fetchLeaseTotal(conn, runner_id) catch |err| {
+    const total = fetchLeaseTotal(conn, runner_id, workspace_id) catch |err| {
         return failRead(hx, err);
     } orelse {
         hx.fail(ec.ERR_RUNNER_NOT_FOUND, "Runner not found");
@@ -92,7 +103,7 @@ pub fn innerListRunnerLeases(hx: Hx, req: *httpz.Request, runner_id: []const u8)
 
     var boundary_created_at: ?i64 = null;
     if (starting_after) |cursor| {
-        boundary_created_at = resolveCursor(conn, cursor, runner_id) catch |err| {
+        boundary_created_at = resolveCursor(conn, cursor, runner_id, workspace_id) catch |err| {
             return failRead(hx, err);
         } orelse {
             hx.fail(ec.ERR_INVALID_REQUEST, MSG_BAD_CURSOR);
@@ -100,7 +111,7 @@ pub fn innerListRunnerLeases(hx: Hx, req: *httpz.Request, runner_id: []const u8)
         };
     }
 
-    const items = fetchLeasePage(conn, hx.alloc, runner_id, starting_after, boundary_created_at, limit) catch |err| {
+    const items = fetchLeasePage(conn, hx.alloc, runner_id, workspace_id, starting_after, boundary_created_at, limit) catch |err| {
         return failRead(hx, err);
     };
 
@@ -114,18 +125,22 @@ fn failRead(hx: Hx, err: anyerror) void {
 }
 
 /// Existence probe and page-stable total in one statement: null means the
-/// runner id does not resolve.
-fn fetchLeaseTotal(conn: anytype, runner_id: []const u8) !?i64 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_TOTAL, .{runner_id}));
+/// runner id does not resolve. The workspace filter scopes the total to the
+/// same set the page returns.
+fn fetchLeaseTotal(conn: anytype, runner_id: []const u8, workspace_id: ?[]const u8) !?i64 {
+    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_TOTAL, .{ runner_id, workspace_id }));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     return try row.get(i64, 0);
 }
 
 /// Resolve `starting_after` to the boundary sort key; null means the lease id
-/// is not one this runner holds.
-fn resolveCursor(conn: anytype, lease_id: []const u8, runner_id: []const u8) !?i64 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_CURSOR, .{ lease_id, runner_id }));
+/// is not one this runner holds *on the stream being paged* — the workspace
+/// filter scopes the cursor exactly as it scopes the page, so a cursor from
+/// another workspace is refused instead of seeking this page past a boundary
+/// that was never on it.
+fn resolveCursor(conn: anytype, lease_id: []const u8, runner_id: []const u8, workspace_id: ?[]const u8) !?i64 {
+    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_CURSOR, .{ lease_id, runner_id, workspace_id }));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     return try row.get(i64, 0);
@@ -135,15 +150,16 @@ fn fetchLeasePage(
     conn: anytype,
     alloc: std.mem.Allocator,
     runner_id: []const u8,
+    workspace_id: ?[]const u8,
     starting_after: ?[]const u8,
     boundary_created_at: ?i64,
     limit: u32,
 ) ![]LeaseItem {
     const limit_i64: i64 = @intCast(limit);
     var q = if (boundary_created_at) |created_at|
-        PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_PAGE_AFTER, .{ runner_id, created_at, starting_after.?, limit_i64 }))
+        PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_PAGE_AFTER, .{ runner_id, workspace_id, created_at, starting_after.?, limit_i64 }))
     else
-        PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_PAGE_FIRST, .{ runner_id, limit_i64 }));
+        PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_PAGE_FIRST, .{ runner_id, workspace_id, limit_i64 }));
     defer q.deinit();
     return collectItems(alloc, &q);
 }

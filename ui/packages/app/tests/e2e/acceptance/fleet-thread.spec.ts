@@ -12,13 +12,32 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const PANEL_LABEL = /^Chat$/;
 const CHAT_LABEL = "Fleet chat";
 const COMPOSER_LABEL = "Chat composer";
 
+// One seed prefix per test, declared beside the name generators so the seeder
+// and the afterEach sweep share a single literal and can never drift. The
+// sweep is not optional hygiene: every seeded fleet carries a live cron
+// trigger, so an unswept row keeps waking runners long after the run ends.
+const THREAD_PREFIX = "thread-spec-";
+const REVISIT_PREFIX = "thread-revisit-";
+const STEER_PROBE_PREFIX = "steer-probe-";
+const SEED_PREFIXES = [THREAD_PREFIX, REVISIT_PREFIX, STEER_PROBE_PREFIX] as const;
+
 test.describe("fleet thread surface", () => {
+  // Same shape as lifecycle.spec.ts: prefix-scoped so parallel workers
+  // sharing the regular fixture workspace never delete a sibling's fleet.
+  test.afterEach(async () => {
+    const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    for (const prefix of SEED_PREFIXES) {
+      await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, prefix);
+    }
+  });
+
   test("renders the chat panel + composer for an authenticated user", async ({
     page,
   }) => {
@@ -30,7 +49,7 @@ test.describe("fleet thread surface", () => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
     const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
-      name: `thread-spec-${tag}`,
+      name: `${THREAD_PREFIX}${tag}`,
     });
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
@@ -82,7 +101,7 @@ test.describe("fleet thread surface", () => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
     const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
-      name: `thread-revisit-${tag}`,
+      name: `${REVISIT_PREFIX}${tag}`,
     });
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
@@ -120,7 +139,7 @@ test.describe("fleet thread surface", () => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
     const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
-      name: `steer-probe-${tag}`,
+      name: `${STEER_PROBE_PREFIX}${tag}`,
     });
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 

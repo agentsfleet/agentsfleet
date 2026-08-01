@@ -31,6 +31,16 @@ pub const PriorLease = struct {
     tenant_id: []const u8,
     posture: []const u8,
     model: []const u8,
+
+    /// Release every field. Production callers hand this an arena that frees
+    /// wholesale, but tests own the allocation individually — and enumerating
+    /// ten fields at each call site means a field added to the RETURNING list
+    /// above leaks in whichever site nobody remembered to update.
+    pub fn deinit(self: PriorLease, alloc: std.mem.Allocator) void {
+        inline for (@typeInfo(PriorLease).@"struct".fields) |field| {
+            if (field.type == []const u8) alloc.free(@field(self, field.name));
+        }
+    }
 };
 
 /// Atomically reclaim the fleet's latest `active` lease: one statement selects
@@ -44,18 +54,34 @@ pub const PriorLease = struct {
 /// holder. All slices arena-dup'd before drain.
 pub fn reclaimPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []const u8) !?PriorLease {
     const now_ms = clock.nowMillis();
+    // The expired tally rides the same statement as the status flip (the sole
+    // active→expired writer), so the counter can never drift from the rows.
     var q = PgQuery.from(try conn.query(
-        \\UPDATE fleet.runner_leases AS l
-        \\SET status = $3, updated_at = $4
-        \\WHERE l.id = (
-        \\    SELECT id FROM fleet.runner_leases
-        \\    WHERE fleet_id = $1::uuid AND status = $2
-        \\    ORDER BY fencing_token DESC LIMIT 1
-        \\    FOR UPDATE
+        \\WITH bumped AS (
+        \\  UPDATE fleet.runner_leases AS l
+        \\  SET status = $3, updated_at = $4
+        \\  WHERE l.id = (
+        \\      SELECT id FROM fleet.runner_leases
+        \\      WHERE fleet_id = $1::uuid AND status = $2
+        \\      ORDER BY fencing_token DESC LIMIT 1
+        \\      FOR UPDATE
+        \\  )
+        \\  RETURNING l.id, l.runner_id, l.event_id, l.actor, l.event_type, l.request_json,
+        \\            l.event_created_at, l.workspace_id, l.tenant_id,
+        \\            l.posture, l.model
+        \\), tally AS (
+        \\  INSERT INTO fleet.runner_lifetime_counters
+        \\    (uid, runner_id, acquired, succeeded, failed, expired, created_at, updated_at)
+        \\  SELECT runner_id, runner_id, 0, 0, 0, 1, $4, $4
+        \\  FROM bumped
+        \\  ON CONFLICT (uid) DO UPDATE
+        \\     SET expired = fleet.runner_lifetime_counters.expired + 1,
+        \\         updated_at = EXCLUDED.updated_at
         \\)
-        \\RETURNING l.id::text, l.event_id, l.actor, l.event_type, l.request_json,
-        \\          l.event_created_at, l.workspace_id::text, l.tenant_id::text,
-        \\          l.posture, l.model
+        \\SELECT b.id::text, b.event_id, b.actor, b.event_type, b.request_json,
+        \\       b.event_created_at, b.workspace_id::text, b.tenant_id::text,
+        \\       b.posture, b.model
+        \\FROM bumped b
     , .{ fleet_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, protocol.RUNNER_LEASE_STATUS_EXPIRED, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return null;

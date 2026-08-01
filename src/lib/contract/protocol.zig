@@ -159,6 +159,7 @@ pub const RunnerAdminPatchResponse = struct {
 };
 
 pub const RunnerEventType = runner_events.RunnerEventType;
+pub const PER_LEASE_EVENT_TYPES = runner_events.PER_LEASE_EVENT_TYPES;
 pub const RunnerEventItem = runner_events.RunnerEventItem;
 pub const RunnerEventsResponse = runner_events.RunnerEventsResponse;
 
