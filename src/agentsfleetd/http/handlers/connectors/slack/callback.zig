@@ -29,7 +29,7 @@ const F_AUTHED_USER = "authed_user";
 
 const INSERT_INSTALL_SQL =
     \\INSERT INTO core.connector_installs
-    \\  (uid, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
+    \\  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
     \\VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::text[], $7, $7)
     \\ON CONFLICT (provider, external_account_id) DO UPDATE SET
     \\  workspace_id = EXCLUDED.workspace_id,
@@ -100,10 +100,10 @@ fn insertInstall(
     var it = std.mem.splitScalar(u8, scope_csv, ',');
     while (it.next()) |s| if (s.len > 0) try scopes.append(hx.alloc, s);
 
-    const uid = try id_format.generateConnectorInstallId(hx.alloc);
-    defer hx.alloc.free(uid);
+    const id = try id_format.generateConnectorInstallId(hx.alloc);
+    defer hx.alloc.free(id);
     const now = clock.nowMillis();
-    _ = try conn.exec(INSERT_INSTALL_SQL, .{ uid, spec.PROVIDER, team_id, workspace_id, installed_by, scopes.items, now });
+    _ = try conn.exec(INSERT_INSTALL_SQL, .{ id, spec.PROVIDER, team_id, workspace_id, installed_by, scopes.items, now });
 }
 
 fn strField(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {

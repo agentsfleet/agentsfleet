@@ -67,7 +67,7 @@ pub const CLEAR_BALANCE_EXHAUSTED =
 pub const SELECT_TENANT_FOR_WORKSPACE =
     \\SELECT tenant_id::text
     \\FROM core.workspaces
-    \\WHERE workspace_id = $1::uuid
+    \\WHERE id = $1::uuid
     \\LIMIT 1
 ;
 
@@ -78,14 +78,14 @@ pub const SELECT_TENANT_FOR_WORKSPACE =
 /// tenant resolves nothing rather than the wrong workspace.
 pub const SELECT_BOOTSTRAP_IDENTITY =
     \\SELECT
-    \\    u.user_id::text,
-    \\    t.tenant_id::text,
-    \\    w.workspace_id::text,
+    \\    u.id::text,
+    \\    t.id::text,
+    \\    w.id::text,
     \\    w.name
     \\FROM core.users u
-    \\JOIN core.memberships m ON m.user_id = u.user_id AND m.role = 'owner'
-    \\JOIN core.tenants t ON t.tenant_id = m.tenant_id
-    \\JOIN core.workspaces w ON w.tenant_id = t.tenant_id AND w.name IS NOT NULL
+    \\JOIN core.memberships m ON m.user_id = u.id AND m.role = 'owner'
+    \\JOIN core.tenants t ON t.id = m.tenant_id
+    \\JOIN core.workspaces w ON w.tenant_id = t.id AND w.name IS NOT NULL
     \\WHERE u.oidc_subject = $1
     \\ORDER BY w.created_at ASC
     \\LIMIT 1
@@ -93,18 +93,18 @@ pub const SELECT_BOOTSTRAP_IDENTITY =
 
 pub const INSERT_TENANT =
     \\INSERT INTO core.tenants
-    \\  (tenant_id, name, created_at, updated_at)
+    \\  (id, name, created_at, updated_at)
     \\VALUES ($1::uuid, $2, $3, $3)
 ;
 
 pub const INSERT_USER =
     \\INSERT INTO core.users
-    \\  (user_id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
+    \\  (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
     \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $6)
 ;
 
 pub const INSERT_MEMBERSHIP =
-    \\INSERT INTO core.memberships (uid, tenant_id, user_id, role, created_at)
+    \\INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at)
     \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
 ;
 
@@ -112,7 +112,7 @@ pub const INSERT_MEMBERSHIP =
 /// with a NULL name are not subject to the per-tenant name uniqueness.
 pub const INSERT_WORKSPACE =
     \\INSERT INTO core.workspaces
-    \\  (workspace_id, tenant_id, name, created_by, created_at)
+    \\  (id, tenant_id, name, created_by, created_at)
     \\VALUES ($1::uuid, $2::uuid, $3, $4, $5)
     \\ON CONFLICT (tenant_id, name) WHERE name IS NOT NULL DO NOTHING
 ;

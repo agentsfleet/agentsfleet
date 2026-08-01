@@ -14,7 +14,7 @@ pub const DELETE_WORKSPACE_INSTALLS =
 /// rolls back; installation transfer requires a separately verified flow.
 pub const UPSERT_INSTALL =
     \\INSERT INTO core.connector_installs
-    \\  (uid, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
+    \\  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
     \\VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::text[], $7, $7)
     \\ON CONFLICT (provider, external_account_id) DO UPDATE SET
     \\  workspace_id = EXCLUDED.workspace_id,
