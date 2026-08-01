@@ -87,21 +87,58 @@ that fixture is the adversarial case, not the typical one. It is pinned delibera
 the test says so. If the error direction ever matters, the fix is storing the
 run-fee/token-cost split so the time-proportional half apportions exactly.
 
+## The remaining failures, counted
+
+Read them from Postgres, not from Zig stack traces — the traces point at the seed helper,
+the log points at the column:
+
+```
+docker compose logs postgres --since 45m 2>&1 \
+  | grep -oE "ERROR:.*" | sed 's/ at character [0-9]*//' | sort | uniq -c | sort -rn
+```
+
+Last run (before the fleet-create fix landed), 74 failures across ~28 files:
+
+| n | error | what it is |
+|---|---|---|
+| 42 | `column "workspace_id" does not exist` | `core.workspaces.id` |
+| 28 | `column "uid" of relation "memory_entries"` | identity collapse, not yet swept |
+| 27 | `column "request_json" of relation "runner_leases"` | tests still insert the dropped body |
+| 18 | `column "uid" of relation "model_library"` | identity collapse |
+| 18 | `column "tenant_id" does not exist` | `core.tenants.id` |
+| 16 | `null value in column "tenant_id" of relation "fleets"` | fleet inserts missing the tenant |
+| 16 | `column "tenant_id" of relation "tenants"` | same as above, insert side |
+| 14 | `column "id" of relation "runner_affinity"` | tests insert the dropped slot id |
+| 8 | `fleet.metering_periods does not exist` | retired table |
+| 8 | `core.fleet_execution_telemetry does not exist` | retired table |
+| 8 | `column "occurred_at" of relation "runner_events"` | column is `created_at` |
+| 6 | `operator does not exist: uuid ~~ unknown` | a `LIKE` against a now-UUID column |
+| 6 | `column "updated_at_ms" of relation "model_catalogue_revision"` | unit-suffix drop |
+| 3 | `column "uid" of relation "api_keys"` | identity collapse |
+| 4 | `division by zero` | **not a bug** — `poisonTransaction`'s deliberate `SELECT 1/0` |
+| 2 | `canceling statement due to lock timeout` | concurrency suite; triage separately |
+
 ## Next Steps
 
-1. **The identity-column sweep is the remaining bulk, and part of it is PRODUCTION:**
-   - `http/handlers/fleets/sql.zig` — the main fleet-create statement has no `tenant_id`.
-     Fleet creation fails outright. Prefer deriving it from the workspace row
-     (`SELECT … FROM core.workspaces w WHERE w.id = $2::uuid`) so the caller is unchanged
-     and the composite foreign key cannot be fed the wrong tenant — that is what
-     `db/test_fixtures.zig` now does.
-   - `http/handlers/common_authz.zig:37,122` — workspace authorization, `WHERE workspace_id`.
-     This is behind the `common_authz_test` IDOR failure.
-   - `events/fleet_set_cache.zig:317`, `http/handlers/admin/platform_keys/sql.zig:4`,
-     `http/handlers/integration_grants/workspace.zig:191,205-207`.
-2. **Then the test sweep** — ~34 files `INSERT INTO core.fleets` without `tenant_id`,
-   ~13 touch `core.workspaces` identity columns. Mostly mechanical, but read each: some
-   teardown helpers swallow errors, so a stale statement is invisible rather than red.
+1. **`core.integration_grants` is the next coherent unit, and it is PRODUCTION.** The table
+   collapsed `uid` + a `grant_id` text twin into one `id`, and `requested_at` became
+   `created_at`. **The public field name `grant_id` is unchanged and aliased at the
+   boundary** (schema/540 says so explicitly), so this is the same wire-versus-column split
+   as `occurred_at` — every site needs reading, none can be swept. Roughly 15 production
+   files carry the token, but many are the `/…/grants/{grant_id}` path parameter and must
+   NOT change: `fleet_runtime/sql.zig`, `integration_grants/handler.zig`,
+   `webhooks/grant_approval.zig`, `webhooks/sql.zig:25,32`, `approvals/{list,detail}.zig`,
+   `approval_gate_db_reads.zig`, `notifications/grant_notifier.zig`. Do it in one pass or
+   not at all — a half-converted statement set is worse than an unconverted one.
+2. **The other identity collapses**, each its own small unit: `memory.memory_entries.uid`
+   (28 failures), `core.model_library.uid` (18), `core.api_keys.uid` (3),
+   `core.model_catalogue_revision.updated_at_ms` (6).
+3. **Then the test sweep** — ~34 files `INSERT INTO core.fleets` without `tenant_id`,
+   ~13 touch `core.workspaces` identity columns, and several still insert
+   `runner_leases.request_json` or `runner_affinity.id`. Mostly mechanical, but read each:
+   many teardown helpers swallow errors, so a stale statement is invisible rather than red.
+   `http/handlers/integration_grants/workspace.zig:174-207` has an inline test block that
+   seeds through unqualified `tenants` / `workspaces` (search-path dependent) as well.
 3. **`db/pool_test.zig:366`** — `schema_checks` still lists `ops_ro`, which slot 100
    deliberately no longer creates ("no schema is created that holds no tables"). Drop it and
    add `memory`, which is a first-class schema now.
