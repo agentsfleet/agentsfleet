@@ -79,7 +79,7 @@ pub const Route = union(enum) {
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
     // Admin model-library catalogue CRUD (platform-admin)
     admin_models, // GET + POST /v1/admin/models (method-dispatched)
-    admin_model_by_id: []const u8, // PATCH + DELETE /v1/admin/models/{uid}
+    admin_model_by_id: []const u8, // PATCH + DELETE /v1/admin/models/{id}
     // Fleet create/read/update/delete (CRUD), workspace-scoped.
     workspace_fleets: []const u8, // GET|POST /v1/workspaces/{ws}/fleets
     patch_workspace_fleet: matchers.WorkspaceFleetRoute, // PATCH /v1/workspaces/{ws}/fleets/{id}

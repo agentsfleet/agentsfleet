@@ -43,7 +43,6 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0da011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0daa01";
 const RUNNER_B_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dab01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dac01";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dae01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0daf01";
 const EVENT_ID = "evt-edge-1"; // matches seedLease; metering rows keyed by it
 
@@ -64,25 +63,25 @@ fn seedRunner(conn: *pg.Conn, runner_id: []const u8, host_id: []const u8) !void 
 fn seedAffinity(conn: *pg.Conn, last_runner_id: []const u8, fencing_seq: i64, leased_until: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, FLEET_ID, last_runner_id, fencing_seq, leased_until });
+    , .{ FLEET_ID, last_runner_id, fencing_seq, leased_until });
 }
 
 fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_at: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-edge-1',
-        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
+        \\        'steer:test', 'chat', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', $8, $8)
         \\ON CONFLICT (id) DO NOTHING
     , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
@@ -97,7 +96,7 @@ fn teardown(conn: *pg.Conn) void {
     // delete; clear them so a re-seeded case starts the per-event slice counter
     // clean (the affinity counter resets, so a leftover slice_seq would collide).
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
-    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});

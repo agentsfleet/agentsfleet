@@ -191,8 +191,8 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     // INSERT with generated ids
     const tid = try id_format.allocUuidV7(alloc);
     defer alloc.free(tid);
-    const uid = try id_format.allocUuidV7(alloc);
-    defer alloc.free(uid);
+    const row_id = try id_format.allocUuidV7(alloc);
+    defer alloc.free(row_id);
     const pid = try id_format.allocUuidV7(alloc);
     defer alloc.free(pid);
 
@@ -202,7 +202,7 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     );
     _ = try db_ctx.conn.exec(
         "INSERT INTO t6_usage_ledger (id, run_id) VALUES ($1::uuid, 'run-1')",
-        .{uid},
+        .{row_id},
     );
     _ = try db_ctx.conn.exec(
         "INSERT INTO t6_policy_events (id, workspace_id) VALUES ($1::uuid, 'ws-1')",
@@ -222,11 +222,11 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     {
         var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT id::text FROM t6_usage_ledger WHERE id = $1::uuid",
-            .{uid},
+            .{row_id},
         ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
-        try std.testing.expectEqualStrings(uid, try row.get([]const u8, 0));
+        try std.testing.expectEqualStrings(row_id, try row.get([]const u8, 0));
     }
     {
         var q = PgQuery.from(try db_ctx.conn.query(

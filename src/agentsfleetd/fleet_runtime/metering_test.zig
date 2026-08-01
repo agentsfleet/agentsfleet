@@ -158,7 +158,7 @@ test "debitReceive self-managed: EVENT_NANOS=0 charge writes telemetry row, bala
 
     try seed(db_ctx.conn, WS_RECEIVE_DEBIT);
     defer teardown(db_ctx.conn, WS_RECEIVE_DEBIT);
-    defer _ = db_ctx.conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_DEBIT}) catch {};
+    defer _ = db_ctx.conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1", .{WS_RECEIVE_DEBIT}) catch {};
 
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
     try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
@@ -185,7 +185,7 @@ test "debitReceive self-managed: EVENT_NANOS=0 charge writes telemetry row, bala
     // Telemetry row must exist with charge_type='receive'.
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT charge_type, posture, credit_deducted_nanos
-        \\FROM core.fleet_execution_telemetry WHERE event_id = $1
+        \\FROM billing.usage_ledger WHERE event_id = $1
     , .{event_id}));
     defer q.deinit();
     const r = (try q.next()) orelse return error.RowNotFound;
@@ -202,7 +202,7 @@ test "telemetry insert is idempotent: same event_id+charge_type replayed inserts
     const ws = "0195b4ba-8d3a-7f13-8abc-aa0500000008";
     try seed(db_ctx.conn, ws);
     defer teardown(db_ctx.conn, ws);
-    defer _ = db_ctx.conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{ws}) catch {};
+    defer _ = db_ctx.conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1", .{ws}) catch {};
 
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
     try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
@@ -215,7 +215,7 @@ test "telemetry insert is idempotent: same event_id+charge_type replayed inserts
     _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, EVENT_CREATED_AT, .stop);
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT COUNT(*)::BIGINT FROM core.fleet_execution_telemetry
+        \\SELECT COUNT(*)::BIGINT FROM billing.usage_ledger
         \\WHERE event_id = $1 AND charge_type = 'receive'
     , .{event_id}));
     defer q.deinit();

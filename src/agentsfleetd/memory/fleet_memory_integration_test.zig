@@ -72,16 +72,15 @@ const TestDb = struct {
 
 /// Bulk-seed `n` daily rows in one INSERT (a thousand storeEntry round-trips
 /// would drag the lane), updated_at ascending from a warm epoch so every daily
-/// lands strictly newer than any previously stored core fact. uid is composed
-/// v7-shaped from the fleet's distinguishing tail + n (collision-free across
-/// fixture fleets); the globally-unique id column carries the same tail.
+/// lands strictly newer than any previously stored core fact. The identifier is
+/// composed v7-shaped from the fleet's distinguishing tail + n, so it is
+/// collision-free across the fixture fleets.
 fn seedDailies(db: TestDb, fleet_id: []const u8, n: usize) !void {
     _ = try db.conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
+        \\  (id, key, content, category, fleet_id, created_at, updated_at)
         \\SELECT (('0195b4ba-8d3a-7' || lpad(to_hex(n), 3, '0') || '-8abc-'
         \\         || substr(replace($1::uuid::text, '-', ''), 25, 8) || lpad(to_hex(n), 4, '0')))::uuid,
-        \\       'dk-' || substr(replace($1::uuid::text, '-', ''), 29, 4) || '-' || n,
         \\       'dk' || n, 'noise', $2, $1::uuid,
         \\       1700000000000, 1700000000000 + n
         \\FROM generate_series(1, $3::int) n

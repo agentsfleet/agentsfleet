@@ -58,7 +58,7 @@ import {
 } from "@/app/(dashboard)/admin/models/actions";
 
 const MODEL = {
-  uid: "u1",
+  id: "u1",
   provider: "fireworks",
   model_id: "glm-5.2",
   context_cap_tokens: 128000,
@@ -136,19 +136,19 @@ describe("admin/models server actions — scoped happy paths forward through wit
     expect(createAdminModelMock).toHaveBeenCalledWith("tok", body);
   });
 
-  it("updateAdminModelAction forwards the uid + rates body through withToken", async () => {
-    updateAdminModelMock.mockResolvedValueOnce({ uid: "u1", updated: true });
+  it("updateAdminModelAction forwards the id + rates body through withToken", async () => {
+    updateAdminModelMock.mockResolvedValueOnce({ id: "u1", updated: true });
     const rates = {
       context_cap_tokens: 256000,
       input_nanos_per_mtok: 600_000_000,
       cached_input_nanos_per_mtok: 150_000_000,
       output_nanos_per_mtok: 2_300_000_000,
     };
-    expect(await updateAdminModelAction("u1", rates)).toEqual({ ok: true, data: { uid: "u1", updated: true } });
+    expect(await updateAdminModelAction("u1", rates)).toEqual({ ok: true, data: { id: "u1", updated: true } });
     expect(updateAdminModelMock).toHaveBeenCalledWith("tok", "u1", rates);
   });
 
-  it("deleteAdminModelAction forwards the uid through withToken", async () => {
+  it("deleteAdminModelAction forwards the id through withToken", async () => {
     deleteAdminModelMock.mockResolvedValueOnce(undefined);
     expect(await deleteAdminModelAction("u1")).toEqual({ ok: true, data: undefined });
     expect(deleteAdminModelMock).toHaveBeenCalledWith("tok", "u1");

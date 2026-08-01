@@ -26,14 +26,14 @@ export async function createAdminModelAction(body: LibraryModelInput): Promise<A
 }
 
 export async function updateAdminModelAction(
-  uid: string,
+  id: string,
   body: ModelRatesInput,
-): Promise<ActionResult<{ uid: string; updated: boolean }>> {
-  return requireScope(SCOPE.MODEL_ADMIN, () => withToken((t) => updateAdminModel(t, uid, body)));
+): Promise<ActionResult<{ id: string; updated: boolean }>> {
+  return requireScope(SCOPE.MODEL_ADMIN, () => withToken((t) => updateAdminModel(t, id, body)));
 }
 
-export async function deleteAdminModelAction(uid: string): Promise<ActionResult<void>> {
-  return requireScope(SCOPE.MODEL_ADMIN, () => withToken((t) => deleteAdminModel(t, uid)));
+export async function deleteAdminModelAction(id: string): Promise<ActionResult<void>> {
+  return requireScope(SCOPE.MODEL_ADMIN, () => withToken((t) => deleteAdminModel(t, id)));
 }
 
 /**

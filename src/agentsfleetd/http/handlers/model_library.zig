@@ -196,7 +196,7 @@ fn decodeStart(
         hx.fail(ec.ERR_LIBRARY_CURSOR_MISMATCH, S_CURSOR_MISMATCH);
         return error.Rejected;
     }
-    // The uid rides the page SQL as a `::uuid` cast, so a hand-minted cursor
+    // The id rides the page SQL as a `::uuid` cast, so a hand-minted cursor
     // whose id is not a UUID must fail here as the malformed input it is — not
     // downstream as a Postgres cast error dressed in a 503.
     if (!id_format.isUuidV7(cursor.id)) {
@@ -207,7 +207,7 @@ fn decodeStart(
     return .{
         .display_key = cursor.display_key,
         .vendor_key = cursor.vendor_key,
-        .uid = cursor.id,
+        .id = cursor.id,
     };
 }
 

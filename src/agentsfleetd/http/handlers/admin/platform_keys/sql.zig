@@ -5,8 +5,8 @@ pub const SELECT_WORKSPACE_EXISTS =
 
 pub const UPSERT_ACTIVE_DEFAULT =
     \\INSERT INTO core.platform_provider_defaults
-    \\  (id, provider, source_workspace_id, model, base_url, context_cap_tokens, active, created_at, updated_at)
-    \\VALUES ($1, $2, $3, $4, $5, $6, true, $7, $7)
+    \\  (provider, source_workspace_id, model, base_url, context_cap_tokens, active, created_at, updated_at)
+    \\VALUES ($1, $2, $3, $4, $5, true, $6, $6)
     \\ON CONFLICT (provider) DO UPDATE
     \\SET source_workspace_id = EXCLUDED.source_workspace_id,
     \\    model = EXCLUDED.model,

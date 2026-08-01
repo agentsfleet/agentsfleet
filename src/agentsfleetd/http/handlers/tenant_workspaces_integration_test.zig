@@ -83,7 +83,7 @@ fn seedIdentityFixtures(conn: *pg.Conn) !void {
     const key_hash = api_key.sha256Hex(TENANT_API_KEY);
     _ = try conn.exec(
         \\INSERT INTO core.api_keys
-        \\  (uid, tenant_id, key_name, description, key_hash, created_by,
+        \\  (id, tenant_id, key_name, description, key_hash, created_by,
         \\   active, created_at, updated_at)
         \\VALUES ($1, $2, 'workspace-reconciliation', '', $3, $4, TRUE, $5, $5)
         \\ON CONFLICT (key_hash) DO UPDATE
@@ -102,7 +102,7 @@ fn seedIdentityFixtures(conn: *pg.Conn) !void {
 
 fn cleanupFixtures(conn: *pg.Conn) void {
     _ = conn.exec(
-        "DELETE FROM core.api_keys WHERE uid = $1::uuid",
+        "DELETE FROM core.api_keys WHERE id = $1::uuid",
         .{API_KEY_ROW_ID},
     ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(

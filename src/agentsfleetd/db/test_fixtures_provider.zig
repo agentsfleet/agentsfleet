@@ -70,8 +70,8 @@ pub fn seedPlatformProviderWithKey(
     // fk_platform_provider_defaults_model. Zero token rates keep the lease run-fee-only
     // (cache resolves run-fee + 0 token nanos), matching the pre-FK MISS path.
     // No cache warm needed: rates load on first use straight from this row.
-    const caps_uid = try id_format.generateFleetId(alloc);
-    defer alloc.free(caps_uid);
+    const caps_id = try id_format.generateFleetId(alloc);
+    defer alloc.free(caps_id);
     _ = try conn.exec(
         \\INSERT INTO core.model_library
         \\  (id, model_id, provider, context_cap_tokens,
@@ -79,7 +79,7 @@ pub fn seedPlatformProviderWithKey(
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, $5, $5)
         \\ON CONFLICT (provider, model_id) DO NOTHING
-    , .{ caps_uid, TEST_PLATFORM_MODEL, TEST_PROVIDER_NAME, TEST_PLATFORM_CAP_TOKENS, clock.nowMillis() });
+    , .{ caps_id, TEST_PLATFORM_MODEL, TEST_PROVIDER_NAME, TEST_PLATFORM_CAP_TOKENS, clock.nowMillis() });
 
     // Vault credential at (workspace_id, TEST_PROVIDER_NAME).
     var obj: std.json.ObjectMap = .empty;
@@ -89,20 +89,18 @@ pub fn seedPlatformProviderWithKey(
     try base.storeVaultJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj });
 
     // platform_provider_defaults row pointing at the seeded vault credential.
-    const key_id = try id_format.generateFleetId(alloc);
-    defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.platform_provider_defaults
-        \\  (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, true, $6, $6)
+        \\  (provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
+        \\VALUES ($1, $2::uuid, $3, $4, true, $5, $5)
         \\ON CONFLICT (provider) DO UPDATE
         \\SET source_workspace_id = EXCLUDED.source_workspace_id,
         \\    model = EXCLUDED.model,
         \\    context_cap_tokens = EXCLUDED.context_cap_tokens,
         \\    active = true,
         \\    updated_at = EXCLUDED.updated_at
-    , .{ key_id, TEST_PROVIDER_NAME, workspace_id, TEST_PLATFORM_MODEL, TEST_PLATFORM_CAP_TOKENS, now_ms });
+    , .{ TEST_PROVIDER_NAME, workspace_id, TEST_PLATFORM_MODEL, TEST_PLATFORM_CAP_TOKENS, now_ms });
 
     // Starter grant — funds the receive + stage debits the writepath fires.
     // Granted to the workspace's OWNING tenant (not the shared TEST_TENANT_ID)

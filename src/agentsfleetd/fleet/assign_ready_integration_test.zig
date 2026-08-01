@@ -115,7 +115,7 @@ test "integration: an accepted fleet event leaves its fleet in the readiness ind
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_READY_A, "ready-mark", base.CONFIG_PLAIN, "5");
+    try base.seedFleetWithConfig(conn, FLEET_READY_A, "ready-mark", base.CONFIG_PLAIN);
     try clearWholeIndex(h);
 
     try std.testing.expect(!try isMarked(h, FLEET_READY_A));
@@ -306,7 +306,7 @@ test "integration: a poll against an empty readiness index performs zero Postgre
     // change the poll would have claimed it, probed for a prior lease, read its
     // stream twice and released it. The index being empty is what makes all of
     // that unnecessary.
-    try base.seedFleetWithConfig(conn, FLEET_READY_A, "ready-idle", base.CONFIG_PLAIN, "5");
+    try base.seedFleetWithConfig(conn, FLEET_READY_A, "ready-idle", base.CONFIG_PLAIN);
     try clearWholeIndex(h);
 
     mc.resetLeasePollMetricsForTest();
@@ -330,7 +330,7 @@ test "integration: a poll against a non-empty index does reach Postgres" {
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_READY_A, "ready-busy", base.CONFIG_PLAIN, "5");
+    try base.seedFleetWithConfig(conn, FLEET_READY_A, "ready-busy", base.CONFIG_PLAIN);
     try clearWholeIndex(h);
 
     const event_id = try base.publishEvent(h, FLEET_READY_A);
@@ -354,7 +354,7 @@ test "integration: a ready fleet requiring a tag the runner lacks is never lease
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_TAGGED, "ready-tagged", base.CONFIG_PLAIN, "5");
+    try base.seedFleetWithConfig(conn, FLEET_TAGGED, "ready-tagged", base.CONFIG_PLAIN);
     // Readiness NARROWS the candidate set; it must never widen eligibility. The
     // label gate lives in the candidate query and this proves the membership
     // restriction did not displace it.
@@ -401,7 +401,7 @@ test "integration: a consumer group deleted out of band is repaired by the next 
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_REPAIR, "ready-repair", base.CONFIG_PLAIN, "5");
+    try base.seedFleetWithConfig(conn, FLEET_REPAIR, "ready-repair", base.CONFIG_PLAIN);
     defer redis_fleet.purgeFleetRedisState(&h.queue, FLEET_REPAIR) catch {};
     try clearWholeIndex(h);
 
@@ -448,7 +448,7 @@ test "integration: repeated leases against one fleet create its consumer group o
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_MEMO, "ready-memo", base.CONFIG_PLAIN, "5");
+    try base.seedFleetWithConfig(conn, FLEET_MEMO, "ready-memo", base.CONFIG_PLAIN);
     defer redis_fleet.purgeFleetRedisState(&h.queue, FLEET_MEMO) catch {};
     // Only this fleet may be a candidate, or another fleet's ensure would be
     // counted against this one's budget.
@@ -483,7 +483,7 @@ test "integration: readiness is cleared once a claim-won poll finds nothing deli
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_READY_B, "ready-drain", base.CONFIG_PLAIN, "5");
+    try base.seedFleetWithConfig(conn, FLEET_READY_B, "ready-drain", base.CONFIG_PLAIN);
     try clearWholeIndex(h);
 
     // Mark a fleet whose stream holds nothing. The poll wins the claim, both

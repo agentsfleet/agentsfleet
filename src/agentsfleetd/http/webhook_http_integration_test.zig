@@ -743,7 +743,7 @@ const GRANT_FX: fx_mod.Fixture = .{
     .workspace_id = fx_mod.ID_WS_A,
     .fleet_id = fx_mod.ID_AGENTSFLEET_A,
 };
-const GRANT_ID = "0197a4ba-8d3a-7f13-8abc-11111111bb01"; // uuidv7; the schema pins uid::text == grant_id
+const GRANT_ID = "0197a4ba-8d3a-7f13-8abc-11111111bb01"; // uuidv7 — the grant row's own identity
 const GRANT_SERVICE = "github";
 const GRANT_NONCE = "nonce-m109-002-grant-approval-test";
 const GRANT_NONCE_KEY = "grant:nonce:" ++ GRANT_ID;
@@ -756,11 +756,11 @@ fn seedGrant(h: *TestHarness, status: []const u8) !void {
     const trigger = try fx_mod.buildTriggerConfig(h.alloc, "github", null);
     defer h.alloc.free(trigger);
     try fx_mod.insertFleet(conn, GRANT_FX, trigger); // fresh tenant+workspace+fleet (cleans first)
-    _ = try conn.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{GRANT_ID});
+    _ = try conn.exec("DELETE FROM core.integration_grants WHERE id = $1::uuid", .{GRANT_ID});
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, $5, 'm109-002 test grant')
+        \\  (id, fleet_id, service, status, created_at, requested_reason)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'm109-002 test grant')
     , .{ GRANT_ID, GRANT_FX.fleet_id, GRANT_SERVICE, status, clock.nowMillis() });
 }
 
@@ -772,7 +772,7 @@ fn setGrantNonce(h: *TestHarness) !void {
 fn cleanupGrant(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
-    _ = conn.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{GRANT_ID}) catch |err| std.log.warn("grant cleanup ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.integration_grants WHERE id = $1::uuid", .{GRANT_ID}) catch |err| std.log.warn("grant cleanup ignored: {s}", .{@errorName(err)});
     fx_mod.cleanup(conn, GRANT_FX) catch |err| std.log.warn("grant fx cleanup ignored: {s}", .{@errorName(err)});
     var v = h.queue.command(&.{ "DEL", GRANT_NONCE_KEY }) catch return;
     v.deinit(h.alloc);

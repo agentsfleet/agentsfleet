@@ -48,7 +48,6 @@ pub const AGENTSFLEET_GATED_EXP = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c08";
 pub const AGENTSFLEET_RECLAIM_FAIL = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c09";
 pub const AGENTSFLEET_FRESH_FAIL = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c0a";
 pub const AGENTSFLEET_RELEASE_FAIL = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c0b";
-const SESSION_BASE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d0";
 
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "e" ** 64;
 const DEAD_CONSUMER = "worker-retired-host-1700000000000";
@@ -98,11 +97,9 @@ fn seedRunner(conn: *pg.Conn) !void {
     , .{ RUNNER_ID, hash[0..] });
 }
 
-pub fn seedFleetWithConfig(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, config: []const u8, session_suffix: []const u8) !void {
+pub fn seedFleetWithConfig(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, config: []const u8) !void {
     try base.seedFleet(conn, fleet_id, WORKSPACE_ID, name, config, SOURCE_MD);
-    var sid_buf: [64]u8 = undefined;
-    const sid = try std.fmt.bufPrint(&sid_buf, "{s}{s}", .{ SESSION_BASE, session_suffix });
-    try base.seedFleetSession(conn, sid, fleet_id, "{}");
+    try base.seedFleetSession(conn, fleet_id, "{}");
 }
 
 pub const Env = struct {
@@ -299,7 +296,7 @@ test "missing declared secret refuses the lease: gate_blocked + secret_missing +
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedFleetWithConfig(conn, AGENTSFLEET_CRED, "lifecycle-cred", CONFIG_GHOST_CRED, "1");
+    try seedFleetWithConfig(conn, AGENTSFLEET_CRED, "lifecycle-cred", CONFIG_GHOST_CRED);
 
     const event_id = try publishEvent(h, AGENTSFLEET_CRED);
     defer h.queue.alloc.free(event_id);
@@ -320,7 +317,7 @@ test "unresolvable provider credential blocks the event: gate_blocked + tenant_r
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedFleetWithConfig(conn, AGENTSFLEET_PROVIDER, "lifecycle-prov", CONFIG_PLAIN, "2");
+    try seedFleetWithConfig(conn, AGENTSFLEET_PROVIDER, "lifecycle-prov", CONFIG_PLAIN);
     // self-managed row whose secret_ref has no vault row →
     // error.SecretMissing → permanent refusal (RULE ECL).
     _ = try conn.exec(
@@ -347,7 +344,7 @@ test "approval denial writes the terminal row: gate_blocked + approval_denied + 
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedFleetWithConfig(conn, AGENTSFLEET_GATED, "lifecycle-gated", CONFIG_GATED_ALL, "3");
+    try seedFleetWithConfig(conn, AGENTSFLEET_GATED, "lifecycle-gated", CONFIG_GATED_ALL);
 
     const event_id = try publishEvent(h, AGENTSFLEET_GATED);
     defer h.queue.alloc.free(event_id);

@@ -32,10 +32,6 @@ pub const RUNNER_A_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6a01";
 pub const RUNNER_B_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6b01";
 pub const AGENTSFLEET_1_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6c01";
 pub const AGENTSFLEET_2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6c02";
-pub const SESSION_1_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6d01";
-pub const SESSION_2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6d02";
-pub const AFFINITY_1_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6e01";
-pub const AFFINITY_2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6e02";
 pub const LEASE_OLD_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6f01";
 
 pub const RUNNER_A_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "a" ** 64;
@@ -80,34 +76,34 @@ pub fn seedRunner(conn: *pg.Conn, runner_id: []const u8, host_id: []const u8, to
     , .{ runner_id, host_id, hash[0..] });
 }
 
-pub fn seedActiveFleet(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, session_id: []const u8) !void {
+pub fn seedActiveFleet(conn: *pg.Conn, fleet_id: []const u8, name: []const u8) !void {
     try base.seedFleet(conn, fleet_id, WORKSPACE_ID, name, CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedFleetSession(conn, session_id, fleet_id, "{}");
+    try base.seedFleetSession(conn, fleet_id, "{}");
 }
 
-pub fn seedAffinity(conn: *pg.Conn, affinity_id: []const u8, fleet_id: []const u8, last_runner_id: []const u8, fencing_seq: i64, leased_until: i64) !void {
+pub fn seedAffinity(conn: *pg.Conn, fleet_id: []const u8, last_runner_id: []const u8, fencing_seq: i64, leased_until: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq = EXCLUDED.fencing_seq,
         \\      leased_until = EXCLUDED.leased_until
-    , .{ affinity_id, fleet_id, last_runner_id, fencing_seq, leased_until });
+    , .{ fleet_id, last_runner_id, fencing_seq, leased_until });
 }
 
 pub fn seedActiveLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_id: []const u8, fencing_token: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-seed-1',
-        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
+        \\        'steer:test', 'chat', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ lease_id, runner_id, fleet_id, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, clock.nowMillis() + 60_000 });
@@ -295,9 +291,9 @@ test "integration: runner control plane — lease assigns across active fleets, 
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
-    try seedActiveFleet(conn, AGENTSFLEET_1_ID, "cp-fleet-1", SESSION_1_ID);
-    try seedActiveFleet(conn, AGENTSFLEET_2_ID, "cp-fleet-2", SESSION_2_ID);
-    try seedAffinity(conn, AFFINITY_2_ID, AGENTSFLEET_2_ID, RUNNER_A_ID, 0, 0);
+    try seedActiveFleet(conn, AGENTSFLEET_1_ID, "cp-fleet-1");
+    try seedActiveFleet(conn, AGENTSFLEET_2_ID, "cp-fleet-2");
+    try seedAffinity(conn, AGENTSFLEET_2_ID, RUNNER_A_ID, 0, 0);
 
     try publishFreshEvent(h, AGENTSFLEET_1_ID);
     try publishFreshEvent(h, AGENTSFLEET_2_ID);

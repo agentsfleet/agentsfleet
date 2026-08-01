@@ -193,8 +193,8 @@ pub const UPDATE_FLEET_EVENT_RESULT =
 
 /// Checkpoint a fleet's session. One row per fleet, replaced in place.
 pub const UPSERT_FLEET_SESSION =
-    \\INSERT INTO core.fleet_sessions (id, fleet_id, context_json, checkpoint_at, created_at, updated_at)
-    \\VALUES ($1, $2, $3, $4, $4, $4)
+    \\INSERT INTO core.fleet_sessions (fleet_id, context_json, checkpoint_at, created_at, updated_at)
+    \\VALUES ($1::uuid, $2::jsonb, $3, $3, $3)
     \\ON CONFLICT (fleet_id) DO UPDATE
     \\  SET context_json = EXCLUDED.context_json,
     \\      checkpoint_at = EXCLUDED.checkpoint_at,

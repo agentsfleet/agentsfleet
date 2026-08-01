@@ -29,7 +29,7 @@ const RETIRED_INDEXES = [_]IndexRef{
 const KEPT_INDEX = IndexRef{ .schema = "memory", .name = "idx_memory_entries_category" };
 
 const KEY_PREFIX = "rmprobe-key-";
-const MEM_ID_PREFIX = "rmprobe-mem-";
+const MEM_KEY_PREFIX = "rmprobe-mem-";
 const FLEET_PROBE = "0195b4ba-8d3a-7f13-8abc-0000000e0001";
 const SEED_ROWS: i32 = 200;
 const MEM_SEED_ROWS: i32 = 200;
@@ -108,7 +108,7 @@ test "api key auth lookup survives the drop" {
 
     _ = try db.conn.exec(
         \\INSERT INTO core.api_keys
-        \\  (uid, tenant_id, key_name, description, key_hash, created_by, active,
+        \\  (id, tenant_id, key_name, description, key_hash, created_by, active,
         \\   revoked_at, last_used_at, created_at, updated_at)
         \\SELECT overlay(md5('rk' || g)::uuid::text placing '7' from 15 for 1)::uuid,
         \\       $1::uuid, $2 || g, '', $2 || g, 'seed', TRUE, NULL, NULL, g, 0
@@ -120,7 +120,7 @@ test "api key auth lookup survives the drop" {
     // The dropped index was partial on `active`; the auth path never filters on
     // it, so the unique index on key_hash alone is the one that must serve this.
     try expectServesFilter(alloc, db.conn,
-        \\SELECT uid FROM core.api_keys WHERE key_hash = 'rmprobe-key-100'
+        \\SELECT id FROM core.api_keys WHERE key_hash = 'rmprobe-key-100'
     , "api_keys_hash_uniq");
 }
 
@@ -128,20 +128,20 @@ test "the composite still covers the fleet filter after the drop" {
     const alloc = std.testing.allocator;
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
-    defer _ = db.conn.exec("DELETE FROM memory.memory_entries WHERE id LIKE $1", .{MEM_ID_PREFIX ++ "%"}) catch |err|
+    defer _ = db.conn.exec("DELETE FROM memory.memory_entries WHERE key LIKE $1", .{MEM_KEY_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory teardown ignored: {s}", .{@errorName(err)});
 
     _ = try db.conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
+        \\  (id, key, content, category, fleet_id, created_at, updated_at)
         \\SELECT overlay(md5('rm' || g)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\       $1 || g, 'k' || g, 'content', 'core',
+        \\       $1 || g, 'content', 'core',
         \\       CASE WHEN g <= $3::int THEN $2::uuid
         \\            ELSE md5((g % 200)::text)::uuid END,
         \\       g, g
         \\FROM generate_series(1, $4::int) g
         \\ON CONFLICT DO NOTHING
-    , .{ MEM_ID_PREFIX, FLEET_PROBE, PROBE_FLEET_ROWS, MEM_SEED_ROWS });
+    , .{ MEM_KEY_PREFIX, FLEET_PROBE, PROBE_FLEET_ROWS, MEM_SEED_ROWS });
     _ = try db.conn.exec("ANALYZE memory.memory_entries", .{});
 
     // "The drop is safe" reduces to: with the narrow index gone, an index still

@@ -572,14 +572,14 @@ test "no-content: DELETE fleet-key returns 204 with empty body" {
         \\ON CONFLICT DO NOTHING
     , .{ fleet_for_agent, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.fleet_keys (uid, fleet_key_id, workspace_id, fleet_id, name, description, key_hash, created_at)
-        \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
-        \\ON CONFLICT (fleet_key_id) DO NOTHING
+        \\INSERT INTO core.fleet_keys (id, workspace_id, fleet_id, name, description, key_hash, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ fleet_key_id, TEST_WORKSPACE_ID, fleet_for_agent });
     srv.pool.release(conn);
     defer {
         if (srv.pool.acquire()) |c| {
-            _ = c.exec("DELETE FROM core.fleet_keys WHERE fleet_key_id = $1", .{fleet_key_id}) catch {};
+            _ = c.exec("DELETE FROM core.fleet_keys WHERE id = $1::uuid", .{fleet_key_id}) catch {};
             _ = c.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fleet_for_agent}) catch {};
             srv.pool.release(c);
         } else |_| {}

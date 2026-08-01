@@ -78,8 +78,8 @@ fn seedRateRow(conn: anytype) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
         \\ON CONFLICT (provider, model_id) DO NOTHING
     , .{ RC_UID, RC_MODEL, RC_PROVIDER, RC_CAP_TOKENS, RC_INPUT_NANOS, RC_CACHED_NANOS, RC_OUTPUT_NANOS, now });
@@ -166,15 +166,15 @@ test "integration(model_rate_cache): eviction under capacity pressure releases e
         // Built by hand, not `gen_random_uuid()`: that yields a v4 uuid and
         // `ck_model_library_uid_uuidv7` requires a '7' in the version nibble, so
         // every insert would have failed the CHECK rather than the test.
-        const uid = try std.fmt.bufPrint(&uid_buf, "{s}{x:0>12}", .{ RC_EVICT_UID_PREFIX, i });
+        const row_id = try std.fmt.bufPrint(&uid_buf, "{s}{x:0>12}", .{ RC_EVICT_UID_PREFIX, i });
         const now = clock.nowMillis();
         _ = try conn.exec(
             \\INSERT INTO core.model_library
-            \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-            \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+            \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+            \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
             \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
             \\ON CONFLICT (provider, model_id) DO NOTHING
-        , .{ uid, model, RC_EVICT_PROVIDER, RC_CAP_TOKENS, RC_INPUT_NANOS, RC_CACHED_NANOS, RC_OUTPUT_NANOS, now });
+        , .{ row_id, model, RC_EVICT_PROVIDER, RC_CAP_TOKENS, RC_INPUT_NANOS, RC_CACHED_NANOS, RC_OUTPUT_NANOS, now });
         _ = try model_rate_cache.rateAtRevision(conn, revision, RC_EVICT_PROVIDER, model);
     }
     defer _ = conn.exec(RC_CLEANUP_SQL, .{RC_EVICT_PROVIDER}) catch {};

@@ -27,7 +27,6 @@ const ALLOC = std.testing.allocator;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-3c0e1e0c0011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-3c0e1e0c0a01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-3c0e1e0c0c01";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-3c0e1e0c0e01";
 const LEASE_POOL = [_][]const u8{
     "0195b4ba-8d3a-7f13-8abc-3c0e1e0c0f01",
     "0195b4ba-8d3a-7f13-8abc-3c0e1e0c0f02",
@@ -65,13 +64,13 @@ fn seedRunner(conn: *pg.Conn) !void {
 // passes and the tally arm is reached.
 fn seedAffinity(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_affinity (id, fleet_id, last_runner_id, fencing_seq,
+        \\INSERT INTO fleet.runner_affinity (fleet_id, last_runner_id, fencing_seq,
         \\   leased_until, metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, 0, 0, 0, $5, 0, 0)
+        \\   last_metered_at, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 1, $3, 0, 0, 0, $4, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = 1,
-        \\   leased_until = EXCLUDED.leased_until, last_metered_at_ms = EXCLUDED.last_metered_at_ms
-    , .{ AFFINITY_ID, FLEET_ID, RUNNER_ID, NOW_MS + LEASE_AHEAD_MS, NOW_MS });
+        \\   leased_until = EXCLUDED.leased_until, last_metered_at = EXCLUDED.last_metered_at
+    , .{ FLEET_ID, RUNNER_ID, NOW_MS + LEASE_AHEAD_MS, NOW_MS });
 }
 
 fn setupBase(conn: *pg.Conn) !void {
@@ -90,7 +89,7 @@ fn cleanup(conn: *pg.Conn) void {
     // Settles write audit rows keyed by event id; clear them so a crashed run
     // cannot pollute a sibling suite's count-based assertions.
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id LIKE $1", .{EVENT_PREFIX ++ "%"});
-    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE event_id LIKE $1", .{EVENT_PREFIX ++ "%"});
+    execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id LIKE $1", .{EVENT_PREFIX ++ "%"});
     execIgnore(conn, "DELETE FROM core.fleet_events WHERE event_id LIKE $1", .{EVENT_PREFIX ++ "%"});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{RUNNER_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
@@ -288,7 +287,7 @@ test "counter row equals a recount after concurrent acquire and settle cycles" {
 
     // One serial acquire+settle materializes the counter row before the race,
     // so what this test pins is the SUSTAINED-increment invariant: every racing
-    // write takes the `ON CONFLICT (uid)` update arm and none is lost.
+    // write takes the `ON CONFLICT (id)` update arm and none is lost.
     //
     // The other half — concurrent FIRST touch of a runner with no counter row —
     // is pinned separately by `concurrent first touches of a new runner's

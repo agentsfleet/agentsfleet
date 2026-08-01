@@ -21,7 +21,7 @@ const sql = @import("../../state/model_library/sql.zig");
 // persona) proves the route is authenticated-only, not capability-scoped.
 const VIEWER_TOKEN = scope_fixtures.VIEWER;
 
-// uuidv7 literals (version nibble 7) so the library uid CHECK passes.
+// uuidv7 literals (version nibble 7) so the library id CHECK passes.
 const UID_PRICED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a8001";
 const UID_ZERO_RATED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a8002";
 
@@ -63,13 +63,13 @@ fn seedLibrary(h: *TestHarness) !void {
     defer h.releaseConn(conn);
     const now = clock.nowMillis();
     try std.testing.expectEqual(@as(?i64, 1), try model_library_store.create(conn, .{
-        .uid = UID_PRICED,
+        .id = UID_PRICED,
         .provider = FIXTURE_PROVIDER,
         .model_id = "claude-library-read-fixture",
         .rates = .{ .context_cap_tokens = 256000, .input_nanos_per_mtok = 3000000000, .cached_input_nanos_per_mtok = 300000000, .output_nanos_per_mtok = 15000000000 },
     }, now));
     try std.testing.expectEqual(@as(?i64, 1), try model_library_store.create(conn, .{
-        .uid = UID_ZERO_RATED,
+        .id = UID_ZERO_RATED,
         .provider = FIXTURE_PROVIDER,
         .model_id = "kimi-library-read-fixture",
         .rates = .{ .context_cap_tokens = 256000, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 },

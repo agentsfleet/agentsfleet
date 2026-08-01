@@ -175,7 +175,7 @@ pub const UPDATE_RATES =
     ;
 
 /// Delete the row identified by id. Affected 0 → no such id (caller → 404).
-pub const DELETE_BY_UID =
+pub const DELETE_BY_ID =
     "DELETE FROM " ++ TABLE ++ " WHERE id = $1::uuid";
 
 /// One model's rate PLUS the catalogue generation it is read at, in ONE

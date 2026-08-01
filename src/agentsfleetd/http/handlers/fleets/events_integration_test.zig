@@ -84,15 +84,15 @@ fn seedTestData(conn: *pg.Conn) !void {
 
 fn insertEvent(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, actor: []const u8, event_type: []const u8, ts: i64) !void {
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
+    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,
+        \\  (id, fleet_id, event_id, workspace_id, actor, event_type,
         \\   status, request_json, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, 'processed',
         \\        '{"message":"test"}'::jsonb, $7, $7)
         \\ON CONFLICT (fleet_id, event_id) DO NOTHING
-    , .{ uid, fleet_id, event_id, TEST_WORKSPACE_ID, actor, event_type, ts });
+    , .{ row_id, fleet_id, event_id, TEST_WORKSPACE_ID, actor, event_type, ts });
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
@@ -381,15 +381,15 @@ fn insertEventWithParent(
     ts: i64,
 ) !void {
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
+    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,
+        \\  (id, fleet_id, event_id, workspace_id, actor, event_type,
         \\   status, request_json, resumes_event_id, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, 'chat', $6,
         \\        '{"message":"test"}'::jsonb, $7, $8, $8)
         \\ON CONFLICT (fleet_id, event_id) DO NOTHING
-    , .{ uid, fleet_id, event_id, TEST_WORKSPACE_ID, actor, status, resumes_event_id, ts });
+    , .{ row_id, fleet_id, event_id, TEST_WORKSPACE_ID, actor, status, resumes_event_id, ts });
 }
 
 // test_resumes_event_id_immediate_parent

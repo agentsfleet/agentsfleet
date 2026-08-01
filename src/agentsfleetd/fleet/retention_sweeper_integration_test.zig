@@ -64,11 +64,11 @@ fn seedRunner(conn: *pg.Conn) !void {
 fn seedLease(conn: *pg.Conn, lease_id: []const u8, event_id: []const u8, status: []const u8, created_at: i64, updated_at: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases (id, runner_id, fleet_id, workspace_id, tenant_id,
-        \\   event_id, actor, event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_id, actor, event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'steer:retention-test', 'chat',
-        \\   '{}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $7, $8, $7, $9)
+        \\   0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $7, $8, $7, $9)
         \\ON CONFLICT (id) DO NOTHING
     , .{ lease_id, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, event_id, created_at, status, updated_at });
 }
@@ -173,12 +173,12 @@ fn lifetimeExpiredCount(conn: *pg.Conn) !i64 {
 fn seedAgedLeaseBulk(conn: *pg.Conn, aged_at: i64, count: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases (id, runner_id, fleet_id, workspace_id, tenant_id,
-        \\   event_id, actor, event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_id, actor, event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\SELECT overlay(overlay(gen_random_uuid()::text placing '7' from 15) placing '8' from 20)::uuid,
         \\       $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'evt-ret-bulk-' || g, 'steer:retention-test', 'chat',
-        \\       '{}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $5, $6, $5, $5
+        \\       0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $5, $6, $5, $5
         \\FROM generate_series(1, $7::bigint) AS g
     , .{ RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, aged_at, protocol.RUNNER_LEASE_STATUS_REPORTED, count });
 }

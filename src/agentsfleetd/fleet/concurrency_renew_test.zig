@@ -64,7 +64,6 @@ fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0db011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dba01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbc01";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbe01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbf01";
 
 const NOW_MS: i64 = 1_900_000_000_000;
@@ -83,24 +82,24 @@ fn seedRunner(conn: *pg.Conn) !void {
 fn seedAffinity(conn: *pg.Conn, fencing_seq: i64, leased_until: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, FLEET_ID, RUNNER_ID, fencing_seq, leased_until });
+    , .{ FLEET_ID, RUNNER_ID, fencing_seq, leased_until });
 }
 
 fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_at: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-conc-renew-1',
-        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
+        \\        'steer:test', 'chat', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', $8, $8)
         \\ON CONFLICT (id) DO NOTHING
     , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
@@ -134,7 +133,7 @@ fn teardown(conn: *pg.Conn) void {
     // ledger row per renewal. Clear them so a count-based assertion (slices) is
     // not polluted by a sibling test that ran earlier in the seed-shuffled order.
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
-    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
@@ -264,7 +263,7 @@ test "100 concurrent metered renews on one lease charge the slice exactly once (
     // the other 99 block, re-read the advanced cursor (Δ=0), and charge ≈0 —
     // exactly-once under the race. Without the lock each would re-charge the full
     // slice off the stale pre-advance cursor (the P0 double-charge).
-    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, CURSOR_BASE_MS });
     const balance: i64 = 1_000_000_000_000;
     try seedBalance(c, balance);
     defer teardown(c);
@@ -328,7 +327,7 @@ test "claim+settle racing a reclaim never reports without charging the final sli
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
     // 20s of run elapsed (bounded slice); ample balance so no clamp.
-    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, CURSOR_BASE_MS });
     const balance: i64 = 1_000_000_000_000;
     try seedBalance(c, balance);
     defer teardown(c); // also clears metering_periods + telemetry for EVENT_ID
@@ -372,7 +371,6 @@ test "claim+settle racing a reclaim never reports without charging the final sli
 // lock serialises them, so the loser charges only the remaining balance.
 
 const FLEET_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbc02";
-const AFFINITY_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbe02";
 const LEASE_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbf02";
 const EVENT_ID_2 = "evt-conc-renew-2";
 
@@ -382,22 +380,22 @@ fn seedSecondLease(conn: *pg.Conn) !void {
     try base.seedFleet(conn, FLEET_ID_2, WORKSPACE_ID, "conc-renew-2", "{}", "# z");
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 5, $4, 0, 0, 0, $5, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, 5, $3, 0, 0, 0, $4, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE
-        \\  SET fencing_seq = 5, leased_until = EXCLUDED.leased_until, last_metered_at_ms = EXCLUDED.last_metered_at_ms,
+        \\  SET fencing_seq = 5, leased_until = EXCLUDED.leased_until, last_metered_at = EXCLUDED.last_metered_at,
         \\      metered_input_tokens = 0, metered_cached_tokens = 0, metered_output_tokens = 0
-    , .{ AFFINITY_ID_2, FLEET_ID_2, RUNNER_ID, NOW_MS - MS_PER_SECOND, CURSOR_BASE_MS });
+    , .{ FLEET_ID_2, RUNNER_ID, NOW_MS - MS_PER_SECOND, CURSOR_BASE_MS });
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
+        \\        'steer:test', 'chat', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 5, $7, 'active', $8, $8)
         \\ON CONFLICT (id) DO NOTHING
     , .{ LEASE_ID_2, RUNNER_ID, FLEET_ID_2, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID_2, NOW_MS - MS_PER_SECOND, NOW_MS - 2_000 });
@@ -405,7 +403,7 @@ fn seedSecondLease(conn: *pg.Conn) !void {
 
 fn teardownSecond(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID_2});
-    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE event_id = $1", .{EVENT_ID_2});
+    execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", .{EVENT_ID_2});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID_2});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID_2});
 }
@@ -484,7 +482,7 @@ test "integration: two same-tenant renews at exhaustion record audit rows summin
     try seedRunner(c);
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
-    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, CURSOR_BASE_MS });
     try seedSecondLease(c);
     defer teardown(c);
     defer teardownSecond(c);
@@ -541,7 +539,7 @@ test "integration: two same-tenant settles at exhaustion record audit rows summi
     try seedRunner(c);
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
-    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, CURSOR_BASE_MS });
     try seedSecondLease(c);
     defer teardown(c);
     defer teardownSecond(c);
@@ -594,7 +592,7 @@ test "integration: a regressed cumulative token report charges zero tokens and n
     // runtime already elapsed.
     const seeded_cursor: i64 = 1000;
     const balance: i64 = 1_000_000_000_000;
-    _ = try c.exec("UPDATE fleet.runner_affinity SET metered_input_tokens = $2, metered_cached_tokens = $2, metered_output_tokens = $2, last_metered_at_ms = $3 WHERE fleet_id = $1::uuid", .{ FLEET_ID, seeded_cursor, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET metered_input_tokens = $2, metered_cached_tokens = $2, metered_output_tokens = $2, last_metered_at = $3 WHERE fleet_id = $1::uuid", .{ FLEET_ID, seeded_cursor, CURSOR_BASE_MS });
     _ = try c.exec("UPDATE fleet.runner_leases SET metered_input_tokens = $2, metered_cached_tokens = $2, metered_output_tokens = $2 WHERE id = $1::uuid", .{ LEASE_ID, seeded_cursor });
     try seedBalance(c, balance);
     defer teardown(c);

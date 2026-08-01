@@ -38,7 +38,6 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd011";
 const RUNNER_A_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dda01";
 const RUNNER_B_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddb01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddc01";
-const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd01";
 const METERING_COLLISION_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd0f1";
 const FENCED_ERROR_CODE = "UZ-RUN-005";
 
@@ -83,7 +82,7 @@ fn seedRunner(conn: *pg.Conn, runner_id: []const u8, host_id: []const u8, token:
 
 fn seedActiveFleet(conn: *pg.Conn) !void {
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "roundtrip-bot", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, "{}");
+    try base.seedFleetSession(conn, FLEET_ID, "{}");
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
@@ -223,7 +222,7 @@ fn nextMeterSliceSeq(conn: *pg.Conn) !i64 {
 fn blockNextSettleSlice(conn: *pg.Conn, event_id: []const u8, slice_seq: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.metering_periods
-        \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
+        \\  (id, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
         \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
         \\VALUES ($1::uuid, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0)
     , .{ METERING_COLLISION_UID, event_id, slice_seq });
@@ -246,7 +245,7 @@ fn forgetFleet(h: *TestHarness, fleet_id: []const u8) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     forgetFleet(h, FLEET_ID);
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE uid = $1::uuid", .{METERING_COLLISION_UID});
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE row_id = $1::uuid", .{METERING_COLLISION_UID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });

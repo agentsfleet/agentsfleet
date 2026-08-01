@@ -112,7 +112,7 @@ fn nextCursor(
     return try pagination.encode(alloc, catalogue_key.Cursor, .{
         .display_key = boundary.display_key,
         .vendor_key = boundary.vendor_key,
-        .id = boundary.uid,
+        .id = boundary.id,
         .provider = filters.provider,
         .limit = limit,
     });
