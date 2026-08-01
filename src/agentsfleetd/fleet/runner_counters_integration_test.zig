@@ -88,7 +88,6 @@ fn execIgnore(conn: *pg.Conn, sql_text: []const u8, args: anytype) void {
 fn cleanup(conn: *pg.Conn) void {
     // Settles write audit rows keyed by event id; clear them so a crashed run
     // cannot pollute a sibling suite's count-based assertions.
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id LIKE $1", .{EVENT_PREFIX ++ "%"});
     execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id LIKE $1", .{EVENT_PREFIX ++ "%"});
     execIgnore(conn, "DELETE FROM core.fleet_events WHERE event_id LIKE $1", .{EVENT_PREFIX ++ "%"});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{RUNNER_ID});
@@ -157,9 +156,8 @@ fn expectSameCounters(want: Counters, got: Counters) !void {
     try std.testing.expectEqual(want.expired, got.expired);
 }
 
-/// Counter rows for this runner. One, always — the table keys on `uid`, which
-/// IS the runner id, so a second row would mean the single-key rewrite (C4)
-/// had been undone.
+/// Counter rows for this runner. One, always — `runner_id` IS the primary key,
+/// so a second row would mean the single-key rewrite (C4) had been undone.
 fn counterRowCount(conn: *pg.Conn) !i64 {
     var q = PgQuery.from(try conn.query(
         "SELECT COUNT(*)::bigint FROM fleet.runner_lifetime_counters WHERE runner_id = $1::uuid",
@@ -292,11 +290,11 @@ test "counter row equals a recount after concurrent acquire and settle cycles" {
     // The other half — concurrent FIRST touch of a runner with no counter row —
     // is pinned separately by `concurrent first touches of a new runner's
     // counter row all land`, because it exercises a different failure. Slot 43
-    // originally carried two unique keys over the same value (a generated uid
-    // plus a `runner_id` UNIQUE) and `ON CONFLICT` arbitrates exactly one, so
-    // first-touch racers died on the other index instead of updating. The
-    // shipped table has ONE unique key — `uid` IS the runner id, plain primary
-    // key plus `CHECK (uid = runner_id)` — and that test is what would fail if
+    // originally carried two unique keys over the same value (a generated
+    // identity column plus a `runner_id` UNIQUE) and `ON CONFLICT` arbitrates
+    // exactly one, so first-touch racers died on the other index instead of
+    // updating. The rebuilt table has ONE unique key — `runner_id` is the plain
+    // primary key, with no twin to tie it to — and that test is what would fail if
     // a second one were ever reintroduced (spec Discovery C4).
     try acquireLease(ctx.conn, LEASE_POOL[0], EVENT_PREFIX ++ "conc-seed", 1);
     try std.testing.expect((try settleLease(ctx.conn, LEASE_POOL[0], true)).claimed);

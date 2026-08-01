@@ -112,7 +112,7 @@ pub fn insertTelemetry(
     params: InsertTelemetryParams,
 ) !void {
     // A ledger row's own identifier, not a fleet's — `allocUuidV7` says that
-    // where `generateFleetId` did not. The retired table carried BOTH a `uid`
+    // where `generateFleetId` did not. The retired table carried BOTH a generated
     // UUID and a TEXT `id` holding the same value; one column replaces them.
     const row_id = try id_format.allocUuidV7(alloc);
     defer alloc.free(row_id);

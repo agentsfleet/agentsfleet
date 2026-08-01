@@ -132,7 +132,6 @@ fn teardown(conn: *pg.Conn) void {
     // one (EVENT_ID), and the renew CTE writes a breakdown + an accumulating
     // ledger row per renewal. Clear them so a count-based assertion (slices) is
     // not polluted by a sibling test that ran earlier in the seed-shuffled order.
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
@@ -402,7 +401,6 @@ fn seedSecondLease(conn: *pg.Conn) !void {
 }
 
 fn teardownSecond(conn: *pg.Conn) void {
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID_2});
     execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", .{EVENT_ID_2});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID_2});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID_2});

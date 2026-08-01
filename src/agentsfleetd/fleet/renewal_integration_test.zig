@@ -87,10 +87,9 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
-    // Breakdown + ledger rows are keyed by event_id and survive a lease/affinity
-    // delete; clear them so a re-seeded case starts the per-event slice counter
-    // clean (the affinity counter resets, so a leftover slice_seq would collide).
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
+    // Ledger rows are keyed by event_id and survive a lease/affinity delete, and
+    // the row ACCUMULATES rather than appending; clear it so a re-seeded case
+    // starts from an empty accumulator instead of adding to the prior run's total.
     execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});

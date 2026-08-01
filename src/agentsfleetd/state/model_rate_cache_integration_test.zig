@@ -26,8 +26,9 @@ const base = @import("../db/test_fixtures.zig");
 const model_rate_cache = @import("model_rate_cache.zig");
 const revision_state = @import("model_catalogue_revision.zig");
 
-// Suite-private (provider, model) + a uuidv7 uid so the seed never collides with
-// another suite's core.model_library rows (version nibble 7 satisfies the uid CHECK).
+// Suite-private (provider, model) + a uuidv7 identifier so the seed never collides
+// with another suite's core.model_library rows (version nibble 7 satisfies the
+// row's shape CHECK).
 const RC_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0abc01";
 const RC_PROVIDER = "ratecache-probe";
 /// A second private provider for the eviction soak, so its 3000 rows never

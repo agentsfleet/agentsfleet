@@ -182,8 +182,8 @@ pub fn storeEntry(
     ts_ms: i64,
 ) !void {
     // The row's identifier is minted here rather than handed in. The retired
-    // shape took an opaque caller string for `id` AND generated a `uid` beside
-    // it; the column is a single uuidv7 now, and the caller's string was never
+    // shape took an opaque caller string for `id` AND generated a second UUID
+    // beside it; the column is a single uuidv7 now, and the caller's string was never
     // read back — `(key, fleet_id)` is what the fleet addresses an entry by.
     const id_value = try id_format.generateUuidV7();
     const id: []const u8 = &id_value;

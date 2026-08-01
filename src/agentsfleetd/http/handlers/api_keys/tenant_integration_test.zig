@@ -450,7 +450,7 @@ test "integration: test_api_keys_key_name_sort_pages_without_loss" {
         else => return err,
     };
     defer h.deinit();
-    // Seven keys, two sharing a name prefix — the composite (key_name, uid)
+    // Seven keys, two sharing a name prefix — the composite (key_name, id)
     // boundary must not lose either of them at a page edge.
     const names = [_][]const u8{ "walk-a", "walk-b", "walk-dup", "walk-dup-2", "walk-e", "walk-f", "walk-g" };
     for (names) |name| try mintKey(h, name);

@@ -31,7 +31,7 @@ const TENANT_NAME = "slack-outbound-suite";
 const WS = "0195c106-4002-7000-8000-000000000042";
 const FLEET_ID = "0195c106-4003-7000-8000-000000000043";
 const FLEET_NAME = "slack-channel-t106out-c106out";
-// v7-shaped uid (position-15 nibble '7') — core.fleet_events has a uuidv7 CHECK.
+// v7-shaped identifier (position-15 nibble '7') — core.fleet_events has a uuidv7 CHECK.
 const EVENT_UID = "0195c106-4004-7000-8000-000000000044";
 const EVENT_ID = "1700000009000-0";
 const CHANNEL = "C106OUT";
