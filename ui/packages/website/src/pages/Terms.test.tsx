@@ -25,9 +25,12 @@ describe("Terms", () => {
     expect(screen.getByRole("heading", { name: /termination/i })).toBeInTheDocument();
   });
 
-  it("mentions the free-trial period in billing terms", () => {
+  it("mentions the free-trial period in billing terms, without committing to a date", () => {
     render(<Terms />);
-    expect(screen.getByText(/free to try through July 31, 2026/i)).toBeInTheDocument();
+    // The boundary is per account (NULL = open-ended), so the Terms describe the
+    // trial and point at the Dashboard for the date rather than naming one here
+    // — a fixed date on this page went stale the moment it passed.
+    expect(screen.getByText(/free to try during early access/i)).toBeInTheDocument();
   });
 
   it("renders contact email link sourced from SUPPORT_EMAIL", () => {

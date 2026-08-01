@@ -166,13 +166,13 @@ An operator cannot assign a policy without resizing the window, because the dial
 
 ### §7 — The free trial is a tenant fact, not a build-time date
 
-The trial boundary was a constant compiled into three runtimes (`tenant_billing.zig`, `types.ts`, `rates.ts`) with a fourth copy as display prose. It expired at `2026-08-01T00:00:00Z` and took the integration suite red across every branch — two billing tests had been skipping their real assertions behind `free_trial_active` and executed for the first time, against fixtures that seed no rate catalogue. The date being global also meant no tenant could be on a different footing from any other. **Implementation default:** the boundary moves to a nullable column on the tenant's billing row where `NULL` means open-ended, because that is the shape that lets a trial end per account without another cross-runtime constant to keep in sync.
+The trial boundary was a constant compiled into four runtimes (`tenant_billing.zig`, `types.ts`, `rates.ts`, `cli/src/constants/billing.ts`) with a fifth copy as display prose and a sixth in the Terms page. It expired at `2026-08-01T00:00:00Z` and took the integration suite red across every branch — two billing tests had been skipping their real assertions behind `free_trial_active` and executed for the first time, against fixtures that seed no rate catalogue. The date being global also meant no tenant could be on a different footing from any other. **Implementation default:** the boundary moves to a nullable column on the tenant's billing row where `NULL` means open-ended, because that is the shape that lets a trial end per account without another cross-runtime constant to keep in sync.
 
-- **Dimension 7.1** — The trial boundary is stored per tenant and `NULL` reads as open-ended → Test `test_null_boundary_is_an_open_trial`
-- **Dimension 7.2** — A tenant past its own boundary is charged the standard rate → Test `test_tenant_past_its_boundary_is_charged`
-- **Dimension 7.3** — Stage pricing consults the tenant's boundary, not a build-time constant → Test `test_stage_charge_reads_the_tenant_boundary`
-- **Dimension 7.4** — The two billing suites assert against an injected clock and a seeded rate row, so no wall-clock date can silence them → Test `test_billing_suites_are_clock_independent`
-- **Dimension 7.5** — No build-time trial constant survives in any runtime → Test `test_no_build_time_trial_constant`
+- **Dimension 7.1** — **DONE** — The trial boundary is stored per tenant and `NULL` reads as open-ended → Test `test_null_boundary_is_an_open_trial`
+- **Dimension 7.2** — **DONE** — A tenant past its own boundary is charged the standard rate → Test `test_tenant_past_its_boundary_is_charged`
+- **Dimension 7.3** — **DONE** — Stage pricing consults the tenant's boundary, not a build-time constant → Test `test_stage_charge_reads_the_tenant_boundary`
+- **Dimension 7.4** — **DONE** — The two billing suites set their own tenant's boundary to a fixed past instant and seed a priced rate row, so both assert unconditionally and no clock position can silence them → Test `test_billing_suites_are_clock_independent`
+- **Dimension 7.5** — **DONE** — No build-time trial constant survives in any runtime, and no customer-facing surface states a trial end date → Test `test_no_build_time_trial_constant`
 
 ## Interfaces
 
