@@ -521,11 +521,7 @@ test "integration: fetch_budget_and_spend_admits_a_fleet_that_declares_no_budget
     // kill the in-flight runs of every fleet row written by a path that does not
     // set `budget` — enforcing a limit nobody wrote. `service_token_splits_wire_test`
     // seeds exactly such a fleet (`config_json = "{}"`), and caught this.
-    _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'budget-fixture', '', '{"x-agentsfleet":{}}'::jsonb, 'active', 0, 0)
-        \\ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json
-    , .{ FLEET_UUID, WS_A });
+    try seedFleet(conn, FLEET_UUID, WS_A, "budget-fixture", "{\"x-agentsfleet\":{}}");
 
     const found = try budget.fetchBudgetAndSpend(conn, ALLOC, FLEET_UUID, WS_A, NOW_MS);
     try std.testing.expectEqual(@as(@TypeOf(found), null), found);
@@ -550,11 +546,7 @@ test "integration: a budget key holding JSON null admits (not a declared ceiling
     // fix this flowed to `parseStoredBudget` → `.unreadable` → refused, killing
     // in-flight runs of a fleet that declared no ceiling. It must admit, exactly
     // like a missing key.
-    _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'budget-fixture', '', '{"x-agentsfleet":{"budget":null}}'::jsonb, 'active', 0, 0)
-        \\ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json
-    , .{ FLEET_UUID, WS_A });
+    try seedFleet(conn, FLEET_UUID, WS_A, "budget-fixture", "{\"x-agentsfleet\":{\"budget\":null}}");
 
     const read = budget.readBudget(conn, ALLOC, FLEET_UUID, WS_A, NOW_MS);
     try std.testing.expectEqual(std.meta.Tag(budget.BudgetRead).absent, std.meta.activeTag(read));
