@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M157
 **Workstream:** 001
 **Date:** Aug 01, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer/operator-facing; the product wedge and the Forge the Future 2026 hackathon entry are the same build
 **Categories:** API, INFRA, OBS, SKILL
 **Batch:** B1 — single workstream; Sections sequence by dependency
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m157-incident-draft-pr
+**Test Baseline:** unit=3390 integration=539
 **Depends on:** M156_001 (runner leases must complete on the restored dev fleet before any end-to-end proof here can run)
 **Provenance:** LLM-drafted (Claude Opus 5, adversarially reviewed by Codex CLI 0.146.0, Aug 01, 2026)
 **Canonical architecture:** `docs/architecture/scenarios/production-deploy-repair.md` (this spec proves its 🔨 rows; its §6 statuses flip here)
