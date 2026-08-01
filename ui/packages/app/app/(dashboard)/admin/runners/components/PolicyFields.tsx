@@ -123,7 +123,10 @@ export function PolicyFields({ control }: { control: Control<PolicyFormValues> }
                 value={field.value}
                 onValueChange={field.onChange}
                 aria-labelledby={isolationModeLabelId}
-                className="sm:grid-cols-2"
+                // One column per tier. Two columns wrapped the third onto a row
+                // of its own, which reads as an afterthought rather than a peer
+                // of the other two — and the tiers are a single choice set.
+                className="sm:grid-cols-3"
               >
                 {SANDBOX_TIERS.map((t) => (
                   <OptionCard

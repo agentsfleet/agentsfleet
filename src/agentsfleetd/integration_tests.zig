@@ -33,6 +33,13 @@ test {
     _ = @import("fleet/reclaim_sweeper_readiness_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
+    // Billing suites moved from the unit root: they opt into PostgreSQL
+    // (two also Redis), so parked in tests.zig they executed in no lane.
+    _ = @import("fleet/service_token_splits_wire_integration_test.zig");
+    _ = @import("fleet/credit_metric_reconciliation_integration_test.zig");
+    _ = @import("fleet_runtime/metering_integration_test.zig");
+    _ = @import("fleet_runtime/metering_edge_integration_test.zig");
+    _ = @import("state/tenant_billing_edge_integration_test.zig");
     _ = @import("fleet/liveness_sweeper_integration_test.zig");
     _ = @import("fleet/runner_counters_integration_test.zig");
     _ = @import("fleet/retention_sweeper_integration_test.zig");

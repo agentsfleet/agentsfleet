@@ -12,6 +12,7 @@ const logging = @import("log");
 
 const Config = @import("daemon/config.zig");
 const loop = @import("daemon/loop.zig");
+const startup = @import("daemon/startup.zig");
 const runner_deadline = @import("daemon/runner_deadline.zig");
 const child_exec = @import("child_exec.zig");
 const client_errors = @import("engine/client_errors.zig");
@@ -77,10 +78,15 @@ pub fn main(init: std.process.Init) void {
 
     // The tier / egress / worker policy is not known here: it is ASSIGNED by
     // the control plane and arrives with the first heartbeat. The apply-time
-    // gates (release-build dev_none refusal, cgroup controller enablement) run
-    // in the loop when the assignment lands — a failed gate refuses leases and
-    // keeps heartbeating, so the dashboard shows why instead of a crash loop.
+    // gate (release-build dev_none refusal) runs in the loop when the
+    // assignment lands — a failed gate refuses leases and keeps heartbeating,
+    // so the dashboard shows why instead of a crash loop.
     log.info("server_started", .{ .storage_home = cfg.storage_home });
+
+    // Before the loop, so a populated cgroup subtree is a post-condition of the
+    // daemon being up rather than a race with the first assignment. Non-fatal —
+    // see `daemon/startup.zig` for why.
+    startup.enableResourceControl(io, alloc);
 
     std.Io.Dir.createDirAbsolute(io, cfg.storage_home, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},

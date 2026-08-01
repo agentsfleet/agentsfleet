@@ -83,23 +83,25 @@ describe("RATES_DISPLAY format contract (shipped to Mintlify snippet, OpenAPI, s
   });
 });
 
-describe("free-trial display strings (banner + hero pill share a single date substring)", () => {
+describe("free-trial display strings (open-ended trial — the copy names no date)", () => {
   // pin test: literal is the contract
-  it("FREE_TRIAL_PILL renders the short pill string with the trial-end date", () => {
-    expect(RATES_DISPLAY.FREE_TRIAL_PILL).toBe("Free until July 31, 2026");
+  it("FREE_TRIAL_PILL renders the short pill string", () => {
+    expect(RATES_DISPLAY.FREE_TRIAL_PILL).toBe("Free during early access");
   });
 
-  it("FREE_TRIAL_BANNER starts with the same `Free until <date>` prefix", () => {
-    expect(RATES_DISPLAY.FREE_TRIAL_BANNER).toMatch(/^Free until July 31, 2026 — /);
+  it("FREE_TRIAL_BANNER opens with the phrase the pill uses", () => {
+    expect(RATES_DISPLAY.FREE_TRIAL_BANNER).toMatch(/^Free during early access — /);
   });
 
-  // Drift catcher: the pill and the banner both consume
-  // FREE_TRIAL_END_DISPLAY internally. If a future edit hardcodes the date in
-  // one without the other, this asserts both still share the same date
-  // substring — the substring IS the contract here.
-  it("pill and banner share the same trial-end date substring", () => {
-    const TRIAL_END_DISPLAY = "July 31, 2026";
-    expect(RATES_DISPLAY.FREE_TRIAL_PILL).toContain(TRIAL_END_DISPLAY);
-    expect(RATES_DISPLAY.FREE_TRIAL_BANNER).toContain(TRIAL_END_DISPLAY);
+  // Drift catcher, replacing the shared-date pin these two strings used to
+  // carry. The trial boundary is a per-tenant column now (NULL = open-ended),
+  // so this static page has no date it could state truthfully. It shipped
+  // "Free until July 31, 2026" and went on saying it after that date passed —
+  // any calendar date reappearing in this copy is that bug coming back.
+  it("neither string states an end date", () => {
+    const A_CALENDAR_DATE =
+      /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b|\b\d{4}-\d{2}-\d{2}\b/;
+    expect(RATES_DISPLAY.FREE_TRIAL_PILL).not.toMatch(A_CALENDAR_DATE);
+    expect(RATES_DISPLAY.FREE_TRIAL_BANNER).not.toMatch(A_CALENDAR_DATE);
   });
 });

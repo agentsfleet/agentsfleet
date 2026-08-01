@@ -190,22 +190,28 @@ test_workflows_use_deployment_stage_without_generated_pointer() {
 
 test_workflows_load_only_current_connector_boot_secret() {
   local name="workflows load only the current connector boot secret"
-  local workflow vault
+  local family workflow vault
 
-  for workflow in deploy-dev.yml release.yml; do
+  for workflow in deploy-dev release; do
     vault=VAULT_DEV
-    [ "$workflow" = "release.yml" ] && vault=VAULT_PROD
+    [ "$workflow" = release ] && vault=VAULT_PROD
+    family="$(cat "$repo_root/.github/workflows/$workflow"*.yml)"
     # The expression is literal GitHub Actions syntax.
     # shellcheck disable=SC2016
     if ! rg --fixed-strings --quiet \
       "APPROVAL_SIGNING_SECRET: op://\${{ vars.$vault }}/approval-signing-secret/credential" \
-      "$repo_root/.github/workflows/$workflow"; then
-      bad "$name" "$workflow does not load approval-signing-secret"
+      <<<"$family"; then
+      bad "$name" "$workflow workflow family does not load approval-signing-secret"
       return
     fi
-    if rg --quiet 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' \
-      "$repo_root/.github/workflows/$workflow"; then
-      bad "$name" "$workflow still loads retired GitHub app boot secrets"
+    if ! rg --fixed-strings --quiet \
+      'APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET"' \
+      <<<"$family"; then
+      bad "$name" "$workflow workflow family does not pass approval-signing-secret to Fly"
+      return
+    fi
+    if rg --quiet 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' <<<"$family"; then
+      bad "$name" "$workflow workflow family still loads retired GitHub app boot secrets"
       return
     fi
   done

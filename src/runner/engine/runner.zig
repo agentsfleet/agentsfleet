@@ -19,7 +19,6 @@ const Config = nullclaw.config.Config;
 const Fleet = nullclaw.agent.Agent;
 const tools_mod = nullclaw.tools;
 const memory_mod = nullclaw.memory;
-const observability = nullclaw.observability;
 
 const json = @import("json_helpers.zig");
 const wire = @import("wire.zig");
@@ -29,6 +28,7 @@ const protocol = @import("contract").protocol;
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
 const runner_observer = @import("runner_observer.zig");
+const runner_capture = @import("runner_capture.zig");
 const context_budget = @import("context_budget.zig");
 const client_errors = @import("client_errors.zig");
 const run_context = @import("run_context.zig");
@@ -110,6 +110,16 @@ pub fn execute(
     };
 }
 
+/// Record a config-load failure WITH its cause. Split from `executeInner` so the
+/// record's shape is drivable in a test: this runs inside the sandboxed child,
+/// where the usual fault is an environment the cage did not carry (`NoHomeDir`
+/// when the daemon itself has no HOME). Dropping the error name leaves the
+/// journal showing a code and nothing else, which is the difference between
+/// reading the fault and reproducing it on the host to find it.
+fn logConfigLoadFailure(err: anyerror) void {
+    log.err("config_load_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
+}
+
 pub const InnerResult = struct {
     content: []const u8,
     token_count: u64,
@@ -140,8 +150,8 @@ pub fn executeInner(
     hydrated_memory: []const protocol.MemoryDelta,
 ) !InnerResult {
     // 1. Build config from env defaults + fleet_config overrides.
-    var cfg = Config.load(alloc) catch {
-        log.err("config_load_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
+    var cfg = Config.load(alloc) catch |err| {
+        logConfigLoadFailure(err);
         return RunnerError.FleetInitFailed;
     };
     defer cfg.deinit();
@@ -197,7 +207,7 @@ pub fn executeInner(
     // The capturer flushes the in-run store back to the parent (mid-run on the
     // checkpoint cadence + once at run end). Only meaningful with a progress fd
     // and a live store; null otherwise (tests / non-streaming) → capture no-ops.
-    var capturer = makeCapturer(progress_fd, mem_opt, alloc);
+    var capturer = runner_capture.makeCapturer(progress_fd, mem_opt, alloc);
 
     // 5. Observer + live-tail sink. With a progress fd, the redacting Adapter
     // is the fleet's observer AND per-token stream callback so tool-call and
@@ -219,7 +229,7 @@ pub fn executeInner(
     var writer: runner_progress.ProgressWriter = undefined;
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
     var adapter: runner_progress.Adapter = undefined;
-    const obs = selectObserver(progress_fd, obs_runtime.observer(), &writer, &adapter, alloc, secrets_list);
+    const obs = runner_capture.selectObserver(progress_fd, obs_runtime.observer(), &writer, &adapter, alloc, secrets_list);
     defer if (progress_fd != null) adapter.deinit(alloc); // progress-fd path only inits adapter
     // With a live observer, drive mid-run capture off the checkpoint cadence the
     // lease carries (`adapter` is only initialized on the progress-fd path).
@@ -269,38 +279,6 @@ pub fn executeInner(
         .output_tokens = splits.output,
     };
 }
-
-/// Build the in-run memory capturer iff there is both a progress fd to write the
-/// `.memory` frame on and a live store to read. Null otherwise — capture is a
-/// no-op on the non-streaming/test path and when the store failed to build.
-fn makeCapturer(
-    progress_fd: ?std.posix.fd_t,
-    mem_opt: ?memory_mod.Memory,
-    alloc: std.mem.Allocator,
-) ?inrun_memory.MemoryCapturer {
-    const fd = progress_fd orelse return null;
-    const mem = mem_opt orelse return null;
-    return .{ .mem = mem, .fd = fd, .alloc = alloc };
-}
-
-/// Pick the fleet's observer. With a progress fd, init the caller-owned
-/// `writer`/`adapter` in place (so the returned observer's vtable, which
-/// captures `&adapter`, stays valid for the run) and return the redacting
-/// Adapter's observer; otherwise the env-selected backend.
-fn selectObserver(
-    progress_fd: ?std.posix.fd_t,
-    fallback: observability.Observer,
-    writer: *runner_progress.ProgressWriter,
-    adapter: *runner_progress.Adapter,
-    alloc: std.mem.Allocator,
-    secrets: []const runner_progress.Secret,
-) observability.Observer {
-    const fd = progress_fd orelse return fallback;
-    writer.* = .{ .fd = fd, .alloc = alloc };
-    adapter.* = .{ .writer = writer, .alloc = alloc, .secrets = secrets };
-    return adapter.observer();
-}
-
 // Delegate to runner_helpers.zig (split for RULE FLL).
 const applyFleetConfig = runner_helpers.applyFleetConfig;
 const injectProviderApiKey = runner_helpers.injectProviderApiKey;
@@ -345,4 +323,26 @@ test {
     _ = inrun_memory; // discovery via the existing import binding (RULE UFS: no re-spelled path)
     _ = @import("runner_progress_memory_test.zig");
     _ = @import("runner_usage_test.zig");
+}
+
+test "test_config_load_failure_names_error: the record carries the cause, not just the code" {
+    // The regression: `Config.load(alloc) catch { log.err(...) }` discarded the
+    // error, so a dev fleet where every lease died at init logged only
+    // UZ-EXEC-012 with no cause — and the real fault (no HOME in the daemon's
+    // environment) could only be found by reproducing it on the host.
+    var bs = logging.sinks.BufferedSink.init(std.testing.allocator);
+    defer bs.deinit();
+
+    logging.sinks.clearSinksForTest();
+    defer logging.sinks.clearSinksForTest();
+    logging.sinks.registerSink(bs.sink());
+
+    logConfigLoadFailure(error.NoHomeDir);
+
+    const captured = try bs.snapshot();
+    defer std.testing.allocator.free(captured);
+    try std.testing.expect(std.mem.indexOf(u8, captured, "config_load_failed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, captured, ERR_EXEC_RUNNER_FLEET_INIT) != null);
+    // The assertion that would have failed before the fix.
+    try std.testing.expect(std.mem.indexOf(u8, captured, "NoHomeDir") != null);
 }
