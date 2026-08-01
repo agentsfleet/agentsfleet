@@ -80,7 +80,7 @@ const Worker = struct {
     fn run(h: *TestHarness, slot: *ClaimSlot) void {
         const conn = h.acquireConn() catch return;
         defer h.releaseConn(conn);
-        const c = affinity.claim(conn, ALLOC, FLEET_ID, RUNNER_ID, constants.LEASE_TTL_MS) catch return;
+        const c = affinity.claim(conn, FLEET_ID, RUNNER_ID, constants.LEASE_TTL_MS) catch return;
         switch (c) {
             .won => |w| slot.* = .{ .code = 1, .token = w.token },
             .taken => slot.* = .{ .code = 2 },
@@ -180,7 +180,7 @@ fn seedHttpRunner(conn: *pg.Conn) !void {
 
 fn fundHttpBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'conc-http-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL

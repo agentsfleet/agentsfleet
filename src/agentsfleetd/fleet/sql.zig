@@ -98,51 +98,76 @@ pub const MARK_DRAINED_IF_IDLE =
 ;
 
 // ── Budget drain ────────────────────────────────────────────────────────────
-// Both reads union the two ways credit leaves an account — metered execution
-// (joined through `metering_periods` for the settled figure) and direct
-// deductions — then window the union at two instants in one pass, so the
-// per-period and per-window totals cannot disagree with each other.
+// One ledger row holds a whole run's accumulated spend, and a run may last
+// MAX_RUNTIME_MS (12h) against a rolling 24h window — so which window that spend
+// falls in is not a question one timestamp can answer. The retired
+// `metering_periods` table answered it with a row per slice; the ledger answers
+// it with the run's span, `[created_at, last_charged_at]`, and APPORTIONS the
+// total by how much of that span the window covers.
+//
+// Stamping the whole total on one instant instead would make the daily check
+// all-or-nothing: a 12h run whose first charge predates the floor would count
+// ZERO against a cap it had genuinely spent against, which under-enforces
+// exactly where the amounts are largest.
+//
+// Apportioning assumes spend is spread evenly across a run — true for the
+// time-based run fee, approximate for token cost. It is bounded by one run's
+// total either way, where the all-or-nothing error was unbounded in both
+// directions.
 
-/// Drain totals at two window starts. `$3` and `$4` are the window instants;
-/// `$7` backdates the metered leg so a period settling late still lands in it.
+// Each CASE is one row's share of the window opening at that floor: none if the
+// run stopped charging before it, all of it if the run began after it, else the
+// covered fraction. `numeric` because nanos times a millisecond span overflows
+// BIGINT. The two arms are spelled out rather than factored into a helper —
+// this is a money path, and the SQL a reader sees here is the SQL that runs.
+
+/// Drain totals at two window starts. `$3` and `$4` are the window instants.
+/// No backdating parameter: `last_charged_at` states when a run stopped
+/// charging, so the row filter is exact where the retired one was a heuristic.
 pub const SELECT_BUDGET_DRAIN =
-    \\WITH drains AS (
-    \\  SELECT mp.charged_nanos AS amt, mp.created_at AS ts
-    \\  FROM core.fleet_execution_telemetry t
-    \\  JOIN fleet.metering_periods mp ON mp.event_id = t.event_id
-    \\  WHERE t.workspace_id = $1 AND t.fleet_id = $2 AND t.charge_type = $5
-    \\    AND t.recorded_at >= LEAST($3::bigint, $4::bigint) - $7::bigint
-    \\  UNION ALL
-    \\  SELECT r.credit_deducted_nanos AS amt, r.recorded_at AS ts
-    \\  FROM core.fleet_execution_telemetry r
-    \\  WHERE r.workspace_id = $1 AND r.fleet_id = $2 AND r.charge_type = $6
-    \\    AND r.recorded_at >= LEAST($3::bigint, $4::bigint)
-    \\)
     \\SELECT
-    \\  COALESCE(SUM(amt) FILTER (WHERE ts >= $3::bigint), 0)::bigint,
-    \\  COALESCE(SUM(amt) FILTER (WHERE ts >= $4::bigint), 0)::bigint
-    \\FROM drains
+    \\  COALESCE(SUM(CASE
+    \\    WHEN l.last_charged_at <= $3::bigint THEN 0
+    \\    WHEN l.created_at >= $3::bigint THEN l.credit_deducted_nanos
+    \\    ELSE l.credit_deducted_nanos::numeric * (l.last_charged_at - $3::bigint)
+    \\         / NULLIF(l.last_charged_at - l.created_at, 0)
+    \\  END), 0)::bigint,
+    \\  COALESCE(SUM(CASE
+    \\    WHEN l.last_charged_at <= $4::bigint THEN 0
+    \\    WHEN l.created_at >= $4::bigint THEN l.credit_deducted_nanos
+    \\    ELSE l.credit_deducted_nanos::numeric * (l.last_charged_at - $4::bigint)
+    \\         / NULLIF(l.last_charged_at - l.created_at, 0)
+    \\  END), 0)::bigint
+    \\FROM billing.usage_ledger l
+    \\WHERE l.workspace_id = $1::uuid AND l.fleet_id = $2::uuid
+    \\  AND l.charge_type IN ($5, $6)
+    \\  AND l.last_charged_at >= LEAST($3::bigint, $4::bigint)
 ;
 
 /// The same drain, plus the fleet's declared budget, so the policy and the
 /// spend it is checked against are read at one instant and cannot skew.
 pub const SELECT_BUDGET_POLICY_AND_DRAIN =
     \\WITH drains AS (
-    \\  SELECT mp.charged_nanos AS amt, mp.created_at AS ts
-    \\  FROM core.fleet_execution_telemetry t
-    \\  JOIN fleet.metering_periods mp ON mp.event_id = t.event_id
-    \\  WHERE t.workspace_id = $2 AND t.fleet_id = $3 AND t.charge_type = $6
-    \\    AND t.recorded_at >= LEAST($4::bigint, $5::bigint) - $8::bigint
-    \\  UNION ALL
-    \\  SELECT r.credit_deducted_nanos AS amt, r.recorded_at AS ts
-    \\  FROM core.fleet_execution_telemetry r
-    \\  WHERE r.workspace_id = $2 AND r.fleet_id = $3 AND r.charge_type = $7
-    \\    AND r.recorded_at >= LEAST($4::bigint, $5::bigint)
+    \\  SELECT l.credit_deducted_nanos AS amt,
+    \\         l.created_at            AS first_at,
+    \\         l.last_charged_at       AS last_at
+    \\  FROM billing.usage_ledger l
+    \\  WHERE l.workspace_id = $2::uuid AND l.fleet_id = $3::uuid
+    \\    AND l.charge_type IN ($6, $7)
+    \\    AND l.last_charged_at >= LEAST($4::bigint, $5::bigint)
     \\)
     \\SELECT
     \\  (z.config_json->'x-agentsfleet'->'budget')::text,
-    \\  COALESCE((SELECT SUM(amt) FROM drains WHERE ts >= $4::bigint), 0)::bigint,
-    \\  COALESCE((SELECT SUM(amt) FROM drains WHERE ts >= $5::bigint), 0)::bigint
+    \\  COALESCE((SELECT SUM(CASE
+    \\    WHEN last_at <= $4::bigint THEN 0
+    \\    WHEN first_at >= $4::bigint THEN amt
+    \\    ELSE amt::numeric * (last_at - $4::bigint) / NULLIF(last_at - first_at, 0)
+    \\  END) FROM drains), 0)::bigint,
+    \\  COALESCE((SELECT SUM(CASE
+    \\    WHEN last_at <= $5::bigint THEN 0
+    \\    WHEN first_at >= $5::bigint THEN amt
+    \\    ELSE amt::numeric * (last_at - $5::bigint) / NULLIF(last_at - first_at, 0)
+    \\  END) FROM drains), 0)::bigint
     \\FROM core.fleets z
     \\WHERE z.id = $1::uuid
 ;
@@ -244,22 +269,27 @@ pub const UPSERT_FLEET_SESSION =
 
 /// Claim a fleet's single runner slot, bumping the fencing sequence.
 ///
-/// The `WHERE fleet.runner_affinity.leased_until < $5` on the conflict arm is
+/// The `WHERE fleet.runner_affinity.leased_until < $4` on the conflict arm is
 /// what makes this a lock rather than an upsert: a live slot is not stolen, and
 /// the returned `fencing_seq` is the token every later write is checked
 /// against, so a superseded holder cannot act on stale authority.
+///
+/// `fleet_id` is the whole primary key (schema/630), so the conflict target IS
+/// the table's only unique index — two runners racing a brand-new fleet's slot
+/// take the update arm rather than colliding on an index this statement does
+/// not name.
 pub const CLAIM_AFFINITY_SLOT =
     \\INSERT INTO fleet.runner_affinity
-    \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+    \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
     \\   created_at, updated_at)
-    \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, 0, 0, 0, $5, $5, $5)
+    \\VALUES ($1::uuid, $2::uuid, 1, $3, 0, 0, 0, $4, $4, $4)
     \\ON CONFLICT (fleet_id) DO UPDATE
     \\  SET last_runner_id = EXCLUDED.last_runner_id,
     \\      fencing_seq    = fleet.runner_affinity.fencing_seq + 1,
     \\      leased_until   = EXCLUDED.leased_until,
     \\      updated_at     = EXCLUDED.updated_at
-    \\  WHERE fleet.runner_affinity.leased_until < $5
+    \\  WHERE fleet.runner_affinity.leased_until < $4
     \\RETURNING fencing_seq
 ;
 
@@ -267,8 +297,7 @@ pub const CLAIM_AFFINITY_SLOT =
 pub const RESET_AFFINITY_METERS =
     \\UPDATE fleet.runner_affinity
     \\SET metered_input_tokens = 0, metered_cached_tokens = 0,
-    \\    metered_output_tokens = 0, last_metered_at_ms = $2, updated_at = $2,
-    \\    meter_slice_seq = 0
+    \\    metered_output_tokens = 0, last_metered_at = $2, updated_at = $2
     \\WHERE fleet_id = $1::uuid
 ;
 

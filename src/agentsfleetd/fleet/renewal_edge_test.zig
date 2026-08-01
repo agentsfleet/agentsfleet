@@ -201,7 +201,7 @@ test "a free fleet with an expired slot but no prior lease is claimed fresh" {
     defer teardown(conn);
 
     // Second runner claims the now-free slot: wins under a strictly higher token.
-    const claim = try affinity.claim(conn, ALLOC, FLEET_ID, RUNNER_B_ID, constants.LEASE_TTL_MS);
+    const claim = try affinity.claim(conn, FLEET_ID, RUNNER_B_ID, constants.LEASE_TTL_MS);
     try std.testing.expect(claim == .won);
     try std.testing.expect(claim.won.token > 3); // monotonic bump past the stale seq
 

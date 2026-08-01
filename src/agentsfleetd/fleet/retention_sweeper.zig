@@ -168,10 +168,10 @@ pub const EXPIRE_ABANDONED_ACTIVE_LEASES_BATCH =
     \\  FOR UPDATE SKIP LOCKED
     \\), tally AS (
     \\  INSERT INTO fleet.runner_lifetime_counters
-    \\    (uid, runner_id, acquired, succeeded, failed, expired, created_at, updated_at)
-    \\  SELECT d.runner_id, d.runner_id, 0, 0, 0, COUNT(*)::bigint, $5, $5
+    \\    (runner_id, expired, created_at, updated_at)
+    \\  SELECT d.runner_id, COUNT(*)::bigint, $5, $5
     \\  FROM doomed d GROUP BY d.runner_id
-    \\  ON CONFLICT (uid) DO UPDATE
+    \\  ON CONFLICT (runner_id) DO UPDATE
     \\     SET expired = fleet.runner_lifetime_counters.expired + EXCLUDED.expired,
     \\         updated_at = EXCLUDED.updated_at
     \\)

@@ -163,7 +163,7 @@ fn leaseStatus(conn: *pg.Conn, lease_id: []const u8) ![]const u8 {
 /// The runner's lifetime `expired` tally, or zero before the row exists.
 fn lifetimeExpiredCount(conn: *pg.Conn) !i64 {
     return scalarI64(conn,
-        \\SELECT COALESCE((SELECT expired FROM fleet.runner_lifetime_counters WHERE uid = $1::uuid), 0)::bigint
+        \\SELECT COALESCE((SELECT expired FROM fleet.runner_lifetime_counters WHERE runner_id = $1::uuid), 0)::bigint
     , .{RUNNER_ID});
 }
 

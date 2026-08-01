@@ -72,10 +72,6 @@ pub fn generateRunnerEventId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateRunnerAffinityId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
 pub fn generateFleetBundleId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
