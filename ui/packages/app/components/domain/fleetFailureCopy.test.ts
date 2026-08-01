@@ -77,6 +77,41 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
     ).toBe(`${NEEDS_INSTRUCTIONS} — no instructions configured`);
   });
 
+  // Reported live on the dev fleet: the runner could not load its config inside
+  // the sandbox, and the user was told their fleet lacked instructions — with a
+  // raw Zig error name pasted after the em-dash. The fleet was configured
+  // correctly; the fault was entirely runner-side.
+  it("test_unrecognised_cause_is_not_blamed_on_the_fleet: an internal identifier reads as a runner failure", () => {
+    expect(eventOutcome(failedEvent({ failureDetail: "FleetInitFailed" }))).toBe(
+      RUNNER_REFUSED,
+    );
+    expect(messageOutcome(failedMessage("FleetInitFailed"))).toBe(RUNNER_REFUSED);
+  });
+
+  it("test_raw_error_identifier_never_shown: no internal identifier survives into the sentence", () => {
+    for (const identifier of [
+      "FleetInitFailed",
+      "SandboxEstablishFailed",
+      "UZ-EXEC-012",
+    ]) {
+      const rendered = eventOutcome(failedEvent({ failureDetail: identifier }));
+      expect(rendered).not.toContain(identifier);
+      // It also must not leak through the em-dash-embedded path.
+      expect(
+        eventOutcome(failedEvent({ outcome: `failed — ${identifier}` })),
+      ).not.toContain(identifier);
+    }
+  });
+
+  it("test_missing_instructions_keeps_its_sentence: a genuine fleet-config cause still names the fleet", () => {
+    // The inverse guard: prose causes are unaffected by the identifier rule, so
+    // a fleet that really has no instructions still says so.
+    expect(
+      eventOutcome(failedEvent({ failureDetail: "no instructions configured" })),
+    ).toBe(`${NEEDS_INSTRUCTIONS} — no instructions configured`);
+    expect(eventOutcome(failedEvent())).toBe(NEEDS_INSTRUCTIONS);
+  });
+
   it("keeps the needs-instructions sentence verbatim when no detail was recorded", () => {
     expect(eventOutcome(failedEvent())).toBe(NEEDS_INSTRUCTIONS);
     expect(messageOutcome(failedMessage(null))).toBe(NEEDS_INSTRUCTIONS);
@@ -130,5 +165,32 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
     }
 
     expect([...refusals].sort()).toEqual([...RUNNER_REFUSAL_DETAILS].sort());
+  });
+
+  // The internal-identifier rule keys on whitespace: operator-facing cause lines
+  // are prose, a bare token is a leaked error name. That holds for every cause
+  // the runner declares today — but nothing stopped a future one-word cause from
+  // being added, at which point it would be silently suppressed AND misread as a
+  // runner refusal. Derived from the runner source so the guard cannot drift.
+  it("every runner cause line is prose, so the internal-identifier rule cannot misfire", () => {
+    const runnerRoot = resolve(process.cwd(), "../../../src/runner");
+    const all = readdirSync(runnerRoot, { recursive: true, encoding: "utf8" })
+      .filter((name) => name.endsWith(".zig"))
+      .map((name) => readFileSync(join(runnerRoot, name), "utf8"))
+      .join("\n");
+
+    const offenders: string[] = [];
+    for (const match of all.matchAll(/const (DETAIL_\w+) = "([^"]*)"/g)) {
+      const name = match[1];
+      const text = match[2];
+      if (name === undefined || text === undefined) continue;
+      if (!/\s/.test(text)) offenders.push(`${name} = "${text}"`);
+    }
+
+    expect(
+      offenders,
+      "a single-word cause line would be treated as an internal identifier: " +
+        "hidden from the user and reported as a runner refusal. Reword it as prose.",
+    ).toEqual([]);
   });
 });

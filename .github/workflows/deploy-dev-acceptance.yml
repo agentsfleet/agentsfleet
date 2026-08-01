@@ -1,0 +1,220 @@
+name: deploy-dev / acceptance
+
+# Called by deploy-dev.yml after verify goes green. Runs the three release
+# gates in parallel — browser smoke, browser acceptance, and CLI acceptance —
+# and reports each job's result as an output so the caller's verdict keeps
+# per-gate granularity (a reusable workflow's own result collapses to one
+# success/failure, which would hide WHICH gate broke the release).
+#
+# The Bun + Playwright preamble lives in .github/actions/setup-bun-playwright:
+# install BEFORE the 1Password load in every job, so no postinstall script
+# ever sees a loaded secret.
+
+on:
+  workflow_call:
+    outputs:
+      qa:
+        description: qa-dev result
+        value: ${{ jobs.results.outputs.qa }}
+      acceptance:
+        description: acceptance-e2e-dev result
+        value: ${{ jobs.results.outputs.acceptance }}
+      cli:
+        description: cli-acceptance-dev result
+        value: ${{ jobs.results.outputs.cli }}
+
+jobs:
+  # ── QA smoke tests against DEV ──────────────────────────────────────────
+  qa-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-bun-playwright
+        with:
+          working-directory: ui/packages/app
+          cache-prefix: playwright-app
+          # The workspace has ONE lock at the repo root (ui/packages/app has
+          # no lock of its own).
+          lock-file: bun.lock
+
+      - name: Load Vercel bypass secret from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
+
+      - name: Run smoke tests against DEV
+        run: bun run test:e2e:smoke
+        working-directory: ui/packages/app
+        env:
+          BASE_URL: https://app-dev.agentsfleet.net
+          VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qa-dev-${{ github.sha }}
+          path: ui/packages/app/playwright-report/
+          retention-days: 7
+
+  # ── Acceptance e2e against DEV ──────────────────────────────────────────
+  # Loads Clerk DEV credentials and runs the acceptance suite
+  # (tests/e2e/acceptance/**). Failures gate the notify step.
+  #
+  # `https://app-dev.agentsfleet.net` is the dev-facing dashboard — the
+  # `agentsfleet` Vercel project's Production env has
+  # `NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net` baked in (the
+  # production-customer dashboard lives behind the `app.agentsfleet.net`
+  # custom domain via a separate project). Same URL that `qa-dev` above
+  # uses for the unauthenticated smoke. The harness-side
+  # `NEXT_PUBLIC_API_URL` env below feeds the direct fixture-seeding
+  # fetch() calls (clerk-admin, bootstrap, api-client) — Next.js bakes
+  # `NEXT_PUBLIC_*` at build time, so this var doesn't steer the
+  # dashboard's API calls.
+  acceptance-e2e-dev:
+    runs-on: ubuntu-latest
+    # Hard release budget: the suite fails fast on a dead prerequisite (the
+    # preflight project) and never retries deterministic failures, so a run
+    # that needs more than 10 minutes IS a release-readiness failure.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-bun-playwright
+        with:
+          working-directory: ui/packages/app
+          cache-prefix: playwright-app
+          lock-file: bun.lock
+
+      - name: Build the CLI once for browser CLI journeys
+        # The CLI-driven journeys and the preflight artifact check consume
+        # cli/dist/bin/agentsfleet.js; without this build they fail on a
+        # missing module instead of proving anything about the product.
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+        working-directory: cli
+
+      - name: Load Clerk DEV credentials from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
+          CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
+          CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
+          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
+
+      - name: Run acceptance e2e against DEV
+        run: bun run test:e2e:acceptance
+        working-directory: ui/packages/app
+        env:
+          BASE_URL: https://app-dev.agentsfleet.net
+          NEXT_PUBLIC_API_URL: https://api-dev.agentsfleet.net
+          CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
+          CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
+          VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
+
+      - name: Upload acceptance evidence (raw results + rendered report)
+        uses: actions/upload-artifact@v7
+        # Raw per-test artifacts (traces, screenshots, JSON summary) are
+        # written DURING the run, so a canceled or hard-failed job still
+        # uploads diagnosable evidence even when the HTML report was never
+        # rendered.
+        if: always()
+        with:
+          name: acceptance-e2e-dev-results
+          # Immutable-artifact model: a job re-run re-uploads under the same
+          # stable name the release rubric downloads by.
+          overwrite: true
+          path: |
+            ui/packages/app/playwright-acceptance-results/
+            ui/packages/app/playwright-acceptance-report/
+          retention-days: 7
+
+  # ── agentsfleet CLI acceptance against api-dev ──────────────────────────
+  # Drives the published-shape CLI surface end-to-end against the freshly
+  # deployed api-dev. Same posture: Clerk DEV credentials load AFTER
+  # `bun install` (WS-E #C2 — postinstall sees no Clerk admin key). The
+  # lifecycle-after-login spec uses Playwright Chromium to drive the
+  # dashboard's /cli-auth/{session_id} handoff page; skips automatically
+  # when AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL is unset.
+  cli-acceptance-dev:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-bun-playwright
+        with:
+          working-directory: cli
+          cache-prefix: playwright-agentsfleet
+          # cli/ is its own Bun project with its own lock.
+          lock-file: cli/bun.lock
+
+      - name: Load Clerk DEV credentials from 1Password (AFTER install)
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
+          CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
+          # Signs the user.created webhook the fixtures replay to bootstrap the
+          # tenant + default workspace (attachJwt → ensureFixtureTenantBootstrapped).
+          CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
+          AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/regular
+          AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/admin
+          # The handshake browser leg navigates the protected dev dashboard.
+          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
+
+      - name: Run CLI acceptance suite against api-dev
+        run: bun run test:acceptance
+        working-directory: cli
+        env:
+          AGENTSFLEET_ACCEPTANCE_TARGET: https://api-dev.agentsfleet.net
+          AGENTSFLEET_ACCEPTANCE_BINARY: worktree
+          AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE: "1"
+          # Dev dashboard that serves /cli-auth/{session_id} and is built with
+          # the dev Clerk instance matching api-dev (Vercel dev environment).
+          AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL: https://app-dev.agentsfleet.net
+          CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
+          # Browser leg signs in via clerk.signIn, which needs the publishable key.
+          CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
+          # Fixture bootstrap replays the Svix-signed user.created webhook.
+          CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
+          # Bypass Vercel deployment protection so the browser reaches the app.
+          VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
+          AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}
+          AUTH_E2E_ADMIN_EMAIL: ${{ env.AUTH_E2E_ADMIN_EMAIL }}
+
+      - name: Upload CLI acceptance artifacts
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cli-acceptance-dev-${{ github.sha }}
+          path: cli/playwright-cli-report/
+          retention-days: 7
+
+  # Report each gate's result as workflow outputs — runs on every path
+  # (if: always()) so a failed or cancelled gate still reaches the verdict.
+  results:
+    runs-on: ubuntu-latest
+    needs: [qa-dev, acceptance-e2e-dev, cli-acceptance-dev]
+    if: always()
+    outputs:
+      qa: ${{ needs.qa-dev.result }}
+      acceptance: ${{ needs.acceptance-e2e-dev.result }}
+      cli: ${{ needs.cli-acceptance-dev.result }}
+    steps:
+      - name: Record gate results
+        run: |
+          echo "qa-dev=${{ needs.qa-dev.result }}"
+          echo "acceptance-e2e-dev=${{ needs.acceptance-e2e-dev.result }}"
+          echo "cli-acceptance-dev=${{ needs.cli-acceptance-dev.result }}"

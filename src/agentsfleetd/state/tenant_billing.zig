@@ -33,13 +33,18 @@ pub const EVENT_NANOS: i64 = 0;
 /// only) is added on top.
 pub const RUN_NANOS_PER_SEC: i64 = 100_000;
 
-/// Promotional free-trial cutoff (UTC) `2026-08-01T00:00:00Z`. While
-/// `now_ms < FREE_TRIAL_END_MS`, computeStageCharge returns
-/// `FREE_TRIAL_STAGE_NANOS` regardless of posture/model/tokens; after, the
-/// standard rate constants apply. Private — surfaced via the
-/// `Billing.free_trial_*` projection; value mirrors the JS/TS twins in
-/// `rates.ts`, `types.ts`, `billing.js` (cross-tier parity rule).
-pub const FREE_TRIAL_END_MS: i64 = 1_785_542_400_000;
+/// While a tenant's free trial is open, `computeStageCharge` returns
+/// `FREE_TRIAL_STAGE_NANOS` regardless of posture/model/tokens; once it closes,
+/// the standard rate constants apply.
+///
+/// The boundary itself is NOT a constant here. It lives per tenant on
+/// `billing.tenant_billing.free_trial_ends_at`, where NULL means open-ended.
+/// It used to be a build-time date mirrored across Zig and two TypeScript
+/// surfaces: when it passed, pricing flipped for every tenant at once with no
+/// deploy, and two integration suites that had been skipping their assertions
+/// behind it executed for the first time and failed. A per-tenant column ends a
+/// trial for one account without a release, and no date can change pricing
+/// globally by simply arriving.
 pub const FREE_TRIAL_STAGE_NANOS: i64 = 0;
 
 /// Conservative estimate floors used by the gate-time stage-cost projection
@@ -54,7 +59,8 @@ pub const Billing = struct {
     updated_at_ms: i64,
     exhausted_at_ms: ?i64,
     free_trial_active: bool,
-    free_trial_ends_at_ms: i64,
+    /// This tenant's own trial boundary; `null` when the trial is open-ended.
+    free_trial_ends_at_ms: ?i64,
 };
 
 pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
@@ -82,12 +88,16 @@ pub fn computeReceiveCharge(posture: Posture) i64 {
     return EVENT_NANOS;
 }
 
-/// True while `now_ms < FREE_TRIAL_END_MS`. The trial ends because time passes —
-/// no env var, no feature flag, no database column. Public so
-/// `tenant_billing_rates.zig` can short-circuit pricing on it; the `Billing`
+/// True while this tenant's trial is open. `ends_at_ms` is the tenant's own
+/// boundary from `billing.tenant_billing.free_trial_ends_at`; `null` means
+/// open-ended, so the trial never lapses on its own. Pure — the caller supplies
+/// both the boundary and the clock, which is what lets the billing suites price
+/// a post-trial tenant without waiting for a wall-clock date to arrive. Public
+/// so `tenant_billing_rates.zig` can short-circuit pricing on it; the `Billing`
 /// struct's `free_trial_active` field is the user-facing projection.
-pub fn isFreeTrialActive(now_ms: i64) bool {
-    return now_ms < FREE_TRIAL_END_MS;
+pub fn isFreeTrialActive(ends_at_ms: ?i64, now_ms: i64) bool {
+    const ends_at = ends_at_ms orelse return true;
+    return now_ms < ends_at;
 }
 
 pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
@@ -129,8 +139,8 @@ pub fn getBilling(
         .grant_source = row.grant_source,
         .updated_at_ms = row.updated_at_ms,
         .exhausted_at_ms = row.exhausted_at_ms,
-        .free_trial_active = isFreeTrialActive(now_ms),
-        .free_trial_ends_at_ms = FREE_TRIAL_END_MS,
+        .free_trial_active = isFreeTrialActive(row.free_trial_ends_at_ms, now_ms),
+        .free_trial_ends_at_ms = row.free_trial_ends_at_ms,
     };
 }
 
@@ -142,11 +152,37 @@ pub fn resolveTenantFromWorkspace(
     return store.resolveTenantFromWorkspace(conn, alloc, workspace_id);
 }
 
-test "isFreeTrialActive: strict-less-than gate on FREE_TRIAL_END_MS" {
-    try std.testing.expect(isFreeTrialActive(0));
-    try std.testing.expect(isFreeTrialActive(FREE_TRIAL_END_MS - 1));
-    try std.testing.expect(!isFreeTrialActive(FREE_TRIAL_END_MS));
-    try std.testing.expect(!isFreeTrialActive(FREE_TRIAL_END_MS + 1_000_000)); // pin test: literal is the contract
+test "test_null_boundary_is_an_open_trial: a tenant with no boundary is never past it" {
+    // The open-ended case, and the reason the column is nullable: a tenant
+    // without an end date stays on trial no matter how far the clock runs.
+    try std.testing.expect(isFreeTrialActive(null, 0));
+    try std.testing.expect(isFreeTrialActive(null, std.math.maxInt(i64)));
+}
+
+/// Offsets these tests use to sit either side of a boundary. Values carry no
+/// product meaning — only their sign relative to the boundary matters.
+const A_WHILE_PAST_MS: i64 = 1_000_000;
+const EARLY_BOUNDARY_MS: i64 = 1_000;
+const LATER_BOUNDARY_MS: i64 = 3_000;
+const BETWEEN_BOUNDARIES_MS: i64 = 2_000;
+
+test "test_tenant_past_its_boundary_is_charged: strict-less-than against the tenant's own end" {
+    const ends_at: i64 = 1_785_542_400_000; // pin test: literal is the contract
+    try std.testing.expect(isFreeTrialActive(ends_at, 0));
+    try std.testing.expect(isFreeTrialActive(ends_at, ends_at - 1));
+    // At the boundary the trial is over — strict less-than, so the cutoff
+    // millisecond itself is already charged.
+    try std.testing.expect(!isFreeTrialActive(ends_at, ends_at));
+    try std.testing.expect(!isFreeTrialActive(ends_at, ends_at + A_WHILE_PAST_MS));
+}
+
+test "two tenants with different boundaries are judged independently" {
+    // The property the build-time constant could not express: one account's
+    // trial ending does not end anyone else's.
+    const now: i64 = BETWEEN_BOUNDARIES_MS;
+    try std.testing.expect(!isFreeTrialActive(EARLY_BOUNDARY_MS, now));
+    try std.testing.expect(isFreeTrialActive(LATER_BOUNDARY_MS, now));
+    try std.testing.expect(isFreeTrialActive(null, now));
 }
 
 test {

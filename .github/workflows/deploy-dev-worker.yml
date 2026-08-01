@@ -1,0 +1,74 @@
+name: deploy-dev / worker
+
+# Called by deploy-dev.yml after build. Deploys the bare-metal development
+# runner over Tailscale Secure Shell (SSH), gated both directions: the host
+# must prove cgroup capability before receiving a runner, and the freshly
+# deployed daemon must prove its delegated subtree after. Exposes the deploy
+# job's result as an output so the
+# caller's release verdict can distinguish success / skipped / failure — a
+# reusable workflow whose only job skipped reads as success at the caller,
+# which would erase the documented DEV_WORKER_READY skip from the verdict.
+
+on:
+  workflow_call:
+    outputs:
+      result:
+        description: deploy-worker-dev job result (success | failure | cancelled | skipped)
+        value: ${{ jobs.result.outputs.result }}
+
+jobs:
+  # ── 3. Deploy development worker to bare-metal via Tailscale SSH ─────────
+  # Enable after agentsfleet-dev-runner-ant is prepared and registered.
+  deploy-worker-dev:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: vars.DEV_WORKER_READY == 'true'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dev-binaries
+          path: dist
+
+      - name: Load Tailscale credentials from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
+          TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
+
+      - name: Join Tailscale network
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ env.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ env.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Deploy runner
+        run: |
+          RUNNER_BINARY=dist/agentsfleet-runner-linux-amd64 \
+          RUNNER_VERSION="dev-${GITHUB_SHA::7}" \
+          VAULT_DEV="${{ vars.VAULT_DEV }}" \
+            ./playbooks/founding/05_runner_bootstrap_dev/deploy.sh
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      - name: Verify runner
+        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/05_runner_bootstrap_dev/00_gate.sh
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+  # Report the deploy job's result as a workflow output — runs even when the
+  # deploy job skipped or failed, so the verdict never loses the distinction.
+  result:
+    runs-on: ubuntu-latest
+    needs: deploy-worker-dev
+    if: always()
+    outputs:
+      result: ${{ needs.deploy-worker-dev.result }}
+    steps:
+      - name: Record worker result
+        run: echo "deploy-worker-dev result = ${{ needs.deploy-worker-dev.result }}"

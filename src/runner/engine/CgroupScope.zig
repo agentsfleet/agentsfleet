@@ -43,6 +43,9 @@ pub const CgroupError = error{
     CgroupWriteFailed,
     CgroupMoveFailed,
     CgroupReadFailed,
+    /// Not inside systemd's delegated `runner` subgroup, so no subtree is
+    /// writable. Distinct from CgroupReadFailed (procfs itself unreadable).
+    CgroupNotDelegated,
 };
 
 /// Resource metrics captured at cgroup teardown.
@@ -235,7 +238,7 @@ pub fn resolveCgroupBase(io: std.Io, alloc: std.mem.Allocator) ![]u8 {
     var reader = file.reader(io, &.{});
     var buf: [MAX_CGROUP_PLACEMENT_BYTES]u8 = undefined;
     const len = reader.interface.readSliceShort(&buf) catch return CgroupError.CgroupReadFailed;
-    const path = delegatedCgroupPath(buf[0..len]) orelse return CgroupError.CgroupReadFailed;
+    const path = delegatedCgroupPath(buf[0..len]) orelse return CgroupError.CgroupNotDelegated;
     return std.fmt.allocPrint(alloc, S_CGROUP_BASE, .{ CGROUP_MOUNT, path });
 }
 
@@ -284,8 +287,11 @@ pub fn destroy(self: *CgroupScope, limits: types.ResourceLimits) CgroupMetrics {
         result.cpu_throttled_ms = throttled_ms;
     }
 
-    // Remove the cgroup directory (must be empty of processes first).
-    std.Io.Dir.cwd().deleteTree(self.io, self.path) catch |err| {
+    // Reclaim is an rmdir and ONLY an rmdir: the kernel synthesises the control
+    // files inside a cgroup and refuses to unlink them, so a recursive tree
+    // delete dies with PermissionDenied on the first one and leaks the scope.
+    // It succeeds only once the scope is process-empty, which `kill()` ensures.
+    std.Io.Dir.deleteDirAbsolute(self.io, self.path) catch |err| {
         log.warn("cleanup_failed", .{ .path = self.path, .err = @errorName(err) });
     };
 

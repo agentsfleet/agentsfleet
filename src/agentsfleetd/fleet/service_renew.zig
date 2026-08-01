@@ -126,6 +126,7 @@ fn parseMeterBody(hx: Hx, req: *httpz.Request) protocol.RenewRequest {
 fn buildMeter(conn: *pg.Conn, lease: Lease, body: protocol.RenewRequest, now_ms: i64) renewal.MeterInputs {
     return renewal.buildMeterInputs(
         conn,
+        lease.tenant_id,
         lease.provider,
         parsePosture(lease.posture),
         lease.model,

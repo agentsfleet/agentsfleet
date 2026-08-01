@@ -16,6 +16,14 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
+readonly RUNNER_UNIT="$SCRIPT_DIR/agentsfleet-runner.service"
+readonly HOME_ENV_PREFIX="Environment=HOME="
+readonly RUNTIME_DIR_PREFIX="RuntimeDirectory="
+# systemd creates RuntimeDirectory=<name> at /run/<name>. HOME must resolve
+# inside it: the unit's own ProtectHome=yes and ProtectSystem=strict make a home
+# under /root or /home unreadable to the service, which would put the daemon
+# back in the state where every lease dies at config load.
+readonly RUNTIME_DIR_ROOT="/run"
 
 # The install + restart calls deploy.sh would make on a real host. Stubbed onto
 # PATH so a test can assert a deploy never reached them.
@@ -249,8 +257,56 @@ test_deploy_acquires_lock_when_free() {
   fi
 }
 
+# The sandboxed child resolves the NullClaw config directory from HOME, which it
+# inherits through the passthrough allowlist (src/runner/sandbox_args.zig). systemd
+# hands a User=-less service no HOME of its own, so the unit has to supply one or
+# the child's config load fails closed and no lease can run.
+test_unit_defines_home() {
+  local name="test_unit_defines_home"
+
+  local home_line
+  home_line="$(grep -E "^${HOME_ENV_PREFIX}" "$RUNNER_UNIT" || true)"
+  if [[ -z "$home_line" ]]; then
+    bad "$name" "$RUNNER_UNIT sets no ${HOME_ENV_PREFIX}<path>; every lease would fail at config load"
+    return
+  fi
+
+  # Derive the expected root from the unit's own RuntimeDirectory rather than
+  # hard-coding it, so renaming the directory cannot silently orphan HOME.
+  local runtime_line runtime_dir
+  runtime_line="$(grep -E "^${RUNTIME_DIR_PREFIX}" "$RUNNER_UNIT" || true)"
+  if [[ -z "$runtime_line" ]]; then
+    bad "$name" "$RUNNER_UNIT declares no ${RUNTIME_DIR_PREFIX}<name> to back HOME"
+    return
+  fi
+  runtime_dir="${RUNTIME_DIR_ROOT}/${runtime_line#"$RUNTIME_DIR_PREFIX"}"
+
+  local home_value="${home_line#"$HOME_ENV_PREFIX"}"
+  if [[ "$home_value" != "$runtime_dir"* ]]; then
+    bad "$name" "HOME=$home_value is outside $runtime_dir — ProtectHome/ProtectSystem leave it unwritable"
+    return
+  fi
+
+  # The reason a real home cannot be used. If this hardening were ever dropped,
+  # HOME=/root would start working and the coupling above would look arbitrary.
+  if ! grep -qE "^ProtectHome=yes" "$RUNNER_UNIT"; then
+    bad "$name" "$RUNNER_UNIT no longer sets ProtectHome=yes — re-check why HOME points at $runtime_dir"
+    return
+  fi
+
+  # The path must also be writable to the service, or the engine cannot create
+  # its config directory beneath HOME.
+  if ! grep -qE "^ReadWritePaths=.*${runtime_dir}( |$)" "$RUNNER_UNIT"; then
+    bad "$name" "$runtime_dir is not in ReadWritePaths — ProtectSystem=strict leaves it read-only"
+    return
+  fi
+
+  ok "$name"
+}
+
 # ── Runner ───────────────────────────────────────────────────────────────────
 
+test_unit_defines_home
 test_deploy_version_substring_not_equal_reinstalls
 test_deploy_version_exact_match_skips
 test_deploy_malformed_version_reinstalls

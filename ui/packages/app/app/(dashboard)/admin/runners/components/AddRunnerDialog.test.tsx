@@ -29,6 +29,16 @@ function openDialog() {
 }
 
 describe("AddRunnerDialog assigns policy", () => {
+  // Same policy form as the edit dialog, plus the post-create token panel, so it
+  // overflows a short viewport for the same reason and needs the same scroll.
+  it("test_add_runner_dialog_body_scrolls: keeps the footer reachable on a short viewport", () => {
+    openDialog();
+
+    const dialogClasses = screen.getByRole("dialog").className;
+    expect(dialogClasses).toContain("max-h-svh");
+    expect(dialogClasses).toContain("overflow-y-auto");
+  });
+
   it("refuses a bad registry entry in-form and never calls the action", async () => {
     openDialog();
     fireEvent.change(screen.getByLabelText(/host name/i), { target: { value: "web-prod-1" } });
