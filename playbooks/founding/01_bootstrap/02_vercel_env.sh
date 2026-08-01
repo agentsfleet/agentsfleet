@@ -1,189 +1,208 @@
 #!/usr/bin/env bash
-# Bootstrap section 2.7: Vercel project env-var sync — PostHog rows only.
-#
-# Reads PostHog Project API keys from 1Password (vaults $VAULT_DEV /
-# $VAULT_PROD) and upserts the website/agents/app project envs for both
-# `preview` and `production` targets via the v10 env API. Specifically:
-#   - agentsfleet-website   : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
-#   - agentsfleet-agents-dev : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
-#   - agentsfleet-app       : NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_HOST
-#
-# Out of scope (live in the §2.7 table but require per-project values
-# this script doesn't model — left to the prose path until/unless they
-# regress): Clerk publishable + secret keys, `NEXT_PUBLIC_API_URL`,
-# `VITE_APP_BASE_URL`. Extend ROWS below if those need automation too.
-#
-# Run modes:
-#   ./02_vercel_env.sh           # apply (POST upsert=true)
-#   ./02_vercel_env.sh --check   # read-only diff, exit 1 on drift
-#
-# Why a script and not the playbook table alone: §2.7 prose has shipped
-# half-done historically (PostHog rows missing on all three projects,
-# observed via /v9/projects/{id}/env). A loud, idempotent script is the
-# fix — re-running it is safe; skipping it now fails the preflight gate.
 
 set -euo pipefail
 
-mode="apply"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/common.sh
+source "$SCRIPT_DIR/../../lib/common.sh"
+
+mode="check"
 case "${1:-}" in
-  --check) mode="check" ;;
-  --apply|"") mode="apply" ;;
-  *) echo "usage: $0 [--check|--apply]" >&2; exit 2 ;;
+  --check | "") mode="check" ;;
+  --apply) mode="apply" ;;
+  *)
+    echo "usage: $0 [--check|--apply]" >&2
+    exit 2
+    ;;
 esac
+
+playbooks_require_tool op
+playbooks_require_tool curl
+playbooks_require_tool jq
+playbooks_require_vault_read_approval
+playbooks_require_op_auth
+
+if [ "$mode" = "apply" ] && [ "${ALLOW_VERCEL_WRITES:-0}" != "1" ]; then
+  echo "ERROR: Vercel write approval required; set ALLOW_VERCEL_WRITES=1" >&2
+  exit 1
+fi
 
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
+api_base="https://api.vercel.com"
 posthog_host="${POSTHOG_HOST:-https://us.i.posthog.com}"
-api_base="${VERCEL_API:-https://api.vercel.com}"
-
-require_bin() {
-  command -v "$1" >/dev/null 2>&1 || { echo "missing tool: $1" >&2; exit 2; }
+work_dir="$(mktemp -d)"
+auth_config="$work_dir/curl.conf"
+owner_bash_pid="$BASHPID"
+cleanup() {
+  if [ "$BASHPID" = "$owner_bash_pid" ]; then
+    rm -rf "$work_dir"
+  fi
 }
-require_bin op
-require_bin curl
-require_bin jq
+trap cleanup EXIT
 
 vercel_token="$(op read "op://$vault_prod/vercel-api-token/credential")"
-[ -n "$vercel_token" ] || { echo "vercel-api-token empty" >&2; exit 2; }
+if [ -z "$vercel_token" ] ||
+  [[ "$vercel_token" == *$'\n'* ]] ||
+  [[ "$vercel_token" == *'"'* ]]; then
+  echo "ERROR: Vercel token is missing or malformed" >&2
+  exit 1
+fi
+umask 077
+printf 'fail\nsilent\nshow-error\nheader = "Authorization: Bearer %s"\n' \
+  "$vercel_token" >"$auth_config"
+unset vercel_token
 
-# Project name → Vercel project ID. Resolved live so a new bootstrap
-# (different team / renamed projects) doesn't need code changes.
+vercel_get() {
+  local path="$1"
+  curl --config "$auth_config" "$api_base$path"
+}
+
 declare -A PROJECT_ID
 resolve_project() {
   local name="$1"
-  local resp
-  resp="$(curl -fsS -H "Authorization: Bearer $vercel_token" \
-    "$api_base/v10/projects/$name")" || return 1
-  PROJECT_ID["$name"]="$(echo "$resp" | jq -r '.id')"
+  local response
+  response="$(vercel_get "/v10/projects/$name")" || return 1
+  PROJECT_ID["$name"]="$(jq -r '.id // empty' <<<"$response")"
+  [ -n "${PROJECT_ID[$name]}" ]
 }
-# List the team's actual Vercel project names — surfaced on a resolve
-# failure so stale rename residue is obvious instead of a bare curl 404.
-list_project_names() {
-  curl -fsS -H "Authorization: Bearer $vercel_token" \
-    "$api_base/v10/projects?limit=100" 2>/dev/null \
-    | jq -r '.projects[].name' | sort | sed 's/^/    - /' || true
+
+list_projects() {
+  vercel_get "/v10/projects?limit=100" 2>/dev/null |
+    jq -r '.projects[].name' |
+    sort |
+    sed 's/^/    - /' || true
 }
-for p in agentsfleet-website agentsfleet-agents-dev agentsfleet-app; do
-  resolve_project "$p" && continue
+
+for project in agentsfleet-website agentsfleet-app; do
+  resolve_project "$project" && continue
   {
-    echo "✗ could not resolve Vercel project: $p (HTTP 404 — not on this team)"
-    echo "  likely a stale/renamed project name in this script. Vercel currently has:"
-    list_project_names
-    echo "  fix: correct the name above + the ROWS table, then re-run with --check"
+    echo "ERROR: Vercel project not found: $project"
+    echo "Available projects:"
+    list_projects
   } >&2
-  exit 2
+  exit 1
 done
 
-# (project, key, prod-source, preview-source). Sources prefixed `op:` are
-# 1Password refs resolved on apply; `lit:` is a literal value.
-ROWS=(
+# Each row is project, key, production source, and preview source.
+# `op:` values are resolved from 1Password; `lit:` values are public URLs.
+rows=(
+  "agentsfleet-website|VITE_APP_BASE_URL|lit:https://app.agentsfleet.net|lit:https://app-dev.agentsfleet.net"
   "agentsfleet-website|VITE_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
   "agentsfleet-website|VITE_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
-  "agentsfleet-agents-dev|VITE_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
-  "agentsfleet-agents-dev|VITE_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
+  "agentsfleet-app|NEXT_PUBLIC_API_URL|lit:https://api.agentsfleet.net|lit:https://api-dev.agentsfleet.net"
+  "agentsfleet-app|NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY|op:op://$vault_prod/clerk-prod/publishable-key|op:op://$vault_dev/clerk-dev/publishable-key"
+  "agentsfleet-app|CLERK_SECRET_KEY|op:op://$vault_prod/clerk-prod/secret-key|op:op://$vault_dev/clerk-dev/secret-key"
   "agentsfleet-app|NEXT_PUBLIC_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
   "agentsfleet-app|NEXT_PUBLIC_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
 )
 
 resolve_source() {
-  local src="$1"
-  case "$src" in
-    op:*) op read "${src#op:}" ;;
-    lit:*) printf '%s' "${src#lit:}" ;;
-    *) echo "bad source: $src" >&2; return 1 ;;
+  local source="$1"
+  case "$source" in
+    op:*) op read "${source#op:}" ;;
+    lit:*) printf '%s' "${source#lit:}" ;;
+    *)
+      echo "ERROR: unsupported Vercel value source" >&2
+      return 1
+      ;;
   esac
 }
 
-# `?decrypt=true` on the list endpoint is ignored for tokens without
-# org-admin scope — values come back as base64 ciphertext (`eyJ2Ijoi…`).
-# The per-env endpoint `/v1/projects/{id}/env/{envId}` returns plaintext
-# for any token that can read the project. We list first to discover ids,
-# then fetch plaintext per matching entry — ~2 extra round-trips per row,
-# fine for a 12-row matrix.
 fetch_envs() {
-  local pid="$1"
-  curl -fsS -H "Authorization: Bearer $vercel_token" \
-    "$api_base/v9/projects/$pid/env?decrypt=false"
+  local project_id="$1"
+  vercel_get "/v9/projects/$project_id/env?decrypt=false"
 }
 
 fetch_value() {
-  local pid="$1" env_id="$2"
-  curl -fsS -H "Authorization: Bearer $vercel_token" \
-    "$api_base/v1/projects/$pid/env/$env_id" | jq -r '.value // empty'
+  local project_id="$1"
+  local env_id="$2"
+  vercel_get "/v1/projects/$project_id/env/$env_id" |
+    jq -r '.value // empty'
+}
+
+find_env_id() {
+  local payload="$1"
+  local key="$2"
+  local target="$3"
+  local count
+  count="$(jq -r \
+    --arg key "$key" \
+    --arg target "$target" \
+    '[.envs[] | select(.key == $key and (.target | index($target)))] | length' \
+    <<<"$payload")"
+  if [ "$count" -gt 1 ]; then
+    echo "ERROR: duplicate Vercel rows for $key [$target]" >&2
+    return 1
+  fi
+  jq -r \
+    --arg key "$key" \
+    --arg target "$target" \
+    '.envs[] | select(.key == $key and (.target | index($target))) | .id' \
+    <<<"$payload"
+}
+
+upsert_value() {
+  local project_id="$1"
+  local key="$2"
+  local value="$3"
+  local target="$4"
+  local payload="$work_dir/upsert.json"
+  jq -n \
+    --arg key "$key" \
+    --arg value "$value" \
+    --arg target "$target" \
+    '{key:$key,value:$value,type:"encrypted",target:[$target]}' >"$payload"
+  curl --config "$auth_config" \
+    --header 'Content-Type: application/json' \
+    --request POST \
+    --data-binary "@$payload" \
+    "$api_base/v10/projects/$project_id/env?upsert=true" >/dev/null
 }
 
 drift=0
 applied=0
-
-for row in "${ROWS[@]}"; do
-  IFS='|' read -r project key prod_src preview_src <<<"$row"
-  pid="${PROJECT_ID[$project]}"
-
-  prod_value="$(resolve_source "$prod_src")"
-  preview_value="$(resolve_source "$preview_src")"
-
-  current="$(fetch_envs "$pid")"
-  prod_id="$(echo "$current" | jq -r --arg k "$key" \
-    '.envs[] | select(.key==$k and (.target|index("production"))) | .id // empty')"
-  preview_id="$(echo "$current" | jq -r --arg k "$key" \
-    '.envs[] | select(.key==$k and (.target|index("preview"))) | .id // empty')"
-  cur_prod=""
-  cur_preview=""
-  if [ -n "$prod_id" ]; then
-    cur_prod="$(fetch_value "$pid" "$prod_id")"
-  fi
-  if [ -n "$preview_id" ]; then
-    cur_preview="$(fetch_value "$pid" "$preview_id")"
-  fi
+for row in "${rows[@]}"; do
+  IFS='|' read -r project key production_source preview_source <<<"$row"
+  project_id="${PROJECT_ID[$project]}"
+  production_value="$(resolve_source "$production_source")"
+  preview_value="$(resolve_source "$preview_source")"
+  current="$(fetch_envs "$project_id")"
 
   for target in production preview; do
     if [ "$target" = "production" ]; then
-      want="$prod_value"; have="$cur_prod"
+      wanted="$production_value"
     else
-      want="$preview_value"; have="$cur_preview"
+      wanted="$preview_value"
     fi
+    env_id="$(find_env_id "$current" "$key" "$target")"
+    actual=""
+    [ -z "$env_id" ] || actual="$(fetch_value "$project_id" "$env_id")"
 
-    if [ "$want" = "$have" ]; then
-      echo "✓ $project/$key [$target]"
+    if [ "$actual" = "$wanted" ]; then
+      echo "OK: $project / $key [$target]"
       continue
     fi
-
     if [ "$mode" = "check" ]; then
-      if [ -z "$have" ]; then
-        echo "✗ MISSING: $project/$key [$target]"
-      else
-        echo "✗ DRIFT: $project/$key [$target]"
-      fi
+      echo "DRIFT: $project / $key [$target]" >&2
       drift=$((drift + 1))
       continue
     fi
 
-    payload="$(jq -nc \
-      --arg k "$key" --arg v "$want" --arg t "$target" \
-      '{key:$k, value:$v, type:"encrypted", target:[$t]}')"
-    # v10 supports ?upsert=true — collapses create-or-update into one call.
-    curl -fsS -X POST \
-      -H "Authorization: Bearer $vercel_token" \
-      -H "Content-Type: application/json" \
-      -d "$payload" \
-      "$api_base/v10/projects/$pid/env?upsert=true" >/dev/null
-    echo "↑ upserted $project/$key [$target]"
+    upsert_value "$project_id" "$key" "$wanted" "$target"
+    echo "UPDATED: $project / $key [$target]"
     applied=$((applied + 1))
   done
 done
 
-if [ "$mode" = "check" ]; then
-  if [ "$drift" -gt 0 ]; then
-    echo ""
-    echo "❌ $drift drift item(s) — re-run without --check to apply"
-    exit 1
-  fi
-  echo ""
-  echo "✅ vercel env in sync with vault"
-  exit 0
+if [ "$mode" = "check" ] && [ "$drift" -ne 0 ]; then
+  echo "ERROR: $drift Vercel value(s) drifted" >&2
+  exit 1
 fi
 
-echo ""
-echo "✅ vercel env applied — $applied write(s)"
-echo "next: trigger a fresh redeploy per project (no build cache) so the"
-echo "      new bundles inline the keys at vite/next build time."
+if [ "$mode" = "check" ]; then
+  echo "PASS: Vercel environment values match 1Password"
+else
+  echo "PASS: Vercel environment values applied ($applied update(s))"
+  echo "NEXT: redeploy changed projects without build cache"
+fi

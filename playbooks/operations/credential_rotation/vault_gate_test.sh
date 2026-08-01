@@ -3,9 +3,8 @@
 #
 #     bash playbooks/operations/credential_rotation/vault_gate_test.sh
 #
-# The filename deliberately avoids the 0[1-9]_*.sh / [1-9][0-9]_*.sh shape that
-# 00_gate.sh globs (RULE GLS): a test that the gate dispatcher executed as a
-# rotation step would run the tests against production during a real rotation.
+# The filename is not a rotation step. The gate names its two operational
+# scripts explicitly, so tests cannot become part of a live rotation.
 #
 # `op` and `curl` are stubbed onto PATH. Every stub invocation is appended to a
 # log, so a test can assert the script exited before it ever reached the vault.
@@ -69,6 +68,7 @@ run_gated_script() {
   env -u ALLOW_VAULT_READS \
     PATH="$STUB_DIR:$PATH" \
     OP_CALLS="$OP_CALLS" \
+    ENV=dev \
     "$@" \
     bash "$script" 2>&1
 }

@@ -1,0 +1,68 @@
+[
+  {
+    "name": "metrics-scrape-missing",
+    "title": "Control-plane metrics missing",
+    "severity": "critical",
+    "for": "2m",
+    "noDataState": "Alerting",
+    "execErrState": "Alerting",
+    "expr": "absent(agentsfleet_api_in_flight_requests)",
+    "summary": "Prometheus cannot see the agentsfleetd metrics endpoint.",
+    "panelId": 1
+  },
+  {
+    "name": "api-backpressure",
+    "title": "API backpressure rejecting requests",
+    "severity": "critical",
+    "for": "0s",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "expr": "sum(increase(agentsfleet_api_backpressure_rejections_total[5m])) > 0",
+    "summary": "The control plane rejected API requests at its in-flight ceiling.",
+    "panelId": 2
+  },
+  {
+    "name": "ready-index-write-failure",
+    "title": "Ready-index writes failing",
+    "severity": "critical",
+    "for": "0s",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "expr": "sum(increase(agentsfleet_fleet_ready_write_failures_total[5m])) > 0",
+    "summary": "The control plane failed to update the shared fleet readiness index.",
+    "panelId": 4
+  },
+  {
+    "name": "runner-silent",
+    "title": "Runner heartbeat overdue",
+    "severity": "critical",
+    "for": "2m",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "expr": "agentsfleet_runner_last_seen_seconds > __RUNNER_OFFLINE_SECONDS__",
+    "summary": "A runner exceeded the source-defined offline threshold.",
+    "panelId": 6
+  },
+  {
+    "name": "runner-failure",
+    "title": "Runner execution failed",
+    "severity": "warning",
+    "for": "0s",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "expr": "sum by (reason) (increase(agentsfleet_runner_failures_total[10m])) > 0",
+    "summary": "A runner reported an execution failure.",
+    "panelId": 7
+  },
+  {
+    "name": "telemetry-discard",
+    "title": "Telemetry entries discarded",
+    "severity": "warning",
+    "for": "0s",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "expr": "sum by (signal, reason) (increase(agentsfleet_otlp_entries_discarded_total[5m])) > 0",
+    "summary": "The local OpenTelemetry exporter discarded entries.",
+    "panelId": 8
+  }
+]

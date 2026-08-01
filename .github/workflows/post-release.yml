@@ -6,8 +6,32 @@ on:
     types: [completed]
 
 jobs:
-  verify-npm:
+  resolve-release:
     if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve the released version
+        id: version
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          test -n "$VERSION"
+          case "$VERSION" in
+            *[!0-9A-Za-z._-]*)
+              echo "Invalid VERSION value: $VERSION"
+              exit 1
+              ;;
+          esac
+          test "$(npm view "@agentsfleet/cli@$VERSION" version)" = "$VERSION"
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+  verify-npm:
+    needs: resolve-release
     strategy:
       fail-fast: false
       matrix:
@@ -26,20 +50,20 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 25
+          registry-url: https://registry.npmjs.org
 
-      - name: Install @agentsfleet/cli from npm
-        run: npm install -g @agentsfleet/cli@next
+      - name: Install the exact released agentsfleet package
+        run: npm install -g @agentsfleet/cli@${{ needs.resolve-release.outputs.version }}
 
-      - name: Verify --version matches published version
+      - name: Verify the installed version
         run: |
-          EXPECTED=$(npm view @agentsfleet/cli@next version)
-          VERSION=$(agentsfleet --version 2>&1 | head -1)
+          EXPECTED="${{ needs.resolve-release.outputs.version }}"
+          VERSION="$(agentsfleet --version 2>&1 | head -1)"
           echo "agentsfleet version: $VERSION"
-          echo "expected (npm @next): $EXPECTED"
           echo "$VERSION" | grep -qF "$EXPECTED"
         shell: bash
 
-      - name: Verify --help exits 0
+      - name: Verify help exits successfully
         run: agentsfleet --help
         shell: bash
 
@@ -51,22 +75,22 @@ jobs:
           else
             ICON="❌"
           fi
-          echo "| ${{ matrix.name }} | npm | $ICON |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ${{ matrix.name }} | npm ${{ needs.resolve-release.outputs.version }} | $ICON |" >> "$GITHUB_STEP_SUMMARY"
         shell: bash
 
-  # CLI acceptance against api.agentsfleet.net using the just-published
-  # @agentsfleet/cli@latest. WS-E #C2: secret-load comes AFTER `bun
-  # install` AND `npm i -g` so a hostile postinstall sees no Clerk admin
-  # key. The live lane derives the production dashboard URL and requires
-  # the browser handoff to complete before the remaining scenarios run.
+  # Command-Line Interface (CLI) acceptance runs only after 🤠 Indy marks the
+  # production runner ready. The exact package from the triggering release is
+  # tested against the live production API before the mutable latest tag moves.
   cli-acceptance-prod:
-    if: github.event.workflow_run.conclusion == 'success'
-    needs: verify-npm
+    if: vars.PROD_WORKER_READY == 'true'
+    needs: [resolve-release, verify-npm]
     runs-on: ubuntu-latest
     name: CLI acceptance — api.agentsfleet.net
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: actions/setup-node@v6
         with:
@@ -76,18 +100,18 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Install agentsfleet dev deps (BEFORE secret load — WS-E #C2)
+      - name: Install repository dependencies before loading secrets
         run: bun install --frozen-lockfile
         working-directory: cli
 
-      - name: Install agentsfleet from npm @latest (BEFORE secret load — WS-E #C2)
-        run: npm install -g @agentsfleet/cli@latest
+      - name: Install the exact released agentsfleet package
+        run: npm install -g @agentsfleet/cli@${{ needs.resolve-release.outputs.version }}
 
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
         working-directory: cli
 
-      - name: Load Clerk PROD credentials from 1Password (AFTER install)
+      - name: Load production Clerk credentials after installation
         uses: 1password/load-secrets-action@v4
         with:
           export-env: true
@@ -106,7 +130,6 @@ jobs:
           AGENTSFLEET_ACCEPTANCE_TARGET: https://api.agentsfleet.net
           AGENTSFLEET_ACCEPTANCE_BINARY: global
           AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE: "1"
-          # The dashboard URL derives from the production API target.
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
           CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
@@ -121,22 +144,50 @@ jobs:
           else
             ICON="❌"
           fi
-          echo "| CLI acceptance (api.agentsfleet.net) | npm @latest | $ICON |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CLI acceptance (api.agentsfleet.net) | npm ${{ needs.resolve-release.outputs.version }} | $ICON |" >> "$GITHUB_STEP_SUMMARY"
         shell: bash
 
+  promote-latest:
+    needs: [resolve-release, verify-npm, cli-acceptance-prod]
+    runs-on: ubuntu-latest
+    name: Promote npm latest tag
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 25
+          registry-url: https://registry.npmjs.org
+
+      - name: Load npm publication token
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          NPM_TOKEN: op://${{ vars.VAULT_PROD }}/npm-publish-token/credential
+
+      - name: Promote the verified version
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+        run: |
+          VERSION="${{ needs.resolve-release.outputs.version }}"
+          npm dist-tag add "@agentsfleet/cli@$VERSION" latest
+          test "$(npm view @agentsfleet/cli@latest version)" = "$VERSION"
+
   summary:
-    needs: [verify-npm, cli-acceptance-prod]
+    needs: [resolve-release, verify-npm, cli-acceptance-prod, promote-latest]
     if: always()
     runs-on: ubuntu-latest
     name: Post-Release Summary
     steps:
-      - name: Generate summary header
+      - name: Generate summary
         run: |
-          cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## Post-Release Verification Results
 
-          | Platform | Method | Status |
-          |----------|--------|--------|
-
-          > Per-platform results are written by each matrix runner above.
+          | Check | Result |
+          |-------|--------|
+          | Exact npm version | ${{ needs.resolve-release.outputs.version || 'unresolved' }} |
+          | Platform installs | ${{ needs.verify-npm.result }} |
+          | Production CLI acceptance | ${{ needs.cli-acceptance-prod.result }} |
+          | npm latest promotion | ${{ needs.promote-latest.result }} |
           EOF

@@ -9,10 +9,6 @@
 # canonical copy from drifting away from the grant CI depends on, and they run
 # in `make check-playbooks` without needing tailnet credentials.
 #
-# Guards the Jul 28, 2026 outage: the workers and the ephemeral GitHub Actions
-# node shared tag:ci, the ssh block granted only autogroup:member, and a tagged
-# node carries no user identity — so every CI deploy was refused.
-
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,22 +72,25 @@ test_policy_grants_ci_tag_to_worker_tag() {
   ok "$name"
 }
 
-test_member_rule_covers_both_tags_during_retag() {
-  local name="test_member_rule_covers_both_tags_during_retag"
+test_network_grant_is_limited_to_worker_ssh() {
+  local name="test_network_grant_is_limited_to_worker_ssh"
   assert_jq "$name" \
-    '[.ssh[]
-      | select(.action == "accept")
-      | select(.src | index("autogroup:member"))
-      | select((.dst | index("tag:worker")) and (.dst | index("tag:ci")))]
-     | length > 0' \
-    'the member ssh rule must list both tag:worker and tag:ci, so retagging a worker cannot strand human access mid-flight' || return
+    '([.grants[]
+       | select((.src | index("autogroup:member")) and (.src | index("tag:ci")))
+       | select(.dst == ["tag:worker"])
+       | select(.ip == ["tcp:22"])]
+      | length == 1) and
+     ([.grants[]
+       | select((.src | index("*")) or (.dst | index("*")) or (.ip | index("*")))]
+      | length == 0)' \
+    'the network grant must allow members and tag:ci to reach only tag:worker TCP port 22; wildcard access reopens the whole tailnet' || return
   ok "$name"
 }
 
 test_policy_asserts_ci_access_in_sshtests() {
   local name="test_policy_asserts_ci_access_in_sshtests"
   # dst must be the tag, never a host list. A host list asserts the current tag
-  # ASSIGNMENT ("is zombie-dev-worker-ant reachable?"), which is false until that
+  # ASSIGNMENT ("is agentsfleet-dev-runner-ant reachable?"), which is false until that
   # node is retagged — so Tailscale rejects the save. The tag asserts the RULE,
   # which resolves regardless, and covers every future worker for free.
   assert_jq "$name" \
@@ -128,7 +127,7 @@ test_bootstrap_playbooks_advertise_worker_tag() {
 
 test_policy_declares_both_tag_owners
 test_policy_grants_ci_tag_to_worker_tag
-test_member_rule_covers_both_tags_during_retag
+test_network_grant_is_limited_to_worker_ssh
 test_policy_asserts_ci_access_in_sshtests
 test_bootstrap_playbooks_advertise_worker_tag
 

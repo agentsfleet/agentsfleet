@@ -1,308 +1,280 @@
 #!/usr/bin/env bash
-# Regression tests for the platform workspace pointer in the credential gate.
-
-set -uo pipefail
+set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly script_under_test="$script_dir/02_credentials.sh"
+# shellcheck source=../../lib/test_search.sh
+source "$script_dir/../../lib/test_search.sh"
+repo_root="$(cd "$script_dir/../../.." && pwd)"
+script_under_test="$script_dir/02_credentials.sh"
 
 passed=0
 failed=0
 
-ok() { printf 'ok   %s\n' "$1"; passed=$((passed + 1)); }
-bad() { printf 'FAIL %s\n       %s\n' "$1" "$2" >&2; failed=$((failed + 1)); }
+ok() {
+  passed=$((passed + 1))
+  echo "  ✓ $1"
+}
+
+bad() {
+  failed=$((failed + 1))
+  echo "  ✗ $1: $2" >&2
+}
 
 work_dir="$(mktemp -d)"
-readonly work_dir
-readonly stub_dir="$work_dir/bin"
+stub_dir="$work_dir/bin"
 mkdir -p "$stub_dir"
-cleanup() { rm -rf "$work_dir"; }
+
+cleanup() {
+  rm -rf -- "$work_dir"
+}
 trap cleanup EXIT
 
 cat >"$stub_dir/op" <<'STUB'
 #!/usr/bin/env bash
 ref="${2:-}"
-if [[ -n "${MISSING_REF:-}" && "$ref" == "$MISSING_REF" ]]; then
+if [ -n "${MISSING_REF:-}" ] && [ "$ref" = "$MISSING_REF" ]; then
   exit 1
 fi
 case "$ref" in
-  */platform_admin_workspace_id)
-    [[ -n "${PLATFORM_WORKSPACE_VALUE:-}" ]] || exit 1
-    printf '%s\n' "$PLATFORM_WORKSPACE_VALUE"
+  */issuer|*/grafana-url|*/qstash/url)
+    printf 'https://provider.example.test\n'
     ;;
-  */issuer) printf 'https://identity.example.test\n' ;;
-  */migrator-connection-string) printf 'postgres-migrator\n' ;;
-  */api-connection-string) printf 'postgres-api\n' ;;
-  */qstash/url) printf 'https://qstash-eu-central-1.upstash.io\n' ;;
-  *) printf '%s\n' "${SECRET_SENTINEL:-stub-value}" ;;
+  */migrator-connection-string)
+    printf 'postgres-migrator\n'
+    ;;
+  */api-connection-string)
+    printf 'postgres-api\n'
+    ;;
+  *)
+    printf '%s\n' "${SECRET_SENTINEL:-stub-value}"
+    ;;
 esac
 STUB
 chmod +x "$stub_dir/op"
 
 run_gate() {
-  local workspace_value="$1"
+  local stage="$1"
   local missing_ref="${2:-}"
-  env PATH="$stub_dir:$PATH" \
-    ENV=dev \
+  local target_env="${3:-dev}"
+
+  env \
+    PATH="$stub_dir:$PATH" \
+    ENV="$target_env" \
+    STAGE="$stage" \
     OP_READ_RETRIES=1 \
     OP_READ_MIN_INTERVAL_SECONDS=0 \
-    PLATFORM_WORKSPACE_VALUE="$workspace_value" \
     MISSING_REF="$missing_ref" \
-    SECRET_SENTINEL='do-not-print-provider-secret' \
+    SECRET_SENTINEL=do-not-print-provider-secret \
     bash "$script_under_test" 2>&1
 }
 
-test_should_accept_uuidv7_workspace_pointer() {
-  local name="test_should_accept_uuidv7_workspace_pointer"
+test_bootstrap_checks_only_pre_priming_inputs() {
+  local name="bootstrap checks only pre-priming inputs"
   local output status=0
-  output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210')" || status=$?
-  if [[ "$status" -ne 0 ]]; then
-    bad "$name" "valid workspace pointer failed: $output"
-  elif [[ "$output" != *"agentsfleet-admin/platform_admin_workspace_id"* ]]; then
-    bad "$name" "valid pointer was not checked: $output"
+  output="$(run_gate bootstrap \
+    'op://ZMB_CD_DEV/planetscale-dev/api-connection-string')" || status=$?
+
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "post-priming database output blocked bootstrap: $output"
+  elif [[ "$output" == *"planetscale-dev/api-connection-string"* ]]; then
+    bad "$name" "bootstrap read a post-priming database output"
+  elif [[ "$output" != *"agentsfleet-admin/username"* ]] || \
+       [[ "$output" != *"agentsfleet-admin/credential"* ]]; then
+    bad "$name" "admin login inputs were not checked"
   else
     ok "$name"
   fi
 }
 
-test_should_reject_missing_workspace_pointer() {
-  local name="test_should_reject_missing_workspace_pointer"
-  local output status=0
-  output="$(run_gate '')" || status=$?
-  if [[ "$status" -ne 1 ]]; then
-    bad "$name" "missing pointer returned status $status: $output"
-  elif [[ "$output" != *"MISSING: op://ZMB_CD_DEV/agentsfleet-admin/platform_admin_workspace_id"* ]]; then
-    bad "$name" "missing pointer did not name its 1Password field: $output"
-  else
-    ok "$name"
-  fi
-}
-
-test_should_reject_non_uuidv7_workspace_pointer() {
-  local name="test_should_reject_non_uuidv7_workspace_pointer"
-  local output status=0
-  output="$(run_gate '0190f5a2-4b2d-4c11-8d5e-2a5f31d98210')" || status=$?
-  if [[ "$status" -ne 1 ]]; then
-    bad "$name" "malformed pointer returned status $status: $output"
-  elif [[ "$output" != *"INVALID WORKSPACE IDENTIFIER"* ]]; then
-    bad "$name" "malformed pointer did not return the specific failure: $output"
-  else
-    ok "$name"
-  fi
-}
-
-test_should_check_runtime_connector_credentials() {
-  local name="test_should_check_runtime_connector_credentials"
-  local output status=0
-  output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210')" || status=$?
-  local -a expected=(
-    'approval-signing-secret/credential'
-    'github-app/app_id'
-    'github-app/app_slug'
-    'github-app/client_id'
-    'github-app/client_secret'
-    'github-app/private_key_pem'
-    'github-app/webhook_secret'
-    'slack-app/client_id'
-    'slack-app/client_secret'
-    'slack-app/signing_secret'
-    'zoho-app/client_id'
-    'zoho-app/client_secret'
-    'jira-app/client_id'
-    'jira-app/client_secret'
-    'linear-app/client_id'
-    'linear-app/client_secret'
-  )
-  local ref
-  if [[ "$status" -ne 0 ]]; then
-    bad "$name" "complete connector inventory failed: $output"
-    return
-  fi
-  for ref in "${expected[@]}"; do
-    if [[ "$output" != *"$ref"* ]]; then
-      bad "$name" "runtime credential was not checked: $ref"
-      return
-    fi
-  done
-  if [[ "$output" == *'github-app/app-id'* || "$output" == *'github-app/private-key'* ]]; then
-    bad "$name" "retired GitHub Fly fields are still checked: $output"
-  else
-    ok "$name"
-  fi
-}
-
-test_should_reject_missing_approval_signer() {
-  local name="test_should_reject_missing_approval_signer"
-  local ref='op://ZMB_CD_DEV/approval-signing-secret/credential'
-  local output status=0
-  output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210' "$ref")" || status=$?
-  if [[ "$status" -ne 1 ]]; then
-    bad "$name" "missing signer returned status $status: $output"
-  elif [[ "$output" != *"MISSING: $ref"* ]]; then
-    bad "$name" "missing signer did not name its 1Password field: $output"
-  elif [[ "$output" == *'do-not-print-provider-secret'* ]]; then
-    bad "$name" "preflight emitted a provider secret value: $output"
-  else
-    ok "$name"
-  fi
-}
-
-test_should_reject_missing_canonical_provider_fields() {
-  local name="test_should_reject_missing_canonical_provider_fields"
+test_post_deploy_values_are_not_early_inputs() {
+  local name="post-deploy values are not early inputs"
   local -a refs=(
-    'op://ZMB_CD_DEV/github-app/private_key_pem'
-    'op://ZMB_CD_DEV/slack-app/client_secret'
-    'op://ZMB_CD_DEV/linear-app/client_secret'
+    'op://ZMB_CD_DEV/agentsfleet-admin/api-key'
+    'op://ZMB_CD_DEV/agentsfleet-admin/platform_admin_workspace_id'
+    'op://ZMB_CD_DEV/agentsfleet-dev-runner-ant/tailscale-hostname'
+    'op://ZMB_CD_DEV/agentsfleet-dev-runner-ant/runner-token'
   )
   local ref output status
+
   for ref in "${refs[@]}"; do
-    status=0
-    output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210' "$ref")" || status=$?
-    if [[ "$status" -ne 1 || "$output" != *"MISSING: $ref"* || "$output" == *'do-not-print-provider-secret'* ]]; then
-      bad "$name" "missing canonical field was not rejected: $ref: $output"
-      return
-    fi
+    local early_stage
+    for early_stage in bootstrap deployment; do
+      status=0
+      output="$(run_gate "$early_stage" "$ref")" || status=$?
+      if [ "$status" -ne 0 ] || [[ "$output" == *"$ref"* ]]; then
+        bad "$name" "$ref was read during $early_stage"
+        return
+      fi
+    done
   done
   ok "$name"
 }
 
-test_should_scope_deployment_credential_gates() {
-  local name="test_should_scope_deployment_credential_gates"
-  local repo_root workflow vault
-  repo_root="$(cd "$script_dir/../../.." && pwd)"
-  if ! grep -q 'run: ENV=dev ./playbooks/founding/02_preflight/00_gate.sh' \
-      "$repo_root/.github/workflows/deploy-dev.yml"; then
-    bad "$name" "development deployment does not scope the gate to dev"
-    return
-  elif ! grep -q 'run: ENV=prod ./playbooks/founding/02_preflight/00_gate.sh' \
-      "$repo_root/.github/workflows/release.yml"; then
-    bad "$name" "production release does not scope the gate to prod"
+test_deployment_checks_complete_infrastructure_inputs() {
+  local name="deployment checks complete infrastructure inputs"
+  local output status=0
+  output="$(run_gate deployment)" || status=$?
+  local -a refs=(
+    'approval-signing-secret/credential'
+    'planetscale-dev/api-connection-string'
+    'planetscale-dev/migrator-connection-string'
+    'upstash-dev/api-url'
+    'upstash-dev/url'
+    'grafana-dev/otlp-endpoint'
+    'grafana-dev/instance-id'
+    'grafana-dev/api-key'
+    'cloudflare-tunnel-dev/credential'
+    'cloudflare-r2/account-id'
+    'cloudflare-r2/access-key-id'
+    'cloudflare-r2/secret-access-key'
+    'cloudflare-r2/bucket'
+  )
+  local ref
+
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "complete development inventory failed: $output"
     return
   fi
+  for ref in "${refs[@]}"; do
+    if [[ "$output" != *"$ref"* ]]; then
+      bad "$name" "missing inventory check: $ref"
+      return
+    fi
+  done
+  if [[ "$output" == *"github-app/"* ]] ||
+     [[ "$output" == *"qstash/token"* ]] ||
+     [[ "$output" == *"agentsfleet-admin/api-key"* ]] ||
+     [[ "$output" == *"grafana-observability/"* ]]; then
+    bad "$name" "post-deploy operations input blocked initial deployment"
+  elif [[ "$output" == *do-not-print-provider-secret* ]]; then
+    bad "$name" "gate printed a provider secret"
+  else
+    ok "$name"
+  fi
+}
 
-  # A pipeline's stage jobs may live in called sibling workflows (the M156
-  # split put deploy-dev's Fly stage in deploy-dev-fly.yml), so each contract
-  # is asserted over the pipeline's whole file family — and the retired-secret
-  # sweep covers every file in the family, not just the caller.
-  local family
-  for workflow in deploy-dev release; do
-    vault="VAULT_DEV"
-    [[ "$workflow" == "release" ]] && vault="VAULT_PROD"
-    family="$(cat "$repo_root/.github/workflows/$workflow"*.yml)"
-    # The dollar expression is the literal Fly command contract, not shell input.
-    # shellcheck disable=SC2016
-    if ! grep -Fq "APPROVAL_SIGNING_SECRET: op://\${{ vars.$vault }}/approval-signing-secret/credential" <<<"$family"; then
-      bad "$name" "$workflow pipeline does not load the environment-scoped callback signer"
+test_deployment_rejects_missing_runtime_input() {
+  local name="deployment rejects a missing runtime input"
+  local ref='op://ZMB_CD_DEV/approval-signing-secret/credential'
+  local output status=0
+  output="$(run_gate deployment "$ref")" || status=$?
+
+  if [ "$status" -ne 1 ]; then
+    bad "$name" "missing input returned status $status"
+  elif [[ "$output" != *"MISSING: $ref"* ]]; then
+    bad "$name" "failure did not name $ref"
+  elif [[ "$output" == *do-not-print-provider-secret* ]]; then
+    bad "$name" "failure printed a provider secret"
+  else
+    ok "$name"
+  fi
+}
+
+test_workflows_use_deployment_stage_without_generated_pointer() {
+  local name="workflows use deployment stage without generated pointer"
+  local workflow
+
+  for workflow in deploy-dev.yml release.yml; do
+    if ! rg --fixed-strings --quiet \
+      'STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh' \
+      "$repo_root/.github/workflows/$workflow"; then
+      bad "$name" "$workflow does not use the deployment credential stage"
       return
-    elif ! grep -Fq 'APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET"' <<<"$family"; then
-      bad "$name" "$workflow pipeline does not pass the callback signer to Fly"
-      return
-    elif grep -Eq 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' <<<"$family"; then
-      bad "$name" "$workflow pipeline still provisions retired GitHub App secrets"
+    fi
+  done
+
+  for workflow in deploy-dev.yml deploy-dev-fly.yml release.yml; do
+    if rg --quiet 'PLATFORM_ADMIN_WORKSPACE_ID' \
+      "$repo_root/.github/workflows/$workflow"; then
+      bad "$name" "$workflow still requires the post-signup workspace pointer"
       return
     fi
   done
   ok "$name"
 }
 
-test_should_pin_issue_tracker_registration_contracts() {
-  local name="test_should_pin_issue_tracker_registration_contracts"
-  local repo_root jira_spec linear_spec jira_doc linear_doc
-  repo_root="$(cd "$script_dir/../../.." && pwd)"
-  jira_spec="$repo_root/src/agentsfleetd/http/handlers/connectors/jira/spec.zig"
-  linear_spec="$repo_root/src/agentsfleetd/http/handlers/connectors/linear/spec.zig"
-  jira_doc="$repo_root/playbooks/operations/jira_app_registration/001_playbook.md"
-  linear_doc="$repo_root/playbooks/operations/linear_app_registration/001_playbook.md"
+test_workflows_load_only_current_connector_boot_secret() {
+  local name="workflows load only the current connector boot secret"
+  local family workflow vault
+
+  for workflow in deploy-dev release; do
+    vault=VAULT_DEV
+    [ "$workflow" = release ] && vault=VAULT_PROD
+    family="$(cat "$repo_root/.github/workflows/$workflow"*.yml)"
+    # The expression is literal GitHub Actions syntax.
+    # shellcheck disable=SC2016
+    if ! rg --fixed-strings --quiet \
+      "APPROVAL_SIGNING_SECRET: op://\${{ vars.$vault }}/approval-signing-secret/credential" \
+      <<<"$family"; then
+      bad "$name" "$workflow workflow family does not load approval-signing-secret"
+      return
+    fi
+    if ! rg --fixed-strings --quiet \
+      'APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET"' \
+      <<<"$family"; then
+      bad "$name" "$workflow workflow family does not pass approval-signing-secret to Fly"
+      return
+    fi
+    if rg --quiet 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' <<<"$family"; then
+      bad "$name" "$workflow workflow family still loads retired GitHub app boot secrets"
+      return
+    fi
+  done
+  ok "$name"
+}
+
+test_issue_tracker_docs_pin_current_source_scopes() {
+  local name="issue-tracker docs pin current source scopes"
+  local jira_spec="$repo_root/src/agentsfleetd/http/handlers/connectors/jira/spec.zig"
+  local linear_spec="$repo_root/src/agentsfleetd/http/handlers/connectors/linear/spec.zig"
+  local jira_doc="$repo_root/playbooks/operations/jira_app_registration/001_playbook.md"
+  local linear_doc="$repo_root/playbooks/operations/linear_app_registration/001_playbook.md"
+  local jira_doc_text
+
+  jira_doc_text="$(tr '\n' ' ' <"$jira_doc")"
 
   # Backticks below are literal Markdown delimiters.
   # shellcheck disable=SC2016
-  if ! grep -Fq 'const SCOPES = "read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request offline_access";' "$jira_spec" \
-      || ! grep -Fq 'exactly `read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request`' "$jira_doc"; then
-    bad "$name" "Jira source and registration playbook do not pin the exact selected scopes"
-  elif ! grep -Fq 'const SCOPES = "read,comments:create";' "$linear_spec" \
-      || ! grep -Fq 'The authorization request supplies `read,comments:create`.' "$linear_doc"; then
-    bad "$name" "Linear source and registration playbook do not pin the exact selected scopes"
-  elif ! grep -Fq 'registration alone does not claim that outbound delivery is implemented' "$jira_doc" \
-      || ! grep -Fq 'Registration does not claim that the outbound Linear poster is implemented.' "$linear_doc"; then
-    bad "$name" "registration docs claim outbound Jira or Linear posting is implemented"
+  if ! rg --fixed-strings --quiet \
+    'const SCOPES = "read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request offline_access";' \
+    "$jira_spec"; then
+    bad "$name" "Jira source scope changed"
+  elif [[ "$jira_doc_text" != *'exactly `read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request`'* ]]; then
+    bad "$name" "Jira registration scope is stale"
+  elif ! rg --fixed-strings --quiet \
+    'const SCOPES = "read,comments:create";' \
+    "$linear_spec"; then
+    bad "$name" "Linear source scope changed"
+  elif ! rg --fixed-strings --quiet \
+    'The authorization request supplies `read,comments:create`.' \
+    "$linear_doc"; then
+    bad "$name" "Linear registration scope is stale"
   else
     ok "$name"
   fi
 }
 
-# A worker item is only a real worker once it has joined the tailnet: CI reaches
-# workers by tailscale-hostname, never by the provider hostname.
-test_should_report_a_worker_on_the_tailnet_as_onboarded() {
-  local name="test_should_report_a_worker_on_the_tailnet_as_onboarded"
+test_unknown_stage_fails_closed() {
+  local name="unknown stage fails closed"
   local output status=0
-  output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210')" || status=$?
-  if [[ "$status" -ne 0 ]]; then
-    bad "$name" "gate failed unexpectedly: $output"
-    return
+  output="$(run_gate nope)" || status=$?
+  if [ "$status" -eq 2 ] && [[ "$output" == *"Unknown STAGE"* ]]; then
+    ok "$name"
+  else
+    bad "$name" "unknown stage returned status $status: $output"
   fi
-  if [[ "$output" != *"onboarded: zombie-dev-worker-ant"* ]]; then
-    bad "$name" "a worker with a tailscale-hostname was not reported as onboarded: $output"
-    return
-  fi
-  ok "$name"
 }
 
-# A machine that was never bought is not a credential fault. The gate must name
-# the placeholder without failing, or a full credential set reads as a ready
-# worker — which is exactly how zombie-prod-worker-bird passed for months.
-test_should_report_a_worker_without_tailnet_identity_as_a_non_fatal_placeholder() {
-  local name="test_should_report_a_worker_without_tailnet_identity_as_a_non_fatal_placeholder"
-  local output status=0
-  output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210' \
-    'op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname')" || status=$?
-  if [[ "$output" != *"PLACEHOLDER: zombie-dev-worker-ant"* ]]; then
-    bad "$name" "a worker with no tailscale-hostname was not flagged as a placeholder: $output"
-    return
-  fi
-  if [[ "$status" -ne 0 ]]; then
-    bad "$name" "the placeholder was fatal; a missing machine must not fail the credential gate: $output"
-    return
-  fi
-  ok "$name"
-}
+echo "credential-stage regression tests"
+test_bootstrap_checks_only_pre_priming_inputs
+test_post_deploy_values_are_not_early_inputs
+test_deployment_checks_complete_infrastructure_inputs
+test_deployment_rejects_missing_runtime_input
+test_workflows_use_deployment_stage_without_generated_pointer
+test_workflows_load_only_current_connector_boot_secret
+test_issue_tracker_docs_pin_current_source_scopes
+test_unknown_stage_fails_closed
 
-# The duplicate-hostname branch: vault items get made by copying an existing
-# one, which carries the provider hostname over verbatim and leaves two entries
-# pointing at one box. Exercised directly because it only triggers on the prod
-# path, and prod mode reaches out to the Vercel API.
-test_should_name_the_sibling_when_a_placeholder_shares_its_host() {
-  local name="test_should_name_the_sibling_when_a_placeholder_shares_its_host"
-  local output
-  output="$(
-    # Trusted input: the function is lifted verbatim out of the script under test.
-    eval "$(sed -n '/^check_worker_onboarded()/,/^}/p' "$script_under_test")"
-    op_read_with_retry() {
-      case "$1" in
-        */zombie-prod-worker-bird/tailscale-hostname) return 1 ;;
-        */hostname) printf 'one-and-the-same-box\n' ;;
-        *) printf 'stub\n' ;;
-      esac
-    }
-    check_worker_onboarded ZMB_CD_PROD zombie-prod-worker-bird zombie-prod-worker-ant 2>&1
-  )"
-  if [[ "$output" != *"hostname is zombie-prod-worker-ant's host"* ]]; then
-    bad "$name" "shared hostname was not attributed to the sibling worker: $output"
-    return
-  fi
-  ok "$name"
-}
-
-test_should_accept_uuidv7_workspace_pointer
-test_should_reject_missing_workspace_pointer
-test_should_reject_non_uuidv7_workspace_pointer
-test_should_check_runtime_connector_credentials
-test_should_reject_missing_approval_signer
-test_should_reject_missing_canonical_provider_fields
-test_should_scope_deployment_credential_gates
-test_should_pin_issue_tracker_registration_contracts
-test_should_report_a_worker_on_the_tailnet_as_onboarded
-test_should_report_a_worker_without_tailnet_identity_as_a_non_fatal_placeholder
-test_should_name_the_sibling_when_a_placeholder_shares_its_host
-
-printf '\n%d passed, %d failed\n' "$passed" "$failed"
-[[ "$failed" -eq 0 ]]
+echo ""
+echo "results: $passed passed, $failed failed"
+test "$failed" -eq 0
