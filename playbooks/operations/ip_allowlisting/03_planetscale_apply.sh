@@ -42,6 +42,34 @@ api_request() {
   curl "${args[@]}" "$url"
 }
 
+list_cidrs() {
+  local url="$1"
+  local page=1
+  local response next_page
+  local pages_file="$tmp_dir/cidr-pages.jsonl"
+  : >"$pages_file"
+
+  while :; do
+    response="$(api_request GET "$url?page=$page&per_page=100")"
+    printf '%s\n' "$response" >>"$pages_file"
+    next_page="$(printf '%s' "$response" | jq -er '
+      if .next_page == null then "done"
+      elif (.next_page | type) == "number" and .next_page > 0 then
+        .next_page | tostring
+      else error("invalid PlanetScale pagination response")
+      end
+    ')"
+    [ "$next_page" = "done" ] && break
+    [ "$next_page" -gt "$page" ] || {
+      echo "ERROR: invalid PlanetScale pagination sequence" >&2
+      return 1
+    }
+    page="$next_page"
+  done
+
+  jq -s '{data: [.[].data[]]}' "$pages_file"
+}
+
 apply_env() {
   local label="$1"
   local vault="$2"
@@ -70,7 +98,7 @@ apply_env() {
   printf 'Authorization: Bearer %s\n' "$token" >"$auth_file"
   chmod 600 "$auth_file"
   url="$api_base/organizations/$organization/databases/$database/cidrs"
-  response="$(api_request GET "$url?per_page=100")"
+  response="$(list_cidrs "$url")"
   count="$(printf '%s' "$response" | jq -er \
     '[.data[] | select((.schema // "") == "" and (.role // "") == "")] | length')"
   payload="$(jq -cn --argjson cidrs "$cidrs" '{cidrs:($cidrs | unique | sort),schema:"",role:""}')"

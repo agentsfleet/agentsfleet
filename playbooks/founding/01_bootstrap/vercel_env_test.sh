@@ -3,6 +3,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/test_search.sh
+source "$SCRIPT_DIR/../../lib/test_search.sh"
 SCRIPT="$SCRIPT_DIR/02_vercel_env.sh"
 passed=0
 failed=0

@@ -3,6 +3,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/test_search.sh
+source "$SCRIPT_DIR/../../lib/test_search.sh"
 PROVIDER_DIR="$SCRIPT_DIR/providers/grafana"
 VERIFY="$PROVIDER_DIR/resource_verify.sh"
 passed=0

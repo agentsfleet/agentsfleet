@@ -3,6 +3,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../test_search.sh
+source "$SCRIPT_DIR/../test_search.sh"
 VERIFY="$SCRIPT_DIR/verify.sh"
 passed=0
 failed=0

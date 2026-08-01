@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/test_search.sh
+source "$script_dir/../../lib/test_search.sh"
+repo_root="$(cd "$script_dir/../../.." && pwd)"
 playbook="$repo_root/playbooks/operations/admin_bootstrap/001_playbook.md"
 auth_doc="$repo_root/docs/AUTH.md"
 dashboard_action="$repo_root/ui/packages/app/app/(dashboard)/admin/models/actions.ts"
