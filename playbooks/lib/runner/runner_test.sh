@@ -7,7 +7,6 @@ readonly PREPARE="$SCRIPT_DIR/prepare.sh"
 readonly DEPLOY="$SCRIPT_DIR/deploy.sh"
 readonly VERIFY="$SCRIPT_DIR/verify.sh"
 readonly DEPLOY_SCRIPT="$SCRIPT_DIR/../../../deploy/baremetal/deploy.sh"
-
 passed=0
 failed=0
 work_dir="$(mktemp -d)"
@@ -47,6 +46,13 @@ command="${*: -1}"
 if [ -n "${TAILSCALE_FAIL_MATCH:-}" ] && [[ "$command" == *"$TAILSCALE_FAIL_MATCH"* ]]; then
   exit 9
 fi
+if [ "${STUB_EXECUTE_CGROUP_GATE:-0}" = 1 ] &&
+  [[ "$command" == *"/sys/fs/cgroup/cgroup.controllers"* ]]
+then
+  command="${command//\/sys\/fs\/cgroup/$STUB_CGROUP_ROOT}"
+  bash -c "$command"
+  exit $?
+fi
 case "$command" in
   *"BWRAP_VERSION="*)
     printf '%s\n' \
@@ -68,11 +74,11 @@ case "$command" in
 esac
 cat >/dev/null || true
 STUB
-
 chmod +x "$stub_dir/op" "$stub_dir/tailscale"
 runner_binary="$work_dir/agentsfleet-runner"
 printf 'runner\n' >"$runner_binary"
-
+cgroup_fixture="$work_dir/cgroup"
+mkdir -p "$cgroup_fixture"
 run_script() {
   : >"$calls"
   env \
@@ -82,7 +88,6 @@ run_script() {
     RUNNER_VERSION=test-build \
     "$@" 2>&1
 }
-
 test_should_prepare_host_without_reading_runner_token() {
   local name="test_should_prepare_host_without_reading_runner_token"
   local output status=0
@@ -105,7 +110,6 @@ test_should_prepare_host_without_reading_runner_token() {
     ok "$name"
   fi
 }
-
 test_should_require_host_prepare_approval() {
   local name="test_should_require_host_prepare_approval"
   local output status=0
@@ -122,7 +126,56 @@ test_should_require_host_prepare_approval() {
     ok "$name"
   fi
 }
-
+test_should_refuse_host_without_required_cgroup_support() {
+  local name="test_should_refuse_host_without_required_cgroup_support"
+  local output status=0
+  printf 'cpuset io\n' >"$cgroup_fixture/cgroup.controllers"
+  output="$(
+    run_script \
+      ENV=dev \
+      ALLOW_VAULT_READS=1 \
+      ALLOW_RUNNER_HOST_PREPARE=1 \
+      STUB_EXECUTE_CGROUP_GATE=1 \
+      STUB_CGROUP_ROOT="$cgroup_fixture" \
+      bash "$PREPARE"
+  )" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "host preparation passed without required cgroup support"
+    return
+  elif ! grep -q '/sys/fs/cgroup/cgroup.controllers' "$calls"; then
+    bad "$name" "host preparation did not check cgroup support"
+    return
+  elif ! grep -Fq 'for controller in cpu memory pids; do' "$calls" ||
+    [[ "$output" != *"ERROR: required cgroup v2 controller unavailable: cpu"* ]]
+  then
+    bad "$name" "host preparation did not identify every required cgroup controller"
+    return
+  elif grep -Eq 'apt-get install|mkdir -p|chown -R' "$calls"; then
+    bad "$name" "host preparation changed the host before the cgroup gate"
+    return
+  fi
+  status=0
+  output="$(
+    run_script \
+      ENV=dev \
+      STUB_EXECUTE_CGROUP_GATE=1 \
+      STUB_CGROUP_ROOT="$cgroup_fixture" \
+      bash "$DEPLOY"
+  )" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "runner deployment passed without required cgroup support"
+  elif ! grep -q '/sys/fs/cgroup/cgroup.controllers' "$calls"; then
+    bad "$name" "runner deployment did not check cgroup support"
+  elif ! grep -Fq 'for controller in cpu memory pids; do' "$calls" ||
+    [[ "$output" != *"ERROR: required cgroup v2 controller unavailable: cpu"* ]]
+  then
+    bad "$name" "runner deployment did not identify every required cgroup controller"
+  elif grep -q '/opt/agentsfleet' "$calls"; then
+    bad "$name" "runner deployment changed the host before the cgroup gate"
+  else
+    ok "$name"
+  fi
+}
 test_should_deploy_development_without_secret_arguments() {
   local name="test_should_deploy_development_without_secret_arguments"
   local output status=0
@@ -137,7 +190,6 @@ test_should_deploy_development_without_secret_arguments() {
     ok "$name"
   fi
 }
-
 test_should_select_production_worker() {
   local name="test_should_select_production_worker"
   local output status=0
@@ -150,7 +202,6 @@ test_should_select_production_worker() {
     ok "$name"
   fi
 }
-
 test_should_not_install_packages_during_deploy() {
   local name="test_should_not_install_packages_during_deploy"
   local output status=0
@@ -163,7 +214,6 @@ test_should_not_install_packages_during_deploy() {
     ok "$name"
   fi
 }
-
 test_should_reject_placeholder_token() {
   local name="test_should_reject_placeholder_token"
   local output status=0
@@ -176,7 +226,6 @@ test_should_reject_placeholder_token() {
     ok "$name"
   fi
 }
-
 test_should_use_canonical_unit_refresh() {
   local name="test_should_use_canonical_unit_refresh"
   local output status=0
@@ -195,7 +244,6 @@ test_should_use_canonical_unit_refresh() {
     ok "$name"
   fi
 }
-
 test_should_reject_shell_unsafe_runner_inputs() {
   local name="test_should_reject_shell_unsafe_runner_inputs"
   local output status=0
@@ -204,7 +252,6 @@ test_should_reject_shell_unsafe_runner_inputs() {
     bad "$name" "shell-unsafe runner token passed"
     return
   fi
-
   status=0
   output="$(run_script ENV=dev AGENTSFLEET_API_URL='https://api.example.test;false' bash "$DEPLOY")" || status=$?
   if [ "$status" -eq 0 ]; then
@@ -213,7 +260,6 @@ test_should_reject_shell_unsafe_runner_inputs() {
     ok "$name"
   fi
 }
-
 test_should_fail_when_cpu_controller_is_not_delegated() {
   local name="test_should_fail_when_cpu_controller_is_not_delegated"
   local output status=0
@@ -231,7 +277,6 @@ test_should_fail_when_cpu_controller_is_not_delegated() {
     ok "$name"
   fi
 }
-
 test_should_fail_verification_when_service_check_fails() {
   local name="test_should_fail_verification_when_service_check_fails"
   local output status=0
@@ -245,7 +290,6 @@ test_should_fail_verification_when_service_check_fails() {
     ok "$name"
   fi
 }
-
 test_should_fail_verification_when_service_is_not_enabled() {
   local name="test_should_fail_verification_when_service_is_not_enabled"
   local output status=0
@@ -259,7 +303,6 @@ test_should_fail_verification_when_service_is_not_enabled() {
     ok "$name"
   fi
 }
-
 test_should_fail_verification_when_runner_token_is_rejected() {
   local name="test_should_fail_verification_when_runner_token_is_rejected"
   local output status=0
@@ -273,7 +316,6 @@ test_should_fail_verification_when_runner_token_is_rejected() {
     ok "$name"
   fi
 }
-
 test_should_verify_without_reading_runner_token() {
   local name="test_should_verify_without_reading_runner_token"
   local output status=0
@@ -290,9 +332,9 @@ test_should_verify_without_reading_runner_token() {
     ok "$name"
   fi
 }
-
 test_should_prepare_host_without_reading_runner_token
 test_should_require_host_prepare_approval
+test_should_refuse_host_without_required_cgroup_support
 test_should_deploy_development_without_secret_arguments
 test_should_select_production_worker
 test_should_not_install_packages_during_deploy
@@ -304,6 +346,5 @@ test_should_fail_verification_when_service_check_fails
 test_should_fail_verification_when_service_is_not_enabled
 test_should_fail_verification_when_runner_token_is_rejected
 test_should_verify_without_reading_runner_token
-
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

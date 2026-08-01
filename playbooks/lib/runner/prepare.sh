@@ -35,10 +35,6 @@ verify_host_base() {
   runner_remote '
     set -e
     test "$(tailscale status --json | jq -r .Self.Online)" = true
-    test -f /sys/fs/cgroup/cgroup.controllers
-    for controller in cpu memory pids; do
-      grep -qw "$controller" /sys/fs/cgroup/cgroup.controllers
-    done
     command -v bwrap >/dev/null
     command -v nft >/dev/null
     command -v ip >/dev/null
@@ -52,6 +48,7 @@ main() {
   runner_load_target
 
   echo "Preparing $RUNNER_ITEM in ${ENV} via Tailscale SSH"
+  runner_verify_host_cgroup_capability
   install_host_dependencies
   prepare_host_paths
   verify_host_base

@@ -6,6 +6,9 @@ RUNNER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../common.sh
 source "$RUNNER_LIB_DIR/../common.sh"
 
+readonly CGROUP_ROOT="/sys/fs/cgroup"
+readonly REQUIRED_CGROUP_CONTROLLERS="cpu memory pids"
+
 runner_read_required() {
   local ref="$1"
   local value
@@ -87,6 +90,25 @@ runner_load_context() {
 runner_remote() {
   local command="$1"
   tailscale ssh "$RUNNER_TARGET" "$command"
+}
+
+runner_verify_host_cgroup_capability() {
+  runner_remote "
+    set -e
+    if [ ! -f '$CGROUP_ROOT/cgroup.controllers' ]; then
+      echo 'ERROR: cgroup v2 controller inventory is unavailable: $CGROUP_ROOT/cgroup.controllers' >&2
+      exit 1
+    fi
+    for controller in $REQUIRED_CGROUP_CONTROLLERS; do
+      if ! grep -qw \"\$controller\" '$CGROUP_ROOT/cgroup.controllers'; then
+        echo \"ERROR: required cgroup v2 controller unavailable: \$controller\" >&2
+        exit 1
+      fi
+    done
+  " || {
+    echo "ERROR: cgroup v2 controller check failed for $RUNNER_TARGET" >&2
+    return 1
+  }
 }
 
 runner_copy() {

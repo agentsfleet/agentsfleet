@@ -47,8 +47,11 @@ ALLOW_RUNNER_HOST_PREPARE=1 \
   ./playbooks/founding/05_runner_bootstrap_dev/prepare.sh
 ```
 
-This one-time preparation installs host dependencies and creates deployment
-directories. It does not copy a runner binary, write a token, or start a
+Before changing the host, preparation checks that cgroup v2 exposes Central
+Processing Unit (CPU), memory, and process controllers. The deployment workflow
+then verifies that systemd delegated those controllers to the started runner
+service. Preparation installs host dependencies and creates deployment
+directories; it does not copy a runner binary, write a token, or start a
 service.
 
 ## 2. Human and Agent: bootstrap the administrator and providers
