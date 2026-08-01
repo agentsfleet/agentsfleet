@@ -660,18 +660,19 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    // The full lease/report write set: the per-event lifecycle tables
-    // (events/sessions/fleets), metering + approval writes, and the billing
-    // ledger the report path debits. fleet_sessions + fleet_events were the
-    // two formerly granted to worker_runtime only — the rest api_runtime always
-    // held; covering all of them keeps the guard faithful to the write path.
+    // The lease/report write set api_runtime reaches UNELEVATED: the per-event
+    // lifecycle tables. fleet_sessions + fleet_events were the two formerly
+    // granted to worker_runtime only — the rest api_runtime always held.
+    //
+    // The two money tables are deliberately absent. They moved behind roles the
+    // handler must assume, so their reachability is asserted below instead of
+    // here; leaving them in this list would have kept passing while the fence
+    // it now proves did not exist.
     const write_set = [_][]const u8{
         "core.fleets",
         "core.fleet_events",
         "core.fleet_sessions",
-        "core.fleet_execution_telemetry",
         "core.fleet_approval_gates",
-        "billing.tenant_wallet",
     };
     inline for (write_set) |tbl| {
         var q = PgQuery.from(try db_ctx.conn.query(
@@ -686,6 +687,43 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
         try std.testing.expect(try row.get(bool, 1)); // INSERT
         try std.testing.expect(try row.get(bool, 2)); // UPDATE
     }
+}
+
+// The money fence, asserted from the catalogue rather than from the grant text:
+// `has_table_privilege` answers what the role can actually do, so it accounts for
+// the membership being non-inheriting. A bare `GRANT billing_runtime TO
+// api_runtime` would make the wallet reachable here and this test would fail —
+// which is the point, because that is exactly the defect the `WITH INHERIT
+// FALSE, SET TRUE` spelling closes.
+test "integration: api_runtime reads the ledger unelevated but cannot reach the wallet" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    var q = PgQuery.from(try db_ctx.conn.query(
+        \\SELECT has_table_privilege('api_runtime', 'billing.usage_ledger', 'SELECT'),
+        \\       has_table_privilege('api_runtime', 'billing.usage_ledger', 'INSERT'),
+        \\       has_table_privilege('api_runtime', 'billing.usage_ledger', 'UPDATE'),
+        \\       has_table_privilege('api_runtime', 'billing.tenant_wallet', 'SELECT'),
+        \\       has_table_privilege('api_runtime', 'billing.tenant_wallet', 'UPDATE')
+    , .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+
+    // Four readers need the charge history and none of them writes it: the
+    // charges list, the events-list cost join, the per-fleet outcome reads and
+    // the fleet delete path. Omitting this grant answers all four with
+    // insufficient_privilege.
+    try std.testing.expect(try row.get(bool, 0));
+    // Every ledger WRITE runs as metering_runtime, so the unelevated role has
+    // none — a charge cannot be minted or amended from a handler.
+    try std.testing.expect(!(try row.get(bool, 1)));
+    try std.testing.expect(!(try row.get(bool, 2)));
+    // The wallet is unreachable in both directions without assuming the role.
+    try std.testing.expect(!(try row.get(bool, 3)));
+    try std.testing.expect(!(try row.get(bool, 4)));
 }
 
 // ── Migration advisory lock: retry decision + real-DB concurrency ──────────

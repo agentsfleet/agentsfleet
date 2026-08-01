@@ -116,7 +116,7 @@ pub fn seedPlatformProviderWithKey(
 /// helpers workspace-derived so they follow per-suite tenants automatically.
 /// Run while the workspace row still exists (defer order: provider teardown
 /// fires before the workspace teardown declared above it).
-const TENANT_OF_WORKSPACE_SUBQ = "(SELECT tenant_id FROM core.workspaces WHERE workspace_id = $1::uuid)";
+const TENANT_OF_WORKSPACE_SUBQ = "(SELECT tenant_id FROM core.workspaces WHERE id = $1::uuid)";
 
 /// Counterpart to seedPlatformProvider — drops the platform key + vault row
 /// for the workspace, resets the owning tenant's billing row (the seed's
@@ -126,5 +126,5 @@ pub fn teardownPlatformProvider(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, TEST_PROVIDER_NAME }) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM billing.tenant_wallet WHERE tenant_id = " ++ TENANT_OF_WORKSPACE_SUBQ, .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = " ++ TENANT_OF_WORKSPACE_SUBQ, .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1::uuid", .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }

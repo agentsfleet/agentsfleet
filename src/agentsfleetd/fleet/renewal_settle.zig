@@ -54,16 +54,20 @@ pub const SettleOutcome = struct {
 // renew CTE does); `guard` survives only if the fence holds. `claim` flips
 // active→reported AND advances the lease cursor (clamped `GREATEST(old, $n)`
 // so a regressed report never rewinds it); `ext_aff` advances the slot cursor
-// the same way; `wallet`/`ledger`/`breakdown` are the guard-gated money
-// writes; `tally` bumps the runner's lifetime succeeded/failed counter
-// ($18 picks the column), gated `FROM claim` so a fenced retry that claims
-// nothing also counts nothing. The trailing SELECT returns the charged nanos
-// + whether the claim flipped a row (the report-won signal).
+// the same way; `wallet` and `ledger` are the guard-gated money writes;
+// `tally` bumps the runner's lifetime succeeded/failed counter ($17 picks the
+// column), gated `FROM claim` so a fenced retry that claims nothing also counts
+// nothing. The trailing SELECT returns the charged nanos + whether the claim
+// flipped a row (the report-won signal).
+//
+// `event_created_at` rides the probe select so the ledger arm can stamp it: it
+// is the EVENT's instant, shared by every row for that event, not this settle's.
 const CLAIM_SETTLE_SQL =
     \\WITH probe AS (
     \\    SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
-    \\           l.posture, l.model, l.fencing_token, a.fencing_seq, a.meter_slice_seq,
-    \\           GREATEST(0, $3::bigint - a.last_metered_at_ms)      AS d_ms,
+    \\           l.event_created_at,
+    \\           l.posture, l.model, l.fencing_token, a.fencing_seq,
+    \\           GREATEST(0, $3::bigint - a.last_metered_at)         AS d_ms,
     \\           GREATEST(0, $4::bigint - a.metered_input_tokens)    AS d_in,
     \\           GREATEST(0, $5::bigint - a.metered_cached_tokens)   AS d_cached,
     \\           GREATEST(0, $6::bigint - a.metered_output_tokens)   AS d_out
@@ -86,8 +90,7 @@ const CLAIM_SETTLE_SQL =
     \\    LEFT JOIN bal b ON b.tenant_id = p.tenant_id
     \\), guard AS (
     \\    SELECT *, run_fee + token_cost AS slice,
-    \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged,
-    \\           meter_slice_seq + 1 AS next_seq
+    \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged
     \\    FROM calc
     \\    WHERE fencing_token >= fencing_seq
     \\), claim AS (
@@ -96,7 +99,7 @@ const CLAIM_SETTLE_SQL =
     \\        metered_input_tokens = GREATEST(l.metered_input_tokens, $4),
     \\        metered_cached_tokens = GREATEST(l.metered_cached_tokens, $5),
     \\        metered_output_tokens = GREATEST(l.metered_output_tokens, $6),
-    \\        last_metered_at_ms = $3, updated_at = $3
+    \\        last_metered_at = $3, updated_at = $3
     \\    FROM guard g WHERE l.id = g.id
     \\    RETURNING g.id
     \\), ext_aff AS (
@@ -104,8 +107,7 @@ const CLAIM_SETTLE_SQL =
     \\    SET metered_input_tokens = GREATEST(a.metered_input_tokens, $4),
     \\        metered_cached_tokens = GREATEST(a.metered_cached_tokens, $5),
     \\        metered_output_tokens = GREATEST(a.metered_output_tokens, $6),
-    \\        last_metered_at_ms = $3, updated_at = $3,
-    \\        meter_slice_seq = g.next_seq
+    \\        last_metered_at = $3, updated_at = $3
     \\    FROM guard g WHERE a.fleet_id = g.fleet_id
     \\    RETURNING a.fleet_id
     \\), wallet AS (
@@ -118,40 +120,36 @@ const CLAIM_SETTLE_SQL =
     \\    FROM guard g WHERE tb.tenant_id = g.tenant_id
     \\    RETURNING tb.tenant_id
     \\), ledger AS (
-    \\    INSERT INTO core.fleet_execution_telemetry
-    \\      (uid, id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
-    \\       model, credit_deducted_nanos, token_count_input, token_count_output,
-    \\       wall_ms, recorded_at)
-    \\    SELECT $16::uuid, 'mtr_' || g.event_id, g.tenant_id, g.workspace_id::text,
-    \\           g.fleet_id::text, g.event_id, $11, g.posture, g.model,
-    \\           g.charged, g.d_in, g.d_out, g.d_ms, $3
+    \\    INSERT INTO billing.usage_ledger
+    \\      (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
+    \\       model, credit_deducted_nanos, token_count_input, token_count_cached_input,
+    \\       token_count_output, wall_ms, event_created_at, created_at, last_charged_at)
+    \\    SELECT $16::uuid, g.tenant_id, g.workspace_id, g.fleet_id, g.event_id, $11,
+    \\           g.posture, g.model, g.charged, g.d_in, g.d_cached, g.d_out, g.d_ms,
+    \\           g.event_created_at, $3, $3
     \\    FROM guard g
     \\    ON CONFLICT (event_id, charge_type) DO UPDATE SET
-    \\        credit_deducted_nanos = core.fleet_execution_telemetry.credit_deducted_nanos
+    \\        credit_deducted_nanos = billing.usage_ledger.credit_deducted_nanos
     \\            + EXCLUDED.credit_deducted_nanos,
-    \\        token_count_input  = COALESCE(core.fleet_execution_telemetry.token_count_input, 0)
+    \\        token_count_input  = COALESCE(billing.usage_ledger.token_count_input, 0)
     \\            + EXCLUDED.token_count_input,
-    \\        token_count_output = COALESCE(core.fleet_execution_telemetry.token_count_output, 0)
+    \\        token_count_cached_input = COALESCE(billing.usage_ledger.token_count_cached_input, 0)
+    \\            + EXCLUDED.token_count_cached_input,
+    \\        token_count_output = COALESCE(billing.usage_ledger.token_count_output, 0)
     \\            + EXCLUDED.token_count_output,
-    \\        wall_ms = COALESCE(core.fleet_execution_telemetry.wall_ms, 0) + EXCLUDED.wall_ms
-    \\    RETURNING event_id
-    \\), breakdown AS (
-    \\    INSERT INTO fleet.metering_periods
-    \\      (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-    \\       run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-    \\    SELECT $17::uuid, g.event_id, g.next_seq,
-    \\           g.d_in, g.d_cached, g.d_out, g.d_ms, g.run_fee, g.token_cost, g.charged, $3
-    \\    FROM guard g
+    \\        wall_ms = COALESCE(billing.usage_ledger.wall_ms, 0) + EXCLUDED.wall_ms,
+    \\        last_charged_at = GREATEST(billing.usage_ledger.last_charged_at,
+    \\                                   EXCLUDED.last_charged_at)
     \\    RETURNING event_id
     \\), tally AS (
     \\    INSERT INTO fleet.runner_lifetime_counters
-    \\      (uid, runner_id, acquired, succeeded, failed, expired, created_at, updated_at)
-    \\    SELECT $2::uuid, $2::uuid, 0,
-    \\           CASE WHEN $18::boolean THEN 1 ELSE 0 END,
-    \\           CASE WHEN $18::boolean THEN 0 ELSE 1 END,
-    \\           0, $3, $3
+    \\      (runner_id, succeeded, failed, created_at, updated_at)
+    \\    SELECT $2::uuid,
+    \\           CASE WHEN $17::boolean THEN 1 ELSE 0 END,
+    \\           CASE WHEN $17::boolean THEN 0 ELSE 1 END,
+    \\           $3, $3
     \\    FROM claim
-    \\    ON CONFLICT (uid) DO UPDATE
+    \\    ON CONFLICT (runner_id) DO UPDATE
     \\       SET succeeded = fleet.runner_lifetime_counters.succeeded + EXCLUDED.succeeded,
     \\           failed    = fleet.runner_lifetime_counters.failed + EXCLUDED.failed,
     \\           updated_at = EXCLUDED.updated_at
@@ -174,9 +172,7 @@ pub fn claimAndSettle(
     succeeded: bool,
 ) !SettleOutcome {
     const ledger_uid_value = try id_format.generateUuidV7();
-    const breakdown_uid_value = try id_format.generateUuidV7();
     const ledger_uid: []const u8 = &ledger_uid_value;
-    const breakdown_uid: []const u8 = &breakdown_uid_value;
     var q = PgQuery.from(try conn.query(CLAIM_SETTLE_SQL, .{
         lease_id,
         runner_id,
@@ -194,7 +190,6 @@ pub fn claimAndSettle(
         MS_PER_SECOND,
         TOKENS_PER_MTOK,
         ledger_uid,
-        breakdown_uid,
         succeeded,
     }));
     defer q.deinit();

@@ -153,16 +153,20 @@ pub const RenewOutcome = union(enum) {
 // audit rows summing to the real drain, never more. `ext_*` advance both
 // rows' deadline AND cursor, clamping the token cursors with
 // `GREATEST(old, $n)` so a regressed cumulative report never rewinds them.
-// `wallet`/`ledger`/`breakdown` are the three guard-gated money writes. The
-// trailing SELECT disambiguates renewed / max_runtime / lost in one
-// round-trip.
+// `wallet` and `ledger` are the two guard-gated money writes. The trailing
+// SELECT disambiguates renewed / max_runtime / lost in one round-trip.
+//
+// `event_created_at` rides the probe select purely so the ledger arm can stamp
+// it: every row for one event must carry the same value, and it is the EVENT's
+// instant, not this renewal's. The `SELECT p.*` / `SELECT *` chain through
+// `calc` and `guard` is what carries it down.
 const RENEW_METER_SQL =
     \\WITH probe AS (
     \\    SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
-    \\           l.created_at, l.fencing_token, l.posture, l.model, a.fencing_seq,
-    \\           a.meter_slice_seq,
+    \\           l.created_at, l.event_created_at,
+    \\           l.fencing_token, l.posture, l.model, a.fencing_seq,
     \\           LEAST($3::bigint, l.created_at + $4::bigint) AS capped,
-    \\           GREATEST(0, $6::bigint - a.last_metered_at_ms)      AS d_ms,
+    \\           GREATEST(0, $6::bigint - a.last_metered_at)         AS d_ms,
     \\           GREATEST(0, $7::bigint - a.metered_input_tokens)    AS d_in,
     \\           GREATEST(0, $8::bigint - a.metered_cached_tokens)   AS d_cached,
     \\           GREATEST(0, $9::bigint - a.metered_output_tokens)   AS d_out
@@ -185,8 +189,7 @@ const RENEW_METER_SQL =
     \\    LEFT JOIN bal b ON b.tenant_id = p.tenant_id
     \\), guard AS (
     \\    SELECT *, run_fee + token_cost AS slice,
-    \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged,
-    \\           meter_slice_seq + 1 AS next_seq
+    \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged
     \\    FROM calc
     \\    WHERE fencing_token >= fencing_seq AND capped > $6::bigint
     \\), ext_lease AS (
@@ -195,7 +198,7 @@ const RENEW_METER_SQL =
     \\        metered_input_tokens = GREATEST(l.metered_input_tokens, $7),
     \\        metered_cached_tokens = GREATEST(l.metered_cached_tokens, $8),
     \\        metered_output_tokens = GREATEST(l.metered_output_tokens, $9),
-    \\        last_metered_at_ms = $6
+    \\        last_metered_at = $6
     \\    FROM guard g WHERE l.id = g.id
     \\    RETURNING g.capped, g.charged
     \\), ext_aff AS (
@@ -204,8 +207,7 @@ const RENEW_METER_SQL =
     \\        metered_input_tokens = GREATEST(a.metered_input_tokens, $7),
     \\        metered_cached_tokens = GREATEST(a.metered_cached_tokens, $8),
     \\        metered_output_tokens = GREATEST(a.metered_output_tokens, $9),
-    \\        last_metered_at_ms = $6,
-    \\        meter_slice_seq = g.next_seq
+    \\        last_metered_at = $6
     \\    FROM guard g WHERE a.fleet_id = g.fleet_id
     \\    RETURNING a.fleet_id
     \\), wallet AS (
@@ -218,30 +220,26 @@ const RENEW_METER_SQL =
     \\    FROM guard g WHERE tb.tenant_id = g.tenant_id
     \\    RETURNING tb.tenant_id
     \\), ledger AS (
-    \\    INSERT INTO core.fleet_execution_telemetry
-    \\      (uid, id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
-    \\       model, credit_deducted_nanos, token_count_input, token_count_output,
-    \\       wall_ms, recorded_at)
-    \\    SELECT $17::uuid, 'mtr_' || g.event_id, g.tenant_id, g.workspace_id::text,
-    \\           g.fleet_id::text, g.event_id, $14, g.posture, g.model,
-    \\           g.charged, g.d_in, g.d_out, g.d_ms, $6
+    \\    INSERT INTO billing.usage_ledger
+    \\      (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
+    \\       model, credit_deducted_nanos, token_count_input, token_count_cached_input,
+    \\       token_count_output, wall_ms, event_created_at, created_at, last_charged_at)
+    \\    SELECT $17::uuid, g.tenant_id, g.workspace_id, g.fleet_id, g.event_id, $14,
+    \\           g.posture, g.model, g.charged, g.d_in, g.d_cached, g.d_out, g.d_ms,
+    \\           g.event_created_at, $6, $6
     \\    FROM guard g
     \\    ON CONFLICT (event_id, charge_type) DO UPDATE SET
-    \\        credit_deducted_nanos = core.fleet_execution_telemetry.credit_deducted_nanos
+    \\        credit_deducted_nanos = billing.usage_ledger.credit_deducted_nanos
     \\            + EXCLUDED.credit_deducted_nanos,
-    \\        token_count_input  = COALESCE(core.fleet_execution_telemetry.token_count_input, 0)
+    \\        token_count_input  = COALESCE(billing.usage_ledger.token_count_input, 0)
     \\            + EXCLUDED.token_count_input,
-    \\        token_count_output = COALESCE(core.fleet_execution_telemetry.token_count_output, 0)
+    \\        token_count_cached_input = COALESCE(billing.usage_ledger.token_count_cached_input, 0)
+    \\            + EXCLUDED.token_count_cached_input,
+    \\        token_count_output = COALESCE(billing.usage_ledger.token_count_output, 0)
     \\            + EXCLUDED.token_count_output,
-    \\        wall_ms = COALESCE(core.fleet_execution_telemetry.wall_ms, 0) + EXCLUDED.wall_ms
-    \\    RETURNING event_id
-    \\), breakdown AS (
-    \\    INSERT INTO fleet.metering_periods
-    \\      (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-    \\       run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-    \\    SELECT $18::uuid, g.event_id, g.next_seq,
-    \\           g.d_in, g.d_cached, g.d_out, g.d_ms, g.run_fee, g.token_cost, g.charged, $6
-    \\    FROM guard g
+    \\        wall_ms = COALESCE(billing.usage_ledger.wall_ms, 0) + EXCLUDED.wall_ms,
+    \\        last_charged_at = GREATEST(billing.usage_ledger.last_charged_at,
+    \\                                   EXCLUDED.last_charged_at)
     \\    RETURNING event_id
     \\)
     \\SELECT
@@ -256,7 +254,7 @@ const RENEW_METER_SQL =
 /// created_at + MAX_RUNTIME_MS)` AND meter the slice since the last renewal,
 /// guarded by `status = 'active'` AND the presenting runner still being the live
 /// fencing holder. All writes ride one fenced statement: both rows advance and
-/// the wallet/ledger/breakdown are charged, or none do.
+/// the wallet and ledger are charged, or none do.
 pub fn renew(
     conn: *pg.Conn,
     lease_id: []const u8,
@@ -266,9 +264,7 @@ pub fn renew(
 ) !RenewOutcome {
     const want_until = now_ms + constants.LEASE_TTL_MS;
     const ledger_uid_value = try id_format.generateUuidV7();
-    const breakdown_uid_value = try id_format.generateUuidV7();
     const ledger_uid: []const u8 = &ledger_uid_value;
-    const breakdown_uid: []const u8 = &breakdown_uid_value;
     var q = PgQuery.from(try conn.query(RENEW_METER_SQL, .{
         lease_id,
         runner_id,
@@ -287,7 +283,6 @@ pub fn renew(
         MS_PER_SECOND,
         TOKENS_PER_MTOK,
         ledger_uid,
-        breakdown_uid,
     }));
     defer q.deinit();
     const row = try q.next() orelse return .lost;
