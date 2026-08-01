@@ -10,10 +10,14 @@
 // The gate only refuses under the .stop balance policy (now the default), so the
 // test sets ctx.balance_policy = .stop on the harness directly (explicit, so the
 // assertion is independent of the configured default).
-// Requires LIVE_DB=1; skipped when TEST_DATABASE_URL is unset, and also skipped
-// while the free-trial window is open (stage charge is 0, so the gate can't
-// refuse — see the free-trial section in billing_and_provider_keys.md). Asserts
-// live post-trial.
+// Requires LIVE_DB=1; skipped when TEST_DATABASE_URL is unset. The refusal
+// needs a non-zero stage charge to be a refusal at all, so the suite makes both
+// halves of that itself: it ends its own tenant's free trial (§7 — the boundary
+// is a tenant fact now, so no wall-clock date can leave the assertion asleep)
+// and seeds a priced catalogue row for the lease's (provider, model) pair.
+// Without the rate row the gate hits `error.ModelNotPriced` and fails OPEN by
+// design, which reads as "the tenant could pay" — see the free-trial section in
+// billing_and_provider_keys.md.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -27,6 +31,7 @@ const TestHarness = harness_mod.TestHarness;
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const model_rate_cache = @import("../state/model_rate_cache.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -36,6 +41,19 @@ const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8a01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8f01";
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
+
+// The lease's own (provider, model) pair, and the catalogue row that prices it.
+// The estimate floor is ESTIMATE_FLOOR_{INPUT,OUTPUT}_TOKENS priced at these
+// rates — a few thousand nanos, comfortably above the zero balance the gate
+// weighs it against, and far below any grant, so the verdict turns on the
+// balance and nothing else.
+const LEASE_PROVIDER = "test-provider";
+const LEASE_MODEL = "test-model";
+const MODEL_LIBRARY_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8d01";
+const RATE_INPUT_NANOS_PER_MTOK: i64 = 3_000_000;
+const RATE_CACHED_NANOS_PER_MTOK: i64 = 300_000;
+const RATE_OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000;
+const MODEL_CONTEXT_CAP_TOKENS: i64 = 200_000;
 
 // The real DB-backed runner lookup, parked at module scope so the value outlives
 // the middleware chain (tests run sequentially in one process).
@@ -67,9 +85,27 @@ fn seedActiveLease(conn: *pg.Conn, lease_expires_at: i64) !void {
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-renew-credit-1',
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
-        \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, $6, 'active', 0, 0)
+        \\        $7, $8, 0, 0, 0, 0, 1, $6, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, lease_expires_at });
+    , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, lease_expires_at, LEASE_PROVIDER, LEASE_MODEL });
+}
+
+// Price the lease's pair. Platform posture consults the catalogue, so without a
+// row the gate resolves `error.ModelNotPriced` and fails open — the refusal
+// under test would never fire and the test would read as a pass.
+fn seedModelRate(conn: *pg.Conn) !void {
+    const now_ms: i64 = clock.nowMillis();
+    _ = try conn.exec(
+        \\INSERT INTO core.model_library
+        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+        \\ON CONFLICT (provider, model_id) DO UPDATE SET
+        \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
+        \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
+        \\   updated_at_ms = EXCLUDED.updated_at_ms
+    , .{ MODEL_LIBRARY_UID, LEASE_MODEL, LEASE_PROVIDER, MODEL_CONTEXT_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
 }
 
 // Seed a PRESENT billing row at zero balance: balanceCoversEstimate reads a real
@@ -104,6 +140,12 @@ fn teardown(conn: *pg.Conn) void {
         std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err|
         std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    // Drop this suite's catalogue row and clear the process-global rate cache;
+    // without the clear the entry outlives its row and a later suite resolves a
+    // price for a pair the database no longer carries.
+    _ = conn.exec("DELETE FROM core.model_library WHERE provider = $1 AND model_id = $2", .{ LEASE_PROVIDER, LEASE_MODEL }) catch |err|
+        std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    model_rate_cache.clear();
     base.teardownTenant(conn);
     base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -130,20 +172,21 @@ test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadlin
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "service-renew-fleet", "{}", "# z");
     try seedRunner(conn);
     try exhaustBalance(conn); // 0 balance → under .stop the gate refuses the renewal charge
+    // An open trial prices every posture's stage charge to 0, so a 0 balance
+    // would still "cover" and the gate could not refuse. The boundary is this
+    // tenant's own row now, so the suite closes it rather than waiting for a
+    // date — and the assertion below can never fall asleep again.
+    try base.endFreeTrialFor(conn, base.TEST_TENANT_ID);
+    try seedModelRate(conn);
     const deadline = clock.nowMillis() + 60_000;
     try seedActiveLease(conn, deadline);
     defer teardown(conn);
 
-    // While the free-trial window is open, stage charge is 0 for every posture,
-    // so a 0 balance still "covers" and the gate cannot refuse — the same skip
-    // the metering gate tests use (see the free-trial section in
-    // billing_and_provider_keys.md). Asserted live once now_ms passes FREE_TRIAL_END_MS.
-    const trial_active = blk: {
-        const b = (try tenant_billing.getBilling(conn, ALLOC, base.TEST_TENANT_ID)).?;
-        defer ALLOC.free(@constCast(b.grant_source));
-        break :blk b.free_trial_active;
-    };
-    if (trial_active) return error.SkipZigTest;
+    // The trial is shut and the charge is priced: the tenant is genuinely broke
+    // against a real estimate, which is the only state this refusal is about.
+    const billing = (try tenant_billing.getBilling(conn, ALLOC, base.TEST_TENANT_ID)).?;
+    defer ALLOC.free(@constCast(billing.grant_source));
+    try std.testing.expect(!billing.free_trial_active);
 
     // Credit gate sits after the ownership + active-status checks, so an owned,
     // active lease reaches it; the broke tenant is refused.

@@ -46,8 +46,18 @@ KillMode=mixed
 EnvironmentFile=-/etc/default/agentsfleet-runner
 
 # Ensure the sandbox runtime directory exists.
-RuntimeDirectory=agent
+RuntimeDirectory=agentsfleet
 RuntimeDirectoryMode=0755
+
+# systemd supplies no HOME to a service that declares no User=, and the value is
+# load-bearing two layers down: the sandboxed child inherits HOME through the
+# passthrough allowlist (src/runner/sandbox_args.zig), and the folded-in NullClaw
+# engine resolves its config directory from it. With HOME unset the child cannot
+# resolve one, its config load fails closed, and EVERY lease dies at init before
+# the fleet runs. It points at the runtime directory above rather than a real
+# home because ProtectHome=yes makes /root and /home unreadable here and
+# ProtectSystem=strict leaves only the ReadWritePaths below writable.
+Environment=HOME=/run/agentsfleet
 
 # Security hardening — the runner forks bwrap user-namespace sandboxes per lease
 # (no suid needed). Mirrors the isolation the standalone sandbox sidecar carried before
@@ -61,7 +71,7 @@ DelegateSubgroup=runner
 CPUAccounting=yes
 MemoryAccounting=yes
 TasksAccounting=yes
-ReadWritePaths=/run/agent /sys/fs/cgroup/system.slice/agentsfleet-runner.service /tmp
+ReadWritePaths=/run/agentsfleet /sys/fs/cgroup/system.slice/agentsfleet-runner.service /tmp
 ProtectHome=yes
 
 [Install]

@@ -18,9 +18,17 @@ missing=0
 # Single host-resident unit since the M80 cutover folded the prior units into it.
 readonly RUNNER_UNIT="agentsfleet-runner.service"
 readonly REQUIRE_RUNNER_CGROUP_DELEGATION="${REQUIRE_RUNNER_CGROUP_DELEGATION:-0}"
+# Pre-deploy host probe. Independent of the post-deploy delegation check above:
+# this one reads facts that hold with no runner running, so it can gate the
+# deploy itself rather than only report after a runner is already placed.
+readonly REQUIRE_HOST_CGROUP_CAPABILITY="${REQUIRE_HOST_CGROUP_CAPABILITY:-0}"
 readonly CGROUP_MOUNT="/sys/fs/cgroup"
+# Same three the runner enables in its delegated subtree at startup
+# (src/runner/engine/CgroupScope.zig). The two lists must stay identical — a
+# controller required here but not enabled there fails every deploy.
 readonly REQUIRED_CGROUP_CONTROLLERS="cpu memory pids"
 readonly RUNNER_CGROUP_SUBGROUP="runner"
+readonly CGROUP_PARENT_SLICE="system.slice"
 
 declare -A OP_CACHE_VALUE
 declare -A OP_CACHE_STATUS
@@ -161,20 +169,68 @@ check_runner_cgroup_delegation() {
       ;;
   esac
 
-  local enabled_controllers
+  local enabled_controllers absent controller
   enabled_controllers="$(remote_cmd "sudo -n cat '$CGROUP_MOUNT$cgroup_path/cgroup.subtree_control'")"
-  for controller in $REQUIRED_CGROUP_CONTROLLERS; do
-    case " $enabled_controllers " in
-      *" $controller "*) ;;
-      *)
-        echo "  ✗ runner cgroup delegation: controller '$controller' is not enabled"
-        missing=$((missing + 1))
-        return
-        ;;
-    esac
-  done
+  absent="$(absent_controllers "$enabled_controllers")"
+  if [ -n "$absent" ]; then
+    for controller in $absent; do
+      echo "  ✗ runner cgroup delegation: controller '$controller' is not enabled"
+      missing=$((missing + 1))
+    done
+    echo "    enabled: '$enabled_controllers' — the daemon writes these at startup;"
+    echo "    check journalctl -u agentsfleet-runner for cgroup_controllers_unavailable"
+    return
+  fi
 
   echo "  ✓ runner cgroup delegation: $cgroup_path ($enabled_controllers)"
+}
+
+# Every required controller absent from `enabled`, space-separated, or empty
+# when all are present. Reporting the full set matters: a host missing all three
+# used to report only `cpu`, so an operator fixed one, redeployed, and met the
+# next — three deploy cycles to learn one fact.
+absent_controllers() {
+  local enabled=" $1 "
+  local controller absent=""
+  for controller in $REQUIRED_CGROUP_CONTROLLERS; do
+    case "$enabled" in
+      *" $controller "*) ;;
+      *) absent="${absent}${absent:+ }$controller" ;;
+    esac
+  done
+  printf '%s' "$absent"
+}
+
+# Pre-deploy gate: can this HOST enforce limits at all? Reads the kernel's root
+# controller set and the parent slice's delegation — both true with no runner
+# running, which is what lets this gate the deploy instead of trailing it. A
+# kernel booted into cgroup v1 (or without CONFIG_CGROUP_SCHED) fails the first
+# check; a systemd that does not delegate down to the slice fails the second.
+check_host_cgroup_capability() {
+  local root_controllers slice_controllers absent controller
+
+  root_controllers="$(remote_cmd "cat '$CGROUP_MOUNT/cgroup.controllers'")"
+  absent="$(absent_controllers "$root_controllers")"
+  if [ -n "$absent" ]; then
+    for controller in $absent; do
+      echo "  ✗ host cgroup capability: kernel offers no '$controller' controller"
+      missing=$((missing + 1))
+    done
+    echo "    root cgroup.controllers: '$root_controllers' (cgroup v2 unified required)"
+    return
+  fi
+
+  slice_controllers="$(remote_cmd "cat '$CGROUP_MOUNT/$CGROUP_PARENT_SLICE/cgroup.subtree_control'")"
+  absent="$(absent_controllers "$slice_controllers")"
+  if [ -n "$absent" ]; then
+    for controller in $absent; do
+      echo "  ✗ host cgroup capability: $CGROUP_PARENT_SLICE does not delegate '$controller'"
+      missing=$((missing + 1))
+    done
+    return
+  fi
+
+  echo "  ✓ host cgroup capability: $CGROUP_PARENT_SLICE delegates ($slice_controllers)"
 }
 
 # 6.1 Deploy artifacts
@@ -190,6 +246,11 @@ check_remote_file "/opt/agentsfleet/.env" "env file" "600"
 # 6.3 Systemd units installed
 echo "-- checking systemd units (step 6.3)"
 check_remote_file "/etc/systemd/system/$RUNNER_UNIT" "systemd runner unit"
+
+if [ "$REQUIRE_HOST_CGROUP_CAPABILITY" = "1" ]; then
+  echo "-- checking host cgroup capability (pre-deploy)"
+  check_host_cgroup_capability
+fi
 
 if [ "$REQUIRE_RUNNER_CGROUP_DELEGATION" = "1" ]; then
   echo "-- checking delegated runner cgroup"

@@ -18,10 +18,11 @@
 // emit stays post-commit. Move any of the three emits above its commit and the
 // zero arms below go red.
 //
-// Free-trial note: `resolveRenewSliceRates` returns all-zero rates while the
-// global free-trial window is open, so every slice prices to 0 until it closes.
-// The reconciliation identity and the zero arms hold in both eras; the strict
-// non-zero arm is trial-gated exactly like `service_token_splits_wire_test`.
+// Free-trial note: the boundary is a tenant fact (§7), so arrange() closes this
+// suite's tenant's trial and raises the fixture pair's token rates above zero —
+// the reconciliation identity therefore carries real money unconditionally, and
+// the strict non-zero arm asserts at any clock position. The zero arms (replay,
+// lost fence, failed settle) stay zero for their own reasons, which is the point.
 // Requires LIVE_DB + Redis; skipped when either is missing.
 
 const std = @import("std");
@@ -38,7 +39,7 @@ const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const otel_metrics = @import("../observability/otel_metrics.zig");
 const otlp_config = @import("../observability/otlp/config.zig");
-const tenant_billing = @import("../state/tenant_billing.zig");
+const model_rate_cache = @import("../state/model_rate_cache.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -161,6 +162,7 @@ fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     execIgnore(conn, "DELETE FROM core.fleet_events WHERE fleet_id = $1::uuid", .{FLEET_ID});
+    setFixturePairRates(conn, 0, 0, 0);
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
     base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -183,7 +185,12 @@ fn arrange() !Setup {
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
+    setFixturePairRates(conn, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK);
     try fundLargeBalance(conn);
+    // §7: an open trial prices every slice to zero, which would let the
+    // reconciliation identity pass by agreeing on nothing. Close this tenant's
+    // boundary so the identity carries real money at any clock position.
+    try base.endFreeTrialFor(conn, base.TEST_TENANT_ID);
     try seedRunner(conn);
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, FLEET_NAME, CONFIG_NO_GATES, SOURCE_MD);
     try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, "{}");
@@ -294,7 +301,12 @@ fn scalar(conn: *pg.Conn, sql: []const u8, event_id: []const u8) !i64 {
 }
 
 /// Every nanocredit Postgres committed for this event: the renewal + settle
-/// slices plus the receive debit, read from the two tables that own them.
+/// slices from `fleet.metering_periods`, plus the receive debit — which is the
+/// ONLY telemetry row counted. The renewal CTE also accumulates the slice
+/// charges into `core.fleet_execution_telemetry` (the customer charges
+/// surface, ON CONFLICT-summed per charge_type), so summing that table whole
+/// counts the same money twice. Zero-priced trials masked exactly that
+/// double-count until the suite armed itself with real rates.
 fn committedDebitTotal(conn: *pg.Conn, event_id: []const u8) !i64 {
     // `SUM(bigint)` is `numeric` in Postgres, so each aggregate is cast back to
     // bigint for the i64 read. Both columns are bigint, so the cast is lossless.
@@ -304,27 +316,43 @@ fn committedDebitTotal(conn: *pg.Conn, event_id: []const u8) !i64 {
     , event_id);
     const receive = try scalar(conn,
         \\SELECT COALESCE(SUM(credit_deducted_nanos), 0)::bigint
-        \\FROM core.fleet_execution_telemetry WHERE event_id = $1
+        \\FROM core.fleet_execution_telemetry
+        \\WHERE event_id = $1 AND charge_type = 'receive'
     , event_id);
     return slices + receive;
 }
 
 /// A zero-valued debit must produce no sample at all — a zero-delta series is
 /// noise a backend cannot distinguish from a stalled exporter. So the emitted
-/// sample count reconciles against the NON-ZERO committed debits, not all rows.
+/// sample count reconciles against the NON-ZERO committed debits, not all rows
+/// — and, as above, only the receive-typed telemetry row, never the aggregate
+/// mirror of the slices.
 fn nonZeroDebitCount(conn: *pg.Conn, event_id: []const u8) !i64 {
     return scalar(conn,
         \\SELECT (SELECT COUNT(*) FROM fleet.metering_periods
         \\        WHERE event_id = $1 AND charged_nanos <> 0)
         \\     + (SELECT COUNT(*) FROM core.fleet_execution_telemetry
-        \\        WHERE event_id = $1 AND credit_deducted_nanos <> 0)
+        \\        WHERE event_id = $1 AND charge_type = 'receive'
+        \\          AND credit_deducted_nanos <> 0)
     , event_id);
 }
 
-fn freeTrialActive(conn: *pg.Conn) !bool {
-    const b = (try tenant_billing.getBilling(conn, ALLOC, base.TEST_TENANT_ID)) orelse return error.BillingRowMissing;
-    defer ALLOC.free(@constCast(b.grant_source));
-    return b.free_trial_active;
+// Token rates for the fixture platform pair, raised from the seeded zeros so a
+// metered slice prices real money. Restored to zero in cleanupAll — the row
+// outlives teardownPlatformProvider (ON CONFLICT DO NOTHING on reseed) and a
+// leaked non-zero rate would skew any later suite's exact-charge assertions.
+const RATE_INPUT_NANOS_PER_MTOK: i64 = 3_000_000;
+const RATE_CACHED_NANOS_PER_MTOK: i64 = 300_000;
+const RATE_OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000;
+
+fn setFixturePairRates(conn: *pg.Conn, input: i64, cached: i64, output: i64) void {
+    _ = conn.exec(
+        \\UPDATE core.model_library SET input_nanos_per_mtok = $3,
+        \\  cached_input_nanos_per_mtok = $4, output_nanos_per_mtok = $5
+        \\WHERE provider = $1 AND model_id = $2
+    , .{ base.TEST_PROVIDER_NAME, base.TEST_PLATFORM_MODEL, input, cached, output }) catch |err|
+        std.log.warn("rate set ignored: {s}", .{@errorName(err)});
+    model_rate_cache.clear();
 }
 
 /// The slice ordinal the next settle will claim — `claimAndSettle` writes its
@@ -360,7 +388,6 @@ fn blockNextSettleSlice(conn: *pg.Conn, event_id: []const u8) !void {
 test "integration: test_credit_metric_reconciles_committed_debits" {
     const s = try arrange();
     defer cleanup(s);
-    const trial_active = try freeTrialActive(s.conn);
 
     // Receive (at lease) + two metered renewals + the terminal settle.
     const lv = try leaseOne(s.h);
@@ -385,13 +412,10 @@ test "integration: test_credit_metric_reconciles_committed_debits" {
     try std.testing.expectEqual(committed, emitted.total);
     try std.testing.expectEqual(try nonZeroDebitCount(s.conn, lv.event_id), @as(i64, @intCast(emitted.count)));
 
-    // Post-trial the slices price non-zero, so the identity above is carrying
-    // real money rather than agreeing on zero. Armed automatically once the
-    // free-trial window closes; in-trial the zero arms below still bite.
-    if (!trial_active) {
-        try std.testing.expect(committed > 0);
-        try std.testing.expect(emitted.count > 0);
-    }
+    // The trial is closed and the pair is rated, so the identity above carries
+    // real money rather than agreeing on zero — unconditionally.
+    try std.testing.expect(committed > 0);
+    try std.testing.expect(emitted.count > 0);
 
     // Replay: the same report again. The lease is already claimed, so no money
     // moves and no sample may appear.

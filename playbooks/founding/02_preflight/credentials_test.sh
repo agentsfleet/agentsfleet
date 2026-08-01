@@ -180,19 +180,25 @@ test_should_scope_deployment_credential_gates() {
     return
   fi
 
-  for workflow in deploy-dev.yml release.yml; do
+  # A pipeline's stage jobs may live in called sibling workflows (the M156
+  # split put deploy-dev's Fly stage in deploy-dev-fly.yml), so each contract
+  # is asserted over the pipeline's whole file family — and the retired-secret
+  # sweep covers every file in the family, not just the caller.
+  local family
+  for workflow in deploy-dev release; do
     vault="VAULT_DEV"
-    [[ "$workflow" == "release.yml" ]] && vault="VAULT_PROD"
+    [[ "$workflow" == "release" ]] && vault="VAULT_PROD"
+    family="$(cat "$repo_root/.github/workflows/$workflow"*.yml)"
     # The dollar expression is the literal Fly command contract, not shell input.
     # shellcheck disable=SC2016
-    if ! grep -Fq "APPROVAL_SIGNING_SECRET: op://\${{ vars.$vault }}/approval-signing-secret/credential" "$repo_root/.github/workflows/$workflow"; then
-      bad "$name" "$workflow does not load the environment-scoped callback signer"
+    if ! grep -Fq "APPROVAL_SIGNING_SECRET: op://\${{ vars.$vault }}/approval-signing-secret/credential" <<<"$family"; then
+      bad "$name" "$workflow pipeline does not load the environment-scoped callback signer"
       return
-    elif ! grep -Fq 'APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET"' "$repo_root/.github/workflows/$workflow"; then
-      bad "$name" "$workflow does not pass the callback signer to Fly"
+    elif ! grep -Fq 'APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET"' <<<"$family"; then
+      bad "$name" "$workflow pipeline does not pass the callback signer to Fly"
       return
-    elif grep -Eq 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' "$repo_root/.github/workflows/$workflow"; then
-      bad "$name" "$workflow still provisions retired GitHub App secrets"
+    elif grep -Eq 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' <<<"$family"; then
+      bad "$name" "$workflow pipeline still provisions retired GitHub App secrets"
       return
     fi
   done

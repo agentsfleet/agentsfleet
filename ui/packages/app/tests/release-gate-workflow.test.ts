@@ -1,11 +1,17 @@
 /**
- * Release-gate workflow invariants — the deployment workflow's cache keys,
+ * Release-gate workflow invariants — the deployment pipeline's cache keys,
  * evidence uploads, and notification verdict are release-critical behavior,
  * pinned here against the workflow sources and the extracted verdict script.
  *
+ * The dev pipeline is a file FAMILY since the M156 split: deploy-dev.yml is
+ * the job graph, the stages live in deploy-dev-*.yml, and the Bun+Playwright
+ * preamble (including the cache key) lives in the shared composite action
+ * .github/actions/setup-bun-playwright. Each invariant is asserted against
+ * the file that owns it now, and family-wide bans scan every file.
+ *
  * The workflow YAML assertions are deliberately grep-shaped (exact
  * configuration strings present/absent), mirroring how the release rubric
- * itself audits the file — no YAML tree is reconstructed.
+ * itself audits the files — no YAML tree is reconstructed.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -13,8 +19,13 @@ import { describe, expect, it } from "vitest";
 import acceptanceConfig from "../playwright.acceptance.config";
 
 const REPO_ROOT = path.join(__dirname, "../../../..");
-const DEPLOY_DEV_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/deploy-dev.yml");
-const SMOKE_POST_DEPLOY_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/smoke-post-deploy.yml");
+const WORKFLOWS_DIR = path.join(REPO_ROOT, ".github/workflows");
+const DEPLOY_DEV_WORKFLOW = path.join(WORKFLOWS_DIR, "deploy-dev.yml");
+const SMOKE_POST_DEPLOY_WORKFLOW = path.join(WORKFLOWS_DIR, "smoke-post-deploy.yml");
+const PLAYWRIGHT_SETUP_ACTION = path.join(
+  REPO_ROOT,
+  ".github/actions/setup-bun-playwright/action.yml",
+);
 
 const RAW_RESULTS_DIR = "playwright-acceptance-results";
 const DEV_EVIDENCE_ARTIFACT = "acceptance-e2e-dev-results";
@@ -25,12 +36,28 @@ function deployDevYaml(): string {
   return fs.readFileSync(DEPLOY_DEV_WORKFLOW, "utf8");
 }
 
+/** Every file of the dev pipeline (caller + called stages), concatenated. */
+function deployDevFamily(): string {
+  return fs
+    .readdirSync(WORKFLOWS_DIR)
+    .filter((f) => f.startsWith("deploy-dev") && f.endsWith(".yml"))
+    .sort()
+    .map((f) => fs.readFileSync(path.join(WORKFLOWS_DIR, f), "utf8"))
+    .join("\n");
+}
+
+function playwrightSetupAction(): string {
+  return fs.readFileSync(PLAYWRIGHT_SETUP_ACTION, "utf8");
+}
+
 describe("browser cache and evidence in the deployment workflow", () => {
   it("test_playwright_cache_key_tracks_real_inputs", () => {
-    const dev = deployDevYaml();
+    const devFamily = deployDevFamily();
+    const setupAction = playwrightSetupAction();
     const prod = fs.readFileSync(SMOKE_POST_DEPLOY_WORKFLOW, "utf8");
     for (const [label, yaml] of [
-      ["deploy-dev", dev],
+      ["deploy-dev family", devFamily],
+      ["setup-bun-playwright", setupAction],
       ["smoke-post-deploy", prod],
     ] as const) {
       // The phantom per-package lock hashes to nothing and froze the key.
@@ -41,31 +68,38 @@ describe("browser cache and evidence in the deployment workflow", () => {
         "restore-keys",
       );
     }
-    // Every app-side browser cache keys on the real repo-root lock plus the
-    // resolved Playwright version.
-    const appCacheKeys = dev.match(/key: .*playwright-app-.*/g) ?? [];
-    expect(appCacheKeys.length).toBeGreaterThan(0);
-    for (const key of appCacheKeys) {
-      expect(key).toContain("hashFiles('bun.lock')");
+    // The one parameterized cache key lives in the composite action and keys
+    // on the real inputs: the caller-supplied lockfile hash plus the resolved
+    // Playwright version.
+    const actionKeys = setupAction.match(/key: .*\n/g) ?? [];
+    expect(actionKeys.length).toBeGreaterThan(0);
+    for (const key of actionKeys) {
+      expect(key).toContain("hashFiles(inputs.lock-file)");
       expect(key).toContain("outputs.version");
     }
-    // The CLI lane keys on its own real lock the same way.
-    const cliCacheKeys = dev.match(/key: .*playwright-agentsfleet-.*/g) ?? [];
-    expect(cliCacheKeys.length).toBeGreaterThan(0);
-    for (const key of cliCacheKeys) {
-      expect(key).toContain("hashFiles('cli/bun.lock')");
-      expect(key).toContain("outputs.version");
-    }
+    // Every app-side job feeds the composite the real repo-root lock (the
+    // workspace has ONE lock; ui/packages/app has none of its own)…
+    expect(devFamily).toMatch(
+      /cache-prefix: playwright-app\n\s+[^\n]*\n?\s*lock-file: bun\.lock/,
+    );
+    // …and the CLI lane keys on its own real lock the same way.
+    expect(devFamily).toMatch(
+      /cache-prefix: playwright-agentsfleet\n[\s\S]{0,200}?lock-file: cli\/bun\.lock/,
+    );
+    // No job bypasses the composite with a hand-rolled browser cache.
+    expect(devFamily, "dev pipeline must not inline a Playwright cache key").not.toMatch(
+      /key: .*playwright-(app|agentsfleet)-/,
+    );
   });
 
   it("test_acceptance_artifacts_survive_failure", () => {
-    const dev = deployDevYaml();
+    const devFamily = deployDevFamily();
     const prod = fs.readFileSync(SMOKE_POST_DEPLOY_WORKFLOW, "utf8");
     // Raw per-test artifacts are written during the run and uploaded under
     // always(), so failure and cancellation still leave evidence; the
     // rendered report rides along when it exists.
     for (const [label, yaml, artifact] of [
-      ["deploy-dev", dev, DEV_EVIDENCE_ARTIFACT],
+      ["deploy-dev family", devFamily, DEV_EVIDENCE_ARTIFACT],
       ["smoke-post-deploy", prod, PROD_EVIDENCE_ARTIFACT],
     ] as const) {
       expect(yaml, `${label} must name the evidence artifact`).toContain(`name: ${artifact}`);
@@ -92,10 +126,16 @@ describe("the release verdict reports every job", () => {
 
 describe("the notification verdict consumes every gate", () => {
   it("test_dev_notification_includes_cli_result", () => {
+    // Gate results cross the reusable-workflow boundary as outputs — a called
+    // workflow's own result collapses to one bit, which would hide WHICH gate
+    // broke the release. The verdict must read the granular output, and the
+    // acceptance workflow must actually export it from the job result.
     const workflow = deployDevYaml();
-    expect(workflow).toContain("CLI_RESULT: ${{ needs.cli-acceptance-dev.result }}");
+    expect(workflow).toContain("CLI_RESULT: ${{ needs.acceptance.outputs.cli }}");
     expect(workflow).toContain('[ "$CLI_RESULT" = success ]');
     expect(workflow).toContain("cli-acceptance: ${CLI_RESULT}");
+    const family = deployDevFamily();
+    expect(family).toContain("cli: ${{ needs.cli-acceptance-dev.result }}");
   });
 
   it("test_dev_notification_green_requires_all_gates", () => {
@@ -106,5 +146,9 @@ describe("the notification verdict consumes every gate", () => {
     expect(workflow).toContain('[ "$WORKER_RESULT" = success ] || [ "$WORKER_RESULT" = skipped ]');
     expect(workflow).toContain("✅ DEV deploy green");
     expect(workflow).toContain("❌ DEV deploy not releasable");
+    // An upstream failure that skipped a whole stage leaves its output empty;
+    // the verdict must read that as skipped — red — never as a pass.
+    expect(workflow).toContain('QA_RESULT="${QA_RESULT:-skipped}"');
+    expect(workflow).toContain('WORKER_RESULT="${WORKER_RESULT:-skipped}"');
   });
 });
