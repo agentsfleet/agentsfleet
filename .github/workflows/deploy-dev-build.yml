@@ -1,0 +1,61 @@
+name: deploy-dev / build
+
+# Called by deploy-dev.yml. Compiles the linux/amd64 binaries and pushes the
+# dev-latest image to GHCR. The caller's credential gate runs before this —
+# nothing here deploys, but the gate still blocks the pipeline ahead of the
+# first artifact leaving the runner.
+
+on:
+  workflow_call:
+
+jobs:
+  # ── 1a. Compile linux/amd64 binaries (Alpine — musl-native static OpenSSL) ─
+  # Build inside Alpine so static OpenSSL archives are musl-compatible.
+  # Produces fully static binaries that run on bookworm (Fly.io) and Trixie (bare-metal).
+  compile-dev:
+    runs-on: ubuntu-latest
+    container:
+      # Pre-baked: alpine:3.21 + Zig 0.16.0 + apk deps + x86_64-linux-gnu OpenSSL
+      # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
+      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build linux/amd64 binaries
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
+          zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
+          mkdir -p dist
+          cp zig-out/bin/agentsfleetd       dist/agentsfleetd-linux-amd64
+          cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dev-binaries
+          path: |
+            dist/agentsfleetd-linux-amd64
+            dist/agentsfleet-runner-linux-amd64
+          retention-days: 3
+
+  # ── 1b. Build Docker image and push dev-latest to GHCR ───────────────────
+  # Runs on the Ubuntu runner (Docker daemon required; not available inside a
+  # container job).  Downloads compiled binaries from compile-dev.
+  push-dev:
+    needs: compile-dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dev-binaries
+          path: dist
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Push dev-latest to GHCR
+        run: make push-dev
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          PLATFORMS: linux/amd64
