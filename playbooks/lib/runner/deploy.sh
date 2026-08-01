@@ -77,6 +77,7 @@ main() {
   validate_inputs
 
   echo "Deploying $RUNNER_ITEM in ${ENV} via Tailscale SSH"
+  runner_verify_host_cgroup_capability
   verify_host_prepared
   copy_deploy_files
   write_runner_environment

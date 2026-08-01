@@ -28,7 +28,7 @@ verify_cgroup_controllers() {
     set -e
     cgroup_path="$(systemctl show agentsfleet-runner.service --property=ControlGroup --value)"
     test "$cgroup_path" = /system.slice/agentsfleet-runner.service
-    root_path=/sys/fs/cgroup
+    root_path='"$CGROUP_ROOT"'
     slice_path="$root_path/system.slice"
     service_path="$root_path$cgroup_path"
     for entry in \
@@ -50,7 +50,7 @@ verify_cgroup_controllers() {
   )"
 
   local controller
-  for controller in cpu memory pids; do
+  for controller in $REQUIRED_CGROUP_CONTROLLERS; do
     case " $service_subtree " in
       *" $controller "*) ;;
       *)

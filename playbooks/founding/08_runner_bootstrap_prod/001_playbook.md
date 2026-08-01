@@ -60,8 +60,11 @@ ALLOW_RUNNER_HOST_PREPARE=1 \
   ./playbooks/founding/08_runner_bootstrap_prod/prepare.sh
 ```
 
-This prepares each inventory host without installing a runner binary, writing a
-token, or starting a service.
+Preparation checks that each host's cgroup v2 exposes Central Processing Unit
+(CPU), memory, and process controllers before changing it. The deployment
+workflow then verifies that systemd delegated those controllers to each started
+runner service. Preparation does not install a runner binary, write a token, or
+start a service.
 
 ## 2. Human and Agent: bootstrap the administrator and providers
 
