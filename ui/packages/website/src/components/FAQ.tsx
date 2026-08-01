@@ -47,7 +47,8 @@ const items: { q: string; a: ReactNode }[] = [
         <strong>memory checkpoints</strong>, and a <strong>stage-chunk threshold</strong> — and the
         Fleet responds by compacting tool results into durable memory via{" "}
         <code className="font-mono">memory_store</code>, ending the stage at safe boundaries, and
-        re-entering on a continuation chain (capped at 10) for the next stage. Underneath, the Fleet
+        re-entering on a continuation chain — bounded by the Fleet&apos;s budget caps and the lease
+        deadline, not a fixed hop count — for the next stage. Underneath, the Fleet
         loop runs its own rolling-summary compaction once message count or token budget crosses a
         built-in threshold. Net: a 40-tool-call deploy investigation stays reasoned through to a
         Slack diagnosis, not a context-overflow loop.{" "}

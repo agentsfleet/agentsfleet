@@ -10,6 +10,12 @@ CREATE TABLE IF NOT EXISTS billing.tenant_billing (
     balance_nanos         BIGINT NOT NULL CHECK (balance_nanos >= 0),
     grant_source          TEXT   NOT NULL,
     balance_exhausted_at  BIGINT NULL,
+    -- When this tenant's promotional free trial ends, in epoch milliseconds.
+    -- NULL means open-ended: the trial has no end yet and stage charges stay
+    -- zero for this tenant until one is set. Per-tenant rather than a build-time
+    -- constant so a trial can end for one account without a release, and so a
+    -- date passing can never change pricing for everyone at once.
+    free_trial_ends_at    BIGINT NULL,
     created_at            BIGINT NOT NULL,
     updated_at            BIGINT NOT NULL
 );

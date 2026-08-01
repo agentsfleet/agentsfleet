@@ -38,6 +38,7 @@ const id_format = @import("../types/id_format.zig");
 const telemetry = @import("../state/fleet_telemetry_store.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
+const billing_store = @import("../state/tenant_billing_store.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 
 const log = logging.scoped(.fleet_metering);
@@ -73,6 +74,7 @@ pub const MeterInputs = struct {
 /// body for why those two are logged apart.
 pub fn buildMeterInputs(
     conn: *pg.Conn,
+    tenant_id: []const u8,
     provider: []const u8,
     posture: tenant_provider.Mode,
     model: []const u8,
@@ -94,8 +96,12 @@ pub fn buildMeterInputs(
     // alternative — refusing the renewal — kills a live agent mid-run over a
     // transient database fault, which is the posture `budgetRefusal` already
     // rejected for exactly this trade.
+    // The tenant's own trial boundary. A lookup failure prices as open-ended
+    // rather than refusing the renewal: the same posture the two branches below
+    // take, and the cheaper error for a live agent mid-run.
+    const trial_ends_at_ms: ?i64 = billing_store.loadTrialBoundary(conn, tenant_id) catch null;
     const resolved: ?billing_rates.SliceRates =
-        billing_rates.resolveRenewSliceRates(conn, provider, posture, model, now_ms) catch |err| unverified: {
+        billing_rates.resolveRenewSliceRates(conn, provider, posture, model, trial_ends_at_ms, now_ms) catch |err| unverified: {
             log.warn("meter_rate_generation_unverified_run_fee_only", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = provider, .model = model, .err = @errorName(err) });
             break :unverified null;
         };

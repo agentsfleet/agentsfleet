@@ -14,6 +14,7 @@ const auth_mw = @import("../../auth/middleware/mod.zig");
 
 const tenant_billing = @import("../../state/tenant_billing.zig");
 const metering = @import("../../fleet_runtime/metering.zig");
+const model_rate_cache = @import("../../state/model_rate_cache.zig");
 const test_fixtures = @import("../../db/test_fixtures.zig");
 
 const harness_mod = @import("../test_harness.zig");
@@ -36,6 +37,20 @@ const TEST_BALANCE_NANOS: i64 = 1000;
 
 const TOKEN_OPERATOR = scope_fixtures.TENANT_ADMIN;
 const TOKEN_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
+
+// Suite-private (provider, model) pair carrying real non-zero token rates. The
+// stop gate sizes its floor from ESTIMATE_FLOOR_*_TOKENS priced against the
+// catalogue, and the self-managed branch prices both token tiers at zero — so
+// under that posture the floor is structurally 0 and no balance, drained or
+// not, can fail to cover it. The refusal is only provable under platform
+// posture against a row that actually carries a price.
+const RATE_PROVIDER = "billing-gate-provider";
+const RATE_MODEL = "billing-gate-model";
+const RATE_MODEL_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f61";
+const RATE_INPUT_NANOS_PER_MTOK: i64 = 3_000_000;
+const RATE_CACHED_NANOS_PER_MTOK: i64 = 300_000;
+const RATE_OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000;
+const RATE_MODEL_CAP_TOKENS: i64 = 200_000;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -70,6 +85,29 @@ fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !v
     , .{ TEST_FLEET_ID, TEST_WORKSPACE_ID, now_ms });
 }
 
+fn seedModelRate(conn: *pg.Conn) !void {
+    const now_ms: i64 = clock.nowMillis();
+    _ = try conn.exec(
+        \\INSERT INTO core.model_library
+        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+        \\ON CONFLICT (provider, model_id) DO UPDATE SET
+        \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
+        \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
+        \\   updated_at_ms = EXCLUDED.updated_at_ms
+    , .{ RATE_MODEL_UID, RATE_MODEL, RATE_PROVIDER, RATE_MODEL_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
+}
+
+// Drop this suite's catalogue row and clear the process-global rate cache, so a
+// later suite in the same run never resolves the private pair from a cache entry
+// that outlived its row.
+fn teardownModelRate(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM core.model_library WHERE provider = $1 AND model_id = $2", .{ RATE_PROVIDER, RATE_MODEL }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    model_rate_cache.clear();
+}
+
 fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
@@ -91,6 +129,14 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
 
     test_fixtures.resetBillingFor(db_ctx.conn, TEST_TENANT_ID);
     try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
+    // §7: a tenant's trial is open-ended by default, and an open trial prices
+    // every stage charge to zero — which would leave the drained-balance
+    // refusal below permanently unprovable, and silently so. Closing THIS
+    // tenant's boundary is what arms it. No wall-clock date to wait for and
+    // none that can retire the assertion later.
+    try test_fixtures.endFreeTrialFor(db_ctx.conn, TEST_TENANT_ID);
+    try seedModelRate(db_ctx.conn);
+    defer teardownModelRate(db_ctx.conn);
 
     // STARTER_CREDIT_NANOS covers a self-managed event under stop policy.
     try std.testing.expect(metering.balanceCoversEstimate(
@@ -103,29 +149,31 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
         .stop,
     ));
 
-    // §7 free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS,
-    // so the "drained balance + stop policy must block" assertion below is
-    // unreachable — drain leaves balance=0 and est_total=0, so balanceCovers
-    // Estimate returns true. Skip that half until post-trial; the fail-open
-    // half (.warn / .@"continue" below) still exercises today.
-    const trial_active = blk: {
-        const b = (try tenant_billing.getBilling(db_ctx.conn, alloc, TEST_TENANT_ID)).?;
-        defer alloc.free(@constCast(b.grant_source));
-        break :blk b.free_trial_active;
-    };
-    if (!trial_active) {
-        // Drain the entire starter grant; stop policy must now block.
-        _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS);
-        try std.testing.expect(!metering.balanceCoversEstimate(
-            db_ctx.pool,
-            alloc,
-            TEST_TENANT_ID,
-            .self_managed,
-            "self-managed-test",
-            "any-model",
-            .stop,
-        ));
-    }
+    // …and covers the priced platform floor, which is what makes the refusal
+    // below a balance verdict rather than a pricing accident.
+    try std.testing.expect(metering.balanceCoversEstimate(
+        db_ctx.pool,
+        alloc,
+        TEST_TENANT_ID,
+        .platform,
+        RATE_PROVIDER,
+        RATE_MODEL,
+        .stop,
+    ));
+
+    // Drain the entire starter grant; stop policy must now block. Priced under
+    // platform posture against the seeded row: the self-managed branch zeroes
+    // both token tiers, so its floor is 0 and a drained balance still covers it.
+    _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS);
+    try std.testing.expect(!metering.balanceCoversEstimate(
+        db_ctx.pool,
+        alloc,
+        TEST_TENANT_ID,
+        .platform,
+        RATE_PROVIDER,
+        RATE_MODEL,
+        .stop,
+    ));
 
     // Non-stop policies fail-open — the event passes the gate even at 0¢.
     try std.testing.expect(metering.balanceCoversEstimate(

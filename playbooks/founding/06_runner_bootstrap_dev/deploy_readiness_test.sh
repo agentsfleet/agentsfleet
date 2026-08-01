@@ -40,7 +40,15 @@ case "$command" in
   *"--property=Delegate --value"*) printf '%s\n' "${TEST_DELEGATE:-yes}" ;;
   *"--property=DelegateSubgroup --value"*) printf '%s\n' "${TEST_SUBGROUP:-runner}" ;;
   *"--property=ControlGroup --value"*) printf '%s\n' "${TEST_CGROUP_PATH:-/system.slice/agentsfleet-runner.service}" ;;
-  *"cgroup.subtree_control"*) printf '%s\n' "${TEST_CONTROLLERS:-cpu memory pids}" ;;
+  # Ordered before the generic subtree_control arm: the parent slice's
+  # delegation is what the PRE-deploy probe reads, the service's own subtree is
+  # what the POST-deploy check reads, and the two must be stubbable apart.
+  # `${VAR-default}` not `${VAR:-default}`: an EMPTY controller set is the state
+  # under test (a subtree the daemon never wrote), and `:-` would replace it
+  # with the default and quietly assert nothing.
+  *"/sys/fs/cgroup/cgroup.controllers"*) printf '%s\n' "${TEST_ROOT_CONTROLLERS-cpuset cpu io memory hugetlb pids rdma misc}" ;;
+  *"/sys/fs/cgroup/system.slice/cgroup.subtree_control"*) printf '%s\n' "${TEST_SLICE_CONTROLLERS-cpu memory pids}" ;;
+  *"cgroup.subtree_control"*) printf '%s\n' "${TEST_CONTROLLERS-cpu memory pids}" ;;
   *"BWRAP_VERSION="*)
     printf '%s\n' 'BWRAP_VERSION=bwrap 0.11.0' 'BWRAP_INFO_FD=1' 'BWRAP_BLOCK_FD=1' 'NFT_VERSION=nftables v1.0' 'IP_VERSION=iproute2-6.0'
     ;;
@@ -124,7 +132,97 @@ test_should_reject_missing_controller() {
   fi
 }
 
+run_host_probe() {
+  env PATH="$stub_dir:$PATH" \
+    OP_READ_RETRIES=1 \
+    OP_READ_MIN_INTERVAL_SECONDS=0 \
+    REQUIRE_HOST_CGROUP_CAPABILITY=1 \
+    "$@" \
+    bash "$script_under_test" 2>&1
+}
+
+test_gate_reports_all_missing_controllers() {
+  local name="test_gate_reports_all_missing_controllers"
+  local output status=0 found=0 controller
+  # A host whose delegated subtree is entirely empty — the exact state a runner
+  # sits in before it has written subtree_control. All three must be named in
+  # ONE run; the old gate returned on the first and reported only 'cpu'.
+  output="$(run_readiness TEST_CONTROLLERS='')" || status=$?
+  if [[ "$status" -eq 0 ]]; then
+    bad "$name" "an empty delegated subtree passed: $output"
+    return
+  fi
+  for controller in cpu memory pids; do
+    [[ "$output" == *"controller '$controller' is not enabled"* ]] && found=$((found + 1))
+  done
+  if [[ "$found" -ne 3 ]]; then
+    bad "$name" "named $found/3 missing controllers in one run: $output"
+  else
+    ok "$name"
+  fi
+}
+
+test_pre_deploy_probe_rejects_incapable_host() {
+  local name="test_pre_deploy_probe_rejects_incapable_host"
+  local output status=0
+  # A kernel booted hybrid/v1 offers no 'cpu' in the unified root.
+  output="$(run_host_probe TEST_ROOT_CONTROLLERS='cpuset io memory pids')" || status=$?
+  if [[ "$status" -eq 0 ]]; then
+    bad "$name" "a kernel with no cpu controller passed the pre-deploy probe: $output"
+  elif [[ "$output" != *"kernel offers no 'cpu' controller"* ]]; then
+    bad "$name" "pre-deploy diagnostic did not name the missing controller: $output"
+  else
+    ok "$name"
+  fi
+}
+
+test_pre_deploy_probe_rejects_undelegated_slice() {
+  local name="test_pre_deploy_probe_rejects_undelegated_slice"
+  local output status=0
+  # Kernel is capable, but systemd does not delegate down to the slice — so no
+  # unit beneath it could ever receive the controllers.
+  output="$(run_host_probe TEST_SLICE_CONTROLLERS='memory pids')" || status=$?
+  if [[ "$status" -eq 0 ]]; then
+    bad "$name" "an undelegated parent slice passed: $output"
+  elif [[ "$output" != *"system.slice does not delegate 'cpu'"* ]]; then
+    bad "$name" "undelegated-slice diagnostic was absent: $output"
+  else
+    ok "$name"
+  fi
+}
+
+test_pre_deploy_probe_accepts_capable_host() {
+  local name="test_pre_deploy_probe_accepts_capable_host"
+  local output status=0
+  output="$(run_host_probe)" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    bad "$name" "a capable host failed the pre-deploy probe: $output"
+  elif [[ "$output" != *"host cgroup capability: system.slice delegates"* ]]; then
+    bad "$name" "capable host was not reported: $output"
+  else
+    ok "$name"
+  fi
+}
+
+test_post_deploy_check_requires_delegated_subtree() {
+  local name="test_post_deploy_check_requires_delegated_subtree"
+  local output status=0
+  # The pre-deploy probe passing must NOT excuse an empty delegated subtree:
+  # a capable host still fails until the daemon has enabled its own controllers.
+  output="$(run_readiness TEST_CONTROLLERS='' TEST_ROOT_CONTROLLERS='cpuset cpu io memory hugetlb pids rdma misc')" || status=$?
+  if [[ "$status" -eq 0 ]]; then
+    bad "$name" "a capable host with an empty delegated subtree passed: $output"
+  else
+    ok "$name"
+  fi
+}
+
 test_should_accept_delegated_runner_cgroup
+test_gate_reports_all_missing_controllers
+test_pre_deploy_probe_rejects_incapable_host
+test_pre_deploy_probe_rejects_undelegated_slice
+test_pre_deploy_probe_accepts_capable_host
+test_post_deploy_check_requires_delegated_subtree
 test_should_reject_missing_delegation
 test_should_reject_unexpected_delegation_subgroup
 test_should_reject_unexpected_control_group

@@ -3,11 +3,10 @@
 // The free-trial gate and its connection-free rate math are tested inline in
 // tenant_billing_rates.zig (they need the time-injected private siblings).
 // This file exercises the DB-backed surface: the debit boundary rules, the
-// free_trial_active projection on the Billing struct, and — via the
-// clock-injected `computeStageChargeAt` — the post-trial platform pricing
-// paths. `computeStageCharge` reads the real clock and short-circuits to zero
-// while the promotional window is open, so its assertions branch on
-// free_trial_active and only fire post-trial; the `At` variant runs today.
+// free_trial_active projection on the Billing struct, and the platform pricing
+// paths. The trial boundary is a parameter (§7 — a tenant fact, not a clock
+// fact), so every pricing assertion passes a closed boundary and runs
+// unconditionally; no wall-clock date can put one to sleep.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -15,6 +14,7 @@ const pg = @import("pg");
 
 const tenant_billing = @import("tenant_billing.zig");
 const billing_rates = @import("tenant_billing_rates.zig");
+const model_rate_cache = @import("model_rate_cache.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
@@ -35,7 +35,10 @@ fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
 
 /// One second past the promotional window — any post-trial instant works; the
 /// clock-injected charge paths below need one that is deterministic today.
-const POST_TRIAL_NOW_MS: i64 = tenant_billing.FREE_TRIAL_END_MS + std.time.ms_per_s;
+/// A boundary these tests choose, so post-trial pricing is provable without
+/// waiting for any real date to arrive.
+const TRIAL_ENDS_AT_MS: i64 = 1_785_542_400_000;
+const POST_TRIAL_NOW_MS: i64 = TRIAL_ENDS_AT_MS + std.time.ms_per_s;
 
 // Segment 5 (aa06xx) identifies this file's workspaces; easy to grep + clean.
 const WS_PLATFORM_ZERO = "0195b4ba-8d3a-7f13-8abc-aa0600000001";
@@ -44,16 +47,37 @@ const WS_DEBIT_EXACT = "0195b4ba-8d3a-7f13-8abc-aa0600000003";
 const WS_DEBIT_OVER = "0195b4ba-8d3a-7f13-8abc-aa0600000004";
 const WS_TRIAL = "0195b4ba-8d3a-7f13-8abc-aa0600000005";
 
-// Reads the clock-derived free-trial projection. While the promotional
-// window is open every platform stage charge short-circuits to zero, so the
-// token-rate assertions can only be exercised post-trial.
-fn trialActive(conn: *pg.Conn) !bool {
-    const b = (try tenant_billing.getBilling(conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(b.grant_source));
-    return b.free_trial_active;
+// Suite-private (provider, model) pair with real token rates for the overflow
+// test — the fixture platform pair's zero rates would multiply the near-max
+// token counts by nothing and prove nothing about widening.
+const RATE_PROVIDER = "billing-edge-provider";
+const RATE_MODEL = "billing-edge-model";
+const RATE_MODEL_UID = "0195b4ba-8d3a-7f13-8abc-fa0600000061";
+const RATE_INPUT_NANOS_PER_MTOK: i64 = 3_000_000;
+const RATE_CACHED_NANOS_PER_MTOK: i64 = 300_000;
+const RATE_OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000;
+const RATE_MODEL_CAP_TOKENS: i64 = 200_000;
+
+fn seedRatedModel(conn: *pg.Conn) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.model_library
+        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+        \\ON CONFLICT (provider, model_id) DO UPDATE SET
+        \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
+        \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
+        \\   updated_at_ms = EXCLUDED.updated_at_ms
+    , .{ RATE_MODEL_UID, RATE_MODEL, RATE_PROVIDER, RATE_MODEL_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, clock.nowMillis() });
 }
 
-test "should charge the run fee for platform runtime with zero token counts post-trial" {
+fn teardownRatedModel(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM core.model_library WHERE provider = $1 AND model_id = $2", .{ RATE_PROVIDER, RATE_MODEL }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    model_rate_cache.clear();
+}
+
+test "integration: should charge the run fee for platform runtime with zero token counts" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -66,18 +90,17 @@ test "should charge the run fee for platform runtime with zero token counts post
     defer base.teardownPlatformProvider(db_ctx.conn, WS_PLATFORM_ZERO);
 
     // Platform posture, zero tokens, 10s of runtime: the charge is exactly the
-    // run fee (no token cost to add). Free-trial window short-circuits to 0, so
-    // the run-fee assertion is post-trial only.
-    if (try trialActive(db_ctx.conn)) return error.SkipZigTest;
-
+    // run fee. The fixture platform pair's token rates are zero by design, so
+    // pricing THAT pair keeps the expected value the run fee alone; the closed
+    // boundary keeps the trial short-circuit out of the way at any clock.
     const elapsed_ms: i64 = 10_000;
-    const charge = try billing_rates.computeStageCharge(db_ctx.conn, "anthropic", .platform, "claude-sonnet-4-6", elapsed_ms, 0, 0, 0);
+    const charge = try billing_rates.computeStageCharge(db_ctx.conn, base.TEST_PROVIDER_NAME, .platform, base.TEST_PLATFORM_MODEL, elapsed_ms, 0, 0, 0, base.TRIAL_ENDED_AT_MS);
     // Replicate runFee via the pinned per-second rate (runFee is private).
     const expected_run_fee = @divTrunc(elapsed_ms * tenant_billing.RUN_NANOS_PER_SEC, 1000);
     try std.testing.expectEqual(expected_run_fee, charge);
 }
 
-test "should not overflow when platform token counts approach u32 max" {
+test "integration: should not overflow when platform token counts approach u32 max" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -86,18 +109,20 @@ test "should not overflow when platform token counts approach u32 max" {
     defer teardown(db_ctx.conn, WS_PLATFORM_LARGE);
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_PLATFORM_LARGE);
     defer base.teardownPlatformProvider(db_ctx.conn, WS_PLATFORM_LARGE);
-
-    if (try trialActive(db_ctx.conn)) return error.SkipZigTest;
+    // Real (non-zero) token rates so the near-max counts actually exercise the
+    // widening — zero rates would multiply by nothing and prove nothing.
+    try seedRatedModel(db_ctx.conn);
+    defer teardownRatedModel(db_ctx.conn);
 
     // Near-u32-max token counts plus an hour of runtime: rate math widens to
     // i64 internally, so the result must be a finite positive i64, no overflow.
     const big: u32 = std.math.maxInt(u32) - 1;
-    const charge = try billing_rates.computeStageCharge(db_ctx.conn, "anthropic", .platform, "claude-sonnet-4-6", 3_600_000, big, big, big);
+    const charge = try billing_rates.computeStageCharge(db_ctx.conn, RATE_PROVIDER, .platform, RATE_MODEL, 3_600_000, big, big, big, base.TRIAL_ENDED_AT_MS);
     try std.testing.expect(charge > 0);
     try std.testing.expect(charge < std.math.maxInt(i64));
 }
 
-test "should refuse to price an uncatalogued model post-trial with error.ModelNotPriced" {
+test "integration: should refuse to price an uncatalogued model with error.ModelNotPriced" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -117,11 +142,12 @@ test "should refuse to price an uncatalogued model post-trial with error.ModelNo
         0,
         0,
         0,
+        TRIAL_ENDS_AT_MS,
         POST_TRIAL_NOW_MS,
     ));
 }
 
-test "should succeed with zero balance when debit exactly covers the remaining credit" {
+test "integration: should succeed with zero balance when debit exactly covers the remaining credit" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -145,7 +171,7 @@ test "should succeed with zero balance when debit exactly covers the remaining c
     try std.testing.expect(row.exhausted_at_ms == null);
 }
 
-test "should return CreditExhausted and leave balance unchanged when debit is one nano over" {
+test "integration: should return CreditExhausted and leave balance unchanged when debit is one nano over" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -168,7 +194,7 @@ test "should return CreditExhausted and leave balance unchanged when debit is on
     try std.testing.expectEqual(balance, row.balance_nanos);
 }
 
-test "should report the free trial active just before the cutoff and inactive at it" {
+test "integration: should report a fresh tenant's trial open-ended (NULL boundary reads active)" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -186,9 +212,8 @@ test "should report the free trial active just before the cutoff and inactive at
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
 
-    const now_ms = clock.nowMillis();
-    const expected_active = now_ms < row.free_trial_ends_at_ms;
-    try std.testing.expectEqual(expected_active, row.free_trial_active);
-    // The cutoff is a fixed forward instant, never zero/negative.
-    try std.testing.expect(row.free_trial_ends_at_ms > 0);
+    // A freshly provisioned tenant has no boundary set, so its trial is
+    // open-ended and the projection must say active regardless of the clock.
+    try std.testing.expect(row.free_trial_ends_at_ms == null);
+    try std.testing.expect(row.free_trial_active);
 }

@@ -12,19 +12,16 @@ const logging = @import("log");
 const contract = @import("contract");
 
 const AppliedPolicy = @import("AppliedPolicy.zig");
-const CgroupScope = @import("../engine/CgroupScope.zig");
 const client_errors = @import("../engine/client_errors.zig");
 
 const protocol = contract.protocol;
 const log = logging.scoped(.fleet_runner);
-const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 
-/// Apply-time state the control loop threads through policy application: the
-/// one-shot cgroup enablement, dedup for the invalid-policy warn, and the
-/// spawned pool size the grow-needs-restart notice compares against.
+/// Apply-time state the control loop threads through policy application: dedup
+/// for the invalid-policy warn, and the spawned pool size the grow-needs-restart
+/// notice compares against.
 pub const Gates = struct {
-    controllers_enabled: bool = false,
     last_outcome: AppliedPolicy.ApplyOutcome = .unchanged,
     spawned_workers: ?u32 = null,
     grow_logged: bool = false,
@@ -52,7 +49,7 @@ pub fn noteDegraded(applied: *AppliedPolicy, gates: *Gates, degraded: bool, reas
 /// apply-time gates. The release-build dev_none refusal runs BEFORE the holder
 /// publishes: a worker polling between publish and a post-publish clear could
 /// otherwise snapshot the forbidden tier and start one cage-less lease.
-pub fn applyHeartbeatPolicy(io: std.Io, alloc: std.mem.Allocator, applied: *AppliedPolicy, gates: *Gates, raw: ?std.json.Value) void {
+pub fn applyHeartbeatPolicy(alloc: std.mem.Allocator, applied: *AppliedPolicy, gates: *Gates, raw: ?std.json.Value) void {
     if (forbiddenTier(alloc, raw)) {
         applied.clear();
         log.err("dev_none_rejected_in_release_build", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .sandbox_tier = @tagName(protocol.SandboxTier.dev_none) });
@@ -66,7 +63,7 @@ pub fn applyHeartbeatPolicy(io: std.Io, alloc: std.mem.Allocator, applied: *Appl
         .invalid => if (gates.last_outcome != .invalid)
             log.warn("runner_policy_invalid", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .action = "leasing refused until a readable assignment arrives" }),
         .cleared => log.warn("runner_policy_missing", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .action = "assign a policy from the dashboard; leasing refused until then" }),
-        .applied => runApplyGates(io, alloc, applied, gates),
+        .applied => runApplyGates(alloc, applied),
     }
 }
 
@@ -81,27 +78,18 @@ fn forbiddenTier(alloc: std.mem.Allocator, raw: ?std.json.Value) bool {
     return devNoneForbidden(builtin.mode, decoded.sandbox_tier);
 }
 
-fn runApplyGates(io: std.Io, alloc: std.mem.Allocator, applied: *AppliedPolicy, gates: *Gates) void {
+fn runApplyGates(alloc: std.mem.Allocator, applied: *AppliedPolicy) void {
     const snap = applied.snapshot(alloc) orelse return;
     defer AppliedPolicy.freePolicy(alloc, snap);
 
     // (The release-build dev_none refusal — Invariant 7 — already ran in
     // `applyHeartbeatPolicy`, BEFORE the holder published this policy.)
-
-    // systemd delegates the controllers but never writes `cgroup.subtree_control`
-    // — that is the delegatee's job. Without it every execution scope fails and
-    // the host can only refuse leases while orphan scopes accumulate. Enable
-    // once, on the first cage-building assignment; failure refuses leases while
-    // the daemon keeps heartbeating, so the gap is visible instead of a crash
-    // loop. `dev_none` builds no cage and is exempt.
-    if (controllersRequired(builtin.os.tag, snap.sandbox_tier) and !gates.controllers_enabled) {
-        CgroupScope.enableDelegatedControllers(io, alloc) catch |err| {
-            applied.clear();
-            log.err("cgroup_controllers_unavailable", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err), .sandbox_tier = @tagName(snap.sandbox_tier) });
-            return;
-        };
-        gates.controllers_enabled = true;
-    }
+    //
+    // Delegated-controller enablement is NOT here: it depends only on the host,
+    // so the daemon does it once at startup (`main.zig`). A host that cannot
+    // deliver its assigned isolation is caught by the control plane's
+    // reconciliation of assigned-against-reported capability, which degrades the
+    // runner row — not by a gate on this path.
 
     log.debug("runner_policy_applied", .{
         .sandbox_tier = @tagName(snap.sandbox_tier),
@@ -142,25 +130,6 @@ test "release build forbids dev_none; Debug allows it; real tiers pass in prod" 
     try std.testing.expect(!devNoneForbidden(.ReleaseSafe, .landlock_full));
 }
 
-/// Whether this host must enable the delegated cgroup controllers before
-/// leasing. True only when a cage is actually built on a kernel that has
-/// cgroups. Pure so the matrix is unit-testable — the os tag is a parameter
-/// rather than read from `builtin`.
-fn controllersRequired(os_tag: std.Target.Os.Tag, tier: protocol.SandboxTier) bool {
-    if (os_tag != .linux) return false;
-    return tier != .dev_none;
-}
-
-test "delegated controllers are required only for a Linux tier that builds a cage" {
-    try std.testing.expect(controllersRequired(.linux, .landlock_full));
-    try std.testing.expect(controllersRequired(.linux, .container_nested));
-    // dev_none builds no cage, so a host with no delegated subtree still runs.
-    try std.testing.expect(!controllersRequired(.linux, .dev_none));
-    // cgroups are Linux-only: no controller subtree can exist off-linux.
-    try std.testing.expect(!controllersRequired(.macos, .landlock_full));
-    try std.testing.expect(!controllersRequired(.macos, .dev_none));
-}
-
 test "test_startup_logs_the_applied_assignment: a decodable assignment lands on the applied path that emits runner_policy_applied" {
     // The `runner_policy_applied` event (spec Metrics table) lives on the
     // `.applied` arm of `applyHeartbeatPolicy` — the only arm that ends with
@@ -168,13 +137,11 @@ test "test_startup_logs_the_applied_assignment: a decodable assignment lands on 
     // the holder proves the emitting path ran; there is no runtime log capture
     // in this graph, so the structural proof is the honest one.
     //
-    // `dev_none` is the only tier that builds no cage, so it is the only one
-    // that reaches that arm without sending the Linux cgroup gate through the
-    // `undefined` io below — which makes the expected outcome build-mode
-    // dependent, because Invariant 7 refuses dev_none in a release build. The
-    // memleak lane pins ReleaseSafe on Linux (valgrind needs an optimised
-    // binary), so each mode asserts its own arm instead of the Debug one
-    // twice; both arms run the function, which is what the leak gate needs.
+    // `dev_none` keeps the expected outcome build-mode dependent, because
+    // Invariant 7 refuses dev_none in a release build. The memleak lane pins
+    // ReleaseSafe on Linux (valgrind needs an optimised binary), so each mode
+    // asserts its own arm instead of the Debug one twice; both arms run the
+    // function, which is what the leak gate needs.
     const alloc = std.testing.allocator;
     var applied = AppliedPolicy.init(alloc);
     defer applied.deinit();
@@ -185,9 +152,7 @@ test "test_startup_logs_the_applied_assignment: a decodable assignment lands on 
     , .{});
     defer raw.deinit();
 
-    // SAFETY: io is only dereferenced by the cgroup-enablement gate, which the
-    // cage-free dev_none tier never reaches on either arm.
-    applyHeartbeatPolicy(undefined, alloc, &applied, &gates, raw.value);
+    applyHeartbeatPolicy(alloc, &applied, &gates, raw.value);
 
     if (devNoneForbidden(builtin.mode, .dev_none)) {
         // Release arm: refused BEFORE the holder published, so no worker can
@@ -200,6 +165,15 @@ test "test_startup_logs_the_applied_assignment: a decodable assignment lands on 
     const snap = applied.snapshot(alloc) orelse return error.TestUnexpectedResult;
     defer AppliedPolicy.freePolicy(alloc, snap);
     try std.testing.expectEqual(protocol.SandboxTier.dev_none, snap.sandbox_tier);
+}
+
+test "test_policy_apply_has_no_controller_gate: cgroup enablement is not apply-time state" {
+    // Enabling the delegated controllers depends only on the host, so the daemon
+    // does it once at startup (`main.zig`) rather than on the first cage-building
+    // assignment. A one-shot flag reappearing here would mean the write is back
+    // to racing the first heartbeat — which is exactly what made a freshly
+    // deployed runner fail its post-deploy readiness check.
+    try std.testing.expect(!@hasField(Gates, "controllers_enabled"));
 }
 
 test "grow-needs-restart logs once per excursion and re-arms on shrink-back" {

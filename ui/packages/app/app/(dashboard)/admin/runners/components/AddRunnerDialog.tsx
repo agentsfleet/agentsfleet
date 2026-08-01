@@ -121,7 +121,11 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
           Create runner
         </TooltipButton>
       </DialogTrigger>
+      {/* Same policy form as EditPolicyDialog, plus the post-create token panel —
+          so it needs the same bounded height and scroll to keep its actions
+          reachable on a short viewport. */}
       <DialogContent
+        className="max-h-svh overflow-y-auto"
         onInteractOutside={(e) => {
           if (created) e.preventDefault();
         }}
