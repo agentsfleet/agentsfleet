@@ -1,109 +1,59 @@
-# Playbook 015: Redis Cache Teardown
+# Redis Teardown
 
-## Purpose
+**Owners:** 🤠 Indy authorizes and types the target; 🦉 Orly executes and
+verifies.
+**Scope:** exactly one of development or production per run.
 
-Permanently flush all keys from the Upstash Redis cache (DEV and/or PROD). This is a **destructive, irreversible operation** that removes every key, including the per-agent event streams (`agent:{agent_id}:events`) and their `agent_lease` consumer groups, via `FLUSHALL`.
+This permanently executes Redis `FLUSHALL`. It removes every stored key,
+including:
 
-Sibling to the database teardown (`operations/teardown/database`, PlanetScale Postgres). Run both when fully resetting an environment.
+- `fleet:{fleet_id}:events` streams and their `fleet_lease` consumer groups
+- the global `fleet:ready` readiness index
+- the `connector:outbound` delivery stream
+- authentication session, approval, and deduplication keys
 
-## When to Use
+The `fleet:{fleet_id}:activity` name is an ephemeral publish/subscribe
+(Pub/Sub) channel, not a stored key.
 
-- Complete cache reset before re-priming
-- Cleaning up after testing in DEV
-- Emergency cache purge (PROD - extreme caution)
+## Before running
 
-## Prerequisites
+1. Stop traffic and every `agentsfleetd` machine in the selected environment.
+   Otherwise live requests can recreate keys while verification is running.
+2. Confirm Docker and 1Password access.
+3. Confirm the selected vault item has both:
+   - `api-url` for the restricted runtime connection
+   - `url` for the root connection used only by this runbook
 
-1. Docker available for the `redis:7-alpine` container
-2. 1Password CLI access (desktop app integration or `OP_SERVICE_ACCOUNT_TOKEN`)
-3. Required environment approvals set
+## Execute
 
-## Required Environment Variables
-
-| Variable | Value | Purpose |
-|----------|-------|---------|
-| `ALLOW_REDIS_TEARDOWN` | `1` | Approve destructive cache operation |
-| `ENV` | `dev` / `prod` | Target environment (**must be explicit - no "all" allowed**) |
-
-## Credential Used
-
-`FLUSHALL` requires full ACL privileges, so this playbook reads the **root** Upstash connection string, not the role-scoped one:
-
-| Env | 1Password ref |
-|-----|---------------|
-| dev | `op://ZMB_CD_DEV/upstash-dev/url` |
-| prod | `op://ZMB_CD_PROD/upstash-prod/url` |
-
-The restricted `api-url` / `worker-url` roles reject `FLUSHALL`.
-
-## Usage
-
-### Check credentials only (dry run)
+Development:
 
 ```bash
-cd playbooks/operations/teardown/redis
-ENV=dev ./01_credential_check.sh
+ALLOW_VAULT_READS=1 \
+ALLOW_REDIS_TEARDOWN=1 \
+ENV=dev \
+  ./playbooks/operations/teardown/redis/00_gate.sh
 ```
 
-### Teardown DEV
+Production:
 
 ```bash
-cd playbooks/operations/teardown/redis
-ALLOW_REDIS_TEARDOWN=1 ENV=dev ./00_gate.sh
+ALLOW_VAULT_READS=1 \
+ALLOW_REDIS_TEARDOWN=1 \
+ENV=prod \
+  ./playbooks/operations/teardown/redis/00_gate.sh
 ```
 
-### Teardown PROD
+The gate rejects `ENV=all` and prompts for the full environment name before
+flushing. It forwards the Redis URL to the container by environment name, so
+the credential does not appear in the process arguments.
 
-```bash
-cd playbooks/operations/teardown/redis
-ALLOW_REDIS_TEARDOWN=1 ENV=prod ./00_gate.sh
-```
+## After the empty-cache check
 
-### Teardown BOTH
+Restart or redeploy every `agentsfleetd` machine before restoring traffic.
+Startup recreates the shared `connector:outbound` group. Fleet event streams,
+the `fleet_lease` group, readiness entries, sessions, and deduplication keys
+are recreated by their normal write paths.
 
-**No "all" option - intentional safety measure. Run separately:**
-
-```bash
-ALLOW_REDIS_TEARDOWN=1 ENV=dev ./00_gate.sh
-ALLOW_REDIS_TEARDOWN=1 ENV=prod ./00_gate.sh
-```
-
-### Verify Teardown
-
-```bash
-ENV=dev ./03_verify.sh
-ENV=prod ./03_verify.sh
-```
-
-## Safety Mechanisms
-
-1. **No "all" option**: Must explicitly target `ENV=dev` or `ENV=prod` separately - prevents accidental mass destruction
-2. **Explicit approval required**: `ALLOW_REDIS_TEARDOWN=1` must be set
-3. **Typed confirmation**: Must type the environment name ("DEVELOPMENT" or "PRODUCTION") to proceed
-4. **Credential verification**: Checks the 1Password item exists before attempting connection
-5. **Docker isolation**: Uses a containerized `redis-cli` - no local Redis installation required
-6. **No credential leak**: The connection string is forwarded by env-name-only (`-e REDIS_URL`), so the password never appears in `ps aux`
-
-## Post-Teardown
-
-No manual re-priming is required. `FLUSHALL` removes the per-agent event streams and their `agent_lease` consumer groups, but agentsfleetd recreates each one on demand when a agent is created (`POST /v1/workspaces/{ws}/agents` → `ensureEventStream`, idempotent `XGROUP CREATE … MKSTREAM`). An empty cache self-heals on the first agent created after the flush — see `playbooks/founding/03_priming_infra/001_playbook.md` §3.2.
-
-## Troubleshooting
-
-### "MISSING APPROVAL"
-
-```bash
-export ALLOW_REDIS_TEARDOWN=1
-```
-
-### Connection failures
-
-- Verify Upstash credentials in 1Password vaults (ZMB_CD_DEV / ZMB_CD_PROD)
-- Check network connectivity to the Upstash host
-- Ensure Docker daemon is running
-
-## Security Notes
-
-- Connection strings are read dynamically from 1Password - never hardcoded
-- The URL is passed to the container by env-name-only (not on the command line)
-- No credentials are logged or persisted to disk
+For a full platform rebuild, continue with founding step 04 for development or
+step 07 for production.

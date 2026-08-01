@@ -303,26 +303,32 @@ check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate 
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@find playbooks -name '*.sh' -print0 | xargs -0 $(SHELLCHECK) --severity=error -x
 	@echo "→ [playbooks] focused shell regression tests..."
-	@set -e; for test_script in playbooks/lib/common_test.sh playbooks/founding/02_preflight/tailnet_policy_test.sh playbooks/founding/02_preflight/credentials_test.sh playbooks/founding/06_runner_bootstrap_dev/deploy_readiness_test.sh playbooks/founding/06_runner_bootstrap_dev/provision_runner_env_test.sh; do bash "$$test_script"; done
+	@set -e; TESTS=$$(find playbooks -type f -name '*_test.sh' | sort); \
+	if [ -z "$$TESTS" ]; then echo "✗ [playbooks] no shell regression tests found"; exit 1; fi; \
+	for test_script in $$TESTS; do echo "  $$test_script"; bash "$$test_script"; done
 	@echo "→ [playbooks] reference integrity — every playbooks/ path resolves..."
 	@# Scans the live operational surface (CI, scripts, active docs, the playbooks
 	@# themselves). Excludes docs/v2/: specs are historical records that
 	@# intentionally cite now-moved paths.
 	@FAIL=0; \
-	REFS=$$(git -c safe.directory='*' grep -hoE 'playbooks/[A-Za-z0-9_./-]+' -- . ':!docs/v2/' | sed 's/[.,):]*$$//' | sort -u); \
-	if [ -z "$$REFS" ]; then echo "✗ [playbooks] reference scan matched nothing — git failed, so this gate proved nothing"; exit 1; fi; \
+	REFS=$$(rg --hidden -o --no-filename 'playbooks/[A-Za-z0-9_./-]+' . --glob '!docs/v2/**' --glob '!.git/**' | sed 's/[.,):]*$$//' | sort -u); \
+	if [ -z "$$REFS" ]; then echo "✗ [playbooks] reference scan matched nothing"; exit 1; fi; \
 	for ref in $$REFS; do \
 	  [ -e "$$ref" ] || { echo "✗ broken playbooks/ reference: $$ref"; FAIL=1; }; \
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] reference integrity failed"; exit 1; fi; \
 	echo "✓ [playbooks] all references resolve"
 	@echo "→ [playbooks] README ↔ tree parity..."
-	@FAIL=0; seen=""; \
-	for d in $$(find playbooks/founding playbooks/operations -type d); do \
-	  [ -f "$$d/001_playbook.md" ] || continue; \
- base=$$(basename "$$d"); \
- case " $$seen " in *" $$base "*) echo "✗ duplicate playbook basename '$$base' — README parity is basename-matched (tree shows leaf names) and cannot disambiguate: $$d"; FAIL=1 ;; *) seen="$$seen $$base" ;; esac; \
- grep -q "$$base/" playbooks/README.md || { echo "✗ playbook dir absent from README tree: $$d"; FAIL=1; }; \
-	done; \
-	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] README/tree parity failed"; exit 1; fi; \
-	echo "✓ [playbooks] README documents every playbook dir"
+	@ACTUAL=$$(mktemp); DOCUMENTED=$$(mktemp); \
+	trap 'rm -f "$$ACTUAL" "$$DOCUMENTED"' EXIT; \
+	find playbooks/founding playbooks/deploy playbooks/operations -type f -name '001_playbook.md' \
+	  -exec dirname {} \; | sed 's|^playbooks/||' | sort > "$$ACTUAL"; \
+	sed -n '/<!-- playbook-inventory:start -->/,/<!-- playbook-inventory:end -->/p' \
+	  playbooks/README.md | sed -n 's/^- `\([^`]*\)`.*/\1/p' | sort > "$$DOCUMENTED"; \
+	if [ ! -s "$$DOCUMENTED" ]; then echo "✗ [playbooks] README inventory is empty"; exit 1; fi; \
+	if ! cmp -s "$$ACTUAL" "$$DOCUMENTED"; then \
+	  echo "✗ [playbooks] README inventory differs from disk"; \
+	  diff -u "$$DOCUMENTED" "$$ACTUAL" || true; \
+	  exit 1; \
+	fi; \
+	echo "✓ [playbooks] README inventory exactly matches disk"

@@ -35,7 +35,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §Steer, kill, pause |
 | Config freshness | resolved per lease | no cache, no reload signal; the next lease sees the change | §Config |
 | Debit points | 2, both on the lease path | receive (flat) + run (floor-token estimate) at issue; report reconciles telemetry only | §Money gates |
-| Production shape | 2–3 `agentsfleetd` machines | set by `flyctl scale`; runner verbs load-balance across replicas | §Multi-replica |
+| Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
 | Readiness index | one global `fleet:ready` hash | field = fleet id, value = a minted UUIDv7 token; a hint, never the record | §Redis topology |
 
 ## Traps
@@ -603,7 +603,7 @@ The four per-runner families live in a process-global, allocator-free, fixed-cap
 
 ### Multi-replica (`agentsfleetd` N>1) — correctness is an *aggregation* property
 
-Prod is sized for **2–3 `agentsfleetd` machines** (the single-machine wording that previously opened this section is retired — the machine count is set by `flyctl scale`, and the sections below are written for N>1 as the operating shape, not the contingency). A runner's verbs load-balance across replicas, so each replica holds only the slice of that runner's event stream it served. Fly's Prometheus scrapes each replica as a **distinct target** and stamps every series with that machine's `instance` label — so fleet-wide truth is reconstructed by the query, not by shared state:
+Prod is sized for **3 `agentsfleetd` machines**. The release workflow sets that count with `flyctl scale` and verifies that all three machines are running before public readiness. The sections below are written for N>1 as the operating shape, not the contingency. A runner's verbs load-balance across replicas, so each replica holds only the slice of that runner's event stream it served. Fly's Prometheus scrapes each replica as a **distinct target** and stamps every series with that machine's `instance` label — so fleet-wide truth is reconstructed by the query, not by shared state:
 
 | Series | Cross-replica query | Exact under N>1? |
 |--------|---------------------|------------------|
