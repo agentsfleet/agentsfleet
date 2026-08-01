@@ -27,12 +27,18 @@ metrics="$(
   jq -r '.. | strings' \
     "$SCRIPT_DIR/assets/dashboard.json" \
     "$SCRIPT_DIR/assets/alerts.json" |
-    rg -o 'agentsfleet_[a-z0-9_]+' |
+    awk '{
+      text = $0
+      while (match(text, /agentsfleet_[a-z0-9_]+/)) {
+        print substr(text, RSTART, RLENGTH)
+        text = substr(text, RSTART + RLENGTH)
+      }
+    }' |
     sort -u
 )"
 while IFS= read -r metric; do
   [ -n "$metric" ] || continue
-  if ! rg --fixed-strings --quiet "\"$metric\"" \
+  if ! grep -RFq -- "$metric" \
     "$REPO_ROOT/src/agentsfleetd"; then
     echo "ERROR: Grafana asset references an unowned metric: $metric" >&2
     exit 1
