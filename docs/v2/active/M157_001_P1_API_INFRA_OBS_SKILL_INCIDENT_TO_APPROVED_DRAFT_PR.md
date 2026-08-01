@@ -80,6 +80,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `library/incident-responder/TRIGGER.md` | CREATE | Cron trigger, `http_request`-only tools, credentials, host allowlist, budget |
 | `bench/incident-response/` | CREATE | Injector, seed manifests, frozen baseline config, scoring, report |
 | `make/bench.mk` | EDIT | `bench-incident` target (rubric-mandated caller) |
+| `build.zig` | EDIT | `bench-incident` + `bench-incident-test` steps in the `with-bench-tools` graph (repo pattern for bench executables) |
 | `playbooks/demo/forge-2026/` | CREATE | EC2 + collector + Elastic Cloud bring-up, failure injection, Kibana, replay proof |
 | `docs/architecture/scenarios/production-deploy-repair.md` | EDIT | Flip proven rows; record the deterministic-apply implementation shape |
 
@@ -152,11 +153,11 @@ Elastic and Grafana keys are plain workspace secrets (never registry entries, pe
 
 `bench/incident-response/` seeds an instrumented corpus and injects incidents from seed manifests split into disjoint calibration and evaluation sets. The threshold baseline (competent error-rate, latency, saturation, multi-window rules) is tuned on calibration only, then frozen by config hash. Detection scores only when a structured result names the affected service and incident class within tolerance, citing a supporting ES|QL result — "anomaly found" scores zero. The report carries recall, false positives, median and 95th-percentile time-to-detect, time-to-actionable-remediation, per-incident variance across repeated runs, query/model cost, and the cases where thresholds win (obvious spikes are expected threshold wins; an agent sweep is honest, not embarrassed, about that).
 
-- **Dimension 5.1** — The injector is reproducible: identical seed manifest → identical corpus hash → Test `test_injector_deterministic`
-- **Dimension 5.2** — Calibration and evaluation manifests are disjoint; scoring refuses a mixed corpus → Test `test_seed_manifests_disjoint`
-- **Dimension 5.3** — The baseline is frozen: scoring refuses a baseline whose config hash drifted after calibration → Test `test_baseline_frozen`
-- **Dimension 5.4** — Scoring requires service + class within tolerance; unstructured claims score zero → Test `test_scoring_requires_service_and_class`
-- **Dimension 5.5** — The report emits the full metric set, including variance, cost, and threshold-win cases → Test `test_report_metrics_complete`
+- **Dimension 5.1** — **DONE** — The injector is reproducible: identical seed manifest → identical corpus hash → Test `test_injector_deterministic`
+- **Dimension 5.2** — **DONE** — Calibration and evaluation manifests are disjoint; scoring refuses a mixed corpus → Test `test_seed_manifests_disjoint`
+- **Dimension 5.3** — **DONE** — The baseline is frozen: scoring refuses a baseline whose config hash drifted after calibration → Test `test_baseline_frozen`
+- **Dimension 5.4** — **DONE** — Scoring requires service + class within tolerance; unstructured claims score zero → Test `test_scoring_requires_service_and_class`
+- **Dimension 5.5** — **DONE** — The report emits the full metric set, including variance, cost, and threshold-win cases → Test `test_report_metrics_complete`
 
 ### §6 — The demo topology runs on AWS and the stage proof is replay-safe
 
