@@ -14,8 +14,9 @@ Rebuilding `schema/` from empty while the dev database is undeployed. Two workst
 - ✅ **The budget apportionment is PROVEN** — 7/7 against a live database.
 - ✅ **Every production statement is on the rebuilt columns** (see below).
 - 🔶 **The integration suite is the current front**, and what is left in it is test
-  fixtures. Every failure seen so far is a caller on a retired column name, never a
-  design fault in the schema.
+  fixtures. Latest full run: **175 pass, 535 skip, 53 fail** across 23 files (was
+  152/76 before the production sweep). Every failure is a fixture on a retired column
+  name, never a design fault in the schema.
 
 ## Commits on `feat/m154-schema-rebuild`
 
@@ -31,6 +32,7 @@ Rebuilding `schema/` from empty while the dev database is undeployed. Two workst
 | `0b07918ee` | the live-database failure taxonomy, recorded here |
 | `dc60fd39b` | grants and gates: one identity column named `id`, no alias |
 | `2b61aea0d` | the seven unconverted `sql.zig` modules, incl. signup bootstrap |
+| `9c8f67fd8` | this document |
 
 Branch not pushed. PR not opened. One PR for the milestone, at CHORE(close).
 
@@ -135,26 +137,22 @@ docker compose logs postgres --since 45m 2>&1 \
   | grep -oE "ERROR:.*" | sed 's/ at character [0-9]*//' | sort | uniq -c | sort -rn
 ```
 
-Last run (before the fleet-create fix landed), 74 failures across ~28 files:
+Latest run — **53 failures across 23 files**, all of them test fixtures:
 
-| n | error | what it is |
+| n | error | rule |
 |---|---|---|
-| 42 | `column "workspace_id" does not exist` | `core.workspaces.id` |
-| 28 | `column "uid" of relation "memory_entries"` | identity collapse, not yet swept |
-| 27 | `column "request_json" of relation "runner_leases"` | tests still insert the dropped body |
-| 18 | `column "uid" of relation "model_library"` | identity collapse |
-| 18 | `column "tenant_id" does not exist` | `core.tenants.id` |
-| 16 | `null value in column "tenant_id" of relation "fleets"` | fleet inserts missing the tenant |
-| 16 | `column "tenant_id" of relation "tenants"` | same as above, insert side |
-| 14 | `column "id" of relation "runner_affinity"` | tests insert the dropped slot id |
-| 8 | `fleet.metering_periods does not exist` | retired table |
-| 8 | `core.fleet_execution_telemetry does not exist` | retired table |
-| 8 | `column "occurred_at" of relation "runner_events"` | column is `created_at` |
-| 6 | `operator does not exist: uuid ~~ unknown` | a `LIKE` against a now-UUID column |
-| 6 | `column "updated_at_ms" of relation "model_catalogue_revision"` | unit-suffix drop |
-| 3 | `column "uid" of relation "api_keys"` | identity collapse |
-| 4 | `division by zero` | **not a bug** — `poisonTransaction`'s deliberate `SELECT 1/0` |
-| 2 | `canceling statement due to lock timeout` | concurrency suite; triage separately |
+| 14 | `column "workspace_id" does not exist` | `core.workspaces.id` |
+| 11 | `column "request_json" of relation "runner_leases"` | drop it; the body lives on `core.fleet_events` |
+| 9 | `column "uid" of relation "model_library"` | → `id` |
+| 9 | `column "tenant_id" does not exist` | `core.tenants.id` |
+| 7 | `column "tenant_id" of relation "tenants"` | same, insert side |
+| 7 | `column "id" of relation "runner_affinity"` | slot is keyed on `fleet_id`; drop the column and its bind |
+| 5 | `column "uid" of relation "memory_entries"` | → `id` |
+| 4 | `fleet.metering_periods does not exist` | delete the statement |
+| 4 | `core.fleet_execution_telemetry does not exist` | → `billing.usage_ledger` |
+| 4 | `null value in column "tenant_id" of relation "fleets"` | derive from the workspace row |
+| 3 | `operator does not exist: uuid ~~ unknown` | a `LIKE` against a now-UUID column |
+| 2 | `division by zero` | **not a bug** — `poisonTransaction`'s deliberate `SELECT 1/0` |
 
 ## Next Steps
 
