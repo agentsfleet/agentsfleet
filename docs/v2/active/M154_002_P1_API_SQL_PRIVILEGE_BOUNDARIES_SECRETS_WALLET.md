@@ -53,8 +53,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/100_schemas_and_roles.sql` | EDIT | Declares the two roles and grants `api_runtime` membership |
+| `schema/110_roles_and_privileges.sql` | EDIT | Declares the two roles and grants `api_runtime` **non-inheriting** membership |
+| `schema/120_metering_role.sql` | CREATE | The composite `metering_runtime` role, whose grain is the fenced statement rather than a table (§1) |
 | `schema/300_vault_secrets.sql`, `schema/700_tenant_wallet.sql` | EDIT | Table grants land on the owning role, not on `api_runtime` |
+| `schema/610_runner_leases.sql`, `630_runner_affinity.sql`, `650_runner_lifetime_counters.sql` | EDIT | The fenced statement's `fleet` footprint grants to `metering_runtime` (RULE SGR) |
+| `schema/710_usage_ledger.sql` | EDIT | `api_runtime` keeps SELECT — a charge history does not move, and four readers need it |
+| `src/agentsfleetd/db/schema_privilege_test.zig` | CREATE | Unit proof of the boundary against the embedded slot text, where a superuser connection cannot hide it |
 | `src/agentsfleetd/state/vault.zig`, `secrets/*.zig` | EDIT | Secret reads and writes elevate for the statement's transaction |
 | `src/agentsfleetd/fleet/renewal.zig`, `renewal_settle.zig` | EDIT | The two wallet writers elevate around their fenced statement |
 | `src/agentsfleetd/state/tenant_billing*.zig`, `http/handlers/tenant_billing.zig` | EDIT | Balance reads elevate; the charges read does not (the ledger is not moving) |
@@ -91,9 +95,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The grants that sit on `api_runtime` today move to roles that do nothing else, and `api_runtime` is granted membership so it can assume them. Nothing about how secrets are sealed changes — this narrows who may read the sealed bytes. **Implementation default:** one role per table rather than one shared elevated role, because a wallet writer has no reason to read ciphertext and the whole point is that reach is enumerable.
 
+**Amended — the grain is the table EXCEPT where one statement spans two schemas.** The settle and renewal paths are each a single fenced statement touching three `fleet` tables plus the wallet and the ledger, and `SET ROLE` replaces the privilege set rather than adding to it, so no per-table role can carry them. `metering_runtime` (`schema/120`) is composed to that statement's footprint: a member of `billing_runtime`, plus direct grants on exactly those three `fleet` tables. Reach stays enumerable — the grant list *is* the statement's table list — and the fenced statement is not modified. The alternatives were widening `billing_runtime` across the control plane, splitting a statement whose atomicity is what makes a replayed renewal charge nothing, or leaving the wallet unfenced.
+
+**Membership must be non-inheriting.** A bare `GRANT <role> TO api_runtime` follows `api_runtime`'s own INHERIT attribute, which `CREATE ROLE` defaults to TRUE — the privileges then apply ambiently and nothing ever elevates. `WITH INHERIT FALSE, SET TRUE` is what makes membership dormant, and Dimension 1.1's catalogue query cannot see the difference, which is why Dimension 1.4 exists.
+
 - **Dimension 1.1** — `api_runtime` holds no direct privilege on the secret store or the wallet → Test `test_api_runtime_holds_no_direct_grant`
 - **Dimension 1.2** — an unelevated read of either table is refused by PostgreSQL, not by application code → Test `test_unelevated_access_is_refused`
 - **Dimension 1.3** — the migration role retains full authority, so a rebuild cannot lock itself out → Test `test_migrator_still_owns_both_tables`
+- **Dimension 1.4** — every role `api_runtime` may assume is granted non-inheriting, so the privilege is unreachable without an explicit `SET ROLE` → Test `test_role_membership_is_dormant_until_set_role`
+- **Dimension 1.5** — `metering_runtime` reaches exactly the fenced statement's tables and holds no direct grant on either money table → Test `test_metering_role_matches_statement_footprint`
 
 ### §2 — Elevation is scoped to the transaction
 
@@ -159,6 +169,8 @@ INTERNAL   pool release gains a base-role assertion. A connection whose
 | 1.1 | integration | `test_api_runtime_holds_no_direct_grant` | A catalogue query for privileges held by `api_runtime` on either table returns zero rows |
 | 1.2 | integration | `test_unelevated_access_is_refused` | A select and an update on each table as `api_runtime` both raise insufficient_privilege |
 | 1.3 | integration | `test_migrator_still_owns_both_tables` | The migration role can re-create and grant on both tables from empty |
+| 1.4 | unit | `test_role_membership_is_dormant_until_set_role` | Every `GRANT <role> TO api_runtime` in the embedded slots carries `WITH INHERIT FALSE, SET TRUE`; the count of such grants is asserted, so a scan that matches nothing fails |
+| 1.5 | unit | `test_metering_role_matches_statement_footprint` | Object grants to `metering_runtime` cover exactly the three `fleet` tables the fenced statement names, and none on the wallet or ledger (those arrive by membership, which is asserted inheriting) |
 | 2.1 | integration | `test_secret_paths_work_under_elevation` | Store, read and delete a secret end to end; the ciphertext round-trips unchanged |
 | 2.2 | integration | `test_metering_unchanged_under_elevation` | A run with three renewals plus settle debits the same total as before, once |
 | 2.3 | integration | `test_rollback_clears_elevation` | A deliberately failing statement leaves the connection reporting the base role |
@@ -230,6 +242,16 @@ N/A — no files deleted.
   > Indy (2026-08-01): "Just fold it into these" — in answer to whether the `vault` / `billing` privilege split should join this milestone or wait for the Row-Level Security work. Folded in; authored as a second workstream rather than inside M154_001 because that spec had reached its length bound and this change carries a distinct failure class.
 
   > Indy (2026-08-01): "Okay we move the RLS to later" — Row-Level Security is deferred to its own milestone.
+
+  > Indy (2026-08-01): "go" — acks building the wallet half in full via the composite `metering_runtime` role rather than deferring it, after a second-model advisory review (Fable) rejected all three options the prior agent had framed. Nothing is deferred out of this workstream.
+
+- **Consult — the fenced statement, second-model review (2026-08-01).** The prior agent's premise that the settle statement's fencing might be redundant (that `ON CONFLICT … DO UPDATE` already made it idempotent) was **refuted from the code**: the ledger arm is a deliberate accumulator (`credit_deducted_nanos = existing + EXCLUDED`), so replay *adds*. Idempotency comes from cursor-diffing against `runner_affinity` — deltas computed as `GREATEST(0, $n - last_metered_at)` while the same statement advances that cursor. That is only sound if the charge and the cursor advance commit together, so the statement cannot be split. It is not modified by this workstream.
+
+- **Reversal — slot 890 stays.** The prior agent recommended deleting `schema/890_fleet_activity_counter_triggers.sql` and inlining the counter arms, on the premise that the triggers would need an elevated function. They do not: both trigger functions are already `SECURITY DEFINER` with a pinned `search_path` (890:31, 890:65), so they are unaffected by elevation. Inlining would have been a regression — `schema/880` grants `api_runtime` SELECT only, and inline arms would require handing write grants on the counter table back to every writing role. No change to either file.
+
+- **Defect found during implementation (P0, fixed).** The authored membership grants were bare — `GRANT vault_runtime TO api_runtime;` — which takes its inheritance from `api_runtime`'s INHERIT attribute, defaulted TRUE by `CREATE ROLE`. Every handler would have held vault and billing privileges ambiently, with the boundary existing only in the comment above the grant, and Dimension 1.1's catalogue query would still have passed. Fixed with `WITH INHERIT FALSE, SET TRUE` on all three, plus Dimension 1.4 as the regression guard. Red-green proved: re-introducing the bare grant fails `test_role_membership_is_dormant_until_set_role` naming the slot and line.
+
+- **Defect found during implementation (P1, fixed).** `schema/710` granted the ledger to `billing_runtime` only, which would have answered the charges list, the events-list cost join, the per-fleet outcome reads and the fleet delete path with `insufficient_privilege`. `api_runtime` keeps SELECT; every write still runs elevated.
 
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).

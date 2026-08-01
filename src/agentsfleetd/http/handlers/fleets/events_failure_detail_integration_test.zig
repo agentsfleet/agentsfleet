@@ -98,7 +98,7 @@ fn seedBase(conn: *pg.Conn) !void {
         \\ON CONFLICT (id) DO NOTHING
     , .{ FLEET_ID, WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'failure-detail-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL

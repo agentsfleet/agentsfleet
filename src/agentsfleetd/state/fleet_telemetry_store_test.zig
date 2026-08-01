@@ -25,7 +25,8 @@ fn seedStageRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, 
         .posture = .platform,
         .model = FIXTURE_MODEL,
         .credit_deducted_nanos = 2,
-        .recorded_at = recorded_at,
+        .event_created_at = recorded_at,
+        .created_at = recorded_at,
     });
 }
 
@@ -39,7 +40,8 @@ fn seedReceiveRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8
         .posture = .platform,
         .model = FIXTURE_MODEL,
         .credit_deducted_nanos = 1,
-        .recorded_at = recorded_at,
+        .event_created_at = recorded_at,
+        .created_at = recorded_at,
     });
 }
 

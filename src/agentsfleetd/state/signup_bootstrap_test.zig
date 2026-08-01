@@ -149,7 +149,7 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
     {
         var q = PgQuery.from(try db_ctx.conn.query(
             \\SELECT balance_nanos, grant_source
-            \\FROM billing.tenant_billing WHERE tenant_id = $1::uuid
+            \\FROM billing.tenant_wallet WHERE tenant_id = $1::uuid
         , .{result.tenant_id}));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;

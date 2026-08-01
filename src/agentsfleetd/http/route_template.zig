@@ -44,7 +44,6 @@ pub fn templateFor(route: router.Route) []const u8 {
         .create_workspace => "/v1/workspaces",
         .get_tenant_billing => "/v1/tenants/me/billing",
         .get_tenant_billing_charges => "/v1/tenants/me/billing/charges",
-        .get_tenant_metering_periods => "/v1/tenants/me/billing/charges/{event_id}/telemetry",
         .list_tenant_workspaces => "/v1/tenants/me/workspaces",
         .tenant_provider => "/v1/tenants/me/provider",
         .tenant_model_entries => "/v1/tenants/me/models",

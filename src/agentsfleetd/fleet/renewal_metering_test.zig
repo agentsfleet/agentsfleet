@@ -17,18 +17,13 @@ const renewal_settle = @import("renewal_settle.zig");
 const affinity = @import("affinity.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
-const fleet_metering_store = @import("../state/fleet_metering_store.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const ONE_MILLION = 1_000_000;
 const TEST_TOKEN_COUNT = 1000;
 const TEST_CHARGE_NANOS = 1_000;
 const TEST_BALANCE_NANOS = 100_000;
 
-// A second tenant for the metering-periods cross-tenant read guard.
-const OTHER_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8b02";
-
 const ALLOC = std.testing.allocator;
-const PRIMARY_RUN_MS: i64 = 1000;
 
 fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     _ = reg;
@@ -106,7 +101,7 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, status: []const u8) !void {
 
 fn seedBalance(conn: *pg.Conn, balance: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'meter-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
     , .{ base.TEST_TENANT_ID, balance });
@@ -154,7 +149,7 @@ fn cleanup(s: Setup) void {
 }
 
 fn readBalance(conn: *pg.Conn) !i64 {
-    var q = PgQuery.from(try conn.query("SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{base.TEST_TENANT_ID}));
+    var q = PgQuery.from(try conn.query("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", .{base.TEST_TENANT_ID}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowMissing;
     return row.get(i64, 0);
@@ -362,7 +357,7 @@ test "an exhausting slice clamps the wallet to zero and stamps balance_exhausted
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
     try std.testing.expectEqual(@as(i64, TEST_CHARGE_NANOS), stage.charged);
     var q = PgQuery.from(try s.conn.query(
-        "SELECT balance_exhausted_at FROM billing.tenant_billing WHERE tenant_id = $1::uuid",
+        "SELECT balance_exhausted_at FROM billing.tenant_wallet WHERE tenant_id = $1::uuid",
         .{base.TEST_TENANT_ID},
     ));
     defer q.deinit();
@@ -389,39 +384,4 @@ test "a fresh lease resets the affinity metering cursor to zero / issue-time" {
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 1));
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 2));
     try std.testing.expectEqual(NOW_MS, try row.get(i64, 3));
-}
-
-test "metering-periods read is tenant-scoped: own tenant sees slices, a foreign tenant sees none" {
-    const s = try arrange(1);
-    defer cleanup(s);
-    // Stage telemetry carries the tenant; the store's EXISTS guard keys off it. Seed 1 stage + 2 slices.
-    _ = try s.conn.exec(
-        \\INSERT INTO core.fleet_execution_telemetry
-        \\  (uid, id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
-        \\   model, credit_deducted_nanos, recorded_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4101'::uuid,
-        \\        'mtr_' || $2, $1::uuid, 'ws', 'z', $2, 'stage', 'platform', 'm', 225, 0)
-    , .{ base.TEST_TENANT_ID, EVENT_ID });
-    _ = try s.conn.exec(
-        \\INSERT INTO fleet.metering_periods
-        \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-        \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4102'::uuid,
-        \\        $1, 1, 10, 0, 20, $2, 100, 50, 150, 0),
-        \\       ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4103'::uuid,
-        \\        $1, 2, 5, 0, 10, 500, 50, 25, 75, 0)
-    , .{ EVENT_ID, PRIMARY_RUN_MS });
-
-    // Owning tenant: both slices, ordered by slice_seq.
-    const mine = try fleet_metering_store.listForEvent(s.conn, ALLOC, EVENT_ID, base.TEST_TENANT_ID);
-    defer ALLOC.free(mine);
-    try std.testing.expectEqual(@as(usize, 2), mine.len);
-    try std.testing.expectEqual(@as(i64, 1), mine[0].slice_seq);
-    try std.testing.expectEqual(@as(i64, 150), mine[0].charged_nanos);
-    try std.testing.expectEqual(@as(i64, 2), mine[1].slice_seq);
-
-    // A foreign tenant requesting the same event_id sees nothing (no leak).
-    const theirs = try fleet_metering_store.listForEvent(s.conn, ALLOC, EVENT_ID, OTHER_TENANT_ID);
-    defer ALLOC.free(theirs);
-    try std.testing.expectEqual(@as(usize, 0), theirs.len);
 }

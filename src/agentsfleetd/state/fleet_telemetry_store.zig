@@ -31,13 +31,18 @@ pub const ChargeType = enum {
 // Shared SELECT columns reused across all query branches.
 // Trailing newline matters — concatenated suffix begins with WHERE/ORDER BY, so
 // without it we'd get "fleet_execution_telemetryWHERE" (PG syntax error 42601).
+// The identity columns are UUID since M154, not TEXT. The `::text` casts are
+// load-bearing: `row.get([]const u8, …)` on a UUID column hands back the raw
+// 16 bytes with no error at compile time and none at runtime — just binary in
+// the charges endpoint's JSON. `workspace_id` and `fleet_id` are also nullable
+// now (ON DELETE SET NULL, schema/710), so their readers take optionals.
 const TELEMETRY_SELECT =
-    \\SELECT id, tenant_id, workspace_id, fleet_id, event_id,
+    \\SELECT id::text, tenant_id::text, workspace_id::text, fleet_id::text, event_id,
     \\       charge_type, posture, model,
     \\       credit_deducted_nanos,
-    \\       token_count_input, token_count_output, wall_ms,
-    \\       recorded_at
-    \\FROM core.fleet_execution_telemetry
+    \\       token_count_input, token_count_cached_input, token_count_output, wall_ms,
+    \\       created_at
+    \\FROM billing.usage_ledger
     \\
 ;
 
@@ -83,9 +88,20 @@ pub const InsertTelemetryParams = struct {
     /// NULL on receive rows; accumulated on the stage row per slice by the
     /// renewal/settle CTE's upsert (`+= Δ` per renewal, ms-precision).
     token_count_input: ?i64 = null,
+    token_count_cached_input: ?i64 = null,
     token_count_output: ?i64 = null,
     wall_ms: ?i64 = null,
-    recorded_at: i64,
+    /// The originating EVENT's creation instant, not this row's. Every row for
+    /// one event must carry the same value (schema/710), so it comes from the
+    /// event envelope — never from a local clock read, which would differ per
+    /// row by however long the paths took.
+    event_created_at: i64,
+    created_at: i64,
+    /// The run's last charge instant. `null` means "same as `created_at`" — a
+    /// one-shot charge, whose span is a point. Only a caller seeding a row that
+    /// accumulated over time needs to set it; the production receive path never
+    /// does, and the renewal/settle paths write their own statement.
+    last_charged_at: ?i64 = null,
 };
 
 /// Insert one telemetry row. ON CONFLICT (event_id, charge_type) DO NOTHING —
@@ -95,17 +111,24 @@ pub fn insertTelemetry(
     alloc: std.mem.Allocator,
     params: InsertTelemetryParams,
 ) !void {
-    const row_id = try id_format.generateFleetId(alloc);
+    // A ledger row's own identifier, not a fleet's — `allocUuidV7` says that
+    // where `generateFleetId` did not. The retired table carried BOTH a `uid`
+    // UUID and a TEXT `id` holding the same value; one column replaces them.
+    const row_id = try id_format.allocUuidV7(alloc);
     defer alloc.free(row_id);
 
+    // `last_charged_at` equals `created_at` here: a receive fee is charged once,
+    // so its span is a point and the budget drain's apportionment degenerates to
+    // all-or-nothing, which is what it always was for this row (schema/710).
     _ = try conn.exec(
-        \\INSERT INTO core.fleet_execution_telemetry
-        \\  (uid, id, tenant_id, workspace_id, fleet_id, event_id,
+        \\INSERT INTO billing.usage_ledger
+        \\  (id, tenant_id, workspace_id, fleet_id, event_id,
         \\   charge_type, posture, model,
         \\   credit_deducted_nanos,
-        \\   token_count_input, token_count_output, wall_ms,
-        \\   recorded_at)
-        \\VALUES ($1::uuid, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        \\   token_count_input, token_count_cached_input, token_count_output, wall_ms,
+        \\   event_created_at, created_at, last_charged_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10,
+        \\        $11, $12, $13, $14, $15, $16)
         \\ON CONFLICT (event_id, charge_type) DO NOTHING
     , .{
         row_id,
@@ -118,9 +141,12 @@ pub fn insertTelemetry(
         params.model,
         params.credit_deducted_nanos,
         params.token_count_input,
+        params.token_count_cached_input,
         params.token_count_output,
         params.wall_ms,
-        params.recorded_at,
+        params.event_created_at,
+        params.created_at,
+        params.last_charged_at orelse params.created_at,
     });
 }
 

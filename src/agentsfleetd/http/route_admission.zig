@@ -21,7 +21,6 @@ pub fn classFor(route: router.Route) RouteClass {
         .create_workspace,
         .get_tenant_billing,
         .get_tenant_billing_charges,
-        .get_tenant_metering_periods,
         .list_tenant_workspaces,
         .tenant_provider,
         .tenant_model_entries,

@@ -73,7 +73,7 @@ fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !v
 fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
@@ -165,7 +165,7 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=false,
     defer teardown(conn, TOKEN_TENANT_ID);
 
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing
+        \\INSERT INTO billing.tenant_wallet
         \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1, $3, 'billing_handler_test', $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE
@@ -196,7 +196,7 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true +
     defer teardown(conn, TOKEN_TENANT_ID);
 
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing
+        \\INSERT INTO billing.tenant_wallet
         \\  (tenant_id, balance_nanos, grant_source, balance_exhausted_at, created_at, updated_at)
         \\VALUES ($1, 0, 'billing_handler_test', $2, $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE

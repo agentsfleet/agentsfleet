@@ -305,9 +305,11 @@ const FAST_LOCK_RETRY_MS: u64 = 5;
 // Temporary rename target hiding the live `audit` schema, so a blocked
 // migration attempt's (absent) bookkeeping DDL is observable on a migrated DB.
 const AUDIT_STASH_SCHEMA = "audit_lock_ordering_stash";
-// Failure-row probe versions: 1 is always applied on the migrated test DB
-// (versions are contiguous from 1); 999_999 is far outside the canonical list.
-const APPLIED_PROBE_VERSION: i32 = 1;
+// Failure-row probe versions: the first canonical slot is always applied on the
+// migrated test DB; 999_999 is far outside the canonical list. Derived rather
+// than written, because the M154 renumbering moved the first version from 1 to
+// 100 and a literal here would have gone quietly stale (RULE MIG).
+const APPLIED_PROBE_VERSION: i32 = cmd_common.canonicalMigrations()[0].version;
 const UNAPPLIED_PROBE_VERSION: i32 = 999_999;
 
 const COUNT_APPLIED_MIGRATIONS_SQL = "SELECT count(*)::bigint FROM audit.schema_migrations";

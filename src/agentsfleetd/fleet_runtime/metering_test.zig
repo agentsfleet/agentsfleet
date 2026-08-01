@@ -169,6 +169,7 @@ test "debitReceive self-managed: EVENT_NANOS=0 charge writes telemetry row, bala
         ALLOC,
         TENANT_ID,
         makeCtx(WS_RECEIVE_DEBIT, event_id),
+        EVENT_CREATED_AT,
         .stop,
     );
     switch (result) {
@@ -209,9 +210,9 @@ test "telemetry insert is idempotent: same event_id+charge_type replayed inserts
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a06";
     const ctx = makeCtx(ws, event_id);
 
-    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, .stop);
+    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, EVENT_CREATED_AT, .stop);
     // Replay: the second INSERT must hit ON CONFLICT DO NOTHING.
-    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, .stop);
+    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, EVENT_CREATED_AT, .stop);
 
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT COUNT(*)::BIGINT FROM core.fleet_execution_telemetry
@@ -234,6 +235,11 @@ const otel_traces = @import("../observability/otel_traces.zig");
 const otlp_config = @import("../observability/otlp/config.zig");
 const semconv = @import("../observability/semconv.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
+
+/// The event envelope's creation instant. Fixed rather than `nowMillis()`:
+/// every ledger row for one event must carry the SAME value (schema/710),
+/// which a per-call clock read cannot guarantee.
+const EVENT_CREATED_AT: i64 = 1_760_000_000_000;
 
 const SPAN_TEST_CFG: otlp_config.GrafanaOtlpConfig = .{
     .endpoint = "http://127.0.0.1:0",

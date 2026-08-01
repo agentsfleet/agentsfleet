@@ -133,11 +133,6 @@ pub fn invokeGetTenantBillingCharges(hx: *Hx, req: *httpz.Request, route: router
     tenant_billing_h.innerGetTenantBillingCharges(hx.*, req);
 }
 
-pub fn invokeGetTenantMeteringPeriods(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (!common.requireMethod(hx.res, req.method, .GET)) return;
-    tenant_billing_h.innerGetTenantMeteringPeriods(hx.*, req, route.get_tenant_metering_periods);
-}
-
 pub fn invokeListTenantWorkspaces(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (!common.requireMethod(hx.res, req.method, .GET)) return;

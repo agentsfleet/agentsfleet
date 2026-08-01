@@ -63,7 +63,7 @@ fn setupSeedData(conn: *pg.Conn) !void {
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing
+        \\INSERT INTO billing.tenant_wallet
         \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1, $3, 'rbac_test_seed', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING

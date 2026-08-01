@@ -148,7 +148,7 @@ pub fn teardownTenantById(conn: *pg.Conn, tenant_id: []const u8) void {
 /// order-independent. Call before ANY grant/provision whose balance is asserted.
 pub fn resetBillingFor(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec(
-        "DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid",
+        "DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid",
         .{tenant_id},
     ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }

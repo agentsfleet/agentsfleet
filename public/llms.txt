@@ -30,7 +30,6 @@ Status transitions ride PATCH on the fleet resource — body {status: "active"|"
 - ingest_fleet_webhook: POST  /v1/webhooks/{fleet_id}
 - get_tenant_billing:         GET /v1/tenants/me/billing
 - get_tenant_billing_charges: GET /v1/tenants/me/billing/charges
-- get_tenant_metering_periods: GET /v1/tenants/me/billing/charges/{event_id}/telemetry
 - get_model_library:      GET /v1/models    # paged; ?limit=&starting_after=&q=&provider= — ETag/If-None-Match
 - list_tenant_model_entries: GET /v1/tenants/me/models   # paged; the tenant's own model registry
 - list_workspace_fleet_library:     GET /v1/workspaces/{workspace_id}/fleet-libraries   # paged gallery: platform catalog ∪ this workspace's entries

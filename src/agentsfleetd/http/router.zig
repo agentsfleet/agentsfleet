@@ -93,9 +93,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // `…/bundles/{content_hash}`: GET only (the invoke fn 405s other methods).
     if (matchers.matchRunnerBundles(p)) |content_hash| return .{ .runner_bundle = content_hash };
 
-    // ── Tenant billing: per-charge metering-period drill-down ─────────────
-    if (matchers.matchTenantMeteringPeriods(p)) |event_id| return .{ .get_tenant_metering_periods = event_id };
-
     // ── Auth sessions (deepest shape first) ───────────────────────────────
     // Approve / verify carry the {action} suffix; check before the bare
     // {id} matcher.

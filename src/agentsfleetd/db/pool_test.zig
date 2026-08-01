@@ -671,7 +671,7 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
         "core.fleet_sessions",
         "core.fleet_execution_telemetry",
         "core.fleet_approval_gates",
-        "billing.tenant_billing",
+        "billing.tenant_wallet",
     };
     inline for (write_set) |tbl| {
         var q = PgQuery.from(try db_ctx.conn.query(

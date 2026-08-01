@@ -71,13 +71,6 @@
       "actionClass": "safe"
     },
     {
-      "operationId": "get_tenant_metering_periods",
-      "method": "GET",
-      "path": "/v1/tenants/me/billing/charges/{event_id}/telemetry",
-      "description": "Read the per-renewal metering slices behind one tenant charge.",
-      "actionClass": "safe"
-    },
-    {
       "operationId": "get_model_library",
       "method": "GET",
       "path": "/v1/models",
@@ -116,8 +109,23 @@
     "description": "Users may supply their own Large Language Model (LLM) API keys. agentsfleet meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
   },
   "policyClasses": {
-    "safe": ["list_fleet_events", "stream_fleet_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods", "get_model_library", "list_tenant_model_entries", "list_workspace_fleet_library"],
-    "sensitive": ["create_fleet", "patch_fleet", "post_fleet_message", "ingest_fleet_webhook"],
-    "critical": ["delete_fleet"]
+    "safe": [
+      "list_fleet_events",
+      "stream_fleet_events",
+      "get_tenant_billing",
+      "get_tenant_billing_charges",
+      "get_model_library",
+      "list_tenant_model_entries",
+      "list_workspace_fleet_library"
+    ],
+    "sensitive": [
+      "create_fleet",
+      "patch_fleet",
+      "post_fleet_message",
+      "ingest_fleet_webhook"
+    ],
+    "critical": [
+      "delete_fleet"
+    ]
   }
 }
