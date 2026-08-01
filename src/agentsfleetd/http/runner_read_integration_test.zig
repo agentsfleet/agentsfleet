@@ -226,8 +226,6 @@ fn seedWorkspaceAndFleets(conn: anytype) !void {
 
 fn cleanup(conn: anytype) void {
     // Settles through the real write path leave audit rows keyed by event id.
-    _ = conn.exec("DELETE FROM fleet.metering_periods WHERE event_id LIKE $1", .{SETTLED_EVENT_PREFIX ++ "%"}) catch |err|
-        std.log.warn("metering cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM billing.usage_ledger WHERE event_id LIKE $1", .{SETTLED_EVENT_PREFIX ++ "%"}) catch |err|
         std.log.warn("telemetry cleanup ignored: {s}", .{@errorName(err)});
     const runner_ids = [_][]const u8{ R_LEASES, R_COUNTS, R_STALE, R_EMPTY, R_SAME_MS, R_OUTCOME, R_CASCADE, R_FILTER, R_CURSOR };

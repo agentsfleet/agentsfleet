@@ -170,8 +170,8 @@ test "integration: test_catalogue_revision_governs_both_caches: the hot-path rea
 
 // ── The billing half: cross-replica fail-closed pricing ─────────────────────
 
-/// Suite-private catalogue identity. The uid's 15th character is the uuidv7
-/// version nibble `ck_model_library_uid_uuidv7` requires.
+/// Suite-private catalogue identity. Its 15th character is the uuidv7 version
+/// nibble `ck_model_library_id_uuidv7` requires.
 const BILL_UID = "0195b4ba-8d3a-7f15-8abe-2b3e1e0abd01";
 const BILL_PROVIDER = "revision-billing-probe";
 const BILL_MODEL = "rb-probe-model";

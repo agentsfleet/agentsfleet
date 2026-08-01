@@ -21,11 +21,11 @@ const cmd_common = @import("../cmd/common.zig");
 // `id host_id token_hash sandbox_tier admin_state labels tenant_id network_policy
 //  registry_allowlist worker_count capability_report capability_reported_at
 //  degraded degraded_reason last_seen_at created_at updated_at` — the
-//  `fleet.runners` column set. One identity column, not the `uid`/`id` pair the
-//  frozen-slot model was stuck with.
+//  `fleet.runners` column set. One identity column, not the generated/text pair
+//  the frozen-slot model was stuck with.
 const EXPECTED_COLUMN_COUNT: i64 = 17;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
-/// The retired identity twins: a generated `uid`, a text `id` beside it, and a
+/// The retired identity twins: a generated UUID, a text `id` beside it, and a
 /// CHECK tying the two together, on both tables that carried the shape. Rebuilt
 /// from empty they simply do not exist, so this counts to ZERO — the assertion
 /// is inverted rather than deleted, because it is the one that would notice a
