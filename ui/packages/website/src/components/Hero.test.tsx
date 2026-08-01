@@ -283,7 +283,7 @@ describe("Hero", () => {
     expect(pill).toHaveAttribute("href", "/pricing");
     // Sourced from RATES_DISPLAY.FREE_TRIAL_PILL in lib/rates.ts; rates.test.ts
     // pins the literal — this assertion catches accidental hardcoding in Hero.
-    expect(pill.textContent).toMatch(/Free until July 31, 2026/);
+    expect(pill.textContent).toMatch(/Free during early access/);
     expect(pill.textContent).toMatch(/Promo/);
   });
 

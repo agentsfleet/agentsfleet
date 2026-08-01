@@ -153,6 +153,32 @@ pub fn resetBillingFor(conn: *pg.Conn, tenant_id: []const u8) void {
     ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
+/// A trial boundary far enough in the past that `now_ms < ends_at_ms` is false
+/// at every clock a suite can run on. 2020-01-01T00:00:00Z — a literal, not a
+/// clock offset, so a post-trial assertion reads the same on any machine and in
+/// any year. This is what replaced the build-time cutoff the billing suites used
+/// to wait for: the boundary is a tenant fact now, so a suite sets its own.
+pub const TRIAL_ENDED_AT_MS: i64 = 1_577_836_800_000;
+
+/// Close `tenant_id`'s free trial at `TRIAL_ENDED_AT_MS`, so every pricing path
+/// this tenant reaches takes the post-trial branch.
+///
+/// A trial is open-ended by default (`free_trial_ends_at IS NULL`), which means
+/// a suite asserting a charge, a stop-gate refusal, or a non-zero rate cannot
+/// prove any of it without first ending this tenant's trial — the free-trial
+/// short-circuit prices every one of those to zero. Call it after the billing
+/// row exists.
+///
+/// Errors when no row was updated. A silent no-op here would restore exactly the
+/// failure this replaced: an assertion that looks armed and never fires.
+pub fn endFreeTrialFor(conn: *pg.Conn, tenant_id: []const u8) !void {
+    const affected = try conn.exec(
+        "UPDATE billing.tenant_billing SET free_trial_ends_at = $2 WHERE tenant_id = $1::uuid",
+        .{ tenant_id, TRIAL_ENDED_AT_MS },
+    );
+    if (affected == null or affected.? == 0) return error.NoBillingRowForTenant;
+}
+
 // M10_001: seedSpec, seedRun, teardownRuns, teardownSpecs removed.
 // Tables core.specs and core.runs were dropped in pipeline v1 removal.
 
