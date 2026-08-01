@@ -109,7 +109,7 @@ const SeedGate = struct {
     proposed_action: []const u8 = "Open PR titled 'wire approval inbox'",
     evidence_json: []const u8 = "{\"files\":[\"src/x.zig\"]}",
     blast_radius: []const u8 = "single repo branch",
-    requested_at: i64 = 1_700_000_000_000,
+    created_at: i64 = 1_700_000_000_000,
     timeout_at: i64 = 1_700_000_086_400_000, // requested + 24h
 };
 
@@ -118,14 +118,14 @@ fn insertGate(conn: *pg.Conn, g: SeedGate) !void {
         \\INSERT INTO core.fleet_approval_gates
         \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
         \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-        \\   resolved_by, status, detail, requested_at, created_at)
+        \\   resolved_by, status, detail, created_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
         \\        $7, $8, $9::jsonb, $10, $11,
         \\        '', 'pending', '', $12, $12)
         \\ON CONFLICT (id) DO NOTHING
     , .{
         g.gate_id,   g.fleet_id,        g.workspace_id,  g.action_id,    g.tool_name,  g.action_name,
-        g.gate_kind, g.proposed_action, g.evidence_json, g.blast_radius, g.timeout_at, g.requested_at,
+        g.gate_kind, g.proposed_action, g.evidence_json, g.blast_radius, g.timeout_at, g.created_at,
     });
 }
 
@@ -266,7 +266,7 @@ test "integration: approvals GET — cursor pagination yields next_cursor" {
         try insertGate(conn, .{
             .gate_id = gid,
             .action_id = aid,
-            .requested_at = 1_700_000_000_000 + @as(i64, i),
+            .created_at = 1_700_000_000_000 + @as(i64, i),
         });
     }
 

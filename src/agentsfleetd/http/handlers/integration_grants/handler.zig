@@ -149,9 +149,9 @@ const RequestGrantBody = struct {
 
 const ExistingGrant = struct {
     fleet_name: []const u8,
-    grant_id: []const u8,
+    id: []const u8,
     status: []const u8,
-    requested_at: i64,
+    created_at: i64,
 };
 
 pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, fleet_id: []const u8) void {
@@ -206,21 +206,21 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         return;
     };
 
-    if (existing.grant_id.len != 0) {
-        const existing_id = existing.grant_id;
+    if (existing.id.len != 0) {
+        const existing_id = existing.id;
         const existing_st = existing.status;
-        const existing_at = existing.requested_at;
+        const existing_at = existing.created_at;
 
         const is_terminal = std.mem.eql(u8, existing_st, STATUS_REVOKED);
         if (!is_terminal) {
             // pending or approved — idempotent return.
             log.debug("already_exists", .{ .fleet_id = fleet_id, .service = body.service, .status = existing_st });
             hx.ok(.ok, .{
-                .grant_id = hx.alloc.dupe(u8, existing_id) catch existing_id,
+                .id = hx.alloc.dupe(u8, existing_id) catch existing_id,
                 .fleet_id = fleet_id,
                 .service = body.service,
                 .status = hx.alloc.dupe(u8, existing_st) catch existing_st,
-                .requested_at = existing_at,
+                .created_at = existing_at,
                 .message = "Grant already exists for this service.",
             });
             return;
@@ -230,9 +230,9 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         const now_ms_reopen = clock.nowMillis();
         _ = conn.exec(
             \\UPDATE core.integration_grants
-            \\SET status = $1, requested_at = $2, requested_reason = $3,
+            \\SET status = $1, created_at = $2, requested_reason = $3,
             \\    approved_at = NULL, revoked_at = NULL
-            \\WHERE grant_id = $4
+            \\WHERE id = $4::uuid
         , .{ STATUS_PENDING, now_ms_reopen, body.reason, hx.alloc.dupe(u8, existing_id) catch existing_id }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return;
@@ -253,11 +253,11 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
             body.reason,
         );
         hx.ok(.created, .{
-            .grant_id = existing_grant_id,
+            .id = existing_grant_id,
             .fleet_id = fleet_id,
             .service = body.service,
             .status = STATUS_PENDING,
-            .requested_at = now_ms_reopen,
+            .created_at = now_ms_reopen,
             .message = "Grant re-requested. Awaiting workspace owner approval.",
         });
         return;
@@ -271,8 +271,8 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
 
     _ = conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, $5, $6)
+        \\  (id, fleet_id, service, status, created_at, requested_reason)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
     , .{ grant_id, fleet_id, body.service, STATUS_PENDING, now_ms, body.reason }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
@@ -293,18 +293,18 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     );
 
     hx.ok(.created, .{
-        .grant_id = grant_id,
+        .id = grant_id,
         .fleet_id = fleet_id,
         .service = body.service,
         .status = STATUS_PENDING,
-        .requested_at = now_ms,
+        .created_at = now_ms,
         .message = "Grant request submitted. Awaiting workspace owner approval via Slack, Discord, or dashboard.",
     });
 }
 
 fn fetchExistingGrant(hx: hx_mod.Hx, conn: *pg.Conn, fleet_id: []const u8, service: []const u8) ?ExistingGrant {
     var existing_q = PgQuery.from(conn.query(
-        \\SELECT z.name, COALESCE(g.grant_id, ''), COALESCE(g.status, ''), COALESCE(g.requested_at, 0)
+        \\SELECT z.name, COALESCE(g.id::text, ''), COALESCE(g.status, ''), COALESCE(g.created_at, 0)
         \\FROM core.fleets z
         \\LEFT JOIN core.integration_grants g
         \\  ON g.fleet_id = z.id
@@ -316,16 +316,16 @@ fn fetchExistingGrant(hx: hx_mod.Hx, conn: *pg.Conn, fleet_id: []const u8, servi
 
     const existing_row = (existing_q.next() catch return null) orelse return .{
         .fleet_name = fleet_id,
-        .grant_id = "",
+        .id = "",
         .status = "",
-        .requested_at = 0,
+        .created_at = 0,
     };
 
     return .{
         .fleet_name = hx.alloc.dupe(u8, existing_row.get([]u8, 0) catch fleet_id) catch fleet_id,
-        .grant_id = hx.alloc.dupe(u8, existing_row.get([]u8, 1) catch "") catch "",
+        .id = hx.alloc.dupe(u8, existing_row.get([]u8, 1) catch "") catch "",
         .status = hx.alloc.dupe(u8, existing_row.get([]u8, 2) catch "") catch "",
-        .requested_at = existing_row.get(i64, 3) catch 0,
+        .created_at = existing_row.get(i64, 3) catch 0,
     };
 }
 

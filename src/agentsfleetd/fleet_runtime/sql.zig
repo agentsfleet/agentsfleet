@@ -34,35 +34,35 @@ pub const RESOLVE_GATE =
 /// more than once over its life.
 pub const SELECT_GATE_BY_ACTION =
     \\SELECT id::text, action_id, workspace_id::text, fleet_id::text,
-    \\       status, COALESCE(updated_at, requested_at), resolved_by, detail
+    \\       status, COALESCE(updated_at, created_at), resolved_by, detail
     \\FROM core.fleet_approval_gates
     \\WHERE action_id = $1
     \\  AND ($2::text = '' OR fleet_id::text = $2)
-    \\ORDER BY requested_at DESC LIMIT 1
+    \\ORDER BY created_at DESC LIMIT 1
 ;
 
 pub const SELECT_GATE_STATUS =
     \\SELECT status FROM core.fleet_approval_gates
     \\WHERE action_id = $1
-    \\ORDER BY requested_at DESC LIMIT 1
+    \\ORDER BY created_at DESC LIMIT 1
 ;
 
 pub const INSERT_GATE =
     \\INSERT INTO core.fleet_approval_gates
     \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
     \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-    \\   resolved_by, status, detail, requested_at, created_at)
-    \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, '', $12, '', $13, $13)
+    \\   resolved_by, status, detail, created_at)
+    \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, '', $12, '', $13)
 ;
 
 /// One keyset page of pending gates for a workspace. The cursor compares the
-/// `(requested_at, id)` pair as a tuple, so a page boundary falling inside a
+/// `(created_at, id)` pair as a tuple, so a page boundary falling inside a
 /// group of same-instant rows neither repeats nor skips one.
 pub const SELECT_GATE_PAGE =
     \\SELECT g.id::text, g.fleet_id::text, COALESCE(z.name, ''),
     \\       g.workspace_id::text, g.action_id, g.tool_name, g.action_name,
     \\       g.gate_kind, g.proposed_action, g.evidence::text, g.blast_radius,
-    \\       g.status, g.detail, g.requested_at, g.timeout_at,
+    \\       g.status, g.detail, g.created_at, g.timeout_at,
     \\       g.updated_at, g.resolved_by
     \\FROM core.fleet_approval_gates g
     \\JOIN core.fleets z ON z.id = g.fleet_id
@@ -70,8 +70,8 @@ pub const SELECT_GATE_PAGE =
     \\  AND g.status = $2
     \\  AND ($3 = '' OR g.fleet_id = $3::uuid)
     \\  AND ($4 = '' OR g.gate_kind = $4)
-    \\  AND ($5 = false OR (g.requested_at, g.id::text) > ($6, $7))
-    \\ORDER BY g.requested_at ASC, g.id ASC
+    \\  AND ($5 = false OR (g.created_at, g.id::text) > ($6, $7))
+    \\ORDER BY g.created_at ASC, g.id ASC
     \\LIMIT $8
 ;
 
@@ -80,7 +80,7 @@ pub const SELECT_GATE_BY_ID =
     \\SELECT g.id::text, g.fleet_id::text, COALESCE(z.name, ''),
     \\       g.workspace_id::text, g.action_id, g.tool_name, g.action_name,
     \\       g.gate_kind, g.proposed_action, g.evidence::text, g.blast_radius,
-    \\       g.status, g.detail, g.requested_at, g.timeout_at,
+    \\       g.status, g.detail, g.created_at, g.timeout_at,
     \\       g.updated_at, g.resolved_by
     \\FROM core.fleet_approval_gates g
     \\JOIN core.fleets z ON z.id = g.fleet_id

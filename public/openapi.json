@@ -5749,7 +5749,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "grant_id": {
+                    "id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -5767,7 +5767,7 @@
                     "service": {
                       "type": "string"
                     },
-                    "requested_at": {
+                    "created_at": {
                       "type": "integer",
                       "format": "int64"
                     },
@@ -5786,7 +5786,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "grant_id": {
+                    "id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -5803,7 +5803,7 @@
                     "service": {
                       "type": "string"
                     },
-                    "requested_at": {
+                    "created_at": {
                       "type": "integer",
                       "format": "int64"
                     },
@@ -6423,7 +6423,7 @@
       "get": {
         "operationId": "list_workspace_approvals",
         "summary": "List pending approval gates for a workspace",
-        "description": "Returns approval gates oldest-first (oldest is most urgent). Each row\nsurfaces the fleet's proposed action, gathered evidence, blast-radius\nassessment, and timeout countdown. Filter by fleet, gate kind, or\nstatus. Cursor pagination over (requested_at, id) so concurrent\ninserts don't cause silent skips.\n",
+        "description": "Returns approval gates oldest-first (oldest is most urgent). Each row\nsurfaces the fleet's proposed action, gathered evidence, blast-radius\nassessment, and timeout countdown. Filter by fleet, gate kind, or\nstatus. Cursor pagination over (created_at, id) so concurrent\ninserts don't cause silent skips.\n",
         "tags": [
           "Approvals"
         ],
@@ -8532,13 +8532,13 @@
       "IntegrationGrant": {
         "type": "object",
         "required": [
-          "grant_id",
+          "id",
           "service",
           "status",
-          "requested_at"
+          "created_at"
         ],
         "properties": {
-          "grant_id": {
+          "id": {
             "type": "string",
             "format": "uuid"
           },
@@ -8560,7 +8560,7 @@
               "revoked"
             ]
           },
-          "requested_at": {
+          "created_at": {
             "type": "integer",
             "format": "int64"
           },
@@ -8673,7 +8673,7 @@
           "workspace_id",
           "action_id",
           "status",
-          "requested_at",
+          "created_at",
           "timeout_at"
         ],
         "properties": {
@@ -8732,7 +8732,7 @@
             "type": "string",
             "description": "Optional reason text supplied by the resolver."
           },
-          "requested_at": {
+          "created_at": {
             "type": "integer",
             "format": "int64",
             "description": "ms epoch"

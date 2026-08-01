@@ -617,14 +617,14 @@ test "no-content: DELETE integration-grant returns 204 with empty body" {
     , .{ fleet_for_grant, TEST_WORKSPACE_ID });
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
+        \\  (id, fleet_id, service, status, created_at, requested_reason)
         \\VALUES ($1::uuid, $1, $2::uuid, 'slack', 'pending', 0, 'm26 test')
-        \\ON CONFLICT (grant_id) DO NOTHING
+        \\ON CONFLICT (id) DO NOTHING
     , .{ grant_id, fleet_for_grant });
     srv.pool.release(conn);
     defer {
         if (srv.pool.acquire()) |c| {
-            _ = c.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{grant_id}) catch {};
+            _ = c.exec("DELETE FROM core.integration_grants WHERE id = $1::uuid", .{grant_id}) catch {};
             _ = c.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fleet_for_grant}) catch {};
             srv.pool.release(c);
         } else |_| {}

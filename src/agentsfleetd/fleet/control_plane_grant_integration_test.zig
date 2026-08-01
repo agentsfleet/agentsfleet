@@ -46,7 +46,7 @@ fn seedVaultJson(conn: *pg.Conn, name: []const u8, json: []const u8) !void {
 fn setGithubGrant(conn: *pg.Conn, fleet_id: []const u8, status: grant_lookup.GrantStatus) !void {
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
+        \\  (id, fleet_id, service, status, created_at, requested_reason)
         \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, 0, 'cp lease-gate test')
         \\ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status
     , .{ GRANT_CP_ID, fleet_id, PROVIDER_GITHUB, status.toSlice() });

@@ -85,8 +85,8 @@ fn seedFleet(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, config: []c
 fn seedGrant(conn: *pg.Conn, fleet_id: []const u8, grant_id: []const u8, now: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason, approved_at)
-        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, $5, $6, $5)
+        \\  (id, fleet_id, service, status, created_at, requested_reason, approved_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $5)
         \\ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status, approved_at = EXCLUDED.approved_at
     , .{ grant_id, fleet_id, PROVIDER, STATUS_APPROVED, now, "App ingress integration test" });
 }

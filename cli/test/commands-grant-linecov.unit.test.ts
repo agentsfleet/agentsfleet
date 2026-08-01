@@ -119,7 +119,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
   test("jsonMode prints the raw response and skips the table render", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const body = {
-      items: [{ grant_id: "g1", service: "github", status: "approved" }],
+      items: [{ id: "g1", service: "github", status: "approved" }],
     };
     const exit = await Effect.runPromiseExit(
       provideAll(grantListEffectFromArgs(undefined, FLEET_ID), {
@@ -214,7 +214,7 @@ describe("grantDeleteEffectFromArgs JSON mode", () => {
       }),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(cap.json).toEqual([{ deleted: true, grant_id: FLEET_ID }]);
+    expect(cap.json).toEqual([{ deleted: true, id: FLEET_ID }]);
     expect(cap.info).toEqual([]);
   });
 });

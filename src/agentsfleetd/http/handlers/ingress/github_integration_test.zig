@@ -135,7 +135,7 @@ fn seedFanoutFleet(conn: anytype, index: usize) !void {
         .{ fleet_id, fixtures.WORKSPACE_ID, name, CONFIG_PULL, now },
     );
     _ = try conn.exec(
-        "INSERT INTO core.integration_grants (uid, grant_id, fleet_id, service, status, requested_at, requested_reason, approved_at) VALUES ($1::uuid, $1, $2::uuid, 'github', 'approved', $3, 'fanout boundary test', $3)",
+        "INSERT INTO core.integration_grants (id, fleet_id, service, status, created_at, requested_reason, approved_at) VALUES ($1::uuid, $2::uuid, 'github', 'approved', $3, 'fanout boundary test', $3)",
         .{ grant_id, fleet_id, now },
     );
 }

@@ -136,12 +136,12 @@ components:
     IntegrationGrant:
       type: object
       required:
-      - grant_id
+      - id
       - service
       - status
-      - requested_at
+      - created_at
       properties:
-        grant_id:
+        id:
           type: string
           format: uuid
         service:
@@ -158,7 +158,7 @@ components:
           - pending
           - approved
           - revoked
-        requested_at:
+        created_at:
           type: integer
           format: int64
         approved_at:

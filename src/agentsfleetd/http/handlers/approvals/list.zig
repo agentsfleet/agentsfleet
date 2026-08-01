@@ -2,7 +2,7 @@
 //!
 //! Returns pending gates oldest-first (oldest is most urgent). Optional
 //! filters: fleet_id, gate_kind, status. Cursor pagination over
-//! (requested_at, id) so concurrent inserts don't cause silent skips.
+//! (created_at, id) so concurrent inserts don't cause silent skips.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -89,7 +89,7 @@ const ListItemJson = struct {
     blast_radius: []const u8,
     status: []const u8,
     detail: []const u8,
-    requested_at: i64,
+    created_at: i64,
     timeout_at: i64,
     updated_at: ?i64,
     resolved_by: []const u8,
@@ -121,7 +121,7 @@ fn writeResponse(hx: hx_mod.Hx, rows: []approval_gate_db.PendingRow, limit: u32)
             .blast_radius = row.blast_radius,
             .status = row.status,
             .detail = row.detail,
-            .requested_at = row.requested_at,
+            .created_at = row.created_at,
             .timeout_at = row.timeout_at,
             .updated_at = row.updated_at,
             .resolved_by = row.resolved_by,
@@ -132,7 +132,7 @@ fn writeResponse(hx: hx_mod.Hx, rows: []approval_gate_db.PendingRow, limit: u32)
     const next_cursor: ?[]u8 = if (rows.len == limit and rows.len > 0) blk: {
         const last = rows[rows.len - 1];
         break :blk try keyset_cursor.format(hx.alloc, .{
-            .created_at_ms = last.requested_at,
+            .created_at_ms = last.created_at,
             .id = last.gate_id,
         });
     } else null;
