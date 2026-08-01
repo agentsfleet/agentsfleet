@@ -21,6 +21,7 @@ const REPO_ROOT = path.join(__dirname, "../../../..");
 const WORKFLOWS_DIR = path.join(REPO_ROOT, ".github/workflows");
 const DEPLOY_DEV_WORKFLOW = path.join(WORKFLOWS_DIR, "deploy-dev.yml");
 const POST_RELEASE_WORKFLOW = path.join(WORKFLOWS_DIR, "post-release.yml");
+const RELEASE_WORKFLOW = path.join(WORKFLOWS_DIR, "release.yml");
 const SMOKE_POST_DEPLOY_WORKFLOW = path.join(WORKFLOWS_DIR, "smoke-post-deploy.yml");
 const PLAYWRIGHT_SETUP_ACTION = path.join(
   REPO_ROOT,
@@ -38,6 +39,10 @@ function deployDevYaml(): string {
 
 function postReleaseYaml(): string {
   return fs.readFileSync(POST_RELEASE_WORKFLOW, "utf8");
+}
+
+function releaseYaml(): string {
+  return fs.readFileSync(RELEASE_WORKFLOW, "utf8");
 }
 
 /** Every file of the dev pipeline (caller + called stages), concatenated. */
@@ -177,5 +182,50 @@ describe("post-release promotion follows exact-version acceptance", () => {
     const promotion = workflow.split("  promote-latest:")[1]?.split("\n  summary:")[0];
     expect(promotion).toBeDefined();
     expect(promotion).not.toContain("if: always()");
+  });
+});
+
+describe("deployment workflows keep mutable values out of shell source", () => {
+  it("passes repository variables through environment maps", () => {
+    const development = deployDevFamily();
+    const production = releaseYaml();
+
+    expect(development).toContain("VAULT_DEV: ${{ vars.VAULT_DEV }}");
+    expect(development).not.toContain('VAULT_DEV="${{ vars.VAULT_DEV }}"');
+    for (const variable of ["FLY_APP_PROD", "VAULT_PROD"]) {
+      expect(production).toContain(`${variable}: \${{ vars.${variable} }}`);
+      expect(production).not.toContain(`${variable}="\${{ vars.${variable} }}"`);
+    }
+    expect(production).toContain("WORKER_ITEM: ${{ steps.canary.outputs.vault_key }}");
+    expect(production).not.toContain('WORKER_ITEM="${{ steps.canary.outputs.vault_key }}"');
+  });
+});
+
+describe("production runner rollout is canary-first and fail-closed", () => {
+  it("validates the fleet inventory before selecting any host", () => {
+    const workflow = releaseYaml();
+    expect(workflow).toContain('select(type == "array" and length > 0)');
+    expect(workflow).toContain('test("^[A-Za-z0-9][A-Za-z0-9._-]*$")');
+    expect(workflow).toContain("| .[0].vault_key");
+    expect(workflow).toContain("all(.[].vault_key;");
+    expect(workflow).toContain("jq -r '.[1:][] | .vault_key'");
+  });
+
+  it("deploys and verifies the canary before the approved fleet rollout", () => {
+    const workflow = releaseYaml();
+    const canary = workflow
+      .split("  deploy-worker-canary-prod:")[1]
+      ?.split("\n  deploy-worker-fleet-prod:")[0];
+    const fleet = workflow.split("  deploy-worker-fleet-prod:")[1];
+
+    expect(canary).toBeDefined();
+    expect(canary).toContain("./playbooks/lib/runner/deploy.sh");
+    expect(canary).toContain("./playbooks/lib/runner/verify.sh");
+    expect(fleet).toBeDefined();
+    expect(fleet).toContain("needs: deploy-worker-canary-prod");
+    expect(fleet).toContain("environment: production-fleet");
+    expect(fleet).toContain('for worker in "${workers[@]}"; do');
+    expect(fleet).toContain("./playbooks/lib/runner/deploy.sh");
+    expect(fleet).toContain("./playbooks/lib/runner/verify.sh");
   });
 });

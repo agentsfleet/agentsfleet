@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../lib/common.sh"
 
 env_mode="${ENV:-all}"
-api_base="${PLANETSCALE_API_BASE:-https://api.planetscale.com/v1}"
+api_base="https://api.planetscale.com/v1"
 tmp_dir="$(mktemp -d)"
 auth_file="$tmp_dir/authorization"
 payload_file="$tmp_dir/payload.json"

@@ -20,6 +20,7 @@ bad() { printf 'FAIL %s\n       %s\n' "$1" "$2" >&2; failed=$((failed + 1)); }
 
 cat >"$stub_dir/op" <<'STUB'
 #!/usr/bin/env bash
+printf 'op %s\n' "$*" >>"$CALLS"
 case "${1:-}" in
   whoami) printf 'stub-user\n' ;;
   read)
@@ -55,7 +56,7 @@ for argument in "$@"; do
 done
 
 case "$url" in
-  *api.planetscale.test*)
+  *api.planetscale.com/v1*)
     case "$method/${PLANETSCALE_LIST_MODE:-empty}" in
       GET/empty) printf '{"data":[]}\n' ;;
       GET/drift)
@@ -70,7 +71,7 @@ case "$url" in
       *) exit 1 ;;
     esac
     ;;
-  *api.upstash.test*)
+  *api.upstash.com/v2*)
     printf '{"database_id":"redis-dev-id","securityAddons":{"ipWhitelisting":%s}}\n' \
       "${UPSTASH_ENABLED:-true}"
     ;;
@@ -89,8 +90,6 @@ run_script() {
     ALLOW_VAULT_READS=1 \
     ALLOW_PROVIDER_WRITES=1 \
     PLAYBOOKS_NOW=2026-07-31T12:00:00Z \
-    PLANETSCALE_API_BASE=https://api.planetscale.test/v1 \
-    UPSTASH_API_BASE=https://api.upstash.test/v2 \
     "$@" 2>&1
 }
 
@@ -177,12 +176,40 @@ test_should_reject_stale_egress_inventory() {
   fi
 }
 
+test_should_ignore_ambient_provider_endpoint_overrides() {
+  local name="test_should_ignore_ambient_provider_endpoint_overrides"
+  local output status=0
+  output="$(run_script \
+    PLANETSCALE_LIST_MODE=empty \
+    PLANETSCALE_API_BASE=https://attacker.example \
+    bash "$APPLY")" || status=$?
+  if [ "$status" -ne 0 ] || rg --quiet attacker.example "$calls" ||
+    ! rg --quiet api.planetscale.com "$calls"; then
+    bad "$name" "apply used the ambient endpoint: $output"
+    return
+  fi
+  status=0
+  output="$(run_script \
+    PLANETSCALE_LIST_MODE=verify \
+    PLANETSCALE_API_BASE=https://attacker.example \
+    UPSTASH_API_BASE=https://attacker.example \
+    bash "$VERIFY")" || status=$?
+  if [ "$status" -ne 0 ] || rg --quiet attacker.example "$calls" ||
+    ! rg --quiet api.planetscale.com "$calls" ||
+    ! rg --quiet api.upstash.com "$calls"; then
+    bad "$name" "verify used the ambient endpoint: $output"
+  else
+    ok "$name"
+  fi
+}
+
 test_should_create_missing_planetscale_entry
 test_should_update_drifted_planetscale_entry
 test_should_require_provider_write_approval
 test_should_verify_both_providers
 test_should_reject_disabled_upstash_allowlisting
 test_should_reject_stale_egress_inventory
+test_should_ignore_ambient_provider_endpoint_overrides
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

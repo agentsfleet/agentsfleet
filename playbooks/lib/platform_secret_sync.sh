@@ -22,11 +22,11 @@ secret_name="${1:-}"
 case "$env_name" in
   dev)
     vault="${VAULT:-ZMB_CD_DEV}"
-    api_base="${API_BASE:-https://api-dev.agentsfleet.net}"
+    api_base="https://api-dev.agentsfleet.net"
     ;;
   prod)
     vault="${VAULT:-ZMB_CD_PROD}"
-    api_base="${API_BASE:-https://api.agentsfleet.net}"
+    api_base="https://api.agentsfleet.net"
     ;;
   *)
     echo "ERROR: ENV must be dev or prod" >&2

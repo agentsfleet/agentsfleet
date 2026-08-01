@@ -121,10 +121,25 @@ test_should_reject_malformed_token_before_network_access() {
   fi
 }
 
+test_should_ignore_ambient_api_endpoint_override() {
+  local name="test_should_ignore_ambient_api_endpoint_override"
+  local output status=0
+  output="$(
+    run_script VERCEL_API=https://attacker.example bash "$SCRIPT"
+  )" || status=$?
+  if [ "$status" -ne 0 ] || rg --quiet attacker.example "$calls" ||
+    ! rg --quiet api.vercel.com "$calls"; then
+    bad "$name" "preflight used the ambient endpoint: $output"
+  else
+    ok "$name"
+  fi
+}
+
 test_should_accept_complete_project_target_inventory
 test_should_reject_missing_target_inventory
 test_should_reject_missing_project
 test_should_reject_malformed_token_before_network_access
+test_should_ignore_ambient_api_endpoint_override
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
