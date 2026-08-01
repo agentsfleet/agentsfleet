@@ -166,4 +166,31 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
 
     expect([...refusals].sort()).toEqual([...RUNNER_REFUSAL_DETAILS].sort());
   });
+
+  // The internal-identifier rule keys on whitespace: operator-facing cause lines
+  // are prose, a bare token is a leaked error name. That holds for every cause
+  // the runner declares today — but nothing stopped a future one-word cause from
+  // being added, at which point it would be silently suppressed AND misread as a
+  // runner refusal. Derived from the runner source so the guard cannot drift.
+  it("every runner cause line is prose, so the internal-identifier rule cannot misfire", () => {
+    const runnerRoot = resolve(process.cwd(), "../../../src/runner");
+    const all = readdirSync(runnerRoot, { recursive: true, encoding: "utf8" })
+      .filter((name) => name.endsWith(".zig"))
+      .map((name) => readFileSync(join(runnerRoot, name), "utf8"))
+      .join("\n");
+
+    const offenders: string[] = [];
+    for (const match of all.matchAll(/const (DETAIL_\w+) = "([^"]*)"/g)) {
+      const name = match[1];
+      const text = match[2];
+      if (name === undefined || text === undefined) continue;
+      if (!/\s/.test(text)) offenders.push(`${name} = "${text}"`);
+    }
+
+    expect(
+      offenders,
+      "a single-word cause line would be treated as an internal identifier: " +
+        "hidden from the user and reported as a runner refusal. Reword it as prose.",
+    ).toEqual([]);
+  });
 });
