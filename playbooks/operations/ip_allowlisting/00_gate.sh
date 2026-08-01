@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ACTION="${ACTION:-check}"
 
-export ENV="${ENV:-all}"
-export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
-export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
+"$SCRIPT_DIR/01_egress_inventory.sh"
+"$SCRIPT_DIR/02_provider_targets.sh"
 
-for script in "$SCRIPT_DIR"/0[1-9]_*.sh "$SCRIPT_DIR"/[1-9][0-9]_*.sh; do
-  [ -f "$script" ] || continue; [ -x "$script" ] || { echo "Not executable: $script" >&2; exit 1; }
-  "$script"
-done
+case "$ACTION" in
+  check) ;;
+  apply)
+    "$SCRIPT_DIR/03_planetscale_apply.sh"
+    "$SCRIPT_DIR/04_verify.sh"
+    ;;
+  verify)
+    "$SCRIPT_DIR/04_verify.sh"
+    ;;
+  *)
+    echo "ERROR: ACTION must be check, apply, or verify" >&2
+    exit 2
+    ;;
+esac
 
-echo "✅ 010_data_plane_ip_allowlisting gate complete (env: $ENV)"
+echo "PASS: IP allowlisting $ACTION completed for ${ENV:-all}"

@@ -1,14 +1,11 @@
 name: deploy (dev)
 
-# Triggers on every push to main.
-# Flow: credential gate → compile binaries + push dev-latest image to GHCR
-#       → fly deploy agentsfleetd-dev (API) ∥ SSH deploy zombie-dev-worker-ant
-#       → wait /healthz green (via Cloudflare Tunnel) → QA smoke + acceptance
-#       → Discord notify with the per-gate release verdict.
+# A clean rebuild runs twice: first with DEV_WORKER_READY=false for the control
+# plane, then with it true after the runner bootstrap.
 #
-# This file is the job GRAPH only. Each stage's jobs live in a called
+# This file is the job graph only. Each stage's jobs live in a called
 # workflow (deploy-dev-*.yml) so every file stays within the repository's
-# 350-line bound and a stage can be read — and reviewed — on its own:
+# 350-line bound and a stage can be read and reviewed on its own:
 #   deploy-dev-build.yml       compile-dev + push-dev
 #   deploy-dev-fly.yml         deploy-fly-dev
 #   deploy-dev-worker.yml      deploy-worker-dev (+ result output)
@@ -36,7 +33,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── 0. Credential gate — all DEV vault items must exist ─────────────────
+  # ── 0. Credential gate — initial development inputs must exist ──────────
   check-credentials:
     runs-on: ubuntu-latest
     steps:
@@ -49,7 +46,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ENV=dev ./playbooks/founding/02_preflight/00_gate.sh
+        run: ENV=dev STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
 
   # ── 1. Compile + push dev-latest ────────────────────────────────────────
   build:
@@ -57,28 +54,28 @@ jobs:
     uses: ./.github/workflows/deploy-dev-build.yml
     secrets: inherit
 
-  # ── 2. Deploy to Fly.io DEV ─────────────────────────────────────────────
+  # ── 2. Deploy to Fly.io development environment ─────────────────────────
   fly:
     needs: build
     uses: ./.github/workflows/deploy-dev-fly.yml
     secrets: inherit
 
-  # ── 3. Deploy DEV worker to bare-metal via Tailscale SSH ────────────────
+  # ── 3. Deploy development worker via Tailscale Secure Shell (SSH) ───────
   # needs build so the bare-metal worker and Fly.io API always move together:
   # if the Docker push fails the worker binary is not updated either, keeping
-  # DEV consistent. Runs in parallel with fly + verify.
+  # the development environment consistent. Runs in parallel with fly + verify.
   worker:
     needs: build
     uses: ./.github/workflows/deploy-dev-worker.yml
     secrets: inherit
 
-  # ── 4. Wait for Fly DEV to go green ─────────────────────────────────────
+  # ── 4. Wait for the Fly development environment to go green ─────────────
   verify:
     needs: fly
     uses: ./.github/workflows/deploy-dev-verify.yml
     secrets: inherit
 
-  # ── 5. Release gates: QA smoke + acceptance suites ──────────────────────
+  # ── 5. Release gates: quality assurance (QA) smoke + acceptance suites ──
   acceptance:
     needs: verify
     uses: ./.github/workflows/deploy-dev-acceptance.yml
@@ -101,8 +98,8 @@ jobs:
           DISCORD_WEBHOOK: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       # One verdict, every gate. Green requires qa-dev, acceptance-e2e-dev,
-      # AND cli-acceptance-dev to be "success" — a skipped or canceled
-      # release-critical job is red — with deploy-worker-dev allowed its
+      # and cli-acceptance-dev to be "success". A skipped or canceled
+      # release-critical job is red, with deploy-worker-dev allowed its
       # documented DEV_WORKER_READY skip. Results arrive as called-workflow
       # outputs; an upstream failure that skipped a whole stage leaves an
       # output empty, which the verdict reads as skipped — still red.

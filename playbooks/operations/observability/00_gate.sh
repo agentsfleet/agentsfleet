@@ -1,13 +1,45 @@
 #!/usr/bin/env bash
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "$#" -ne 3 ]; then
+  echo "usage: $0 <check|apply|verify> <dev|prod> <provider>" >&2
+  exit 2
+fi
 
-export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
+action="$1"
+environment="$2"
+provider="$3"
 
-for script in "$SCRIPT_DIR"/0[1-9]_*.sh "$SCRIPT_DIR"/[1-9][0-9]_*.sh; do
-  [ -f "$script" ] || continue; [ -x "$script" ] || { echo "Not executable: $script" >&2; exit 1; }
-  "$script"
-done
+case "$action" in
+  check | apply | verify) ;;
+  *)
+    echo "ERROR: action must be check, apply, or verify" >&2
+    exit 2
+    ;;
+esac
 
-echo "✅ 009_grafana_observability gate complete"
+case "$environment" in
+  dev | prod) ;;
+  *)
+    echo "ERROR: environment must be dev or prod" >&2
+    exit 2
+    ;;
+esac
+
+case "$provider" in
+  grafana) ;;
+  *)
+    echo "ERROR: unsupported observability provider: $provider" >&2
+    exit 2
+    ;;
+esac
+
+case "$action" in
+  check) "$SCRIPT_DIR/providers/grafana/check.sh" "$environment" ;;
+  apply) "$SCRIPT_DIR/providers/grafana/apply.sh" "$environment" ;;
+  verify) "$SCRIPT_DIR/providers/grafana/verify.sh" "$environment" ;;
+esac
+
+echo "PASS: $provider observability $action completed for $environment"
