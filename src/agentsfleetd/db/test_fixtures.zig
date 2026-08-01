@@ -12,7 +12,7 @@
 ///   defer base.teardownWorkspace(db_ctx.conn, workspace_id);
 ///
 /// Teardown order matters — workspace must be deleted before tenant
-/// (FK: workspaces.tenant_id → tenants.tenant_id, NO ACTION).
+/// (FK: workspaces.tenant_id → tenants.id, ON DELETE CASCADE).
 /// Deleting the workspace cascades most child tables automatically; see the
 /// FK cascade map in docs/spec for the full list.
 ///
@@ -52,8 +52,8 @@ pub fn dropInjectedFaultConstraints(conn: *pg.Conn) void {
 /// Insert the canonical test tenant. Idempotent via ON CONFLICT DO NOTHING.
 pub fn seedTenant(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'scrooge-mcduck', 0, 0)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'scrooge-mcduck', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{TEST_TENANT_ID});
 }
@@ -63,19 +63,19 @@ pub fn seedTenant(conn: *pg.Conn) !void {
 pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, 0)
+        \\  (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2::uuid, 0)
         \\ON CONFLICT DO NOTHING
     , .{ workspace_id, TEST_TENANT_ID });
 }
 
-/// Delete workspace. `core.fleets` is NOT cascade-backed on `workspace_id` — a
-/// lingering fleet (and, through the fleet_id FK, its runner_leases /
-/// runner_affinity cascade children) blocks this DELETE, so call `teardownFleets`
-/// first. Other cascade-backed workspace children drop with it.
+/// Delete workspace. `core.fleets` now cascades from the workspace through its
+/// composite `(workspace_id, tenant_id)` foreign key, and the lease tables
+/// cascade from the fleet in turn, so this no longer needs `teardownFleets`
+/// first — calling it first is still harmless and keeps the order explicit.
 pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
-        "DELETE FROM core.workspaces WHERE workspace_id = $1::uuid",
+        "DELETE FROM core.workspaces WHERE id = $1::uuid",
         .{workspace_id},
     ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
@@ -91,8 +91,8 @@ pub fn teardownTenant(conn: *pg.Conn) void {
 /// Insert a tenant with a custom ID. Idempotent via ON CONFLICT DO NOTHING.
 pub fn seedTenantById(conn: *pg.Conn, tenant_id: []const u8, name: []const u8) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, $2, 0, 0)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ tenant_id, name });
 }
@@ -101,8 +101,8 @@ pub fn seedTenantById(conn: *pg.Conn, tenant_id: []const u8, name: []const u8) !
 pub fn seedWorkspaceWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, 0)
+        \\  (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2::uuid, 0)
         \\ON CONFLICT DO NOTHING
     , .{ workspace_id, tenant_id });
 }
@@ -124,16 +124,16 @@ pub fn seedWorkspaceWithCreator(
     // conflict makes the seed idempotent in the "latest seed wins" sense.
     _ = try conn.exec(
         \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, name, created_by, created_at)
+        \\  (id, tenant_id, name, created_by, created_at)
         \\VALUES ($1::uuid, $2::uuid, NULL, $3, 0)
-        \\ON CONFLICT (workspace_id) DO UPDATE SET created_by = EXCLUDED.created_by
+        \\ON CONFLICT (id) DO UPDATE SET created_by = EXCLUDED.created_by
     , .{ workspace_id, tenant_id, created_by });
 }
 
 /// Delete a tenant by custom ID.
 pub fn teardownTenantById(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec(
-        "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
+        "DELETE FROM core.tenants WHERE id = $1::uuid",
         .{tenant_id},
     ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
@@ -169,8 +169,9 @@ pub fn seedFleet(
 ) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, 'active', 0, 0)
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\SELECT $1::uuid, w.id, w.tenant_id, $3, $4, $5::jsonb, 'active', 0, 0
+        \\FROM core.workspaces w WHERE w.id = $2::uuid
         \\ON CONFLICT DO NOTHING
     , .{ fleet_id, workspace_id, name, source_markdown, config_json });
 }
@@ -188,8 +189,9 @@ pub fn seedFleetWithStatus(
 ) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, $3, '', '{}', $4, 0, 0)
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\SELECT $1::uuid, w.id, w.tenant_id, $3, '', '{}'::jsonb, $4, 0, 0
+        \\FROM core.workspaces w WHERE w.id = $2::uuid
         \\ON CONFLICT DO NOTHING
     , .{ fleet_id, workspace_id, name, status });
 }
