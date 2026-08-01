@@ -35,7 +35,10 @@ fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
 
 /// One second past the promotional window — any post-trial instant works; the
 /// clock-injected charge paths below need one that is deterministic today.
-const POST_TRIAL_NOW_MS: i64 = tenant_billing.FREE_TRIAL_END_MS + std.time.ms_per_s;
+/// A boundary these tests choose, so post-trial pricing is provable without
+/// waiting for any real date to arrive.
+const TRIAL_ENDS_AT_MS: i64 = 1_785_542_400_000;
+const POST_TRIAL_NOW_MS: i64 = TRIAL_ENDS_AT_MS + std.time.ms_per_s;
 
 // Segment 5 (aa06xx) identifies this file's workspaces; easy to grep + clean.
 const WS_PLATFORM_ZERO = "0195b4ba-8d3a-7f13-8abc-aa0600000001";
@@ -71,7 +74,7 @@ test "should charge the run fee for platform runtime with zero token counts post
     if (try trialActive(db_ctx.conn)) return error.SkipZigTest;
 
     const elapsed_ms: i64 = 10_000;
-    const charge = try billing_rates.computeStageCharge(db_ctx.conn, "anthropic", .platform, "claude-sonnet-4-6", elapsed_ms, 0, 0, 0);
+    const charge = try billing_rates.computeStageCharge(db_ctx.conn, "anthropic", .platform, "claude-sonnet-4-6", elapsed_ms, 0, 0, 0, null);
     // Replicate runFee via the pinned per-second rate (runFee is private).
     const expected_run_fee = @divTrunc(elapsed_ms * tenant_billing.RUN_NANOS_PER_SEC, 1000);
     try std.testing.expectEqual(expected_run_fee, charge);
@@ -92,7 +95,7 @@ test "should not overflow when platform token counts approach u32 max" {
     // Near-u32-max token counts plus an hour of runtime: rate math widens to
     // i64 internally, so the result must be a finite positive i64, no overflow.
     const big: u32 = std.math.maxInt(u32) - 1;
-    const charge = try billing_rates.computeStageCharge(db_ctx.conn, "anthropic", .platform, "claude-sonnet-4-6", 3_600_000, big, big, big);
+    const charge = try billing_rates.computeStageCharge(db_ctx.conn, "anthropic", .platform, "claude-sonnet-4-6", 3_600_000, big, big, big, null);
     try std.testing.expect(charge > 0);
     try std.testing.expect(charge < std.math.maxInt(i64));
 }
@@ -117,6 +120,7 @@ test "should refuse to price an uncatalogued model post-trial with error.ModelNo
         0,
         0,
         0,
+        TRIAL_ENDS_AT_MS,
         POST_TRIAL_NOW_MS,
     ));
 }
@@ -187,8 +191,9 @@ test "should report the free trial active just before the cutoff and inactive at
     defer ALLOC.free(@constCast(row.grant_source));
 
     const now_ms = clock.nowMillis();
-    const expected_active = now_ms < row.free_trial_ends_at_ms;
-    try std.testing.expectEqual(expected_active, row.free_trial_active);
-    // The cutoff is a fixed forward instant, never zero/negative.
-    try std.testing.expect(row.free_trial_ends_at_ms > 0);
+    // A freshly provisioned tenant has no boundary set, so its trial is
+    // open-ended and the projection must say active regardless of the clock.
+    try std.testing.expect(row.free_trial_ends_at_ms == null);
+    try std.testing.expect(row.free_trial_active);
+    _ = now_ms;
 }
