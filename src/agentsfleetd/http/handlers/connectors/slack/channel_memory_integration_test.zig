@@ -66,7 +66,7 @@ fn seedFleet(conn: *pg.Conn) !void {
 fn seedBinding(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO core.connector_channels
-        \\  (uid, provider, external_account_id, external_channel_id, fleet_id, kind, created_at)
+        \\  (id, provider, external_account_id, external_channel_id, fleet_id, kind, created_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5::uuid, 'resident', $6)
         \\ON CONFLICT (provider, external_account_id, external_channel_id) DO NOTHING
     , .{ BINDING_UID, spec.PROVIDER, TEAM_ID, CHANNEL_ID, FLEET_ID, common.clock.nowMillis() });
@@ -87,11 +87,11 @@ fn seedLease(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'slack:U1',
-        \\        'chat', '{"message":"hi"}', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
+        \\        'chat', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
         \\        $7, $8, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, TENANT_ID, EVENT_ID, @as(i64, FENCE), NOW_MS + 30_000 });

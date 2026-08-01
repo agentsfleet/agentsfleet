@@ -49,7 +49,7 @@ fn seedBase(conn: *pg.Conn, now_ms: i64) !void {
 }
 
 fn cleanupFleets(conn: *pg.Conn, busy: []const u8, bare: []const u8) void {
-    _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE fleet_id IN ($1, $2)", .{ busy, bare }) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE fleet_id IN ($1, $2)", .{ busy, bare }) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
     _ = conn.exec("DELETE FROM core.fleet_events WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ busy, bare }) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
     _ = conn.exec("DELETE FROM core.fleets WHERE id IN ($1::uuid, $2::uuid)", .{ busy, bare }) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
 }
@@ -66,26 +66,24 @@ fn seedFleet(alloc: std.mem.Allocator, conn: *pg.Conn, name: []const u8, now_ms:
 
 fn addEvent(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, ts: i64) !void {
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
+    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'cron:x', 'cron', 'processed', '{}'::jsonb, $5, $5)
-    , .{ uid, fleet_id, event_id, AGG_WORKSPACE, ts });
+    , .{ row_id, fleet_id, event_id, AGG_WORKSPACE, ts });
 }
 
-fn addTelemetry(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, charge: []const u8, nanos: i64, ts: i64) !void {
+fn addLedgerCharge(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, charge: []const u8, nanos: i64, ts: i64) !void {
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
-    var id_buf: [80]u8 = undefined;
-    const id = try std.fmt.bufPrint(&id_buf, "{s}-{s}", .{ event_id, charge });
+    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
-        \\INSERT INTO core.fleet_execution_telemetry
-        \\  (uid, id, tenant_id, workspace_id, fleet_id, event_id, charge_type,
-        \\   posture, model, credit_deducted_nanos, recorded_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, 'platform', 'claude', $8, $9)
-    , .{ uid, id, TEST_TENANT_ID, AGG_WORKSPACE, fleet_id, event_id, charge, nanos, ts });
+        \\INSERT INTO billing.usage_ledger
+        \\  (id, tenant_id, workspace_id, fleet_id, event_id, charge_type,
+        \\   posture, model, credit_deducted_nanos, event_created_at, created_at, last_charged_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, 'platform', 'claude', $7, $8, $8, $8)
+    , .{ row_id, TEST_TENANT_ID, AGG_WORKSPACE, fleet_id, event_id, charge, nanos, ts });
 }
 
 fn findFleet(items: std.json.Array, id: []const u8) ?std.json.ObjectMap {
@@ -123,19 +121,19 @@ test "integration: list counters match children; a bare fleet reads 0 not null; 
     try addEvent(conn, busy, "agg-e1", now_ms);
     try addEvent(conn, busy, "agg-e2", now_ms + 1);
     try addEvent(conn, busy, "agg-e3", now_ms + 2);
-    try addTelemetry(conn, busy, "agg-e1", "receive", 500, now_ms);
+    try addLedgerCharge(conn, busy, "agg-e1", "receive", 500, now_ms);
     // pin test: literal is the contract — 500 + 1000 + 250 renewal = 1750.
-    try addTelemetry(conn, busy, "agg-e1", "stage", 1000, now_ms);
-    try addTelemetry(conn, "not-a-uuid", "agg-invalid-fleet", "receive", 9999, now_ms);
+    try addLedgerCharge(conn, busy, "agg-e1", "stage", 1000, now_ms);
+    try addLedgerCharge(conn, "not-a-uuid", "agg-invalid-fleet", "receive", 9999, now_ms);
     defer _ = conn.exec(
-        "DELETE FROM core.fleet_execution_telemetry WHERE event_id = 'agg-invalid-fleet'",
+        "DELETE FROM billing.usage_ledger WHERE event_id = 'agg-invalid-fleet'",
         .{},
     ) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
     // Renewal accumulation: the stage row's credit grows post-execution (the
     // production upsert does `credit = credit + EXCLUDED`). The budget trigger
     // must add the +250 delta, not miss it — so the total becomes 1750, not 1500.
     _ = try conn.exec(
-        \\UPDATE core.fleet_execution_telemetry SET credit_deducted_nanos = credit_deducted_nanos + 250
+        \\UPDATE billing.usage_ledger SET credit_deducted_nanos = credit_deducted_nanos + 250
         \\WHERE fleet_id = $1 AND event_id = 'agg-e1' AND charge_type = 'stage'
     , .{busy});
     try expectCounter(conn, busy, 3, 1750);

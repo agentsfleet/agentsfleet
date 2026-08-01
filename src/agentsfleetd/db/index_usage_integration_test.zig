@@ -37,7 +37,7 @@ const MEM_SEED_ROWS: u32 = 200;
 const PROBE_FLEET_ROWS: i32 = 20;
 
 const FLEET_MEM = "0195b4ba-8d3a-7f13-8abc-0000000b0002";
-const MEM_ID_PREFIX = "idxprobe-mem-";
+const MEM_KEY_PREFIX = "idxprobe-mem-";
 
 /// The operator lease read's fixture (slot 041). Same doctrine as the memory
 /// probe: fitness is asked with scans disabled, so a couple hundred rows is
@@ -139,20 +139,20 @@ fn expectPlanOmits(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8, ar
 fn seedMemory(conn: *pg.Conn, rows: u32) !void {
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
+        \\  (id, key, content, category, fleet_id, created_at, updated_at)
         \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
-        \\       $1 || g, 'k' || g, 'content', 'core',
+        \\       $1 || g, 'content', 'core',
         \\       CASE WHEN g <= $3::int THEN $2::uuid
         \\            ELSE md5((g % 200)::text)::uuid END,
         \\       1750000000000 + g, 1750000000000 + g
         \\FROM generate_series(1, $4::int) g
         \\ON CONFLICT DO NOTHING
-    , .{ MEM_ID_PREFIX, FLEET_MEM, @as(i32, PROBE_FLEET_ROWS), @as(i32, @intCast(rows)) });
+    , .{ MEM_KEY_PREFIX, FLEET_MEM, @as(i32, PROBE_FLEET_ROWS), @as(i32, @intCast(rows)) });
     _ = try conn.exec("ANALYZE memory.memory_entries", .{});
 }
 
 fn wipeMemory(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM memory.memory_entries WHERE id LIKE $1", .{MEM_ID_PREFIX ++ "%"}) catch |err|
+    _ = conn.exec("DELETE FROM memory.memory_entries WHERE key LIKE $1", .{MEM_KEY_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory wipe ignored: {s}", .{@errorName(err)});
 }
 
@@ -174,13 +174,13 @@ fn seedLeases(conn: *pg.Conn, rows: i32) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   event_type, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, fencing_token, lease_expires_at, status,
+        \\   last_metered_at, fencing_token, lease_expires_at, status,
         \\   created_at, updated_at)
         \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
         \\       $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5 || g,
-        \\       'system', 'chat', '{}', g, 'metered', 'anthropic', 'claude',
+        \\       'system', 'chat', g, 'metered', 'anthropic', 'claude',
         \\       0, 0, 0, 0, g, g, 'reported', g, g
         \\FROM generate_series(1, $6::int) g
         \\ON CONFLICT DO NOTHING
@@ -510,7 +510,7 @@ test "lifetime counter table keys one bigint tally row per runner" {
     const row = (try q.next()) orelse return error.CounterTableMissing;
     const got = (try row.get(?[]const u8, 0)) orelse return error.CounterTableMissing;
     try std.testing.expectEqualStrings(
-        "uid uuid, runner_id uuid, acquired bigint, succeeded bigint, " ++
+        "row_id uuid, runner_id uuid, acquired bigint, succeeded bigint, " ++
             "failed bigint, expired bigint, created_at bigint, updated_at bigint",
         got,
     );

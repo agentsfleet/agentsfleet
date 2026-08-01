@@ -276,7 +276,7 @@ test "integration: GET /v1/api-keys returns only the calling tenant's rows" {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
         _ = try conn.exec(
-            \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
+            \\INSERT INTO core.api_keys (id, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
             \\VALUES ($1::uuid, $2::uuid, 'other-tenant-key', '', 'deadbeef' , 'user_other', TRUE, $3, $3)
         , .{ FOREIGN_KEY_ID, OTHER_TENANT_ID, clock.nowMillis() });
     }

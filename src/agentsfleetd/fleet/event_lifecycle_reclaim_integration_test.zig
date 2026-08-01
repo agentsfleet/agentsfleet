@@ -117,7 +117,7 @@ test "approval deadline expiry writes the terminal row: gate_blocked + approval_
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_GATED_EXP, "lifecycle-gatex", base.CONFIG_GATED_FAST, "8");
+    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_GATED_EXP, "lifecycle-gatex", base.CONFIG_GATED_FAST);
 
     const event_id = try base.publishEvent(h, base.AGENTSFLEET_GATED_EXP);
     defer h.queue.alloc.free(event_id);
@@ -141,11 +141,11 @@ test "markBlocked is guarded: terminal rows never reopen, second transition affe
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_ROW, "lifecycle-row", base.CONFIG_PLAIN, "6");
+    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_ROW, "lifecycle-row", base.CONFIG_PLAIN);
     const EVENT_ID = "1700000000000-7";
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
         \\VALUES ('0195c9da-1e2a-7f13-8abc-2b3e1e0d7e01'::uuid, $1::uuid, $2, $3::uuid,
         \\        'steer:test', 'chat', $4, '{}'::jsonb, 0, 0)
@@ -167,7 +167,7 @@ test "terminal entry re-delivered from the PEL is re-acked, never re-executed" {
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_REACK, "lifecycle-reack", base.CONFIG_PLAIN, "7");
+    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_REACK, "lifecycle-reack", base.CONFIG_PLAIN);
 
     const event_id = try base.publishEvent(h, base.AGENTSFLEET_REACK);
     defer h.queue.alloc.free(event_id);
@@ -202,7 +202,7 @@ test "consumer identity is stable: repeated no-lease probes reuse one consumer i
     // through XREADGROUP, and no lease is ever issued. 25 real probes against
     // one group is the case the retired per-probe `worker-{host}-{ts}` minting
     // would fail — it left 25 consumers where the stable identity leaves one.
-    try base.seedFleetWithConfig(conn, base.FLEET_IDLE, "lifecycle-idle", base.CONFIG_GATED_ALL, "4");
+    try base.seedFleetWithConfig(conn, base.FLEET_IDLE, "lifecycle-idle", base.CONFIG_GATED_ALL);
     const event_id = try base.publishEvent(h, base.FLEET_IDLE);
     defer h.queue.alloc.free(event_id);
 
@@ -220,7 +220,7 @@ test "reclaim sweep recovers a stranded delivery from a dead consumer and re-lea
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_STRAND, "lifecycle-strand", base.CONFIG_PLAIN, "5");
+    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_STRAND, "lifecycle-strand", base.CONFIG_PLAIN);
 
     const event_id = try base.publishEvent(h, base.AGENTSFLEET_STRAND);
     defer h.queue.alloc.free(event_id);
@@ -243,7 +243,7 @@ test "reclaim sweep never touches an entry inside the lease window" {
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_STRAND, "lifecycle-strand", base.CONFIG_PLAIN, "5");
+    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_STRAND, "lifecycle-strand", base.CONFIG_PLAIN);
 
     const event_id = try base.publishEvent(h, base.AGENTSFLEET_STRAND);
     defer h.queue.alloc.free(event_id);
@@ -264,7 +264,7 @@ test "a reclaim-stage failure releases the won slot instead of stalling the flee
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_RECLAIM_FAIL, "lifecycle-reclaim-fail", base.CONFIG_PLAIN, "9");
+    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_RECLAIM_FAIL, "lifecycle-reclaim-fail", base.CONFIG_PLAIN);
 
     // A real prior holder, issued through the production lease path.
     const event_id = try base.publishEvent(h, base.AGENTSFLEET_RECLAIM_FAIL);
@@ -304,7 +304,7 @@ test "a fresh-acquisition envelope allocation failure releases the won slot" {
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_FRESH_FAIL, "lifecycle-fresh-fail", base.CONFIG_PLAIN, "a");
+    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_FRESH_FAIL, "lifecycle-fresh-fail", base.CONFIG_PLAIN);
 
     const event_id = try base.publishEvent(h, base.AGENTSFLEET_FRESH_FAIL);
     defer h.queue.alloc.free(event_id);
@@ -348,7 +348,7 @@ test "a failed release degrades to TTL expiry and never masks the original recla
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_RELEASE_FAIL, "lifecycle-release-fail", base.CONFIG_PLAIN, "b");
+    try base.seedFleetWithConfig(conn, base.AGENTSFLEET_RELEASE_FAIL, "lifecycle-release-fail", base.CONFIG_PLAIN);
 
     const event_id = try base.publishEvent(h, base.AGENTSFLEET_RELEASE_FAIL);
     defer h.queue.alloc.free(event_id);

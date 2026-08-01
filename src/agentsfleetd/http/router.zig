@@ -111,8 +111,8 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Admin platform key by provider ────────────────────────────────────
     if (matchers.matchAdminPlatformKey(p)) |provider| return .{ .delete_admin_platform_key = provider };
 
-    // ── Admin model-library catalogue row by uid ─────────────────────────────
-    if (matchers.matchAdminModel(p)) |uid| return .{ .admin_model_by_id = uid };
+    // ── Admin model-library catalogue row by id ─────────────────────────────
+    if (matchers.matchAdminModel(p)) |id| return .{ .admin_model_by_id = id };
     if (matchers.matchAdminFleetLibrary(p)) |id| return .{ .admin_fleet_library_by_id = id };
 
     // ── Tenant API key by id ──────────────────────────────────────────────

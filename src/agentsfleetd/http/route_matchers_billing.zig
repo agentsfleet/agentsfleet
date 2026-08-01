@@ -19,8 +19,8 @@ pub fn matchAdminPlatformKey(p: Path) ?[]const u8 {
     return p.param(2);
 }
 
-// ── /admin/models/{uid} ────────────────────────────────────────────────────
-// uid (uuidv7) keys the row — model_id can contain '/', so it cannot be a path
+// ── /admin/models/{id} ────────────────────────────────────────────────────
+// id (uuidv7) keys the row — model_id can contain '/', so it cannot be a path
 // segment. The bare /admin/models collection is exact-matched in router.match().
 
 pub fn matchAdminModel(p: Path) ?[]const u8 {

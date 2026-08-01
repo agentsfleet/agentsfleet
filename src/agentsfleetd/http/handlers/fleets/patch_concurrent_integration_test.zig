@@ -315,14 +315,14 @@ const Worker = struct {
             slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = clock.nowMillis() - t0 };
             return;
         };
-        const uid: []const u8 = &uid_value;
+        const row_id: []const u8 = &uid_value;
         _ = conn.exec(
             \\INSERT INTO core.fleet_events
-            \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
+            \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
             \\   request_json, created_at, updated_at)
             \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'steer:test', 'message', 'received',
             \\        '{}'::jsonb, $5, $5)
-        , .{ uid, zid, event_id, TEST_WORKSPACE_ID, now }) catch |err| {
+        , .{ row_id, zid, event_id, TEST_WORKSPACE_ID, now }) catch |err| {
             slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = clock.nowMillis() - t0 };
             return;
         };

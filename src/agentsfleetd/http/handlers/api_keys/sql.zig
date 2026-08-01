@@ -120,12 +120,12 @@ pub const SELECT_FLEET_IN_WORKSPACE =
 
 pub const INSERT_FLEET_KEY =
     \\INSERT INTO core.fleet_keys
-    \\  (id, fleet_key_id, workspace_id, fleet_id, name, description, key_hash, created_at)
-    \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, $4, $5, $6, $7)
+    \\  (id, workspace_id, fleet_id, name, description, key_hash, created_at)
+    \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)
 ;
 
 pub const SELECT_FLEET_KEYS_FOR_WORKSPACE =
-    \\SELECT fleet_key_id, fleet_id::text, name, description, created_at, last_used_at
+    \\SELECT id::text, fleet_id::text, name, description, created_at, last_used_at
     \\FROM core.fleet_keys
     \\WHERE workspace_id = $1::uuid
     \\ORDER BY created_at DESC
@@ -135,6 +135,6 @@ pub const SELECT_FLEET_KEYS_FOR_WORKSPACE =
 /// answer 404 rather than a false success.
 pub const DELETE_FLEET_KEY =
     \\DELETE FROM core.fleet_keys
-    \\WHERE fleet_key_id = $1 AND workspace_id = $2::uuid
-    \\RETURNING fleet_key_id
+    \\WHERE id = $1::uuid AND workspace_id = $2::uuid
+    \\RETURNING id::text
 ;

@@ -34,7 +34,6 @@ const FLEET_CASCADE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc04";
 // A second workspace (its own fleet) for the lease-list ownership filter.
 const WS_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc05";
 const FLEET_C = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc06";
-const AFFINITY_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc07";
 
 const R_LEASES = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc10";
 const R_COUNTS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc11";
@@ -110,18 +109,18 @@ fn seedLease(conn: anytype, seed: LeaseSeed) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   event_type, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, fencing_token, lease_expires_at, status,
+        \\   last_metered_at, fencing_token, lease_expires_at, status,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'system',
-        \\        'chat', $7, 0, 'metered', 'anthropic', 'claude', 18204, 4096, 2881,
-        \\        0, $8, $9, $10, $11, $11)
+        \\        'chat', 0, 'metered', 'anthropic', 'claude', 18204, 4096, 2881,
+        \\        0, $7, $8, $9, $10, $10)
         \\ON CONFLICT (id) DO NOTHING
     , .{
-        seed.lease_id,         seed.runner_id, seed.fleet_id,          seed.workspace_id,
-        base.TEST_TENANT_ID,   seed.event_id,  SEEDED_REQUEST_PAYLOAD, seed.fencing_token,
-        seed.lease_expires_at, seed.status,    seed.created_at,
+        seed.lease_id,       seed.runner_id,  seed.fleet_id,      seed.workspace_id,
+        base.TEST_TENANT_ID, seed.event_id,   seed.fencing_token, seed.lease_expires_at,
+        seed.status,         seed.created_at,
     });
 }
 
@@ -140,12 +139,12 @@ const SETTLED_EVENT_PREFIX = "evt-life-";
 fn seedAffinityFleetA(conn: anytype) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, 0, 0, 0, $4, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, 1, $3, 0, 0, 0, $3, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = 1
-    , .{ AFFINITY_A, FLEET_A, R_COUNTS, nowMs() });
+    , .{ FLEET_A, R_COUNTS, nowMs() });
 }
 
 const WriteLease = struct {
@@ -210,7 +209,7 @@ const EventSeed = struct {
 fn seedFleetEvent(conn: anytype, seed: EventSeed) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, wall_ms, failure_label, failure_detail, created_at, updated_at)
         \\VALUES (overlay(md5($1 || $2)::uuid::text placing '7' from 15 for 1)::uuid,
         \\        $1::uuid, $2, $3::uuid, 'system', 'chat', $4, '{}'::jsonb, $5, $6, $7, 0, 0)
@@ -229,7 +228,7 @@ fn cleanup(conn: anytype) void {
     // Settles through the real write path leave audit rows keyed by event id.
     _ = conn.exec("DELETE FROM fleet.metering_periods WHERE event_id LIKE $1", .{SETTLED_EVENT_PREFIX ++ "%"}) catch |err|
         std.log.warn("metering cleanup ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE event_id LIKE $1", .{SETTLED_EVENT_PREFIX ++ "%"}) catch |err|
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE event_id LIKE $1", .{SETTLED_EVENT_PREFIX ++ "%"}) catch |err|
         std.log.warn("telemetry cleanup ignored: {s}", .{@errorName(err)});
     const runner_ids = [_][]const u8{ R_LEASES, R_COUNTS, R_STALE, R_EMPTY, R_SAME_MS, R_OUTCOME, R_CASCADE, R_FILTER, R_CURSOR };
     for (runner_ids) |rid| {

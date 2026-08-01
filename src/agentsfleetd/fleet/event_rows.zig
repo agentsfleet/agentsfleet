@@ -79,7 +79,7 @@ pub fn insertReceivedRow(
     defer pool.release(conn);
     const now_ms = clock.nowMillis();
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
+    const row_id: []const u8 = &uid_value;
 
     // Continuation events carry parent event_id in request_json's
     // `original_event_id` (§7); lift onto resumes_event_id for index walks.
@@ -94,7 +94,7 @@ pub fn insertReceivedRow(
     };
 
     const affected = try conn.exec(sql.INSERT_FLEET_EVENT, .{
-        uid,
+        row_id,
         session.fleet_id,
         event.event_id,
         session.workspace_id,
@@ -205,13 +205,11 @@ pub fn markTerminal(
 
 /// UPSERT the session resume cursor. Reads only `fleet_id` + the pre-built
 /// `context_json` ({last_event_id, last_response}).
-pub fn checkpointFleetSession(alloc: Allocator, pool: *pg.Pool, fleet_id: []const u8, context_json: []const u8) !void {
-    const row_id = try id_format.generateFleetId(alloc);
-    defer alloc.free(row_id);
+pub fn checkpointFleetSession(pool: *pg.Pool, fleet_id: []const u8, context_json: []const u8) !void {
     const now_ms = clock.nowMillis();
     const conn = try pool.acquire();
     defer pool.release(conn);
-    _ = try conn.exec(sql.UPSERT_FLEET_SESSION, .{ row_id, fleet_id, context_json, now_ms });
+    _ = try conn.exec(sql.UPSERT_FLEET_SESSION, .{ fleet_id, context_json, now_ms });
 }
 
 /// Truncate to `max_len` bytes on a UTF-8 boundary — no split code points, so

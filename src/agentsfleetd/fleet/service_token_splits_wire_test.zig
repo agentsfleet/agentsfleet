@@ -37,7 +37,6 @@ const ALLOC = std.testing.allocator;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9a01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9c01";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9f01";
 const MODEL_LIBRARY_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const EVENT_ID = "evt-wire-splits-1";
@@ -93,16 +92,16 @@ fn seedRunner(conn: *pg.Conn) !void {
 // Affinity holds the authoritative metering cursor the renewal CTE diffs against.
 fn seedAffinity(conn: *pg.Conn, m_in: i64, m_cached: i64, m_out: i64, last_metered: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_affinity (id, fleet_id, last_runner_id, fencing_seq,
+        \\INSERT INTO fleet.runner_affinity (fleet_id, last_runner_id, fencing_seq,
         \\   leased_until, metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, $5, $6, $7, $8, 0, 0)
+        \\   last_metered_at, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 1, $3, $4, $5, $6, $7, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = 1,
         \\   metered_input_tokens = EXCLUDED.metered_input_tokens,
         \\   metered_cached_tokens = EXCLUDED.metered_cached_tokens,
         \\   metered_output_tokens = EXCLUDED.metered_output_tokens,
-        \\   last_metered_at_ms = EXCLUDED.last_metered_at_ms
-    , .{ AFFINITY_ID, FLEET_ID, RUNNER_ID, clock.nowMillis() + 600_000, m_in, m_cached, m_out, last_metered });
+        \\   last_metered_at = EXCLUDED.last_metered_at
+    , .{ FLEET_ID, RUNNER_ID, clock.nowMillis() + 600_000, m_in, m_cached, m_out, last_metered });
 }
 
 fn seedActiveLease(conn: *pg.Conn, last_metered: i64) !void {
@@ -110,11 +109,11 @@ fn seedActiveLease(conn: *pg.Conn, last_metered: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform', $7, $8,
+        \\        'steer:test', 'chat', 0, 'platform', $7, $8,
         \\        0, 0, 0, $9, 1, $10, 'active', $11, $11)
         \\ON CONFLICT (id) DO UPDATE SET fencing_token = 1, status = 'active'
     , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, PROVIDER, MODEL, last_metered, now + 60_000, now - 60_000 });
@@ -136,14 +135,14 @@ fn seedModelRates(conn: *pg.Conn) !void {
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
         \\ON CONFLICT (provider, model_id) DO UPDATE SET
         \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
         \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
         \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-        \\   updated_at_ms = EXCLUDED.updated_at_ms
+        \\   updated_at = EXCLUDED.updated_at
     , .{ MODEL_LIBRARY_UID, MODEL, PROVIDER, MODEL_CONTEXT_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
 }
 
@@ -153,7 +152,7 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 
 fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
-    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});

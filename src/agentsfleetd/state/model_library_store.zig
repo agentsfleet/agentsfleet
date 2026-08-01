@@ -27,10 +27,10 @@ pub const Rates = struct {
     output_nanos_per_mtok: i64,
 };
 
-/// Admin-facing row: identity by uid (slash-free URL key) + provider/model_id +
+/// Admin-facing row: identity by id (slash-free URL key) + provider/model_id +
 /// rates. Strings owned by the allocator passed to listForAdmin.
 pub const AdminRow = struct {
-    uid: []const u8,
+    id: []const u8,
     provider: []const u8,
     model_id: []const u8,
     context_cap_tokens: i32,
@@ -39,7 +39,7 @@ pub const AdminRow = struct {
     output_nanos_per_mtok: i64,
 };
 
-/// Library row: model_id (as `id`) + provider + rates. No uid (never exposed
+/// Library row: model_id (as `id`) + provider + rates. No id (never exposed
 /// outside the admin plane), no updated_at_ms (returned separately as the
 /// catalogue version).
 pub const LibraryRow = struct {
@@ -61,7 +61,7 @@ pub const LibraryList = struct {
 /// Fields for a new catalogue row. provider+model_id are the immutable identity;
 /// rates carry the caps/prices.
 pub const NewRow = struct {
-    uid: []const u8,
+    id: []const u8,
     provider: []const u8,
     model_id: []const u8,
     rates: Rates,
@@ -75,11 +75,11 @@ pub fn listForAdmin(alloc: std.mem.Allocator, conn: *pg.Conn) ![]AdminRow {
     var rows: std.ArrayList(AdminRow) = .empty;
     errdefer rows.deinit(alloc);
     while (try q.next()) |row| {
-        const uid = try alloc.dupe(u8, try row.get([]const u8, 0));
+        const id = try alloc.dupe(u8, try row.get([]const u8, 0));
         const provider = try alloc.dupe(u8, try row.get([]const u8, 1));
         const model_id = try alloc.dupe(u8, try row.get([]const u8, 2));
         try rows.append(alloc, .{
-            .uid = uid,
+            .id = id,
             .provider = provider,
             .model_id = model_id,
             .context_cap_tokens = try row.get(i32, 3),
@@ -118,14 +118,14 @@ pub fn listForLibrary(alloc: std.mem.Allocator, conn: *pg.Conn) !LibraryList {
     return .{ .models = try rows.toOwnedSlice(alloc), .max_updated_ms = max_updated_ms };
 }
 
-/// A row's position in the §2 keyset: the two normalized sort keys plus the uid
-/// tiebreak. Rides the cursor opaquely and never reaches `LibraryRow` — the uid
+/// A row's position in the §2 keyset: the two normalized sort keys plus the id
+/// tiebreak. Rides the cursor opaquely and never reaches `LibraryRow` — the id
 /// is admin-plane identity, and normalization is many-to-one so the
 /// (provider, model_id) pair is not unique once folded.
 pub const PageBoundary = struct {
     display_key: []const u8,
     vendor_key: []const u8,
-    uid: []const u8,
+    id: []const u8,
 };
 
 /// Active filters. Absent means the whole catalogue. `provider` is the caller's
@@ -165,7 +165,7 @@ pub fn listLibraryPage(
     const over_fetch: i64 = @as(i64, limit) + 1;
 
     var q = if (after) |a| PgQuery.from(try conn.query(sql.LIST_LIBRARY_PAGE_AFTER, .{
-        filters.provider, a.display_key, a.vendor_key, a.uid, over_fetch,
+        filters.provider, a.display_key, a.vendor_key, a.id, over_fetch,
     })) else PgQuery.from(try conn.query(sql.LIST_LIBRARY_PAGE_FIRST, .{
         filters.provider, over_fetch,
     }));
@@ -186,7 +186,7 @@ pub fn listLibraryPage(
         if (updated > max_updated_ms) max_updated_ms = updated;
 
         boundary = .{
-            .uid = try alloc.dupe(u8, try row.get([]const u8, 7)),
+            .id = try alloc.dupe(u8, try row.get([]const u8, 7)),
             .display_key = try alloc.dupe(u8, try row.get([]const u8, 8)),
             .vendor_key = try alloc.dupe(u8, try row.get([]const u8, 9)),
         };
@@ -222,13 +222,13 @@ pub fn capFor(conn: anytype, provider: []const u8, model: []const u8) ?i32 {
     return row.get(i32, 0) catch null;
 }
 
-/// True iff the row `uid` is the (provider, model) the active platform_provider_defaults
+/// True iff the row `id` is the (provider, model) the active platform_provider_defaults
 /// row resolves to — the delete-guard that blocks removing the live default.
 /// Propagates the query error (matching this file's create/updateRates/remove
 /// siblings) so the caller fails CLOSED on a DB fault instead of collapsing a
 /// blip to `false` and letting the live default's model be deleted.
-pub fn isReferencedByActiveDefault(conn: anytype, uid: []const u8) !bool {
-    var q = PgQuery.from(try conn.query(sql.IS_REFERENCED_BY_ACTIVE_DEFAULT, .{uid}));
+pub fn isReferencedByActiveDefault(conn: anytype, id: []const u8) !bool {
+    var q = PgQuery.from(try conn.query(sql.IS_REFERENCED_BY_ACTIVE_DEFAULT, .{id}));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -237,21 +237,21 @@ pub fn isReferencedByActiveDefault(conn: anytype, uid: []const u8) !bool {
 /// affected count is 1 on create and 0 on a duplicate (caller → 409).
 pub fn create(conn: anytype, row: NewRow, now_ms: i64) !?i64 {
     return conn.exec(sql.INSERT_ROW, .{
-        row.uid,                        row.model_id,                          row.provider,                    row.rates.context_cap_tokens,
+        row.id,                         row.model_id,                          row.provider,                    row.rates.context_cap_tokens,
         row.rates.input_nanos_per_mtok, row.rates.cached_input_nanos_per_mtok, row.rates.output_nanos_per_mtok, now_ms,
     });
 }
 
-/// Update caps/rates of the row identified by uid. Affected 0 → no such uid
+/// Update caps/rates of the row identified by id. Affected 0 → no such id
 /// (caller → 404).
-pub fn updateRates(conn: anytype, uid: []const u8, rates: Rates, now_ms: i64) !?i64 {
+pub fn updateRates(conn: anytype, id: []const u8, rates: Rates, now_ms: i64) !?i64 {
     return conn.exec(sql.UPDATE_RATES, .{
-        uid,                               rates.context_cap_tokens,    rates.input_nanos_per_mtok,
+        id,                                rates.context_cap_tokens,    rates.input_nanos_per_mtok,
         rates.cached_input_nanos_per_mtok, rates.output_nanos_per_mtok, now_ms,
     });
 }
 
-/// Delete the row identified by uid. Affected 0 → no such uid (caller → 404).
-pub fn remove(conn: anytype, uid: []const u8) !?i64 {
-    return conn.exec(sql.DELETE_BY_UID, .{uid});
+/// Delete the row identified by id. Affected 0 → no such id (caller → 404).
+pub fn remove(conn: anytype, id: []const u8) !?i64 {
+    return conn.exec(sql.DELETE_BY_ID, .{id});
 }

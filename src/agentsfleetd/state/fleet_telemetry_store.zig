@@ -1,6 +1,6 @@
 //! Per-event execution telemetry store.
 //!
-//! Writes to `core.fleet_execution_telemetry`. All queries use PgQuery (RULE FLS).
+//! Writes to `billing.usage_ledger`. All queries use PgQuery (RULE FLS).
 //! Two rows per event under the credit-pool billing model:
 //! `charge_type='receive'` is INSERTed at gate-pass; `charge_type='stage'` is
 //! INSERTed before startStage and UPDATEd post-execution with token counts and

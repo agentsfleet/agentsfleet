@@ -34,9 +34,9 @@ fn expectLease(value: std.json.Value) !std.json.ObjectMap {
 }
 const STATIC_SENTINEL = "cp_static_sentinel";
 
-fn seedFleetWithConfig(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, session_id: []const u8, config: []const u8) !void {
+fn seedFleetWithConfig(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, config: []const u8) !void {
     try db_fixtures.seedFleet(conn, fleet_id, cp.WORKSPACE_ID, name, config, cp.SOURCE_MD);
-    try db_fixtures.seedFleetSession(conn, session_id, fleet_id, "{}");
+    try db_fixtures.seedFleetSession(conn, fleet_id, "{}");
 }
 
 fn seedVaultJson(conn: *pg.Conn, name: []const u8, json: []const u8) !void {
@@ -47,7 +47,7 @@ fn setGithubGrant(conn: *pg.Conn, fleet_id: []const u8, status: grant_lookup.Gra
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
         \\  (id, fleet_id, service, status, created_at, requested_reason)
-        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, 0, 'cp lease-gate test')
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, 0, 'cp lease-gate test')
         \\ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status
     , .{ GRANT_CP_ID, fleet_id, PROVIDER_GITHUB, status.toSlice() });
 }
@@ -73,8 +73,8 @@ test "integration: test_lease_gates_mintable_on_grant" {
     try db_fixtures.seedPlatformProviderWithKey(cp.ALLOC, conn, cp.WORKSPACE_ID, "fw_gate_key");
     try cp.fundLargeBalance(conn);
     try cp.seedRunner(conn, cp.RUNNER_A_ID, "runner-cp-a", cp.RUNNER_A_TOKEN);
-    try seedFleetWithConfig(conn, cp.AGENTSFLEET_1_ID, "cp-gate-ungranted", cp.SESSION_1_ID, CONFIG_GITHUB_CRED);
-    try seedFleetWithConfig(conn, cp.AGENTSFLEET_2_ID, "cp-gate-granted", cp.SESSION_2_ID, CONFIG_GITHUB_CRED);
+    try seedFleetWithConfig(conn, cp.AGENTSFLEET_1_ID, "cp-gate-ungranted", CONFIG_GITHUB_CRED);
+    try seedFleetWithConfig(conn, cp.AGENTSFLEET_2_ID, "cp-gate-granted", CONFIG_GITHUB_CRED);
     try seedVaultJson(conn, PROVIDER_GITHUB, "{\"integration\":\"github\",\"installation_id\":\"42\"}");
     try setGithubGrant(conn, cp.AGENTSFLEET_2_ID, .approved);
     try cp.publishFreshEvent(h, cp.AGENTSFLEET_1_ID);
@@ -120,7 +120,7 @@ test "integration: test_static_secrets_unaffected_by_grant_gate" {
     try db_fixtures.seedPlatformProviderWithKey(cp.ALLOC, conn, cp.WORKSPACE_ID, "fw_gate_key2");
     try cp.fundLargeBalance(conn);
     try cp.seedRunner(conn, cp.RUNNER_A_ID, "runner-cp-a", cp.RUNNER_A_TOKEN);
-    try seedFleetWithConfig(conn, cp.AGENTSFLEET_1_ID, "cp-gate-static", cp.SESSION_1_ID, CONFIG_STATIC_CRED);
+    try seedFleetWithConfig(conn, cp.AGENTSFLEET_1_ID, "cp-gate-static", CONFIG_STATIC_CRED);
     try seedVaultJson(conn, "cpstatic", "{\"api_token\":\"" ++ STATIC_SENTINEL ++ "\"}");
     try cp.publishFreshEvent(h, cp.AGENTSFLEET_1_ID);
 

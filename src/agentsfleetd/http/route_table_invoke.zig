@@ -193,10 +193,10 @@ pub fn invokeAdminModels(hx: *Hx, req: *httpz.Request, route: router.Route) void
 }
 
 pub fn invokeAdminModelById(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const uid = route.admin_model_by_id;
+    const id = route.admin_model_by_id;
     switch (req.method) {
-        .PATCH => admin_models.innerPatchAdminModel(hx.*, req, uid),
-        .DELETE => admin_models.innerDeleteAdminModel(hx.*, req, uid),
+        .PATCH => admin_models.innerPatchAdminModel(hx.*, req, id),
+        .DELETE => admin_models.innerDeleteAdminModel(hx.*, req, id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }

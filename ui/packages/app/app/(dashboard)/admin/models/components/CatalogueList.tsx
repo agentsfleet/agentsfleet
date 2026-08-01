@@ -102,14 +102,14 @@ function RowActions({
 function buildColumns({
   active,
   pending,
-  busyUid,
+  busyId,
   onEdit,
   onMakeDefault,
   onDelete,
 }: {
   active: PlatformKey | null;
   pending: boolean;
-  busyUid: string | null;
+  busyId: string | null;
   onEdit: (m: AdminModel) => void;
   onMakeDefault: (m: AdminModel) => void;
   onDelete: (m: AdminModel) => void;
@@ -151,7 +151,7 @@ function buildColumns({
         <RowActions
           model={m}
           active={active}
-          busy={pending && busyUid === m.uid}
+          busy={pending && busyId === m.id}
           onEdit={onEdit}
           onMakeDefault={onMakeDefault}
           onDelete={onDelete}
@@ -169,36 +169,36 @@ export default function CatalogueList({
 }: {
   models: AdminModel[];
   activeDefault: PlatformKey | null;
-  onDeleted: (uid: string) => void;
+  onDeleted: (id: string) => void;
   onUpdated: (m: AdminModel) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [busyUid, setBusyUid] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [target, setTarget] = useState<AdminModel | null>(null);
   const [editTarget, setEditTarget] = useState<AdminModel | null>(null);
   const [defaultTarget, setDefaultTarget] = useState<AdminModel | null>(null);
 
   function remove(m: AdminModel) {
     setError(null);
-    setBusyUid(m.uid);
+    setBusyId(m.id);
     startTransition(async () => {
-      const r = await deleteAdminModelAction(m.uid);
-      setBusyUid(null);
+      const r = await deleteAdminModelAction(m.id);
+      setBusyId(null);
       if (!r.ok) {
         setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "delete this model" }));
         return;
       }
       setTarget(null);
-      onDeleted(m.uid);
+      onDeleted(m.id);
     });
   }
 
   const columns = buildColumns({
     active: activeDefault,
     pending,
-    busyUid,
+    busyId,
     onEdit: setEditTarget,
     onMakeDefault: setDefaultTarget,
     onDelete: setTarget,
@@ -210,7 +210,7 @@ export default function CatalogueList({
         className="flex min-h-0 flex-1 flex-col"
         columns={columns}
         rows={models}
-        rowKey={(m) => m.uid}
+        rowKey={(m) => m.id}
         caption="Model library"
         viewportClassName="min-h-0 flex-1 max-h-none"
         empty={
@@ -226,7 +226,7 @@ export default function CatalogueList({
         // Mounted only while editing and controlled always-open, so Radix only
         // ever signals a close (onOpenChange(false)) — unmount on any close signal.
         <EditModelDialogDynamic
-          key={editTarget.uid}
+          key={editTarget.id}
           model={editTarget}
           onOpenChange={() => setEditTarget(null)}
           onUpdated={(m) => {
@@ -238,7 +238,7 @@ export default function CatalogueList({
 
       {defaultTarget ? (
         <MakeDefaultDialog
-          key={defaultTarget.uid}
+          key={defaultTarget.id}
           model={defaultTarget}
           onOpenChange={() => setDefaultTarget(null)}
           onDone={() => {

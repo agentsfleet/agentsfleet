@@ -66,10 +66,10 @@ fn seedSpend(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, nanos: 
 fn teardownSpend(conn: *pg.Conn) void {
     _ = conn.exec(
         \\DELETE FROM fleet.metering_periods mp
-        \\USING core.fleet_execution_telemetry t
+        \\USING billing.usage_ledger t
         \\WHERE t.event_id = mp.event_id AND t.workspace_id = $1
     , .{life.WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{life.WORKSPACE_ID}) catch |err|
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1", .{life.WORKSPACE_ID}) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
@@ -89,7 +89,7 @@ fn forgetFleet(h: anytype, fleet_id: []const u8) void {
 /// Telemetry rows of one charge type for one event — the receive-debit probe.
 fn chargeRowCount(conn: *pg.Conn, event_id: []const u8, charge_type: []const u8) !i64 {
     var q = PgQuery.from(try conn.query(
-        \\SELECT COUNT(*)::BIGINT FROM core.fleet_execution_telemetry
+        \\SELECT COUNT(*)::BIGINT FROM billing.usage_ledger
         \\WHERE event_id = $1 AND charge_type = $2
     , .{ event_id, charge_type }));
     defer q.deinit();
@@ -111,7 +111,7 @@ test "integration: an over-budget fleet is refused the lease: gate_blocked + bud
     defer forgetFleet(h, FLEET_OVER);
     defer teardownSpend(conn);
 
-    try life.seedFleetWithConfig(conn, FLEET_OVER, "budget-over", CONFIG_DAILY_ONE_DOLLAR, "9");
+    try life.seedFleetWithConfig(conn, FLEET_OVER, "budget-over", CONFIG_DAILY_ONE_DOLLAR);
     // Spend exactly at the ceiling, one hour ago — inside the rolling day.
     try seedSpend(conn, FLEET_OVER, "evt-budget-prior-spend", SPEND_AT_CEILING_NANOS, clock.nowMillis() - HOUR_MS);
 
@@ -137,7 +137,7 @@ test "integration: a budget refusal is taken before the receive debit, so the ev
     defer forgetFleet(h, FLEET_OVER);
     defer teardownSpend(conn);
 
-    try life.seedFleetWithConfig(conn, FLEET_OVER, "budget-over", CONFIG_DAILY_ONE_DOLLAR, "9");
+    try life.seedFleetWithConfig(conn, FLEET_OVER, "budget-over", CONFIG_DAILY_ONE_DOLLAR);
     try seedSpend(conn, FLEET_OVER, "evt-budget-prior-spend", SPEND_AT_CEILING_NANOS, clock.nowMillis() - HOUR_MS);
 
     const event_id = try life.publishEvent(h, FLEET_OVER);
@@ -164,7 +164,7 @@ test "integration: an under-budget fleet leases exactly as before" {
     defer forgetFleet(h, FLEET_UNDER);
     defer teardownSpend(conn);
 
-    try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR, "a");
+    try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR);
     // One nano short of the ceiling: `covers` admits strictly below.
     try seedSpend(conn, FLEET_UNDER, "evt-budget-under", SPEND_AT_CEILING_NANOS - 1, clock.nowMillis() - HOUR_MS);
 
@@ -187,7 +187,7 @@ test "integration: a fleet whose spend is outside the rolling day window leases"
     defer forgetFleet(h, FLEET_UNDER);
     defer teardownSpend(conn);
 
-    try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR, "a");
+    try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR);
     // Well over the daily ceiling, but 25 hours ago — the window has rolled past
     // it. With no `monthly_dollars` declared, nothing else can refuse.
     try seedSpend(conn, FLEET_UNDER, "evt-budget-yesterday", SPEND_AT_CEILING_NANOS * 10, clock.nowMillis() - 25 * HOUR_MS);
@@ -213,7 +213,7 @@ test "integration: a budget-killed run persists failure_label=budget_breach on t
     defer forgetFleet(h, FLEET_UNDER);
     defer teardownSpend(conn);
 
-    try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR, "a");
+    try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR);
     const event_id = try life.publishEvent(h, FLEET_UNDER);
     defer h.queue.alloc.free(event_id);
     try std.testing.expect(try life.pollLease(h)); // the run starts under budget
@@ -238,7 +238,7 @@ test "integration: a credit-exhausted kill still reports renewal_terminate, not 
     defer forgetFleet(h, FLEET_UNDER);
     defer teardownSpend(conn);
 
-    try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR, "a");
+    try life.seedFleetWithConfig(conn, FLEET_UNDER, "budget-under", CONFIG_DAILY_ONE_DOLLAR);
     const event_id = try life.publishEvent(h, FLEET_UNDER);
     defer h.queue.alloc.free(event_id);
     try std.testing.expect(try life.pollLease(h));

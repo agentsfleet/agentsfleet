@@ -131,14 +131,12 @@ fn seedEntryAt(f: Fixture, fleet_id: []const u8, key: []const u8, content: []con
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer _ = conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("reset role ignored: {s}", .{@errorName(err)});
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
-    var id_buf: [128]u8 = undefined;
-    const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ fleet_id, key });
+    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
+        \\INSERT INTO memory.memory_entries (id, key, content, category, fleet_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $6)
         \\ON CONFLICT (key, fleet_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
-    , .{ uid, id, key, content, category, fleet_id, ts });
+    , .{ row_id, key, content, category, fleet_id, ts });
 }
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {

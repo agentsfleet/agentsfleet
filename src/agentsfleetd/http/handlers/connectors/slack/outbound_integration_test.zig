@@ -150,7 +150,7 @@ fn seedEventRow(conn: *pg.Conn) !void {
     const now = common.clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'slack:U1', 'chat', 'received',
         \\        $5::jsonb, $6, $6)

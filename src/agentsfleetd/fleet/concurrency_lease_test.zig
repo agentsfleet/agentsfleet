@@ -150,7 +150,6 @@ const CMD_DEL = "DEL";
 const HTTP_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dc012";
 const HTTP_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dca02";
 const HTTP_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dcc02";
-const HTTP_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dcd02";
 const HTTP_RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
 const LARGE_BALANCE_NANOS: i64 = 1000000000000;
 
@@ -262,7 +261,7 @@ test "100 concurrent HTTP lease polls on one ready fleet yield exactly one lease
     try fundHttpBalance(conn);
     try seedHttpRunner(conn);
     try base.seedFleet(conn, HTTP_FLEET_ID, HTTP_WORKSPACE_ID, "conc-http-bot", CONFIG_HTTP_RACE, "# race");
-    try base.seedFleetSession(conn, HTTP_SESSION_ID, HTTP_FLEET_ID, "{}");
+    try base.seedFleetSession(conn, HTTP_FLEET_ID, "{}");
     defer cleanupHttp(h, conn);
     dropReadyIndex(h);
     try publishHttpEvent(h);

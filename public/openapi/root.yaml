@@ -109,8 +109,8 @@ paths:
     $ref: ./paths/admin.yaml#/~1v1~1admin~1platform-keys~1{provider}
   /v1/admin/models:
     $ref: ./paths/admin-models.yaml#/~1v1~1admin~1models
-  /v1/admin/models/{uid}:
-    $ref: ./paths/admin-models.yaml#/~1v1~1admin~1models~1{uid}
+  /v1/admin/models/{id}:
+    $ref: ./paths/admin-models.yaml#/~1v1~1admin~1models~1{id}
   /v1/auth/sessions:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions
   /v1/auth/sessions/{session_id}:

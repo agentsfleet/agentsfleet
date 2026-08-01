@@ -189,7 +189,6 @@ const FK_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fa011";
 const FK_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fac01";
 const FK_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0faa01";
 const FK_LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0faf01";
-const FK_AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fae01";
 // A fleet id with NO core.fleets row — the orphan the FK must reject.
 const FK_ORPHAN_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fad99";
 
@@ -198,28 +197,31 @@ const FK_ORPHAN_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fad99";
 const FK_LEASE_INSERT =
     \\INSERT INTO fleet.runner_leases
     \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-    \\   event_type, request_json, event_created_at, posture, provider, model,
-    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+    \\   event_type, event_created_at, posture, provider, model,
+    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
     \\   fencing_token, lease_expires_at, status, created_at, updated_at)
     \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-fk-1', 'steer:test',
-    \\        'chat', '{"message":"hi"}', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
+    \\        'chat', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
     \\        1, 0, 'active', 0, 0)
 ;
 
-// Params: $1 id, $2 fleet_id. last_runner_id NULL isolates the fleet_id FK.
+// Params: $1 fleet_id — the slot's primary key. last_runner_id NULL isolates
+// the fleet_id FK, which is the only one under test here.
 const FK_AFFINITY_INSERT =
     \\INSERT INTO fleet.runner_affinity
-    \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+    \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
     \\   created_at, updated_at)
-    \\VALUES ($1::uuid, $2::uuid, NULL, 1, 0, 0, 0, 0, 0, 0, 0)
+    \\VALUES ($1::uuid, NULL, 1, 0, 0, 0, 0, 0, 0, 0)
 ;
 
-// Count probes, keyed on the row's own id so the cascade proof stays valid even
-// if either FK were ever changed to ON DELETE SET NULL (a fleet_id-keyed affinity
-// probe would read 0 on a nulled-but-surviving row and false-pass).
+// The lease probe keys on the row's own id so the cascade proof stays valid even
+// if its FK were ever changed to ON DELETE SET NULL — a fleet_id-keyed lease
+// probe would read 0 on a nulled-but-surviving row and false-pass. The affinity
+// slot has no such alternative: `fleet_id` IS its primary key, so it is NOT NULL
+// by construction and SET NULL is not a reachable state for it.
 const FK_LEASE_COUNT = "SELECT count(*)::bigint FROM fleet.runner_leases WHERE id = '" ++ FK_LEASE_ID ++ "'::uuid";
-const FK_AFFINITY_COUNT = "SELECT count(*)::bigint FROM fleet.runner_affinity WHERE id = '" ++ FK_AFFINITY_ID ++ "'::uuid";
+const FK_AFFINITY_COUNT = "SELECT count(*)::bigint FROM fleet.runner_affinity WHERE fleet_id = '" ++ FK_FLEET_ID ++ "'::uuid";
 
 fn seedFkRunner(conn: *pg.Conn) !void {
     _ = try conn.exec(
@@ -243,7 +245,7 @@ fn fkCleanup(alloc: std.mem.Allocator) void {
     defer db.pool.release(db.conn);
     const c = db.conn;
     fkExecIgnore(c, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{FK_LEASE_ID});
-    fkExecIgnore(c, "DELETE FROM fleet.runner_affinity WHERE id = $1::uuid", .{FK_AFFINITY_ID});
+    fkExecIgnore(c, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FK_FLEET_ID});
     fkExecIgnore(c, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{FK_RUNNER_ID});
     base.teardownFleets(c, FK_WORKSPACE_ID); // fleet delete cascades any residual lease/affinity
     base.teardownWorkspace(c, FK_WORKSPACE_ID);
@@ -269,7 +271,7 @@ test "fleet FK: deleting a core.fleets row cascades its runner_leases and runner
     try base.seedFleet(conn, FK_FLEET_ID, FK_WORKSPACE_ID, "fk-cascade", "{}", "# z");
     try seedFkRunner(conn);
     _ = try conn.exec(FK_LEASE_INSERT, .{ FK_LEASE_ID, FK_RUNNER_ID, FK_FLEET_ID, FK_WORKSPACE_ID, base.TEST_TENANT_ID });
-    _ = try conn.exec(FK_AFFINITY_INSERT, .{ FK_AFFINITY_ID, FK_FLEET_ID });
+    _ = try conn.exec(FK_AFFINITY_INSERT, .{FK_FLEET_ID});
 
     // Children present before the delete.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(conn, FK_LEASE_COUNT));
@@ -293,7 +295,7 @@ test "fleet FK: an orphan fleet_id on runner_lease / runner_affinity is rejected
         const db = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
         defer db.pool.deinit();
         defer db.pool.release(db.conn);
-        try std.testing.expectError(error.PG, db.conn.exec(FK_AFFINITY_INSERT, .{ FK_AFFINITY_ID, FK_ORPHAN_FLEET_ID }));
+        try std.testing.expectError(error.PG, db.conn.exec(FK_AFFINITY_INSERT, .{FK_ORPHAN_FLEET_ID}));
         try expectFkViolation(db.conn);
     }
     // lease — a valid runner satisfies runner_id; the bogus fleet_id fires the FK.

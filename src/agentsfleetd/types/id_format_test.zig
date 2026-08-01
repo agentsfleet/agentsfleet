@@ -196,7 +196,6 @@ const LIVE_GENERATORS = .{
     id.generateFleetId,
     id.generateActivityEventId,
     id.generateVaultSecretId,
-    id.generatePlatformLlmKeyId,
     id.generateFleetBundleId,
     id.generateTenantModelEntryId,
     id.generateScheduleId,

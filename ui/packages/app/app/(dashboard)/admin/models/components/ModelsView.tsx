@@ -38,8 +38,8 @@ export default function ModelsView({
         <CatalogueList
           models={models}
           activeDefault={activeDefault}
-          onDeleted={(uid) => setModels((prev) => prev.filter((m) => m.uid !== uid))}
-          onUpdated={(m) => setModels((prev) => prev.map((x) => (x.uid === m.uid ? m : x)))}
+          onDeleted={(id) => setModels((prev) => prev.filter((m) => m.id !== id))}
+          onUpdated={(m) => setModels((prev) => prev.map((x) => (x.id === m.id ? m : x)))}
         />
       </div>
     </PageLayout>

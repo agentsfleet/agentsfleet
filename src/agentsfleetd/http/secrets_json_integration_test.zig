@@ -61,8 +61,8 @@ fn setupSeedData(conn: *pg.Conn) !void {
     // rate cache below from it.
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
         \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0ac001'::uuid, 'claude-sonnet-4-6', 'anthropic',
         \\        256000, 3000000000, 300000000, 15000000000, $1, $1)
         \\ON CONFLICT (provider, model_id) DO NOTHING

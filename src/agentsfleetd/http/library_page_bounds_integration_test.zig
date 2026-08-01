@@ -99,7 +99,7 @@ fn expectCommon(measured: counters.Snapshot, body_len: usize) !void {
 /// Idempotent: removes this suite's uids before inserting them.
 ///
 /// `INSERT_ROW` carries `ON CONFLICT (provider, model_id) DO NOTHING`, which
-/// does NOT cover the `uid` primary key — a leftover row under the same uid is a
+/// does NOT cover the `id` primary key — a leftover row under the same id is a
 /// hard constraint violation, not a silent no-op. A prior run that died between
 /// seeding and cleanup therefore poisons every later run, and the failure points
 /// at the seed rather than at whatever actually broke. Deleting first makes the
@@ -107,18 +107,18 @@ fn expectCommon(measured: counters.Snapshot, body_len: usize) !void {
 fn seedCatalogue(h: *TestHarness) !void {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    for ([_][]const u8{ UID_ONE, UID_TWO }) |uid| {
-        _ = try model_library_store.remove(conn, uid);
+    for ([_][]const u8{ UID_ONE, UID_TWO }) |id| {
+        _ = try model_library_store.remove(conn, id);
     }
     const now = clock.nowMillis();
     _ = try model_library_store.create(conn, .{
-        .uid = UID_ONE,
+        .id = UID_ONE,
         .provider = CATALOGUE_VENDOR_A,
         .model_id = CATALOGUE_MODEL,
         .rates = RATES,
     }, now);
     _ = try model_library_store.create(conn, .{
-        .uid = UID_TWO,
+        .id = UID_TWO,
         .provider = CATALOGUE_VENDOR_B,
         .model_id = CATALOGUE_MODEL,
         .rates = RATES,
@@ -128,8 +128,8 @@ fn seedCatalogue(h: *TestHarness) !void {
 fn cleanCatalogue(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
-    for ([_][]const u8{ UID_ONE, UID_TWO }) |uid| {
-        _ = model_library_store.remove(conn, uid) catch |err|
+    for ([_][]const u8{ UID_ONE, UID_TWO }) |id| {
+        _ = model_library_store.remove(conn, id) catch |err|
             std.log.warn("catalogue cleanup ignored: {s}", .{@errorName(err)});
     }
 }

@@ -209,19 +209,21 @@ pub fn fleetStatusOwned(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []co
 }
 
 /// Insert a fleet session checkpoint. Fleet must exist. Idempotent.
+///
+/// The session row is keyed by its parent — `fleet_id` IS the primary key — so
+/// there is no separate session identifier to pass.
 pub fn seedFleetSession(
     conn: *pg.Conn,
-    session_id: []const u8,
     fleet_id: []const u8,
     context_json: []const u8,
 ) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleet_sessions
-        \\  (id, fleet_id, context_json, checkpoint_at, created_at, updated_at)
-        \\VALUES ($1, $2, $3, 0, 0, 0)
+        \\  (fleet_id, context_json, checkpoint_at, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::jsonb, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET context_json = EXCLUDED.context_json
-    , .{ session_id, fleet_id, context_json });
+    , .{ fleet_id, context_json });
 }
 
 /// Delete fleets for a workspace. Cascades to fleet_sessions (FK).

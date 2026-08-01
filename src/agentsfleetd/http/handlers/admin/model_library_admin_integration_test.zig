@@ -31,7 +31,6 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const UID_GLM = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9001";
 const UID_OPUS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9002";
 // id for the direct-insert FK probe (uuidv7 — ck_platform_provider_defaults_uid_uuidv7).
-const FK_GHOST_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9201";
 
 const TEST_JWKS = scope_fixtures.JWKS;
 const PLATFORM_ADMIN_TOKEN = scope_fixtures.PLATFORM_ADMIN;
@@ -62,16 +61,16 @@ fn seedTenantWorkspace(h: *TestHarness) !void {
     );
 }
 
-fn seedModel(h: *TestHarness, uid: []const u8, provider: []const u8, model_id: []const u8) !void {
+fn seedModel(h: *TestHarness, id: []const u8, provider: []const u8, model_id: []const u8) !void {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, 128000, 1, 0, 2, $4, $4)
         \\ON CONFLICT (provider, model_id) DO NOTHING
-    , .{ uid, model_id, provider, now });
+    , .{ id, model_id, provider, now });
 }
 
 pub fn cleanup(h: *TestHarness) void {
@@ -190,7 +189,7 @@ test "admin models: PATCH updates rates; DELETE removes the row" {
     try del.expectStatus(.no_content);
 }
 
-test "admin models: PATCH/DELETE of an unknown uid is 404" {
+test "admin models: PATCH/DELETE of an unknown id is 404" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     defer cleanup(h);
@@ -322,13 +321,13 @@ test "platform default FK: a platform_provider_defaults row cannot reference an 
     // vs default-set race unwinnable — the app guard alone is not race-tight.
     if (conn.exec(
         \\INSERT INTO core.platform_provider_defaults
-        \\  (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
-        \\VALUES ($1::uuid, 'ghostprov', $2::uuid, 'ghost-model', 128000, true, $3, $3)
-    , .{ FK_GHOST_ID, WORKSPACE_ID, now })) |_| {
+        \\  (provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
+        \\VALUES ('ghostprov', $1::uuid, 'ghost-model', 128000, true, $2, $2)
+    , .{ WORKSPACE_ID, now })) |_| {
         return error.FkShouldHaveRejectedUncataloguedModel;
     } else |_| {
         // Must be a Postgres foreign_key_violation (SQLSTATE 23503), not an
-        // incidental failure — a malformed uid or the workspace FK would also
+        // incidental failure — a malformed id or the workspace FK would also
         // throw and falsely "prove" enforcement. The driver carries the sqlstate
         // on conn.err.?.code (see signup_bootstrap.zig / fleet_memory_role_test).
         const pg_err = conn.err orelse return error.ExpectedPgError;
@@ -363,7 +362,7 @@ test "platform default: standing a provider down NULLs its model, freeing its ca
     try del.expectStatus(.no_content);
 }
 
-// Catalogue uid for the cache-repopulation probe — a private (provider, model)
+// Catalogue id for the cache-repopulation probe — a private (provider, model)
 // pair so a parallel sibling test never mutates the row this one asserts on.
 const UID_CACHE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9101";
 

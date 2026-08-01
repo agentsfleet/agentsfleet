@@ -69,14 +69,12 @@ fn seedEntry(conn: *pg.Conn, fleet_id: []const u8, key: []const u8, content: []c
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer _ = conn.exec("RESET ROLE", .{}) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
-    var id_buf: [128]u8 = undefined;
-    const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ fleet_id, key });
+    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
+        \\INSERT INTO memory.memory_entries (id, key, content, category, fleet_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $6)
         \\ON CONFLICT (key, fleet_id) DO UPDATE SET content = EXCLUDED.content
-    , .{ uid, id, key, content, CATEGORY_CORE, fleet_id, SEED_TS_MS });
+    , .{ row_id, key, content, CATEGORY_CORE, fleet_id, SEED_TS_MS });
 }
 
 fn entryExists(conn: *pg.Conn, fleet_id: []const u8, key: []const u8) !bool {

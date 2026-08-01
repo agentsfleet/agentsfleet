@@ -11,7 +11,7 @@
 //   * settle   — service_report, once per terminal claim
 //
 // So the reconciliation reads both durable homes — `fleet.metering_periods`
-// (renewal + settle slices) and `core.fleet_execution_telemetry` (the receive
+// (renewal + settle slices) and `billing.usage_ledger` (the receive
 // debit) — and compares their total against the drained samples. The zero arms
 // matter as much as the sum: a replayed report, a lost fence, and a failed
 // settlement write must each contribute nothing, which is only true while the
@@ -47,7 +47,6 @@ const ALLOC = std.testing.allocator;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ec011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eca01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc01";
-const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd01";
 const COLLISION_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ec0f1";
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
 const RECON_HOST_ID = "credit-reconciliation-host";
@@ -149,13 +148,13 @@ fn forgetFleet(h: *TestHarness) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     forgetFleet(h);
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE uid = $1::uuid", .{COLLISION_UID});
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE row_id = $1::uuid", .{COLLISION_UID});
     execIgnore(conn,
         \\DELETE FROM fleet.metering_periods WHERE event_id IN
         \\  (SELECT event_id FROM core.fleet_events WHERE fleet_id = $1::uuid)
     , .{FLEET_ID});
     execIgnore(conn,
-        \\DELETE FROM core.fleet_execution_telemetry WHERE fleet_id = $1::uuid
+        \\DELETE FROM billing.usage_ledger WHERE fleet_id = $1::uuid
     , .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
@@ -186,7 +185,7 @@ fn arrange() !Setup {
     try fundLargeBalance(conn);
     try seedRunner(conn);
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, FLEET_NAME, CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, "{}");
+    try base.seedFleetSession(conn, FLEET_ID, "{}");
     try publishFreshEvent(h);
     otel_metrics.testClear();
     otel_metrics.testSetInstalled(METRICS_TEST_CFG);
@@ -304,7 +303,7 @@ fn committedDebitTotal(conn: *pg.Conn, event_id: []const u8) !i64 {
     , event_id);
     const receive = try scalar(conn,
         \\SELECT COALESCE(SUM(credit_deducted_nanos), 0)::bigint
-        \\FROM core.fleet_execution_telemetry WHERE event_id = $1
+        \\FROM billing.usage_ledger WHERE event_id = $1
     , event_id);
     return slices + receive;
 }
@@ -316,7 +315,7 @@ fn nonZeroDebitCount(conn: *pg.Conn, event_id: []const u8) !i64 {
     return scalar(conn,
         \\SELECT (SELECT COUNT(*) FROM fleet.metering_periods
         \\        WHERE event_id = $1 AND charged_nanos <> 0)
-        \\     + (SELECT COUNT(*) FROM core.fleet_execution_telemetry
+        \\     + (SELECT COUNT(*) FROM billing.usage_ledger
         \\        WHERE event_id = $1 AND credit_deducted_nanos <> 0)
     , event_id);
 }
@@ -349,7 +348,7 @@ fn blockNextSettleSlice(conn: *pg.Conn, event_id: []const u8) !void {
     const next_seq = try nextSettleSliceSeq(conn);
     _ = try conn.exec(
         \\INSERT INTO fleet.metering_periods
-        \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
+        \\  (id, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
         \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
         \\VALUES ($1::uuid, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0)
     , .{ COLLISION_UID, event_id, next_seq });

@@ -56,7 +56,7 @@ pub fn templateFor(route: router.Route) []const u8 {
         .admin_platform_keys => "/v1/admin/platform-keys",
         .delete_admin_platform_key => "/v1/admin/platform-keys/{provider}",
         .admin_models => "/v1/admin/models",
-        .admin_model_by_id => "/v1/admin/models/{uid}",
+        .admin_model_by_id => "/v1/admin/models/{id}",
 
         .receive_webhook => WEBHOOK,
         .receive_svix_webhook => "/v1/webhooks/svix/{fleet_id}",

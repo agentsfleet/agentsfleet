@@ -83,7 +83,6 @@ const RB_FLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000034";
 const RB_GATE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000035";
 const RB_MEMORY_UID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000036";
 const RB_RUNNER_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000037";
-const RB_AFFINITY_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000038";
 const RB_LEASE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000039";
 const RB_EVENT_ID: []const u8 = "evt-teardown-rollback-1";
 
@@ -106,18 +105,18 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
         \\INSERT INTO core.fleet_approval_gates
         \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind,
         \\   proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
-        \\   detail, requested_at, created_at)
+        \\   detail, created_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'act-rollback-test', 'bash', 'rm',
         \\        'destructive_action', 'n/a', '{}'::jsonb, 'n/a', 9999999999999, '',
-        \\        'pending', '', 0, 0)
+        \\        'pending', '', 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ RB_GATE_ID, RB_FLEET_ID, RB_WORKSPACE_ID });
     // A memory row the purge deletes BEFORE it reaches the injected failure —
     // its survival after the error is the rollback proof.
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
-        \\VALUES ($1::uuid, 'teardown-rollback-canary', 'canary', 'must survive the rollback', 'core', $2::uuid, 1700000000000, 1700000000000)
-        \\ON CONFLICT (uid) DO NOTHING
+        \\INSERT INTO memory.memory_entries (id, key, content, category, fleet_id, created_at, updated_at)
+        \\VALUES ($1::uuid, 'canary', 'must survive the rollback', 'core', $2::uuid, 1700000000000, 1700000000000)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ RB_MEMORY_UID, RB_FLEET_ID });
     // The runner row is shared host infrastructure (tenant_id NULL, no per-account
     // FK) and must SURVIVE the purge — it is not swept by any fleet/tenant DELETE.
@@ -130,26 +129,26 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
     , .{RB_RUNNER_ID});
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 0, 0, 0, 0, 0, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, 1, 0, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO NOTHING
-    , .{ RB_AFFINITY_ID, RB_FLEET_ID, RB_RUNNER_ID });
+    , .{ RB_FLEET_ID, RB_RUNNER_ID });
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
+        \\        'steer:test', 'chat', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, 0, 'reported', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ RB_LEASE_ID, RB_RUNNER_ID, RB_FLEET_ID, RB_WORKSPACE_ID, RB_TENANT_ID, RB_EVENT_ID });
     _ = try conn.exec(
         \\INSERT INTO fleet.metering_periods
-        \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
+        \\  (id, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
         \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
         \\VALUES ('0195b4ba-8d3a-7f13-8abc-c0000000003a'::uuid, $1, 1, 0, 0, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (event_id, slice_seq) DO NOTHING
@@ -336,9 +335,9 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
     // Seed one memory row for the fleet. No FK to core.fleets, so only the
     // teardown's explicit DELETE removes it.
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-c00000000011'::uuid, $1, 'canary', 'should not survive teardown', 'core', $2::uuid, 1700000000000, 1700000000000)
-    , .{ "account-teardown-canary", FLEET_ID });
+        \\INSERT INTO memory.memory_entries (id, key, content, category, fleet_id, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-c00000000011'::uuid, 'canary', 'should not survive teardown', 'core', $1::uuid, 1700000000000, 1700000000000)
+    , .{FLEET_ID});
     try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, FLEET_ID));
 
     // Purge the account by its oidc_subject.

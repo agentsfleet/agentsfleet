@@ -26,7 +26,6 @@ const BODY_CORDON = "{\"action\":\"cordon\"}";
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6a01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6c01";
-const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6d01";
 const RUNNER_TOKEN_BODY_HEX_CHARS: usize = 64;
 const RUNNER_TOKEN = protocol.RUNNER_TOKEN_PREFIX ++ "e" ** RUNNER_TOKEN_BODY_HEX_CHARS;
 const LARGE_BALANCE_NANOS: i64 = 1_000_000_000_000;
@@ -111,7 +110,7 @@ fn seedFleetWork(conn: anytype) !void {
     , .{ base.TEST_TENANT_ID, LARGE_BALANCE_NANOS });
     try seedRunner(conn);
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "runner-events-fleet", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, "{}");
+    try base.seedFleetSession(conn, FLEET_ID, "{}");
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {

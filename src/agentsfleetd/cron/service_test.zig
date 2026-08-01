@@ -171,7 +171,7 @@ test "service: explicit sync claims current row state" {
     _ = try conn.exec(
         \\UPDATE core.fleet_schedules
         \\SET desired_status = 'paused', sync_status = 'failed', updated_at = $2
-        \\WHERE uid = $1::uuid
+        \\WHERE id = $1::uuid
     , .{ schedule_id, common.clock.nowMillis() });
     var fake: Fake = .{};
     const service = Service.init(fixture.store, client(&fake), TOKEN);
@@ -199,7 +199,7 @@ test "service: partial update preserves current row fields" {
     _ = try conn.exec(
         \\UPDATE core.fleet_schedules
         \\SET cron_expression = '0 12 * * *', updated_at = $2
-        \\WHERE uid = $1::uuid
+        \\WHERE id = $1::uuid
     , .{ schedule_id, common.clock.nowMillis() });
     var fake: Fake = .{};
     const service = Service.init(fixture.store, client(&fake), TOKEN);
@@ -232,7 +232,7 @@ test "service: source desired update preserves current schedule fields" {
     _ = try conn.exec(
         \\UPDATE core.fleet_schedules
         \\SET cron_expression = '15 7 * * *', message = 'current trigger', updated_at = $2
-        \\WHERE uid = $1::uuid
+        \\WHERE id = $1::uuid
     , .{ schedule_id, common.clock.nowMillis() });
     var fake: Fake = .{};
     const service = Service.init(fixture.store, client(&fake), TOKEN);
