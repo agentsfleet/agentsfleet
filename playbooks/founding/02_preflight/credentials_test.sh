@@ -179,6 +179,9 @@ test_workflows_use_deployment_stage_without_generated_pointer() {
       bad "$name" "$workflow does not use the deployment credential stage"
       return
     fi
+  done
+
+  for workflow in deploy-dev.yml deploy-dev-fly.yml release.yml; do
     if rg --quiet 'PLATFORM_ADMIN_WORKSPACE_ID' \
       "$repo_root/.github/workflows/$workflow"; then
       bad "$name" "$workflow still requires the post-signup workspace pointer"

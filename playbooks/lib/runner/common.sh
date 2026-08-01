@@ -21,16 +21,17 @@ runner_read_required() {
 }
 
 runner_select_environment() {
+  local expected_api_url
   case "${ENV:-}" in
     dev)
       RUNNER_VAULT="${VAULT_DEV:-ZMB_CD_DEV}"
       RUNNER_ITEM="${WORKER_ITEM:-agentsfleet-dev-runner-ant}"
-      RUNNER_API_URL="${AGENTSFLEET_API_URL:-https://api-dev.agentsfleet.net}"
+      expected_api_url="https://api-dev.agentsfleet.net"
       ;;
     prod)
       RUNNER_VAULT="${VAULT_PROD:-ZMB_CD_PROD}"
       RUNNER_ITEM="${WORKER_ITEM:?WORKER_ITEM is required for production}"
-      RUNNER_API_URL="${AGENTSFLEET_API_URL:-https://api.agentsfleet.net}"
+      expected_api_url="https://api.agentsfleet.net"
       ;;
     *)
       echo "ERROR: ENV must be dev or prod" >&2
@@ -38,28 +39,47 @@ runner_select_environment() {
       ;;
   esac
 
-  case "$RUNNER_API_URL" in
-    https://*) ;;
-    *)
-      echo "ERROR: runner API URL must use HTTPS" >&2
-      return 1
-      ;;
-  esac
-  case "$RUNNER_API_URL" in
-    *[!A-Za-z0-9:./_-]*)
-      echo "ERROR: runner API URL contains unsupported characters" >&2
-      return 1
-      ;;
-  esac
+  RUNNER_API_URL="${AGENTSFLEET_API_URL:-$expected_api_url}"
+  if [ "$RUNNER_API_URL" != "$expected_api_url" ]; then
+    echo "ERROR: runner API URL must match the $ENV endpoint" >&2
+    return 1
+  fi
+}
+
+runner_validate_reference_component() {
+  local label="$1"
+  local value="$2"
+  if [[ ! "$value" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    echo "ERROR: invalid runner $label" >&2
+    return 1
+  fi
+}
+
+runner_validate_target() {
+  if [ "${#RUNNER_USER}" -gt 32 ] ||
+    [[ ! "$RUNNER_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+    echo "ERROR: invalid runner deploy user" >&2
+    return 1
+  fi
+  if [ "${#RUNNER_HOST}" -gt 253 ] ||
+    [[ ! "$RUNNER_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$ ]] ||
+    [[ "$RUNNER_HOST" == *..* ]]; then
+    echo "ERROR: invalid runner Tailscale hostname" >&2
+    return 1
+  fi
 }
 
 runner_load_target() {
+  playbooks_require_vault_read_approval
   playbooks_require_op_auth
   playbooks_require_tool tailscale
   runner_select_environment
+  runner_validate_reference_component vault "$RUNNER_VAULT"
+  runner_validate_reference_component item "$RUNNER_ITEM"
 
   RUNNER_HOST="$(runner_read_required "op://$RUNNER_VAULT/$RUNNER_ITEM/tailscale-hostname")"
   RUNNER_USER="$(runner_read_required "op://$RUNNER_VAULT/$RUNNER_ITEM/deploy-user")"
+  runner_validate_target
   RUNNER_TARGET="$RUNNER_USER@$RUNNER_HOST"
 }
 

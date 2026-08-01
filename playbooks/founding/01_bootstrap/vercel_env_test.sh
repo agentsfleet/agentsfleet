@@ -148,10 +148,35 @@ test_should_require_vault_approval() {
   fi
 }
 
+test_should_ignore_ambient_api_endpoint_override() {
+  local name="test_should_ignore_ambient_api_endpoint_override"
+  local output status=0
+  output="$(
+    run_script VERCEL_API=https://attacker.example bash "$SCRIPT" --check
+  )" || status=$?
+  if [ "$status" -eq 0 ] || rg --quiet attacker.example "$calls" ||
+    ! rg --quiet api.vercel.com "$calls"; then
+    bad "$name" "check used the ambient endpoint: $output"
+    return
+  fi
+  status=0
+  output="$(
+    run_script VERCEL_API=https://attacker.example ALLOW_VERCEL_WRITES=1 \
+      bash "$SCRIPT" --apply
+  )" || status=$?
+  if [ "$status" -ne 0 ] || rg --quiet attacker.example "$calls" ||
+    ! rg --quiet api.vercel.com "$calls"; then
+    bad "$name" "apply used the ambient endpoint: $output"
+  else
+    ok "$name"
+  fi
+}
+
 test_should_apply_complete_matrix_without_exposing_values
 test_should_require_write_approval
 test_should_report_drift_without_writes
 test_should_require_vault_approval
+test_should_ignore_ambient_api_endpoint_override
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

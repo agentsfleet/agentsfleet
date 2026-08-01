@@ -7,6 +7,7 @@ readonly PREPARE="$SCRIPT_DIR/prepare.sh"
 readonly DEPLOY="$SCRIPT_DIR/deploy.sh"
 readonly VERIFY="$SCRIPT_DIR/verify.sh"
 readonly DEPLOY_SCRIPT="$SCRIPT_DIR/../../../deploy/baremetal/deploy.sh"
+readonly REPO_ROOT="$SCRIPT_DIR/../../.."
 passed=0
 failed=0
 work_dir="$(mktemp -d)"
@@ -86,6 +87,7 @@ run_script() {
     CALLS="$calls" \
     RUNNER_BINARY="$runner_binary" \
     RUNNER_VERSION=test-build \
+    ALLOW_VAULT_READS=1 \
     "$@" 2>&1
 }
 test_should_prepare_host_without_reading_runner_token() {
@@ -260,6 +262,35 @@ test_should_reject_shell_unsafe_runner_inputs() {
     ok "$name"
   fi
 }
+test_should_require_vault_read_approval() {
+  local name="test_should_require_vault_read_approval"
+  local output status=0
+  output="$(run_script ENV=dev ALLOW_VAULT_READS=0 bash "$DEPLOY")" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "runner deployment read the vault without approval"
+  elif [[ "$output" != *"vault read approval required"* ]]; then
+    bad "$name" "runner deployment omitted the approval error: $output"
+  elif grep -qE '^(read|ssh )' "$calls"; then
+    bad "$name" "runner deployment reached the vault or host without approval"
+  else
+    ok "$name"
+  fi
+}
+test_should_declare_workflow_vault_read_approval() {
+  local name="test_should_declare_workflow_vault_read_approval"
+  local workflow
+  local -a workflows=(
+    "$REPO_ROOT/.github/workflows/deploy-dev-worker.yml"
+    "$REPO_ROOT/.github/workflows/release.yml"
+  )
+  for workflow in "${workflows[@]}"; do
+    if ! rg --fixed-strings --quiet 'ALLOW_VAULT_READS: "1"' "$workflow"; then
+      bad "$name" "$(basename "$workflow") omits runner vault-read approval"
+      return
+    fi
+  done
+  ok "$name"
+}
 test_should_fail_when_cpu_controller_is_not_delegated() {
   local name="test_should_fail_when_cpu_controller_is_not_delegated"
   local output status=0
@@ -341,6 +372,8 @@ test_should_not_install_packages_during_deploy
 test_should_reject_placeholder_token
 test_should_use_canonical_unit_refresh
 test_should_reject_shell_unsafe_runner_inputs
+test_should_require_vault_read_approval
+test_should_declare_workflow_vault_read_approval
 test_should_fail_when_cpu_controller_is_not_delegated
 test_should_fail_verification_when_service_check_fails
 test_should_fail_verification_when_service_is_not_enabled

@@ -29,7 +29,7 @@ fi
 
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
-api_base="${VERCEL_API:-https://api.vercel.com}"
+api_base="https://api.vercel.com"
 posthog_host="${POSTHOG_HOST:-https://us.i.posthog.com}"
 work_dir="$(mktemp -d)"
 auth_config="$work_dir/curl.conf"

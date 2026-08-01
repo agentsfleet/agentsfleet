@@ -4,7 +4,7 @@ set -euo pipefail
 
 env_mode="${ENV:-all}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
-api_base="${VERCEL_API:-https://api.vercel.com}"
+api_base="https://api.vercel.com"
 website_project="agentsfleet-website"
 app_project="agentsfleet-app"
 production_target="production"
