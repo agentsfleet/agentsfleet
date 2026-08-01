@@ -500,17 +500,16 @@ test "match resolves tenant billing charges route" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing_charges, match("/v1/tenants/me/billing/charges", .GET).?);
 }
 
-test "match resolves per-charge telemetry route (carries event_id)" {
-    try std.testing.expectEqualStrings(
-        "evt_42",
-        switch (match("/v1/tenants/me/billing/charges/evt_42/telemetry", .GET).?) {
-            .get_tenant_metering_periods => |event_id| event_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    // The bare charges collection must NOT match the telemetry route.
-    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42", .GET) == null);
+test "match rejects the removed per-charge telemetry route (pre-v2.0 404s)" {
+    // The accrual endpoint retired with `fleet.metering_periods`: derived
+    // data, and no product surface ever called it. Pre-2.0, so the route
+    // is removed outright rather than answering 410 — it must not resolve at all.
+    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42/telemetry", .GET) == null);
     try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42/metering-periods", .GET) == null);
+    // The charge collection itself is untouched and still must not match a
+    // single-charge path, which never existed.
+    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42", .GET) == null);
+    try std.testing.expect(match("/v1/tenants/me/billing/charges", .GET) != null);
 }
 
 test "match rejects removed workspace billing routes (pre-v2.0 404s)" {

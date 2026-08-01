@@ -172,7 +172,7 @@ const RENEW_METER_SQL =
     \\    FOR UPDATE OF l, a
     \\), bal AS (
     \\    SELECT tb.tenant_id, tb.balance_nanos AS bal0
-    \\    FROM billing.tenant_billing tb
+    \\    FROM billing.tenant_wallet tb
     \\    JOIN probe p ON p.tenant_id = tb.tenant_id
     \\    FOR UPDATE OF tb
     \\), calc AS (
@@ -209,7 +209,7 @@ const RENEW_METER_SQL =
     \\    FROM guard g WHERE a.fleet_id = g.fleet_id
     \\    RETURNING a.fleet_id
     \\), wallet AS (
-    \\    UPDATE billing.tenant_billing tb
+    \\    UPDATE billing.tenant_wallet tb
     \\    SET balance_nanos = GREATEST(0, tb.balance_nanos - g.slice),
     \\        balance_exhausted_at = CASE
     \\            WHEN tb.balance_nanos - g.slice <= 0 THEN COALESCE(tb.balance_exhausted_at, $6)

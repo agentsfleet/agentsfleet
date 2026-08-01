@@ -14,9 +14,7 @@ const scope_fixtures = @import("../../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
-const cmd_common = @import("../../../cmd/common.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
-const SqlStatementSplitter = @import("../../../db/sql_splitter.zig").SqlStatementSplitter;
 const id_format = @import("../../../types/id_format.zig");
 
 const harness_mod = @import("../../test_harness.zig");
@@ -25,9 +23,6 @@ const TestHarness = harness_mod.TestHarness;
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f01";
 const AGG_WORKSPACE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f11";
 const TOKEN = scope_fixtures.PATCH_CONCURRENT_ADMIN;
-const ACTIVITY_COUNTER_MIGRATION_VERSION: i32 = 30;
-const BACKFILL_PREFIX = "INSERT INTO core.fleet_activity_counters";
-const DELETE_COUNTER_SQL = "DELETE FROM core.fleet_activity_counters WHERE fleet_id IN ($1::uuid, $2::uuid)";
 const SELECT_COUNTER_SQL =
     "SELECT events_processed, budget_used_nanos FROM core.fleet_activity_counters WHERE fleet_id = $1::uuid";
 
@@ -109,21 +104,6 @@ fn expectCounter(conn: *pg.Conn, fleet_id: []const u8, events: i64, budget: i64)
     q.drain();
 }
 
-fn runActivityCounterBackfill(conn: *pg.Conn) !void {
-    const migrations = cmd_common.canonicalMigrations();
-    const migration = for (migrations) |candidate| {
-        if (candidate.version == ACTIVITY_COUNTER_MIGRATION_VERSION) break candidate;
-    } else return error.ActivityCounterMigrationMissing;
-
-    var splitter = SqlStatementSplitter.init(migration.sql);
-    var last_statement: ?[]const u8 = null;
-    while (splitter.next()) |statement| last_statement = statement;
-    const backfill = last_statement orelse return error.ActivityCounterBackfillMissing;
-    if (!std.mem.startsWith(u8, backfill, BACKFILL_PREFIX))
-        return error.ActivityCounterBackfillUnexpected;
-    _ = try conn.exec(backfill, .{});
-}
-
 test "integration: list counters match children; a bare fleet reads 0 not null; renewal delta tracked" {
     const alloc = std.testing.allocator;
     const h = makeHarness(alloc) catch |err| switch (err) {
@@ -165,11 +145,11 @@ test "integration: list counters match children; a bare fleet reads 0 not null; 
     defer alloc.free(bare);
     defer cleanupFleets(conn, busy, bare);
 
-    // Simulate an upgrade from a database with pre-existing child rows: remove
-    // the trigger-maintained rows, then execute the actual final statement from
-    // migration 030. This proves the embedded migration, not a copied query.
-    _ = try conn.exec(DELETE_COUNTER_SQL, .{ busy, bare });
-    try runActivityCounterBackfill(conn);
+    // The counter rows here are the trigger-maintained ones (schema/890), read
+    // as the list actually finds them. This step used to delete them and re-run
+    // slot 030's backfill to simulate an upgrade; the rebuilt slot carries no
+    // backfill, deliberately — a database bootstrapped from empty has nothing to
+    // reconstruct (schema/890's closing note).
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=100", .{AGG_WORKSPACE});
     defer alloc.free(url);

@@ -224,7 +224,7 @@ test "100 concurrent renews on one active lease converge to a single shared dead
 
 fn seedBalance(conn: *pg.Conn, balance: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'conc-meter', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
     , .{ base.TEST_TENANT_ID, balance });
@@ -276,7 +276,7 @@ test "100 concurrent metered renews on one lease charge the slice exactly once (
 
     // Exactly ONE slice left the wallet across the 100-way race.
     const one_slice = billing_rates.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
-    const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
+    const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
     try std.testing.expectEqual(one_slice, balance - remaining);
 }
 
@@ -342,7 +342,7 @@ test "claim+settle racing a reclaim never reports without charging the final sli
     try std.testing.expect(slot.ran);
 
     const reported = try leaseReported(c);
-    const debited = balance - try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
+    const debited = balance - try readBigint(c, "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
     const slices = try readBigint(c, "SELECT count(*)::bigint FROM fleet.metering_periods WHERE event_id = $1", EVENT_ID);
     const one_slice = billing_rates.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
 
@@ -504,7 +504,7 @@ test "integration: two same-tenant renews at exhaustion record audit rows summin
     const blocker = try h.acquireConn();
     _ = try blocker.exec("BEGIN", .{});
     {
-        var bq = PgQuery.from(try blocker.query("SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid FOR UPDATE", .{base.TEST_TENANT_ID}));
+        var bq = PgQuery.from(try blocker.query("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid FOR UPDATE", .{base.TEST_TENANT_ID}));
         defer bq.deinit();
         _ = try bq.next();
     }
@@ -517,7 +517,7 @@ test "integration: two same-tenant renews at exhaustion record audit rows summin
     h.releaseConn(blocker);
     for (threads) |t| t.join();
 
-    const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
+    const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
     try std.testing.expectEqual(@as(i64, 0), remaining); // 1.5 slices funded, ≥1.5 wanted → drained to zero
     // The audit rows (one breakdown per event) sum to the real drain — never
     // 2×slice, which the un-locked-balance probe used to record.
@@ -553,7 +553,7 @@ test "integration: two same-tenant settles at exhaustion record audit rows summi
     const blocker = try h.acquireConn();
     _ = try blocker.exec("BEGIN", .{});
     {
-        var bq = PgQuery.from(try blocker.query("SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid FOR UPDATE", .{base.TEST_TENANT_ID}));
+        var bq = PgQuery.from(try blocker.query("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid FOR UPDATE", .{base.TEST_TENANT_ID}));
         defer bq.deinit();
         _ = try bq.next();
     }
@@ -567,7 +567,7 @@ test "integration: two same-tenant settles at exhaustion record audit rows summi
     for (threads) |t| t.join();
 
     try std.testing.expect(slots[0].claimed and slots[1].claimed); // both settled their lease
-    const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
+    const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
     try std.testing.expectEqual(@as(i64, 0), remaining);
     // Returned charges AND the persisted audit rows both equal the real drain.
     try std.testing.expectEqual(balance - remaining, slots[0].charged + slots[1].charged);

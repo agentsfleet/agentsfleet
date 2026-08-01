@@ -8,9 +8,6 @@ const Path = @import("route_matchers.zig").Path;
 const SEG_TENANTS = "tenants";
 const SEG_ME = "me";
 const SEG_ADMIN = "admin";
-const SEG_BILLING = "billing";
-const SEG_CHARGES = "charges";
-const SEG_TELEMETRY = "telemetry";
 const SEG_MODELS = "models";
 const SEG_FLEET_LIBRARIES = "fleet-libraries";
 
@@ -56,14 +53,4 @@ pub fn matchTenantModelEntryById(p: Path) ?[]const u8 {
     if (p.segs.len != 4) return null;
     if (!p.eq(0, SEG_TENANTS) or !p.eq(1, SEG_ME) or !p.eq(2, SEG_MODELS)) return null;
     return p.param(3);
-}
-
-// ── /tenants/me/billing/charges/{event_id}/telemetry ───────────────────────
-// The per-renewal slice breakdown behind one charge; returns the event_id.
-
-pub fn matchTenantMeteringPeriods(p: Path) ?[]const u8 {
-    if (p.segs.len != 6) return null;
-    if (!p.eq(0, SEG_TENANTS) or !p.eq(1, SEG_ME) or !p.eq(2, SEG_BILLING) or
-        !p.eq(3, SEG_CHARGES) or !p.eq(5, SEG_TELEMETRY)) return null;
-    return p.param(4);
 }

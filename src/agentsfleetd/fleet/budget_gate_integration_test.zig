@@ -48,14 +48,6 @@ const SPEND_AT_CEILING_NANOS: i64 = 1_000_000_000;
 // `created_at`, joined to the stage telemetry row for scope. Seed both: a stage
 // row (scope + recorded_at pruning; its own nanos are not read for stage) plus a
 // metering slice carrying the drained `nanos`. Single-slice run → start == drain.
-const INSERT_METERING_SLICE_SQL =
-    \\INSERT INTO fleet.metering_periods
-    \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-    \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-    \\VALUES (overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
-    \\        $1, 1, 0, 0, 0, 0, 0, 0, $2, $3)
-;
-
 fn seedSpend(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, nanos: i64, recorded_at: i64) !void {
     try store.insertTelemetry(conn, ALLOC, .{
         .tenant_id = base.TEST_TENANT_ID,
@@ -65,10 +57,10 @@ fn seedSpend(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, nanos: 
         .charge_type = .stage,
         .posture = .platform,
         .model = FIXTURE_MODEL,
-        .credit_deducted_nanos = 0,
-        .recorded_at = recorded_at,
+        .credit_deducted_nanos = nanos,
+        .event_created_at = recorded_at,
+        .created_at = recorded_at,
     });
-    _ = try conn.exec(INSERT_METERING_SLICE_SQL, .{ event_id, nanos, recorded_at });
 }
 
 fn teardownSpend(conn: *pg.Conn) void {

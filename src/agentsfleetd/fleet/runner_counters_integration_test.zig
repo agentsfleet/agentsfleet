@@ -11,7 +11,6 @@
 const std = @import("std");
 const constants = @import("common");
 const pg = @import("pg");
-const schema = @import("schema");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
 const protocol = @import("contract").protocol;
@@ -150,43 +149,6 @@ fn expireLatestActive(conn: *pg.Conn) !void {
     prior.deinit(ALLOC);
 }
 
-/// The slot carrying the counter table and its backfill.
-const COUNTER_SLOT_VERSION: i32 = 43;
-const BACKFILL_MARKER = "INSERT INTO fleet.runner_lifetime_counters";
-
-/// The backfill statement sliced out of the REAL migration text, so this test
-/// can never drift from what a deploy runs. Slot 43 is `CREATE TABLE …;
-/// GRANT …; INSERT … ON CONFLICT DO UPDATE;` — everything from the INSERT on
-/// is the backfill, and it is the only part that has to survive a reapply.
-fn backfillSql() ![]const u8 {
-    for (schema.migrations) |m| {
-        if (m.version != COUNTER_SLOT_VERSION) continue;
-        const start = std.mem.indexOf(u8, m.sql, BACKFILL_MARKER) orelse return error.BackfillStatementMissing;
-        return m.sql[start..];
-    }
-    return error.BackfillSlotMissing;
-}
-
-/// The Fleet event a settled lease delivered, in its terminal state.
-///
-/// Load-bearing for the backfill and NOT for the write arms, which is the
-/// asymmetry worth knowing: the runtime tally reads the settle verdict handed
-/// to `claimAndSettle`, while the backfill re-derives it from
-/// `core.fleet_events.status` — a table a different write path owns. A settled
-/// lease whose event row is missing or still non-terminal therefore backfills
-/// as acquired-but-unclassified. Seeded here so the reconstruction is asked
-/// against the state a real upgraded database is in.
-fn seedTerminalFleetEvent(conn: *pg.Conn, event_id: []const u8, outcome: protocol.Outcome) !void {
-    _ = try conn.exec(
-        \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
-        \\   request_json, created_at, updated_at)
-        \\VALUES (overlay(md5($1 || $2)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\        $1::uuid, $2, $3::uuid, $4, $5, $6, '{}'::jsonb, $7, $7)
-        \\ON CONFLICT (fleet_id, event_id) DO UPDATE SET status = EXCLUDED.status
-    , .{ FLEET_ID, event_id, WORKSPACE_ID, ACTOR, EVENT_TYPE_CHAT, @tagName(outcome), NOW_MS });
-}
-
 const Counters = struct { acquired: i64, succeeded: i64, failed: i64, expired: i64 };
 
 fn expectSameCounters(want: Counters, got: Counters) !void {
@@ -270,65 +232,6 @@ test "counter row equals a recount of the lease rows after mixed transitions" {
 
     try expectCountersMatchRecount(ctx.conn, 2, 1);
     try std.testing.expectEqual(@as(i64, 1), try leaseCount(ctx.conn, protocol.RUNNER_LEASE_STATUS_ACTIVE));
-
-    cleanup(ctx.conn);
-}
-
-test "the migration backfill reconstructs the tallies and is idempotent on reapply" {
-    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer ctx.pool.deinit();
-    defer ctx.pool.release(ctx.conn);
-    cleanup(ctx.conn);
-    try setupBase(ctx.conn);
-
-    // History first, written by the production paths — so the backfill is held
-    // against the write-time arms rather than against a hand-computed number.
-    for (LEASE_POOL, 0..) |lease_id, i| {
-        var event_buf: [64]u8 = undefined;
-        const event_id = try std.fmt.bufPrint(&event_buf, EVENT_PREFIX ++ "back-{d}", .{i});
-        try acquireLease(ctx.conn, lease_id, event_id, @as(i64, @intCast(i + 1)));
-    }
-    try std.testing.expect((try settleLease(ctx.conn, LEASE_POOL[0], true)).claimed);
-    try std.testing.expect((try settleLease(ctx.conn, LEASE_POOL[1], true)).claimed);
-    try std.testing.expect((try settleLease(ctx.conn, LEASE_POOL[2], false)).claimed);
-    try expireLatestActive(ctx.conn);
-    // The event rows those settles correspond to — see `seedTerminalFleetEvent`
-    // for why the backfill needs them and the runtime arms do not. Only the
-    // reported leases get one; an expired lease's event is legitimately still
-    // open, and the backfill counts it by lease status alone.
-    try seedTerminalFleetEvent(ctx.conn, EVENT_PREFIX ++ "back-0", .processed);
-    try seedTerminalFleetEvent(ctx.conn, EVENT_PREFIX ++ "back-1", .processed);
-    try seedTerminalFleetEvent(ctx.conn, EVENT_PREFIX ++ "back-2", .fleet_error);
-    const live = try counterRow(ctx.conn);
-
-    // Drop to the pre-migration world: the history is on disk, the tally row is
-    // not. This is exactly what slot 43 meets on an upgraded database.
-    _ = try ctx.conn.exec("DELETE FROM fleet.runner_lifetime_counters WHERE runner_id = $1::uuid", .{RUNNER_ID});
-
-    const backfill = try backfillSql();
-    _ = try ctx.conn.exec(backfill, .{});
-    const rebuilt = try counterRow(ctx.conn);
-    // A fresh database and an upgraded one must converge: the recount the
-    // migration derives has to equal what the write arms had been keeping.
-    try expectSameCounters(live, rebuilt);
-    try expectCountersMatchRecount(ctx.conn, 2, 1);
-
-    // Reapply. The DO UPDATE arm takes GREATEST of the stored tally and the
-    // recount rather than adding to it, so a re-run is a no-op on unchanged
-    // history and never doubles a live runner's tally.
-    _ = try ctx.conn.exec(backfill, .{});
-    try expectSameCounters(rebuilt, try counterRow(ctx.conn));
-
-    // And once retention has pruned, where the recount stops being a source of
-    // truth: lifetime tallies count transitions, not surviving rows. An
-    // absolute assignment would silently zero a mature runner's totals here.
-    // GREATEST cannot lower anything, which is what keeps this statement safe
-    // to hand an operator as the repair for the rolling-deploy gap — the
-    // window where `release_command` has applied the migration but replicas
-    // without the tally arms are still writing leases.
-    _ = try ctx.conn.exec("DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{RUNNER_ID});
-    _ = try ctx.conn.exec(backfill, .{});
-    try expectSameCounters(rebuilt, try counterRow(ctx.conn));
 
     cleanup(ctx.conn);
 }

@@ -13,6 +13,11 @@ const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
 
+/// The event envelope's creation instant. Fixed rather than `nowMillis()`:
+/// every ledger row for one event must carry the SAME value (schema/710),
+/// which a per-call clock read cannot guarantee.
+const EVENT_CREATED_AT: i64 = 1_760_000_000_000;
+
 const ALLOC = std.testing.allocator;
 
 // Per-suite tenant (fa09 block, matching the aa09 workspace segment): keeps
@@ -90,6 +95,7 @@ test "should commit a telemetry row with zero deducted nanos and leave balance u
         ALLOC,
         TENANT_ID,
         selfManagedCtx(WS_ZERO_DEBIT, event_id),
+        EVENT_CREATED_AT,
         .stop,
     );
     switch (result) {

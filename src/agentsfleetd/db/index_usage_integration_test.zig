@@ -1,5 +1,7 @@
-//! Integration tier for schema slot 033: every index it adds must be CHOSEN BY
-//! THE PLANNER for the query that justifies it.
+//! Integration tier for the hot-path indexes: each must be CHOSEN BY THE PLANNER
+//! for the query that justifies it. They shared retired slot 033; since the
+//! M154 rebuild each lives in the slot that owns its table, so this suite is
+//! organised by index rather than by slot.
 //!
 //! WHAT IS UNDER TEST is what our code owns: each index's column list and order,
 //! and that the index CAN serve its query. Whether the planner PREFERS it over a
@@ -28,9 +30,6 @@ const operator_sql = @import("../http/handlers/fleet/sql.zig");
 const retention_sweeper = @import("../fleet/retention_sweeper.zig");
 const PgQuery = @import("pg_query.zig").PgQuery;
 
-/// The migration slot this suite covers.
-const SLOT_VERSION: i32 = 33;
-
 /// A minimal legible fixture. Fitness is checked with `enable_seqscan = off`, so
 /// it does not depend on the probe fleet being a selective slice of a large
 /// table — a few rows per fleet is enough for the plan to form.
@@ -52,12 +51,11 @@ const LEASE_EVENT_PREFIX = "idxprobe-evt-";
 /// fitness probe below spell it.
 const LEASES_BY_RUNNER_INDEX = "idx_runner_leases_runner_id_created_at_id";
 
-/// Every index slot 033 creates, in file order. Four, deliberately: the slot
-/// indexes only the reads whose cost grows without bound. List sorts over
-/// runners, fleets and api keys are left unindexed at the ~100-runner scale the
-/// slot documents — see its header.
+/// The four hot-path indexes this suite plans against — deliberately only the
+/// reads whose cost grows without bound. List sorts over runners, fleets and api
+/// keys stay unindexed at the ~100-runner scale their slots document.
 const IndexRef = struct { schema: []const u8, name: []const u8 };
-const SLOT_033_INDEXES = [_]IndexRef{
+const COVERED_HOT_PATH_INDEXES = [_]IndexRef{
     .{ .schema = "fleet", .name = "idx_runner_affinity_last_runner_id_leased_until" },
     .{ .schema = "fleet", .name = "idx_runner_leases_fleet_id_status_fencing_token" },
     .{ .schema = "core", .name = "idx_fleet_events_workspace_id_created_at_event_id" },
@@ -204,7 +202,7 @@ test "slot 033 indexes are applied exactly once" {
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
 
-    for (SLOT_033_INDEXES) |entry| {
+    for (COVERED_HOT_PATH_INDEXES) |entry| {
         const n = try base.indexCount(db.conn, entry.schema, entry.name);
         if (n != 1) {
             std.debug.print("index {s}.{s} present {d} times, want 1\n", .{ entry.schema, entry.name, n });
@@ -213,40 +211,59 @@ test "slot 033 indexes are applied exactly once" {
     }
 }
 
-test "slot 033 creates exactly the indexes this suite covers" {
-    // Pins the slot's SIZE, not just its members. An index added to the slot
-    // without a matching plan assertion here is the created-but-unproven case
-    // the suite exists to prevent, so it fails until covered.
-    const slot = slotSql(SLOT_VERSION) orelse return error.SlotNotRegistered;
-    var lines = std.mem.splitScalar(u8, slot, '\n');
-    var creates: usize = 0;
-    while (lines.next()) |raw| {
-        const line = std.mem.trim(u8, raw, " \t\r");
-        if (std.mem.startsWith(u8, line, "CREATE INDEX")) creates += 1;
+test "every covered index is created exactly once across the schema" {
+    // The retired slot 033 grouped these four, so this suite could pin ONE
+    // slot's SIZE and catch an index added without a matching plan assertion.
+    // Each index now lives in the slot that owns its table, so there is no
+    // single slot left to size — that guard is now the every-index-cites-its-
+    // reader assertion, which covers ALL indexes rather than these four.
+    // What still belongs here is the narrower claim: each index this suite plans
+    // against is created, and created once. A duplicate under a second name
+    // would be maintained on every write for nothing.
+    for (COVERED_HOT_PATH_INDEXES) |entry| {
+        var creates: usize = 0;
+        for (schema.migrations) |m| {
+            var lines = std.mem.splitScalar(u8, m.sql, '\n');
+            while (lines.next()) |raw| {
+                const line = std.mem.trim(u8, raw, " \t\r");
+                if (!std.mem.startsWith(u8, line, "CREATE INDEX")) continue;
+                if (std.mem.indexOf(u8, line, entry.name) != null) creates += 1;
+            }
+        }
+        std.testing.expectEqual(@as(usize, 1), creates) catch |err| {
+            std.debug.print(
+                "index {s} created {d} times across schema/, want exactly 1\n",
+                .{ entry.name, creates },
+            );
+            return err;
+        };
     }
-    try std.testing.expectEqual(SLOT_033_INDEXES.len, creates);
 }
 
-test "slot 033 re-applies as a no-op" {
-    // Idempotency by construction: every statement in the slot is guarded, so a
-    // re-run against a provisioned database changes nothing. Reading it back
-    // through the registered migration array rather than the file also proves
-    // the slot is wired into `schema/embed.zig` — an unregistered slot never
-    // runs at all, and would otherwise fail only at first deploy.
-    const slot = slotSql(SLOT_VERSION) orelse return error.SlotNotRegistered;
-    var lines = std.mem.splitScalar(u8, slot, '\n');
+test "every index in the schema re-applies as a no-op" {
+    // Idempotency by construction: a re-run against a provisioned database must
+    // change nothing. Generalised from the retired slot 033 to the whole schema,
+    // because the covered indexes no longer share a slot — and the broader claim
+    // is the one the rebuild actually needs, since every slot is re-applied on
+    // every boot. Reading through the registered migration array rather than the
+    // files also proves each slot is wired into `schema/embed.zig`.
     var guarded: usize = 0;
-    while (lines.next()) |raw| {
-        // Comment lines discuss DDL without being it -- match statements only.
-        const line = std.mem.trim(u8, raw, " \t\r");
-        if (!std.mem.startsWith(u8, line, "CREATE INDEX")) continue;
-        if (std.mem.indexOf(u8, line, "IF NOT EXISTS") == null) {
-            std.debug.print("unguarded statement in slot 033:\n{s}\n", .{line});
-            return error.MigrationNotIdempotent;
+    for (schema.migrations) |m| {
+        var lines = std.mem.splitScalar(u8, m.sql, '\n');
+        while (lines.next()) |raw| {
+            // Comment lines discuss DDL without being it -- match statements only.
+            const line = std.mem.trim(u8, raw, " \t\r");
+            const is_index = std.mem.startsWith(u8, line, "CREATE INDEX") or
+                std.mem.startsWith(u8, line, "CREATE UNIQUE INDEX");
+            if (!is_index) continue;
+            if (std.mem.indexOf(u8, line, "IF NOT EXISTS") == null) {
+                std.debug.print("unguarded index in slot v{d}:\n{s}\n", .{ m.version, line });
+                return error.MigrationNotIdempotent;
+            }
+            guarded += 1;
         }
-        guarded += 1;
     }
-    try std.testing.expectEqual(SLOT_033_INDEXES.len, guarded);
+    try std.testing.expect(guarded >= COVERED_HOT_PATH_INDEXES.len);
 }
 
 test "memory composite has the right shape and serves the fleet filter" {
@@ -397,16 +414,20 @@ test "counter and retention slots are registered in the migration array" {
     // Reading through `schema.migrations` rather than the files proves each
     // slot is wired into `schema/embed.zig` — an unregistered slot never runs
     // at all, and would otherwise fail only at first deploy.
-    try std.testing.expect(slotSql(43) != null);
-    try std.testing.expect(slotSql(44) != null);
-    try std.testing.expect(slotSql(45) != null);
-    try std.testing.expect(slotSql(46) != null);
+    // Retired slots 043-046 folded into the slots that own their tables:
+    // the lifetime counters into 650, the runner-event read and
+    // retention sweep indexes into 640, and the lease retention grants and
+    // indexes into 610 and 620.
+    try std.testing.expect(slotSql(610) != null);
+    try std.testing.expect(slotSql(620) != null);
+    try std.testing.expect(slotSql(640) != null);
+    try std.testing.expect(slotSql(650) != null);
 }
 
 /// Slot 046's pair, named once because the shape assertions and the fitness
 /// probes below both spell them.
 const RETENTION_LEASES_INDEX = "idx_runner_leases_status_updated_at";
-const RETENTION_EVENTS_INDEX = "idx_runner_events_type_occurred_at";
+const RETENTION_EVENTS_INDEX = "idx_runner_events_type_created_at";
 /// Below every seeded row's clock, so NOTHING qualifies — the steady-state
 /// cycle, and the only bind that discriminates.
 ///

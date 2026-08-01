@@ -37,9 +37,6 @@ pub const Route = union(enum) {
     get_tenant_billing,
     // Tenant-scoped credit-pool charges (Usage tab) — GET /v1/tenants/me/billing/charges
     get_tenant_billing_charges,
-    // Per-renewal slice breakdown behind one charge — carries {event_id}.
-    // GET /v1/tenants/me/billing/charges/{event_id}/telemetry
-    get_tenant_metering_periods: []const u8,
     // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
     list_tenant_workspaces,
     // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider

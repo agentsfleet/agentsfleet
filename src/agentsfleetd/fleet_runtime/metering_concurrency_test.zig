@@ -17,6 +17,11 @@ const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
 
+/// The event envelope's creation instant. Fixed rather than `nowMillis()`:
+/// every ledger row for one event must carry the SAME value (schema/710),
+/// which a per-call clock read cannot guarantee.
+const EVENT_CREATED_AT: i64 = 1_760_000_000_000;
+
 const ALLOC = std.testing.allocator;
 
 // Per-suite tenant (fa08 block, matching the aa08 workspace segment): keeps
@@ -61,7 +66,7 @@ const Job = struct {
 };
 
 fn runReceive(job: *Job) void {
-    job.outcome = metering.debitReceive(job.pool, ALLOC, TENANT_ID, job.ctx(), .stop);
+    job.outcome = metering.debitReceive(job.pool, ALLOC, TENANT_ID, job.ctx(), EVENT_CREATED_AT, .stop);
 }
 
 // event_id pattern: aa19 segment + a per-index suffix, zero-padded, unique.

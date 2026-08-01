@@ -108,7 +108,6 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         // ── Billing (read-only) ──
         .get_tenant_billing,
         .get_tenant_billing_charges,
-        .get_tenant_metering_periods,
         => &BILLING_READ,
 
         // ── Tenant LLM-provider config (provider credential) ──

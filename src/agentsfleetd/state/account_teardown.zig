@@ -35,15 +35,21 @@ const AGENTS_OF_TENANT = "(SELECT id FROM core.fleets WHERE workspace_id IN " ++
 /// The fleet-scoped child deletes run before `core.fleets` (which their
 /// subqueries read), and all workspace children run before `core.workspaces`.
 const PURGE_STATEMENTS = [_][]const u8{
-    // Keyed, no FK — telemetry workspace_id is TEXT.
-    "DELETE FROM core.fleet_execution_telemetry WHERE workspace_id IN (SELECT workspace_id::text FROM core.workspaces WHERE tenant_id = $1::uuid)",
-    // Keyed, no FK — memory fleet_id is the owning fleet UUID (schema/013).
+    // The ledger resolves to the tenant through a real foreign key now
+    // (schema/710), so `core.tenants` below cascades it. Kept explicit anyway:
+    // it runs first, and erasure proving zero rows should not depend on the
+    // order PostgreSQL happens to walk the cascade in. Trimming this list to
+    // what no cascade covers lands with
+    // `test_tenant_erasure_leaves_no_rows` running against a live database,
+    // not on inspection.
+    "DELETE FROM billing.usage_ledger WHERE workspace_id IN " ++ WS_OF_TENANT,
+    // Keyed, no FK — memory fleet_id is the owning fleet UUID (schema/820).
     "DELETE FROM memory.memory_entries WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
-    // metering_periods is keyed by event_id (no FK); runner_leases/runner_affinity
-    // now carry an ON DELETE CASCADE FK to core.fleets but are still
+    // `fleet.metering_periods` is gone: derived per-renewal detail
+    // with no product consumer, deleted rather than carried. runner_leases and
+    // runner_affinity carry an ON DELETE CASCADE FK to core.fleets but stay
     // swept explicitly here — before core.fleets below — so an erased account
-    // leaves no identifying rows behind, not only whatever the cascade would catch.
-    "DELETE FROM fleet.metering_periods WHERE event_id IN (SELECT event_id FROM fleet.runner_leases WHERE tenant_id = $1::uuid)",
+    // leaves no identifying rows behind, not only whatever the cascade catches.
     "DELETE FROM fleet.runner_leases WHERE tenant_id = $1::uuid",
     "DELETE FROM fleet.runner_affinity WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
     // Gates are append-only by trigger; the purge transaction opts out via

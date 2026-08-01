@@ -67,6 +67,8 @@ test {
     _ = @import("auth/crypto/rs256_sign.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/schema_ahead_migration_test.zig");
+    _ = @import("db/schema_privilege_test.zig");
+    _ = @import("cmd/migration_policy_test.zig");
     _ = @import("fleet/service_token_splits_wire_test.zig");
     _ = @import("http/stream_registry.zig");
     _ = @import("hmac_sig");

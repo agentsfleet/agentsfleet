@@ -109,7 +109,7 @@ Roughly twenty-two tables carry `uid` plus a duplicate twin holding the same val
 The waste is the smaller half of the argument. The **correctness** half is recorded upstream in `schema/043_runner_lifetime_counters.sql`, which deliberately ships one unique index because a second one breaks concurrent first-touch upserts: `ON CONFLICT` arbitrates exactly one constraint, so two sessions inserting a brand-new row race to a duplicate-key error on the *other* index instead of taking the update arm. Every table still carrying the dual-key shape has that latent race. This Section generalises the decision slot 043 already made table-by-table. **Implementation default:** one column named `id`, because that is the name the API already exposes and the name every foreign key should reference.
 
 - **Dimension 2.1** — no table declares a generated identity column or a unique constraint duplicating its primary key → Test `test_no_duplicate_identity_columns`
-- **Dimension 2.2** — every foreign key references a primary key, not a secondary unique constraint → Test `test_foreign_keys_reference_primary_keys`
+- **Dimension 2.2** — every foreign key references the primary key, a unique constraint that strictly *contains* it (the tenant-scoping superkeys, each commenting the reference it serves), or a declared domain key in the test's allowlist — never a duplicate-identity twin → Test `test_foreign_keys_reference_primary_or_superkey`
 - **Dimension 2.3** — identifiers remain application-generated version 7, and the public field name is unchanged at the API boundary → Test `test_generated_ids_are_uuidv7_and_api_shape_unchanged`
 
 ### §3 — Money consolidated behind referential integrity
@@ -122,7 +122,7 @@ Money lives in three schemas and the ledger carries `workspace_id` and `fleet_id
 
 ### §4 — Retire the accrual detail table
 
-`fleet.metering_periods` gains a row per renewal — roughly one per twenty seconds of every run — and is read by one endpoint that no product surface calls. It is derived data: the ledger row already carries the accumulated total the wallet reconciles against, and the table cannot identify its own owner without joining the ledger to do it. It is removed rather than carried, partitioned, and given a retention policy. The per-slice detail becomes an M155 concern on the durable event stream.
+`fleet.metering_periods` gains a row per renewal — roughly one per twenty seconds of every run — and its only endpoint is called by no product surface. **Correction made during implementation: it had a second, live reader.** The budget drain joined it to attribute a run's spend to a rolling window using per-slice timestamps, because the accumulating ledger row pins one instant at ~run start; with `MAX_RUNTIME_MS` at 12h against a 24h window, collapsing onto that instant would let a long run's spend fall out of the window and under-enforce the daily cap. The table still goes — but `billing.usage_ledger` gains `last_charged_at`, so the drain apportions the accumulated total across `[created_at, last_charged_at]` by overlap, and gains `token_count_cached_input`, without which the charge cannot be recomputed from the row. The per-slice detail becomes an M155 concern on the durable event stream.
 
 - **Dimension 4.1** — the table, its store, its handler and its endpoint are gone, with no orphaned reference → Test `test_accrual_surface_fully_removed`
 - **Dimension 4.2** — the wallet drain still reconciles against the ledger across a metered run with renewals → Test `test_wallet_reconciles_to_ledger_without_accrual_table`
@@ -206,7 +206,7 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 | 1.2 | unit | `test_named_migration_versions_match_slots` | Each named slot-version constant resolves to the renumbered slot creating that table |
 | 1.3 | integration | `test_bootstrap_from_empty_applies_all_slots` | A torn-down database applies every slot in order; recorded version equals the last slot |
 | 2.1 | unit | `test_no_duplicate_identity_columns` | Catalogue query returns zero generated identity columns and zero uniques duplicating a primary key |
-| 2.2 | integration | `test_foreign_keys_reference_primary_keys` | Every foreign key's referenced columns equal the referenced table's primary key |
+| 2.2 | integration | `test_foreign_keys_reference_primary_or_superkey` | Every foreign key's referenced columns are the primary key, a strict superset of it, or the one allowlisted domain key (`model_library (provider, model_id)`); zero references to a twin |
 | 2.3 | unit | `test_generated_ids_are_uuidv7_and_api_shape_unchanged` | Generated identifiers carry version nibble 7; a fleet response still exposes `id` |
 | 3.1 | integration | `test_ledger_rows_resolve_to_tenant_by_foreign_key` | Inserting a ledger row for an unknown tenant is rejected by the database, not by the handler |
 | 3.2 | unit | `test_counter_trigger_has_no_regex` | The counter trigger body contains no pattern-match operator |

@@ -141,7 +141,6 @@ pub const matchAdminFleetLibrary = billing.matchAdminFleetLibrary;
 /// requires these matchers land "without growing" it.
 pub const matchFleetLibrary = library.matchFleetLibrary;
 pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;
-pub const matchTenantMeteringPeriods = billing.matchTenantMeteringPeriods;
 pub const matchTenantModelEntryById = billing.matchTenantModelEntryById;
 
 // ── /workspaces/{workspace_id}/{suffix} ────────────────────────────────────

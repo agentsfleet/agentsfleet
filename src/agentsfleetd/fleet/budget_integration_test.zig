@@ -36,20 +36,13 @@ const HOUR_MS: i64 = 60 * 60 * 1000;
 /// slice's own `created_at`, joined to the stage telemetry row for fleet scope.
 /// A metering uid must be uuidv7-shaped (char 15 = '7', the schema CHECK), so we
 /// force it on a random uuid rather than mint one in Zig.
-const INSERT_METERING_SLICE_SQL =
-    \\INSERT INTO fleet.metering_periods
-    \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-    \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-    \\VALUES (overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
-    \\        $1, $2, 0, 0, 0, 0, 0, 0, $3, $4)
-;
-
 /// Seed one stage drain the budget query will count: a `metering_periods` slice
 /// carrying `nanos` at `drain_ms`, plus the joined stage telemetry row stamped
 /// at `start_ms` (the run start the query prunes by). The telemetry row's own
-/// `credit_deducted_nanos` is NOT read for stage — the slice's `charged_nanos`
-/// is — so it is 0.
-fn seedStageSlice(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, event_id: []const u8, slice_seq: i64, nanos: i64, start_ms: i64, drain_ms: i64) !void {
+/// `credit_deducted_nanos` now carries the spend directly: the slice table it
+/// used to live in is gone, and the row's [created_at, last_charged_at] span is
+/// what the drain apportions against.
+fn seedStageSlice(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, event_id: []const u8, nanos: i64, start_ms: i64, drain_ms: i64) !void {
     try store.insertTelemetry(conn, ALLOC, .{
         .tenant_id = base.TEST_TENANT_ID,
         .workspace_id = workspace_id,
@@ -58,17 +51,20 @@ fn seedStageSlice(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8
         .charge_type = .stage,
         .posture = .platform,
         .model = FIXTURE_MODEL,
-        .credit_deducted_nanos = 0,
-        .recorded_at = start_ms,
+        .credit_deducted_nanos = nanos,
+        .event_created_at = start_ms,
+        .created_at = start_ms,
+        // The run charged from `start_ms` to `drain_ms`; the drain apportions
+        // across that span instead of stamping the whole total on one instant.
+        .last_charged_at = drain_ms,
     });
-    _ = try conn.exec(INSERT_METERING_SLICE_SQL, .{ event_id, slice_seq, nanos, drain_ms });
 }
 
 /// The common single-slice case: a run that drains `nanos` in one shot at
 /// `recorded_at` (start == drain), so the fix's start-vs-drain distinction
 /// collapses and the old call sites keep their exact numbers.
 fn seedSpend(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, event_id: []const u8, nanos: i64, recorded_at: i64) !void {
-    try seedStageSlice(conn, workspace_id, fleet_id, event_id, 1, nanos, recorded_at, recorded_at);
+    try seedStageSlice(conn, workspace_id, fleet_id, event_id, nanos, recorded_at, recorded_at);
 }
 
 fn teardownSpend(conn: *pg.Conn, workspace_id: []const u8) void {
@@ -136,7 +132,7 @@ test "integration: spend is timed by DRAIN, not by run start (the P1 regression)
     // query bucketed by that `recorded_at`, this spend would wrongly drop out of
     // the day window and the daily ceiling could be breached ~2x. Bucketing by
     // the slice's own `created_at` counts it. This test fails on the pre-fix query.
-    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-longrun", 1, 500, NOW_MS - 25 * HOUR_MS, NOW_MS - 13 * HOUR_MS);
+    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-longrun", 500, NOW_MS - 25 * HOUR_MS, NOW_MS - 13 * HOUR_MS);
 
     const spend = (try budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS)).?;
     try std.testing.expectEqual(@as(i64, 500), spend.day_nanos); // drained inside 24h → counted
@@ -158,9 +154,11 @@ test "integration: a multi-slice run counts each slice in the window it drained"
     // 20h and 13h ago (INSIDE; the run's 12h span reaches to 13h ago). Day spend
     // must be slices 2+3 only; month spend all three. Proves per-slice
     // attribution, not whole-run.
-    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-multi", 1, 100, NOW_MS - 25 * HOUR_MS, NOW_MS - 25 * HOUR_MS);
-    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-multi", 2, 20, NOW_MS - 25 * HOUR_MS, NOW_MS - 20 * HOUR_MS);
-    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-multi", 3, 3, NOW_MS - 25 * HOUR_MS, NOW_MS - 13 * HOUR_MS);
+    // One run, three slices, now ONE accumulating row: 100 + 20 + 3 charged
+    // between 25h and 13h ago. The ledger holds one row per (event_id,
+    // charge_type), so seeding three would hit ON CONFLICT DO NOTHING and keep
+    // only the first.
+    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-multi", 123, NOW_MS - 25 * HOUR_MS, NOW_MS - 13 * HOUR_MS);
 
     const spend = (try budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS)).?;
     try std.testing.expectEqual(@as(i64, 23), spend.day_nanos); // slices 2+3
