@@ -27,7 +27,7 @@ const S_BEGIN = "BEGIN";
 const S_COMMIT = "COMMIT";
 
 /// Workspaces owned by the tenant. `$1` = tenant_id.
-const WS_OF_TENANT = "(SELECT workspace_id FROM core.workspaces WHERE tenant_id = $1::uuid)";
+const WS_OF_TENANT = "(SELECT id FROM core.workspaces WHERE tenant_id = $1::uuid)";
 /// Fleet ids in those workspaces.
 const AGENTS_OF_TENANT = "(SELECT id FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT ++ ")";
 
@@ -35,14 +35,11 @@ const AGENTS_OF_TENANT = "(SELECT id FROM core.fleets WHERE workspace_id IN " ++
 /// The fleet-scoped child deletes run before `core.fleets` (which their
 /// subqueries read), and all workspace children run before `core.workspaces`.
 const PURGE_STATEMENTS = [_][]const u8{
-    // The ledger resolves to the tenant through a real foreign key now
-    // (schema/710), so `core.tenants` below cascades it. Kept explicit anyway:
-    // it runs first, and erasure proving zero rows should not depend on the
-    // order PostgreSQL happens to walk the cascade in. Trimming this list to
-    // what no cascade covers lands with
-    // `test_tenant_erasure_leaves_no_rows` running against a live database,
-    // not on inspection.
-    "DELETE FROM billing.usage_ledger WHERE workspace_id IN " ++ WS_OF_TENANT,
+    // No ledger delete. It resolves to the tenant through a NOT NULL foreign
+    // key now, so dropping the tenant below erases it by cascade — and no role
+    // reachable from here may delete a charge any other way (schema/710 grants
+    // no DELETE at all, to anyone). An explicit sweep would fail closed on
+    // privilege rather than tidy up.
     // Keyed, no FK — memory fleet_id is the owning fleet UUID (schema/820).
     "DELETE FROM memory.memory_entries WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
     // `fleet.metering_periods` is gone: derived per-renewal detail
@@ -63,7 +60,7 @@ const PURGE_STATEMENTS = [_][]const u8{
     "DELETE FROM core.workspaces WHERE tenant_id = $1::uuid",
     "DELETE FROM core.memberships WHERE tenant_id = $1::uuid",
     "DELETE FROM core.users WHERE tenant_id = $1::uuid",
-    "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
+    "DELETE FROM core.tenants WHERE id = $1::uuid",
 };
 
 pub const PurgeResult = struct {

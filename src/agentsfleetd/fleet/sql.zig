@@ -38,8 +38,8 @@ pub const SELECT_DUE_RUNNERS =
 pub const INSERT_OFFLINE_EVENT =
     \\WITH inserted AS (
     \\  INSERT INTO fleet.runner_events
-    \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-    \\  VALUES ($1::uuid, $2::uuid, $3::text, $4::bigint,
+    \\    (id, runner_id, event_type, metadata, dedup_key, created_at)
+    \\  VALUES ($1::uuid, $2::uuid, $3::text,
     \\          jsonb_build_object($5::text, $6::bigint), $6::bigint, $4::bigint)
     \\  ON CONFLICT (runner_id, dedup_key)
     \\    WHERE event_type = 'runner_offline' AND dedup_key IS NOT NULL
@@ -88,8 +88,8 @@ pub const MARK_DRAINED_IF_IDLE =
     \\  RETURNING r.id
     \\), inserted AS (
     \\  INSERT INTO fleet.runner_events
-    \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-    \\  SELECT $6::uuid, id, $7::text, $3::bigint,
+    \\    (id, runner_id, event_type, metadata, dedup_key, created_at)
+    \\  SELECT $6::uuid, id, $7::text,
     \\         jsonb_build_object($8::text, $4::text, $9::text, $2::text), NULL, $3::bigint
     \\  FROM updated
     \\  RETURNING 1
@@ -117,32 +117,34 @@ pub const SELECT_RUNNER_EVENT_COUNT =
     \\SELECT COUNT(*)::bigint FROM fleet.runner_events
     \\WHERE runner_id = $1::uuid
     \\  AND ($2::text[] IS NULL OR event_type = ANY($2::text[]))
-    \\  AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
-    \\  AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
+    \\  AND ($3::bigint IS NULL OR created_at >= $3::bigint)
+    \\  AND ($4::bigint IS NULL OR created_at <= $4::bigint)
 ;
 
-/// One keyset page of runner events, newest first over `(occurred_at, id)` —
-/// rides `runner_events_runner_idx (runner_id, occurred_at DESC, id DESC)`.
+/// One keyset page of runner events, newest first over `(created_at, id)` —
+/// rides `idx_runner_events_runner_id_created_at_id`. The wire field is still
+/// named `occurred_at`; only the column it reads was renamed, because an
+/// append-only row occurs when it is created and did not need two names.
 const RUNNER_EVENT_KEYSET_COLS =
-    \\SELECT id::text, runner_id::text, event_type, occurred_at, metadata::text
+    \\SELECT id::text, runner_id::text, event_type, created_at, metadata::text
     \\FROM fleet.runner_events
     \\WHERE runner_id = $1::uuid
     \\  AND ($2::text[] IS NULL OR event_type = ANY($2::text[]))
-    \\  AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
-    \\  AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
+    \\  AND ($3::bigint IS NULL OR created_at >= $3::bigint)
+    \\  AND ($4::bigint IS NULL OR created_at <= $4::bigint)
     \\
 ;
 
 /// `$5` limit.
 pub const SELECT_RUNNER_EVENT_KEYSET_FIRST = RUNNER_EVENT_KEYSET_COLS ++
-    \\ORDER BY occurred_at DESC, id DESC
+    \\ORDER BY created_at DESC, id DESC
     \\LIMIT $5::bigint
 ;
 
-/// `$5` boundary occurred_at, `$6` boundary event row id, `$7` limit.
+/// `$5` boundary instant, `$6` boundary event row id, `$7` limit.
 pub const SELECT_RUNNER_EVENT_KEYSET_AFTER = RUNNER_EVENT_KEYSET_COLS ++
-    \\  AND (occurred_at, id) < ($5::bigint, $6::uuid)
-    \\ORDER BY occurred_at DESC, id DESC
+    \\  AND (created_at, id) < ($5::bigint, $6::uuid)
+    \\ORDER BY created_at DESC, id DESC
     \\LIMIT $7::bigint
 ;
 
@@ -150,8 +152,8 @@ pub const SELECT_RUNNER_EVENT_KEYSET_AFTER = RUNNER_EVENT_KEYSET_COLS ++
 /// offline sweep dedupes, and a NULL key is excluded from its partial index.
 pub const INSERT_RUNNER_EVENT =
     \\INSERT INTO fleet.runner_events
-    \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-    \\VALUES ($1::uuid, $2::uuid, $3::text, $4::bigint,
+    \\  (id, runner_id, event_type, metadata, dedup_key, created_at)
+    \\VALUES ($1::uuid, $2::uuid, $3::text,
     \\        jsonb_build_object($5::text, $6::text, $7::text, $8::text, $9::text, $10::text),
     \\        NULL, $4::bigint)
 ;
@@ -163,7 +165,7 @@ pub const INSERT_RUNNER_EVENT =
 /// writes one row, so a retrying producer cannot double-run a fleet.
 pub const INSERT_FLEET_EVENT =
     \\INSERT INTO core.fleet_events
-    \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,
+    \\  (id, fleet_id, event_id, workspace_id, actor, event_type,
     \\   status, request_json, resumes_event_id, created_at, updated_at)
     \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $10, $7::jsonb, $8, $9, $9)
     \\ON CONFLICT (fleet_id, event_id) DO NOTHING

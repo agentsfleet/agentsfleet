@@ -46,9 +46,9 @@ const EVENTS_SELECT =
     \\       failure_label, failure_detail, checkpoint_id, resumes_event_id,
     \\       created_at, updated_at,
     \\       (SELECT SUM(te.credit_deducted_nanos)::bigint
-    \\          FROM core.fleet_execution_telemetry te
+    \\          FROM billing.usage_ledger te
     \\         WHERE te.event_id = core.fleet_events.event_id
-    \\           AND te.fleet_id = core.fleet_events.fleet_id::text) AS cost_nanos
+    \\           AND te.fleet_id = core.fleet_events.fleet_id) AS cost_nanos
     \\FROM core.fleet_events
     \\
 ;
