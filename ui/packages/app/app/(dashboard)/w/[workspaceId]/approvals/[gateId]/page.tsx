@@ -125,7 +125,7 @@ function KeyValueGrid({ gate, workspaceId }: { gate: ApprovalGate; workspaceId: 
       <Row label="Action" value={<code className="font-mono text-xs">{gate.action_name}</code>} />
       {gate.gate_kind ? <Row label="Kind" value={<Badge variant="default">{gate.gate_kind}</Badge>} /> : null}
       {gate.blast_radius ? <Row label="Blast radius" value={gate.blast_radius} /> : null}
-      <Row label="Requested" value={<Time value={new Date(gate.requested_at)} tooltip={false} />} />
+      <Row label="Requested" value={<Time value={new Date(gate.created_at)} tooltip={false} />} />
       <Row label="Auto-deny at" value={<Time value={new Date(gate.timeout_at)} tooltip={false} />} />
       {/* An action id exists only to be quoted back — in a support thread, a log
           grep, an API call. It is the one field on this page nobody reads, they

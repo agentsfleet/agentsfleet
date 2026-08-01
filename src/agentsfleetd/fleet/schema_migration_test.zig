@@ -18,22 +18,34 @@ const pool_migrations = @import("../db/pool_migrations.zig");
 const Migration = @import("../db/pool_types.zig").Migration;
 const cmd_common = @import("../cmd/common.zig");
 
-// `uid id host_id token_hash sandbox_tier admin_state labels tenant_id last_seen_at
-//  created_at updated_at` — the frozen `fleet.runners` column set.
-const EXPECTED_COLUMN_COUNT: i64 = 11;
+// `id host_id token_hash sandbox_tier admin_state labels tenant_id network_policy
+//  registry_allowlist worker_count capability_report capability_reported_at
+//  degraded degraded_reason last_seen_at created_at updated_at` — the
+//  `fleet.runners` column set. One identity column, not the `uid`/`id` pair the
+//  frozen-slot model was stuck with.
+const EXPECTED_COLUMN_COUNT: i64 = 17;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
-const EXPECTED_CORE_KEY_CONSTRAINTS: i64 = 6;
+/// The retired identity twins: a generated `uid`, a text `id` beside it, and a
+/// CHECK tying the two together, on both tables that carried the shape. Rebuilt
+/// from empty they simply do not exist, so this counts to ZERO — the assertion
+/// is inverted rather than deleted, because it is the one that would notice a
+/// slot quietly reintroducing the pair.
+const EXPECTED_RETIRED_TWIN_CONSTRAINTS: i64 = 0;
 
-// `uid id runner_id fleet_id workspace_id tenant_id event_id actor event_type
-//  request_json event_created_at posture provider model metered_input_tokens
-//  metered_cached_tokens metered_output_tokens last_metered_at_ms fencing_token
+// `id runner_id fleet_id workspace_id tenant_id event_id actor event_type
+//  event_created_at posture provider model metered_input_tokens
+//  metered_cached_tokens metered_output_tokens last_metered_at fencing_token
 //  lease_expires_at status created_at updated_at` — the `fleet.runner_leases`
-//  column set. The actor/event_type/request_json/event_created_at envelope is
-//  stored so a reclaim can re-lease the event from Postgres alone (no Redis
-//  re-read); `provider` keys the composite rate lookup; the `metered_*` +
-//  `last_metered_at_ms` cursor backs the incremental renewal metering.
-const EXPECTED_LEASE_COLUMN_COUNT: i64 = 23;
-const EXPECTED_EVENT_COLUMN_COUNT: i64 = 8;
+//  column set. The actor/event_type/event_created_at envelope is stored so the
+//  report path rebuilds its context without re-resolving; `provider` keys the
+//  composite rate lookup; the `metered_*` + `last_metered_at` cursor backs the
+//  incremental renewal metering. No `request_json`: the body lives on the event
+//  row and reclaim joins for it.
+const EXPECTED_LEASE_COLUMN_COUNT: i64 = 21;
+/// `id runner_id event_type metadata dedup_key created_at`. No `occurred_at`:
+/// an append-only row occurs when it is created, and the retired shape stored
+/// that one instant under two names.
+const EXPECTED_EVENT_COLUMN_COUNT: i64 = 6;
 
 fn openConnOrSkip(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
     const url = common.env.testLiveValue("TEST_DATABASE_URL") orelse return null;
@@ -86,7 +98,7 @@ test "runner schema: fleet.runners is migrated with its columns and constraints"
     // (UUIDv7) Unique Identifier (UID) check. Pin test: constraint names are the schema rule.
     try std.testing.expectEqual(EXPECTED_NAMED_CONSTRAINTS, try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_constraint WHERE conname IN ('uq_runners_token_hash', 'ck_runners_uid_uuidv7')",
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname IN ('uq_runners_token_hash', 'ck_runners_id_uuidv7')",
     ));
 }
 
@@ -109,17 +121,17 @@ test "runner schema: fleet.runner_leases is migrated with its columns and constr
     // Pin test: constraint name is the schema rule.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_uid_uuidv7'",
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_id_uuidv7'",
     ));
 }
 
-test "core key schemas: public text ids have explicit UUIDv7 constraints" {
+test "core key schemas: the retired identity twins are gone and stay gone" {
     const alloc = std.testing.allocator;
     const ctx = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
     defer ctx.pool.deinit();
     defer ctx.pool.release(ctx.conn);
 
-    try std.testing.expectEqual(EXPECTED_CORE_KEY_CONSTRAINTS, try scalarI64(ctx.conn,
+    try std.testing.expectEqual(EXPECTED_RETIRED_TWIN_CONSTRAINTS, try scalarI64(ctx.conn,
         \\SELECT count(*)::bigint
         \\FROM pg_constraint c
         \\JOIN pg_class rel ON rel.oid = c.conrelid
@@ -157,12 +169,12 @@ test "runner schema: fleet.runner_events is migrated append-only" {
     // Pin test: constraint name is the schema rule.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_events_uid_uuidv7'",
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_events_id_uuidv7'",
     ));
     // pin test: index name is the schema promise.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'fleet' AND indexname = 'runner_events_offline_dedup_idx'",
+        "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'fleet' AND indexname = 'uq_runner_events_runner_id_dedup_key_offline'",
     ));
 }
 

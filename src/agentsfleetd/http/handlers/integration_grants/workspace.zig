@@ -26,10 +26,10 @@ const S_PENDING = "pending";
 const S_REVOKED = "revoked";
 
 const GrantRow = struct {
-    grant_id: []const u8,
+    id: []const u8,
     service: []const u8,
     status: []const u8,
-    requested_at: i64,
+    created_at: i64,
     approved_at: ?i64,
     revoked_at: ?i64,
     reason: []const u8,
@@ -58,10 +58,10 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, fleet_id: []cons
     }
 
     var q = PgQuery.from(conn.query(
-        \\SELECT grant_id, service, status, requested_at, approved_at, revoked_at, requested_reason
+        \\SELECT id::text, service, status, created_at, approved_at, revoked_at, requested_reason
         \\FROM core.integration_grants
         \\WHERE fleet_id = $1::uuid
-        \\ORDER BY requested_at DESC
+        \\ORDER BY created_at DESC
     , .{fleet_id}) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
@@ -70,18 +70,18 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, fleet_id: []cons
 
     var grants: std.ArrayList(GrantRow) = .empty;
     while (q.next() catch null) |row| {
-        const grant_id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
+        const id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const service = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
         const status = hx.alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
-        const requested_at = row.get(i64, 3) catch continue;
+        const created_at = row.get(i64, 3) catch continue;
         const approved_at = row.get(i64, 4) catch null;
         const revoked_at = row.get(i64, 5) catch null;
         const reason = hx.alloc.dupe(u8, row.get([]u8, 6) catch continue) catch continue;
         grants.append(hx.alloc, .{
-            .grant_id = grant_id,
+            .id = id,
             .service = service,
             .status = status,
-            .requested_at = requested_at,
+            .created_at = created_at,
             .approved_at = approved_at,
             .revoked_at = revoked_at,
             .reason = reason,
@@ -124,12 +124,12 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, fleet_id: []con
         \\UPDATE core.integration_grants g
         \\SET status = $1, revoked_at = $2
         \\FROM core.fleets z
-        \\WHERE g.grant_id = $3
+        \\WHERE g.id = $3::uuid
         \\  AND g.fleet_id = $4::uuid
         \\  AND z.id = g.fleet_id
         \\  AND z.workspace_id = $5::uuid
         \\  AND g.status != $1
-        \\RETURNING g.grant_id
+        \\RETURNING g.id
     , .{ S_REVOKED, now_ms, grant_id, fleet_id, workspace_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
@@ -173,38 +173,40 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
 
     // Seed tenant, two workspaces, a fleet in WS_B, and a pending grant.
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'DefIndepTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'DefIndepTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ tenant_id, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO core.workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ ws_a, tenant_id, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO core.workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ ws_b, tenant_id, now });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'defindep-victim', '---\nname: defindep-victim\n---\nx', '{"name":"defindep-victim"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\SELECT $1::uuid, w.id, w.tenant_id, 'defindep-victim',
+        \\       '---\nname: defindep-victim\n---\nx', '{"name":"defindep-victim"}'::jsonb, 'active', 0, 0
+        \\FROM core.workspaces w WHERE w.id = $2::uuid
         \\ON CONFLICT DO NOTHING
     , .{ fleet_in_b, ws_b });
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1::uuid, $1, $2::uuid, 'slack', $3, $4, 'test defence-in-depth')
-        \\ON CONFLICT (grant_id) DO NOTHING
+        \\  (id, fleet_id, service, status, created_at, requested_reason)
+        \\VALUES ($1::uuid, $2::uuid, 'slack', $3, $4, 'test defence-in-depth')
+        \\ON CONFLICT (id) DO NOTHING
     , .{ grant_id, fleet_in_b, S_PENDING, now });
 
     defer {
-        _ = conn.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{grant_id}) catch {};
+        _ = conn.exec("DELETE FROM core.integration_grants WHERE id = $1::uuid", .{grant_id}) catch {};
         _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fleet_in_b}) catch {};
-        _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{ws_a}) catch {};
-        _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{ws_b}) catch {};
-        _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1", .{tenant_id}) catch {};
+        _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1::uuid", .{ws_a}) catch {};
+        _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1::uuid", .{ws_b}) catch {};
+        _ = conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{tenant_id}) catch {};
     }
 
     // Execute the exact production UPDATE with a mismatched workspace_id (WS_A,
@@ -213,19 +215,19 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
         \\UPDATE core.integration_grants g
         \\SET status = $1, revoked_at = $2
         \\FROM core.fleets z
-        \\WHERE g.grant_id = $3
+        \\WHERE g.id = $3::uuid
         \\  AND g.fleet_id = $4::uuid
         \\  AND z.id = g.fleet_id
         \\  AND z.workspace_id = $5::uuid
         \\  AND g.status != $1
-        \\RETURNING g.grant_id
+        \\RETURNING g.id
     , .{ S_REVOKED, now, grant_id, fleet_in_b, ws_a }));
     defer rev_q.deinit();
     try std.testing.expect((try rev_q.next()) == null);
 
     // Grant status must still be 'pending' — SQL defence blocked the revoke.
     var check_q = PgQuery.from(try conn.query(
-        "SELECT status FROM core.integration_grants WHERE grant_id = $1",
+        "SELECT status FROM core.integration_grants WHERE id = $1::uuid",
         .{grant_id},
     ));
     defer check_q.deinit();

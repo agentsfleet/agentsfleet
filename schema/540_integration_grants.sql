@@ -5,9 +5,12 @@
 --
 -- Like `core.fleet_keys`, the retired shape carried a generated identity column
 -- plus a `grant_id` text twin, a CHECK tying them to the same value, and a
--- full-shape UUID regular expression on the twin. The value is one column now;
--- the public field name
--- `grant_id` is unchanged and aliased at the boundary.
+-- full-shape UUID regular expression on the twin. The value is one column now,
+-- and it is called `id` everywhere — including on the wire. Aliasing it back to
+-- `grant_id` at the boundary was considered and rejected: the two names always
+-- held the same value, so an alias is a compatibility shim for a product that
+-- has not shipped a stable interface yet, and it would keep the retired spelling
+-- alive in clients indefinitely.
 --
 -- `requested_at` is gone, not renamed away from its meaning: a grant row is
 -- created by the request, so the request instant IS the row's birth and
