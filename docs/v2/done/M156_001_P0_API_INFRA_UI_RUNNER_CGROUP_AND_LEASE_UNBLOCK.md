@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M156
 **Workstream:** 001
 **Date:** Jul 31, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — the dev fleet leases nothing; three deploy jobs are red and every lease dies at init.
 **Categories:** API, DOCS, INFRA, SQL, UI
 **Batch:** B1 — single stream; the runner change gates the gate change, which gates the acceptance jobs.
@@ -337,4 +337,5 @@ N/A — no files deleted.
   - `kishore-babysit-prs` — three polls. Found `test-integration` red and traced it to the free-trial expiry rather than this diff; §7 is the resulting fix.
 - **Process note** — two earlier commits on this branch (`51c843989`, `5e45d962b`) carry messages claiming they recorded skill-chain outcomes here. Their diffs did not: a scripted string replacement silently no-opped on a non-matching pattern and the content never landed. Caught when the length gate forced a re-read of this section. The outcomes above are the real record; the lesson is to verify a write landed rather than trust the commit.
 - **LENGTH GATE: SKIPPED per user override** (reason: Indy chose to fold the per-tenant free-trial work into this milestone rather than split it into M157, accepting a spec past the 320-line bound. Recorded 2026-08-01 after a compression pass left it 19 lines over; the alternative offered was a separate spec with the code still shipping in the same Pull Request.)
+- **§7 close addendum (Aug 01, second close)** — Dimensions 7.4/7.5 landed in `cba058723`: both billing suites arm themselves by closing their own tenant's boundary (`test_fixtures.endFreeTrialFor`, fixed past instant) and seeding a priced rate row; the drained-balance arm moved to platform posture (self-managed floors are structurally zero). Red-green proved on the renew suite (expectation flipped → `UnexpectedStatus`, reverted → green). The constant died in four TypeScript surfaces (a third copy was found in `cli/src/constants/billing.ts`) plus the Terms page; a drift-catcher in `rates.test.ts` fails on any calendar date reappearing. `free_trial.ends_at_ms` nullable in the OpenAPI source + bundle; `doctor --json` carries no such field (handoff overstated — no CLI command reads it). Full suite: integration exit 0 (748 pass); one unrelated seed-order flake in `catalog_patch_integration_test` under seed `0x8b08451c`, passing under reruns — pre-existing, not this diff. Changelog: second Aug 01 `<Update>` on docs PR #169. Successor spec M157_001 (pending) carries the incident→draft-PR wedge.
 - **Deferrals** — none.
