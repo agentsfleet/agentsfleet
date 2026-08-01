@@ -139,10 +139,11 @@ fn purgeFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const 
     errdefer conn.rollback() catch |err| log.warn(EVENT_IGNORED_ERROR, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     _ = try conn.exec(approval_gate_db.SET_GATE_PURGE_BYPASS_SQL, .{});
 
-    _ = try conn.exec(
-        "DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1 AND fleet_id = $2",
-        .{ workspace_id, fleet_id },
-    );
+    // No ledger delete. Deleting a fleet is routine; erasing a charge the wallet
+    // has already been debited for is not, and doing it would falsify the
+    // reconciliation between the two. The ledger's `fleet_id` is ON DELETE SET
+    // NULL for exactly this reason, so the row survives the fleet with its
+    // tenant scope intact — and no role here holds DELETE on it anyway.
     _ = try conn.exec(
         "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid",
         .{fleet_id},

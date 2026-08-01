@@ -228,8 +228,8 @@ pub const PATCH_RUNNER_ASSIGNED_POLICY =
     \\  RETURNING r.id::text
     \\), event AS (
     \\  INSERT INTO fleet.runner_events
-    \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-    \\  SELECT $7::uuid, id::uuid, $8::text, $6::bigint,
+    \\    (id, runner_id, event_type, metadata, dedup_key, created_at)
+    \\  SELECT $7::uuid, id::uuid, $8::text,
     \\         jsonb_build_object($9::text, $2::text, $10::text, $3::text,
     \\                            $11::text, $4::jsonb, $12::text, $5::int),
     \\         NULL, $6::bigint
@@ -268,8 +268,8 @@ pub const PATCH_RUNNER_ADMIN_STATE =
     \\  RETURNING r.id::text, c.from_admin_state
     \\), event AS (
     \\  INSERT INTO fleet.runner_events
-    \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-    \\  SELECT $6::uuid, id::uuid, $7::text, $3::bigint,
+    \\    (id, runner_id, event_type, metadata, dedup_key, created_at)
+    \\  SELECT $6::uuid, id::uuid, $7::text,
     \\         jsonb_build_object($8::text, from_admin_state, $9::text, $2::text),
     \\         NULL, $3::bigint
     \\  FROM updated

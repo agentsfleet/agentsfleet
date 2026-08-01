@@ -19,8 +19,8 @@ pub const INSERT_RUNNER_WITH_EVENT =
     \\  RETURNING id
     \\)
     \\INSERT INTO fleet.runner_events
-    \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-    \\SELECT $9::uuid, id, $10::text, $8::bigint,
+    \\  (id, runner_id, event_type, metadata, dedup_key, created_at)
+    \\SELECT $9::uuid, id, $10::text,
     \\       jsonb_build_object($11::text, $2::text, $12::text, $4::text),
     \\       NULL, $8::bigint
     \\FROM inserted
@@ -94,8 +94,8 @@ pub const HEARTBEAT_WITH_TRANSITION_EVENT =
     \\  RETURNING locked.last_seen_at
     \\)
     \\INSERT INTO fleet.runner_events
-    \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-    \\SELECT $3::uuid, $1::uuid, $4::text, $2::bigint,
+    \\  (id, runner_id, event_type, metadata, dedup_key, created_at)
+    \\SELECT $3::uuid, $1::uuid, $4::text,
     \\       jsonb_build_object($5::text, last_seen_at), NULL, $2::bigint
     \\FROM bumped
     \\WHERE last_seen_at = $6::bigint OR ($2::bigint - last_seen_at) > $7::bigint
