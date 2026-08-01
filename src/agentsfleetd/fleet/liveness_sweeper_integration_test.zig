@@ -164,7 +164,7 @@ fn seedStaleActiveLease(conn: *pg.Conn, fleet_id: []const u8, affinity_id: []con
 }
 
 fn reclaimAsLive(conn: *pg.Conn, fleet_id: []const u8) !void {
-    const claim = try affinity.claim(conn, ALLOC, fleet_id, RUNNER_LIVE_ID, constants.LEASE_TTL_MS);
+    const claim = try affinity.claim(conn, fleet_id, RUNNER_LIVE_ID, constants.LEASE_TTL_MS);
     const won = switch (claim) {
         .won => |w| w,
         .taken => return error.TestUnexpectedResult,
