@@ -2,6 +2,8 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/test_search.sh
+source "$script_dir/../../lib/test_search.sh"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 script_under_test="$script_dir/02_credentials.sh"
 

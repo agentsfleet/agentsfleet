@@ -3,6 +3,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/test_search.sh
+source "$SCRIPT_DIR/../../lib/test_search.sh"
 readonly APPLY="$SCRIPT_DIR/03_planetscale_apply.sh"
 readonly VERIFY="$SCRIPT_DIR/04_verify.sh"
 readonly INVENTORY="$SCRIPT_DIR/01_egress_inventory.sh"
@@ -58,12 +60,19 @@ done
 case "$url" in
   *api.planetscale.com/v1*)
     case "$method/${PLANETSCALE_LIST_MODE:-empty}" in
-      GET/empty) printf '{"data":[]}\n' ;;
+      GET/empty) printf '{"next_page":null,"data":[]}\n' ;;
       GET/drift)
-        printf '{"data":[{"id":"entry-1","schema":"","role":"","cidrs":["198.51.100.1/32"]}]}\n'
+        printf '{"next_page":null,"data":[{"id":"entry-1","schema":"","role":"","cidrs":["198.51.100.1/32"]}]}\n'
         ;;
       GET/same|GET/verify)
-        printf '{"data":[{"id":"entry-1","schema":"","role":"","cidrs":["203.0.113.10/32"]}]}\n'
+        printf '{"next_page":null,"data":[{"id":"entry-1","schema":"","role":"","cidrs":["203.0.113.10/32"]}]}\n'
+        ;;
+      GET/paginated)
+        if [[ "$url" == *'page=1&per_page=100' ]]; then
+          printf '{"next_page":2,"data":[{"id":"scoped-entry","schema":"app","role":"","cidrs":["198.51.100.1/32"]}]}\n'
+        else
+          printf '{"next_page":null,"data":[{"id":"entry-1","schema":"","role":"","cidrs":["203.0.113.10/32"]}]}\n'
+        fi
         ;;
       POST/*|PATCH/*)
         printf '{"id":"entry-1","schema":"","role":"","cidrs":["203.0.113.10/32"]}\n'
@@ -116,6 +125,29 @@ test_should_update_drifted_planetscale_entry() {
     bad "$name" "$output"
   elif ! grep -q -- '--request PATCH' "$calls"; then
     bad "$name" "update request was not sent"
+  else
+    ok "$name"
+  fi
+}
+
+test_should_find_planetscale_entry_on_later_page() {
+  local name="test_should_find_planetscale_entry_on_later_page"
+  local output status=0
+  output="$(run_script PLANETSCALE_LIST_MODE=paginated bash "$APPLY")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+  elif ! rg --quiet 'page=2&per_page=100' "$calls"; then
+    bad "$name" "apply did not request the second PlanetScale page"
+  elif rg --quiet -- '--request (POST|PATCH)' "$calls"; then
+    bad "$name" "apply mutated an entry that exists on a later page"
+    return
+  fi
+  status=0
+  output="$(run_script PLANETSCALE_LIST_MODE=paginated bash "$VERIFY")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+  elif ! rg --quiet 'page=2&per_page=100' "$calls"; then
+    bad "$name" "verify did not request the second PlanetScale page"
   else
     ok "$name"
   fi
@@ -205,6 +237,7 @@ test_should_ignore_ambient_provider_endpoint_overrides() {
 
 test_should_create_missing_planetscale_entry
 test_should_update_drifted_planetscale_entry
+test_should_find_planetscale_entry_on_later_page
 test_should_require_provider_write_approval
 test_should_verify_both_providers
 test_should_reject_disabled_upstash_allowlisting

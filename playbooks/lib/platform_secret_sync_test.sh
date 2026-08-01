@@ -2,6 +2,8 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=test_search.sh
+source "$script_dir/test_search.sh"
 script_under_test="$script_dir/platform_secret_sync.sh"
 
 passed=0
