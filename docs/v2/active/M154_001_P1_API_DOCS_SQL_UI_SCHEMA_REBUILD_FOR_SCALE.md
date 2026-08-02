@@ -63,6 +63,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/db/test_fixtures*.zig` | EDIT | Fixtures follow the real schema (RULE ITF, RULE TFX) |
 | `public/openapi.json` | EDIT | Accrual endpoint removed; event detail added |
 | `ui/packages/app/**` | EDIT | The dialog fetches the body on expand instead of reading it off the list row; accrual client retired |
+| `schema/530_fleet_keys.sql` | DELETE | The external-caller credential retires with its surface (§8) |
+| `src/agentsfleetd/http/handlers/integration_grants/handler.zig` | EDIT | Request route, handler-local authentication and its session arm removed (§8) |
+| `src/agentsfleetd/http/handlers/fleets/create.zig` | EDIT | Install seeds the pending grant and raises the approval gate (§8) |
+| `src/agentsfleetd/http/handlers/webhooks/grant_approval.zig` | DELETE | Duplicate approval path; the gate webhook already resolves decisions (§8) |
+| `src/agentsfleetd/fleet_runtime/notifications/grant_notifier.zig` | DELETE | Its notification and nonce belong to the removed path (§8) |
+| `src/agentsfleetd/fleet/service.zig` | EDIT | The lease parks on a missing grant instead of dropping the credential (§8) |
+| `src/agentsfleetd/http/handlers/api_keys/*.zig` | EDIT | Fleet-key management retires; tenant-key management stays (§8) |
+| `docs/architecture/connectors.md` | EDIT | Records install-time origination and the retired external surface |
 | `docs/architecture/data_flow.md` | EDIT | Records the list/detail split and the retained partition option |
 | `~/Projects/docs/changelog.mdx` | EDIT | User-visible: an endpoint is removed, the events list gets faster |
 
@@ -153,12 +161,40 @@ The list select carries the event body and the full agent answer on every row, u
 - **Dimension 7.3** — the lease carries no body copy, and reclaiming an expired lease still re-delivers the original event → Test `test_reclaim_redelivers_event_without_lease_payload_copy`
 - **Dimension 7.4** — reclaim's lifetime-tally arm still rides the same statement as the status flip, so the counter cannot drift from the rows it counts → Test `test_reclaim_tally_stays_in_the_status_flip_statement`
 
+### §8 — A grant can be born, and `core.fleet_keys` retires
+
+`core.integration_grants` is the enforcement spine for internal credential minting — three readers gate on it, and the App ingress routing query inner-joins it on `status = 'approved'`. Yet the only production statement that ever *creates* a grant row sits behind `POST …/integration-requests`, authenticated by an `agt_a` fleet key that exists for external callers (LangGraph, CrewAI, Composio) and that no internal fleet ever holds. So an internally-installed fleet declaring `required_credentials: ["github"]` can never obtain a grant: the ingress join excludes it, no event row is written, no lease is issued, and nothing anywhere reports that a decision was owed. The fleet is silently inert, and every test that exercises minting hand-seeds an approved row, which is why the gap survived.
+
+The origination path belongs where the requirement becomes known — at install, from the bundle fields the catalogue already stores — and the decision belongs in the approval-gate machine this codebase already ships: an inbox, a detail page with an evidence tree, resolve buttons, a Slack webhook, a timeout sweeper and an append-only audit. A gate is a per-event decision; a grant is the standing answer that outlives the run. The gate asks; the grant remembers. With origination moved there, the external surface has no internal dependant and retires whole — the handler-local authentication, its dead session arm, the fleet-key table, and a second approval path that duplicated the gate's own webhook down to the notifier.
+
+**Implementation default:** the grant seed runs synchronously in the create handler, alongside `INSERT core.fleets` — not in `create_install_steps.zig`'s progression, whose every sub-step is best-effort by design. A best-effort seed reproduces the exact defect this section removes: the row flips to `active` carrying no grant.
+
+- **Dimension 8.1** — installing a fleet whose bundle declares a required credential creates a pending grant and raises an approval gate carrying the bundle's stated reason → Test `test_install_seeds_pending_grant_and_gate`
+- **Dimension 8.2** — resolving that gate as approved flips the grant to approved, and the fleet's webhook events then route → Test `test_gate_approval_arms_webhook_routing`
+- **Dimension 8.3** — a lease whose resolved credential has no approved grant parks the event and re-evaluates on the next poll, instead of dropping the credential and issuing a lease that cannot work → Test `test_lease_parks_on_missing_grant`
+- **Dimension 8.4** — no route authenticates outside the middleware chain; the handler-local fleet authentication and its session arm are gone → Test `test_no_handler_local_authentication`
+- **Dimension 8.5** — `core.fleet_keys` is absent from the catalogue and unreferenced across the tree → Test `test_fleet_keys_surface_fully_removed`
+
 ## Interfaces
 
 ```
 REMOVED    GET /v1/tenants/me/billing/charges/{event_id}/telemetry
            Per-renewal accrual detail; no product surface calls it. Pre-2.0, so
            removed outright rather than answering 410.
+
+REMOVED    POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-requests
+           Grant origination for external callers, authenticated by a fleet key
+           outside the middleware chain (§8). Origination moves to install.
+
+REMOVED    POST /v1/webhooks/{fleet_id}/grant-approval
+           Second approval path with its own Redis nonce; the approval-gate
+           webhook already resolves decisions for this workspace.
+
+REMOVED    GET|POST /v1/workspaces/{workspace_id}/fleet-keys
+           DELETE   /v1/workspaces/{workspace_id}/fleet-keys/{fleet_key_id}
+           Management surface for the external-caller credential. Retires with
+           `core.fleet_keys`; external collaboration returns as a first-class
+           principal, not a handler-local lookup.
 
 ADDED      GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}
            200 → the full event row including request body and response text.
@@ -224,6 +260,11 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 | 7.2 | e2e | `test_event_detail_returns_body_scoped_to_workspace` | Expanding a row fetches the body; the same identifier from another workspace answers 404 |
 | 7.3 | integration | `test_reclaim_redelivers_event_without_lease_payload_copy` | An expired lease is reclaimed and the re-delivered event body matches the original byte for byte |
 | 7.4 | integration | `test_reclaim_tally_stays_in_the_status_flip_statement` | Reclaiming N leases increments the expired tally by exactly N, with no separate statement |
+| 8.1 | integration | `test_install_seeds_pending_grant_and_gate` | Installing a bundle declaring `required_credentials:["github"]` yields one `pending` grant for that fleet and one pending gate of kind `integration_grant` carrying the bundle's stated reason |
+| 8.2 | integration | `test_gate_approval_arms_webhook_routing` | Resolving that gate approved flips the grant to `approved`; the App ingress routing query, which returned zero targets before, now returns the fleet |
+| 8.3 | integration | `test_lease_parks_on_missing_grant` | A fleet whose resolved credential has no approved grant answers no-work and writes no lease; after approval the next poll issues a lease carrying the mintable |
+| 8.4 | unit | `test_no_handler_local_authentication` | No handler reads the `authorization` header directly; every route resolves its principal through the middleware registry |
+| 8.5 | unit | `test_fleet_keys_surface_fully_removed` | Zero references to `fleet_keys`, `agt_a`, `grant-approval` or `integration-requests` across `schema/`, `src/`, `public/openapi.json`, `cli/` and `ui/` |
 | regression | integration | `test_charges_response_shape_unchanged` | The charges endpoint returns the same fields and cursor semantics as before the rebuild |
 | regression | e2e | `test_events_list_renders_identically` | The rendered events table is unchanged after the payload columns leave the list read |
 
@@ -236,6 +277,7 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 | R3 | The accrual surface is gone (§4) | `grep -rn 'metering_periods\|get_tenant_metering_periods\|slice_seq' src/ ui/ public/openapi.json` | no output | P0 | |
 | R4 | The list read carries no body columns (§7) | `grep -n 'request_json\|response_text' src/agentsfleetd/state/fleet_events_store.zig` | no output | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R6 | A grant can be born without hand-seeding (§8) | `grep -rn 'integration-requests\|fleet_keys\|grant-approval' src/ schema/ public/openapi.json` | no output | P0 | |
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes (schema, HTTP and Redis touched) | `make test-integration` | exit 0 | P0 | |
@@ -311,6 +353,14 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
   > Indy (2026-08-01): "Just fold it into these" — the `vault` / `billing` privilege split (§3.4–3.5) joins this milestone rather than waiting for the Row-Level Security work.
 
   > Indy (2026-08-01): "Okay we move the RLS to later" — Row-Level Security is a separate milestone. This one is its prerequisite: policies need every protected row to resolve to a tenant, which §3 delivers.
+
+  > Indy (2026-08-02): "I think this diverges the scenario and make our agentsfleetd more thick for no reason which is on even used. If the integration_requests, integration_grants and the autheenthcateFleet are all used for this purpose thsn they must be completely removed." — opens §8. The premise held for the request route and the fleet key; it did **not** hold for `core.integration_grants`, which three internal readers gate on, so the table stays and only the external surface retires.
+
+  > Indy (2026-08-02): "Is there a path for the fleet to ask for approval? that path must stay. Lets build agentsfleeet first and look at external collaboration later. But first justify that the approval isnt broke" — the justification came back negative: no internal origination path exists, and for webhook-triggered fleets the ingress join means no event is ever written. §8 builds the path rather than assuming one.
+
+  > Indy (2026-08-02): "Okay lets do that, but i feel that when the app(github) an approved grant must appear in the Approvals page for for github automatically. … No extra step is needed." — settles the open product question: the gate is raised automatically at install and lands in the workspace Approvals inbox. No command-line flag, no inline prompt, no second confirmation step.
+
+  > Indy (2026-08-02): "Yes continue, but i want the above decision not ina . new spec but in this PR you are on (agentsfleet-m154-schema-rebuild worktree)" — §8 is folded into this spec and this Pull Request rather than authored as M154_003 or M155.
 
 - **Upstream landing mid-authoring (M149, PR #584)** — the audit behind this spec ran against a tree eleven commits stale. M149 landed before CHORE(open) and invalidated three claims, all corrected above rather than carried: (a) *"nothing is ever pruned"* is false — a thirty-day retention sweep over runner leases and runner events now ships, with a comptime proof it cannot reach live work; it is preserved verbatim and this milestone adds no retention anywhere else. (b) The slot count is forty-five, of which fourteen — not eleven — are patch-only. (c) `schema/043_runner_lifetime_counters.sql` independently reached §2's conclusion for one table and recorded the *correctness* reason this spec had only argued on cost: a second unique key breaks concurrent first-touch upserts, because `ON CONFLICT` can arbitrate only one constraint. §2 now generalises an upstream decision instead of overriding a convention alone.
 
