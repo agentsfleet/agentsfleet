@@ -29,21 +29,17 @@ export const EVENT_NANOS = 0n;
 // per-stage fees — runtime is metered by the second, not per stage.
 export const RUN_NANOS_PER_SEC = 100_000n;
 
-// Promotional free-trial window. While `now_ms < FREE_TRIAL_END_MS` the
-// server's `compute_stage_charge` returns FREE_TRIAL_STAGE_NANOS regardless
-// of posture / model / tokens. Identifier names match the Zig + JS mirrors.
-// Customer surface for live rates + window state: agentsfleet.net/#pricing.
-export const FREE_TRIAL_END_MS = 1_785_542_400_000n; // 2026-08-01T00:00:00Z
+// Per-stage charge while a tenant's free trial is open: the server's
+// `compute_stage_charge` returns this regardless of posture / model / tokens.
+// Identifier names match the Zig + JS mirrors.
+//
+// The trial's END is deliberately NOT a constant here. It is a per-tenant fact
+// (`billing.tenant_wallet.free_trial_ends_at`, NULL = open-ended), so this
+// static marketing page has no boundary to state and must not invent one. The
+// copy below says what is true for everyone — the trial is open — and the
+// tenant's own boundary is surfaced in the dashboard billing panel, which can
+// actually read it. Customer surface for live rates: agentsfleet.net/#pricing.
 export const FREE_TRIAL_STAGE_NANOS = 0n;
-
-// Single source of truth for the trial-end *display* string. The pricing
-// banner and the landing hero pill both consume this — drifting the date in
-// one without the other would mis-message customers. The numeric authority
-// is FREE_TRIAL_END_MS above (cross-tier-pinned across Zig + 3 TS surfaces
-// by scripts/audit-cross-tier-rates.sh); this is its display-layer mirror.
-// IMPORTANT: when FREE_TRIAL_END_MS changes, update this string to match —
-// the two are coupled by convention, not by the type system.
-const FREE_TRIAL_END_DISPLAY = "July 31, 2026";
 
 export const RATES_DISPLAY = {
   STARTER_CREDIT: "$5",
@@ -55,6 +51,7 @@ export const RATES_DISPLAY = {
   RUN_RATE_PER_SEC: "$0.0001/sec",
   RUN_RATE_PER_HOUR: "$0.36/hr",
   HEADLINE: "Get early access",
-  FREE_TRIAL_BANNER: `Free until ${FREE_TRIAL_END_DISPLAY} — every event receipt and stage execution is on us while we gather traction.`,
-  FREE_TRIAL_PILL: `Free until ${FREE_TRIAL_END_DISPLAY}`,
+  FREE_TRIAL_BANNER:
+    "Free during early access — every event receipt and stage execution is on us while we gather traction.",
+  FREE_TRIAL_PILL: "Free during early access",
 } as const;

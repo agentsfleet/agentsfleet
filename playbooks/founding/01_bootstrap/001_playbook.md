@@ -1,333 +1,120 @@
-# M1_001: Playbook — Bootstrap
+# Bootstrap Accounts and Secret Stores
 
-**Milestone:** M1
-**Workstream:** 001
-**Updated:** Mar 19, 2026
-**Owner (1.0):** Human — one-time per startup
-**Owner (2.0):** Agent — executes after 1.0 handoff
+**Owner:** Human
+**Executors:** Human for external consoles; Agent for repeatable commands
+**Frequency:** once for a clean organization; repeat only after a full account
+reset
 
-Reusable across startups. Replace `ZMB` vault prefix, domain names, and service names per project.
+This step establishes identities and secret stores. It does not create runtime
+infrastructure; that begins in `03_priming_infra`.
 
----
+## Execution and verification
 
-## 1.0 Human Prerequisites
+| Order | Executor | Action | Verifier | Required evidence |
+|---|---|---|---|---|
+| 1 | Human | Create accounts and approve billing. | Human | Account and project names recorded without credentials. |
+| 2 | Human | Populate both deployment vaults. | Agent | Bootstrap credential gate passes for development and production. |
+| 3 | Human | Configure GitHub secrets and access. | Pipeline | A workflow can authenticate to 1Password without printing values. |
+| 4 | Agent | Synchronize Vercel settings after Human approval. | `02_vercel_env.sh --check` | Every expected variable exists on its required targets. |
+| 5 | Human | Start cache-free Vercel deployments. | Agent | Development and production deployment URLs recorded. |
 
-Create accounts and generate one root API key per service. Hand off to agent when done.
+## 1. Human creates the account boundary
 
-### 1.1 Create Accounts
+Create or confirm:
 
-- [ ] **GitHub** — create org + repo
-- [ ] **1Password Teams** — create team, create two vaults (names become `VAULT_DEV` and `VAULT_PROD` GitHub variables); create service account (e.g. `<project>-ci`) with access to both vaults; copy its token
-- [ ] **Vercel** — sign up, connect GitHub repo, create projects per the spec
-- [ ] **Cloudflare** — add domains, set nameservers
-- [ ] **Codecov** — connect GitHub repo
-- [ ] **npm** — create org
-- [ ] **Fly.io** — sign up at fly.io (use Google/GitHub). Add a payment method (required even on free tier). Install `flyctl` locally: `curl -L https://fly.io/install.sh | sh`. Run `fly auth login` (browser OAuth, one-time per machine). All service setup is agent-executed via CLI (see M2_002 §2.0).
-- [ ] **Cloudflare Tunnel** — no separate sign-up needed; tunnels are created under your existing Cloudflare account. Install `cloudflared` locally (`mise install cloudflared` or `brew install cloudflared`). Run `cloudflared tunnel login` (browser OAuth, one-time per machine — selects which Cloudflare zone to authorize). Agent then creates tunnels, stores credentials in vault, and routes DNS via `cloudflared` CLI (see M2_002 §2.4).
+- GitHub organization `agentsfleet` and repository `agentsfleet/agentsfleet`
+- 1Password vaults `ZMB_CD_DEV`, `ZMB_CD_PROD`, `ZMB_LOCAL_DEV`, and `ops`
+- a 1Password service account with read access to both deployment vaults
+- Fly.io organization and billing
+- Cloudflare zone for `agentsfleet.net`
+- Vercel projects `agentsfleet-website`, `agentsfleet-app`, and
+  `agentsfleet-agents-dev`
+- separate Clerk, PlanetScale, Upstash, PostHog, and Grafana resources for
+  development and production
+- QStash, Tailscale, npm, and gitleaks access
 
-### 1.2 Generate Root API Keys
+Use the provider consoles for account creation and payment approval. Do not
+paste raw provider credentials into chat.
 
-One key per service:
+## 2. Human populates 1Password
 
-| Service | What to generate | Where |
-|---|---|---|
-| 1Password | Service account token for `agentsfleet-ci` | 1Password → Service Accounts |
-| Vercel | Account API token (Full Account scope) | Vercel → Account Settings → Tokens |
-| Vercel (`agentsfleet-website`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
-| Vercel (`agentsfleet-agents-dev`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
-| Vercel (`agentsfleet-app`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
-| Cloudflare | API token with Zone:Edit + DNS:Edit + Transform Rules:Edit (all zones) | CF → My Profile → API Tokens → Create Token |
-| Fly.io | Deploy token (org-scoped) | `fly tokens create deploy -o agentsfleet` → copy output |
-| Clerk (DEV instance) | Publishable key + Secret key | Clerk dashboard → DEV instance → API Keys |
-| Clerk (PROD instance) | Publishable key + Secret key | Clerk dashboard → PROD instance → API Keys |
-| GitHub App | App ID + PEM private key | GitHub → Settings → Developer settings → GitHub Apps → New GitHub App |
-| npm | Granular publish token | npmjs.org → Access Tokens |
-| Codecov | Repo token | Codecov → repo settings |
-| gitleaks | License key | gitleaks.io |
+Create every item and field listed in
+[`02_preflight/001_playbook.md`](../02_preflight/001_playbook.md). Store values
+directly in 1Password.
 
-### 1.3a Generate Encryption Master Key
+Generate four independent 32-byte values per environment:
 
-Generate a 32-byte (64 hex char) AES-256 key for at-rest secret encryption. Run once per environment:
+- `encryption-master-key/credential`
+- `auth-session-code-pepper/credential`
+- `audit-log-pepper/credential`
+- `approval-signing-secret/credential`
 
-```bash
-# DEV key
-openssl rand -hex 32
+Use `openssl rand -hex 32`; development and production values must differ.
 
-# PROD key (run separately — must differ from DEV)
-openssl rand -hex 32
-```
+Create two dedicated Clerk acceptance identities per environment. Store their
+email addresses as the `regular` and `admin` fields on the single
+`e2e-fixtures-email` item. The suites provision and remove users through Clerk;
+no fixture password is stored.
 
-Store each output as `credential` in its respective vault item (`encryption-master-key`). Never reuse between environments.
+## 3. Human configures GitHub
 
-### 1.3b Generate Auth Pepper Keys
+Repository secrets:
 
-Two independent 32-byte (64 hex char) CSPRNG values per environment. One is the keyed-HMAC pepper used to defeat offline brute-force of the CLI-login verification code; the other is the keyed-HMAC pepper used to pseudonymize `session_id` in the auth-audit log sink. Both are loaded by `agentsfleetd` at boot via `src/state/vault.zig` and held in process memory only — never written to disk, never logged. Boot fails fast if either is missing.
-
-```bash
-# DEV — session-code HMAC pepper
-openssl rand -hex 32   # → store in op://$VAULT_DEV/auth-session-code-pepper/credential
-
-# DEV — audit-log HMAC pepper
-openssl rand -hex 32   # → store in op://$VAULT_DEV/audit-log-pepper/credential
-
-# PROD — session-code HMAC pepper (must differ from DEV)
-openssl rand -hex 32   # → store in op://$VAULT_PROD/auth-session-code-pepper/credential
-
-# PROD — audit-log HMAC pepper (must differ from DEV)
-openssl rand -hex 32   # → store in op://$VAULT_PROD/audit-log-pepper/credential
-```
-
-**Rotation:** rotating `auth-session-code-pepper` invalidates every in-flight CLI login session (their HMACs no longer match). Cheap because sessions are 5-minute-TTL — drain old sessions by waiting 5+ minutes between provisioning the new pepper and cutting the API process over. Rotating `audit-log-pepper` breaks cross-event correlation for past sessions but does not affect security (a different pepper protects the code itself).
-
-**Provisioning is manual:** run the four `openssl rand` commands above and store each value with `op item create` (or `op item edit` to update). There is no helper script — `agentsfleetd` boot fails fast if either pepper is missing, so verify both items exist in both vaults before handoff.
-
-### 1.3c Provision E2E Fixture Email Identities
-
-The Playwright e2e suite under `ui/packages/app/tests/e2e/` and the live CLI acceptance suite under `cli/test/acceptance/lifecycle-after-login.spec.ts` authenticate against Clerk DEV using two long-lived test users. Credentials live in Vault so tests read them at suite setup without hardcoding. DEV vault only — the e2e suite never runs against production.
-
-```bash
-# 1. In the Clerk DEV dashboard, create two test users:
-#    - regular@agentsfleet.dev (regular tenant member role)
-#    - admin@agentsfleet.dev   (tenant admin role)
-# 2. Generate a strong password for each: `openssl rand -base64 24` (or similar).
-# 3. Store both as separate 1Password items in the DEV vault:
-#    op://$VAULT_DEV/e2e-fixtures-email/regular  → fields: email, password
-#    op://$VAULT_DEV/e2e-fixtures-email/admin    → fields: email, password
-```
-
-PROD vault: **not required**. If a future spec adds prod-canary smoke tests, that spec authors the prod entries separately.
-
-### 1.3 Hand Off to Agent
-
-Give the agent:
-- The `OP_SERVICE_ACCOUNT_TOKEN` (1Password service account token)
-- All other raw API keys from 1.2
-
-Hand-off message:
-
-> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `playbooks/founding/01_bootstrap/001_playbook.md §2.0`, including the new entries from §1.3b (auth peppers) and §1.3c (e2e fixture emails). Then run `./playbooks/founding/02_preflight/00_gate.sh` and proceed with `playbooks/founding/02_preflight/001_playbook.md`."
-
----
-
-## 2.0 Agent Steps
-
-Agent executes these steps immediately after receiving the hand-off from 1.3.
-
-### 2.1 Store Keys in 1Password Vaults
-
-See [preflight playbook](../02_preflight/001_playbook.md) §1.1 and §1.2 for the full vault inventory (items, fields, and consumers).
-
-Create each item listed there. Value sources for items that require human provisioning:
-
-| Item | Where to get the value |
+| Name | Source |
 |---|---|
-| `cloudflare-api-token` | Cloudflare dashboard → API Tokens |
-| `npm-publish-token` | npmjs.com → Access Tokens → Granular (automation) |
-| `vercel-bypass-*` | Vercel → Project → Deployment Protection → Bypass |
-| `vercel-api-token` | Vercel Account Settings → Tokens |
-| `posthog-{dev,prod}` | PostHog project → Settings → Project API Key |
-| `clerk-{dev,prod}` | Clerk dashboard → API Keys (publishable + secret); JWKS URL and issuer derived from Clerk domain |
-| `github-app` | GitHub App → Settings → App ID + Generate private key |
-| `encryption-master-key` | `openssl rand -hex 32` (DEV and PROD must differ) |
-| `auth-session-code-pepper` | `openssl rand -hex 32` (per §1.3b — DEV and PROD must differ) |
-| `audit-log-pepper` | `openssl rand -hex 32` (per §1.3b — DEV and PROD must differ) |
-| `e2e-fixtures-email/regular` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
-| `e2e-fixtures-email/admin` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
-| `agentsfleetd-prod-server-*` | Created on server provision |
+| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password deployment service account |
+| `GITLEAKS_LICENSE` | gitleaks account |
 
-### 2.2 Set GitHub Secrets and Variables
+Repository variables are created during `03_priming_infra`; they name vaults,
+Fly apps, and runner-readiness state.
 
-GitHub repo → Settings → Secrets and Variables → Actions:
+After the first container push, the Human makes the
+`ghcr.io/agentsfleet/agentsfleetd` package public and grants this repository
+write access. The image contains compiled code only; runtime credentials come
+from 1Password.
 
-**Secrets** (sensitive — never visible after saving):
+## 4. Agent synchronizes Vercel
 
-| Secret | Value |
-|---|---|
-| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service account token |
-| `CODECOV_TOKEN` | Codecov repo token |
-| `GITLEAKS_LICENSE` | gitleaks license key |
+The sync covers both Vercel targets and the complete repository-owned variable
+set for the website and dashboard:
 
-> Only these three live in GitHub as secrets. All other secrets are fetched from 1Password at runtime via `op://` URIs.
+```bash
+ALLOW_VAULT_READS=1 \
+ALLOW_VERCEL_WRITES=1 \
+  ./playbooks/founding/01_bootstrap/02_vercel_env.sh --apply
 
-**Variables** (non-sensitive — visible, used to parameterise vault names):
+ALLOW_VAULT_READS=1 \
+  ./playbooks/founding/01_bootstrap/02_vercel_env.sh --check
+```
 
-| Variable | Value | Where defined |
+The Human then starts one cache-free deployment of each changed project because
+public variables are embedded during the build.
+
+The target domains are:
+
+| Surface | Development | Production |
 |---|---|---|
-| `VAULT_DEV` | e.g. `ZMB_CD_DEV` | name you chose when creating the vault |
-| `VAULT_PROD` | e.g. `ZMB_CD_PROD` | name you chose when creating the vault |
+| API | `api-dev.agentsfleet.net` | `api.agentsfleet.net` |
+| Dashboard | `app-dev.agentsfleet.net` | `app.agentsfleet.net` |
+| Website | Vercel preview URL | `agentsfleet.net` |
+| Installer | Vercel preview URL | `agentsfleet.dev` |
 
-> Workflows reference these as `${{ vars.VAULT_DEV }}` / `${{ vars.VAULT_PROD }}` — no hardcoded vault names anywhere in CI. Scripts fall back to `ZMB_CD_DEV` / `ZMB_CD_PROD` if the env var is not set locally.
+These are desired endpoints, not proof that DNS or deployments are already
+ready.
 
-### 2.3 GHCR Package Permissions
+## 5. Handoff
 
-After the first CI push to GHCR (triggered automatically on the first merge to `main`), set the package visibility:
+The Human tells the Agent:
 
-1. Go to `https://github.com/orgs/agentsfleet/packages/container/agentsfleetd/settings`
-2. **Change visibility → Public** — Fly.io and any consumer can pull without credentials
-3. **Manage Actions access → Add repository** → select the repo → set role to **Write**
+> Accounts, deployment vaults, GitHub secrets, and Vercel projects are ready.
 
-This is a one-time human step. GitHub has no API endpoint to change org package visibility — it must be done in the UI. Once public, it persists across all future CI pushes.
-
-> **Why public?** The image contains only the compiled binary. All secrets come from env vars at runtime. There is no secret in the image.
-
-### 2.3a Fly.io — API Service (Agent-executed via CLI)
-
-**Architecture:**
-```
-Cloudflare Edge (api-dev.agentsfleet.net)
-    │ Cloudflare Tunnel — encrypted, origin-shielded
-    ▼
-cloudflared-dev (Fly app, 2 machines for HA)
-    │ Fly private network / 6PN (internal only, no public port)
-    ▼
-agentsfleetd-dev.internal:3000  ← Fly anycast LB (automatic)
-    ├── Machine 1 (iad, shared-cpu-1x 512MB)
-    └── Machine 2 (iad, shared-cpu-1x 512MB)  ← auto-scaled up to N
-
-agentsfleet-runner (host-resident daemon on a bare-metal node — NOT a Fly app)
-    └── leases work over HTTPS, sandboxes in bubblewrap, control plane over Tailscale
-        (bootstrapped via 06_/07_runner_bootstrap_*; CI-deployed via deploy-dev.yml)
-```
-
-**Why Fly.io:**
-- No `*.fly.dev` public domain created when `[http_service]` is omitted — only the Cloudflare Tunnel is the ingress. True origin shielding.
-- Built-in anycast load balancing across all machines — no LB config.
-- Auto-scaling: set `min_machines_running` + `auto_stop_machines` in `fly.toml`.
-- Static outbound IP included — needed for PlanetScale/Upstash IP allowlisting.
-- `iad` region co-locates with PlanetScale `aws-us-east-2` → ~5ms DB latency.
-
-Agent executes via Fly CLI (see M2_002 §2.0 for full steps):
+The Agent runs the pre-priming gate:
 
 ```bash
-# Authenticate (human does fly auth login once; agent uses deploy token from vault)
-export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
-
-# Create apps (API + tunnel connector — execution runs on the bare-metal
-# agentsfleet-runner, not a Fly app; see 06_/07_runner_bootstrap_*)
-fly apps create agentsfleetd-dev       --org agentsfleet
-fly apps create cloudflared-dev   --org agentsfleet
-
-# Set secrets from vault
-fly secrets set \
-  DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/api-connection-string')" \
-  DATABASE_URL_MIGRATOR="$(op read 'op://$VAULT_DEV/planetscale-dev/migrator-connection-string')" \
-  REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/api-url')" \
-  ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
-  APPROVAL_SIGNING_SECRET="$(op read 'op://$VAULT_DEV/approval-signing-secret/credential')" \
-  OIDC_ISSUER="https://winning-wombat-65.clerk.accounts.dev" \
-  --app agentsfleetd-dev
-
-# Deploy from GHCR
-fly deploy --app agentsfleetd-dev --image ghcr.io/agentsfleet/agentsfleetd:dev-latest
-
-# Scale to 2 machines for HA
-fly scale count 2 --app agentsfleetd-dev
+ENV=all STAGE=bootstrap \
+  ./playbooks/founding/02_preflight/00_gate.sh
 ```
 
-CI triggers redeployments via `fly deploy --image` using the deploy token. Store in vault and set GitHub Actions vars:
-- `fly-api-token` → `ZMB_CD_DEV` and `ZMB_CD_PROD` vaults
-- `FLY_API_TOKEN` → GitHub Actions secret (or load from 1Password via OP_SERVICE_ACCOUNT_TOKEN)
-
-### 2.3b Cloudflare Tunnel — Origin Shield (Agent-executed)
-
-Cloudflare Tunnel routes all traffic from `api-dev.agentsfleet.net` → Fly private network. No public port on Fly. No bypass possible.
-
-```bash
-# Create tunnel (stores credentials locally; agent saves to vault)
-cloudflared tunnel create agentsfleetd-dev
-# Output: tunnel ID e.g. abc123...
-
-# Store tunnel credentials in vault (<tunnel-id> = the id printed by `cloudflared tunnel create` above)
-op item create --vault "$VAULT_DEV" --title cloudflare-tunnel-dev \
-  --category "API Credential" \
-  "credential=$(cat ~/.cloudflared/<tunnel-id>.json | base64)"
-
-# Create DNS CNAME → tunnel (origin-shielded, no public Fly endpoint)
-cloudflared tunnel route dns agentsfleetd-dev api-dev.agentsfleet.net
-```
-
-`cloudflared` config deployed as a Fly app connects to `agentsfleetd-dev.internal:3000` via Fly's private 6PN network. The Fly app has no `[http_service]` — no public endpoint is created.
-
-Cloudflare SSL/TLS mode: **Full (Strict)**. No Transform Rules needed — the tunnel handles routing.
-
-### 2.3c Cloudflare DNS — Managed Records
-
-For non-API DNS (website, app, etc.) — agent sets CNAME records via Cloudflare API:
-
-```bash
-CF_TOKEN=$(op read "op://$VAULT_PROD/cloudflare-api-token/credential")
-ZONE_ID=<from 2.6 below>   # resolve via §2.6 (Zone Discovery) first
-
-# These point to Vercel (not Fly — API traffic goes via tunnel)
-curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
-  -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"CNAME","name":"app","content":"cname.vercel-dns.com","proxied":true,"ttl":1}'
-```
-
-Cloudflare API token needs: Zone:Edit + DNS:Edit + Transform Rules:Edit permissions.
-
-### 2.6 Cloudflare — Zone Discovery
-
-```bash
-# VAULT_PROD must be set in your environment (or export it first)
-CF_TOKEN=$(op read "op://$VAULT_PROD/cloudflare-api-token/credential")
-curl -s -H "Authorization: Bearer $CF_TOKEN" \
-  https://api.cloudflare.com/client/v4/zones | jq '.result[] | {name, id}'
-```
-
-### 2.7 Vercel — Set Env Vars
-
-Agent reads project IDs and API token from 1Password, then upserts via the Vercel v10 env API (`POST /v10/projects/{id}/env?upsert=true`). Use the script — the table is reference, the script is the source of truth:
-
-```bash
-./playbooks/founding/01_bootstrap/02_vercel_env.sh           # apply
-./playbooks/founding/01_bootstrap/02_vercel_env.sh --check   # read-only diff, exits 1 on drift
-```
-
-After applying, **trigger a fresh redeploy per project without build cache** — `VITE_*` and `NEXT_PUBLIC_*` are inlined at build time, so existing deployments keep stale (or empty) values until they rebuild.
-
-**`agentsfleet-app`:**
-
-| Variable | Preview | Production |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `https://api-dev.agentsfleet.net` | `https://api.agentsfleet.net` |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
-| `CLERK_SECRET_KEY` | Clerk DEV secret key | Clerk PROD secret key |
-| `NEXT_PUBLIC_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
-| `NEXT_PUBLIC_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
-
-**`agentsfleet-agents-dev`** and **`agentsfleet-website`:**
-
-| Variable | Preview | Production |
-|---|---|---|
-| `VITE_APP_BASE_URL` | `https://app.dev.agentsfleet.net` | `https://app.agentsfleet.net` |
-| `VITE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
-| `VITE_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
-
-**`agentsfleetd` + `agentsfleet`:**
-
-| Variable | Preview | Production |
-|---|---|---|
-| `POSTHOG_API_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
-| `AGENTSFLEET_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
-
-> Code defaults `*_POSTHOG_HOST` to `https://us.i.posthog.com` when unset, so the explicit row is documentation, not strictly required on US cloud. If you ever migrate PostHog to EU or self-host, the `*_HOST` row becomes load-bearing — update it here and re-run the script.
-
----
-
-## 3.0 Handoff to Milestone 2
-
-Once §2.7 is verified, agent runs `./playbooks/founding/02_preflight/00_gate.sh` (`founding/02_preflight`) to confirm all vault items are present before executing `playbooks/founding/03_priming_infra/001_playbook.md`.
-
-All vault items the agent will need are listed in `playbooks/founding/02_preflight/001_playbook.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
-
----
-
-## 4.0 Reuse for a New Startup
-
-1. Choose vault names for the new project (e.g. `ABC_CD_DEV`, `ABC_CD_PROD`)
-2. Set GitHub repo variables `VAULT_DEV` / `VAULT_PROD` to those names
-3. Replace domain names, Vercel project names, service account name in this doc
-4. Milestone 1 checklist is otherwise identical — same services, same key types
-
-**Pattern: humans own identity, agents own configuration.**
+The successful gate output is the handoff evidence. Do not continue until it
+passes. Runtime-generated admin and runner values are created only after the
+first control-plane deployment.

@@ -32,8 +32,8 @@ fi
 
 echo "✓ ALLOW_REDIS_TEARDOWN=1 approved"
 
-# Verify vault items exist. The root `url` field carries full ACL privileges
-# (FLUSHALL is rejected under the restricted `api-url` / `worker-url` roles).
+# Verify vault items exist. The root `url` field may flush the database;
+# the restricted runtime `api-url` may not.
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 env_mode="${ENV:-}"

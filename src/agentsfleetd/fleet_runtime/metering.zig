@@ -119,6 +119,9 @@ pub fn balanceCoversEstimate(
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
         0,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
+        // This tenant's own trial boundary, already loaded above — pricing is
+        // per tenant, so one account's trial ending cannot change another's gate.
+        billing.free_trial_ends_at_ms,
     ) catch |err| {
         log.warn("gate_stage_estimate_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .tenant_id = tenant_id, .err = @errorName(err) });
         return true;

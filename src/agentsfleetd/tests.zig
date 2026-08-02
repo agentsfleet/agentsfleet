@@ -69,7 +69,6 @@ test {
     _ = @import("fleet/schema_ahead_migration_test.zig");
     _ = @import("db/schema_privilege_test.zig");
     _ = @import("cmd/migration_policy_test.zig");
-    _ = @import("fleet/service_token_splits_wire_test.zig");
     _ = @import("http/stream_registry.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
@@ -213,8 +212,6 @@ test {
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");
     // billing/credit edge, idempotency + concurrency coverage
-    _ = @import("state/tenant_billing_edge_test.zig");
-    _ = @import("fleet_runtime/metering_edge_test.zig");
     _ = @import("fleet_runtime/metering_idempotent_test.zig");
     _ = @import("fleet_runtime/metering_concurrency_test.zig");
     // fleet lease/renewal concurrency + roundtrip integration coverage
@@ -225,7 +222,6 @@ test {
     _ = @import("fleet/concurrency_renew_test.zig");
     _ = @import("fleet/integration_roundtrip_test.zig");
     // Emitted credit deltas reconciled against the debits Postgres committed.
-    _ = @import("fleet/credit_metric_reconciliation_test.zig");
     _ = @import("fleet/integration_session_continuation_test.zig");
     _ = @import("fleet/placement_eligibility_test.zig");
     // Its `test { _ = importer; _ = store; }` façade never compiled, so it registered

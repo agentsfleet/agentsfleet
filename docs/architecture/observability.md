@@ -46,9 +46,11 @@ outside it. `fleet_id`, log event names, `EventKind` tags, and the Redis
 consumer group keep their old spelling; the namespace rule covers only what
 `/metrics` renders.
 
-No dashboard files live in this repository. `deploy/grafana/` was deleted at
-the semantic cutover because every panel queried a family or table that did not
-exist. Scrape/fleet setup: `playbooks/operations/observability/`.
+Runtime deployment carries no dashboard files. Grafana dashboard and alert
+definitions live under
+`playbooks/operations/observability/providers/grafana/assets/`, where the
+operator playbook checks, applies, and verifies them against source-owned
+metrics.
 
 ### The M61 naming trap
 

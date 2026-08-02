@@ -53,13 +53,27 @@ export function eventOutcome(event: FleetEvent): string {
 // runner, not starved of instructions.
 function chatFailureSentenceFor(tag: string, cause: string | null): string {
   if (tag !== STARTUP_FAILURE_TAG) return failureSentenceFor(tag);
-  return cause !== null && isRunnerRefusal(cause)
-    ? RUNNER_REFUSAL_SENTENCE
-    : CHAT_STARTUP_FAILURE_LABEL;
+  if (cause === null) return CHAT_STARTUP_FAILURE_LABEL;
+  if (isRunnerRefusal(cause)) return RUNNER_REFUSAL_SENTENCE;
+  // An internal identifier names no cause a user can act on, so it cannot
+  // support the claim that their fleet lacks instructions. The one thing it does
+  // establish is that the runner failed before the fleet ran — report that.
+  // Without this arm a runner-side fault (a daemon that cannot load its config,
+  // say) is shown to the user as their own misconfiguration.
+  if (isInternalIdentifier(cause)) return RUNNER_REFUSAL_SENTENCE;
+  return CHAT_STARTUP_FAILURE_LABEL;
 }
 
 function isRunnerRefusal(cause: string): boolean {
   return (RUNNER_REFUSAL_DETAILS as readonly string[]).includes(cause);
+}
+
+// Cause lines written for operators are prose and always contain whitespace
+// ("sandbox could not be established on this runner"). A single bare token —
+// `FleetInitFailed` — is an internal error name that leaked through a layer
+// which should have mapped it, and it is never shown to the user.
+function isInternalIdentifier(cause: string): boolean {
+  return !/\s/.test(cause);
 }
 
 function formatFailureOutcome(
@@ -70,5 +84,9 @@ function formatFailureOutcome(
   const embeddedDetail = rawOutcome.split("—").slice(1).join("—").trim();
   const cause = detail ?? (embeddedDetail.length > 0 ? embeddedDetail : null);
   const sentence = chatFailureSentenceFor(tag, cause);
-  return cause ? `${sentence} — ${cause}` : sentence;
+  // The sentence is classified from the raw cause, but only prose is shown: an
+  // internal identifier appended after an em-dash reads as diagnostic detail
+  // while telling the user nothing.
+  const shown = cause !== null && !isInternalIdentifier(cause) ? cause : null;
+  return shown ? `${sentence} — ${shown}` : sentence;
 }
