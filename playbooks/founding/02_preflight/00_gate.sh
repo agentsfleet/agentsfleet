@@ -4,12 +4,31 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export ENV="${ENV:-all}"
+export STAGE="${STAGE:-bootstrap}"
 export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
 export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 
-for script in "$SCRIPT_DIR"/0[1-9]_*.sh "$SCRIPT_DIR"/[1-9][0-9]_*.sh; do
-  [ -f "$script" ] || continue; [ -x "$script" ] || { echo "Not executable: $script" >&2; exit 1; }
-  "$script"
-done
+case "$ENV" in
+  all | dev | prod) ;;
+  *)
+    echo "Unknown ENV: $ENV (supported: all, dev, prod)" >&2
+    exit 2
+    ;;
+esac
 
-echo "✅ 002_preflight check complete (env: $ENV)"
+case "$STAGE" in
+  bootstrap | deployment) ;;
+  *)
+    echo "Unknown STAGE: $STAGE (supported: bootstrap, deployment)" >&2
+    exit 2
+    ;;
+esac
+
+"$SCRIPT_DIR/01_tools_and_auth.sh"
+"$SCRIPT_DIR/02_credentials.sh"
+
+if [ "$STAGE" = "deployment" ] && [ "$ENV" != "dev" ]; then
+  "$SCRIPT_DIR/03_vercel_envs.sh"
+fi
+
+echo "✅ 002_preflight check complete (env: $ENV, stage: $STAGE)"

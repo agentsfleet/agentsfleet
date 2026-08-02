@@ -3,11 +3,10 @@
  * evidence uploads, and notification verdict are release-critical behavior,
  * pinned here against the workflow sources and the extracted verdict script.
  *
- * The dev pipeline is a file FAMILY since the M156 split: deploy-dev.yml is
- * the job graph, the stages live in deploy-dev-*.yml, and the Bun+Playwright
- * preamble (including the cache key) lives in the shared composite action
- * .github/actions/setup-bun-playwright. Each invariant is asserted against
- * the file that owns it now, and family-wide bans scan every file.
+ * The development pipeline spans a job graph and called stage workflows.
+ * Its Bun and Playwright setup, including the cache key, lives in the shared
+ * composite action. Each invariant is asserted against the file that owns it,
+ * and family-wide bans scan every workflow file.
  *
  * The workflow YAML assertions are deliberately grep-shaped (exact
  * configuration strings present/absent), mirroring how the release rubric
@@ -21,6 +20,8 @@ import acceptanceConfig from "../playwright.acceptance.config";
 const REPO_ROOT = path.join(__dirname, "../../../..");
 const WORKFLOWS_DIR = path.join(REPO_ROOT, ".github/workflows");
 const DEPLOY_DEV_WORKFLOW = path.join(WORKFLOWS_DIR, "deploy-dev.yml");
+const POST_RELEASE_WORKFLOW = path.join(WORKFLOWS_DIR, "post-release.yml");
+const RELEASE_WORKFLOW = path.join(WORKFLOWS_DIR, "release.yml");
 const SMOKE_POST_DEPLOY_WORKFLOW = path.join(WORKFLOWS_DIR, "smoke-post-deploy.yml");
 const PLAYWRIGHT_SETUP_ACTION = path.join(
   REPO_ROOT,
@@ -34,6 +35,14 @@ const PHANTOM_LOCK = "ui/packages/app/bun.lock";
 
 function deployDevYaml(): string {
   return fs.readFileSync(DEPLOY_DEV_WORKFLOW, "utf8");
+}
+
+function postReleaseYaml(): string {
+  return fs.readFileSync(POST_RELEASE_WORKFLOW, "utf8");
+}
+
+function releaseYaml(): string {
+  return fs.readFileSync(RELEASE_WORKFLOW, "utf8");
 }
 
 /** Every file of the dev pipeline (caller + called stages), concatenated. */
@@ -150,5 +159,73 @@ describe("the notification verdict consumes every gate", () => {
     // the verdict must read that as skipped — red — never as a pass.
     expect(workflow).toContain('QA_RESULT="${QA_RESULT:-skipped}"');
     expect(workflow).toContain('WORKER_RESULT="${WORKER_RESULT:-skipped}"');
+  });
+});
+
+describe("post-release promotion follows exact-version acceptance", () => {
+  it("pins installation and acceptance to the triggering release", () => {
+    const workflow = postReleaseYaml();
+    expect(workflow).toContain("ref: ${{ github.event.workflow_run.head_sha }}");
+    expect(workflow).toContain('test "$(npm view "@agentsfleet/cli@$VERSION" version)" = "$VERSION"');
+    expect(workflow).toContain(
+      "npm install -g @agentsfleet/cli@${{ needs.resolve-release.outputs.version }}",
+    );
+    expect(workflow).not.toContain("npm install -g @agentsfleet/cli@latest");
+  });
+
+  it("blocks latest promotion behind successful production acceptance", () => {
+    const workflow = postReleaseYaml();
+    expect(workflow).toContain("if: vars.PROD_WORKER_READY == 'true'");
+    expect(workflow).toContain("needs: [resolve-release, verify-npm, cli-acceptance-prod]");
+    expect(workflow).toContain('npm dist-tag add "@agentsfleet/cli@$VERSION" latest');
+
+    const promotion = workflow.split("  promote-latest:")[1]?.split("\n  summary:")[0];
+    expect(promotion).toBeDefined();
+    expect(promotion).not.toContain("if: always()");
+  });
+});
+
+describe("deployment workflows keep mutable values out of shell source", () => {
+  it("passes repository variables through environment maps", () => {
+    const development = deployDevFamily();
+    const production = releaseYaml();
+
+    expect(development).toContain("VAULT_DEV: ${{ vars.VAULT_DEV }}");
+    expect(development).not.toContain('VAULT_DEV="${{ vars.VAULT_DEV }}"');
+    for (const variable of ["FLY_APP_PROD", "VAULT_PROD"]) {
+      expect(production).toContain(`${variable}: \${{ vars.${variable} }}`);
+      expect(production).not.toContain(`${variable}="\${{ vars.${variable} }}"`);
+    }
+    expect(production).toContain("WORKER_ITEM: ${{ steps.canary.outputs.vault_key }}");
+    expect(production).not.toContain('WORKER_ITEM="${{ steps.canary.outputs.vault_key }}"');
+  });
+});
+
+describe("production runner rollout is canary-first and fail-closed", () => {
+  it("validates the fleet inventory before selecting any host", () => {
+    const workflow = releaseYaml();
+    expect(workflow).toContain('select(type == "array" and length > 0)');
+    expect(workflow).toContain('test("^[A-Za-z0-9][A-Za-z0-9._-]*$")');
+    expect(workflow).toContain("| .[0].vault_key");
+    expect(workflow).toContain("all(.[].vault_key;");
+    expect(workflow).toContain("jq -r '.[1:][] | .vault_key'");
+  });
+
+  it("deploys and verifies the canary before the approved fleet rollout", () => {
+    const workflow = releaseYaml();
+    const canary = workflow
+      .split("  deploy-worker-canary-prod:")[1]
+      ?.split("\n  deploy-worker-fleet-prod:")[0];
+    const fleet = workflow.split("  deploy-worker-fleet-prod:")[1];
+
+    expect(canary).toBeDefined();
+    expect(canary).toContain("./playbooks/lib/runner/deploy.sh");
+    expect(canary).toContain("./playbooks/lib/runner/verify.sh");
+    expect(fleet).toBeDefined();
+    expect(fleet).toContain("needs: deploy-worker-canary-prod");
+    expect(fleet).toContain("environment: production-fleet");
+    expect(fleet).toContain('for worker in "${workers[@]}"; do');
+    expect(fleet).toContain("./playbooks/lib/runner/deploy.sh");
+    expect(fleet).toContain("./playbooks/lib/runner/verify.sh");
   });
 });

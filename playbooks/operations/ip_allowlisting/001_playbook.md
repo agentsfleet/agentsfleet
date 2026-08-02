@@ -1,106 +1,93 @@
-# Data Plane IP Allowlisting
+# Data-Plane IP Allowlisting
 
-Legacy milestone/workstream ID: `M29_001`
+**Updated:** Jul 31, 2026
+**Owners:** 🤠 Indy approves cost and edits the Upstash dashboard; 🦉 Orly
+validates inventory, applies PlanetScale restrictions, and verifies both
+providers.
 
-> **Context:** This playbook hardens the data-plane network boundary for the v2 product direction.
-> See `docs/v2/agentsfleet-v2.md` — credentials must never be visible to agent processes.
-> IP allowlisting is the network-layer complement to the credential firewall.
+Only Fly.io control-plane egress belongs in these allowlists. An
+`agentsfleet-runner` holds no Postgres or Redis credential and reaches only the
+agentsfleet API, so a runner-host address must not be added.
 
----
+## Prerequisites
 
-## Environment
+Fly.io outbound addresses are unstable by default. For each environment, 🤠
+Indy first approves one app-scoped static egress allocation in region `iad`;
+🦉 Orly then runs:
 
 ```bash
-export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
-export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
+fly ips allocate-egress --app agentsfleetd-dev --region iad
+fly ips allocate-egress --app agentsfleetd-prod --region iad
 ```
 
----
+Store each returned IPv4 address as a `/32` JSON array:
 
-## Human vs Agent
+| Vault | Item | Fields |
+|---|---|---|
+| `ZMB_CD_DEV` | `fly-egress-ips` | `cidrs`, `updated-at` |
+| `ZMB_CD_PROD` | `fly-egress-ips` | `cidrs`, `updated-at` |
 
-| Step | Who | Action |
-|------|-----|--------|
-| 1 | **Human** | Approve vault reads: `export ALLOW_VAULT_READS=1` |
-| 2 | **Agent** | Run section 1 — egress IP inventory and CIDR format |
-| 3 | **Human** | Fill any missing vault fields reported by section 1 |
-| 4 | **Agent** | Run section 2 — provider target separation (dev vs prod) |
-| 5 | **Human** | Review output, then approve provider writes: `export ALLOW_PROVIDER_WRITES=1` |
-| 6 | **Agent** | ⛔ **NOT YET EXECUTABLE** — run allowlist apply (blocked: `scripts/allowlist-apply.sh` does not exist yet) |
-| 7 | **Agent** | ⛔ **NOT YET EXECUTABLE** — run verify to confirm no drift (depends on step 6) |
+`updated-at` is a Coordinated Universal Time timestamp such as
+`2026-07-31T10:00:00Z`. Inventory older than seven days fails the gate.
 
-> **State:** the read-only inventory half (steps 1–4 / sections 1–2 of the gate) runs
-> today. The **mutation half (steps 6–7) is unimplemented**: `scripts/allowlist-apply.sh`
-> has not landed, so an agent **cannot complete steps 6–7** — they are blocked until the
-> script ships, regardless of `ALLOW_PROVIDER_WRITES`.
+Provider management fields:
 
----
+| Vault | Item | Fields |
+|---|---|---|
+| `ZMB_CD_DEV` | `planetscale-dev` | `organization`, `database`, `service-token` |
+| `ZMB_CD_PROD` | `planetscale-prod` | `organization`, `database`, `service-token` |
+| `ZMB_CD_DEV` | `upstash-dev` | `db-id`, `developer-api-email`, `developer-api-key`, `allowlist-cidrs`, `allowlist-verified-at` |
+| `ZMB_CD_PROD` | `upstash-prod` | `db-id`, `developer-api-email`, `developer-api-key`, `allowlist-cidrs`, `allowlist-verified-at` |
 
-## Gate Scripts
+The PlanetScale service token needs `read_database` and `write_database`.
 
-### Run full gate (sections 1 + 2)
+## Handoff
 
-```bash
-ALLOW_VAULT_READS=1 ./playbooks/operations/ip_allowlisting/00_gate.sh
-```
+| Order | Owner | Action |
+|---|---|---|
+| 1 | 🦉 Orly | Run the read-only inventory and target check. |
+| 2 | 🤠 Indy | Review the exact development and production targets. |
+| 3 | 🤠 Indy | Approve provider writes by setting `ALLOW_PROVIDER_WRITES=1`. |
+| 4 | 🦉 Orly | Apply the idempotent PlanetScale restriction. |
+| 5 | 🤠 Indy | In each Upstash database, enable **IP Allowlisting** and set the exact `fly-egress-ips/cidrs` values. |
+| 6 | 🤠 Indy | Copy those exact ranges to `allowlist-cidrs` and record the current time in `allowlist-verified-at`. |
+| 7 | 🦉 Orly | Run provider verification. |
 
-### Section 1 — Egress IP inventory and CIDR validation
+Upstash’s documented Developer API exposes whether IP allowlisting is enabled,
+but not the exact configured ranges. The vault fields are therefore the
+explicit human attestation; verification requires an exact inventory match and
+a timestamp no older than seven days.
 
-```bash
-ALLOW_VAULT_READS=1 ./playbooks/operations/ip_allowlisting/01_egress_inventory.sh
-```
-
-Checks:
-- `fly-egress-ips/cidrs` — non-empty IPv4 CIDR JSON array
-- `fly-egress-ips/updated-at` — present
-- `ovh-worker-egress-ips/cidrs` — non-empty IPv4 CIDR JSON array
-- `ovh-worker-egress-ips/updated-at` — present
-
-Runs for both `$VAULT_DEV` and `$VAULT_PROD` by default. Scope with `ENV=dev` or `ENV=prod`.
-
-### Section 2 — Provider target separation
+## Run
 
 ```bash
-ALLOW_VAULT_READS=1 ./playbooks/operations/ip_allowlisting/02_provider_targets.sh
-```
+export ALLOW_VAULT_READS=1
 
-Checks:
-- PlanetScale `allowlist-org` and `allowlist-project` exist per env
-- Upstash `db-id` exists per env
-- Dev and prod targets are distinct (refuses cross-env writes)
+# Read-only inventory and target separation.
+ACTION=check ./playbooks/operations/ip_allowlisting/00_gate.sh
 
----
-
-## Required Vault Fields
-
-### DEV (`$VAULT_DEV`)
-
-| Item | Field |
-|------|-------|
-| `fly-egress-ips` | `cidrs`, `updated-at` |
-| `ovh-worker-egress-ips` | `cidrs`, `updated-at` |
-| `planetscale-dev` | `allowlist-org`, `allowlist-project` |
-| `upstash-dev` | `db-id` |
-
-### PROD (`$VAULT_PROD`)
-
-| Item | Field |
-|------|-------|
-| `fly-egress-ips` | `cidrs`, `updated-at` |
-| `ovh-worker-egress-ips` | `cidrs`, `updated-at` |
-| `planetscale-prod` | `allowlist-org`, `allowlist-project` |
-| `upstash-prod` | `db-id` |
-
----
-
-## Provider Write Approval
-
-Mutation scripts (`scripts/allowlist-apply.sh`, **not yet implemented**) will not run
-without explicit approval:
-
-```bash
+# After 🤠 Indy reviews the targets and approves provider writes.
 export ALLOW_PROVIDER_WRITES=1
+ACTION=apply ./playbooks/operations/ip_allowlisting/00_gate.sh
+
+# Re-check later without provider mutation.
+ACTION=verify ./playbooks/operations/ip_allowlisting/00_gate.sh
 ```
 
-Never set this before reviewing section 1 and section 2 output. Until
-`scripts/allowlist-apply.sh` lands, this flag gates a step that cannot run.
+Use `ENV=dev` or `ENV=prod` to scope a run; the default checks both.
+
+## Required result
+
+- Development and production database identifiers differ.
+- PlanetScale has exactly one unrestricted role/schema entry whose ranges equal
+  the current Fly.io IPv4 inventory.
+- Upstash reports `securityAddons.ipWhitelisting=true`.
+- The Upstash attestation exactly matches the current Fly.io inventory.
+- No provider credential appears in process arguments or output.
+
+Provider references:
+
+- [Fly.io app-scoped egress addresses](https://fly.io/docs/networking/egress-ips/)
+- [PlanetScale IP restriction API](https://planetscale.com/docs/api/reference/list_database_postgres_cidrs)
+- [Upstash IP allowlisting](https://upstash.com/docs/redis/features/security#ip-allowlisting)
+- [Upstash database inspection API](https://upstash.com/docs/devops/developer-api/redis/get_database)

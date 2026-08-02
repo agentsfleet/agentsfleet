@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Service health — verify services are healthy after rotation.
-#
-# Covers playbook section 4.0 (API health + Vercel bypass verification).
-# The bypass check reads the vault, so the gates run up front rather than after
-# the health probes: a run that cannot reach the vault cannot finish, and failing
-# before the network calls keeps the operator's error the real one.
 
 set -euo pipefail
 
@@ -14,96 +8,89 @@ source "$SCRIPT_DIR/../../lib/common.sh"
 
 playbooks_require_vault_read_approval
 playbooks_require_op_auth
-
-echo ""
-echo "== service health =="
+playbooks_require_tool curl
+playbooks_require_tool jq
 
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
-
 failures=0
-declare -A OP_CACHE_VALUE
-declare -A OP_CACHE_STATUS
+bypass_config=""
 
-op_read_with_retry() {
-  local ref="$1"
-  if [ -n "${OP_CACHE_STATUS[$ref]:-}" ]; then
-    if [ "${OP_CACHE_STATUS[$ref]}" = "ok" ]; then
-      printf '%s' "${OP_CACHE_VALUE[$ref]}"
-      return 0
-    fi
-    return 1
+cleanup() {
+  if [ -n "$bypass_config" ] && [ -f "$bypass_config" ]; then
+    rm -f "$bypass_config"
   fi
-
-  local attempts="${OP_READ_RETRIES:-2}"
-  local delay_s="${OP_READ_BASE_DELAY_SECONDS:-1}"
-  local min_interval_s="${OP_READ_MIN_INTERVAL_SECONDS:-0.2}"
-  local value=""
-
-  for attempt in $(seq 1 "$attempts"); do
-    sleep "$min_interval_s"
-    if value="$(op read "$ref" 2>/dev/null)"; then
-      OP_CACHE_STATUS["$ref"]="ok"
-      OP_CACHE_VALUE["$ref"]="$value"
-      printf '%s' "$value"
-      return 0
-    fi
-
-    if [ "$attempt" -lt "$attempts" ]; then
-      sleep "$delay_s"
-    fi
-  done
-
-  OP_CACHE_STATUS["$ref"]="err"
-  OP_CACHE_VALUE["$ref"]=""
-  return 1
 }
+trap cleanup EXIT
 
-# --- 4.0 API health checks ---
-echo ""
-echo "-- API health (api-dev.agentsfleet.net)"
+case "${ENV:-}" in
+  dev)
+    api_base="https://api-dev.agentsfleet.net"
+    app_base="https://app-dev.agentsfleet.net"
+    ;;
+  prod)
+    api_base="https://api.agentsfleet.net"
+    app_base="https://app.agentsfleet.net"
+    ;;
+  *)
+    echo "ERROR: ENV must be dev or prod" >&2
+    exit 2
+    ;;
+esac
 
-if curl -sf --max-time 10 "https://api-dev.agentsfleet.net/healthz" >/dev/null 2>&1; then
-  echo "  ✓ /healthz returned 200"
+if curl -fsS --max-time 10 "$api_base/healthz" >/dev/null; then
+  echo "OK: $api_base/healthz"
 else
-  echo "  ✗ /healthz did not return 200"
+  echo "FAIL: $api_base/healthz" >&2
   failures=$((failures + 1))
 fi
 
-if curl -sf --max-time 10 "https://api-dev.agentsfleet.net/readyz" | jq -e '.ready == true' >/dev/null 2>&1; then
-  echo "  ✓ /readyz reports ready=true"
+if curl -fsS --max-time 10 "$api_base/readyz" |
+  jq -e '.ready == true' >/dev/null; then
+  echo "OK: $api_base/readyz"
 else
-  echo "  ✗ /readyz did not report ready=true"
+  echo "FAIL: $api_base/readyz" >&2
   failures=$((failures + 1))
 fi
 
-# --- 4.0 Vercel bypass with rotated secret ---
-echo ""
-echo "-- Vercel bypass (app-dev.agentsfleet.net)"
-
-bypass_ref="op://$vault_prod/vercel-bypass-app/credential"
-bypass_secret="$(op_read_with_retry "$bypass_ref" || true)"
-
-if [ -z "$bypass_secret" ]; then
-  echo "  ✗ cannot read bypass secret from vault — skipping bypass check"
-  failures=$((failures + 1))
-else
-  http_code="$(curl -sf -o /dev/null -w '%{http_code}' --max-time 10 \
-    -H "x-vercel-protection-bypass: $bypass_secret" \
-    "https://app-dev.agentsfleet.net/sign-in" 2>/dev/null || true)"
-
-  if [ "$http_code" = "200" ]; then
-    echo "  ✓ Vercel bypass returned 200"
-  else
-    echo "  ✗ Vercel bypass returned $http_code (expected 200)"
+if [ "$ENV" = "dev" ]; then
+  bypass_secret="$(
+    playbooks_read_ref_or_empty \
+      "op://$vault_prod/vercel-bypass-app/credential"
+  )"
+  if [ -z "$bypass_secret" ] ||
+    [[ "$bypass_secret" == *$'\n'* ]] ||
+    [[ "$bypass_secret" == *'"'* ]]; then
+    echo "FAIL: Vercel bypass credential is missing or malformed" >&2
     failures=$((failures + 1))
+  else
+    bypass_config="$(mktemp)"
+    chmod 600 "$bypass_config"
+    printf 'header = "x-vercel-protection-bypass: %s"\n' \
+      "$bypass_secret" >"$bypass_config"
+    unset bypass_secret
+    if curl --config "$bypass_config" \
+      --fail \
+      --silent \
+      --show-error \
+      --max-time 10 \
+      --output /dev/null \
+      "$app_base/sign-in"; then
+      echo "OK: $app_base/sign-in with deployment protection"
+    else
+      echo "FAIL: $app_base/sign-in with deployment protection" >&2
+      failures=$((failures + 1))
+    fi
   fi
+elif curl -fsS --max-time 10 --output /dev/null "$app_base/sign-in"; then
+  echo "OK: $app_base/sign-in"
+else
+  echo "FAIL: $app_base/sign-in" >&2
+  failures=$((failures + 1))
 fi
 
-# --- Result ---
-echo ""
-if [ "$failures" -gt 0 ]; then
-  echo "section 2 failed: $failures issue(s) detected"
+if [ "$failures" -ne 0 ]; then
+  echo "FAIL: $failures service check(s) failed" >&2
   exit 1
 fi
 
-echo "section 2 passed"
+echo "PASS: $ENV services use the rotated credentials"
