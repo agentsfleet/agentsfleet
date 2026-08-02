@@ -19,6 +19,7 @@ const sql = @import("sql.zig");
 const renewal_settle = @import("renewal_settle.zig");
 const reclaim = @import("reclaim.zig");
 const runner_events = @import("runner_events.zig");
+const event_rows = @import("event_rows.zig");
 const id_format = @import("../types/id_format.zig");
 
 const ALLOC = std.testing.allocator;
@@ -41,7 +42,6 @@ const LEASE_AHEAD_MS: i64 = 60_000;
 const EVENT_PREFIX = "evt-cnt-";
 const ACTOR = "steer:counters-test";
 const EVENT_TYPE_CHAT = "chat";
-const REQUEST_JSON = "{}";
 const TEST_POSTURE = "platform";
 const TEST_PROVIDER = "test-provider";
 const TEST_MODEL = "test-model";
@@ -102,6 +102,19 @@ fn cleanup(conn: *pg.Conn) void {
 /// and the acquired tally land in ONE statement, bound exactly as
 /// `service_lease_row.insertLeaseRow` binds it.
 fn acquireLease(conn: *pg.Conn, lease_id: []const u8, event_id: []const u8, fencing_token: i64) !void {
+    // The event row the lease names. `INSERT_LEASE_WITH_EVENT` writes the lease,
+    // its runner-audit row and the acquired tally — but NOT `core.fleet_events`,
+    // and `reclaim.reclaimPriorActive` reads the body through an INNER JOIN on
+    // `(fleet_id, event_id)`. Without this the expire arm reclaims nothing and
+    // the tally under test never moves. Removed by `cleanup`'s LIKE sweep.
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_events
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\   request_json, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, '{}'::jsonb, $7, $7)
+        \\ON CONFLICT (fleet_id, event_id) DO NOTHING
+    , .{ FLEET_ID, event_id, WORKSPACE_ID, ACTOR, EVENT_TYPE_CHAT, event_rows.STATUS_RECEIVED, NOW_MS });
+
     const audit_uid = try id_format.generateUuidV7();
     const audit_id: []const u8 = &audit_uid;
     _ = try conn.exec(sql.INSERT_LEASE_WITH_EVENT, .{
@@ -113,7 +126,6 @@ fn acquireLease(conn: *pg.Conn, lease_id: []const u8, event_id: []const u8, fenc
         event_id,
         ACTOR,
         EVENT_TYPE_CHAT,
-        REQUEST_JSON,
         NOW_MS,
         TEST_POSTURE,
         TEST_PROVIDER,

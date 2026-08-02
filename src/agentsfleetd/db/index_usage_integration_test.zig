@@ -510,7 +510,7 @@ test "lifetime counter table keys one bigint tally row per runner" {
     const row = (try q.next()) orelse return error.CounterTableMissing;
     const got = (try row.get(?[]const u8, 0)) orelse return error.CounterTableMissing;
     try std.testing.expectEqualStrings(
-        "row_id uuid, runner_id uuid, acquired bigint, succeeded bigint, " ++
+        "runner_id uuid, acquired bigint, succeeded bigint, " ++
             "failed bigint, expired bigint, created_at bigint, updated_at bigint",
         got,
     );

@@ -394,12 +394,12 @@ fn freeSeenKeys(seen: *std.StringHashMap(void)) void {
 
 test "integration: test_memory_keyset_index_migration_registered" {
     // Registration half: embed.zig is the single source of truth for the
-    // migration array, so slot 39 must be registered there and must be the slot
-    // that creates the keyset index. This originally asserted 39 was the LAST
-    // entry; slot 40 (the runner-lease operator read) made tail position
-    // transient, while "39 is registered and creates this index" is the
-    // durable shape — and it still fails if the slot is renumbered or dropped.
-    const KEYSET_SLOT: i32 = 40; // pin test: the slot number is the promise
+    // migration array, so the memory slot must be registered there and must be
+    // the slot that creates the keyset index. Asserting registration + creation
+    // rather than tail position keeps the shape durable as slots are added, and
+    // it still fails if the slot is renumbered or dropped. The rebuild moved
+    // this from the sequential 39/40 numbering to the schema-file version.
+    const KEYSET_SLOT: i32 = 820; // pin test: the slot number is the promise
     var slot_sql: ?[]const u8 = null;
     for (schema_migrations) |m| {
         if (m.version == KEYSET_SLOT) slot_sql = m.sql;

@@ -8,6 +8,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
 const affinity = @import("affinity.zig");
 const reclaim = @import("reclaim.zig");
+const event_rows = @import("event_rows.zig");
 const sweeper = @import("liveness_sweeper.zig");
 const protocol = @import("contract").protocol;
 
@@ -60,6 +61,19 @@ fn seedAffinity(conn: *pg.Conn, fleet_id: []const u8, runner_id: []const u8, lea
 }
 
 fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_id: []const u8, event_id: []const u8, token: i64) !void {
+    // The event row the lease names. `reclaim.reclaimPriorActive` reads the
+    // body through an INNER JOIN on `(fleet_id, event_id)` rather than from a
+    // column on the lease, so a lease seeded without its event reclaims as
+    // null — which is the production contract for an event deleted out from
+    // under a live lease, not a bug to work around here. Cascades away with
+    // the fleet in `cleanup`.
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_events
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\   request_json, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3::uuid, $4, 'chat', $5, '{}'::jsonb, 0, 0)
+        \\ON CONFLICT (fleet_id, event_id) DO NOTHING
+    , .{ fleet_id, event_id, WORKSPACE_ID, ACTOR, event_rows.STATUS_RECEIVED });
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
