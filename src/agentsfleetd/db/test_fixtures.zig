@@ -254,6 +254,9 @@ pub const teardownPlatformProvider = provider_fixtures.teardownPlatformProvider;
 pub const TEST_PROVIDER_NAME = provider_fixtures.TEST_PROVIDER_NAME;
 pub const TEST_PLATFORM_MODEL = provider_fixtures.TEST_PLATFORM_MODEL;
 pub const TEST_PLATFORM_CAP_TOKENS = provider_fixtures.TEST_PLATFORM_CAP_TOKENS;
+pub const seedPricedModel = provider_fixtures.seedPricedModel;
+pub const TEST_PRICED_PROVIDER = provider_fixtures.TEST_PRICED_PROVIDER;
+pub const TEST_PRICED_MODEL = provider_fixtures.TEST_PRICED_MODEL;
 
 // ── Shared DB connection ────────────────────────────────────────────────
 
