@@ -65,9 +65,9 @@ fn seedTenantAndApiKey(h: *TestHarness) !void {
     defer h.releaseConn(conn);
     const now_ms = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'Fleet Operator Test Tenant', $2::bigint, $2::bigint)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TENANT_ID, now_ms });
     const key_hash = api_key.sha256Hex(AGT_T_KEY);
     _ = try conn.exec(
@@ -97,7 +97,7 @@ fn cleanup(h: *TestHarness) void {
         std.log.warn("cleanup fleet runner ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.api_keys WHERE id = $1::uuid", .{API_KEY_ROW_ID}) catch |err|
         std.log.warn("cleanup api key ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{TENANT_ID}) catch |err|
+    _ = conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{TENANT_ID}) catch |err|
         std.log.warn("cleanup tenant ignored: {s}", .{@errorName(err)});
 }
 

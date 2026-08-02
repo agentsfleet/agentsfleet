@@ -44,8 +44,8 @@ fn seedProbeFleet(conn: *pg.Conn) !void {
     , .{ RUNNER_PROBE, NAME_PREFIX ++ "runner" });
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'live-fleet', '', '{}'::jsonb, 'active', 0, 0)
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'live-fleet', '', '{}'::jsonb, 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ FLEET_PROBE, WS_PROBE });
 }

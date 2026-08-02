@@ -82,17 +82,17 @@ fn makeHarness() !*TestHarness {
 
 fn seedBase(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'EventsFailureDetailTest', 0, 0) ON CONFLICT DO NOTHING
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'EventsFailureDetailTest', 0, 0) ON CONFLICT DO NOTHING
     , .{TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, 0) ON CONFLICT DO NOTHING
+        \\INSERT INTO core.workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, 0) ON CONFLICT DO NOTHING
     , .{ WORKSPACE_ID, TENANT_ID });
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'failure-detail-fleet', 'seed', '{}'::jsonb, 'active', 0, 0)
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'failure-detail-fleet', 'seed', '{}'::jsonb, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ FLEET_ID, WORKSPACE_ID });
     _ = try conn.exec(

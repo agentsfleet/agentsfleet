@@ -52,11 +52,11 @@ fn seedTenantWorkspace(h: *TestHarness) !void {
     defer h.releaseConn(conn);
     const now = clock.nowMillis();
     _ = try conn.exec(
-        "INSERT INTO core.tenants (tenant_id, name, created_at, updated_at) VALUES ($1::uuid, 'M100 Test', $2, $2) ON CONFLICT (tenant_id) DO NOTHING",
+        "INSERT INTO core.tenants (id, name, created_at, updated_at) VALUES ($1::uuid, 'M100 Test', $2, $2) ON CONFLICT (id) DO NOTHING",
         .{ TENANT_ID, now },
     );
     _ = try conn.exec(
-        "INSERT INTO core.workspaces (workspace_id, tenant_id, name, created_at) VALUES ($1::uuid, $2::uuid, 'm100-ws', $3) ON CONFLICT (workspace_id) DO NOTHING",
+        "INSERT INTO core.workspaces (id, tenant_id, name, created_at) VALUES ($1::uuid, $2::uuid, 'm100-ws', $3) ON CONFLICT (id) DO NOTHING",
         .{ WORKSPACE_ID, TENANT_ID, now },
     );
 }
@@ -78,7 +78,7 @@ pub fn cleanup(h: *TestHarness) void {
     defer h.releaseConn(conn);
     _ = conn.exec("DELETE FROM core.platform_provider_defaults WHERE source_workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.model_library WHERE provider IN ('m100fw','m100an','m100test')", .{}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 fn countActivePlatformKeys(h: *TestHarness) !struct { total: i64, provider: []const u8 } {

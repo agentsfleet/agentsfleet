@@ -56,9 +56,9 @@ fn seedFleet(conn: *pg.Conn) !void {
     const now = common.clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
         \\   status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, '# skill', '# trigger', '{}'::jsonb, 'active', $4, $4)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, '# skill', '# trigger', '{}'::jsonb, 'active', $4, $4)
         \\ON CONFLICT (id) DO UPDATE SET status = 'active', updated_at = EXCLUDED.updated_at
     , .{ FLEET_ID, WORKSPACE_ID, FLEET_NAME, now });
 }

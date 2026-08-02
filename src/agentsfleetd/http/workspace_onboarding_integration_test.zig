@@ -19,16 +19,16 @@ fn seedUser(conn: *pg.Conn) !void {
     const now_ms = clock.nowMillis();
     _ = try conn.exec("DELETE FROM core.user_preferences WHERE user_id = $1::uuid", .{USER_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5)
-        \\ON CONFLICT (user_id) DO NOTHING
+        \\ON CONFLICT (id) DO NOTHING
     , .{ USER_ID, TEST_TENANT_ID, USER_SUBJECT, "o@onboarding.test", now_ms });
 }
 
 fn cleanup(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.user_preferences WHERE user_id = $1::uuid", .{USER_ID}) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.users WHERE user_id = $1::uuid", .{USER_ID}) catch |err|
+    _ = conn.exec("DELETE FROM core.users WHERE id = $1::uuid", .{USER_ID}) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
     fixtures_provider.teardownPlatformProvider(conn, base.TEST_WS_ID);
     base.cleanupRows(conn);

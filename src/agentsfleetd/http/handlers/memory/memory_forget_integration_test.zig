@@ -45,12 +45,12 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 
 fn seed(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'MemForgetTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'MemForgetTest', $2, $2) ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3) ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now_ms });
     const fleets = [_]struct { id: []const u8, name: []const u8 }{
         .{ .id = FLEET_A, .name = "mem-forget-a" },
@@ -58,8 +58,8 @@ fn seed(conn: *pg.Conn, now_ms: i64) !void {
     };
     for (fleets) |fleet| {
         _ = try conn.exec(
-            \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, $3, 'seed', '{}'::jsonb, 'active', $4, $4)
+            \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+            \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, 'seed', '{}'::jsonb, 'active', $4, $4)
             \\ON CONFLICT (id) DO NOTHING
         , .{ fleet.id, TEST_WORKSPACE_ID, fleet.name, now_ms });
     }

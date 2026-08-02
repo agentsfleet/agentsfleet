@@ -367,7 +367,7 @@ const EVENT_SEED_ROWS: i32 = 200;
 /// Every fiftieth seeded event carries a rare lifecycle tag; the rest are the
 /// per-lease bulk the filtered read must be able to skip.
 const RARE_EVENT_EVERY: i32 = 50;
-const EVENTS_INDEX = "idx_runner_events_runner_id_type_occurred_at_id";
+const EVENTS_INDEX = "idx_runner_events_runner_id_type_created_at_id";
 const EVENT_PAGE_LIMIT: i64 = 25;
 /// Any instant works for the detail plan probe — the plan's shape, not the
 /// rows it would return, is under test.
@@ -387,11 +387,11 @@ fn seedRunnerEvents(conn: *pg.Conn, rows: i32) !void {
     , .{RUNNER_EVENTS});
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_events
-        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+        \\  (id, runner_id, event_type, metadata, dedup_key, created_at)
         \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
         \\       $1::uuid,
         \\       CASE WHEN g % $2::int = 0 THEN $3::text ELSE $4::text END,
-        \\       $6::bigint + g, '{}'::jsonb, NULL, $6::bigint + g
+        \\       '{}'::jsonb, NULL, $6::bigint + g
         \\FROM generate_series(1, $5::int) g
     , .{
         RUNNER_EVENTS,
@@ -458,7 +458,7 @@ test "retention sweep deletes ride their own indexes, not a whole-table scan" {
     try seedRunnerEvents(db.conn, EVENT_SEED_ROWS);
 
     try expectIndexShape(alloc, db.conn, "fleet", RETENTION_LEASES_INDEX, "status, updated_at");
-    try expectIndexShape(alloc, db.conn, "fleet", RETENTION_EVENTS_INDEX, "event_type, occurred_at");
+    try expectIndexShape(alloc, db.conn, "fleet", RETENTION_EVENTS_INDEX, "event_type, created_at");
 
     const terminal = [_][]const u8{
         protocol.RUNNER_LEASE_STATUS_REPORTED,
@@ -524,7 +524,7 @@ test "events composite has the right shape and serves the filtered feed" {
     try seedRunnerEvents(db.conn, EVENT_SEED_ROWS);
 
     try std.testing.expectEqual(@as(i64, 1), try base.indexCount(db.conn, "fleet", EVENTS_INDEX));
-    try expectIndexShape(alloc, db.conn, "fleet", EVENTS_INDEX, "runner_id, event_type, occurred_at DESC, id DESC");
+    try expectIndexShape(alloc, db.conn, "fleet", EVENTS_INDEX, "runner_id, event_type, created_at DESC, id DESC");
 
     // The production statements verbatim, with the operator page's real bind
     // shape: a rare-tag text[] and open time bounds. Before this slot both

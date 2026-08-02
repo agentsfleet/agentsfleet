@@ -63,10 +63,10 @@ fn cleanup(conn: *pg.Conn) void {
             _ = conn.exec(s, .{fleet_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
         }
     }
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.memberships WHERE user_id = $1::uuid", .{USER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.users WHERE user_id = $1::uuid", .{USER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.users WHERE id = $1::uuid", .{USER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // Rollback-test fixture — its OWN id family (`c...003x`) so it never collides
@@ -90,14 +90,14 @@ const RB_MODEL: []const u8 = "teardown-rollback-model";
 
 fn seedRollbackAccount(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-rollback', 0, 0)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\ON CONFLICT (id) DO NOTHING
     , .{RB_TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-rollback@test.fleet', 0, 0)
-        \\ON CONFLICT (user_id) DO NOTHING
+        \\ON CONFLICT (id) DO NOTHING
     , .{ RB_USER_ID, RB_TENANT_ID, RB_OIDC });
     try base.seedWorkspaceWithTenant(conn, RB_WORKSPACE_ID, RB_TENANT_ID);
     try base.seedFleet(conn, RB_FLEET_ID, RB_WORKSPACE_ID, "teardown-rollback", "{}", "# z");
@@ -177,7 +177,7 @@ fn cleanupRollbackAccount(conn: *pg.Conn) void {
     execIgnoreTd(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", RB_LEASE_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", RB_FLEET_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", RB_RUNNER_ID);
-    execIgnoreTd(conn, "DELETE FROM core.tenants WHERE tenant_id = $1::uuid", RB_TENANT_ID);
+    execIgnoreTd(conn, "DELETE FROM core.tenants WHERE id = $1::uuid", RB_TENANT_ID);
 }
 
 fn execIgnoreTd(conn: *pg.Conn, sql: []const u8, id: []const u8) void {
@@ -269,11 +269,11 @@ test "integration: a fleet the caller never enumerated is reported, not absorbed
     defer cleanup(conn);
 
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-race', 0, 0)
     , .{TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-race@test.fleet', 0, 0)
     , .{ USER_ID, TENANT_ID, OIDC });
     try base.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
@@ -305,11 +305,11 @@ test "integration: a fully enumerated tenant reports no unhandled fleets" {
     defer cleanup(conn);
 
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-clean', 0, 0)
     , .{TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-clean@test.fleet', 0, 0)
     , .{ USER_ID, TENANT_ID, OIDC });
     try base.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
@@ -336,11 +336,11 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
 
     // Seed a full account: tenant -> user -> workspace -> fleet.
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-victim', 0, 0)
     , .{TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, 'teardown@test.fleet', 0, 0)
     , .{ USER_ID, TENANT_ID, OIDC });
     try base.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);

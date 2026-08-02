@@ -382,7 +382,7 @@ fn cleanupFixtures(pool: *pg.Pool) void {
     base.teardownFleets(conn, WORKSPACE_ID);
     _ = conn.exec("DELETE FROM core.api_keys WHERE id = $1::uuid", .{API_KEY_ROW_ID}) catch |err|
         std.log.warn(IGNORED_ERR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err|
+    _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1::uuid", .{WORKSPACE_ID}) catch |err|
         std.log.warn(IGNORED_ERR_FMT, .{@errorName(err)});
     base.teardownTenantById(conn, TENANT_ID);
 }

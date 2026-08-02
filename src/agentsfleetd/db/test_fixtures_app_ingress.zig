@@ -76,9 +76,9 @@ fn seedAppBag(alloc: std.mem.Allocator, conn: *pg.Conn, webhook_secret: []const 
 
 fn seedFleet(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, config: []const u8, now: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb, $6, $7, $7)
-        \\ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at
+        \\ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json, status = EXCLUDED.status, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = status = EXCLUDED.status), updated_at = EXCLUDED.updated_at
     , .{ fleet_id, WORKSPACE_ID, name, "# test fleet", config, STATUS_ACTIVE, now });
 }
 
