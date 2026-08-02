@@ -95,9 +95,12 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
     try seed(db_ctx.conn, WS_GATE_BLOCK);
     defer teardown(db_ctx.conn, WS_GATE_BLOCK);
     // Platform posture so est_total (the token floor) is non-zero; self_managed
-    // carries no issue-time charge under the run-fee model.
+    // carries no issue-time charge under the run-fee model. The platform default
+    // prices at ZERO, so the floor also needs a priced catalogue row — seeded
+    // here rather than assumed, because migrations install no catalogue.
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_GATE_BLOCK);
     defer base.teardownPlatformProvider(db_ctx.conn, WS_GATE_BLOCK);
+    try base.seedPricedModel(ALLOC, db_ctx.conn);
 
     // platform: receive = EVENT_NANOS (0), stage = token-floor cost (run fee is
     // 0 at issue). Balance 0 < est_total → blocked. seedPlatformProvider just
@@ -122,8 +125,8 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
         ALLOC,
         TENANT_ID,
         .platform,
-        "anthropic",
-        "claude-sonnet-4-6",
+        base.TEST_PRICED_PROVIDER,
+        base.TEST_PRICED_MODEL,
         .stop,
     ));
 }

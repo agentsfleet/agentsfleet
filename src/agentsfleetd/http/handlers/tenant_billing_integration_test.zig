@@ -115,14 +115,21 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
     };
     if (!trial_active) {
         // Drain the entire starter grant; stop policy must now block.
+        //
+        // Platform posture and a PRICED model, both load-bearing. Self-managed
+        // carries no issue-time charge, and an uncatalogued model makes the gate
+        // fail OPEN by design ("an ESTIMATE is not a charge"), so with the old
+        // `.self_managed` + "any-model" pair est_total was 0 and this assertion
+        // could never have failed for the right reason.
+        try test_fixtures.seedPricedModel(alloc, db_ctx.conn);
         _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS);
         try std.testing.expect(!metering.balanceCoversEstimate(
             db_ctx.pool,
             alloc,
             TEST_TENANT_ID,
-            .self_managed,
-            "self-managed-test",
-            "any-model",
+            .platform,
+            test_fixtures.TEST_PRICED_PROVIDER,
+            test_fixtures.TEST_PRICED_MODEL,
             .stop,
         ));
     }

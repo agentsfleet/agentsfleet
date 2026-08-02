@@ -9,6 +9,7 @@ const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
+const id_format = @import("../types/id_format.zig");
 const pg = @import("pg");
 const base = @import("test_fixtures.zig");
 
@@ -31,6 +32,51 @@ const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
 /// real rates (see service_token_splits_wire_test), not this default.
 pub const TEST_PLATFORM_MODEL = "accounts/fireworks/models/kimi-k2.6";
 pub const TEST_PLATFORM_CAP_TOKENS: i32 = 256_000;
+
+/// A REAL catalogue row, for the tests that need a non-zero estimate.
+///
+/// `TEST_PLATFORM_MODEL` above prices at zero on purpose, so it can never size a
+/// token floor — and a gate that must prove it BLOCKS a drained tenant needs one.
+/// These are the live Fireworks rates for GLM 5.2, copied from the product seed
+/// (`samples/fixtures/model-library/seed.sql`).
+///
+/// Seeded by `seedPricedModel` rather than read from the product catalogue,
+/// which the migrations do NOT install: those rows exist only once
+/// `model_library_seed_integration_test` has applied the fixture, so a test that
+/// merely ASSUMED them would pass or fail on suite ordering.
+pub const TEST_PRICED_PROVIDER = "fireworks";
+pub const TEST_PRICED_MODEL = "accounts/fireworks/models/glm-5p2";
+pub const TEST_PRICED_INPUT_NANOS_PER_MTOK: i64 = 1_400_000_000;
+pub const TEST_PRICED_CACHED_INPUT_NANOS_PER_MTOK: i64 = 140_000_000;
+pub const TEST_PRICED_OUTPUT_NANOS_PER_MTOK: i64 = 4_400_000_000;
+pub const TEST_PRICED_CAP_TOKENS: i32 = 1_048_576;
+
+/// Install the priced catalogue row above. Idempotent, and independent of every
+/// other fixture — a caller needs only this to price a non-zero estimate.
+pub fn seedPricedModel(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
+    const row_id = try id_format.generateFleetId(alloc);
+    defer alloc.free(row_id);
+    _ = try conn.exec(
+        \\INSERT INTO core.model_library
+        \\  (id, model_id, provider, context_cap_tokens,
+        \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+        \\ON CONFLICT (provider, model_id) DO UPDATE
+        \\SET input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
+        \\    cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
+        \\    output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok
+    , .{
+        row_id,
+        TEST_PRICED_MODEL,
+        TEST_PRICED_PROVIDER,
+        TEST_PRICED_CAP_TOKENS,
+        TEST_PRICED_INPUT_NANOS_PER_MTOK,
+        TEST_PRICED_CACHED_INPUT_NANOS_PER_MTOK,
+        TEST_PRICED_OUTPUT_NANOS_PER_MTOK,
+        clock.nowMillis(),
+    });
+}
 
 /// Set ENCRYPTION_MASTER_KEY in the process env so vault.storeJson /
 /// crypto_store.load can wrap/unwrap DEKs in tests. Idempotent; safe to
@@ -64,7 +110,6 @@ pub fn seedPlatformProviderWithKey(
     setTestEncryptionKey();
 
     const tenant_billing = @import("../state/tenant_billing.zig");
-    const id_format = @import("../types/id_format.zig");
 
     // The catalogue row the platform default points at — required by
     // fk_platform_provider_defaults_model. Zero token rates keep the lease run-fee-only
