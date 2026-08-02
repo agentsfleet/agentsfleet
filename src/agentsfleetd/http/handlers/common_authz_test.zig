@@ -13,7 +13,7 @@ const MAPPED_CREATED_AT: i64 = 1_700_000_000_000;
 
 fn cleanupMappedUser(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        "DELETE FROM core.users WHERE user_id = $1::uuid OR oidc_subject = $2",
+        "DELETE FROM core.users WHERE id = $1::uuid OR oidc_subject = $2",
         .{ MAPPED_USER_ID, MAPPED_SUBJECT },
     );
 }
@@ -64,8 +64,8 @@ test "integration: authoritative OIDC tenant authorizes workspace when token ten
     try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
     _ = try db_ctx.conn.exec(
         \\INSERT INTO core.users
-        \\  (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, $5)
+        \\  (id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $5)
     , .{
         MAPPED_USER_ID,
         http_auth.TENANT_ID,

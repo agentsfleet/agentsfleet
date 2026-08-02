@@ -104,11 +104,11 @@ fn seedGraph(conn: *pg.Conn) !void {
     , .{ RUNNER_PROBE, NAME_PREFIX ++ "runner" });
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status,
         \\   created_at, updated_at)
         \\SELECT CASE WHEN g = 1 THEN $1::uuid
         \\            ELSE overlay(md5('f' || g)::uuid::text placing '7' from 15 for 1)::uuid END,
-        \\       $2::uuid, $3 || g, '', '{}'::jsonb, 'active', 1750000000000 + g, 0
+        \\       $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3 || g, '', '{}'::jsonb, 'active', 1750000000000 + g, 0
         \\FROM generate_series(1, $4::int) g
         \\ON CONFLICT DO NOTHING
     , .{ FLEET_PROBE, WS_PROBE, NAME_PREFIX, FLEET_ROWS });
@@ -122,15 +122,14 @@ fn seedAffinity(conn: *pg.Conn) !void {
         \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
         \\   last_metered_at, created_at, updated_at)
-        \\SELECT overlay(md5('a' || f.id::text)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\       f.id,
-        \\       CASE WHEN row_number() OVER (ORDER BY f.created_at) <= $1::int
-        \\            THEN $0::uuid ELSE NULL END,
+        \\SELECT f.id,
+        \\       CASE WHEN row_number() OVER (ORDER BY f.created_at) <= $2::int
+        \\            THEN $1::uuid ELSE NULL END,
         \\       1, 9999999999999, 0, 0, 0, 0, 0, 0
         \\FROM core.fleets f
-        \\WHERE f.workspace_id = $2::uuid
+        \\WHERE f.workspace_id = $3::uuid
         \\ON CONFLICT DO NOTHING
-    , .{ PROBE_SLICE, WS_PROBE });
+    , .{ RUNNER_PROBE, PROBE_SLICE, WS_PROBE });
     _ = try conn.exec("ANALYZE fleet.runner_affinity", .{});
 }
 

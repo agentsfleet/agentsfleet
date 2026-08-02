@@ -140,23 +140,23 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn seedFixture(conn: *pg.Conn) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'PatchBodyFieldsTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'PatchBodyFieldsTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
         \\   status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, 'patch-bot', $3, $4, $5::jsonb, 'active', $6, $6)
         \\ON CONFLICT (id) DO UPDATE SET
         \\    source_markdown  = EXCLUDED.source_markdown,
-        \\    trigger_markdown = EXCLUDED.trigger_markdown,
+        \\    trigger_markdown = EXCLUDED.trigger_markdown, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = trigger_markdown = EXCLUDED.trigger_markdown),
         \\    config_json      = EXCLUDED.config_json,
         \\    status           = 'active',
         \\    updated_at       = EXCLUDED.updated_at

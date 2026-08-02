@@ -153,8 +153,8 @@ fn scanFleetId(buf: *[SCAN_ID_LEN]u8, index: usize) ![]const u8 {
 fn seedScanFleets(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\SELECT ($2 || lpad(to_hex(g), 3, '0'))::uuid, $1::uuid, 'sweep-scan-' || g,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\SELECT ($2 || lpad(to_hex(g), 3, '0'))::uuid, $1::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $1::uuid), 'sweep-scan-' || g,
         \\       '', '{}', $4, 0, 0
         \\FROM generate_series(0, $3::int - 1) AS g
         \\ON CONFLICT DO NOTHING

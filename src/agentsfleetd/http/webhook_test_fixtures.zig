@@ -42,17 +42,17 @@ pub fn insertFleet(
     try cleanup(conn, fx);
 
     _ = try conn.exec(
-        "INSERT INTO core.tenants (tenant_id, name, created_at, updated_at) VALUES ($1, 'webhook-e2e-test', $2, $2)",
+        "INSERT INTO core.tenants (id, name, created_at, updated_at) VALUES ($1::uuid, 'webhook-e2e-test', $2, $2)",
         .{ fx.tenant_id, now_ms },
     );
     _ = try conn.exec(
-        \\INSERT INTO core.workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
+        \\INSERT INTO core.workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
     , .{ fx.workspace_id, fx.tenant_id, now_ms });
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'webhook-e2e-fleet', '# test', '# test', $3::jsonb, 'active', $4, $4)
+        \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'webhook-e2e-fleet', '# test', '# test', $3::jsonb, 'active', $4, $4)
     , .{ fx.fleet_id, fx.workspace_id, config_json, now_ms });
 }
 
@@ -100,8 +100,8 @@ pub fn insertWebhookCredential(
 pub fn cleanup(conn: *pg.Conn, fx: Fixture) !void {
     _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fx.fleet_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{fx.tenant_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{fx.tenant_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
 /// Convenience: build a trigger config JSON for a given source. Optionally

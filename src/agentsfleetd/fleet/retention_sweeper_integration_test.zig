@@ -77,8 +77,8 @@ fn seedEvent(conn: *pg.Conn, event_type: protocol.RunnerEventType, occurred_at: 
     const event_uid = try id_format.generateUuidV7();
     const event_id: []const u8 = &event_uid;
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_events (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::text, $4::bigint, '{}'::jsonb, NULL, $4::bigint)
+        \\INSERT INTO fleet.runner_events (id, runner_id, event_type, metadata, dedup_key, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::text, '{}'::jsonb, NULL, $4::bigint)
     , .{ event_id, RUNNER_ID, @tagName(event_type), occurred_at });
 }
 
@@ -127,7 +127,7 @@ fn agedTerminalLeaseCount(conn: *pg.Conn, cutoff: i64) !i64 {
 fn agedEventCount(conn: *pg.Conn, cutoff: i64) !i64 {
     return scalarI64(conn,
         \\SELECT COUNT(*)::bigint FROM fleet.runner_events
-        \\WHERE event_type = ANY($1::text[]) AND occurred_at < $2
+        \\WHERE event_type = ANY($1::text[]) AND created_at < $2
     , .{ &retention_sweeper.PER_LEASE_EVENT_TAGS, cutoff });
 }
 

@@ -131,7 +131,9 @@ fn seedFanoutFleet(conn: anytype, index: usize) !void {
     const name = try std.fmt.bufPrint(&name_buf, "app-fanout-{d}", .{index});
     const now = @import("common").clock.nowMillis();
     _ = try conn.exec(
-        "INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at) VALUES ($1::uuid, $2::uuid, $3, '# test fleet', $4::jsonb, 'active', $5, $5)",
+        "INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)" ++
+            " VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid)," ++
+            " $3, '# test fleet', $4::jsonb, 'active', $5, $5)",
         .{ fleet_id, fixtures.WORKSPACE_ID, name, CONFIG_PULL, now },
     );
     _ = try conn.exec(

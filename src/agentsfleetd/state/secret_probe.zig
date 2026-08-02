@@ -66,10 +66,10 @@ pub fn resolvePrimaryWorkspace(
     tenant_id: []const u8,
 ) ![]u8 {
     var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text
+        \\SELECT id::text
         \\FROM core.workspaces
         \\WHERE tenant_id = $1::uuid
-        \\ORDER BY created_at ASC, workspace_id ASC
+        \\ORDER BY created_at ASC, id ASC
         \\LIMIT 1
     , .{tenant_id}));
     defer q.deinit();

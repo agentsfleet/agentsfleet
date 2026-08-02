@@ -131,7 +131,7 @@ fn cleanup(conn: *pg.Conn) void {
     // The dedicated workspace is this file's own row — remove it so the suite
     // leaves zero rows behind. The tenant is SHARED with sibling suites
     // running in parallel and must survive.
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{WS_A}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1", .{WS_A}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
 }
 
 test "integration: V viewers of one workspace cost ONE enumeration, not V" {
@@ -206,14 +206,14 @@ test "integration: a successful empty enumeration initializes the cache version"
     defer db.close();
     const ts = clock.nowMillis();
     _ = try db.conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'FleetSetCacheTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'FleetSetCacheTest', $2, $2) ON CONFLICT (id) DO NOTHING
     , .{ TENANT_ID, ts });
     _ = try db.conn.exec(
-        \\INSERT INTO core.workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO core.workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3) ON CONFLICT (id) DO NOTHING
     , .{ WS_B, TENANT_ID, ts });
-    defer _ = db.conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{WS_B}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
+    defer _ = db.conn.exec("DELETE FROM core.workspaces WHERE id = $1", .{WS_B}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
 
     var cache = FleetSetCache.init(testing.allocator, common.globalIo());
     defer cache.deinit();

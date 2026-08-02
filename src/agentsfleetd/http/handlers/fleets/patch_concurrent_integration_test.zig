@@ -186,14 +186,14 @@ fn seedAndHarness(alloc: std.mem.Allocator, ids: FleetPair) !*TestHarness {
 fn seedFixture(conn: *pg.Conn, ids: FleetPair) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'PatchConcurrentTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'PatchConcurrentTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     // uq_fleets_workspace_id_name forbids two rows sharing (workspace_id, name);
     // Both fixture rows coexist in TEST_WORKSPACE_ID, so each row needs
@@ -214,12 +214,12 @@ fn seedFixture(conn: *pg.Conn, ids: FleetPair) !void {
     for (rows) |r| {
         _ = try conn.exec(
             \\INSERT INTO core.fleets
-            \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+            \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
             \\   status, created_at, updated_at)
             \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, 'active', $7, $7)
             \\ON CONFLICT (id) DO UPDATE SET
             \\    name = EXCLUDED.name,
-            \\    source_markdown = EXCLUDED.source_markdown,
+            \\    source_markdown = EXCLUDED.source_markdown, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = source_markdown = EXCLUDED.source_markdown),
             \\    trigger_markdown = EXCLUDED.trigger_markdown,
             \\    config_json = EXCLUDED.config_json,
             \\    status = 'active',

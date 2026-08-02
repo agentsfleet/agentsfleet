@@ -50,31 +50,31 @@ fn openHarnessOrSkip(alloc: std.mem.Allocator) !*TestHarness {
 
 fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'M11_006-integration', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'tenant-billing-integration', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ tenant_id, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, tenant_id, now_ms });
     // activity_events.fleet_id carries a NOT NULL FK to core.fleets —
     // seed a minimal row so logEventOnConn writes do not fail.
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
         \\   status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'fleet-m11-006', 'seed', null, '{}'::jsonb, 'active', $3, $3)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'fleet-m11-006', 'seed', null, '{}'::jsonb, 'active', $3, $3)
         \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_FLEET_ID, TEST_WORKSPACE_ID, now_ms });
 }
 
 fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM tenants WHERE id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── stop-policy pre-claim balance gate ────────────────────────────────────

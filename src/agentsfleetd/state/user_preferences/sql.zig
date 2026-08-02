@@ -2,9 +2,12 @@
 //! and writes.
 
 /// The Clerk subject on the principal is an opaque external string; every
-/// prefs row keys on the internal core.users.user_id it maps to.
+/// prefs row keys on the internal `core.users.id` it maps to. The constant name
+/// keeps `USER_ID` because that is what the CALLER binds it as — on
+/// `core.user_preferences.user_id`, a real parent key. Only the column read
+/// here was renamed.
 pub const SELECT_USER_ID_BY_SUBJECT =
-    \\SELECT user_id::text
+    \\SELECT id::text
     \\FROM core.users
     \\WHERE oidc_subject = $1
 ;

@@ -142,26 +142,26 @@ fn serverThread(srv: *TestServer) void {
 fn seedTestData(conn: *pg.Conn) !void {
     const now: i64 = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'IdorTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'IdorTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ OTHER_WS_ID, TEST_TENANT_ID, now });
     // Fleet owned by the FOREIGN workspace. Used to probe IDOR on routes that
     // take (workspace_id, fleet_id) in the path: caller sends TEST_WORKSPACE_ID
     // in the path but this fleet actually belongs to OTHER_WS_ID.
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'idor-foreign', '---\nname: idor-foreign\n---\nx', '{"name":"idor-foreign"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'idor-foreign', '---\nname: idor-foreign\n---\nx', '{"name":"idor-foreign"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_IN_FOREIGN_WS, OTHER_WS_ID });
 }
@@ -170,7 +170,7 @@ fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.integration_grants WHERE fleet_id = $1::uuid", .{AGENTSFLEET_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{AGENTSFLEET_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     // Delete OTHER_WS_ID only — TEST_WORKSPACE_ID is shared with other test files.
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // Bind/spawn/healthz attempts before we give up. The TOCTOU window between
@@ -567,8 +567,8 @@ test "no-content: DELETE fleet-key returns 204 with empty body" {
     const fleet_for_agent = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
     const conn = try srv.pool.acquire();
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'm26-204-test', '---\nname: m26-204\n---\nx', '{"name":"m26-204"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'm26-204-test', '---\nname: m26-204\n---\nx', '{"name":"m26-204"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ fleet_for_agent, TEST_WORKSPACE_ID });
     _ = try conn.exec(
@@ -611,8 +611,8 @@ test "no-content: DELETE integration-grant returns 204 with empty body" {
     const grant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6205";
     const conn = try srv.pool.acquire();
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'm26-grant-test', '---\nname: m26-grant\n---\nx', '{"name":"m26-grant"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'm26-grant-test', '---\nname: m26-grant\n---\nx', '{"name":"m26-grant"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ fleet_for_grant, TEST_WORKSPACE_ID });
     _ = try conn.exec(

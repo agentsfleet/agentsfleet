@@ -31,7 +31,7 @@ fn cleanupBootstrappedAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
     , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         \\DELETE FROM core.memberships
-        \\WHERE user_id IN (SELECT user_id FROM core.users WHERE oidc_subject = $1)
+        \\WHERE user_id IN (SELECT id FROM core.users WHERE oidc_subject = $1)
     , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         \\WITH doomed_users AS (
@@ -43,7 +43,7 @@ fn cleanupBootstrappedAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
 
 fn cleanupCollisionFixture(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.workspaces WHERE tenant_id = $1::uuid", .{COLLISION_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{COLLISION_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{COLLISION_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn countTenantsForOidc(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
@@ -113,7 +113,7 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
     // Tenant name is email local-part.
     {
         var q = PgQuery.from(try db_ctx.conn.query(
-            "SELECT name FROM core.tenants WHERE tenant_id = $1::uuid",
+            "SELECT name FROM core.tenants WHERE id = $1::uuid",
             .{result.tenant_id},
         ));
         defer q.deinit();
@@ -217,12 +217,12 @@ test "pickUniqueWorkspaceName: retries past an existing (tenant_id, name) collis
     defer cleanupCollisionFixture(db_ctx.conn);
 
     _ = try db_ctx.conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'collision-tenant', 0, 0)
     , .{COLLISION_TENANT_ID});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, name, created_at)
+        \\  (id, tenant_id, name, created_at)
         \\VALUES ($1::uuid, $2::uuid, 'preserve-me-042', 0)
     , .{ COLLISION_WORKSPACE_EXISTING, COLLISION_TENANT_ID });
 
@@ -271,15 +271,15 @@ test "bootstrapTransaction: unique-violation mid-tx rolls back every preceding I
     const poison_user = "0195b4ba-8d3a-7f13-8abc-b00000000098";
     defer {
         _ = db_ctx.conn.exec("DELETE FROM core.memberships WHERE user_id = $1::uuid", .{poison_user}) catch {};
-        _ = db_ctx.conn.exec("DELETE FROM core.users WHERE user_id = $1::uuid", .{poison_user}) catch {};
-        _ = db_ctx.conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{poison_tenant}) catch {};
+        _ = db_ctx.conn.exec("DELETE FROM core.users WHERE id = $1::uuid", .{poison_user}) catch {};
+        _ = db_ctx.conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{poison_tenant}) catch {};
     }
     _ = try db_ctx.conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'poison-tenant', 0, 0)
     , .{poison_tenant});
     _ = try db_ctx.conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, 'poison@test.agent', 0, 0)
     , .{ poison_user, poison_tenant, oidc });
 

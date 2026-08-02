@@ -503,9 +503,9 @@ test "integration: delete lifecycle - 409 while live, 204 once revoked, cascade 
 
 fn seedRunnerEventRow(conn: anytype, runner_id: []const u8, suffix: []const u8, event_type: []const u8, occurred_at: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_events (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+        \\INSERT INTO fleet.runner_events (id, runner_id, event_type, metadata, dedup_key, created_at)
         \\VALUES (overlay(md5($1 || $2)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\        $1::uuid, $3, $4, '{}'::jsonb, NULL, $4)
+        \\        $1::uuid, $3, '{}'::jsonb, NULL, $4)
         \\ON CONFLICT (id) DO NOTHING
     , .{ runner_id, suffix, event_type, occurred_at });
 }
