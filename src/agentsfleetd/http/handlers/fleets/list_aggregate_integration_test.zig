@@ -122,11 +122,13 @@ test "integration: list counters match children; a bare fleet reads 0 not null; 
     try addLedgerCharge(conn, busy, "agg-e1", "receive", 500, now_ms);
     // pin test: literal is the contract — 500 + 1000 + 250 renewal = 1750.
     try addLedgerCharge(conn, busy, "agg-e1", "stage", 1000, now_ms);
-    try addLedgerCharge(conn, "not-a-uuid", "agg-invalid-fleet", "receive", 9999, now_ms);
-    defer _ = conn.exec(
-        "DELETE FROM billing.usage_ledger WHERE event_id = 'agg-invalid-fleet'",
-        .{},
-    ) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
+    // The orphan-ledger-row arm is gone and cannot come back. It seeded a
+    // charge under a non-fleet id to prove the aggregate ignored it, which the
+    // rebuild makes unreachable twice over: `billing.usage_ledger.fleet_id` is
+    // now UUID, so the driver refuses to encode a non-identifier, and
+    // `usage_ledger_fleet_id_fkey` would reject a well-formed id naming no
+    // fleet. The invariant moved out of the aggregate query and into the
+    // schema, so the query-level probe has nothing left to observe.
     // Renewal accumulation: the stage row's credit grows post-execution (the
     // production upsert does `credit = credit + EXCLUDED`). The budget trigger
     // must add the +250 delta, not miss it — so the total becomes 1750, not 1500.

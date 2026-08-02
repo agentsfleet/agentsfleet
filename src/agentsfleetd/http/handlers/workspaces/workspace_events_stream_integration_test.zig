@@ -270,7 +270,18 @@ test "integration: membership revoked mid-stream unsubscribes the caller on the 
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        _ = try conn.exec("UPDATE workspaces SET tenant_id = $2 WHERE id = $1", .{ WS, OTHER_TENANT });
+        // The workspace and its fleets move together, in ONE statement.
+        // `fk_fleets_workspace_id_tenant_id` is composite over
+        // (workspace_id, tenant_id) and not deferrable, so moving either side
+        // alone is refused — the fleet would name a tenant its workspace no
+        // longer has. A single statement defers the check to its end, by which
+        // point both rows agree. The fleet set is unchanged, only its owner.
+        _ = try conn.exec(
+            \\WITH moved_fleets AS (
+            \\    UPDATE core.fleets SET tenant_id = $2::uuid WHERE workspace_id = $1::uuid RETURNING id
+            \\)
+            \\UPDATE core.workspaces SET tenant_id = $2::uuid WHERE id = $1::uuid
+        , .{ WS, OTHER_TENANT });
     }
 
     // The next tick re-authorizes THIS caller (never cached), finds it can no

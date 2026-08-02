@@ -153,10 +153,10 @@ fn seedFixture(conn: *pg.Conn) !void {
         \\INSERT INTO core.fleets
         \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
         \\   status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'patch-bot', $3, $4, $5::jsonb, 'active', $6, $6)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'patch-bot', $3, $4, $5::jsonb, 'active', $6, $6)
         \\ON CONFLICT (id) DO UPDATE SET
         \\    source_markdown  = EXCLUDED.source_markdown,
-        \\    trigger_markdown = EXCLUDED.trigger_markdown, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = trigger_markdown = EXCLUDED.trigger_markdown),
+        \\    trigger_markdown = EXCLUDED.trigger_markdown,
         \\    config_json      = EXCLUDED.config_json,
         \\    status           = 'active',
         \\    updated_at       = EXCLUDED.updated_at
