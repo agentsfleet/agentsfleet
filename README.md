@@ -41,6 +41,7 @@ Define an agent in Markdown, connect a webhook, and get an evidenced diagnosis a
 | `cli/` | Command-line interface (CLI) — install, manage agents, tail runs |
 | `public/openapi/` | OpenAPI spec |
 | `schema/` | Postgres migrations |
+| `playbooks/` | First setup, deployment, verification, and operations |
 
 ---
 
@@ -100,8 +101,8 @@ here.
 make harness-verify ORLY_ROOT=/path/to/dotfiles
 ```
 
-Read about [architecture](docs/architecture/) and
-[deployment](playbooks/ARCHITECTURE.md), or jump into
+Read about [architecture](docs/architecture/), start with the
+[operator playbooks](playbooks/README.md), or jump into
 [local development](#local-development).
 
 ---

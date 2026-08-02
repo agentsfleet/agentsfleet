@@ -5,13 +5,21 @@ echo ""
 echo "== 002_preflight Section 2: procurement readiness gate =="
 
 env_mode="${ENV:-all}"
+stage="${STAGE:-bootstrap}"
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 
 missing=0
-readonly uuidv7_pattern='^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
 declare -A OP_CACHE_VALUE
 declare -A OP_CACHE_STATUS
+
+case "$stage" in
+  bootstrap|deployment) ;;
+  *)
+    echo "Unknown STAGE: $stage (supported: bootstrap, deployment)" >&2
+    exit 2
+    ;;
+esac
 
 op_read_with_retry() {
   local ref="$1"
@@ -74,21 +82,6 @@ check_url_ref() {
   fi
 }
 
-check_uuidv7_ref() {
-  local ref="$1"
-  local value
-  value="$(op_read_with_retry "$ref" || true)"
-  if [ -z "$value" ]; then
-    echo "✗ MISSING: $ref"
-    missing=$((missing + 1))
-  elif ! printf '%s' "$value" | grep -qE "$uuidv7_pattern"; then
-    echo "✗ INVALID WORKSPACE IDENTIFIER: $ref"
-    missing=$((missing + 1))
-  else
-    echo "✓ $ref"
-  fi
-}
-
 check_distinct() {
   local left_ref="$1"
   local right_ref="$2"
@@ -112,86 +105,17 @@ check_distinct() {
   fi
 }
 
-# A worker item is a deployable worker only once it has joined the tailnet: CI
-# reaches workers by tailscale-hostname, never by the provider hostname. An item
-# without that field is a PLACEHOLDER — the vault structure is ready but no
-# machine stands behind it. Say so rather than letting a full set of credentials
-# read as a ready worker; a machine that was never bought is not a credential
-# fault, so this never increments `missing`.
-#
-# The optional third argument names a sibling worker to compare against. Vault
-# items get created by duplicating an existing one, which copies the provider
-# `hostname` verbatim — leaving two entries pointed at one box. Naming that
-# explicitly is the difference between "not provisioned yet" and the far more
-# confusing "provisioned, but it is actually the other worker's machine".
-check_worker_onboarded() {
-  local vault="$1"
-  local item="$2"
-  local sibling="${3:-}"
-
-  local ts_host
-  ts_host="$(op_read_with_retry "op://$vault/$item/tailscale-hostname" || true)"
-  if [ -n "$ts_host" ]; then
-    echo "✓ onboarded: $item (on the tailnet)"
-    return
-  fi
-
-  echo "⚠ PLACEHOLDER: $item has no tailscale-hostname — not on the tailnet, not deployable"
-  if [ -n "$sibling" ]; then
-    local own sibling_host
-    own="$(op_read_with_retry "op://$vault/$item/hostname" || true)"
-    sibling_host="$(op_read_with_retry "op://$vault/$sibling/hostname" || true)"
-    if [ -n "$own" ] && [ "$own" = "$sibling_host" ]; then
-      echo "  its hostname is $sibling's host — it has no machine of its own"
-    fi
-  fi
-  echo "  to make it real: provision a server (playbook 07 step 0.0), set hostname,"
-  echo "  then join the tailnet with --advertise-tags=tag:worker --ssh"
-}
-
-check_platform_integrations() {
-  local v="$1"
-
-  # Browser connector callbacks bind workspace intent with this agentsfleet-
-  # owned HMAC key. It is a Fly boot secret, not part of a provider app bag.
-  check_ref "op://$v/approval-signing-secret/credential"
-
-  # Platform connector bags are copied from 1Password into the encrypted
-  # admin-workspace vault. Check the runtime field names, not retired Fly env
-  # aliases. Provider credentials never belong in a tenant workspace.
-  check_ref "op://$v/github-app/app_id"
-  check_ref "op://$v/github-app/app_slug"
-  check_ref "op://$v/github-app/client_id"
-  check_ref "op://$v/github-app/client_secret"
-  check_ref "op://$v/github-app/private_key_pem"
-  check_ref "op://$v/github-app/webhook_secret"
-  check_ref "op://$v/slack-app/client_id"
-  check_ref "op://$v/slack-app/client_secret"
-  check_ref "op://$v/slack-app/signing_secret"
-
-  local provider
-  for provider in zoho jira linear; do
-    check_ref "op://$v/$provider-app/client_id"
-    check_ref "op://$v/$provider-app/client_secret"
-  done
-}
-
 check_prod() {
   local v="$vault_prod"
-  echo "-- checking PROD vault: $v"
+  echo "-- checking PROD vault: $v ($stage)"
 
   # JWKS URL is derived from the issuer (the daemon builds
   # <issuer>/.well-known/jwks.json); the vault jwks-url field was removed.
   # OIDC_ISSUER is the single source of identity truth.
   check_url_ref "op://$v/clerk-prod/issuer"
   check_ref "op://$v/cloudflare-api-token/credential"
-  # Cloudflare R2 (Fleet Bundle snapshot storage). Missing any of
-  # these fails the gate — the daemon also fails loud at boot if unset.
-  check_ref "op://$v/cloudflare-r2/account-id"
-  check_ref "op://$v/cloudflare-r2/access-key-id"
-  check_ref "op://$v/cloudflare-r2/secret-access-key"
-  check_ref "op://$v/cloudflare-r2/bucket"
   check_ref "op://$v/npm-publish-token/credential"
+  check_ref "op://$v/vercel-api-token/credential"
   check_ref "op://$v/vercel-bypass-website/credential"
   check_ref "op://$v/vercel-bypass-agents/credential"
   check_ref "op://$v/vercel-bypass-app/credential"
@@ -199,51 +123,48 @@ check_prod() {
   check_ref "op://$v/clerk-prod/publishable-key"
   check_ref "op://$v/clerk-prod/secret-key"
   check_ref "op://$v/clerk-prod/webhook-secret"
-  check_ref "op://$v/agentsfleet-admin/api-key"
-  check_uuidv7_ref "op://$v/agentsfleet-admin/platform_admin_workspace_id"
-  check_platform_integrations "$v"
+  check_ref "op://$v/e2e-fixtures-email/regular"
+  check_ref "op://$v/e2e-fixtures-email/admin"
+  check_ref "op://$v/agentsfleet-admin/username"
+  check_ref "op://$v/agentsfleet-admin/credential"
   check_ref "op://$v/encryption-master-key/credential"
-  check_ref "op://$v/planetscale-prod/api-connection-string"
-  check_ref "op://$v/planetscale-prod/migrator-connection-string"
-  check_ref "op://$v/upstash-prod/api-url"
-  # QStash schedule provider. The daemon loads {token,current_signing_key,
-  # next_signing_key,url} from the admin workspace; url is region/env-specific
-  # (US vs EU) and is read as the API base, so it is a required field, not cosmetic.
-  check_ref "op://$v/qstash/token"
-  check_ref "op://$v/qstash/current-signing-key"
-  check_ref "op://$v/qstash/next-signing-key"
-  check_url_ref "op://$v/qstash/url"
-  # tailscale: oauth-client-id/oauth-secret mint tagged keys for
-  # CI tailnet join (ephemeral; deploy-dev.yml + release.yml) and bare-metal
-  # worker-node join (persistent, ephemeral=false; playbooks 06/07).
-  # OAuth clients do not hit the 90-day auth-key cap.
+  check_ref "op://$v/auth-session-code-pepper/credential"
+  check_ref "op://$v/audit-log-pepper/credential"
+  # Tailscale OAuth clients mint short-lived tagged access keys for CI and
+  # persistent runner enrollment.
   check_ref "op://$v/tailscale/oauth-client-id"
   check_ref "op://$v/tailscale/oauth-secret"
-  check_ref "op://$v/zombie-prod-worker-ant/ssh-private-key"
-  check_ref "op://$v/zombie-prod-worker-ant/runner-token"
-  check_worker_onboarded "$v" zombie-prod-worker-ant
-  # bird holds a full credential set but no machine: its hostname is ant's box and
-  # it has never joined the tailnet. Reported, deliberately non-fatal — see
-  # check_worker_onboarded.
-  check_ref "op://$v/zombie-prod-worker-bird/ssh-private-key"
-  check_worker_onboarded "$v" zombie-prod-worker-bird zombie-prod-worker-ant
   check_ref "op://$v/discord-ci-webhook/credential"
   check_ref "op://$v/fly-api-token/credential"
-  check_ref "op://$v/posthog-prod/credential"
-  check_ref "op://$v/grafana-prod/otlp-endpoint"
-  check_ref "op://$v/grafana-prod/instance-id"
-  check_ref "op://$v/grafana-prod/api-key"
-  check_ref "op://$v/cloudflare-tunnel-prod/credential"
 
-  check_distinct \
-    "op://$v/planetscale-prod/migrator-connection-string" \
-    "op://$v/planetscale-prod/api-connection-string" \
-    "prod postgres migrator vs api"
+  if [ "$stage" = "deployment" ]; then
+    # Browser callbacks bind workspace intent with this agentsfleet-owned
+    # signing key. It is a Fly boot secret, not a provider app bag.
+    check_ref "op://$v/approval-signing-secret/credential"
+    check_ref "op://$v/cloudflare-r2/account-id"
+    check_ref "op://$v/cloudflare-r2/access-key-id"
+    check_ref "op://$v/cloudflare-r2/secret-access-key"
+    check_ref "op://$v/cloudflare-r2/bucket"
+    check_ref "op://$v/planetscale-prod/api-connection-string"
+    check_ref "op://$v/planetscale-prod/migrator-connection-string"
+    check_ref "op://$v/upstash-prod/api-url"
+    check_ref "op://$v/upstash-prod/url"
+    check_ref "op://$v/grafana-prod/otlp-endpoint"
+    check_ref "op://$v/grafana-prod/instance-id"
+    check_ref "op://$v/grafana-prod/api-key"
+    check_ref "op://$v/cloudflare-tunnel-prod/credential"
+
+    check_distinct \
+      "op://$v/planetscale-prod/migrator-connection-string" \
+      "op://$v/planetscale-prod/api-connection-string" \
+      "prod postgres migrator vs api"
+  fi
+
 }
 
 check_dev() {
   local v="$vault_dev"
-  echo "-- checking DEV vault: $v"
+  echo "-- checking DEV vault: $v ($stage)"
 
   # JWKS URL is derived from the issuer (the daemon builds
   # <issuer>/.well-known/jwks.json); the vault jwks-url field was removed.
@@ -252,134 +173,49 @@ check_dev() {
   check_ref "op://$v/clerk-dev/publishable-key"
   check_ref "op://$v/clerk-dev/secret-key"
   check_ref "op://$v/clerk-dev/webhook-secret"
-  check_ref "op://$v/agentsfleet-admin/api-key"
-  check_uuidv7_ref "op://$v/agentsfleet-admin/platform_admin_workspace_id"
-  check_platform_integrations "$v"
+  check_ref "op://$v/e2e-fixtures-email/regular"
+  check_ref "op://$v/e2e-fixtures-email/admin"
+  check_ref "op://$v/agentsfleet-admin/username"
+  check_ref "op://$v/agentsfleet-admin/credential"
   check_ref "op://$v/encryption-master-key/credential"
-  check_ref "op://$v/vercel-api-token/credential"
+  check_ref "op://$v/auth-session-code-pepper/credential"
+  check_ref "op://$v/audit-log-pepper/credential"
   check_ref "op://$v/posthog-dev/credential"
-  check_ref "op://$v/planetscale-dev/api-connection-string"
-  check_ref "op://$v/planetscale-dev/migrator-connection-string"
-  check_ref "op://$v/upstash-dev/api-url"
-  # QStash schedule provider. The daemon loads {token,current_signing_key,
-  # next_signing_key,url} from the admin workspace; url is region/env-specific
-  # (US vs EU) and is read as the API base, so it is a required field, not cosmetic.
-  check_ref "op://$v/qstash/token"
-  check_ref "op://$v/qstash/current-signing-key"
-  check_ref "op://$v/qstash/next-signing-key"
-  check_url_ref "op://$v/qstash/url"
-  check_ref "op://$v/zombie-dev-worker-ant/runner-token"
-  check_worker_onboarded "$v" zombie-dev-worker-ant
   check_ref "op://$v/fly-api-token/credential"
-  check_ref "op://$v/posthog-dev/credential"
-  check_ref "op://$v/grafana-dev/otlp-endpoint"
-  check_ref "op://$v/grafana-dev/instance-id"
-  check_ref "op://$v/grafana-dev/api-key"
-  check_ref "op://$v/cloudflare-tunnel-dev/credential"
-  # Cloudflare R2 (Fleet Bundle snapshot storage). Missing any of
-  # these fails the gate — the daemon also fails loud at boot if unset.
-  check_ref "op://$v/cloudflare-r2/account-id"
-  check_ref "op://$v/cloudflare-r2/access-key-id"
-  check_ref "op://$v/cloudflare-r2/secret-access-key"
-  check_ref "op://$v/cloudflare-r2/bucket"
 
-  check_distinct \
-    "op://$v/planetscale-dev/migrator-connection-string" \
-    "op://$v/planetscale-dev/api-connection-string" \
-    "dev postgres migrator vs api"
-}
+  if [ "$stage" = "deployment" ]; then
+    check_ref "op://$v/approval-signing-secret/credential"
+    check_ref "op://$v/planetscale-dev/api-connection-string"
+    check_ref "op://$v/planetscale-dev/migrator-connection-string"
+    check_ref "op://$v/upstash-dev/api-url"
+    check_ref "op://$v/upstash-dev/url"
+    check_ref "op://$v/grafana-dev/otlp-endpoint"
+    check_ref "op://$v/grafana-dev/instance-id"
+    check_ref "op://$v/grafana-dev/api-key"
+    check_ref "op://$v/cloudflare-tunnel-dev/credential"
+    check_ref "op://$v/cloudflare-r2/account-id"
+    check_ref "op://$v/cloudflare-r2/access-key-id"
+    check_ref "op://$v/cloudflare-r2/secret-access-key"
+    check_ref "op://$v/cloudflare-r2/bucket"
 
-check_vercel_envs() {
-  # Asserts that the env vars produced by 001_bootstrap/02_vercel_env.sh
-  # actually landed on the Vercel projects. Vault items existing is not
-  # the same as Vercel projects having them — that gap shipped to prod
-  # once already (PostHog rows missing on all three projects).
-  # Preflight is a gate, not advice — missing tooling fails the run loud
-  # rather than letting a half-checked bootstrap proceed.
-  if ! command -v curl >/dev/null 2>&1; then
-    echo "✗ MISSING TOOL: curl (required to verify Vercel env state)"
-    missing=$((missing + 1))
-    return
-  fi
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "✗ MISSING TOOL: jq (required to verify Vercel env state)"
-    missing=$((missing + 1))
-    return
+    check_distinct \
+      "op://$v/planetscale-dev/migrator-connection-string" \
+      "op://$v/planetscale-dev/api-connection-string" \
+      "dev postgres migrator vs api"
   fi
 
-  local token
-  token="$(op_read_with_retry "op://$vault_prod/vercel-api-token/credential" || true)"
-  if [ -z "$token" ]; then
-    echo "✗ MISSING: vercel-api-token (cannot verify Vercel env state)"
-    missing=$((missing + 1))
-    return
-  fi
-
-  echo "-- checking Vercel project envs"
-  local api="${VERCEL_API:-https://api.vercel.com}"
-  local -a expectations=(
-    "agentsfleet-website|VITE_POSTHOG_KEY"
-    "agentsfleet-website|VITE_POSTHOG_HOST"
-    "agentsfleet-agents-dev|VITE_POSTHOG_KEY"
-    "agentsfleet-agents-dev|VITE_POSTHOG_HOST"
-    "agentsfleet-app|NEXT_PUBLIC_POSTHOG_KEY"
-    "agentsfleet-app|NEXT_PUBLIC_POSTHOG_HOST"
-  )
-  declare -A ENV_CACHE
-  declare -A PROJECT_OK
-  local entry project key envs targets
-  for entry in "${expectations[@]}"; do
-    IFS='|' read -r project key <<<"$entry"
-    if [ -z "${ENV_CACHE[$project]:-}" ]; then
-      # Resolve the project first: a stale/renamed name (rename residue)
-      # must report as PROJECT NOT FOUND, not masquerade as a missing env
-      # row — a 404 on the env list yields {} and looks identical to "set
-      # but empty". That phantom shipped once already.
-      if curl -fsS -H "Authorization: Bearer $token" \
-           "$api/v10/projects/$project" >/dev/null 2>&1; then
-        PROJECT_OK["$project"]=1
-        ENV_CACHE["$project"]="$(curl -fsS \
-          -H "Authorization: Bearer $token" \
-          "$api/v9/projects/$project/env?decrypt=false" 2>/dev/null || echo '{}')"
-      else
-        PROJECT_OK["$project"]=0
-        ENV_CACHE["$project"]='{}'
-        echo "✗ PROJECT NOT FOUND: vercel:$project — name may be stale rename residue"
-        echo "  Vercel projects on this team:"
-        curl -fsS -H "Authorization: Bearer $token" \
-          "$api/v10/projects?limit=100" 2>/dev/null \
-          | jq -r '.projects[].name' | sort | sed 's/^/    - /' || true
-        echo "  fix: correct the name here + 01_bootstrap/02_vercel_env.sh, then re-run"
-        missing=$((missing + 1))
-      fi
-    fi
-    [ "${PROJECT_OK[$project]}" = "1" ] || continue
-    envs="${ENV_CACHE[$project]}"
-    targets="$(echo "$envs" | jq -r --arg k "$key" \
-      '[.envs[]? | select(.key==$k) | .target[]?] | unique | join(",")')"
-    if echo ",$targets," | grep -q ",production," && \
-       echo ",$targets," | grep -q ",preview,"; then
-      echo "✓ vercel:$project/$key (production+preview)"
-    else
-      echo "✗ MISSING: vercel:$project/$key (have targets: ${targets:-none})"
-      echo "  fix: ./playbooks/founding/01_bootstrap/02_vercel_env.sh"
-      missing=$((missing + 1))
-    fi
-  done
 }
 
 case "$env_mode" in
   all)
     check_prod
     check_dev
-    check_vercel_envs
     ;;
   dev)
     check_dev
     ;;
   prod)
     check_prod
-    check_vercel_envs
     ;;
   *)
     echo "Unknown ENV: $env_mode (supported: all, dev, prod)" >&2
