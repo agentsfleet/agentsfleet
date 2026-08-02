@@ -162,10 +162,9 @@ fn seedLeases(conn: *pg.Conn) !void {
 fn seedEvents(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
-        \\SELECT overlay(md5('e' || g)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\       $1::uuid, 'evt-' || g, $2::uuid, 'actor', 'fleet.run', 'ok',
+        \\SELECT $1::uuid, 'evt-' || g, $2::uuid, 'actor', 'fleet.run', 'ok',
         \\       '{}'::jsonb, 1750000000000 + g, 0
         \\FROM generate_series(1, $3::int) g
         \\ON CONFLICT DO NOTHING

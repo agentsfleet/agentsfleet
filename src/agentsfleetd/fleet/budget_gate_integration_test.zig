@@ -44,10 +44,10 @@ const CONFIG_DAILY_ONE_DOLLAR =
 /// spend is over budget — the boundary the unit tests pin.
 const SPEND_AT_CEILING_NANOS: i64 = 1_000_000_000;
 
-// The budget query sums the per-slice ledger (`fleet.metering_periods`) by
-// `created_at`, joined to the stage telemetry row for scope. Seed both: a stage
-// row (scope + recorded_at pruning; its own nanos are not read for stage) plus a
-// metering slice carrying the drained `nanos`. Single-slice run → start == drain.
+// The budget query sums `billing.usage_ledger` over the window, apportioning
+// each row's accumulated charge across its own `created_at`..`last_charged_at`
+// span. One row is all this fixture needs: the retired `fleet.metering_periods`
+// made "scope row plus slice row" two writes, and the ledger makes it one.
 fn seedSpend(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, nanos: i64, recorded_at: i64) !void {
     try store.insertTelemetry(conn, ALLOC, .{
         .tenant_id = base.TEST_TENANT_ID,
@@ -64,11 +64,6 @@ fn seedSpend(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, nanos: 
 }
 
 fn teardownSpend(conn: *pg.Conn) void {
-    _ = conn.exec(
-        \\DELETE FROM fleet.metering_periods mp
-        \\USING billing.usage_ledger t
-        \\WHERE t.event_id = mp.event_id AND t.workspace_id = $1
-    , .{life.WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1", .{life.WORKSPACE_ID}) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
 }

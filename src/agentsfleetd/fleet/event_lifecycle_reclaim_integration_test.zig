@@ -145,9 +145,9 @@ test "markBlocked is guarded: terminal rows never reopen, second transition affe
     const EVENT_ID = "1700000000000-7";
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
-        \\VALUES ('0195c9da-1e2a-7f13-8abc-2b3e1e0d7e01'::uuid, $1::uuid, $2, $3::uuid,
+        \\VALUES ($1::uuid, $2, $3::uuid,
         \\        'steer:test', 'chat', $4, '{}'::jsonb, 0, 0)
         \\ON CONFLICT (fleet_id, event_id) DO UPDATE SET status = EXCLUDED.status, failure_label = NULL
     , .{ base.AGENTSFLEET_ROW, EVENT_ID, base.WORKSPACE_ID, event_rows.STATUS_RECEIVED });

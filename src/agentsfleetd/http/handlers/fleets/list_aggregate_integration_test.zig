@@ -65,14 +65,12 @@ fn seedFleet(alloc: std.mem.Allocator, conn: *pg.Conn, name: []const u8, now_ms:
 }
 
 fn addEvent(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, ts: i64) !void {
-    const uid_value = try id_format.generateUuidV7();
-    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'cron:x', 'cron', 'processed', '{}'::jsonb, $5, $5)
-    , .{ row_id, fleet_id, event_id, AGG_WORKSPACE, ts });
+        \\VALUES ($1::uuid, $2, $3::uuid, 'cron:x', 'cron', 'processed', '{}'::jsonb, $4, $4)
+    , .{ fleet_id, event_id, AGG_WORKSPACE, ts });
 }
 
 fn addLedgerCharge(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, charge: []const u8, nanos: i64, ts: i64) !void {

@@ -21,7 +21,6 @@ const scope_fixtures = @import("../../test_scope_tokens.zig");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../../../cmd/serve_runner_lookup.zig");
 const api_key = @import("../../../auth/api_key.zig");
-const id_format = @import("../../../types/id_format.zig");
 const event_rows = @import("../../../fleet/event_rows.zig");
 const events_store = @import("../../../state/fleet_events_store.zig");
 const protocol = @import("contract").protocol;
@@ -148,16 +147,14 @@ fn seedActiveLease(conn: *pg.Conn, event_id: []const u8) !void {
 // A `received` row — the state the lease verb leaves behind and the only state
 // `markTerminal`'s guarded UPDATE will transition.
 fn seedReceivedEvent(conn: *pg.Conn, event_id: []const u8, ts: i64) !void {
-    const uid_value = try id_format.generateUuidV7();
-    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'steer:test', 'chat', $5,
-        \\        '{"message":"hi"}'::jsonb, $6, $6)
+        \\VALUES ($1::uuid, $2, $3::uuid, 'steer:test', 'chat', $4,
+        \\        '{"message":"hi"}'::jsonb, $5, $5)
         \\ON CONFLICT (fleet_id, event_id) DO NOTHING
-    , .{ row_id, FLEET_ID, event_id, WORKSPACE_ID, event_rows.STATUS_RECEIVED, ts });
+    , .{ FLEET_ID, event_id, WORKSPACE_ID, event_rows.STATUS_RECEIVED, ts });
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {

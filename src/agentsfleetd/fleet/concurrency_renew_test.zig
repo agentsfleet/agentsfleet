@@ -329,7 +329,7 @@ test "claim+settle racing a reclaim never reports without charging the final sli
     _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, CURSOR_BASE_MS });
     const balance: i64 = 1_000_000_000_000;
     try seedBalance(c, balance);
-    defer teardown(c); // also clears metering_periods + telemetry for EVENT_ID
+    defer teardown(c); // also clears the ledger rows for EVENT_ID
 
     // One claim+settle (the report) racing 8 reclaim fence-bumps on the same slot.
     var slot = ReportSlot{};
@@ -341,22 +341,25 @@ test "claim+settle racing a reclaim never reports without charging the final sli
 
     const reported = try leaseReported(c);
     const debited = balance - try readBigint(c, "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
-    const slices = try readBigint(c, "SELECT count(*)::bigint FROM fleet.metering_periods WHERE event_id = $1", EVENT_ID);
+    // This run never receives, so the only ledger row the settle can leave is
+    // its own stage row — present or absent, exactly as the retired per-slice
+    // row was.
+    const ledger_rows = try readBigint(c, "SELECT count(*)::bigint FROM billing.usage_ledger WHERE event_id = $1", EVENT_ID);
     const one_slice = billing_rates.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
 
     // The fold's invariant: the active→reported flip and the slice debit are ONE
-    // atomic outcome. Either the claim won the fence (reported + charged + 1 slice)
+    // atomic outcome. Either the claim won the fence (reported + charged + 1 row)
     // or a reclaim bumped the sequence first (still active + nothing charged) —
     // NEVER reported-without-charge (the P1 race) nor charged-without-report.
     if (slot.claimed) {
         try std.testing.expect(reported);
         try std.testing.expectEqual(one_slice, debited);
         try std.testing.expectEqual(one_slice, slot.charged);
-        try std.testing.expectEqual(@as(i64, 1), slices);
+        try std.testing.expectEqual(@as(i64, 1), ledger_rows);
     } else {
         try std.testing.expect(!reported);
         try std.testing.expectEqual(@as(i64, 0), debited);
-        try std.testing.expectEqual(@as(i64, 0), slices);
+        try std.testing.expectEqual(@as(i64, 0), ledger_rows);
     }
 }
 
@@ -365,8 +368,8 @@ test "claim+settle racing a reclaim never reports without charging the final sli
 // Two concurrent money ops for the SAME tenant on DIFFERENT leases do not
 // contend on l/a (distinct rows), so before the balance-row lock (the `bal`
 // CTE) both priced `charged` off the same stale pre-lock balance read and the
-// audit rows (fleet.metering_periods + the telemetry breakdown — the invoice
-// substrate) summed to MORE than the wallet actually drained. The balance-row
+// audit rows (`billing.usage_ledger` — the invoice substrate) summed to MORE
+// than the wallet actually drained. The balance-row
 // lock serialises them, so the loser charges only the remaining balance.
 
 const FLEET_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbc02";
@@ -408,7 +411,7 @@ fn teardownSecond(conn: *pg.Conn) void {
 
 fn auditSum(conn: *pg.Conn) !i64 {
     var q = PgQuery.from(try conn.query(
-        "SELECT COALESCE(SUM(charged_nanos),0)::bigint FROM fleet.metering_periods WHERE event_id IN ($1, $2)",
+        "SELECT COALESCE(SUM(credit_deducted_nanos),0)::bigint FROM billing.usage_ledger WHERE event_id IN ($1, $2)",
         .{ EVENT_ID, EVENT_ID_2 },
     ));
     defer q.deinit();
@@ -610,6 +613,9 @@ test "integration: a regressed cumulative token report charges zero tokens and n
 
     // The cursor held (GREATEST clamp), never rewound to the regressed 500.
     try std.testing.expectEqual(seeded_cursor, try readBigint(c, "SELECT metered_input_tokens FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", FLEET_ID));
-    // Zero token delta charged for this slice (run_fee may be > 0; token cost is 0).
-    try std.testing.expectEqual(@as(i64, 0), try readBigint(c, "SELECT COALESCE(token_cost_nanos,0)::bigint FROM fleet.metering_periods WHERE event_id = $1 ORDER BY slice_seq DESC LIMIT 1", EVENT_ID));
+    // Zero token delta charged (run_fee may be > 0; the token term is 0). The
+    // ledger carries counts rather than a priced token column, and the
+    // regression clamped every delta to zero — so the row this renewal wrote
+    // accumulated no tokens at all.
+    try std.testing.expectEqual(@as(i64, 0), try readBigint(c, "SELECT COALESCE(SUM(token_count_input),0)::bigint FROM billing.usage_ledger WHERE event_id = $1", EVENT_ID));
 }

@@ -31,8 +31,6 @@ const TENANT_NAME = "slack-outbound-suite";
 const WS = "0195c106-4002-7000-8000-000000000042";
 const FLEET_ID = "0195c106-4003-7000-8000-000000000043";
 const FLEET_NAME = "slack-channel-t106out-c106out";
-// v7-shaped identifier (position-15 nibble '7') — core.fleet_events has a uuidv7 CHECK.
-const EVENT_UID = "0195c106-4004-7000-8000-000000000044";
 const EVENT_ID = "1700000009000-0";
 const CHANNEL = "C106OUT";
 const THREAD_TS = "1700000009.000100";
@@ -150,12 +148,12 @@ fn seedEventRow(conn: *pg.Conn) !void {
     const now = common.clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'slack:U1', 'chat', 'received',
-        \\        $5::jsonb, $6, $6)
+        \\VALUES ($1::uuid, $2, $3::uuid, 'slack:U1', 'chat', 'received',
+        \\        $4::jsonb, $5, $5)
         \\ON CONFLICT DO NOTHING
-    , .{ EVENT_UID, FLEET_ID, EVENT_ID, WS, REQUEST_JSON, now });
+    , .{ FLEET_ID, EVENT_ID, WS, REQUEST_JSON, now });
 }
 
 /// Vault the per-install bot token under the (WS, fleet:slack) handle callback.zig

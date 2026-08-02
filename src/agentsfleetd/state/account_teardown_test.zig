@@ -16,6 +16,7 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
 const teardown = @import("account_teardown.zig");
+const store = @import("fleet_telemetry_store.zig");
 
 // Distinct `c...` suffixes so this fixture never collides with the signup /
 // clerk integration tests (which use `b...` / fixed canonical IDs). The
@@ -85,6 +86,7 @@ const RB_MEMORY_UID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000036";
 const RB_RUNNER_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000037";
 const RB_LEASE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000039";
 const RB_EVENT_ID: []const u8 = "evt-teardown-rollback-1";
+const RB_MODEL: []const u8 = "teardown-rollback-model";
 
 fn seedRollbackAccount(conn: *pg.Conn) !void {
     _ = try conn.exec(
@@ -146,13 +148,23 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, 0, 'reported', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ RB_LEASE_ID, RB_RUNNER_ID, RB_FLEET_ID, RB_WORKSPACE_ID, RB_TENANT_ID, RB_EVENT_ID });
-    _ = try conn.exec(
-        \\INSERT INTO fleet.metering_periods
-        \\  (id, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-        \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-c0000000003a'::uuid, $1, 1, 0, 0, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (event_id, slice_seq) DO NOTHING
-    , .{RB_EVENT_ID});
+    // A charge for this account, written through the production writer. It
+    // replaces a `fleet.metering_periods` slice seed: that table is gone, and
+    // the ledger row that succeeded it is the stronger erasure subject anyway —
+    // `tenant_id` is NOT NULL and cascades (schema/710), so Dimension 3.3's
+    // "erasing an account leaves zero rows" is a claim about THIS table.
+    try store.insertTelemetry(conn, std.testing.allocator, .{
+        .tenant_id = RB_TENANT_ID,
+        .workspace_id = RB_WORKSPACE_ID,
+        .fleet_id = RB_FLEET_ID,
+        .event_id = RB_EVENT_ID,
+        .charge_type = .stage,
+        .posture = .platform,
+        .model = RB_MODEL,
+        .credit_deducted_nanos = 0,
+        .event_created_at = 0,
+        .created_at = 0,
+    });
 }
 
 /// Full unwind: the production purge itself (gates included via its bypass),
@@ -161,7 +173,7 @@ fn cleanupRollbackAccount(conn: *pg.Conn) void {
     _ = teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC, &.{}) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
     execIgnoreTd(conn, "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid", RB_FLEET_ID);
-    execIgnoreTd(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", RB_EVENT_ID);
+    execIgnoreTd(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", RB_EVENT_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", RB_LEASE_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", RB_FLEET_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", RB_RUNNER_ID);
@@ -230,11 +242,13 @@ test "integration: purge succeeds for an account with approval gates (append-onl
 
     try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, RB_OIDC));
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM core.fleet_approval_gates WHERE id = $1::uuid", RB_GATE_ID));
-    // Fleet sweep: lease + affinity + metering rows are gone; the shared
-    // runner row survives (host infrastructure, not tenant data).
+    // Fleet sweep: lease + affinity + ledger rows are gone; the shared runner
+    // row survives (host infrastructure, not tenant data). The ledger row goes
+    // by the tenant cascade rather than by a hand-maintained delete order —
+    // which is the whole point of typing `tenant_id` as a real reference.
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runner_leases WHERE id = $1::uuid", RB_LEASE_ID));
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", RB_FLEET_ID));
-    try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.metering_periods WHERE event_id = $1", RB_EVENT_ID));
+    try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM billing.usage_ledger WHERE event_id = $1", RB_EVENT_ID));
     try std.testing.expectEqual(@as(i64, 1), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runners WHERE id = $1::uuid", RB_RUNNER_ID));
 }
 

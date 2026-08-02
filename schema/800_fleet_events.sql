@@ -28,8 +28,6 @@
 -- site and both NULL on success.
 
 CREATE TABLE IF NOT EXISTS core.fleet_events (
-    id               UUID   PRIMARY KEY,
-    CONSTRAINT ck_fleet_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     fleet_id         UUID   NOT NULL REFERENCES core.fleets(id) ON DELETE CASCADE,
     workspace_id     UUID   NOT NULL REFERENCES core.workspaces(id) ON DELETE CASCADE,
     event_id         TEXT   NOT NULL,
@@ -46,8 +44,16 @@ CREATE TABLE IF NOT EXISTS core.fleet_events (
     resumes_event_id TEXT,
     created_at       BIGINT NOT NULL,
     updated_at       BIGINT NOT NULL,
-    -- The replay idempotency key, and the join reclaim reads the body through.
-    CONSTRAINT uq_fleet_events_fleet_id_event_id UNIQUE (fleet_id, event_id)
+    -- The replay idempotency key, the join reclaim reads the body through, and
+    -- the row's identity. It was a UNIQUE constraint beside a minted `id UUID`
+    -- primary key, which gave every row two identities and kept only one of
+    -- them: `id` was written by the insert and read by nothing — not a join, not
+    -- a keyset, not a handler, never the wire. `event_id` arrives on the
+    -- delivery and is what the ledger, the leases and every read address, so it
+    -- is the key. Nothing was ever kept in sync between the two; the surrogate
+    -- was simply dead. Composite because `event_id` is unique per fleet, not
+    -- globally, and this index existed already as the constraint.
+    PRIMARY KEY (fleet_id, event_id)
 );
 
 -- Reader: the per-fleet history page, newest-first, cursor-paged on the
