@@ -58,7 +58,10 @@ from the refusal, do not retry around it.
 - `GET /repos/{owner}/{repo}/branches/{branch}` — the current branch head, the
   commit hash you cite as `base_sha` in a proposal.
 
-**Jira** — host `${secrets.jira.host}`:
+**Jira** — host `${secrets.jira.host}`, authorization
+`Basic ${secrets.jira.basic_auth}`. The credential holds the header value
+already encoded, because the substitution happens at the request boundary and
+cannot compute one for you:
 
 - `POST /rest/api/3/issue` — one issue per incident, carrying the same
   evidence links as the Slack diagnosis.
