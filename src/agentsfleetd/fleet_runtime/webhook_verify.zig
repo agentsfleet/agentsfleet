@@ -5,7 +5,7 @@
 // Uses constant-time comparison to prevent timing side-channels (RULE CTM).
 
 const std = @import("std");
-const ec = @import("../errors/error_registry.zig");
+const whc = @import("webhook_constants.zig");
 const github_app = @import("webhook/normalizer/github_app.zig");
 
 const GITHUB_APP_IDENTITY = "github-app";
@@ -17,7 +17,7 @@ pub const VerifyConfig = struct {
     prefix: []const u8,
     hmac_version: []const u8 = "",
     includes_timestamp: bool = false,
-    max_ts_drift_seconds: i64 = ec.SLACK_MAX_TS_DRIFT_SECONDS,
+    max_ts_drift_seconds: i64 = whc.SLACK_MAX_TS_DRIFT_SECONDS,
     ingress: ?IngressConfig = null,
 };
 
@@ -39,10 +39,10 @@ pub const IngressConfig = struct {
 
 pub const SLACK = VerifyConfig{
     .name = "slack",
-    .sig_header = ec.SLACK_SIG_HEADER,
-    .ts_header = ec.SLACK_TS_HEADER,
+    .sig_header = whc.SLACK_SIG_HEADER,
+    .ts_header = whc.SLACK_TS_HEADER,
     .prefix = "v0=",
-    .hmac_version = ec.SLACK_SIG_VERSION,
+    .hmac_version = whc.SLACK_SIG_VERSION,
     .includes_timestamp = true,
 };
 

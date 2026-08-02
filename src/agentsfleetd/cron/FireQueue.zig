@@ -10,7 +10,7 @@
 const FireQueue = @This();
 
 const std = @import("std");
-const error_registry = @import("../errors/error_registry.zig");
+const whc = @import("../fleet_runtime/webhook_constants.zig");
 const fleet_ready = @import("../queue/fleet_ready.zig");
 const queue_constants = @import("../queue/constants.zig");
 const queue_redis = @import("../queue/redis.zig");
@@ -18,7 +18,7 @@ const queue_redis = @import("../queue/redis.zig");
 const CRON_DEDUP_PREFIX = "cron:dedup:";
 const ACTOR_PREFIX = "cron:";
 const DECIMAL_FORMAT = "{d}";
-const DEDUP_TTL_SECONDS = std.fmt.comptimePrint(DECIMAL_FORMAT, .{error_registry.DEDUP_TTL_SECONDS});
+const DEDUP_TTL_SECONDS = std.fmt.comptimePrint(DECIMAL_FORMAT, .{whc.DEDUP_TTL_SECONDS});
 const STREAM_MAX_LENGTH = "10000";
 const KEY_BUFFER_BYTES: usize = 384;
 const STREAM_KEY_BUFFER_BYTES: usize = 128;
