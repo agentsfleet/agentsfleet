@@ -178,8 +178,6 @@ pub const WorkspaceSecretRoute = workspace.WorkspaceSecretRoute;
 pub const matchWorkspaceSecret = workspace.matchWorkspaceSecret;
 pub const WorkspacePreferenceRoute = workspace.WorkspacePreferenceRoute;
 pub const matchWorkspacePreference = workspace.matchWorkspacePreference;
-pub const WorkspaceFleetKeyRoute = workspace.WorkspaceFleetKeyRoute;
-pub const matchWorkspaceFleetKeyDelete = workspace.matchWorkspaceFleetKeyDelete;
 
 // Connector matchers (the generic `{provider}` trio resolved against the
 // connector registry + Slack's bespoke events ingress) live in

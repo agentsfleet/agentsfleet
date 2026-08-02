@@ -507,28 +507,6 @@ test "envelope: GET /workspaces/{my}/fleets body has items+total, no fleets key"
     try std.testing.expect(!bodyHasTopLevelKey(r.body, "fleets"));
 }
 
-test "envelope: GET /workspaces/{my}/fleet-keys body has items+total, no fleets key" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| {
-            cleanupTestData(c);
-            srv.pool.release(c);
-        } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/fleet-keys", .{TEST_WORKSPACE_ID});
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 200), r.status);
-    try std.testing.expect(bodyHasTopLevelKey(r.body, "items"));
-    try std.testing.expect(bodyHasTopLevelKey(r.body, "total"));
-    try std.testing.expect(!bodyHasTopLevelKey(r.body, "fleets"));
-}
-
 test "memories: GET with malformed fleet_id in path returns 400" {
     const srv = try startTestServer(ALLOC);
     defer {
@@ -548,51 +526,6 @@ test "memories: GET with malformed fleet_id in path returns 400" {
     const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
     defer r.deinit(ALLOC);
     try std.testing.expectEqual(@as(u16, 400), r.status);
-}
-
-test "no-content: DELETE fleet-key returns 204 with empty body" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| {
-            cleanupTestData(c);
-            srv.pool.release(c);
-        } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    // Seed a Fleet key in TEST_WORKSPACE_ID for this test only. A fleet
-    // record is also required because fleet_keys.fleet_id has a FK.
-    const fleet_key_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6204";
-    const fleet_for_agent = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
-    const conn = try srv.pool.acquire();
-    _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'm26-204-test', '---\nname: m26-204\n---\nx', '{"name":"m26-204"}', 'active', 0, 0)
-        \\ON CONFLICT DO NOTHING
-    , .{ fleet_for_agent, TEST_WORKSPACE_ID });
-    _ = try conn.exec(
-        \\INSERT INTO core.fleet_keys (id, workspace_id, fleet_id, name, description, key_hash, created_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
-        \\ON CONFLICT (id) DO NOTHING
-    , .{ fleet_key_id, TEST_WORKSPACE_ID, fleet_for_agent });
-    srv.pool.release(conn);
-    defer {
-        if (srv.pool.acquire()) |c| {
-            _ = c.exec("DELETE FROM core.fleet_keys WHERE id = $1::uuid", .{fleet_key_id}) catch {};
-            _ = c.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fleet_for_agent}) catch {};
-            srv.pool.release(c);
-        } else |_| {}
-    }
-
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/fleet-keys/{s}", .{ TEST_WORKSPACE_ID, fleet_key_id });
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .DELETE, TOKEN_OPERATOR, null);
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 204), r.status);
-    // RFC 9110 section 6.4.5: 204 responses MUST NOT include a message body.
-    try std.testing.expectEqual(@as(usize, 0), r.body.len);
 }
 
 test "no-content: DELETE integration-grant returns 204 with empty body" {

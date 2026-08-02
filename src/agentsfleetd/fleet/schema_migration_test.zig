@@ -137,11 +137,8 @@ test "core key schemas: the retired identity twins are gone and stay gone" {
         \\JOIN pg_class rel ON rel.oid = c.conrelid
         \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
         \\WHERE nsp.nspname = 'core'
-        \\  AND rel.relname IN ('fleet_keys', 'integration_grants')
+        \\  AND rel.relname = 'integration_grants'
         \\  AND c.conname IN (
-        \\    'ck_fleet_keys_uid_uuidv7',
-        \\    'ck_fleet_keys_fleet_key_id_uuidv7',
-        \\    'ck_fleet_keys_uid_matches_fleet_key_id',
         \\    'ck_integration_grants_uid_uuidv7',
         \\    'ck_integration_grants_grant_id_uuidv7',
         \\    'ck_integration_grants_uid_matches_grant_id'

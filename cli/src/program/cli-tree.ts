@@ -138,7 +138,6 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
     .action(actionFor(COMMAND_DOCTOR, (frame) => runHandler(state, frame, handlers.doctor)));
 
   buildWorkspaceTree(program, handlers, state);
-  buildFleetKeyTree(program, handlers, state);
   buildGrantTree(program, handlers, state);
   buildAccessTree(program, handlers, state, { actionFor, runHandler });
   buildTenantTree(program, handlers, state);
@@ -179,30 +178,6 @@ function buildWorkspaceTree(program: Command, handlers: Handlers, state: Program
   ws.command("delete <workspace_id>")
     .description("Remove a workspace from local client state")
     .action(actionFor("workspace.delete", (frame) => runHandler(state, frame, handlers.workspace.delete)));
-}
-
-function buildFleetKeyTree(program: Command, handlers: Handlers, state: ProgramState): void {
-  const fleetKey = program
-    .command("fleet-key")
-    .description("Manage fleet API keys");
-
-  fleetKey.command(COMMAND_CREATE)
-    .description("Mint a Fleet API key for the workspace")
-    .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .option(FLAG_FLEET_ID, "Fleet ID this key is bound to", parseIdOption)
-    .option("--name <name>", "Human-readable fleet key name")
-    .option("--description <desc>", "Optional description")
-    .action(actionFor("fleet-key.create", (frame) => runHandler(state, frame, handlers.fleetKey.create)));
-
-  fleetKey.command(COMMAND_LIST)
-    .description("List fleet API keys")
-    .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .action(actionFor("fleet-key.list", (frame) => runHandler(state, frame, handlers.fleetKey.list)));
-
-  fleetKey.command("delete <fleet_key_id>")
-    .description("Revoke a Fleet API key")
-    .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .action(actionFor("fleet-key.delete", (frame) => runHandler(state, frame, handlers.fleetKey.delete)));
 }
 
 function buildGrantTree(program: Command, handlers: Handlers, state: ProgramState): void {
@@ -255,9 +230,7 @@ function buildBillingTree(program: Command, handlers: Handlers, state: ProgramSt
     .option("--cursor <token>", "next_cursor from a previous page")
     .action(actionFor("billing.show", (frame) => runHandler(state, frame, handlers.billing.show)));
 }
-const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
 const FLAG_FLEET_ID = "--fleet <id>" as const;
-const WORKSPACE_ID = "Workspace ID" as const;
 const FLEET_ID = "Fleet ID" as const;
 const COMMAND_CREATE = "create" as const;
 const COMMAND_DOCTOR = "doctor" as const;

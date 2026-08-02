@@ -1,11 +1,12 @@
 //! SQL statement text for the api-key handler domain (RULE SQLMOD — query text
 //! lives here, grepable in one place).
 //!
-//! Two key families share this domain: tenant api-keys (`core.api_keys`, the
-//! `agt_t` credentials) and per-fleet keys (`core.fleet_keys`). Neither
-//! statement family ever selects `key_hash` back out — a key's plaintext exists
-//! only at mint time, and the hash is written once and compared, never read
-//! into a response.
+//! Tenant api-keys (`core.api_keys`, the `agt_t` credentials). No statement
+//! here ever selects `key_hash` back out — a key's plaintext exists only at
+//! mint time, and the hash is written once and compared, never read into a
+//! response.
+//!
+//! The per-fleet `core.fleet_keys` family retired with its surface (M154 §8).
 
 // ── Tenant api-keys ─────────────────────────────────────────────────────────
 
@@ -111,30 +112,3 @@ pub const SELECT_TENANT_KEY_KEYSET_AFTER_NAME_FMT =
 ;
 
 // ── Per-fleet keys ──────────────────────────────────────────────────────────
-
-/// Existence + ownership check before minting a fleet key: the fleet must live
-/// in the caller's workspace, so a valid fleet id from another tenant fails.
-pub const SELECT_FLEET_IN_WORKSPACE =
-    \\SELECT 1 FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid LIMIT 1
-;
-
-pub const INSERT_FLEET_KEY =
-    \\INSERT INTO core.fleet_keys
-    \\  (id, workspace_id, fleet_id, name, description, key_hash, created_at)
-    \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)
-;
-
-pub const SELECT_FLEET_KEYS_FOR_WORKSPACE =
-    \\SELECT id::text, fleet_id::text, name, description, created_at, last_used_at
-    \\FROM core.fleet_keys
-    \\WHERE workspace_id = $1::uuid
-    \\ORDER BY created_at DESC
-;
-
-/// `RETURNING` distinguishes a real deletion from a no-op, so the handler can
-/// answer 404 rather than a false success.
-pub const DELETE_FLEET_KEY =
-    \\DELETE FROM core.fleet_keys
-    \\WHERE id = $1::uuid AND workspace_id = $2::uuid
-    \\RETURNING id::text
-;

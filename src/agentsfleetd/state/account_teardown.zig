@@ -7,7 +7,7 @@
 //! `workspaces`/`fleets` WITHOUT `ON DELETE CASCADE`, so the workspace and
 //! tenant deletes hit an FK violation — 500 the webhook and make Clerk retry
 //! forever — unless their children go first. Cascade-backed children
-//! (fleet_events, integration_grants, fleet_keys, api_keys, tenant_billing,
+//! (fleet_events, integration_grants, api_keys, tenant_billing,
 //! tenant_model_selection) drop with their parent.
 //!
 //! Per-fleet Redis event streams (`fleet:{id}:events`) are left to expire via

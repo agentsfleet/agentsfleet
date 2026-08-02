@@ -26,10 +26,6 @@ One row per item, so an agent can check a status without reading the ledger; eac
 
 Authorization is now **scope-based**. The role ladder (`AuthRole = user < operator < admin`) and the `platform_admin` bool were deleted; every capability is an explicit `resource:action` scope on the verified token's `scopes` claim, surfaced as `principal.scopes` and enforced by a single `requireScope` gate against a declarative route→scope table (`src/agentsfleetd/http/route_scopes.zig`). The resource/ownership axis (`authorizeWorkspace`) is unchanged, plus an audited `workspace:any` cross-tenant override. Runner enrollment is gated by the discrete `runner:enroll` scope (independently grantable from `runner:{read,write}`), replacing the old `platform_admin` claim. See [`../AUTH.md`](../AUTH.md) → *Scope catalogue* for the full vocabulary, hierarchy, and provisioning bundles.
 
-### Fleet keys → first-class principal
-
-Today fleet keys (`agt_a`) authenticate via a bespoke handler-local lookup (`integration_grants/handler.zig::authenticateFleet`), not the shared middleware, and never become an `AuthPrincipal` (there is no `AuthMode.fleet_key`). v2.1 revamps them into a first-class principal — a dedicated middleware branch + `AuthMode.fleet_key` + a `fleet_id`-scoped principal — aligning with the reference auth design at `~/Projects/oss/auth.md`. The revamp must also fold in the `Session {uuid}` fleet-identity path that the same handler accepts today.
-
 ## v2.1+ — other deferred items
 
 - **Flow-1 active-MITM closure** — URL-fragment public-key binding + HKDF transcript binding. See [`../AUTH.md`](../AUTH.md) *threats this flow does NOT close*.

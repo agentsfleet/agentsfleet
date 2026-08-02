@@ -197,7 +197,9 @@ describe("grantDeleteEffectFromArgs id validation branch", () => {
     if (Exit.isFailure(exit)) {
       const text = String(exit.cause);
       expect(text).toContain("ValidationError");
-      expect(text).toContain("invalid grant_id");
+      // The field is `id`, not `grant_id`: §2 gave grants one identity column
+      // named `id` with no alias, and `GRANT_ID_FIELD` follows the column.
+      expect(text).toContain("invalid id");
       expect(text).toContain("pass a valid uuidv7");
     }
   });

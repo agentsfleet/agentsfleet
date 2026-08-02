@@ -7,7 +7,6 @@
 //! Cascade:
 //!   - core.fleet_events           — FK ON DELETE CASCADE (auto)
 //!   - core.integration_grants      — FK ON DELETE CASCADE (auto)
-//!   - core.fleet_keys              — FK ON DELETE CASCADE (auto)
 //!   - core.fleet_sessions         — no FK cascade; explicit DELETE
 //!   - core.fleet_approval_gates   — no FK cascade; explicit DELETE
 //!   - memory.memory_entries        — keyed by fleet_id (UUID, no FK); explicit
@@ -156,8 +155,8 @@ fn purgeFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const 
         "DELETE FROM core.fleet_sessions WHERE fleet_id = $1::uuid",
         .{fleet_id},
     );
-    // Final delete; PG CASCADE handles fleet_events / integration_grants /
-    // fleet_keys. Status guard is belt-and-suspenders against TOCTOU between
+    // Final delete; PG CASCADE handles fleet_events / integration_grants.
+    // Status guard is belt-and-suspenders against TOCTOU between
     // the pre-flight probe and here — if a concurrent PATCH resurrected the
     // fleet, the row count is 0 and we surface 409.
     //

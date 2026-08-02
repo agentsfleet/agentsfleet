@@ -108,31 +108,6 @@ components:
           type: integer
           format: int64
           nullable: true
-    FleetKey:
-      type: object
-      required:
-      - fleet_key_id
-      - fleet_id
-      - name
-      - created_at
-      properties:
-        fleet_key_id:
-          type: string
-          format: uuid
-        fleet_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        description:
-          type: string
-        created_at:
-          type: integer
-          format: int64
-        last_used_at:
-          type: integer
-          format: int64
-          nullable: true
     IntegrationGrant:
       type: object
       required:

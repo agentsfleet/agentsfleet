@@ -188,6 +188,37 @@ This gives each layer one job:
 | Integration grant | Whether that fleet may use GitHub |
 | Delivery replay slot | Exactly-once enqueue per matching fleet for one GitHub delivery |
 
+### Where a grant comes from
+
+A grant is **originated at install**, from the bundle fields the catalogue already
+stores: installing a fleet that declares a required credential writes a `pending`
+`core.integration_grants` row and raises an approval gate carrying the bundle's
+stated reason. The seed runs synchronously in the create handler beside
+`INSERT core.fleets` — deliberately not in the install-step progression, whose
+every sub-step is best-effort by design, and where a failed seed would flip the
+fleet to `active` carrying no grant.
+
+The decision then belongs to the approval-gate machine this codebase already
+ships: an inbox, a detail page with an evidence tree, resolve buttons, a webhook,
+a timeout sweeper, and an append-only audit. **A gate is a per-event decision; a
+grant is the standing answer that outlives the run.** The gate asks; the grant
+remembers. Resolving the gate as approved flips the grant and the gate in one
+statement, so the two cannot disagree; any non-approval outcome drives the grant
+to `revoked` rather than back to `pending`, which nothing would re-raise.
+
+Origination used to sit behind an external `integration-requests` route
+authenticated by a per-fleet key outside the middleware chain. No internally
+installed fleet ever held such a key, so it could never obtain a grant: the App
+ingress query inner-joins on `status = 'approved'`, so no event was written, no
+lease was issued, and nothing reported that a decision was owed — the fleet was
+silently inert. That route, its key table, and a second approval path that
+duplicated this webhook all retired with the move (M154 §8).
+
+A lease is the last checkpoint: a credential that resolves to a mintable handle
+with no approved grant **parks the event** rather than dropping the credential
+and issuing a lease that can never mint. The delivery stays leasable, so the
+next poll re-evaluates it and an approval takes effect with no redeploy.
+
 An incoming delivery follows this order:
 
 ```

@@ -179,10 +179,6 @@ paths:
     $ref: ./paths/api-keys.yaml#/~1v1~1api-keys
   /v1/api-keys/{id}:
     $ref: ./paths/api-keys.yaml#/~1v1~1api-keys~1{id}
-  /v1/workspaces/{workspace_id}/fleet-keys:
-    $ref: ./paths/fleet-keys.yaml#/~1v1~1workspaces~1{workspace_id}~1fleet-keys
-  /v1/workspaces/{workspace_id}/fleet-keys/{fleet_key_id}:
-    $ref: ./paths/fleet-keys.yaml#/~1v1~1workspaces~1{workspace_id}~1fleet-keys~1{fleet_key_id}
   /v1/workspaces/{workspace_id}/fleets:
     $ref: ./paths/fleets.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets
   /v1/fleets/bundles:

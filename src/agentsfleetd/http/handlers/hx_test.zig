@@ -234,14 +234,12 @@ test "all secret-bearing success responses route through the sensitive writer" {
     const mint_source = @embedFile("runner/credentials_mint.zig");
     const register_source = @embedFile("runner/register.zig");
     const tenant_key_source = @embedFile("api_keys/tenant.zig");
-    const fleet_key_source = @embedFile("api_keys/fleet.zig");
     const sensitive_call = "hx.okSensitive";
 
     try std.testing.expect(std.mem.indexOf(u8, lease_source, sensitive_call) != null);
     try std.testing.expect(std.mem.indexOf(u8, mint_source, sensitive_call) != null);
     try std.testing.expect(std.mem.indexOf(u8, register_source, sensitive_call) != null);
     try std.testing.expect(std.mem.indexOf(u8, tenant_key_source, sensitive_call) != null);
-    try std.testing.expect(std.mem.indexOf(u8, fleet_key_source, sensitive_call) != null);
 }
 
 test "secret request body remains borrowed through parse cleanup then erases" {

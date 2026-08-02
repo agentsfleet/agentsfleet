@@ -182,8 +182,6 @@ test {
     // Harness HTTP message-type unit tests (relocated from test_harness.zig)
     _ = @import("http/test_harness_test.zig");
     // Integration grant API
-    _ = @import("http/handlers/integration_grants/handler.zig");
-    _ = @import("http/handlers/api_keys/fleet.zig");
     _ = @import("http/handlers/api_keys/tenant.zig");
     _ = @import("http/handlers/api_keys/list.zig");
     _ = @import("http/handlers/pagination_retirement_test.zig");
@@ -196,9 +194,7 @@ test {
     _ = @import("cmd/serve_caches.zig");
     _ = @import("http/handlers/admin/model_library_admin.zig");
     _ = @import("http/handlers/admin/model_library_admin_delete_guard_test.zig");
-    _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("http/handlers/webhooks/github.zig");
-    _ = @import("fleet_runtime/notifications/grant_notifier.zig");
     _ = @import("http/handlers/fleets/messages.zig");
     // Chat ingress — POST /v1/.../fleets/{id}/messages
     _ = @import("http/handlers/runner/memory_fencing_test.zig");

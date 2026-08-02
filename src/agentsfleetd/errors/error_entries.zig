@@ -126,7 +126,6 @@ pub const ENTRIES = [_]Entry{
 
     // ── BILLING ──────────────────────────────────────────────────────────────
     // ── AGENT ────────────────────────────────────────────────────────────────
-    e("UZ-FLEETKEY-001", .not_found, "Fleet key not found", "Fleet key not found. Verify the fleet_key_id."), // reachable: no — CLI/API-key surface, not fetched by ui/packages/app
     // ── WEBHOOK ──────────────────────────────────────────────────────────────
     e("UZ-WH-001", .not_found, "Fleet not found for webhook", "No fleet is registered for this webhook endpoint."), // reachable: no — external webhook sender sees this, not the dashboard
     e("UZ-WH-002", .bad_request, "Malformed webhook", "Webhook payload could not be parsed. Check Content-Type and body."), // reachable: no — external webhook sender sees this, not the dashboard

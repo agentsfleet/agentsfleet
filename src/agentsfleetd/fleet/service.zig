@@ -141,6 +141,18 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
         .created_at = acq.event_created_at,
     };
 
+    // Resolved BEFORE the lease row is written: a credential with no approved
+    // grant parks the event, and parking must not leave a `fleet.runner_leases`
+    // row behind for a lease that was never handed out.
+    const policy = switch (resolveExecutionPolicy(hx, session, resolved, secret_entries, approved_services)) {
+        .parked => |p| {
+            log.warn("lease_parked_on_missing_grant", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = acq.fleet_id, .event_id = acq.event_id, .name = p.credential, .integration = p.service });
+            releaseClaim(hx, acq.fleet_id, acq.fencing_token);
+            return replyNoWork(hx);
+        },
+        .ready => |p| p,
+    };
+
     const lease_id = try id_format.generateRunnerLeaseId(hx.alloc);
     try lease_row.insertLeaseRow(hx, runner_id, acq, billed, lease_id);
     metrics_runner.incRunnerActiveLeases(runner_id); // in-memory gauge; decremented on the runner's report
@@ -153,7 +165,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
             .lease_expires_at = acq.leased_until,
             .secret_delivery = .@"inline",
             .event = envelope,
-            .policy = resolveExecutionPolicy(hx, session, resolved, secret_entries, approved_services, acq.fleet_id),
+            .policy = policy,
             // The installed SKILL.md body (extracted by FleetSession), so the runner
             // delivers it to NullClaw. `claimFleet` resolves the session before the
             // fresh/reclaim split, so this is set identically on both paths. Borrowed
@@ -207,7 +219,74 @@ fn resolveProviderForLease(hx: Hx, tenant_id: []const u8) ?tenant_provider.Resol
 /// by `hx.ok`; they are never logged (Invariant: no secret bytes in logs).
 /// `resolved` is owned by the caller and outlives `hx.ok`. Resolution failures
 /// refused the lease upstream — by here `entries` is complete or absent.
-fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_provider.ResolvedProvider, entries: ?[]secrets_resolve.ResolvedSecret, approved_services: []const []const u8, fleet_id: []const u8) execution_policy.ExecutionPolicy {
+/// A declared credential resolved to a mintable handle whose fleet holds no
+/// approved grant. Carries both names so the log says which credential is
+/// blocked and which decision is outstanding.
+const ParkedOnGrant = struct { credential: []const u8, service: []const u8 };
+
+/// Either the policy to ship on the lease, or the grant decision that has to
+/// land before any lease can be issued for this event.
+///
+/// Parking replaced a silent drop. The dropped credential left the mintable off
+/// BOTH surfaces and issued the lease anyway, so the runner received work it
+/// could never mint for: the run failed at the far end, and nothing anywhere
+/// recorded that a decision was owed. Parking keeps the delivery leasable, so
+/// the next poll re-evaluates it and an approval takes effect with no redeploy.
+const PolicyOutcome = union(enum) {
+    ready: execution_policy.ExecutionPolicy,
+    parked: ParkedOnGrant,
+};
+
+/// `classifyCredentials` split into its own outcome so the park can travel out
+/// of the loop without a sentinel — the classification is the only step that
+/// can decide the lease must not be issued.
+const ClassifiedCredentials = union(enum) {
+    ready: struct { secrets_map: ?std.json.Value, mintable: []const execution_policy.Mintable },
+    parked: ParkedOnGrant,
+};
+
+/// Classify each resolved credential (M102 §4): an on-demand mintable handle
+/// contributes id-ONLY to the typed `mintable` list (the App/installation config
+/// never reaches the child, VLT); a static one keeps its stored value in
+/// `secrets_map`. Keeping mintables out of `secrets_map` means the redaction set
+/// derives from `secrets_map` alone — no "github" literal to scrub, no drift.
+///
+/// Grant gate: a mintable is emitted ONLY when the fleet's grant is approved.
+/// An ungranted one parks the whole lease rather than falling through to
+/// `secrets_map`, which would ship the raw handle config to the child
+/// (Invariant 3, VLT).
+fn classifyCredentials(
+    alloc: std.mem.Allocator,
+    entries: ?[]secrets_resolve.ResolvedSecret,
+    approved_services: []const []const u8,
+) ClassifiedCredentials {
+    const list = entries orelse return .{ .ready = .{ .secrets_map = null, .mintable = &.{} } };
+    var obj: std.json.ObjectMap = .empty;
+    var mints: std.ArrayList(execution_policy.Mintable) = .empty;
+    for (list) |entry| {
+        if (secrets_resolve.mintableId(entry.parsed.value)) |id| {
+            // `id.toString()` (not `@tagName`) is the audited enum→service
+            // string, comptime-proven to match the DB `service` column.
+            const service = integration.toString(id);
+            if (!grant_lookup.contains(approved_services, service)) {
+                return .{ .parked = .{ .credential = entry.name, .service = service } };
+            }
+            // `entry.name` is arena-owned and outlives the hx.ok
+            // serialization; `service` is a static const — both safe.
+            mints.append(alloc, .{ .name = entry.name, .integration = service }) catch |err|
+                log.warn("lease_secret_mintable_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+        } else {
+            obj.put(alloc, entry.name, entry.parsed.value) catch |err|
+                log.warn("lease_secret_put_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+        }
+    }
+    return .{ .ready = .{
+        .secrets_map = if (obj.count() > 0) .{ .object = obj } else null,
+        .mintable = mints.toOwnedSlice(alloc) catch &.{},
+    } };
+}
+
+fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_provider.ResolvedProvider, entries: ?[]secrets_resolve.ResolvedSecret, approved_services: []const []const u8) PolicyOutcome {
     const alloc = hx.alloc;
     // Lease-time overlay (see user_flow.md): sentinel frontmatter (cap 0 /
     // model "") inherits the cap+model the control plane resolved into
@@ -220,51 +299,20 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
         if (resolved) |r| r.context_cap_tokens else 0,
         if (resolved) |r| r.model else "",
     );
-    // Classify each resolved credential (M102 §4): an on-demand mintable handle
-    // contributes id-ONLY to the typed `mintable` list (the App/installation config
-    // never reaches the child, VLT); a static one keeps its stored value in
-    // `secrets_map`. Keeping mintables out of `secrets_map` means the redaction set
-    // derives from `secrets_map` alone — no "github" literal to scrub, no drift.
-    var secrets_map: ?std.json.Value = null;
-    var mintable: []const execution_policy.Mintable = &.{};
-    if (entries) |list| {
-        var obj: std.json.ObjectMap = .empty;
-        var mints: std.ArrayList(execution_policy.Mintable) = .empty;
-        for (list) |entry| {
-            if (secrets_resolve.mintableId(entry.parsed.value)) |id| {
-                // Grant gate: a mintable is emitted ONLY when the
-                // fleet's grant is approved. An ungranted one is dropped from
-                // BOTH surfaces — falling through to `secrets_map` would ship
-                // the raw handle config to the child (Invariant 3, VLT).
-                // `id.toString()` (not `@tagName`) is the audited enum→service
-                // string, comptime-proven to match the DB `service` column.
-                const service = integration.toString(id);
-                if (!grant_lookup.contains(approved_services, service)) {
-                    log.warn("lease_secret_grant_missing", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = fleet_id, .name = entry.name, .integration = service });
-                    continue;
-                }
-                // `entry.name` is arena-owned and outlives the hx.ok
-                // serialization; `service` is a static const — both safe.
-                mints.append(alloc, .{ .name = entry.name, .integration = service }) catch |err|
-                    log.warn("lease_secret_mintable_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
-            } else {
-                obj.put(alloc, entry.name, entry.parsed.value) catch |err|
-                    log.warn("lease_secret_put_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
-            }
-        }
-        if (obj.count() > 0) secrets_map = .{ .object = obj };
-        mintable = mints.toOwnedSlice(alloc) catch &.{};
-    }
+    const classified = switch (classifyCredentials(alloc, entries, approved_services)) {
+        .parked => |p| return .{ .parked = p },
+        .ready => |r| r,
+    };
     const endpoint = service_endpoint.customEndpoint(alloc, resolved);
-    return .{
-        .secrets_map = secrets_map,
-        .mintable = mintable,
+    return .{ .ready = .{
+        .secrets_map = classified.secrets_map,
+        .mintable = classified.mintable,
         .context = budget,
         .provider = endpoint.provider,
         .api_key = if (resolved) |r| r.api_key else "",
         .inference_host = endpoint.inference_host,
         .base_url = endpoint.base_url,
-    };
+    } };
 }
 
 /// Free the affinity claim won by `assign` when this lease cannot be issued

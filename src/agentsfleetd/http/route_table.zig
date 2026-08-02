@@ -103,8 +103,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .auth_identity_event_clerk => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeClerkWebhook },
         // approval_webhook: HMAC middleware + handler also verifies (double-check OK).
         .approval_webhook => .{ .middlewares = registry.webhookHmac(), .invoke = invoke.invokeApprovalWebhook },
-        // grant_approval_webhook uses Redis nonce; no standard policy fits.
-        .grant_approval_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGrantApprovalWebhook },
         // Connector platform (M108) — the generic {provider} trio resolved
         // against the registry. connect/status are workspace-authed; the
         // callback is Bearer-less (a vendor redirect) — state-authed in-handler.
@@ -148,13 +146,10 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .workspace_fleet_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMemoriesCollection },
         .workspace_fleet_memory_item => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMemoryItem },
         // Integration grants
-        .request_integration_grant => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeRequestGrant },
         .list_integration_grants => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListGrants },
         .revoke_integration_grant => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeRevokeGrant },
 
         // Workspace fleet-key management.
-        .fleet_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetKeys },
-        .delete_fleet_key => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteFleetKey },
 
         // Tenant API keys — `apikey:{read,write,admin}` per method (route_scopes).
         .tenant_api_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantApiKeys },
@@ -229,16 +224,12 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.{ .receive_svix_webhook = "z1" }, &reg);
     _ = specFor(.auth_identity_event_clerk, &reg);
     _ = specFor(.{ .approval_webhook = "z1" }, &reg);
-    _ = specFor(.{ .grant_approval_webhook = "z1" }, &reg);
     _ = specFor(.{ .github_webhook = "z1" }, &reg);
     _ = specFor(.{ .app_ingress = "github" }, &reg);
     _ = specFor(.qstash_schedule_ingress, &reg);
     _ = specFor(.{ .workspace_fleet_memories = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
-    _ = specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .fleet_id = "z1", .grant_id = "g1" } }, &reg);
-    _ = specFor(.{ .fleet_keys = "ws1" }, &reg);
-    _ = specFor(.{ .delete_fleet_key = .{ .workspace_id = "ws1", .fleet_key_id = "a1" } }, &reg);
     _ = specFor(.{ .workspace_approvals = "ws1" }, &reg);
     _ = specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg);
     _ = specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg);
