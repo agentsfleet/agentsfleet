@@ -1,4 +1,4 @@
-# Handoff — M154 schema rebuild (merged with main; §8 code done, two tests owed)
+# Handoff — M154 schema rebuild (§8 complete with tests; §7 next)
 
 Ephemeral. Delete at CHORE(close); this briefs the next agent, never the Pull
 Request (PR).
@@ -40,19 +40,21 @@ produced 11 phantom failures once.
 
 ## Status
 
-- ✅ **`origin/main` merged in** (`747975560`). Branch is **0 behind / 28 ahead**.
-- ✅ **§8.3, §8.4, §8.5 code complete**, all lanes green.
-- ✅ **Integration 774 / 7 skipped / 0 failed · Unit 2039 / 278 / 0 · CLI 1430 / 13 / 0**
+- ✅ **`origin/main` merged in** (`747975560`). Branch is **0 behind / 29 ahead**.
+- ✅ **§8 COMPLETE — every Dimension 8.1–8.5 has a passing test.** All five are
+  marked DONE in the spec, and the section heading with them.
+- ✅ **Integration 778 / 7 skipped / 0 failed · Unit 2039 / 278 / 0 · CLI 1430 / 13 / 0**
 - ✅ **SQL auditor: 1334 statements, 0 findings** (was 1 — `fleetFromSession` went with §8.4).
-- ✅ Everything committed. Tree clean. **Branch NOT pushed, no PR.**
-- 🔶 **§8.1 and §8.2 have no tests.** See "What is owed".
+- ✅ Everything committed (`27493ce74`). Tree clean. **Branch NOT pushed, no PR.**
+- 🔶 **§7.1 / §7.2 not started.** That is the next job.
 
-## Commits this session (2)
+## Commits on this branch (recent)
 
 | Commit | Content |
 |---|---|
 | `747975560` | Merge `origin/main` — 29 commits, 8 conflicts, M156's per-tenant free trial reconciled with the schema rebuild |
-| (§8 commit) | §8.3 lease park + §8.4/8.5 deletion set + docs + 3 tests |
+| `ec7ef86ed` | §8.3 lease park + §8.4/8.5 deletion set + docs + 3 tests |
+| `27493ce74` | §8.1/§8.2 tests — origination and its answer, 4 tests, both mutation-checked |
 
 ## The merge, and what it hid
 
@@ -73,21 +75,7 @@ nothing reports it. Worth a gate.
 
 ## What is owed — start here
 
-1. **§8.1 test — `test_install_seeds_pending_grant_and_gate`.** NOT WRITTEN.
-   `http/handlers/fleets/create_grants.zig` is built and green: install seeds a
-   `pending` `core.integration_grants` row and raises the approvals-inbox gate
-   for every mintable credential the bundle declares, synchronously in
-   `create.zig` (NOT in `create_install_steps`' progression — every step there
-   is best-effort, and a best-effort seed reproduces the bug §8 removes).
-   Nothing asserts any of it.
-2. **§8.2 test — `test_gate_approval_arms_webhook_routing`.** NOT WRITTEN.
-   `fleet_runtime/sql.zig` `RESOLVE_GATE` is one statement: gate flip and grant
-   move commit together; non-approval drives the grant to `revoked`, not
-   `pending` (which nothing would re-raise); `action_id` derives from
-   (fleet, service) so re-install does not stack inbox duplicates.
-   Harness pattern: `http/handlers/fleets/get_integration_test.zig` is the
-   compact one. Grant/gate fixtures: `fleet/control_plane_grant_integration_test.zig`.
-3. **§7.1 / §7.2 — not started.** `EVENTS_SELECT` in `state/fleet_events_store.zig`
+1. **§7.1 / §7.2 — not started. START HERE.** `EVENTS_SELECT` in `state/fleet_events_store.zig`
    still selects `request_json` / `response_text` (rubric R4 greps for exactly
    this). The single-event read, its handler, OpenAPI entry and User Interface
    (UI) wiring do not exist. `EventDetailsDialog.tsx` ALREADY EXISTS and reads
@@ -95,7 +83,7 @@ nothing reports it. Worth a gate.
    fetch-on-open. Spec interface:
    `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}`,
    404 for unknown OR cross-workspace (indistinguishable).
-4. **Coverage → 80%, gate updated.** Indy decided: `ZIG_COVERAGE_MIN_LINES`
+2. **Coverage → 80%, gate updated.** Indy decided: `ZIG_COVERAGE_MIN_LINES`
    (`make/test.mk:29`) moves 60 → 80. **Fix the basis first, in this order:**
    1. Exclude `_test.zig` sources from the kcov denominator. They are 22,994 of
       51,246 measured lines and are themselves 70.6% covered — that is what
@@ -112,14 +100,14 @@ nothing reports it. Worth a gate.
       `cron/Service.zig` (130, 0%), `handlers/tenant_provider.zig` (125, 0%),
       `fleet/service_report.zig` (122, 0%).
    4. Raise the gate to 80 in the SAME commit as the tests that clear it.
-5. **Index review** — Indy's procedure: `make down` FIRST, fresh up + migrate so
+3. **Index review** — Indy's procedure: `make down` FIRST, fresh up + migrate so
    EXPLAIN reads a cold stack. Seed 10 runners / 100 fleets. An index that buys
    no sort or scan improvement gets DROPPED with the plan as evidence. First
    candidate: `idx_fleet_events_fleet_id_created_at_id`. **Also settle this:**
    `fleet.runner_events` carries 4 indexes plus the primary key, and the planner
    picks `idx_runner_events_type_created_at` (then filters `runner_id`) over the
    composite `index_usage_integration_test` expects.
-6. **Skill chain** — origin is already merged in, so start at `/write-unit-test`,
+4. **Skill chain** — origin is already merged in, so start at `/write-unit-test`,
    then `/write-integration-test`, gstack `/review`, changelog + `~/Projects/docs`
    pages + `docs/architecture/**` diff, then CHORE(close).
 
@@ -136,11 +124,53 @@ nothing reports it. Worth a gate.
    `docs/architecture/roadmap.md` and the `README.md` pointer to it. The design
    intent that revamp recorded is gone from the tree by choice.
 
+## §8 tests — what they cost to get right
+
+`http/handlers/fleets/create_grants_integration_test.zig` (4 tests). Three
+things bit, all fixture-shaped, and the next suite that installs a fleet
+through the Hypertext Transfer Protocol (HTTP) will hit the same three:
+
+- **The workspace id is not yours to choose.** `authorizeWorkspace` reads the
+  workspace out of the JavaScript Object Notation Web Token (JWT) claims, so a
+  private tenant/workspace UUID is a flat 403 on install, not an isolated
+  fixture. Use the token fixture's own ids (`…6f01` / `…6f11`) like every other
+  HTTP suite; isolate instead on the fleet ids (minted by the handler, purged
+  per test) and a suite-private webhook repository.
+- **Re-runs collide unless the fleet name carries a stamp.** A fleet name is
+  unique per workspace and feeds the library row's `(workspace, content_hash)`
+  unique — so a run that died before its purge 409s every run after it. The
+  name is `{label}-{nowMillis}`.
+- **`h.install_wg.wait()` is the sync primitive**, never a sleep. It also
+  guarantees the row reached `active`, which the ingress read requires.
+- **Gate rows are append-only**, so fixture cleanup opens a transaction and
+  sets `approval_gate_db.SET_GATE_PURGE_BYPASS_SQL`. Neighbouring suites do a
+  bare DELETE and swallow the raise — their gate rows just accumulate.
+
+**Both dimensions were mutation-checked; keep the habit.** Disabling
+`seedForInstall` in `create.zig` fails three of the four; appending `AND false`
+to `RESOLVE_GATE`'s grant-arm predicate fails exactly the two resolution tests.
+Iterate with `zig build test-integration
+-Dtest-filter=create_grants_integration_test` — after a DB reset.
+
+**Also settled:** `test_no_handler_local_authentication` is NOT dead despite
+lacking the `integration:` name prefix. The lane passes two filters and Zig
+ORs them, so the `_integration_test` FILE filter catches it. Verified running
+at 354/785.
+
 ## Open decisions
 
-**None blocking.** Both former questions are settled: `list_aggregate` coverage
-loss is a recording (in the spec's Discovery log), not an approval; and
-`fleetFromSession` was approved for deletion and is now deleted.
+**Nothing blocks §7.** Two former questions are settled: `list_aggregate`
+coverage loss is a recording (in the spec's Discovery log), not an approval;
+and `fleetFromSession` was approved for deletion and is now deleted.
+
+**One new question for Indy — do not resolve unilaterally.** Dimension 8.1 says
+the gate carries "the bundle's stated reason", and no bundle field supplies
+one. The reason is a constant (`create_grants.S_DEFAULT_REASON`, "Declared by
+the fleet bundle at install") stored on the GRANT's `requested_reason`; the gate
+carries `proposed_action` ("Use github on behalf of this fleet") plus the
+evidence pair. The test asserts what is actually built. The call is Indy's:
+amend the Dimension's wording, or add a real bundle reason field. **Flagged,
+not decided** — and it belongs in PR Session Notes either way.
 
 ## Traps
 
