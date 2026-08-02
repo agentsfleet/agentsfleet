@@ -17,11 +17,17 @@ x-agentsfleet:
     - github
     - jira
     - slack
-    # Credential shapes, substituted at the tool bridge as ${secrets.NAME.FIELD}:
-    # elastic = { host: "<deployment>.es.<region>.aws.elastic.cloud", api_key: "<key>" }
+    # Credential shapes, substituted at the tool bridge as ${secrets.NAME.FIELD}.
+    # Every value is a header-ready string: substitution happens at the request
+    # boundary, so anything needing encoding must be stored already encoded.
+    # elastic = { host: "<deployment>.es.<region>.aws.elastic.cloud",
+    #             api_key: "<the ENCODED api key Elastic hands you, not the id>" }
     # grafana = { host: "<grafana host>", token: "<service-account token>" }
-    # github  = { api_token: "<minted at the bridge — mintable integration>" }
-    # jira    = { host: "<site>.atlassian.net", api_token: "<token or connector>" }
+    # github  = mintable integration — the daemon mints a short-lived
+    #           installation token at the bridge. Nothing is stored, and no
+    #           token is ever pasted into a workspace secret.
+    # jira    = { host: "<site>.atlassian.net",
+    #             basic_auth: "<base64 of email:api_token>" }
     # slack   = { host: "slack.com", bot_token: "<bot token>" }
 
   network:
