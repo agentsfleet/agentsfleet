@@ -68,6 +68,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `schema/047_repair_proposals.sql` | CREATE | Immutable proposal rows; single-concern file per schema conventions |
 | `schema/embed.zig` | EDIT | Register 047 in the embed + migration array |
+| `src/agentsfleetd/fleet/repair_proposal.zig` | CREATE | Pure kernel: parse, validate, canonical hash, base freshness, derived branch name. Extracted so the report path and the apply path share ONE implementation — the hash must be identical at both ends or approval stops binding bytes |
+| `src/agentsfleetd/fleet/repair_proposal_test.zig` | CREATE | Kernel unit tests (hash canonicality/immutability, validation refusals, ownership) |
+| `src/agentsfleetd/fleet/repair_bounds.zig` | CREATE | Apply-time bounds: unified-diff path extraction against the approved allowlist and caps |
+| `src/agentsfleetd/fleet/repair_bounds_test.zig` | CREATE | Bounds unit tests, including the header-hidden-in-hunk case |
+| `src/agentsfleetd/errors/error_entries.zig` | EDIT | The `UZ-REPAIR-*` entries themselves (the registry file holds only the constants) |
+| `src/agentsfleetd/errors/gen_error_codes.zig` | EDIT | Public category copy for the REPAIR family — its comptime coverage gate blocks a family without one |
+| `src/agentsfleetd/tests.zig` | EDIT | Test-root registration for the two new fleet modules |
 | `src/agentsfleetd/state/repair_proposals.zig` | CREATE | Store: insert, load, status transitions; no UPDATE of content fields |
 | `src/agentsfleetd/state/repair_proposals_test.zig` | CREATE | Unit + DB tests for the store |
 | `src/agentsfleetd/fleet/repair_proposal_service.zig` | CREATE | Validate structured result block, canonical hash, persist, `requestApproval` |
