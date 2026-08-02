@@ -29,7 +29,7 @@ const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
 /// run-fee-only (the cache resolves run-fee + 0 token nanos) — identical $ to the
 /// pre-FK rate-cache-MISS behaviour, minus the latent lease-issue panic. A
 /// token-tier billing assertion still seeds its OWN (provider, model) pair with
-/// real rates (see service_token_splits_wire_test), not this default.
+/// real rates (see service_token_splits_wire_integration_test), not this default.
 pub const TEST_PLATFORM_MODEL = "accounts/fireworks/models/kimi-k2.6";
 pub const TEST_PLATFORM_CAP_TOKENS: i32 = 256_000;
 

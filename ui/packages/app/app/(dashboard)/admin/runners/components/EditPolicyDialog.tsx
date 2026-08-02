@@ -93,7 +93,12 @@ export function EditPolicyDialog({
           {EDIT_POLICY_LABEL}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      {/* The policy form is taller than a short viewport: three isolation cards,
+          network policy, registry allowlist, workers, then the footer actions.
+          Without a bounded height and its own scroll the Save button falls below
+          the fold with no way to reach it, and assigning a policy — the only
+          thing that makes a runner useful — needs a maximised window. */}
+      <DialogContent className="max-h-svh overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{EDIT_POLICY_LABEL}</DialogTitle>
           <DialogDescription>{EDIT_POLICY_DESCRIPTION}</DialogDescription>

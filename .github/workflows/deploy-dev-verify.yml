@@ -1,0 +1,127 @@
+name: deploy-dev / verify
+
+# Called by deploy-dev.yml after the Fly deploy. Brings the Cloudflare tunnel
+# up if it drifted, pre-warms the Fly machines, and polls /healthz + /readyz
+# until the freshly deployed agentsfleetd-dev answers green.
+
+on:
+  workflow_call:
+
+jobs:
+  # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
+  verify-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          FLY_API_TOKEN: op://${{ vars.VAULT_DEV }}/fly-api-token/credential
+          TUNNEL_TOKEN: op://${{ vars.VAULT_DEV }}/cloudflare-tunnel-dev/credential
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # deploy/fly/cloudflared-dev is the tunnel app's build context, so the
+      # from-scratch deploy branch needs the repo checked out.
+      - uses: actions/checkout@v6
+
+      - name: Ensure cloudflared-dev tunnel is running
+        # cloudflared-dev is a separate Fly app that bridges Cloudflare Edge to
+        # agentsfleetd-dev.internal:3000 over 6PN. If its machines are stopped/crashed
+        # every /healthz poll returns status=000 (no route). Restart or deploy if needed.
+        # Sync TUNNEL_TOKEN from vault on every deploy so a rotated secret is always
+        # pushed before we check tunnel health — prevents "Invalid tunnel secret" failures.
+        run: |
+          TUNNEL_APP="cloudflared-dev"
+          TUNNEL_DIR="deploy/fly/cloudflared-dev"   # build-context dir (config.yml + Dockerfile live here)
+          echo "Syncing tunnel token from vault..."
+          flyctl secrets set TUNNEL_TOKEN="$TUNNEL_TOKEN" --app "$TUNNEL_APP"
+          echo "Checking tunnel connector ($TUNNEL_APP)..."
+          MACHINES="$(flyctl machine list --app "$TUNNEL_APP" --json 2>/dev/null || echo '[]')"
+          RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
+          TOTAL="$(echo "$MACHINES" | jq 'length')"
+          echo "  machines: $RUNNING/$TOTAL running"
+          if [ "$RUNNING" -eq 0 ] && [ "$TOTAL" -gt 0 ]; then
+            echo "  ▲ no running machines — restarting..."
+            for MID in $(echo "$MACHINES" | jq -r '.[].id'); do
+              flyctl machine start "$MID" --app "$TUNNEL_APP" || true
+            done
+            echo "  waiting 15s for tunnel reconnect..."
+            sleep 15
+          elif [ "$TOTAL" -eq 0 ]; then
+            echo "  ▲ no machines found — deploying $TUNNEL_APP from scratch..."
+            # Positional path = build context; flyctl >=0.4.5x uses CWD otherwise and
+            # the Dockerfile COPY config.yml then fails ("/config.yml not found").
+            flyctl deploy "$TUNNEL_DIR" --app "$TUNNEL_APP" --wait-timeout 60 \
+              || { echo "  ✗ flyctl deploy failed for $TUNNEL_APP — check logs above"; true; }
+            echo "  waiting 15s for tunnel reconnect..."
+            sleep 15
+          else
+            echo "  ✓ tunnel is running"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+      - name: Pre-warm agentsfleetd-dev machines
+        # min_machines_running is enforced eventually; auto_start_machines is
+        # a no-op for 6PN ingress (cloudflared bypasses the Fly proxy). Issue
+        # an explicit start to all machines before polling /healthz so the
+        # gate is deterministic instead of waiting on Fly to converge.
+        run: |
+          APP="${{ vars.FLY_APP_DEV }}"
+          echo "Starting all machines for $APP..."
+          MACHINES="$(flyctl machine list --app "$APP" --json 2>/dev/null || echo '[]')"
+          echo "Machine list: $(echo "$MACHINES" | jq -r '[.[] | {id: .id, state: .state}]' 2>/dev/null || echo "$MACHINES")"
+          echo "$MACHINES" | jq -r '.[].id' | while read -r MID; do
+            [ -n "$MID" ] || continue
+            echo "  flyctl machine start $MID"
+            flyctl machine start "$MID" --app "$APP" || true
+          done
+          # flyctl machine start is async; give release_command (`agentsfleetd migrate`)
+          # + serve startup time to settle so the 180s /healthz loop isn't doing
+          # all the real waiting on a cold start.
+          sleep 20
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+      - name: Wait for agentsfleetd-dev to go green
+        # Poll /healthz via Cloudflare Tunnel until green or timeout (3 min).
+        # Prints HTTP status + response body on each attempt for diagnostics.
+        run: |
+          echo "Waiting for agentsfleetd-dev..."
+          STATUS="000"
+          for i in $(seq 1 18); do
+            BODY=$(curl -sf -w "\n%{http_code}" \
+              https://api-dev.agentsfleet.net/healthz 2>&1 || echo -e "\n000")
+            STATUS=$(echo "$BODY" | tail -1)
+            RESP=$(echo "$BODY" | head -1)
+            if [ "$STATUS" = "200" ]; then
+              echo "✓ /healthz green after $((i * 10))s"
+              break
+            fi
+            echo "  attempt $i: status=$STATUS body=$RESP — retrying in 10s..."
+            sleep 10
+          done
+          if [ "$STATUS" != "200" ]; then
+            echo "✗ /healthz did not return 200 after 180s (last status=$STATUS)"
+            exit 1
+          fi
+
+      - name: Check /readyz
+        run: |
+          curl -sf https://api-dev.agentsfleet.net/readyz | jq -e '.ready == true'
+
+      - name: Diagnose tunnel failure
+        if: failure()
+        run: |
+          echo "=== agentsfleetd-dev machine status ==="
+          flyctl machine list --app agentsfleetd-dev || true
+          echo "=== cloudflared-dev machine status ==="
+          flyctl machine list --app cloudflared-dev || true
+          echo "=== DNS resolution ==="
+          nslookup api-dev.agentsfleet.net || true
+          echo "=== curl verbose ==="
+          curl -v --max-time 10 https://api-dev.agentsfleet.net/healthz 2>&1 || true
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}

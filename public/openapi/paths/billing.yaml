@@ -39,7 +39,10 @@
                   description: Time of the first zero balance in Unix milliseconds. Null until then.
                 free_trial:
                   type: object
-                  description: Current free-trial state.
+                  description: >
+                    This tenant's free-trial state. The end time is a property of
+                    the account, not a platform-wide date, so two tenants can be
+                    on different footings.
                   required:
                   - active
                   - ends_at_ms
@@ -50,7 +53,12 @@
                     ends_at_ms:
                       type: integer
                       format: int64
-                      description: Free-trial end time in Unix milliseconds.
+                      nullable: true
+                      description: >
+                        Free-trial end time in Unix milliseconds, or null when
+                        the trial is open-ended and has no end time set. Null is
+                        the default for a new tenant and means the trial does not
+                        lapse on its own — it is not a missing value.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/tenants/me/billing/charges:

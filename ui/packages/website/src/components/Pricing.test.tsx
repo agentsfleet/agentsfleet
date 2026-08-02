@@ -39,7 +39,7 @@ describe("Pricing component", () => {
     renderPricing();
     const banner = screen.getByTestId("pricing-free-trial-banner");
     expect(banner).toHaveTextContent(RATES_DISPLAY.FREE_TRIAL_PILL);
-    expect(banner).toHaveTextContent(/Free until July 31, 2026/);
+    expect(banner).toHaveTextContent(/Free during early access/);
   });
 
   it("renders the three approved pricing cards", () => {

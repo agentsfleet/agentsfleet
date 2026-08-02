@@ -1,127 +1,71 @@
-# M115_001: Playbook — Register the agentsfleet Linear App (platform secrets)
+# Register the Linear Application
 
-**Milestone:** M115
-**Workstream:** 001 (§2.3 deliverable)
-**Updated:** Jul 06, 2026
-**Prerequisite:** `op` CLI authenticated; the `agentsfleet-admin` tenant API key in vault (`operations/admin_bootstrap/001_playbook.md`). A Linear workspace where you can create an OAuth application.
+**Owners:** 🤠 Indy for Linear settings and 1Password; 🦉 Orly for secret sync
+and verification
+**Updated:** Jul 31, 2026
+**Prerequisite:** the target environment's admin bootstrap is complete, its API
+host passes `/readyz`, and Indy can create an application in Linear
 
-Registers **one** multi-tenant Linear OAuth application and stores its **platform** credentials (`client_id`, `client_secret`) in the `agentsfleet-admin` workspace vault, resolved daemon-side via `crypto_store.load` — the same model as the Slack/GitHub platform app secrets. Linear is an **OAuth 2.0 + refresh** connector: the broker uses `linear-app`'s `client_id`/`client_secret` both for the initial code exchange and for every later refresh mint (`credentials/integration.zig`'s `selectLinear`). Linear returns refresh tokens automatically for authorization-code apps; `offline_access` is not a Linear scope.
+Register development first and repeat for production only after live
+development acceptance.
 
-> **Run once per environment.** Re-running is idempotent on the vault write (§4); the Linear app itself is edited in place at `linear.app/settings/api/applications`.
+| Environment | App name | Callback URL | Access |
+|---|---|---|---|
+| Development | `agentsfleet-dev` | `https://api-dev.agentsfleet.net/v1/connectors/linear/callback` | Private test workspace |
+| Production | `agentsfleet` | `https://api.agentsfleet.net/v1/connectors/linear/callback` | Public customer workspaces |
 
----
+## 1. Indy: create and configure the application
 
-## Human vs Agent Split
+In Linear **Settings → API → OAuth applications**, create an Open
+Authorization (OAuth) 2.0 application with the matching callback URL.
 
-| Step | Owner | What |
-|------|-------|------|
-| 0.0 | Agent | Resolve environment; load the admin API key from vault |
-| 1.0 | Human | Create an OAuth application in Linear's workspace settings |
-| 2.0 | Human | Copy `client_id` · `client_secret` from the application's details |
-| 3.0 | Agent | Store the two as a platform secret `linear-app` in the `agentsfleet-admin` vault |
-| 4.0 | Agent | Verify the daemon resolves `linear-app` and a live connect completes |
+- Keep client-credentials access disabled; tenants use the authorization-code
+  flow.
+- Leave the webhook unset; `agentsfleet` has no Linear app webhook receiver.
+- Keep development private. Make production public before customer acceptance.
 
-Steps 1–2 are browser-interactive; 3–4 run unattended.
+The authorization request supplies `read,comments:create`. Linear documents
+`comments:create` as the targeted alternative to broad write access, and its
+authorization-code response includes rotating refresh tokens. See
+[Linear OAuth 2.0 authentication](https://linear.app/developers/oauth-2-0-authentication)
+and [application manifests](https://linear.app/developers/oauth-app-manifests).
 
----
+## 2. Indy: vault the two fields
 
-## 0.0 Agent: Resolve environment and load the admin key
+In the matching 1Password vault, create or update `linear-app` with:
 
-**Goal:** pick dev or prod and read the `agentsfleet-admin` API key + base URL from vault.
+- `client_id`.
+- `client_secret`.
 
-```bash
-export ENV="prod"   # or: export ENV="dev"
-case "$ENV" in
-  dev)  export VAULT="ZMB_CD_DEV";  export API_BASE="https://api-dev.agentsfleet.net" ;;
-  prod) export VAULT="ZMB_CD_PROD"; export API_BASE="https://api.agentsfleet.net" ;;
-  *)    echo "ENV must be dev|prod"; exit 1 ;;
-esac
-export ADMIN_KEY=$(op read "op://$VAULT/agentsfleet-admin/api-key")
-[[ "$ADMIN_KEY" =~ ^agt_t[0-9a-f]{64}$ ]] || { echo "missing admin key"; exit 1; }
-curl -sf -o /dev/null "$API_BASE/healthz" || { echo "$API_BASE unreachable"; exit 1; }
-```
+Use the 1Password application. Never paste a value into chat, a ticket, or a
+shell command.
 
-### Acceptance
+## 3. Orly: sync the platform bag
 
-`$API_BASE/healthz` returns 200; `ADMIN_KEY` is a well-formed `agt_t` key.
-
----
-
-## 1.0 Human: Create the Linear OAuth application
-
-**Goal:** one confidential OAuth application scoped to read issues, with the targeted comment grant needed by future reply delivery. Registration does not claim that the outbound Linear poster is implemented. At **linear.app** → workspace **Settings → API → OAuth applications → Create new**:
-
-1. **Name** — `agentsfleet-dev` in development and `agentsfleet` in production; **Developer URL** is the matching app origin (`https://app-dev.agentsfleet.net` or `https://app.agentsfleet.net`).
-2. **Callback URL(s)**:
-
-```
-https://api.agentsfleet.net/v1/connectors/linear/callback
-```
-
-(swap `api.agentsfleet.net` for `$API_BASE` in dev)
-
-3. Leave **Public** off for the development app unless cross-workspace testing requires it. Turn **Public** on for the production app before customer use so other Linear workspaces can authorize it. Public distribution does not make this a browser-only client: the server still protects and uses `client_secret` for the exchange.
-4. Leave **Client credentials** off: each workspace uses the authorization-code flow and its own refresh-token handle.
-5. Leave **Webhook** off/unset: agentsfleet does not expose a Linear OAuth-app webhook receiver. Fleet-specific generic webhook triggers are configured separately.
-
-The authorization request supplies `read,comments:create`. There is no scope field in the application form, and no `offline_access` scope: Linear returns a refresh token automatically after a successful authorization-code exchange.
-
-### Acceptance
-
-The confidential application exists and the callback URL is exact. Client credentials and Webhook are off. Public is off for isolated development and on for customer-facing production.
-
----
-
-## 2.0 Human: Copy the client credentials
-
-**Goal:** capture `client_id` and `client_secret` from the application's details page. Keep them off-screen; they go straight to vault in §3 (never paste into chat, a ticket, or a shell argument).
-
-### Acceptance
-
-Both values captured.
-
----
-
-## 3.0 Agent: Store the platform secret in the admin vault
-
-**Goal:** persist the two as one platform credential `linear-app` in the `agentsfleet-admin` workspace vault. The values flow through stdin, never argv (RULE VLT).
+After Indy approves the target, run:
 
 ```bash
-jq -n \
-  --arg cid "$(read -rp  'client_id: '     cid; printf '%s' "$cid")" \
-  --arg sec "$(read -rsp 'client_secret: ' sec; printf '%s' "$sec")" \
-  '{client_id:$cid, client_secret:$sec}' |
-  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret create linear-app --data @-
+ENV=dev \
+ALLOW_VAULT_READS=1 \
+ALLOW_PLATFORM_SECRET_WRITES=1 \
+  ./playbooks/lib/platform_secret_sync.sh linear-app
 ```
 
-> Prefer mirroring `op://$VAULT/linear-app/{client_id,client_secret}` into 1Password first, then piping `op read` → `jq` → `agentsfleet secret create` so the source of truth survives a vault rotation. Re-run with `--force` to overwrite an existing `linear-app`.
+Change `ENV` to `prod` only for the production run. Refresh-token minting uses
+credentials captured when `agentsfleetd` starts, so rerun the matching
+founding deployment after all provider bags are synced.
 
-### Acceptance
+## 4. Indy and Orly: prove the live path
 
-`agentsfleet secret create` exits 0. No secret appears in shell history, process argv, or output.
+1. Indy connects a test Linear workspace from the dashboard.
+2. Orly confirms the expected tenant receives a `fleet:linear` handle with a
+   refresh token.
+3. Orly proves one token refresh succeeds and the prior handle is replaced
+   safely.
+4. Orly confirms a comment can be created without a broader write grant.
 
----
+## Complete when
 
-## 4.0 Agent: Verify resolution end-to-end
-
-**Goal:** the daemon resolves `linear-app`, and a live connect completes.
-
-```bash
-# Daemon can see the platform credential (metadata only — never the secret bytes):
-AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret show linear-app --json | jq '{name,kind}'
-# Live check: connect a test Linear workspace from the dashboard's Integrations page.
-# Expect: the browser round-trip completes at linear.app/oauth/authorize and the
-# workspace's fleet:linear vault handle is written with a refresh token.
-```
-
-### Acceptance
-
-`secret show` returns the `linear-app` metadata with no secret material; a real Linear connect completes and `fleet:linear` is vaulted.
-
----
-
-## Rollback
-
-1. `agentsfleet secret delete linear-app` (admin key) to drop the platform secret.
-2. At **linear.app** → workspace **Settings → API** → the application → regenerate the client secret (and re-run §3), or delete the application entirely.
-3. Existing per-workspace installs (`fleet:linear` vault handles) are unaffected by a client-secret rotation; a full application delete breaks future refresh mints for every connected workspace — reconnect per workspace afterward.
+- The callback and scope list are exact and the two-field bag exists.
+- `agentsfleetd` has restarted after the sync.
+- A real connect, refresh, and targeted comment write pass.

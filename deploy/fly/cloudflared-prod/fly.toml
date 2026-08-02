@@ -8,8 +8,9 @@ primary_region = "iad"
   size = "shared-cpu-1x"
   memory = "256mb"
 
-# cloudflared is an outbound tunnel agent — no inbound HTTP service.
-# min_machines_running is enforced via CI (deploy-prod-api job restarts/deploys if down).
-# TUNNEL_TOKEN secret set via: fly secrets set TUNNEL_TOKEN=... --app cloudflared-prod
-# Token encodes tunnel ID + credentials — no credentials file needed.
-# Ingress: api.agentsfleet.net → agentsfleetd-prod.internal:3000 (Fly 6PN)
+# cloudflared is an outbound tunnel agent; it has no inbound HTTP service.
+# The deployment workflow loads TUNNEL_TOKEN from the vault.
+# Ingress reaches agentsfleetd-prod.internal:3000 over Fly's private IPv6
+# network (6PN).
+[[restart]]
+  policy = "always"

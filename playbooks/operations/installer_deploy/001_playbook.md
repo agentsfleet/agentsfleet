@@ -1,71 +1,52 @@
-# Playbook — `agentsfleet.dev` installer domain
+# `agentsfleet.dev` Installer Deployment
 
-**Updated:** May 22, 2026
-**Owner:** Human (one-time Vercel project + custom domain — already provisioned)
-**Prerequisite:** Vercel team access (`indykishs-projects`); the Vercel GitHub integration connected to `agentsfleet/agentsfleet` (already used by `agentsfleet-website` and `agentsfleet-agents-dev`).
+**Owners:** Vercel deploys; 🦉 Orly verifies; 🤠 Indy repairs project or domain
+ownership when required.
+**Scope:** routine installer changes. First-install setup belongs in founding
+step 01.
 
-## Why this playbook exists
+Vercel serves `ui/agentsfleet.dev/dist/` as a static site. The repository has
+no installer deploy script and no Vercel credential in GitHub Actions. A Pull
+Request (PR) creates a preview; merging `main` creates the production deploy.
 
-`https://agentsfleet.dev` serves the one-URL installer (`curl -fsSL https://agentsfleet.dev | bash`). The deployable is a static directory (`ui/agentsfleet.dev/dist/` — `install.sh` + `vercel.json`); there is no build step.
-
-It deploys the **same way as `agentsfleet-website`**: a **git-connected** Vercel project. Vercel's GitHub integration builds + deploys a **preview** on every PR (and comments the URL) and **production** on merge to `main`. No GitHub Actions workflow, no Vercel credentials in CI — Vercel's own GitHub auth handles it. The merge is gated by the `lint-agentsfleet-sh` job (shellcheck + `install_test.sh`), so a broken installer never reaches `main`.
-
-`dist/vercel.json` carries the serving config: the `/ → /install.sh` rewrite (so the bare root pipes into bash) and the `text/x-shellscript` content-type + 5-minute cache. Vercel does **not** read Cloudflare-Pages `_redirects`/`_headers`, which is why the config lives in `vercel.json`.
-
-## Sequence
-
-```
-1. (once, done)  git-connected Vercel project `agentsfleet-agents-dev`, rootDir ui/agentsfleet.dev/dist
-2. (once, done)  agentsfleet.dev attached as a custom domain  -> Vercel provisions apex DNS + TLS
-3. (per change)  open a PR -> Vercel auto-deploys a preview; merge to main -> auto prod
-4. (verify)      dig + curl the live domain
-```
-
-## Human vs Agent split
-
-| Step | Owner | Why |
-|------|-------|-----|
-| Create git-connected Vercel project | Human | One-time Vercel dashboard action (done) |
-| Attach `agentsfleet.dev` custom domain | Human | Vercel auto-provisions apex DNS + TLS (done) |
-| Deploy | Vercel | Automatic — preview on PR, production on merge to `main` |
-| Verify live DNS/TLS | Agent | Read-only `dig` + `curl` |
-
----
-
-## Step 1 — The git-connected Vercel project (already provisioned)
-
-Vercel dashboard → **Add New → Project → Import** `agentsfleet/agentsfleet`. Current config:
+The required Vercel project settings are:
 
 | Setting | Value |
-|---------|-------|
-| Project name | `agentsfleet-agents-dev` |
+|---|---|
+| Project | `agentsfleet-agents-dev` |
 | Production branch | `main` |
-| Framework preset | Other / None |
-| Build command | *(empty — no build)* |
+| Framework | None |
+| Build command | Empty |
 | Root directory | `ui/agentsfleet.dev/dist` |
+| Production domain | `agentsfleet.dev` |
 
-(The project was repurposed from the old "forward to agentsfleet.net/agents" approach; `agentsfleet.dev` now serves the installer. The serving config lives in `dist/vercel.json`.)
+`dist/vercel.json` rewrites `/` to `/install.sh`, sets the shell-script content
+type, and sets the cache policy.
 
-## Step 2 — The custom domain (already attached)
+## Deploy
 
-Project → **Settings → Domains → `agentsfleet.dev`**. Vercel issues the TLS certificate and provisions the apex DNS automatically. No manual DNS edits.
+1. Change `ui/agentsfleet.dev/dist/install.sh` or `vercel.json`.
+2. Run the installer checks through the repository verification commands.
+3. Open a PR and verify its Vercel preview.
+4. Merge only after the preview and repository checks are green. Vercel then
+   deploys `main` to production.
 
-## Step 3 — Deploy
+If the preview is absent or the production domain is not attached to the
+project above, stop. 🤠 Indy must repair the Vercel project or domain before the
+deployment can be accepted.
 
-Automatic. Open a PR touching `ui/agentsfleet.dev/**` → Vercel posts a preview URL on the PR. Merge to `main` → Vercel deploys production → `https://agentsfleet.dev`. The `vercel.json` 5-minute `Cache-Control` propagates a bump globally within minutes. To change the served script, edit `ui/agentsfleet.dev/dist/install.sh` and merge.
+## Verify
 
-## Step 4 — Verify (live cutover acceptance)
+These commands are read-only:
 
 ```bash
-dig +short An agentsfleet.dev                 # non-empty
-curl -fsSL https://agentsfleet.dev -o /tmp/install.sh    # HTTP 200, valid TLS, no --insecure
-curl -fsSL https://agentsfleet.dev | head -1             # -> #!/usr/bin/env bash
-curl -sSI https://agentsfleet.dev/install.sh | grep -i content-type   # -> text/x-shellscript
+dig +short A agentsfleet.dev
+curl -fsSL https://agentsfleet.dev -o /tmp/agentsfleet-install.sh
+head -1 /tmp/agentsfleet-install.sh
+curl -sSI https://agentsfleet.dev/install.sh | grep -i content-type
 ```
 
-## Prerequisite for a meaningful end-to-end install
-
-The script runs `npm install -g @agentsfleet/cli`. Publish the current `@agentsfleet/cli`
-to npm (so the published version matches the repo's `VERSION`, with a corresponding
-GitHub Release) before treating a live `curl … | bash` install as the real end-to-end
-path — that is a separate release task, not part of this wiring.
+Acceptance requires a non-empty DNS answer, successful Transport Layer
+Security (TLS), a `#!/usr/bin/env bash` first line, and the shell-script content
+type. A complete install also requires the published `@agentsfleet/cli` version
+to match `VERSION`; the production release route owns that check.

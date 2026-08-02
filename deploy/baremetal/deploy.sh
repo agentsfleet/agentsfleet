@@ -117,6 +117,7 @@ is_already_installed() {
   version_token_matches "$current" "$VERSION" || return 1
 
   log "✓ ${BINARY_NAME} ${VERSION} already installed — ensuring service is up."
+  systemctl enable "$SERVICE_NAME" || return 1
   systemctl is-active --quiet "$SERVICE_NAME" && return 0
 
   # Not active: start it AND verify it stays up. `systemctl start` exits zero once
@@ -181,7 +182,7 @@ sync_systemd_unit() {
 
 sync_env() {
   [[ -f "$ENV_FILE" ]] \
-    || die "missing $ENV_FILE — provision via playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh (dev) or the equivalent prod path"
+    || die "missing $ENV_FILE — deploy through playbooks/lib/runner/deploy.sh"
   cp "$ENV_FILE" "$ENV_DEST"
   log "Synced .env → ${ENV_DEST}"
 
@@ -252,6 +253,7 @@ restart_services() {
     fi
   done
   [[ "$found_stale" -eq 1 ]] && systemctl daemon-reload
+  systemctl enable "$SERVICE_NAME"
   systemctl restart "$SERVICE_NAME"
 }
 

@@ -39,6 +39,31 @@ playbooks_is_ipv4_cidr_json_array() {
   ' >/dev/null
 }
 
+playbooks_is_recent_utc_timestamp() {
+  local timestamp="$1"
+  local max_age_days="$2"
+  local now="${PLAYBOOKS_NOW:-}"
+
+  python3 - "$timestamp" "$max_age_days" "$now" <<'PY'
+from datetime import datetime, timezone
+import sys
+
+value, max_age, override = sys.argv[1:]
+try:
+    observed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    current = (
+        datetime.fromisoformat(override.replace("Z", "+00:00"))
+        if override
+        else datetime.now(timezone.utc)
+    )
+    age = current - observed
+    valid = observed.tzinfo is not None and 0 <= age.total_seconds() <= int(max_age) * 86400
+except (TypeError, ValueError):
+    valid = False
+raise SystemExit(0 if valid else 1)
+PY
+}
+
 # Name the layer that refused an SSH or SCP call. A worker running
 # `tailscale up --ssh` hands tailnet port 22 to tailscaled, so an access
 # decision made by the tailnet policy surfaces to the caller as a bare exit 255

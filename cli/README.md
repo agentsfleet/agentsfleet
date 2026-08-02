@@ -113,7 +113,7 @@ Workspace-scoped tool secrets live in the vault (Slack, GitHub, Fly, Upstash, et
 | Command | Description |
 |---------|-------------|
 | `secret create <name> --data=@-` | Create a secret (pipe JSON on stdin; skip if exists) |
-| `secret create <name> --data=@- --force` | Overwrite an existing secret |
+| `secret update <name> --data=@-` | Replace an existing secret |
 | `secret create <name> --data='<json>'` | Create a secret (inline JSON, exposes secret to shell history) |
 | `secret show <name>` | Check existence and `created_at` (never echoes secret) |
 | `secret list` | List workspace secrets |
