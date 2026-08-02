@@ -40,8 +40,12 @@ const PENDING = grant_lookup.GrantStatus.pending.toSlice();
 const S_TOOL = "integration";
 const S_ACTION = "grant";
 const S_BLAST_RADIUS = "workspace";
-/// Shown in the approvals inbox when the bundle names no reason of its own.
-const S_DEFAULT_REASON = "Declared by the fleet bundle at install";
+/// The grant's `requested_reason` — why this row exists at all. The bundle
+/// carries no free-text justification field today, so origination is the whole
+/// reason and it is stated once here rather than at the INSERT. `pub` because
+/// the origination test asserts the stored reason against it (RULE UFS: the
+/// operator reads this in the inbox, so a test must not spell it a second time).
+pub const S_DEFAULT_REASON = "Declared by the fleet bundle at install";
 
 /// Seed a pending grant and raise its approval gate for every mintable
 /// credential the fleet declares. Best-effort per credential and never fatal to
