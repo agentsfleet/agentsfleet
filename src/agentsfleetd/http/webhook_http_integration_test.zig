@@ -19,6 +19,7 @@ const harness_mod = @import("test_harness.zig");
 const fx_mod = @import("webhook_test_fixtures.zig");
 const signers = @import("webhook_test_signers.zig");
 const ec = @import("../errors/error_registry.zig");
+const whc = @import("../fleet_runtime/webhook_constants.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const clock = @import("common").clock;
 
@@ -647,7 +648,7 @@ fn postSignedLinear(alloc: std.mem.Allocator, s: *Setup, body: []const u8) !harn
 // Generic-route dedup key carries no provider segment: webhook:dedup:{zid}:{event_id}.
 fn cleanupLinearRedis(h: *TestHarness, alloc: std.mem.Allocator) void {
     forgetFleet(h, AGENTSFLEET_LINEAR);
-    const k = std.fmt.allocPrint(alloc, "{s}{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, AGENTSFLEET_LINEAR, LINEAR_EVENT_ID }) catch return;
+    const k = std.fmt.allocPrint(alloc, "{s}{s}:{s}", .{ whc.WEBHOOK_DEDUP_KEY_PREFIX, AGENTSFLEET_LINEAR, LINEAR_EVENT_ID }) catch return;
     defer alloc.free(k);
     var v2 = h.queue.commandAllowError(&.{ "DEL", k }) catch return;
     v2.deinit(h.queue.alloc);

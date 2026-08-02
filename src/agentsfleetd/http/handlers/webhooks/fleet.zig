@@ -24,6 +24,7 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const whc = @import("../../../fleet_runtime/webhook_constants.zig");
 const redis_fleet = @import("../../../queue/redis_fleet.zig");
 const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
@@ -78,11 +79,11 @@ fn fetchFleetById(pool: *pg.Pool, alloc: std.mem.Allocator, fleet_id: []const u8
 
 fn dedupAndEnqueue(hx: Hx, fleet_id: []const u8, workspace_id: []const u8, payload: WebhookPayload, source_label: []const u8) bool {
     var dedup_key_buf: [256]u8 = undefined;
-    const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, fleet_id, payload.event_id }) catch {
+    const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}", .{ whc.WEBHOOK_DEDUP_KEY_PREFIX, fleet_id, payload.event_id }) catch {
         common.internalOperationError(hx.res, "Failed to build the duplicate-event check", hx.req_id);
         return false;
     };
-    const is_new = hx.ctx.queue.setNx(dedup_key, "1", ec.DEDUP_TTL_SECONDS) catch |err| {
+    const is_new = hx.ctx.queue.setNx(dedup_key, "1", whc.DEDUP_TTL_SECONDS) catch |err| {
         log.err("redis_dedup_error", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .fleet_id = fleet_id,
@@ -94,7 +95,7 @@ fn dedupAndEnqueue(hx: Hx, fleet_id: []const u8, workspace_id: []const u8, paylo
     };
     if (!is_new) {
         log.debug("duplicate", .{ .fleet_id = fleet_id, .event_id = payload.event_id });
-        hx.ok(.ok, .{ .status = ec.STATUS_DUPLICATE });
+        hx.ok(.ok, .{ .status = whc.STATUS_DUPLICATE });
         return false;
     }
     const data_json = std.fmt.allocPrint(hx.alloc, "{f}", .{std.json.fmt(payload.data, .{})}) catch {
@@ -217,7 +218,7 @@ fn deliverToFleet(hx: Hx, fleet_id: []const u8, payload: WebhookPayload) void {
             .event_id = payload.event_id,
             .req_id = hx.req_id,
         });
-        hx.ok(.ok, .{ .ignored = ec.IGNORED_REASON_AGENTSFLEET_PAUSED });
+        hx.ok(.ok, .{ .ignored = whc.IGNORED_REASON_AGENTSFLEET_PAUSED });
         return;
     }
 
@@ -231,7 +232,7 @@ fn deliverToFleet(hx: Hx, fleet_id: []const u8, payload: WebhookPayload) void {
         .event_id = payload.event_id,
         .type = payload.type,
     });
-    hx.ok(.accepted, .{ .status = ec.STATUS_ACCEPTED, .event_id = payload.event_id });
+    hx.ok(.accepted, .{ .status = whc.STATUS_ACCEPTED, .event_id = payload.event_id });
 }
 
 /// Record observability for a successfully accepted webhook (202 path).

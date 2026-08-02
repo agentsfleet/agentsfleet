@@ -20,7 +20,7 @@ const test_port = @import("../../../test_port.zig");
 const test_fixtures = @import("../../../../db/test_fixtures.zig");
 const id_format = @import("../../../../types/id_format.zig");
 const redis_fleet = @import("../../../../queue/redis_fleet.zig");
-const ec = @import("../../../../errors/error_registry.zig");
+const whc = @import("../../../../fleet_runtime/webhook_constants.zig");
 const hs = @import("hmac_sig");
 const slack_sig = @import("slack_sig.zig");
 const spec = @import("spec.zig");
@@ -199,8 +199,8 @@ fn postSigned(h: *TestHarness, now_s: i64, body: []const u8) !harness_mod.Respon
     var sig_buf: [slack_sig.CONFIG.prefix.len + hs.MAC_LEN * 2]u8 = undefined;
     const sig = hs.encodeMacHex(&sig_buf, slack_sig.CONFIG.prefix, mac);
     var rq = h.post(EVENTS_PATH);
-    rq = try rq.header(ec.SLACK_SIG_HEADER, sig);
-    rq = try rq.header(ec.SLACK_TS_HEADER, ts);
+    rq = try rq.header(whc.SLACK_SIG_HEADER, sig);
+    rq = try rq.header(whc.SLACK_TS_HEADER, ts);
     rq = rq.rawBody(body);
     return rq.send();
 }

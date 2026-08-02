@@ -15,6 +15,7 @@ const clock = common_lib.clock;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const whc = @import("../../../fleet_runtime/webhook_constants.zig");
 const redis_fleet = @import("../../../queue/redis_fleet.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const vault = @import("../../../state/vault.zig");
@@ -131,7 +132,7 @@ fn fanOut(hx: Hx, ingress: webhook_verify.IngressConfig, provider: []const u8, d
     var failed = false;
     for (targets) |target| {
         var key_buf: [DEDUP_KEY_BUF_LEN]u8 = undefined;
-        const key = std.fmt.bufPrint(&key_buf, "{s}{s}:{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, target.fleet_id, ingress.dedup_namespace, replay_id }) catch {
+        const key = std.fmt.bufPrint(&key_buf, "{s}{s}:{s}:{s}", .{ whc.WEBHOOK_DEDUP_KEY_PREFIX, target.fleet_id, ingress.dedup_namespace, replay_id }) catch {
             failed = true;
             continue;
         };
@@ -154,7 +155,7 @@ fn fanOut(hx: Hx, ingress: webhook_verify.IngressConfig, provider: []const u8, d
         common.internalOperationError(hx.res, "Failed to enqueue every matching fleet event", hx.req_id);
         return;
     }
-    hx.ok(.accepted, .{ .status = ec.STATUS_ACCEPTED, .matched = targets.len, .enqueued = enqueued });
+    hx.ok(.accepted, .{ .status = whc.STATUS_ACCEPTED, .matched = targets.len, .enqueued = enqueued });
 }
 
 fn authenticatedReplayId(body: []const u8) [std.crypto.hash.sha2.Sha256.digest_length * 2]u8 {
