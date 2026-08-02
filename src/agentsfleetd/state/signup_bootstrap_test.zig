@@ -49,7 +49,7 @@ fn cleanupCollisionFixture(conn: *pg.Conn) void {
 fn countTenantsForOidc(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
     var q = PgQuery.from(try conn.query(
         \\SELECT COUNT(*)::BIGINT FROM core.tenants t
-        \\JOIN core.users u ON u.tenant_id = t.tenant_id
+        \\JOIN core.users u ON u.tenant_id = t.id
         \\WHERE u.oidc_subject = $1
     , .{oidc_subject}));
     defer q.deinit();

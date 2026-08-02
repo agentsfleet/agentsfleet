@@ -54,7 +54,6 @@ const WS_UNKNOWN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eccfd";
 // database. Earlier green runs rode pre-existing rows through the seed's
 // ON CONFLICT (id) DO NOTHING; the first clean-state run exposed it.
 const SEEDED_TOKEN_HASH_PREFIX = "cafe0000-seeded-";
-const SEEDED_REQUEST_PAYLOAD = "{\"message\":\"never-on-the-wire\"}";
 const FAILURE_DETAIL_OOM = "Container exceeded its memory limit and was terminated.";
 
 const LEASE_CREATED_BASE_MS: i64 = 1_750_000_000_000;
@@ -170,7 +169,6 @@ fn acquireLeaseViaWritePath(conn: anytype, w: WriteLease) !void {
         w.event_id,
         "system",
         "chat",
-        SEEDED_REQUEST_PAYLOAD,
         nowMs(),
         "metered",
         "anthropic",

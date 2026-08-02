@@ -171,14 +171,14 @@ pub fn listTelemetryForTenant(
         defer alloc.free(parsed.id);
         return queryRows(conn, alloc, TELEMETRY_SELECT ++
             \\WHERE tenant_id = $1
-            \\  AND (recorded_at, id) < ($2, $3)
-            \\ORDER BY recorded_at DESC, id DESC
+            \\  AND (created_at, id) < ($2, $3)
+            \\ORDER BY created_at DESC, id DESC
             \\LIMIT $4
         , .{ tenant_id, parsed.recorded_at, parsed.id, @as(i32, @intCast(limit)) });
     }
     return queryRows(conn, alloc, TELEMETRY_SELECT ++
         \\WHERE tenant_id = $1
-        \\ORDER BY recorded_at DESC, id DESC
+        \\ORDER BY created_at DESC, id DESC
         \\LIMIT $2
     , .{ tenant_id, @as(i32, @intCast(limit)) });
 }

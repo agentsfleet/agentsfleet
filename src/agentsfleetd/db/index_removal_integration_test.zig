@@ -26,7 +26,7 @@ const RETIRED_INDEXES = [_]IndexRef{
 
 /// Deliberately KEPT: it recorded scans under the workload, so it failed the
 /// zero-scan bar. Pinned here so a later cleanup cannot quietly widen the drop.
-const KEPT_INDEX = IndexRef{ .schema = "memory", .name = "idx_memory_entries_category" };
+const KEPT_INDEX = IndexRef{ .schema = "memory", .name = "idx_memory_entries_fleet_id_category_updated_at" };
 
 const KEY_PREFIX = "rmprobe-key-";
 const MEM_KEY_PREFIX = "rmprobe-mem-";
@@ -121,7 +121,7 @@ test "api key auth lookup survives the drop" {
     // it, so the unique index on key_hash alone is the one that must serve this.
     try expectServesFilter(alloc, db.conn,
         \\SELECT id FROM core.api_keys WHERE key_hash = 'rmprobe-key-100'
-    , "api_keys_hash_uniq");
+    , "uq_api_keys_key_hash");
 }
 
 test "the composite still covers the fleet filter after the drop" {

@@ -71,11 +71,11 @@ fn seed(conn: *pg.Conn, now_ms: i64) !void {
     // reparse enforces SKILL.md name == fleet name).
     _ = try conn.exec(
         \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'ifmatch-fleet',
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'ifmatch-fleet',
         \\  '---\nname: ifmatch-fleet\ndescription: seed\nversion: 1.0.0\n---\n# Reviewer\noriginal',
         \\  '{}'::jsonb, 'active', $3, $3)
         \\ON CONFLICT (id) DO UPDATE SET
-        \\  source_markdown = EXCLUDED.source_markdown, name = EXCLUDED.name, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = name = EXCLUDED.name), status = 'active'
+        \\  source_markdown = EXCLUDED.source_markdown, name = EXCLUDED.name, status = 'active'
     , .{ IFMATCH_FLEET, TEST_WORKSPACE_ID, now_ms });
 }
 

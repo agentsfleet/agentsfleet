@@ -102,13 +102,14 @@ fn parseMode(label: []const u8) ?Mode {
 
 pub fn loadActivePlatformKey(alloc: std.mem.Allocator, conn: *pg.Conn) !PlatformKey {
     // PUT /v1/admin/platform-keys enforces exactly one active row; ORDER BY
-    // updated_at DESC, id DESC keeps the choice deterministic if a parallel
-    // integration test seeds its own active row.
+    // updated_at DESC, provider DESC keeps the choice deterministic if a parallel
+    // integration test seeds its own active row. `provider` is the primary key,
+    // so it is a total order — the tie-break can never itself tie.
     var q = PgQuery.from(try conn.query(
         \\SELECT provider, source_workspace_id::text, model, base_url, context_cap_tokens
         \\FROM core.platform_provider_defaults
         \\WHERE active = true
-        \\ORDER BY updated_at DESC, id DESC
+        \\ORDER BY updated_at DESC, provider DESC
         \\LIMIT 1
     , .{}));
     defer q.deinit();

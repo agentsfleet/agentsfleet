@@ -141,7 +141,7 @@ fn countUnenumeratedFleets(conn: *pg.Conn, tenant_id: []const u8, enumerated: []
 pub fn fleetIdsByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject: []const u8) !?[][]const u8 {
     var q = PgQuery.from(try conn.query(
         "SELECT z.id::text FROM core.fleets z WHERE z.workspace_id IN " ++
-            "(SELECT w.workspace_id FROM core.workspaces w WHERE w.tenant_id = " ++
+            "(SELECT w.id FROM core.workspaces w WHERE w.tenant_id = " ++
             "(SELECT u.tenant_id FROM core.users u WHERE u.oidc_subject = $1))",
         .{oidc_subject},
     ));
