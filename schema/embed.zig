@@ -50,7 +50,6 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 500, .sql = @embedFile("500_fleets.sql") },
     .{ .version = 510, .sql = @embedFile("510_fleet_sessions.sql") },
     .{ .version = 520, .sql = @embedFile("520_fleet_schedules.sql") },
-    .{ .version = 530, .sql = @embedFile("530_fleet_keys.sql") },
     .{ .version = 540, .sql = @embedFile("540_integration_grants.sql") },
     .{ .version = 550, .sql = @embedFile("550_connector_installs.sql") },
     .{ .version = 560, .sql = @embedFile("560_connector_channels.sql") },

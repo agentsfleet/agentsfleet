@@ -1,18 +1,14 @@
-//! Shared helpers for fleet-key authentication.
-//! Used by integration_grants/handler.zig and api_keys/fleet.zig.
+//! The credential-hashing helper every bearer surface shares: runner tokens
+//! (`auth/middleware/runner_bearer.zig`), tenant keys
+//! (`auth/middleware/tenant_api_key.zig`, `api_keys/tenant.zig`), and the test
+//! fixtures that seed them.
+//!
+//! The `agt_a` fleet-key prefix that used to live here retired with
+//! `core.fleet_keys` (M154 §8): its only two readers were the handler-local
+//! authentication and the fleet-key management surface, both deleted. What
+//! remains is hashing, which was never fleet-key-specific.
 
 const std = @import("std");
-
-/// Fleet-key raw token prefix — single source (RULE UFS). A Fleet key is
-/// minted as `KEY_PREFIX ++ {64 lower-hex}` (api_keys/fleet.zig) and recognised
-/// by the same prefix on the inbound path (integration_grants/handler.zig).
-/// Flip the wire prefix HERE only; both call sites reference this const, and the
-/// pin test below guards the literal value.
-pub const KEY_PREFIX = "agt_a";
-
-test "KEY_PREFIX is the documented agt_a literal (single-source pin)" {
-    try std.testing.expectEqualStrings("agt_a", KEY_PREFIX);
-}
 
 /// SHA-256 of input, returned as lower-hex [64]u8. Stack-allocated, no alloc.
 pub fn sha256Hex(input: []const u8) [64]u8 {

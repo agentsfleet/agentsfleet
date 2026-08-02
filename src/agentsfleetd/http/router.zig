@@ -135,7 +135,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceFleetAction(p, S_EVENTS)) |r| return .{ .workspace_fleet_events = r };
     if (matchers.matchWorkspaceFleetAction(p, "messages")) |r| return .{ .workspace_fleet_messages = r };
     if (matchers.matchWorkspaceFleetAction(p, matchers.S_MEMORIES)) |r| return .{ .workspace_fleet_memories = r };
-    if (matchers.matchWorkspaceFleetAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
     if (matchers.matchWorkspaceFleetAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
     // ── Connectors: generic {provider} trio, registry-resolved (M108) ─────
     if (matchers.matchWorkspaceConnectorConnect(p)) |r| return .{ .connector_connect = r };
@@ -147,7 +146,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Workspace + leaf ──────────────────────────────────────────────────
     if (matchers.matchWorkspaceSecret(p)) |r| return .{ .workspace_secret = r };
     if (matchers.matchWorkspacePreference(p)) |r| return .{ .workspace_preference = r };
-    if (matchers.matchWorkspaceFleetKeyDelete(p)) |r| return .{ .delete_fleet_key = r };
     if (matchers.matchWorkspaceFleet(p)) |r| return .{ .patch_workspace_fleet = r };
 
     // ── Approval inbox detail / resolve (colon-noun) ──────────────────────
@@ -165,7 +163,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceSuffix(p, S_FLEETS)) |ws_id| return .{ .workspace_fleets = ws_id };
     if (matchers.matchFleetLibrary(p)) |route| return route;
     if (matchers.matchWorkspaceSuffix(p, "secrets")) |ws_id| return .{ .workspace_secrets = ws_id };
-    if (matchers.matchWorkspaceSuffix(p, "fleet-keys")) |ws_id| return .{ .fleet_keys = ws_id };
     if (matchers.matchWorkspaceSuffix(p, S_EVENTS)) |ws_id| return .{ .workspace_events = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "onboarding")) |ws_id| return .{ .workspace_onboarding = ws_id };
     if (matchers.matchWorkspaceSuffix(p, matchers.S_PREFERENCES)) |ws_id| return .{ .workspace_preferences = ws_id };
@@ -175,7 +172,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     //    these mutually exclusive) ────────────────────────────────────────
     if (matchers.matchSvixWebhook(p)) |zid| return .{ .receive_svix_webhook = zid };
     if (matchers.matchWebhookAction(p, "approval")) |zid| return .{ .approval_webhook = zid };
-    if (matchers.matchWebhookAction(p, "grant-approval")) |zid| return .{ .grant_approval_webhook = zid };
     if (matchers.matchWebhookAction(p, "github")) |zid| return .{ .github_webhook = zid };
     if (matchers.matchWebhook(p)) |zid| return .{ .receive_webhook = zid };
 

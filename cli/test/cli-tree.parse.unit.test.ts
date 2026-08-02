@@ -103,22 +103,6 @@ test("workspace delete <id> captures required positional", async () => {
 
 // ── Fleet-key tree ────────────────────────────────────────────────────────
 
-test("fleet-key create accepts --workspace / --fleet / --name / --description", async () => {
-  const { handlers, calls } = makeSpyTree();
-  await dispatch([
-    "fleet-key", "create",
-    "--workspace", VALID_ID,
-    "--fleet",    VALID_ID,
-    "--name",      "scout",
-    "--description", "for scouting",
-  ], handlers);
-  expect(calls[0]?.name).toBe("fleet-key.create");
-  expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
-  expect(calls[0]?.frame.parsed.options.fleet).toBe(VALID_ID);
-  expect(calls[0]?.frame.parsed.options.name).toBe("scout");
-  expect(calls[0]?.frame.parsed.options.description).toBe("for scouting");
-});
-
 test("test_fleet_list_flag_renamed_to_starting_after", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["list", "--starting-after", "1713700000000:zom_2"], handlers);
@@ -131,26 +115,6 @@ test("memory list --starting-after parses into the frame", async () => {
   await dispatch(["memory", "list", "--fleet", VALID_ID, "--starting-after", "1713700000000:goal"], handlers);
   expect(calls[0]?.name).toBe("memory.list");
   expect(calls[0]?.frame.parsed.options.startingAfter).toBe("1713700000000:goal");
-});
-
-test("fleet-key add is rejected with no dispatch", async () => {
-  const { handlers, calls } = makeSpyTree();
-  await expect(dispatch(["fleet-key", "add"], handlers)).rejects.toThrow();
-  expect(calls).toHaveLength(0);
-});
-
-test("fleet-key list with --workspace dispatches", async () => {
-  const { handlers, calls } = makeSpyTree();
-  await dispatch(["fleet-key", "list", "--workspace", VALID_ID], handlers);
-  expect(calls[0]?.name).toBe("fleet-key.list");
-});
-
-test("fleet-key delete <id> with --workspace captures both", async () => {
-  const { handlers, calls } = makeSpyTree();
-  await dispatch(["fleet-key", "delete", VALID_ID, "--workspace", VALID_ID], handlers);
-  expect(calls[0]?.name).toBe("fleet-key.delete");
-  expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
-  expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
 });
 
 // ── API-key tree ─────────────────────────────────────────────────────────

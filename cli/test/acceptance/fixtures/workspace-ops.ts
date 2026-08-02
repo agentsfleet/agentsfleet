@@ -47,7 +47,7 @@ export const AGENT_NAME_KEY = "name" as const;
 export const FLAG_JSON = "--json" as const;
 // Top-level `list` scopes to a workspace via `--workspace-id` (per
 // cli-tree-fleet.ts line 55). NOT `--workspace` — that's the per-resource
-// flag on fleet-key/grant subcommands.
+// flag on grant subcommands.
 export const FLAG_WORKSPACE_ID = "--workspace-id" as const;
 
 export interface WorkspaceRow {

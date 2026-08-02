@@ -13,11 +13,6 @@ import { loginEffectFromFlags } from "../commands/login.ts";
 import type { CliError } from "../errors/index.ts";
 import { doctorEffect } from "../commands/core-ops.ts";
 import {
-  fleetAddEffectFromArgs,
-  fleetListEffectFromArgs,
-  fleetDeleteEffectFromArgs,
-} from "../commands/fleet_key.ts";
-import {
   grantListEffectFromArgs,
   grantDeleteEffectFromArgs,
 } from "../commands/grant.ts";
@@ -205,50 +200,6 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     },
     doctor: wrapE("doctor", doctorEffect),
     workspace: buildWorkspaceHandlers(wrapE, wrapEFn),
-    fleetKey: {
-      create: wrapEffectFn(
-        "fleet-key.create",
-        (frame) => {
-          const opts = frame.parsed.options;
-          return fleetAddEffectFromArgs({
-            workspaceId:
-              optString(opts, "workspace") ??
-              optString(opts, "workspaceId") ??
-              optString(opts, "workspace-id"),
-            fleetId:
-              optString(opts, "fleet") ??
-              optString(opts, "fleetId") ??
-              optString(opts, "fleet-id"),
-            name: optString(opts, "name"),
-            description: optString(opts, "description"),
-          });
-        },
-        lifecycle,
-      ),
-      list: wrapEffectFn(
-        "fleet-key.list",
-        (frame) =>
-          fleetListEffectFromArgs(
-            optString(frame.parsed.options, "workspace") ??
-              optString(frame.parsed.options, "workspaceId") ??
-              optString(frame.parsed.options, "workspace-id"),
-          ),
-        lifecycle,
-      ),
-      delete: wrapEffectFn(
-        "fleet-key.delete",
-        (frame) =>
-          fleetDeleteEffectFromArgs(
-            optString(frame.parsed.options, "workspace") ??
-              optString(frame.parsed.options, "workspaceId") ??
-              optString(frame.parsed.options, "workspace-id"),
-            frame.parsed.positionals[0],
-            optString(frame.parsed.options, "fleet-key-id") ??
-              optString(frame.parsed.options, "fleetKeyId"),
-          ),
-        lifecycle,
-      ),
-    },
     ...buildAccessHandlers(wrapEFn),
     grant: {
       list: wrapEffectFn(

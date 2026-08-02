@@ -73,38 +73,65 @@ test "integration: test_lease_gates_mintable_on_grant" {
     try db_fixtures.seedPlatformProviderWithKey(cp.ALLOC, conn, cp.WORKSPACE_ID, "fw_gate_key");
     try cp.fundLargeBalance(conn);
     try cp.seedRunner(conn, cp.RUNNER_A_ID, "runner-cp-a", cp.RUNNER_A_TOKEN);
-    try seedFleetWithConfig(conn, cp.AGENTSFLEET_1_ID, "cp-gate-ungranted", CONFIG_GITHUB_CRED);
     try seedFleetWithConfig(conn, cp.AGENTSFLEET_2_ID, "cp-gate-granted", CONFIG_GITHUB_CRED);
     try seedVaultJson(conn, PROVIDER_GITHUB, "{\"integration\":\"github\",\"installation_id\":\"42\"}");
     try setGithubGrant(conn, cp.AGENTSFLEET_2_ID, .approved);
-    try cp.publishFreshEvent(h, cp.AGENTSFLEET_1_ID);
     try cp.publishFreshEvent(h, cp.AGENTSFLEET_2_ID);
 
-    var checked_ungranted = false;
-    var checked_granted = false;
-    for (0..2) |_| {
-        const body = try leaseBodyAs(h, cp.RUNNER_A_TOKEN);
-        defer cp.ALLOC.free(body);
-        const parsed = try std.json.parseFromSlice(std.json.Value, cp.ALLOC, body, .{});
-        defer parsed.deinit();
-        const lease = try expectLease(parsed.value);
-        const fleet_id = lease.get("event").?.object.get("fleet_id").?.string;
-        const policy = lease.get("policy").?.object;
-        const mintable = policy.get("mintable").?.array;
-        const secrets_map = policy.get("secrets_map").?;
-        if (std.mem.eql(u8, fleet_id, cp.AGENTSFLEET_1_ID)) {
-            try std.testing.expectEqual(@as(usize, 0), mintable.items.len);
-            if (secrets_map == .object) try std.testing.expect(secrets_map.object.get(PROVIDER_GITHUB) == null);
-            try std.testing.expect(std.mem.indexOf(u8, body, "installation_id") == null);
-            checked_ungranted = true;
-        } else {
-            try std.testing.expectEqual(@as(usize, 1), mintable.items.len);
-            try std.testing.expectEqualStrings(PROVIDER_GITHUB, mintable.items[0].object.get("integration").?.string);
-            checked_granted = true;
-        }
-    }
-    try std.testing.expect(checked_ungranted);
-    try std.testing.expect(checked_granted);
+    // Only the GRANTED fleet has work, so the poll below is deterministic: the
+    // ungranted half is its own test now that an ungranted credential parks the
+    // event instead of yielding a lease — two eligible fleets would make
+    // which one the selector picks first decide the assertion.
+    const body = try leaseBodyAs(h, cp.RUNNER_A_TOKEN);
+    defer cp.ALLOC.free(body);
+    const parsed = try std.json.parseFromSlice(std.json.Value, cp.ALLOC, body, .{});
+    defer parsed.deinit();
+    const lease = try expectLease(parsed.value);
+    try std.testing.expectEqualStrings(cp.AGENTSFLEET_2_ID, lease.get("event").?.object.get("fleet_id").?.string);
+    const mintable = lease.get("policy").?.object.get("mintable").?.array;
+    try std.testing.expectEqual(@as(usize, 1), mintable.items.len);
+    try std.testing.expectEqualStrings(PROVIDER_GITHUB, mintable.items[0].object.get("integration").?.string);
+}
+
+test "integration: test_lease_parks_on_missing_grant" {
+    // Dimension 8.3. The credential resolves to a mintable handle, the fleet
+    // holds no approved grant, and the ONLY eligible event belongs to it.
+    //
+    // This once issued a lease with the mintable silently dropped from
+    // both surfaces: the runner took work it could never mint for, the run
+    // failed at the far end, and nothing recorded that a decision was owed.
+    // Now the event parks — no lease — and stays leasable, so an approval takes
+    // effect on the next poll with no redeploy.
+    crypto_primitives.setTestKek();
+    const h = try cp.startHarness(cp.ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cp.cleanupAll(h, conn);
+
+    try db_fixtures.seedTenant(conn);
+    try db_fixtures.seedWorkspace(conn, cp.WORKSPACE_ID);
+    try db_fixtures.seedPlatformProviderWithKey(cp.ALLOC, conn, cp.WORKSPACE_ID, "fw_park_key");
+    try cp.fundLargeBalance(conn);
+    try cp.seedRunner(conn, cp.RUNNER_A_ID, "runner-cp-a", cp.RUNNER_A_TOKEN);
+    try seedFleetWithConfig(conn, cp.AGENTSFLEET_1_ID, "cp-gate-ungranted", CONFIG_GITHUB_CRED);
+    try seedVaultJson(conn, PROVIDER_GITHUB, "{\"integration\":\"github\",\"installation_id\":\"42\"}");
+    try cp.publishFreshEvent(h, cp.AGENTSFLEET_1_ID);
+
+    const body = try leaseBodyAs(h, cp.RUNNER_A_TOKEN);
+    defer cp.ALLOC.free(body);
+    const parsed = try std.json.parseFromSlice(std.json.Value, cp.ALLOC, body, .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.value.object.get("lease").? == .null);
+
+    // Parked, not consumed: nothing leaked the handle config on the way out,
+    // and a second poll still finds the event rather than having dropped it.
+    try std.testing.expect(std.mem.indexOf(u8, body, "installation_id") == null);
+    const again = try leaseBodyAs(h, cp.RUNNER_A_TOKEN);
+    defer cp.ALLOC.free(again);
+    const reparsed = try std.json.parseFromSlice(std.json.Value, cp.ALLOC, again, .{});
+    defer reparsed.deinit();
+    try std.testing.expect(reparsed.value.object.get("lease").? == .null);
 }
 
 test "integration: test_static_secrets_unaffected_by_grant_gate" {

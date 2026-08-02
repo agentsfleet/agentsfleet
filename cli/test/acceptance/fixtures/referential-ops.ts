@@ -43,29 +43,19 @@
 
 import assert from "node:assert/strict";
 
-import { ERR_UNAUTHORIZED } from "../../../src/errors/auth.ts";
-import { composeEnv, runFleetctl } from "./cli.js";
 import type { RunResult } from "./cli.js";
-import { assertNoSecretLeak } from "./negatives.ts";
 import type { ProviderSnapshot } from "./tenant-provider-ops.ts";
 
-type Env = Readonly<Record<string, string>>;
-
 // --- command / flag / key wire literals (RULE UFS) -------------------------
-export const CMD_AGENT_KEY = "fleet-key" as const;
 export const SUB_CREATE = "create" as const;
 export const SUB_LIST = "list" as const;
 export const SUB_DELETE = "delete" as const;
-export const FLAG_AGENT = "--fleet" as const;
 export const FLAG_NAME = "--name" as const;
 export const FLAG_JSON = "--json" as const;
 
-export const KEY_AGENT_KEY_ID = "fleet_key_id" as const;
-export const KEY_SECRET = "key" as const;
 
 // Auth-credential env vars (mirror the names in `cli/src/services/config.ts`
-// and `cli/src/cli.ts`). The fleet key is injected as the API-key var — the
-// env slot that carries the bearer to the wire (winning over a stored login).
+// and `cli/src/cli.ts`).
 export const ENV_API_KEY = "AGENTSFLEET_API_KEY" as const;
 export const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
 export const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
@@ -75,20 +65,7 @@ export const NO_COLOR_ON = "1" as const;
 // The `agt_a…` prefix the runner issues to external fleet keys (per the
 // header comment in `cli/src/commands/fleet_key.ts` and the single-source pin
 // in `src/agentsfleetd/auth/api_key.zig`). Used only as a shape sanity-check
-// on the minted secret, never asserted to be exact.
-export const AGENT_KEY_SECRET_PREFIX = "agt_a" as const;
 
-// An `agt_a` fleet key sent as a control-plane bearer is REJECTED at the auth
-// boundary — the `bearer()` middleware answers 401 (no JWT / no `agt_t`), which
-// the CLI surfaces primarily as UZ-AUTH-002, with HTTP_401 / HTTP_403 stems or
-// wording tolerated as fallbacks. The same rejection holds after the key is
-// revoked. Anchored to auth-rejection forms only — a bare `invalid`/`expired`
-// would also match unrelated errors
-// ("invalid argument", "expired snapshot") and let a wrong-reason failure
-// pass as an auth rejection.
-const REJECTED_AUTH_PATTERN =
-  `${ERR_UNAUTHORIZED}|HTTP_401|HTTP_403|\\b401\\b|\\b403\\b|unauthor|forbidden`;
-export const REJECTED_AUTH_RE = new RegExp(REJECTED_AUTH_PATTERN, "i");
 
 // A secret delete refused for referential reasons surfaces as a conflict
 // (HTTP_409); the alternative is a clean cascade (exit 0). Dropped the bare
@@ -139,71 +116,4 @@ export async function assertSecretDeleteDisjunction(opts: {
   const refDropped = after.secret_ref !== secretName;
   assert.ok(danglingButFlagged || refDropped,
     `cascading secret delete left an unflagged dangling provider reference: ${JSON.stringify(after)}`);
-}
-
-export interface MintedFleetKey {
-  /** Stable id used to revoke the key and for teardown. */
-  readonly fleetKeyId: string;
-  /** The usable secret (`agt_a…`) shown once by the create response. */
-  readonly secret: string;
-}
-
-interface FleetKeyAddEnvelope {
-  readonly fleet_key_id?: unknown;
-  readonly key?: unknown;
-}
-
-/**
- * `fleet-key create --fleet <id> --name <name> --json` → both ids. Asserts a
- * clean exit and that the create response exposed a usable secret. Throws (rather
- * than returning a partial) so the caller never authenticates with `undefined`.
- */
-export async function mintFleetKey(
-  env: Env,
-  sessionJwt: string,
-  opts: { readonly fleetId: string; readonly name: string },
-): Promise<MintedFleetKey> {
-  const result = await runFleetctl(
-    [CMD_AGENT_KEY, SUB_CREATE, FLAG_AGENT, opts.fleetId, FLAG_NAME, opts.name, FLAG_JSON],
-    { env, stdin: "" },
-  );
-  assertNoSecretLeak(result, sessionJwt);
-  assert.equal(result.code, 0, `fleet-key create exited ${result.code}: ${result.stderr}`);
-  const parsed = JSON.parse(result.stdout.trim()) as FleetKeyAddEnvelope;
-  const fleetKeyId = parsed[KEY_AGENT_KEY_ID];
-  const secret = parsed[KEY_SECRET];
-  assert.equal(typeof fleetKeyId, "string", `create missing ${KEY_AGENT_KEY_ID}: ${result.stdout}`);
-  assert.equal(typeof secret, "string", `create missing usable ${KEY_SECRET} secret: ${result.stdout}`);
-  assert.ok((secret as string).length > 0, `create returned an empty ${KEY_SECRET} secret: ${result.stdout}`);
-  return { fleetKeyId: fleetKeyId as string, secret: secret as string };
-}
-
-/**
- * Perform one CLI read with the fleet key as the bearer. Reuses the JWT
- * identity's hydrated state dir (so the workspace context already exists on
- * disk) and swaps ONLY the token. Returns the raw run result; the caller
- * asserts the outcome (an `agt_a` key is rejected on control-plane reads —
- * see this file's header — so the caller asserts rejection, not success).
- */
-export async function readWithFleetKey(
-  baseEnv: Env,
-  fleetKeySecret: string,
-  args: ReadonlyArray<string>,
-): Promise<RunResult> {
-  const keyEnv = composeEnv({
-    [ENV_API_KEY]: fleetKeySecret,
-    [ENV_API_URL]: baseEnv[ENV_API_URL],
-    [ENV_STATE_DIR]: baseEnv[ENV_STATE_DIR],
-    [ENV_NO_COLOR]: NO_COLOR_ON,
-  });
-  const result = await runFleetctl([...args, FLAG_JSON], { env: keyEnv, stdin: "" });
-  // The bearer here IS the fleet key, not the JWT — but the key must never
-  // echo into stderr/stdout in plaintext.
-  assertNoSecretLeak(result, fleetKeySecret);
-  return result;
-}
-
-/** `fleet-key delete <id> --json` — best-effort revoke (teardown + the test). */
-export async function revokeFleetKey(env: Env, fleetKeyId: string): Promise<RunResult> {
-  return runFleetctl([CMD_AGENT_KEY, SUB_DELETE, fleetKeyId, FLAG_JSON], { env, stdin: "" });
 }
