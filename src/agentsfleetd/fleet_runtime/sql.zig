@@ -21,13 +21,41 @@ pub const SELECT_TIMED_OUT_GATES =
 /// The trailing `status = $6` is the race guard: only a gate still in the
 /// expected state transitions, so two resolvers cannot both succeed and a
 /// timeout cannot overwrite a human decision that landed first.
+/// Resolve a gate and, when it is an integration-grant gate, move the standing
+/// grant in the SAME statement.
+///
+/// The grant arm rides here rather than following as a second statement for the
+/// reason the lifetime tally rides the lease status flip: a standing
+/// authorization that can outlive its decision by a failed follow-up write is a
+/// grant nobody approved. One statement, one commit, no drift.
+///
+/// `$8` is the gate's approved verdict — compared against the NEW status, so the
+/// arm fires only on approval. Anything else (denied, timed out, auto-killed)
+/// drives the grant to `$10` rather than leaving it `pending`, which nothing
+/// would ever re-raise. `$11` selects the kind; gates of any other kind leave
+/// `core.integration_grants` untouched because no row matches.
 pub const RESOLVE_GATE =
-    \\UPDATE core.fleet_approval_gates
-    \\SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
-    \\WHERE action_id = $5 AND status = $6
-    \\  AND ($7::text = '' OR fleet_id::text = $7)
-    \\RETURNING id::text, action_id, workspace_id::text, fleet_id::text,
-    \\          status, COALESCE(updated_at, $4::bigint), resolved_by, detail
+    \\WITH resolved AS (
+    \\  UPDATE core.fleet_approval_gates
+    \\  SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
+    \\  WHERE action_id = $5 AND status = $6
+    \\    AND ($7::text = '' OR fleet_id::text = $7)
+    \\  RETURNING id, action_id, workspace_id, fleet_id, status,
+    \\            updated_at, resolved_by, detail, gate_kind, evidence
+    \\), granted AS (
+    \\  UPDATE core.integration_grants g
+    \\  SET status      = CASE WHEN r.status = $8 THEN $9 ELSE $10 END,
+    \\      approved_at = CASE WHEN r.status = $8 THEN $4 END,
+    \\      revoked_at  = CASE WHEN r.status = $8 THEN NULL ELSE $4 END
+    \\  FROM resolved r
+    \\  WHERE g.fleet_id = r.fleet_id
+    \\    AND g.service  = r.evidence->>'service'
+    \\    AND r.gate_kind = $11
+    \\  RETURNING g.id
+    \\)
+    \\SELECT id::text, action_id, workspace_id::text, fleet_id::text,
+    \\       status, COALESCE(updated_at, $4::bigint), resolved_by, detail
+    \\FROM resolved
 ;
 
 /// The current gate for an action — newest wins, since an action may be gated
