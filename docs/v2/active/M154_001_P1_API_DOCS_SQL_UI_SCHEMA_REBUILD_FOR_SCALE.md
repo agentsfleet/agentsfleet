@@ -362,6 +362,26 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 
   > Indy (2026-08-02): "Yes continue, but i want the above decision not ina . new spec but in this PR you are on (agentsfleet-m154-schema-rebuild worktree)" — §8 is folded into this spec and this Pull Request rather than authored as M154_003 or M155.
 
+  > Indy (2026-08-02): "I need 80% coverage the gate must be updated" — settles the
+  > basis question: `ZIG_COVERAGE_MIN_LINES` moves to 80. Recorded here because the
+  > measurement changes with it — today's 62.20% counts `_test.zig` sources as
+  > covered code (22,994 of 51,246 measured lines, themselves 70.6% covered), which
+  > is what carries the number over its own 60% gate. Production-only is 55.42%.
+  > The gate therefore moves to 80% of a corrected basis (test sources excluded,
+  > integration lane merged), not 80% of a figure that rises when test files are
+  > added.
+
+- **Coverage loss (recorded, not deferred)** — `list_aggregate_integration_test`
+  seeded a `billing.usage_ledger` row under a non-identifier fleet id to prove the
+  fleet-list aggregate ignored orphan rows. The rebuild makes that unreachable
+  twice: `usage_ledger.fleet_id` is UUID, so the driver refuses to encode a
+  non-identifier, and `usage_ledger_fleet_id_fkey` references `fleets(id)`, so a
+  well-formed id naming no fleet is refused too. The arm is removed with a comment
+  saying why it cannot return. The invariant is not lost — it moved out of the
+  aggregate query and into the schema, where it is enforced for every writer
+  rather than probed by one test. Same treatment as the settle-failure tests
+  dropped earlier in this milestone when their fault seam went away.
+
 - **Upstream landing mid-authoring (M149, PR #584)** — the audit behind this spec ran against a tree eleven commits stale. M149 landed before CHORE(open) and invalidated three claims, all corrected above rather than carried: (a) *"nothing is ever pruned"* is false — a thirty-day retention sweep over runner leases and runner events now ships, with a comptime proof it cannot reach live work; it is preserved verbatim and this milestone adds no retention anywhere else. (b) The slot count is forty-five, of which fourteen — not eleven — are patch-only. (c) `schema/043_runner_lifetime_counters.sql` independently reached §2's conclusion for one table and recorded the *correctness* reason this spec had only argued on cost: a second unique key breaks concurrent first-touch upserts, because `ON CONFLICT` can arbitrate only one constraint. §2 now generalises an upstream decision instead of overriding a convention alone.
 
   **Premise corrections made during authoring** (recorded so a pickup agent does not re-derive them):
