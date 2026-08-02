@@ -165,9 +165,9 @@ pub const INSERT_RUNNER_EVENT =
 /// writes one row, so a retrying producer cannot double-run a fleet.
 pub const INSERT_FLEET_EVENT =
     \\INSERT INTO core.fleet_events
-    \\  (id, fleet_id, event_id, workspace_id, actor, event_type,
+    \\  (fleet_id, event_id, workspace_id, actor, event_type,
     \\   status, request_json, resumes_event_id, created_at, updated_at)
-    \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $10, $7::jsonb, $8, $9, $9)
+    \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, $9, $6::jsonb, $7, $8, $8)
     \\ON CONFLICT (fleet_id, event_id) DO NOTHING
 ;
 

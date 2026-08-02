@@ -209,10 +209,9 @@ const EventSeed = struct {
 fn seedFleetEvent(conn: anytype, seed: EventSeed) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, wall_ms, failure_label, failure_detail, created_at, updated_at)
-        \\VALUES (overlay(md5($1 || $2)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\        $1::uuid, $2, $3::uuid, 'system', 'chat', $4, '{}'::jsonb, $5, $6, $7, 0, 0)
+        \\VALUES ($1::uuid, $2, $3::uuid, 'system', 'chat', $4, '{}'::jsonb, $5, $6, $7, 0, 0)
         \\ON CONFLICT (fleet_id, event_id) DO NOTHING
     , .{ seed.fleet_id, seed.event_id, WS, seed.status, seed.wall_ms, seed.failure_label, seed.failure_detail });
 }

@@ -61,15 +61,13 @@ fn seedBase(conn: *pg.Conn, now_ms: i64) !void {
 }
 
 fn insertEvent(conn: *pg.Conn, event_id: []const u8, ts: i64) !void {
-    const uid_value = try id_format.generateUuidV7();
-    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'cron:x', 'cron', 'processed',
-        \\        '{"m":"t"}'::jsonb, $5, $5)
-    , .{ row_id, COST_FLEET, event_id, TEST_WORKSPACE_ID, ts });
+        \\VALUES ($1::uuid, $2, $3::uuid, 'cron:x', 'cron', 'processed',
+        \\        '{"m":"t"}'::jsonb, $4, $4)
+    , .{ COST_FLEET, event_id, TEST_WORKSPACE_ID, ts });
 }
 
 fn insertLedgerCharge(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, charge_type: []const u8, nanos: i64, ts: i64) !void {

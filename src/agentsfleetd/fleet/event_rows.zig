@@ -18,7 +18,6 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
-const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const contract = @import("contract");
 const logging = @import("log");
@@ -78,8 +77,6 @@ pub fn insertReceivedRow(
     const conn = try pool.acquire();
     defer pool.release(conn);
     const now_ms = clock.nowMillis();
-    const uid_value = try id_format.generateUuidV7();
-    const row_id: []const u8 = &uid_value;
 
     // Continuation events carry parent event_id in request_json's
     // `original_event_id` (§7); lift onto resumes_event_id for index walks.
@@ -94,7 +91,6 @@ pub fn insertReceivedRow(
     };
 
     const affected = try conn.exec(sql.INSERT_FLEET_EVENT, .{
-        row_id,
         session.fleet_id,
         event.event_id,
         session.workspace_id,

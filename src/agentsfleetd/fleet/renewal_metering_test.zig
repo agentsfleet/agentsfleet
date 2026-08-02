@@ -17,6 +17,7 @@ const renewal_settle = @import("renewal_settle.zig");
 const affinity = @import("affinity.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
+const ChargeType = @import("../state/fleet_telemetry_store.zig").ChargeType;
 const auth_mw = @import("../auth/middleware/mod.zig");
 const ONE_MILLION = 1_000_000;
 const TEST_TOKEN_COUNT = 1000;
@@ -162,15 +163,26 @@ fn expectLeaseStatus(conn: *pg.Conn, want: []const u8) !void {
     try std.testing.expectEqualStrings(want, try row.get([]const u8, 0));
 }
 
-const StageRow = struct { charged: i64, t_in: ?i64, t_out: ?i64, wall: ?i64, slices: i64 };
+/// `created_at` / `last_charged_at` replace the per-slice row count the retired
+/// `fleet.metering_periods` supplied. The stage row accumulates in place, so
+/// how many writes folded into it is no longer observable — but WHEN the first
+/// and last landed is, and that is the window the budget drain apportions over.
+const StageRow = struct {
+    charged: i64,
+    t_in: ?i64,
+    t_out: ?i64,
+    wall: ?i64,
+    created_at: i64,
+    last_charged_at: i64,
+};
 
 fn readStage(conn: *pg.Conn) !?StageRow {
     var q = PgQuery.from(try conn.query(
         \\SELECT t.credit_deducted_nanos, t.token_count_input, t.token_count_output, t.wall_ms,
-        \\       (SELECT count(*) FROM fleet.metering_periods mp WHERE mp.event_id = t.event_id)::bigint
+        \\       t.created_at, t.last_charged_at
         \\FROM billing.usage_ledger t
-        \\WHERE t.event_id = $1 AND t.charge_type = 'stage'
-    , .{EVENT_ID}));
+        \\WHERE t.event_id = $1 AND t.charge_type = $2
+    , .{ EVENT_ID, ChargeType.stage.label() }));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     return StageRow{
@@ -178,7 +190,8 @@ fn readStage(conn: *pg.Conn) !?StageRow {
         .t_in = try row.get(?i64, 1),
         .t_out = try row.get(?i64, 2),
         .wall = try row.get(?i64, 3),
-        .slices = try row.get(i64, 4),
+        .created_at = try row.get(i64, 4),
+        .last_charged_at = try row.get(i64, 5),
     };
 }
 
@@ -199,7 +212,9 @@ test "renew charges run fee + token delta == sliceCharge (SQL==Zig pin)" {
     try std.testing.expectEqual(BIG_BALANCE - expected, try readBalance(s.conn));
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
     try std.testing.expectEqual(expected, stage.charged);
-    try std.testing.expectEqual(@as(i64, 1), stage.slices);
+    // One renewal: the row was created and last written by the same call.
+    try std.testing.expectEqual(NOW_MS, stage.created_at);
+    try std.testing.expectEqual(NOW_MS, stage.last_charged_at);
     try std.testing.expectEqual(@as(?i64, TEST_TOKEN_COUNT), stage.t_in);
     try std.testing.expectEqual(@as(?i64, 800), stage.t_out);
 }
@@ -222,7 +237,12 @@ test "renews + settle sum to the real total (ms-precision, non-second-aligned)" 
     try std.testing.expectEqual(BIG_BALANCE - total, try readBalance(s.conn));
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
     try std.testing.expectEqual(total, stage.charged);
-    try std.testing.expectEqual(@as(i64, 3), stage.slices); // 2 renews + 1 settle
+    // The span the three writes left: born at the first renewal, last touched
+    // by the settle. `t2` is inside it and deliberately not observable — that
+    // is what accumulating in place costs, and the endpoints are what the
+    // budget apportionment actually reads.
+    try std.testing.expectEqual(t1, stage.created_at);
+    try std.testing.expectEqual(t3, stage.last_charged_at);
     try std.testing.expectEqual(@as(?i64, TEST_TOKEN_COUNT), stage.t_in);
     try std.testing.expectEqual(@as(?i64, 800), stage.t_out);
 }
@@ -287,7 +307,9 @@ test "claim+settle on a never-renewed run flips reported + charges the whole sli
     try std.testing.expectEqual(BIG_BALANCE - expected, try readBalance(s.conn));
     try expectLeaseStatus(s.conn, "reported");
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
-    try std.testing.expectEqual(@as(i64, 1), stage.slices); // the settle row only
+    // Never renewed, so the settle both created the row and last wrote it.
+    try std.testing.expectEqual(NOW_MS, stage.created_at);
+    try std.testing.expectEqual(NOW_MS, stage.last_charged_at);
     try std.testing.expectEqual(expected, stage.charged);
 }
 

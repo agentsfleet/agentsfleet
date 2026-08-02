@@ -371,15 +371,13 @@ test "integration: fleets list — projects events_processed and budget_used_nan
 
     // 3 events → events_processed = 3.
     for (0..3) |i| {
-        const row_id = try id_format.generateFleetId(alloc);
-        defer alloc.free(row_id);
         const event_id = try std.fmt.allocPrint(alloc, "evt-agg-{d}", .{i});
         defer alloc.free(event_id);
         _ = try conn.exec(
             \\INSERT INTO core.fleet_events
-            \\  (id, fleet_id, event_id, workspace_id, actor, event_type, status, request_json, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'webhook:test', 'webhook', 'done', '{}'::jsonb, $5, $5)
-        , .{ row_id, zid, event_id, TEST_WORKSPACE_ID, now_ms });
+            \\  (fleet_id, event_id, workspace_id, actor, event_type, status, request_json, created_at, updated_at)
+            \\VALUES ($1::uuid, $2, $3::uuid, 'webhook:test', 'webhook', 'done', '{}'::jsonb, $4, $4)
+        , .{ zid, event_id, TEST_WORKSPACE_ID, now_ms });
     }
 
     // 2 ledger rows → budget_used_nanos = 1_000_000 + 2_000_000 = 3_000_000.

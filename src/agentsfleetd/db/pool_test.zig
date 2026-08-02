@@ -363,7 +363,10 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    const schema_checks = [_][]const u8{ "core", "fleet", "billing", "vault", "audit", "ops_ro" };
+    // `ops_ro` is not in this list: slot 100 deliberately stopped creating it —
+    // the read-only operator principals are ROLES with grants, not a schema of
+    // their own. `memory` is, and owns `memory.memory_entries`.
+    const schema_checks = [_][]const u8{ "core", "fleet", "billing", "vault", "audit", "memory" };
     inline for (schema_checks) |schema_name| {
         var schema_q = PgQuery.from(try db_ctx.conn.query(
             "SELECT 1 FROM information_schema.schemata WHERE schema_name = $1",

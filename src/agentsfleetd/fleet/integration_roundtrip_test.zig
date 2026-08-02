@@ -38,7 +38,6 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd011";
 const RUNNER_A_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dda01";
 const RUNNER_B_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddb01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddc01";
-const METERING_COLLISION_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd0f1";
 const FENCED_ERROR_CODE = "UZ-RUN-005";
 
 const RUNNER_A_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "f" ** 64;
@@ -203,31 +202,6 @@ fn leaseExpiresAtOf(conn: *pg.Conn, lease_id: []const u8) !i64 {
     return row.get(i64, 0);
 }
 
-/// The slice ordinal the next settle will claim. `claimAndSettle` writes its
-/// final slice at `meter_slice_seq + 1`, so this is what a collision must target.
-fn nextMeterSliceSeq(conn: *pg.Conn) !i64 {
-    var q = PgQuery.from(try conn.query(
-        "SELECT meter_slice_seq FROM fleet.runner_affinity WHERE fleet_id = $1::uuid",
-        .{FLEET_ID},
-    ));
-    defer q.deinit();
-    const row = try q.next() orelse return error.AffinityRowMissing;
-    return try row.get(i64, 0) + 1;
-}
-
-/// Occupy the slot the settle INSERT is about to take. `metering_periods` has
-/// no ON CONFLICT clause, so the unique (event_id, slice_seq) key turns the
-/// whole claim+settle statement into a database error — a real failure at the
-/// settlement step, with no fault-injection seam in production code.
-fn blockNextSettleSlice(conn: *pg.Conn, event_id: []const u8, slice_seq: i64) !void {
-    _ = try conn.exec(
-        \\INSERT INTO fleet.metering_periods
-        \\  (id, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-        \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-        \\VALUES ($1::uuid, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0)
-    , .{ METERING_COLLISION_UID, event_id, slice_seq });
-}
-
 fn completionCaptureCount() u32 {
     return telemetry.TestBackend.globalCount(.fleet_completed);
 }
@@ -245,7 +219,6 @@ fn forgetFleet(h: *TestHarness, fleet_id: []const u8) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     forgetFleet(h, FLEET_ID);
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE row_id = $1::uuid", .{METERING_COLLISION_UID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });
@@ -504,12 +477,14 @@ test "integration: test_unaccepted_report_never_captures_completion" {
     try std.testing.expect(unknown.status != 200);
     try std.testing.expectEqual(@as(u32, 0), completionCaptureCount());
 
-    // 4. Database failure at settlement — the slice this settle would write is
-    //    already taken, so claim+settle raises and the report answers 500.
-    const seq = try nextMeterSliceSeq(conn);
-    try blockNextSettleSlice(conn, lv.event_id.?, seq);
-    const db_failed = try reportAs(h, RUNNER_B_TOKEN, lv.lease_id.?, lv.event_id.?, lv.fencing_token);
-    defer db_failed.deinit();
-    try std.testing.expect(db_failed.status >= 500);
-    try std.testing.expectEqual(@as(u32, 0), completionCaptureCount());
+    // A fourth arm — "the settle's own database write fails" — stood here. It
+    // provoked the failure by occupying the (event_id, slice_seq) slot the
+    // settle was about to take, which raised only because `metering_periods`
+    // carried no ON CONFLICT clause. That table is gone and all three writes
+    // that replaced it arbitrate their own conflicts (the ledger on
+    // (event_id, charge_type), the counters on their primary key, the runner
+    // events on a partial unique index), so there is no longer a database error
+    // to provoke without a fault-injection seam in production code — which the
+    // settle path deliberately does not have. The arm was dropped rather than
+    // faked; the fail-closed path keeps its unit coverage.
 }
