@@ -146,16 +146,16 @@ the external fleet-key route. An internally-installed fleet could never obtain
 one — the App ingress query inner-joins on `status='approved'`, so no event was
 ever written and the fleet was silently inert. Origination moved to install.
 
-## Open decisions — BLOCKING CHORE(close)
+## Open decisions
 
-1. **`list_aggregate` coverage loss needs an Indy-acked verbatim quote.** Its
-   orphan-ledger-row arm seeded a charge under a non-identifier to prove the
-   aggregate ignored it. `usage_ledger.fleet_id` is now UUID with an FK to
-   `fleets(id)`, so the driver refuses the value and the key would refuse a
-   well-formed stranger. Removed with a comment; the invariant moved into the
-   schema. **Asked twice, not yet answered.**
-2. **`fleetFromSession`** — the last audit finding. Indy has the full analysis
-   and approved deleting it as part of §8's deletion set, which is not done yet.
+**None blocking.** Both former questions are settled:
+
+1. **`list_aggregate` coverage loss** — RESOLVED as a recording, not an approval.
+   It is a coverage loss, not a deferred spec Dimension, so the rule wants it in
+   Session Notes rather than acked. Recorded in the spec's Discovery log. Do not
+   re-ask.
+2. **`fleetFromSession`** — Indy approved deleting it as part of §8's deletion
+   set. It is the auditor's one remaining finding and goes when 8.4 lands.
 
 ## Remaining work
 
@@ -167,13 +167,24 @@ ever written and the fleet was silently inert. Origination moved to install.
    off the list row — that is what §7.1 removes, so it must move to fetch-on-open.
    Spec interface: `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}`,
    404 for unknown OR cross-workspace (indistinguishable).
-3. **Coverage → 80%.** Baseline `make test-coverage-zig` = **62.20%**, gate is 60
-   (`ZIG_COVERAGE_MIN_LINES` in `make/test.mk:29`). **Fix the measurement first**:
-   22,994 of 51,246 measured lines are `_test.zig` files, covered at 70.6%, which
-   is what carries the number over its own gate. Production-only is **55.42%**.
-   The coverage lane also runs only unit binaries, so integration-tested handlers
-   read as 0%. Exclude test sources and merge the integration lane before writing
-   a single test, or you will be chasing an artifact.
+3. **Coverage → 80%, gate updated.** Indy decided: `ZIG_COVERAGE_MIN_LINES`
+   (`make/test.mk:29`) moves 60 → 80. **Fix the basis first, in this order:**
+   1. Exclude `_test.zig` sources from the kcov denominator. They are 22,994 of
+      51,246 measured lines and are themselves 70.6% covered — that is what lifts
+      the merged figure to 62.20% and over its own 60% gate. Production-only is
+      **55.42%**. Without this, "80%" is reachable by adding test files.
+   2. Merge the integration lane into the coverage run. `test-coverage-zig` runs
+      only unit binaries, so integration-tested handlers read as 0% —
+      `ingress/github.zig` shows 24.7% despite documented real-datastore coverage.
+      kcov over the integration binary works; the recipe is the direct-run block
+      at the top of this file plus `kcov --clean --include-pattern="$PWD/src"`.
+   3. THEN rank by uncovered lines and write tests. Worst production files at
+      last measure: `handlers/schedules/api.zig` (169, 0%), `cron/Store.zig`
+      (169, 0%), `route_table_invoke.zig` (135), `auth/sessions.zig` (139, 5%),
+      `cron/Service.zig` (130, 0%), `handlers/tenant_provider.zig` (125, 0%),
+      `fleet/service_report.zig` (122, 0%).
+   4. Raise the gate to 80 in the SAME commit as the tests that clear it, so the
+      gate and reality move together.
 4. **Index review** — Indy's procedure: `make down` FIRST, fresh up + migrate so
    EXPLAIN reads a cold stack. Seed 10 runners / 100 fleets. An index that buys
    no sort or scan improvement gets DROPPED with the plan as evidence. First
