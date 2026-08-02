@@ -21,6 +21,12 @@ const Sha256 = std.crypto.hash.sha2.Sha256;
 /// Versioned tag on the fenced block a run's final report carries.
 pub const BLOCK_KIND = "repair_proposal/1";
 
+const FENCE = "```";
+/// The exact opening a run's prompt tells it to emit. Kept as one constant so
+/// the reasoning prompt in `library/incident-responder/SKILL.md` and this
+/// parser can never drift into agreeing on different spellings.
+pub const BLOCK_FENCE_OPEN = FENCE ++ "json " ++ BLOCK_KIND;
+
 /// A proposal is meant to be a small, reviewable fix. Anything past these caps
 /// is a design change a human should author, so the report path degrades it to
 /// diagnosis-only rather than parking an unreviewable diff for approval.
@@ -108,6 +114,44 @@ pub const Refusal = enum {
         };
     }
 };
+
+pub const ExtractError = error{
+    /// A report may carry at most one proposal. Two is not a choice for the
+    /// daemon to make on a human's behalf.
+    MultipleBlocks,
+    UnterminatedBlock,
+};
+
+/// Find the proposal block in a run's final report, or null when there is none
+/// — the common case, since most runs end at a diagnosis. The returned slice
+/// borrows from `report_body`; `parse` copies, so it need not outlive it.
+///
+/// Only a fence at the start of a line opens a block, so a report quoting the
+/// marker mid-sentence cannot smuggle one in.
+pub fn extractBlock(report_body: []const u8) ExtractError!?[]const u8 {
+    // discipline: ok — returns a borrowed view into `report_body`, not owned
+    // memory, so neither ownership phrase applies. Same shape as `branchName`
+    // below and `queue/constants.zig`'s stream-key formatter.
+    const open_at = lineStartIndexOf(report_body, BLOCK_FENCE_OPEN, 0) orelse return null;
+    const body_at = (std.mem.indexOfScalarPos(u8, report_body, open_at, '\n') orelse
+        return error.UnterminatedBlock) + 1;
+    const close_at = lineStartIndexOf(report_body, FENCE, body_at) orelse
+        return error.UnterminatedBlock;
+    if (lineStartIndexOf(report_body, BLOCK_FENCE_OPEN, close_at) != null) {
+        return error.MultipleBlocks;
+    }
+    return report_body[body_at..close_at];
+}
+
+/// `std.mem.indexOfPos`, restricted to matches that begin a line.
+fn lineStartIndexOf(haystack: []const u8, needle: []const u8, from: usize) ?usize {
+    var at = from;
+    while (std.mem.indexOfPos(u8, haystack, at, needle)) |found| {
+        if (found == 0 or haystack[found - 1] == '\n') return found;
+        at = found + 1;
+    }
+    return null;
+}
 
 /// Parse, validate, and canonicalize a proposal block. Caller frees via
 /// `.deinit()`. Any error means the run stays diagnosis-only: no stored

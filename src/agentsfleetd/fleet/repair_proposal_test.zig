@@ -8,10 +8,13 @@
 //! that is not a proposal, refused by name.
 
 const std = @import("std");
+const common = @import("common");
 const repair_proposal = @import("repair_proposal.zig");
 const ec = @import("../errors/error_registry.zig");
 
 const testing = std.testing;
+
+const SKILL_MAX_BYTES = 64 * 1024;
 
 const VALID_SHA = "0123456789abcdef0123456789abcdef01234567";
 const OTHER_SHA = "fedcba9876543210fedcba9876543210fedcba98";
@@ -198,4 +201,80 @@ test "test_branch_name_is_derived_from_proposal_id" {
 test "test_proposal_block_kind_is_pinned" {
     // pin test: literal is the contract
     try testing.expectEqualStrings("repair_proposal/1", repair_proposal.BLOCK_KIND);
+}
+
+test "test_bundle_prompt_teaches_the_same_block_fence" {
+    // The parser and the reasoning prompt are two surfaces naming one wire
+    // format. If a rename touched only the code, every run would keep emitting
+    // the old fence and every proposal would silently vanish into
+    // diagnosis-only — a failure with no error anywhere. This is the check
+    // that makes that rename loud.
+    const alloc = testing.allocator;
+    // Read with `try`, never a skip: a missing prompt file is exactly the
+    // drift this pin exists to catch, and a skip would report it as success.
+    const skill = try std.Io.Dir.cwd().readFileAlloc(
+        common.globalIo(),
+        "library/incident-responder/SKILL.md",
+        alloc,
+        .limited(SKILL_MAX_BYTES),
+    );
+    defer alloc.free(skill);
+    try testing.expect(std.mem.indexOf(u8, skill, repair_proposal.BLOCK_FENCE_OPEN) != null);
+}
+
+test "test_extract_block_finds_exactly_one_proposal" {
+    const block =
+        \\Diagnosis: the checkout service started returning 500s after the deploy.
+        \\
+        \\```json repair_proposal/1
+        \\{"repo":"agentsfleet/agentsfleet"}
+        \\```
+        \\
+        \\Nothing else to report.
+    ;
+    const found = (try repair_proposal.extractBlock(block)).?;
+    try testing.expectEqualStrings("{\"repo\":\"agentsfleet/agentsfleet\"}\n", found);
+
+    // Most runs end at a diagnosis and carry no block at all.
+    try testing.expect(try repair_proposal.extractBlock("Just a diagnosis.\n") == null);
+
+    // A report that only talks about the fence does not carry one: an opening
+    // has to begin a line.
+    const quoted = "The run should emit a ```json repair_proposal/1 block.\n";
+    try testing.expect(try repair_proposal.extractBlock(quoted) == null);
+
+    // Two blocks is not a choice the daemon makes on a human's behalf.
+    const twice =
+        \\```json repair_proposal/1
+        \\{"repo":"a/b"}
+        \\```
+        \\```json repair_proposal/1
+        \\{"repo":"c/d"}
+        \\```
+    ;
+    try testing.expectError(error.MultipleBlocks, repair_proposal.extractBlock(twice));
+
+    const unterminated =
+        \\```json repair_proposal/1
+        \\{"repo":"a/b"}
+    ;
+    try testing.expectError(error.UnterminatedBlock, repair_proposal.extractBlock(unterminated));
+}
+
+test "test_extracted_block_parses" {
+    // The two halves compose: what extraction returns is what parse accepts.
+    const alloc = testing.allocator;
+    const raw = try render(alloc, .{});
+    defer alloc.free(raw);
+    const report = try std.fmt.allocPrint(
+        alloc,
+        "Diagnosis first.\n\n{s}\n{s}\n```\n",
+        .{ repair_proposal.BLOCK_FENCE_OPEN, raw },
+    );
+    defer alloc.free(report);
+
+    const block = (try repair_proposal.extractBlock(report)).?;
+    const parsed = try repair_proposal.parse(alloc, block);
+    defer parsed.deinit();
+    try testing.expectEqualStrings(VALID_SHA, parsed.value.base_sha);
 }
