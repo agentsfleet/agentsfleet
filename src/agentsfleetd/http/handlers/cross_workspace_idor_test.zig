@@ -618,7 +618,7 @@ test "no-content: DELETE integration-grant returns 204 with empty body" {
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
         \\  (id, fleet_id, service, status, created_at, requested_reason)
-        \\VALUES ($1::uuid, $1, $2::uuid, 'slack', 'pending', 0, 'm26 test')
+        \\VALUES ($1::uuid, $2::uuid, 'slack', 'pending', 0, 'm26 test')
         \\ON CONFLICT (id) DO NOTHING
     , .{ grant_id, fleet_for_grant });
     srv.pool.release(conn);

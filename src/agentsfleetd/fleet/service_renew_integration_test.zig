@@ -36,6 +36,15 @@ const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8a01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8f01";
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
+const PRICED_MODEL_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8d01";
+const LEASE_PROVIDER = "test-provider";
+const LEASE_MODEL = "test-model";
+/// Any positive rate refuses a zero balance; this one keeps the slice well
+/// clear of integer-rounding to zero at the token counts reported below.
+const PRICE_NANOS_PER_MTOK: i64 = 1_000_000_000;
+/// Reported cumulative usage. The renewal charges the DELTA against the
+/// affinity cursors (seeded at zero), so these are the whole slice.
+const RENEW_BODY = "{\"input_tokens\":500000,\"cached_input_tokens\":0,\"output_tokens\":500000}";
 
 // The real DB-backed runner lookup, parked at module scope so the value outlives
 // the middleware chain (tests run sequentially in one process).
@@ -59,6 +68,24 @@ fn seedRunner(conn: *pg.Conn) !void {
 }
 
 fn seedActiveLease(conn: *pg.Conn, lease_expires_at: i64) !void {
+    // The affinity slot the renewal probe INNER JOINs on, and where the metering
+    // cursors now live. Without it the probe matches no row, so the renewal
+    // reports `lost` (UZ-RUN-011) and never reaches the credit gate this test is
+    // about. `fencing_seq` matches the lease's token so the fence holds.
+    //
+    // The lease's `created_at` is NOW, not 0: the renewal guard caps a run at
+    // `created_at + MAX_RUNTIME_MS`, so an epoch-zero lease is already past its
+    // hard cap and is refused with UZ-RUN-010 before the credit gate is reached.
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_affinity
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 1, $3, 0, 0, 0, 0, 0, 0)
+        \\ON CONFLICT (fleet_id) DO UPDATE
+        \\  SET fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
+    , .{ FLEET_ID, RUNNER_ID, lease_expires_at });
+
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
@@ -67,9 +94,9 @@ fn seedActiveLease(conn: *pg.Conn, lease_expires_at: i64) !void {
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-renew-credit-1',
         \\        'steer:test', 'chat', 0, 'platform',
-        \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, $6, 'active', 0, 0)
+        \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, $6, 'active', $7, $7)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, lease_expires_at });
+    , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, lease_expires_at, clock.nowMillis() });
 }
 
 // Seed a PRESENT billing row at zero balance: balanceCoversEstimate reads a real
@@ -90,12 +117,32 @@ fn leaseExpiresAtOf(conn: *pg.Conn) !i64 {
     return row.get(i64, 0);
 }
 
+/// Price the lease's (provider, model) so a renewal slice costs something.
+///
+/// Migrations install NO catalogue — those rows exist only after the seed test
+/// applies `seed.sql`, so reading them here would make a billing invariant
+/// depend on suite ordering. The fixture therefore seeds its own row, the same
+/// shape `model_catalogue_revision_integration_test` uses. Without it the slice
+/// prices at zero, a zero balance trivially "covers" it, and the renewal the
+/// credit gate is supposed to refuse succeeds with 200.
+fn seedPricedModel(conn: *pg.Conn) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.model_library
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, 128000, $4, 0, $4, 0, 0)
+        \\ON CONFLICT (provider, model_id) DO UPDATE SET
+        \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
+        \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok
+    , .{ PRICED_MODEL_ID, LEASE_MODEL, LEASE_PROVIDER, PRICE_NANOS_PER_MTOK });
+}
+
 fn renewLease(h: *TestHarness) !harness_mod.Response {
     const path = try std.fmt.allocPrint(ALLOC, "{s}/{s}/{s}", .{
         protocol.PATH_RUNNER_LEASES, LEASE_ID, protocol.RUNNER_LEASE_RENEW_SUFFIX,
     });
     defer ALLOC.free(path);
-    const req = try (try h.post(path).bearer(RUNNER_TOKEN)).json("{}");
+    const req = try (try h.post(path).bearer(RUNNER_TOKEN)).json(RENEW_BODY);
     return req.send();
 }
 
@@ -107,6 +154,10 @@ fn teardown(conn: *pg.Conn) void {
     base.teardownTenant(conn);
     base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
+    // Last: the ledger rows referencing this catalogue row are gone with the
+    // tenant above, so the delete-guard foreign key no longer restricts it.
+    _ = conn.exec("DELETE FROM core.model_library WHERE id = $1::uuid", .{PRICED_MODEL_ID}) catch |err|
+        std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadline left untouched" {
@@ -125,6 +176,7 @@ test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadlin
     defer h.releaseConn(conn);
 
     teardown(conn);
+    try seedPricedModel(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "service-renew-fleet", "{}", "# z");

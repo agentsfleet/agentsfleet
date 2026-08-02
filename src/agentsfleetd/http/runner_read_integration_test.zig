@@ -158,6 +158,16 @@ const WriteLease = struct {
 /// `service_lease_row.insertLeaseRow` uses — lease row, audit event, and the
 /// acquired tally land atomically.
 fn acquireLeaseViaWritePath(conn: anytype, w: WriteLease) !void {
+    // The event row the lease names. INSERT_LEASE_WITH_EVENT writes the lease,
+    // its runner-audit row and the acquired tally, but not core.fleet_events —
+    // and reclaim reads the body through an INNER JOIN on (fleet_id, event_id),
+    // so without this the expire arm reclaims nothing.
+    try seedFleetEvent(conn, .{
+        .fleet_id = FLEET_A,
+        .event_id = w.event_id,
+        .status = event_rows.STATUS_RECEIVED,
+    });
+
     const audit_uid = try id_format.generateUuidV7();
     const audit_id: []const u8 = &audit_uid;
     _ = try conn.exec(fleet_sql.INSERT_LEASE_WITH_EVENT, .{

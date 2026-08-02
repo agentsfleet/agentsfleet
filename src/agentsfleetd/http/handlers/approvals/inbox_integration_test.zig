@@ -118,7 +118,7 @@ fn insertGate(conn: *pg.Conn, g: SeedGate) !void {
         \\INSERT INTO core.fleet_approval_gates
         \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
         \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-        \\   resolved_by, status, detail, created_at)
+        \\   resolved_by, status, detail, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
         \\        $7, $8, $9::jsonb, $10, $11,
         \\        '', 'pending', '', $12, $12)

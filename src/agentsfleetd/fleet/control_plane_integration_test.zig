@@ -22,6 +22,7 @@ const TestHarness = harness_mod.TestHarness;
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
+const event_rows = @import("event_rows.zig");
 
 pub const ALLOC = std.testing.allocator;
 const LARGE_BALANCE_NANOS: i64 = 1000000000000;
@@ -96,6 +97,18 @@ pub fn seedAffinity(conn: *pg.Conn, fleet_id: []const u8, last_runner_id: []cons
 }
 
 pub fn seedActiveLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_id: []const u8, fencing_token: i64) !void {
+    // The event row this lease names. `reclaim.reclaimPriorActive` reads the
+    // body through an INNER JOIN on (fleet_id, event_id) rather than from a
+    // lease column, so a lease seeded without its event reclaims as null and
+    // the caller takes fresh work instead of re-delivering.
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_events
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\   request_json, created_at, updated_at)
+        \\VALUES ($1::uuid, 'evt-seed-1', $2::uuid, 'steer:test', 'chat', $3, '{}'::jsonb, 0, 0)
+        \\ON CONFLICT (fleet_id, event_id) DO NOTHING
+    , .{ fleet_id, WORKSPACE_ID, event_rows.STATUS_RECEIVED });
+
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,

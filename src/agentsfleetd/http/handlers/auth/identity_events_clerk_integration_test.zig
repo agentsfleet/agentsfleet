@@ -73,7 +73,7 @@ fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
         \\WITH doomed_users AS (
         \\    DELETE FROM core.users WHERE oidc_subject = $1 RETURNING tenant_id
         \\)
-        \\DELETE FROM core.tenants WHERE tenant_id IN (SELECT tenant_id FROM doomed_users)
+        \\DELETE FROM core.tenants WHERE id IN (SELECT tenant_id FROM doomed_users)
     , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 

@@ -51,7 +51,7 @@ fn seedBase(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1::uuid, $3::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $3::uuid), 'cost-fleet', 'seed', '{}'::jsonb, 'active', $4, $4),
-        \\       ($2::uuid, $3::uuid, 'other-cost-fleet', 'seed', '{}'::jsonb, 'active', $4, $4)
+        \\       ($2::uuid, $3::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $3::uuid), 'other-cost-fleet', 'seed', '{}'::jsonb, 'active', $4, $4)
         \\ON CONFLICT (id) DO NOTHING
     , .{ COST_FLEET, OTHER_FLEET, TEST_WORKSPACE_ID, now_ms });
     // A clean slate for this fleet's events so a re-run's row counts are stable.
