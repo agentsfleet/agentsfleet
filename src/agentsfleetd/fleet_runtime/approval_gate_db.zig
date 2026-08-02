@@ -34,6 +34,15 @@ const GateStatus = approval_gate.GateStatus;
 const ActionDetail = approval_gate.ActionDetail;
 
 const PENDING_STATUS = GateStatus.pending.toSlice();
+const APPROVED_STATUS = GateStatus.approved.toSlice();
+
+// The grant vocabulary is owned by the single grant-reader module (RULE UFS),
+// so the resolve arm below spells these exactly as the enforcement points read
+// them. A local literal here would be the drift this import exists to prevent.
+const grant_lookup = @import("../state/integration_grant_lookup.zig");
+const gate_constants = @import("approval_gate_constants.zig");
+const GRANT_APPROVED = grant_lookup.GrantStatus.approved.toSlice();
+const GRANT_REVOKED = grant_lookup.GrantStatus.revoked.toSlice();
 
 // ── Public types ────────────────────────────────────────────────────────
 
@@ -159,7 +168,12 @@ pub const ResolveArgs = struct {
         defer pool.release(conn);
 
         const now_ms = clock.nowMillis();
-        var update_q = PgQuery.from(try conn.query(sql.RESOLVE_GATE, .{ self.outcome.toSlice(), self.reason, self.by, now_ms, self.action_id, PENDING_STATUS, self.fleet_id_filter }));
+        var update_q = PgQuery.from(try conn.query(sql.RESOLVE_GATE, .{
+            self.outcome.toSlice(), self.reason,                                self.by,
+            now_ms,                 self.action_id,                             PENDING_STATUS,
+            self.fleet_id_filter,   APPROVED_STATUS,                            GRANT_APPROVED,
+            GRANT_REVOKED,          gate_constants.GATE_KIND_INTEGRATION_GRANT,
+        }));
         defer update_q.deinit();
 
         if (try update_q.next()) |row| {

@@ -129,3 +129,20 @@ pub const PATCH_FLEET =
     \\  )
     \\RETURNING updated_at
 ;
+
+/// Seed the standing authorization an installed fleet needs for one mintable
+/// integration, in the state a human still has to answer for.
+///
+/// `pending` is the whole point: the App ingress routing query inner-joins
+/// `core.integration_grants` on `status = 'approved'`, so until the gate this
+/// row is paired with is resolved, the fleet is installed but not armed —
+/// which is exactly what an unanswered request should mean.
+///
+/// `ON CONFLICT DO NOTHING` makes re-install idempotent and, more importantly,
+/// never downgrades an existing `approved` grant back to `pending`.
+pub const INSERT_PENDING_GRANT =
+    \\INSERT INTO core.integration_grants
+    \\  (id, fleet_id, service, status, requested_reason, created_at)
+    \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+    \\ON CONFLICT (fleet_id, service) DO NOTHING
+;
