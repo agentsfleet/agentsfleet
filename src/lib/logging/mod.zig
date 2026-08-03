@@ -273,6 +273,7 @@ test {
     _ = pretty;
     _ = sinks;
     _ = @import("leak_guard_test.zig");
+    _ = @import("mod_test.zig");
 }
 
 test "fatalStderr is callable (compile check)" {
