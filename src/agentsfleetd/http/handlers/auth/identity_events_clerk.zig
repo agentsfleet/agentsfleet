@@ -32,13 +32,18 @@ const telemetry_mod = @import("../../../observability/telemetry.zig");
 const clerk_backend = @import("../../../auth/clerk_backend.zig");
 const scopes = @import("../../../auth/scopes.zig");
 
-/// Default capability `scopes` written to Clerk publicMetadata on signup
-/// the `tenant` default grant — every tenant capability, so a new
+/// Default capability `scopes` written to Clerk publicMetadata on signup —
+/// the `tenant_owner` default grant, every tenant capability, so a new
 /// owner can create workspaces + fleets with no manual step. The JWT template
 /// reads `public_metadata.scopes` into the `scopes` claim. Platform-operator
 /// scopes (`workspace:any`, `runner:enroll`, …) are NEVER auto-granted — they
 /// are a manual Clerk edit on the operator user.
-const DEFAULT_SIGNUP_SCOPES = scopes.defaultClaim(.tenant);
+///
+/// This is the grant that keeps `approval:resolve`; its `tenant_api_key` sibling
+/// drops it, so approving an action stays something only a person can do. The
+/// value is persisted per user at signup, so a change here reaches new owners
+/// only — existing owners keep whatever was written for them.
+const DEFAULT_SIGNUP_SCOPES = scopes.defaultClaim(.tenant_owner);
 
 const log = logging.scoped(.auth_identity_events);
 

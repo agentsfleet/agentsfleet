@@ -131,8 +131,8 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 
 The two consumers also differ in when the change bites, and the spec relies on both behaviours. `defaultScopes` is evaluated at principal construction on every request, so **existing `agt_t` keys lose the scope immediately with no backfill**. `defaultClaim` is persisted per-user at signup, so existing owners keep what was already written and only new signups read the current constant — which is why the human list must not change at all.
 
-- **Dimension 1.1** — The machine grant carries every tenant capability except `approval_resolve` → Test `test_machine_grant_excludes_approval_resolve`
-- **Dimension 1.2** — The human signup claim still carries `approval:resolve`; the two grants differ in exactly that one member → Test `test_signup_claim_retains_approval_resolve`
+- **Dimension 1.1** — **DONE** — The machine grant carries every tenant capability except `approval_resolve` → Test `test_machine_grant_excludes_approval_resolve`
+- **Dimension 1.2** — **DONE** — The human signup claim still carries `approval:resolve`; the two grants differ in exactly that one granted member → Test `test_signup_claim_retains_approval_resolve`
 - **Dimension 1.3** — A tenant API key is refused at the approval-resolve route; a user principal still passes → Test `test_api_key_cannot_resolve_approval`
 - **Dimension 1.4** — Blast radius is empty: no in-repo caller resolves an approval with a machine credential → Test `test_no_machine_approval_callers` (repo grep, asserted)
 
