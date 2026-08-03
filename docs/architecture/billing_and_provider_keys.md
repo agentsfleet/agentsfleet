@@ -23,8 +23,8 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Debit points | 2 per event | receive (`EVENT_NANOS`, posture-independent today) + run (metered per `/renew`, settled at report — M80_010) | §3 |
 | Run slice charge | `run_fee + token_cost` | `run_fee = elapsed_ms × RUN_NANOS_PER_SEC / 1000`; platform adds the three-tier Δ-token cost; self-managed records tokens but never charges them | §3, §4.2 |
 | Wallet clamp | `charged = LEAST(slice, balance)` | wallet write is `GREATEST(0, …)` — never negative, never credits a negative Δ | §3 |
-| Writes per slice | 3, atomic | wallet + accumulated `stage` ledger row + `fleet.metering_periods` breakdown, inside the fenced renewal CTE | §3 |
-| Telemetry keying | `UNIQUE (event_id, charge_type)` | one `receive` row + one accumulated `stage` row + N metering-period rows per event | §3 |
+| Money writes per slice | 2, atomic | wallet debit + accumulated `stage` ledger row, inside the fenced renewal CTE (which also advances the two lease cursors) | §3 |
+| Ledger keying | `UNIQUE (event_id, charge_type)` | one `receive` row + one accumulated `stage` row per event — two rows total, however many times the run renews | §3 |
 | Free-trial window | `FREE_TRIAL_END_MS` = 2026-08-01T00:00:00Z | timestamp-gated, no flag, no column; charges are 0 until then and the gates cannot refuse | §2.3 |
 | Exhaustion policy | `BALANCE_EXHAUSTED_POLICY`, default `stop` | `warn` / `continue` opt out of blocking | §5 |
 | Mid-run exhaustion | next `/renew` refused | `UZ-RUN-012`; the run ends at its current deadline, never extended | §3, §5 |
@@ -48,8 +48,8 @@ Each trap is enforced in its owner section; this list is the index.
 - Never quote dollar amounts or promo windows in docs — they go stale the moment a rate moves (preamble).
 - Metering never stops — the trial window zeroes the money column, not the audit row (§2.3).
 - Never read a cache eviction as "this model is not in the catalogue" — a miss loads, it does not answer (§4.2).
-- `slice_seq` comes from a `FOR UPDATE` counter on the affinity slot, never a `MAX(slice_seq)` read (§3).
-- The budget gate sums `fleet.metering_periods` by drain time — never the accumulating stage telemetry row, whose timestamp is pinned at first renewal (§5.1).
+- Renewal idempotency is the cumulative-token diff against the affinity cursor, not a slice number — a re-sent renewal charges ≈0 (§3).
+- The budget gate apportions each ledger row's accumulated total across `[created_at, last_charged_at]` — never stamps the whole total on one instant, which under-enforces exactly where the amounts are largest (§5.1).
 - No plan branch inside `compute_charge`, ever (§2.4).
 - The provider `api_key` never joins `secrets_map`; it rides `ExecutionPolicy` on a different path entirely (§8.2).
 - Model-registry entries reference vault keys — they never own credential material (§8.4).
@@ -143,10 +143,11 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 >        token_cost = Δin·r_in + Δcached·r_cache + Δout·r_out              (platform only)
 >
 >    charged = LEAST(slice, balance)   the actual debit; == slice unless this slice exhausts the wallet
->    THREE guard-gated writes per slice (atomic in the renewal CTE):
+>    TWO guard-gated money writes per slice (atomic in the renewal CTE, which
+>    also advances the lease and affinity cursors in the same statement):
 >      ① WALLET     balance_nanos := GREATEST(0, balance_nanos − slice)       clamp, never negative (= −charged)
->      ② LEDGER     telemetry 'stage' row(event_id) += charged / Δtokens / Δt per-EVENT total (Usage tab)
->      ③ BREAKDOWN  INSERT fleet.metering_periods(event_id, slice_seq, …)     per-RENEWAL detail (new table)
+>      ② LEDGER     usage_ledger 'stage' row(event_id) += charged / Δtokens / Δt  per-EVENT total (Usage tab),
+>                   last_charged_at := now                                    the span the budget gate apportions over
 >
 >    self_managed: run_fee only (tokens recorded, not charged — tenant paid the provider)
 >    dormant fleet: not renewed → not charged (serverless). credit exhausted → next /renew refused (UZ-RUN-012)
@@ -163,21 +164,22 @@ Why two debit points and not one:
 - **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero post-GA without re-plumbing.
 - **Run captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
 
-**Telemetry rows (M80_010).** `billing.usage_ledger` is keyed `(event_id, charge_type)`: one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type)` constraint updates the `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. The **per-renewal breakdown** lives separately in the new `fleet.metering_periods` table (one row per `/renew`/settle). So one event → 1 `receive` + 1 accumulated `stage` telemetry row + N metering-period rows. Auditable two ways: revenue-by-charge-type is a one-line query on telemetry; *how* a single run debit accrued (slice by slice) is a join on `metering_periods`.
+**Ledger rows (M80_010).** `billing.usage_ledger` is keyed `(event_id, charge_type)`: one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type)` constraint updates the `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. So one event → exactly 2 ledger rows, whether the run renewed once or forty times.
+
+A per-renewal breakdown table used to sit beside them, one row per `/renew`/settle. M154 §4 deleted it: at a renewal roughly every twenty seconds it was the fastest-growing table in the schema, and its only reader was the budget gate, which the span columns now serve directly. Revenue-by-charge-type is still a one-line query here. The slice-by-slice accrual detail is no longer answerable from Postgres — it is a durable-stream concern, specified in M155_001 §2.
 
 **Run metering — three layers.** The run debit follows the real run, not a one-shot estimate.
 
-On every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts. The server charges the **delta** since the lease's last-metered cursor: `run_fee = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000` (ms precision), plus the per-token cost of the token delta on the platform posture. It then applies three writes atomically inside M80_006's fenced renewal CTE, advancing the cursor:
+On every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts. The server charges the **delta** since the lease's last-metered cursor: `run_fee = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000` (ms precision), plus the per-token cost of the token delta on the platform posture. It then applies two money writes atomically inside M80_006's fenced renewal CTE, advancing both cursors in the same statement:
 
 1. debit the **wallet** `balance_nanos`, clamped at 0;
-2. accumulate the per-event `stage` **ledger** row;
-3. INSERT the per-renewal `fleet.metering_periods` **breakdown** row.
+2. accumulate the per-event `stage` **ledger** row, stamping `last_charged_at`.
 
-`slice_seq` (the per-event slice number) comes from a `meter_slice_seq` counter **on the affinity slot**, incremented and written back in the same fenced statement. It is never a `MAX(slice_seq)` read: the slot row is `FOR UPDATE`-locked, so a blocked concurrent renew re-reads the committed counter (EvalPlanQual) and stays monotonic, where an unlocked `MAX` subquery reads a stale snapshot and two racing renews collide on the same slice.
+The per-event slice number is gone with the breakdown table that needed it, and so is the `meter_slice_seq` counter on the affinity slot. Nothing was lost: slice numbering never provided idempotency. That comes from the **cumulative-token diff against the affinity cursor** — a re-sent renewal reports the same cumulatives, computes a zero delta, and charges ≈0 — and ordering comes from the `FOR UPDATE OF l, a` that serialises renewals of one lease.
 
-Ledger ② and breakdown ③ record `charged = LEAST(slice, balance)` — the actual debit — so the audit rows equal the wallet drain even on the slice that exhausts the wallet. A final settle at report closes the last partial slice, so the credit drained equals **exactly** runtime × rate + actual tokens. That settle is **fused into the report claim**: the lease's `active→reported` flip and the final-slice charge ride one fenced CTE under `FOR UPDATE OF l, a`, so a reclaim racing the report cannot strand the final slice on the `MAX_RUNTIME` cap path.
+Ledger ② records `charged = LEAST(slice, balance)` — the actual debit — so the audit row equals the wallet drain even on the slice that exhausts the wallet. A final settle at report closes the last partial slice, so the credit drained equals **exactly** runtime × rate + actual tokens. That settle is **fused into the report claim**: the lease's `active→reported` flip and the final-slice charge ride one fenced CTE under `FOR UPDATE OF l, a`, so a reclaim racing the report cannot strand the final slice on the `MAX_RUNTIME` cap path.
 
-Properties: same-lease renewals are serialised (`FOR UPDATE` on lease+slot), so a fail-safe retry re-sends the same cumulatives and charges ≈0 (cumulative-diff idempotency). A negative Δ clamps to 0 and never credits. The wallet debit is `GREATEST(0, …)` and never goes negative. A balance that can no longer fund the run refuses the **next** renewal (`UZ-RUN-012`; the run terminates). A lost or fenced-out renewal writes none of the three.
+Properties: same-lease renewals are serialised (`FOR UPDATE` on lease+slot), so a fail-safe retry re-sends the same cumulatives and charges ≈0 (cumulative-diff idempotency). A negative Δ clamps to 0 and never credits. The wallet debit is `GREATEST(0, …)` and never goes negative. A balance that can no longer fund the run refuses the **next** renewal (`UZ-RUN-012`; the run terminates). A lost or fenced-out renewal writes neither.
 
 ---
 
@@ -305,7 +307,7 @@ flowchart TD
 Properties:
 
 - **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the run portion. Whether the gate actually blocks is governed by the `BALANCE_EXHAUSTED_POLICY` env var (default `stop`, which blocks the exhausted tenant; set `warn` or `continue` to opt out of blocking and let the event through). Note that during the free-trial window all charges are `0` until 2026-08-01, so the gate cannot trigger at all until the window closes.
-- **Receive deduct at issue + incremental run metering.** The receive deduct + its telemetry insert is one transaction at lease issue. The run half is metered incrementally — a per-`/renew` accumulate plus a settle at report (one `receive` row + one *accumulated* `stage` row + N `metering_periods` rows — see §3). If `agentsfleetd` crashes between writes, the receive row is the durable record that the receive overhead was charged; each settled metering slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
+- **Receive deduct at issue + incremental run metering.** The receive deduct + its telemetry insert is one transaction at lease issue. The run half is metered incrementally — a per-`/renew` accumulate plus a settle at report (one `receive` row + one *accumulated* `stage` row — see §3). If `agentsfleetd` crashes between writes, the receive row is the durable record that the receive overhead was charged; each accumulated slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
 - **Mid-event balance crossing zero is fine.** In-flight events run to completion under the snapshot taken at receive time. The next event hits the gate cleanly.
 - **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_nanos < 0`, gate trips.
 
@@ -321,11 +323,11 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 | Question | "can this tenant afford one more event?" | "has this fleet spent its own allowance?" |
 | Pre-run refusal | `gate_blocked` + `balance_exhausted` | `gate_blocked` + `budget_breach` |
 | Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
-| Source of truth | wallet balance | per-slice drainage summed by drain time: `fleet.metering_periods.charged_nanos` (by `created_at`) + the receive fee |
+| Source of truth | wallet balance | `billing.usage_ledger.credit_deducted_nanos`, apportioned across each row's `[created_at, last_charged_at]` span by its overlap with the window |
 
 **Where it fires.** `runBilling` checks the budget after the balance gate and **before the receive deduct**, so a refused event is never charged. `session.config.budget` is already parsed onto the session, so the check costs one indexed aggregate and no extra lookup. Mid-run, `service_renew` re-reads the ceiling live from `config_json` on every renewal tick inside the window — lowering a runaway fleet's `daily_dollars` therefore bites at its next tick, not only at its next run.
 
-**Windows.** `daily_dollars` is a **rolling 24 hours** (`recorded_at >= now − 86_400_000`); `monthly_dollars` is the **UTC calendar month** (`clock.startOfUtcMonthMillis`). Both derive from a single `now_ms` per gate invocation, passed in, so the two windows can never straddle a tick. `monthly_dollars` is optional — absent means no monthly ceiling.
+**Windows.** `daily_dollars` is a **rolling 24 hours** (`last_charged_at >= now − 86_400_000`); `monthly_dollars` is the **UTC calendar month** (`clock.startOfUtcMonthMillis`). The row filter keys on `last_charged_at` — when a run stopped charging — which is exact where the retired table's filter was a heuristic: it had to widen the scan by `MAX_RUNTIME` to catch slices whose run began before the floor. Both derive from a single `now_ms` per gate invocation, passed in, so the two windows can never straddle a tick. `monthly_dollars` is optional — absent means no monthly ceiling.
 
 **Spend means credit *drained*,** not credit metered. On the slice that exhausts a wallet, `charged_nanos < run_fee + token_cost` and the remainder is forgiven (§3); a budget counts money that actually left the pool.
 

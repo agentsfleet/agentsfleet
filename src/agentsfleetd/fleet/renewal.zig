@@ -17,8 +17,11 @@
 //! concurrent reclaim cannot split them.
 //!
 //! Metering rides that same fenced statement. The `guard` arm gates EVERY write:
-//! advance both cursors, debit the wallet (clamped, never negative), accumulate
-//! the per-event `stage` telemetry row, and INSERT the per-renewal breakdown —
+//! advance both cursors, debit the wallet (clamped, never negative), and
+//! accumulate the per-event `stage` row in `billing.usage_ledger`, stamping
+//! `last_charged_at` so the budget gate can apportion the run's accumulated
+//! total across the span it actually charged over (M154 §4 deleted the
+//! per-renewal breakdown table that used to carry that detail row by row) —
 //! a lost/capped renewal writes none of them. The Δ is computed off the AFFINITY
 //! cursor (the durable per-fleet anchor that survives reclaim), so a re-sent
 //! renewal charges ≈0 (cumulative-diff idempotency). The four per-unit rates are
