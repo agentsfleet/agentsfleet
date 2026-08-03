@@ -1,289 +1,192 @@
-# Handoff — M154 schema rebuild (§7 and §8 complete; coverage + indexes next)
+# Handoff — M154 schema rebuild + the coverage basis it grew
 
 Ephemeral. Delete at CHORE(close); this briefs the next agent, never the Pull
 Request (PR).
 
 ## ▶ READ THIS FIRST
 
-**`make test-integration` is the full lane, not `make test-integration-db`** —
-the latter skips ~450 tests because the Hypertext Transfer Protocol harness
-needs `REDIS_URL_API` and that target never sets it.
+**The previous handoff claimed "§7 COMPLETE". It was wrong.** Dimensions 7.3 and
+7.4 carry no DONE marker in the spec and their named tests
+(`test_reclaim_redelivers_event_without_lease_payload_copy`,
+`test_reclaim_tally_stays_in_the_status_flip_statement`) do not exist in the
+tree. §7.3's *code* did land — `schema/610_runner_leases.sql:12` documents the
+lease carrying no body copy — but the tests the spec names are absent. Treat
+7.3/7.4 as **in scope**, not deferred.
 
-**`zig build test-integration` cannot be trusted for pass/fail.** It prints
-`failed command` and exits 0. `make` has printed `✓ All integration tests
-passed` over a binary that produced no output at all. Always read the count off
-the binary:
+**Only 8 of the spec's 31 named tests exist.** They are §7.1, §7.2 (×2) and §8
+(×5) — exactly the Dimensions marked DONE, so the spec is self-consistent. But
+§1, §2 and §5 ARE substantively tested under *different* names —
+`schema_migration_test.zig`'s `"core key schemas: the retired identity twins are
+gone and stay gone"` is Dimension 2.1 verbatim, and the two `index_usage_*`
+suites cover §5. This is a **table-to-reality reconciliation**, not 23 missing
+tests. It still has to happen: that table is what a reviewer reads.
 
-```bash
-make _reset-test-db                       # allowed; teardown.sql, NOT 02_teardown.sh
-DATABASE_URL_MIGRATOR="postgres://agentsfleet:agentsfleet@localhost:25832/agentsfleetdb?sslmode=disable" \
-  zig build run -- migrate
-eval "$(make -s -n test-integration | grep -oE 'AGENTSFLEET_QSTASH_LIVE_[A-Z]+="[^"]*"' | head -2 | sed 's/^/export /')"
-zig build test-integration --summary none          # rebuild first — see the STALE BINARY trap
-LIVE_DB=1 \
- TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:25832/agentsfleetdb?sslmode=disable" \
- TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:25833" \
- REDIS_URL_API="rediss://:agentsfleet@localhost:25833" \
- REDIS_TLS_CA_CERT_FILE="$PWD/.tmp/redis-ca.crt" \
- AGENTSFLEET_RUNNER_BIN="$PWD/zig-out/bin/agentsfleet-runner" \
- $(ls -t .zig-cache/o/*/agentsfleetd-integration-tests | head -1)
-```
+**🚨 STILL NO CONTINUOUS INTEGRATION (CI) HAS EVER RUN ON THIS BRANCH.** Verified
+again: `gh run list --branch feat/m154-schema-rebuild` returns only `smoke
+(post-deploy)` entries fired by `deployment_status`, all **skipped**. Every real
+workflow is `pull_request`-only; none carries `workflow_dispatch`. There is no
+manual escape hatch. Indy's decision stands: **no PR until CHORE(close)**.
 
-**🚨 STALE BINARY TRAP — this cost a full wrong verdict.** `make
-test-integration` builds into `.tmp/zig-local-cache`; a bare `zig build`
-builds into `.zig-cache`. Picking the newest binary from the wrong tree runs
-code from hours ago. **Check the mtime before believing a result:**
-`stat -f "%Sm %N" -t "%H:%M" $(ls -t .zig-cache/o/*/agentsfleetd-integration-tests | head -1)`
+**🚨 STALE ARTIFACTS ARE THE RECURRING TRAP IN THIS REPO.** It bit three separate
+ways this session. Always check an mtime before believing a result:
+`stat -f "%Sm %N" -t "%H:%M" zig-out/bin/agentsfleetd-integration-tests`
 
-**Without `_reset-test-db`, results are garbage** — leftover fixture rows
-produced 11 phantom failures once.
-
-**🚨 THE BRANCH IS PUSHED BUT NO CONTINUOUS INTEGRATION (CI) HAS EVER RUN ON
-IT.** All eight workflows (`test`, `test-integration`, `lint`, `memleak`,
-`cross-compile`, `gitleaks`, `dry`, `dry-smoke`) trigger on `pull_request`;
-plain `push` only triggers on `main`. So 33 commits of schema rebuild have
-never seen a Linux runner. Indy chose "push, no Pull Request yet" believing the
-push would buy CI — it does not. **He has been told and the decision is open.**
-Opening a draft Pull Request is the only way to get CI before CHORE(close).
+**Without `make _reset-test-db` + migrate, integration results are garbage.**
+Leftover fixture rows produce phantom failures in unrelated suites. Two runs
+this session were misread before this was re-learned.
 
 ## Status
 
-- ✅ **`origin/main` merged in** (`747975560`). Branch is **0 behind / 33 ahead**.
-- ✅ **§8 COMPLETE** — Dimensions 8.1–8.5 all have passing tests, all marked DONE.
-- ✅ **§7 COMPLETE** — 7.1 and 7.2 landed this session; 7.3/7.4 were already done.
-- ✅ **Integration 781 / 7 skipped / 0 failed · Unit 2043 · App 2160 across 213 files**
-- ✅ **SQL auditor: 1334 statements, 0 findings.**
-- ✅ **BRANCH IS PUSHED** (`d94529b52`). Tree clean. **Still no Pull Request.**
-- 🔶 **Coverage basis + index review are what remain.** See "What is owed".
+- ✅ Branch **pushed** through `1d28bd827`; a fifth commit lands after it.
+- ✅ Integration **793 passed / 7 skipped / 0 failed**. Runner lane 405. Logging 36.
+- ✅ Test depth grew **unit 3344 → 3403, integration 510 → 566**.
+- ✅ Merged production coverage **86.15%**, gate at 83.
+- 🔶 Three decisions are open and blocking (below). M154's close-out has not started.
 
-## Commits on this branch (recent)
+## Open decisions — nothing below moves without these
 
-| Commit | Content |
-|---|---|
-| `747975560` | Merge `origin/main` — 29 commits, 8 conflicts, M156's per-tenant free trial reconciled with the schema rebuild |
-| `ec7ef86ed` | §8.3 lease park + §8.4/8.5 deletion set + docs + 3 tests |
-| `27493ce74` | §8.1/§8.2 tests — origination and its answer, 4 tests, both mutation-checked |
-| `cbd7a945b` | §7.1 + §7.2 — list stops reading bodies, single-event route serves them |
-| `d94529b52` | Transcript re-reads its turns; Dimension 8.1 reworded to what it builds |
+1. **The Continuous Integration workflow edit is BLOCKED.** The harness classifier
+   refused two attempts to edit `.github/workflows/test.yml`. The full proposed
+   job is written out and reviewed but unapplied. Until it lands, the coverage
+   lane gates nothing in CI. Indy must either grant the permission or apply it.
+   The change: drop the job-level `container:`, add `timeout-minutes: 30`, boot
+   postgres+redis on the host, and run `make test-coverage-zig` inside
+   `docker run --network host --security-opt seccomp=unconfined
+   --cap-add=SYS_PTRACE` with the socket and workspace mounted. Same image, same
+   digest pin — `ci-zig-ubuntu` already carries kcov v43 and docker-cli. This
+   mirrors `test-integration.yml`, which documents why a job `container:` cannot
+   work here (GitHub forces its own network and rejects `--network host`).
 
-## The merge, and what it hid
+2. **90% is unreachable on the current basis — Indy must pick.** See the
+   arithmetic below. Either exclude process-lifetime entry points from the
+   denominator (90% then costs +782 lines, which is achievable), or set the gate
+   at **88%**, which is the honest ceiling with reachable tests. The denominator
+   has already moved twice today; a third change is not an agent call.
 
-M156 moved five database-backed billing suites into the integration graph
-carrying **pre-rebuild `core.model_library` column names** (`uid`,
-`created_at_ms`, `updated_at_ms`). Five files, all SQL strings, invisible to the
-compiler. Re-columned to `id` / `created_at` / `updated_at`.
+3. **The malformed-session-id 500.** `GET /v1/auth/sessions/{id}` with a
+   non-UUID identifier answers 500; a well-formed-but-unknown one correctly
+   answers 404. `innerPollAuthSession` maps every store error to
+   `internalOperationError`, and `formatSessionKey` rejects an oversized id
+   before Redis is consulted. Unauthenticated and reachable. Fix here or file?
 
-**Two tests had never executed in either lane** — they matched neither the unit
-lane's live-database requirement nor the integration lane's name filter. M156's
-rename armed them and they failed instantly: the metering suite attributed
-debits to a `fleet_id` of `"fleet-test"` against a Universally Unique Identifier
-(UUID) column with a foreign key onto `core.fleets`, so every insert was
-rejected. Real M154 defect, nothing was watching. Fixed by seeding a real fleet.
+## What M154 still owes (untouched this session)
 
-**Lesson worth keeping:** a test that matches no lane's filter is dead, and
-nothing reports it. Worth a gate.
+1. **Spec DONE markers** — §1–§6 Dimensions and 7.3/7.4 carry none. Verify each
+   Dimension's behaviour is tested (under whatever name) before marking.
+2. **The Acceptance Rubric is entirely ungraded** — 14 empty cells, and the ship
+   gate requires every row graded. Three criteria **fail as written** and need
+   their commands fixed rather than the code:
+   - **R3** — 14 hits, all *comments* saying the accrual table is gone. Zero live
+     references. The grep cannot tell prose from code.
+   - **R6** — hits are comments, *negative* tests asserting `grant-approval` does
+     NOT match, and `fleet_keyset.zig` (gallery pagination — substring collision).
+     Zero references to `core.fleet_keys`.
+   - **R5** — 381 files changed; `cli/` (20) is Indy's knowingly-accepted gap, but
+     `scripts/` (3) and `samples/` (1) are NOT covered by that decision.
+   - **S1** names `make test`, **which is not a target in this repo** and was
+     already broken before this branch. Verified against a clean tree.
+3. **`docs/architecture/data_flow.md`** is listed in Files Changed as EDIT and was
+   never touched. §7's list/detail split is exactly a data-flow change.
+4. **Index review** — `make down` first so EXPLAIN reads a cold stack; seed 10
+   runners / 100 fleets. First candidate `idx_fleet_events_fleet_id_created_at_id`.
+   Also settle `fleet.runner_events`: 4 indexes plus the primary key, and the
+   planner picks `idx_runner_events_type_created_at` over the composite
+   `index_usage_integration_test` expects.
+5. **Skill chain** then CHORE(close). PR Session Notes MUST record that the CLI
+   fleet-key surface was deleted without amending the spec's Files Changed table,
+   which is therefore knowingly incomplete (Indy's decision).
 
-## What is owed — start here
+## Coverage — what was actually wrong, and what is left
 
-1. **Draft Pull Request — decide first.** See the CI warning at the top.
-   Indy has the call; nothing else here is blocked on it.
-2. **Coverage → 80%, gate updated.** Indy decided: `ZIG_COVERAGE_MIN_LINES`
-   (`make/test.mk:29`) moves 60 → 80. **Fix the basis first, in this order:**
-   1. Exclude `_test.zig` sources from the kcov denominator. They are 22,994 of
-      51,246 measured lines and are themselves 70.6% covered — that is what
-      lifts the merged figure to 62.20% over its own 60% gate. Production-only
-      is **55.42%**. Without this, "80%" is reachable by adding test files.
-   2. Merge the integration lane into the coverage run. `test-coverage-zig` runs
-      only unit binaries, so integration-tested handlers read as 0% —
-      `ingress/github.zig` shows 24.7% despite documented real coverage. kcov
-      over the integration binary works; recipe is the direct-run block above
-      plus `kcov --clean --include-pattern="$PWD/src"`.
-   3. THEN rank by uncovered lines and write tests. Worst production files at
-      last measure: `handlers/schedules/api.zig` (169, 0%), `cron/Store.zig`
-      (169, 0%), `route_table_invoke.zig` (135), `auth/sessions.zig` (139, 5%),
-      `cron/Service.zig` (130, 0%), `handlers/tenant_provider.zig` (125, 0%),
-      `fleet/service_report.zig` (122, 0%).
-   4. Raise the gate to 80 in the SAME commit as the tests that clear it.
-3. **Index review** — Indy's procedure: `make down` FIRST, fresh up + migrate so
-   EXPLAIN reads a cold stack. Seed 10 runners / 100 fleets. An index that buys
-   no sort or scan improvement gets DROPPED with the plan as evidence. First
-   candidate: `idx_fleet_events_fleet_id_created_at_id`. **Also settle this:**
-   `fleet.runner_events` carries 4 indexes plus the primary key, and the planner
-   picks `idx_runner_events_type_created_at` (then filters `runner_id`) over the
-   composite `index_usage_integration_test` expects.
-4. **Skill chain** — origin is already merged in, so start at `/write-unit-test`,
-   then `/write-integration-test`, gstack `/review`, changelog + `~/Projects/docs`
-   pages + `docs/architecture/**` diff, then CHORE(close).
+**The reported number was never real.** Three independent defects, all fixed in
+`9143b13c2`:
 
-## Decisions Indy made this session — do not relitigate
+- **Test bodies sat in the denominator.** `*_test.zig` is ~23k measured lines at
+  ~90% covered, inflating the figure ~7 points and making the gate satisfiable by
+  writing more test files.
+- **The integration binary was never measured.** Only the five unit binaries ran
+  under kcov, so every store and Hypertext Transfer Protocol handler read as
+  uncovered — they are unreachable without a live Postgres and Redis.
+- **Stale kcov output rejoined every merge.** kcov names its output directory
+  after a hash of the binary; `--clean` only resets the directory for the hash it
+  is writing, so a rebuilt binary landed *beside* its predecessor and
+  `kcov --merge` was handed the parent. An Aug 2 run whose suite never executed
+  kept being folded back in for days.
 
-1. **Merge `origin/main` before picking a Section.** Done.
-2. **CLI fleet-key surface deleted, Files Changed NOT amended.** Dimension 8.5
-   requires `core.fleet_keys` be unreferenced tree-wide, and the CLI carried a
-   full command surface the spec's blast-radius table never listed. Indy chose
-   delete-without-amending. **The spec's Files Changed is therefore knowingly
-   incomplete — record this in PR Session Notes at CHORE(close).**
-3. **The events table's prose cell shows `No result recorded`.** Indy accepted
-   the rendering change rather than keeping bodies on the list — asked and
-   answered, verbatim: "yes `No results` is fine...". Clause B of Dimension 7.1
-   ("the rendered table is unchanged") was amended out; it could not hold
-   alongside clause A.
-4. **The transcript re-reads its turns as details** (server-side, parallel,
-   bounded by `CHAT_TURNS`), rather than degrading to headers only.
-5. **Dimension 8.1's wording amended** rather than adding a bundle reason field.
-6. **Every fleet-key mention deleted from `docs/AUTH.md`, including the v2.1
-   first-class-principal roadmap item.** Also removed from
-   `docs/architecture/roadmap.md` and the `README.md` pointer to it. The design
-   intent that revamp recorded is gone from the tree by choice.
+The historical **62.20% was computed over contaminated input**. The honest
+starting figure was **84.91%**.
 
-## §8 tests — what they cost to get right
+**🚨 Rank targets by REACHABILITY, not by uncovered-line count.** This is the
+single most useful thing learned here:
 
-`http/handlers/fleets/create_grants_integration_test.zig` (4 tests). Three
-things bit, all fixture-shaped, and the next suite that installs a fleet
-through the Hypertext Transfer Protocol (HTTP) will hit the same three:
+| File | Uncovered before | Gained | Why |
+|---|---|---|---|
+| `runner/engine/tool_builders.zig` | 99 | **+97** | flat list of reachable builders |
+| `http/handlers/auth/sessions.zig` | 132 | **+179** | request paths, spilled into helpers |
+| `http/handlers/webhooks/approval.zig` | 94 | **+76** | request paths |
+| `lib/logging/mod.zig` | 71 | **+4** | non-test arm of `emit`, process-lifetime |
 
-- **The workspace id is not yours to choose.** `authorizeWorkspace` reads the
-  workspace out of the JavaScript Object Notation Web Token (JWT) claims, so a
-  private tenant/workspace UUID is a flat 403 on install, not an isolated
-  fixture. Use the token fixture's own ids (`…6f01` / `…6f11`) like every other
-  HTTP suite; isolate instead on the fleet ids (minted by the handler, purged
-  per test) and a suite-private webhook repository.
-- **Re-runs collide unless the fleet name carries a stamp.** A fleet name is
-  unique per workspace and feeds the library row's `(workspace, content_hash)`
-  unique — so a run that died before its purge 409s every run after it. The
-  name is `{label}-{nowMillis}`.
-- **`h.install_wg.wait()` is the sync primitive**, never a sleep. It also
-  guarantees the row reached `active`, which the ingress read requires.
-- **Gate rows are append-only**, so fixture cleanup opens a transaction and
-  sets `approval_gate_db.SET_GATE_PURGE_BYPASS_SQL`. Neighbouring suites do a
-  bare DELETE and swallow the raise — their gate rows just accumulate.
+**The arithmetic for 90%** (denominator 28,741; currently 24,760 covered):
 
-**Both dimensions were mutation-checked; keep the habit.** Disabling
-`seedForInstall` in `create.zig` fails three of the four; appending `AND false`
-to `RESOLVE_GATE`'s grant-arm predicate fails exactly the two resolution tests.
-Iterate with `zig build test-integration
--Dtest-filter=create_grants_integration_test` — after a DB reset.
+- Mostly-uncovered, non-boot: **398** winnable
+- Partially covered, non-boot: 968 uncovered, realistic capture ~45% ≈ **430**
+- Boot / process-lifetime: **469 unreachable by construction**
+- Needed for 90%: **+1,107**
 
-**Also settled:** `test_no_handler_local_authentication` is NOT dead despite
-lacking the `integration:` name prefix. The lane passes two filters and Zig
-ORs them, so the `_integration_test` FILE filter catches it. Verified running
-at 354/785.
+Realistic yield ≈ 750 → about **88.4%**. Excluding the seven process-lifetime
+entry points (`cmd/serve*.zig`, `runner/daemon/startup.zig`, `lease_run.zig`,
+`cmd/migrate.zig`, `cmd/backfill.zig`, `pool_migration_state.zig`) drops the
+denominator to 28,272 and makes 90% cost +782 — inside budget. That is decision 2.
 
-## §7 — what it cost, and what it left behind
+**Next tier-1 targets:** `runner/engine/runner.zig` (66 unc, 32.7%),
+`fleet_runtime/approval_gate_sweeper.zig` (53, 0%), `runner/child_supervisor.zig`
+(45, 10%), `fleet/service_activity.zig` (38, 0%), `lib/s3/r2.zig` (34, 0%),
+`handlers/library/pipeline.zig` (33, 10.8%), `handlers/approvals/detail.zig` (30, 26.8%).
 
-**The section's premise was wrong and the spec now says so.** §7.1 claimed the
-bodies were wanted only on expansion. Three rendered surfaces read them: the
-events table's prose cell, the fleet header's outcome line, and the fleet
-thread's transcript — and the transcript is the fleet page's DEFAULT view.
-Indy's call was to drop the columns anyway; the table and strip now state the
-outcome, and the transcript re-reads its turns as details.
+## Traps worth keeping
 
-- **The `left(...)` detour is dead — do not revive it.** 7.1's own acceptance
-  text says "the plan reads no oversized-attribute storage", and a bounded
-  prefix still reads it. Two hours went into arguing a design that failed the
-  spec's own criterion. Read the acceptance text before proposing a shape.
-- **🚨 The browser holds no dashboard credential.** The first cut of the dialog
-  fetched client-side with `getToken()`, and
-  `tests/grep-gates/no-api-template-mint.test.ts` failed it. Client components
-  get server data through a **Server Action** (`lib/actions/with-token.ts`),
-  never a browser fetch. That gate is load-bearing security architecture.
-- **Never ask the Server-Sent Events (SSE) route a question in a test.**
-  `/events/stream` never closes its connection; a test that requests it hangs
-  the whole suite for as long as you let it. The route-shadowing assertion
-  lives at `router.match()` in `handlers/fleets/event_detail.zig` instead.
-- **`/events/stream` and `/events/{event_id}` are both six segments** and
-  `event_id` is free-form TEXT, so nothing about its shape excludes the word
-  `stream`. Only router ORDER keeps them apart — the stream matcher is tried
-  first. `S_EVENTS` is spelled once in `route_matchers_fleet_leaf.zig` for
-  exactly this reason.
-- **`route_matchers.zig` hit the 350-line cap.** The per-fleet leaf matchers
-  now live in `route_matchers_fleet_leaf.zig` and are re-exported, so call
-  sites are unchanged.
-- **The §7.1 test asserts the plan, not a proxy.**
-  `events_payload_free_integration_test.zig` seeds 200 events each carrying a
-  20 kB body on both sides and asserts three things: no body field, response
-  under 256 kB, and `pg_statio_all_tables.toast_blks_*` for
-  `core.fleet_events` moving by **exactly zero**. That last one is the
-  assertion a prefix-selecting query would fail while passing the other two.
-
-## ⚠️ Unresolved flake — app suite
-
-The FIRST `git push` was blocked by the pre-push hook: `1 failed | 2159 passed`
-in `ui/packages/app`. **It has never reproduced** — four subsequent full runs
-came back 2160/2160 and the retry pushed clean. The failing test was not
-captured. If CI goes red on the app lane once a Pull Request exists, this is
-the likely cause and NOT a regression from the diff. Worth capturing next time
-it fires (`bun run test` in `ui/packages/app`, keep the output).
-
-## Open decisions
-
-**Nothing blocks §7.** Two former questions are settled: `list_aggregate`
-coverage loss is a recording (in the spec's Discovery log), not an approval;
-and `fleetFromSession` was approved for deletion and is now deleted.
-
-**Settled this session.** Dimension 8.1's "bundle's stated reason" — Indy chose
-to amend the wording, done in `d94529b52`. A bundle-authored justification is
-recorded in the spec as a FEATURE, not a gap; do not treat it as owed work.
-
-**The one live question is the draft Pull Request** (see the top). Everything
-else has a stated procedure.
-
-## Traps
-
-- **🚨 STALE BINARY.** See the top. Check mtimes before believing any result.
-- **The constraint-name sweep now expects FOUR benign hits, not three.**
-  `ck_test_reclaim_fail`, `ck_test_release_fail`, `uq_workspaces_other`, **and
-  `uq_workspaces_tenant_id_name`**. The fourth is a blind spot in the sweep, not
-  a bug: it is a partial unique INDEX, and the sweep only queries
-  `pg_constraint`, which does not carry bare indexes. Verified:
-  `CREATE UNIQUE INDEX uq_workspaces_tenant_id_name ON core.workspaces (tenant_id, name) WHERE (name IS NOT NULL)`,
-  `pg_constraint` count 0. Union it with `pg_indexes` to stop the false alarm.
-- **Four doc comments name a constraint that does not exist** —
-  `uq_workspaces_tenant_name`, one word off from the real
-  `uq_workspaces_tenant_id_name`, and one still cites `schema/001`, a slot the
-  rebuild renumbered: `state/signup_bootstrap_store.zig:102`,
-  `state/heroku_names.zig:5`, `state/signup_bootstrap.zig:197`,
-  `db/test_fixtures.zig:112`. Comments only. Fold into the next commit.
-- **Never rebuild a Zig line when scripting SQL edits.** Substitute WITHIN a
-  line only. A whole-statement rewrite strips `\\` multiline markers.
-- **`git commit` runs the full gate suite and exceeds 2 minutes.** Background it
-  and check `git log` — its exit code lies through a pipe. Blocked twice this
-  session on `zig fmt` and once on an unused import ZLint caught.
-  `make _zlint_check` is NOT enough; the hook runs `make lint-zig`.
-- **The dominant fixture failure class:** §7.3 moved the event body off the
-  lease, so `reclaim.reclaimPriorActive` reads it through an INNER JOIN
-  `core.fleet_events ON (fleet_id, event_id)`. A fixture seeding a lease without
-  its event row reclaims nothing — "no lease" / "no work" /
-  `NoActiveLeaseToReclaim`. Fix fixtures, never the join; the join is deliberate.
-- **Metering cursors live on `fleet.runner_affinity`**, not the lease. The
-  renewal probe INNER JOINs it; a lease without an affinity row renews as `lost`.
-- **A lease's `created_at` must be recent.** The guard caps a run at
-  `created_at + MAX_RUNTIME_MS`; an epoch-zero lease is born already expired.
-- **Migrations install NO catalogue.** A test needing a priced model seeds its
-  own `core.model_library` row (columns are `id`, `created_at`, `updated_at` —
-  NOT `uid`/`*_ms`; main's incoming helpers had the old names).
-- **Intermittent suite hang.** `TestHarness.start` blocks in `Thread.join` with
-  the server thread stuck in `httpz.listen`. Diagnose with
-  `sample <pid> 2 -mayDie`. **Kill the PARENT `build` process FIRST** — killing
-  the child lets the parent respawn it, and two suites against one database
-  produce phantom failures.
-- **The wire field is not the column.** `recorded_at`, `occurred_at`,
-  `fleet_key_id`, `grant_id` survive in JSON/OpenAPI while the columns differ.
-- **Two audit tools, use them — do not grep.** `scripts/audit_sql.py --all`
-  (parses every statement, resolves Zig `++` const chains, diffs against the
-  LIVE catalogue) and the constraint-name sweep. They found four production bugs
-  grep could not, because every one had correctly-spelled columns that exist.
+- **A webhook route has TWO signature checks and a test must arm BOTH.** The
+  `webhookHmac` middleware verifies before the handler and the handler
+  re-verifies as defence in depth. Arming only `h.ctx.approval_signing_secret`
+  leaves the middleware refusing everything. Set `reg.webhook_hmac_mw.secret` in
+  `configureRegistry` too.
+- **Assert exact statuses, never `>= 400`.** A broken signing helper made five
+  tests pass while never reaching the code they claimed to test — 401 satisfies
+  `>= 400`. Only the assertion naming a specific status caught it.
+- **`std.fmt.bytesToHex(bytes, .lower)`**, not a `{x}` specifier, to hex a byte
+  array in this Zig version.
+- **The harness arms secret-gated paths by field assignment**, never `setenv` —
+  the 0.16 environment snapshot ignores a late setenv. Documented on
+  `test_harness.zig` as the Option-C convention.
+- **A make rule's PREREQUISITES expand when the rule is READ**; recipe bodies
+  expand at run time. A prerequisite referencing a variable from a later-included
+  fragment resolves to nothing, silently.
+- **Cancel on a device-login session authorizes on the session's stored Clerk
+  subject**, which it acquires only at approve — so a still-pending session
+  cannot be cancelled by anyone. Cancel answers **204**, not 200.
+- **Never rebuild a Zig line when scripting SQL edits.** Substitute WITHIN a line
+  only; a whole-statement rewrite strips `\\` multiline markers.
+- **`git commit` runs the full gate suite and exceeds two minutes.** Background it
+  and read `git log` — its exit code lies through a pipe. It caught a real design
+  flaw twice this session; do not bypass it.
+- **The constraint-name sweep expects FOUR benign hits**, not three:
+  `ck_test_reclaim_fail`, `ck_test_release_fail`, `uq_workspaces_other`, and
+  `uq_workspaces_tenant_id_name`. The fourth is a partial unique INDEX and the
+  sweep only queries `pg_constraint`, which does not carry bare indexes.
+- **Two audit tools, use them — do not grep.** `scripts/audit_sql.py --all` and
+  the constraint-name sweep found four production bugs grep could not.
 - **Docker.** Compose project `agentsfleet-m154-schema-rebuild`, ports
   25832/25833/25834, database `agentsfleetdb`. Always `docker ps` first.
-- ❌ Never run `playbooks/operations/teardown/database/02_teardown.sh` — Indy
-  calls it manually. `make _reset-test-db` (teardown.sql) is fine.
+- ❌ Never run `playbooks/operations/teardown/database/02_teardown.sh` — Indy calls
+  it manually. `make _reset-test-db` (teardown.sql) is fine.
 
-## Deliberately parked
+## Decisions Indy made — do not relitigate
 
-- Repo-wide bind-arity comptime checker — its own spec, not M154.
-- `http/handlers/workspaces/sql.zig` `INSERT_WORKSPACE` is a near-twin of
-  `state/sql.zig`'s. NOT merged on purpose: that one ends `ON CONFLICT DO
-  NOTHING`, the handler needs the unique violation to surface a name conflict.
-- SQL centralisation: 195 statements in a `sql.zig`, 130 still inline across ~46
-  production files (≈60%). Recommendation was to convert only what §8 touches
-  and spec the rest as its own milestone.
+1. **No Pull Request until CHORE(close)**, accepting that CI arrives last.
+2. **CLI fleet-key surface deleted, Files Changed NOT amended** — record in PR
+   Session Notes at CHORE(close).
+3. **The events table's prose cell reads `No result recorded`.**
+4. **The transcript re-reads its turns as details**, rather than degrading.
+5. **Dimension 8.1's wording amended** rather than adding a bundle reason field.
+6. **Every fleet-key mention deleted from `docs/AUTH.md`**, including the v2.1
+   first-class-principal roadmap item, and from `docs/architecture/roadmap.md`.
