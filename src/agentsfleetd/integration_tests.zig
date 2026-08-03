@@ -95,6 +95,7 @@ test {
     _ = @import("http/handlers/library/gallery_keyset_integration_test.zig");
     _ = @import("http/handlers/admin/model_library_admin_integration_test.zig");
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
+    _ = @import("http/handlers/auth/sessions_integration_test.zig");
     _ = @import("http/handlers/fleets/messages_integration_test.zig");
     _ = @import("http/handlers/schedules/api_integration_test.zig");
     _ = @import("http/handlers/memory/memories_integration_test.zig");
