@@ -275,7 +275,11 @@ components:
             description: Installed bundle content hash, or null when the fleet was not installed from a bundle.
     FleetEvent:
       type: object
-      description: One fleet event in newest-first history order.
+      description: |
+        One fleet event in newest-first history order. Carries no request or
+        response body: a page is up to 200 rows, and the list read is kept off
+        oversized-attribute storage entirely. Read a body from the single-event
+        route.
       required:
       - fleet_id
       - event_id
@@ -283,8 +287,6 @@ components:
       - actor
       - event_type
       - status
-      - request_json
-      - response_text
       - tokens
       - wall_ms
       - failure_label
@@ -306,12 +308,6 @@ components:
           type: string
         status:
           type: string
-        request_json:
-          type: string
-          description: The event request body serialized as JSON text.
-        response_text:
-          type: string
-          nullable: true
         created_at:
           type: integer
           format: int64
@@ -340,6 +336,25 @@ components:
           format: int64
           nullable: true
           description: Billed cost for this event in nanos, mapped from the event's `credit_deducted_nanos` charge. Null when no charge has been recorded.
+    FleetEventDetail:
+      description: |
+        One fleet event with everything recorded about it. This is the list
+        item plus the two bodies the list omits. Expanding a row costs one
+        request and changes nothing else about how that row reads.
+      allOf:
+      - $ref: '#/components/schemas/FleetEvent'
+      - type: object
+        required:
+        - request_json
+        - response_text
+        properties:
+          request_json:
+            type: string
+            description: The event request body serialized as JSON text.
+          response_text:
+            type: string
+            nullable: true
+            description: The agent's full answer. Null while a run is in flight, and on a run that failed before producing one.
     FleetBundleTemplate:
       type: object
       required:

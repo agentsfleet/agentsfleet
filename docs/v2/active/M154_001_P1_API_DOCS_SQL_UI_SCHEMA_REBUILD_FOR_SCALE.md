@@ -154,10 +154,10 @@ Value literals moved out of `DEFAULT` and `CHECK` under RULE STS but reappeared 
 
 ### §7 — The events list stops reading bodies
 
-The list select carries the event body and the full agent answer on every row, up to two hundred per page, to render a table of timestamps, statuses and costs. The bodies are only needed when a row is expanded. Splitting list from detail removes the cost from the common read; dropping the lease's duplicate copy of the same body removes it from the write path too. **Implementation default:** reclaim reads the body by joining the event row on its existing unique key — both tables cascade from the same parent, so the join cannot dangle.
+The list select carries the event body and the full agent answer on every row, up to two hundred per page. Three rendered surfaces read them: the events table's prose cell, the fleet header's outcome line, and the fleet thread's transcript — so the original claim that bodies are wanted only on expansion was wrong about this tree. Indy's call: the list drops them anyway and those surfaces state the outcome instead of quoting the answer, because a page of two hundred unbounded bodies is the wrong price for one hundred and sixty rendered characters. Splitting list from detail removes the cost from the common read; dropping the lease's duplicate copy of the same body removes it from the write path too. **Implementation default:** reclaim reads the body by joining the event row on its existing unique key — both tables cascade from the same parent, so the join cannot dangle.
 
-- **Dimension 7.1** — the list query selects no body column, and the rendered table is unchanged → Test `test_events_list_selects_no_payload_columns`
-- **Dimension 7.2** — a single-event detail read returns the body and the answer, scoped to the caller's workspace → Test `test_event_detail_returns_body_scoped_to_workspace`
+- **Dimension 7.1** — the list query selects no body column and its plan touches no oversized-attribute storage; the table's prose cell states the outcome (a failure sentence, else `No result recorded`) rather than quoting a reply it no longer receives → Test `test_events_list_selects_no_payload_columns` — **DONE**
+- **Dimension 7.2** — a single-event detail read returns the body and the answer, scoped to the caller's workspace → Test `test_event_detail_returns_body_scoped_to_workspace` — **DONE**
 - **Dimension 7.3** — the lease carries no body copy, and reclaiming an expired lease still re-delivers the original event → Test `test_reclaim_redelivers_event_without_lease_payload_copy`
 - **Dimension 7.4** — reclaim's lifetime-tally arm still rides the same statement as the status flip, so the counter cannot drift from the rows it counts → Test `test_reclaim_tally_stays_in_the_status_flip_statement`
 
@@ -256,8 +256,9 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 | 6.1 | unit | `test_schema_literals_carry_named_provenance` | Every literal in an index predicate or trigger body names its application constant |
 | 6.2 | integration | `test_no_empty_schemas` | Every created schema holds at least one table |
 | 6.3 | unit | `test_timestamp_column_naming_is_uniform` | Lifecycle timestamp columns use one naming form across every table |
-| 7.1 | integration | `test_events_list_selects_no_payload_columns` | A page of 200 events returns no body or answer field; the plan reads no oversized-attribute storage |
-| 7.2 | e2e | `test_event_detail_returns_body_scoped_to_workspace` | Expanding a row fetches the body; the same identifier from another workspace answers 404 |
+| 7.1 | integration | `test_events_list_selects_no_payload_columns` | A page of 200 events, each holding a 20 kB body on both sides, returns no body or answer field, weighs under 256 kB, and moves `pg_statio_all_tables.toast_blks_*` for `core.fleet_events` by exactly zero |
+| 7.2 | integration | `test_event_detail_returns_body_scoped_to_workspace` | Expanding a row fetches the body; the same identifier from another workspace answers 404 |
+| 7.2 | integration | `test_event_detail_404s_unknown_and_cross_workspace_alike` | An unknown identifier and a real event in a sibling workspace return the same status and the same error code; the refused body never carries the stored answer |
 | 7.3 | integration | `test_reclaim_redelivers_event_without_lease_payload_copy` | An expired lease is reclaimed and the re-delivered event body matches the original byte for byte |
 | 7.4 | integration | `test_reclaim_tally_stays_in_the_status_flip_statement` | Reclaiming N leases increments the expired tally by exactly N, with no separate statement |
 | 8.1 | integration | `test_install_seeds_pending_grant_and_gate` | Installing a bundle declaring `required_credentials:["github"]` yields one `pending` grant for that fleet and one pending gate of kind `integration_grant` carrying the bundle's stated reason |
@@ -277,7 +278,7 @@ UNCHANGED  GET /v1/tenants/me/billing/charges
 | R1 | Schema carries no patch statements (§1, §6) | `grep -rnE 'ALTER TABLE\|DROP (TABLE\|INDEX\|SCHEMA)' schema/` | no output | P0 | |
 | R2 | No table carries a duplicate identity column (§2) | `grep -rn 'GENERATED ALWAYS' schema/` | no output | P0 | |
 | R3 | The accrual surface is gone (§4) | `grep -rn 'metering_periods\|get_tenant_metering_periods\|slice_seq' src/ ui/ public/openapi.json` | no output | P0 | |
-| R4 | The list read carries no body columns (§7) | `grep -n 'request_json\|response_text' src/agentsfleetd/state/fleet_events_store.zig` | no output | P0 | |
+| R4 | The list read touches no oversized-attribute storage (§7) | `grep -n 'request_json\|response_text' src/agentsfleetd/state/fleet_events_store.zig` **and** `test_events_list_selects_no_payload_columns` | no output; test passes | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | R6 | A grant can be born without hand-seeding (§8) | `grep -rn 'integration-requests\|fleet_keys\|grant-approval' src/ schema/ public/openapi.json` | no output | P0 | |
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | |

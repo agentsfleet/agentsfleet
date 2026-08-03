@@ -5816,6 +5816,60 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}": {
+      "get": {
+        "operationId": "get_fleet_event",
+        "summary": "Read one fleet event",
+        "description": "Returns a single event with its request body and the agent's full answer.\n\nThe list read beside this one omits both bodies: it returns up to two\nhundred rows and would carry every payload to render a table. Read the\nbody here, for the one event you are expanding.\n\nAn event that does not exist and an event belonging to another workspace\nboth answer 404. The two are deliberately indistinguishable. The read is\nscoped inside its own query, so no caller can probe for events outside\nits own workspace.\n",
+        "tags": [
+          "Fleets"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "description": "The event identifier as it appears in the list response.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetEventDetail"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream": {
       "get": {
         "operationId": "stream_fleet_events",
@@ -8336,7 +8390,7 @@
       },
       "FleetEvent": {
         "type": "object",
-        "description": "One fleet event in newest-first history order.",
+        "description": "One fleet event in newest-first history order. Carries no request or\nresponse body: a page is up to 200 rows, and the list read is kept off\noversized-attribute storage entirely. Read a body from the single-event\nroute.\n",
         "required": [
           "fleet_id",
           "event_id",
@@ -8344,8 +8398,6 @@
           "actor",
           "event_type",
           "status",
-          "request_json",
-          "response_text",
           "tokens",
           "wall_ms",
           "failure_label",
@@ -8373,14 +8425,6 @@
           },
           "status": {
             "type": "string"
-          },
-          "request_json": {
-            "type": "string",
-            "description": "The event request body serialized as JSON text."
-          },
-          "response_text": {
-            "type": "string",
-            "nullable": true
           },
           "created_at": {
             "type": "integer",
@@ -8419,6 +8463,32 @@
             "description": "Billed cost for this event in nanos, mapped from the event's `credit_deducted_nanos` charge. Null when no charge has been recorded."
           }
         }
+      },
+      "FleetEventDetail": {
+        "description": "One fleet event with everything recorded about it. This is the list\nitem plus the two bodies the list omits. Expanding a row costs one\nrequest and changes nothing else about how that row reads.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FleetEvent"
+          },
+          {
+            "type": "object",
+            "required": [
+              "request_json",
+              "response_text"
+            ],
+            "properties": {
+              "request_json": {
+                "type": "string",
+                "description": "The event request body serialized as JSON text."
+              },
+              "response_text": {
+                "type": "string",
+                "nullable": true,
+                "description": "The agent's full answer. Null while a run is in flight, and on a run that failed before producing one."
+              }
+            }
+          }
+        ]
       },
       "ApprovalGate": {
         "type": "object",

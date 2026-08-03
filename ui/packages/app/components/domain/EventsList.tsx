@@ -44,7 +44,6 @@ const VALUE_UNKNOWN = "—";
 const NULL_METRIC_SORT_VALUE = -1;
 // The summary tooltip carries more context than the 160-char preview, but a
 // multi-megabyte agent response must not ride into the DOM per row.
-const SUMMARY_TITLE_MAX_CHARS = 2_000;
 const TOKEN_COUNT_FORMAT = new Intl.NumberFormat();
 const RUNS_PREFIX = "×";
 const RUNS_CLOSED_MARK = "▸";
@@ -318,20 +317,12 @@ function EventTimeCell({ row }: { row: EventRow }) {
   );
 }
 
-// The one prose cell: a truncated response preview (full text one hover away)
-// or, for a failed run, the plain-language reason the operator can act on.
+// The one prose cell. The reply itself is NOT here: the list read is kept off
+// oversized-attribute storage, so a page of 200 rows carries no bodies. What
+// survives is the actionable half — a failed run still names its reason in
+// plain language, and anything else says so plainly and sends the operator to
+// the row's own view for the text.
 function EventSummaryCell({ row }: { row: EventRow }) {
-  const preview = previewText(row.response_text);
-  if (preview) {
-    return (
-      <span
-        className="block max-w-prose truncate py-sm text-foreground"
-        title={row.response_text?.slice(0, SUMMARY_TITLE_MAX_CHARS)}
-      >
-        {preview}
-      </span>
-    );
-  }
   if (row.failure_label) {
     return (
       <span className="text-warning">
@@ -343,16 +334,8 @@ function EventSummaryCell({ row }: { row: EventRow }) {
 }
 
 function eventSummaryText(row: EventRow): string {
-  const preview = previewText(row.response_text);
-  if (preview) return preview;
   if (row.failure_label) return failureSentenceFor(row.failure_label);
   return "No result recorded";
-}
-
-function previewText(text: string | null): string {
-  if (!text) return "";
-  const oneline = text.replace(/\s+/g, " ").trim();
-  return oneline.length > 160 ? `${oneline.slice(0, 157)}…` : oneline;
 }
 
 function shortId(id: string): string {

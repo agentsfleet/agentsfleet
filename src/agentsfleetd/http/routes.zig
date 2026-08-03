@@ -91,6 +91,7 @@ pub const Route = union(enum) {
     // Per-Fleet event history + Server-Sent Events (SSE) live tail
     workspace_fleet_events: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events
     workspace_fleet_events_stream: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events/stream
+    workspace_fleet_event: matchers.WorkspaceFleetEventRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events/{event_id}
     // Workspace-aggregate event history
     workspace_events: []const u8, // GET /v1/workspaces/{ws}/events
     /// GET /v1/workspaces/{ws}/events/stream — ONE multiplexed SSE connection

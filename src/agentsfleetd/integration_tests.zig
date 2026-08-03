@@ -70,6 +70,8 @@ test {
     _ = @import("http/handlers/fleets/get_integration_test.zig");
     _ = @import("http/handlers/fleets/grant_surface_integration_test.zig");
     _ = @import("http/handlers/fleets/create_grants_integration_test.zig");
+    _ = @import("http/handlers/fleets/event_detail_integration_test.zig");
+    _ = @import("http/handlers/fleets/events_payload_free_integration_test.zig");
     _ = @import("http/handlers/fleets/events_cost_integration_test.zig");
     _ = @import("http/handlers/fleets/list_aggregate_integration_test.zig");
     _ = @import("http/handlers/fleets/patch_if_match_integration_test.zig");

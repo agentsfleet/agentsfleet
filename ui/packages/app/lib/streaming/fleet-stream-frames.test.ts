@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND, type EventDetail, type EventRow, type LiveFrame } from "@/lib/api/events";
 import { HEADLINE, OUTCOME } from "@/lib/events/event-summary";
 import {
   applyLiveFrame,
@@ -11,7 +11,7 @@ import {
 
 const MS_PER_SECOND = 1000 as const;
 
-function row(over: Partial<EventRow> = {}): EventRow {
+function row(over: Partial<EventDetail> = {}): EventDetail {
   return {
     event_id: "e1",
     fleet_id: "z1",
@@ -29,7 +29,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
     created_at: MS_PER_SECOND,
     updated_at: MS_PER_SECOND,
     ...over,
-  } as EventRow;
+  } as EventDetail;
 }
 
 function evt(over: Partial<FleetEvent> = {}): FleetEvent {

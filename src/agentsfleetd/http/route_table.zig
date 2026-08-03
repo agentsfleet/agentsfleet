@@ -129,6 +129,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // cookie auth path lands with the dashboard slice).
         .workspace_fleet_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetEvents },
         .workspace_fleet_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetEventsStream },
+        .workspace_fleet_event => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetEvent },
         // Workspace-aggregate event history (replaces deleted activity.zig)
         .workspace_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceEvents },
         // One multiplexed SSE stream for the whole workspace (Bearer this slice;

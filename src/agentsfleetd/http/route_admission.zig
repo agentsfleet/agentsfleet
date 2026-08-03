@@ -49,6 +49,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .workspace_secret,
         .workspace_fleet_messages,
         .workspace_fleet_events,
+        .workspace_fleet_event,
         .workspace_events,
         .workspace_onboarding,
         .workspace_preferences,
