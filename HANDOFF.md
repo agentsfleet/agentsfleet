@@ -5,50 +5,64 @@ Request (PR).
 
 ## ▶ READ THIS FIRST
 
-**ALL FOURTEEN ACCEPTANCE RUBRIC ROWS ARE GREEN.** Every one was run verbatim
-and graded from its own output. That is new — they were entirely ungraded at the
-start of this session, and three were failing for real reasons.
+**Everything is committed and the working tree is clean.** `HEAD` is
+`adf52ba04`, 51 commits ahead of `origin/main`. The previous handoff opened by
+warning that 26 files sat uncommitted — that is resolved; eleven focused commits
+landed this session. Start by confirming `git status -uall` is empty, then work
+forward.
 
-**NOTHING IS COMMITTED.** 26 files sit uncommitted in the worktree. `HEAD` is
-still `f9e5d656f`, still 40 commits ahead of `origin/main`. Every fix described
-below exists only in the working tree. **Commit early in the next session** —
-a crash loses a lot.
+**The branch already contains `origin/main` (`31ce4b9c9`)**, including the PR
+#586 playbook rebuild. No rebase needed before the PR.
 
-**The gates are green but the milestone is not closed.** No skill-chain step has
-run, CHORE(close) has not started, and there is no PR.
+**Still no PR, and CHORE(close) has not started.**
 
-## Gate board — all verified this session
+## Gate board
 
 | Row | Verdict |
 |---|---|
-| R1 R2 R3 R4 R5 R6 | ✅ |
-| S1 `make test-unit-all` | ✅ exit 0 · unit=3409 integration=571 · zig 86.00% ≥ 83 · app 100% on all four metrics |
-| S2 `make lint-all` | ✅ exit 0 |
-| S3 `make test-integration` | ✅ exit 0 · zero leaks · ran against a database rebuilt from an empty volume |
-| S4 `make test-unit-app` | ✅ exit 0 · 2170 tests |
-| S5 `make memleak` | ✅ all lanes + boot→drain |
-| S6 cross-compile | ✅ both linux targets |
-| S7 `gitleaks` | ✅ no leaks found |
-| S8 orphan sweep | ✅ |
+| R1–R6, S1–S8 | ✅ all fourteen graded verbatim in the spec, from their own output |
+| `make test-integration` | ✅ exit 0, zero test failures (re-run this session after the new tests) |
+| `make check-playbooks` | ✅ exit 0 |
+| Test depth | unit=3415 integration=576, from the CHORE(open) baseline 3344 / 510 |
 
-Test depth grew from the CHORE(open) baseline `unit=3344 integration=510` to
-**3409 / 571**.
+**S1/S2 were re-run because the previous handoff's greens were partly stale** —
+see "Traps" below. Treat the rubric's S-rows as needing one more confirming run
+at CHORE(close), because the diff has grown since they were graded.
 
 ## What is left — in priority order
 
-1. **`docs/architecture/billing_and_provider_keys.md` still describes a deleted
-   table as live.** Seven references to `fleet.metering_periods` claim CURRENT
-   behaviour on the money path: line 26 says "writes per slice: 3" (it is 2 now),
-   line 52 says the budget gate sums that table, lines 149 and 174 are write-path
-   diagrams with a "③ BREAKDOWN INSERT" step that no longer happens, line 324
-   names it as the source of truth. §4 deleted the table and reworked the drain to
-   apportion the accumulated ledger total across `[created_at, last_charged_at]`.
-   Line 334 is already rewritten correctly and is the model to follow. **This is
-   the largest remaining correctness gap in the docs and it is on the money path.**
+1. **Three runtime bugs Indy raised, to be fixed in this PR** (he asked
+   explicitly: *"Can we fix them all in your PR?"*). All three are **blocked on
+   information only he can supply** — the questions are at the bottom of this
+   file.
+   - **Billing page** returns "Billing isn't ready yet". Root cause is
+     server-side and invisible from here, because
+     `app/(dashboard)/settings/billing/page.tsx:58` does
+     `getTenantBilling(token).catch(() => null)` and `null` renders that empty
+     state. **A 500, a network failure and a genuinely empty tenant are
+     indistinguishable to the operator.** That collapse is a real defect on its
+     own and should be fixed regardless of the cause — but the cause needs the
+     actual API status.
+   - **`github-pr-reviewer` fleet** reports "The runner crashed —
+     FleetRunFailed", 0 tokens, 5.1s, on PR #586. `FleetRunFailed` is the
+     outcome label, not the reason; the reason is behind the `{} Details`
+     expander in that row.
+   - **Runners leases filter** — no way to filter by workspace then fleet; a
+     funnel icon per row beside a truncated workspace id. This is a **design
+     change, not a bug**, and needs a target shape before any code.
+   - **Hypothesis worth testing before writing code:** Indy plans to teardown
+     dev and rebuild the api-dev database after this merges. If that database
+     has already drifted from the deployed code, a failing billing read and a
+     runner dying in 5.1s with 0 tokens are both what a schema mismatch looks
+     like — and the rebuild is the fix, not a patch. This milestone renames
+     `core.tenant_billing` → `billing.tenant_wallet` and
+     `core.fleet_execution_telemetry` → `billing.usage_ledger`, so the shape
+     fits. **Establish this before treating either as a code bug.**
 
-2. **Skill chain — none of it has run.** In order: `/write-unit-test`, then
-   `/write-integration-test`, then gstack `/review`. All three are mandatory
-   before the PR.
+2. **Skill chain — one of three done.**
+   - `/write-unit-test` ✅ ran; it produced the six tests described below.
+   - `/write-integration-test` ❌ never run.
+   - gstack `/review` ❌ never run. Both are mandatory before the PR.
 
 3. **Index review (§5) never happened.** `make down` first so EXPLAIN reads a
    cold stack; seed 10 runners / 100 fleets. First candidate
@@ -57,131 +71,144 @@ Test depth grew from the CHORE(open) baseline `unit=3344 integration=510` to
    `idx_runner_events_type_created_at` over the composite
    `index_usage_integration_test` expects.
 
-4. **Six Dimensions still have no test.** 2.1's catalogue-wide half, 3.1, 4.2,
-   4.3, 6.1, 7.4. They are recorded as untested rather than marked DONE — do not
-   mark them without a test that runs.
+4. **Dimension 6.1 is the one Dimension still untested**, and the spec now
+   records why in full. Short version: the Dimension asserts a *comment
+   convention* the catalogue cannot see, so the honest test is a different
+   assertion (literal-vs-constant drift, like `audits/cross-tier-rates.sh`) and
+   that substitution is Indy's call. **Do not mark it DONE.**
 
 5. **CHORE(close)** — spec `active/` → `done/`, delete this file, PR Session
-   Notes.
+   Notes, orphan sweep, `git status` empty.
 
 6. **PR**, then `kishore-babysit-prs`.
 
 ## What this session changed
 
-**The 500 on two unauthenticated routes.** `formatSessionKey` returned a bare
-`error.InvalidSessionId`, which is not a member of `session_store.Error`, so
-`failFromStoreError`'s switch could never classify it and every caller typo
-reported as a server fault **by construction**. Fixed at the source (it now
-reports `Error.SessionMissing`) plus `innerPollAuthSession` routing through the
-shared mapper like the other four handlers. Covered by a table-driven route test
-over four identifier shapes asserting **exact** 404.
+**All 26 uncommitted files landed**, in eleven commits scoped by concern: the
+coverage-lane workflow and its guard, the auth session fixes, the OpenAPI route
+removal, the catalogue tests, the app coverage tests, the stale source comments,
+the architecture docs, the spec grading, the billing-doc money-path corrections,
+the five Dimension tests, and the playbook role check.
 
-**A pre-existing production memory leak.** `verifyAndConsume` duped its outcome
-with the store's long-lived allocator while `innerVerifyAuthSession` freed it
-with the per-request arena, whose `free` is a no-op — so every successful
-command-line login stranded its payload, in production too. Proved pre-existing
-by stashing to pristine and reproducing identically. One line:
-`outcome.deinit(hx.ctx.auth_sessions.alloc)`, matching what
-`innerCreateAuthSession` already did two functions above. **This is what had S3
-permanently red.**
+**Five of the six untested Dimensions now have tests — 2.1, 3.1, 4.2, 4.3, 7.4**
+— and the spec is marked accordingly. **None was accepted on a green exit.**
+Every one was mutated first and watched go red:
 
-**R6 was catching a real bug, not a grep artefact.** `public/openapi.json` still
-published `POST …/integration-requests` — 101 lines — for a route already deleted
-from the router, and two error hints sent operators to it and to the equally
-retired `…/fleet-keys`. Fixed at the YAML **source** (`public/openapi/`), because
-`openapi.json` is generated by `redocly bundle` and a direct edit would have been
-reverted by the next `make check-openapi`.
+- `ledgered + 1` → `expected 35921, found 35920`
+- ledger foreign-key count 3 → 4 → `expected 4, found 3`
+- expiry tally `+ 1` → `+ 2` → `expected 2, found 1`
 
-**Four catalogue tests, in the right binary.** Dimensions 2.2, 3.2, 6.2 and 6.3
-had no test. They now live in `db/schema_shape_integration_test.zig`, registered
-in `integration_tests.zig`, and are **verified executing** — filtering
-`schema_shape` runs 4 over a 3-test baseline, filtering one name runs 1, zero
-skips either way.
+The two worth knowing about. **4.2** pins that the wallet drain equals the ledger
+sum; the sibling test that looked like it already covered this reconciles the
+emitted *metric* against the ledger, and would still pass if the ledger and the
+wallet disagreed with each other. **7.4** deletes the event body so reclaim's
+INNER join returns nothing — the only case where a tally written by a second
+statement behaves differently from one riding the status flip.
 
-**Ten app tests closing §7's own coverage gaps.** `ui/packages/app` enforces a
-100% floor and the branch sat at 99.88–99.92% with every test passing — the
-*threshold* was red. The instructive two: `page.tsx`'s transcript degrade arm
-never ran because every route test returned `items: []` for `/events`, and
-`fleet-stream-frames.ts`'s `?? EMPTY_PAYLOAD` fallback — which exists *because*
-the list carries no bodies — was never taken, since the factory always supplied
-`request_json`. The branch's central behaviour change was the thing its tests did
-not exercise.
+**The Continuous Integration guard was blocking every commit.**
+`check_ci_lane_config_test.py` asserted `assertTrue(options, "the coverage job
+must still declare container options")` — it required the coverage job to have a
+`container:` block, which is an implementation choice, not a property, and which
+Indy's approved workflow edit deliberately changed. Deleted. The two assertions
+that *do* encode properties now read `docker run` flags as well as
+`container.options:`, which also closed a blind spot `memleak.yml:88` had sat in
+since the guard was written: a `docker run --privileged` was invisible to the
+sweep. Indy approved this edit in session.
 
-**The Continuous Integration coverage job could never have worked.** It ran
-inside a job-level `container:`, which GitHub Actions places on a managed network
-that rejects `--network host` — and the coverage target now measures the
-integration binary, which needs live Postgres and Redis. Rewritten to the
-`docker run` pattern `test-integration.yml` already documents, same image, same
-digest pin, plus `workflow_dispatch` so a branch can exercise the lanes before
-review. `make check-gh-actions-valid` passes. **Indy approved this edit
-explicitly.**
+**The billing architecture doc described a deleted table as live in nine
+places**, not the seven the previous handoff counted. The two extra were
+`slice_seq` (the `meter_slice_seq` counter is gone from the affinity slot) and
+the budget gate's rolling-window filter (`recorded_at` → `last_charged_at`).
+`renewal.zig`'s own header had the same defect.
 
-**`M155_001` now exists** at
-`docs/v2/pending/M155_001_P1_API_INFRA_SQL_PAYLOAD_OFFLOAD_AND_DURABLE_STREAM.md`.
-Three of M154's deferrals pointed at a milestone with no spec. Passes
-`audits/spec-template.sh --staged`.
+**`playbooks/.../teardown/database/03_verify.sh` verified four of eight roles.**
+Its hardcoded list named `ops_readonly_agent` — retired with the old product
+noun, creatable by nothing — while missing `billing_runtime`,
+`metering_runtime`, `vault_runtime` and `ops_readonly_fleet`, and printed a
+success criterion of "5-6". The two it silently stopped reporting own the money
+tables. Now catalog-derived, the way `teardown.sql`'s schema loop already is.
 
-**Dotfiles commit `70e7a42`** — the REST guide's raw-handler table named two
-handlers §8 deleted, which failed `make lint-all` in this repo. Fixed and pushed
-on `master`. Two unrelated modified files there were left alone.
+**The rest of the teardown → rebuild path was checked and is sound for this
+milestone**, which matters because landing it forces a from-empty bootstrap:
+`teardown.sql` enumerates schemas from `information_schema` so `billing` and
+`audit` drop without being named; the migration ledger is
+`audit.schema_migrations` and goes with them, so the next boot replays from
+zero; role creation is guarded on `pg_roles` and schemas are `IF NOT EXISTS`, so
+a second bootstrap over surviving roles is idempotent; and no file under
+`playbooks/` names a table this milestone renamed.
 
 ## Traps this session re-learned the hard way
 
-- **A background task's "exit code 0" is the wrapper's, not `make`'s.** Three
-  times a notification said success while the log held `EXIT=2`. Always echo the
-  real exit into the log and grep for it.
-- **A degraded test run reports a confident wrong number.** One app coverage run
-  silently executed **203 of 213** files and reported 94.94%. Trusting it would
-  have meant reporting a regression that never existed. Always check the file
-  count, not just the percentage.
-- **A filter that matches nothing passes.** Prove a new test RUNS — filter on its
-  own name and count, do not infer from a green exit.
-- **Database-gated tests in the unit graph run in NO gate.**
-  `make test-unit-agentsfleetd` never sets `TEST_DATABASE_URL` and the coverage
-  lane gives it only to the integration component. That is most of the 278 skips.
-  It also means **Dimension 2.1's test has never executed** — and it is narrower
-  than the Dimension anyway (three named constraints on one table, versus a claim
-  about all ~22).
-- **`public/openapi.json` is generated.** Edit `public/openapi/**`.
-- **`make test-unit-all` reaches the live internet.** `http_pin_test` performs
-  real handshakes against `LIVE_TLS_HOSTS` with no offline skip; it failed once
-  when two third-party hosts were briefly unreachable. Unresolved — see below.
-- Everything the previous handoff listed still holds: reset the test database
-  before believing an integration result, assert exact statuses never `>= 400`,
-  and check an artifact's mtime before trusting it.
+- **`zig build test-integration` run directly SKIPS the database-and-Redis tests
+  SILENTLY and reports a green `68/69`.** A deliberately broken assertion still
+  passed there. Only `make test-integration` provisions the suite, and only
+  under it does the mutation go red. **Any claim about an integration test must
+  come from the make target.** This is the single most expensive trap in this
+  repository and it has now bitten twice.
+- **A filter that matches nothing passes — and so does one that matches a
+  skipped test.** Counting is not enough; mutate the assertion and watch it go
+  red. That is the only proof.
+- **The previous handoff's S2 `make lint-all ✅` was stale.** `lint-all` →
+  `lint-zig` → the Continuous Integration guard test, which was red the whole
+  time. What had actually been verified after the workflow edit was
+  `make check-gh-actions-valid`, a much narrower target (actionlint only).
+  Re-grade S-rows after the diff grows; do not carry a green forward.
+- **The pre-commit hook takes longer than two minutes** on Zig-touching commits
+  and is scope-aware — doc-only commits skip the heavy lanes entirely. Budget
+  for it; a two-minute timeout kills the commit mid-hook.
+- Everything the previous handoff listed still holds: a background task's exit
+  code is the wrapper's, not `make`'s; a degraded coverage run reports a
+  confident wrong number, so check file counts not just percentages;
+  `public/openapi.json` is generated, edit `public/openapi/**`;
+  `make test-unit-all` reaches the live internet via `http_pin_test`.
 
 ## Decisions Indy made this session — do not relitigate
 
-1. **No `~/Projects/docs/changelog.mdx` entry.** Asked twice, refused twice:
-   *"there is no docs repo update here"* and *"i dont need updates in the
-   docs/changelog.mdx for this."* The spec's own Files Changed lists it as
-   required, so the row is annotated as skipped by decision. Both quotes are in
-   the spec's Discovery as the deferral ack.
-2. **The `.github/workflows/` edit is approved.**
-3. **Horizontal sharding is "measure, then decide"**, no longer "explicitly
-   rejected" — the rejection rested on an unmeasured capacity claim.
-4. **`M155_001` written** rather than leaving three deferrals pointing at nothing.
-5. Carried from before: **no PR until CHORE(close)**; the CLI fleet-key surface
-   deleted without amending Files Changed (now recorded there); the events table
-   reading `No result recorded`; the transcript re-reading its turns as details.
+1. **The Continuous Integration guard fix is approved** — he reviewed the
+   analysis and said *"yes continue"*.
+2. **Cache-prune cleanup is deferred, explicitly.** *"let fix the cache-prune
+   later."* The analysis stands for whoever picks it up: the `closed-pr` rule
+   fixes a real Least Recently Used inversion; the `superseded` rule is largely
+   redundant with LRU and the 7-day sweep; the four workflow-text assertions are
+   the most brittle part. **Out of M154's scope — its own spec, not this PR.**
+3. **The three runtime bugs are to be fixed in this PR** — *"Can we fix them all
+   in your PR?"*
+4. Carried from before: **no `changelog.mdx` entry** (asked twice, refused
+   twice, both quotes in the spec's Discovery); **no PR until CHORE(close)**;
+   the `.github/workflows/` edit is approved; horizontal sharding is "measure,
+   then decide"; `M155_001` exists so three deferrals stop pointing at nothing.
 
-## Open, needing Indy
+## Open, needing Indy — all three block work
 
-- **`http_pin_test` makes a P0 gate depend on the developer's network.** It loops
-  production hosts doing real TLS handshakes. Options: accept S1 as a
-  Continuous Integration-only gate, guard the sweep with `error.SkipZigTest` on an
-  unreachable-network errno (the shape the integration suites already use for a
-  missing `TEST_DATABASE_URL`), or move it to a lane allowed to need the internet.
-- **`ERR_APIKEY_INVALID` is declared but has no live consumer** — dead registry
-  entry; removing it needs an orphan sweep.
+1. **The billing API error.** `curl -H "Authorization: Bearer <token>"
+   https://<api-dev>/v1/tenants/me/billing`, or the `agentsfleetd` log line. The
+   status code alone narrows it a long way.
+2. **The runner crash detail** — the contents of the `{} Details` expander on
+   that lease row, or the runner log.
+3. **The Runners filter's target shape** — a workspace picker that scopes a
+   fleet picker in the toolbar? Free-text search? Click a row's workspace to
+   filter to it?
+
+Carried, still open:
+
+- **`http_pin_test` makes a P0 gate depend on the developer's network.** Options:
+  accept S1 as Continuous Integration-only, guard the sweep with
+  `error.SkipZigTest` on an unreachable-network errno, or move it to a lane
+  allowed to need the internet.
+- **`ERR_APIKEY_INVALID` is declared with no live consumer** — dead registry
+  entry; removal needs an orphan sweep.
 - **`dashboard-workspace`'s WorkspaceSwitcher test** exceeds the default 1s
   `waitFor` under parallel load. Passes 28/28 alone. Makes S1 non-deterministic.
+- **`schema/710_usage_ledger.sql:2`** says "At most three rows per event — one
+  per charge type"; `ChargeType` has two members (`receive`, `stage`). Harmless
+  today, wrong as written. Noticed while grounding the billing doc; not fixed
+  because it is a comment on a file outside the session's touched set.
 
 ## Environment
 
 Docker compose project `agentsfleet-m154-schema-rebuild`, ports
-25832/25833/25834, database `agentsfleetdb`. The volume was deleted and rebuilt
-this session, so the current database is a genuine from-empty bootstrap — which
-is incidentally the strongest evidence for Dimension 1.3. Always `docker ps`
-first. ❌ Never run `playbooks/operations/teardown/database/02_teardown.sh`;
-`make _reset-test-db` is fine.
+25832/25833/25834, database `agentsfleetdb`. Redis TLS cert at
+`.tmp/redis-ca.crt` — `make` provisions it, a direct `zig build` does not, which
+is the skip trap above. Always `docker ps` first. ❌ Never run
+`playbooks/operations/teardown/database/02_teardown.sh`; `make _reset-test-db`
+is fine.
