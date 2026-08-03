@@ -169,7 +169,8 @@ The origination path belongs where the requirement becomes known — at install,
 
 **Implementation default:** the grant seed runs synchronously in the create handler, alongside `INSERT core.fleets` — not in `create_install_steps.zig`'s progression, whose every sub-step is best-effort by design. A best-effort seed reproduces the exact defect this section removes: the row flips to `active` carrying no grant.
 
-- **Dimension 8.1** — installing a fleet whose bundle declares a required credential creates a pending grant and raises an approval gate carrying the bundle's stated reason → Test `test_install_seeds_pending_grant_and_gate` — **DONE**
+- **Dimension 8.1** — installing a fleet whose bundle declares a MINTABLE credential creates a pending grant recording why it exists, and raises one approval gate naming the service and the credential that classified to it; a credential that cannot mint raises nothing → Test `test_install_seeds_pending_grant_and_gate` — **DONE**
+  - The bundle carries no free-text justification field, so the grant's `requested_reason` states the origin once (`create_grants.S_DEFAULT_REASON`) rather than quoting an author. A bundle-authored reason is a feature, not a gap in this Dimension.
 - **Dimension 8.2** — resolving that gate as approved flips the grant to approved, and the fleet's webhook events then route → Test `test_gate_approval_arms_webhook_routing` — **DONE**
 - **Dimension 8.3** — a lease whose resolved credential has no approved grant parks the event and re-evaluates on the next poll, instead of dropping the credential and issuing a lease that cannot work → Test `test_lease_parks_on_missing_grant` — **DONE**
 - **Dimension 8.4** — no route authenticates outside the middleware chain; the handler-local fleet authentication and its session arm are gone → Test `test_no_handler_local_authentication` — **DONE**
