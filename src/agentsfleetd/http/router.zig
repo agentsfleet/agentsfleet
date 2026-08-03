@@ -128,6 +128,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Workspace + fleet + leaf-id sub-resources ────────────────────────
     if (matchers.matchScheduleItem(p)) |r| return .{ .workspace_fleet_schedule = r };
     if (matchers.matchWorkspaceFleetGrant(p)) |r| return .{ .revoke_integration_grant = r };
+    if (matchers.matchWorkspaceFleetEvent(p)) |r| return .{ .workspace_fleet_event = r };
     if (matchers.matchWorkspaceFleetMemoryItem(p)) |r| return .{ .workspace_fleet_memory_item = r };
 
     // ── Workspace + fleet + action ───────────────────────────────────────

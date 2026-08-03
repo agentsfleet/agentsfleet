@@ -90,6 +90,7 @@ fn classify(route: router.Route) RouteTraits {
         .workspace_fleet_messages,
         .workspace_fleet_events,
         .workspace_fleet_events_stream,
+        .workspace_fleet_event,
         .workspace_events,
         .workspace_events_stream,
         .workspace_onboarding,

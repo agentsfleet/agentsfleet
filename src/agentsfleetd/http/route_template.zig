@@ -76,6 +76,7 @@ pub fn templateFor(route: router.Route) []const u8 {
         .workspace_fleet_schedule_sync => WORKSPACE_FLEET ++ "/schedules/{schedule_id}:sync",
         .workspace_fleet_events => WORKSPACE_FLEET ++ "/events",
         .workspace_fleet_events_stream => WORKSPACE_FLEET ++ "/events/stream",
+        .workspace_fleet_event => WORKSPACE_FLEET ++ "/events/{event_id}",
         .workspace_events => WORKSPACE ++ "/events",
         .workspace_events_stream => WORKSPACE ++ "/events/stream",
         .workspace_onboarding => WORKSPACE ++ "/onboarding",

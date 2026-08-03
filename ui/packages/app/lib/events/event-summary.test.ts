@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EventRow } from "@/lib/api/events";
+import type { EventDetail, EventRow } from "@/lib/api/events";
 import {
   ACTOR,
   EVENT_STATUS,
@@ -26,7 +26,7 @@ const ACCOUNT_ID = "user_3gkbgxjnujsxbdxttcwcslpc87k";
 const FLEET_NAME = "github-pr-reviewer";
 const PLATFORM_IDENTITY = "github-app";
 
-function row(over: Partial<EventRow> = {}): EventRow {
+function row(over: Partial<EventDetail> = {}): EventDetail {
   return {
     event_id: "e1",
     fleet_id: "f1",

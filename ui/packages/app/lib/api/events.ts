@@ -4,6 +4,10 @@ import { requestWithRetry, type RetryOptions } from "./retry";
 // Operator-visible event rows from `core.fleet_events`. Mirrors the
 // server's `EventRow` envelope verbatim (no shim, no rename) — the
 // dashboard renders the same shape it queries.
+//
+// No request or response body: a page is up to 200 rows, and the list read is
+// deliberately kept off oversized-attribute storage. Anything that needs a body
+// reads one event through `getFleetEvent` below.
 
 export type EventStatus = "received" | "processed" | "fleet_error" | "gate_blocked";
 export type EventType = "chat" | "webhook" | "cron" | "continuation";
@@ -17,8 +21,6 @@ export type EventRow = {
   actor: string;
   event_type: EventTypeValue;
   status: EventStatusValue;
-  request_json: string;
-  response_text: string | null;
   tokens: number | null;
   wall_ms: number | null;
   failure_label: string | null;
@@ -46,6 +48,21 @@ export type EventRow = {
 export type EventsPage = {
   items: EventRow[];
   next_cursor: string | null;
+};
+
+/**
+ * One event with everything recorded about it — the list row plus the two
+ * bodies the list read omits. Fetched when a row is expanded, never for a page:
+ * a page is up to 200 rows and would carry every payload to render a table.
+ */
+export type EventDetail = EventRow & {
+  /** The trigger payload as stored, serialized to JSON text. */
+  request_json: string;
+  /**
+   * The agent's full answer. `null` while a run is in flight, and on a run that
+   * failed before producing one.
+   */
+  response_text: string | null;
 };
 
 export type EventsQuery = {
@@ -85,6 +102,24 @@ export async function listFleetEvents(
     { method: "GET" },
     token,
     retry,
+  );
+}
+
+/**
+ * Read one event's full record. A 404 covers both an unknown identifier and an
+ * event in another workspace — the server does not distinguish them, so neither
+ * can the caller.
+ */
+export async function getFleetEvent(
+  workspaceId: string,
+  fleetId: string,
+  eventId: string,
+  token: string,
+): Promise<EventDetail> {
+  return request<EventDetail>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/events/${encodeURIComponent(eventId)}`,
+    { method: "GET" },
+    token,
   );
 }
 

@@ -11,10 +11,10 @@ import {
   reconcileServerRows,
   subscribe,
 } from "./fleet-stream-registry";
-import { FRAME_KIND, type EventRow } from "@/lib/api/events";
+import { FRAME_KIND, type EventDetail, type EventRow } from "@/lib/api/events";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 
-function row(over: Partial<EventRow> = {}): EventRow {
+function row(over: Partial<EventDetail> = {}): EventDetail {
   const now = Date.UTC(2026, 4, 15, 18, 30, 0);
   return {
     event_id: "evt_seed",

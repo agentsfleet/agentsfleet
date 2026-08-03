@@ -166,6 +166,11 @@ pub fn matchWorkspaceSuffixAction(p: Path, suffix: []const u8, action: []const u
     return p.param(1);
 }
 
+/// The `/events` sub-resource segment. Spelled once because two matchers
+/// share this shape — `events/stream` and `events/{event_id}` are both six
+/// segments, and a typo in either would silently make one unroutable.
+const S_EVENTS = "events";
+
 fn isFleetRuntimeSegment(p: Path, idx: usize) bool {
     return p.eq(idx, S_FLEETS) and (idx + 1 >= p.segs.len or !p.eq(idx + 1, S_BUNDLES));
 }
@@ -229,43 +234,21 @@ pub fn matchWorkspaceFleetAction(p: Path, action: []const u8) ?WorkspaceFleetRou
 pub fn matchWorkspaceFleetEventsStream(p: Path) ?WorkspaceFleetRoute {
     if (p.segs.len != 6) return null;
     if (!p.eq(0, S_WORKSPACES) or !isFleetRuntimeSegment(p, 2)) return null;
-    if (!p.eq(4, "events") or !p.eq(5, "stream")) return null;
+    if (!p.eq(4, S_EVENTS) or !p.eq(5, "stream")) return null;
     const ws = p.param(1) orelse return null;
     const fleet_id = p.param(3) orelse return null;
     return .{ .workspace_id = ws, .fleet_id = fleet_id };
 }
 
-// ── /workspaces/{ws}/fleets/{fleet_id}/{leaf_segment}/{leaf_id} ──────────
-// Per-Fleet sub-resource leaves. Each route gets its own typed struct with a
-// semantically named leaf field; the parsing logic is shared via a private
-// helper.
-
-const FleetLeafView = struct {
-    workspace_id: []const u8,
-    fleet_id: []const u8,
-    leaf: []const u8,
-};
-
-fn matchFleetLeaf(p: Path, leaf_segment: []const u8) ?FleetLeafView {
-    if (p.segs.len != 6) return null;
-    if (!p.eq(0, S_WORKSPACES) or !isFleetRuntimeSegment(p, 2)) return null;
-    if (!p.eq(4, leaf_segment)) return null;
-    const ws = p.param(1) orelse return null;
-    const fleet_id = p.param(3) orelse return null;
-    const leaf = p.param(5) orelse return null;
-    return .{ .workspace_id = ws, .fleet_id = fleet_id, .leaf = leaf };
-}
-
-pub const WorkspaceFleetGrantRoute = struct {
-    workspace_id: []const u8,
-    fleet_id: []const u8,
-    grant_id: []const u8,
-};
-
-pub fn matchWorkspaceFleetGrant(p: Path) ?WorkspaceFleetGrantRoute {
-    const v = matchFleetLeaf(p, "integration-grants") orelse return null;
-    return .{ .workspace_id = v.workspace_id, .fleet_id = v.fleet_id, .grant_id = v.leaf };
-}
+// Per-Fleet sub-resource leaves (`/fleets/{id}/integration-grants/{gid}`,
+// `/fleets/{id}/events/{event_id}`) live in route_matchers_fleet_leaf.zig
+// (RULE FLL — keep this file under 350 lines); re-exported so call sites stay
+// unchanged.
+const fleet_leaf = @import("route_matchers_fleet_leaf.zig");
+pub const WorkspaceFleetGrantRoute = fleet_leaf.WorkspaceFleetGrantRoute;
+pub const matchWorkspaceFleetGrant = fleet_leaf.matchWorkspaceFleetGrant;
+pub const WorkspaceFleetEventRoute = fleet_leaf.WorkspaceFleetEventRoute;
+pub const matchWorkspaceFleetEvent = fleet_leaf.matchWorkspaceFleetEvent;
 
 // ── /workspaces/{ws}/approvals/{gate_id}[:approve|:deny] ───────────────────
 // Both matchers share segs.len == 4 + segs[2] == "approvals"; mutual
