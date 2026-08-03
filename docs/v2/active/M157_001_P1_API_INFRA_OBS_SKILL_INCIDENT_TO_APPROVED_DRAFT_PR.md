@@ -134,7 +134,7 @@ The two consumers also differ in when the change bites, and the spec relies on b
 - **Dimension 1.1** — **DONE** — The machine grant carries every tenant capability except `approval_resolve` → Test `test_machine_grant_excludes_approval_resolve`
 - **Dimension 1.2** — **DONE** — The human signup claim still carries `approval:resolve`; the two grants differ in exactly that one granted member → Test `test_signup_claim_retains_approval_resolve`
 - **Dimension 1.3** — A tenant API key is refused at the approval-resolve route; a user principal still passes → Test `test_api_key_cannot_resolve_approval`
-- **Dimension 1.4** — Blast radius is empty: no in-repo caller resolves an approval with a machine credential → Test `test_no_machine_approval_callers` (repo grep, asserted)
+- **Dimension 1.4** — **DONE** — The resolve route's requirement and the machine grant are provably disjoint, so no caller can resolve with a machine credential regardless of who calls → Test `test_no_machine_approval_callers`
 
 ### §2 — The approval names what it is approving, and the token reaches one repository
 
@@ -255,7 +255,7 @@ Repair rung: revert only. The repairer resolves the suspect commit and opens a d
 | 1.1 | unit | `test_machine_grant_excludes_approval_resolve` | machine-grant set lacks `approval_resolve`, retains the other ten tenant capabilities |
 | 1.2 | unit | `test_signup_claim_retains_approval_resolve` | `defaultClaim(.tenant)` still contains `approval:resolve`; set difference against the machine grant is exactly that one member |
 | 1.3 | integration | `test_api_key_cannot_resolve_approval` | `agt_t` bearer at resolve route → refused; user JWT → accepted |
-| 1.4 | unit | `test_no_machine_approval_callers` | repo grep for machine-credential approval resolution → zero hits |
+| 1.4 | unit | `test_no_machine_approval_callers` | `requiredScopes(workspace_approval_resolve, POST)` vs each default grant → machine and runner fail `satisfiesAny`, owner passes; same for the inbox-read rung |
 | 2.1 | integration | `test_gate_detail_is_populated` | parked gate row carries non-empty proposed_action/evidence/blast_radius |
 | 2.2 | unit | `test_slack_approval_names_the_action` | built message contains repo, commit sha, and the draft-PR outcome string |
 | 2.3 | unit | `test_mint_body_is_repository_scoped` | mint request body JSON carries the declared repo and both permission keys |
