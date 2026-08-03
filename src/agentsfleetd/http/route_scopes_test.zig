@@ -90,6 +90,33 @@ test "connector routes: generic trio gates write/read; callback + events are sig
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.slack_events, .POST).len);
 }
 
+test "test_no_machine_approval_callers" {
+    const resolve: @import("router.zig").Route = .{ .workspace_approval_resolve = .{
+        .workspace_id = "ws1",
+        .gate_id = "gate1",
+        .decision = .approve,
+    } };
+    const required = route_scopes.requiredScopes(resolve, .POST);
+    try testing.expectEqual(scopes.Scope.approval_resolve, onlyScope(required).?);
+
+    // The composition that makes the human gate true, stated where both halves
+    // are visible: the route demands approval:resolve, and no machine credential
+    // is provisioned it. Asserting "no caller does this today" would go stale
+    // the moment someone writes one — this holds no matter who calls.
+    try testing.expect(!scopes.satisfiesAny(scopes.defaultScopes(.tenant_api_key), required));
+    try testing.expect(scopes.satisfiesAny(scopes.defaultScopes(.tenant_owner), required));
+
+    // The runner credential is self-plane only and reaches no tenant route.
+    try testing.expect(!scopes.satisfiesAny(scopes.defaultScopes(.runner), required));
+
+    // Viewing the inbox is the lower rung of the same ladder. A machine fails it
+    // too, because dropping resolve drops the closure that would have granted it.
+    const inbox = route_scopes.requiredScopes(.{ .workspace_approvals = "ws1" }, .GET);
+    try testing.expectEqual(scopes.Scope.approval_read, onlyScope(inbox).?);
+    try testing.expect(!scopes.satisfiesAny(scopes.defaultScopes(.tenant_api_key), inbox));
+    try testing.expect(scopes.satisfiesAny(scopes.defaultScopes(.tenant_owner), inbox));
+}
+
 fn router_fleet() @import("router.zig").Route {
     return .{ .patch_workspace_fleet = .{ .workspace_id = "ws1", .fleet_id = "z1" } };
 }
