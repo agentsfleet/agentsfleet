@@ -1,9 +1,9 @@
-//! `tenant_api_key` middleware (M28_002 §2).
+//! `tenant_api_key` middleware.
 //!
 //! Resolves `Authorization: Bearer agt_t{hex}` tokens via a host-supplied
 //! `LookupFn` callback. On match (and row.active = true), populates
-//! `ctx.principal` with `.mode=.api_key`, the `.tenant` default grant
-//! (every tenant capability, no platform/cross-tenant scope),
+//! `ctx.principal` with `.mode=.api_key`, the `.tenant_api_key` default grant
+//! (every tenant capability except approving, no platform/cross-tenant scope),
 //! `.user_id`, and `.tenant_id`. Rejects unknown keys with 401 ERR_UNAUTHORIZED;
 //! rejects revoked keys with 401 ERR_APIKEY_REVOKED.
 //!
@@ -115,8 +115,9 @@ fn resolve(self: *TenantApiKey, ctx: *AuthCtx, raw_key: []const u8) !chain.Outco
         .tenant_id = row.tenant_id,
         // An `agt_t` key carries every tenant capability but NO platform or
         // cross-tenant scope — preserving today's "admin api-key cannot enroll a
-        // runner" boundary (`platform_admin` was never set on this path).
-        .scopes = scopes.defaultScopes(.tenant),
+        // runner" boundary (`platform_admin` was never set on this path) — and
+        // not `approval_resolve`, which only the human grant carries.
+        .scopes = scopes.defaultScopes(.tenant_api_key),
     };
     return .next;
 }

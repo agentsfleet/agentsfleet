@@ -141,14 +141,19 @@ The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope s
 
 ### Provisioning grants
 
-Capabilities reach a principal as an explicit `scopes` claim. Two grants are applied **in code** at principal construction — `scopes.zig::DefaultGrant`, keyed by *credential source* (not a role name) and **never checked at a gate** (gates take `Scope` values). All other capability sets are provisioned **manually** at the identity provider.
+Capabilities reach a principal as an explicit `scopes` claim. Three grants are applied **in code** at principal construction — `scopes.zig::DefaultGrant`, keyed by *credential source* (not a role name) and **never checked at a gate** (gates take `Scope` values). All other capability sets are provisioned **manually** at the identity provider.
 
 **Code-applied default grants** (`DefaultGrant` → `defaultScopes` / `defaultClaim`):
 
 | Source | Scopes provisioned | Applied by |
 |---|---|---|
-| `.tenant` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `fleetkey:write`, `grant:write`, `connector:write`, `billing:read`, `approval:resolve`, `workspace:admin`, `library:write` | a tenant owner at signup (Clerk `user.created` writeback, `identity_events_clerk.zig`) **and** every `agt_t` tenant api-key (`tenant_api_key.zig`) — every tenant capability, no platform/cross-tenant scope, preserving "an admin api-key cannot enroll a runner" |
+| `.tenant_owner` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `fleetkey:write`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `library:write`, `approval:resolve` | a tenant owner at signup (Clerk `user.created` writeback, `identity_events_clerk.zig`) — every tenant capability, no platform/cross-tenant scope, preserving "an admin api-key cannot enroll a runner" |
+| `.tenant_api_key` | the `.tenant_owner` set **minus `approval:resolve`** | every `agt_t` tenant api-key (`tenant_api_key.zig`) |
 | `.runner` | `runner:self` | minted onto every `agt_r` runner token (`runner_bearer.zig`) |
+
+**Why the two tenant grants differ — approving is a human act.** An `agt_t` key is how an automation reaches the API, and that includes a Fleet running in the sandbox. If a key could resolve an approval, a Fleet holding one could approve the gate guarding its own next action, and the human decision the gate represents would not be one. So `approval:resolve` lives only on the human grant. `approval:read` goes with it: the ladder runs `resolve → read`, and nothing re-grants read independently, so a machine credential reaches no part of the approval surface. Restoring inbox-read for machines is a one-line addition to `TENANT_API_KEY_GRANT` whenever a caller actually needs it.
+
+The two grants are **derived, not restated** — `TENANT_OWNER_GRANT = TENANT_API_KEY_GRANT ++ {approval_resolve}` — so they cannot drift apart by more than that one line. They differ in when a change takes effect, and both behaviours matter: `defaultScopes` is evaluated at principal construction on every request, so an edit reaches **existing** `agt_t` keys immediately with no backfill, while `defaultClaim` is persisted per user at signup, so an edit reaches **new owners only** and existing owners keep what was written for them.
 
 **Manually-provisioned scope sets** — written by a human onto `public_metadata.scopes` in Clerk. There is **no code bundle**: these are recommended scope lists, not roles. Copy the exact strings (RULE UFS); each capability is enforced per-scope like any other.
 
