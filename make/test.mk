@@ -2,13 +2,8 @@
 # TEST — aggregate orchestrator
 # =============================================================================
 
-# test-integration.mk first: it owns TEST_STATE_DEP and the live-service URL
-# defaults, and make expands a rule's PREREQUISITES when the rule is read. The
-# coverage target in test-unit.mk takes TEST_STATE_DEP as a prerequisite, so
-# reading test-unit.mk first left that prerequisite silently empty and the
-# target ran against whatever database happened to be up.
-include make/test-integration.mk
 include make/test-unit.mk
+include make/test-integration.mk
 include make/acceptance.mk
 include make/dry.mk
 include make/bench.mk

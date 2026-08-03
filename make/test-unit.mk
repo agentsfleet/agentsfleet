@@ -80,8 +80,14 @@ test-coverage-all: test-coverage-zig  ## Run coverage gates across Zig, app, web
 #
 # It depends on the same datastore bootstrap `test-integration` uses, so the
 # target boots what it needs instead of failing on a missing database.
-test-coverage-zig: $(TEST_STATE_DEP)  ## Run and gate merged Zig line coverage across the unit lanes and the live-service integration suite
+test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lanes and the live-service integration suite
 	@command -v kcov >/dev/null 2>&1 || { echo "✗ kcov is required for Zig coverage (install: brew install kcov or apt-get install kcov)"; exit 1; }
+	@# The datastore bootstrap is invoked here rather than declared as a
+	@# prerequisite so the tool check above runs first — booting containers only
+	@# to fail on a missing kcov wastes a minute and buries the real message.
+	@# Recipe bodies also expand at run time, so this reads TEST_STATE_DEP
+	@# correctly regardless of the order the make fragments are included in.
+	@$(MAKE) --no-print-directory $(TEST_STATE_DEP)
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)" "$(ZIG_COVERAGE_DIR)" .tmp
 	@echo "→ [zig] Building component test binaries for coverage..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
