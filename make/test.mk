@@ -2,8 +2,13 @@
 # TEST — aggregate orchestrator
 # =============================================================================
 
-include make/test-unit.mk
+# test-integration.mk first: it owns TEST_STATE_DEP and the live-service URL
+# defaults, and make expands a rule's PREREQUISITES when the rule is read. The
+# coverage target in test-unit.mk takes TEST_STATE_DEP as a prerequisite, so
+# reading test-unit.mk first left that prerequisite silently empty and the
+# target ran against whatever database happened to be up.
 include make/test-integration.mk
+include make/test-unit.mk
 include make/acceptance.mk
 include make/dry.mk
 include make/bench.mk
@@ -26,7 +31,12 @@ include make/bench.mk
 ZIG_GLOBAL_CACHE_DIR ?= $(HOME)/.cache/agentsfleet/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
 ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
-ZIG_COVERAGE_MIN_LINES ?= 60
+# Production lines only — the coverage target excludes test bodies from the
+# denominator, so this is the share of shipped code the suites actually execute.
+# It reads the unit lanes and the live-service integration suite merged, because
+# they cover largely disjoint code and either one alone understates the truth by
+# tens of points. Raise it only in the same commit as the tests that clear it.
+ZIG_COVERAGE_MIN_LINES ?= 83
 BENCH_MODE ?= bench
 # Use native target for memleak — avoids cross-compile dynamic linker mismatch
 # when OpenSSL is linked. Valgrind needs the system's ld-linux, not Zig's bundled one.
