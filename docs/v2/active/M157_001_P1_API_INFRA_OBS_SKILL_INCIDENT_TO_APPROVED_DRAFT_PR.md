@@ -68,8 +68,9 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/agentsfleetd/auth/scopes.zig` | EDIT | Remove `approval_resolve` from the `.tenant` default grant — a machine credential must not be able to approve |
-| `src/agentsfleetd/auth/scopes_test.zig` | EDIT | Negative test: the tenant grant no longer closes over `approval_resolve` |
+| `src/agentsfleetd/auth/scopes.zig` | EDIT | Split `DefaultGrant`: a machine-credential variant carrying every tenant capability except `approval_resolve`; `.tenant` stays as-is for the human signup claim |
+| `src/agentsfleetd/auth/middleware/tenant_api_key.zig` | EDIT | Construct the `agt_t` principal from the machine grant instead of `.tenant` |
+| `src/agentsfleetd/auth/scopes_test.zig` | EDIT | The two grants differ in exactly one member; the human claim is unchanged |
 | `src/agentsfleetd/http/handlers/approvals/resolve_integration_test.zig` | CREATE | A tenant API key is refused at the resolve route; a user principal is not |
 | `src/agentsfleetd/fleet/approval_gate.zig` | EDIT | Thread `gate_kind` / `proposed_action` / `evidence` / `blast_radius` into `ActionDetail` from the triggering event |
 | `src/agentsfleetd/fleet/approval_gate_integration_test.zig` | CREATE | The parked gate carries a populated detail; the Slack message names the action |
@@ -124,11 +125,16 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 
 ### §1 — Machines trigger, humans approve
 
-`grantMembers(.tenant)` closes `approval_resolve` into every `agt_t` key at comptime (`auth/scopes.zig:99-110`), and `core.api_keys` carries no per-key scope column. Any fleet holding a tenant key — including the investigator, which needs one to message the repairer — can therefore resolve the very gate that guards the repairer. The gate is not a human gate until that is false. Removing `approval_resolve` from the tenant grant is the whole change: the dashboard resolves through a Flow 2 user principal and Slack resolves through its own callback path, so no human surface depends on the machine grant.
+`grantMembers(.tenant)` closes `approval_resolve` into every `agt_t` key at comptime (`auth/scopes.zig:99-110`), and `core.api_keys` carries no per-key scope column. Any fleet holding a tenant key — including the investigator, which needs one to message the repairer — can therefore resolve the very gate that guards the repairer. The gate is not a human gate until that is false.
 
-- **Dimension 1.1** — The tenant default grant no longer closes over `approval_resolve` → Test `test_tenant_grant_excludes_approval_resolve`
-- **Dimension 1.2** — A tenant API key is refused at the approval-resolve route; a user principal still passes → Test `test_api_key_cannot_resolve_approval`
-- **Dimension 1.3** — Blast radius is empty: no in-repo caller resolves an approval with a machine credential → Test `test_no_machine_approval_callers` (repo grep, asserted)
+**The grant is shared, so it must be split rather than trimmed.** `grantMembers(.tenant)` feeds two consumers: `defaultScopes(.tenant)` at `auth/middleware/tenant_api_key.zig:119` (machine `agt_t` principals) **and** `defaultClaim(.tenant)` at `http/handlers/auth/identity_events_clerk.zig:41`, which becomes `DEFAULT_SIGNUP_SCOPES` written to Clerk `publicMetadata` at signup and read back as the human tenant owner's `scopes` claim. Deleting the scope from the shared list would strip approval rights from every new tenant owner. `DefaultGrant` therefore gains a third variant for the machine credential, carrying every tenant capability except `approval_resolve`; the human signup claim keeps `.tenant` unchanged.
+
+The two consumers also differ in when the change bites, and the spec relies on both behaviours. `defaultScopes` is evaluated at principal construction on every request, so **existing `agt_t` keys lose the scope immediately with no backfill**. `defaultClaim` is persisted per-user at signup, so existing owners keep what was already written and only new signups read the current constant — which is why the human list must not change at all.
+
+- **Dimension 1.1** — The machine grant carries every tenant capability except `approval_resolve` → Test `test_machine_grant_excludes_approval_resolve`
+- **Dimension 1.2** — The human signup claim still carries `approval:resolve`; the two grants differ in exactly that one member → Test `test_signup_claim_retains_approval_resolve`
+- **Dimension 1.3** — A tenant API key is refused at the approval-resolve route; a user principal still passes → Test `test_api_key_cannot_resolve_approval`
+- **Dimension 1.4** — Blast radius is empty: no in-repo caller resolves an approval with a machine credential → Test `test_no_machine_approval_callers` (repo grep, asserted)
 
 ### §2 — The approval names what it is approving, and the token reaches one repository
 
@@ -188,8 +194,11 @@ A playbook stands up a small multi-service instrumented workload on EC2, Grafana
 ## Interfaces
 
 ```
-Scope grant (auth/scopes.zig): grantMembers(.tenant) loses .approval_resolve. The
-  scope itself survives for user principals; only the machine-credential grant changes.
+Scope grant (auth/scopes.zig): DefaultGrant gains a machine-credential variant whose
+  members are the .tenant set minus .approval_resolve. defaultScopes(<machine>) feeds
+  tenant_api_key.zig; defaultClaim(.tenant) still feeds identity_events_clerk.zig's
+  DEFAULT_SIGNUP_SCOPES unchanged. The scope itself is untouched — only which
+  credential source is granted it.
 ActionDetail (fleet_runtime/approval_gate.zig), populated by fleet/approval_gate.zig:
   { tool, action, params_summary, gate_kind, proposed_action, evidence,
     blast_radius, timeout_ms } — proposed_action names repo + commit + "one draft PR";
@@ -220,7 +229,7 @@ Repair rung: revert only. The repairer resolves the suspect commit and opens a d
 
 ## Invariants
 
-1. No machine credential can resolve an approval — the tenant default grant excludes `approval_resolve`, asserted by unit test and by a route-level integration test.
+1. No machine credential can resolve an approval, and no human loses the ability to — the machine grant excludes `approval_resolve` while the signup claim retains it, asserted by a set-difference unit test and by a route-level integration test.
 2. The investigator cannot write to GitHub — its bundle declares no GitHub credential and no GitHub host, and `network.allow` is the authoritative gate (`PolicyHttpRequestTool.hostInAllowlist`).
 3. No repairer lease is issued for an event whose gate is not approved — the existing pre-lease check is the only path, and this workstream adds no bypass.
 4. Every parked approval names its proposed action, evidence, and blast radius — a blank `ActionDetail` field is a test failure, not a display default.
@@ -243,9 +252,10 @@ Repair rung: revert only. The repairer resolves the suspect commit and opens a d
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_tenant_grant_excludes_approval_resolve` | `defaultScopes(.tenant)` set lacks `approval_resolve` |
-| 1.2 | integration | `test_api_key_cannot_resolve_approval` | `agt_t` bearer at resolve route → refused; user JWT → accepted |
-| 1.3 | unit | `test_no_machine_approval_callers` | repo grep for machine-credential approval resolution → zero hits |
+| 1.1 | unit | `test_machine_grant_excludes_approval_resolve` | machine-grant set lacks `approval_resolve`, retains the other ten tenant capabilities |
+| 1.2 | unit | `test_signup_claim_retains_approval_resolve` | `defaultClaim(.tenant)` still contains `approval:resolve`; set difference against the machine grant is exactly that one member |
+| 1.3 | integration | `test_api_key_cannot_resolve_approval` | `agt_t` bearer at resolve route → refused; user JWT → accepted |
+| 1.4 | unit | `test_no_machine_approval_callers` | repo grep for machine-credential approval resolution → zero hits |
 | 2.1 | integration | `test_gate_detail_is_populated` | parked gate row carries non-empty proposed_action/evidence/blast_radius |
 | 2.2 | unit | `test_slack_approval_names_the_action` | built message contains repo, commit sha, and the draft-PR outcome string |
 | 2.3 | unit | `test_mint_body_is_repository_scoped` | mint request body JSON carries the declared repo and both permission keys |
@@ -276,7 +286,7 @@ Repair rung: revert only. The repairer resolves the suspect commit and opens a d
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A machine credential cannot approve (§1) | `make test-integration TEST_FILTER='approval'` | exit 0, `test_api_key_cannot_resolve_approval` listed as pass | P0 | |
+| R1 | A machine credential cannot approve, and the human signup claim still can (§1) | `make test-integration TEST_FILTER='approval'` then `make test-unit-all TEST_FILTER='grant'` | exit 0 both; `test_api_key_cannot_resolve_approval` and `test_signup_claim_retains_approval_resolve` listed as pass | P0 | |
 | R2 | The approval names its action and the token is repository-scoped (§2) | `make test-unit-all TEST_FILTER='gate_detail\|mint_body'` | exit 0, both tests listed by name | P0 | |
 | R3 | No unapproved event produces a write (§3) | `make test-integration TEST_FILTER='repairer'` | exit 0, `test_unapproved_event_opens_no_pr` listed as pass | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
@@ -384,7 +394,8 @@ second. A Jira ticket carrying the post-mortem is optional and later.
 
 | Finding | Evidence |
 |---|---|
-| A tenant API key carries `approval_resolve`, `apikey_admin`, `secret_write`, `workspace_admin` from a **comptime-pinned** grant; `core.api_keys` has no scopes column. **A fleet holding a tenant key can resolve its own approval.** §1 fixes this by removing the scope from the grant. | `auth/scopes.zig:99-110`, `auth/middleware/tenant_api_key.zig:119` |
+| A tenant API key carries `approval_resolve`, `apikey_admin`, `secret_write`, `workspace_admin` from a **comptime-pinned** grant; `core.api_keys` has no scopes column. **A fleet holding a tenant key can resolve its own approval.** §1 fixes this by splitting the grant. | `auth/scopes.zig:99-110`, `auth/middleware/tenant_api_key.zig:119` |
+| `grantMembers(.tenant)` has **two** consumers, not one: `defaultScopes` → machine `agt_t` principals, and `defaultClaim` → `DEFAULT_SIGNUP_SCOPES` written to Clerk `publicMetadata` at signup, which becomes the human tenant owner's `scopes` claim. Trimming the shared list would have stripped approval rights from every new tenant owner. The reconciling agent proposed exactly that before checking the second consumer. | `auth/scopes.zig:118-125`, `http/handlers/auth/identity_events_clerk.zig:41` |
 | The GitHub App installation token is minted with `.body = ""` — **no `repositories`, no `permissions`** — so any fleet declaring the `github` credential receives full App permissions across every repository in the installation for an hour. Found Aug 03; neither prior review considered it. §2 fixes it. | `credentials/integration_github.zig:72-77` |
 | The approval gate checks policy **before a lease is issued** and parks the event; there is no mid-run hold. `ActionDetail`'s `gate_kind`/`proposed_action`/`evidence`/`blast_radius` are built blank, and the code comment records them as designed-but-unthreaded. §2 threads them. | `fleet/approval_gate.zig:1-7,112-127` |
 | `GateDecision` falls through to `.auto_approve` when no rule matches, and `GatePolicy.rules` defaults to empty — **gating is opt-in per fleet**. A bundle shipped without `gates.rules` is an autonomous agent. §3 tests against it. | `fleet_runtime/approval_gate.zig:96`, `config_gates.zig:67-68` |
