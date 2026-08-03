@@ -62,6 +62,20 @@ const TOKEN_NAME = "laptop";
 /// A syntactically valid version-7 identifier the store has never issued.
 const NEVER_CREATED_SESSION_ID = "01960000-0000-7000-8000-000000000000";
 
+/// Identifiers the router happily accepts as a path segment but that name no
+/// session the store could ever hold. Each reaches `formatSessionKey`'s
+/// version-7 check from a different direction. All are caller error, so all
+/// must answer exactly as a well-formed unknown identifier does. Values with
+/// spaces or semicolons live in the store's own helper suite instead — they do
+/// not survive as a path segment, so routing would answer before the handler
+/// ever ran and the test would pass without proving anything.
+const MALFORMED_SESSION_IDS = [_][]const u8{
+    "abc", // far too short to be a Universally Unique Identifier
+    "01960000-0000-4000-8000-000000000000", // canonical shape, version 4 not 7
+    "01960000000070008000000000000000", // right digits, hyphens stripped
+    "01960000-0000-7000-c000-000000000000", // version 7, variant nibble out of range
+};
+
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
 fn makeHarness() !*TestHarness {
@@ -212,6 +226,30 @@ test "integration: polling a session that was never created is a clean not-found
     const r = try h.get(path).send();
     defer r.deinit();
     try std.testing.expectEqual(STATUS_NOT_FOUND, r.status);
+}
+
+// Both routes exercised here are unauthenticated, so an unrecognisable
+// identifier is reachable by anyone. The store reports it as a missing session
+// rather than a bare error tag precisely so this answers 404: an unclassified
+// tag falls through `failFromStoreError`'s `else` arm and reports a caller's
+// typo as a server fault. The assertion names the exact status deliberately —
+// a `>= 400` check passes on the 500 this exists to prevent.
+test "integration: an unrecognisable session id is not-found on both unauthenticated routes" {
+    const h = makeHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    for (MALFORMED_SESSION_IDS) |session_id| {
+        const path = try sessionPath(session_id, "");
+        defer ALLOC.free(path);
+        const polled = try h.get(path).send();
+        defer polled.deinit();
+        try std.testing.expectEqual(STATUS_NOT_FOUND, polled.status);
+
+        try std.testing.expectEqual(STATUS_NOT_FOUND, try verify(h, session_id, VERIFICATION_CODE));
+    }
 }
 
 test "integration: approving a pending session moves it to verification_pending" {
