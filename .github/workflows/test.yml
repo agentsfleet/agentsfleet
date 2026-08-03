@@ -18,6 +18,11 @@ on:
       - '.github/workflows/test.yml'
   pull_request:
     types: [opened, synchronize, reopened]
+  # Every other trigger here needs a Pull Request or a merge to main, so a long
+  # branch cannot exercise these lanes until review time — which is exactly when
+  # a first-run failure is most expensive. `bench.yml` and `cache-prune.yml`
+  # already carry this for the same reason.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -102,16 +107,15 @@ jobs:
 
   test-coverage-zig:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r2@sha256:40cbacd00584601a4794471e01cb11942ef5319c0531e4185c54d78733285803
-      # kcov needs exactly two things the default container posture denies, and
-      # nothing else: it calls personality(ADDR_NO_RANDOMIZE) to pin addresses
-      # across runs — a value Docker's default seccomp profile does not carry in
-      # its personality allow-list, so the call returns EPERM — and it drives the
-      # binary under ptrace. `--privileged` bought both by handing the container
-      # every capability plus host device access, which is far more than a job
-      # that checks out branch code should hold.
-      options: --security-opt seccomp=unconfined --cap-add=SYS_PTRACE
+    # The suite runs under kcov's ptrace, and this lane now measures the
+    # integration binary as well as the five unit ones, so it is the long pole.
+    timeout-minutes: 30
+    # No job-level `container:`. The coverage target now runs the integration
+    # binary, which needs a live Postgres and Redis, and a GitHub Actions job
+    # container is forced onto GitHub's own managed network where `--network
+    # host` is rejected. `test-integration.yml` documents the same constraint
+    # and resolves it the same way — `docker run` below, which also carries
+    # kcov's two required permissions.
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
@@ -129,7 +133,30 @@ jobs:
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-
       - name: Gate merged Zig line coverage
-        run: make test-coverage-zig
+        run: |
+          # Boot the datastores on the host now, without --wait: the make
+          # target's own `docker compose up --wait` runs inside the image below
+          # and blocks on the healthchecks, so this boot overlaps the compile
+          # instead of running serially ahead of it.
+          docker compose up -d postgres redis
+          # Run inside the project's CI image via `docker run` rather than a job
+          # `container:`, for the reason test-integration.yml already records:
+          # --network host keeps localhost:5432/6379 pointing at the compose-
+          # published ports, and a GitHub Actions job container is forced onto
+          # GitHub's managed network, which rejects it. kcov's two required
+          # permissions ride the same invocation — it calls
+          # personality(ADDR_NO_RANDOMIZE) to pin addresses across runs, which
+          # Docker's default seccomp profile omits from its personality
+          # allow-list, and it drives the binary under ptrace.
+          docker run --rm --network host \
+            --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}":"${{ github.workspace }}" \
+            -w "${{ github.workspace }}" \
+            -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable" \
+            -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
+            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r2@sha256:40cbacd00584601a4794471e01cb11942ef5319c0531e4185c54d78733285803 \
+            sh -c 'make test-coverage-zig'
       - name: Publish Zig coverage summary
         if: always()
         run: |
@@ -151,6 +178,11 @@ jobs:
           path: coverage/zig/merged
           if-no-files-found: error
           retention-days: 14
+      # The datastores were booted on the host by this job, not by a service
+      # block Actions tears down for us, so this job owns stopping them.
+      - name: Stop services
+        if: always()
+        run: docker compose down
 
   test-unit-cli:
     runs-on: ubuntu-latest

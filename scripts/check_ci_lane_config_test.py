@@ -61,36 +61,93 @@ class TestPrewarmArtifacts(unittest.TestCase):
         self.assertNotIn("zig build install test-bin", body)
 
 
-def container_options(body: str) -> list[str]:
-    """Every `options:` value in a workflow, comments excluded.
+# Flags that widen what a job holds beyond the default container posture.
+GRANT_FLAGS = ("--privileged", "--security-opt", "--cap-add")
 
-    Matching raw file text would count the prose explaining why a flag was
-    dropped as a use of that flag.
+
+def logical_lines(body: str) -> list[str]:
+    """Workflow lines with backslash continuations joined, comments excluded.
+
+    `docker run` spreads its flags across continuations, so a per-physical-line
+    scan would read `--privileged` and the `--cgroupns=private` that justifies
+    it as unrelated grants. Comments go first: the prose explaining why a flag
+    was dropped must not count as a use of that flag.
     """
-    values = []
+    joined: list[str] = []
+    buffer = ""
     for line in body.splitlines():
         stripped = line.strip()
-        if stripped.startswith("#") or not stripped.startswith("options:"):
+        if stripped.startswith("#"):
             continue
-        values.append(stripped[len("options:"):].strip())
+        if stripped.endswith("\\"):
+            buffer += stripped[:-1].strip() + " "
+            continue
+        joined.append((buffer + stripped).strip())
+        buffer = ""
+    if buffer:
+        joined.append(buffer.strip())
+    return joined
+
+
+def privilege_grants(body: str) -> list[str]:
+    """Every privilege grant in a workflow, in either spelling it can take.
+
+    A grant reaches a job two ways: a job-level `container.options:` key, or a
+    `docker run` the step issues itself. Lanes needing `--network host` are
+    forced into the second — a job container is placed on GitHub's managed
+    network, which rejects that flag. Reading only `options:` left every
+    `docker run` grant unseen, which is most of them now.
+    """
+    values = []
+    for line in logical_lines(body):
+        if line.startswith("options:"):
+            values.append(line[len("options:"):].strip())
+        elif any(flag in line for flag in GRANT_FLAGS):
+            values.append(line)
     return values
 
 
 class TestContainerPrivilege(unittest.TestCase):
     def test_coverage_job_is_not_privileged(self) -> None:
-        options = container_options(read_workflow("test.yml"))
-        self.assertTrue(options, "the coverage job must still declare container options")
-        for value in options:
+        grants = privilege_grants(read_workflow("test.yml"))
+        for value in grants:
             self.assertNotIn("--privileged", value)
         # kcov needs personality(ADDR_NO_RANDOMIZE), which the default seccomp
         # profile's personality allow-list omits, plus ptrace on its child.
-        joined = " ".join(options)
+        # These two also carry the non-vacuity load: on a parser that matched
+        # nothing, `grants` is empty, `joined` is empty, and both fail.
+        joined = " ".join(grants)
         self.assertIn("--security-opt seccomp=unconfined", joined)
         self.assertIn("--cap-add=SYS_PTRACE", joined)
 
+    def test_a_docker_run_grant_is_visible_to_the_sweep(self) -> None:
+        # The sweep below is only worth running if it can see the spelling the
+        # lanes actually use. Driven over synthetic text rather than a live
+        # workflow, so it keeps proving this after the lanes change again.
+        body = "\n".join(
+            (
+                "      - name: Gate coverage",
+                "        run: |",
+                "          # --privileged here is prose, not a grant",
+                "          docker run --rm --network host \\",
+                "            --privileged \\",
+                "            image sh -c 'make test-coverage-zig'",
+            )
+        )
+        grants = privilege_grants(body)
+        self.assertTrue(grants, "a `docker run` grant must not be invisible")
+        self.assertTrue(
+            any("--privileged" in value for value in grants),
+            "the continuation carrying --privileged was dropped",
+        )
+        self.assertFalse(
+            any(value.startswith("#") for value in grants),
+            "commented-out prose was counted as a grant",
+        )
+
     def test_no_workflow_is_privileged_without_a_kernel_reason(self) -> None:
         for path in sorted(WORKFLOWS.glob("*.yml")):
-            for value in container_options(path.read_text(encoding="utf-8")):
+            for value in privilege_grants(path.read_text(encoding="utf-8")):
                 if "--privileged" not in value:
                     continue
                 # The only defensible use is delegating a cgroup-v2 controller
