@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Problem:** An operational incident today produces a diagnosis at best. Nothing owns the step from "we know the cause" to "a reviewable fix exists", so code-caused incidents fall into limbo between the on-call person who found the cause and the repository where the fix belongs. The architecture scenario documents this repair path and marks its write half unproven (🔨).
 
-**Solution summary:** Two fleets and the approval gate that already ships. An **investigator** fleet wakes on a cron sweep, reads the customer's Grafana (Elastic second), correlates against repository history, and — when the cause is code-shaped and the repair is a revert of a suspect commit — ends its lease by messaging a **repairer** fleet. The investigator holds no GitHub credential, so it cannot write. The repairer's incoming event hits the approval gate, which binds *before a lease is issued* (`fleet/approval_gate.zig:1-7`): the event parks, Slack carries an approval naming the proposed action, its evidence, and its blast radius, and the repairer's lease is issued only on approval. The repairer then opens one draft PR through the GitHub HTTP API using a token minted for the declared repositories alone. The human gate is made true by removing `approval_resolve` from the tenant credential grant, so a machine can trigger a repair but only a human can approve one.
+**Solution summary:** Two fleets and the approval gate that already ships. An **investigator** fleet wakes on a cron sweep, reads the customer's Grafana (Elastic second), correlates against repository history, and — when the cause is code-shaped and the repair is a revert of a suspect commit — ends its lease by messaging a **repairer** fleet. The investigator holds a GitHub token minted **read-only**, so it can name a commit and cannot write one. The repairer's incoming event hits the approval gate, which binds *before a lease is issued* (`fleet/approval_gate.zig:1-7`): the event parks, Slack carries an approval naming the proposed action, its evidence, and its blast radius, and the repairer's lease is issued only on approval. The repairer then opens one draft PR through the GitHub HTTP API using a token minted for the declared repositories alone. The human gate is made true by removing `approval_resolve` from the tenant credential grant, so a machine can trigger a repair but only a human can approve one.
 
 **Credentials (milestone gate — enumerate before any M157_002+):**
 
@@ -84,7 +84,7 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/agentsfleetd/errors/error_registry.zig` | EDIT | Retire the `UZ-REPAIR-*` constants |
 | `src/agentsfleetd/errors/gen_error_codes.zig` | EDIT | Retire the REPAIR category copy (its comptime coverage gate pairs with the family) |
 | `library/incident-responder/SKILL.md` | EDIT | Becomes the investigator: read-only, no repair authorship, ends by naming a repair intent |
-| `library/incident-responder/TRIGGER.md` | EDIT | Drop the `github` credential and `api.github.com` — the investigator must not be able to write |
+| `library/incident-responder/TRIGGER.md` | EDIT | Keep the `github` credential and `api.github.com` — the investigator reads commit history to correlate, and cannot name a suspect commit without them. Declare `repository_access: read` so its minted token carries no write permission. Add `memory_store` + `memory_recall` to the declared `tools`, which today lists `http_request` alone and so cannot satisfy Dimension 4.9 |
 | `library/incident-repairer/SKILL.md` | CREATE | The revert rung: given a suspect commit, produce one draft revert PR; refuse on conflict; nothing else |
 | `library/incident-repairer/TRIGGER.md` | CREATE | `api` trigger, `git` + `http_request`, `github` credential, `api.github.com` allowlist, top-level `repositories` binding, **non-empty `gates.rules`** |
 | `src/agentsfleetd/fleet_runtime/config_types.zig` | EDIT | Top-level `repositories` egress binding on the fleet config, distinct from the webhook trigger's ingress binding |
@@ -92,6 +92,9 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/runner/child_supervisor.zig` | EDIT | `FetchHook` alongside `MintHook` on the supervisor surface |
 | `src/runner/repo_fetch.zig` | CREATE | The fetch itself: suspect commit + parent + target head, depth-bounded, binding-validated, credential stays daemon-side |
 | `src/runner/repo_fetch_test.zig` | CREATE | Depth bounds, workspace confinement, binding refusal, no-credential-to-child assertions |
+| `src/runner/daemon/storage_sweep.zig` | CREATE | Startup reaper for orphaned per-lease workspaces — `defer cleanupWorkspace` does not run on SIGKILL / out-of-memory kill / reboot, and a leaked workspace now holds a repository rather than 256 KiB |
+| `src/runner/daemon/storage_sweep_test.zig` | CREATE | A non-dot entry is reaped; a dot-prefixed cache directory is not |
+| `src/runner/main.zig` | EDIT | Call the sweep after the storage-home `mkdir`, before the poll loop |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/AddLibraryDialog.tsx` | EDIT | Offer an upload source beside GitHub; post `source_kind:"upload"` with both markdown bodies |
 | `cli/src/program/cli-tree-fleet.ts` | EDIT | Verb creating a library entry from a local bundle directory |
 | `cli/src/commands/fleet_library_upload.ts` | CREATE | Reads `SKILL.md` + `TRIGGER.md`, posts `source_kind:"upload"` |
@@ -152,12 +155,12 @@ The two consumers also differ in when the change bites, and the spec relies on b
 
 - **Dimension 2.1** — A parked gate carries a populated `proposed_action`, `evidence`, and `blast_radius` → Test `test_gate_detail_is_populated`
 - **Dimension 2.2** — The Slack approval message names repository, commit, and outcome → Test `test_slack_approval_names_the_action`
-- **Dimension 2.3** — The mint request body pins `repositories` to the fleet's binding and `permissions` to contents + pull-requests → Test `test_mint_body_is_repository_scoped`
-- **Dimension 2.4** — A fleet with no declared repository binding gets no mintable GitHub token (fail closed) → Test `test_unbound_fleet_mints_nothing`
+- **Dimension 2.3** — The mint request body pins `repositories` to the fleet's binding and `permissions` to the level its `repository_access` declares — read mints `contents: read` alone, write mints contents + pull-requests → Test `test_mint_body_is_repository_and_access_scoped`
+- **Dimension 2.4** — A fleet with no declared repository binding, or none declaring `repository_access`, gets no mintable GitHub token (fail closed) → Test `test_unbound_fleet_mints_nothing`
 
 ### §3 — The write lives behind the gate, structurally
 
-The investigator holds no GitHub credential and no `api.github.com` allowlist entry, so its inability to open a PR is a property of its policy rather than of its prompt. The repairer's bundle declares a non-empty `gates.rules` — because `approval_gate.zig:96` falls through to `.auto_approve` when nothing matches, an omitted rule silently yields an autonomous agent holding a write token. Approval authorises **one bounded repairer run**, not specific bytes; the draft PR is the review surface where the diff is read.
+The investigator reaches `api.github.com` with a token minted **read-only**, so its inability to open a PR is a property of the credential the daemon hands it rather than of its prompt. Removing its GitHub access altogether was the earlier design and it does not work: `incident-responder/SKILL.md:53-59,89,115` reads `GET /repos/{owner}/{repo}/commits`, correlates deploy annotations against commit history, and verifies `base_sha` against the branch head — a fleet with no GitHub reach cannot name the suspect commit that Dimension 4.2 requires and the repairer's message depends on. Read is the job; write is the boundary, and §2.3's mint narrowing is where the boundary lives. The repairer's bundle declares a non-empty `gates.rules` — because `approval_gate.zig:96` falls through to `.auto_approve` when nothing matches, an omitted rule silently yields an autonomous agent holding a write token. Approval authorises **one bounded repairer run**, not specific bytes; the draft PR is the review surface where the diff is read.
 
 **The investigator does not wake the repairer in this workstream, and that is a security decision rather than a scoping one.** `route_scopes.zig` maps `.workspace_fleet_messages` and the PATCH arm of `.patch_workspace_fleet` to the *same* scope, `fleet:write`. `patch.zig` accepts `trigger_markdown` or `config_json`, and `config_json` is where `gates` lives. So any credential able to send the wake message is also able to rewrite the repairer's gate policy to empty — after which `approval_gate.zig:96` auto-approves and no human is ever asked. That bypass needs no approval at all, so §1's removal of `approval_resolve` does not close it, and no narrowing of *which* tenant scopes are granted can: the capability the investigator needs and the capability that breaks the design are one capability.
 
@@ -168,7 +171,7 @@ So in this workstream a **human** wakes the repairer, from the diagnosis the inv
 - **Dimension 3.5** — No crew member holds a tenant API key; the repairer's wake carries a human actor → Test `test_crew_holds_no_tenant_key`
 - **Dimension 3.6** — A credential holding `fleet:write` can blank a fleet's gate policy through PATCH — asserted as a *known* bypass so its closure in M157_002 is regression-tested rather than assumed → Test `test_fleet_write_can_blank_gate_policy`
 
-- **Dimension 3.1** — The investigator bundle declares no GitHub credential and no GitHub host → Test `test_investigator_cannot_reach_github`
+- **Dimension 3.1** — The investigator's minted GitHub token carries `contents: read` and no `pull_requests` permission, so it can read history and cannot open a Pull Request → Test `test_investigator_token_is_read_only`
 - **Dimension 3.2** — The shipped repairer bundle declares a non-empty gate rule → Test `test_repairer_bundle_declares_a_gate`
 - **Dimension 3.3** — A repairer event without an approved gate yields no lease and no PR → Test `test_unapproved_event_opens_no_pr`
 - **Dimension 3.4** — Denial and deadline expiry resolve terminally; the repairer never runs → Test `test_denied_or_timed_out_never_runs`
@@ -185,6 +188,12 @@ The fetch is **on demand and daemon-executed**, modelled on the shipped credenti
 
 That validation step is what makes the binding load-bearing rather than advisory: it narrows the mint *and* gates reads, so a misled repairer cannot even fetch a repository it is not bound to. Clone volume follows from the same design — a lease that needs no repository calls no tool and pays nothing, and the high-lease-rate fleet (the critic, ~5 leases per Pull Request as measured on `agentsfleet#586`) reads diffs over `http_request` and never needs a working tree at all.
 
+**The fetch is bounded at the fetch, and nothing is cached.** A cross-lease repository cache was considered and rejected: `bundle_extract.zig:22,45-47` is the shipped precedent for a content-addressed cache that survives the per-lease `deleteTree`, and it has **no eviction** — it stays small only because every entry is capped at 4 MiB (`MAX_BUNDLE_TAR_BYTES`) and keyed by an immutable hash. A repository cache inherits the no-eviction property with none of the per-entry bound, converting a bounded and always-deleted per-lease cost into an unbounded and never-deleted host cost. So the per-lease `deleteTree` stays, and host disk is bounded by `worker_count` × one bounded fetch.
+
+What that bound can be has a floor worth stating. Reverting commit `C` onto head `H` needs the trees and blobs of `C`, `C^`, and `H`, and no history walk — so a depth-bounded fetch of three explicit commits removes history but still costs roughly one checkout. Going below that means a blobless fetch plus a sparse checkout of only the paths `C` touched, with the daemon prefetching exactly those blobs — a lazy partial clone cannot work here, because materializing a missing blob would need network and a credential at revert time and the child holds neither. Change-sized rather than repository-sized is the target; three-commit depth-bounded is the floor this Section must not exceed.
+
+**Orphaned workspaces are reaped at startup, because this Section is what makes them expensive.** Cleanup today is `defer cleanupWorkspace` (`lease_run.zig:107`), which does not run on `SIGKILL`, an out-of-memory kill, a panic, or a host reboot; `main.zig:91` only creates the storage home and never sweeps it. Today an unclean shutdown orphans ≤256 KiB of bundle support files and nobody notices. Once a workspace can hold a repository, the same shutdown orphans it permanently with no collector. At daemon startup no lease is held, so **every non-dot entry under the storage home is orphaned by definition** — which makes the sweep trivially correct. It assumes one daemon per storage home, which the per-runner `agt_r` token already implies. Dot-prefixed entries (the bundle cache) are skipped, exactly as the per-lease cleanup skips them.
+
 - **Dimension 4.1** — A seeded regression yields a structured finding citing a real Grafana response digest, never an invented identifier → Test `eval_detection_cites_evidence`
 - **Dimension 4.2** — The finding names the failing service and the correlated commit range → Test `eval_finding_names_service_and_commit`
 - **Dimension 4.3** — Provider-outage and data-shaped incidents stay diagnosis-only: no repair intent sent → Test `eval_noncode_incidents_stay_diagnosis_only`
@@ -194,10 +203,19 @@ That validation step is what makes the binding load-bearing rather than advisory
 - **Dimension 4.6a** — A lease that asks for no repository fetches nothing; a fetch for a repository outside the fleet's binding is refused → Test `test_fetch_is_on_demand_and_binding_scoped`
 - **Dimension 4.7** — Cold install of both bundles onto a fresh workspace succeeds with declared credentials and hosts → Test `test_cold_install_from_library`
 
-**Both bundles carry two authoring obligations the runtime cannot enforce.** First, **continuation**: `runner_progress.zig:235-250` watches `prompt_tokens / context_cap` after every model round-trip, but NullClaw exposes no mid-loop interrupt — *"we observe instead of force"* — so the runtime logs the threshold crossing and `SKILL.md` prose must tell the fleet to snapshot and end with `content='needs continuation'`. A bundle silent on this runs until it blows the window. Second, **escalation memory**: an incident stays broken while its repair is parked, so every subsequent sweep re-finds it. The investigator records what it has escalated via `memory_store` (hydrated into each lease by `lease_run`) and suppresses a repeat while that incident is outstanding — otherwise a single incident produces one approval request per sweep interval, all queued behind the first.
+**Both bundles carry three authoring obligations the runtime cannot enforce.**
 
-- **Dimension 4.8** — Both bundles instruct snapshot-and-continue on the context threshold → Test `test_bundles_declare_continuation`
+First, **honest degradation at the context threshold — not continuation, because continuation does not exist.** `runner_progress.zig:235-250` watches `prompt_tokens / context_cap` after every model round-trip, but NullClaw exposes no mid-loop interrupt — *"we observe instead of force"* — so the runtime logs the crossing and nothing more. The re-enqueue half was dropped in the fleet-runner split and its scaffolding was left standing: `.continuation` is a first-class `EventType` (`event_envelope.zig:33`), `continuationActor` computes a flat non-nesting actor (`:88`), and `event_rows.zig:84-95` lifts `original_event_id` onto `resumes_event_id` — yet `continuationActor` has **zero callers**, and `service_report.zig:5-6` states it outright: *"continuation is a no-op on the happy path."* A fleet ending with `content='needs continuation'` is therefore XACK'd, its affinity slot released, and nothing re-enqueues it. Even a re-enqueue would not resume: a new lease mints a new `lease_id` and therefore a new workspace, and `core.fleet_sessions.context_json` is loaded by `claimFleet` and never placed on `LeasePayload`, so the run would restart with `SKILL.md` plus a note. So the obligation these bundles carry is to **end with a named degradation** stating what was and was not read — never to promise a continuation the runtime cannot deliver. Finishing continuation is M157_003 (Out of Scope).
+
+Second, **escalation memory**: an incident stays broken while its repair is parked, so every subsequent sweep re-finds it. The investigator records what it has escalated and suppresses a repeat while that incident is outstanding — otherwise a single incident produces one approval request per sweep interval, all queued behind the first. **This requires a bundle change the current bundle contradicts:** `library/incident-responder/TRIGGER.md` declares `tools: [http_request]` and nothing else, so `memory_store` and `memory_recall` are never built and the dedup cannot run as specified. Both tools join the investigator's declared list.
+
+Third, **an explicit `tools:` list on both bundles**, because a bundle only gets the tools it names. `runner_helpers.zig:242-243` falls back to `hosted_tools.buildDefault` when `tools` is absent *or* not an array, and that is `allTools` filtered only against `UNSUPPORTED_HOSTED_TOOLS` — the seven cron/schedule names (`tool_bridge.zig:40-48`). An omitted list therefore silently yields NullClaw's entire set rather than the crew's intended surface, which makes what a fleet can do depend on a field nobody wrote. The repairer names `git`, `http_request`, and the memory family it needs to remember what it has already opened; the investigator names `http_request` plus `memory_store` and `memory_recall`.
+
+- **Dimension 4.8** — Both bundles instruct a named degradation at the context threshold, and neither promises continuation → Test `test_bundles_declare_degradation`
 - **Dimension 4.9** — A second sweep over an already-escalated, still-broken incident sends no second wake → Test `eval_escalation_is_deduped_by_memory`
+- **Dimension 4.10** — Both bundles declare an explicit `tools:` array; an omitted list would expose the full default set → Test `test_bundles_declare_explicit_tools`
+- **Dimension 4.11** — A replayed repair intent for a commit the repairer already opened a Pull Request for opens no second one → Test `eval_repairer_dedupes_by_memory`
+- **Dimension 4.12** — A workspace orphaned by an unclean shutdown is reaped at daemon startup; the dot-prefixed bundle cache is not → Test `test_startup_sweep_reaps_orphans`
 
 ### §4a — A crew installs from local markdown, without borrowing a template
 
@@ -215,7 +233,7 @@ Grafana and Elastic keys are plain workspace secrets (never registry entries, pe
 
 **Egress is bounded twice, and only one of the two rings is tool-shaped.** `ctx.policy` is read by `buildHttpRequest` and no other builder (`tool_builders.zig:183`), and `secret_substitution` is reachable only from `policy_http_request.zig` — so *credential substitution* and the tool-level host check bind `http_request` alone. The outer ring does not: `network/Plan.zig` derives a per-lease egress plan enforced by a network namespace — a veth pair on a point-to-point `/30`, a static `/etc/hosts` carrying only allowlisted names, and a **neutered `/etc/resolv.conf`**. A host off the allowlist has neither name resolution nor a route, for `git` exactly as for `http_request`. The filesystem is fenced the same way, by Landlock: workspace read-write, system paths read-execute, everything else denied — so one lease cannot read another's workspace, and the daemon derives that path from `lease_id` because the child cannot supply one (`lease_run.zig:61-62`).
 
-That asymmetry is why §4's revert fetches pre-fork rather than granting `git` a credential: the outer ring already bounds where git may go, so the only thing missing would be a token — and the pre-fork fetch means no token is needed inside the sandbox at all.
+That asymmetry is why §4's revert fetches through the daemon's on-demand hook rather than granting `git` a credential: the outer ring already bounds where git may go, so the only thing missing would be a token — and a daemon-executed fetch means no token is needed inside the sandbox at all.
 
 - **Dimension 5.1** — Grafana/Elastic secrets stay placeholders in prompt and logs; raw bytes appear only in the egress request → Test `test_data_plane_secrets_stay_placeholders`
 - **Dimension 5.2** — A host outside a bundle's allowlist is refused for that bundle's leases → Test `test_undeclared_host_refused`
@@ -233,7 +251,7 @@ That asymmetry is why §4's revert fetches pre-fork rather than granting `git` a
 
 ### §7 — The demo topology runs on AWS and the stage proof is replay-safe
 
-A playbook stands up a small multi-service instrumented workload on EC2, Grafana receiving its telemetry, an `agentsfleet-runner` host, failure-injection scripts, and both fleets installed by hand. The stage proof: inject a held-out regression live, watch detection → diagnosis → Slack approval naming the commit → one draft revert PR, then replay the same investigator message and show the second run parks on its own approval rather than opening a second PR.
+A playbook stands up a small multi-service instrumented workload on EC2, Grafana receiving its telemetry, an `agentsfleet-runner` host, failure-injection scripts, and both fleets installed by hand. **The runner host sets `RUNNER_STORAGE_HOME` to real disk.** Its default is `/tmp/agentsfleet-runner` (`runner/daemon/config.zig:129`), and `/tmp` is tmpfs on most hosts — memory, not disk. That default was harmless while a workspace held only import-capped bundle support files; §4 puts a repository working tree there, so leaving it on tmpfs charges every fetch against host memory. The stage proof: inject a held-out regression live, watch detection → diagnosis → Slack approval naming the commit → one draft revert PR, then replay the same investigator message and show the second run parks on its own approval rather than opening a second PR.
 
 - **Dimension 7.1** — The playbook's check mode is idempotent: two consecutive runs both exit clean → Test `playbook_check_idempotent`
 - **Dimension 7.2** — An injected failure traverses the collector → Grafana and is detected end-to-end on the live stack → Test `e2e_injected_failure_detected`
@@ -260,17 +278,23 @@ Fleet repository binding (x-agentsfleet frontmatter, top level, NOT under trigge
   repositories: ["owner/repo", …] — the egress scope for this fleet's credentials.
   Distinct from the webhook trigger's `repositories`, which is an INGRESS binding
   (which repos may wake the fleet) and must not be overloaded. Absent → fail closed.
+Fleet repository access (x-agentsfleet frontmatter, top level, beside `repositories`):
+  repository_access: read | write — read mints { contents: "read" }; write mints
+  { contents: "write", pull_requests: "write" }. Absent → fail closed (no mint),
+  same as an absent `repositories` binding. Investigator declares read, repairer write.
 GitHub mint (credentials/integration_github.zig): POST /app/installations/{id}/access_tokens
-  body { repositories: [<fleet binding>], permissions: { contents: "write",
-  pull_requests: "write" } } — absent binding → no mint (fail closed).
+  body { repositories: [<fleet binding>], permissions: <per repository_access above> }
+  — absent binding or absent access level → no mint (fail closed).
 Investigator → repairer edge: POST /v1/workspaces/{ws}/fleets/{repairer}/messages with a
   tenant API key (scope fleet:write). The message carries repository, suspect commit,
   and evidence links — 8 KiB cap, so identifiers and links only, never file contents.
 Repair rung: revert only, computed by git rather than by hand-rolled patch application.
-  Pre-fork the daemon fetches the suspect commit and its parent (depth-bounded) into
-  the per-lease workspace; the sandboxed child runs the revert with no network and no
-  credential; a revert that does not apply cleanly is REFUSED, never resolved by the
-  model. No model-authored source lines exist in the diff.
+  On demand mid-run, the daemon fetches the suspect commit, its parent, and the
+  target head (depth-bounded, no history) into the per-lease workspace; the sandboxed
+  child runs the revert with no network and no credential; a revert that does not
+  apply cleanly is REFUSED, never resolved by the model. No model-authored source
+  lines exist in the diff. Nothing is cached across leases and the workspace is
+  deleted at run end, so host cost is bounded by worker_count × one bounded fetch.
 Library upload (already shipped, unreachable): POST /fleet-libraries accepts
   source_kind:"upload" with inline skill_markdown + trigger_markdown. Exposing it on
   the dashboard and the CLI removes the borrowed-template install dance.
@@ -296,7 +320,7 @@ Library upload (already shipped, unreachable): POST /fleet-libraries accepts
 ## Invariants
 
 1. No machine credential can resolve an approval, and no human loses the ability to — the machine grant excludes `approval_resolve` while the signup claim retains it, asserted by a set-difference unit test and by a route-level integration test.
-2. The investigator cannot write to GitHub — its bundle declares no GitHub credential and no GitHub host, and `network.allow` is the authoritative gate (`PolicyHttpRequestTool.hostInAllowlist`).
+2. The investigator cannot write to GitHub — its bundle declares `repository_access: read`, so the daemon mints a token carrying `contents: read` and no `pull_requests` permission. The vendor refuses the write regardless of what the model attempts, and the mint is the authoritative gate rather than the prompt.
 3. No repairer lease is issued for an event whose gate is not approved — the existing pre-lease check is the only path, and this workstream adds no bypass.
 4. Every parked approval names its proposed action, evidence, and blast radius — a blank `ActionDetail` field is a test failure, not a display default.
 5. A minted GitHub token reaches only the repositories the fleet declared — the mint body pins them, and an unbound fleet mints nothing.
@@ -326,9 +350,9 @@ Library upload (already shipped, unreachable): POST /fleet-libraries accepts
 | 1.4 | unit | `test_no_machine_approval_callers` | `requiredScopes(workspace_approval_resolve, POST)` vs each default grant → machine and runner fail `satisfiesAny`, owner passes; same for the inbox-read rung |
 | 2.1 | integration | `test_gate_detail_is_populated` | parked gate row carries non-empty proposed_action/evidence/blast_radius |
 | 2.2 | unit | `test_slack_approval_names_the_action` | built message contains repo, commit sha, and the draft-PR outcome string |
-| 2.3 | unit | `test_mint_body_is_repository_scoped` | mint request body JSON carries the declared repo and both permission keys |
+| 2.3 | unit | `test_mint_body_is_repository_and_access_scoped` | `repository_access: write` → body carries the declared repo + contents/pull_requests; `read` → contents:read only, no pull_requests key |
 | 2.4 | unit | `test_unbound_fleet_mints_nothing` | fleet with null repositories → mint refused, no token returned |
-| 3.1 | integration | `test_investigator_cannot_reach_github` | investigator policy + api.github.com → tool call refused |
+| 3.1 | integration | `test_investigator_token_is_read_only` | investigator mint → token with `contents: read`, no `pull_requests`; a PR-create call with it is refused by the vendor |
 | 3.2 | unit | `test_repairer_bundle_declares_a_gate` | shipped TRIGGER.md parses to a non-empty `gates.rules` |
 | 3.3 | integration | `test_unapproved_event_opens_no_pr` | repairer event, gate pending → no lease issued, fake GitHub sees zero calls |
 | 3.4 | integration | `test_denied_or_timed_out_never_runs` | deny and deadline expiry → terminal, repairer lease never issued |
@@ -337,8 +361,14 @@ Library upload (already shipped, unreachable): POST /fleet-libraries accepts
 | 4.3 | eval | `eval_noncode_incidents_stay_diagnosis_only` | provider-outage seed → no repair intent message sent |
 | 4.4 | eval | `eval_repair_is_a_revert` | repairer output diff equals the revert of the named commit |
 | 4.5 | integration | `test_conflicting_revert_refuses` | head moved with a conflicting edit to the same file → refused with a named reason, zero pushes, no model conflict resolution |
-| 4.6 | integration | `test_prefork_fetch_is_bounded_and_credential_free` | fetch depth ≤ bound, objects land only under `{storage_home}/{lease_id}`, child env + workspace carry no token |
+| 4.6 | integration | `test_fetch_is_bounded_and_credential_free` | fetch depth ≤ bound, objects land only under `{storage_home}/{lease_id}`, child env + workspace carry no token |
+| 4.6a | integration | `test_fetch_is_on_demand_and_binding_scoped` | lease asking for no repository → zero fetches; repository outside the binding → refused before any network call |
 | 4.7 | e2e | `test_cold_install_from_library` | fresh workspace + published entries → both installed, scheduled, policy attached |
+| 4.8 | unit | `test_bundles_declare_degradation` | both `SKILL.md` bodies name a degradation path at the context threshold; neither contains the string `needs continuation` |
+| 4.9 | eval | `eval_escalation_is_deduped_by_memory` | second sweep over an outstanding escalation → zero repair-intent messages sent |
+| 4.10 | unit | `test_bundles_declare_explicit_tools` | both `TRIGGER.md` files parse to a non-empty `tools` array — an absent or non-array value would resolve `hosted_tools.buildDefault` |
+| 4.11 | unit | `test_repairer_declares_no_memory_tool` | repairer's parsed `tools` array intersects `{memory_store, memory_recall, memory_list, memory_forget}` in zero members |
+| 4.12 | unit | `test_startup_sweep_reaps_orphans` | seeded `{storage_home}/<uuid>/` removed after sweep; `{storage_home}/.bundle-cache/` survives |
 | 4a.1 | integration | `test_dashboard_uploads_local_bundle` | upload source posts `source_kind:"upload"` with both markdown bodies → entry created |
 | 4a.2 | e2e | `test_cli_uploads_and_installs_local_bundle` | local bundle dir → library entry → installed fleet whose markdown matches the source byte-for-byte |
 | 4a.3 | unit | `test_upload_is_content_addressed` | identical markdown twice → one entry, second call is a no-op |
@@ -401,6 +431,7 @@ Removal is verified by rubric R7 rather than by inspection.
 ## Out of Scope
 
 - **Fleet identity, and with it the autonomous hop — M157_002.** `fleet:message` split out of `fleet:write` so waking a fleet stops implying the right to reconfigure it; first-class `agt_a` fleet keys (`AuthMode.fleet_key` + middleware branch, per `docs/AUTH.md:362`); `actor=chain:<fleet_id>` on machine hops; a hop cap; and a caller idempotency key on `POST /messages`. **This is a prerequisite for the crew being autonomous, not an enhancement of it** — until it lands, any credential that could wake the repairer could also blank its gate, so this workstream keeps a human on the wake and proves everything else. The Discovery table records the bypass, and Dimension 3.6 asserts it, so its closure is regression-tested rather than assumed.
+- **Finishing continuation, and the cold-start economics around it — M157_003.** Three findings in this workstream's Discovery share one home and none belong here. (a) `continuationActor` has no caller and the report path calls continuation *"a no-op on the happy path"*, so the `.continuation` EventType and `resumes_event_id` linkage are scaffolding without a producer. (b) `core.fleet_sessions.context_json` is written every report and never placed on `LeasePayload`, so it is a bookmark nobody reads — either wire it as an additive defaulted field beside `instructions`, or delete it and let the table mean only "is this fleet executing". (c) `cache_control` appears nowhere in `src/` or the vendored engine while the rate tables and lease row already price and meter cached input, so a fleet re-pays full input price for its whole `SKILL.md` on every lease. Wiring (a) must decide explicitly that the **workspace does not survive** the hop — it is derived from `lease_id` and Landlock-fenced, and that property is not negotiable. Until this lands, bundles end with a named degradation rather than promising a continuation the runtime cannot deliver (Dimension 4.8).
 - Repair rungs beyond revert — config-in-repo diffs and narrow patches need their own bounds story and their own spec.
 - Chat-to-fleets authoring of a crew — prove the shape by hand first.
 - Automatic merge, deploy, rollback, or any write beyond the one draft PR.
@@ -515,3 +546,32 @@ second. A Jira ticket carrying the post-mortem is optional and later.
   - > Indy (2026-08-03): "I dont want to invent too many and get stuck, so i wanna use what we have built with few tweaks, can we not ask the agent to ask for approval to send a PR?" — context: the design pivot to gating the repairer's incoming event rather than building any new approval mechanism. This is the origin of §1–§3.
   - > Indy (2026-08-03): "can there be an auto approval or dangerouslyAccept.. type of as we;;" — context: confirmed already present — `.auto_approve` is the fallthrough when no gate rule matches, so unattended operation is the default and the gate is the opt-in. Dimension 3.2 guards the footgun.
   - > Indy (2026-08-03): "yes" — context: authorising this reconciliation, and with it the deferral of fleet identity and provenance work to M157_002.
+
+### Aug 04, 2026 design session — the lease lifecycle, host cost, and one crew-breaking contradiction
+
+Indy pressed on the lease design: whether a cold start per lease can carry a repairer, whether
+the repository is cloned every time, and — narrowing — *"I am more concerned on the clones in
+the host"*. Investigation only; no rebuild was warranted.
+
+**Verdict: leases are not rebuilt.** The lease is already four correctly-separated concepts —
+the per-fleet slot (`runner_affinity`, the mutex + fencing source), the per-delivery lease row,
+the per-run workspace, and per-fleet memory. Any container spanning leases must own a workspace
+spanning leases, which forfeits the property the whole design rests on: the daemon derives
+`{storage_home}/{lease_id}` server-side, the child cannot name it, and Landlock refuses a
+sibling's tree at the kernel. A superset would buy conversational convenience and pay in
+isolation.
+
+| Finding | Evidence |
+|---|---|
+| **A parked gate costs no lease.** An action requiring approval parks the event and *"the lease answers no-work"*; every later poll re-evaluates the recorded gate ref. So a repairer can wait 24 hours on a human at zero lease, zero workspace, and zero clone. This is why gate-bound repair is affordable. | `fleet/approval_gate.zig:4-5,31-37` |
+| **`core.fleet_sessions.context_json` is dead.** `claimFleet` reads it and stores it on `FleetSession`; `issueLease` places `instructions` and `bundle_content_hash` on the payload and never the context, and `LeasePayload` has no field for it. It is written faithfully at every report and read into a variable that is freed. The schema comment describes the deleted worker — `fleet_session.zig:5-8` says so outright. **Every lease is a cold start.** | `fleet_session.zig:104,121`; `fleet/service.zig:158-170`; `lib/contract/protocol.zig:253-277` |
+| **Continuation is scaffolded and has no producer.** `.continuation` is a first-class `EventType`, `continuationActor` computes a flat non-nesting actor, and `event_rows.zig` lifts `original_event_id` onto `resumes_event_id` — but `continuationActor` has **zero callers** and the report path states *"continuation is a no-op on the happy path (`exit_ok`)"*. A fleet ending with `content='needs continuation'` is XACK'd and nothing re-enqueues it. Dimension 4.8 was unsatisfiable as originally written; it now asserts honest degradation. | `event_envelope.zig:33,88`; `event_rows.zig:84-95`; `service_report.zig:5-6` |
+| **Reclaim mints a fresh lease id, therefore a fresh workspace.** `fromReclaim` carries the prior event envelope and the metering cursor forward, but the lease id is new — so a clone, a partial revert, or a pushed branch from the dead holder is invisible to the re-leased run. Work does not survive reclaim; only metering does. | `fleet/assign.zig:303-315`; `lease_run.zig:103-107` |
+| **No startup sweep of the storage home, and the default is tmpfs.** Cleanup is `defer cleanupWorkspace`, which does not run on `SIGKILL`, an out-of-memory kill, a panic, or a reboot; startup only `mkdir`s. Today that orphans ≤256 KiB of bundle support files. Once a workspace holds a repository the same shutdown orphans it permanently with no collector. `RUNNER_STORAGE_HOME` defaults to `/tmp/agentsfleet-runner`, and `/tmp` is tmpfs on most hosts — memory, not disk. §4 adds the sweep; §7 pins real disk. | `lease_run.zig:107,227-229`; `runner/main.zig:91`; `runner/daemon/config.zig:129` |
+| **A cross-lease repository cache was rejected.** `bundle_extract.zig` is the shipped precedent for a content-addressed cache surviving the per-lease `deleteTree` — and it has **no eviction**, staying small only because every entry is capped at 4 MiB and keyed by an immutable hash. A repository cache inherits the no-eviction property with none of the per-entry bound, turning a bounded always-deleted per-lease cost into an unbounded never-deleted host cost. Bound the fetch instead; keep the delete. | `bundle_extract.zig:22,45-47`, `MAX_BUNDLE_TAR_BYTES` |
+| **An omitted `tools:` list yields the full default set.** `buildTools` falls back to `hosted_tools.buildDefault` when `tools` is absent *or* not an array, and that is `allTools` filtered only against the seven cron/schedule names. So a bundle silent on tools gets `shell`, `file_write`, `delegate`, `spawn`, and the memory family rather than its intended surface — the same footgun shape as an omitted `gates.rules` falling through to `.auto_approve`. Dimension 4.10 guards it. | `runner_helpers.zig:242-243`; `tool_bridge.zig:40-48,85-87`; `hosted_tools.zig:17-27` |
+| **The investigator cannot do its job without GitHub reads — the original §3 design broke the crew.** `incident-responder/SKILL.md:53-59,89,115` reads `GET /repos/{owner}/{repo}/commits`, correlates deploy annotations against commit history, and verifies `base_sha` against the branch head. Dropping the `github` credential and the `api.github.com` allowlist entry — the prior Files Changed instruction — leaves it no means to name the suspect commit that Dimension 4.2 requires and the repairer's message carries. Resolved by scoping the **mint** rather than removing access: `repository_access: read` mints `contents: read` with no `pull_requests`. §3's structural argument survives and strengthens — the investigator cannot write because its token cannot, not because its prompt says not to. | `library/incident-responder/SKILL.md:53-59,89,115`; `TRIGGER.md` network allow |
+| **Prompt caching is priced and metered but never requested.** `cached_input_nanos_per_mtok` exists in the rate tables, `metered_cached_tokens` on the lease row, and `cached_input_tokens` on every report — yet `cache_control` appears nowhere in `src/` **or** the vendored NullClaw engine. On a provider requiring explicit cache blocks, hits are structurally zero and the discounted rate column is dead arithmetic. The investigator's 15-minute sweep is 96 leases/day, each re-paying full input price for its whole `SKILL.md` against a `daily_dollars: 2.00` budget. Re-sending instructions per lease is *correct* — it is how a fleet PATCH takes effect (`bundle_extract.zig:11-15`) — so the fix is a cache-marked stable prefix, never a runner-side cache. Out of scope here; needs its own spec, and needs the request-assembly order verified first. | `state/model_rate_cache.zig:84`; `state/model_library_store.zig:26`; `schema/018_fleet_runner_leases.sql`; absence across `src/` + `zig-pkg/nullclaw-*/src/` |
+
+  - > Indy (2026-08-04): "I dont understand why the repairer will skip writing to memory ... Indy will fix the security holes later. Indy wants the crew to work first" — context: a proposed Dimension forbidding the repairer the memory family was withdrawn. Memory is instead put to work: Dimension 4.11 has the repairer remember what it already opened so a replayed intent yields no second Pull Request.
+  - > Indy (2026-08-04): "xgo" — context: authorising the `repository_access` mint split, the storage-home sweep, and the Dimension 4.8/4.9/4.10 corrections recorded above.
