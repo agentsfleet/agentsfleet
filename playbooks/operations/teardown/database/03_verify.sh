@@ -73,11 +73,24 @@ WHERE table_schema = 'public'
 ORDER BY table_name;
 
 -- 4. APP ROLES (persist - not dropped by DROP SCHEMA)
+-- Catalog-derived, NOT a hand-maintained list, for the same reason the schema
+-- loop in teardown.sql is: a static list silently rots the moment a migration
+-- adds a role. It had rotted — it named `ops_readonly_agent`, retired with the
+-- old product noun and creatable by nothing, while missing `billing_runtime`,
+-- `metering_runtime`, `vault_runtime` and `ops_readonly_fleet`. So it verified
+-- four of eight roles and told the operator to expect five or six.
+-- App roles are the NOLOGIN, non-superuser ones. The `pscale%` exclusion
+-- mirrors the schema checks above so managed-provider objects stay out of
+-- every count; the underscore is escaped here because Postgres ships its own
+-- NOLOGIN `pg_` roles (pg_monitor, pg_read_all_data) that would otherwise be
+-- counted as ours.
 \echo '--- 4. APP ROLES (these persist, not schema objects) ---'
 SELECT rolname
 FROM pg_roles
-WHERE rolname IN ('api_runtime', 'db_migrator',
-                  'memory_runtime', 'ops_readonly_human', 'ops_readonly_agent')
+WHERE NOT rolsuper
+AND NOT rolcanlogin
+AND rolname NOT LIKE 'pg\_%'
+AND rolname NOT LIKE 'pscale%'
 ORDER BY rolname;
 
 -- 5. FUNCTIONS IN USER SCHEMAS (should be empty)
@@ -116,8 +129,10 @@ WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'publ
 UNION ALL
 SELECT 'App roles: ' || COUNT(*)::text
 FROM pg_roles
-WHERE rolname IN ('api_runtime', 'db_migrator',
-                  'memory_runtime', 'ops_readonly_human', 'ops_readonly_agent')
+WHERE NOT rolsuper
+AND NOT rolcanlogin
+AND rolname NOT LIKE 'pg\_%'
+AND rolname NOT LIKE 'pscale%'
 UNION ALL
 SELECT 'User functions: ' || COUNT(*)::text
 FROM information_schema.routines
@@ -167,7 +182,11 @@ echo "  - User functions: 0"
 echo "  - User triggers: 0"
 echo "  - User indexes: 0"
 echo "  - Public schema tables: 0"
-echo "  - App roles: 5-6 (these persist, not dropped by DROP SCHEMA)"
+echo "  - App roles: unchanged and non-zero (DROP SCHEMA does not drop roles)"
+echo "    The list above is read from the catalog, so it grows with the"
+echo "    migrations. Re-running them re-creates nothing and re-grants"
+echo "    everything: role creation is guarded on pg_roles, and the grants"
+echo "    live in the schema files that were just dropped."
 echo ""
 echo "NOTE: Roles are database-level objects and persist after"
 echo "DROP SCHEMA. To remove them, run: DROP ROLE role_name;"
