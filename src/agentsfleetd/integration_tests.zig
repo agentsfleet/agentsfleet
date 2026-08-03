@@ -4,6 +4,7 @@
 //! PostgreSQL, Redis, or QStash and therefore belongs only to integration lanes.
 
 test {
+    _ = @import("db/schema_shape_integration_test.zig");
     _ = @import("db/index_usage_integration_test.zig");
     _ = @import("db/index_usage_fleet_integration_test.zig");
     _ = @import("db/index_removal_integration_test.zig");
