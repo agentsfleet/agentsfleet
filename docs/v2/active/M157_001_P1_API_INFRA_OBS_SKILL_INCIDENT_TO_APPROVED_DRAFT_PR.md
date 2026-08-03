@@ -71,7 +71,7 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/agentsfleetd/auth/scopes.zig` | EDIT | Split `DefaultGrant`: a machine-credential variant carrying every tenant capability except `approval_resolve`; `.tenant` stays as-is for the human signup claim |
 | `src/agentsfleetd/auth/middleware/tenant_api_key.zig` | EDIT | Construct the `agt_t` principal from the machine grant instead of `.tenant` |
 | `src/agentsfleetd/auth/scopes_test.zig` | EDIT | The two grants differ in exactly one member; the human claim is unchanged |
-| `src/agentsfleetd/http/handlers/approvals/resolve_integration_test.zig` | CREATE | A tenant API key is refused at the resolve route; a user principal is not |
+| `src/agentsfleetd/http/handlers/approvals/inbox_integration_test.zig` | EDIT | A tenant API key is refused at the resolve route; a user principal is not. Extends the existing suite rather than a new file — it already owns the gate seeding, and the probe needs the api-key middleware wired into the same harness |
 | `src/agentsfleetd/fleet/approval_gate.zig` | EDIT | Thread `gate_kind` / `proposed_action` / `evidence` / `blast_radius` into `ActionDetail` from the triggering event |
 | `src/agentsfleetd/fleet/approval_gate_integration_test.zig` | CREATE | The parked gate carries a populated detail; the Slack message names the action |
 | `src/agentsfleetd/credentials/integration_github.zig` | EDIT | Mint body carries `repositories` + `permissions` instead of `""` |
@@ -133,7 +133,7 @@ The two consumers also differ in when the change bites, and the spec relies on b
 
 - **Dimension 1.1** — **DONE** — The machine grant carries every tenant capability except `approval_resolve` → Test `test_machine_grant_excludes_approval_resolve`
 - **Dimension 1.2** — **DONE** — The human signup claim still carries `approval:resolve`; the two grants differ in exactly that one granted member → Test `test_signup_claim_retains_approval_resolve`
-- **Dimension 1.3** — A tenant API key is refused at the approval-resolve route; a user principal still passes → Test `test_api_key_cannot_resolve_approval`
+- **Dimension 1.3** — **DONE** — A tenant API key is refused at the approval-resolve route; a user principal still passes → Test `test_api_key_cannot_resolve_approval`
 - **Dimension 1.4** — **DONE** — The resolve route's requirement and the machine grant are provably disjoint, so no caller can resolve with a machine credential regardless of who calls → Test `test_no_machine_approval_callers`
 
 ### §2 — The approval names what it is approving, and the token reaches one repository
@@ -407,6 +407,8 @@ second. A Jira ticket carrying the post-mortem is optional and later.
 | Only Slack, Jira, GitHub (plus Linear, Zoho) are connectors. **Grafana, Elastic, and Fly are plain workspace secrets** — no `api_key` archetype (dropped M108_002). Onboarding is two shapes. | `docs/architecture/connectors.md` §Archetypes |
 | `agentsfleet connector` is read-only (`list`, `status`); every *connect* is a dashboard action. `agentsfleet fleet update <id> --from <path>` rewrites a live fleet's markdown — that is the hand-setup path. | `cli/src/commands/connector.ts:1`, `cli/src/program/cli-tree-fleet.ts:37-46` |
 | `chain` is documented as a trigger type but rejected by the parser; `delegate`/`spawn` are registered but built inert. Trigger types are `webhook`, `cron`, `api`. | `capabilities.md:44,55` vs `fleet_runtime/config_types.zig:87` |
+| The approvals suite's `cleanupTestData` cannot delete the rows it targets: `api_runtime` holds `arw` — not `d` — on `core.fleet_approval_gates`, so the DELETE fails and is swallowed by its `catch` into an `ignored: PG` warning. No test noticed because every other one uses a distinct gate id, and each integration target drops schemas first to compensate. A test that resolves a gate and then needs it unresolved must therefore key on a per-run id, not rely on cleanup. | `\dp core.fleet_approval_gates`; `handlers/approvals/inbox_integration_test.zig` cleanup; `make/test-integration.mk:186-204` |
+| `make test-integration` sets `TEST_DATABASE_URL` but **no Redis variables** — those belong to the separate `test-integration-redis` target. Any test guarding on `tryConnectRedis()` therefore *skips silently* under the target most people run, and a green "All integration tests passed" says nothing about it. Confirm a Redis-dependent test by its own pass/skip count, never by the target's exit. | `make/test-integration.mk:225-231` vs `:234-251` |
 
 **Corrections recorded against this session's own output:**
 
