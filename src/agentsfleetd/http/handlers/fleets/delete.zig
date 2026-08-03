@@ -10,7 +10,11 @@
 //!   - core.fleet_sessions         — no FK cascade; explicit DELETE
 //!   - core.fleet_approval_gates   — no FK cascade; explicit DELETE
 //!   - memory.memory_entries        — keyed by fleet_id (UUID, no FK); explicit
-//!   - fleet_execution_telemetry   — keyed by fleet_id (no FK); explicit
+//!   - billing.usage_ledger        — NOT deleted. `fleet_id` is ON DELETE SET
+//!                                   NULL so the charge outlives the fleet with
+//!                                   its tenant scope intact; erasing a debited
+//!                                   charge would falsify wallet reconciliation,
+//!                                   and no role here holds DELETE on it.
 //!   - fleet:{id}:events Redis stream — best-effort DEL after PG commit
 //!
 //! Auth: operator-minimum role per RULE BIL — destructive lifecycle action.

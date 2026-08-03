@@ -1,5 +1,5 @@
-//! Integration: the runner-fleet schema migrations land `fleet.runners` (`021`)
-//! `fleet.runner_leases` (`022`), and `fleet.runner_events` (`025`) with their
+//! Integration: the runner-fleet schema migrations land `fleet.runners` (`600`)
+//! `fleet.runner_leases` (`610`), and `fleet.runner_events` (`640`) with their
 //! columns and constraints in a migrated database.
 //!
 //! DB-gated — skips when `TEST_DATABASE_URL` is unset; the live test DB has the

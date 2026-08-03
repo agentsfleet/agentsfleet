@@ -335,7 +335,7 @@ test "integration: fleets list — projects triggers array from config_json" {
 
 // list.zig projects two per-fleet aggregates the `agentsfleet status` table
 // renders: events_processed (COUNT of core.fleet_events) and budget_used_nanos
-// (SUM of fleet_execution_telemetry.credit_deducted_nanos). Seed 3 events + 2
+// (SUM of billing.usage_ledger.credit_deducted_nanos). Seed 3 events + 2
 // telemetry rows for one fleet and assert the list reflects 3 / 3_000_000.
 test "integration: fleets list — projects events_processed and budget_used_nanos aggregates" {
     const alloc = std.testing.allocator;
