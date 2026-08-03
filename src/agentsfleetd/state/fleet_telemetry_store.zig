@@ -30,8 +30,8 @@ pub const ChargeType = enum {
 
 // Shared SELECT columns reused across all query branches.
 // Trailing newline matters — concatenated suffix begins with WHERE/ORDER BY, so
-// without it we'd get "fleet_execution_telemetryWHERE" (PG syntax error 42601).
-// The identity columns are UUID since M154, not TEXT. The `::text` casts are
+// without it we'd get "usage_ledgerWHERE" (PG syntax error 42601).
+// The identity columns are UUID, not TEXT. The `::text` casts are
 // load-bearing: `row.get([]const u8, …)` on a UUID column hands back the raw
 // 16 bytes with no error at compile time and none at runtime — just binary in
 // the charges endpoint's JSON. `workspace_id` and `fleet_id` are also nullable
