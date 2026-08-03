@@ -69,6 +69,17 @@ describe("mergeBackfill", () => {
     expect(first?.outcome).toBe("Failed a startup safety check");
   });
 
+  // `mergeBackfill` takes `EventRow[]`, and a list row carries no bodies — the
+  // read split exists precisely so a page of them stays off oversized-attribute
+  // storage. The factory above over-supplies both, so this is the only case
+  // that reaches the payload fallback with the shape production delivers.
+  it("a list row carrying no bodies reconstructs against an empty payload", () => {
+    const { request_json: _request, response_text: _response, ...listRow } = row({ event_id: "e9" });
+    const [first] = mergeBackfill([], [listRow as EventRow]);
+    expect(first?.id).toBe("e9");
+    expect(first?.custom?.requestJson).toBe("{}");
+  });
+
   it("replaces a partial live row with a terminal backfill row of the same id", () => {
     // An event that straddled an outage: live chunks accumulated a partial
     // text, the durable row carries the full final text + terminal status.
