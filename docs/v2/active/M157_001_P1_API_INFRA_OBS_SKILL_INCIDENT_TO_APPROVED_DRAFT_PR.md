@@ -85,8 +85,15 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/agentsfleetd/errors/gen_error_codes.zig` | EDIT | Retire the REPAIR category copy (its comptime coverage gate pairs with the family) |
 | `library/incident-responder/SKILL.md` | EDIT | Becomes the investigator: read-only, no repair authorship, ends by naming a repair intent |
 | `library/incident-responder/TRIGGER.md` | EDIT | Drop the `github` credential and `api.github.com` — the investigator must not be able to write |
-| `library/incident-repairer/SKILL.md` | CREATE | The revert rung: given a suspect commit, open one draft revert PR; nothing else |
-| `library/incident-repairer/TRIGGER.md` | CREATE | `api` trigger, `http_request` only, `github` credential, `api.github.com` allowlist, **non-empty `gates.rules`** |
+| `library/incident-repairer/SKILL.md` | CREATE | The revert rung: given a suspect commit, produce one draft revert PR; refuse on conflict; nothing else |
+| `library/incident-repairer/TRIGGER.md` | CREATE | `api` trigger, `git` + `http_request`, `github` credential, `api.github.com` allowlist, top-level `repositories` binding, **non-empty `gates.rules`** |
+| `src/agentsfleetd/fleet_runtime/config_types.zig` | EDIT | Top-level `repositories` egress binding on the fleet config, distinct from the webhook trigger's ingress binding |
+| `src/runner/daemon/lease_run.zig` | EDIT | Pre-fork depth-bounded repository fetch into the per-lease workspace, in the existing `bundle_extract.materialize` slot |
+| `src/runner/repo_fetch.zig` | CREATE | The fetch itself: suspect commit + parent + target head, depth-bounded, credential stays daemon-side |
+| `src/runner/repo_fetch_test.zig` | CREATE | Depth bounds, workspace confinement, no-credential-to-child assertions |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/AddLibraryDialog.tsx` | EDIT | Offer an upload source beside GitHub; post `source_kind:"upload"` with both markdown bodies |
+| `cli/src/program/cli-tree-fleet.ts` | EDIT | Verb creating a library entry from a local bundle directory |
+| `cli/src/commands/fleet_library_upload.ts` | CREATE | Reads `SKILL.md` + `TRIGGER.md`, posts `source_kind:"upload"` |
 | `library/incident-repairer/bundle_gate_test.zig` | CREATE | The shipped repairer bundle carries a gate rule — an omitted rule auto-approves |
 | `docs/AUTH.md` | EDIT | Record that machine credentials cannot resolve approvals, and why |
 | `docs/architecture/scenarios/production-deploy-repair.md` | EDIT | Describe the gate-bound two-fleet design; flip proven rows |
@@ -97,7 +104,8 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 
 - **`~/Projects/dotfiles/docs/greptile-learnings/RULES.md`** — NDC (no dead code at write time — the `UZ-REPAIR-*` family and the repair kernel go out in this diff, not later), NLR (touch-it-fix-it), NLG (no legacy framing pre-2.0.0 — the scenario doc describes the gate-bound design as *the* design), UFS (gate status strings, bundle names shared verbatim across surfaces), ORP (orphan sweep), FLL (length caps).
 - `~/Projects/dotfiles/dispatch/write_auth.md` → **`docs/AUTH.md` before any edit to `auth/scopes.zig`** — §1 is a scope-grant change and carries the AUTH review profile.
-- `~/Projects/dotfiles/dispatch/write_zig.md` — pg-drain, tagged-union results, errdefer, cross-compile; all new daemon code.
+- `~/Projects/dotfiles/dispatch/write_zig.md` — pg-drain, tagged-union results, errdefer, cross-compile; all new daemon and runner code.
+- `~/Projects/dotfiles/dispatch/write_ts_adhere_bun.md` — §4a's CLI command and dashboard dialog: TS FILE SHAPE at PLAN, `const`/import discipline, design-system primitives over raw HTML, token utilities over arbitrary values.
 - `~/Projects/dotfiles/docs/LOGGING_STANDARD.md` + `~/Projects/dotfiles/docs/LIFECYCLE_PATTERNS.md` — structured events, init/deinit lifecycles; `~/Projects/dotfiles/dispatch/write_shell.md` — playbook scripts, and vault-reading playbook scripts pass both vault gates (`check-vault-gate-parity`).
 - Schema conventions: **not applicable** — this workstream adds no table and no migration, so no `schema/embed.zig` slot is claimed and no collision with M154's rebuild exists.
 - REST guidelines: not applicable — no new public HTTP route; approval rides existing gate surfaces.
@@ -112,7 +120,8 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | UFS | yes | gate kinds, bundle names, mint permission keys as named constants |
 | LOGGING / LIFECYCLE / ERROR REGISTRY | yes | structured events; the retired `UZ-REPAIR-*` family leaves the registry coverage gate green |
 | SCHEMA GUARD | no | no schema file, no migration array edit |
-| UI Substitution / DESIGN TOKEN | no | no UI files in scope |
+| UI Substitution / DESIGN TOKEN | **yes** | §4a edits `AddLibraryDialog.tsx` — design-system primitives only, no raw HTML, no `*-[...]` arbitraries |
+| TS FILE SHAPE / Bun discipline | **yes** | §4a adds a CLI command and edits the fleet command tree; `dispatch/write_ts_adhere_bun.md` fires |
 
 ## Prior-Art / Reference Implementations
 
@@ -156,17 +165,39 @@ The investigator holds no GitHub credential and no `api.github.com` allowlist en
 
 ### §4 — The crew investigates, diagnoses, and proposes exactly one repair class
 
-`library/incident-responder/` (investigator) wakes on a cron sweep, queries the customer's Grafana, correlates with recent repository history, posts a diagnosis to Slack, and — only when the cause is code-shaped and the repair is a revert of an identified commit — messages the repairer with repository, commit, and evidence. `library/incident-repairer/` opens one draft revert PR through the GitHub HTTP API and does nothing else: the reverted-to code was already green in Continuous Integration (CI), so no model authors any line of the change. Config-in-repo diffs and narrow patches are later rungs. Truth living only in a vendor console is recommended with a link, never written.
+`library/incident-responder/` (investigator) wakes on a cron sweep, queries the customer's Grafana, correlates with recent repository history, posts a diagnosis to Slack, and — only when the cause is code-shaped and the repair is a revert of an identified commit — messages the repairer with repository, commit, and evidence. `library/incident-repairer/` produces one draft revert Pull Request (PR) and does nothing else: the reverted-to code was already green in Continuous Integration (CI), so no model authors any line of the change. Config-in-repo diffs and narrow patches are later rungs. Truth living only in a vendor console is recommended with a link, never written.
+
+**The revert is computed by git, not by hand-rolled patch application.** Reconstructing a revert from the REST API means fetching each changed file's bytes at the parent commit and writing them back — which is only a revert if nothing else touched those files since. After an incident the base has usually moved, so that approach silently destroys unrelated work. `git revert` performs the three-way merge correctly and fails cleanly when it cannot.
+
+The mechanism reuses the shipped pre-fork materialization slot rather than inventing one. `lease_run.zig:181` already calls `bundle_extract.materialize` **before the sandbox closes**, downloading content into the per-lease workspace with a credential the child never sees. The repository fetch takes the same slot: the daemon fetches the suspect commit, its parent, and the target branch head, depth-bounded — bounded by the commit, never by repository history. The sandboxed child then runs the revert against a ready working tree with **no network access and no credential inside the blast radius**, which is strictly better than granting `git` a token, since `secret_substitution` is reachable only from `policy_http_request.zig` and would otherwise have to be extended.
+
+Clone volume is not a concern, and the reason is structural: the high-lease-rate fleet is the critic, which reads diffs over `http_request` and never needs a working tree; the fleet that needs one is the repairer, whose leases are rate-limited by construction to one per *approved* repair.
 
 - **Dimension 4.1** — A seeded regression yields a structured finding citing a real Grafana response digest, never an invented identifier → Test `eval_detection_cites_evidence`
 - **Dimension 4.2** — The finding names the failing service and the correlated commit range → Test `eval_finding_names_service_and_commit`
 - **Dimension 4.3** — Provider-outage and data-shaped incidents stay diagnosis-only: no repair intent sent → Test `eval_noncode_incidents_stay_diagnosis_only`
 - **Dimension 4.4** — The repairer's PR is a revert of the named commit and touches nothing else → Test `eval_repair_is_a_revert`
-- **Dimension 4.5** — Cold install of both bundles onto a fresh workspace succeeds with declared credentials and hosts → Test `test_cold_install_from_library`
+- **Dimension 4.5** — A revert that does not apply cleanly to the target head is refused with a named reason; no branch is pushed and no model resolves the conflict → Test `test_conflicting_revert_refuses`
+- **Dimension 4.6** — The pre-fork fetch is depth-bounded and lands only in the lease's own workspace; no credential reaches the child → Test `test_prefork_fetch_is_bounded_and_credential_free`
+- **Dimension 4.7** — Cold install of both bundles onto a fresh workspace succeeds with declared credentials and hosts → Test `test_cold_install_from_library`
+
+### §4a — A crew installs from local markdown, without borrowing a template
+
+`POST /fleet-libraries` already accepts `source_kind:"upload"` with inline `skill_markdown` + `trigger_markdown`, content-addressed with `ON CONFLICT DO NOTHING` (`fleet_bundles/resolve.zig:81`). No surface reaches it: the dashboard's `AddLibraryDialog.tsx` hardcodes `source_kind: SOURCE_KIND_GITHUB` with an `owner/repo` input, and the CLI has no verb for it. So the only way to obtain a fleet row today is to install *some* library entry — which is why hand-setup installs `github-pr-reviewer` and immediately overwrites both of its markdown files. Nothing of the template survives on the investigator or the repairer; it is a vehicle, not a choice.
+
+Exposing the shipped path costs **zero daemon code** and removes the dance. The dashboard gains an upload source beside the GitHub one; the CLI gains the matching verb so the crew is reproducible from a checkout.
+
+- **Dimension 4a.1** — The dashboard offers an upload source and posts `source_kind:"upload"` with both markdown bodies → Test `test_dashboard_uploads_local_bundle`
+- **Dimension 4a.2** — The CLI creates a library entry from a local bundle directory, and `install --library <it>` yields a fleet whose markdown matches the source byte-for-byte → Test `test_cli_uploads_and_installs_local_bundle`
+- **Dimension 4a.3** — Re-uploading identical markdown is content-addressed to the same entry rather than duplicating it → Test `test_upload_is_content_addressed`
 
 ### §5 — Data-plane credentials and library publication use only existing mechanisms
 
-Grafana and Elastic keys are plain workspace secrets (never registry entries, per `connectors.md`), reaching the run only as `${secrets.NAME.FIELD}` placeholders substituted at the tool bridge. `ctx.policy` is read by `buildHttpRequest` and no other builder (`tool_builders.zig:183`), so substitution and `network.allow` bind `http_request` alone — both bundles are `http_request`-only and no runner checkout is built. Bundles publish through the existing admin library flow (`draft` → `public`, content-addressed snapshot).
+Grafana and Elastic keys are plain workspace secrets (never registry entries, per `connectors.md`), reaching the run only as `${secrets.NAME.FIELD}` placeholders substituted at the tool bridge. Bundles publish through the existing admin library flow (`draft` → `public`, content-addressed snapshot).
+
+**Egress is bounded twice, and only one of the two rings is tool-shaped.** `ctx.policy` is read by `buildHttpRequest` and no other builder (`tool_builders.zig:183`), and `secret_substitution` is reachable only from `policy_http_request.zig` — so *credential substitution* and the tool-level host check bind `http_request` alone. The outer ring does not: `network/Plan.zig` derives a per-lease egress plan enforced by a network namespace — a veth pair on a point-to-point `/30`, a static `/etc/hosts` carrying only allowlisted names, and a **neutered `/etc/resolv.conf`**. A host off the allowlist has neither name resolution nor a route, for `git` exactly as for `http_request`. The filesystem is fenced the same way, by Landlock: workspace read-write, system paths read-execute, everything else denied — so one lease cannot read another's workspace, and the daemon derives that path from `lease_id` because the child cannot supply one (`lease_run.zig:61-62`).
+
+That asymmetry is why §4's revert fetches pre-fork rather than granting `git` a credential: the outer ring already bounds where git may go, so the only thing missing would be a token — and the pre-fork fetch means no token is needed inside the sandbox at all.
 
 - **Dimension 5.1** — Grafana/Elastic secrets stay placeholders in prompt and logs; raw bytes appear only in the egress request → Test `test_data_plane_secrets_stay_placeholders`
 - **Dimension 5.2** — A host outside a bundle's allowlist is refused for that bundle's leases → Test `test_undeclared_host_refused`
@@ -201,17 +232,30 @@ Scope grant (auth/scopes.zig): DefaultGrant gains a machine-credential variant w
   credential source is granted it.
 ActionDetail (fleet_runtime/approval_gate.zig), populated by fleet/approval_gate.zig:
   { tool, action, params_summary, gate_kind, proposed_action, evidence,
-    blast_radius, timeout_ms } — proposed_action names repo + commit + "one draft PR";
-  evidence carries the Grafana query reference and commit range; blast_radius names
-  the repository. Never diff bytes, never secret material.
+    blast_radius, timeout_ms }. Two sources, deliberately separated:
+    gate_kind + blast_radius  ← the matched GateRule (workspace-authored config)
+    proposed_action + evidence ← the triggering event (MODEL-authored prose)
+  The model half renders as an attributed claim, never as a system statement,
+  beside daemon-derived facts it cannot forge (fleet id, actor, event id).
+  Never diff bytes, never secret material.
+Fleet repository binding (x-agentsfleet frontmatter, top level, NOT under triggers):
+  repositories: ["owner/repo", …] — the egress scope for this fleet's credentials.
+  Distinct from the webhook trigger's `repositories`, which is an INGRESS binding
+  (which repos may wake the fleet) and must not be overloaded. Absent → fail closed.
 GitHub mint (credentials/integration_github.zig): POST /app/installations/{id}/access_tokens
   body { repositories: [<fleet binding>], permissions: { contents: "write",
   pull_requests: "write" } } — absent binding → no mint (fail closed).
 Investigator → repairer edge: POST /v1/workspaces/{ws}/fleets/{repairer}/messages with a
   tenant API key (scope fleet:write). The message carries repository, suspect commit,
   and evidence links — 8 KiB cap, so identifiers and links only, never file contents.
-Repair rung: revert only. The repairer resolves the suspect commit and opens a draft PR
-  reverting it. No model-authored source lines exist in the diff.
+Repair rung: revert only, computed by git rather than by hand-rolled patch application.
+  Pre-fork the daemon fetches the suspect commit and its parent (depth-bounded) into
+  the per-lease workspace; the sandboxed child runs the revert with no network and no
+  credential; a revert that does not apply cleanly is REFUSED, never resolved by the
+  model. No model-authored source lines exist in the diff.
+Library upload (already shipped, unreachable): POST /fleet-libraries accepts
+  source_kind:"upload" with inline skill_markdown + trigger_markdown. Exposing it on
+  the dashboard and the CLI removes the borrowed-template install dance.
 ```
 
 ## Failure Modes
@@ -221,7 +265,9 @@ Repair rung: revert only. The repairer resolves the suspect commit and opens a d
 | Machine attempts approval | A fleet or external service resolves a gate with a tenant key | Route refuses on scope; structured log; the gate stays pending until a human decides |
 | Repairer bundle without a gate rule | Hand-install omits `gates.rules` | Bundle test fails at build; on a live workspace the omission is visible as an auto-approved run in the activity stream |
 | Denied / timed out | Human denies, or the gate deadline passes | Terminal status; the repairer's lease is never issued; diagnosis artifacts remain |
-| Unbound repository | Repairer fleet declares no repository binding | Mint refuses; the run reports it could not authenticate rather than reaching a wrong repository |
+| Unbound repository | Repairer fleet declares no top-level `repositories` binding | Mint refuses; the run reports it could not authenticate rather than reaching a wrong repository |
+| Revert does not apply | Target head moved and something else touched the same files | Refused with a named reason before any push. The model never resolves the conflict — that would forfeit "no model-authored source lines", the only property that makes revert the safe first rung. A fresh sweep may propose again against the new head |
+| Pre-fork fetch fails | Repository unreachable, commit garbage-collected, or depth bound insufficient | Lease fails before the sandbox opens, in the same slot as a bundle-materialization failure; no partial workspace is handed to a child |
 | Duplicate investigator message | Retried or double-delivered steer | Each message parks its own gate; a second PR requires a second human approval. No caller idempotency key exists — the gate is the bound |
 | Data plane unreachable or secret missing | Grafana down mid-sweep, or a declared credential absent | Finding degrades honestly (names what it could not read); no repair intent sent; existing stop-the-tool-call codes in the activity stream |
 | Upstream write failure | GitHub rejects branch or PR creation | The repairer's tool call fails with the vendor's response class; the run reports it; nothing partial is claimed as done |
@@ -234,6 +280,8 @@ Repair rung: revert only. The repairer resolves the suspect commit and opens a d
 3. No repairer lease is issued for an event whose gate is not approved — the existing pre-lease check is the only path, and this workstream adds no bypass.
 4. Every parked approval names its proposed action, evidence, and blast radius — a blank `ActionDetail` field is a test failure, not a display default.
 5. A minted GitHub token reaches only the repositories the fleet declared — the mint body pins them, and an unbound fleet mints nothing.
+8. No model resolves a merge conflict — a revert that does not apply cleanly is refused before any push, so every shipped diff is git's inverse patch and contains no model-authored source line.
+9. No credential enters the sandbox for repair work — the repository fetch runs pre-fork with the daemon's credential, and the child receives a working tree, never a token.
 6. Raw secret bytes never appear in prompt, result, or logs — existing tool-bridge substitution re-asserted by test for the new credential names.
 7. Benchmark evaluation incidents never inform tuning — calibration and evaluation manifests are disjoint by construction and the scorer enforces it.
 
@@ -268,7 +316,12 @@ Repair rung: revert only. The repairer resolves the suspect commit and opens a d
 | 4.2 | eval | `eval_finding_names_service_and_commit` | traced failure → service + commit range named |
 | 4.3 | eval | `eval_noncode_incidents_stay_diagnosis_only` | provider-outage seed → no repair intent message sent |
 | 4.4 | eval | `eval_repair_is_a_revert` | repairer output diff equals the revert of the named commit |
-| 4.5 | e2e | `test_cold_install_from_library` | fresh workspace + published entries → both installed, scheduled, policy attached |
+| 4.5 | integration | `test_conflicting_revert_refuses` | head moved with a conflicting edit to the same file → refused with a named reason, zero pushes, no model conflict resolution |
+| 4.6 | integration | `test_prefork_fetch_is_bounded_and_credential_free` | fetch depth ≤ bound, objects land only under `{storage_home}/{lease_id}`, child env + workspace carry no token |
+| 4.7 | e2e | `test_cold_install_from_library` | fresh workspace + published entries → both installed, scheduled, policy attached |
+| 4a.1 | integration | `test_dashboard_uploads_local_bundle` | upload source posts `source_kind:"upload"` with both markdown bodies → entry created |
+| 4a.2 | e2e | `test_cli_uploads_and_installs_local_bundle` | local bundle dir → library entry → installed fleet whose markdown matches the source byte-for-byte |
+| 4a.3 | unit | `test_upload_is_content_addressed` | identical markdown twice → one entry, second call is a no-op |
 | 5.1 | integration | `test_data_plane_secrets_stay_placeholders` | prompt/log capture free of raw bytes for grafana/elastic names |
 | 5.2 | integration | `test_undeclared_host_refused` | non-allowlisted host → tool call refused with existing code |
 | 5.3 | integration | `test_bundles_publish_and_list` | onboard → draft → public → visible + installable |
@@ -354,7 +407,8 @@ Removal is verified by rubric R7 rather than by inspection.
 
 - **Chosen shape:** seven Sections in one Workstream: the human gate made true (§1) before the approval is made legible and the token bounded (§2), before the structural separation that relies on both (§3); the bundles (§4), publication (§5), benchmark (§6), and topology (§7) prove it. One PR carries the provable loop.
 - **Alternatives considered:** (a) **Daemon-side deterministic apply with a content-addressed proposal record** — the original §1/§2, partially built and removed here. It offers a strictly stronger guarantee (approved bytes are shipped bytes) but requires a proposal table, a store, an apply service, and a report-path hook, and it does not match the crew shape the product needs. Superseded, not refuted. (b) **A method-and-path allowlist at the egress boundary** (`PolicyHttpRequestTool`) to bound what the repairer may call — rejected as unnecessary once credential separation puts the write in a different fleet; branch and tree endpoints permit arbitrary branch content anyway, so the bound it buys is "cannot land", which the gate already provides. (c) **Routing the investigator → repairer hop through Slack** — rejected: `slack/events.zig` resolves `(team, channel)` to the channel's *resident* fleet, so the repairer would wake on every human message in the channel, handing a prompt-injection path to the fleet holding the write token. (d) **Collapsing investigator and repairer into one fleet** — rejected: one fleet holds one credential set across both leases, so "read-only first, write second" would be prompt-shaped rather than structural.
-- **Patch-vs-refactor verdict:** this is a **patch** — three small corrections to shipped mechanisms plus two markdown bundles. Solution-size matches problem-size, and the deletion of the apply substrate makes the diff net-simpler.
+- **Alternatives considered (repair mechanism):** (e) **Reconstructing the revert over the REST API** — fetch each changed file at the parent commit and write those bytes back. Rejected: that is only a revert when nothing else touched those files since, and after an incident the base has usually moved, so it silently destroys unrelated work. git's three-way merge is correct and fails cleanly; hand-rolling it is the kind of subtle wrongness that ships green. (f) **Granting `git` a credential inside the sandbox** by extending `secret_substitution` past `policy_http_request.zig` — rejected for this workstream: it puts a live token where a model that may have been talked into something can read it, and the pre-fork fetch achieves the same outcome with no token in the blast radius at all. It remains the right long-term move for repair work that genuinely needs authenticated in-sandbox git, and belongs in its own spec with its own review.
+- **Patch-vs-refactor verdict:** this is a **patch** — three small corrections to shipped mechanisms, one shipped-but-unreachable path exposed, and two markdown bundles. Solution-size matches problem-size, and the deletion of the apply substrate makes the diff net-simpler.
 
 ## Discovery (consult log)
 
@@ -404,6 +458,10 @@ second. A Jira ticket carrying the post-mortem is optional and later.
 | The runner deletes the per-lease workspace after every run, so fleets **cannot hand each other files**; messages cap at 8 KiB. Evidence travels as links and identifiers. | `src/runner/daemon/lease_run.zig:99`, `http/handlers/fleets/messages.zig:30` |
 | `POST /v1/workspaces/{ws}/fleets/{id}/messages` (scope `fleet:write`) is the only fleet-to-fleet edge. It has **no caller idempotency key** and machine hops log `actor=steer:`, losing parent-fleet provenance. No hop bound exists. Deferred to M157_002; the gate bounds the consequence in the meantime. | `http/route_template.zig:75`, `http/route_scopes.zig:153` |
 | `POST /fleet-libraries` accepts `source_kind:"upload"` with **inline** `skill_markdown` + `trigger_markdown`, content-addressed with `ON CONFLICT DO NOTHING`. Applying a crew therefore needs **zero** daemon code — it is a CLI loop over shipped endpoints. | `http/handlers/fleet_bundles/resolve.zig:81` |
+| That upload path is **shipped and unreachable**. The dashboard hardcodes `source_kind: SOURCE_KIND_GITHUB` with an `owner/repo` input, and the CLI has no verb for it — so the only way to obtain a fleet row is to install some existing library entry. Hand-setup therefore installs `github-pr-reviewer` and overwrites both markdown files; nothing of the template survives on the investigator or repairer. §4a exposes the shipped path instead. | `AddLibraryDialog.tsx:92,107,141`; `cli/src/program/cli-tree-fleet.ts` |
+| **Egress is bounded twice, and the tool-shaped ring is the inner one.** `network/Plan.zig` derives a per-lease egress plan enforced by a network namespace — veth `/30`, static `/etc/hosts` holding only allowlisted names, neutered `/etc/resolv.conf`. It is tool-agnostic, so `git` is egress-bounded exactly as `http_request` is. An earlier reading of `tool_builders.zig` alone concluded `git`/`shell` had "no egress allowlist"; that is true of the tool layer and false of the system. What is genuinely `http_request`-only is **credential substitution** — `secret_substitution` is reachable from `policy_http_request.zig` and nowhere else. | `src/runner/network/Plan.zig:1-12`; `engine/runtime/secret_substitution.zig` call sites |
+| The per-lease workspace is `{storage_home}/{lease_id}`, created pre-fork and `deleteTree`d after. Landlock fences it: workspace read-write, `/usr /bin /lib /etc` read-execute, **everything else denied by default** — so a sibling lease's workspace is refused by the kernel, not merely separate. The child cannot supply its own path; the daemon derives it from `lease_id`. Isolation is per-*run*, stronger than per-fleet. | `runner/daemon/lease_run.zig:61-62,210-230`; `runner/engine/landlock.zig:1-9` |
+| `lease_run.zig:181` calls `bundle_extract.materialize` **pre-fork** — the daemon already downloads content into the per-lease workspace using a credential the child never sees. A repository fetch fits that existing slot, which is why §4's revert needs no new mechanism and no token inside the sandbox. | `runner/daemon/lease_run.zig:181`, `:38-40` |
 | Only Slack, Jira, GitHub (plus Linear, Zoho) are connectors. **Grafana, Elastic, and Fly are plain workspace secrets** — no `api_key` archetype (dropped M108_002). Onboarding is two shapes. | `docs/architecture/connectors.md` §Archetypes |
 | `agentsfleet connector` is read-only (`list`, `status`); every *connect* is a dashboard action. `agentsfleet fleet update <id> --from <path>` rewrites a live fleet's markdown — that is the hand-setup path. | `cli/src/commands/connector.ts:1`, `cli/src/program/cli-tree-fleet.ts:37-46` |
 | `chain` is documented as a trigger type but rejected by the parser; `delegate`/`spawn` are registered but built inert. Trigger types are `webhook`, `cron`, `api`. | `capabilities.md:44,55` vs `fleet_runtime/config_types.zig:87` |
