@@ -75,12 +75,15 @@ pub const SELECT_RUNNER_DETAIL =
 /// means the runner id does not resolve (404), a row carries the count every
 /// page of the lease list reports as `total`. The NULL-guarded `$2` scopes the
 /// total to one workspace when the list is filtered, so the pager and the rows
-/// always describe the same set. Retention bounds the per-runner row count the
-/// COUNT walks.
+/// always describe the same set. `$3` narrows it further to one fleet on the
+/// same terms, matching an id or an exact name (FLEET_MATCH). Retention bounds
+/// the per-runner row count the COUNT walks.
 pub const SELECT_RUNNER_LEASE_TOTAL =
     \\SELECT (SELECT COUNT(*) FROM fleet.runner_leases l
+    \\        LEFT JOIN core.fleets f ON f.id = l.fleet_id
     \\        WHERE l.runner_id = r.id
-    \\          AND ($2::uuid IS NULL OR l.workspace_id = $2::uuid))::bigint
+    \\          AND ($2::uuid IS NULL OR l.workspace_id = $2::uuid)
+    \\          AND ($3::text IS NULL OR l.fleet_id::text = $3::text OR lower(f.name) = lower($3::text)))::bigint
     \\FROM fleet.runners r
     \\WHERE r.id = $1::uuid
 ;
@@ -97,9 +100,11 @@ pub const SELECT_RUNNER_LEASE_TOTAL =
 /// Both fleet joins are LEFT so a decode never fabricates: a missing event row
 /// reads as an unknown outcome, never a success.
 ///
-/// The NULL-guarded workspace parameter narrows the page to one workspace when
-/// the operator filters; unfiltered calls bind NULL and pay nothing.
-/// `$1` runner id, `$2` workspace id or NULL, `$3` limit.
+/// The NULL-guarded workspace and fleet parameters narrow the page when the
+/// operator filters; unfiltered calls bind NULL and pay nothing. The fleet
+/// parameter matches an id or an exact (case-insensitive) fleet name, so the
+/// operator filters by the name the table already shows them.
+/// `$1` runner id, `$2` workspace id or NULL, `$3` limit, `$4` fleet id/name or NULL.
 pub const SELECT_RUNNER_LEASE_PAGE_FIRST =
     \\SELECT l.id::text, l.fleet_id::text, f.name, l.workspace_id::text,
     \\       l.event_id, l.event_type, l.actor, l.status,
@@ -117,6 +122,7 @@ pub const SELECT_RUNNER_LEASE_PAGE_FIRST =
     \\LEFT JOIN core.fleet_events e ON e.fleet_id = l.fleet_id AND e.event_id = l.event_id
     \\WHERE l.runner_id = $1::uuid
     \\  AND ($2::uuid IS NULL OR l.workspace_id = $2::uuid)
+    \\  AND ($4::text IS NULL OR l.fleet_id::text = $4::text OR lower(f.name) = lower($4::text))
     \\ORDER BY l.created_at DESC, l.id DESC
     \\LIMIT $3
 ;
@@ -143,6 +149,7 @@ pub const SELECT_RUNNER_LEASE_PAGE_AFTER =
     \\LEFT JOIN core.fleet_events e ON e.fleet_id = l.fleet_id AND e.event_id = l.event_id
     \\WHERE l.runner_id = $1::uuid
     \\  AND ($2::uuid IS NULL OR l.workspace_id = $2::uuid)
+    \\  AND ($6::text IS NULL OR l.fleet_id::text = $6::text OR lower(f.name) = lower($6::text))
     \\  AND (l.created_at, l.id) < ($3::bigint, $4::uuid)
     \\ORDER BY l.created_at DESC, l.id DESC
     \\LIMIT $5
@@ -151,15 +158,18 @@ pub const SELECT_RUNNER_LEASE_PAGE_AFTER =
 /// Resolve a `starting_after` lease id to the composite sort key the page seek
 /// needs. Scoped to the runner so a lease id from another runner is refused
 /// rather than silently seeking into a foreign history — and scoped to the
-/// SAME workspace filter the page carries (RULE KYS: a keyset cursor names a
-/// position in one ordered stream, and the filter is part of what defines it).
+/// SAME workspace and fleet filters the page carries (RULE KYS: a keyset cursor
+/// names a position in one ordered stream, and the filters are part of what
+/// defines it).
 /// Without `$3` a cursor taken from workspace A would resolve to A's timestamp
 /// and then seek B's page past it, silently dropping every B row newer than
 /// that instant. `$1` lease id, `$2` runner id, `$3` workspace id or NULL.
 pub const SELECT_RUNNER_LEASE_CURSOR =
     \\SELECT l.created_at FROM fleet.runner_leases l
+    \\LEFT JOIN core.fleets f ON f.id = l.fleet_id
     \\WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
     \\  AND ($3::uuid IS NULL OR l.workspace_id = $3::uuid)
+    \\  AND ($4::text IS NULL OR l.fleet_id::text = $4::text OR lower(f.name) = lower($4::text))
 ;
 
 // ── Operator-plane runner mutations ─────────────────────────────────────────
