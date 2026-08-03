@@ -1,4 +1,4 @@
-# Handoff — M154 schema rebuild (§8 complete with tests; §7 next)
+# Handoff — M154 schema rebuild (§7 and §8 complete; coverage + indexes next)
 
 Ephemeral. Delete at CHORE(close); this briefs the next agent, never the Pull
 Request (PR).
@@ -38,15 +38,23 @@ code from hours ago. **Check the mtime before believing a result:**
 **Without `_reset-test-db`, results are garbage** — leftover fixture rows
 produced 11 phantom failures once.
 
+**🚨 THE BRANCH IS PUSHED BUT NO CONTINUOUS INTEGRATION (CI) HAS EVER RUN ON
+IT.** All eight workflows (`test`, `test-integration`, `lint`, `memleak`,
+`cross-compile`, `gitleaks`, `dry`, `dry-smoke`) trigger on `pull_request`;
+plain `push` only triggers on `main`. So 33 commits of schema rebuild have
+never seen a Linux runner. Indy chose "push, no Pull Request yet" believing the
+push would buy CI — it does not. **He has been told and the decision is open.**
+Opening a draft Pull Request is the only way to get CI before CHORE(close).
+
 ## Status
 
-- ✅ **`origin/main` merged in** (`747975560`). Branch is **0 behind / 29 ahead**.
-- ✅ **§8 COMPLETE — every Dimension 8.1–8.5 has a passing test.** All five are
-  marked DONE in the spec, and the section heading with them.
-- ✅ **Integration 778 / 7 skipped / 0 failed · Unit 2039 / 278 / 0 · CLI 1430 / 13 / 0**
-- ✅ **SQL auditor: 1334 statements, 0 findings** (was 1 — `fleetFromSession` went with §8.4).
-- ✅ Everything committed (`27493ce74`). Tree clean. **Branch NOT pushed, no PR.**
-- 🔶 **§7.1 / §7.2 not started.** That is the next job.
+- ✅ **`origin/main` merged in** (`747975560`). Branch is **0 behind / 33 ahead**.
+- ✅ **§8 COMPLETE** — Dimensions 8.1–8.5 all have passing tests, all marked DONE.
+- ✅ **§7 COMPLETE** — 7.1 and 7.2 landed this session; 7.3/7.4 were already done.
+- ✅ **Integration 781 / 7 skipped / 0 failed · Unit 2043 · App 2160 across 213 files**
+- ✅ **SQL auditor: 1334 statements, 0 findings.**
+- ✅ **BRANCH IS PUSHED** (`d94529b52`). Tree clean. **Still no Pull Request.**
+- 🔶 **Coverage basis + index review are what remain.** See "What is owed".
 
 ## Commits on this branch (recent)
 
@@ -55,6 +63,8 @@ produced 11 phantom failures once.
 | `747975560` | Merge `origin/main` — 29 commits, 8 conflicts, M156's per-tenant free trial reconciled with the schema rebuild |
 | `ec7ef86ed` | §8.3 lease park + §8.4/8.5 deletion set + docs + 3 tests |
 | `27493ce74` | §8.1/§8.2 tests — origination and its answer, 4 tests, both mutation-checked |
+| `cbd7a945b` | §7.1 + §7.2 — list stops reading bodies, single-event route serves them |
+| `d94529b52` | Transcript re-reads its turns; Dimension 8.1 reworded to what it builds |
 
 ## The merge, and what it hid
 
@@ -75,14 +85,8 @@ nothing reports it. Worth a gate.
 
 ## What is owed — start here
 
-1. **§7.1 / §7.2 — not started. START HERE.** `EVENTS_SELECT` in `state/fleet_events_store.zig`
-   still selects `request_json` / `response_text` (rubric R4 greps for exactly
-   this). The single-event read, its handler, OpenAPI entry and User Interface
-   (UI) wiring do not exist. `EventDetailsDialog.tsx` ALREADY EXISTS and reads
-   those fields off the list row — that is what §7.1 removes, so it must move to
-   fetch-on-open. Spec interface:
-   `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}`,
-   404 for unknown OR cross-workspace (indistinguishable).
+1. **Draft Pull Request — decide first.** See the CI warning at the top.
+   Indy has the call; nothing else here is blocked on it.
 2. **Coverage → 80%, gate updated.** Indy decided: `ZIG_COVERAGE_MIN_LINES`
    (`make/test.mk:29`) moves 60 → 80. **Fix the basis first, in this order:**
    1. Exclude `_test.zig` sources from the kcov denominator. They are 22,994 of
@@ -119,7 +123,15 @@ nothing reports it. Worth a gate.
    full command surface the spec's blast-radius table never listed. Indy chose
    delete-without-amending. **The spec's Files Changed is therefore knowingly
    incomplete — record this in PR Session Notes at CHORE(close).**
-3. **Every fleet-key mention deleted from `docs/AUTH.md`, including the v2.1
+3. **The events table's prose cell shows `No result recorded`.** Indy accepted
+   the rendering change rather than keeping bodies on the list — asked and
+   answered, verbatim: "yes `No results` is fine...". Clause B of Dimension 7.1
+   ("the rendered table is unchanged") was amended out; it could not hold
+   alongside clause A.
+4. **The transcript re-reads its turns as details** (server-side, parallel,
+   bounded by `CHAT_TURNS`), rather than degrading to headers only.
+5. **Dimension 8.1's wording amended** rather than adding a bundle reason field.
+6. **Every fleet-key mention deleted from `docs/AUTH.md`, including the v2.1
    first-class-principal roadmap item.** Also removed from
    `docs/architecture/roadmap.md` and the `README.md` pointer to it. The design
    intent that revamp recorded is gone from the tree by choice.
@@ -157,20 +169,64 @@ lacking the `integration:` name prefix. The lane passes two filters and Zig
 ORs them, so the `_integration_test` FILE filter catches it. Verified running
 at 354/785.
 
+## §7 — what it cost, and what it left behind
+
+**The section's premise was wrong and the spec now says so.** §7.1 claimed the
+bodies were wanted only on expansion. Three rendered surfaces read them: the
+events table's prose cell, the fleet header's outcome line, and the fleet
+thread's transcript — and the transcript is the fleet page's DEFAULT view.
+Indy's call was to drop the columns anyway; the table and strip now state the
+outcome, and the transcript re-reads its turns as details.
+
+- **The `left(...)` detour is dead — do not revive it.** 7.1's own acceptance
+  text says "the plan reads no oversized-attribute storage", and a bounded
+  prefix still reads it. Two hours went into arguing a design that failed the
+  spec's own criterion. Read the acceptance text before proposing a shape.
+- **🚨 The browser holds no dashboard credential.** The first cut of the dialog
+  fetched client-side with `getToken()`, and
+  `tests/grep-gates/no-api-template-mint.test.ts` failed it. Client components
+  get server data through a **Server Action** (`lib/actions/with-token.ts`),
+  never a browser fetch. That gate is load-bearing security architecture.
+- **Never ask the Server-Sent Events (SSE) route a question in a test.**
+  `/events/stream` never closes its connection; a test that requests it hangs
+  the whole suite for as long as you let it. The route-shadowing assertion
+  lives at `router.match()` in `handlers/fleets/event_detail.zig` instead.
+- **`/events/stream` and `/events/{event_id}` are both six segments** and
+  `event_id` is free-form TEXT, so nothing about its shape excludes the word
+  `stream`. Only router ORDER keeps them apart — the stream matcher is tried
+  first. `S_EVENTS` is spelled once in `route_matchers_fleet_leaf.zig` for
+  exactly this reason.
+- **`route_matchers.zig` hit the 350-line cap.** The per-fleet leaf matchers
+  now live in `route_matchers_fleet_leaf.zig` and are re-exported, so call
+  sites are unchanged.
+- **The §7.1 test asserts the plan, not a proxy.**
+  `events_payload_free_integration_test.zig` seeds 200 events each carrying a
+  20 kB body on both sides and asserts three things: no body field, response
+  under 256 kB, and `pg_statio_all_tables.toast_blks_*` for
+  `core.fleet_events` moving by **exactly zero**. That last one is the
+  assertion a prefix-selecting query would fail while passing the other two.
+
+## ⚠️ Unresolved flake — app suite
+
+The FIRST `git push` was blocked by the pre-push hook: `1 failed | 2159 passed`
+in `ui/packages/app`. **It has never reproduced** — four subsequent full runs
+came back 2160/2160 and the retry pushed clean. The failing test was not
+captured. If CI goes red on the app lane once a Pull Request exists, this is
+the likely cause and NOT a regression from the diff. Worth capturing next time
+it fires (`bun run test` in `ui/packages/app`, keep the output).
+
 ## Open decisions
 
 **Nothing blocks §7.** Two former questions are settled: `list_aggregate`
 coverage loss is a recording (in the spec's Discovery log), not an approval;
 and `fleetFromSession` was approved for deletion and is now deleted.
 
-**One new question for Indy — do not resolve unilaterally.** Dimension 8.1 says
-the gate carries "the bundle's stated reason", and no bundle field supplies
-one. The reason is a constant (`create_grants.S_DEFAULT_REASON`, "Declared by
-the fleet bundle at install") stored on the GRANT's `requested_reason`; the gate
-carries `proposed_action` ("Use github on behalf of this fleet") plus the
-evidence pair. The test asserts what is actually built. The call is Indy's:
-amend the Dimension's wording, or add a real bundle reason field. **Flagged,
-not decided** — and it belongs in PR Session Notes either way.
+**Settled this session.** Dimension 8.1's "bundle's stated reason" — Indy chose
+to amend the wording, done in `d94529b52`. A bundle-authored justification is
+recorded in the spec as a FEATURE, not a gap; do not treat it as owed work.
+
+**The one live question is the draft Pull Request** (see the top). Everything
+else has a stated procedure.
 
 ## Traps
 
