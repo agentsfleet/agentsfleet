@@ -163,7 +163,7 @@ Why two debit points and not one:
 - **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero post-GA without re-plumbing.
 - **Run captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
 
-**Telemetry rows (M80_010).** `core.fleet_execution_telemetry` is keyed `(event_id, charge_type)`: one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type)` constraint updates the `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. The **per-renewal breakdown** lives separately in the new `fleet.metering_periods` table (one row per `/renew`/settle). So one event → 1 `receive` + 1 accumulated `stage` telemetry row + N metering-period rows. Auditable two ways: revenue-by-charge-type is a one-line query on telemetry; *how* a single run debit accrued (slice by slice) is a join on `metering_periods`.
+**Telemetry rows (M80_010).** `billing.usage_ledger` is keyed `(event_id, charge_type)`: one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type)` constraint updates the `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. The **per-renewal breakdown** lives separately in the new `fleet.metering_periods` table (one row per `/renew`/settle). So one event → 1 `receive` + 1 accumulated `stage` telemetry row + N metering-period rows. Auditable two ways: revenue-by-charge-type is a one-line query on telemetry; *how* a single run debit accrued (slice by slice) is a join on `metering_periods`.
 
 **Run metering — three layers.** The run debit follows the real run, not a one-shot estimate.
 
@@ -329,7 +329,11 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 
 **Spend means credit *drained*,** not credit metered. On the slice that exhausts a wallet, `charged_nanos < run_fee + token_cost` and the remainder is forgiven (§3); a budget counts money that actually left the pool.
 
-**Timed by drain, not by run start.** The gate sums the per-slice ledger `fleet.metering_periods.charged_nanos` by each slice's own `created_at`, plus the receive fee (one telemetry row, accurately timed at gate-pass). It deliberately does **not** sum the accumulating `fleet_execution_telemetry` stage row. That row's `recorded_at` is pinned at the first renewal and never advances (§5.1's settle updates `credit_deducted_nanos` but not the timestamp). Summing it would attribute a 12 h run's spend entirely to its start — aged out of the rolling-24h window up to 12 h early, or slipped across a month boundary. The stage telemetry row is joined only for `fleet_id` scope, and the scan is pruned to `recorded_at >= floor − MAX_RUNTIME` (a slice cannot drain more than one run-length after its run started).
+**Timed by drain, not by run start.** The problem this solves outlived the table that first solved it. A run's stage row accumulates in place across renewals, so a single stored instant describes the whole run — and attributing a 12-hour run's spend to its start ages that spend out of a rolling 24-hour window up to 12 hours early, or slips it across a month boundary entirely. Under-enforcement, precisely on the long runaway a budget exists to stop.
+
+The first fix stored per-slice rows in `fleet.metering_periods` and summed them by each slice's own `created_at`. That table is gone: it wrote a row roughly every twenty seconds of every run, which is the growth the schema rebuild removed. The property survives without it. `billing.usage_ledger` carries `last_charged_at` alongside `created_at`, so the accumulated total describes a *span* rather than an instant, and the gate apportions it across `[created_at, last_charged_at]` by overlap with the window being enforced. A run straddling the window boundary contributes the fraction that actually fell inside it.
+
+The slice-by-slice audit trail is a separate concern from enforcement, and it is not in Postgres — see M155_001 §2, which emits it to the durable stream.
 
 **Overshoot is bounded, not zero.** The ceiling is a floor-check: a run is admitted while `spend < cap`. An already-running run may exceed its cap by at most one renewal window's worth of tokens before its next `/renew` refuses it. Enforcing a *predicted* end-of-run cost would refuse runs that would have finished under budget.
 
@@ -413,7 +417,7 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 - User-facing HTTP response bodies — `agentsfleet doctor --json` output, `GET /v1/tenants/me/provider`, the `GET /v1/workspaces/{ws}/secrets` metadata list (§8.3), and any other JSON a user sees. The authenticated runner lease is the machine-plane exception described above.
 - Logs — `agentsfleetd`, runner, structured logs, request logs.
 - The fleet's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (the runner's NullClaw uses it for the inference call only, never via `secrets_map`).
-- Persisted event rows — `core.fleet_events`, `fleet_execution_telemetry`, anything else under `core.*`.
+- Persisted event rows — `core.fleet_events`, `billing.usage_ledger`, anything else under `core.*` or `billing.*`.
 - User-facing artefacts — frontmatter, the dashboard, CLI table output, status-page bodies.
 
 The boundary is "process-internal vs user-facing," not "in memory vs not in memory." Within `agentsfleetd`: decrypted vault buffers and canonical secret JSON are erased before release. Secret-bearing route bodies are erased after dispatch, including authentication short-circuits. Request-arena pages are erased at teardown. Serialized lease or mint bytes are erased after their synchronous write. Authorization-header storage and plaintext during active use remain outside this guarantee. A grep across the event log, `agentsfleetd` logs, runner logs, and user-facing HTTP responses for the api_key bytes after a self-managed run is a Continuous Integration (CI) invariant (M48 acceptance criteria).
@@ -542,7 +546,7 @@ Hidden entirely in v2.0. Re-introduced in v2.1 alongside Stripe.
 
 Everything on the page is sourced from rows the runtime already writes:
 - `core.tenant_billing.balance_nanos` for the headline.
-- `core.fleet_execution_telemetry` (filtered by tenant_id, with the `charge_type` discriminator) for the Usage tab.
+- `billing.usage_ledger` (filtered by tenant_id, with the `charge_type` discriminator) for the Usage tab.
 - No Stripe, no purchase tables, no invoicing tables — those land in v2.1.
 
 ---
