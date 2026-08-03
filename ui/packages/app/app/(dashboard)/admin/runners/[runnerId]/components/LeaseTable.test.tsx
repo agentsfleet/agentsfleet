@@ -239,7 +239,7 @@ describe("LeaseTable", () => {
     expect(screen.queryByText("1,884")).toBeNull();
   });
 
-  it("filters to a row's workspace and drops the cursor trail with the old result set", () => {
+  it("applies both filter tokens and drops the cursor trail with the old result set", () => {
     mockSearch = "c=page-2-cursor&cps=25";
     render(
       <LeaseTable
@@ -250,15 +250,40 @@ describe("LeaseTable", () => {
         }}
         pageSize={25}
       />, { wrapper: TooltipProvider });
-    fireEvent.click(screen.getByRole("button", { name: "Show only this workspace" }));
+    fireEvent.change(screen.getByLabelText("Filter leases"), {
+      target: { value: "workspace:ws-0123456789 fleet:pr-reviewer" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply filter" }));
     expect(routerPush).toHaveBeenCalledTimes(1);
     const url = routerPush.mock.calls[0]?.[0] as string;
     const params = new URLSearchParams(url.split("?")[1]);
     expect(params.get("workspace")).toBe("ws-0123456789");
+    expect(params.get("fleet")).toBe("pr-reviewer");
+    // The cursors walked the OLD result set; they cannot page the new one.
     expect(params.getAll("c")).toHaveLength(0);
     expect(params.get("cps")).toBeNull();
-    // The funnel narrows the feed; it must not also open Review lease.
+    // Filtering narrows the feed; it must not also open Review lease.
     expect(screen.queryByText("1,884")).toBeNull();
+  });
+
+  it("clears one filter without disturbing the other", () => {
+    mockSearch = "workspace=ws-0123456789&fleet=pr-reviewer";
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "ws-both-1", workspace_id: "ws-0123456789" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />, { wrapper: TooltipProvider });
+    // Two chips, two independent clears — dropping the workspace must leave the
+    // fleet narrowing in place, or the operator loses work they did not undo.
+    fireEvent.click(screen.getByRole("button", { name: "Clear workspace filter" }));
+    const url = routerPush.mock.calls[0]?.[0] as string;
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.get("workspace")).toBeNull();
+    expect(params.get("fleet")).toBe("pr-reviewer");
   });
 
   it("shows the active filter as a chip and clears back to the unfiltered feed", () => {

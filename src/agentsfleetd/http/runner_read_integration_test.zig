@@ -19,6 +19,7 @@ const assign = @import("../fleet/assign.zig");
 const renewal_settle = @import("../fleet/renewal_settle.zig");
 const reclaim = @import("../fleet/reclaim.zig");
 const id_format = @import("../types/id_format.zig");
+const runner_leases = @import("handlers/fleet/runner_leases.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -235,7 +236,7 @@ fn cleanup(conn: anytype) void {
     // Settles through the real write path leave audit rows keyed by event id.
     _ = conn.exec("DELETE FROM billing.usage_ledger WHERE event_id LIKE $1", .{SETTLED_EVENT_PREFIX ++ "%"}) catch |err|
         std.log.warn("telemetry cleanup ignored: {s}", .{@errorName(err)});
-    const runner_ids = [_][]const u8{ R_LEASES, R_COUNTS, R_STALE, R_EMPTY, R_SAME_MS, R_OUTCOME, R_CASCADE, R_FILTER, R_CURSOR };
+    const runner_ids = [_][]const u8{ R_LEASES, R_COUNTS, R_STALE, R_EMPTY, R_SAME_MS, R_OUTCOME, R_CASCADE, R_FILTER, R_FLEET_FILTER, R_CURSOR };
     for (runner_ids) |rid| {
         _ = conn.exec("DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{rid}) catch |err|
             std.log.warn("lease cleanup ignored: {s}", .{@errorName(err)});
@@ -782,6 +783,158 @@ test "integration: test_runner_leases_workspace_filter_scopes_rows_and_total" {
     const obj_all = unfiltered.value.object;
     try std.testing.expectEqual(@as(usize, ws_a_pool.len + ws_b_pool.len), obj_all.get("items").?.array.items.len);
     try std.testing.expectEqual(@as(i64, ws_a_pool.len + ws_b_pool.len), obj_all.get("total").?.integer);
+}
+
+const R_FLEET_FILTER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc19";
+const FLEET_FILTER_EVENT_PREFIX = "evt-fleetfilter-";
+/// Well-formed fleet id that no seed ever creates.
+const FLEET_UNKNOWN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eccfc";
+
+/// Seed one lease for `fleet_id` in `workspace_id`, stepped so every row in the
+/// fleet-filter suite has a distinct position in the newest-first stream.
+fn seedFleetFilterLease(
+    conn: anytype,
+    lease_id: []const u8,
+    fleet_id: []const u8,
+    workspace_id: []const u8,
+    event_suffix: []const u8,
+    step: i64,
+) !void {
+    const event_id = try std.fmt.allocPrint(ALLOC, FLEET_FILTER_EVENT_PREFIX ++ "{s}", .{event_suffix});
+    defer ALLOC.free(event_id);
+    try seedLease(conn, .{
+        .lease_id = lease_id,
+        .runner_id = R_FLEET_FILTER,
+        .fleet_id = fleet_id,
+        .workspace_id = workspace_id,
+        .event_id = event_id,
+        .status = protocol.RUNNER_LEASE_STATUS_EXPIRED,
+        .lease_expires_at = LEASE_CREATED_BASE_MS,
+        .created_at = LEASE_CREATED_BASE_MS + step * LEASE_CREATED_STEP_MS,
+    });
+}
+
+test "integration: test_runner_leases_fleet_filter_scopes_rows_and_total" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    try base.seedWorkspace(conn, WS_B);
+    try base.seedFleet(conn, FLEET_C, WS_B, "runner-read-fleet-c", "{}", "");
+    try seedRunner(conn, R_FLEET_FILTER, "runner-read-fleet-filter");
+
+    // One runner serving three fleets across two workspaces: two leases for
+    // fleet A and one for fleet B (both in WS), two for fleet C (in WS_B).
+    try seedFleetFilterLease(conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf31", FLEET_A, WS, "a-0", 0);
+    try seedFleetFilterLease(conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf32", FLEET_A, WS, "a-1", 1);
+    try seedFleetFilterLease(conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf33", FLEET_B, WS, "b-0", 2);
+    try seedFleetFilterLease(conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf34", FLEET_C, WS_B, "c-0", 3);
+    try seedFleetFilterLease(conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf35", FLEET_C, WS_B, "c-1", 4);
+    const seeded_total: i64 = 5;
+
+    // The filter scopes BOTH the rows and the pager's total, so a page never
+    // disagrees with its own count — the same invariant the workspace filter holds.
+    const only_a = try fetchLeases(h, R_FLEET_FILTER, "fleet=" ++ FLEET_A);
+    defer only_a.deinit();
+    const obj_a = only_a.value.object;
+    try std.testing.expectEqual(@as(usize, 2), obj_a.get("items").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 2), obj_a.get("total").?.integer);
+    for (obj_a.get("items").?.array.items) |item| {
+        try std.testing.expectEqualStrings(FLEET_A, item.object.get("fleet_id").?.string);
+    }
+
+    const only_b = try fetchLeases(h, R_FLEET_FILTER, "fleet=" ++ FLEET_B);
+    defer only_b.deinit();
+    try std.testing.expectEqual(@as(usize, 1), only_b.value.object.get("items").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 1), only_b.value.object.get("total").?.integer);
+
+    // The operator's own vocabulary: the fleet NAME the table already shows
+    // selects the same rows as the id, so nobody has to transcribe a UUID.
+    const by_name = try fetchLeases(h, R_FLEET_FILTER, "fleet=runner-read-fleet-a");
+    defer by_name.deinit();
+    try std.testing.expectEqual(@as(usize, 2), by_name.value.object.get("items").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 2), by_name.value.object.get("total").?.integer);
+
+    // Name matching is case-insensitive — an operator typing the name as it
+    // reads in prose still lands on the fleet.
+    const by_mixed_case = try fetchLeases(h, R_FLEET_FILTER, "fleet=Runner-Read-Fleet-A");
+    defer by_mixed_case.deinit();
+    try std.testing.expectEqual(@as(usize, 2), by_mixed_case.value.object.get("items").?.array.items.len);
+
+    // A well-formed id nothing holds matches nothing — an empty page, not an error.
+    const unknown = try fetchLeases(h, R_FLEET_FILTER, "fleet=" ++ FLEET_UNKNOWN);
+    defer unknown.deinit();
+    try std.testing.expectEqual(@as(usize, 0), unknown.value.object.get("items").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 0), unknown.value.object.get("total").?.integer);
+
+    const unfiltered = try fetchLeases(h, R_FLEET_FILTER, null);
+    defer unfiltered.deinit();
+    try std.testing.expectEqual(@as(usize, seeded_total), unfiltered.value.object.get("items").?.array.items.len);
+    try std.testing.expectEqual(seeded_total, unfiltered.value.object.get("total").?.integer);
+}
+
+test "integration: test_runner_leases_workspace_and_fleet_filters_intersect" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    try base.seedWorkspace(conn, WS_B);
+    try base.seedFleet(conn, FLEET_C, WS_B, "runner-read-fleet-c", "{}", "");
+    try seedRunner(conn, R_FLEET_FILTER, "runner-read-fleet-filter");
+
+    try seedFleetFilterLease(conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf41", FLEET_A, WS, "x-0", 0);
+    try seedFleetFilterLease(conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecf42", FLEET_C, WS_B, "x-1", 1);
+
+    // Both filters apply together rather than one overriding the other: fleet A
+    // lives in WS, so pairing it with WS_B must match nothing. Were either
+    // filter dropped, this would return a row.
+    const contradictory = try fetchLeases(h, R_FLEET_FILTER, "workspace_id=" ++ WS_B ++ "&fleet=" ++ FLEET_A);
+    defer contradictory.deinit();
+    try std.testing.expectEqual(@as(usize, 0), contradictory.value.object.get("items").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 0), contradictory.value.object.get("total").?.integer);
+
+    // The agreeing pair still returns its row.
+    const agreeing = try fetchLeases(h, R_FLEET_FILTER, "workspace_id=" ++ WS ++ "&fleet=" ++ FLEET_A);
+    defer agreeing.deinit();
+    try std.testing.expectEqual(@as(usize, 1), agreeing.value.object.get("items").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 1), agreeing.value.object.get("total").?.integer);
+}
+
+test "integration: test_runner_leases_unbounded_fleet_filter_is_refused" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanup(conn);
+    try seedWorkspaceAndFleets(conn);
+    try seedRunner(conn, R_FLEET_FILTER, "runner-read-fleet-filter");
+
+    // The filter takes a name, so an arbitrary string is a legitimate value that
+    // simply matches nothing. Only a value that cannot name a fleet is refused:
+    // an empty one (which would read as "filter by nothing") and an over-long
+    // one (which must not reach the comparison at all).
+    const empty_path = try leasesPath(R_FLEET_FILTER, "fleet=");
+    defer ALLOC.free(empty_path);
+    const empty_resp = try getBody(h, empty_path, PLATFORM_ADMIN_TOKEN);
+    defer empty_resp.deinit();
+    try empty_resp.expectStatus(.bad_request);
+
+    const over_long = "f" ** (runner_leases.MAX_FLEET_FILTER_LEN + 1);
+    const long_path = try leasesPath(R_FLEET_FILTER, "fleet=" ++ over_long);
+    defer ALLOC.free(long_path);
+    const long_resp = try getBody(h, long_path, PLATFORM_ADMIN_TOKEN);
+    defer long_resp.deinit();
+    try long_resp.expectStatus(.bad_request);
+
+    // A name no fleet carries is an ordinary empty page, NOT an error — the
+    // boundary between "refused" and "matched nothing" is the point here.
+    const unmatched = try fetchLeases(h, R_FLEET_FILTER, "fleet=no-such-fleet-name");
+    defer unmatched.deinit();
+    try std.testing.expectEqual(@as(usize, 0), unmatched.value.object.get("items").?.array.items.len);
 }
 
 // Workspace A's two leases are OLDER than workspace B's two, so a cursor

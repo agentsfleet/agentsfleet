@@ -85,6 +85,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.github/workflows/test.yml` | EDIT | The coverage job needs live datastores now that it measures the integration binary, which a job `container:` cannot reach; `workflow_dispatch` lets a branch exercise the lane before review |
 | `cli/**` | EDIT | The fleet-key command surface retires (§8). **Knowingly recorded, not enumerated** — Indy's decision; see Discovery |
 | `~/Projects/docs/changelog.mdx` | ~~EDIT~~ | **Not done, by Indy's decision** — see the Discovery quote. Would otherwise be required: an endpoint is removed and a public route changes status |
+| `src/runner/engine/runner.zig` | EDIT | The run-failure sites stop collapsing the true error, so the failure detail names a cause (§9.1) |
+| `src/runner/engine/run_context_test.zig` | EDIT | A stub provider that acquires but rejects the model call — the only offline way to reach `fleet.runSingle`'s failure (§9.1) |
+| `src/agentsfleetd/http/handlers/fleet/sql.zig` | EDIT | All four lease statements gain the NULL-guarded fleet predicate; `TOTAL` and `CURSOR` gain the fleets join the name match needs (§9.2–9.4) |
+| `src/agentsfleetd/http/handlers/fleet/runner_leases.zig` | EDIT | Parses and threads the `fleet` filter through total, cursor and page (§9.2–9.4) |
+| `src/agentsfleetd/http/runner_read_integration_test.zig` | EDIT | The fleet-filter, intersection and refusal suites (§9.2–9.4) |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/lease-filter-query.ts` | CREATE | The filter grammar, kept free of React so parse and format are testable as the inverse pair they are (§9.5) |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/LeaseFilterBar.tsx` | CREATE | The toolbar that writes both filters to the URL, with a chip per active filter (§9.6) |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/LeaseWorkspaceFilter.tsx` | DELETE | Superseded by the bar; the row funnel it fed is gone (§9) |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/LeaseTable.tsx` | EDIT | Row funnel removed, filter bar rendered (§9.6) |
+| `ui/packages/app/lib/api/runners.ts` | EDIT | The `fleet` query param on the lease read (§9.2) |
+| `public/openapi/paths/fleet.yaml` | EDIT | Documents the `fleet` filter and its interaction with `workspace_id` (§9.2) |
 
 ## Applicable Rules
 
@@ -188,6 +199,23 @@ The origination path belongs where the requirement becomes known — at install,
 - **Dimension 8.4** — no route authenticates outside the middleware chain; the handler-local fleet authentication and its session arm are gone → Test `test_no_handler_local_authentication` — **DONE**
 - **Dimension 8.5** — `core.fleet_keys` is absent from the catalogue and unreferenced across the tree → Test `test_fleet_keys_surface_fully_removed` — **DONE**
 
+### §9 — The operator can see why a run failed, and can narrow the feed to find it
+
+Added mid-stream at Indy's direction, from two defects he hit on the deployed surface. Both are operator-visibility failures on the runner plane, which is why they land together rather than as separate specs.
+
+The first: a crashed lease's `{}` Details expander was empty, so `FleetRunFailed` — the outcome *label* — was the only thing the row could say. The detail plumbing was never the problem; `execute` already wrote `.detail = @errorName(err)`. The run-failure sites collapsed the true error into `RunnerError.FleetRunFailed` before it reached that line, so the detail restated the label and the operator learned nothing. Propagating the real error is safe precisely because `mapError`'s `else` arm classifies any unmapped error as `.runner_crash` — the same class `FleetRunFailed` carried — so the failure class is unchanged and only the detail improves. The `Fleet.fromConfig` site keeps its mapped error: init failures are `.startup_posture`, which that same fallback would lose.
+
+The second: the lease feed could be narrowed to a workspace only by clicking a funnel on a row, which requires already having found a row from the workspace you wanted — the affordance assumed the answer to the question it was there to ask. There was no fleet filter at all. Indy's call: a toolbar filter in the shape GitHub's issue search uses, both filters addressable in the URL, and the row funnel deleted rather than kept beside it.
+
+**Implementation default:** the fleet filter matches an id **or** an exact, case-insensitive fleet name, because the table shows operators names and no one should have to transcribe a UUID to filter by what they can already read. It intersects with the workspace filter rather than replacing it, and it scopes the pager's total and the keyset cursor on the same terms the workspace filter already did (RULE KYS — a cursor names a position in one ordered stream, and the filters are part of what defines it).
+
+- **Dimension 9.1** — a run that fails at the model call reports the error that actually stopped it, not the outcome label → Test `a run failure propagates its own error instead of collapsing to FleetRunFailed` (`runner/engine/run_context_test.zig`). Proven by mutation: restoring the collapse turns it red with the stub provider's rejection reaching `fleet.runSingle` first.
+- **Dimension 9.2** — the fleet filter scopes both the rows and the pager's total, by id and by exact name, case-insensitively; a value no fleet matches is an empty page, not an error → Test `test_runner_leases_fleet_filter_scopes_rows_and_total`
+- **Dimension 9.3** — the workspace and fleet filters intersect rather than one overriding the other: pairing a fleet with a workspace it does not belong to matches nothing → Test `test_runner_leases_workspace_and_fleet_filters_intersect`
+- **Dimension 9.4** — an empty or over-long fleet filter is refused, while an unmatched name is an ordinary empty page — the boundary between "refused" and "matched nothing" is explicit → Test `test_runner_leases_unbounded_fleet_filter_is_refused`
+- **Dimension 9.5** — the filter query parses as GitHub's does: both tokens in any order, quoted values kept whole, unrecognised tokens dropped rather than guessed at, last occurrence winning on a repeat → Test `lease-filter-query.test.ts`
+- **Dimension 9.6** — applying a filter drops the cursor trail walked through the old result set, and clearing one filter leaves the other in place → Test `LeaseTable.test.tsx` (`applies both filter tokens and drops the cursor trail with the old result set`, `clears one filter without disturbing the other`)
+
 ## Interfaces
 
 ```
@@ -220,6 +248,13 @@ UNCHANGED  GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events
            Same shape minus `request_json` / `response_text` (see ADDED above).
 UNCHANGED  GET /v1/tenants/me/billing/charges
            Shape and cursor semantics untouched; only the index beneath changes.
+
+ADDED      GET /v1/fleets/runners/{id}/leases?fleet=<id-or-name>
+           Optional filter (§9). Matches a fleet id or an exact, case-insensitive
+           fleet name. Intersects with the existing `workspace_id` filter and
+           scopes the pager's `total` and the keyset cursor on the same terms.
+           400 → empty or longer than 200 characters.
+           200 with an empty page → well-formed but matching no fleet.
 ```
 
 ## Failure Modes

@@ -6706,7 +6706,7 @@
             "name": "starting_after",
             "in": "query",
             "required": false,
-            "description": "A lease id this runner holds; the page starts strictly after it. A lease id the runner does not hold is refused. So is one outside the `workspace_id` filter when that filter is set. The cursor names a position in the filtered stream, so it must belong to it. A cursor whose lease the retention sweep has since deleted is refused for the same reason — start again from the first page.",
+            "description": "A lease id this runner holds; the page starts strictly after it. A lease id the runner does not hold is refused. So is one outside the `workspace_id` or `fleet` filters when those filters are set. The cursor names a position in the filtered stream, so it must belong to it. A cursor whose lease the retention sweep has since deleted is refused for the same reason — start again from the first page.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -6720,6 +6720,17 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet",
+            "in": "query",
+            "required": false,
+            "description": "Narrow the page and total to leases run for one fleet, named by its id or its exact name (case-insensitive). Combines with `workspace_id`; the two filters intersect. An empty or over-long value is refused; a value no fleet matches returns nothing.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
             }
           },
           {
@@ -6758,7 +6769,7 @@
                       "type": "integer",
                       "format": "int64",
                       "nullable": true,
-                      "description": "The filtered history's retained lease count; stable across pages. Narrowed by `workspace_id` when set. Counts only leases still inside the retention window, not the runner's lifetime total. `GET /v1/fleets/runners/{id}` reports that."
+                      "description": "The filtered history's retained lease count; stable across pages. Narrowed by `workspace_id` and `fleet` when set. Counts only leases still inside the retention window, not the runner's lifetime total. `GET /v1/fleets/runners/{id}` reports that."
                     },
                     "next_cursor": {
                       "type": "string",

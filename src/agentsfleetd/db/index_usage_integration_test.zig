@@ -581,9 +581,15 @@ test "the lease pager's exact total never walks the runner's whole history" {
 
     const unfiltered: ?[]const u8 = null;
     try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_LEASE_TOTAL, .{
-        RUNNER_LEASE, unfiltered,
+        RUNNER_LEASE, unfiltered, unfiltered,
     }, SEQ_SCAN_LEASES_MARKER);
     try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_LEASE_TOTAL, .{
-        RUNNER_LEASE, WS_LEASE,
+        RUNNER_LEASE, WS_LEASE, unfiltered,
+    }, SEQ_SCAN_LEASES_MARKER);
+    // The fleet filter joins `core.fleets` to match a name. The join must not
+    // cost the lease side its index: the runner predicate still selects the rows
+    // and the fleets probe rides the primary key.
+    try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_LEASE_TOTAL, .{
+        RUNNER_LEASE, unfiltered, FLEET_LEASE,
     }, SEQ_SCAN_LEASES_MARKER);
 }
