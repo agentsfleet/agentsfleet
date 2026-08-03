@@ -433,6 +433,106 @@ test "integration: a settle that loses its fence commits nothing and emits nothi
     try std.testing.expectEqual(@as(usize, 0), drainCredit().count);
 }
 
+/// The tenant's remaining credit. The wallet is the other half of every debit
+/// the ledger records, and the only half a user feels.
+fn walletBalance(conn: *pg.Conn) !i64 {
+    return scalar(conn,
+        \\SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid
+    , base.TEST_TENANT_ID);
+}
+
+/// One ledger row's `event_created_at`, read per charge type so the two rows
+/// written at different instants can be compared against each other.
+fn ledgerEventCreatedAt(conn: *pg.Conn, event_id: []const u8, charge_type: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT event_created_at FROM billing.usage_ledger
+        \\WHERE event_id = $1 AND charge_type = $2
+    , .{ event_id, charge_type }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.LedgerRowMissing;
+    return row.get(i64, 0);
+}
+
+// Invariant 5 — "the wallet drain equals the ledger sum" — is the one property
+// that makes the ledger a billing record rather than a log. §4 deleted the
+// accrual table that used to carry the per-slice detail, so the question this
+// answers is whether the surviving two-row shape still accounts for every
+// nanocredit that actually left the pool.
+//
+// The sibling test above reconciles the emitted METRIC against the ledger. That
+// is a different claim: it proves the telemetry does not lie about the ledger,
+// and would still pass if the ledger and the wallet disagreed with each other.
+// Nothing asserted the wallet side until here.
+test "integration: the wallet drain equals the ledger sum across a metered run" {
+    const s = try arrange();
+    defer cleanup(s);
+
+    const opening = try walletBalance(s.conn);
+
+    // Receive at lease + two metered renewals + the terminal settle: four
+    // separate debits, accumulating into two ledger rows.
+    const lv = try leaseOne(s.h);
+    defer lv.free();
+    try renewOnce(s.h, lv.lease_id, .{
+        .input_tokens = RENEW_ONE_INPUT,
+        .cached_input_tokens = RENEW_ONE_CACHED,
+        .output_tokens = RENEW_ONE_OUTPUT,
+    });
+    try renewOnce(s.h, lv.lease_id, .{
+        .input_tokens = RENEW_TWO_INPUT,
+        .cached_input_tokens = RENEW_TWO_CACHED,
+        .output_tokens = RENEW_TWO_OUTPUT,
+    });
+    const settle = try postReport(s.h, reportBody(lv, lv.fencing_token));
+    defer settle.deinit();
+    try settle.expectStatus(.ok);
+
+    const drained = opening - try walletBalance(s.conn);
+    const ledgered = try committedDebitTotal(s.conn, lv.event_id);
+
+    // Non-vacuous first: the trial is closed and the pair is rated by arrange(),
+    // so a run that charged nothing means the fixture broke, not that the
+    // identity held. Without this the assertion below passes on 0 == 0.
+    try std.testing.expect(ledgered > 0);
+    try std.testing.expectEqual(ledgered, drained);
+}
+
+// The partition key the ledger carries is only usable if every row for one event
+// agrees on it. The receive row is written at lease issue and the stage row is
+// last written by the settle — potentially hours apart on a long run. Were the
+// column the ROW's creation instant, those two would diverge, a late renewal
+// would hash to a different partition, miss the `ON CONFLICT` target, and
+// silently insert a duplicate charge instead of accumulating into the existing
+// one. The catalogue test asserts the column exists and is NOT NULL; only a run
+// can assert it means what it says.
+test "integration: every ledger row for one event carries the event's creation time, not its own" {
+    const s = try arrange();
+    defer cleanup(s);
+
+    const lv = try leaseOne(s.h);
+    defer lv.free();
+    try renewOnce(s.h, lv.lease_id, .{
+        .input_tokens = RENEW_ONE_INPUT,
+        .cached_input_tokens = RENEW_ONE_CACHED,
+        .output_tokens = RENEW_ONE_OUTPUT,
+    });
+    const settle = try postReport(s.h, reportBody(lv, lv.fencing_token));
+    defer settle.deinit();
+    try settle.expectStatus(.ok);
+
+    const receive_key = try ledgerEventCreatedAt(s.conn, lv.event_id, ChargeType.receive.label());
+    const stage_key = try ledgerEventCreatedAt(s.conn, lv.event_id, ChargeType.stage.label());
+    try std.testing.expectEqual(receive_key, stage_key);
+
+    // And it is the EVENT's instant, not the row's: the stage row was created at
+    // the first renewal and rewritten by the settle, both of which happen after
+    // the event existed. A column silently carrying the write time would fail
+    // this the moment a renewal landed in a later millisecond.
+    const span = try stageLedgerSpan(s.conn, lv.event_id);
+    try std.testing.expect(stage_key <= span.created_at);
+    try std.testing.expect(stage_key <= span.last_charged_at);
+}
+
 // A test named "a settle whose database write fails emits nothing" stood here.
 // It forced the failure by occupying the (event_id, slice_seq) slot the settle
 // was about to write, which raised only because `fleet.metering_periods` had no

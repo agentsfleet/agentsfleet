@@ -396,3 +396,45 @@ test "retried settle increments the tally exactly once" {
 
     cleanup(ctx.conn);
 }
+
+// Dimension 7.4 — the expired tally rides the SAME statement as the status flip.
+//
+// Every other reclaim here has an event row still present, so the outer SELECT
+// returns something and a tally written by a SECOND statement would look
+// identical. This drives the one case that tells the two apart. The body join
+// is INNER, so deleting the event row leaves the outer SELECT with nothing to
+// return — but a data-modifying Common Table Expression (CTE) runs to
+// completion whether or not the primary query reads its output, so the flip and
+// the tally must still commit while reclaim reports "no prior lease".
+//
+// Split across two statements, this is exactly where the counter drifts: the
+// caller sees null, returns early, and the increment never runs while the lease
+// already sits `expired`. The counter would then under-count expiries forever,
+// silently, and only on the arm nobody exercises by hand.
+test "reclaim tallies the expiry even when the event body is gone and it returns nothing" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+    cleanup(ctx.conn);
+    try setupBase(ctx.conn);
+
+    const orphan_event = EVENT_PREFIX ++ "orphaned-body";
+    try acquireLease(ctx.conn, LEASE_POOL[0], orphan_event, 1);
+    const before = try counterRow(ctx.conn);
+
+    // The lease outlives its event row — an ordinary delete, not a shortcut
+    // that seeds an otherwise unreachable state.
+    _ = try ctx.conn.exec("DELETE FROM core.fleet_events WHERE event_id = $1", .{orphan_event});
+
+    const prior = try reclaim.reclaimPriorActive(ctx.conn, ALLOC, FLEET_ID);
+    try std.testing.expect(prior == null);
+
+    // The flip committed...
+    try std.testing.expectEqual(@as(i64, 0), try leaseCount(ctx.conn, protocol.RUNNER_LEASE_STATUS_ACTIVE));
+    try std.testing.expectEqual(@as(i64, 1), try leaseCount(ctx.conn, protocol.RUNNER_LEASE_STATUS_EXPIRED));
+    // ...and so did the tally that counts it, in the same breath.
+    const after = try counterRow(ctx.conn);
+    try std.testing.expectEqual(before.expired + 1, after.expired);
+
+    cleanup(ctx.conn);
+}

@@ -73,6 +73,121 @@ test "integration: every foreign key resolves to a primary key, a superkey, or t
     ));
 }
 
+test "integration: no table carries a second unique key over its own primary key columns" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+
+    // R2's grep covers the `GENERATED ALWAYS` half of this Dimension at source
+    // level; this is the half no grep reaches, because a duplicate key is a
+    // RELATIONSHIP between two constraints rather than a spelling.
+    //
+    // Why it matters is upstream in `schema/650`: `ON CONFLICT` arbitrates
+    // exactly one constraint, so two sessions inserting a brand-new row race to
+    // a duplicate-key error on the OTHER unique index instead of taking the
+    // update arm. Every table carrying the shape has that latent race.
+    try std.testing.expect(try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM pg_index i
+        \\JOIN pg_class rel ON rel.oid = i.indrelid
+        \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        \\WHERE i.indisunique AND NOT i.indisprimary AND nsp.nspname IN (
+    ++ APP_SCHEMAS ++ ")") > 0);
+
+    // Unique INDEXES, not just unique constraints: a bare `CREATE UNIQUE INDEX`
+    // carries the identical race and appears nowhere in `pg_constraint`.
+    // Set equality both ways — a superkey that ADDS a column is the legitimate
+    // tenant-scoping shape and must pass.
+    try std.testing.expectEqual(@as(i64, 0), try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM pg_index i
+        \\JOIN pg_class rel ON rel.oid = i.indrelid
+        \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        \\WHERE i.indisunique AND NOT i.indisprimary AND nsp.nspname IN (
+    ++ APP_SCHEMAS ++
+        \\)
+        \\  AND EXISTS (
+        \\    SELECT 1 FROM pg_index pk
+        \\    WHERE pk.indrelid = i.indrelid AND pk.indisprimary
+        \\      AND (SELECT array_agg(k ORDER BY k) FROM unnest(pk.indkey) k)
+        \\        = (SELECT array_agg(k ORDER BY k) FROM unnest(i.indkey) k)
+        \\  )
+    ));
+
+    // The identity half, asserted against the catalogue rather than the source
+    // text so a column added outside `schema/` is caught too.
+    try std.testing.expectEqual(@as(i64, 0), try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM pg_attribute a
+        \\JOIN pg_class rel ON rel.oid = a.attrelid
+        \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        \\WHERE nsp.nspname IN (
+    ++ APP_SCHEMAS ++
+        \\) AND rel.relkind IN ('r','p') AND a.attidentity <> ''
+    ));
+}
+
+test "integration: the ledger resolves every identity through a typed foreign key" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+
+    // Three references, one per identity. Before the rebuild `tenant_id` was a
+    // UUID with no reference and the other two were bare TEXT — which is why
+    // erasing an account needed a hand-maintained delete order and why the
+    // counter trigger regex-checked its own `fleet_id` before casting.
+    try std.testing.expectEqual(@as(i64, 3), try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM pg_constraint fk
+        \\JOIN pg_class rel ON rel.oid = fk.conrelid
+        \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        \\WHERE fk.contype = 'f' AND nsp.nspname = 'billing'
+        \\  AND rel.relname = 'usage_ledger'
+    ));
+
+    try std.testing.expectEqual(@as(i64, 3), try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM information_schema.columns
+        \\WHERE table_schema = 'billing' AND table_name = 'usage_ledger'
+        \\  AND column_name IN ('tenant_id','workspace_id','fleet_id')
+        \\  AND data_type = 'uuid'
+    ));
+
+    // The three delete DIFFERENTLY, and that is the point rather than an
+    // oversight. `tenant_id` cascades so erasure leaves zero rows (Dimension
+    // 3.3); the other two SET NULL so an ordinary fleet delete cannot erase a
+    // charge already debited and falsify wallet reconciliation. Asserted
+    // explicitly so widening either to a cascade is a red test, not a silent
+    // hole in the money record.
+    try std.testing.expectEqual(@as(i64, 1), try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM pg_constraint fk
+        \\JOIN pg_class rel ON rel.oid = fk.conrelid
+        \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        \\WHERE fk.contype = 'f' AND nsp.nspname = 'billing'
+        \\  AND rel.relname = 'usage_ledger' AND fk.confdeltype = 'c'
+    ));
+    try std.testing.expectEqual(@as(i64, 2), try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM pg_constraint fk
+        \\JOIN pg_class rel ON rel.oid = fk.conrelid
+        \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        \\WHERE fk.contype = 'f' AND nsp.nspname = 'billing'
+        \\  AND rel.relname = 'usage_ledger' AND fk.confdeltype = 'n'
+    ));
+}
+
+test "integration: the ledger carries the originating event's creation time as a partition-ready key" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+
+    // A partition key must be NOT NULL to be usable as one, so the constraint
+    // is the assertion rather than mere presence. That every row for one event
+    // carries the same value — the property that stops a late renewal landing
+    // in a different partition and duplicating the row — is behavioural, and
+    // lives in `fleet/credit_metric_reconciliation_integration_test.zig`.
+    try std.testing.expectEqual(@as(i64, 1), try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM information_schema.columns
+        \\WHERE table_schema = 'billing' AND table_name = 'usage_ledger'
+        \\  AND column_name = 'event_created_at'
+        \\  AND data_type = 'bigint' AND is_nullable = 'NO'
+    ));
+}
+
 test "integration: no schema is created that holds no table" {
     const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer ctx.pool.deinit();
