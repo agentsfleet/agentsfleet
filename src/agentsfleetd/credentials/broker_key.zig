@@ -49,14 +49,26 @@ pub fn writeKey(buf: []u8, workspace: []const u8, id_name: []const u8, fingerpri
 /// same repositories differently are different cache entries, which costs one
 /// extra mint and never risks serving the wrong scope. A null binding folds to a
 /// distinct constant so "declared nothing" and "declared something" never collide.
-pub fn bindingFingerprint(binding: ?integration.RepositoryBinding) u64 {
+///
+/// Framed with `hashFramed` plus an explicit count — exactly the discipline
+/// `hashValue`'s array arm already uses — and NOT separator-joined. A separator
+/// only frames input it cannot appear in, and nothing validates repository
+/// strings before they reach here (`fleet_runtime/config_repositories.zig` dupes
+/// whatever the frontmatter declared). Joining on `KEY_SEP` therefore made
+/// `["acme/a","acme/b"]` and the single entry `"acme/a<KEY_SEP>acme/b"` hash
+/// IDENTICALLY: a deterministic alias needing no probabilistic collision. The
+/// fleet declaring the second string would be served the first fleet's cached
+/// broad-scope token — the exact cross-fleet bleed this fingerprint exists to
+/// stop, reintroduced one layer above the mint that would have refused it.
+///
+/// `seed` is the broker's per-process value, so a digest cannot be precomputed
+/// offline against a known target either.
+pub fn bindingFingerprint(seed: u64, binding: ?integration.RepositoryBinding) u64 {
     const b = binding orelse return NO_BINDING_FP;
-    var h = std.hash.Wyhash.init(0);
-    h.update(@tagName(b.access));
-    for (b.repositories) |repo| {
-        h.update(&[_]u8{KEY_SEP});
-        h.update(repo);
-    }
+    var h = std.hash.Wyhash.init(seed);
+    hashFramed(&h, @tagName(b.access));
+    h.update(std.mem.asBytes(&b.repositories.len));
+    for (b.repositories) |repo| hashFramed(&h, repo);
     return h.final();
 }
 
@@ -139,4 +151,51 @@ fn hashValue(hasher: *std.hash.Wyhash, v: std.json.Value) void {
         },
         .object => |obj| hashObject(hasher, obj, false),
     }
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+const testing = std.testing;
+
+/// `"acme/a" KEY_SEP "acme/b"` as ONE repository string. Written byte-wise so the
+/// separator inside it is impossible to miss when reading the test.
+const SPLICED_NAME = [_]u8{ 'a', 'c', 'm', 'e', '/', 'a', KEY_SEP, 'a', 'c', 'm', 'e', '/', 'b' };
+
+test "bindingFingerprint: a separator inside a repository name cannot alias two entries into one" {
+    // The regression this guards: joining on KEY_SEP without length framing made
+    // these two bindings hash identically, so a fleet declaring the spliced
+    // spelling was served the two-repository fleet's cached broad-scope token —
+    // above the mint that would have refused the malformed name. Nothing
+    // validates repository strings before this point, so it is authorable.
+    const two = [_][]const u8{ "acme/a", "acme/b" };
+    const spliced = [_][]const u8{&SPLICED_NAME};
+
+    const fp_two = bindingFingerprint(0, .{ .repositories = &two, .access = .read });
+    const fp_spliced = bindingFingerprint(0, .{ .repositories = &spliced, .access = .read });
+    try testing.expect(fp_two != fp_spliced);
+}
+
+test "bindingFingerprint: access level, repository set, and count each move the digest" {
+    const one = [_][]const u8{"acme/widgets"};
+    const other = [_][]const u8{"acme/gadgets"};
+    const two = [_][]const u8{ "acme/widgets", "acme/gadgets" };
+
+    const read: integration.RepositoryBinding = .{ .repositories = &one, .access = .read };
+    const write: integration.RepositoryBinding = .{ .repositories = &one, .access = .write };
+    const other_read: integration.RepositoryBinding = .{ .repositories = &other, .access = .read };
+    const two_read: integration.RepositoryBinding = .{ .repositories = &two, .access = .read };
+
+    try testing.expect(bindingFingerprint(0, read) != bindingFingerprint(0, write));
+    try testing.expect(bindingFingerprint(0, read) != bindingFingerprint(0, other_read));
+    try testing.expect(bindingFingerprint(0, read) != bindingFingerprint(0, two_read));
+    // "declared nothing" is a constant, so it can never be reached by hashing.
+    try testing.expectEqual(NO_BINDING_FP, bindingFingerprint(0, null));
+}
+
+test "bindingFingerprint: the per-process seed changes the digest" {
+    // Same input, different broker process → different key, so a digest cannot be
+    // precomputed offline against a known target binding.
+    const one = [_][]const u8{"acme/widgets"};
+    const b: integration.RepositoryBinding = .{ .repositories = &one, .access = .write };
+    try testing.expect(bindingFingerprint(1, b) != bindingFingerprint(2, b));
 }
