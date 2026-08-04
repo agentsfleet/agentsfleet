@@ -58,7 +58,3 @@ CREATE TABLE IF NOT EXISTS fleet.runner_lifetime_counters (
 -- the version check.
 
 GRANT SELECT, INSERT, UPDATE ON fleet.runner_lifetime_counters TO api_runtime;
-
--- metering_runtime: the settle statement carries a tally arm that first-touch
--- upserts this row, so it needs INSERT as well as UPDATE (schema/120).
-GRANT SELECT, INSERT, UPDATE ON fleet.runner_lifetime_counters TO metering_runtime;

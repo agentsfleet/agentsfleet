@@ -76,9 +76,9 @@ ORDER BY table_name;
 -- Catalog-derived, NOT a hand-maintained list, for the same reason the schema
 -- loop in teardown.sql is: a static list silently rots the moment a migration
 -- adds a role. It had rotted — it named `ops_readonly_agent`, retired with the
--- old product noun and creatable by nothing, while missing `billing_runtime`,
--- `metering_runtime`, `vault_runtime` and `ops_readonly_fleet`. So it verified
--- four of eight roles and told the operator to expect five or six.
+-- old product noun and creatable by nothing, while missing roles the schema had
+-- since added. So it verified a subset and told the operator to expect a count
+-- that no longer matched.
 -- App roles are the NOLOGIN, non-superuser ones. The `pscale%` exclusion
 -- mirrors the schema checks above so managed-provider objects stay out of
 -- every count; the underscore is escaped here because Postgres ships its own

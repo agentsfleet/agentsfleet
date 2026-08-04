@@ -1,13 +1,12 @@
 -- Workspace-scoped encrypted secrets: the envelope, and the non-secret
 -- projection describing it.
 --
--- PRIVILEGE: the table grants below land on `vault_runtime`, not on
--- `api_runtime`. Every Hypertext Transfer Protocol handler runs as the latter,
--- so reaching a ciphertext requires deliberately assuming the former for the
--- span of one transaction. Before this rebuild `api_runtime` held SELECT,
--- INSERT and UPDATE here directly, which meant any handler — and any bug
--- inside one — could read every stored ciphertext. The envelope was the only
--- thing in the way; now the privilege is too.
+-- PRIVILEGE: `api_runtime`, the role every Hypertext Transfer Protocol handler
+-- runs as, holds the table grants directly, so the envelope is what stands
+-- between a bug in any handler and a stored ciphertext. Narrowing that to a
+-- `vault_runtime` role assumed for the span of one transaction is deferred to
+-- its own milestone, because the revoke and the elevation that hands access
+-- back are two halves of one change.
 --
 -- `kek_version` carries NO DEFAULT, and that is load-bearing. A default was the
 -- last way a row could be minted at a version no writer intended: every write
@@ -54,31 +53,16 @@ CREATE TABLE IF NOT EXISTS vault.secrets (
 -- workspace_id prefix serves the per-workspace list and the erasure cascade.
 -- A second index on the same columns would only slow every write.
 
--- vault_runtime owns the table. api_runtime is a member (schema/100) and must
--- assume this role to reach it; it holds nothing here directly.
-GRANT SELECT, INSERT, UPDATE, DELETE ON vault.secrets TO vault_runtime;
-
--- api_runtime reaches the NON-SECRET columns only, and the envelope not at all.
--- Wrapping every vault touch in an elevated transaction assumes each is an
--- isolated statement. Three are not: the onboarding signals
--- probe (`state/workspace_onboarding/sql.zig`) and the entry-create existence
--- check (`state/tenant_model_entries/sql.zig`) each span `vault` and `core` in
--- ONE statement, and the secrets list's metadata projection
--- (`secrets/sql.zig SELECT_METADATA_FOR_KEYS`) decrypts nothing. Elevating those
--- would put core reads inside a vault transaction to no benefit.
+-- api_runtime reads and writes the secret store directly. DELETE is included
+-- because account erasure removes a workspace's secrets
+-- (`state/account_teardown.zig`).
 --
--- A column grant serves all three unelevated while `ciphertext`, `encrypted_dek`,
--- `dek_nonce`, `dek_tag`, `nonce`, `tag` and `kek_version` stay unreachable:
--- naming one as api_runtime is refused by PostgreSQL at the column, which is the
--- boundary enforced more precisely than a table grant could.
---
--- NOT covered here, and elevating on purpose: every decrypt path, every write,
--- and the whole `state/secret_reference_txn.zig` lock protocol — its step 1 is
--- `SELECT … FOR UPDATE`, which PostgreSQL requires UPDATE privilege for, so it
--- cannot ride a SELECT column grant and should not try.
-GRANT SELECT (workspace_id, key_name, meta_kind, meta_provider, meta_base_url,
-              meta_has_key)
-    ON vault.secrets TO api_runtime;
+-- Splitting this onto a `vault_runtime` role that api_runtime must assume for
+-- the span of one transaction is deferred to its own milestone, because the
+-- revoke and the elevation that hands access back are two halves of one change,
+-- and shipping the first without the second refuses every secret read and write
+-- at runtime. They land together or not at all.
+GRANT SELECT, INSERT, UPDATE, DELETE ON vault.secrets TO api_runtime;
 
 -- Read-only operator principals never see ciphertext, sealed or otherwise.
 -- Stated explicitly rather than relied upon: these roles hold no grant here, and

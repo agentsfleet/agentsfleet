@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M154
 **Workstream:** 002
 **Date:** Aug 01, 2026
-**Status:** IN_PROGRESS
+**Status:** PENDING
 **Priority:** P1 — a security boundary that exists in prose and not in grants
 **Categories:** API, SQL
-**Batch:** B1 — same batch and same Pull Request as M154_001; the grants live in slots that workstream authors
-**Branch:** feat/m154-schema-rebuild
+**Batch:** B1 — its own Pull Request, both halves together; the grants live in slots M154_001 authors
+**Branch:** _(unassigned)_
 **Test Baseline:** unit=3344 integration=510
-**Depends on:** M154_001 (same PR) — the grants land in the slots it re-authors, so it must be authoring them for this to apply
+**Depends on:** M154_001 (merged first) — the grants land in the slots it re-authors, so those slots must exist for this to apply. Its §1 revoke and §2 elevation ship together or not at all: the revoke alone refuses every signup, because the starter grant is written inside the tenant-create transaction
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 01, 2026), from a grant-level audit of the shipped schema
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §the control-plane/data-plane split · `docs/AUTH.md`
 

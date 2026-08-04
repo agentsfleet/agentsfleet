@@ -3,14 +3,15 @@
 -- Last slot on purpose: these attach to `core.fleet_events` (schema/800) and
 -- `billing.usage_ledger` (schema/710), so both must exist first.
 --
--- Both functions are SECURITY DEFINER, and that is what makes the per-schema
--- privilege split survive contact with the counters. A trigger function
--- otherwise executes as the role that wrote the triggering row, so the ledger
--- trigger would run as `billing_runtime` — a role deliberately granted nothing
--- outside `billing`, not even USAGE on `core`. The alternatives were to widen
--- that role until it could write a counter in `core`, which gives back exactly
--- the ambient reach the split exists to remove, or to make maintaining the
--- counter a capability of the caller rather than an invariant of the database.
+-- Both functions are SECURITY DEFINER, and that is what keeps the counters
+-- outside every runtime role's write reach. A trigger function otherwise
+-- executes as the role that wrote the triggering row, so maintaining a counter
+-- in `core` would mean granting that role a write on the counter table. The
+-- alternatives were to widen a runtime role until it could write the counter,
+-- which is the ambient reach the schema split exists to remove, or to make
+-- maintaining the counter a capability of the caller rather than an invariant
+-- of the database.
+--
 -- Defining them instead means the counter is maintained by the schema owner
 -- (the migration role, which creates these functions), no runtime role holds a
 -- write grant on the counter table at all, and the reach a SECURITY DEFINER
