@@ -110,6 +110,27 @@ pub fn decide(binding: ?execution_policy.RepositoryBinding, ask: Ask) Verdict {
     } };
 }
 
+/// The remote URL for an approved ask, written into caller-owned `buf`. Built
+/// from `Approved.repository` — the BINDING's spelling, never the model's — so
+/// the host, the path, and the log all read what an operator declared.
+///
+/// The URL carries no credential: the daemon authenticates through the git
+/// process's environment instead, so nothing here can end up in a `.git/config`
+/// or a `FETCH_HEAD` the child goes on to read (Invariant 9).
+pub fn remoteUrl(buf: *[MAX_REMOTE_URL_LEN]u8, approved: Approved) []const u8 {
+    // `decide` is the only producer of an `Approved` and admits nothing over
+    // MAX_REPOSITORY_LEN, so a buffer sized from that same ceiling always fits.
+    // A caller that hand-built an oversized `Approved` is a programmer bug —
+    // which is what the assert is for, and why this cannot fail at runtime.
+    std.debug.assert(approved.repository.len <= MAX_REPOSITORY_LEN);
+    var end: usize = 0;
+    for ([_][]const u8{ GITHUB_REMOTE_PREFIX, approved.repository, GIT_URL_SUFFIX }) |part| {
+        @memcpy(buf[end..][0..part.len], part);
+        end += part.len;
+    }
+    return buf[0..end];
+}
+
 /// The declared spelling of `requested`, or null when the binding does not name
 /// it. Case-insensitive, because an owner and a repository name are
 /// case-insensitively unique at the vendor — `acme/Payments` and `acme/payments`
@@ -188,6 +209,16 @@ const TRAVERSAL: []const u8 = "..";
 /// The vendor's ceiling on one owner or repository name, and on the pair.
 const MAX_SEGMENT_LEN: usize = 100;
 const MAX_REPOSITORY_LEN: usize = MAX_SEGMENT_LEN * 2 + 1;
+
+/// The remote a bound repository lives at. One vendor today; a second forge
+/// would make this a function of the binding rather than a constant, and the
+/// pure shape here is what would make that a local change.
+const GITHUB_REMOTE_PREFIX: []const u8 = "https://github.com/";
+const GIT_URL_SUFFIX: []const u8 = ".git";
+/// Sized from the repository ceiling above, so `remoteUrl` cannot overflow for
+/// any name `decide` admits. Pub because the execution half derives its own
+/// buffer bounds from it (RULE UFS — one ceiling, not two).
+pub const MAX_REMOTE_URL_LEN: usize = GITHUB_REMOTE_PREFIX.len + MAX_REPOSITORY_LEN + GIT_URL_SUFFIX.len;
 /// A branch long enough for any real convention, short enough to bound the
 /// refspec buffer the fetch builds.
 const MAX_BRANCH_LEN: usize = 255;
