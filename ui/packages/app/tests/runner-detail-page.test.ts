@@ -276,6 +276,54 @@ describe("admin/runners/[runnerId] page", () => {
     },
   );
 
+  it("narrows the lease read to the fleet the URL names", async () => {
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockResolvedValueOnce(EMPTY_PAGE);
+    const Page = await loadPage();
+    renderToStaticMarkup(await Page(pageProps({ fleet: "billing-reconciler" })));
+    // A NAME, passed through untouched. The server matches `fleet` against an id
+    // OR an exact name, so resolving it to an id here would break filtering by
+    // the thing the table actually shows the operator.
+    expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, {
+      limit: 25,
+      fleet: "billing-reconciler",
+    });
+  });
+
+  it("sends both filters when the URL names a workspace and a fleet, so they intersect", async () => {
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockResolvedValueOnce(EMPTY_PAGE);
+    const Page = await loadPage();
+    renderToStaticMarkup(
+      await Page(pageProps({ workspace: "ws-0123456789", fleet: "billing-reconciler" })),
+    );
+    // Both keys, not one. Dropping either here would silently widen the feed to
+    // a set the operator did not ask for, and the intersect rule the server
+    // enforces would never be reached.
+    expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, {
+      limit: 25,
+      workspace_id: "ws-0123456789",
+      fleet: "billing-reconciler",
+    });
+  });
+
+  it.each([
+    ["empty", ""],
+    ["repeated", ["fleet-a", "fleet-b"]],
+  ])("fails closed to the unfiltered feed for a %s fleet param", async (_name, value) => {
+    mockAuth();
+    getRunnerMock.mockResolvedValueOnce(RUNNER);
+    listRunnerLeasesMock.mockResolvedValueOnce(EMPTY_PAGE);
+    const Page = await loadPage();
+    renderToStaticMarkup(await Page(pageProps({ fleet: value })));
+    // No `fleet` key at all. An empty value reaches the daemon as an unbounded
+    // filter, which it refuses with a 400 — rendering an error state for what is
+    // really just a malformed link.
+    expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", RUNNER.id, { limit: 25 });
+  });
+
   it("says the history is unavailable when a view read errors, never an empty history", async () => {
     mockAuth();
     getRunnerMock.mockResolvedValueOnce(RUNNER);
