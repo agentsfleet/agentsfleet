@@ -98,6 +98,10 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/runner/pipe_proto.zig` | EDIT | Two frame types beside the credential pair — `repo_fetch_request` up the child's stdout, `repo_fetch_response` back down its stdin. No new descriptor and no new sandbox hole, exactly as the mint channel added none |
 | `src/runner/engine/repo_fetch_request.zig` | CREATE | The child half of the fetch channel, mirroring `credential_request.zig`: the ask names the repository, commit, and branch and nothing else — no workspace, no lease id, no path — so a prompt-injected child can ask for the wrong repository and be refused, but cannot ask for the wrong PLACE. The reply is a workspace-relative path, because an absolute one would tell the sandbox a fact it otherwise never has |
 | `src/runner/child_supervisor_read.zig` | EDIT | `FetchHook` + `FetchOutcome` + the `repo_fetch_request` frame arm. Both outcome slices are borrowed static strings, so framing a reply has no allocation and therefore no failure path of its own |
+| `src/runner/engine/runtime/repo_fetch.zig` | CREATE | The child-side tool — the only way a fleet obtains a working tree. It names the repository, the commit, and the branch, and cannot name a workspace, a path, or a credential; a refusal comes back as prose the model reformulates against, and a success puts the single word `repo` into context |
+| `src/runner/engine/runtime/repo_fetch_tool_test.zig` | CREATE | Driven exactly as NullClaw drives it — arguments in, `ToolResult` out — over real pipes: the ask reaches the wire verbatim, a refusal carries its reason, a run with no channel fails closed, and the declared schema matches the arguments `execute` actually reads |
+| `src/runner/engine/tool_builders.zig` | EDIT | `buildRepoFetch`, deriving the fetch channel from the lease's mint channel — one duplex, multiplexed by frame type, so the two cannot drift apart |
+| `src/runner/engine/tool_bridge.zig` | EDIT | One `BRIDGE_REGISTRY` row beside `git`, and the tool census that guards against registry drift |
 | `src/runner/repo_fetch_channel_test.zig` | CREATE | The parent half over real pipes: the ask reaches the hook verbatim, the path is framed back relative, a null hook and a malformed ask both refuse with a reason, and a lease that asks for nothing invokes the hook zero times |
 | `src/runner/child_supervisor_test.zig` | EDIT | The new `readResult` parameter at every existing call site |
 | `src/runner/child_supervisor_edge_test.zig` | EDIT | Same |
@@ -124,6 +128,43 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `docs/AUTH.md` | EDIT | Record that machine credentials cannot resolve approvals, and why |
 | `docs/architecture/scenarios/production-deploy-repair.md` | EDIT | Describe the gate-bound two-fleet design; flip proven rows |
 | `bench/incident-response/` | KEEP | §5 landed and is frozen; its rubric rows are rewritten to claim only detection |
+| `build.zig` | EDIT | Register the §6 benchmark executable and the new named-module test lanes |
+| `make/bench.mk` | EDIT | `make bench-incident` — the §6 rubric row R6 runs through it |
+| `src/agentsfleetd/credentials/broker.zig` | EDIT | Fold the repository binding + access level into the mint path; the cache key work moved to `broker_key.zig` (RULE FLL split) |
+| `src/agentsfleetd/credentials/broker_key.zig` | CREATE | The cache key, split out and framed. `bindingFingerprint` joined repositories without length framing, so `["acme/a","acme/b"]` and the single entry `"acme/a<SEP>acme/b"` hashed IDENTICALLY — a deterministic alias needing no collision search, on the exact key that decides which fleet's token a second fleet receives |
+| `src/agentsfleetd/credentials/broker_test.zig` | EDIT | The framed key, and the two-fleets-one-workspace collision the review found |
+| `src/agentsfleetd/credentials/integration.zig` | EDIT | `RepositoryBinding` on the integration surface; the registry table split to `integration_registry_test.zig` |
+| `src/agentsfleetd/credentials/integration_ctx.zig` | EDIT | `MintCtx.repository_binding` — what the GitHub mint scopes by |
+| `src/agentsfleetd/credentials/integration_github_mint_body_test.zig` | CREATE | Dimension 2.3: `write` mints contents + pull_requests, `read` mints contents alone and carries NO pull_requests key; an unbound fleet mints nothing |
+| `src/agentsfleetd/credentials/integration_registry_test.zig` | CREATE | Registry coverage, split from `integration.zig` to keep it inside the line budget |
+| `src/agentsfleetd/credentials/testing.zig` | EDIT | A bound fixture (`test_binding`) so tests whose subject is something else are not all asserting the unbound refusal |
+| `src/agentsfleetd/cron/FireQueue.zig` | EDIT | Orphan sweep from the retired repair kernel (RULE ORP) |
+| `src/agentsfleetd/errors/error_lookup.zig` | CREATE | Lookup split from the registry when the `UZ-REPAIR-*` family was retired (RULE FLL) |
+| `src/agentsfleetd/fleet/approval_gate_detail.zig` | CREATE | Builds the `ActionDetail` §2 threads, including the daemon-vouched `- Token reaches:` line the card previously had no way to state |
+| `src/agentsfleetd/fleet/fleet_session.zig` | EDIT | Orphan sweep from the retired repair kernel |
+| `src/agentsfleetd/fleet_runtime/approval_gate.zig` | EDIT | The `.auto_approve` fallthrough Dimension 3.2 guards, and the detail fields §2 populates |
+| `src/agentsfleetd/fleet_runtime/approval_gate_slack.zig` | EDIT | Render the evidence in a code span after the attributed claim, so model prose cannot counterfeit the daemon-derived rows above it |
+| `src/agentsfleetd/fleet_runtime/config_gates.zig` | EDIT | Gate policy parsing beside the new repository binding |
+| `src/agentsfleetd/fleet_runtime/config_gates_test.zig` | CREATE | Gate-policy parse coverage, split from the parser suite |
+| `src/agentsfleetd/fleet_runtime/config_parser.zig` | EDIT | Parse the top-level `repositories` + `repository_access` binding; the repository half split to its own module (RULE FLL) |
+| `src/agentsfleetd/fleet_runtime/config_repositories.zig` | CREATE | The binding parser. The two keys are optional TOGETHER — a list without an access level does not know how far to reach and an access level without a list does not know what to reach, and either would have to fall back to the installation's full scope |
+| `src/agentsfleetd/fleet_runtime/webhook_constants.zig` | CREATE | Provider constants shared by the verifier and the ingress handlers (RULE UFS) |
+| `src/agentsfleetd/fleet_runtime/webhook_verify.zig` | EDIT | Uses the shared constants; the HMAC-over-body scheme §3 cites for why a signed webhook cannot substitute for the wake |
+| `src/agentsfleetd/http/handlers/auth/identity_events_clerk.zig` | EDIT | The second consumer of `grantMembers(.tenant)` — the human signup claim §1 must leave untouched |
+| `src/agentsfleetd/http/handlers/connectors/slack/events.zig` | EDIT | Resident-fleet resolution, cited in Decomposition alternative (c) for why the crew handoff does not route through Slack |
+| `src/agentsfleetd/http/handlers/connectors/slack/events_integration_test.zig` | EDIT | Follows the handler change |
+| `src/agentsfleetd/http/handlers/connectors/slack/thread_refetch_integration_test.zig` | EDIT | Follows the handler change |
+| `src/agentsfleetd/http/handlers/ingress/github.zig` | EDIT | Shared webhook constants; ingress `repositories` stays the INGRESS binding and is not overloaded by the egress one |
+| `src/agentsfleetd/http/handlers/ingress/github_integration_test.zig` | EDIT | Follows the handler change |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | Thread the fleet's binding into the mint; scope resolution split out (RULE FLL) |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint_scope.zig` | CREATE | Resolve the lease's workspace, fleet, and repository binding in one read. A config that fails to parse degrades to NO binding, so a malformed config withholds a token rather than widening one |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint_integration_test.zig` | EDIT | The grant-gate suite; its GitHub-minting test now seeds a bound fleet, because §2 made an unbound GitHub mint fail closed |
+| `src/agentsfleetd/http/handlers/runner/sql.zig` | EDIT | `SELECT_LEASE_SCOPE_FOR_MINT` returns the fleet's `config_json` so the binding is read on the same query |
+| `src/agentsfleetd/http/handlers/webhooks/fleet.zig` | EDIT | Shared webhook constants |
+| `src/agentsfleetd/http/handlers/webhooks/github.zig` | EDIT | Shared webhook constants |
+| `src/agentsfleetd/http/route_scopes_test.zig` | EDIT | Dimension 1.4 — the resolve route's requirement and the machine grant are provably disjoint |
+| `src/agentsfleetd/http/webhook_http_integration_test.zig` | EDIT | Follows the shared-constant extraction |
+| `tests/fixtures/fleetbundle/github-pr-reviewer/TRIGGER.md` | EDIT | Gains the repository binding, so a fail-closed mint does not stop the fleet installed from it (Indy's call: fail closed anyway, and let M154's teardown take the installed row) |
 | `playbooks/demo/forge-2026/` | CREATE | EC2 + collector + Grafana bring-up, failure injection, replay proof |
 
 ## Applicable Rules
@@ -221,8 +262,8 @@ What that bound can be has a floor worth stating. Reverting commit `C` onto head
 - **Dimension 4.3** — Provider-outage and data-shaped incidents stay diagnosis-only: no repair intent sent → Test `eval_noncode_incidents_stay_diagnosis_only`
 - **Dimension 4.4** — The repairer's PR is a revert of the named commit and touches nothing else → Test `eval_repair_is_a_revert`
 - **Dimension 4.5** — A revert that does not apply cleanly to the target head is refused with a named reason; no branch is pushed and no model resolves the conflict → Test `test_conflicting_revert_refuses`
-- **Dimension 4.6** — The fetch is depth-bounded, lands only in the lease's own workspace, and no credential reaches the child → Test `test_fetch_is_bounded_and_credential_free`
-- **Dimension 4.6a** — A lease that asks for no repository fetches nothing; a fetch for a repository outside the fleet's binding is refused → Test `test_fetch_is_on_demand_and_binding_scoped`
+- **Dimension 4.6** — **DONE** — The fetch is depth-bounded, lands only in the lease's own workspace, and no credential reaches the child → Test `test_fetch_is_bounded_and_credential_free`
+- **Dimension 4.6a** — **DONE** — A lease that asks for no repository fetches nothing; a fetch for a repository outside the fleet's binding is refused → Test `test_fetch_is_on_demand_and_binding_scoped`
 - **Dimension 4.7** — Cold install of both bundles onto a fresh workspace succeeds with declared credentials and hosts → Test `test_cold_install_from_library`
 
 **Both bundles carry three authoring obligations the runtime cannot enforce.**

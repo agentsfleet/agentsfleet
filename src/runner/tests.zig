@@ -51,6 +51,7 @@ test {
     _ = @import("engine/credential_request.zig");
     _ = @import("engine/repo_fetch_request.zig");
     _ = @import("repo_fetch_channel_test.zig");
+    _ = @import("engine/runtime/repo_fetch.zig");
     _ = @import("UsageSnapshot.zig");
     _ = @import("engine/runner.zig");
     _ = @import("engine/runner_capture.zig");

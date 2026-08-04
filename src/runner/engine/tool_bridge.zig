@@ -30,6 +30,10 @@ const log = logging.scoped(.tool_bridge);
 
 const ERR_TOOL_UNKNOWN = client_errors.ERR_TOOL_UNKNOWN;
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+/// M157 §4 — the repository fetch a repairer needs before it can revert.
+/// agentsfleet-authored, not NullClaw's: the fetch is the daemon's, and the
+/// child only asks.
+const TOOL_REPO_FETCH = "repo_fetch";
 const TOOL_SCHEDULE = "schedule";
 const TOOL_CRON_ADD = "cron_add";
 const TOOL_CRON_LIST = "cron_list";
@@ -96,8 +100,10 @@ const BRIDGE_REGISTRY = [_]ToolEntry{
     .{ .name = "file_delete", .buildFn = builders.buildFileDelete },
     .{ .name = "file_read_hashed", .buildFn = builders.buildFileReadHashed },
     .{ .name = "file_edit_hashed", .buildFn = builders.buildFileEditHashed },
-    // Git
+    // Git — the local tool, plus the daemon-executed repository fetch that
+    // gives it something to work on (M157 §4).
     .{ .name = "git", .buildFn = builders.buildGit },
+    .{ .name = TOOL_REPO_FETCH, .buildFn = builders.buildRepoFetch },
     // Stateless
     .{ .name = "image", .buildFn = builders.buildImage },
     .{ .name = "calculator", .buildFn = builders.buildCalculator },
@@ -253,13 +259,15 @@ test "resolve: canonical name found" {
 
 test "resolve: all core tools resolvable" {
     const core = [_][]const u8{
-        "shell",         "file_read",    "file_write",       "file_edit",
-        "file_append",   "file_delete",  "file_read_hashed", "file_edit_hashed",
-        "git",           "image",        "calculator",       "memory_store",
-        "memory_recall", "memory_list",  "memory_forget",    "delegate",
-        "spawn",         "http_request", "web_search",       "web_fetch",
-        "pushover",      "browser",      "screenshot",       "browser_open",
-        "message",
+        "shell",         "file_read",     "file_write",       "file_edit",
+        "file_append",   "file_delete",   "file_read_hashed", "file_edit_hashed",
+        "git",           "image",         "calculator",       "memory_store",
+        "memory_recall", "memory_list",   "memory_forget",    "delegate",
+        "spawn",         "http_request",  "web_search",       "web_fetch",
+        "pushover",      "browser",       "screenshot",       "browser_open",
+        // `repo_fetch` is agentsfleet-authored rather than NullClaw's (M157 §4):
+        // the fetch belongs to the daemon and the child only asks for one.
+        "message",       TOOL_REPO_FETCH,
     };
     for (core) |name| {
         try std.testing.expect(resolve(name) != null);
