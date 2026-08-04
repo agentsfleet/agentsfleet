@@ -12,22 +12,35 @@ const gate_condition = @import("gate_condition.zig");
 const logging = @import("log");
 const log = logging.scoped(.fleet_config_gates);
 const MAX_BUDGET_UNITS = 10000;
-const MAX_THRESHOLD_WINDOW_SECONDS_TEXT = "100000";
 const SECONDS_PER_DAY = 86400;
 
 pub const GateBehavior = enum { approve, auto_kill };
+
+/// Frontmatter keys for the workspace-authored approval copy (RULE UFS — the
+/// parser, the bundle fixtures, and the gate tests share these spellings).
+pub const S_GATE_KIND = "gate_kind";
+pub const S_BLAST_RADIUS = "blast_radius";
 
 pub const GateRule = struct {
     tool: []const u8,
     action: []const u8,
     condition: ?[]const u8,
     behavior: GateBehavior,
+    /// What KIND of decision this gate is asking a human to make ("repair",
+    /// "deploy"), and how far a yes reaches ("one draft Pull Request on the
+    /// declared repository"). Both are WORKSPACE-authored config, so an approval
+    /// card can state them as fact — unlike the model-authored half of
+    /// `ActionDetail`, which is only ever an attributed claim. Empty when the
+    /// rule omits them; a blank field renders as nothing rather than as a
+    /// reassuring default.
+    gate_kind: []const u8 = "",
+    blast_radius: []const u8 = "",
 };
 
 pub const AnomalyPattern = enum {
     same_action,
 
-    fn fromString(s: []const u8) ?AnomalyPattern {
+    pub fn fromString(s: []const u8) ?AnomalyPattern {
         if (std.mem.eql(u8, s, "same_action")) return .same_action;
         return null;
     }
@@ -45,7 +58,7 @@ pub const GatePolicy = struct {
     timeout_ms: u64,
 };
 
-const GateConfigError = error{
+pub const GateConfigError = error{
     MissingRequiredField,
     InvalidBudget,
 };
@@ -147,11 +160,22 @@ fn parseOneGateRule(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error 
         return GateConfigError.MissingRequiredField;
     };
 
+    errdefer if (condition) |c| alloc.free(c);
+
+    // Workspace-authored approval copy. Absent → empty, and an empty field is
+    // omitted from the card entirely: a gate that does not say what it is
+    // approving must not imply one.
+    const gate_kind = try alloc.dupe(u8, jsonStr(obj, S_GATE_KIND) orelse "");
+    errdefer alloc.free(gate_kind);
+    const blast_radius = try alloc.dupe(u8, jsonStr(obj, S_BLAST_RADIUS) orelse "");
+
     return GateRule{
         .tool = tool,
         .action = action,
         .condition = condition,
         .behavior = behavior,
+        .gate_kind = gate_kind,
+        .blast_radius = blast_radius,
     };
 }
 
@@ -202,6 +226,8 @@ fn freeGateRule(alloc: Allocator, rule: GateRule) void {
     alloc.free(rule.tool);
     alloc.free(rule.action);
     if (rule.condition) |c| alloc.free(c);
+    alloc.free(rule.gate_kind);
+    alloc.free(rule.blast_radius);
 }
 
 fn freeGateRules(alloc: Allocator, rules: []const GateRule) void {
@@ -209,142 +235,6 @@ fn freeGateRules(alloc: Allocator, rules: []const GateRule) void {
     alloc.free(rules);
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────
-
-test "parseGatePolicy: valid policy with rules and anomaly" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"rules":[{"tool":"git","action":"push","condition":"branch == 'main'","behavior":"approve"},{"tool":"github","action":"create_pr"}],"anomaly_rules":[{"pattern":"same_action","threshold_count":10,"threshold_window_s":60}],"timeout_ms":1800000}
-    ;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
-    defer parsed.deinit();
-    const obj = parsed.value.object;
-    const policy = try parseGatePolicy(alloc, obj);
-    defer freeGatePolicy(alloc, policy);
-
-    try std.testing.expectEqual(@as(usize, 2), policy.rules.len);
-    try std.testing.expectEqualStrings("git", policy.rules[0].tool);
-    try std.testing.expectEqualStrings("push", policy.rules[0].action);
-    try std.testing.expectEqualStrings("branch == 'main'", policy.rules[0].condition.?);
-    try std.testing.expectEqual(GateBehavior.approve, policy.rules[0].behavior);
-    try std.testing.expectEqualStrings("github", policy.rules[1].tool);
-    try std.testing.expect(policy.rules[1].condition == null);
-    try std.testing.expectEqual(@as(usize, 1), policy.anomaly_rules.len);
-    try std.testing.expectEqual(AnomalyPattern.same_action, policy.anomaly_rules[0].pattern);
-    try std.testing.expectEqual(@as(u32, 10), policy.anomaly_rules[0].threshold_count);
-    try std.testing.expectEqual(@as(u32, 60), policy.anomaly_rules[0].threshold_window_s);
-    try std.testing.expectEqual(@as(u64, 1_800_000), policy.timeout_ms);
-}
-
-test "parseGatePolicy: timeout above the cap clamps to GATE_TIMEOUT_MS_MAX" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"timeout_ms": 999999999999}
-    ;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
-    defer parsed.deinit();
-    const policy = try parseGatePolicy(alloc, parsed.value.object);
-    defer freeGatePolicy(alloc, policy);
-    try std.testing.expectEqual(gate_constants.GATE_TIMEOUT_MS_MAX, policy.timeout_ms);
-}
-
-test "parseGatePolicy: empty rules defaults" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{}
-    ;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
-    defer parsed.deinit();
-    const policy = try parseGatePolicy(alloc, parsed.value.object);
-    defer freeGatePolicy(alloc, policy);
-
-    try std.testing.expectEqual(@as(usize, 0), policy.rules.len);
-    try std.testing.expectEqual(@as(usize, 0), policy.anomaly_rules.len);
-    try std.testing.expectEqual(gate_constants.GATE_DEFAULT_TIMEOUT_MS, policy.timeout_ms);
-}
-
-test "parseGatePolicy: missing tool in rule returns error" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"rules":[{"action":"push"}]}
-    ;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
-    defer parsed.deinit();
-    try std.testing.expectError(
-        GateConfigError.MissingRequiredField,
-        parseGatePolicy(alloc, parsed.value.object),
-    );
-}
-
-test "parseGatePolicy: invalid behavior string returns error (RULES.md #36)" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"rules":[{"tool":"git","action":"push","behavior":"autokill"}]}
-    ;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
-    defer parsed.deinit();
-    try std.testing.expectError(
-        GateConfigError.MissingRequiredField,
-        parseGatePolicy(alloc, parsed.value.object),
-    );
-}
-
-test "parseGatePolicy: unknown anomaly pattern returns error" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"anomaly_rules":[{"pattern":"unknown_pattern","threshold_count":5,"threshold_window_s":30}]}
-    ;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
-    defer parsed.deinit();
-    try std.testing.expectError(
-        GateConfigError.MissingRequiredField,
-        parseGatePolicy(alloc, parsed.value.object),
-    );
-}
-
-test "parseGatePolicy: anomaly threshold_count zero returns error" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"anomaly_rules":[{"pattern":"same_action","threshold_count":0,"threshold_window_s":60}]}
-    ;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
-    defer parsed.deinit();
-    try std.testing.expectError(
-        GateConfigError.InvalidBudget,
-        parseGatePolicy(alloc, parsed.value.object),
-    );
-}
-
-test "parseGatePolicy: anomaly threshold_window_s exceeds max returns error" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"anomaly_rules":[{"pattern":"same_action","threshold_count":10,"threshold_window_s":
-    ++ MAX_THRESHOLD_WINDOW_SECONDS_TEXT ++
-        \\}]}
-    ;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
-    defer parsed.deinit();
-    try std.testing.expectError(
-        GateConfigError.InvalidBudget,
-        parseGatePolicy(alloc, parsed.value.object),
-    );
-}
-
-test "parseGatePolicy: auto_kill behavior parses correctly" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"rules":[{"tool":"stripe","action":"charge","behavior":"auto_kill"}]}
-    ;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
-    defer parsed.deinit();
-    const policy = try parseGatePolicy(alloc, parsed.value.object);
-    defer freeGatePolicy(alloc, policy);
-    try std.testing.expectEqual(GateBehavior.auto_kill, policy.rules[0].behavior);
-}
-
-test "AnomalyPattern.fromString: valid and invalid patterns" {
-    try std.testing.expectEqual(AnomalyPattern.same_action, AnomalyPattern.fromString("same_action").?);
-    try std.testing.expect(AnomalyPattern.fromString("unknown") == null);
-    try std.testing.expect(AnomalyPattern.fromString("") == null);
-    try std.testing.expect(AnomalyPattern.fromString("SAME_ACTION") == null);
+test {
+    _ = @import("config_gates_test.zig"); // force-import the split test sibling
 }

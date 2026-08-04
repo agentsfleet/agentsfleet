@@ -153,8 +153,8 @@ The two consumers also differ in when the change bites, and the spec relies on b
 
 `requestNewGate` builds `ActionDetail` with `gate_kind`, `proposed_action`, `evidence`, and `blast_radius` left blank — the code comment records them as designed-but-unthreaded. A human approving a repair sees none of it. This Section threads them from the triggering event so the Slack approval states the repository, the suspect commit, the evidence that implicated it, and that the outcome is one draft PR. Separately, `integration_github.zig` mints installation tokens with `.body = ""`, which yields the App's full permissions across **every** repository in the installation; the mint body carries `repositories` and `permissions` derived from the fleet's declared binding instead.
 
-- **Dimension 2.1** — A parked gate carries a populated `proposed_action`, `evidence`, and `blast_radius` → Test `test_gate_detail_is_populated`
-- **Dimension 2.2** — The Slack approval message names repository, commit, and outcome → Test `test_slack_approval_names_the_action`
+- **Dimension 2.1** — **DONE** — A parked gate carries a populated `proposed_action`, `evidence`, and `blast_radius` → Test `test_gate_detail_is_populated`
+- **Dimension 2.2** — **DONE** — The Slack approval message names repository, commit, and outcome → Test `test_slack_approval_names_the_action`
 - **Dimension 2.3** — **DONE** — The mint request body pins `repositories` to the fleet's binding and `permissions` to the level its `repository_access` declares — read mints `contents: read` alone, write mints contents + pull-requests → Test `test_mint_body_is_repository_and_access_scoped`
 - **Dimension 2.4** — **DONE** — A fleet with no declared repository binding, or none declaring `repository_access`, gets no mintable GitHub token (fail closed) → Test `test_unbound_fleet_mints_nothing`
 

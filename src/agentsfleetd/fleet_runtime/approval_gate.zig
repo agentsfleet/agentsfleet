@@ -83,17 +83,34 @@ pub fn evaluateGate(
     action: []const u8,
     context: ?std.json.Value,
 ) GateDecision {
+    const rule = matchRule(policy, tool, action, context) orelse return .auto_approve;
+    return switch (rule.behavior) {
+        .approve => .requires_approval,
+        .auto_kill => .auto_kill,
+    };
+}
+
+/// The rule `evaluateGate` matched, or null when nothing matched (the
+/// auto-approve fallthrough). Exposed separately because the DECISION discards
+/// which rule produced it, while the approval card needs that rule's
+/// workspace-authored `gate_kind` and `blast_radius` — the only half of the card
+/// a human may read as fact rather than as a model's claim. Same traversal and
+/// same first-match-wins order as `evaluateGate`, so the two can never disagree
+/// about which rule applied.
+pub fn matchRule(
+    policy: config_gates.GatePolicy,
+    tool: []const u8,
+    action: []const u8,
+    context: ?std.json.Value,
+) ?config_gates.GateRule {
     for (policy.rules) |rule| {
         if (!matchesToolAction(rule, tool, action)) continue;
         if (rule.condition) |cond| {
             if (!evaluateCondition(cond, context)) continue;
         }
-        return switch (rule.behavior) {
-            .approve => .requires_approval,
-            .auto_kill => .auto_kill,
-        };
+        return rule;
     }
-    return .auto_approve;
+    return null;
 }
 
 fn matchesToolAction(

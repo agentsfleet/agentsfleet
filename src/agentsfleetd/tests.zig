@@ -41,6 +41,7 @@ test {
     _ = @import("cron/main.zig");
     _ = @import("fleet/service_activity.zig");
     _ = @import("fleet/approval_gate.zig");
+    _ = @import("fleet/approval_gate_detail.zig");
     _ = @import("fleet/repair_proposal.zig");
     _ = @import("fleet/repair_bounds.zig");
     _ = @import("fleet_runtime/approval_gate_async.zig");
