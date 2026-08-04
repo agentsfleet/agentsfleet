@@ -286,6 +286,44 @@ describe("LeaseTable", () => {
     expect(params.get("fleet")).toBe("pr-reviewer");
   });
 
+  it("clears the fleet without disturbing the workspace — the mirror of the case above", () => {
+    mockSearch = "workspace=ws-0123456789&fleet=pr-reviewer";
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "fleet-drop-1", workspace_id: "ws-0123456789" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />, { wrapper: TooltipProvider });
+    // The other half of the independent-clear claim. Only asserting the
+    // workspace direction would leave a `clearFleet` that dropped both filters
+    // — or the wrong one — entirely unobserved.
+    fireEvent.click(screen.getByRole("button", { name: "Clear fleet filter" }));
+    const url = routerPush.mock.calls[0]?.[0] as string;
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.get("fleet")).toBeNull();
+    expect(params.get("workspace")).toBe("ws-0123456789");
+  });
+
+  it("drops both filters at once through clear-all, not one at a time", () => {
+    mockSearch = "workspace=ws-0123456789&fleet=pr-reviewer";
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "clear-all-1", workspace_id: "ws-0123456789" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />, { wrapper: TooltipProvider });
+    // Back to the bare path: no query at all, so neither filter nor a stale
+    // cursor trail survives the reset.
+    fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(routerPush).toHaveBeenCalledWith(MOCK_PATHNAME, { scroll: true });
+  });
+
   it("shows the active filter as a chip and clears back to the unfiltered feed", () => {
     mockSearch = "workspace=ws-0123456789";
     render(
