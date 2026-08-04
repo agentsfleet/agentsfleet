@@ -5720,6 +5720,16 @@
               }
             }
           },
+          "404": {
+            "description": "No such event, or an event belonging to another workspace. The two\nanswer alike — same status, same error code — so the route cannot be\nused to probe for events outside the caller's own workspace.\n",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
