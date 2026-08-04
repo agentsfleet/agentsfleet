@@ -29,6 +29,14 @@ const Hx = hx_mod.Hx;
 
 const MAX_MESSAGE_LEN: usize = 8192;
 
+/// Actor spellings for the steer ingress (RULE UFS — the prefix is matched as
+/// `steer:%` by `state/workspace_onboarding.zig` and grouped on by the
+/// dashboard, so the two spellings must not drift).
+const ACTOR_STEER_PREFIX = "steer:";
+/// Every non-human credential collapses to this one category — see
+/// `buildSteerActor` for why naming no one beats naming the wrong person.
+const ACTOR_STEER_MACHINE = ACTOR_STEER_PREFIX ++ "api";
+
 const MessageBody = struct {
     message: []const u8,
 };
@@ -182,12 +190,27 @@ fn verifyFleetInWorkspace(
     return true;
 }
 
-/// Build the `steer:<user>` actor string. OIDC principals carry a stable
-/// `user_id`; api-key principals fall back to a flat `steer:api` so the
-/// dashboard can still group by source category.
+/// Build the `steer:<user>` actor string. Branch on the credential's MODE, never
+/// on the presence of `user_id`.
+///
+/// An `agt_t` api-key principal carries the key's `created_by` in `user_id`
+/// (`auth/middleware/tenant_api_key.zig` sets it from the key row), so the old
+/// presence test recorded every machine-driven wake as the human who once
+/// created the key. That is worse than no audit trail: it names an uninvolved
+/// person, and it lets an actor-shaped assertion certify "a human woke this
+/// fleet" while automation did — the exact property the incident crew leans on
+/// when it keeps a human on the repairer's wake. Machines now get the flat
+/// category this comment already claimed they got.
+///
+/// WHICH key it was stays deliberately unrecorded: per-key and per-fleet machine
+/// provenance (`actor=chain:<fleet_id>`, first-class `agt_a` fleet keys) is its
+/// own piece of work. Naming no one is honest; naming the wrong person is not.
 fn buildSteerActor(alloc: std.mem.Allocator, principal: common.AuthPrincipal) ![]u8 {
-    if (principal.user_id) |uid| {
-        return std.fmt.allocPrint(alloc, "steer:{s}", .{uid});
-    }
-    return alloc.dupe(u8, "steer:api");
+    return switch (principal.mode) {
+        .jwt_oidc => if (principal.user_id) |uid|
+            std.fmt.allocPrint(alloc, ACTOR_STEER_PREFIX ++ "{s}", .{uid})
+        else
+            alloc.dupe(u8, ACTOR_STEER_MACHINE),
+        .api_key, .runner => alloc.dupe(u8, ACTOR_STEER_MACHINE),
+    };
 }

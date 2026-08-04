@@ -127,7 +127,7 @@ pub fn mint(
     // installation handle agree on workspace + id + handle fingerprint, so
     // without this a read-scoped fleet could be served the write-scoped token
     // its neighbour cached (and vice versa) — silently undoing the narrowing.
-    const key = broker_key.writeKey(&key_buf, workspace, @tagName(id), broker_key.identityFingerprint(self.fp_seed, handle), broker_key.bindingFingerprint(binding)) orelse {
+    const key = broker_key.writeKey(&key_buf, workspace, @tagName(id), broker_key.identityFingerprint(self.fp_seed, handle), broker_key.bindingFingerprint(self.fp_seed, binding)) orelse {
         self.emit(@tagName(id), OUTCOME_MINT_FAILED, false, self.latency_clock() - t0);
         return .{ .mint_failed = .permanent };
     };
