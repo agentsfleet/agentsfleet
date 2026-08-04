@@ -19,6 +19,7 @@ One row per item, so an agent can check a status without reading the ledger; eac
 | Security Reviewer prebuilt fleet | forward-looking, unspecced | §Security Reviewer |
 | Slack consumption ladder | Rung 0 ✅ (M106_001); Rung 1 is direction, not a commitment | §Slack-resident surface |
 | Bastion | post-MVP shape, documented so specs don't foreclose it | §Bastion |
+| Payload offload + durable stream | specced, not started (M155_001, `docs/v2/pending/`) | §Payload offload and the durable stream |
 
 ## v2.1 — authorization
 
@@ -85,3 +86,28 @@ Structural changes from MVP to bastion:
 5. **Per-actor retention** — customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `core.fleet_events` retention becomes per-actor configurable.
 
 What does not change: the runtime architecture, the sandbox boundary, the trigger model, and the secret vault / network policy / budget caps / context lifecycle. Bastion audience routing applies to work-events only — worker-emitted `system:*` rows stay on the internal operator timeline. The bastion is a `SKILL.md` authoring pattern plus a few tool primitives plus a rendering surface — not a different product.
+
+## Payload offload and the durable stream
+
+Specced as **M155_001** (`docs/v2/pending/`), not started. Recorded here because
+M154 §4 deleted the per-renewal breakdown table and deliberately did **not**
+replace it in Postgres, so the question "where did the slice-by-slice detail go?"
+has to resolve somewhere.
+
+M154 retired `fleet.metering_periods`: at a renewal roughly every twenty seconds
+it was the fastest-growing table in the schema, and its only reader was the budget
+gate, which `billing.usage_ledger`'s span columns (`created_at`,
+`last_charged_at`) now serve directly by apportioning the accumulated total across
+the window. Revenue-by-charge-type stays a one-line query against the ledger.
+
+What is no longer answerable from Postgres is the **slice-by-slice accrual
+detail** — the per-renewal audit trail. That is a durable-stream concern rather
+than a money-table one: it is high-volume, append-only, read rarely, and never
+needed transactionally alongside the wallet. Rebuilding it as a Postgres table
+would reintroduce exactly the growth M154 removed. M155_001 §2 emits it to the
+durable event stream instead.
+
+The distinction that makes this safe: **enforcement** (does this run have budget?)
+is answered from the ledger inside the transaction, and **audit** (what did each
+slice cost?) is answered from the stream, after the fact. Only the first needs to
+be correct synchronously.
