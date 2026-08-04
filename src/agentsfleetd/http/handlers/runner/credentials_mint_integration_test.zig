@@ -50,6 +50,24 @@ const WORKSPACE_FOREIGN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1012";
 const RUNNER_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1a01";
 const RUNNER_ATTACKER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1a02";
 const FLEET_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c01";
+
+/// A fleet config carrying the repository EGRESS binding the GitHub mint scopes
+/// its token by (M157 §2).
+///
+/// Every field here is load-bearing, because the binding reaches the mint only
+/// if the WHOLE config parses: `credentials_mint_scope.repositoryBinding`
+/// degrades a parse failure to "no binding", and a binding-free GitHub mint
+/// fails closed (Dimension 2.4). So an omitted `budget` does not surface as a
+/// budget error — it surfaces as `UZ-GH-002 Credential mint failed`, which is
+/// why this constant spells out a whole valid fleet rather than the binding
+/// alone. `name`, `triggers`, and `budget` are each required by
+/// `fleet_runtime/config_parser`; the runtime keys live INSIDE `x-agentsfleet`
+/// (one at the top level is rejected outright); and `repositories` +
+/// `repository_access` are optional TOGETHER — one without the other is an
+/// authoring error, not a half-binding.
+const CONFIG_WITH_BINDING =
+    \\{"name":"cred-owner","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github"}],"credentials":["github"],"tools":["git"],"budget":{"daily_dollars":1.0},"repositories":["acme/payments"],"repository_access":"write"}}
+;
 const FLEET_FOREIGN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c02";
 const LEASE_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e01";
 const LEASE_FOREIGN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e02";
@@ -496,6 +514,13 @@ test "integration: test_mint_rechecks_revoked_grant" {
     // SAME live lease mints an installation token while approved, refuses after
     // a revoke, and mints again after re-approval. Proves grant authority is
     // read fresh per mint (a revoke mid-lease bites on the very next request).
+    //
+    // This is the only test in the file that mints GITHUB expecting success, so
+    // it is the only one that needs a repository binding on its fleet: M157 §2
+    // made the GitHub mint fail closed without one (Dimension 2.4), and a
+    // binding-free fleet now gets `UZ-GH-002` before the grant gate is ever
+    // consulted. The binding is scaffolding for THIS test's subject, not its
+    // subject — `test_unbound_fleet_mints_nothing` owns the refusal itself.
     crypto_primitives.setTestKek();
     const h = startHarness() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -516,7 +541,12 @@ test "integration: test_mint_rechecks_revoked_grant" {
         teardown(conn); // clear any residue from an aborted prior run
         try base.seedTenant(conn);
         try base.seedWorkspace(conn, WORKSPACE_OWNER);
-        try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
+        // `seedFleet` is ON CONFLICT DO NOTHING and every test in this file
+        // shares FLEET_OWNER, so an earlier test's binding-free `{}` config
+        // would survive and this seed would be a silent no-op. Drop the row
+        // first: this is the one test whose fleet config is load-bearing.
+        execIgnore(conn, "DELETE FROM core.fleets WHERE id = $1::uuid", .{FLEET_OWNER});
+        try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", CONFIG_WITH_BINDING, "# z");
         try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
         try seedLease(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER);
         try seedGithubHandle(conn, WORKSPACE_OWNER);

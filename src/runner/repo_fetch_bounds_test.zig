@@ -25,10 +25,14 @@ const TEST_TICK_MS: i64 = 25;
 /// Generous ceiling for the cases that must NOT stop on time, so a loaded CI box
 /// cannot turn a size assertion into a timeout assertion.
 const GENEROUS_DEADLINE_MS: i64 = 30_000;
-/// Upper bound on how long a killed run may take to return. Far above any real
-/// kill-and-reap, far below the 30s the child would sleep if nothing killed it —
-/// so the assertion distinguishes "bounded" from "waited it out".
+/// Upper bound on how long a killed run may take to return, and the seconds the
+/// child sleeps if nothing kills it. The GAP between them is the assertion: a
+/// kill returns in milliseconds, and only a kill that did not happen takes the
+/// full sleep. Kept wide because Continuous Integration (CI) runs this binary
+/// under kcov, and ptrace makes every syscall slower — a thin margin there
+/// measures the instrumentation rather than the bound.
 const PROMPT_RETURN_MS: i64 = 10_000;
+const LINGER_SECONDS: u32 = 60;
 const KIB: u64 = 1024;
 
 /// The quota case's arithmetic, named so the relationship is readable: the child
@@ -36,9 +40,10 @@ const KIB: u64 = 1024;
 /// even if a filesystem rounds a block or two.
 const QUOTA_CEILING_BYTES: u64 = 8 * KIB;
 const QUOTA_WRITE_BLOCKS: u64 = 64;
+const LINGER_COMMAND = std.fmt.comptimePrint("sleep {d}", .{LINGER_SECONDS});
 const QUOTA_WRITE_COMMAND = std.fmt.comptimePrint(
-    "dd if=/dev/zero of=fat bs={d} count={d} 2>/dev/null; sleep 30",
-    .{ KIB, QUOTA_WRITE_BLOCKS },
+    "dd if=/dev/zero of=fat bs={d} count={d} 2>/dev/null; sleep {d}",
+    .{ KIB, QUOTA_WRITE_BLOCKS, LINGER_SECONDS },
 );
 
 /// A spawn-capable IO. `common.globalIo()` carries a `.failing` allocator — fine
@@ -208,7 +213,7 @@ test "run kills a child that outlives the deadline, and returns promptly" {
 
     const started = clock.nowMillis();
     const out = try bounds.run(io, .{
-        .argv = &.{ SHELL, "-c", "sleep 30" },
+        .argv = &.{ SHELL, "-c", LINGER_COMMAND },
         .environ = &env,
         .cwd = dir,
         .target = dir,
@@ -217,7 +222,7 @@ test "run kills a child that outlives the deadline, and returns promptly" {
     try testing.expectEqual(bounds.Stop.timed_out, out.stop);
     try testing.expectEqual(@as(?u8, null), out.exit_code);
     // The point of killing before the wait: the wait cannot be what returns. A
-    // deadline checked after `child.wait()` would have blocked the full 30s here.
+    // deadline checked after `child.wait()` would have blocked the full sleep.
     try testing.expect(clock.nowMillis() - started < PROMPT_RETURN_MS);
 }
 
