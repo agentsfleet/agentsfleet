@@ -66,6 +66,9 @@ pub const Failure = enum {
     over_quota,
     /// A step's stderr was lost, so the run could no longer be bounded.
     transport_lost,
+    /// The lease could not be renewed while the fetch ran, so this runner no
+    /// longer owns the run the tree was being built for.
+    lease_lost,
 
     /// A short, stable reason for the child's tool result and the log. Named
     /// rather than `@tagName` so the wire words are greppable (RULE UFS).
@@ -81,6 +84,7 @@ pub const Failure = enum {
             .timed_out => "the fetch exceeded its time budget",
             .over_quota => "the fetch exceeded its size budget",
             .transport_lost => "the fetch could no longer be bounded and was stopped",
+            .lease_lost => "the lease expired while the repository was being fetched",
         };
     }
 };
@@ -117,10 +121,22 @@ pub const Request = struct {
     /// The minted installation token, or "" for an unauthenticated remote.
     /// Borrowed for the call; never logged, never written under the target.
     token: []const u8,
-    /// Absolute epoch-ms ceiling for the WHOLE sequence. The caller clamps it to
-    /// the lease so a fetch can never outlive the run that asked for it.
+    /// Absolute epoch-ms ceiling for the WHOLE sequence — the fetch's own budget.
+    /// Deliberately NOT clamped to `lease_expires_at`: that snapshot is never
+    /// advanced by renewal, so clamping made every fetch issued more than one
+    /// lease window into a run start already expired. `tick` keeps the lease
+    /// alive instead, and stops the fetch when it cannot.
     deadline_ms: i64,
+    /// Drives lease renewal on the quota-check cadence. A fetch is serviced ON
+    /// the supervisor read loop, which is also the only driver of renewal, so
+    /// without this a long fetch lets the lease lapse and another runner picks
+    /// up the same event. Null for tests that are not exercising renewal.
+    tick: ?Tick = null,
 };
+
+/// Re-exported so a caller wiring the hook needs one import (the same reason
+/// `TARGET_DIR_NAME` is re-exported from the target module).
+pub const Tick = bounds_mod.Tick;
 
 /// Fetch the approved commit, its parent, and the target head into the lease's
 /// own workspace. Never fails the lease: every path returns a named `Outcome`.
@@ -150,6 +166,7 @@ pub fn fetch(io: std.Io, alloc: std.mem.Allocator, req: Request) Outcome {
     const step_bounds: bounds_mod.Bounds = .{
         .deadline_ms = req.deadline_ms,
         .max_bytes = MAX_FETCH_BYTES,
+        .tick = req.tick,
     };
 
     // Refspecs live in this frame because the argv slices borrow them; both are
@@ -195,6 +212,7 @@ pub fn fetch(io: std.Io, alloc: std.mem.Allocator, req: Request) Outcome {
             .timed_out => .timed_out,
             .over_quota => .over_quota,
             .transport_lost => .transport_lost,
+            .lease_lost => .lease_lost,
         } };
     }
 

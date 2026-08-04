@@ -100,7 +100,7 @@ const Recorder = struct {
         calls = 0;
     }
 
-    fn onFetch(_: *anyopaque, _: std.mem.Allocator, repo: []const u8, commit: []const u8, head: []const u8) supervisor.FetchOutcome {
+    fn onFetch(_: *anyopaque, _: std.mem.Allocator, repo: []const u8, commit: []const u8, head: []const u8, _: ?supervisor.RenewTick) supervisor.FetchOutcome {
         calls += 1;
         @memcpy(repository[0..repo.len], repo);
         repository_len = repo.len;
@@ -187,7 +187,7 @@ test "a refusal the hook raises reaches the child as its own reason" {
     // The reasons are what the model reformulates against, so they must survive
     // the wire intact rather than collapsing into a generic failure.
     const Refuser = struct {
-        fn onFetch(_: *anyopaque, _: std.mem.Allocator, _: []const u8, _: []const u8, _: []const u8) supervisor.FetchOutcome {
+        fn onFetch(_: *anyopaque, _: std.mem.Allocator, _: []const u8, _: []const u8, _: []const u8, _: ?supervisor.RenewTick) supervisor.FetchOutcome {
             return .{ .refused = "repository is outside the fleet's binding" };
         }
     };

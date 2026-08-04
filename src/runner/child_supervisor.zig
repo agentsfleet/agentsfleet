@@ -51,6 +51,7 @@ pub const MintHook = read_mod.MintHook;
 pub const CredentialOutcome = read_mod.CredentialOutcome;
 pub const FetchHook = read_mod.FetchHook;
 pub const FetchOutcome = read_mod.FetchOutcome;
+pub const RenewTick = read_mod.RenewTick;
 pub const readResult = read_mod.readResult;
 pub const ReadOutcome = result_mod.ReadOutcome;
 pub const classify = result_mod.classify;

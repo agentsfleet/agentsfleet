@@ -39,7 +39,11 @@ const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 /// spans the whole sequence, so three steps cannot each spend the budget; the
 /// ceiling is re-measured per tick against the same target for the same reason.
 pub const Bounds = struct {
-    /// Absolute epoch-ms wall clock. The caller clamps it to the lease.
+    /// Absolute epoch-ms wall clock — the fetch's OWN budget, deliberately not
+    /// clamped to the lease. Clamping it to a `lease_expires_at` snapshot made
+    /// every fetch past the first lease window start already-expired; the lease
+    /// is kept alive by `tick` instead, which is the thing that can actually
+    /// extend it.
     deadline_ms: i64,
     /// Ceiling on bytes under `Spec.target`, across every step.
     max_bytes: u64,
@@ -47,6 +51,23 @@ pub const Bounds = struct {
     /// tests inject a small value so a quota breach is observed in milliseconds
     /// rather than seconds (the `RenewHook.tick_ms` convention).
     check_interval_ms: i64 = QUOTA_CHECK_INTERVAL_MS,
+    /// Driven on the same cadence as the quota re-measure. A fetch is minutes-
+    /// scale and is serviced ON the supervisor read loop, which is also the only
+    /// driver of lease renewal — so without this the lease lapses mid-fetch and
+    /// the control plane hands the event to another runner while this one is
+    /// still working. Null in tests that are not exercising renewal.
+    tick: ?Tick = null,
+};
+
+/// One renewal tick, driven from inside the fetch's poll loop rather than from a
+/// timer thread: `Child.kill` and `Child.wait` both null `child.id`, so a second
+/// thread racing the waiter reintroduces the kill-after-reap hazard this module
+/// exists to avoid. Every bound is still checked BEFORE the blocking call.
+pub const Tick = struct {
+    ctx: *anyopaque,
+    /// Returns false when the lease can no longer be held, which stops the fetch
+    /// — the tree it is building would be orphaned anyway.
+    onTick: *const fn (ctx: *anyopaque, now_ms: i64) bool,
 };
 
 /// One child process to run under `Bounds`. Every field is borrowed for the call.
@@ -79,6 +100,10 @@ pub const Stop = enum {
     /// stderr could not be read, so the run could no longer be bounded. Killed
     /// rather than left to an unbounded wait.
     transport_lost,
+    /// The lease could not be renewed while the fetch ran, so the run this fetch
+    /// belongs to is no longer ours. Killed rather than left building a tree the
+    /// control plane has already handed to another runner.
+    lease_lost,
 };
 
 pub const RunOutcome = struct {
@@ -150,33 +175,49 @@ pub fn run(io: std.Io, spec: Spec, stderr_buf: []u8) RunError!RunOutcome {
 /// Watch the child until it closes stderr or breaks a bound. Returns
 /// `.completed` only on EOF — every other return means the caller must kill.
 fn watch(io: std.Io, err_fd: std.posix.fd_t, spec: Spec, stderr_buf: []u8, filled: *usize) Stop {
+    var next_check_ms = clock.nowMillis() + spec.bounds.check_interval_ms;
     while (true) {
-        const tick_deadline = @min(spec.bounds.deadline_ms, clock.nowMillis() + spec.bounds.check_interval_ms);
+        const tick_deadline = @min(spec.bounds.deadline_ms, next_check_ms);
         const ready = pipe_proto.waitReadable(err_fd, tick_deadline) catch |err| {
             log.warn("repo_fetch_stderr_poll_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
             return .transport_lost;
         };
-        switch (ready) {
-            .readable => {
-                // Drained every wake, whether or not the tail buffer still has
-                // room: a full pipe would otherwise block git forever and the
-                // deadline would be the only thing left to stop it.
-                const n = drain(err_fd, stderr_buf, filled) orelse return .transport_lost;
-                if (n == 0) return .completed;
+        if (ready == .readable) {
+            // Drained every wake, whether or not the tail buffer still has
+            // room: a full pipe would otherwise block git forever and the
+            // deadline would be the only thing left to stop it.
+            const n = drain(err_fd, stderr_buf, filled) orelse return .transport_lost;
+            // EOF — measure once more before certifying. `git checkout`
+            // materializes the working tree after the last tick, so a step that
+            // exits cleanly can leave the target over the ceiling unobserved.
+            if (n == 0) return switch (measure(io, spec.target, spec.bounds.max_bytes)) {
+                .bytes => .completed,
+                .over_limit => .over_quota,
+            };
+        }
+        // Bounds and renewal run on a WALL-CLOCK cadence, never on whichever
+        // poll arm fired. Evaluating them only under `.timed_out` meant a child
+        // writing steadily to stderr held the loop in `.readable` forever and
+        // neither bound was ever checked at all.
+        const now = clock.nowMillis();
+        if (now < next_check_ms) continue;
+        next_check_ms = now + spec.bounds.check_interval_ms;
+        if (now >= spec.bounds.deadline_ms) {
+            log.warn("repo_fetch_timed_out", .{ .error_code = ERR_EXEC_TIMEOUT_KILL, .deadline_ms = spec.bounds.deadline_ms });
+            return .timed_out;
+        }
+        switch (measure(io, spec.target, spec.bounds.max_bytes)) {
+            .bytes => {},
+            .over_limit => {
+                log.warn("repo_fetch_over_quota", .{ .error_code = ERR_EXEC_RESOURCE_KILL, .max_bytes = spec.bounds.max_bytes });
+                return .over_quota;
             },
-            .timed_out => {
-                if (clock.nowMillis() >= spec.bounds.deadline_ms) {
-                    log.warn("repo_fetch_timed_out", .{ .error_code = ERR_EXEC_TIMEOUT_KILL, .deadline_ms = spec.bounds.deadline_ms });
-                    return .timed_out;
-                }
-                switch (measure(io, spec.target, spec.bounds.max_bytes)) {
-                    .bytes => {},
-                    .over_limit => {
-                        log.warn("repo_fetch_over_quota", .{ .error_code = ERR_EXEC_RESOURCE_KILL, .max_bytes = spec.bounds.max_bytes });
-                        return .over_quota;
-                    },
-                }
-            },
+        }
+        if (spec.bounds.tick) |t| {
+            if (!t.onTick(t.ctx, now)) {
+                log.warn("repo_fetch_lease_lost", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS });
+                return .lease_lost;
+            }
         }
     }
 }

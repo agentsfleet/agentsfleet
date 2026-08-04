@@ -177,7 +177,9 @@ fn ruleWith(kind: []const u8, radius: []const u8) config_gates.GateRule {
     return .{ .tool = "*", .action = "*", .condition = null, .behavior = .approve, .gate_kind = kind, .blast_radius = radius };
 }
 
-test "detail: the workspace half comes from the rule and the model half from the event" {
+test "test_gate_detail_is_populated" {
+    // Dimension 2.1. The workspace half comes from the rule and the model half
+    // from the event; a blank field here is a failure, not a display default.
     const alloc = testing.allocator;
     var parsed = try std.json.parseFromSlice(std.json.Value, alloc,
         \\{"proposed_action":"revert abc123 in acme/widgets","evidence":{"commit":"abc123"}}

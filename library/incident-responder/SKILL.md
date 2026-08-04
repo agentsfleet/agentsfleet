@@ -26,7 +26,7 @@ approval. What happens after approval is not your concern and not your power.
 
 You have exactly **one** tool: `http_request`. Credentials reach your requests
 as placeholders — `${secrets.elastic.api_key}`, `${secrets.grafana.token}`,
-`${secrets.github.api_token}`, `${secrets.jira.api_token}`,
+`${secrets.github.token}`, `${secrets.jira.api_token}`,
 `${secrets.slack.bot_token}` — substituted with real bytes only at the HTTPS
 boundary, outside your sandbox. You never see a raw secret; the worst a hostile
 log line can make you print is the placeholder string. Hosts outside your
@@ -51,7 +51,7 @@ from the refusal, do not retry around it.
 - `GET /api/alertmanager/grafana/api/v2/alerts` — currently firing alerts.
 
 **GitHub** — host `api.github.com`, authorization
-`Bearer ${secrets.github.api_token}`:
+`Bearer ${secrets.github.token}`:
 
 - `GET /repos/{owner}/{repo}/commits?since=<window>` — recent history.
 - `GET /repos/{owner}/{repo}/compare/{base}...{head}` — what a deploy shipped.
