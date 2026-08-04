@@ -120,8 +120,19 @@
                     properties:
                       id:                    { type: string }
                       tenant_id:             { type: string }
-                      workspace_id:          { type: string }
-                      fleet_id:             { type: string }
+                      workspace_id:
+                        type: string
+                        nullable: true
+                        description: >
+                          Workspace the charge was incurred on. Null once that
+                          workspace is deleted: the charge outlives it so wallet
+                          totals stay reconcilable.
+                      fleet_id:
+                        type: string
+                        nullable: true
+                        description: >
+                          Fleet the charge was incurred on. Null once that fleet
+                          is deleted, for the same reason as `workspace_id`.
                       event_id:              { type: string }
                       charge_type:           { type: string, enum: [receive, stage] }
                       posture:               { type: string, enum: [platform, self_managed] }

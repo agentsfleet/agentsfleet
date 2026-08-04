@@ -36,11 +36,16 @@ pub const ChargeType = enum {
 // 16 bytes with no error at compile time and none at runtime — just binary in
 // the charges endpoint's JSON. `workspace_id` and `fleet_id` are also nullable
 // now (ON DELETE SET NULL, schema/710), so their readers take optionals.
+// The column list is positional: `queryRows` reads by index, so the ORDER here
+// and the indices there must move together. `token_count_cached_input` is NOT
+// selected — the charges response does not carry it (see the schema in
+// `public/openapi/paths/billing.yaml`), and selecting a column the mapper does
+// not read shifts every index after it by one.
 const TELEMETRY_SELECT =
     \\SELECT id::text, tenant_id::text, workspace_id::text, fleet_id::text, event_id,
     \\       charge_type, posture, model,
     \\       credit_deducted_nanos,
-    \\       token_count_input, token_count_cached_input, token_count_output, wall_ms,
+    \\       token_count_input, token_count_output, wall_ms,
     \\       created_at
     \\FROM billing.usage_ledger
     \\
@@ -52,8 +57,13 @@ pub const TelemetryRow = struct {
 
     id: []u8,
     tenant_id: []u8,
-    workspace_id: []u8,
-    fleet_id: []u8,
+    /// Null once the referenced row is deleted — both foreign keys are ON DELETE
+    /// SET NULL, so a charge outlives the fleet and workspace it was incurred on
+    /// (`schema/710_usage_ledger.sql`; the cascade table in
+    /// `http/handlers/fleets/delete.zig` states the intent). Serialized straight
+    /// to JSON, so the charges response carries null here.
+    workspace_id: ?[]u8,
+    fleet_id: ?[]u8,
     event_id: []u8,
     charge_type: []u8,
     posture: []u8,
@@ -67,8 +77,8 @@ pub const TelemetryRow = struct {
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.id);
         alloc.free(self.tenant_id);
-        alloc.free(self.workspace_id);
-        alloc.free(self.fleet_id);
+        if (self.workspace_id) |v| alloc.free(v);
+        if (self.fleet_id) |v| alloc.free(v);
         alloc.free(self.event_id);
         alloc.free(self.charge_type);
         alloc.free(self.posture);
@@ -199,6 +209,11 @@ pub fn listTelemetryForTenant(
 
 // ── Internal helpers ────────────────────────────────────────────────
 
+/// Copy a nullable text column into owned memory; caller must free when non-null.
+fn dupeOptional(alloc: std.mem.Allocator, value: ?[]const u8) !?[]u8 {
+    return if (value) |v| try alloc.dupe(u8, v) else null;
+}
+
 fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8, params: anytype) ![]TelemetryRow {
     var q = PgQuery.from(try conn.query(sql, params));
     defer q.deinit();
@@ -214,10 +229,10 @@ fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8,
         errdefer alloc.free(id);
         const tenant_id_s = try alloc.dupe(u8, try row.get([]const u8, 1));
         errdefer alloc.free(tenant_id_s);
-        const workspace_id_s = try alloc.dupe(u8, try row.get([]const u8, 2));
-        errdefer alloc.free(workspace_id_s);
-        const fleet_id_s = try alloc.dupe(u8, try row.get([]const u8, 3));
-        errdefer alloc.free(fleet_id_s);
+        const workspace_id_s = try dupeOptional(alloc, try row.get(?[]const u8, 2));
+        errdefer if (workspace_id_s) |v| alloc.free(v);
+        const fleet_id_s = try dupeOptional(alloc, try row.get(?[]const u8, 3));
+        errdefer if (fleet_id_s) |v| alloc.free(v);
         const event_id_s = try alloc.dupe(u8, try row.get([]const u8, 4));
         errdefer alloc.free(event_id_s);
         const charge_type_s = try alloc.dupe(u8, try row.get([]const u8, 5));
@@ -236,6 +251,9 @@ fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8,
             .charge_type = charge_type_s,
             .posture = posture_s,
             .model = model_s,
+            // Indices track TELEMETRY_SELECT's column order exactly: adding a
+            // column there without a read here shifts every index below it, and
+            // each value then arrives under the next field's name.
             .credit_deducted_nanos = try row.get(i64, 8),
             .token_count_input = try row.get(?i64, 9),
             .token_count_output = try row.get(?i64, 10),
