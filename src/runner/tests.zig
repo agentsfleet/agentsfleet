@@ -42,6 +42,7 @@ test {
     _ = @import("sandbox_args.zig");
     _ = @import("bundle_extract.zig");
     _ = @import("bundle_extract_test.zig");
+    _ = @import("repo_fetch.zig");
     _ = @import("pipe_proto.zig");
     _ = @import("engine/credential_request.zig");
     _ = @import("UsageSnapshot.zig");
