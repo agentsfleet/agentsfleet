@@ -68,15 +68,15 @@ fn makeFixtures(alloc: std.mem.Allocator) !TestFixtures {
 
 fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'DashTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'DashTest', $2, $2) ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3) ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing
+        \\INSERT INTO billing.tenant_wallet
         \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1, $3, 'dash_test', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
@@ -101,9 +101,9 @@ fn seedFleets(conn: *pg.Conn, alloc: std.mem.Allocator, fx: TestFixtures, now_ms
         defer alloc.free(config_json);
         _ = try conn.exec(
             \\INSERT INTO core.fleets
-            \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+            \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
             \\   status, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, $4::jsonb, 'active', $5, $5)
+            \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, 'seed', null, $4::jsonb, 'active', $5, $5)
         , .{ z.id, TEST_WORKSPACE_ID, name, config_json, now_ms });
     }
 }

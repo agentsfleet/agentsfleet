@@ -34,7 +34,7 @@ fn authoritativeWorkspaceTenant(
         (resolvePrincipalTenant(conn, principal, tenant_buf) catch return null) orelse return null;
 
     var q = PgQuery.from(conn.query(
-        "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 AND tenant_id = $2",
+        "SELECT 1 FROM core.workspaces WHERE id = $1::uuid AND tenant_id = $2::uuid",
         .{ workspace_id, tenant_id },
     ) catch return null);
     defer q.deinit();
@@ -119,7 +119,7 @@ fn crossTenantBypass(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []c
     var tenant_buf: [TENANT_ID_BUFFER_BYTES]u8 = undefined;
     const target_tenant = blk: {
         var q = PgQuery.from(conn.query(
-            "SELECT tenant_id::text FROM core.workspaces WHERE workspace_id = $1",
+            "SELECT tenant_id::text FROM core.workspaces WHERE id = $1::uuid",
             .{workspace_id},
         ) catch return false);
         defer q.deinit();

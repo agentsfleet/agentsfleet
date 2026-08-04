@@ -74,28 +74,28 @@ fn fixture() !Fixture {
 fn seedTestData(conn: *pg.Conn) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'MemoriesTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'MemoriesTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ OTHER_WS_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'mem-local', '---\nname: mem-local\n---\ntest', '{"name":"mem-local"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'mem-local', '---\nname: mem-local\n---\ntest', '{"name":"mem-local"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_LOCAL, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'mem-other', '---\nname: mem-other\n---\ntest', '{"name":"mem-other"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'mem-other', '---\nname: mem-other\n---\ntest', '{"name":"mem-other"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_OTHER_WS, OTHER_WS_ID });
 }
@@ -109,7 +109,7 @@ fn cleanupTestData(conn: *pg.Conn) void {
     ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleets WHERE id IN ($1, $2)", .{ AGENTSFLEET_LOCAL, AGENTSFLEET_OTHER_WS }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 /// Every seeded row's updated_at (epoch ms) — pinned so the tenant-wire test
@@ -131,14 +131,12 @@ fn seedEntryAt(f: Fixture, fleet_id: []const u8, key: []const u8, content: []con
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer _ = conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("reset role ignored: {s}", .{@errorName(err)});
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
-    var id_buf: [128]u8 = undefined;
-    const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ fleet_id, key });
+    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
+        \\INSERT INTO memory.memory_entries (id, key, content, category, fleet_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $6)
         \\ON CONFLICT (key, fleet_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
-    , .{ uid, id, key, content, category, fleet_id, ts });
+    , .{ row_id, key, content, category, fleet_id, ts });
 }
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {
@@ -396,12 +394,12 @@ fn freeSeenKeys(seen: *std.StringHashMap(void)) void {
 
 test "integration: test_memory_keyset_index_migration_registered" {
     // Registration half: embed.zig is the single source of truth for the
-    // migration array, so slot 39 must be registered there and must be the slot
-    // that creates the keyset index. This originally asserted 39 was the LAST
-    // entry; slot 40 (the runner-lease operator read) made tail position
-    // transient, while "39 is registered and creates this index" is the
-    // durable shape — and it still fails if the slot is renumbered or dropped.
-    const KEYSET_SLOT: i32 = 40; // pin test: the slot number is the promise
+    // migration array, so the memory slot must be registered there and must be
+    // the slot that creates the keyset index. Asserting registration + creation
+    // rather than tail position keeps the shape durable as slots are added, and
+    // it still fails if the slot is renumbered or dropped. The rebuild moved
+    // this from the sequential 39/40 numbering to the schema-file version.
+    const KEYSET_SLOT: i32 = 820; // pin test: the slot number is the promise
     var slot_sql: ?[]const u8 = null;
     for (schema_migrations) |m| {
         if (m.version == KEYSET_SLOT) slot_sql = m.sql;

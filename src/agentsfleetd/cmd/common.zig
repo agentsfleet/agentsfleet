@@ -27,16 +27,6 @@ fn refuseNewerSchema(state: db.MigrationState) MigrationGuardError!void {
 const schema_mod = @import("schema");
 const schema_migrations = schema_mod.migrations;
 
-/// `runMigrations` applies the array in order and records each version. The list
-/// starts at 1 and must increase strictly; an owner-removed migration may leave
-/// a gap, while repeats or reordering could skip or re-apply schema work.
-const FIRST_MIGRATION_VERSION: i32 = 1;
-/// The two migrations whose presence the connector-install and channel surfaces
-/// depend on. Named because a bare `25`/`26` in an assertion reads as an index.
-const V_CONNECTOR_INSTALLS: i32 = 25;
-const V_CHANNEL_TABLES: i32 = 26;
-const V_REMOVED_WORKSPACE_CREATE_REPLAY: i32 = 35;
-
 pub fn canonicalMigrations() [schema_migrations.len]db.Migration {
     var result: [schema_migrations.len]db.Migration = undefined;
     for (schema_migrations, 0..) |m, i| {
@@ -121,69 +111,6 @@ pub fn enforceServeMigrationSafety(
 pub fn runCanonicalMigrations(pool: *db.Pool) !void {
     const migrations = canonicalMigrations();
     try db.runMigrationsRefusingNewer(pool, &migrations);
-}
-
-fn versionsIncreaseFromFirst(migrations: []const db.Migration) bool {
-    for (migrations, 0..) |m, i| {
-        if (i == 0) {
-            if (m.version != FIRST_MIGRATION_VERSION) return false;
-            continue;
-        }
-        if (m.version <= migrations[i - 1].version) return false;
-    }
-    return true;
-}
-
-test "canonical migrations: connector install + channel tables registered" {
-    const migrations = canonicalMigrations();
-    try std.testing.expectEqual(schema_migrations.len, migrations.len);
-    var has_installs = false;
-    var has_channels = false;
-    for (migrations) |m| {
-        if (m.version == V_CONNECTOR_INSTALLS) has_installs = true;
-        if (m.version == V_CHANNEL_TABLES) has_channels = true;
-    }
-    try std.testing.expect(has_installs);
-    try std.testing.expect(has_channels);
-}
-
-test "canonical migrations: versions start at one and strictly increase" {
-    const migrations = canonicalMigrations();
-    try std.testing.expect(versionsIncreaseFromFirst(&migrations));
-}
-
-test "canonical migrations: an intentional gap is accepted but a duplicate is rejected" {
-    const gapped = [_]db.Migration{
-        .{ .version = 1, .sql = "" },
-        .{ .version = 3, .sql = "" },
-    };
-    try std.testing.expect(versionsIncreaseFromFirst(&gapped));
-
-    const duplicated = [_]db.Migration{
-        .{ .version = 1, .sql = "" },
-        .{ .version = 1, .sql = "" },
-    };
-    try std.testing.expect(!versionsIncreaseFromFirst(&duplicated));
-}
-
-test "canonical migrations: a list not starting at version 1, or running backwards, is rejected" {
-    // An off-by-one start or reversed pair would make schema history ambiguous.
-    const zero_based = [_]db.Migration{
-        .{ .version = 0, .sql = "" },
-        .{ .version = 1, .sql = "" },
-    };
-    try std.testing.expect(!versionsIncreaseFromFirst(&zero_based));
-
-    const descending = [_]db.Migration{
-        .{ .version = 2, .sql = "" },
-        .{ .version = 1, .sql = "" },
-    };
-    try std.testing.expect(!versionsIncreaseFromFirst(&descending));
-
-    // Vacuously ordered: the embedded list is asserted non-empty separately, so an
-    // empty slice never reaches a caller that would misread `true` as "migrations ran".
-    const empty: []const db.Migration = &.{};
-    try std.testing.expect(versionsIncreaseFromFirst(empty));
 }
 
 test "migrateOnStartEnabledFromEnv parses known values" {
@@ -301,14 +228,6 @@ test "integration: startup with pending migrations proceeds when enabled and loc
         .has_newer_schema_version = false,
     }, true);
     try std.testing.expectEqual(.run_required, decision);
-}
-
-test "canonical schema bootstrap: removed replay slot stays absent" {
-    const migrations = canonicalMigrations();
-    try std.testing.expect(migrations.len > 0);
-    for (migrations) |migration| {
-        try std.testing.expect(migration.version != V_REMOVED_WORKSPACE_CREATE_REPLAY);
-    }
 }
 
 test "every migration splits into structurally complete statements" {

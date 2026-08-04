@@ -85,9 +85,10 @@ fn buildLoginUrl(alloc: std.mem.Allocator, app_url: []const u8, session_id: []co
 // ── GET /v1/auth/sessions/{id} ───────────────────────────────────────────
 
 pub fn innerPollAuthSession(hx: hx_mod.Hx, session_id: []const u8) void {
-    var parsed = hx.ctx.auth_sessions.get(session_id) catch {
-        common.internalOperationError(hx.res, "Session lookup failed", hx.req_id);
-        return;
+    // The shared mapper separates an id that names no session (404) from a
+    // Redis or allocation fault (500), and redacts the id before logging.
+    var parsed = hx.ctx.auth_sessions.get(session_id) catch |err| {
+        return helpers.failFromStoreError(hx, err, session_id);
     };
     if (parsed == null) {
         hx.fail(error_codes.ERR_SESSION_NOT_FOUND, "Session not found");
@@ -207,7 +208,11 @@ pub fn innerVerifyAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []
     var outcome = hx.ctx.auth_sessions.verifyAndConsume(session_id, parsed.value.verification_code, fingerprint) catch |err| {
         return helpers.failFromStoreError(hx, err, session_id);
     };
-    defer outcome.deinit(hx.alloc);
+    // Freed with the STORE's allocator, which is what duped it — the same
+    // pairing `innerCreateAuthSession` uses for `session_id`. The request
+    // arena's free is a no-op on memory it never handed out, so releasing it
+    // there strands the payload on every successful verify.
+    defer outcome.deinit(hx.ctx.auth_sessions.alloc);
     helpers.dispatchVerifyOutcome(hx, outcome, session_id, fingerprint, scratch);
 }
 

@@ -251,7 +251,7 @@ test "integration: a readiness write failure still returns the entry id to ingre
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_FAULT_MARK, "fault-mark", base.CONFIG_PLAIN, "6");
+    try base.seedFleetWithConfig(conn, FLEET_FAULT_MARK, "fault-mark", base.CONFIG_PLAIN);
     try clearWholeIndex(h);
     defer purgeFleet(h, FLEET_FAULT_MARK);
 
@@ -307,7 +307,7 @@ test "integration: a group deleted out-of-band is repaired exactly once, at the 
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_MEMO_GONE, "fault-memo", base.CONFIG_PLAIN, "7");
+    try base.seedFleetWithConfig(conn, FLEET_MEMO_GONE, "fault-memo", base.CONFIG_PLAIN);
     try clearWholeIndex(h);
     defer purgeFleet(h, FLEET_MEMO_GONE);
 
@@ -386,7 +386,7 @@ test "integration: a stray non-canonical index field is healed while the real fl
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_HEAL, "fault-heal", base.CONFIG_PLAIN, "8");
+    try base.seedFleetWithConfig(conn, FLEET_HEAL, "fault-heal", base.CONFIG_PLAIN);
     try clearWholeIndex(h);
     defer purgeFleet(h, FLEET_HEAL);
     defer dropIndexKey(h);
@@ -421,7 +421,7 @@ test "integration: a gate auto-kill pauses the fleet and clears its readiness ma
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try base.seedFleetWithConfig(conn, FLEET_KILLED, "fault-kill", CONFIG_GATED_KILL, "9");
+    try base.seedFleetWithConfig(conn, FLEET_KILLED, "fault-kill", CONFIG_GATED_KILL);
     try clearWholeIndex(h);
     defer purgeFleet(h, FLEET_KILLED);
 

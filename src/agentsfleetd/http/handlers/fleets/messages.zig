@@ -186,8 +186,8 @@ fn verifyFleetInWorkspace(
 /// `user_id`; api-key principals fall back to a flat `steer:api` so the
 /// dashboard can still group by source category.
 fn buildSteerActor(alloc: std.mem.Allocator, principal: common.AuthPrincipal) ![]u8 {
-    if (principal.user_id) |uid| {
-        return std.fmt.allocPrint(alloc, "steer:{s}", .{uid});
+    if (principal.user_id) |user_id| {
+        return std.fmt.allocPrint(alloc, "steer:{s}", .{user_id});
     }
     return alloc.dupe(u8, "steer:api");
 }

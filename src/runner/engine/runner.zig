@@ -239,8 +239,9 @@ pub fn executeInner(
     }
 
     // 6. Create fleet.
-    var fleet = Fleet.fromConfig(alloc, &cfg, provider_i, tools, mem_opt, obs) catch {
-        log.err("fleet_init_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
+    // Mapped error kept — the raw error would lose `.startup_posture` to `mapError`'s `.runner_crash` fallback.
+    var fleet = Fleet.fromConfig(alloc, &cfg, provider_i, tools, mem_opt, obs) catch |err| {
+        log.err("fleet_init_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         return RunnerError.FleetInitFailed;
     };
     defer fleet.deinit();
@@ -252,18 +253,19 @@ pub fn executeInner(
     }
 
     // 7. Compose message with context fields.
-    const composed = composeMessage(alloc, message, context) catch {
-        log.err("message_compose_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN });
-        return RunnerError.FleetRunFailed;
+    const composed = composeMessage(alloc, message, context) catch |err| {
+        log.err("message_compose_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN, .err = @errorName(err) });
+        return err;
     };
     defer if (composed.ptr != message.ptr) alloc.free(composed);
 
     // 8. Run fleet + redact terminal reply (see runner_helpers).
-    const response = fleet.runSingle(composed) catch {
-        log.err("fleet_run_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN });
-        return RunnerError.FleetRunFailed;
+    // True error propagates — `mapError`'s `else` arm yields the same `.runner_crash` class, so only the detail changes.
+    const response = fleet.runSingle(composed) catch |err| {
+        log.err("fleet_run_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN, .err = @errorName(err) });
+        return err;
     };
-    const owned = runner_helpers.redactedFinalReply(alloc, response, secrets_list) catch return RunnerError.FleetRunFailed;
+    const owned = try runner_helpers.redactedFinalReply(alloc, response, secrets_list);
 
     // Run-end capture: flush the final memory state so a run that wrote memory
     // without crossing a mid-run checkpoint is still persisted by the parent.

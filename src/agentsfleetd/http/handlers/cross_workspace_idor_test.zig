@@ -142,26 +142,26 @@ fn serverThread(srv: *TestServer) void {
 fn seedTestData(conn: *pg.Conn) !void {
     const now: i64 = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'IdorTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'IdorTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ OTHER_WS_ID, TEST_TENANT_ID, now });
     // Fleet owned by the FOREIGN workspace. Used to probe IDOR on routes that
     // take (workspace_id, fleet_id) in the path: caller sends TEST_WORKSPACE_ID
     // in the path but this fleet actually belongs to OTHER_WS_ID.
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'idor-foreign', '---\nname: idor-foreign\n---\nx', '{"name":"idor-foreign"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'idor-foreign', '---\nname: idor-foreign\n---\nx', '{"name":"idor-foreign"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_IN_FOREIGN_WS, OTHER_WS_ID });
 }
@@ -170,7 +170,7 @@ fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.integration_grants WHERE fleet_id = $1::uuid", .{AGENTSFLEET_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{AGENTSFLEET_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     // Delete OTHER_WS_ID only — TEST_WORKSPACE_ID is shared with other test files.
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // Bind/spawn/healthz attempts before we give up. The TOCTOU window between
@@ -507,28 +507,6 @@ test "envelope: GET /workspaces/{my}/fleets body has items+total, no fleets key"
     try std.testing.expect(!bodyHasTopLevelKey(r.body, "fleets"));
 }
 
-test "envelope: GET /workspaces/{my}/fleet-keys body has items+total, no fleets key" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| {
-            cleanupTestData(c);
-            srv.pool.release(c);
-        } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/fleet-keys", .{TEST_WORKSPACE_ID});
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 200), r.status);
-    try std.testing.expect(bodyHasTopLevelKey(r.body, "items"));
-    try std.testing.expect(bodyHasTopLevelKey(r.body, "total"));
-    try std.testing.expect(!bodyHasTopLevelKey(r.body, "fleets"));
-}
-
 test "memories: GET with malformed fleet_id in path returns 400" {
     const srv = try startTestServer(ALLOC);
     defer {
@@ -550,51 +528,6 @@ test "memories: GET with malformed fleet_id in path returns 400" {
     try std.testing.expectEqual(@as(u16, 400), r.status);
 }
 
-test "no-content: DELETE fleet-key returns 204 with empty body" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| {
-            cleanupTestData(c);
-            srv.pool.release(c);
-        } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    // Seed a Fleet key in TEST_WORKSPACE_ID for this test only. A fleet
-    // record is also required because fleet_keys.fleet_id has a FK.
-    const fleet_key_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6204";
-    const fleet_for_agent = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
-    const conn = try srv.pool.acquire();
-    _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'm26-204-test', '---\nname: m26-204\n---\nx', '{"name":"m26-204"}', 'active', 0, 0)
-        \\ON CONFLICT DO NOTHING
-    , .{ fleet_for_agent, TEST_WORKSPACE_ID });
-    _ = try conn.exec(
-        \\INSERT INTO core.fleet_keys (uid, fleet_key_id, workspace_id, fleet_id, name, description, key_hash, created_at)
-        \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
-        \\ON CONFLICT (fleet_key_id) DO NOTHING
-    , .{ fleet_key_id, TEST_WORKSPACE_ID, fleet_for_agent });
-    srv.pool.release(conn);
-    defer {
-        if (srv.pool.acquire()) |c| {
-            _ = c.exec("DELETE FROM core.fleet_keys WHERE fleet_key_id = $1", .{fleet_key_id}) catch {};
-            _ = c.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fleet_for_agent}) catch {};
-            srv.pool.release(c);
-        } else |_| {}
-    }
-
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/fleet-keys/{s}", .{ TEST_WORKSPACE_ID, fleet_key_id });
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .DELETE, TOKEN_OPERATOR, null);
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 204), r.status);
-    // RFC 9110 section 6.4.5: 204 responses MUST NOT include a message body.
-    try std.testing.expectEqual(@as(usize, 0), r.body.len);
-}
-
 test "no-content: DELETE integration-grant returns 204 with empty body" {
     const srv = try startTestServer(ALLOC);
     defer {
@@ -611,20 +544,20 @@ test "no-content: DELETE integration-grant returns 204 with empty body" {
     const grant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6205";
     const conn = try srv.pool.acquire();
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'm26-grant-test', '---\nname: m26-grant\n---\nx', '{"name":"m26-grant"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'm26-grant-test', '---\nname: m26-grant\n---\nx', '{"name":"m26-grant"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ fleet_for_grant, TEST_WORKSPACE_ID });
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1::uuid, $1, $2::uuid, 'slack', 'pending', 0, 'm26 test')
-        \\ON CONFLICT (grant_id) DO NOTHING
+        \\  (id, fleet_id, service, status, created_at, requested_reason)
+        \\VALUES ($1::uuid, $2::uuid, 'slack', 'pending', 0, 'm26 test')
+        \\ON CONFLICT (id) DO NOTHING
     , .{ grant_id, fleet_for_grant });
     srv.pool.release(conn);
     defer {
         if (srv.pool.acquire()) |c| {
-            _ = c.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{grant_id}) catch {};
+            _ = c.exec("DELETE FROM core.integration_grants WHERE id = $1::uuid", .{grant_id}) catch {};
             _ = c.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fleet_for_grant}) catch {};
             srv.pool.release(c);
         } else |_| {}

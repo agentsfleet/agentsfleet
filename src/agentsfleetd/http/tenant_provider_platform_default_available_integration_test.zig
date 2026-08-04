@@ -34,14 +34,14 @@ fn seedTenantWorkspace(conn: anytype) !void {
     const clock = @import("common").clock;
     const now_ms = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'Platform Default Available Test', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'Platform Default Available Test', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, 0)
-        \\ON CONFLICT (workspace_id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, 0)
+        \\ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id
     , .{ TEST_WS_ID, TEST_TENANT_ID });
 }
 

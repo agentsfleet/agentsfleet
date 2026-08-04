@@ -16,6 +16,7 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
 const teardown = @import("account_teardown.zig");
+const store = @import("fleet_telemetry_store.zig");
 
 // Distinct `c...` suffixes so this fixture never collides with the signup /
 // clerk integration tests (which use `b...` / fixed canonical IDs). The
@@ -62,10 +63,10 @@ fn cleanup(conn: *pg.Conn) void {
             _ = conn.exec(s, .{fleet_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
         }
     }
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.memberships WHERE user_id = $1::uuid", .{USER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.users WHERE user_id = $1::uuid", .{USER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.users WHERE id = $1::uuid", .{USER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // Rollback-test fixture — its OWN id family (`c...003x`) so it never collides
@@ -83,20 +84,20 @@ const RB_FLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000034";
 const RB_GATE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000035";
 const RB_MEMORY_UID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000036";
 const RB_RUNNER_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000037";
-const RB_AFFINITY_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000038";
 const RB_LEASE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000039";
 const RB_EVENT_ID: []const u8 = "evt-teardown-rollback-1";
+const RB_MODEL: []const u8 = "teardown-rollback-model";
 
 fn seedRollbackAccount(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-rollback', 0, 0)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\ON CONFLICT (id) DO NOTHING
     , .{RB_TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-rollback@test.fleet', 0, 0)
-        \\ON CONFLICT (user_id) DO NOTHING
+        \\ON CONFLICT (id) DO NOTHING
     , .{ RB_USER_ID, RB_TENANT_ID, RB_OIDC });
     try base.seedWorkspaceWithTenant(conn, RB_WORKSPACE_ID, RB_TENANT_ID);
     try base.seedFleet(conn, RB_FLEET_ID, RB_WORKSPACE_ID, "teardown-rollback", "{}", "# z");
@@ -106,18 +107,18 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
         \\INSERT INTO core.fleet_approval_gates
         \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind,
         \\   proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
-        \\   detail, requested_at, created_at)
+        \\   detail, created_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'act-rollback-test', 'bash', 'rm',
         \\        'destructive_action', 'n/a', '{}'::jsonb, 'n/a', 9999999999999, '',
-        \\        'pending', '', 0, 0)
+        \\        'pending', '', 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ RB_GATE_ID, RB_FLEET_ID, RB_WORKSPACE_ID });
     // A memory row the purge deletes BEFORE it reaches the injected failure —
     // its survival after the error is the rollback proof.
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
-        \\VALUES ($1::uuid, 'teardown-rollback-canary', 'canary', 'must survive the rollback', 'core', $2::uuid, 1700000000000, 1700000000000)
-        \\ON CONFLICT (uid) DO NOTHING
+        \\INSERT INTO memory.memory_entries (id, key, content, category, fleet_id, created_at, updated_at)
+        \\VALUES ($1::uuid, 'canary', 'must survive the rollback', 'core', $2::uuid, 1700000000000, 1700000000000)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ RB_MEMORY_UID, RB_FLEET_ID });
     // The runner row is shared host infrastructure (tenant_id NULL, no per-account
     // FK) and must SURVIVE the purge — it is not swept by any fleet/tenant DELETE.
@@ -130,30 +131,40 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
     , .{RB_RUNNER_ID});
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 0, 0, 0, 0, 0, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, 1, 0, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO NOTHING
-    , .{ RB_AFFINITY_ID, RB_FLEET_ID, RB_RUNNER_ID });
+    , .{ RB_FLEET_ID, RB_RUNNER_ID });
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
+        \\        'steer:test', 'chat', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, 0, 'reported', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ RB_LEASE_ID, RB_RUNNER_ID, RB_FLEET_ID, RB_WORKSPACE_ID, RB_TENANT_ID, RB_EVENT_ID });
-    _ = try conn.exec(
-        \\INSERT INTO fleet.metering_periods
-        \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-        \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-c0000000003a'::uuid, $1, 1, 0, 0, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (event_id, slice_seq) DO NOTHING
-    , .{RB_EVENT_ID});
+    // A charge for this account, written through the production writer. It
+    // replaces a `fleet.metering_periods` slice seed: that table is gone, and
+    // the ledger row that succeeded it is the stronger erasure subject anyway —
+    // `tenant_id` is NOT NULL and cascades (schema/710), so Dimension 3.3's
+    // "erasing an account leaves zero rows" is a claim about THIS table.
+    try store.insertTelemetry(conn, std.testing.allocator, .{
+        .tenant_id = RB_TENANT_ID,
+        .workspace_id = RB_WORKSPACE_ID,
+        .fleet_id = RB_FLEET_ID,
+        .event_id = RB_EVENT_ID,
+        .charge_type = .stage,
+        .posture = .platform,
+        .model = RB_MODEL,
+        .credit_deducted_nanos = 0,
+        .event_created_at = 0,
+        .created_at = 0,
+    });
 }
 
 /// Full unwind: the production purge itself (gates included via its bypass),
@@ -162,11 +173,11 @@ fn cleanupRollbackAccount(conn: *pg.Conn) void {
     _ = teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC, &.{}) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
     execIgnoreTd(conn, "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid", RB_FLEET_ID);
-    execIgnoreTd(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", RB_EVENT_ID);
+    execIgnoreTd(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", RB_EVENT_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", RB_LEASE_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", RB_FLEET_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", RB_RUNNER_ID);
-    execIgnoreTd(conn, "DELETE FROM core.tenants WHERE tenant_id = $1::uuid", RB_TENANT_ID);
+    execIgnoreTd(conn, "DELETE FROM core.tenants WHERE id = $1::uuid", RB_TENANT_ID);
 }
 
 fn execIgnoreTd(conn: *pg.Conn, sql: []const u8, id: []const u8) void {
@@ -231,11 +242,13 @@ test "integration: purge succeeds for an account with approval gates (append-onl
 
     try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, RB_OIDC));
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM core.fleet_approval_gates WHERE id = $1::uuid", RB_GATE_ID));
-    // Fleet sweep: lease + affinity + metering rows are gone; the shared
-    // runner row survives (host infrastructure, not tenant data).
+    // Fleet sweep: lease + affinity + ledger rows are gone; the shared runner
+    // row survives (host infrastructure, not tenant data). The ledger row goes
+    // by the tenant cascade rather than by a hand-maintained delete order —
+    // which is the whole point of typing `tenant_id` as a real reference.
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runner_leases WHERE id = $1::uuid", RB_LEASE_ID));
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", RB_FLEET_ID));
-    try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.metering_periods WHERE event_id = $1", RB_EVENT_ID));
+    try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM billing.usage_ledger WHERE event_id = $1", RB_EVENT_ID));
     try std.testing.expectEqual(@as(i64, 1), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runners WHERE id = $1::uuid", RB_RUNNER_ID));
 }
 
@@ -256,11 +269,11 @@ test "integration: a fleet the caller never enumerated is reported, not absorbed
     defer cleanup(conn);
 
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-race', 0, 0)
     , .{TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-race@test.fleet', 0, 0)
     , .{ USER_ID, TENANT_ID, OIDC });
     try base.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
@@ -292,11 +305,11 @@ test "integration: a fully enumerated tenant reports no unhandled fleets" {
     defer cleanup(conn);
 
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-clean', 0, 0)
     , .{TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-clean@test.fleet', 0, 0)
     , .{ USER_ID, TENANT_ID, OIDC });
     try base.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
@@ -323,11 +336,11 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
 
     // Seed a full account: tenant -> user -> workspace -> fleet.
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-victim', 0, 0)
     , .{TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, 'teardown@test.fleet', 0, 0)
     , .{ USER_ID, TENANT_ID, OIDC });
     try base.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
@@ -336,9 +349,9 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
     // Seed one memory row for the fleet. No FK to core.fleets, so only the
     // teardown's explicit DELETE removes it.
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-c00000000011'::uuid, $1, 'canary', 'should not survive teardown', 'core', $2::uuid, 1700000000000, 1700000000000)
-    , .{ "account-teardown-canary", FLEET_ID });
+        \\INSERT INTO memory.memory_entries (id, key, content, category, fleet_id, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-c00000000011'::uuid, 'canary', 'should not survive teardown', 'core', $1::uuid, 1700000000000, 1700000000000)
+    , .{FLEET_ID});
     try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, FLEET_ID));
 
     // Purge the account by its oidc_subject.
@@ -349,4 +362,179 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
     // user — proving every statement before the user delete (incl. memory) ran.
     try std.testing.expectEqual(@as(i64, 0), try countMemory(conn, FLEET_ID));
     try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, OIDC));
+}
+
+// ── Erasure completeness (Dimension 3.3) ────────────────────────────────────
+
+/// Every table carrying a `tenant_id`, read from the catalogue rather than
+/// listed: a table added later inherits this assertion automatically, which is
+/// the point. A hardcoded list would pass forever while a new tenant-scoped
+/// table quietly survived erasure.
+///
+/// What this test is, honestly: a REGRESSION GUARD, not a proof of erasure. It
+/// cannot fail against today's schema, because every tenant-scoped row is
+/// reachable by some cascade — confirmed by mutation, which removed the purge's
+/// explicit lease DELETE and stayed green. Its value is entirely in the future:
+/// it fires the day a tenant-scoped table arrives without a cascade or a delete,
+/// which is exactly the mistake nobody notices until an erased account is found
+/// to have left data behind.
+const SELECT_TENANT_SCOPED_TABLES =
+    \\SELECT table_schema, table_name
+    \\FROM information_schema.columns
+    \\WHERE column_name = 'tenant_id'
+    \\  AND table_schema NOT IN ('pg_catalog', 'information_schema')
+    \\ORDER BY table_schema, table_name
+;
+
+const ERASURE_OIDC: []const u8 = "oidc-account-teardown-erasure-01";
+const ERASURE_TENANT: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000101";
+const ERASURE_USER: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000102";
+const ERASURE_WORKSPACE: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000103";
+const ERASURE_FLEET: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000104";
+const ERASURE_RUNNER: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000105";
+const ERASURE_LEDGER_EVENT: []const u8 = "evt-teardown-erasure-01";
+
+fn seedErasureAccount(conn: *pg.Conn) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'teardown-erasure', 0, 0)
+    , .{ERASURE_TENANT});
+    _ = try conn.exec(
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-erasure@test.fleet', 0, 0)
+    , .{ ERASURE_USER, ERASURE_TENANT, ERASURE_OIDC });
+    try base.seedWorkspaceWithTenant(conn, ERASURE_WORKSPACE, ERASURE_TENANT);
+    try base.seedFleet(conn, ERASURE_FLEET, ERASURE_WORKSPACE, "teardown-erasure", "{}", "# z");
+    // The money tables specifically: the wallet resolves to the tenant directly
+    // and the ledger through a NOT NULL foreign key, so both must go by cascade
+    // rather than by an explicit DELETE the purge no longer issues.
+    _ = try conn.exec(
+        \\INSERT INTO billing.tenant_wallet
+        \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\VALUES ($1::uuid, 0, 'test', 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ERASURE_TENANT});
+    _ = try conn.exec(
+        \\INSERT INTO billing.usage_ledger
+        \\  (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
+        \\   model, credit_deducted_nanos, event_created_at, created_at, last_charged_at)
+        \\VALUES (overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+        \\        $1::uuid, $2::uuid, $3::uuid, $4, 'stage', 'metered', 'claude', 0, 0, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ ERASURE_TENANT, ERASURE_WORKSPACE, ERASURE_FLEET, ERASURE_LEDGER_EVENT });
+    // `fleet.runner_leases` is the one tenant-scoped table with no foreign key to
+    // `core.tenants`. It is still erased, by cascade from `core.fleets` — so the
+    // purge's explicit DELETE for it is belt-and-braces, and removing that
+    // statement does NOT make this test fail (verified by mutation). The row is
+    // seeded anyway because it exercises the longest erasure path in the sweep:
+    // tenant → workspace → fleet → lease.
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runners
+        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels,
+        \\   last_seen_at, created_at, updated_at)
+        \\VALUES ($1::uuid, 'teardown-erasure-host', 'teardown-erasure-token', 'dev_none',
+        \\        'active', '[]'::jsonb, 0, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ERASURE_RUNNER});
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_leases
+        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
+        \\   last_metered_at, fencing_token, lease_expires_at, status,
+        \\   created_at, updated_at)
+        \\VALUES (overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+        \\        $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, 'system', 'chat', 0,
+        \\        'metered', 'anthropic', 'claude', 0, 0, 0, 0, 1, 0, 'reported', 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ ERASURE_RUNNER, ERASURE_FLEET, ERASURE_WORKSPACE, ERASURE_TENANT, ERASURE_LEDGER_EVENT });
+}
+
+fn cleanupErasureAccount(conn: *pg.Conn) void {
+    _ = teardown.purgeByOidcSubject(conn, std.testing.allocator, ERASURE_OIDC, &.{}) catch |err|
+        std.log.warn("erasure cleanup ignored: {s}", .{@errorName(err)});
+    // The lease is deleted by tenant here rather than left to the purge: when the
+    // purge is the thing under mutation, this cleanup must still clear the row it
+    // failed to remove, or the next run starts dirty and the failure looks stale.
+    _ = conn.exec("DELETE FROM fleet.runner_leases WHERE tenant_id = $1::uuid", .{ERASURE_TENANT}) catch |err|
+        std.log.warn("erasure lease cleanup ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{ERASURE_RUNNER}) catch |err|
+        std.log.warn("erasure runner cleanup ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{ERASURE_TENANT}) catch |err|
+        std.log.warn("erasure tenant cleanup ignored: {s}", .{@errorName(err)});
+}
+
+test "integration: erasing a tenant leaves no row behind in any tenant-scoped table" {
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+    const alloc = std.testing.allocator;
+
+    cleanupErasureAccount(conn);
+    try seedErasureAccount(conn);
+    defer cleanupErasureAccount(conn);
+
+    // These prove the fixture actually reached the tables the sweep will check —
+    // without them it could pass on a tenant that never had rows to erase, which
+    // is the failure mode this whole test is most exposed to.
+    try std.testing.expectEqual(@as(i64, 1), try countTenantRows(conn, "billing", "tenant_wallet"));
+    try std.testing.expectEqual(@as(i64, 1), try countTenantRows(conn, "billing", "usage_ledger"));
+    try std.testing.expectEqual(@as(i64, 1), try countTenantRows(conn, "fleet", "runner_leases"));
+
+    const result = try teardown.purgeByOidcSubject(conn, alloc, ERASURE_OIDC, &.{ERASURE_FLEET});
+    try std.testing.expect(result.purged);
+
+    // Every tenant-scoped table, swept from the catalogue. A survivor here is
+    // either a missing cascade or a delete the purge forgot — both of which mean
+    // an erased account left data behind.
+    var tables: std.ArrayList([2][]u8) = .empty;
+    defer {
+        for (tables.items) |t| {
+            alloc.free(t[0]);
+            alloc.free(t[1]);
+        }
+        tables.deinit(alloc);
+    }
+    var q = PgQuery.from(try conn.query(SELECT_TENANT_SCOPED_TABLES, .{}));
+    defer q.deinit();
+    while (try q.next()) |row| {
+        const schema_name = try alloc.dupe(u8, try row.get([]const u8, 0));
+        errdefer alloc.free(schema_name);
+        const table_name = try alloc.dupe(u8, try row.get([]const u8, 1));
+        errdefer alloc.free(table_name);
+        try tables.append(alloc, .{ schema_name, table_name });
+    }
+    try std.testing.expect(tables.items.len > 0);
+
+    var survivors: usize = 0;
+    for (tables.items) |t| {
+        const remaining = try countTenantRows(conn, t[0], t[1]);
+        if (remaining != 0) {
+            survivors += 1;
+            std.debug.print(
+                "\nERASURE LEAK: {s}.{s} still holds {d} row(s) for the purged tenant\n",
+                .{ t[0], t[1], remaining },
+            );
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 0), survivors);
+}
+
+/// Count rows for the erasure fixture's tenant in one table. The identifier is
+/// interpolated because a table name cannot be a bind parameter; both parts come
+/// from `information_schema`, never from input, and the tenant itself still
+/// binds.
+fn countTenantRows(conn: *pg.Conn, schema_name: []const u8, table_name: []const u8) !i64 {
+    const alloc = std.testing.allocator;
+    const sql = try std.fmt.allocPrint(
+        alloc,
+        "SELECT count(*)::bigint FROM {s}.{s} WHERE tenant_id = $1::uuid",
+        .{ schema_name, table_name },
+    );
+    defer alloc.free(sql);
+    var q = PgQuery.from(try conn.query(sql, .{ERASURE_TENANT}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return 0;
+    return row.get(i64, 0);
 }

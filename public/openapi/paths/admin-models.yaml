@@ -77,7 +77,7 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/admin/models/{uid}:
+/v1/admin/models/{id}:
   patch:
     operationId: update_admin_model
     summary: Update a catalogue row's caps and rates
@@ -88,7 +88,7 @@
     tags:
     - Admin
     parameters:
-    - name: uid
+    - name: id
       in: path
       required: true
       description: UUIDv7 of the catalogue row.
@@ -109,11 +109,11 @@
             schema:
               type: object
               required:
-              - uid
+              - id
               - updated
               - request_id
               properties:
-                uid:
+                id:
                   type: string
                   format: uuid
                 updated:
@@ -122,7 +122,7 @@
                 request_id:
                   type: string
       '404':
-        description: No catalogue model matches this uid (`UZ-PROVIDER-006`).
+        description: No catalogue model matches this id (`UZ-PROVIDER-006`).
         $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
@@ -135,7 +135,7 @@
     tags:
     - Admin
     parameters:
-    - name: uid
+    - name: id
       in: path
       required: true
       description: UUIDv7 of the catalogue row.
@@ -146,7 +146,7 @@
       '204':
         description: No Content
       '404':
-        description: No catalogue model matches this uid (`UZ-PROVIDER-006`).
+        description: No catalogue model matches this id (`UZ-PROVIDER-006`).
         $ref: ../components/responses.yaml#/components/responses/Error
       '409':
         description: This model is the active platform default; repoint the default before deleting it (`UZ-PROVIDER-007`).
@@ -188,11 +188,11 @@ components:
       allOf:
       - type: object
         required:
-        - uid
+        - id
         - provider
         - model_id
         properties:
-          uid:
+          id:
             type: string
             format: uuid
             description: UUIDv7 row key. Used in the URL because `model_id` may contain `/`.

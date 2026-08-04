@@ -190,7 +190,7 @@ pub const SessionStore = struct {
         });
         defer resp.deinit(self.alloc);
         // parseVerifyOutcome returns slices borrowed from `resp`; dupe so they
-        // outlive the deinit. Caller pairs with `outcome.deinit(alloc)`.
+        // outlive the deinit. The copy is the STORE's — pair `deinit(store.alloc)`.
         const borrowed = try proto.parseVerifyOutcome(resp);
         return try borrowed.dupe(self.alloc);
     }
@@ -321,8 +321,9 @@ pub fn validateCreateInputs(cli_public_key: []const u8, token_name: []const u8) 
     if (token_name.len == 0 or token_name.len > TOKEN_NAME_MAX_LEN) return Error.InvalidTokenName;
 }
 
+/// Non-UUIDv7 ids report as `SessionMissing`: `failFromStoreError` maps that to 404 and routes an unclassified tag to 500.
 pub fn formatSessionKey(buf: []u8, session_id: []const u8) ![]const u8 {
-    if (!id_format.isUuidV7(session_id)) return error.InvalidSessionId;
+    if (!id_format.isUuidV7(session_id)) return Error.SessionMissing;
     return std.fmt.bufPrint(buf, "{s}{s}", .{ SESSION_KEY_PREFIX, session_id });
 }
 

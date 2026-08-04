@@ -8,7 +8,6 @@ const hx_mod = @import("handlers/hx.zig");
 
 const webhooks = @import("handlers/webhooks/fleet.zig");
 const approval = @import("handlers/webhooks/approval.zig");
-const grant_approval = @import("handlers/webhooks/grant_approval.zig");
 const github_webhook_h = @import("handlers/webhooks/github.zig");
 const github_ingress_h = @import("handlers/ingress/github.zig");
 const qstash_ingress_h = @import("handlers/ingress/qstash.zig");
@@ -39,11 +38,6 @@ pub fn invokeClerkWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) voi
 pub fn invokeApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (!common.requireMethod(hx.res, req.method, .POST)) return;
     approval.innerApprovalCallback(hx.*, req, route.approval_webhook);
-}
-
-pub fn invokeGrantApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (!common.requireMethod(hx.res, req.method, .POST)) return;
-    grant_approval.innerGrantApproval(hx.*, req, route.grant_approval_webhook);
 }
 
 pub fn invokeGithubWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {

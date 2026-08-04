@@ -76,6 +76,13 @@ class TestCoverageLane(unittest.TestCase):
             tool_dir.mkdir()
             write_executable(tool_dir / "zig", "#!/bin/sh\nexit 0\n")
             write_executable(tool_dir / "kcov", kcov_body)
+            # The lane now measures the integration binary too, which needs a
+            # live Postgres and Redis. These tests are about the gate's
+            # arithmetic and its failure messages, not about provisioning, so
+            # they declare the datastores already supplied — the same escape
+            # hatch continuous integration uses when it boots them itself.
+            cert = temp / "redis-ca.crt"
+            cert.write_text("stub cert: TEST_INFRA=provided only checks it is non-empty\n")
             env = os.environ.copy()
             env["PATH"] = f"{tool_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
             return subprocess.run(
@@ -86,6 +93,9 @@ class TestCoverageLane(unittest.TestCase):
                     f"ZIG_GLOBAL_CACHE_DIR={temp / 'global'}",
                     f"ZIG_LOCAL_CACHE_DIR={temp / 'local'}",
                     f"ZIG_COVERAGE_MIN_LINES={minimum}",
+                    "TEST_INFRA=provided",
+                    "KEEP_TEST_STATE=1",
+                    f"TEST_REDIS_TLS_CA_CERT={cert}",
                 ],
                 cwd=ROOT,
                 env=env,
@@ -104,6 +114,7 @@ class TestCoverageLane(unittest.TestCase):
             mkdir -p "$out"
             printf '<coverage line-rate="0.10"/>\\n' > "$out/cobertura.xml"
             : > "$out/index.html"
+            echo "781 passed; 7 skipped; 0 failed."
             """,
         )
         self.assertNotEqual(result.returncode, 0)
@@ -117,6 +128,7 @@ class TestCoverageLane(unittest.TestCase):
             case "$out" in */runner) exit 0;; esac
             mkdir -p "$out"
             printf '<coverage line-rate="0.50"/>\\n' > "$out/cobertura.xml"
+            echo "781 passed; 7 skipped; 0 failed."
             """,
         )
         self.assertNotEqual(result.returncode, 0)

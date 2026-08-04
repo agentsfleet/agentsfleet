@@ -16,12 +16,10 @@
 //! All functions run on a caller-supplied pooled connection (drained via
 //! PgQuery / conn.exec).
 
-const std = @import("std");
 const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const id_format = @import("../types/id_format.zig");
 
 /// The won claim: the new monotonic fencing token + the expiry the slot (and
 /// the issued lease row) carry.
@@ -49,16 +47,13 @@ pub const Claim = union(enum) {
 /// A fresh event resets it at lease issue; the renewal CTE advances it.
 pub fn claim(
     conn: *pg.Conn,
-    alloc: std.mem.Allocator,
     fleet_id: []const u8,
     runner_id: []const u8,
     ttl_ms: i64,
 ) !Claim {
-    const affinity_id = try id_format.generateRunnerAffinityId(alloc);
-    defer alloc.free(affinity_id);
     const now_ms = clock.nowMillis();
     const leased_until = now_ms + ttl_ms;
-    var q = PgQuery.from(try conn.query(sql.CLAIM_AFFINITY_SLOT, .{ affinity_id, fleet_id, runner_id, leased_until, now_ms }));
+    var q = PgQuery.from(try conn.query(sql.CLAIM_AFFINITY_SLOT, .{ fleet_id, runner_id, leased_until, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return .taken;
     return .{ .won = .{ .token = @intCast(try row.get(i64, 0)), .leased_until = leased_until } };
@@ -71,8 +66,7 @@ pub fn claim(
 /// re-leased run meters forward from where it stopped. The renewal CTE reads
 /// this cursor for each slice's Δ, so a stale value here would over-charge the
 /// first renewal — hence the reset is fail-closed (a reset error fails lease
-/// issue rather than risk an over-charge). `meter_slice_seq` resets too so the
-/// new event's breakdown numbering restarts at 1.
+/// issue rather than risk an over-charge).
 pub fn resetCursor(conn: *pg.Conn, fleet_id: []const u8, now_ms: i64) !void {
     _ = conn.exec(sql.RESET_AFFINITY_METERS, .{ fleet_id, now_ms }) catch return error.AffinityCursorResetFailed;
 }

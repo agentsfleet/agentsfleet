@@ -171,11 +171,11 @@ fn startAuthedHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn seedAuthedFixtures(conn: *pg.Conn) !void {
     const now_ms = common.clock.nowMillis();
     _ = try conn.exec(
-        "INSERT INTO tenants (tenant_id, name, created_at, updated_at) VALUES ($1, 'M108 Registry Authed Tenant', $2, $2) ON CONFLICT (tenant_id) DO NOTHING",
+        "INSERT INTO tenants (id, name, created_at, updated_at) VALUES ($1::uuid, 'M108 Registry Authed Tenant', $2, $2) ON CONFLICT (id) DO NOTHING",
         .{ AUTHED_TENANT, now_ms },
     );
     _ = try conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id, created_at) VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING",
+        "INSERT INTO workspaces (id, tenant_id, created_at) VALUES ($1::uuid, $2, $3) ON CONFLICT (id) DO NOTHING",
         .{ AUTHED_WS, AUTHED_TENANT, now_ms },
     );
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);

@@ -16,10 +16,10 @@ describe("grant (integration grant) commands", () => {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/integration-grants`]:
           () => jsonResponse(200, {
             items: [
-              { grant_id: "01900000-0000-7000-8000-000000067a01", service: "github", status: "approved",
-                requested_at: 1700000000000, approved_at: 1700000000500 },
-              { grant_id: "grant_2", service: "slack", status: "pending",
-                requested_at: 1700000001000, approved_at: null },
+              { id: "01900000-0000-7000-8000-000000067a01", service: "github", status: "approved",
+                created_at: 1700000000000, approved_at: 1700000000500 },
+              { id: "grant_2", service: "slack", status: "pending",
+                created_at: 1700000001000, approved_at: null },
             ],
           }),
       };

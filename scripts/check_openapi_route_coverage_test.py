@@ -157,9 +157,9 @@ class TestAgainstTheRealRepo(unittest.TestCase):
         paths = spec_json["paths"]
         verbs = {"get", "post", "patch", "delete"}
         self.assertIn("/v1/admin/models", paths)
-        self.assertIn("/v1/admin/models/{uid}", paths)
+        self.assertIn("/v1/admin/models/{id}", paths)
         self.assertEqual({"get", "post"}, set(paths["/v1/admin/models"]) & verbs)
-        self.assertEqual({"patch", "delete"}, set(paths["/v1/admin/models/{uid}"]) & verbs)
+        self.assertEqual({"patch", "delete"}, set(paths["/v1/admin/models/{id}"]) & verbs)
 
 
 if __name__ == "__main__":

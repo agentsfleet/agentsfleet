@@ -17,14 +17,14 @@ import { wsGrantsListPath, wsGrantPath } from "../lib/api-paths.ts";
 import { validateRequiredId } from "../program/validators.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
 
-const GRANT_ID_FIELD = "grant_id";
+const GRANT_ID_FIELD = "id";
 
 interface GrantRow {
   readonly service?: string | null;
   readonly status?: string | null;
-  readonly requested_at?: number | string | null;
+  readonly created_at?: number | string | null;
   readonly approved_at?: number | string | null;
-  readonly grant_id?: string | null;
+  readonly id?: string | null;
 }
 
 interface GrantListResponse {
@@ -94,20 +94,20 @@ export const grantListEffectFromArgs = (
       [
         { key: "service", label: "SERVICE" },
         { key: "status", label: "STATUS" },
-        { key: "requested_at", label: "REQUESTED_AT" },
+        { key: "created_at", label: "CREATED_AT" },
         { key: "approved_at", label: "APPROVED_AT" },
-        { key: GRANT_ID_FIELD, label: "GRANT_ID" },
+        { key: GRANT_ID_FIELD, label: "ID" },
       ],
       grants.map((g) => ({
         service: g.service ?? "",
         status: g.status ?? "",
-        requested_at: g.requested_at
-          ? new Date(g.requested_at).toISOString()
+        created_at: g.created_at
+          ? new Date(g.created_at).toISOString()
           : "-",
         approved_at: g.approved_at
           ? new Date(g.approved_at).toISOString()
           : "-",
-        grant_id: g.grant_id ?? "",
+        id: g.id ?? "",
       })),
     );
   });
@@ -146,7 +146,7 @@ export const grantDeleteEffectFromArgs = (
     });
 
     if (config.jsonMode) {
-      yield* output.printJson({ deleted: true, grant_id: grantId });
+      yield* output.printJson({ deleted: true, id: grantId });
     } else {
       yield* output.success(
         `Grant ${grantId} deleted. The fleet can no longer use this integration; further attempts will be denied.`,

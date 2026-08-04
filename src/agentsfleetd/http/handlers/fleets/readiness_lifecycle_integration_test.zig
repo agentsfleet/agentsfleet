@@ -73,21 +73,21 @@ fn makeHarness() !*TestHarness {
 
 fn seedTenantAndWorkspace(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1::uuid, 'ReadinessLifecycle', 0, 0) ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'ReadinessLifecycle', 0, 0) ON CONFLICT (id) DO NOTHING
     , .{TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1::uuid, $2::uuid, 0) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO core.workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2::uuid, 0) ON CONFLICT (id) DO NOTHING
     , .{ WORKSPACE_ID, TENANT_ID });
 }
 
 fn seedFleet(conn: *pg.Conn, fleet_id: []const u8, name: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, status, config_json, source_markdown,
+        \\  (id, workspace_id, tenant_id, name, status, config_json, source_markdown,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, 'active', $4, $5, $6, $6)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, 'active', $4, $5, $6, $6)
         \\ON CONFLICT (id) DO UPDATE SET status = 'active'
     , .{ fleet_id, WORKSPACE_ID, name, CONFIG_JSON, SOURCE_MD, clock.nowMillis() });
 }

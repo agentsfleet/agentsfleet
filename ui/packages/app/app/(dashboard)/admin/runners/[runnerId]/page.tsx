@@ -30,6 +30,7 @@ import { ActivityTable } from "./components/ActivityTable";
 import { RunnerViewedTracker } from "./components/RunnerViewedTracker";
 import {
   ACTIVITY_UNAVAILABLE,
+  FLEET_FILTER_PARAM,
   LEASES_LINK_STALE,
   LEASES_UNAVAILABLE,
   RESET_LEASE_VIEW_LABEL,
@@ -76,12 +77,15 @@ export default async function RunnerDetailPage({
   const cursor = cursorForTrail(
     cursorTrailFrom(query[CURSOR_TRAIL_PARAM], pageSize, query[CURSOR_PAGE_SIZE_PARAM]),
   );
-  const workspaceFilter = workspaceFilterFrom(query[WORKSPACE_FILTER_PARAM]);
+  const leaseFilters = {
+    workspace: singleFilterFrom(query[WORKSPACE_FILTER_PARAM]),
+    fleet: singleFilterFrom(query[FLEET_FILTER_PARAM]),
+  };
 
   const runner = await loadRunner(runnerId, token);
   if (!runner) notFound();
 
-  const content = await loadRunnerView(view, runner, token, cursor, pageSize, workspaceFilter);
+  const content = await loadRunnerView(view, runner, token, cursor, pageSize, leaseFilters);
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -109,10 +113,10 @@ export default async function RunnerDetailPage({
   );
 }
 
-// The workspace filter rides the URL the way the cursor trail does. Anything
-// but a single non-empty value — absent, empty, repeated — fails closed to
-// unfiltered, mirroring `pageSizeFrom`.
-function workspaceFilterFrom(value: string | string[] | undefined): string | null {
+// The lease filters ride the URL the way the cursor trail does. Anything but a
+// single non-empty value — absent, empty, repeated — fails closed to unfiltered,
+// mirroring `pageSizeFrom`.
+function singleFilterFrom(value: string | string[] | undefined): string | null {
   if (typeof value !== "string") return null;
   return value.length > 0 ? value : null;
 }
@@ -137,7 +141,7 @@ async function loadRunnerView(
   token: string,
   cursor: string | null,
   pageSize: number,
-  workspaceFilter: string | null,
+  leaseFilters: { workspace: string | null; fleet: string | null },
 ): Promise<ReactNode> {
   // A failed read resolves to null, never to an empty page: the tables' empty
   // states mean "this host has no history", and showing that for a database or
@@ -155,7 +159,8 @@ async function loadRunnerView(
   const initial = await listRunnerLeases(token, runner.id, {
     limit: pageSize,
     ...(cursor ? { starting_after: cursor } : {}),
-    ...(workspaceFilter ? { workspace_id: workspaceFilter } : {}),
+    ...(leaseFilters.workspace ? { workspace_id: leaseFilters.workspace } : {}),
+    ...(leaseFilters.fleet ? { fleet: leaseFilters.fleet } : {}),
   }).catch((error: unknown) => (isRefusedRequest(error) ? REFUSED : null));
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3xl">

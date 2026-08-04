@@ -52,7 +52,7 @@ function gateFixture(over: Partial<ApprovalGate> = {}): ApprovalGate {
     blast_radius: "single repo branch",
     status: "pending",
     detail: "",
-    requested_at: 1_700_000_000_000,
+    created_at: 1_700_000_000_000,
     timeout_at: 1_700_086_400_000,
     updated_at: null,
     resolved_by: "",

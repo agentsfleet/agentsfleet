@@ -4,16 +4,16 @@
 //! Routes (gated by the `model:read` (GET) / `model:admin` (write) scope in
 //! route_scopes.zig → requireScope — the middleware is the sole gate, mirroring
 //! register_runner; no handler-internal capability check):
-//!   GET    /v1/admin/models        list every catalogue row (with uid)
+//!   GET    /v1/admin/models        list every catalogue row (with id)
 //!   POST   /v1/admin/models        create a priced row
-//!   PATCH  /v1/admin/models/{uid}  update caps/rates (provider+model_id are the
+//!   PATCH  /v1/admin/models/{id}  update caps/rates (provider+model_id are the
 //!                                  immutable identity — change them by delete+add)
-//!   DELETE /v1/admin/models/{uid}  remove a row, unless it is the active platform
+//!   DELETE /v1/admin/models/{id}  remove a row, unless it is the active platform
 //!                                  default's model (409 — repoint the default first)
 //!
-//! Rows are keyed by uid in the URL, not (provider, model_id): a model_id can
+//! Rows are keyed by id in the URL, not (provider, model_id): a model_id can
 //! contain '/' (e.g. accounts/fireworks/models/kimi-k2.6), which a path segment
-//! cannot carry. uid is a uuidv7 — opaque, slash-free, SQL-injection-checked.
+//! cannot carry. id is a uuidv7 — opaque, slash-free, SQL-injection-checked.
 //!
 //! Every mutation runs inside the catalogue-generation transaction
 //! (`state/model_catalogue_revision.zig`): it takes the singleton generation row
@@ -56,8 +56,8 @@ const S_CAP_POSITIVE = "context_cap_tokens must be > 0";
 const S_RATES_NONNEG = "rates (input/cached/output nanos_per_mtok) must be >= 0";
 const S_BODY_REQUIRED = "Request body required";
 const S_MALFORMED_JSON = "Malformed JSON";
-const S_MODEL_NOT_FOUND = "No catalogue model matches this uid";
-const S_UID_FIELD = "uid";
+const S_MODEL_NOT_FOUND = "No catalogue model matches this id";
+const S_ID_FIELD = "id";
 
 /// Mutable caps/rates shared by create + update. provider/model_id are create-only
 /// (the row identity), so PATCH parses `model_library_store.Rates` directly and POST
@@ -142,7 +142,7 @@ pub fn innerPostAdminModel(hx: hx_mod.Hx, req: *httpz.Request) void {
         .output_nanos_per_mtok = in.output_nanos_per_mtok,
     })) return;
 
-    const uid = id_format.allocUuidV7(hx.alloc) catch {
+    const id = id_format.allocUuidV7(hx.alloc) catch {
         common.internalOperationError(hx.res, "Failed to generate model id", hx.req_id);
         return;
     };
@@ -165,7 +165,7 @@ pub fn innerPostAdminModel(hx: hx_mod.Hx, req: *httpz.Request) void {
     // driver's unique-violation error. A 409 returns through the deferred abort,
     // so a rejected create leaves the generation untouched.
     const affected = model_library_store.create(conn, .{
-        .uid = uid,
+        .id = id,
         .provider = in.provider,
         .model_id = in.model_id,
         .rates = .{
@@ -191,7 +191,7 @@ pub fn innerPostAdminModel(hx: hx_mod.Hx, req: *httpz.Request) void {
     log.debug("admin_model_created", .{ .provider = in.provider, .model_id = in.model_id });
 
     hx.ok(.created, .{
-        .uid = uid,
+        .id = id,
         .provider = in.provider,
         .model_id = in.model_id,
         .context_cap_tokens = in.context_cap_tokens,
@@ -202,10 +202,10 @@ pub fn innerPostAdminModel(hx: hx_mod.Hx, req: *httpz.Request) void {
     });
 }
 
-// ── PATCH /v1/admin/models/{uid} ─────────────────────────────────────────────
+// ── PATCH /v1/admin/models/{id} ─────────────────────────────────────────────
 
-pub fn innerPatchAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8) void {
-    if (!common.requireUuidV7Id(hx.res, hx.req_id, uid, S_UID_FIELD)) return;
+pub fn innerPatchAdminModel(hx: hx_mod.Hx, req: *httpz.Request, id: []const u8) void {
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, id, S_ID_FIELD)) return;
 
     const body = req.body() orelse {
         hx.fail(error_codes.ERR_INVALID_REQUEST, S_BODY_REQUIRED);
@@ -232,7 +232,7 @@ pub fn innerPatchAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8)
     };
     defer txn.abort();
 
-    const affected = model_library_store.updateRates(conn, uid, in, now_ms) catch {
+    const affected = model_library_store.updateRates(conn, id, in, now_ms) catch {
         common.internalOperationError(hx.res, "Failed to update catalogue model", hx.req_id);
         return;
     };
@@ -246,16 +246,16 @@ pub fn innerPatchAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8)
         return;
     };
     invalidateCaches(hx);
-    log.debug("admin_model_updated", .{ .uid = uid });
+    log.debug("admin_model_updated", .{ .id = id });
 
-    hx.ok(.ok, .{ .uid = uid, .updated = true, .request_id = hx.req_id });
+    hx.ok(.ok, .{ .id = id, .updated = true, .request_id = hx.req_id });
 }
 
-// ── DELETE /v1/admin/models/{uid} ────────────────────────────────────────────
+// ── DELETE /v1/admin/models/{id} ────────────────────────────────────────────
 
-pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8) void {
+pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, id: []const u8) void {
     _ = req;
-    if (!common.requireUuidV7Id(hx.res, hx.req_id, uid, S_UID_FIELD)) return;
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, id, S_ID_FIELD)) return;
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -275,7 +275,7 @@ pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8
     };
     defer txn.abort();
 
-    const referenced = model_library_store.isReferencedByActiveDefault(conn, uid) catch {
+    const referenced = model_library_store.isReferencedByActiveDefault(conn, id) catch {
         common.internalOperationError(hx.res, "Failed to verify model reference", hx.req_id);
         return;
     };
@@ -284,7 +284,7 @@ pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8
         return;
     }
 
-    const affected = model_library_store.remove(conn, uid) catch {
+    const affected = model_library_store.remove(conn, id) catch {
         common.internalOperationError(hx.res, "Failed to delete catalogue model", hx.req_id);
         return;
     };
@@ -298,7 +298,7 @@ pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8
         return;
     };
     invalidateCaches(hx);
-    log.debug("admin_model_deleted", .{ .uid = uid });
+    log.debug("admin_model_deleted", .{ .id = id });
 
     hx.noContent();
 }

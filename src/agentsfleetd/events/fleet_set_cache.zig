@@ -314,7 +314,7 @@ fn setOwningTenantContext(conn: *pg.Conn, workspace_id: []const u8) !bool {
     // context. Runs at most once per workspace per refresh cadence.
     var q = PgQuery.from(try conn.query(
         \\SELECT COALESCE(set_config('app.current_tenant_id',
-        \\  (SELECT tenant_id::text FROM core.workspaces WHERE workspace_id = $1), false), '')
+        \\  (SELECT tenant_id::text FROM core.workspaces WHERE id = $1::uuid), false), '')
     , .{workspace_id}));
     defer q.deinit();
     const row = (try q.next()) orelse return false;

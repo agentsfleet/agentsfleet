@@ -65,22 +65,22 @@ fn openHarnessOrSkip(alloc: std.mem.Allocator) !*TestHarness {
 
 fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'M11_006-integration', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'tenant-billing-integration', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ tenant_id, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, tenant_id, now_ms });
     // activity_events.fleet_id carries a NOT NULL FK to core.fleets —
     // seed a minimal row so logEventOnConn writes do not fail.
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
         \\   status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'fleet-m11-006', 'seed', null, '{}'::jsonb, 'active', $3, $3)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'fleet-m11-006', 'seed', null, '{}'::jsonb, 'active', $3, $3)
         \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_FLEET_ID, TEST_WORKSPACE_ID, now_ms });
 }
@@ -89,14 +89,14 @@ fn seedModelRate(conn: *pg.Conn) !void {
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
         \\ON CONFLICT (provider, model_id) DO UPDATE SET
         \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
         \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
         \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-        \\   updated_at_ms = EXCLUDED.updated_at_ms
+        \\   updated_at = EXCLUDED.updated_at
     , .{ RATE_MODEL_UID, RATE_MODEL, RATE_PROVIDER, RATE_MODEL_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
 }
 
@@ -110,9 +110,9 @@ fn teardownModelRate(conn: *pg.Conn) void {
 
 fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM tenants WHERE id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── stop-policy pre-claim balance gate ────────────────────────────────────
@@ -213,7 +213,7 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=false,
     defer teardown(conn, TOKEN_TENANT_ID);
 
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing
+        \\INSERT INTO billing.tenant_wallet
         \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1, $3, 'billing_handler_test', $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE
@@ -244,7 +244,7 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true +
     defer teardown(conn, TOKEN_TENANT_ID);
 
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing
+        \\INSERT INTO billing.tenant_wallet
         \\  (tenant_id, balance_nanos, grant_source, balance_exhausted_at, created_at, updated_at)
         \\VALUES ($1, 0, 'billing_handler_test', $2, $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE
@@ -418,4 +418,241 @@ test "integration: GET /billing/charges with malformed cursor returns 400 invali
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try std.testing.expect(r.bodyContains("invalid cursor"));
+}
+
+// `parseLimit`'s two error arms are unit-tested against the parser directly.
+// These pin the other half — that the handler TRANSLATES them into a refusal the
+// caller can act on, through the real router and middleware chain. A parser that
+// returns the right error and a handler that turns it into a 500, or drops the
+// message, would pass those unit tests and fail an operator.
+
+test "integration: GET /billing/charges with a non-numeric limit returns 400 naming the expectation" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = clock.nowMillis();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+
+    const r = try (try h.get("/v1/tenants/me/billing/charges?limit=abc").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    // The message, not just the status: it is what tells the caller which
+    // parameter was wrong and what shape it should have taken.
+    try std.testing.expect(r.bodyContains("limit must be a positive integer"));
+}
+
+test "integration: GET /billing/charges with an over-max limit returns 400 naming the bound" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = clock.nowMillis();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+
+    // One past the ceiling — the boundary, not an arbitrary large number, so the
+    // test still fails if the bound moves without the message moving with it.
+    const r = try (try h.get("/v1/tenants/me/billing/charges?limit=201").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try std.testing.expect(r.bodyContains("limit must be between 1 and 200"));
+}
+
+// ── GET /v1/tenants/me/billing/charges — the ORDER the page promises ──────
+//
+// The cursor tests above run against a tenant with NO telemetry, so they pin
+// parsing and never observe a row. That left the page's ordering — the thing
+// `ORDER BY created_at DESC, usage_ledger.id DESC` exists to deliver — with no
+// behavioural test at all.
+//
+// This is the behavioural half of the index-fitness assertion in
+// `db/index_usage_integration_test.zig`. That one proves the plan carries no
+// Sort node; a plan can be sort-free and still hand back the wrong order if the
+// query orders by the wrong column. Only reading the rows proves the order.
+
+const CHARGES_ORDER_EVENT_PREFIX = "evt-charges-order-";
+const CHARGES_ORDER_ROWS: i32 = 5;
+
+// The per-column multiples, named once because the seed below and the
+// assertions further down must agree on them exactly. Two independent literals
+// would let the pair drift into a test that still passes while pinning nothing.
+// `CACHED` is seeded but never asserted: the response deliberately omits that
+// column, and its presence in the row is what makes a mapper index shift show
+// up as a wrong magnitude rather than as a silent off-by-one.
+const CHARGE_MULT_TOKENS_INPUT = 10;
+const CHARGE_MULT_TOKENS_CACHED = 7;
+const CHARGE_MULT_TOKENS_OUTPUT = 100;
+const CHARGE_MULT_WALL_MS = 1000;
+
+fn seedChargesForOrdering(conn: *pg.Conn, tenant_id: []const u8) !void {
+    // `created_at` ASCENDING with the loop counter, so the NEWEST row is the
+    // last one inserted — the page must invert this.
+    //
+    // Every numeric column gets a DIFFERENT multiple of the counter, including
+    // `token_count_cached_input`, which the response deliberately omits. That is
+    // what makes a column-index shift in the row mapper visible as a wrong VALUE
+    // rather than only as a crash on a NULL: read one column to the left or
+    // right and the magnitudes stop matching.
+    _ = try conn.exec(std.fmt.comptimePrint(
+        \\INSERT INTO billing.usage_ledger
+        \\  (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
+        \\   model, credit_deducted_nanos, token_count_input, token_count_cached_input,
+        \\   token_count_output, wall_ms, event_created_at, created_at, last_charged_at)
+        \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+        \\       $1::uuid, $2::uuid, $3::uuid, $4 || g, 'stage', 'metered',
+        \\       'claude', g, g * {d}, g * {d}, g * {d}, g * {d}, g, g, g
+        \\FROM generate_series(1, $5::int) g
+        \\ON CONFLICT DO NOTHING
+    , .{
+        CHARGE_MULT_TOKENS_INPUT,
+        CHARGE_MULT_TOKENS_CACHED,
+        CHARGE_MULT_TOKENS_OUTPUT,
+        CHARGE_MULT_WALL_MS,
+    }), .{ tenant_id, TEST_WORKSPACE_ID, TEST_FLEET_ID, CHARGES_ORDER_EVENT_PREFIX, CHARGES_ORDER_ROWS });
+}
+
+fn teardownCharges(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE event_id LIKE $1", .{CHARGES_ORDER_EVENT_PREFIX ++ "%"}) catch |err|
+        std.log.warn("charges cleanup ignored: {s}", .{@errorName(err)});
+}
+
+test "integration: GET /billing/charges returns charges newest-first" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = clock.nowMillis();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+    try seedChargesForOrdering(conn, TOKEN_TENANT_ID);
+    defer teardownCharges(conn);
+
+    const r = try (try h.get("/v1/tenants/me/billing/charges").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, r.body, .{});
+    defer parsed.deinit();
+    const items = parsed.value.object.get("items").?.array;
+    try std.testing.expectEqual(@as(usize, CHARGES_ORDER_ROWS), items.items.len);
+
+    // Strictly descending. Asserted pairwise rather than by spot-checking the
+    // first row: a query that returned only the newest row in the right place
+    // and the rest arbitrarily would pass a first-row check.
+    var previous: i64 = std.math.maxInt(i64);
+    for (items.items) |item| {
+        const recorded_at = item.object.get("recorded_at").?.integer;
+        try std.testing.expect(recorded_at < previous);
+        previous = recorded_at;
+    }
+
+    // Every numeric field of the newest row, pinned to the multiple the seed
+    // gave it. This is the assertion that catches a column-index shift in the
+    // mapper: the crash-on-NULL symptom only appears when a nullable column
+    // lands under a non-optional read, but a shift among the populated columns
+    // is silent — it just reports the wrong number as the operator's token count.
+    const newest = items.items[0].object;
+    const n: i64 = CHARGES_ORDER_ROWS;
+    try std.testing.expectEqual(n, newest.get("recorded_at").?.integer);
+    try std.testing.expectEqual(n, newest.get("credit_deducted_nanos").?.integer);
+    try std.testing.expectEqual(n * CHARGE_MULT_TOKENS_INPUT, newest.get("token_count_input").?.integer);
+    try std.testing.expectEqual(n * CHARGE_MULT_TOKENS_OUTPUT, newest.get("token_count_output").?.integer);
+    try std.testing.expectEqual(n * CHARGE_MULT_WALL_MS, newest.get("wall_ms").?.integer);
+}
+
+// ── GET /v1/tenants/me/billing/charges — a charge whose fleet is gone ──────
+//
+// `usage_ledger.fleet_id` and `workspace_id` are ON DELETE SET NULL, and the
+// fleet purge path deliberately leaves the charge behind so wallet totals stay
+// reconcilable (see the cascade table atop `fleets/delete.zig`). NULL is
+// therefore a normal production state, not an edge case — and a mapper that
+// reads those columns non-optionally turns it into a permanent 500 for every
+// tenant that has ever deleted a fleet, with no recovery short of a deploy.
+//
+// The assertion is deliberately two-sided: `fleet_id` null proves the FK action
+// fired, `workspace_id` still populated proves the mapper did not simply lose
+// its place in the column list.
+
+const ORPHANED_EVENT_ID = "evt-charges-orphaned-fleet";
+const ORPHANED_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f71";
+
+fn seedChargeOnDoomedFleet(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.fleets
+        \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
+        \\   status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid),
+        \\        'fleet-awaiting-purge', 'seed', null, '{}'::jsonb, 'active', $3, $3)
+        \\ON CONFLICT (id) DO NOTHING
+    , .{ ORPHANED_FLEET_ID, TEST_WORKSPACE_ID, now_ms });
+    _ = try conn.exec(
+        \\INSERT INTO billing.usage_ledger
+        \\  (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
+        \\   model, credit_deducted_nanos, token_count_input, token_count_output,
+        \\   wall_ms, event_created_at, created_at, last_charged_at)
+        \\VALUES (overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+        \\        $1::uuid, $2::uuid, $3::uuid, $4, 'stage', 'metered',
+        \\        'claude', 1, 2, 3, 4, $5, $5, $5)
+        \\ON CONFLICT DO NOTHING
+    , .{ tenant_id, TEST_WORKSPACE_ID, ORPHANED_FLEET_ID, ORPHANED_EVENT_ID, now_ms });
+}
+
+fn teardownOrphanedCharge(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE event_id = $1", .{ORPHANED_EVENT_ID}) catch |err|
+        std.log.warn("orphaned charge cleanup ignored: {s}", .{@errorName(err)});
+}
+
+test "integration: GET /billing/charges serves a charge whose fleet was deleted" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = clock.nowMillis();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+    try seedChargeOnDoomedFleet(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardownOrphanedCharge(conn);
+
+    // What the purge handler's DELETE reduces to. The FK action, not the
+    // handler, is what nulls the charge — so issuing the statement directly
+    // exercises the same state transition the endpoint produces.
+    _ = try conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{ORPHANED_FLEET_ID});
+
+    const r = try (try h.get("/v1/tenants/me/billing/charges").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, r.body, .{});
+    defer parsed.deinit();
+
+    var seen = false;
+    for (parsed.value.object.get("items").?.array.items) |item| {
+        if (!std.mem.eql(u8, item.object.get("event_id").?.string, ORPHANED_EVENT_ID)) continue;
+        seen = true;
+        try std.testing.expect(item.object.get("fleet_id").? == .null);
+        try std.testing.expectEqualStrings(TEST_WORKSPACE_ID, item.object.get("workspace_id").?.string);
+    }
+    try std.testing.expect(seen);
 }

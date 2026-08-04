@@ -7,7 +7,7 @@
 //! `workspaces`/`fleets` WITHOUT `ON DELETE CASCADE`, so the workspace and
 //! tenant deletes hit an FK violation — 500 the webhook and make Clerk retry
 //! forever — unless their children go first. Cascade-backed children
-//! (fleet_events, integration_grants, fleet_keys, api_keys, tenant_billing,
+//! (fleet_events, integration_grants, api_keys, tenant_billing,
 //! tenant_model_selection) drop with their parent.
 //!
 //! Per-fleet Redis event streams (`fleet:{id}:events`) are left to expire via
@@ -27,7 +27,7 @@ const S_BEGIN = "BEGIN";
 const S_COMMIT = "COMMIT";
 
 /// Workspaces owned by the tenant. `$1` = tenant_id.
-const WS_OF_TENANT = "(SELECT workspace_id FROM core.workspaces WHERE tenant_id = $1::uuid)";
+const WS_OF_TENANT = "(SELECT id FROM core.workspaces WHERE tenant_id = $1::uuid)";
 /// Fleet ids in those workspaces.
 const AGENTS_OF_TENANT = "(SELECT id FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT ++ ")";
 
@@ -35,15 +35,18 @@ const AGENTS_OF_TENANT = "(SELECT id FROM core.fleets WHERE workspace_id IN " ++
 /// The fleet-scoped child deletes run before `core.fleets` (which their
 /// subqueries read), and all workspace children run before `core.workspaces`.
 const PURGE_STATEMENTS = [_][]const u8{
-    // Keyed, no FK — telemetry workspace_id is TEXT.
-    "DELETE FROM core.fleet_execution_telemetry WHERE workspace_id IN (SELECT workspace_id::text FROM core.workspaces WHERE tenant_id = $1::uuid)",
-    // Keyed, no FK — memory fleet_id is the owning fleet UUID (schema/013).
+    // No ledger delete. It resolves to the tenant through a NOT NULL foreign
+    // key now, so dropping the tenant below erases it by cascade — and no role
+    // reachable from here may delete a charge any other way (schema/710 grants
+    // no DELETE at all, to anyone). An explicit sweep would fail closed on
+    // privilege rather than tidy up.
+    // Keyed, no FK — memory fleet_id is the owning fleet UUID (schema/820).
     "DELETE FROM memory.memory_entries WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
-    // metering_periods is keyed by event_id (no FK); runner_leases/runner_affinity
-    // now carry an ON DELETE CASCADE FK to core.fleets but are still
+    // `fleet.metering_periods` is gone: derived per-renewal detail
+    // with no product consumer, deleted rather than carried. runner_leases and
+    // runner_affinity carry an ON DELETE CASCADE FK to core.fleets but stay
     // swept explicitly here — before core.fleets below — so an erased account
-    // leaves no identifying rows behind, not only whatever the cascade would catch.
-    "DELETE FROM fleet.metering_periods WHERE event_id IN (SELECT event_id FROM fleet.runner_leases WHERE tenant_id = $1::uuid)",
+    // leaves no identifying rows behind, not only whatever the cascade catches.
     "DELETE FROM fleet.runner_leases WHERE tenant_id = $1::uuid",
     "DELETE FROM fleet.runner_affinity WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
     // Gates are append-only by trigger; the purge transaction opts out via
@@ -57,7 +60,7 @@ const PURGE_STATEMENTS = [_][]const u8{
     "DELETE FROM core.workspaces WHERE tenant_id = $1::uuid",
     "DELETE FROM core.memberships WHERE tenant_id = $1::uuid",
     "DELETE FROM core.users WHERE tenant_id = $1::uuid",
-    "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
+    "DELETE FROM core.tenants WHERE id = $1::uuid",
 };
 
 pub const PurgeResult = struct {
@@ -138,7 +141,7 @@ fn countUnenumeratedFleets(conn: *pg.Conn, tenant_id: []const u8, enumerated: []
 pub fn fleetIdsByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject: []const u8) !?[][]const u8 {
     var q = PgQuery.from(try conn.query(
         "SELECT z.id::text FROM core.fleets z WHERE z.workspace_id IN " ++
-            "(SELECT w.workspace_id FROM core.workspaces w WHERE w.tenant_id = " ++
+            "(SELECT w.id FROM core.workspaces w WHERE w.tenant_id = " ++
             "(SELECT u.tenant_id FROM core.users u WHERE u.oidc_subject = $1))",
         .{oidc_subject},
     ));

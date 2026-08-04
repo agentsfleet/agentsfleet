@@ -34,7 +34,7 @@ export const RUN_NANOS_PER_SEC = 100_000n;
 // Identifier names match the Zig + JS mirrors.
 //
 // The trial's END is deliberately NOT a constant here. It is a per-tenant fact
-// (`billing.tenant_billing.free_trial_ends_at`, NULL = open-ended), so this
+// (`billing.tenant_wallet.free_trial_ends_at`, NULL = open-ended), so this
 // static marketing page has no boundary to state and must not invent one. The
 // copy below says what is true for everyone — the trial is open — and the
 // tenant's own boundary is surfaced in the dashboard billing panel, which can

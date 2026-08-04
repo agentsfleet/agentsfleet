@@ -32,8 +32,6 @@ const cp = @import("control_plane_integration_test.zig");
 const RUNNER_A_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d5a01";
 const RUNNER_B_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d5b01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d5c01";
-const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d5d01";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d5e01";
 const LEASE_OLD_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d5f01";
 
 // Distinct token bodies for the same reason as the ids — a shared body is a
@@ -70,7 +68,7 @@ fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
 /// still `active`. See the module note for why the append is load-bearing.
 fn seedStrandedLease(h: *TestHarness, conn: *pg.Conn, fencing_token: i64) !void {
     try cp.publishFreshEvent(h, FLEET_ID);
-    try cp.seedAffinity(conn, AFFINITY_ID, FLEET_ID, RUNNER_A_ID, fencing_token, 0);
+    try cp.seedAffinity(conn, FLEET_ID, RUNNER_A_ID, fencing_token, 0);
     try cp.seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, FLEET_ID, fencing_token);
 }
 
@@ -84,9 +82,9 @@ test "integration: runner control plane — report with a stale fencing token is
     try db_fixtures.seedTenant(conn);
     try db_fixtures.seedWorkspace(conn, cp.WORKSPACE_ID);
     try cp.seedRunner(conn, RUNNER_A_ID, "runner-policy-a", RUNNER_A_TOKEN);
-    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1", SESSION_ID);
+    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1");
     try cp.seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, FLEET_ID, 1);
-    try cp.seedAffinity(conn, AFFINITY_ID, FLEET_ID, RUNNER_A_ID, 2, clock.nowMillis() + 60_000);
+    try cp.seedAffinity(conn, FLEET_ID, RUNNER_A_ID, 2, clock.nowMillis() + 60_000);
 
     const resp = try cp.reportLease(h, RUNNER_A_TOKEN, LEASE_OLD_ID, 1);
     defer resp.deinit();
@@ -105,7 +103,7 @@ test "integration: runner control plane — an expired lease is reclaimed and re
     try db_fixtures.seedWorkspace(conn, cp.WORKSPACE_ID);
     try cp.seedRunner(conn, RUNNER_A_ID, "runner-policy-a", RUNNER_A_TOKEN);
     try cp.seedRunner(conn, RUNNER_B_ID, "runner-policy-b", RUNNER_B_TOKEN);
-    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1", SESSION_ID);
+    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1");
     try seedStrandedLease(h, conn, 1);
 
     const lv = try cp.leaseAs(h, RUNNER_B_TOKEN);
@@ -133,7 +131,7 @@ test "integration: runner control plane — a fresh lease carries the resolved p
     try db_fixtures.seedPlatformProviderWithKey(cp.ALLOC, conn, cp.WORKSPACE_ID, KNOWN_KEY);
     try cp.fundLargeBalance(conn);
     try cp.seedRunner(conn, RUNNER_A_ID, "runner-policy-a", RUNNER_A_TOKEN);
-    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1", SESSION_ID);
+    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1");
     try cp.publishFreshEvent(h, FLEET_ID);
     try cp.expectLeasePolicyKey(h, RUNNER_A_TOKEN, KNOWN_KEY);
 }
@@ -152,7 +150,7 @@ test "integration: runner control plane — a reclaimed lease re-resolves and ca
     try cp.fundLargeBalance(conn);
     try cp.seedRunner(conn, RUNNER_A_ID, "runner-policy-a", RUNNER_A_TOKEN);
     try cp.seedRunner(conn, RUNNER_B_ID, "runner-policy-b", RUNNER_B_TOKEN);
-    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1", SESSION_ID);
+    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1");
     try seedStrandedLease(h, conn, 1);
     try cp.expectLeasePolicyKey(h, RUNNER_B_TOKEN, KNOWN_KEY);
 }
@@ -175,7 +173,7 @@ test "integration: runner control plane — a fresh lease overlays the resolved 
     );
     try cp.fundLargeBalance(conn);
     try cp.seedRunner(conn, RUNNER_A_ID, "runner-policy-a", RUNNER_A_TOKEN);
-    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1", SESSION_ID);
+    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1");
     try cp.publishFreshEvent(h, FLEET_ID);
     try cp.expectLeasePolicyContext(h, RUNNER_A_TOKEN, OVERLAY_CAP_TOKENS, 30, OVERLAY_MODEL);
 }
@@ -192,7 +190,7 @@ test "integration: runner control plane — a fresh lease carries the installed 
     try db_fixtures.seedPlatformProviderWithKey(cp.ALLOC, conn, cp.WORKSPACE_ID, "fw_instr_fresh_key");
     try cp.fundLargeBalance(conn);
     try cp.seedRunner(conn, RUNNER_A_ID, "runner-policy-a", RUNNER_A_TOKEN);
-    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1", SESSION_ID);
+    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1");
     try cp.publishFreshEvent(h, FLEET_ID);
     try cp.expectLeaseInstructions(h, RUNNER_A_TOKEN, INSTRUCTIONS_SUBSTR);
 }
@@ -210,7 +208,7 @@ test "integration: runner control plane — a reclaimed lease keeps the installe
     try cp.fundLargeBalance(conn);
     try cp.seedRunner(conn, RUNNER_A_ID, "runner-policy-a", RUNNER_A_TOKEN);
     try cp.seedRunner(conn, RUNNER_B_ID, "runner-policy-b", RUNNER_B_TOKEN);
-    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1", SESSION_ID);
+    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1");
     try seedStrandedLease(h, conn, 1);
     try cp.expectLeaseInstructions(h, RUNNER_B_TOKEN, INSTRUCTIONS_SUBSTR);
 }
@@ -226,7 +224,7 @@ test "integration: runner control plane — sticky routing is a hint, not owners
     try db_fixtures.seedWorkspace(conn, cp.WORKSPACE_ID);
     try cp.seedRunner(conn, RUNNER_A_ID, "runner-policy-a", RUNNER_A_TOKEN);
     try cp.seedRunner(conn, RUNNER_B_ID, "runner-policy-b", RUNNER_B_TOKEN);
-    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1", SESSION_ID);
+    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1");
     try seedStrandedLease(h, conn, 1);
 
     const lv = try cp.leaseAs(h, RUNNER_B_TOKEN);
@@ -246,9 +244,9 @@ test "integration: runner control plane — release is token-guarded: a supersed
     try db_fixtures.seedTenant(conn);
     try db_fixtures.seedWorkspace(conn, cp.WORKSPACE_ID);
     try cp.seedRunner(conn, RUNNER_A_ID, "runner-policy-a", RUNNER_A_TOKEN);
-    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1", SESSION_ID);
+    try cp.seedActiveFleet(conn, FLEET_ID, "policy-fleet-1");
     const live_until = clock.nowMillis() + 60_000;
-    try cp.seedAffinity(conn, AFFINITY_ID, FLEET_ID, RUNNER_A_ID, 2, live_until);
+    try cp.seedAffinity(conn, FLEET_ID, RUNNER_A_ID, 2, live_until);
 
     try affinity.release(conn, FLEET_ID, 1);
     try std.testing.expectEqual(live_until, try cp.leasedUntilOf(conn, FLEET_ID));

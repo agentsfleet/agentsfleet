@@ -224,7 +224,7 @@ test "test_patch_schedule_serialization" {
     try testing.expect(patch.bodyContains("\"cron\":\"15 9 * * *\""));
 
     _ = try setup.conn.exec(
-        "UPDATE core.fleet_schedules SET sync_token = $1::uuid, sync_lease_until = $2 WHERE uid = $3::uuid",
+        "UPDATE core.fleet_schedules SET sync_token = $1::uuid, sync_lease_until = $2 WHERE id = $3::uuid",
         .{ "0195b4ba-8d3a-7f13-8abc-105000000599", common.clock.nowMillis() + 60000, sid },
     );
     var busy = try (try (try setup.h.request(.PATCH, path).bearer(scope_fixtures.TENANT_ADMIN)).json(PATCH_BODY)).send();

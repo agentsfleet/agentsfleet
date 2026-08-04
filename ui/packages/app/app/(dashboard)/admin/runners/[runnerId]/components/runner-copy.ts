@@ -40,14 +40,27 @@ export const LEASES_LINK_STALE =
   "This link asks for leases the server will not serve — its workspace filter or page cursor is no longer valid.";
 export const RESET_LEASE_VIEW_LABEL = "Show the newest leases instead";
 
-// The workspace filter's vocabulary, plus the URL search param it rides on.
-// The param name lives here — the one module the Server Component page and the
+// The lease filters' vocabulary, plus the URL search params they ride on. The
+// param names live here — the one module the Server Component page and the
 // client table both already read — so the reader and the writer can never
-// spell it apart.
+// spell them apart.
 export const WORKSPACE_FILTER_PARAM = "workspace";
+export const FLEET_FILTER_PARAM = "fleet";
 export const WORKSPACE_LABEL = "Workspace";
-export const FILTER_BY_WORKSPACE_LABEL = "Show only this workspace";
+export const FLEET_LABEL = "Fleet";
 export const CLEAR_WORKSPACE_FILTER_LABEL = "Clear workspace filter";
+export const CLEAR_FLEET_FILTER_LABEL = "Clear fleet filter";
+
+// The filter bar reads as one query the operator types, in the shape GitHub's
+// issue search uses: `workspace:<id> fleet:<name-or-id>`. Tokens the parser does
+// not recognise are dropped rather than guessed at, so a typo narrows nothing
+// instead of silently filtering to the wrong set.
+export const LEASE_FILTER_LABEL = "Filter leases";
+export const LEASE_FILTER_PLACEHOLDER = "workspace:<id> fleet:<name or id>";
+export const LEASE_FILTER_HINT =
+  "Filter by workspace:<id> and fleet:<name or id>. A fleet name matches exactly, ignoring case.";
+export const APPLY_LEASE_FILTER_LABEL = "Apply filter";
+export const CLEAR_LEASE_FILTER_LABEL = "Clear all filters";
 
 export const IDLE_SENTENCE = "Idle. No active leases.";
 export const NEVER_CONNECTED_SENTENCE = "Never connected.";

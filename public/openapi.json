@@ -552,7 +552,7 @@
         }
       }
     },
-    "/v1/admin/models/{uid}": {
+    "/v1/admin/models/{id}": {
       "patch": {
         "operationId": "update_admin_model",
         "summary": "Update a catalogue row's caps and rates",
@@ -562,7 +562,7 @@
         ],
         "parameters": [
           {
-            "name": "uid",
+            "name": "id",
             "in": "path",
             "required": true,
             "description": "UUIDv7 of the catalogue row.",
@@ -590,12 +590,12 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "uid",
+                    "id",
                     "updated",
                     "request_id"
                   ],
                   "properties": {
-                    "uid": {
+                    "id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -612,7 +612,7 @@
             }
           },
           "404": {
-            "description": "No catalogue model matches this uid (`UZ-PROVIDER-006`).",
+            "description": "No catalogue model matches this id (`UZ-PROVIDER-006`).",
             "$ref": "#/components/responses/Error"
           },
           "default": {
@@ -629,7 +629,7 @@
         ],
         "parameters": [
           {
-            "name": "uid",
+            "name": "id",
             "in": "path",
             "required": true,
             "description": "UUIDv7 of the catalogue row.",
@@ -644,7 +644,7 @@
             "description": "No Content"
           },
           "404": {
-            "description": "No catalogue model matches this uid (`UZ-PROVIDER-006`).",
+            "description": "No catalogue model matches this id (`UZ-PROVIDER-006`).",
             "$ref": "#/components/responses/Error"
           },
           "409": {
@@ -3405,10 +3405,14 @@
                             "type": "string"
                           },
                           "workspace_id": {
-                            "type": "string"
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Workspace the charge was incurred on. Null once that workspace is deleted: the charge outlives it so wallet totals stay reconcilable.\n"
                           },
                           "fleet_id": {
-                            "type": "string"
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Fleet the charge was incurred on. Null once that fleet is deleted, for the same reason as `workspace_id`.\n"
                           },
                           "event_id": {
                             "type": "string"
@@ -3450,102 +3454,6 @@
                             "nullable": true
                           },
                           "recorded_at": {
-                            "type": "integer",
-                            "format": "int64"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/tenants/me/billing/charges/{event_id}/telemetry": {
-      "get": {
-        "operationId": "get_tenant_metering_periods",
-        "summary": "List details for one charge",
-        "description": "Returns the detail records for one charge, oldest first. An unknown `event_id` returns an empty `items` list.\n",
-        "tags": [
-          "Billing"
-        ],
-        "parameters": [
-          {
-            "name": "event_id",
-            "in": "path",
-            "description": "Event identifier from a `get_tenant_billing_charges` response.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Charge details for the requested event.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "items"
-                  ],
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": [
-                          "slice_seq",
-                          "d_input_tokens",
-                          "d_cached_tokens",
-                          "d_output_tokens",
-                          "run_ms",
-                          "run_fee_nanos",
-                          "token_cost_nanos",
-                          "charged_nanos",
-                          "created_at"
-                        ],
-                        "properties": {
-                          "slice_seq": {
-                            "type": "integer",
-                            "format": "int64"
-                          },
-                          "d_input_tokens": {
-                            "type": "integer",
-                            "format": "int64"
-                          },
-                          "d_cached_tokens": {
-                            "type": "integer",
-                            "format": "int64"
-                          },
-                          "d_output_tokens": {
-                            "type": "integer",
-                            "format": "int64"
-                          },
-                          "run_ms": {
-                            "type": "integer",
-                            "format": "int64"
-                          },
-                          "run_fee_nanos": {
-                            "type": "integer",
-                            "format": "int64"
-                          },
-                          "token_cost_nanos": {
-                            "type": "integer",
-                            "format": "int64"
-                          },
-                          "charged_nanos": {
-                            "type": "integer",
-                            "format": "int64"
-                          },
-                          "created_at": {
                             "type": "integer",
                             "format": "int64"
                           }
@@ -4562,218 +4470,6 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/fleet-keys": {
-      "get": {
-        "operationId": "list_fleet_keys",
-        "summary": "List fleet keys in a workspace",
-        "description": "Returns fleet-key metadata only — never returns `key_hash`.",
-        "tags": [
-          "Fleet Keys"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "items",
-                    "total"
-                  ],
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/FleetKey"
-                      }
-                    },
-                    "total": {
-                      "type": "integer",
-                      "description": "Count of items in this response (not total across pages)."
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "post": {
-        "operationId": "create_fleet_key",
-        "summary": "Issue a Fleet key for a Fleet",
-        "description": "Creates a fleet key with the `agt_a` prefix. The raw key is returned once. Only its SHA-256 hash is saved.",
-        "tags": [
-          "Fleet Keys"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "fleet_id",
-                  "name"
-                ],
-                "properties": {
-                  "fleet_id": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
-                  "name": {
-                    "type": "string",
-                    "maxLength": 64
-                  },
-                  "description": {
-                    "type": "string",
-                    "maxLength": 256
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "fleet_key_id",
-                    "key"
-                  ],
-                  "properties": {
-                    "fleet_key_id": {
-                      "type": "string"
-                    },
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "fleet_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string",
-                      "description": "Raw `agt_a` API key. Shown once — store securely."
-                    },
-                    "created_at": {
-                      "type": "integer",
-                      "format": "int64"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/fleet-keys/{fleet_key_id}": {
-      "delete": {
-        "operationId": "delete_fleet_key",
-        "summary": "Revoke a Fleet key",
-        "description": "Revokes the Fleet key immediately. Subsequent requests with the key receive 401.",
-        "tags": [
-          "Fleet Keys"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "fleet_key_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/workspaces/{workspace_id}/fleets": {
       "get": {
         "operationId": "list_fleets",
@@ -5757,160 +5453,12 @@
             "schema": {
               "type": "string"
             },
-            "description": "Grant ID (UUIDv7) returned by integration-requests."
+            "description": "Grant ID (UUIDv7). Grants are seeded when a fleet is installed, from the credentials its bundle declares."
           }
         ],
         "responses": {
           "204": {
             "description": "No Content"
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-requests": {
-      "post": {
-        "operationId": "request_integration_grant",
-        "summary": "Request a new integration grant",
-        "description": "Called by a fleet (or on its behalf) to request permission to use a third-party integration (e.g. Slack, Gmail). Creates a pending grant that a human approves via the grant-approval webhook.",
-        "tags": [
-          "Integration Grants"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "fleet_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the fleet.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "service",
-                  "reason"
-                ],
-                "properties": {
-                  "service": {
-                    "type": "string",
-                    "enum": [
-                      "slack",
-                      "gmail",
-                      "agentmail",
-                      "discord",
-                      "grafana"
-                    ]
-                  },
-                  "reason": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Existing grant returned (idempotent — a pending or approved grant for this service already existed).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "grant_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "pending",
-                        "approved"
-                      ]
-                    },
-                    "fleet_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "service": {
-                      "type": "string"
-                    },
-                    "requested_at": {
-                      "type": "integer",
-                      "format": "int64"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "grant_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "pending"
-                      ]
-                    },
-                    "fleet_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "service": {
-                      "type": "string"
-                    },
-                    "requested_at": {
-                      "type": "integer",
-                      "format": "int64"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
           },
           "400": {
             "$ref": "#/components/responses/Error"
@@ -6114,6 +5662,70 @@
                       "nullable": true
                     }
                   }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}": {
+      "get": {
+        "operationId": "get_fleet_event",
+        "summary": "Read one fleet event",
+        "description": "Returns a single event with its request body and the agent's full answer.\n\nThe list read beside this one omits both bodies: it returns up to two\nhundred rows and would carry every payload to render a table. Read the\nbody here, for the one event you are expanding.\n\nAn event that does not exist and an event belonging to another workspace\nboth answer 404. The two are deliberately indistinguishable. The read is\nscoped inside its own query, so no caller can probe for events outside\nits own workspace.\n",
+        "tags": [
+          "Fleets"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "description": "The event identifier as it appears in the list response.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetEventDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such event, or an event belonging to another workspace. The two\nanswer alike — same status, same error code — so the route cannot be\nused to probe for events outside the caller's own workspace.\n",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -6520,7 +6132,7 @@
       "get": {
         "operationId": "list_workspace_approvals",
         "summary": "List pending approval gates for a workspace",
-        "description": "Returns approval gates oldest-first (oldest is most urgent). Each row\nsurfaces the fleet's proposed action, gathered evidence, blast-radius\nassessment, and timeout countdown. Filter by fleet, gate kind, or\nstatus. Cursor pagination over (requested_at, id) so concurrent\ninserts don't cause silent skips.\n",
+        "description": "Returns approval gates oldest-first (oldest is most urgent). Each row\nsurfaces the fleet's proposed action, gathered evidence, blast-radius\nassessment, and timeout countdown. Filter by fleet, gate kind, or\nstatus. Cursor pagination over (created_at, id) so concurrent\ninserts don't cause silent skips.\n",
         "tags": [
           "Approvals"
         ],
@@ -7108,7 +6720,7 @@
             "name": "starting_after",
             "in": "query",
             "required": false,
-            "description": "A lease id this runner holds; the page starts strictly after it. A lease id the runner does not hold is refused. So is one outside the `workspace_id` filter when that filter is set. The cursor names a position in the filtered stream, so it must belong to it. A cursor whose lease the retention sweep has since deleted is refused for the same reason — start again from the first page.",
+            "description": "A lease id this runner holds; the page starts strictly after it. A lease id the runner does not hold is refused. So is one outside the `workspace_id` or `fleet` filters when those filters are set. The cursor names a position in the filtered stream, so it must belong to it. A cursor whose lease the retention sweep has since deleted is refused for the same reason — start again from the first page.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -7122,6 +6734,17 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet",
+            "in": "query",
+            "required": false,
+            "description": "Narrow the page and total to leases run for one fleet, named by its id or its exact name (case-insensitive). Combines with `workspace_id`; the two filters intersect. An empty or over-long value is refused; a value no fleet matches returns nothing.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
             }
           },
           {
@@ -7160,7 +6783,7 @@
                       "type": "integer",
                       "format": "int64",
                       "nullable": true,
-                      "description": "The filtered history's retained lease count; stable across pages. Narrowed by `workspace_id` when set. Counts only leases still inside the retention window, not the runner's lifetime total. `GET /v1/fleets/runners/{id}` reports that."
+                      "description": "The filtered history's retained lease count; stable across pages. Narrowed by `workspace_id` and `fleet` when set. Counts only leases still inside the retention window, not the runner's lifetime total. `GET /v1/fleets/runners/{id}` reports that."
                     },
                     "next_cursor": {
                       "type": "string",
@@ -7633,12 +7256,12 @@
           {
             "type": "object",
             "required": [
-              "uid",
+              "id",
               "provider",
               "model_id"
             ],
             "properties": {
-              "uid": {
+              "id": {
                 "type": "string",
                 "format": "uuid",
                 "description": "UUIDv7 row key. Used in the URL because `model_id` may contain `/`."
@@ -8095,40 +7718,6 @@
             "description": "Null until the key is used successfully for API-key authentication."
           },
           "revoked_at": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
-          }
-        }
-      },
-      "FleetKey": {
-        "type": "object",
-        "required": [
-          "fleet_key_id",
-          "fleet_id",
-          "name",
-          "created_at"
-        ],
-        "properties": {
-          "fleet_key_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "fleet_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "last_used_at": {
             "type": "integer",
             "format": "int64",
             "nullable": true
@@ -8629,13 +8218,13 @@
       "IntegrationGrant": {
         "type": "object",
         "required": [
-          "grant_id",
+          "id",
           "service",
           "status",
-          "requested_at"
+          "created_at"
         ],
         "properties": {
-          "grant_id": {
+          "id": {
             "type": "string",
             "format": "uuid"
           },
@@ -8657,7 +8246,7 @@
               "revoked"
             ]
           },
-          "requested_at": {
+          "created_at": {
             "type": "integer",
             "format": "int64"
           },
@@ -8678,7 +8267,7 @@
       },
       "FleetEvent": {
         "type": "object",
-        "description": "One fleet event in newest-first history order.",
+        "description": "One fleet event in newest-first history order. Carries no request or\nresponse body: a page is up to 200 rows, and the list read is kept off\noversized-attribute storage entirely. Read a body from the single-event\nroute.\n",
         "required": [
           "fleet_id",
           "event_id",
@@ -8686,8 +8275,6 @@
           "actor",
           "event_type",
           "status",
-          "request_json",
-          "response_text",
           "tokens",
           "wall_ms",
           "failure_label",
@@ -8715,14 +8302,6 @@
           },
           "status": {
             "type": "string"
-          },
-          "request_json": {
-            "type": "string",
-            "description": "The event request body serialized as JSON text."
-          },
-          "response_text": {
-            "type": "string",
-            "nullable": true
           },
           "created_at": {
             "type": "integer",
@@ -8762,6 +8341,32 @@
           }
         }
       },
+      "FleetEventDetail": {
+        "description": "One fleet event with everything recorded about it. This is the list\nitem plus the two bodies the list omits. Expanding a row costs one\nrequest and changes nothing else about how that row reads.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FleetEvent"
+          },
+          {
+            "type": "object",
+            "required": [
+              "request_json",
+              "response_text"
+            ],
+            "properties": {
+              "request_json": {
+                "type": "string",
+                "description": "The event request body serialized as JSON text."
+              },
+              "response_text": {
+                "type": "string",
+                "nullable": true,
+                "description": "The agent's full answer. Null while a run is in flight, and on a run that failed before producing one."
+              }
+            }
+          }
+        ]
+      },
       "ApprovalGate": {
         "type": "object",
         "required": [
@@ -8770,7 +8375,7 @@
           "workspace_id",
           "action_id",
           "status",
-          "requested_at",
+          "created_at",
           "timeout_at"
         ],
         "properties": {
@@ -8829,7 +8434,7 @@
             "type": "string",
             "description": "Optional reason text supplied by the resolver."
           },
-          "requested_at": {
+          "created_at": {
             "type": "integer",
             "format": "int64",
             "description": "ms epoch"

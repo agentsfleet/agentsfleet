@@ -81,7 +81,7 @@ pub fn innerGetApproval(
         .blast_radius = row.blast_radius,
         .status = row.status,
         .detail = row.detail,
-        .requested_at = row.requested_at,
+        .created_at = row.created_at,
         .timeout_at = row.timeout_at,
         .updated_at = row.updated_at,
         .resolved_by = row.resolved_by,

@@ -13,6 +13,11 @@ const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
 
+/// The event envelope's creation instant. Fixed rather than `nowMillis()`:
+/// every ledger row for one event must carry the SAME value (schema/710),
+/// which a per-call clock read cannot guarantee.
+const EVENT_CREATED_AT: i64 = 1_760_000_000_000;
+
 const ALLOC = std.testing.allocator;
 
 // Per-suite tenant (fa09 block, matching the aa09 workspace segment): keeps
@@ -22,9 +27,15 @@ const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-fa0900000000";
 const WS_PROVISION_REPLAY = "0195b4ba-8d3a-7f13-8abc-aa0900000001";
 const WS_ZERO_DEBIT = "0195b4ba-8d3a-7f13-8abc-aa0900000002";
 
+// §3 put the ledger's `fleet_id` behind `UUID REFERENCES core.fleets(id)`, so
+// the debit path needs a fleet that exists — a descriptive string is refused by
+// the driver, and a well-formed UUID naming no row is refused by the key.
+const FLEET_IDEMPOTENT = "0195b4ba-8d3a-7f13-8abc-aa0900000f01";
+
 fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {
     try base.seedTenantById(conn, TENANT_ID, "metering-idempotent-suite");
     try base.seedWorkspaceWithTenant(conn, workspace_id, TENANT_ID);
+    try base.seedFleet(conn, FLEET_IDEMPOTENT, workspace_id, "metering idempotent fixture", "{}", "");
 }
 
 fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
@@ -35,7 +46,7 @@ fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
 fn selfManagedCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightContext {
     return .{
         .workspace_id = workspace_id,
-        .fleet_id = "fleet-idem-test",
+        .fleet_id = FLEET_IDEMPOTENT,
         .event_id = event_id,
         .posture = .self_managed,
         .provider = "self-managed-test",
@@ -75,7 +86,7 @@ test "should commit a telemetry row with zero deducted nanos and leave balance u
 
     try seed(db_ctx.conn, WS_ZERO_DEBIT);
     defer teardown(db_ctx.conn, WS_ZERO_DEBIT);
-    defer _ = db_ctx.conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{WS_ZERO_DEBIT}) catch {};
+    defer _ = db_ctx.conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1", .{WS_ZERO_DEBIT}) catch {};
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
     const before = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
@@ -90,6 +101,7 @@ test "should commit a telemetry row with zero deducted nanos and leave balance u
         ALLOC,
         TENANT_ID,
         selfManagedCtx(WS_ZERO_DEBIT, event_id),
+        EVENT_CREATED_AT,
         .stop,
     );
     switch (result) {
@@ -105,7 +117,7 @@ test "should commit a telemetry row with zero deducted nanos and leave balance u
     // Telemetry row present with credit_deducted_nanos = 0.
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT charge_type, credit_deducted_nanos
-        \\FROM core.fleet_execution_telemetry WHERE event_id = $1
+        \\FROM billing.usage_ledger WHERE event_id = $1
     , .{event_id}));
     defer q.deinit();
     const r = (try q.next()) orelse return error.RowNotFound;

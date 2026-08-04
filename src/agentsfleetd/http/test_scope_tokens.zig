@@ -5,11 +5,11 @@
 //! Personas (scope sets):
 //!   VIEWER          fleet:read schedule:read
 //!   OPERATOR        fleet:write schedule:write secret:read
-//!   TENANT_ADMIN    fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write
-//!   PATCH_CONCURRENT_ADMIN fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write
-//!   WORKSPACE_RECONCILIATION_ADMIN fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write
+//!   TENANT_ADMIN    fleet:admin schedule:write secret:write apikey:admin grant:write connector:write billing:read approval:resolve workspace:admin library:write
+//!   PATCH_CONCURRENT_ADMIN fleet:admin schedule:write secret:write apikey:admin grant:write connector:write billing:read approval:resolve workspace:admin library:write
+//!   WORKSPACE_RECONCILIATION_ADMIN fleet:admin schedule:write secret:write apikey:admin grant:write connector:write billing:read approval:resolve workspace:admin library:write
 //!   PLATFORM_ADMIN  runner:enroll runner:read runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any
-//!   NO_TENANT       fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write
+//!   NO_TENANT       fleet:admin schedule:write secret:write apikey:admin grant:write connector:write billing:read approval:resolve workspace:admin library:write
 //!
 //! Regenerate with: node scripts/mint-scope-personas.mjs --apply
 

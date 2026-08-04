@@ -48,7 +48,6 @@ const SCOPE_INCLUDES: Readonly<Record<string, readonly string[]>> = {
   "secret:write": ["secret:read"],
   "apikey:admin": ["apikey:write", "apikey:read"],
   "apikey:write": ["apikey:read"],
-  "fleetkey:write": ["fleetkey:read"],
   "grant:write": ["grant:read"],
   "connector:write": ["connector:read"],
   "model:admin": ["model:read"],
