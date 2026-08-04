@@ -11,12 +11,12 @@
 -- platform-managed and $0.0001 under self-managed. No plan tiers. The rate
 -- constants live in state/tenant_billing.zig.
 --
--- PRIVILEGE: the grants below land on `billing_runtime`, not on
--- `api_runtime`. Every Hypertext Transfer Protocol handler runs as the latter,
--- so moving a balance requires deliberately assuming the former for the span of
--- one transaction. Before this rebuild `api_runtime` held SELECT, INSERT, UPDATE
--- and DELETE here directly, which meant any handler — and any bug inside one —
--- could move any tenant's money.
+-- PRIVILEGE: `api_runtime`, the role every Hypertext Transfer Protocol handler
+-- runs as, holds the grants directly, so nothing at the database layer stops a
+-- malformed query from moving a balance. Narrowing that to a `billing_runtime`
+-- role assumed for the span of one transaction is deferred to its own milestone,
+-- because the revoke and the elevation that hands access back are two halves of
+-- one change.
 --
 -- Keyed by its parent, per the pattern stated in
 -- `schema/430_tenant_model_selection.sql`: at most one wallet exists per tenant,
@@ -57,10 +57,15 @@ CREATE TABLE IF NOT EXISTS billing.tenant_wallet (
 -- so it was a btree maintained on every debit — the hottest write in the money
 -- path — to serve no query.
 
--- billing_runtime owns the table. api_runtime is a member (schema/110) and must
--- assume this role to reach it; it holds nothing here directly. DELETE is for
--- account erasure, which elevates for the same reason.
-GRANT SELECT, INSERT, UPDATE, DELETE ON billing.tenant_wallet TO billing_runtime;
+-- api_runtime reads and writes the wallet directly: the starter grant at signup
+-- (`state/signup_bootstrap.zig`), every metered debit, and the balance read.
+-- DELETE is for account erasure.
+--
+-- Moving these onto a `billing_runtime` role api_runtime must assume is
+-- deliberately not here — see the note in schema/300. The revoke without the
+-- matching elevation refuses every signup, because the starter grant is written
+-- inside the tenant-create transaction.
+GRANT SELECT, INSERT, UPDATE, DELETE ON billing.tenant_wallet TO api_runtime;
 
 -- Read-only operator principals never see a balance. Stated explicitly rather
 -- than relied upon: these roles hold no grant here, and saying so makes

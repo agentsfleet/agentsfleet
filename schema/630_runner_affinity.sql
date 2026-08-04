@@ -73,10 +73,3 @@ CREATE INDEX IF NOT EXISTS idx_runner_affinity_last_runner_id_leased_until
 -- api_runtime: the serve tier claims the slot (upsert) and reads fencing_seq at
 -- lease, then releases and reads it at report.
 GRANT SELECT, INSERT, UPDATE ON fleet.runner_affinity TO api_runtime;
-
--- metering_runtime: the fenced statement locks this slot `FOR UPDATE` to
--- serialise a racing reclaim, and advances the metering cursor on it in the same
--- statement that debits the wallet (schema/120). That cursor advance is what
--- makes a replayed renewal charge nothing, so it cannot be split out. No INSERT:
--- the slot is created by the claim upsert, which does not elevate.
-GRANT SELECT, UPDATE ON fleet.runner_affinity TO metering_runtime;

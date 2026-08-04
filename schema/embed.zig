@@ -25,7 +25,6 @@ pub const migrations = [_]MigrationEntry{
     // ── 1xx substrate — runs before any table exists ────────────────────────
     .{ .version = 100, .sql = @embedFile("100_schemas.sql") },
     .{ .version = 110, .sql = @embedFile("110_roles_and_privileges.sql") },
-    .{ .version = 120, .sql = @embedFile("120_metering_role.sql") },
 
     // ── 2xx identity — the tenant root and everything that authenticates ────
     .{ .version = 200, .sql = @embedFile("200_tenants.sql") },

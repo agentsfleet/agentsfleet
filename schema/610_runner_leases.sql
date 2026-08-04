@@ -87,9 +87,3 @@ CREATE TABLE IF NOT EXISTS fleet.runner_leases (
 -- older than the retention window — the one retention policy that exists, kept
 -- exactly as M149 shipped it.
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.runner_leases TO api_runtime;
-
--- metering_runtime: the fenced settle/renewal statement locks this row
--- `FOR UPDATE` and flips its status in the same statement that moves the wallet
--- (schema/120). No INSERT — a lease is born at issue, unelevated — and no
--- DELETE, which belongs to the retention sweeper alone.
-GRANT SELECT, UPDATE ON fleet.runner_leases TO metering_runtime;

@@ -81,19 +81,14 @@ CREATE TABLE IF NOT EXISTS billing.usage_ledger (
 
 -- Indexes live in schema/720_usage_ledger_indexes.sql.
 
--- billing_runtime owns the table. api_runtime is a member (schema/110) and must
--- assume this role to reach it. No DELETE: a ledger row leaves only with the
--- tenant that paid, through the cascade above. Nothing else in the system can
--- erase a charge — not a fleet delete, not a workspace delete, not a handler.
-GRANT SELECT, INSERT, UPDATE ON billing.usage_ledger TO billing_runtime;
-
--- api_runtime reads the ledger WITHOUT elevating, deliberately: the privilege
--- split fences money that MOVES, and a charge history does not move. Four readers need it —
--- the charges list, the events-list cost join (`state/fleet_events_store.zig`),
--- the per-fleet outcome reads and the fleet delete path — none of which writes.
--- Omitting it answers all four with insufficient_privilege. SELECT only: every
--- write to this table runs under metering_runtime.
-GRANT SELECT ON billing.usage_ledger TO api_runtime;
+-- No DELETE: a ledger row leaves only with the tenant that paid, through the
+-- cascade above. Nothing else in the system can erase a charge — not a fleet
+-- delete, not a workspace delete, not a handler.
+--
+-- Four readers need SELECT — the charges list, the events-list cost join
+-- (`state/fleet_events_store.zig`), the per-fleet outcome reads and the fleet
+-- delete path. The metered writes come from the same runtime role.
+GRANT SELECT, INSERT, UPDATE ON billing.usage_ledger TO api_runtime;
 
 -- Read-only operator principals see no money rows, stated explicitly so
 -- re-widening them is a visible edit to this line.
