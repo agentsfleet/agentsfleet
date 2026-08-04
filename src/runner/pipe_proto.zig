@@ -48,6 +48,14 @@ pub const FrameType = enum(u8) {
     /// parent→child: the mint reply (`PipeResponse`) — a short-lived token or a
     /// typed rejection. Secret (VLT): never logged, only framed back to the child.
     credential_response = 'T',
+    /// child→parent: an on-demand repository-fetch ask (M157 §4). Same shape as
+    /// the mint ask and for the same reason — the child names WHAT it wants, the
+    /// daemon decides whether it may have it and where it lands.
+    repo_fetch_request = 'F',
+    /// parent→child: the fetch reply — a workspace-relative path to a ready
+    /// working tree, or a refusal reason. Carries no credential, ever: the token
+    /// authenticated the fetch daemon-side and never crosses this boundary.
+    repo_fetch_response = 'D',
 };
 
 const HEADER_LEN = 1 + 4; // type byte + u32 big-endian length
@@ -238,7 +246,13 @@ test "writeFrame/readFrame round-trip a memory frame" {
 }
 
 test "writeFrame/readFrame round-trip the §3 lease + credential frame types" {
-    inline for (.{ FrameType.lease, FrameType.credential_request, FrameType.credential_response }) |ft| {
+    inline for (.{
+        FrameType.lease,
+        FrameType.credential_request,
+        FrameType.credential_response,
+        FrameType.repo_fetch_request,
+        FrameType.repo_fetch_response,
+    }) |ft| {
         const fds = try testOsPipe();
         defer testOsClose(fds[0]);
         try writeFrame(fds[1], ft, "{\"integration\":\"github\"}");

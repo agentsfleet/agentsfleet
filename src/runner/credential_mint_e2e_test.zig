@@ -184,7 +184,7 @@ test "test_child_requests_token_via_runner" {
     const sink = child_supervisor.ActivitySink{ .ctx = &dummy, .forward = discardActivity };
     const mem_sink = child_supervisor.MemorySink{ .ctx = &dummy, .forward = discardMemory };
     const dl = common.clock.nowMillis() + 5_000;
-    const outcome = try child_supervisor.readResult(ALLOC, out[0], resp[1], dl, sink, mem_sink, null, forwarder.hook());
+    const outcome = try child_supervisor.readResult(ALLOC, out[0], resp[1], dl, sink, mem_sink, null, forwarder.hook(), null);
     defer ALLOC.free(outcome.bytes);
     responder.join();
 
@@ -215,7 +215,7 @@ const Parent = struct {
         const sink = child_supervisor.ActivitySink{ .ctx = &dummy, .forward = discardActivity };
         const mem_sink = child_supervisor.MemorySink{ .ctx = &dummy, .forward = discardMemory };
         const dl = common.clock.nowMillis() + 5_000;
-        const outcome = child_supervisor.readResult(ALLOC, reader_fd, writer_fd, dl, sink, mem_sink, null, fwd.hook()) catch return;
+        const outcome = child_supervisor.readResult(ALLOC, reader_fd, writer_fd, dl, sink, mem_sink, null, fwd.hook(), null) catch return;
         ALLOC.free(outcome.bytes); // result-frame payload (owned); empty + safe on EOF/terminate
     }
 };

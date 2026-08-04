@@ -20,6 +20,8 @@ const client_mod = @import("control_plane_client.zig");
 const client_errors = @import("../engine/client_errors.zig");
 const child_supervisor = @import("../child_supervisor.zig");
 const bundle_extract = @import("../bundle_extract.zig");
+const repo_fetch = @import("../repo_fetch.zig");
+const repo_fetch_exec = @import("../repo_fetch_exec.zig");
 const forwarders = @import("forwarders.zig");
 const renew_driver = @import("renew_driver.zig");
 const RenewDriver = renew_driver.RenewDriver(*client_mod);
@@ -34,6 +36,7 @@ const report_mapping = contract.report_mapping;
 const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
+const ERR_EXEC_RUNNER_FLEET_RUN = client_errors.ERR_EXEC_RUNNER_FLEET_RUN;
 
 // Cause line for a pre-fork bundle-materialization failure. Static — the
 // report request borrows it for the POST; nothing frees it.
@@ -80,6 +83,97 @@ const MintForwarder = struct {
     }
 };
 
+/// Services the sandboxed child's on-demand repository fetches (M157 §4). This
+/// is where the two rings meet: the fleet's declared binding decides whether the
+/// ask is allowed at all, and the SAME binding the GitHub mint scopes its token
+/// by decides which repository the fetch dials.
+///
+/// The order is load-bearing. `repo_fetch.decide` is pure and runs FIRST, so an
+/// out-of-binding ask is refused before a token is minted and before any network
+/// call — which is what makes Dimension 4.6a a unit test rather than an
+/// observation. It also carries the BINDING's spelling forward, so the remote
+/// URL, the workspace path, and the log cannot be steered by how the model
+/// capitalized its ask.
+///
+/// Like `MintForwarder`, the child names no workspace: it arrives here as
+/// `workspace_path`, which the daemon derived from `lease_id` (Invariant 2). And
+/// unlike the mint channel, no credential travels back — the token authenticates
+/// the fetch on this side and stops here (Invariant 9).
+const FetchForwarder = struct {
+    io: std.Io,
+    cp: *client_mod,
+    runner_token: []const u8,
+    lease_id: []const u8,
+    /// Daemon-derived; the fetch lands in `{workspace_path}/repo`.
+    workspace_path: []const u8,
+    /// The fleet's declared repository egress binding, carried on the lease's
+    /// `ExecutionPolicy`. Absent → every fetch is refused, exactly as an absent
+    /// binding already means no mintable token.
+    binding: ?contract.execution_policy.RepositoryBinding,
+    /// Absolute epoch-ms end of the lease. The fetch's own budget is clamped to
+    /// it, so a fetch can never outlive the run that asked for it.
+    lease_expires_at: i64,
+    mint_deadline_ms: u31,
+
+    fn onFetch(
+        ctx: *anyopaque,
+        alloc: std.mem.Allocator,
+        repository: []const u8,
+        commit: []const u8,
+        head: []const u8,
+    ) child_supervisor.FetchOutcome {
+        const self: *FetchForwarder = @ptrCast(@alignCast(ctx));
+        const approved = switch (repo_fetch.decide(self.binding, .{
+            .repository = repository,
+            .commit = commit,
+            .head = head,
+        })) {
+            .approved => |a| a,
+            .refused => |r| {
+                log.warn("repo_fetch_refused", .{
+                    .error_code = ERR_EXEC_RUNNER_FLEET_RUN,
+                    .lease_id = self.lease_id,
+                    .repository = repository,
+                    .refusal = @tagName(r),
+                });
+                return .{ .refused = r.reason() };
+            },
+        };
+
+        // Only now — after the ask cleared the local ring — is a token minted.
+        // A refused ask therefore costs no credential and no vendor call.
+        const token = switch (self.cp.mint(alloc, self.runner_token, self.lease_id, constants.PROVIDER_GITHUB, null, self.mint_deadline_ms)) {
+            .minted => |m| m.token,
+            .rejected => {
+                log.warn("repo_fetch_mint_rejected", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN, .lease_id = self.lease_id });
+                return .{ .refused = REASON_MINT_REJECTED };
+            },
+        };
+        defer alloc.free(token);
+
+        var url_buf: [repo_fetch.MAX_REMOTE_URL_LEN]u8 = undefined;
+        const outcome = repo_fetch_exec.fetch(self.io, alloc, .{
+            .workspace_path = self.workspace_path,
+            .approved = approved,
+            .remote_url = repo_fetch.remoteUrl(&url_buf, approved),
+            .token = token,
+            .deadline_ms = @min(clock.nowMillis() + repo_fetch_exec.WALL_BUDGET_MS, self.lease_expires_at),
+        });
+        return switch (outcome) {
+            .ready => .{ .ready = repo_fetch_exec.TARGET_DIR_NAME },
+            .failed => |f| .{ .refused = f.reason() },
+        };
+    }
+
+    fn hook(self: *FetchForwarder) child_supervisor.FetchHook {
+        return .{ .ctx = self, .onFetch = onFetch };
+    }
+};
+
+/// The one refusal this forwarder raises itself (RULE UFS); every other reason
+/// comes from `repo_fetch.Refusal` or `repo_fetch_exec.Failure`.
+const REASON_MINT_REJECTED = "no github credential could be minted for this fleet";
+
 /// Execute one leased event in a sandboxed child and report the result to the
 /// control plane, forwarding live-tail activity frames as the child streams them.
 pub fn executeAndReport(
@@ -117,6 +211,16 @@ pub fn executeAndReport(
     var driver = RenewDriver.init(alloc, cp, runner_token, payload, cfg.cp_deadlines.renew_ms);
     var fanout = TickFanout{ .forwarder = &forwarder, .driver = &driver };
     var minter = MintForwarder{ .cp = cp, .runner_token = runner_token, .lease_id = payload.lease_id, .deadline_ms = cfg.cp_deadlines.default_ms };
+    var fetcher = FetchForwarder{
+        .io = io,
+        .cp = cp,
+        .runner_token = runner_token,
+        .lease_id = payload.lease_id,
+        .workspace_path = workspace_path,
+        .binding = payload.policy.repository_binding,
+        .lease_expires_at = payload.lease_expires_at,
+        .mint_deadline_ms = cfg.cp_deadlines.default_ms,
+    };
 
     // Hydrate the fleet's prior memory over the trusted plane BEFORE the fork so
     // the child seeds its in-run store from it — the child makes no network call
@@ -140,7 +244,7 @@ pub fn executeAndReport(
     const mem_sink = child_supervisor.MemorySink{ .ctx = &mem_forwarder, .forward = forwarders.MemoryForwarder.forward };
 
     const start_ms = clock.nowMillis();
-    const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, hydrated_memory, sink, mem_sink, fanout.hook(), minter.hook());
+    const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, hydrated_memory, sink, mem_sink, fanout.hook(), minter.hook(), fetcher.hook());
     const wall_ms: u64 = @intCast(@max(0, clock.nowMillis() - start_ms));
     defer if (result.content.len > 0) alloc.free(result.content);
     defer {
