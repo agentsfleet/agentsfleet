@@ -72,7 +72,10 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/agentsfleetd/auth/middleware/tenant_api_key.zig` | EDIT | Construct the `agt_t` principal from the machine grant instead of `.tenant` |
 | `src/agentsfleetd/auth/scopes_test.zig` | EDIT | The two grants differ in exactly one member; the human claim is unchanged |
 | `src/agentsfleetd/http/handlers/approvals/inbox_integration_test.zig` | EDIT | A tenant API key is refused at the resolve route; a user principal is not. Extends the existing suite rather than a new file — it already owns the gate seeding, and the probe needs the api-key middleware wired into the same harness |
-| `src/agentsfleetd/fleet/approval_gate.zig` | EDIT | Thread `gate_kind` / `proposed_action` / `evidence` / `blast_radius` into `ActionDetail` from the triggering event |
+| `src/agentsfleetd/fleet/approval_gate.zig` | EDIT | Thread `gate_kind` / `proposed_action` / `evidence` / `blast_radius` into `ActionDetail` from the triggering event; read the recorded gate ref BEFORE any policy read, so a mid-flight `config_json` PATCH cannot withdraw a question already put to a human |
+| `src/agentsfleetd/fleet/approval_gate_route.zig` | CREATE | The lookup-vs-policy ORDER as a pure function, so the property is pinned by unit tests rather than by a live Redis and Postgres (RULE FLL split) |
+| `src/agentsfleetd/fleet/approval_gate_prose.zig` | CREATE | Making model-authored prose card-safe: C0 controls, DEL, and bidirectional overrides, which otherwise let a claim counterfeit the daemon-derived rows (RULE FLL split) |
+| `src/agentsfleetd/http/handlers/fleets/messages.zig` | EDIT | Attribute the steer actor by credential MODE, not by presence of `user_id` — an `agt_t` key carries its creator's id, so machine wakes were recorded as that human |
 | `src/agentsfleetd/fleet/approval_gate_integration_test.zig` | CREATE | The parked gate carries a populated detail; the Slack message names the action |
 | `src/agentsfleetd/credentials/integration_github.zig` | EDIT | Mint body carries `repositories` + `permissions` instead of `""` |
 | `src/agentsfleetd/fleet/repair_proposal.zig` | DELETE | Superseded — approval binds a bounded run, not bytes; no daemon apply exists to re-validate against |
@@ -367,7 +370,7 @@ Library upload (already shipped, unreachable): POST /fleet-libraries accepts
 | 4.8 | unit | `test_bundles_declare_degradation` | both `SKILL.md` bodies name a degradation path at the context threshold; neither contains the string `needs continuation` |
 | 4.9 | eval | `eval_escalation_is_deduped_by_memory` | second sweep over an outstanding escalation → zero repair-intent messages sent |
 | 4.10 | unit | `test_bundles_declare_explicit_tools` | both `TRIGGER.md` files parse to a non-empty `tools` array — an absent or non-array value would resolve `hosted_tools.buildDefault` |
-| 4.11 | unit | `test_repairer_declares_no_memory_tool` | repairer's parsed `tools` array intersects `{memory_store, memory_recall, memory_list, memory_forget}` in zero members |
+| 4.11 | eval | `eval_repairer_dedupes_by_memory` | replayed repair intent naming a commit the repairer already opened a Pull Request for → zero second Pull Requests; the repairer recalls before it proposes. **Memory is the courtesy, the gate is the bound** — a crash between the vendor call and `memory_store` loses the record, and the second attempt is then stopped by needing a second human approval, not by memory |
 | 4.12 | unit | `test_startup_sweep_reaps_orphans` | seeded `{storage_home}/<uuid>/` removed after sweep; `{storage_home}/.bundle-cache/` survives |
 | 4a.1 | integration | `test_dashboard_uploads_local_bundle` | upload source posts `source_kind:"upload"` with both markdown bodies → entry created |
 | 4a.2 | e2e | `test_cli_uploads_and_installs_local_bundle` | local bundle dir → library entry → installed fleet whose markdown matches the source byte-for-byte |
@@ -577,3 +580,52 @@ isolation.
 
   - > Indy (2026-08-04): "I dont understand why the repairer will skip writing to memory ... Indy will fix the security holes later. Indy wants the crew to work first" — context: a proposed Dimension forbidding the repairer the memory family was withdrawn. Memory is instead put to work: Dimension 4.11 has the repairer remember what it already opened so a replayed intent yields no second Pull Request.
   - > Indy (2026-08-04): "xgo" — context: authorising the `repository_access` mint split, the storage-home sweep, and the Dimension 4.8/4.9/4.10 corrections recorded above.
+
+### Aug 04, 2026 adversarial review — what §1/§2 actually proved, and what they did not
+
+Codex CLI 0.146.0 (`gpt-5.6-sol`, reasoning effort high, 36 tool calls) reviewed the design
+and the landed `origin/main...HEAD` diff adversarially; every finding below was then
+re-verified against the code before being accepted. Indy: "Okay go" — authorising the fixes.
+
+**Fixed in this diff.**
+
+| Finding | Evidence | Fix |
+|---|---|---|
+| **A mid-flight PATCH released events already parked awaiting a human.** `checkApprovalGate` read policy FIRST: dropping `gates` returned `.passed` at the top, and emptying `gates.rules` fell through to `.auto_approve` — either way the parked event executed while its approval card still sat unanswered in Slack. Dimension 3.6 recorded the `fleet:write` bypass as prospective ("no human is ever asked"); it was also RETROSPECTIVE, silently withdrawing a question already asked. Closing the scope split is still M157_002, but honouring a raised gate never needed it. | `fleet/approval_gate.zig:52` (was), `:80-82`; `route_scopes.zig:148-153`; `fleet_runtime/approval_gate.zig:96` | The recorded gate ref is read before any policy read, and outranks every policy outcome. The order is a pure function (`fleet/approval_gate_route.zig`) so it is pinned by unit tests, not by a live Redis. |
+| **A parked event incremented the runaway-loop counter on every poll.** `checkAnomaly` is a Redis `INCR` and ran before the re-encounter check, so one human taking their time counted as N runaway attempts — a fleet could be auto-killed for a slow approver. Found while reordering the above. | `fleet_runtime/approval_gate_anomaly.zig:17-46`; `fleet/approval_gate.zig:54-61` (was) | The anomaly check is now reached only on a FIRST encounter. |
+| **Machine wakes were attributed to a human.** `tenant_api_key.zig` sets `principal.user_id` from the key's `created_by`, and `buildSteerActor` tested only whether `user_id` was present — so an `agt_t`-driven wake logged as `steer:<human-id>`. §3's "a human wakes the repairer" was therefore unauditable, and an actor-shaped assertion would have certified it while automation did the waking. | `auth/middleware/tenant_api_key.zig:110-115`; `http/handlers/fleets/messages.zig:188-192` (was) | Branch on `principal.mode`. Machines collapse to `steer:api` — the category that function's own doc comment already claimed they got. WHICH key stays unrecorded on purpose: per-key provenance is M157_002, and naming no one is honest where naming the wrong person is not. |
+| **The broker cache alias returned, one layer above the mint.** `bindingFingerprint` joined repositories on `KEY_SEP` without length framing, so `["acme/a","acme/b"]` and the single entry `"acme/a<KEY_SEP>acme/b"` hashed IDENTICALLY — a deterministic alias needing no probabilistic collision. Nothing validates repository strings before that point, so the spelling is authorable, and the cache is consulted before the mint that would have refused it. This is the same cross-fleet token bleed §2.3's cache-key work exists to stop. | `credentials/broker_key.zig:52-60` (was); `fleet_runtime/config_repositories.zig:37-50` | Framed with `hashFramed` plus an explicit count — the discipline `hashValue`'s array arm in the same file already used — and seeded with the broker's per-process `fp_seed`, so no digest can be precomputed offline either. |
+| **Model prose could counterfeit the card's trusted half, and its evidence was never shown.** `proposed_action` reached the Slack `mrkdwn` block with only JSON escaping, and JSON `\n` renders back as a real line break — so 512 bytes was ample to append convincing `- Gate:` and `- If approved:` rows below the genuine ones. Remaining C0 bytes were not escaped at all, which is invalid JSON (RFC 8259 §7) and would make Slack drop the whole notification for a gate that nonetheless parked. `evidence_json` was never referenced by the Slack builder. | `fleet/approval_gate_detail.zig:89-92` (was); `fleet_runtime/approval_gate_slack.zig` | C0, DEL, and bidirectional overrides are replaced with a space before the prose reaches a card (`fleet/approval_gate_prose.zig`); evidence is rendered in a code span, after the attributed claim. |
+| **The card's daemon-vouched half named no repository and no commit.** `tool`/`action`/`params_summary` carry event type, actor, and event id, so every decision-relevant word a human read came from the model. `ActionDetail` gains the fleet's `repository_binding` — the SAME value the GitHub mint scopes the token by, so the reach is statable as fact even though the sha is not. | `fleet/approval_gate_detail.zig:78-80`; `credentials/integration_github.zig` `buildTokenRequestBody` | The card carries `- Token reaches: \`owner/repo\` (write)` as a daemon fact, ahead of the model's claim. |
+| **Rubric R7 was failing.** The repair kernel, its tests, `UZ-REPAIR-001..005`, the `REPAIR` error category, and both `tests.zig` registrations were all still on disk despite the Files Changed table marking them DELETE. | `rg 'repair_proposal\|repair_bounds\|UZ-REPAIR' src/` | Swept; R7 now returns zero hits. |
+| **Dimension 4.11's test row contradicted its own Dimension.** The row demanded `test_repairer_declares_no_memory_tool` (zero memory tools) while the Dimension, the bundle prose, and Indy's own reversal all require the memory family. §4 is next, so an implementer working from the test table would have rebuilt the thing Indy overruled. | this spec, Dimensions §4 vs Test Specification vs the Aug 04 quote | Row replaced. It also now records that memory is the courtesy and the GATE is the bound — a crash between the vendor call and `memory_store` loses the record, and the second attempt is stopped by needing a second approval. |
+
+**Verified, NOT fixed — carried as known and bounded.**
+
+| Finding | Evidence | Why it is not closed here |
+|---|---|---|
+| **The Slack approval webhook is a second resolve path that never runs `requireScope`.** `.approval_webhook` sits in the no-auth set and resolves with `.by = SLACK_WEBHOOK`; §1's grant split binds the API path only. Its guard is a single platform-wide `approval_signing_secret`. | `http/route_scopes.zig:86`; `http/handlers/webhooks/approval.zig:52-76`; `cmd/serve_secrets.zig:17` | The secret is boot-resolved daemon config, NOT a workspace secret, so a fleet holding `secret_read` cannot reach it — the tenant-credential attack fails. Invariant 1 stands as written for machine credentials. |
+| **No Slack approval records WHICH human approved.** The payload parses `{action_id, decision}` with `ignore_unknown_fields`, so Slack's `user` is discarded and every Slack-resolved gate is attributed to the constant `slack:webhook`. For a milestone headlining "exactly one human approval", the audit answer to *who approved this revert* is a constant string. | `http/handlers/webhooks/approval.zig:124-166`; `fleet_runtime/approval_gate_resolver.zig:13` | Binding a verified Slack user to an `agentsfleet` principal is identity work, and belongs with M157_002's provenance split rather than bolted onto the webhook. Recorded so it is a known gap rather than an assumed property. |
+| **Redis is authoritative for approvals.** `readDecisionSourced` returns the Redis mirror first and `evaluateRef` acts on it with no durable-row cross-check, so a writer of `fleet:gate:response:{action_id}` releases the run while the database and inbox still read pending. | `fleet_runtime/approval_gate_async.zig` `readDecisionSourced`, `evaluateRef` | Requires the queue Redis credential — infrastructure-level, and a sandboxed fleet never holds one. Defense-in-depth, not a tenant-reachable bypass, so it is recorded rather than rebuilt mid-workstream. |
+| **The mint discards the declared repository OWNER.** `bareRepositoryName` reduces `owner/repo` to `repo` because GitHub scopes installation tokens by name; nothing checks the declared owner against the installation's account, so `otherorg/payments` silently scopes to `<installed-org>/payments` when such a repository exists. | `credentials/integration_github.zig:157-160` | An installation belongs to one account, so this cannot cross a tenant boundary — it mis-scopes within the operator's own installation. §4's fetch hook must validate the FULL `owner/repo` or the two rings disagree; captured here so that lands with the fetch rather than as a separate correction. |
+
+**Design verdict.** The two-fleet split, the pre-lease gate, and the mint narrowing are the
+right shape and survived review. The structural gap is that an action-level promise
+("approved this exact revert") rests on a run-level approval, and no card fix closes it —
+what closes it is either a typed repair intent the daemon enforces at fetch, push, and PR
+creation (M157_002-sized), or a Goal sentence that claims what is true: a human released a
+run whose credential reaches only the declared repositories. The `- Token reaches:` line
+above is that claim made legible.
+
+**§4 constraints adopted from the review, to build against rather than discover.** The
+planned fetch hook runs AFTER the child starts, and Landlock permits the child to create
+symlinks anywhere inside its own workspace — so `{workspace}/repo` must be a daemon-owned
+directory the child cannot replace, resolved beneath-only with symlinks refused, not a path
+the daemon opens by name. `RUNNER_STORAGE_HOME` is uncanonicalized with no sentinel and no
+exclusive lock, so "delete every non-dot entry" is only safe behind a canonical path check,
+a sentinel file, a held process lock, and strict lease-name validation — otherwise a stray
+value or a second daemon during a rolling deploy reaps live work or host data. And a
+three-commit depth bounds HISTORY, not BYTES: one commit can carry arbitrarily large blobs,
+`disk_write_limit_mb` has no enforcement in `CgroupScope`, and the daemon-side fetch runs
+outside the child's cgroup, so `worker_count × one bounded fetch` needs a real byte quota
+behind it.
