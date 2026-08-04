@@ -48,6 +48,7 @@ test {
     _ = @import("http/fleet_operator_integration_test.zig");
     _ = @import("http/fleet_runner_events_integration_test.zig");
     _ = @import("http/runner_read_integration_test.zig");
+    _ = @import("state/accrual_surface_integration_test.zig");
     _ = @import("http/runner_enrollment_integration_test.zig");
     _ = @import("http/route_trace_integration_test.zig");
     _ = @import("http/secrets_json_metadata_integration_test.zig");

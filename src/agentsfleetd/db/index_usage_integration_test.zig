@@ -28,6 +28,7 @@ const protocol = @import("contract").protocol;
 const fleet_sql = @import("../fleet/sql.zig");
 const operator_sql = @import("../http/handlers/fleet/sql.zig");
 const retention_sweeper = @import("../fleet/retention_sweeper.zig");
+const telemetry_store = @import("../state/fleet_telemetry_store.zig");
 const PgQuery = @import("pg_query.zig").PgQuery;
 
 /// A minimal legible fixture. Fitness is checked with `enable_seqscan = off`, so
@@ -592,4 +593,225 @@ test "the lease pager's exact total never walks the runner's whole history" {
     try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_LEASE_TOTAL, .{
         RUNNER_LEASE, unfiltered, FLEET_LEASE,
     }, SEQ_SCAN_LEASES_MARKER);
+}
+
+/// The tenant charges keyset fixture. Same doctrine as the probes above: scans
+/// are forced off, so a small table still forms the plan under test.
+const LEDGER_SEED_ROWS: i32 = 200;
+const WS_LEDGER = "0195b4ba-8d3a-7f13-8abc-0000000d0001";
+const FLEET_LEDGER = "0195b4ba-8d3a-7f13-8abc-0000000d0002";
+const LEDGER_EVENT_PREFIX = "idxprobe-ledger-";
+const CHARGE_TYPE_STAGE = "stage";
+/// Named once: both the fitness probe and the no-sort assertion spell it.
+const LEDGER_BY_TENANT_INDEX = "idx_usage_ledger_tenant_id_created_at_id";
+/// A `Sort` node here means the tiebreak was resolved after the seek instead of
+/// by the index — the exact regression the trailing `id` column exists to stop.
+const SORT_NODE_MARKER = "Sort";
+
+/// The cursor branch of `listTelemetryForTenant`, imported rather than copied:
+/// this suite asserts a property of the PRODUCTION query text, so a local
+/// transcription that drifted from it would assert nothing.
+const TENANT_CHARGES_KEYSET_PAGE = telemetry_store.SELECT_TENANT_CHARGES_PAGE_AFTER;
+const TENANT_CHARGES_FIRST_PAGE = telemetry_store.SELECT_TENANT_CHARGES_PAGE_FIRST;
+
+fn seedLedger(conn: *pg.Conn, rows: i32) !void {
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WS_LEDGER);
+    try base.seedFleet(conn, FLEET_LEDGER, WS_LEDGER, "index-probe-ledger-fleet", "{}", "# SKILL");
+    _ = try conn.exec(
+        \\INSERT INTO billing.usage_ledger
+        \\  (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
+        \\   model, credit_deducted_nanos, event_created_at, created_at, last_charged_at)
+        \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+        \\       $1::uuid, $2::uuid, $3::uuid, $4 || g, $5, 'metered',
+        \\       'claude', 0, g, g, g
+        \\FROM generate_series(1, $6::int) g
+        \\ON CONFLICT DO NOTHING
+    , .{ base.TEST_TENANT_ID, WS_LEDGER, FLEET_LEDGER, LEDGER_EVENT_PREFIX, CHARGE_TYPE_STAGE, rows });
+}
+
+fn wipeLedger(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE event_id LIKE $1", .{LEDGER_EVENT_PREFIX ++ "%"}) catch |err|
+        std.log.warn("ledger wipe ignored: {s}", .{@errorName(err)});
+    base.teardownFleets(conn, WS_LEDGER);
+    base.teardownWorkspace(conn, WS_LEDGER);
+}
+
+test "the tenant charges keyset pages without sorting, because its index carries the tiebreak" {
+    // `schema/720_usage_ledger_indexes.sql` states this is "asserted against the
+    // plan rather than against the index definition" — this is that assertion.
+    // An index definition can carry the column and still be bypassed; only the
+    // plan proves the page is one ordered scan.
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    defer wipeLedger(db.conn);
+    try seedLedger(db.conn, LEDGER_SEED_ROWS);
+
+    const boundary_created_at: i64 = LEDGER_SEED_ROWS;
+    const boundary_id = "0195b4ba-8d3a-7f13-8abc-0000000dffff";
+    const page_limit: i32 = 50;
+
+    // The index serves the page…
+    try expectServesFilter(alloc, db.conn, TENANT_CHARGES_KEYSET_PAGE, .{
+        base.TEST_TENANT_ID, boundary_created_at, boundary_id, page_limit,
+    }, LEDGER_BY_TENANT_INDEX);
+
+    // …and resolves the ORDER BY itself, so no sort node appears. Were the
+    // trailing `id` dropped from the index, the seek would still find the rows
+    // and the plan would gain a Sort to break ties — passing the fitness check
+    // above while paying a sort on every page.
+    try expectPlanOmits(alloc, db.conn, TENANT_CHARGES_KEYSET_PAGE, .{
+        base.TEST_TENANT_ID, boundary_created_at, boundary_id, page_limit,
+    }, SORT_NODE_MARKER);
+
+    // The FIRST page carries the same ORDER BY and the same exposure — and it is
+    // the one every reader hits before they page at all, so it is the worse of
+    // the two to leave unasserted.
+    try expectServesFilter(alloc, db.conn, TENANT_CHARGES_FIRST_PAGE, .{
+        base.TEST_TENANT_ID, page_limit,
+    }, LEDGER_BY_TENANT_INDEX);
+    try expectPlanOmits(alloc, db.conn, TENANT_CHARGES_FIRST_PAGE, .{
+        base.TEST_TENANT_ID, page_limit,
+    }, SORT_NODE_MARKER);
+}
+
+// ── The declared index roster (Dimension 5.1) ───────────────────────────────
+//
+// Every discretionary index in the schema, listed once. "Discretionary" means
+// created by a bare `CREATE INDEX`: a constraint-backed index (primary key,
+// unique constraint) is justified by the constraint that owns it and is excluded
+// below, because dropping it is not a tuning decision.
+//
+// The roster exists because a dead index is silent. When a milestone deletes a
+// reader — as this one deleted the operator accrual surface — the index that
+// served it keeps being maintained on every write and nothing fails. On an
+// unbounded, never-pruned table like `billing.usage_ledger` that is a permanent
+// tax returning nothing. Requiring a new index to land here forces the author to
+// state the query it serves in the slot's own comment, where a reviewer sees it.
+//
+// This asserts the roster, not the comments: a catalogue cannot read prose. What
+// it guarantees is that no index appears or disappears WITHOUT a deliberate edit
+// here, which is the enforceable half of "no index without a named reader".
+const DeclaredIndex = struct { schema: []const u8, name: []const u8 };
+const DECLARED_INDEXES = [_]DeclaredIndex{
+    .{ .schema = "billing", .name = "idx_usage_ledger_fleet_id_workspace_id_last_charged_at" },
+    .{ .schema = "billing", .name = "idx_usage_ledger_tenant_id_created_at_id" },
+    .{ .schema = "billing", .name = "idx_usage_ledger_workspace_id" },
+    .{ .schema = "core", .name = "idx_api_keys_tenant_id_active" },
+    .{ .schema = "core", .name = "idx_connector_channels_fleet_id" },
+    .{ .schema = "core", .name = "idx_connector_installs_workspace_id" },
+    .{ .schema = "core", .name = "idx_fleet_approval_gates_action_id" },
+    .{ .schema = "core", .name = "idx_fleet_approval_gates_fleet_id_status" },
+    .{ .schema = "core", .name = "idx_fleet_approval_gates_timeout_at_pending" },
+    .{ .schema = "core", .name = "idx_fleet_approval_gates_workspace_id_status_created_at" },
+    .{ .schema = "core", .name = "idx_fleet_events_fleet_id_created_at_event_id" },
+    .{ .schema = "core", .name = "idx_fleet_events_fleet_id_resumes_event_id" },
+    .{ .schema = "core", .name = "idx_fleet_events_workspace_id_created_at_event_id" },
+    .{ .schema = "core", .name = "idx_fleet_schedules_fleet_id_created_at" },
+    .{ .schema = "core", .name = "idx_fleets_required_tags_gin" },
+    .{ .schema = "core", .name = "idx_fleets_workspace_id_created_at_id" },
+    .{ .schema = "core", .name = "idx_memberships_user_id" },
+    .{ .schema = "core", .name = "idx_tenant_fleet_library_workspace_id_created_at" },
+    .{ .schema = "core", .name = "idx_tenant_model_entries_tenant_id_created_at" },
+    .{ .schema = "core", .name = "idx_users_tenant_id" },
+    .{ .schema = "core", .name = "idx_workspaces_tenant_id_created_at_id" },
+    .{ .schema = "core", .name = "uq_users_oidc_subject" },
+    .{ .schema = "core", .name = "uq_workspaces_tenant_id_name" },
+    .{ .schema = "fleet", .name = "idx_runner_affinity_last_runner_id_leased_until" },
+    .{ .schema = "fleet", .name = "idx_runner_events_runner_id_created_at_id" },
+    .{ .schema = "fleet", .name = "idx_runner_events_runner_id_type_created_at_id" },
+    .{ .schema = "fleet", .name = "idx_runner_events_type_created_at" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_fleet_id_event_id_fencing_token" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_fleet_id_status_fencing_token" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_runner_id_created_at_id" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_runner_id_status" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_status_updated_at" },
+    .{ .schema = "fleet", .name = "uq_runner_events_runner_id_dedup_key_offline" },
+    .{ .schema = "memory", .name = "idx_memory_entries_fleet_id_category_updated_at" },
+    .{ .schema = "memory", .name = "idx_memory_entries_fleet_id_created_at_key" },
+    .{ .schema = "memory", .name = "idx_memory_entries_fleet_id_updated_at_id" },
+};
+
+/// Discretionary indexes only: `pg_constraint.conindid` excludes the index a
+/// primary key or unique CONSTRAINT owns. A `CREATE UNIQUE INDEX` that backs no
+/// constraint stays in scope — it is still a tuning decision someone made.
+const SELECT_DISCRETIONARY_INDEXES =
+    \\SELECT n.nspname, c.relname
+    \\FROM pg_class c
+    \\JOIN pg_namespace n ON n.oid = c.relnamespace
+    \\JOIN pg_index i ON i.indexrelid = c.oid
+    \\WHERE c.relkind = 'i'
+    \\  AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    \\  AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = c.oid)
+    \\ORDER BY n.nspname, c.relname
+;
+
+fn isDeclared(schema_name: []const u8, name: []const u8) bool {
+    for (DECLARED_INDEXES) |declared| {
+        if (std.mem.eql(u8, declared.schema, schema_name) and std.mem.eql(u8, declared.name, name)) return true;
+    }
+    return false;
+}
+
+test "every index in the schema is declared, and every declared index still exists" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+
+    var live: std.ArrayList(DeclaredIndex) = .empty;
+    defer {
+        for (live.items) |item| {
+            alloc.free(item.schema);
+            alloc.free(item.name);
+        }
+        live.deinit(alloc);
+    }
+
+    var q = PgQuery.from(try db.conn.query(SELECT_DISCRETIONARY_INDEXES, .{}));
+    defer q.deinit();
+    while (try q.next()) |row| {
+        const schema_name = try alloc.dupe(u8, try row.get([]const u8, 0));
+        errdefer alloc.free(schema_name);
+        const name = try alloc.dupe(u8, try row.get([]const u8, 1));
+        errdefer alloc.free(name);
+        try live.append(alloc, .{ .schema = schema_name, .name = name });
+    }
+
+    // Direction 1 — an index the catalogue has that the roster does not. Either
+    // it is new and its slot must state the query it serves, or its reader was
+    // deleted and the index should have gone with it.
+    var undeclared: usize = 0;
+    for (live.items) |item| {
+        if (!isDeclared(item.schema, item.name)) {
+            undeclared += 1;
+            std.debug.print(
+                "\nUNDECLARED INDEX: {s}.{s} — add it to DECLARED_INDEXES with the reader its slot names, or drop it\n",
+                .{ item.schema, item.name },
+            );
+        }
+    }
+
+    // Direction 2 — a roster entry the catalogue lacks. An index that vanished
+    // without this list changing means a read lost its support silently.
+    var missing: usize = 0;
+    for (DECLARED_INDEXES) |declared| {
+        var found = false;
+        for (live.items) |item| {
+            if (std.mem.eql(u8, declared.schema, item.schema) and std.mem.eql(u8, declared.name, item.name)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            missing += 1;
+            std.debug.print(
+                "\nMISSING INDEX: {s}.{s} is declared here but absent from the catalogue\n",
+                .{ declared.schema, declared.name },
+            );
+        }
+    }
+
+    try std.testing.expectEqual(@as(usize, 0), undeclared);
+    try std.testing.expectEqual(@as(usize, 0), missing);
 }
