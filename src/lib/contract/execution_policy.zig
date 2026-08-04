@@ -135,7 +135,40 @@ pub const ExecutionPolicy = struct {
     /// existing serialized leases deserialize to `null` — backward-compatible with
     /// in-flight leases.
     base_url: ?[]const u8 = null,
+    /// The fleet's repository EGRESS binding, carried to the runner so an
+    /// out-of-binding repository fetch is refused BEFORE any network call. The
+    /// GitHub mint scopes a token by this same binding, but the mint reduces
+    /// `owner/repo` to the bare name (GitHub scopes installation tokens that
+    /// way), so a token minted for `otherorg/payments` reaches
+    /// `<installed-org>/payments` — the vendor ring cannot tell those apart and
+    /// the runner-side check on the FULL `owner/repo` is what does.
+    ///
+    /// Nullable + defaulted, so a lease serialized before this field
+    /// deserializes to `null` — backward-compatible with in-flight leases, and
+    /// fail-closed: no binding means no fetch, exactly as it means no mint.
+    repository_binding: ?RepositoryBinding = null,
     context: ContextBudget = .{},
+};
+
+/// How far a fleet's credentials may reach into the repositories it declared.
+/// The field names ARE the wire values, and they mirror the authoring enum
+/// (`agentsfleetd/fleet_runtime/config_types.RepositoryAccess`) — one spelling
+/// across both, pinned by a test at the conversion site so the two cannot drift.
+pub const RepositoryAccess = enum { read, write };
+
+/// The repository egress binding as the runner receives it. Structurally mirrors
+/// the control plane's parsed `config_types.RepositoryBinding`; the two are kept
+/// separate because they answer different questions — that one is authored
+/// configuration with parse errors and owned memory, this one is what a lease was
+/// told. `resolveExecutionPolicy` is the single conversion between them.
+///
+/// Deliberately distinct from a webhook trigger's `repositories`, which is an
+/// INGRESS binding naming which repositories may WAKE a fleet. Overloading one
+/// for the other would make every repository allowed to trigger a fleet also a
+/// repository that fleet could reach.
+pub const RepositoryBinding = struct {
+    repositories: []const []const u8,
+    access: RepositoryAccess,
 };
 
 /// Extract the bare host from a provider base URL (`https://api.fireworks.ai/

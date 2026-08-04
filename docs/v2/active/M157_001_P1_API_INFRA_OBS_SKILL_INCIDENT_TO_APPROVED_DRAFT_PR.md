@@ -95,8 +95,9 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/agentsfleetd/fleet/service.zig` | EDIT | `resolveExecutionPolicy` populates the two fields from the same fleet config the mint reads, so the two rings cannot disagree |
 | `src/runner/daemon/lease_run.zig` | EDIT | `FetchForwarder` beside `MintForwarder` — forwards the child's on-demand fetch ask, lease-bound server-side |
 | `src/runner/child_supervisor.zig` | EDIT | `FetchHook` alongside `MintHook` on the supervisor surface |
-| `src/runner/repo_fetch.zig` | CREATE | The fetch itself: suspect commit + parent + target head, depth-bounded, binding-validated, credential stays daemon-side |
+| `src/runner/repo_fetch.zig` | CREATE | The fetch itself: suspect commit + parent + target head, depth-bounded, binding-validated, credential stays daemon-side. The refusal surface is a PURE function of the binding and the ask, so "refused before any network call" is a unit test rather than an observation |
 | `src/runner/repo_fetch_test.zig` | CREATE | Depth bounds, workspace confinement, binding refusal, no-credential-to-child assertions |
+| `src/runner/tests.zig` | EDIT | Register the new runner modules for test discovery |
 | `src/runner/daemon/StorageHome.zig` | CREATE | The exclusive claim on the storage home and its startup reaper for orphaned per-lease workspaces — `defer cleanupWorkspace` does not run on SIGKILL / out-of-memory kill / reboot, and a leaked workspace now holds a repository rather than a few hundred KiB. File-as-struct because the claim is state the type owns (an open directory + a process-lifetime lock), which makes "sweep without holding the home" unrepresentable — the Single-Type-Module rule outranks this table's earlier `storage_sweep.zig` name |
 | `src/runner/daemon/storage_home_test.zig` | CREATE | A lease-shaped directory is reaped; a dot-prefixed cache directory, a non-lease name, a lease-shaped symlink, and a lease-shaped regular file are not. Plus the three refusals: shallow path, contended lock, un-adopted home |
 | `src/runner/main.zig` | EDIT | Call the sweep after the storage-home `mkdir`, before the poll loop |
