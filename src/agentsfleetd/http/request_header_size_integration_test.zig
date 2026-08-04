@@ -104,11 +104,28 @@ test "headers past the accepted size are refused with 431, not read without boun
         // close here is attributable to the oversized headers.
         const name = @errorName(err);
         const is_close =
-            std.mem.indexOf(u8, name, "Connection") != null or
+            // Zig 0.16's `std.http.Client` does not surface the socket errno
+            // on this path: it stashes it on the `Connection` (reachable via
+            // `getReadError`/`getWriteError`, which the harness does not
+            // expose) and returns one of these four. Matching OS-level names
+            // alone therefore never fired here — `WriteFailed` is what this
+            // test actually hits when the server refuses at its 16 KiB limit
+            // and closes while the 32 KiB of headers is still being written.
+            // Which side loses the race is timing, which is why an ordinary
+            // run reads the 431 and the coverage lane, slowed by kcov's
+            // ptrace, sees the close instead.
+            std.mem.eql(u8, name, "WriteFailed") or
+            std.mem.eql(u8, name, "ReadFailed") or
+            std.mem.eql(u8, name, "HttpRequestTruncated") or
+            std.mem.eql(u8, name, "HttpConnectionClosing") or
+            // Kept for any path or platform that does surface the socket
+            // error directly. `Connection` as a SUBSTRING is deliberately
+            // gone: it also matched `ConnectionRefused`, which means the
+            // server never accepted the request at all — the one outcome this
+            // test must never read as a size refusal.
             std.mem.indexOf(u8, name, "Reset") != null or
-            std.mem.indexOf(u8, name, "Closed") != null or
-            std.mem.indexOf(u8, name, "EndOfStream") != null or
-            std.mem.indexOf(u8, name, "BrokenPipe") != null;
+            std.mem.indexOf(u8, name, "BrokenPipe") != null or
+            std.mem.indexOf(u8, name, "EndOfStream") != null;
         // Name the error before failing. Asserting on `is_close` alone reports
         // only `TestUnexpectedResult`, which says the refusal was not one of
         // the five tolerated shapes without saying what it WAS — so a failure
