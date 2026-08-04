@@ -109,6 +109,19 @@ test "headers past the accepted size are refused with 431, not read without boun
             std.mem.indexOf(u8, name, "Closed") != null or
             std.mem.indexOf(u8, name, "EndOfStream") != null or
             std.mem.indexOf(u8, name, "BrokenPipe") != null;
-        try std.testing.expect(is_close);
+        // Name the error before failing. Asserting on `is_close` alone reports
+        // only `TestUnexpectedResult`, which says the refusal was not one of
+        // the five tolerated shapes without saying what it WAS — so a failure
+        // here could not be diagnosed from a Continuous Integration (CI) log at
+        // all. This lane runs the suite under kcov's ptrace, where the timing
+        // around a peer close differs from an ordinary run, and that is exactly
+        // the case the name is needed for.
+        if (!is_close) {
+            std.debug.print(
+                "\nrefusal was neither 431 nor a transport close: error.{s}\n",
+                .{name},
+            );
+            return error.TestUnexpectedResult;
+        }
     }
 }
