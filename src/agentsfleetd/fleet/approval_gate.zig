@@ -20,6 +20,8 @@ const redis_fleet = @import("../queue/redis_fleet.zig");
 const fleet_ready = @import("../queue/fleet_ready.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const gate_constants = @import("../fleet_runtime/approval_gate_constants.zig");
+const config_gates = @import("../fleet_runtime/config_gates.zig");
+const gate_detail = @import("approval_gate_detail.zig");
 const FleetSession = @import("fleet_session.zig");
 const logging = @import("log");
 
@@ -84,7 +86,11 @@ pub fn checkApprovalGate(
             return .{ .auto_killed = .policy };
         },
         .requires_approval => {
-            return handleApprovalFlow(alloc, session, event, pool, redis, gates);
+            // The matched rule carries the workspace-authored approval copy that
+            // the decision enum discards. Same traversal, so it cannot disagree
+            // about which rule applied.
+            const rule = approval_gate.matchRule(gates, event.event_type, event.actor, context);
+            return handleApprovalFlow(alloc, session, event, pool, redis, gates, rule, context);
         },
     }
 }
@@ -96,6 +102,8 @@ fn handleApprovalFlow(
     pool: *pg.Pool,
     redis: *queue_redis.Client,
     gates: fleet_config.GatePolicy,
+    rule: ?config_gates.GateRule,
+    context: ?std.json.Value,
 ) GateCheckResult {
     // Re-encounter: this event already has a recorded gate — evaluate it.
     if (approval_gate_async.lookupEventGateRef(redis, session.fleet_id, event.event_id)) |maybe_ref| {
@@ -105,7 +113,7 @@ fn handleApprovalFlow(
         log.warn("gate_ref_lookup_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
         return .{ .pending = {} };
     }
-    return requestNewGate(alloc, session, event, pool, redis, gates);
+    return requestNewGate(alloc, session, event, pool, redis, gates, rule, context);
 }
 
 fn requestNewGate(
@@ -115,17 +123,15 @@ fn requestNewGate(
     pool: *pg.Pool,
     redis: *queue_redis.Client,
     gates: fleet_config.GatePolicy,
+    rule: ?config_gates.GateRule,
+    context: ?std.json.Value,
 ) GateCheckResult {
-    const detail = approval_gate.ActionDetail{
-        .tool = event.event_type,
-        .action = event.actor,
-        .params_summary = event.event_id,
-        // Inbox-visible defaults: gate_kind/proposed_action/evidence/blast_radius
-        // remain blank until per-call gate metadata is threaded in by the
-        // policy evaluator. The ActionDetail struct documents the contract;
-        // SKILL.md gate definitions populate these fields.
-        .timeout_ms = @intCast(gates.timeout_ms),
-    };
+    // Two sources, deliberately separated: the workspace-authored half from the
+    // matched rule (statable as fact) and the model-authored half from the event
+    // (rendered as an attributed claim). See `approval_gate_detail`.
+    var built = gate_detail.build(alloc, event, rule, context, @intCast(gates.timeout_ms));
+    defer built.deinit(alloc);
+    const detail = built.detail;
 
     const action_id = approval_gate.requestApproval(
         alloc,
