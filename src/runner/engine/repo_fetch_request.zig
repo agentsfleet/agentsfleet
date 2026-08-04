@@ -28,6 +28,7 @@
 
 const std = @import("std");
 const pipe_proto = @import("../pipe_proto.zig");
+const credential_request = @import("credential_request.zig");
 
 /// child→parent fetch ask (`repo_fetch_request` frame payload). Every field is
 /// model-authored text; `repo_fetch.decide` treats all of it as hostile.
@@ -60,6 +61,21 @@ pub const Channel = struct {
     /// Absolute epoch-ms deadline (the lease's `lease_expires_at`).
     deadline_ms: i64,
 };
+
+/// The fetch channel for a lease, derived from its mint channel.
+///
+/// There is ONE child↔runner duplex — the child's stdout and stdin — and
+/// `pipe_proto` multiplexes it by frame type. Deriving the fetch channel from
+/// the mint channel rather than threading a second one through the five layers
+/// between `child_exec` and the tool bridge keeps a single source for the two
+/// descriptors and the deadline, so the two channels cannot drift apart.
+pub fn channelFrom(mint: credential_request.Channel) Channel {
+    return .{
+        .request_fd = mint.request_fd,
+        .response_fd = mint.response_fd,
+        .deadline_ms = mint.deadline_ms,
+    };
+}
 
 pub const FetchError = error{
     /// Could not write the request frame (parent closed stdout-read end).
