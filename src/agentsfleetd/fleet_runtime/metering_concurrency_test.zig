@@ -30,9 +30,15 @@ const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-fa0800000000";
 
 const WS_RECEIVE_RACE = "0195b4ba-8d3a-7f13-8abc-aa0800000001";
 
+// §3 put the ledger's `fleet_id` behind `UUID REFERENCES core.fleets(id)`, so
+// every one of the 100 concurrent debits needs a fleet that exists — a
+// descriptive string is refused by the driver before Postgres sees it.
+const FLEET_RECEIVE_RACE = "0195b4ba-8d3a-7f13-8abc-aa0800000f01";
+
 fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {
     try base.seedTenantById(conn, TENANT_ID, "metering-concurrency-suite");
     try base.seedWorkspaceWithTenant(conn, workspace_id, TENANT_ID);
+    try base.seedFleet(conn, FLEET_RECEIVE_RACE, workspace_id, "metering concurrency fixture", "{}", "");
 }
 
 fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
@@ -56,7 +62,7 @@ const Job = struct {
     fn ctx(self: *const Job) metering.PreflightContext {
         return .{
             .workspace_id = self.workspace_id,
-            .fleet_id = "fleet-conc-test",
+            .fleet_id = FLEET_RECEIVE_RACE,
             .event_id = self.event_id[0..self.event_len],
             .posture = .self_managed,
             .provider = "self-managed-test",
