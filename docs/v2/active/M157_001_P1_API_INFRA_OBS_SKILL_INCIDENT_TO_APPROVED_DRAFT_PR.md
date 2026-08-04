@@ -155,8 +155,8 @@ The two consumers also differ in when the change bites, and the spec relies on b
 
 - **Dimension 2.1** — A parked gate carries a populated `proposed_action`, `evidence`, and `blast_radius` → Test `test_gate_detail_is_populated`
 - **Dimension 2.2** — The Slack approval message names repository, commit, and outcome → Test `test_slack_approval_names_the_action`
-- **Dimension 2.3** — The mint request body pins `repositories` to the fleet's binding and `permissions` to the level its `repository_access` declares — read mints `contents: read` alone, write mints contents + pull-requests → Test `test_mint_body_is_repository_and_access_scoped`
-- **Dimension 2.4** — A fleet with no declared repository binding, or none declaring `repository_access`, gets no mintable GitHub token (fail closed) → Test `test_unbound_fleet_mints_nothing`
+- **Dimension 2.3** — **DONE** — The mint request body pins `repositories` to the fleet's binding and `permissions` to the level its `repository_access` declares — read mints `contents: read` alone, write mints contents + pull-requests → Test `test_mint_body_is_repository_and_access_scoped`
+- **Dimension 2.4** — **DONE** — A fleet with no declared repository binding, or none declaring `repository_access`, gets no mintable GitHub token (fail closed) → Test `test_unbound_fleet_mints_nothing`
 
 ### §3 — The write lives behind the gate, structurally
 
