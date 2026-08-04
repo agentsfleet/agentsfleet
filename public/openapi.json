@@ -3405,10 +3405,14 @@
                             "type": "string"
                           },
                           "workspace_id": {
-                            "type": "string"
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Workspace the charge was incurred on. Null once that workspace is deleted: the charge outlives it so wallet totals stay reconcilable.\n"
                           },
                           "fleet_id": {
-                            "type": "string"
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Fleet the charge was incurred on. Null once that fleet is deleted, for the same reason as `workspace_id`.\n"
                           },
                           "event_id": {
                             "type": "string"
