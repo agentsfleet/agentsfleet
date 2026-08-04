@@ -17,18 +17,14 @@ const renewal_settle = @import("renewal_settle.zig");
 const affinity = @import("affinity.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
-const fleet_metering_store = @import("../state/fleet_metering_store.zig");
+const ChargeType = @import("../state/fleet_telemetry_store.zig").ChargeType;
 const auth_mw = @import("../auth/middleware/mod.zig");
 const ONE_MILLION = 1_000_000;
 const TEST_TOKEN_COUNT = 1000;
 const TEST_CHARGE_NANOS = 1_000;
 const TEST_BALANCE_NANOS = 100_000;
 
-// A second tenant for the metering-periods cross-tenant read guard.
-const OTHER_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8b02";
-
 const ALLOC = std.testing.allocator;
-const PRIMARY_RUN_MS: i64 = 1000;
 
 fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     _ = reg;
@@ -38,7 +34,6 @@ fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8a01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8f01";
 const EVENT_ID = "evt-meter-1";
 
@@ -79,26 +74,26 @@ fn seedRunner(conn: *pg.Conn) !void {
 // Affinity holds the authoritative metering cursor the CTE reads for Δ.
 fn seedAffinity(conn: *pg.Conn, fencing_seq: i64, m_in: i64, m_cached: i64, m_out: i64, last_metered: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_affinity (id, fleet_id, last_runner_id, fencing_seq,
+        \\INSERT INTO fleet.runner_affinity (fleet_id, last_runner_id, fencing_seq,
         \\   leased_until, metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, 0, 0)
+        \\   last_metered_at, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = EXCLUDED.fencing_seq,
         \\   metered_input_tokens = EXCLUDED.metered_input_tokens,
         \\   metered_cached_tokens = EXCLUDED.metered_cached_tokens,
         \\   metered_output_tokens = EXCLUDED.metered_output_tokens,
-        \\   last_metered_at_ms = EXCLUDED.last_metered_at_ms
-    , .{ AFFINITY_ID, FLEET_ID, RUNNER_ID, fencing_seq, NOW_MS + ONE_MILLION, m_in, m_cached, m_out, last_metered });
+        \\   last_metered_at = EXCLUDED.last_metered_at
+    , .{ FLEET_ID, RUNNER_ID, fencing_seq, NOW_MS + ONE_MILLION, m_in, m_cached, m_out, last_metered });
 }
 
 fn seedLease(conn: *pg.Conn, fencing_token: i64, status: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases (id, runner_id, fleet_id, workspace_id, tenant_id,
-        \\   event_id, actor, event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_id, actor, event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'steer:test', 'chat',
-        \\   '{"message":"hi"}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0,
+        \\   0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0,
         \\   $7, $8, $9, $10, $10)
         \\ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token, status = EXCLUDED.status
     , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + ONE_MILLION, status, ISSUE_MS });
@@ -106,7 +101,7 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, status: []const u8) !void {
 
 fn seedBalance(conn: *pg.Conn, balance: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'meter-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
     , .{ base.TEST_TENANT_ID, balance });
@@ -117,8 +112,7 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
-    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
@@ -154,7 +148,7 @@ fn cleanup(s: Setup) void {
 }
 
 fn readBalance(conn: *pg.Conn) !i64 {
-    var q = PgQuery.from(try conn.query("SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{base.TEST_TENANT_ID}));
+    var q = PgQuery.from(try conn.query("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", .{base.TEST_TENANT_ID}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowMissing;
     return row.get(i64, 0);
@@ -169,15 +163,26 @@ fn expectLeaseStatus(conn: *pg.Conn, want: []const u8) !void {
     try std.testing.expectEqualStrings(want, try row.get([]const u8, 0));
 }
 
-const StageRow = struct { charged: i64, t_in: ?i64, t_out: ?i64, wall: ?i64, slices: i64 };
+/// `created_at` / `last_charged_at` replace the per-slice row count the retired
+/// `fleet.metering_periods` supplied. The stage row accumulates in place, so
+/// how many writes folded into it is no longer observable — but WHEN the first
+/// and last landed is, and that is the window the budget drain apportions over.
+const StageRow = struct {
+    charged: i64,
+    t_in: ?i64,
+    t_out: ?i64,
+    wall: ?i64,
+    created_at: i64,
+    last_charged_at: i64,
+};
 
 fn readStage(conn: *pg.Conn) !?StageRow {
     var q = PgQuery.from(try conn.query(
         \\SELECT t.credit_deducted_nanos, t.token_count_input, t.token_count_output, t.wall_ms,
-        \\       (SELECT count(*) FROM fleet.metering_periods mp WHERE mp.event_id = t.event_id)::bigint
-        \\FROM core.fleet_execution_telemetry t
-        \\WHERE t.event_id = $1 AND t.charge_type = 'stage'
-    , .{EVENT_ID}));
+        \\       t.created_at, t.last_charged_at
+        \\FROM billing.usage_ledger t
+        \\WHERE t.event_id = $1 AND t.charge_type = $2
+    , .{ EVENT_ID, ChargeType.stage.label() }));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     return StageRow{
@@ -185,7 +190,8 @@ fn readStage(conn: *pg.Conn) !?StageRow {
         .t_in = try row.get(?i64, 1),
         .t_out = try row.get(?i64, 2),
         .wall = try row.get(?i64, 3),
-        .slices = try row.get(i64, 4),
+        .created_at = try row.get(i64, 4),
+        .last_charged_at = try row.get(i64, 5),
     };
 }
 
@@ -206,7 +212,9 @@ test "renew charges run fee + token delta == sliceCharge (SQL==Zig pin)" {
     try std.testing.expectEqual(BIG_BALANCE - expected, try readBalance(s.conn));
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
     try std.testing.expectEqual(expected, stage.charged);
-    try std.testing.expectEqual(@as(i64, 1), stage.slices);
+    // One renewal: the row was created and last written by the same call.
+    try std.testing.expectEqual(NOW_MS, stage.created_at);
+    try std.testing.expectEqual(NOW_MS, stage.last_charged_at);
     try std.testing.expectEqual(@as(?i64, TEST_TOKEN_COUNT), stage.t_in);
     try std.testing.expectEqual(@as(?i64, 800), stage.t_out);
 }
@@ -229,7 +237,12 @@ test "renews + settle sum to the real total (ms-precision, non-second-aligned)" 
     try std.testing.expectEqual(BIG_BALANCE - total, try readBalance(s.conn));
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
     try std.testing.expectEqual(total, stage.charged);
-    try std.testing.expectEqual(@as(i64, 3), stage.slices); // 2 renews + 1 settle
+    // The span the three writes left: born at the first renewal, last touched
+    // by the settle. `t2` is inside it and deliberately not observable — that
+    // is what accumulating in place costs, and the endpoints are what the
+    // budget apportionment actually reads.
+    try std.testing.expectEqual(t1, stage.created_at);
+    try std.testing.expectEqual(t3, stage.last_charged_at);
     try std.testing.expectEqual(@as(?i64, TEST_TOKEN_COUNT), stage.t_in);
     try std.testing.expectEqual(@as(?i64, 800), stage.t_out);
 }
@@ -294,7 +307,9 @@ test "claim+settle on a never-renewed run flips reported + charges the whole sli
     try std.testing.expectEqual(BIG_BALANCE - expected, try readBalance(s.conn));
     try expectLeaseStatus(s.conn, "reported");
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
-    try std.testing.expectEqual(@as(i64, 1), stage.slices); // the settle row only
+    // Never renewed, so the settle both created the row and last wrote it.
+    try std.testing.expectEqual(NOW_MS, stage.created_at);
+    try std.testing.expectEqual(NOW_MS, stage.last_charged_at);
     try std.testing.expectEqual(expected, stage.charged);
 }
 
@@ -362,7 +377,7 @@ test "an exhausting slice clamps the wallet to zero and stamps balance_exhausted
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
     try std.testing.expectEqual(@as(i64, TEST_CHARGE_NANOS), stage.charged);
     var q = PgQuery.from(try s.conn.query(
-        "SELECT balance_exhausted_at FROM billing.tenant_billing WHERE tenant_id = $1::uuid",
+        "SELECT balance_exhausted_at FROM billing.tenant_wallet WHERE tenant_id = $1::uuid",
         .{base.TEST_TENANT_ID},
     ));
     defer q.deinit();
@@ -380,7 +395,7 @@ test "a fresh lease resets the affinity metering cursor to zero / issue-time" {
     try affinity.resetCursor(s.conn, FLEET_ID, NOW_MS);
 
     var q = PgQuery.from(try s.conn.query(
-        \\SELECT metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms
+        \\SELECT metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at
         \\FROM fleet.runner_affinity WHERE fleet_id = $1::uuid
     , .{FLEET_ID}));
     defer q.deinit();
@@ -389,39 +404,4 @@ test "a fresh lease resets the affinity metering cursor to zero / issue-time" {
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 1));
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 2));
     try std.testing.expectEqual(NOW_MS, try row.get(i64, 3));
-}
-
-test "metering-periods read is tenant-scoped: own tenant sees slices, a foreign tenant sees none" {
-    const s = try arrange(1);
-    defer cleanup(s);
-    // Stage telemetry carries the tenant; the store's EXISTS guard keys off it. Seed 1 stage + 2 slices.
-    _ = try s.conn.exec(
-        \\INSERT INTO core.fleet_execution_telemetry
-        \\  (uid, id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
-        \\   model, credit_deducted_nanos, recorded_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4101'::uuid,
-        \\        'mtr_' || $2, $1::uuid, 'ws', 'z', $2, 'stage', 'platform', 'm', 225, 0)
-    , .{ base.TEST_TENANT_ID, EVENT_ID });
-    _ = try s.conn.exec(
-        \\INSERT INTO fleet.metering_periods
-        \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-        \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4102'::uuid,
-        \\        $1, 1, 10, 0, 20, $2, 100, 50, 150, 0),
-        \\       ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4103'::uuid,
-        \\        $1, 2, 5, 0, 10, 500, 50, 25, 75, 0)
-    , .{ EVENT_ID, PRIMARY_RUN_MS });
-
-    // Owning tenant: both slices, ordered by slice_seq.
-    const mine = try fleet_metering_store.listForEvent(s.conn, ALLOC, EVENT_ID, base.TEST_TENANT_ID);
-    defer ALLOC.free(mine);
-    try std.testing.expectEqual(@as(usize, 2), mine.len);
-    try std.testing.expectEqual(@as(i64, 1), mine[0].slice_seq);
-    try std.testing.expectEqual(@as(i64, 150), mine[0].charged_nanos);
-    try std.testing.expectEqual(@as(i64, 2), mine[1].slice_seq);
-
-    // A foreign tenant requesting the same event_id sees nothing (no leak).
-    const theirs = try fleet_metering_store.listForEvent(s.conn, ALLOC, EVENT_ID, OTHER_TENANT_ID);
-    defer ALLOC.free(theirs);
-    try std.testing.expectEqual(@as(usize, 0), theirs.len);
 }

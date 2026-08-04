@@ -17,6 +17,11 @@ const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
 
+/// The event envelope's creation instant. Fixed rather than `nowMillis()`:
+/// every ledger row for one event must carry the SAME value (schema/710),
+/// which a per-call clock read cannot guarantee.
+const EVENT_CREATED_AT: i64 = 1_760_000_000_000;
+
 const ALLOC = std.testing.allocator;
 
 // Per-suite tenant (fa08 block, matching the aa08 workspace segment): keeps
@@ -25,9 +30,15 @@ const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-fa0800000000";
 
 const WS_RECEIVE_RACE = "0195b4ba-8d3a-7f13-8abc-aa0800000001";
 
+// §3 put the ledger's `fleet_id` behind `UUID REFERENCES core.fleets(id)`, so
+// every one of the 100 concurrent debits needs a fleet that exists — a
+// descriptive string is refused by the driver before Postgres sees it.
+const FLEET_RECEIVE_RACE = "0195b4ba-8d3a-7f13-8abc-aa0800000f01";
+
 fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {
     try base.seedTenantById(conn, TENANT_ID, "metering-concurrency-suite");
     try base.seedWorkspaceWithTenant(conn, workspace_id, TENANT_ID);
+    try base.seedFleet(conn, FLEET_RECEIVE_RACE, workspace_id, "metering concurrency fixture", "{}", "");
 }
 
 fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
@@ -51,7 +62,7 @@ const Job = struct {
     fn ctx(self: *const Job) metering.PreflightContext {
         return .{
             .workspace_id = self.workspace_id,
-            .fleet_id = "fleet-conc-test",
+            .fleet_id = FLEET_RECEIVE_RACE,
             .event_id = self.event_id[0..self.event_len],
             .posture = .self_managed,
             .provider = "self-managed-test",
@@ -61,7 +72,7 @@ const Job = struct {
 };
 
 fn runReceive(job: *Job) void {
-    job.outcome = metering.debitReceive(job.pool, ALLOC, TENANT_ID, job.ctx(), .stop);
+    job.outcome = metering.debitReceive(job.pool, ALLOC, TENANT_ID, job.ctx(), EVENT_CREATED_AT, .stop);
 }
 
 // event_id pattern: aa19 segment + a per-index suffix, zero-padded, unique.
@@ -81,7 +92,7 @@ test "should drain every concurrent receive debit without lost writes" {
 
     try seed(db_ctx.conn, WS_RECEIVE_RACE);
     defer teardown(db_ctx.conn, WS_RECEIVE_RACE);
-    defer _ = db_ctx.conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_RACE}) catch {};
+    defer _ = db_ctx.conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1", .{WS_RECEIVE_RACE}) catch {};
 
     // Ample balance so no receive debit can exhaust — receive charges
     // EVENT_NANOS (0) per event, so the balance never moves, but every call
@@ -114,7 +125,7 @@ test "should drain every concurrent receive debit without lost writes" {
 
     // Exactly N receive telemetry rows — one per distinct event_id, no losses.
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT COUNT(*)::BIGINT FROM core.fleet_execution_telemetry
+        \\SELECT COUNT(*)::BIGINT FROM billing.usage_ledger
         \\WHERE workspace_id = $1 AND charge_type = 'receive'
     , .{WS_RECEIVE_RACE}));
     defer q.deinit();

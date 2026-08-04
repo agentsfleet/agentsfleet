@@ -370,7 +370,7 @@ fn seedFixtures(conn: *pg.Conn) !void {
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, FLEET_NAME, FLEET_CONFIG_JSON, FLEET_SOURCE_MD);
     const key_hash = api_key.sha256Hex(AGT_T_KEY);
     _ = try conn.exec(
-        \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
+        \\INSERT INTO core.api_keys (id, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, 'lifecycle-test-key', '', $3::text, 'user_lifecycle_test', TRUE, $4::bigint, $4::bigint)
         \\ON CONFLICT (key_hash) DO NOTHING
     , .{ API_KEY_ROW_ID, TENANT_ID, key_hash[0..], now_ms });
@@ -380,9 +380,9 @@ fn cleanupFixtures(pool: *pg.Pool) void {
     const conn = pool.acquire() catch return;
     defer pool.release(conn);
     base.teardownFleets(conn, WORKSPACE_ID);
-    _ = conn.exec("DELETE FROM core.api_keys WHERE uid = $1::uuid", .{API_KEY_ROW_ID}) catch |err|
+    _ = conn.exec("DELETE FROM core.api_keys WHERE id = $1::uuid", .{API_KEY_ROW_ID}) catch |err|
         std.log.warn(IGNORED_ERR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err|
+    _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1::uuid", .{WORKSPACE_ID}) catch |err|
         std.log.warn(IGNORED_ERR_FMT, .{@errorName(err)});
     base.teardownTenantById(conn, TENANT_ID);
 }

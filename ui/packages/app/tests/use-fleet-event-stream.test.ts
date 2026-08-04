@@ -7,7 +7,7 @@ import {
 } from "../components/domain/useFleetEventStream";
 import { __resetRegistryForTests } from "@/lib/streaming/fleet-stream-registry";
 import { OUTCOME } from "@/lib/events/event-summary";
-import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND, type EventDetail, type EventRow, type LiveFrame } from "@/lib/api/events";
 
 import { FakeEventSource } from "./helpers/fake-event-source";
 
@@ -17,7 +17,7 @@ import { FakeEventSource } from "./helpers/fake-event-source";
 // ahead of the browser bundle, so an unrecognised one must be inert, not fatal.
 const UNKNOWN_FRAME_KIND = "future_kind_we_dont_know";
 
-function row(over: Partial<EventRow> = {}): EventRow {
+function row(over: Partial<EventDetail> = {}): EventDetail {
   const now = Date.UTC(2026, 4, 15, 18, 30, 0);
   return {
     event_id: "evt_seed",

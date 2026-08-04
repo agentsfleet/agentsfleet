@@ -8,6 +8,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
 const affinity = @import("affinity.zig");
 const reclaim = @import("reclaim.zig");
+const event_rows = @import("event_rows.zig");
 const sweeper = @import("liveness_sweeper.zig");
 const protocol = @import("contract").protocol;
 
@@ -18,7 +19,6 @@ const RUNNER_STALE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106a01";
 const RUNNER_LIVE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106b01";
 const AGENTSFLEET_ONE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106c01";
 const AGENTSFLEET_TWO_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106c02";
-const AFFINITY_ONE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106e01";
 const LEASE_ONE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106f01";
 const LEASE_TWO_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106f02";
 const STALE_HASH = "runner_liveness_stale_hash";
@@ -28,7 +28,6 @@ const LIVE_HOST = "runner-liveness-live";
 const EVENT_ID_ONE = "evt-liveness-one";
 const EVENT_ID_TWO = "evt-liveness-two";
 const ACTOR = "steer:liveness-test";
-const REQUEST_JSON = "{\"message\":\"liveness\"}";
 const TEST_POSTURE = "platform";
 const TEST_PROVIDER = "test-provider";
 const TEST_MODEL = "test-model";
@@ -47,29 +46,42 @@ fn seedRunner(conn: *pg.Conn, runner_id: []const u8, host_id: []const u8, token_
     , .{ runner_id, host_id, token_hash, @tagName(state), last_seen_at });
 }
 
-fn seedAffinity(conn: *pg.Conn, affinity_id: []const u8, fleet_id: []const u8, runner_id: []const u8, leased_until: i64, token: i64) !void {
+fn seedAffinity(conn: *pg.Conn, fleet_id: []const u8, runner_id: []const u8, leased_until: i64, token: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq = EXCLUDED.fencing_seq,
         \\      leased_until = EXCLUDED.leased_until
-    , .{ affinity_id, fleet_id, runner_id, token, leased_until });
+    , .{ fleet_id, runner_id, token, leased_until });
 }
 
 fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_id: []const u8, event_id: []const u8, token: i64) !void {
+    // The event row the lease names. `reclaim.reclaimPriorActive` reads the
+    // body through an INNER JOIN on `(fleet_id, event_id)` rather than from a
+    // column on the lease, so a lease seeded without its event reclaims as
+    // null — which is the production contract for an event deleted out from
+    // under a live lease, not a bug to work around here. Cascades away with
+    // the fleet in `cleanup`.
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_events
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\   request_json, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3::uuid, $4, 'chat', $5, '{}'::jsonb, 0, 0)
+        \\ON CONFLICT (fleet_id, event_id) DO NOTHING
+    , .{ fleet_id, event_id, WORKSPACE_ID, ACTOR, event_rows.STATUS_RECEIVED });
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   event_type, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, fencing_token, lease_expires_at, status, created_at, updated_at)
+        \\   last_metered_at, fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7,
-        \\        'chat', $8, 0, $9, $10, $11, 0, 0, 0, 0, $12, $13, $14, 0, 0)
+        \\        'chat', 0, $8, $9, $10, 0, 0, 0, 0, $11, $12, $13, 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{
         lease_id,
@@ -79,7 +91,6 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_
         base.TEST_TENANT_ID,
         event_id,
         ACTOR,
-        REQUEST_JSON,
         TEST_POSTURE,
         TEST_PROVIDER,
         TEST_MODEL,
@@ -156,15 +167,15 @@ fn leasedUntil(conn: *pg.Conn, fleet_id: []const u8) !i64 {
     return scalarI64(conn, "SELECT leased_until FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{fleet_id});
 }
 
-fn seedStaleActiveLease(conn: *pg.Conn, fleet_id: []const u8, affinity_id: []const u8, lease_id: []const u8, event_id: []const u8, token: i64) !void {
+fn seedStaleActiveLease(conn: *pg.Conn, fleet_id: []const u8, lease_id: []const u8, event_id: []const u8, token: i64) !void {
     const now_ms = clock.nowMillis();
     try seedRunner(conn, RUNNER_STALE_ID, STALE_HOST, STALE_HASH, .active, now_ms - constants.RUNNER_OFFLINE_AFTER_MS - constants.HEARTBEAT_INTERVAL_MS);
-    try seedAffinity(conn, affinity_id, fleet_id, RUNNER_STALE_ID, now_ms + constants.LEASE_TTL_MS, token);
+    try seedAffinity(conn, fleet_id, RUNNER_STALE_ID, now_ms + constants.LEASE_TTL_MS, token);
     try seedLease(conn, lease_id, RUNNER_STALE_ID, fleet_id, event_id, token);
 }
 
 fn reclaimAsLive(conn: *pg.Conn, fleet_id: []const u8) !void {
-    const claim = try affinity.claim(conn, ALLOC, fleet_id, RUNNER_LIVE_ID, constants.LEASE_TTL_MS);
+    const claim = try affinity.claim(conn, fleet_id, RUNNER_LIVE_ID, constants.LEASE_TTL_MS);
     const won = switch (claim) {
         .won => |w| w,
         .taken => return error.TestUnexpectedResult,
@@ -194,7 +205,7 @@ test "stale runner swept and work reassigned" {
     defer cleanup(ctx.conn);
     try seedFleetBase(ctx.conn);
 
-    try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
+    try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
     try seedRunner(ctx.conn, RUNNER_LIVE_ID, LIVE_HOST, LIVE_HASH, .active, clock.nowMillis());
     const stats = try sweeper.sweepOnce(ctx.pool, ALLOC);
 
@@ -214,7 +225,7 @@ test "reassignment holds when no eligible target" {
     defer cleanup(ctx.conn);
     try seedFleetBase(ctx.conn);
 
-    try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
+    try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
     _ = try sweeper.sweepOnce(ctx.pool, ALLOC);
     try std.testing.expectEqualStrings(protocol.RUNNER_LEASE_STATUS_ACTIVE, try leaseStatus(ctx.conn, LEASE_ONE_ID));
 
@@ -349,7 +360,7 @@ test "concurrent sweepers emit one offline event" {
     defer cleanup(ctx.conn);
     try seedFleetBase(ctx.conn);
 
-    try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
+    try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
     try runConcurrentSweeps(ctx.pool);
     try std.testing.expectEqual(@as(i64, 1), try eventCount(ctx.conn, .runner_offline));
 }

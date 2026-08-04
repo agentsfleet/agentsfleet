@@ -80,7 +80,7 @@ const Worker = struct {
     fn run(h: *TestHarness, slot: *ClaimSlot) void {
         const conn = h.acquireConn() catch return;
         defer h.releaseConn(conn);
-        const c = affinity.claim(conn, ALLOC, FLEET_ID, RUNNER_ID, constants.LEASE_TTL_MS) catch return;
+        const c = affinity.claim(conn, FLEET_ID, RUNNER_ID, constants.LEASE_TTL_MS) catch return;
         switch (c) {
             .won => |w| slot.* = .{ .code = 1, .token = w.token },
             .taken => slot.* = .{ .code = 2 },
@@ -150,7 +150,6 @@ const CMD_DEL = "DEL";
 const HTTP_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dc012";
 const HTTP_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dca02";
 const HTTP_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dcc02";
-const HTTP_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dcd02";
 const HTTP_RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
 const LARGE_BALANCE_NANOS: i64 = 1000000000000;
 
@@ -180,7 +179,7 @@ fn seedHttpRunner(conn: *pg.Conn) !void {
 
 fn fundHttpBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'conc-http-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
@@ -262,7 +261,7 @@ test "100 concurrent HTTP lease polls on one ready fleet yield exactly one lease
     try fundHttpBalance(conn);
     try seedHttpRunner(conn);
     try base.seedFleet(conn, HTTP_FLEET_ID, HTTP_WORKSPACE_ID, "conc-http-bot", CONFIG_HTTP_RACE, "# race");
-    try base.seedFleetSession(conn, HTTP_SESSION_ID, HTTP_FLEET_ID, "{}");
+    try base.seedFleetSession(conn, HTTP_FLEET_ID, "{}");
     defer cleanupHttp(h, conn);
     dropReadyIndex(h);
     try publishHttpEvent(h);

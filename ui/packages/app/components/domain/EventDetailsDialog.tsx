@@ -24,7 +24,8 @@ import {
   CircleXIcon,
   type LucideIcon,
 } from "lucide-react";
-import type { EventRow } from "@/lib/api/events";
+import type { EventDetail, EventRow } from "@/lib/api/events";
+import { useEventDetail } from "./use-event-detail";
 import {
   copiedRequestContext,
   formatRequestValue,
@@ -94,17 +95,20 @@ const EVENT_TONES: Record<string, EventTone> = {
 };
 
 export function EventDetailsDialog({ row, onOpenChange }: EventDetailsDialogProps) {
+  // Fetched here rather than in `EventDetails` so the request is keyed on the
+  // open row and is torn down with the dialog, not with a render.
+  const detail = useEventDetail(row);
   return (
     <Dialog open={row !== null} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-svh max-w-3xl overflow-y-auto">
-        {row ? <EventDetails row={row} /> : null}
+        {row ? <EventDetails row={row} detail={detail} /> : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function EventDetails({ row }: { row: EventRow }) {
-  const response = boundedResponse(row.response_text);
+function EventDetails({ row, detail }: { row: EventRow; detail: EventDetail | null }) {
+  const response = boundedResponse(detail?.response_text ?? null);
   const failure = row.failure_label ? failurePresentationFor(row.failure_label) : null;
   // Inspect is where the operator comes for the whole story, so a failure
   // renders its sentence AND its recorded cause — the console row shows one
@@ -112,7 +116,7 @@ function EventDetails({ row }: { row: EventRow }) {
   const recordedResult = response || (failure ? outcomeFor(row) : "") || NO_RESULT;
   const result = truncateResult(recordedResult);
   const tone = EVENT_TONES[row.status] ?? WARNING_TONE;
-  const diagnostic = formatEventDetailsForCopy(row, result, response);
+  const diagnostic = formatEventDetailsForCopy(row, detail, result, response);
   const guidance = response ? null : guidanceFor(row.failure_label);
 
   return (
@@ -120,7 +124,7 @@ function EventDetails({ row }: { row: EventRow }) {
       <EventDetailsHeader row={row} result={result} />
       <div className="space-y-lg pt-lg">
         <EventResult result={result} tone={tone} />
-        <RequestContext row={row} />
+        <RequestContext row={row} detail={detail} />
         {guidance ? <StartupFix guidance={guidance} hasCause={hasCause(row)} /> : null}
         <DialogFooter className="border-t border-border pt-lg">
           <CopyButton value={diagnostic} label={COPY_DIAGNOSTIC_LABEL} />
@@ -180,9 +184,11 @@ function EventResult({ result, tone }: { result: string; tone: EventTone }) {
   );
 }
 
-function RequestContext({ row }: { row: EventRow }) {
+function RequestContext({ row, detail }: { row: EventRow; detail: EventDetail | null }) {
   const actor = senderLabelFor(row.actor);
-  const context = parseRequestContext(row.request_json);
+  // `null` covers both in-flight and failed: the panel says "not recorded"
+  // either way rather than claiming the event carried no context.
+  const context = detail === null ? null : parseRequestContext(detail.request_json);
   return (
     <Section aria-labelledby="request-context" className="gap-md">
       <div className="flex flex-wrap items-center justify-between gap-md">
@@ -272,7 +278,7 @@ function formatCreatedTooltip(created: Date): string {
   return `${formatTimeAbsolute(created)} · ${timeZone}`;
 }
 
-function formatEventDetailsForCopy(row: EventRow, result: string, response: string): string {
+function formatEventDetailsForCopy(row: EventRow, detail: EventDetail | null, result: string, response: string): string {
   const created = new Date(row.created_at);
   return JSON.stringify({
     event_id: row.event_id,
@@ -291,7 +297,7 @@ function formatEventDetailsForCopy(row: EventRow, result: string, response: stri
       cost_nanos: row.cost_nanos,
       wall_ms: row.wall_ms,
     },
-    request_context: copiedRequestContext(row.request_json),
+    request_context: detail === null ? null : copiedRequestContext(detail.request_json),
     internal_diagnostics: {
       failure_class: row.failure_label,
       checkpoint_id: row.checkpoint_id,

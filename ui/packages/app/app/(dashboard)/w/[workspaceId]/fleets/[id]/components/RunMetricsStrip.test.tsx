@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import RunMetricsStrip from "./RunMetricsStrip";
-import type { EventRow } from "@/lib/api/events";
+import type { EventDetail, EventRow } from "@/lib/api/events";
 import { METRICS_EMPTY, METRICS_TIME_LABEL } from "./console-copy";
 import { OUTCOME } from "@/lib/events/event-summary";
 import { formatTimeClock } from "@agentsfleet/design-system";
 
 afterEach(() => cleanup());
 
-function event(over: Partial<EventRow> = {}): EventRow {
+function event(over: Partial<EventDetail> = {}): EventDetail {
   return {
     event_id: "evt_1",
     fleet_id: "agt_1",
@@ -17,7 +17,7 @@ function event(over: Partial<EventRow> = {}): EventRow {
     event_type: "cron",
     status: "processed",
     request_json: "{}",
-    response_text: "Ticket triage completed",
+    response_text: null,
     tokens: 1500,
     wall_ms: 12_000,
     failure_label: null,
@@ -55,7 +55,10 @@ describe("RunMetricsStrip", () => {
   it("shows status, durable outcome, tokens, spend, and duration", () => {
     renderStrip(event());
     expect(screen.getByText("active")).toBeTruthy();
-    expect(screen.getByText("Ticket triage completed")).toBeTruthy();
+    // The strip names the outcome rather than quoting the answer: the list read
+    // carries no reply text, so a completed run with nothing else to say reads
+    // as exactly that.
+    expect(screen.getByText(OUTCOME.NO_REPLY)).toBeTruthy();
     expect(screen.getByText("1,500")).toBeTruthy();
     expect(screen.getByText("$0.04")).toBeTruthy();
     expect(screen.getByText("12.0s")).toBeTruthy();
@@ -90,15 +93,15 @@ describe("RunMetricsStrip", () => {
   it("omits the time rather than printing a broken one", () => {
     // A row whose stored timestamp does not read as a date still renders its
     // outcome; the strip drops the time instead of showing "Invalid Date".
-    renderStrip(event({ created_at: Number.NaN, response_text: "review completed" }));
-    expect(screen.getByText("review completed")).toBeTruthy();
+    renderStrip(event({ created_at: Number.NaN }));
+    expect(screen.getByText(OUTCOME.NO_REPLY)).toBeTruthy();
     expect(screen.queryByText(/invalid/i)).toBeNull();
   });
 
   it("shows when the latest outcome happened", () => {
     const at = Date.UTC(2026, 6, 21, 10, 42, 17);
-    renderStrip(event({ created_at: at, response_text: "Pull request review completed" }));
-    expect(screen.getByText("Pull request review completed")).toBeTruthy();
+    renderStrip(event({ created_at: at }));
+    expect(screen.getByText(OUTCOME.NO_REPLY)).toBeTruthy();
     expect(screen.getByText(formatTimeClock(new Date(at)))).toBeTruthy();
   });
 

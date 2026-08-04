@@ -14,7 +14,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const tenant_api_key = @import("../auth/middleware/tenant_api_key.zig");
 
 const LOOKUP_SQL =
-    \\SELECT uid::text, tenant_id::text, created_by::text, active
+    \\SELECT id::text, tenant_id::text, created_by::text, active
     \\FROM core.api_keys
     \\WHERE key_hash = $1
     \\LIMIT 1
@@ -23,8 +23,8 @@ const LOOKUP_SQL =
 const STAMP_LAST_USED_SQL =
     \\UPDATE core.api_keys
     \\SET last_used_at = $2
-    \\WHERE uid IN (
-    \\    SELECT uid
+    \\WHERE id IN (
+    \\    SELECT id
     \\    FROM core.api_keys
     \\    WHERE key_hash = $1 AND active = TRUE
     \\    FOR UPDATE SKIP LOCKED

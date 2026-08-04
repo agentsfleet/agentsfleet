@@ -14,9 +14,7 @@ const scope_fixtures = @import("../../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
-const cmd_common = @import("../../../cmd/common.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
-const SqlStatementSplitter = @import("../../../db/sql_splitter.zig").SqlStatementSplitter;
 const id_format = @import("../../../types/id_format.zig");
 
 const harness_mod = @import("../../test_harness.zig");
@@ -25,9 +23,6 @@ const TestHarness = harness_mod.TestHarness;
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f01";
 const AGG_WORKSPACE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f11";
 const TOKEN = scope_fixtures.PATCH_CONCURRENT_ADMIN;
-const ACTIVITY_COUNTER_MIGRATION_VERSION: i32 = 30;
-const BACKFILL_PREFIX = "INSERT INTO core.fleet_activity_counters";
-const DELETE_COUNTER_SQL = "DELETE FROM core.fleet_activity_counters WHERE fleet_id IN ($1::uuid, $2::uuid)";
 const SELECT_COUNTER_SQL =
     "SELECT events_processed, budget_used_nanos FROM core.fleet_activity_counters WHERE fleet_id = $1::uuid";
 
@@ -44,17 +39,17 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 
 fn seedBase(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'ListAggTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'ListAggTest', $2, $2) ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3) ON CONFLICT (id) DO NOTHING
     , .{ AGG_WORKSPACE, TEST_TENANT_ID, now_ms });
 }
 
 fn cleanupFleets(conn: *pg.Conn, busy: []const u8, bare: []const u8) void {
-    _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE fleet_id IN ($1, $2)", .{ busy, bare }) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE fleet_id IN ($1, $2)", .{ busy, bare }) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
     _ = conn.exec("DELETE FROM core.fleet_events WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ busy, bare }) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
     _ = conn.exec("DELETE FROM core.fleets WHERE id IN ($1::uuid, $2::uuid)", .{ busy, bare }) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
 }
@@ -63,34 +58,30 @@ fn seedFleet(alloc: std.mem.Allocator, conn: *pg.Conn, name: []const u8, now_ms:
     const id = try id_format.generateFleetId(alloc);
     errdefer alloc.free(id);
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, 'seed', '{}'::jsonb, 'active', $4, $4)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, 'seed', '{}'::jsonb, 'active', $4, $4)
     , .{ id, AGG_WORKSPACE, name, now_ms });
     return id;
 }
 
 fn addEvent(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, ts: i64) !void {
-    const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'cron:x', 'cron', 'processed', '{}'::jsonb, $5, $5)
-    , .{ uid, fleet_id, event_id, AGG_WORKSPACE, ts });
+        \\VALUES ($1::uuid, $2, $3::uuid, 'cron:x', 'cron', 'processed', '{}'::jsonb, $4, $4)
+    , .{ fleet_id, event_id, AGG_WORKSPACE, ts });
 }
 
-fn addTelemetry(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, charge: []const u8, nanos: i64, ts: i64) !void {
+fn addLedgerCharge(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, charge: []const u8, nanos: i64, ts: i64) !void {
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
-    var id_buf: [80]u8 = undefined;
-    const id = try std.fmt.bufPrint(&id_buf, "{s}-{s}", .{ event_id, charge });
+    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
-        \\INSERT INTO core.fleet_execution_telemetry
-        \\  (uid, id, tenant_id, workspace_id, fleet_id, event_id, charge_type,
-        \\   posture, model, credit_deducted_nanos, recorded_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, 'platform', 'claude', $8, $9)
-    , .{ uid, id, TEST_TENANT_ID, AGG_WORKSPACE, fleet_id, event_id, charge, nanos, ts });
+        \\INSERT INTO billing.usage_ledger
+        \\  (id, tenant_id, workspace_id, fleet_id, event_id, charge_type,
+        \\   posture, model, credit_deducted_nanos, event_created_at, created_at, last_charged_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, 'platform', 'claude', $7, $8, $8, $8)
+    , .{ row_id, TEST_TENANT_ID, AGG_WORKSPACE, fleet_id, event_id, charge, nanos, ts });
 }
 
 fn findFleet(items: std.json.Array, id: []const u8) ?std.json.ObjectMap {
@@ -107,21 +98,6 @@ fn expectCounter(conn: *pg.Conn, fleet_id: []const u8, events: i64, budget: i64)
     try std.testing.expectEqual(events, try row.get(i64, 0));
     try std.testing.expectEqual(budget, try row.get(i64, 1));
     q.drain();
-}
-
-fn runActivityCounterBackfill(conn: *pg.Conn) !void {
-    const migrations = cmd_common.canonicalMigrations();
-    const migration = for (migrations) |candidate| {
-        if (candidate.version == ACTIVITY_COUNTER_MIGRATION_VERSION) break candidate;
-    } else return error.ActivityCounterMigrationMissing;
-
-    var splitter = SqlStatementSplitter.init(migration.sql);
-    var last_statement: ?[]const u8 = null;
-    while (splitter.next()) |statement| last_statement = statement;
-    const backfill = last_statement orelse return error.ActivityCounterBackfillMissing;
-    if (!std.mem.startsWith(u8, backfill, BACKFILL_PREFIX))
-        return error.ActivityCounterBackfillUnexpected;
-    _ = try conn.exec(backfill, .{});
 }
 
 test "integration: list counters match children; a bare fleet reads 0 not null; renewal delta tracked" {
@@ -143,19 +119,21 @@ test "integration: list counters match children; a bare fleet reads 0 not null; 
     try addEvent(conn, busy, "agg-e1", now_ms);
     try addEvent(conn, busy, "agg-e2", now_ms + 1);
     try addEvent(conn, busy, "agg-e3", now_ms + 2);
-    try addTelemetry(conn, busy, "agg-e1", "receive", 500, now_ms);
+    try addLedgerCharge(conn, busy, "agg-e1", "receive", 500, now_ms);
     // pin test: literal is the contract — 500 + 1000 + 250 renewal = 1750.
-    try addTelemetry(conn, busy, "agg-e1", "stage", 1000, now_ms);
-    try addTelemetry(conn, "not-a-uuid", "agg-invalid-fleet", "receive", 9999, now_ms);
-    defer _ = conn.exec(
-        "DELETE FROM core.fleet_execution_telemetry WHERE event_id = 'agg-invalid-fleet'",
-        .{},
-    ) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
+    try addLedgerCharge(conn, busy, "agg-e1", "stage", 1000, now_ms);
+    // The orphan-ledger-row arm is gone and cannot come back. It seeded a
+    // charge under a non-fleet id to prove the aggregate ignored it, which the
+    // rebuild makes unreachable twice over: `billing.usage_ledger.fleet_id` is
+    // now UUID, so the driver refuses to encode a non-identifier, and
+    // `usage_ledger_fleet_id_fkey` would reject a well-formed id naming no
+    // fleet. The invariant moved out of the aggregate query and into the
+    // schema, so the query-level probe has nothing left to observe.
     // Renewal accumulation: the stage row's credit grows post-execution (the
     // production upsert does `credit = credit + EXCLUDED`). The budget trigger
     // must add the +250 delta, not miss it — so the total becomes 1750, not 1500.
     _ = try conn.exec(
-        \\UPDATE core.fleet_execution_telemetry SET credit_deducted_nanos = credit_deducted_nanos + 250
+        \\UPDATE billing.usage_ledger SET credit_deducted_nanos = credit_deducted_nanos + 250
         \\WHERE fleet_id = $1 AND event_id = 'agg-e1' AND charge_type = 'stage'
     , .{busy});
     try expectCounter(conn, busy, 3, 1750);
@@ -165,11 +143,11 @@ test "integration: list counters match children; a bare fleet reads 0 not null; 
     defer alloc.free(bare);
     defer cleanupFleets(conn, busy, bare);
 
-    // Simulate an upgrade from a database with pre-existing child rows: remove
-    // the trigger-maintained rows, then execute the actual final statement from
-    // migration 030. This proves the embedded migration, not a copied query.
-    _ = try conn.exec(DELETE_COUNTER_SQL, .{ busy, bare });
-    try runActivityCounterBackfill(conn);
+    // The counter rows here are the trigger-maintained ones (schema/890), read
+    // as the list actually finds them. This step used to delete them and re-run
+    // slot 030's backfill to simulate an upgrade; the rebuilt slot carries no
+    // backfill, deliberately — a database bootstrapped from empty has nothing to
+    // reconstruct (schema/890's closing note).
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=100", .{AGG_WORKSPACE});
     defer alloc.free(url);

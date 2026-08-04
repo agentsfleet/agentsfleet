@@ -75,14 +75,14 @@ const log = logging.scoped(.secret_reference_txn);
 /// which rows to lock, when the rows are a property of the CREDENTIAL.
 const OWNING_TENANT =
     \\SELECT tenant_id::text FROM core.workspaces
-    \\ WHERE workspace_id = $1
+    \\ WHERE id = $1::uuid
 ;
 
 /// Step 1. `SELECT 1 ... FOR UPDATE` rather than a plain read: the row lock is
 /// the entire point, and zero rows means the credential is already gone.
 const LOCK_SECRET =
     \\SELECT 1 FROM vault.secrets
-    \\ WHERE workspace_id = $1 AND key_name = $2
+    \\ WHERE workspace_id = $1::uuid AND key_name = $2
     \\ FOR UPDATE
 ;
 

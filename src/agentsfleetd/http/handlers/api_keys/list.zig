@@ -23,7 +23,7 @@ const log = logging.scoped(.api_keys_list);
 
 const Hx = hx_mod.Hx;
 
-const S_CREATED_AT_DESC_UID_DESC = "created_at DESC, uid DESC";
+const S_CREATED_AT_DESC_ID_DESC = "created_at DESC, id DESC";
 const SORT_DEFAULT = "-created_at";
 const MSG_RETIRED_PARAMS = "page and page_size are retired on this list; page with starting_after and limit";
 const MSG_BAD_QUERY = "limit must be between 1 and 100; sort must be one of created_at|-created_at|key_name|-key_name; starting_after must be a cursor issued under the same sort";
@@ -47,10 +47,10 @@ const SortSpec = struct {
 };
 
 pub fn sortSpecFor(raw: []const u8) ?SortSpec {
-    if (std.mem.eql(u8, raw, "created_at")) return .{ .order_sql = "created_at ASC, uid ASC", .cmp = CMP_FORWARD_ASC, .key = .created_at };
-    if (std.mem.eql(u8, raw, SORT_DEFAULT)) return .{ .order_sql = S_CREATED_AT_DESC_UID_DESC, .cmp = CMP_FORWARD_DESC, .key = .created_at };
-    if (std.mem.eql(u8, raw, "key_name")) return .{ .order_sql = "key_name ASC, uid ASC", .cmp = CMP_FORWARD_ASC, .key = .key_name };
-    if (std.mem.eql(u8, raw, "-key_name")) return .{ .order_sql = "key_name DESC, uid DESC", .cmp = CMP_FORWARD_DESC, .key = .key_name };
+    if (std.mem.eql(u8, raw, "created_at")) return .{ .order_sql = "created_at ASC, id ASC", .cmp = CMP_FORWARD_ASC, .key = .created_at };
+    if (std.mem.eql(u8, raw, SORT_DEFAULT)) return .{ .order_sql = S_CREATED_AT_DESC_ID_DESC, .cmp = CMP_FORWARD_DESC, .key = .created_at };
+    if (std.mem.eql(u8, raw, "key_name")) return .{ .order_sql = "key_name ASC, id ASC", .cmp = CMP_FORWARD_ASC, .key = .key_name };
+    if (std.mem.eql(u8, raw, "-key_name")) return .{ .order_sql = "key_name DESC, id DESC", .cmp = CMP_FORWARD_DESC, .key = .key_name };
     return null;
 }
 

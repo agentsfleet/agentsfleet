@@ -1,5 +1,5 @@
 //! Parse `BALANCE_EXHAUSTED_POLICY` env var. Drives the metering gate on a
-//! tenant whose `billing.tenant_billing.balance_nanos` has hit zero.
+//! tenant whose `billing.tenant_wallet.balance_nanos` has hit zero.
 
 const std = @import("std");
 const common = @import("common");

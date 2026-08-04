@@ -39,11 +39,11 @@ pub const TENANT_UNRELATED = "0195b4ba-8d3a-7f13-8abc-000000000099";
 /// post-test teardown.
 pub fn cleanup(conn: *pg.Conn) void {
     _ = conn.exec(
-        "DELETE FROM core.workspaces WHERE workspace_id IN ($1::uuid, $2::uuid)",
+        "DELETE FROM core.workspaces WHERE id IN ($1::uuid, $2::uuid)",
         .{ WS_PRIMARY, WS_SECONDARY },
     ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec(
-        "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
+        "DELETE FROM core.tenants WHERE id = $1::uuid",
         .{TENANT_ID},
     ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }

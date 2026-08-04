@@ -22,6 +22,7 @@ const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 const create_stream = @import("create_stream.zig");
 const create_install_steps = @import("create_install_steps.zig");
 const create_fleet_bundle = @import("create_fleet_bundle.zig");
+const create_grants = @import("create_grants.zig");
 const cron_sync = @import("cron_sync.zig");
 // Request-independent core.fleets row-write primitives (insert/activate/delete +
 // unique-violation probe) live in their own module — shared with the Slack
@@ -176,6 +177,14 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     };
     db.end();
     db_open = false;
+
+    // Origination for §8: every mintable credential the bundle declares gets a
+    // `pending` grant and an approvals-inbox entry. Runs here, synchronously,
+    // rather than in `create_install_steps`' progression — every step there is
+    // best-effort by design, and a best-effort seed reproduces the defect this
+    // removes: the row flips to `active` carrying no grant and the fleet is
+    // silently inert.
+    create_grants.seedForInstall(hx, workspace_id, fleet_id, parsed.config.credentials);
 
     create_stream.ensureEventStream(hx.ctx.queue, fleet_id) catch |err| {
         log.err(

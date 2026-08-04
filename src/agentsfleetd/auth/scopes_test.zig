@@ -13,19 +13,18 @@ test "test_scope_catalog_covers_every_enumerated_gate" {
     // proving the catalog is a superset of the enumeration checklist (Invariant 5).
     const enumerated = [_][]const u8{
         // Platform plane (former platform_admin routes).
-        "platform-key:read", "platform-key:admin",     "model:read",       "model:admin",
-        "runner:enroll",     "runner:read",            "runner:write",     "stream:read",
+        "platform-key:read", "platform-key:admin", "model:read",    "model:admin",
+        "runner:enroll",     "runner:read",        "runner:write",  "stream:read",
         // Tenant plane (former bearer + operator-role + enforce routes).
-        "fleet:read",        "fleet:write",            "fleet:admin",      "schedule:read",
-        "schedule:write",    "secret:read",            "secret:write",     "apikey:read",
-        "apikey:write",      "apikey:admin",           "fleetkey:read",    "fleetkey:write",
-        "grant:read",        "grant:write",            "connector:read",   "connector:write",
-        "billing:read",      "approval:read",          "approval:resolve", "workspace:admin",
-        "library:write",     "platform-library:write",
+        "fleet:read",        "fleet:write",        "fleet:admin",   "schedule:read",
+        "schedule:write",    "secret:read",        "secret:write",  "apikey:read",
+        "apikey:write",      "apikey:admin",       "grant:read",    "grant:write",
+        "connector:read",    "connector:write",    "billing:read",  "approval:read",
+        "approval:resolve",  "workspace:admin",    "library:write", "platform-library:write",
         // Runner credential.
         "runner:self",
         // Cross-tenant override (single scope covering read + write).
-             "workspace:any",
+              "workspace:any",
     };
     for (enumerated) |wire_str| {
         const set = scopes.parseClaim(wire_str);
@@ -167,7 +166,6 @@ test "test_machine_grant_excludes_approval_resolve" {
     try testing.expect(machine.contains(.schedule_write));
     try testing.expect(machine.contains(.secret_write));
     try testing.expect(machine.contains(.apikey_admin));
-    try testing.expect(machine.contains(.fleetkey_write));
     try testing.expect(machine.contains(.grant_write));
     try testing.expect(machine.contains(.connector_write));
     try testing.expect(machine.contains(.billing_read));

@@ -40,7 +40,6 @@ const LARGE_BALANCE_NANOS: i64 = 1000000000000;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0de011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dea01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dec01";
-const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ded01";
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "1" ** 64;
 
 // A distinctive marker the seeded session checkpoint carries — the report must
@@ -85,12 +84,12 @@ fn seedRunner(conn: *pg.Conn) !void {
 
 fn seedActiveFleet(conn: *pg.Conn, context_json: []const u8) !void {
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "session-bot", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, context_json);
+    try base.seedFleetSession(conn, FLEET_ID, context_json);
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'session-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL

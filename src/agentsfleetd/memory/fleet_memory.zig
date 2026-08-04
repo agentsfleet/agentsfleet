@@ -175,16 +175,19 @@ fn selectByTier(rows: []MemoryDelta, budget: usize) []const MemoryDelta {
 /// duplicate push never creates a second row for the same key.
 pub fn storeEntry(
     conn: *pg.Conn,
-    id: []const u8,
     fleet_id: []const u8,
     key: []const u8,
     content: []const u8,
     category: []const u8,
     ts_ms: i64,
 ) !void {
-    const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
-    _ = try conn.exec(sql.UPSERT_ENTRY, .{ uid, id, key, content, category, fleet_id, ts_ms });
+    // The row's identifier is minted here rather than handed in. The retired
+    // shape took an opaque caller string for `id` AND generated a second UUID
+    // beside it; the column is a single uuidv7 now, and the caller's string was never
+    // read back — `(key, fleet_id)` is what the fleet addresses an entry by.
+    const id_value = try id_format.generateUuidV7();
+    const id: []const u8 = &id_value;
+    _ = try conn.exec(sql.UPSERT_ENTRY, .{ id, key, content, category, fleet_id, ts_ms });
 }
 
 /// Evict the entries beyond `max` for `fleet_id` (the per-fleet durable-set cap),

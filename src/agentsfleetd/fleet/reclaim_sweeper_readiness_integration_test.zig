@@ -35,11 +35,6 @@ const ALLOC = std.testing.allocator;
 const FLEET_PENDING = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7f01";
 const FLEET_UNDELIVERED = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7f02";
 const FLEET_STRAY = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7f03";
-// Session-id suffixes `base.seedFleetWithConfig` appends; 1–b are taken by the
-// harness module's own fixtures.
-const SESSION_PENDING = "c";
-const SESSION_UNDELIVERED = "d";
-const SESSION_STRAY = "e";
 
 /// The scan proof needs strictly more active fleets than one pass reaches, so a
 /// sweep that never advanced its cursor could not possibly reach them all.
@@ -158,8 +153,8 @@ fn scanFleetId(buf: *[SCAN_ID_LEN]u8, index: usize) ![]const u8 {
 fn seedScanFleets(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\SELECT ($2 || lpad(to_hex(g), 3, '0'))::uuid, $1::uuid, 'sweep-scan-' || g,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\SELECT ($2 || lpad(to_hex(g), 3, '0'))::uuid, $1::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $1::uuid), 'sweep-scan-' || g,
         \\       '', '{}', $4, 0, 0
         \\FROM generate_series(0, $3::int - 1) AS g
         \\ON CONFLICT DO NOTHING
@@ -206,7 +201,7 @@ test "integration: a fleet holding a pending entry stays ready and the entry is 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     defer redis_fleet.purgeFleetRedisState(&h.queue, FLEET_PENDING) catch {};
-    try base.seedFleetWithConfig(conn, FLEET_PENDING, "sweep-pending", base.CONFIG_PLAIN, SESSION_PENDING);
+    try base.seedFleetWithConfig(conn, FLEET_PENDING, "sweep-pending", base.CONFIG_PLAIN);
     try clearWholeIndex(h);
 
     const event_id = try base.publishEvent(h, FLEET_PENDING);
@@ -242,7 +237,7 @@ test "integration: the sweeper recovers an undelivered entry that sits in no pen
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     defer redis_fleet.purgeFleetRedisState(&h.queue, FLEET_UNDELIVERED) catch {};
-    try base.seedFleetWithConfig(conn, FLEET_UNDELIVERED, "sweep-undelivered", base.CONFIG_PLAIN, SESSION_UNDELIVERED);
+    try base.seedFleetWithConfig(conn, FLEET_UNDELIVERED, "sweep-undelivered", base.CONFIG_PLAIN);
 
     // A successful append whose readiness mark then failed: the entry is in the
     // stream and in NOBODY's pending list, so XAUTOCLAIM can never see it. The
@@ -280,7 +275,7 @@ test "integration: a stray the sweeper reclaims leaves its fleet ready and leasa
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     defer redis_fleet.purgeFleetRedisState(&h.queue, FLEET_STRAY) catch {};
-    try base.seedFleetWithConfig(conn, FLEET_STRAY, "sweep-stray", base.CONFIG_PLAIN, SESSION_STRAY);
+    try base.seedFleetWithConfig(conn, FLEET_STRAY, "sweep-stray", base.CONFIG_PLAIN);
 
     // Another replica took delivery and never acked, then went away. Its
     // readiness mark went with it — the cross-replica strand.

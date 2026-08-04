@@ -68,19 +68,19 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn seedTestData(conn: *pg.Conn) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'ApiKeysTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'ApiKeysTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'ApiKeysOtherTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'ApiKeysOtherTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ OTHER_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
 }
 
@@ -276,7 +276,7 @@ test "integration: GET /v1/api-keys returns only the calling tenant's rows" {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
         _ = try conn.exec(
-            \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
+            \\INSERT INTO core.api_keys (id, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
             \\VALUES ($1::uuid, $2::uuid, 'other-tenant-key', '', 'deadbeef' , 'user_other', TRUE, $3, $3)
         , .{ FOREIGN_KEY_ID, OTHER_TENANT_ID, clock.nowMillis() });
     }
@@ -450,7 +450,7 @@ test "integration: test_api_keys_key_name_sort_pages_without_loss" {
         else => return err,
     };
     defer h.deinit();
-    // Seven keys, two sharing a name prefix — the composite (key_name, uid)
+    // Seven keys, two sharing a name prefix — the composite (key_name, id)
     // boundary must not lose either of them at a page edge.
     const names = [_][]const u8{ "walk-a", "walk-b", "walk-dup", "walk-dup-2", "walk-e", "walk-f", "walk-g" };
     for (names) |name| try mintKey(h, name);

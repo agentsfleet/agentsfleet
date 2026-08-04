@@ -64,13 +64,13 @@ fn seedRunner(conn: *pg.Conn, n: usize, lease_expires: ?i64) !void {
         _ = try conn.exec(
             \\INSERT INTO fleet.runner_leases
             \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-            \\   event_type, request_json, event_created_at, posture, provider, model,
+            \\   event_type, event_created_at, posture, provider, model,
             \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-            \\   last_metered_at_ms, fencing_token, lease_expires_at, status,
+            \\   last_metered_at, fencing_token, lease_expires_at, status,
             \\   created_at, updated_at)
             \\VALUES (overlay(md5('L' || $1)::uuid::text placing '7' from 15 for 1)::uuid,
             \\        overlay(md5($1)::uuid::text placing '7' from 15 for 1)::uuid,
-            \\        $2::uuid, $3::uuid, $4::uuid, 'e' || $1, 'a', 'fleet.run', '{}', 0,
+            \\        $2::uuid, $3::uuid, $4::uuid, 'e' || $1, 'a', 'fleet.run', 0,
             \\        'standard', 'anthropic', 'claude', 0, 0, 0, 0, 1, $5, $6, 0, 0)
         , .{ host, FLEET, WS, base.TEST_TENANT_ID, exp, protocol.RUNNER_LEASE_STATUS_ACTIVE });
     }

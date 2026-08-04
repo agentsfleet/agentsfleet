@@ -49,11 +49,11 @@ fn requireTenantId(hx: Hx) ?[]const u8 {
 }
 
 fn requireUserId(hx: Hx) ?[]const u8 {
-    const uid = hx.principal.user_id orelse {
+    const user_id = hx.principal.user_id orelse {
         hx.fail(ec.ERR_FORBIDDEN, "User context required; bootstrap principals cannot mint tenant API keys");
         return null;
     };
-    return uid;
+    return user_id;
 }
 
 pub fn generateRawKey(alloc: std.mem.Allocator) ![]const u8 {

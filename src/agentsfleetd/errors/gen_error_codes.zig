@@ -129,7 +129,6 @@ const CATEGORY_COPY = [_]CategoryCopy{
     .{ .token = "CONN", .label = "Connectors", .prevention = "Check the provider connection before sending requests." },
     .{ .token = "CRED", .label = "Credentials", .prevention = "Create required workspace secrets before starting a run." },
     .{ .token = "EXEC", .label = "Runs", .prevention = "Check runner settings and access before starting work." },
-    .{ .token = "FLEETKEY", .label = "Fleet keys", .prevention = "Use a current Fleet API key for the intended fleet." },
     .{ .token = "GH", .label = "GitHub", .prevention = "Keep the GitHub App installed with required repository access." },
     .{ .token = "GRANT", .label = "Integration grants", .prevention = "Use active integration grants approved for the fleet." },
     .{ .token = "INTERNAL", .label = "Service failures", .prevention = "Clients cannot prevent this failure. Keep retry handling ready." },

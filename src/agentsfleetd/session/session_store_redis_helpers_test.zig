@@ -6,10 +6,15 @@ const testing = std.testing;
 const hmac_sig = @import("hmac_sig");
 const store = @import("session_store_redis.zig");
 
-test "formatSessionKey rejects non-UUIDv7" {
+// A malformed id must arrive at the handler as a classified `Error` member.
+// `failFromStoreError` switches over `Error` and sends anything it cannot
+// classify to ERR_INTERNAL_OPERATION_FAILED, which would turn a caller's typo
+// into a 500 on the two unauthenticated session routes.
+test "formatSessionKey reports a non-UUIDv7 id as SessionMissing" {
     var buf: [store.SESSION_KEY_BUF_LEN]u8 = undefined;
-    try testing.expectError(error.InvalidSessionId, store.formatSessionKey(&buf, "abc"));
-    try testing.expectError(error.InvalidSessionId, store.formatSessionKey(&buf, "'; DROP TABLE sessions; --"));
+    try testing.expectError(store.Error.SessionMissing, store.formatSessionKey(&buf, "abc"));
+    try testing.expectError(store.Error.SessionMissing, store.formatSessionKey(&buf, "'; DROP TABLE sessions; --"));
+    try testing.expectError(store.Error.SessionMissing, store.formatSessionKey(&buf, "0195b4ba-8d3a-4f13-8abc-2b3e1e0caa40"));
 }
 
 test "formatSessionKey accepts a UUIDv7" {

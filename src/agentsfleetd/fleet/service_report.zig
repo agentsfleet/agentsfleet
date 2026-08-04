@@ -256,7 +256,7 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
         .provider = lease.provider,
         .model = lease.model,
     }, @as(u64, body.input_tokens) + @as(u64, body.cached_input_tokens), body.output_tokens, wall_ms, clock.nowMillis() - (std.math.cast(i64, wall_ms) orelse std.math.maxInt(i64)));
-    event_rows.checkpointFleetSession(alloc, pool, lease.fleet_id, buildContextJson(alloc, body.checkpoint)) catch |err| {
+    event_rows.checkpointFleetSession(pool, lease.fleet_id, buildContextJson(alloc, body.checkpoint)) catch |err| {
         log.warn("report_checkpoint_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = lease.fleet_id, .err = @errorName(err) });
     };
     redis_fleet.xackFleet(hx.ctx.queue, lease.fleet_id, lease.event_id) catch |err| {

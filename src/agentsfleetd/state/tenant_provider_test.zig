@@ -59,27 +59,25 @@ pub fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []con
 
     // Generate a UUIDv7 (required by ck_platform_provider_defaults_uid_uuidv7).
     const id_format = @import("../types/id_format.zig");
-    const key_id = try id_format.generateFleetId(alloc);
-    defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
     // Catalogue row the default points at — fk_platform_provider_defaults_model requires it.
-    const caps_uid = try id_format.generateFleetId(alloc);
-    defer alloc.free(caps_uid);
+    const caps_id = try id_format.generateFleetId(alloc);
+    defer alloc.free(caps_id);
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens,
+        \\  (id, model_id, provider, context_cap_tokens,
         \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
-        \\   created_at_ms, updated_at_ms)
+        \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, $5, $5)
         \\ON CONFLICT (provider, model_id) DO NOTHING
-    , .{ caps_uid, TP_DEFAULT_MODEL, provider, @as(i32, @intCast(TP_DEFAULT_CAP)), now_ms });
+    , .{ caps_id, TP_DEFAULT_MODEL, provider, @as(i32, @intCast(TP_DEFAULT_CAP)), now_ms });
     _ = try conn.exec(
-        \\INSERT INTO core.platform_provider_defaults (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, $5, $6, true, $4, $4)
+        \\INSERT INTO core.platform_provider_defaults (provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
+        \\VALUES ($1, $2::uuid, $4, $5, true, $3, $3)
         \\ON CONFLICT (provider) DO UPDATE
         \\SET source_workspace_id = EXCLUDED.source_workspace_id, model = EXCLUDED.model,
         \\    context_cap_tokens = EXCLUDED.context_cap_tokens, active = true, updated_at = EXCLUDED.updated_at
-    , .{ key_id, provider, ws_id, now_ms, TP_DEFAULT_MODEL, @as(i32, @intCast(TP_DEFAULT_CAP)) });
+    , .{ provider, ws_id, now_ms, TP_DEFAULT_MODEL, @as(i32, @intCast(TP_DEFAULT_CAP)) });
 }
 
 /// Seed a self-managed vault credential row.

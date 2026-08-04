@@ -10,8 +10,8 @@
 /// is the primary bound on a fleet's memory growth.
 pub const UPSERT_ENTRY =
     \\INSERT INTO memory.memory_entries
-    \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
-    \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
+    \\  (id, key, content, category, fleet_id, created_at, updated_at)
+    \\VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $6)
     \\ON CONFLICT (key, fleet_id) DO UPDATE
     \\  SET content = EXCLUDED.content,
     \\      category = EXCLUDED.category,

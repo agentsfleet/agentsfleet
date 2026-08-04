@@ -93,8 +93,8 @@ pub fn insertMembership(
     now_ms: i64,
 ) !void {
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
-    _ = try conn.exec(sql.INSERT_MEMBERSHIP, .{ uid, tenant_id, user_id, role, now_ms });
+    const row_id: []const u8 = &uid_value;
+    _ = try conn.exec(sql.INSERT_MEMBERSHIP, .{ row_id, tenant_id, user_id, role, now_ms });
 }
 
 /// Returns true on insert, false on (tenant_id, name) collision. Caller

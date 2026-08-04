@@ -9,7 +9,7 @@
 // Three surfaces read this module — the console thread, the console summary
 // strip, and the events table — so the vocabulary cannot drift between them.
 
-import type { EventRow, EventStatusValue } from "@/lib/api/events";
+import type { EventDetail, EventRow, EventStatusValue } from "@/lib/api/events";
 // Re-exported below so every consumer keeps importing this one module.
 import {
   eventHeadlineFrom,
@@ -235,7 +235,7 @@ export function outcomeForCompletion(
  *
  * An assistant-actor row has no separate trigger (it IS a reply); returns "".
  */
-export function triggerBodyFor(row: Pick<EventRow, "actor" | "request_json" | "event_type">): string {
+export function triggerBodyFor(row: Pick<EventDetail, "actor" | "request_json" | "event_type">): string {
   const role = roleFor(row.actor);
   if (role === "user") return steerMessageFrom(row.request_json);
   if (role === "assistant") return "";
@@ -248,7 +248,7 @@ export function triggerBodyFor(row: Pick<EventRow, "actor" | "request_json" | "e
  * conversion falls back to `outcomeFor` so a reply-less turn still says what
  * happened rather than rendering blank.
  */
-export function replyBodyFor(row: Pick<EventRow, "response_text">): string {
+export function replyBodyFor(row: Pick<EventDetail, "response_text">): string {
   return (row.response_text ?? "").trim();
 }
 

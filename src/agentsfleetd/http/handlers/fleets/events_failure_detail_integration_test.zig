@@ -21,7 +21,6 @@ const scope_fixtures = @import("../../test_scope_tokens.zig");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../../../cmd/serve_runner_lookup.zig");
 const api_key = @import("../../../auth/api_key.zig");
-const id_format = @import("../../../types/id_format.zig");
 const event_rows = @import("../../../fleet/event_rows.zig");
 const events_store = @import("../../../state/fleet_events_store.zig");
 const protocol = @import("contract").protocol;
@@ -41,7 +40,6 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd101";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd201";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd301";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd401";
 // The lease's token must equal the fleet's live fencing sequence, or the report
 // is fenced UZ-RUN-005 as a superseded holder.
 const FENCING_TOKEN: i64 = 1;
@@ -84,21 +82,21 @@ fn makeHarness() !*TestHarness {
 
 fn seedBase(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'EventsFailureDetailTest', 0, 0) ON CONFLICT DO NOTHING
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'EventsFailureDetailTest', 0, 0) ON CONFLICT DO NOTHING
     , .{TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, 0) ON CONFLICT DO NOTHING
+        \\INSERT INTO core.workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, 0) ON CONFLICT DO NOTHING
     , .{ WORKSPACE_ID, TENANT_ID });
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'failure-detail-fleet', 'seed', '{}'::jsonb, 'active', 0, 0)
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'failure-detail-fleet', 'seed', '{}'::jsonb, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ FLEET_ID, WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'failure-detail-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
@@ -121,26 +119,26 @@ fn seedRunner(conn: *pg.Conn) !void {
 fn seedAffinity(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
+        \\   last_metered_at, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq = EXCLUDED.fencing_seq,
         \\      leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, FLEET_ID, RUNNER_ID, FENCING_TOKEN, clock.nowMillis() + 600_000 });
+    , .{ FLEET_ID, RUNNER_ID, FENCING_TOKEN, clock.nowMillis() + 600_000 });
 }
 
 fn seedActiveLease(conn: *pg.Conn, event_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   event_type, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, fencing_token, lease_expires_at, status, created_at, updated_at)
+        \\   last_metered_at, fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'steer:test',
-        \\        'chat', '{"message":"hi"}', 0, 'platform', 'test-provider', 'test-model',
+        \\        'chat', 0, 'platform', 'test-provider', 'test-model',
         \\        0, 0, 0, 0, $7, $8, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, TENANT_ID, event_id, FENCING_TOKEN, clock.nowMillis() + 60_000 });
@@ -149,16 +147,14 @@ fn seedActiveLease(conn: *pg.Conn, event_id: []const u8) !void {
 // A `received` row — the state the lease verb leaves behind and the only state
 // `markTerminal`'s guarded UPDATE will transition.
 fn seedReceivedEvent(conn: *pg.Conn, event_id: []const u8, ts: i64) !void {
-    const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'steer:test', 'chat', $5,
-        \\        '{"message":"hi"}'::jsonb, $6, $6)
+        \\VALUES ($1::uuid, $2, $3::uuid, 'steer:test', 'chat', $4,
+        \\        '{"message":"hi"}'::jsonb, $5, $5)
         \\ON CONFLICT (fleet_id, event_id) DO NOTHING
-    , .{ uid, FLEET_ID, event_id, WORKSPACE_ID, event_rows.STATUS_RECEIVED, ts });
+    , .{ FLEET_ID, event_id, WORKSPACE_ID, event_rows.STATUS_RECEIVED, ts });
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
@@ -166,8 +162,7 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn cleanup(conn: *pg.Conn) void {
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_REPORTED});
-    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE fleet_id = $1", .{FLEET_ID});
+    execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE fleet_id = $1", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});

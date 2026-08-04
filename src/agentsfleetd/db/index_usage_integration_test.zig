@@ -1,5 +1,7 @@
-//! Integration tier for schema slot 033: every index it adds must be CHOSEN BY
-//! THE PLANNER for the query that justifies it.
+//! Integration tier for the hot-path indexes: each must be CHOSEN BY THE PLANNER
+//! for the query that justifies it. They shared retired slot 033; since the
+//! M154 rebuild each lives in the slot that owns its table, so this suite is
+//! organised by index rather than by slot.
 //!
 //! WHAT IS UNDER TEST is what our code owns: each index's column list and order,
 //! and that the index CAN serve its query. Whether the planner PREFERS it over a
@@ -26,10 +28,8 @@ const protocol = @import("contract").protocol;
 const fleet_sql = @import("../fleet/sql.zig");
 const operator_sql = @import("../http/handlers/fleet/sql.zig");
 const retention_sweeper = @import("../fleet/retention_sweeper.zig");
+const telemetry_store = @import("../state/fleet_telemetry_store.zig");
 const PgQuery = @import("pg_query.zig").PgQuery;
-
-/// The migration slot this suite covers.
-const SLOT_VERSION: i32 = 33;
 
 /// A minimal legible fixture. Fitness is checked with `enable_seqscan = off`, so
 /// it does not depend on the probe fleet being a selective slice of a large
@@ -38,7 +38,7 @@ const MEM_SEED_ROWS: u32 = 200;
 const PROBE_FLEET_ROWS: i32 = 20;
 
 const FLEET_MEM = "0195b4ba-8d3a-7f13-8abc-0000000b0002";
-const MEM_ID_PREFIX = "idxprobe-mem-";
+const MEM_KEY_PREFIX = "idxprobe-mem-";
 
 /// The operator lease read's fixture (slot 041). Same doctrine as the memory
 /// probe: fitness is asked with scans disabled, so a couple hundred rows is
@@ -52,12 +52,11 @@ const LEASE_EVENT_PREFIX = "idxprobe-evt-";
 /// fitness probe below spell it.
 const LEASES_BY_RUNNER_INDEX = "idx_runner_leases_runner_id_created_at_id";
 
-/// Every index slot 033 creates, in file order. Four, deliberately: the slot
-/// indexes only the reads whose cost grows without bound. List sorts over
-/// runners, fleets and api keys are left unindexed at the ~100-runner scale the
-/// slot documents — see its header.
+/// The four hot-path indexes this suite plans against — deliberately only the
+/// reads whose cost grows without bound. List sorts over runners, fleets and api
+/// keys stay unindexed at the ~100-runner scale their slots document.
 const IndexRef = struct { schema: []const u8, name: []const u8 };
-const SLOT_033_INDEXES = [_]IndexRef{
+const COVERED_HOT_PATH_INDEXES = [_]IndexRef{
     .{ .schema = "fleet", .name = "idx_runner_affinity_last_runner_id_leased_until" },
     .{ .schema = "fleet", .name = "idx_runner_leases_fleet_id_status_fencing_token" },
     .{ .schema = "core", .name = "idx_fleet_events_workspace_id_created_at_event_id" },
@@ -141,20 +140,20 @@ fn expectPlanOmits(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8, ar
 fn seedMemory(conn: *pg.Conn, rows: u32) !void {
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
+        \\  (id, key, content, category, fleet_id, created_at, updated_at)
         \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
-        \\       $1 || g, 'k' || g, 'content', 'core',
+        \\       $1 || g, 'content', 'core',
         \\       CASE WHEN g <= $3::int THEN $2::uuid
         \\            ELSE md5((g % 200)::text)::uuid END,
         \\       1750000000000 + g, 1750000000000 + g
         \\FROM generate_series(1, $4::int) g
         \\ON CONFLICT DO NOTHING
-    , .{ MEM_ID_PREFIX, FLEET_MEM, @as(i32, PROBE_FLEET_ROWS), @as(i32, @intCast(rows)) });
+    , .{ MEM_KEY_PREFIX, FLEET_MEM, @as(i32, PROBE_FLEET_ROWS), @as(i32, @intCast(rows)) });
     _ = try conn.exec("ANALYZE memory.memory_entries", .{});
 }
 
 fn wipeMemory(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM memory.memory_entries WHERE id LIKE $1", .{MEM_ID_PREFIX ++ "%"}) catch |err|
+    _ = conn.exec("DELETE FROM memory.memory_entries WHERE key LIKE $1", .{MEM_KEY_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory wipe ignored: {s}", .{@errorName(err)});
 }
 
@@ -176,13 +175,13 @@ fn seedLeases(conn: *pg.Conn, rows: i32) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   event_type, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, fencing_token, lease_expires_at, status,
+        \\   last_metered_at, fencing_token, lease_expires_at, status,
         \\   created_at, updated_at)
         \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
         \\       $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5 || g,
-        \\       'system', 'chat', '{}', g, 'metered', 'anthropic', 'claude',
+        \\       'system', 'chat', g, 'metered', 'anthropic', 'claude',
         \\       0, 0, 0, 0, g, g, 'reported', g, g
         \\FROM generate_series(1, $6::int) g
         \\ON CONFLICT DO NOTHING
@@ -204,7 +203,7 @@ test "slot 033 indexes are applied exactly once" {
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
     defer db.close();
 
-    for (SLOT_033_INDEXES) |entry| {
+    for (COVERED_HOT_PATH_INDEXES) |entry| {
         const n = try base.indexCount(db.conn, entry.schema, entry.name);
         if (n != 1) {
             std.debug.print("index {s}.{s} present {d} times, want 1\n", .{ entry.schema, entry.name, n });
@@ -213,40 +212,59 @@ test "slot 033 indexes are applied exactly once" {
     }
 }
 
-test "slot 033 creates exactly the indexes this suite covers" {
-    // Pins the slot's SIZE, not just its members. An index added to the slot
-    // without a matching plan assertion here is the created-but-unproven case
-    // the suite exists to prevent, so it fails until covered.
-    const slot = slotSql(SLOT_VERSION) orelse return error.SlotNotRegistered;
-    var lines = std.mem.splitScalar(u8, slot, '\n');
-    var creates: usize = 0;
-    while (lines.next()) |raw| {
-        const line = std.mem.trim(u8, raw, " \t\r");
-        if (std.mem.startsWith(u8, line, "CREATE INDEX")) creates += 1;
+test "every covered index is created exactly once across the schema" {
+    // The retired slot 033 grouped these four, so this suite could pin ONE
+    // slot's SIZE and catch an index added without a matching plan assertion.
+    // Each index now lives in the slot that owns its table, so there is no
+    // single slot left to size — that guard is now the every-index-cites-its-
+    // reader assertion, which covers ALL indexes rather than these four.
+    // What still belongs here is the narrower claim: each index this suite plans
+    // against is created, and created once. A duplicate under a second name
+    // would be maintained on every write for nothing.
+    for (COVERED_HOT_PATH_INDEXES) |entry| {
+        var creates: usize = 0;
+        for (schema.migrations) |m| {
+            var lines = std.mem.splitScalar(u8, m.sql, '\n');
+            while (lines.next()) |raw| {
+                const line = std.mem.trim(u8, raw, " \t\r");
+                if (!std.mem.startsWith(u8, line, "CREATE INDEX")) continue;
+                if (std.mem.indexOf(u8, line, entry.name) != null) creates += 1;
+            }
+        }
+        std.testing.expectEqual(@as(usize, 1), creates) catch |err| {
+            std.debug.print(
+                "index {s} created {d} times across schema/, want exactly 1\n",
+                .{ entry.name, creates },
+            );
+            return err;
+        };
     }
-    try std.testing.expectEqual(SLOT_033_INDEXES.len, creates);
 }
 
-test "slot 033 re-applies as a no-op" {
-    // Idempotency by construction: every statement in the slot is guarded, so a
-    // re-run against a provisioned database changes nothing. Reading it back
-    // through the registered migration array rather than the file also proves
-    // the slot is wired into `schema/embed.zig` — an unregistered slot never
-    // runs at all, and would otherwise fail only at first deploy.
-    const slot = slotSql(SLOT_VERSION) orelse return error.SlotNotRegistered;
-    var lines = std.mem.splitScalar(u8, slot, '\n');
+test "every index in the schema re-applies as a no-op" {
+    // Idempotency by construction: a re-run against a provisioned database must
+    // change nothing. Generalised from the retired slot 033 to the whole schema,
+    // because the covered indexes no longer share a slot — and the broader claim
+    // is the one the rebuild actually needs, since every slot is re-applied on
+    // every boot. Reading through the registered migration array rather than the
+    // files also proves each slot is wired into `schema/embed.zig`.
     var guarded: usize = 0;
-    while (lines.next()) |raw| {
-        // Comment lines discuss DDL without being it -- match statements only.
-        const line = std.mem.trim(u8, raw, " \t\r");
-        if (!std.mem.startsWith(u8, line, "CREATE INDEX")) continue;
-        if (std.mem.indexOf(u8, line, "IF NOT EXISTS") == null) {
-            std.debug.print("unguarded statement in slot 033:\n{s}\n", .{line});
-            return error.MigrationNotIdempotent;
+    for (schema.migrations) |m| {
+        var lines = std.mem.splitScalar(u8, m.sql, '\n');
+        while (lines.next()) |raw| {
+            // Comment lines discuss DDL without being it -- match statements only.
+            const line = std.mem.trim(u8, raw, " \t\r");
+            const is_index = std.mem.startsWith(u8, line, "CREATE INDEX") or
+                std.mem.startsWith(u8, line, "CREATE UNIQUE INDEX");
+            if (!is_index) continue;
+            if (std.mem.indexOf(u8, line, "IF NOT EXISTS") == null) {
+                std.debug.print("unguarded index in slot v{d}:\n{s}\n", .{ m.version, line });
+                return error.MigrationNotIdempotent;
+            }
+            guarded += 1;
         }
-        guarded += 1;
     }
-    try std.testing.expectEqual(SLOT_033_INDEXES.len, guarded);
+    try std.testing.expect(guarded >= COVERED_HOT_PATH_INDEXES.len);
 }
 
 test "memory composite has the right shape and serves the fleet filter" {
@@ -350,7 +368,7 @@ const EVENT_SEED_ROWS: i32 = 200;
 /// Every fiftieth seeded event carries a rare lifecycle tag; the rest are the
 /// per-lease bulk the filtered read must be able to skip.
 const RARE_EVENT_EVERY: i32 = 50;
-const EVENTS_INDEX = "idx_runner_events_runner_id_type_occurred_at_id";
+const EVENTS_INDEX = "idx_runner_events_runner_id_type_created_at_id";
 const EVENT_PAGE_LIMIT: i64 = 25;
 /// Any instant works for the detail plan probe — the plan's shape, not the
 /// rows it would return, is under test.
@@ -370,11 +388,11 @@ fn seedRunnerEvents(conn: *pg.Conn, rows: i32) !void {
     , .{RUNNER_EVENTS});
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_events
-        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+        \\  (id, runner_id, event_type, metadata, dedup_key, created_at)
         \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
         \\       $1::uuid,
         \\       CASE WHEN g % $2::int = 0 THEN $3::text ELSE $4::text END,
-        \\       $6::bigint + g, '{}'::jsonb, NULL, $6::bigint + g
+        \\       '{}'::jsonb, NULL, $6::bigint + g
         \\FROM generate_series(1, $5::int) g
     , .{
         RUNNER_EVENTS,
@@ -397,16 +415,20 @@ test "counter and retention slots are registered in the migration array" {
     // Reading through `schema.migrations` rather than the files proves each
     // slot is wired into `schema/embed.zig` — an unregistered slot never runs
     // at all, and would otherwise fail only at first deploy.
-    try std.testing.expect(slotSql(43) != null);
-    try std.testing.expect(slotSql(44) != null);
-    try std.testing.expect(slotSql(45) != null);
-    try std.testing.expect(slotSql(46) != null);
+    // Retired slots 043-046 folded into the slots that own their tables:
+    // the lifetime counters into 650, the runner-event read and
+    // retention sweep indexes into 640, and the lease retention grants and
+    // indexes into 610 and 620.
+    try std.testing.expect(slotSql(610) != null);
+    try std.testing.expect(slotSql(620) != null);
+    try std.testing.expect(slotSql(640) != null);
+    try std.testing.expect(slotSql(650) != null);
 }
 
 /// Slot 046's pair, named once because the shape assertions and the fitness
 /// probes below both spell them.
 const RETENTION_LEASES_INDEX = "idx_runner_leases_status_updated_at";
-const RETENTION_EVENTS_INDEX = "idx_runner_events_type_occurred_at";
+const RETENTION_EVENTS_INDEX = "idx_runner_events_type_created_at";
 /// Below every seeded row's clock, so NOTHING qualifies — the steady-state
 /// cycle, and the only bind that discriminates.
 ///
@@ -437,7 +459,7 @@ test "retention sweep deletes ride their own indexes, not a whole-table scan" {
     try seedRunnerEvents(db.conn, EVENT_SEED_ROWS);
 
     try expectIndexShape(alloc, db.conn, "fleet", RETENTION_LEASES_INDEX, "status, updated_at");
-    try expectIndexShape(alloc, db.conn, "fleet", RETENTION_EVENTS_INDEX, "event_type, occurred_at");
+    try expectIndexShape(alloc, db.conn, "fleet", RETENTION_EVENTS_INDEX, "event_type, created_at");
 
     const terminal = [_][]const u8{
         protocol.RUNNER_LEASE_STATUS_REPORTED,
@@ -489,7 +511,7 @@ test "lifetime counter table keys one bigint tally row per runner" {
     const row = (try q.next()) orelse return error.CounterTableMissing;
     const got = (try row.get(?[]const u8, 0)) orelse return error.CounterTableMissing;
     try std.testing.expectEqualStrings(
-        "uid uuid, runner_id uuid, acquired bigint, succeeded bigint, " ++
+        "runner_id uuid, acquired bigint, succeeded bigint, " ++
             "failed bigint, expired bigint, created_at bigint, updated_at bigint",
         got,
     );
@@ -503,7 +525,7 @@ test "events composite has the right shape and serves the filtered feed" {
     try seedRunnerEvents(db.conn, EVENT_SEED_ROWS);
 
     try std.testing.expectEqual(@as(i64, 1), try base.indexCount(db.conn, "fleet", EVENTS_INDEX));
-    try expectIndexShape(alloc, db.conn, "fleet", EVENTS_INDEX, "runner_id, event_type, occurred_at DESC, id DESC");
+    try expectIndexShape(alloc, db.conn, "fleet", EVENTS_INDEX, "runner_id, event_type, created_at DESC, id DESC");
 
     // The production statements verbatim, with the operator page's real bind
     // shape: a rare-tag text[] and open time bounds. Before this slot both
@@ -560,9 +582,236 @@ test "the lease pager's exact total never walks the runner's whole history" {
 
     const unfiltered: ?[]const u8 = null;
     try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_LEASE_TOTAL, .{
-        RUNNER_LEASE, unfiltered,
+        RUNNER_LEASE, unfiltered, unfiltered,
     }, SEQ_SCAN_LEASES_MARKER);
     try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_LEASE_TOTAL, .{
-        RUNNER_LEASE, WS_LEASE,
+        RUNNER_LEASE, WS_LEASE, unfiltered,
     }, SEQ_SCAN_LEASES_MARKER);
+    // The fleet filter joins `core.fleets` to match a name. The join must not
+    // cost the lease side its index: the runner predicate still selects the rows
+    // and the fleets probe rides the primary key.
+    try expectPlanOmits(alloc, db.conn, operator_sql.SELECT_RUNNER_LEASE_TOTAL, .{
+        RUNNER_LEASE, unfiltered, FLEET_LEASE,
+    }, SEQ_SCAN_LEASES_MARKER);
+}
+
+/// The tenant charges keyset fixture. Same doctrine as the probes above: scans
+/// are forced off, so a small table still forms the plan under test.
+const LEDGER_SEED_ROWS: i32 = 200;
+const WS_LEDGER = "0195b4ba-8d3a-7f13-8abc-0000000d0001";
+const FLEET_LEDGER = "0195b4ba-8d3a-7f13-8abc-0000000d0002";
+const LEDGER_EVENT_PREFIX = "idxprobe-ledger-";
+const CHARGE_TYPE_STAGE = "stage";
+/// Named once: both the fitness probe and the no-sort assertion spell it.
+const LEDGER_BY_TENANT_INDEX = "idx_usage_ledger_tenant_id_created_at_id";
+/// A `Sort` node here means the tiebreak was resolved after the seek instead of
+/// by the index — the exact regression the trailing `id` column exists to stop.
+const SORT_NODE_MARKER = "Sort";
+
+/// The cursor branch of `listTelemetryForTenant`, imported rather than copied:
+/// this suite asserts a property of the PRODUCTION query text, so a local
+/// transcription that drifted from it would assert nothing.
+const TENANT_CHARGES_KEYSET_PAGE = telemetry_store.SELECT_TENANT_CHARGES_PAGE_AFTER;
+const TENANT_CHARGES_FIRST_PAGE = telemetry_store.SELECT_TENANT_CHARGES_PAGE_FIRST;
+
+fn seedLedger(conn: *pg.Conn, rows: i32) !void {
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WS_LEDGER);
+    try base.seedFleet(conn, FLEET_LEDGER, WS_LEDGER, "index-probe-ledger-fleet", "{}", "# SKILL");
+    _ = try conn.exec(
+        \\INSERT INTO billing.usage_ledger
+        \\  (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
+        \\   model, credit_deducted_nanos, event_created_at, created_at, last_charged_at)
+        \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+        \\       $1::uuid, $2::uuid, $3::uuid, $4 || g, $5, 'metered',
+        \\       'claude', 0, g, g, g
+        \\FROM generate_series(1, $6::int) g
+        \\ON CONFLICT DO NOTHING
+    , .{ base.TEST_TENANT_ID, WS_LEDGER, FLEET_LEDGER, LEDGER_EVENT_PREFIX, CHARGE_TYPE_STAGE, rows });
+}
+
+fn wipeLedger(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE event_id LIKE $1", .{LEDGER_EVENT_PREFIX ++ "%"}) catch |err|
+        std.log.warn("ledger wipe ignored: {s}", .{@errorName(err)});
+    base.teardownFleets(conn, WS_LEDGER);
+    base.teardownWorkspace(conn, WS_LEDGER);
+}
+
+test "the tenant charges keyset pages without sorting, because its index carries the tiebreak" {
+    // `schema/720_usage_ledger_indexes.sql` states this is "asserted against the
+    // plan rather than against the index definition" — this is that assertion.
+    // An index definition can carry the column and still be bypassed; only the
+    // plan proves the page is one ordered scan.
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    defer wipeLedger(db.conn);
+    try seedLedger(db.conn, LEDGER_SEED_ROWS);
+
+    const boundary_created_at: i64 = LEDGER_SEED_ROWS;
+    const boundary_id = "0195b4ba-8d3a-7f13-8abc-0000000dffff";
+    const page_limit: i32 = 50;
+
+    // The index serves the page…
+    try expectServesFilter(alloc, db.conn, TENANT_CHARGES_KEYSET_PAGE, .{
+        base.TEST_TENANT_ID, boundary_created_at, boundary_id, page_limit,
+    }, LEDGER_BY_TENANT_INDEX);
+
+    // …and resolves the ORDER BY itself, so no sort node appears. Were the
+    // trailing `id` dropped from the index, the seek would still find the rows
+    // and the plan would gain a Sort to break ties — passing the fitness check
+    // above while paying a sort on every page.
+    try expectPlanOmits(alloc, db.conn, TENANT_CHARGES_KEYSET_PAGE, .{
+        base.TEST_TENANT_ID, boundary_created_at, boundary_id, page_limit,
+    }, SORT_NODE_MARKER);
+
+    // The FIRST page carries the same ORDER BY and the same exposure — and it is
+    // the one every reader hits before they page at all, so it is the worse of
+    // the two to leave unasserted.
+    try expectServesFilter(alloc, db.conn, TENANT_CHARGES_FIRST_PAGE, .{
+        base.TEST_TENANT_ID, page_limit,
+    }, LEDGER_BY_TENANT_INDEX);
+    try expectPlanOmits(alloc, db.conn, TENANT_CHARGES_FIRST_PAGE, .{
+        base.TEST_TENANT_ID, page_limit,
+    }, SORT_NODE_MARKER);
+}
+
+// ── The declared index roster (Dimension 5.1) ───────────────────────────────
+//
+// Every discretionary index in the schema, listed once. "Discretionary" means
+// created by a bare `CREATE INDEX`: a constraint-backed index (primary key,
+// unique constraint) is justified by the constraint that owns it and is excluded
+// below, because dropping it is not a tuning decision.
+//
+// The roster exists because a dead index is silent. When a milestone deletes a
+// reader — as this one deleted the operator accrual surface — the index that
+// served it keeps being maintained on every write and nothing fails. On an
+// unbounded, never-pruned table like `billing.usage_ledger` that is a permanent
+// tax returning nothing. Requiring a new index to land here forces the author to
+// state the query it serves in the slot's own comment, where a reviewer sees it.
+//
+// This asserts the roster, not the comments: a catalogue cannot read prose. What
+// it guarantees is that no index appears or disappears WITHOUT a deliberate edit
+// here, which is the enforceable half of "no index without a named reader".
+const DeclaredIndex = struct { schema: []const u8, name: []const u8 };
+const DECLARED_INDEXES = [_]DeclaredIndex{
+    .{ .schema = "billing", .name = "idx_usage_ledger_fleet_id_workspace_id_last_charged_at" },
+    .{ .schema = "billing", .name = "idx_usage_ledger_tenant_id_created_at_id" },
+    .{ .schema = "billing", .name = "idx_usage_ledger_workspace_id" },
+    .{ .schema = "core", .name = "idx_api_keys_tenant_id_active" },
+    .{ .schema = "core", .name = "idx_connector_channels_fleet_id" },
+    .{ .schema = "core", .name = "idx_connector_installs_workspace_id" },
+    .{ .schema = "core", .name = "idx_fleet_approval_gates_action_id" },
+    .{ .schema = "core", .name = "idx_fleet_approval_gates_fleet_id_status" },
+    .{ .schema = "core", .name = "idx_fleet_approval_gates_timeout_at_pending" },
+    .{ .schema = "core", .name = "idx_fleet_approval_gates_workspace_id_status_created_at" },
+    .{ .schema = "core", .name = "idx_fleet_events_fleet_id_created_at_event_id" },
+    .{ .schema = "core", .name = "idx_fleet_events_fleet_id_resumes_event_id" },
+    .{ .schema = "core", .name = "idx_fleet_events_workspace_id_created_at_event_id" },
+    .{ .schema = "core", .name = "idx_fleet_schedules_fleet_id_created_at" },
+    .{ .schema = "core", .name = "idx_fleets_required_tags_gin" },
+    .{ .schema = "core", .name = "idx_fleets_workspace_id_created_at_id" },
+    .{ .schema = "core", .name = "idx_memberships_user_id" },
+    .{ .schema = "core", .name = "idx_tenant_fleet_library_workspace_id_created_at" },
+    .{ .schema = "core", .name = "idx_tenant_model_entries_tenant_id_created_at" },
+    .{ .schema = "core", .name = "idx_users_tenant_id" },
+    .{ .schema = "core", .name = "idx_workspaces_tenant_id_created_at_id" },
+    .{ .schema = "core", .name = "uq_users_oidc_subject" },
+    .{ .schema = "core", .name = "uq_workspaces_tenant_id_name" },
+    .{ .schema = "fleet", .name = "idx_runner_affinity_last_runner_id_leased_until" },
+    .{ .schema = "fleet", .name = "idx_runner_events_runner_id_created_at_id" },
+    .{ .schema = "fleet", .name = "idx_runner_events_runner_id_type_created_at_id" },
+    .{ .schema = "fleet", .name = "idx_runner_events_type_created_at" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_fleet_id_event_id_fencing_token" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_fleet_id_status_fencing_token" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_runner_id_created_at_id" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_runner_id_status" },
+    .{ .schema = "fleet", .name = "idx_runner_leases_status_updated_at" },
+    .{ .schema = "fleet", .name = "uq_runner_events_runner_id_dedup_key_offline" },
+    .{ .schema = "memory", .name = "idx_memory_entries_fleet_id_category_updated_at" },
+    .{ .schema = "memory", .name = "idx_memory_entries_fleet_id_created_at_key" },
+    .{ .schema = "memory", .name = "idx_memory_entries_fleet_id_updated_at_id" },
+};
+
+/// Discretionary indexes only: `pg_constraint.conindid` excludes the index a
+/// primary key or unique CONSTRAINT owns. A `CREATE UNIQUE INDEX` that backs no
+/// constraint stays in scope — it is still a tuning decision someone made.
+const SELECT_DISCRETIONARY_INDEXES =
+    \\SELECT n.nspname, c.relname
+    \\FROM pg_class c
+    \\JOIN pg_namespace n ON n.oid = c.relnamespace
+    \\JOIN pg_index i ON i.indexrelid = c.oid
+    \\WHERE c.relkind = 'i'
+    \\  AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    \\  AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = c.oid)
+    \\ORDER BY n.nspname, c.relname
+;
+
+fn isDeclared(schema_name: []const u8, name: []const u8) bool {
+    for (DECLARED_INDEXES) |declared| {
+        if (std.mem.eql(u8, declared.schema, schema_name) and std.mem.eql(u8, declared.name, name)) return true;
+    }
+    return false;
+}
+
+test "every index in the schema is declared, and every declared index still exists" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+
+    var live: std.ArrayList(DeclaredIndex) = .empty;
+    defer {
+        for (live.items) |item| {
+            alloc.free(item.schema);
+            alloc.free(item.name);
+        }
+        live.deinit(alloc);
+    }
+
+    var q = PgQuery.from(try db.conn.query(SELECT_DISCRETIONARY_INDEXES, .{}));
+    defer q.deinit();
+    while (try q.next()) |row| {
+        const schema_name = try alloc.dupe(u8, try row.get([]const u8, 0));
+        errdefer alloc.free(schema_name);
+        const name = try alloc.dupe(u8, try row.get([]const u8, 1));
+        errdefer alloc.free(name);
+        try live.append(alloc, .{ .schema = schema_name, .name = name });
+    }
+
+    // Direction 1 — an index the catalogue has that the roster does not. Either
+    // it is new and its slot must state the query it serves, or its reader was
+    // deleted and the index should have gone with it.
+    var undeclared: usize = 0;
+    for (live.items) |item| {
+        if (!isDeclared(item.schema, item.name)) {
+            undeclared += 1;
+            std.debug.print(
+                "\nUNDECLARED INDEX: {s}.{s} — add it to DECLARED_INDEXES with the reader its slot names, or drop it\n",
+                .{ item.schema, item.name },
+            );
+        }
+    }
+
+    // Direction 2 — a roster entry the catalogue lacks. An index that vanished
+    // without this list changing means a read lost its support silently.
+    var missing: usize = 0;
+    for (DECLARED_INDEXES) |declared| {
+        var found = false;
+        for (live.items) |item| {
+            if (std.mem.eql(u8, declared.schema, item.schema) and std.mem.eql(u8, declared.name, item.name)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            missing += 1;
+            std.debug.print(
+                "\nMISSING INDEX: {s}.{s} is declared here but absent from the catalogue\n",
+                .{ declared.schema, declared.name },
+            );
+        }
+    }
+
+    try std.testing.expectEqual(@as(usize, 0), undeclared);
+    try std.testing.expectEqual(@as(usize, 0), missing);
 }

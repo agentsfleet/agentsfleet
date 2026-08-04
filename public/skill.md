@@ -33,7 +33,6 @@ platform-only (set by the anomaly gate) and rejected if requested via API.
 | `ingest_fleet_webhook` | POST | `/v1/webhooks/{fleet_id}` | provider-shaped event |
 | `get_tenant_billing` | GET | `/v1/tenants/me/billing` | — |
 | `get_tenant_billing_charges` | GET | `/v1/tenants/me/billing/charges` | — |
-| `get_tenant_metering_periods` | GET | `/v1/tenants/me/billing/charges/{event_id}/telemetry` | — |
 | `get_model_library` | GET | `/v1/models` | — (paged; `q`/`provider` filters, `ETag`) |
 | `list_tenant_model_entries` | GET | `/v1/tenants/me/models` | — (paged) |
 | `list_workspace_fleet_library` | GET | `/v1/workspaces/{workspace_id}/fleet-libraries` | — (paged) |
@@ -54,7 +53,7 @@ The QStash schedule ingress uses QStash delivery signatures instead of a bearer 
 - Large Language Model (LLM) discovery: `/llms.txt`
 
 ## Policy classes
-- `safe`: `list_fleet_events`, `stream_fleet_events`, `list_fleet_bundles`, `get_fleet_bundle`, `get_tenant_billing`, `get_tenant_billing_charges`, `get_tenant_metering_periods` — allow by default
+- `safe`: `list_fleet_events`, `stream_fleet_events`, `list_fleet_bundles`, `get_fleet_bundle`, `get_tenant_billing`, `get_tenant_billing_charges` — allow by default
 - `sensitive`: `create_fleet`, `import_fleet_bundle`, `update_fleet`, `stop_fleet`, `resume_fleet`, `kill_fleet`, `post_fleet_message`, `ingest_fleet_webhook` — require explicit confirmation
 - `critical`: `delete_fleet` — irreversible row + history purge; require double confirmation
 

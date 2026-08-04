@@ -216,7 +216,7 @@ function ApprovalCard({
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
-  const ageMin = Math.max(0, Math.floor((now - gate.requested_at) / 60_000));
+  const ageMin = Math.max(0, Math.floor((now - gate.created_at) / 60_000));
   const timeoutMin = Math.max(0, Math.ceil((gate.timeout_at - now) / 60_000));
   return (
     <Card>

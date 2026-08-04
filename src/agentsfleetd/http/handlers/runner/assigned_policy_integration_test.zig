@@ -49,7 +49,6 @@ const PLATFORM_ADMIN_TOKEN = scope_fixtures.PLATFORM_ADMIN;
 // Distinct UUIDv7 literals — no collision with sibling runner suites.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fa011";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fac01";
-const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fad01";
 
 // One host name per test so residue from an aborted run never cross-fires.
 const HOST_ENROLL = "policy-assign-host-enroll";
@@ -253,13 +252,13 @@ fn seedFleetWork(conn: *pg.Conn) !void {
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
     , .{ base.TEST_TENANT_ID, LARGE_BALANCE_NANOS, BILLING_GRANT_SOURCE });
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "assigned-policy-fleet", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, HB_EMPTY);
+    try base.seedFleetSession(conn, FLEET_ID, HB_EMPTY);
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {

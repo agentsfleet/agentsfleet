@@ -1,4 +1,4 @@
-import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND, type EventDetail, type EventRow, type LiveFrame } from "@/lib/api/events";
 import {
   ACTOR,
   EVENT_STATUS,
@@ -203,19 +203,30 @@ function applyToolCall(
 // payload) and the fleet's reply (from response_text on the same row). Neither
 // clobbers the other, so an operator's own message survives reload and the
 // fleet's answer is never dropped or attributed to the operator.
-function rowToEvent(row: EventRow): FleetEvent {
+/// The payload stand-in for a turn whose body is not on hand — a live frame
+/// carries none, and a list row no longer does either.
+const EMPTY_PAYLOAD = "{}";
+
+function rowToEvent(row: EventRow | EventDetail): FleetEvent {
+  // A backfill row may or may not carry bodies. The events LIST carries none —
+  // it is kept off oversized-attribute storage — so a turn reconstructed from
+  // it renders its header and outcome, and its text arrives from the live
+  // stream or from the single-event read. A caller that already holds details
+  // passes them and nothing is lost.
+  const bodies = row as Partial<EventDetail>;
+  const request_json = bodies.request_json ?? EMPTY_PAYLOAD;
   return {
     id: row.event_id,
     role: roleFor(row.actor),
     actor: row.actor,
-    text: triggerBodyFor(row),
-    reply: replyBodyFor(row),
+    text: triggerBodyFor({ actor: row.actor, event_type: row.event_type, request_json }),
+    reply: replyBodyFor({ response_text: bodies.response_text ?? null }),
     outcome: outcomeFor(row),
     failureLabel: row.failure_label ?? null,
     failureDetail: row.failure_detail ?? null,
     createdAt: new Date(row.created_at),
     status: row.status as FleetEventStatus,
-    custom: { requestJson: row.request_json },
+    custom: { requestJson: request_json },
   };
 }
 
@@ -237,7 +248,7 @@ function applyEventReceived(
       // webhook or cron trigger as "chat received" until reload.
       text: triggerBodyFor({
         actor: frame.actor,
-        request_json: "{}",
+        request_json: EMPTY_PAYLOAD,
         event_type: "",
       }),
       reply: "",

@@ -29,12 +29,6 @@ export interface WorkspaceHandlers {
   delete: CommandHandlerFn;
 }
 
-export interface FleetKeyHandlers {
-  create: CommandHandlerFn;
-  list: CommandHandlerFn;
-  delete: CommandHandlerFn;
-}
-
 export interface ApiKeyHandlers {
   create: CommandHandlerFn;
   list: CommandHandlerFn;
@@ -110,7 +104,6 @@ export interface Handlers {
   auth: AuthHandlers;
   doctor: CommandHandlerFn;
   workspace: WorkspaceHandlers;
-  fleetKey: FleetKeyHandlers;
   apiKey: ApiKeyHandlers;
   connector: ConnectorHandlers;
   grant: GrantHandlers;

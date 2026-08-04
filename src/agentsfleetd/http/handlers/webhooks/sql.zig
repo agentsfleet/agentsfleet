@@ -22,12 +22,12 @@ pub const SELECT_FLEET_WORKSPACE_AND_STATUS =
 pub const APPROVE_GRANT =
     \\UPDATE core.integration_grants
     \\SET status = $1, approved_at = $2
-    \\WHERE grant_id = $3 AND fleet_id = $4::uuid AND status = $5
+    \\WHERE id = $3::uuid AND fleet_id = $4::uuid AND status = $5
 ;
 
 /// Revoke a pending grant, same single-shot guard.
 pub const REVOKE_GRANT =
     \\UPDATE core.integration_grants
     \\SET status = $1, revoked_at = $2
-    \\WHERE grant_id = $3 AND fleet_id = $4::uuid AND status = $5
+    \\WHERE id = $3::uuid AND fleet_id = $4::uuid AND status = $5
 ;

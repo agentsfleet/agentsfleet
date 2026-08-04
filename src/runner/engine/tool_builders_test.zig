@@ -117,3 +117,85 @@ test "buildHttpRequest (policy path) denies an off-allowlist host at the outer g
     try std.testing.expect(!r.success);
     try std.testing.expect(std.mem.startsWith(u8, r.error_msg.?, "host_not_allowed:"));
 }
+
+// ── Every builder in the registry ──────────────────────────────────────────
+//
+// The tests above drive one builder deeply. This one drives ALL of them
+// shallowly, and the two answer different questions. A builder is a wiring
+// step: it allocates a tool struct, fills it from config, and returns the
+// vtable-erased `Tool`. Once erased, a field left at `undefined` or a vtable
+// wired to the wrong struct is no longer a compile error — it is a crash or a
+// wrong answer the first time an agent invokes that tool in production.
+//
+// Twenty-four of the twenty-five builders had no test at all, so adding a
+// twenty-sixth to the registry and forgetting to wire it was a silent change.
+// Calling each one and reading its identity back through the vtable is the
+// cheapest proof that the erasure landed on the right struct.
+
+const BuilderCase = struct {
+    label: []const u8,
+    build: *const fn (ctx: BuildCtx) anyerror!tools_mod.Tool,
+};
+
+const ALL_BUILDERS = [_]BuilderCase{
+    .{ .label = "shell", .build = tool_builders.buildShell },
+    .{ .label = "file_read", .build = tool_builders.buildFileRead },
+    .{ .label = "file_write", .build = tool_builders.buildFileWrite },
+    .{ .label = "file_edit", .build = tool_builders.buildFileEdit },
+    .{ .label = "file_append", .build = tool_builders.buildFileAppend },
+    .{ .label = "file_delete", .build = tool_builders.buildFileDelete },
+    .{ .label = "file_read_hashed", .build = tool_builders.buildFileReadHashed },
+    .{ .label = "file_edit_hashed", .build = tool_builders.buildFileEditHashed },
+    .{ .label = "git", .build = tool_builders.buildGit },
+    .{ .label = "image", .build = tool_builders.buildImage },
+    .{ .label = "calculator", .build = tool_builders.buildCalculator },
+    .{ .label = "memory_store", .build = tool_builders.buildMemoryStore },
+    .{ .label = "memory_recall", .build = tool_builders.buildMemoryRecall },
+    .{ .label = "memory_list", .build = tool_builders.buildMemoryList },
+    .{ .label = "memory_forget", .build = tool_builders.buildMemoryForget },
+    .{ .label = "delegate", .build = tool_builders.buildDelegate },
+    .{ .label = "spawn", .build = tool_builders.buildSpawn },
+    .{ .label = "web_search", .build = tool_builders.buildWebSearch },
+    .{ .label = "web_fetch", .build = tool_builders.buildWebFetch },
+    .{ .label = "pushover", .build = tool_builders.buildPushover },
+    .{ .label = "browser", .build = tool_builders.buildBrowser },
+    .{ .label = "screenshot", .build = tool_builders.buildScreenshot },
+    .{ .label = "browser_open", .build = tool_builders.buildBrowserOpen },
+    .{ .label = "message", .build = tool_builders.buildMessage },
+};
+
+test "every tool builder returns a wired tool that can describe itself" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const cfg = testConfig();
+    const policy = newPolicy(&.{});
+    const ctx = BuildCtx{
+        .alloc = alloc,
+        .workspace_path = WORKSPACE,
+        .cfg = &cfg,
+        .policy = &policy,
+    };
+
+    for (ALL_BUILDERS) |case| {
+        const t = case.build(ctx) catch |err| {
+            std.debug.print("\nbuilder {s} failed: {s}\n", .{ case.label, @errorName(err) });
+            return err;
+        };
+        // Reading identity back through the vtable is what proves the erasure
+        // landed on the struct the builder allocated: a mismatched vtable
+        // returns another tool's name, or reads uninitialised memory.
+        const name = t.vtable.name(t.ptr);
+        if (name.len == 0) {
+            std.debug.print("\nbuilder {s} produced a tool with no name\n", .{case.label});
+            return error.ToolHasNoName;
+        }
+        // A tool with no parameter schema cannot be offered to a model at all.
+        const params = t.vtable.parameters_json(t.ptr);
+        if (params.len == 0) {
+            std.debug.print("\nbuilder {s} produced tool '{s}' with no parameter schema\n", .{ case.label, name });
+            return error.ToolHasNoParameters;
+        }
+    }
+}

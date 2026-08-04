@@ -37,9 +37,9 @@ const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 
 /// The boundary a catalogue page resumes from, in the spec's fixed key order.
 ///
-/// `id` is the row's `uid`, not its `model_id`. Normalization is many-to-one, so
+/// `id` is the row's `id`, not its `model_id`. Normalization is many-to-one, so
 /// the (provider, model_id) pair is not unique once folded and cannot serve as
-/// the final tiebreak; the uid can, and it rides here opaquely without ever
+/// the final tiebreak; the id can, and it rides here opaquely without ever
 /// appearing in a response body.
 ///
 /// `provider` is carried so the cursor is bound to the query that issued it —

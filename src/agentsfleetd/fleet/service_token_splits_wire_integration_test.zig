@@ -24,7 +24,9 @@ const TestHarness = harness_mod.TestHarness;
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
+const tenant_billing = @import("../state/tenant_billing.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
+const ChargeType = @import("../state/fleet_telemetry_store.zig").ChargeType;
 
 const ALLOC = std.testing.allocator;
 
@@ -33,7 +35,6 @@ const ALLOC = std.testing.allocator;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9a01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9c01";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9f01";
 const MODEL_LIBRARY_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const EVENT_ID = "evt-wire-splits-1";
@@ -88,16 +89,16 @@ fn seedRunner(conn: *pg.Conn) !void {
 // Affinity holds the authoritative metering cursor the renewal CTE diffs against.
 fn seedAffinity(conn: *pg.Conn, m_in: i64, m_cached: i64, m_out: i64, last_metered: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_affinity (id, fleet_id, last_runner_id, fencing_seq,
+        \\INSERT INTO fleet.runner_affinity (fleet_id, last_runner_id, fencing_seq,
         \\   leased_until, metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, $5, $6, $7, $8, 0, 0)
+        \\   last_metered_at, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 1, $3, $4, $5, $6, $7, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = 1,
         \\   metered_input_tokens = EXCLUDED.metered_input_tokens,
         \\   metered_cached_tokens = EXCLUDED.metered_cached_tokens,
         \\   metered_output_tokens = EXCLUDED.metered_output_tokens,
-        \\   last_metered_at_ms = EXCLUDED.last_metered_at_ms
-    , .{ AFFINITY_ID, FLEET_ID, RUNNER_ID, clock.nowMillis() + 600_000, m_in, m_cached, m_out, last_metered });
+        \\   last_metered_at = EXCLUDED.last_metered_at
+    , .{ FLEET_ID, RUNNER_ID, clock.nowMillis() + 600_000, m_in, m_cached, m_out, last_metered });
 }
 
 fn seedActiveLease(conn: *pg.Conn, last_metered: i64) !void {
@@ -105,11 +106,11 @@ fn seedActiveLease(conn: *pg.Conn, last_metered: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform', $7, $8,
+        \\        'steer:test', 'chat', 0, 'platform', $7, $8,
         \\        0, 0, 0, $9, 1, $10, 'active', $11, $11)
         \\ON CONFLICT (id) DO UPDATE SET fencing_token = 1, status = 'active'
     , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, PROVIDER, MODEL, last_metered, now + 60_000, now - 60_000 });
@@ -117,7 +118,7 @@ fn seedActiveLease(conn: *pg.Conn, last_metered: i64) !void {
 
 fn seedBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'wire-splits-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
     , .{ base.TEST_TENANT_ID, BIG_BALANCE });
@@ -131,14 +132,14 @@ fn seedModelRates(conn: *pg.Conn) !void {
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
         \\ON CONFLICT (provider, model_id) DO UPDATE SET
         \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
         \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
         \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-        \\   updated_at_ms = EXCLUDED.updated_at_ms
+        \\   updated_at = EXCLUDED.updated_at
     , .{ MODEL_LIBRARY_UID, MODEL, PROVIDER, MODEL_CONTEXT_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
 }
 
@@ -147,8 +148,7 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
-    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM billing.usage_ledger WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
@@ -213,23 +213,43 @@ fn expectedTokenCost(conn: *pg.Conn, d_in: i64, d_cached: i64, d_out: i64) !i64 
     return billing_rates.sliceCharge(token_only, 0, d_in, d_cached, d_out);
 }
 
-const SliceRow = struct { d_in: i64, d_cached: i64, d_out: i64, token_cost: i64, charged: i64, run_fee: i64 };
+/// The pure run-time term, the mirror of `expectedTokenCost`. The retired
+/// `fleet.metering_periods` stored `run_fee_nanos` and `token_cost_nanos` as
+/// separate columns; the ledger stores one `credit_deducted_nanos`. It does
+/// store the `wall_ms` the fee was priced from, though, so the split is still
+/// derivable — `charged - expectedRunFee(wall)` isolates the token term exactly
+/// as the retired column did.
+fn expectedRunFee(conn: *pg.Conn, wall_ms: i64) i64 {
+    const resolved = billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL, base.TRIAL_ENDED_AT_MS, clock.nowMillis()) catch null;
+    const run_only = billing_rates.SliceRates{
+        .run_nanos_per_sec = if (resolved) |r| r.run_nanos_per_sec else tenant_billing.RUN_NANOS_PER_SEC,
+        .input_nanos_per_mtok = 0,
+        .cached_input_nanos_per_mtok = 0,
+        .output_nanos_per_mtok = 0,
+    };
+    return billing_rates.sliceCharge(run_only, wall_ms, 0, 0, 0);
+}
 
-fn readSlice(conn: *pg.Conn, slice_seq: i64) !?SliceRow {
+/// The accumulating stage row. Token counts are cumulative across every write
+/// that folded into it, so a zero-delta re-send leaves them exactly where the
+/// previous write left them — which is the idempotency claim, stated on the
+/// accumulator instead of on a per-slice row that no longer exists.
+const StageRow = struct { t_in: i64, t_cached: i64, t_out: i64, charged: i64, wall: i64 };
+
+fn readStage(conn: *pg.Conn) !?StageRow {
     var q = PgQuery.from(try conn.query(
-        \\SELECT d_input_tokens, d_cached_tokens, d_output_tokens,
-        \\       token_cost_nanos, charged_nanos, run_fee_nanos
-        \\FROM fleet.metering_periods WHERE event_id = $1 AND slice_seq = $2
-    , .{ EVENT_ID, slice_seq }));
+        \\SELECT COALESCE(token_count_input, 0), COALESCE(token_count_cached_input, 0),
+        \\       COALESCE(token_count_output, 0), credit_deducted_nanos, COALESCE(wall_ms, 0)
+        \\FROM billing.usage_ledger WHERE event_id = $1 AND charge_type = $2
+    , .{ EVENT_ID, ChargeType.stage.label() }));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
-    return SliceRow{
-        .d_in = try row.get(i64, 0),
-        .d_cached = try row.get(i64, 1),
-        .d_out = try row.get(i64, 2),
-        .token_cost = try row.get(i64, 3),
-        .charged = try row.get(i64, 4),
-        .run_fee = try row.get(i64, 5),
+    return StageRow{
+        .t_in = try row.get(i64, 0),
+        .t_cached = try row.get(i64, 1),
+        .t_out = try row.get(i64, 2),
+        .charged = try row.get(i64, 3),
+        .wall = try row.get(i64, 4),
     };
 }
 
@@ -275,17 +295,20 @@ test "integration: wire renew bills the body's splits, advances the cursor, and 
     defer resp.deinit();
     try resp.expectStatus(.ok);
 
-    // The slice deltas ARE the wire values, and the token cost equals the
-    // server's own rate resolution applied to them (zero in-trial; registry
-    // rates after — same resolution path either way).
-    const slice1 = (try readSlice(s.conn, 1)) orelse return error.SliceRowMissing;
-    try std.testing.expectEqual(@as(i64, CUM_IN), slice1.d_in);
-    try std.testing.expectEqual(@as(i64, CUM_CACHED), slice1.d_cached);
-    try std.testing.expectEqual(@as(i64, CUM_OUT), slice1.d_out);
-    try std.testing.expectEqual(try expectedTokenCost(s.conn, CUM_IN, CUM_CACHED, CUM_OUT), slice1.token_cost);
-    try std.testing.expectEqual(slice1.run_fee + slice1.token_cost, slice1.charged); // no clamp at BIG_BALANCE
+    // Off a zero cursor the billed deltas ARE the wire values, so the stage
+    // row's counts read back the body verbatim. Subtracting the run fee the
+    // stored `wall_ms` prices leaves the token term, which must equal the
+    // server's own rate resolution applied to those deltas.
+    const stage1 = (try readStage(s.conn)) orelse return error.StageRowMissing;
+    try std.testing.expectEqual(@as(i64, CUM_IN), stage1.t_in);
+    try std.testing.expectEqual(@as(i64, CUM_CACHED), stage1.t_cached);
+    try std.testing.expectEqual(@as(i64, CUM_OUT), stage1.t_out);
+    const token_cost1 = stage1.charged - expectedRunFee(s.conn, stage1.wall); // no clamp at BIG_BALANCE
+    try std.testing.expectEqual(try expectedTokenCost(s.conn, CUM_IN, CUM_CACHED, CUM_OUT), token_cost1);
     // The registry prices these deltas non-zero — the spec's wire proof arm.
-    try std.testing.expect(slice1.token_cost > 0);
+    // `arrange` closed this tenant's trial boundary, so it asserts here
+    // unconditionally rather than waiting on a build-time window to lapse.
+    try std.testing.expect(token_cost1 > 0);
 
     // The affinity cursor advanced to the reported cumulatives.
     const cursor = try readAffinityCursor(s.conn);
@@ -298,11 +321,17 @@ test "integration: wire renew bills the body's splits, advances the cursor, and 
     const resp2 = try postRenew(s.h, .{ .input_tokens = CUM_IN, .cached_input_tokens = CUM_CACHED, .output_tokens = CUM_OUT });
     defer resp2.deinit();
     try resp2.expectStatus(.ok);
-    const slice2 = (try readSlice(s.conn, 2)) orelse return error.SliceRowMissing;
-    try std.testing.expectEqual(@as(i64, 0), slice2.d_in);
-    try std.testing.expectEqual(@as(i64, 0), slice2.d_cached);
-    try std.testing.expectEqual(@as(i64, 0), slice2.d_out);
-    try std.testing.expectEqual(@as(i64, 0), slice2.token_cost);
+    const stage2 = (try readStage(s.conn)) orelse return error.StageRowMissing;
+    try std.testing.expectEqual(@as(i64, CUM_IN), stage2.t_in); // accumulated by +0
+    try std.testing.expectEqual(@as(i64, CUM_CACHED), stage2.t_cached);
+    try std.testing.expectEqual(@as(i64, CUM_OUT), stage2.t_out);
+    // The re-send added run time and nothing else: net of the fee its own
+    // `wall_ms` prices, the accumulated charge still carries only the first
+    // renewal's token cost.
+    try std.testing.expectEqual(
+        expectedTokenCost(s.conn, CUM_IN, CUM_CACHED, CUM_OUT),
+        stage2.charged - expectedRunFee(s.conn, stage2.wall),
+    );
     const cursor2 = try readAffinityCursor(s.conn);
     try std.testing.expectEqual(@as(i64, CUM_IN), cursor2.m_in); // unchanged
 }
@@ -334,12 +363,13 @@ test "integration: wire report settles the final slice from the body's splits an
     try resp.expectStatus(.ok);
 
     // The settle slice prices the wire diff: final cumulatives minus the cursor.
-    const settle = (try readSlice(s.conn, 1)) orelse return error.SliceRowMissing;
-    try std.testing.expectEqual(@as(i64, SETTLE_D_IN), settle.d_in);
-    try std.testing.expectEqual(@as(i64, SETTLE_D_CACHED), settle.d_cached);
-    try std.testing.expectEqual(@as(i64, SETTLE_D_OUT), settle.d_out);
-    try std.testing.expectEqual(try expectedTokenCost(s.conn, SETTLE_D_IN, SETTLE_D_CACHED, SETTLE_D_OUT), settle.token_cost);
-    try std.testing.expect(settle.token_cost > 0);
+    const settle = (try readStage(s.conn)) orelse return error.StageRowMissing;
+    try std.testing.expectEqual(@as(i64, SETTLE_D_IN), settle.t_in);
+    try std.testing.expectEqual(@as(i64, SETTLE_D_CACHED), settle.t_cached);
+    try std.testing.expectEqual(@as(i64, SETTLE_D_OUT), settle.t_out);
+    const settle_token_cost = settle.charged - expectedRunFee(s.conn, settle.wall);
+    try std.testing.expectEqual(try expectedTokenCost(s.conn, SETTLE_D_IN, SETTLE_D_CACHED, SETTLE_D_OUT), settle_token_cost);
+    try std.testing.expect(settle_token_cost > 0);
 
     // The claim flipped the lease under the fence — the run is settled exactly once.
     try expectLeaseStatus(s.conn, "reported");

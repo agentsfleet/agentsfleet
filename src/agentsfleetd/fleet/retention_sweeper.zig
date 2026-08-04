@@ -13,7 +13,7 @@
 //!    to its terminal status — NOT from `created_at`. Retention is a promise
 //!    about how long a *settled* lease stays readable, so a lease acquired long
 //!    ago and settled yesterday keeps its full window.
-//!  * Events age from `occurred_at`, and only the per-work tags are eligible.
+//!  * Events age from `created_at`, and only the per-work tags are eligible.
 //!    The lifecycle tags are the Activity feed's entire content and are kept:
 //!    pruning them by age blanked the feed for every runner enrolled before the
 //!    window, which is exactly the operator surface this sweeper exists to keep
@@ -122,12 +122,12 @@ pub const DELETE_TERMINAL_LEASES_BATCH =
 
 /// Per-work event rows only (`$1`), aged past the cutoff (`$2`). The lifecycle
 /// tags are never eligible — see the module note. Rides slot 046's
-/// `(event_type, occurred_at)` index; same SKIP LOCKED reasoning as above.
+/// `(event_type, created_at)` index; same SKIP LOCKED reasoning as above.
 pub const DELETE_AGED_RUNNER_EVENTS_BATCH =
     \\DELETE FROM fleet.runner_events
     \\WHERE id IN (
     \\  SELECT id FROM fleet.runner_events
-    \\  WHERE event_type = ANY($1::text[]) AND occurred_at < $2
+    \\  WHERE event_type = ANY($1::text[]) AND created_at < $2
     \\  LIMIT $3
     \\  FOR UPDATE SKIP LOCKED
     \\)
@@ -168,10 +168,10 @@ pub const EXPIRE_ABANDONED_ACTIVE_LEASES_BATCH =
     \\  FOR UPDATE SKIP LOCKED
     \\), tally AS (
     \\  INSERT INTO fleet.runner_lifetime_counters
-    \\    (uid, runner_id, acquired, succeeded, failed, expired, created_at, updated_at)
-    \\  SELECT d.runner_id, d.runner_id, 0, 0, 0, COUNT(*)::bigint, $5, $5
+    \\    (runner_id, expired, created_at, updated_at)
+    \\  SELECT d.runner_id, COUNT(*)::bigint, $5, $5
     \\  FROM doomed d GROUP BY d.runner_id
-    \\  ON CONFLICT (uid) DO UPDATE
+    \\  ON CONFLICT (runner_id) DO UPDATE
     \\     SET expired = fleet.runner_lifetime_counters.expired + EXCLUDED.expired,
     \\         updated_at = EXCLUDED.updated_at
     \\)

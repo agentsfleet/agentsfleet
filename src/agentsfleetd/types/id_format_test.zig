@@ -196,7 +196,6 @@ const LIVE_GENERATORS = .{
     id.generateFleetId,
     id.generateActivityEventId,
     id.generateVaultSecretId,
-    id.generatePlatformLlmKeyId,
     id.generateFleetBundleId,
     id.generateTenantModelEntryId,
     id.generateScheduleId,
@@ -303,5 +302,6 @@ test "concurrent generation produces no duplicates" {
 // Request for Comments (RFC) 9562 — all 74 non-timestamp bits are random, with
 // no counter — so within one millisecond the order is arbitrary, and a backward
 // wall-clock step reorders across milliseconds too. Ordering queries pair
-// `created_at` with the id as a tiebreaker (`state/fleet_events_store.zig`)
-// rather than relying on id order, so nothing depends on the stronger promise.
+// `created_at` with the id as a tiebreaker (the charges keyset over
+// `billing.usage_ledger`, schema/720) rather than relying on id order, so
+// nothing depends on the stronger promise.

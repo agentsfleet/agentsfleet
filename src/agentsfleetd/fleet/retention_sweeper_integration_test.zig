@@ -64,11 +64,11 @@ fn seedRunner(conn: *pg.Conn) !void {
 fn seedLease(conn: *pg.Conn, lease_id: []const u8, event_id: []const u8, status: []const u8, created_at: i64, updated_at: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases (id, runner_id, fleet_id, workspace_id, tenant_id,
-        \\   event_id, actor, event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_id, actor, event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'steer:retention-test', 'chat',
-        \\   '{}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $7, $8, $7, $9)
+        \\   0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $7, $8, $7, $9)
         \\ON CONFLICT (id) DO NOTHING
     , .{ lease_id, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, event_id, created_at, status, updated_at });
 }
@@ -77,8 +77,8 @@ fn seedEvent(conn: *pg.Conn, event_type: protocol.RunnerEventType, occurred_at: 
     const event_uid = try id_format.generateUuidV7();
     const event_id: []const u8 = &event_uid;
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_events (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::text, $4::bigint, '{}'::jsonb, NULL, $4::bigint)
+        \\INSERT INTO fleet.runner_events (id, runner_id, event_type, metadata, dedup_key, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::text, '{}'::jsonb, NULL, $4::bigint)
     , .{ event_id, RUNNER_ID, @tagName(event_type), occurred_at });
 }
 
@@ -127,7 +127,7 @@ fn agedTerminalLeaseCount(conn: *pg.Conn, cutoff: i64) !i64 {
 fn agedEventCount(conn: *pg.Conn, cutoff: i64) !i64 {
     return scalarI64(conn,
         \\SELECT COUNT(*)::bigint FROM fleet.runner_events
-        \\WHERE event_type = ANY($1::text[]) AND occurred_at < $2
+        \\WHERE event_type = ANY($1::text[]) AND created_at < $2
     , .{ &retention_sweeper.PER_LEASE_EVENT_TAGS, cutoff });
 }
 
@@ -163,7 +163,7 @@ fn leaseStatus(conn: *pg.Conn, lease_id: []const u8) ![]const u8 {
 /// The runner's lifetime `expired` tally, or zero before the row exists.
 fn lifetimeExpiredCount(conn: *pg.Conn) !i64 {
     return scalarI64(conn,
-        \\SELECT COALESCE((SELECT expired FROM fleet.runner_lifetime_counters WHERE uid = $1::uuid), 0)::bigint
+        \\SELECT COALESCE((SELECT expired FROM fleet.runner_lifetime_counters WHERE runner_id = $1::uuid), 0)::bigint
     , .{RUNNER_ID});
 }
 
@@ -173,12 +173,12 @@ fn lifetimeExpiredCount(conn: *pg.Conn) !i64 {
 fn seedAgedLeaseBulk(conn: *pg.Conn, aged_at: i64, count: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases (id, runner_id, fleet_id, workspace_id, tenant_id,
-        \\   event_id, actor, event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_id, actor, event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\SELECT overlay(overlay(gen_random_uuid()::text placing '7' from 15) placing '8' from 20)::uuid,
         \\       $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'evt-ret-bulk-' || g, 'steer:retention-test', 'chat',
-        \\       '{}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $5, $6, $5, $5
+        \\       0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0, 1, $5, $6, $5, $5
         \\FROM generate_series(1, $7::bigint) AS g
     , .{ RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, aged_at, protocol.RUNNER_LEASE_STATUS_REPORTED, count });
 }
