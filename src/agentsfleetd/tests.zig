@@ -48,11 +48,14 @@ test {
     _ = @import("fleet/secrets_resolve.zig");
     _ = @import("fleet/secrets_resolve_test.zig");
     _ = @import("credentials/integration.zig");
+    _ = @import("credentials/integration_registry_test.zig");
     _ = @import("credentials/integration_ctx.zig");
     _ = @import("credentials/integration_github.zig");
+    _ = @import("credentials/integration_github_mint_body_test.zig");
     _ = @import("credentials/integration_oauth_refresh.zig");
     _ = @import("credentials/integration_oauth_refresh_test.zig");
     _ = @import("credentials/broker.zig");
+    _ = @import("credentials/broker_key.zig");
     _ = @import("credentials/broker_test.zig");
     _ = @import("credentials/serve_broker.zig");
     _ = @import("credentials/serve_broker_test.zig");

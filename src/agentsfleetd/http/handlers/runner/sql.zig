@@ -68,11 +68,17 @@ pub const SELECT_RUNNER_DEGRADED =
 /// Resolve a live lease's billing scope before minting a credential for it.
 /// The status and expiry predicates are the authorization: an expired or
 /// released lease resolves nothing, so no credential can be minted against it.
+/// The fleet's `config_json` rides the same row so the repository EGRESS binding
+/// costs no second round trip: the mint needs it to scope the token, and this
+/// query already resolves the fleet the lease belongs to. Joined rather than
+/// read separately so the binding can never be resolved from a different fleet
+/// than the one the lease authorized.
 pub const SELECT_LEASE_SCOPE_FOR_MINT =
-    \\SELECT workspace_id::text, fleet_id::text
-    \\FROM fleet.runner_leases
-    \\WHERE id = $1::uuid AND runner_id = $2::uuid
-    \\  AND status = $3 AND lease_expires_at > $4
+    \\SELECT l.workspace_id::text, l.fleet_id::text, f.config_json::text
+    \\FROM fleet.runner_leases l
+    \\JOIN core.fleets f ON f.id = l.fleet_id
+    \\WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
+    \\  AND l.status = $3 AND l.lease_expires_at > $4
 ;
 
 /// Heartbeat: bump liveness, and emit a `runner_online` event only on a real

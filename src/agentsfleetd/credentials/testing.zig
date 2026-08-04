@@ -83,7 +83,29 @@ pub const FakeGitHub = struct {
 };
 
 /// A `MintCtx` wired with a fake GitHub + fake signer + the fake App key.
+/// A bound repository set for tests whose subject is something other than the
+/// binding (status mapping, JWT shape, key hygiene). A GitHub mint fails closed
+/// without one, so those tests would otherwise all assert the refusal instead of
+/// what they are about. Tests OF the binding pass their own via `githubCtxBound`.
+pub const TEST_REPOSITORIES = [_][]const u8{"acme/widgets"};
+pub const test_binding: integration.RepositoryBinding = .{
+    .repositories = &TEST_REPOSITORIES,
+    .access = .write,
+};
+
 pub fn githubCtx(alloc: std.mem.Allocator, handle: std.json.Value, gh: *FakeGitHub, now_ms: i64) MintCtx {
+    return githubCtxBound(alloc, handle, gh, now_ms, test_binding);
+}
+
+/// `githubCtx` with an explicit repository binding — pass null to exercise the
+/// unbound refusal.
+pub fn githubCtxBound(
+    alloc: std.mem.Allocator,
+    handle: std.json.Value,
+    gh: *FakeGitHub,
+    now_ms: i64,
+    binding: ?integration.RepositoryBinding,
+) MintCtx {
     return .{
         .alloc = alloc,
         .handle = handle,
@@ -91,6 +113,7 @@ pub fn githubCtx(alloc: std.mem.Allocator, handle: std.json.Value, gh: *FakeGitH
         .platform = .{ .github = fake_app },
         .http = gh.exchange(),
         .sign = fakeSign,
+        .repository_binding = binding,
     };
 }
 

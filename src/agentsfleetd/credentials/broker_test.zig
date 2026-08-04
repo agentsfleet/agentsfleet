@@ -37,7 +37,7 @@ test "mint: dispatches by id to the matching integration (Dimension 1.1)" {
     var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
 
-    const r = try b.mint(alloc, "ws1", "github", h.value, 0);
+    const r = try b.mint(alloc, "ws1", "github", h.value, 0, null);
     try std.testing.expect(r == .ok);
     defer alloc.free(r.ok.token);
     try std.testing.expectEqualStrings("minted_tok", r.ok.token);
@@ -51,7 +51,7 @@ test "mint: an injected descriptor drives dispatch, independent of production (D
     defer b.deinit();
     var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
-    const r = try b.mint(alloc, "ws1", "github", h.value, 0);
+    const r = try b.mint(alloc, "ws1", "github", h.value, 0, null);
     try std.testing.expect(r == .ok);
     defer alloc.free(r.ok.token);
     try std.testing.expectEqualStrings("minted_tok", r.ok.token);
@@ -65,13 +65,13 @@ test "mint: reuses a cached token within validity, re-mints past the skew (Dimen
     var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
 
-    const r1 = try b.mint(alloc, "ws1", "github", h.value, 0); // miss → mint
+    const r1 = try b.mint(alloc, "ws1", "github", h.value, 0, null); // miss → mint
     alloc.free(r1.ok.token);
-    const r2 = try b.mint(alloc, "ws1", "github", h.value, FAKE_EXPIRY_MS - EXPIRY_SKEW_MS - 1); // hit
+    const r2 = try b.mint(alloc, "ws1", "github", h.value, FAKE_EXPIRY_MS - EXPIRY_SKEW_MS - 1, null); // hit
     alloc.free(r2.ok.token);
     try std.testing.expectEqual(@as(usize, 1), fake_calls.load(.monotonic));
 
-    const r3 = try b.mint(alloc, "ws1", "github", h.value, FAKE_EXPIRY_MS - EXPIRY_SKEW_MS + 1); // re-mint
+    const r3 = try b.mint(alloc, "ws1", "github", h.value, FAKE_EXPIRY_MS - EXPIRY_SKEW_MS + 1, null); // re-mint
     alloc.free(r3.ok.token);
     try std.testing.expectEqual(@as(usize, 2), fake_calls.load(.monotonic));
 }
@@ -99,7 +99,7 @@ test "mint: a never-expires token caches without overflowing the cache TTL (boun
 
     // Pre-fix this panics with `integer overflow` inside cache.zig's put (real
     // now_epoch_seconds + maxInt(u32)). Post-fix the ttl is clamped to MAX_TTL_S.
-    const r = try b.mint(alloc, "ws-static", "github", h.value, 0);
+    const r = try b.mint(alloc, "ws-static", "github", h.value, 0, null);
     try std.testing.expect(r == .ok);
     alloc.free(r.ok.token);
     try std.testing.expectEqual(NEVER_EXPIRES_MS, r.ok.expires_at_ms);
@@ -114,11 +114,11 @@ test "mint: unknown / unregistered id returns unknown_integration, no upstream c
     // it is not a broker integration id and resolves to unknown.
     var h1 = try testing.parse(alloc, "{\"integration\":\"datadog\"}");
     defer h1.deinit();
-    try std.testing.expect((try b.mint(alloc, "ws1", "datadog", h1.value, 0)) == .unknown_integration);
+    try std.testing.expect((try b.mint(alloc, "ws1", "datadog", h1.value, 0, null)) == .unknown_integration);
 
     var h2 = try testing.parse(alloc, "{\"token\":\"x\"}");
     defer h2.deinit();
-    try std.testing.expect((try b.mint(alloc, "ws1", "github", h2.value, 0)) == .unknown_integration);
+    try std.testing.expect((try b.mint(alloc, "ws1", "github", h2.value, 0, null)) == .unknown_integration);
 }
 
 test "mint: an oauth2_refresh token caches within validity, re-mints past the skew (Dimension 3.1)" {
@@ -137,15 +137,15 @@ test "mint: an oauth2_refresh token caches within validity, re-mints past the sk
 
     const EXPIRY_MS: i64 = EXPIRES_IN_S * MS_PER_S;
 
-    const r1 = try b.mint(alloc, "ws1", "zoho", h.value, 0); // miss → one exchange
+    const r1 = try b.mint(alloc, "ws1", "zoho", h.value, 0, null); // miss → one exchange
     try std.testing.expect(r1 == .ok);
     alloc.free(r1.ok.token);
-    const r2 = try b.mint(alloc, "ws1", "zoho", h.value, EXPIRY_MS - EXPIRY_SKEW_MS - 1); // still valid → cache hit
+    const r2 = try b.mint(alloc, "ws1", "zoho", h.value, EXPIRY_MS - EXPIRY_SKEW_MS - 1, null); // still valid → cache hit
     try std.testing.expect(r2 == .ok);
     alloc.free(r2.ok.token);
     try std.testing.expectEqual(@as(usize, 1), vendor.calls); // one exchange served two mints
 
-    const r3 = try b.mint(alloc, "ws1", "zoho", h.value, EXPIRY_MS - EXPIRY_SKEW_MS + 1); // past skew → re-mint
+    const r3 = try b.mint(alloc, "ws1", "zoho", h.value, EXPIRY_MS - EXPIRY_SKEW_MS + 1, null); // past skew → re-mint
     try std.testing.expect(r3 == .ok);
     alloc.free(r3.ok.token);
     try std.testing.expectEqual(@as(usize, 2), vendor.calls);
@@ -165,9 +165,9 @@ test "mint: emits a metrics event per call with the cache-hit flag (#11)" {
     var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
 
-    const r1 = try b.mint(alloc, "ws1", "github", h.value, 0); // miss
+    const r1 = try b.mint(alloc, "ws1", "github", h.value, 0, null); // miss
     alloc.free(r1.ok.token);
-    const r2 = try b.mint(alloc, "ws1", "github", h.value, 0); // hit
+    const r2 = try b.mint(alloc, "ws1", "github", h.value, 0, null); // hit
     alloc.free(r2.ok.token);
     try std.testing.expectEqual(@as(usize, 2), rec.count);
     try std.testing.expect(rec.last_hit);
@@ -187,7 +187,7 @@ test "mint: different workspaces mint concurrently in parallel over the sharded 
         fn go(broker: *CredentialBroker, a: std.mem.Allocator, ws: []const u8) void {
             var h = testing.parse(a, "{\"integration\":\"github\"}") catch return;
             defer h.deinit();
-            const r = broker.mint(a, ws, "github", h.value, 0) catch return;
+            const r = broker.mint(a, ws, "github", h.value, 0, null) catch return;
             if (r == .ok) a.free(r.ok.token);
         }
     };
@@ -246,10 +246,10 @@ test "mint: test_reconnect_identity_change_remints — a changed identity field 
         var hy = try testing.parse(alloc, HANDLE_INSTALL_Y);
         defer hy.deinit();
 
-        const r1 = try b.mint(alloc, "ws1", "github", hx.value, 0);
+        const r1 = try b.mint(alloc, "ws1", "github", hx.value, 0, null);
         defer alloc.free(r1.ok.token);
         try std.testing.expectEqualStrings("tok_inst_x", r1.ok.token);
-        const r2 = try b.mint(alloc, "ws1", "github", hy.value, 0);
+        const r2 = try b.mint(alloc, "ws1", "github", hy.value, 0, null);
         defer alloc.free(r2.ok.token);
         try std.testing.expectEqualStrings("tok_inst_y", r2.ok.token);
         try std.testing.expectEqual(@as(usize, 2), fake_calls.load(.monotonic));
@@ -265,11 +265,11 @@ test "mint: test_reconnect_identity_change_remints — a changed identity field 
         var h1 = try testing.parse(alloc, "{\"integration\":\"static\",\"token\":\"pat_t1\"}");
         defer h1.deinit();
 
-        const r1 = try b.mint(alloc, "ws1", "static", h0.value, 0);
+        const r1 = try b.mint(alloc, "ws1", "static", h0.value, 0, null);
         defer alloc.free(r1.ok.token);
         try std.testing.expectEqualStrings("pat_t0", r1.ok.token);
         // Pre-fix this returned the cached pat_t0 (static never expires).
-        const r2 = try b.mint(alloc, "ws1", "static", h1.value, 0);
+        const r2 = try b.mint(alloc, "ws1", "static", h1.value, 0, null);
         defer alloc.free(r2.ok.token);
         try std.testing.expectEqualStrings("pat_t1", r2.ok.token);
     }
@@ -287,11 +287,11 @@ test "mint: test_refresh_only_change_hits_cache — a rotated refresh token is N
     var h1 = try testing.parse(alloc, "{\"integration\":\"zoho\",\"refresh_token\":\"rt_1\"}");
     defer h1.deinit();
 
-    const r1 = try b.mint(alloc, "ws1", "zoho", h0.value, 0); // miss → one exchange
+    const r1 = try b.mint(alloc, "ws1", "zoho", h0.value, 0, null); // miss → one exchange
     try std.testing.expect(r1 == .ok);
     alloc.free(r1.ok.token);
     // Only the excluded rotating field differs → same fingerprint → cache hit.
-    const r2 = try b.mint(alloc, "ws1", "zoho", h1.value, 0);
+    const r2 = try b.mint(alloc, "ws1", "zoho", h1.value, 0, null);
     try std.testing.expect(r2 == .ok);
     alloc.free(r2.ok.token);
     try std.testing.expectEqual(@as(usize, 1), vendor.calls);
@@ -310,10 +310,10 @@ test "mint: test_fingerprint_canonical_order — JSON key order does not change 
     var hb = try testing.parse(alloc, "{\"accounts_base\":\"https://a.test\",\"label\":\"L\",\"integration\":\"zoho\",\"refresh_token\":\"rt\"}");
     defer hb.deinit();
 
-    const r1 = try b.mint(alloc, "ws1", "zoho", ha.value, 0);
+    const r1 = try b.mint(alloc, "ws1", "zoho", ha.value, 0, null);
     try std.testing.expect(r1 == .ok);
     alloc.free(r1.ok.token);
-    const r2 = try b.mint(alloc, "ws1", "zoho", hb.value, 0);
+    const r2 = try b.mint(alloc, "ws1", "zoho", hb.value, 0, null);
     try std.testing.expect(r2 == .ok);
     alloc.free(r2.ok.token);
     try std.testing.expectEqual(@as(usize, 1), vendor.calls); // one exchange served both
@@ -329,14 +329,14 @@ test "mint: test_broker_threads_rotated_on_miss_only — rotated token rides the
     var h = try testing.parse(alloc, "{\"integration\":\"zoho\",\"refresh_token\":\"rt_old\"}");
     defer h.deinit();
 
-    const r1 = try b.mint(alloc, "ws1", "zoho", h.value, 0); // miss → exchange rotated
+    const r1 = try b.mint(alloc, "ws1", "zoho", h.value, 0, null); // miss → exchange rotated
     try std.testing.expect(r1 == .ok);
     defer alloc.free(r1.ok.token);
     try std.testing.expect(r1.ok.rotated_refresh_token != null);
     defer alloc.free(r1.ok.rotated_refresh_token.?);
     try std.testing.expectEqualStrings("rt_new", r1.ok.rotated_refresh_token.?);
 
-    const r2 = try b.mint(alloc, "ws1", "zoho", h.value, 0); // hit → no exchange
+    const r2 = try b.mint(alloc, "ws1", "zoho", h.value, 0, null); // hit → no exchange
     try std.testing.expect(r2 == .ok);
     defer alloc.free(r2.ok.token);
     try std.testing.expect(r2.ok.rotated_refresh_token == null);
@@ -356,7 +356,7 @@ test "mint: should fail closed when the key (workspace + id + fingerprint) overf
     // (500 + "github" + 2 + 16 = 524 > 512) — the pre-review guard passed this
     // one to a bufPrint failure; the guard now reserves the full key up front.
     inline for (.{ "w" ** 600, "w" ** 500 }) |giant_ws| {
-        const r = try b.mint(alloc, giant_ws, "github", h.value, 0);
+        const r = try b.mint(alloc, giant_ws, "github", h.value, 0, null);
         try std.testing.expect(r == .mint_failed);
         try std.testing.expectEqual(integration.Retry.permanent, r.mint_failed);
     }
@@ -382,10 +382,10 @@ test "mint: test_reconnect_refresh_provider_remints — a fresh connect stamp mi
     var hb = try testing.parse(alloc, "{\"integration\":\"zoho\",\"refresh_token\":\"rt_b\",\"label\":\"L\",\"connected_at_ms\":222}");
     defer hb.deinit();
 
-    const r1 = try b.mint(alloc, "ws1", "zoho", ha.value, 0);
+    const r1 = try b.mint(alloc, "ws1", "zoho", ha.value, 0, null);
     try std.testing.expect(r1 == .ok);
     alloc.free(r1.ok.token);
-    const r2 = try b.mint(alloc, "ws1", "zoho", hb.value, 0);
+    const r2 = try b.mint(alloc, "ws1", "zoho", hb.value, 0, null);
     try std.testing.expect(r2 == .ok);
     alloc.free(r2.ok.token);
     try std.testing.expectEqual(@as(usize, 2), vendor.calls); // reconnect re-minted
@@ -405,7 +405,7 @@ test "mint: test_broker_rotated_token_ownership — one free path per copy, fail
 
     // Success path: the caller frees its own two copies; zero leaks overall.
     {
-        const r = try b.mint(alloc, "ws-own", "zoho", h.value, 0);
+        const r = try b.mint(alloc, "ws-own", "zoho", h.value, 0, null);
         try std.testing.expect(r == .ok);
         alloc.free(r.ok.token);
         alloc.free(r.ok.rotated_refresh_token.?);
@@ -417,7 +417,7 @@ test "mint: test_broker_rotated_token_ownership — one free path per copy, fail
     // one-reconnect bound). Nothing leaks, no double-free (RULE OWN).
     {
         var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
-        const r = try b.mint(failing.allocator(), "ws-own-2", "zoho", h.value, 0);
+        const r = try b.mint(failing.allocator(), "ws-own-2", "zoho", h.value, 0, null);
         try std.testing.expect(r == .ok);
         defer failing.allocator().free(r.ok.token);
         try std.testing.expect(r.ok.rotated_refresh_token == null);
@@ -440,13 +440,13 @@ test "mint: a caller allocation failure fails closed as mint_failed{transient}, 
     // rotation state.
     {
         var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
-        const r = try b.mint(failing.allocator(), "ws-oom", "github", h.value, 0);
+        const r = try b.mint(failing.allocator(), "ws-oom", "github", h.value, 0, null);
         try std.testing.expect(r == .mint_failed);
         try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
     }
     // Warm the cache with a successful mint…
     {
-        const r = try b.mint(std.testing.allocator, "ws-oom", "github", h.value, 0);
+        const r = try b.mint(std.testing.allocator, "ws-oom", "github", h.value, 0, null);
         try std.testing.expect(r == .ok);
         std.testing.allocator.free(r.ok.token);
     }
@@ -454,7 +454,7 @@ test "mint: a caller allocation failure fails closed as mint_failed{transient}, 
     // never a panic, never a stale token.
     {
         var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
-        const r = try b.mint(failing.allocator(), "ws-oom", "github", h.value, 0);
+        const r = try b.mint(failing.allocator(), "ws-oom", "github", h.value, 0, null);
         try std.testing.expect(r == .mint_failed);
         try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
     }
@@ -469,7 +469,7 @@ test "mint: a caller allocation failure fails closed as mint_failed{transient}, 
 /// Contender for the single-flight test: same key, concurrent cold miss.
 const ColdMissContender = struct {
     fn run(b: *CredentialBroker, handle: *const std.json.Value, ok_count: *std.atomic.Value(usize)) void {
-        const r = b.mint(std.testing.allocator, "ws1", "github", handle.*, 0) catch return;
+        const r = b.mint(std.testing.allocator, "ws1", "github", handle.*, 0, null) catch return;
         if (r == .ok) {
             std.testing.allocator.free(r.ok.token);
             _ = ok_count.fetchAdd(1, .monotonic);
@@ -533,7 +533,7 @@ test "broker_cold_miss_guard_unavailable_fails_transient_without_minting" {
     // is what burns the refresh-token family.
     var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
     b.alloc = failing.allocator();
-    const r = try b.mint(alloc, "ws-guard", "github", h.value, 0);
+    const r = try b.mint(alloc, "ws-guard", "github", h.value, 0, null);
     b.alloc = alloc;
 
     try std.testing.expect(r == .mint_failed);
@@ -573,7 +573,7 @@ test "credential teardown routes through the zeroizing free, leak-free (Dimensio
     // Cold mint caches a token copy; teardown releases it via
     // secure_memory.freeBytes (removedFromCache). std.testing.allocator
     // proves the zeroizing path frees the cached bytes and the mint copies.
-    const r = try b.mint(alloc, "ws-zeroize", "github", h.value, 0);
+    const r = try b.mint(alloc, "ws-zeroize", "github", h.value, 0, null);
     try std.testing.expect(r == .ok);
     alloc.free(r.ok.token);
     b.deinit();
@@ -602,7 +602,7 @@ test "mint telemetry is truthful: injected clock yields a real latency (Dimensio
     var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
 
-    const r = try b.mint(alloc, "ws-latency", "github", h.value, 0);
+    const r = try b.mint(alloc, "ws-latency", "github", h.value, 0, null);
     try std.testing.expect(r == .ok);
     alloc.free(r.ok.token);
     // Pre-fix every event carried latency_ms = 0 regardless of duration.
@@ -624,15 +624,71 @@ test "mint telemetry: a cache-dupe OOM still emits mint_failed with the hit flag
     defer h.deinit();
 
     // Warm the cache with a successful cold mint.
-    const warm = try b.mint(alloc, "ws-oom-emit", "github", h.value, 0);
+    const warm = try b.mint(alloc, "ws-oom-emit", "github", h.value, 0, null);
     try std.testing.expect(warm == .ok);
     alloc.free(warm.ok.token);
 
     // Hit path with a failing caller allocator: the dupe OOMs — the event
     // must still fire (a silent failure hides real mint churn).
     var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
-    const r = try b.mint(failing.allocator(), "ws-oom-emit", "github", h.value, 0);
+    const r = try b.mint(failing.allocator(), "ws-oom-emit", "github", h.value, 0, null);
     try std.testing.expect(r == .mint_failed);
     try std.testing.expectEqualStrings("mint_failed", rec.last_outcome);
     try std.testing.expect(rec.last_hit);
+}
+
+// ── The repository binding is part of the cache IDENTITY ───────────────────
+//
+// The cache keys on (workspace, integration, handle fingerprint). The incident crew puts two
+// fleets in ONE workspace — an investigator bound `read` and a repairer bound
+// `write` — both minting `github` from the SAME App installation handle. All
+// three original key components therefore agree, so without the binding folded
+// in, whichever fleet minted first would decide the permissions the other
+// received: a read-only investigator handed a write token, or a repairer handed
+// a token that cannot open its Pull Request. Narrowing the mint BODY alone is
+// silently undone by a cache hit, which is why this guard exists.
+
+const REPOS_BIND = [_][]const u8{"acme/widgets"};
+
+/// Mints `tok_<access>` so the token itself reveals which binding produced it.
+fn fakeMintFromBinding(ctx: integration.MintCtx) anyerror!integration.Outcome {
+    _ = fake_calls.fetchAdd(1, .monotonic);
+    const b = ctx.repository_binding orelse return .{ .mint_failed = .permanent };
+    const tok = try std.fmt.allocPrint(ctx.alloc, "tok_{s}", .{@tagName(b.access)});
+    return .{ .ok = .{ .token = tok, .expires_at_ms = FAKE_EXPIRY_MS } };
+}
+
+const BINDING_REGISTRY: []const Spec = &.{.{ .id = .github, .mint = .{ .custom = fakeMintFromBinding } }};
+
+test "mint: two fleets in one workspace with different access levels never share a cached token" {
+    const alloc = std.testing.allocator;
+    fake_calls.store(0, .monotonic);
+    var b = try brokerWith(alloc, BINDING_REGISTRY);
+    defer b.deinit();
+    // Same workspace, same integration, same installation handle — every cache
+    // key component the broker knew about before the binding is identical.
+    var h = try testing.parse(alloc, "{\"integration\":\"github\",\"installation_id\":\"42\"}");
+    defer h.deinit();
+
+    const read_binding: integration.RepositoryBinding = .{ .repositories = &REPOS_BIND, .access = .read };
+    const write_binding: integration.RepositoryBinding = .{ .repositories = &REPOS_BIND, .access = .write };
+
+    const r1 = try b.mint(alloc, "ws-crew", "github", h.value, 0, read_binding);
+    defer alloc.free(r1.ok.token);
+    try std.testing.expectEqualStrings("tok_read", r1.ok.token);
+
+    const r2 = try b.mint(alloc, "ws-crew", "github", h.value, 0, write_binding);
+    defer alloc.free(r2.ok.token);
+    // The whole point: NOT tok_read served from cache.
+    try std.testing.expectEqualStrings("tok_write", r2.ok.token);
+
+    // Two real mints, so the second was a genuine miss rather than a hit.
+    try std.testing.expectEqual(@as(usize, 2), fake_calls.load(.monotonic));
+
+    // And the read binding is still cached under its own key — a third ask
+    // re-serves it without a fourth mint.
+    const r3 = try b.mint(alloc, "ws-crew", "github", h.value, 0, read_binding);
+    defer alloc.free(r3.ok.token);
+    try std.testing.expectEqualStrings("tok_read", r3.ok.token);
+    try std.testing.expectEqual(@as(usize, 2), fake_calls.load(.monotonic));
 }

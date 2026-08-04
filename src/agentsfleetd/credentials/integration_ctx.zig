@@ -5,6 +5,13 @@
 //! the `integration` facade for callers that want one namespace).
 
 const std = @import("std");
+// Pure config types (std-only, no DB/network), so a mint stays unit-testable
+// with a fake key and a fake HTTP boundary. The dependency is one-way:
+// `fleet_runtime/config_types.zig` knows nothing about credentials.
+const config_types = @import("../fleet_runtime/config_types.zig");
+
+pub const RepositoryAccess = config_types.RepositoryAccess;
+pub const RepositoryBinding = config_types.RepositoryBinding;
 
 /// Platform-held secrets resolved daemon-side from the admin-workspace vault.
 /// `static` ignores these; `github` reads its App key. An absent field means that
@@ -92,6 +99,15 @@ pub const MintCtx = struct {
     platform: PlatformSecrets,
     http: HttpExchange,
     sign: SignFn,
+    /// The requesting fleet's repository EGRESS binding, resolved from its config
+    /// by the mint handler. Null when the fleet declared none — a repository-scoped
+    /// integration then refuses rather than inheriting its App installation's full
+    /// permission set across every repository the installation covers. Integrations
+    /// with no repository concept (the oauth2-refresh connectors) ignore it.
+    ///
+    /// Defaulted so a mint that predates the binding still constructs; the refusal
+    /// lives in the integration that needs it, not here.
+    repository_binding: ?RepositoryBinding = null,
 };
 
 /// The broker's daemon-singleton dependencies, injected once at init and folded
