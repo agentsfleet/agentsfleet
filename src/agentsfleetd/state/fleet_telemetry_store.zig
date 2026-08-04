@@ -155,6 +155,29 @@ pub fn makeCursor(alloc: std.mem.Allocator, row: TelemetryRow) ![]u8 {
     return cursor_mod.makeCursor(alloc, row.recorded_at, row.id);
 }
 
+// `usage_ledger.id` is TABLE-QUALIFIED in both ORDER BYs, and that qualification
+// is load-bearing. `TELEMETRY_SELECT` emits `id::text`, which names an OUTPUT
+// column `id`; a bare `ORDER BY … id DESC` resolves against the output list
+// before the table, so it would sort by the TEXT cast. The index orders the raw
+// uuid, so the planner could not supply that ordering and added an Incremental
+// Sort to every page — the exact per-page sort `schema/720_usage_ledger_indexes`
+// reshaped the index to remove. The WHERE clause never had the problem: output
+// aliases are not visible there, so the seek always bound to the real column.
+// Public so the index-fitness suite plans against this exact text rather than a
+// copy that could drift from it.
+pub const SELECT_TENANT_CHARGES_PAGE_AFTER = TELEMETRY_SELECT ++
+    \\WHERE tenant_id = $1
+    \\  AND (created_at, id) < ($2, $3)
+    \\ORDER BY created_at DESC, usage_ledger.id DESC
+    \\LIMIT $4
+;
+
+pub const SELECT_TENANT_CHARGES_PAGE_FIRST = TELEMETRY_SELECT ++
+    \\WHERE tenant_id = $1
+    \\ORDER BY created_at DESC, usage_ledger.id DESC
+    \\LIMIT $2
+;
+
 /// Tenant-scoped charges query — backs `GET /v1/tenants/me/billing/charges`
 /// (read by the Settings → Billing dashboard's Usage tab and `agentsfleet
 /// billing show`). Newest-first with cursor pagination over `(recorded_at,
@@ -169,18 +192,9 @@ pub fn listTelemetryForTenant(
     if (cursor) |c| {
         const parsed = try cursor_mod.parseCursor(alloc, c);
         defer alloc.free(parsed.id);
-        return queryRows(conn, alloc, TELEMETRY_SELECT ++
-            \\WHERE tenant_id = $1
-            \\  AND (created_at, id) < ($2, $3)
-            \\ORDER BY created_at DESC, id DESC
-            \\LIMIT $4
-        , .{ tenant_id, parsed.recorded_at, parsed.id, @as(i32, @intCast(limit)) });
+        return queryRows(conn, alloc, SELECT_TENANT_CHARGES_PAGE_AFTER, .{ tenant_id, parsed.recorded_at, parsed.id, @as(i32, @intCast(limit)) });
     }
-    return queryRows(conn, alloc, TELEMETRY_SELECT ++
-        \\WHERE tenant_id = $1
-        \\ORDER BY created_at DESC, id DESC
-        \\LIMIT $2
-    , .{ tenant_id, @as(i32, @intCast(limit)) });
+    return queryRows(conn, alloc, SELECT_TENANT_CHARGES_PAGE_FIRST, .{ tenant_id, @as(i32, @intCast(limit)) });
 }
 
 // ── Internal helpers ────────────────────────────────────────────────

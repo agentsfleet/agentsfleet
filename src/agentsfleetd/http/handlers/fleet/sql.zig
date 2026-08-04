@@ -76,7 +76,8 @@ pub const SELECT_RUNNER_DETAIL =
 /// page of the lease list reports as `total`. The NULL-guarded `$2` scopes the
 /// total to one workspace when the list is filtered, so the pager and the rows
 /// always describe the same set. `$3` narrows it further to one fleet on the
-/// same terms, matching an id or an exact name (FLEET_MATCH). Retention bounds
+/// same terms, matching an id or an exact (case-insensitive) name. The fleets
+/// join is on the primary key, so it cannot multiply the count. Retention bounds
 /// the per-runner row count the COUNT walks.
 pub const SELECT_RUNNER_LEASE_TOTAL =
     \\SELECT (SELECT COUNT(*) FROM fleet.runner_leases l
