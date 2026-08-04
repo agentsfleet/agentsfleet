@@ -95,6 +95,15 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/agentsfleetd/fleet/service.zig` | EDIT | `resolveExecutionPolicy` populates the two fields from the same fleet config the mint reads, so the two rings cannot disagree |
 | `src/runner/daemon/lease_run.zig` | EDIT | `FetchForwarder` beside `MintForwarder` — forwards the child's on-demand fetch ask, lease-bound server-side |
 | `src/runner/child_supervisor.zig` | EDIT | `FetchHook` alongside `MintHook` on the supervisor surface |
+| `src/runner/pipe_proto.zig` | EDIT | Two frame types beside the credential pair — `repo_fetch_request` up the child's stdout, `repo_fetch_response` back down its stdin. No new descriptor and no new sandbox hole, exactly as the mint channel added none |
+| `src/runner/engine/repo_fetch_request.zig` | CREATE | The child half of the fetch channel, mirroring `credential_request.zig`: the ask names the repository, commit, and branch and nothing else — no workspace, no lease id, no path — so a prompt-injected child can ask for the wrong repository and be refused, but cannot ask for the wrong PLACE. The reply is a workspace-relative path, because an absolute one would tell the sandbox a fact it otherwise never has |
+| `src/runner/child_supervisor_read.zig` | EDIT | `FetchHook` + `FetchOutcome` + the `repo_fetch_request` frame arm. Both outcome slices are borrowed static strings, so framing a reply has no allocation and therefore no failure path of its own |
+| `src/runner/repo_fetch_channel_test.zig` | CREATE | The parent half over real pipes: the ask reaches the hook verbatim, the path is framed back relative, a null hook and a malformed ask both refuse with a reason, and a lease that asks for nothing invokes the hook zero times |
+| `src/runner/child_supervisor_test.zig` | EDIT | The new `readResult` parameter at every existing call site |
+| `src/runner/child_supervisor_edge_test.zig` | EDIT | Same |
+| `src/runner/child_supervisor_concurrency_test.zig` | EDIT | Same |
+| `src/runner/credential_mint_e2e_test.zig` | EDIT | Same |
+| `src/runner/daemon/renew_driver_edge_test.zig` | EDIT | Same |
 | `src/runner/repo_fetch.zig` | CREATE | The ask's refusal surface: a PURE function of the binding and the ask, so "refused before any network call" is a unit test rather than an observation. Also derives the remote URL from the BINDING's spelling, never the model's |
 | `src/runner/repo_fetch_test.zig` | CREATE | Binding refusal, malformed repository / commit / head, the declared-spelling rule |
 | `src/runner/RepoFetchTarget.zig` | CREATE | The daemon-owned directory the fetch lands in. File-as-struct because it owns two open handles and the claim they represent: create-exclusive (a squatting child loses the fetch rather than redirecting it), `O_NOFOLLOW` open (a symlink swap after the create meets ELOOP), beneath-only canonical verify. Never opened by name after the claim — every git step runs against the handle |
@@ -657,11 +666,19 @@ discovered; what follows is what building them settled.
 `src/runner/{RepoFetchTarget,repo_fetch_bounds,repo_fetch_exec}.zig` + their test siblings,
 all now rows in the table above.
 
-**Still unbuilt after this session.** `repo_fetch_exec.fetch` has NO production caller — the
-child↔daemon transport (two pipe frame types, `engine/repo_fetch_request.zig`, `FetchHook`,
-`FetchForwarder`) and the child-side `repo_fetch` tool are next. Dimensions 4.6 and 4.6a
-therefore stay open: their tests pass, but DONE means called in production, and nothing calls
-it yet.
+**The transport landed in the same session.** `FetchForwarder` in `lease_run.zig` is where the
+two rings finally meet, and the ORDER inside it is the design: `repo_fetch.decide` is pure and
+runs FIRST, so an out-of-binding ask is refused before a token is minted and before any packet
+— a refused ask costs no credential and no vendor call. The approved ask then carries the
+BINDING's spelling forward into the remote URL, the workspace path, and the log, so none of
+the three can be steered by how the model capitalized its request. The fetch's own budget is
+`min(now + WALL_BUDGET_MS, lease_expires_at)`, so it can never outlive the run that asked.
+
+**Still unbuilt.** The child-side `repo_fetch` tool — one NullClaw tool file modelled on
+`runtime/policy_http_request.zig`, one builder, one `BRIDGE_REGISTRY` row, and the channel
+wired into `BuildCtx` in `child_exec.zig`. Until that lands nothing in the sandbox can raise a
+`repo_fetch_request`, so Dimensions 4.6 and 4.6a stay open: every layer beneath is built and
+tested, but DONE means reachable from a running fleet.
 
 **§4 constraints adopted from the review, to build against rather than discover.** The
 planned fetch hook runs AFTER the child starts, and Landlock permits the child to create

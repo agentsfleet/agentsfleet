@@ -85,6 +85,17 @@ pub const Failure = enum {
     }
 };
 
+/// Where a ready tree sits, relative to the lease's workspace. Re-exported from
+/// the target module so a caller wiring the hook needs one import, and so the
+/// name the child is told is the name the daemon created (RULE UFS).
+pub const TARGET_DIR_NAME = RepoFetchTarget.DIR_NAME;
+
+/// Default wall-clock budget for one whole fetch sequence. Generous for a
+/// depth-bounded fetch of an application repository over the network, and far
+/// under a lease — the caller clamps it to `lease_expires_at` regardless, so this
+/// is the bound on a fetch, never on the run.
+pub const WALL_BUDGET_MS: i64 = 180_000;
+
 pub const Outcome = union(enum) {
     /// A working tree is at `RepoFetchTarget.DIR_NAME` inside the lease's
     /// workspace, detached at the target head, with the suspect commit and its
