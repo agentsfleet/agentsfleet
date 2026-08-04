@@ -420,6 +420,56 @@ test "integration: GET /billing/charges with malformed cursor returns 400 invali
     try std.testing.expect(r.bodyContains("invalid cursor"));
 }
 
+// `parseLimit`'s two error arms are unit-tested against the parser directly.
+// These pin the other half — that the handler TRANSLATES them into a refusal the
+// caller can act on, through the real router and middleware chain. A parser that
+// returns the right error and a handler that turns it into a 500, or drops the
+// message, would pass those unit tests and fail an operator.
+
+test "integration: GET /billing/charges with a non-numeric limit returns 400 naming the expectation" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = clock.nowMillis();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+
+    const r = try (try h.get("/v1/tenants/me/billing/charges?limit=abc").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    // The message, not just the status: it is what tells the caller which
+    // parameter was wrong and what shape it should have taken.
+    try std.testing.expect(r.bodyContains("limit must be a positive integer"));
+}
+
+test "integration: GET /billing/charges with an over-max limit returns 400 naming the bound" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = clock.nowMillis();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+
+    // One past the ceiling — the boundary, not an arbitrary large number, so the
+    // test still fails if the bound moves without the message moving with it.
+    const r = try (try h.get("/v1/tenants/me/billing/charges?limit=201").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try std.testing.expect(r.bodyContains("limit must be between 1 and 200"));
+}
+
 // ── GET /v1/tenants/me/billing/charges — the ORDER the page promises ──────
 //
 // The cursor tests above run against a tenant with NO telemetry, so they pin
