@@ -1,13 +1,14 @@
 //! Lease reclaim — re-leasing an expired holder's event from Postgres alone.
 //!
 //! When `affinity.claim` wins a fleet whose prior claim had expired, the dead
-//! holder's still-`active` lease row carries the durable event envelope + the
-//! billing context. `reclaimPriorActive` selects that row (locked), marks it
-//! `expired`, and returns it in ONE atomic statement, so the caller can re-lease
-//! the SAME event under the fresh higher fencing token — no Redis re-read (the
-//! envelope is durable in Postgres) and no re-billing (the original lease already
-//! debited). If there is no prior active lease the fleet is simply free and the
-//! caller takes a fresh event instead.
+//! holder's still-`active` lease row carries the billing context, and the event
+//! row it names carries the body. `reclaimPriorActive` selects that lease
+//! (locked), marks it `expired`, joins the body, and returns the pair in ONE
+//! atomic statement, so the caller can re-lease the SAME event under the fresh
+//! higher fencing token — no Redis re-read (the envelope is durable in Postgres)
+//! and no re-billing (the original lease already debited). If there is no prior
+//! active lease the fleet is simply free and the caller takes a fresh event
+//! instead.
 //!
 //! Arena allocator (`hx.alloc`): every returned slice is arena-dup'd and freed
 //! when the request ends — see service.zig's module note.
@@ -52,6 +53,14 @@ pub const PriorLease = struct {
 /// lease ⇒ it is free and the caller takes a fresh event. Called only after
 /// `affinity.claim` won, so the row found here is unambiguously the reclaimed
 /// holder. All slices arena-dup'd before drain.
+///
+/// The body comes from `core.fleet_events` through the `(fleet_id, event_id)`
+/// unique key rather than a column on the lease. The join is INNER on purpose:
+/// an event row deleted out from under a live lease yields no row, so the
+/// caller takes fresh work instead of re-delivering an empty event. The status
+/// flip and the tally still commit in that case — a data-modifying CTE runs to
+/// completion whether or not the primary query reads its output — so the dead
+/// lease does not linger `active`.
 pub fn reclaimPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []const u8) !?PriorLease {
     const now_ms = clock.nowMillis();
     // The expired tally rides the same statement as the status flip (the sole
@@ -66,22 +75,24 @@ pub fn reclaimPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []
         \\      ORDER BY fencing_token DESC LIMIT 1
         \\      FOR UPDATE
         \\  )
-        \\  RETURNING l.id, l.runner_id, l.event_id, l.actor, l.event_type, l.request_json,
+        \\  RETURNING l.id, l.runner_id, l.fleet_id, l.event_id, l.actor, l.event_type,
         \\            l.event_created_at, l.workspace_id, l.tenant_id,
         \\            l.posture, l.model
         \\), tally AS (
         \\  INSERT INTO fleet.runner_lifetime_counters
-        \\    (uid, runner_id, acquired, succeeded, failed, expired, created_at, updated_at)
-        \\  SELECT runner_id, runner_id, 0, 0, 0, 1, $4, $4
+        \\    (runner_id, expired, created_at, updated_at)
+        \\  SELECT runner_id, 1, $4, $4
         \\  FROM bumped
-        \\  ON CONFLICT (uid) DO UPDATE
+        \\  ON CONFLICT (runner_id) DO UPDATE
         \\     SET expired = fleet.runner_lifetime_counters.expired + 1,
         \\         updated_at = EXCLUDED.updated_at
         \\)
-        \\SELECT b.id::text, b.event_id, b.actor, b.event_type, b.request_json,
+        \\SELECT b.id::text, b.event_id, b.actor, b.event_type, e.request_json::text,
         \\       b.event_created_at, b.workspace_id::text, b.tenant_id::text,
         \\       b.posture, b.model
         \\FROM bumped b
+        \\JOIN core.fleet_events e
+        \\  ON e.fleet_id = b.fleet_id AND e.event_id = b.event_id
     , .{ fleet_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, protocol.RUNNER_LEASE_STATUS_EXPIRED, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return null;

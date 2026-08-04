@@ -27,9 +27,16 @@ const log = logging.scoped(.fleet_runner_leases);
 const Hx = hx_mod.Hx;
 
 const MSG_BAD_LIMIT = "limit must be an integer between 1 and 100";
-const MSG_BAD_CURSOR = "starting_after must be a lease id held by this runner, and must match workspace_id when that filter is set";
+const MSG_BAD_CURSOR = "starting_after must be a lease id held by this runner, and must match workspace_id and fleet when those filters are set";
 const MSG_BAD_WORKSPACE = "workspace_id must be a workspace id";
+const MSG_BAD_FLEET = "fleet must be a fleet id or name, at most 200 characters";
 const QUERY_WORKSPACE_ID = "workspace_id";
+const QUERY_FLEET = "fleet";
+/// Bounds the fleet filter so an unbounded query string cannot reach the
+/// comparison. `core.fleets.name` is far shorter than this in practice. Public
+/// so the lease-read integration suite asserts the boundary against this value
+/// rather than a copy that could drift from it.
+pub const MAX_FLEET_FILTER_LEN = 200;
 
 /// The one closed outcome vocabulary for a lease, derived here and nowhere
 /// else. An expired lease reads expired regardless of how its event later
@@ -78,12 +85,22 @@ pub fn innerListRunnerLeases(hx: Hx, req: *httpz.Request, runner_id: []const u8)
             return;
         }
     }
-    // Optional ownership filter. A malformed id is refused; an unknown-but-
-    // well-formed one simply matches nothing (an empty page, not an error).
+    // Optional ownership filters, independent and combinable. A malformed id is
+    // refused; an unknown-but-well-formed one simply matches nothing (an empty
+    // page, not an error).
     const workspace_id = if (qs) |q| q.get(QUERY_WORKSPACE_ID) else null;
     if (workspace_id) |ws| {
         if (!id_format.isUuidV7(ws)) {
             hx.fail(ec.ERR_INVALID_REQUEST, MSG_BAD_WORKSPACE);
+            return;
+        }
+    }
+    // Matched against a fleet id OR an exact fleet name, so the operator filters
+    // by the name the table already shows rather than transcribing a UUID.
+    const fleet = if (qs) |q| q.get(QUERY_FLEET) else null;
+    if (fleet) |value| {
+        if (value.len == 0 or value.len > MAX_FLEET_FILTER_LEN) {
+            hx.fail(ec.ERR_INVALID_REQUEST, MSG_BAD_FLEET);
             return;
         }
     }
@@ -94,7 +111,7 @@ pub fn innerListRunnerLeases(hx: Hx, req: *httpz.Request, runner_id: []const u8)
     };
     defer hx.ctx.pool.release(conn);
 
-    const total = fetchLeaseTotal(conn, runner_id, workspace_id) catch |err| {
+    const total = fetchLeaseTotal(conn, runner_id, workspace_id, fleet) catch |err| {
         return failRead(hx, err);
     } orelse {
         hx.fail(ec.ERR_RUNNER_NOT_FOUND, "Runner not found");
@@ -103,7 +120,7 @@ pub fn innerListRunnerLeases(hx: Hx, req: *httpz.Request, runner_id: []const u8)
 
     var boundary_created_at: ?i64 = null;
     if (starting_after) |cursor| {
-        boundary_created_at = resolveCursor(conn, cursor, runner_id, workspace_id) catch |err| {
+        boundary_created_at = resolveCursor(conn, cursor, runner_id, workspace_id, fleet) catch |err| {
             return failRead(hx, err);
         } orelse {
             hx.fail(ec.ERR_INVALID_REQUEST, MSG_BAD_CURSOR);
@@ -111,7 +128,7 @@ pub fn innerListRunnerLeases(hx: Hx, req: *httpz.Request, runner_id: []const u8)
         };
     }
 
-    const items = fetchLeasePage(conn, hx.alloc, runner_id, workspace_id, starting_after, boundary_created_at, limit) catch |err| {
+    const items = fetchLeasePage(conn, hx.alloc, runner_id, workspace_id, fleet, starting_after, boundary_created_at, limit) catch |err| {
         return failRead(hx, err);
     };
 
@@ -125,22 +142,22 @@ fn failRead(hx: Hx, err: anyerror) void {
 }
 
 /// Existence probe and page-stable total in one statement: null means the
-/// runner id does not resolve. The workspace filter scopes the total to the
-/// same set the page returns.
-fn fetchLeaseTotal(conn: anytype, runner_id: []const u8, workspace_id: ?[]const u8) !?i64 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_TOTAL, .{ runner_id, workspace_id }));
+/// runner id does not resolve. The workspace and fleet filters scope the total
+/// to the same set the page returns.
+fn fetchLeaseTotal(conn: anytype, runner_id: []const u8, workspace_id: ?[]const u8, fleet: ?[]const u8) !?i64 {
+    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_TOTAL, .{ runner_id, workspace_id, fleet }));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     return try row.get(i64, 0);
 }
 
 /// Resolve `starting_after` to the boundary sort key; null means the lease id
-/// is not one this runner holds *on the stream being paged* — the workspace
-/// filter scopes the cursor exactly as it scopes the page, so a cursor from
-/// another workspace is refused instead of seeking this page past a boundary
-/// that was never on it.
-fn resolveCursor(conn: anytype, lease_id: []const u8, runner_id: []const u8, workspace_id: ?[]const u8) !?i64 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_CURSOR, .{ lease_id, runner_id, workspace_id }));
+/// is not one this runner holds *on the stream being paged* — the workspace and
+/// fleet filters scope the cursor exactly as they scope the page, so a cursor
+/// from outside the filtered stream is refused instead of seeking this page past
+/// a boundary that was never on it.
+fn resolveCursor(conn: anytype, lease_id: []const u8, runner_id: []const u8, workspace_id: ?[]const u8, fleet: ?[]const u8) !?i64 {
+    var q = PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_CURSOR, .{ lease_id, runner_id, workspace_id, fleet }));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     return try row.get(i64, 0);
@@ -151,15 +168,16 @@ fn fetchLeasePage(
     alloc: std.mem.Allocator,
     runner_id: []const u8,
     workspace_id: ?[]const u8,
+    fleet: ?[]const u8,
     starting_after: ?[]const u8,
     boundary_created_at: ?i64,
     limit: u32,
 ) ![]LeaseItem {
     const limit_i64: i64 = @intCast(limit);
     var q = if (boundary_created_at) |created_at|
-        PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_PAGE_AFTER, .{ runner_id, workspace_id, created_at, starting_after.?, limit_i64 }))
+        PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_PAGE_AFTER, .{ runner_id, workspace_id, created_at, starting_after.?, limit_i64, fleet }))
     else
-        PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_PAGE_FIRST, .{ runner_id, workspace_id, limit_i64 }));
+        PgQuery.from(try conn.query(sql.SELECT_RUNNER_LEASE_PAGE_FIRST, .{ runner_id, workspace_id, limit_i64, fleet }));
     defer q.deinit();
     return collectItems(alloc, &q);
 }

@@ -203,11 +203,11 @@ fn connect(h: *TestHarness, installation_id: []const u8) !void {
 }
 
 fn seedInstall(conn: *pg.Conn, installation_id: []const u8, workspace_id: []const u8) !void {
-    const uid = try id_format.generateConnectorInstallId(testing.allocator);
-    defer testing.allocator.free(uid);
+    const row_id = try id_format.generateConnectorInstallId(testing.allocator);
+    defer testing.allocator.free(row_id);
     const no_scopes: []const []const u8 = &.{};
     var query = PgQuery.from(try conn.query(sql.UPSERT_INSTALL, .{
-        uid,
+        row_id,
         spec.PROVIDER,
         installation_id,
         workspace_id,

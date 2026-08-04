@@ -13,7 +13,7 @@ pub const SELECT_CHANNEL_FLEET =
 /// bind idempotent rather than re-pointing an existing channel.
 pub const INSERT_CHANNEL_BINDING =
     \\INSERT INTO core.connector_channels
-    \\  (uid, provider, external_account_id, external_channel_id, fleet_id, kind, created_at)
+    \\  (id, provider, external_account_id, external_channel_id, fleet_id, kind, created_at)
     \\VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7)
     \\ON CONFLICT (provider, external_account_id, external_channel_id) DO NOTHING
 ;

@@ -52,7 +52,7 @@ function valuesFromModel(m: AdminModel): FormValues {
   };
 }
 
-// Mounted only while a row is being edited (parent keys it by uid), so the form
+// Mounted only while a row is being edited (parent keys it by id), so the form
 // initialises pre-filled from that row — no reset-on-open effect needed. The
 // dialog is always open when mounted; onOpenChange(false) tells the parent to
 // unmount.
@@ -79,12 +79,12 @@ export default function EditModelDialog({
       output_nanos_per_mtok: usdPerMtokToNanos(Number(v.output_usd)),
     };
     startTransition(async () => {
-      const r = await updateAdminModelAction(model.uid, rates);
+      const r = await updateAdminModelAction(model.id, rates);
       if (!r.ok) {
         setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "update the model" }));
         return;
       }
-      // The PATCH returns {uid, updated}; the row's new shape is its identity plus
+      // The PATCH returns {id, updated}; the row's new shape is its identity plus
       // the edited rates — hand that to the parent so the table updates in place.
       onUpdated({ ...model, ...rates });
       onOpenChange(false);

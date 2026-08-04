@@ -14,7 +14,7 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Event ingress | ONE — five producers | steer / webhook / cron / continuation / Slack all `XADD fleet:{id}:events`; the stream entry id IS the canonical event id | §B. TRIGGER |
 | Hot-path writes | 12, in the worker's order | `lease` does 1–6, `report` does 7–12; row-equivalent to the deleted worker (cutover Invariant 2) | §Steer flow end-to-end |
-| Durable stores | 3 tables, join key `event_id` | `fleet_sessions` (one row per fleet, UPSERT) · `fleet_events` (one row per delivery) · `fleet_execution_telemetry` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The three durable stores |
+| Durable stores | 3 tables, join key `event_id` | `fleet_sessions` (one row per fleet, UPSERT) · `fleet_events` (one row per delivery) · `billing.usage_ledger` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The three durable stores |
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
 | Stale-writer rejection | `UZ-RUN-005` | `claimReport()` fences, flips, and dedups in one atomic statement | §C. EXECUTE |
 | Redis pool | `max_idle=8, eager_min=2` | short-lived commands only: `XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK` | §Connection topology |
@@ -240,12 +240,12 @@ The flow writes three Postgres tables. Each answers a distinct user question and
 |---|---|---|---|
 | `core.fleet_sessions` | **One row per Fleet** | UPSERT — mutated on every event boundary | "Where is this Fleet *right now*? Is it idle or executing? What was its last successful response?" — the resume bookmark + active-execution handle. `execution_id` is set at `lease` (busy) and cleared at `report` (idle). Read at `lease` and by `agentsfleet status`. |
 | `core.fleet_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
-| `core.fleet_execution_telemetry` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `fleet_events` via `event_id`. |
+| `billing.usage_ledger` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `fleet_events` via `event_id`. |
 
 Why two per-delivery tables (`events` + `telemetry`) instead of one? They have different write authorities and retention rules:
 
 - `fleet_events` holds user-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
-- `core.fleet_execution_telemetry` holds numeric audit columns — small, immutable once written, retained for billing reconciliation independent of whether the conversation row is purged.
+- `billing.usage_ledger` holds numeric audit columns — small, immutable once written, retained for billing reconciliation independent of whether the conversation row is purged.
 
 The durable lease bookkeeping (`fleet.runner_leases`, `fleet.runner_affinity`) is a fourth concern — it is the *ownership* layer (which runner holds this event, at what fencing token, until when), not a user-facing record. It lives in the `fleet` schema and never carries user strings.
 
@@ -314,10 +314,10 @@ response_text  "Deploy failed: Fly.io OOM kill on machine i-01abc,
 completed_at   2026-04-25T08:00:08Z
 ```
 
-**Step 9 — INSERT `core.fleet_execution_telemetry`** (immutable audit row, joinable on `event_id`):
+**Step 9 — INSERT `billing.usage_ledger`** (immutable audit row, joinable on `event_id`):
 
 ```
-core.fleet_execution_telemetry  (run row reconciled with actuals)
+billing.usage_ledger  (run row reconciled with actuals)
 ─────────────────────────────────────────────────
 id                       tel-1729874000000-0
 fleet_id                f4e3c2b1-...
@@ -347,10 +347,21 @@ execution_started_at NULL
 ## Reading the three tables
 
 - `agentsfleet status {id}` reads **`fleet_sessions`** — answers "is the fleet executing right now, and where did it leave off?"
-- `agentsfleet events {id} [--actor=…]` reads **`fleet_events`** — answers "what has this fleet done, what was asked, what did it reply, did any gate block it?"
-- Billing rollups + p95 dashboards read **`fleet_execution_telemetry`** — answers "how many tokens this month, what's the latency tail?"
+- `agentsfleet events {id} [--actor=…]` reads **`core.fleet_events`** — answers "what has this fleet done, did any gate block it?" The **list** read stops there. It carries no request body and no agent answer.
+- Expanding one row reads **the same table by event id** — answers "what was asked, what did it reply?" One event, on its own request.
+- Billing rollups + p95 dashboards read **`billing.usage_ledger`** — answers "how many tokens this month, what's the latency tail?"
 
 One table would force either a full scan to answer "is it busy now?" or mutable narrative columns beside immutable spend columns. Three tables, three jobs, one join key: `event_id`.
+
+### The list read and the detail read are different reads
+
+A page is up to two hundred rows, and the two body columns are unbounded — a trigger payload and a full agent answer. Selecting them per row bought a table that renders about a hundred and sixty characters per cell, so the list stops selecting them and the surfaces that used to quote an answer now state an outcome instead. A row that failed says why; a row that succeeded records that it did, without reproducing the reply. Postgres already keeps wide values in oversized-attribute storage, so the cost was never that the bodies existed — it was that the list **selected** them, which is why this is a read-path change and not a storage one.
+
+Three surfaces changed with it: the events table's prose cell, the fleet header's outcome line, and the fleet thread's transcript. The transcript is the one surface that genuinely wants the bodies, because it renders what was said rather than a summary of it — so it re-reads its turns as details, server-side and in parallel. A turn whose detail read fails keeps its list row and renders its header and outcome rather than taking the page down.
+
+The runner lease carries no second copy either. It used to hold its own `request_json`, a duplicate of the payload the event row already stored, written on every lease. Reclaim joins `core.fleet_events` on `(fleet_id, event_id)` to read the body instead; both tables cascade from the same parent, so the join cannot dangle.
+
+**Partitioning is not done here, but its key is.** `billing.usage_ledger` carries the originating event's creation time rather than the write time. A renewal firing hours after its receive row would otherwise land in a different partition, miss the conflict target, and silently duplicate ledger rows. Carrying the column now means a later partitioning decision has a stable key already present and needs no backfill; the machinery itself waits for a measurement that demands it.
 
 ## Two streams + one pub/sub channel — and the one that retired
 
@@ -524,7 +535,7 @@ installed runtime. Runner remains the infrastructure vocabulary.
 
    At rest:
      Postgres: core.fleets row, core.fleet_sessions idle checkpoint row.
-            No core.fleet_events. No core.fleet_execution_telemetry. No fleet.runner_leases.
+            No core.fleet_events. No billing.usage_ledger. No fleet.runner_leases.
      Redis: stream fleet:{id}:events with group fleet_lease (empty).
             Channel fleet:{id}:activity does not yet exist (implicit on first PUBLISH).
 ```
@@ -798,7 +809,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
           SET status = outcome==ok ? 'processed' : 'fleet_error',
               response_text, completed_at = now()
      8. PUBLISH fleet:{id}:activity { kind:"event_complete", event_id, status }
-     9. INSERT/reconcile core.fleet_execution_telemetry ← billing/latency,
+     9. INSERT/reconcile billing.usage_ledger ← billing/latency,
           (event_id UNIQUE, token_count, ttft_ms, wall_seconds, ...)
     10. UPSERT core.fleet_sessions                ← idle bookmark
           SET context_json = { last_event_id, last_response },

@@ -47,7 +47,7 @@ pub fn seed(alloc: std.mem.Allocator, conn: *pg.Conn, webhook_secret: []const u8
     const scopes: []const []const u8 = &.{};
     _ = try conn.exec(
         \\INSERT INTO core.connector_installs
-        \\  (uid, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
+        \\  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::text[], $7, $7)
         \\ON CONFLICT (provider, external_account_id) DO UPDATE SET workspace_id = EXCLUDED.workspace_id, updated_at = EXCLUDED.updated_at
     , .{ INSTALL_UID, PROVIDER, INSTALLATION_ID, WORKSPACE_ID, "", scopes, now });
@@ -76,8 +76,8 @@ fn seedAppBag(alloc: std.mem.Allocator, conn: *pg.Conn, webhook_secret: []const 
 
 fn seedFleet(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, config: []const u8, now: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb, $6, $7, $7)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, $4, $5::jsonb, $6, $7, $7)
         \\ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at
     , .{ fleet_id, WORKSPACE_ID, name, "# test fleet", config, STATUS_ACTIVE, now });
 }
@@ -85,8 +85,8 @@ fn seedFleet(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, config: []c
 fn seedGrant(conn: *pg.Conn, fleet_id: []const u8, grant_id: []const u8, now: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason, approved_at)
-        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, $5, $6, $5)
+        \\  (id, fleet_id, service, status, created_at, requested_reason, approved_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $5)
         \\ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status, approved_at = EXCLUDED.approved_at
     , .{ grant_id, fleet_id, PROVIDER, STATUS_APPROVED, now, "App ingress integration test" });
 }

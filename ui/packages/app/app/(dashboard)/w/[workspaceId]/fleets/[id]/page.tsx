@@ -7,7 +7,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
 import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import { listFleetEvents } from "@/lib/api/events";
+import { getFleetEvent, listFleetEvents } from "@/lib/api/events";
 import { listApprovals } from "@/lib/api/approvals";
 import { listAllMemories } from "@/lib/api/memory";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
@@ -195,9 +195,14 @@ async function loadFleetView(
   }
 }
 
+/// Turns the chat view opens with. It bounds two things at once: the events
+/// page requested, and the per-turn detail reads that follow it — so raising
+/// this raises the fan-out with it.
+const CHAT_TURNS = 20;
+
 async function loadChatView({ workspaceId, fleet, token }: PageContext) {
   const [eventsResult, approvalsResult] = await Promise.all([
-    listFleetEvents(workspaceId, fleet.id, token, { limit: 20 }).catch(
+    listFleetEvents(workspaceId, fleet.id, token, { limit: CHAT_TURNS }).catch(
       () => null,
     ),
     listApprovals(workspaceId, token, { fleetId: fleet.id, limit: 50 }).catch(
@@ -206,6 +211,16 @@ async function loadChatView({ workspaceId, fleet, token }: PageContext) {
   ]);
   const events = eventsResult ?? { items: [], next_cursor: null };
   const approvals = approvalsResult ?? { items: [], next_cursor: null };
+  // A transcript is the one surface that genuinely wants the bodies: it renders
+  // what was said, not a summary of it. The list read carries none, so the
+  // turns are re-read as details here — server-side, in parallel, bounded by
+  // CHAT_TURNS. A turn whose detail fails keeps its list row and renders its
+  // header and outcome rather than taking the page down with it.
+  const turns = await Promise.all(
+    events.items.map((row) =>
+      getFleetEvent(workspaceId, row.fleet_id, row.event_id, token).catch(() => row),
+    ),
+  );
   const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-md overflow-hidden">
@@ -224,7 +239,7 @@ async function loadChatView({ workspaceId, fleet, token }: PageContext) {
         workspaceId={workspaceId}
         fleetId={fleet.id}
         fleetName={`Agent ${deriveFleetIdentity(fleet.id).callsign}`}
-        initial={events.items}
+        initial={turns}
       />
     </div>
   );

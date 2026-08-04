@@ -16,6 +16,7 @@ const clock = common.clock;
 const pg = @import("pg");
 const FleetSetCache = @import("fleet_set_cache.zig");
 const common_authz = @import("../http/handlers/common_authz.zig");
+const base = @import("../db/test_fixtures.zig");
 
 // Pure-mechanics tests use arbitrary ids (no DB). The live-Postgres tests below
 // use a DEDICATED workspace + tenant this file owns exclusively, so the fleet
@@ -107,22 +108,15 @@ const TestDb = struct {
     }
 };
 
+/// Seeds through the shared fixtures rather than inline SQL. The inline form
+/// addressed `core.tenants(tenant_id)` and `core.workspaces(workspace_id)` —
+/// both now `id` — and omitted the `tenant_id` that `core.fleets` requires, so
+/// all three statements described a shape the database no longer has.
 fn seed(conn: *pg.Conn) !void {
-    const ts = clock.nowMillis();
-    _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'FleetSetCacheTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
-    , .{ TENANT_ID, ts });
-    _ = try conn.exec(
-        \\INSERT INTO core.workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
-    , .{ WS_A, TENANT_ID, ts });
+    try base.seedTenantById(conn, TENANT_ID, "FleetSetCacheTest");
+    try base.seedWorkspaceWithTenant(conn, WS_A, TENANT_ID);
     inline for (.{ FLEET_ONE, FLEET_TWO }, .{ "cache-one", "cache-two" }) |zid, name| {
-        _ = try conn.exec(
-            \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-            \\VALUES ($1, $2, $3, '---\nname: zz\n---\ntest', '{"name":"zz"}', 'active', 0, 0)
-            \\ON CONFLICT DO NOTHING
-        , .{ zid, WS_A, name });
+        try base.seedFleet(conn, zid, WS_A, name, "{\"name\":\"zz\"}", "---\nname: zz\n---\ntest");
     }
 }
 
@@ -137,7 +131,7 @@ fn cleanup(conn: *pg.Conn) void {
     // The dedicated workspace is this file's own row — remove it so the suite
     // leaves zero rows behind. The tenant is SHARED with sibling suites
     // running in parallel and must survive.
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{WS_A}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1", .{WS_A}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
 }
 
 test "integration: V viewers of one workspace cost ONE enumeration, not V" {
@@ -212,14 +206,14 @@ test "integration: a successful empty enumeration initializes the cache version"
     defer db.close();
     const ts = clock.nowMillis();
     _ = try db.conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'FleetSetCacheTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'FleetSetCacheTest', $2, $2) ON CONFLICT (id) DO NOTHING
     , .{ TENANT_ID, ts });
     _ = try db.conn.exec(
-        \\INSERT INTO core.workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO core.workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3) ON CONFLICT (id) DO NOTHING
     , .{ WS_B, TENANT_ID, ts });
-    defer _ = db.conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{WS_B}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
+    defer _ = db.conn.exec("DELETE FROM core.workspaces WHERE id = $1", .{WS_B}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
 
     var cache = FleetSetCache.init(testing.allocator, common.globalIo());
     defer cache.deinit();

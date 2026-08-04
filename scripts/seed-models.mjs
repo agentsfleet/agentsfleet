@@ -243,17 +243,17 @@ function report({ added, changed, orphaned }) {
 // ── Emit ──────────────────────────────────────────────────────────────────────
 
 /**
- * core.model_library.uid is a plain PK carrying a UUIDv7 shape CHECK (the '7' at
+ * core.model_library.id is a plain PK carrying a UUIDv7 shape CHECK (the '7' at
  * text position 15), not a GENERATED column — so the seed must supply one.
  */
-function uidFor(provider, modelId) {
+function idFor(provider, modelId) {
   // Content hash of (provider, model_id) ALONE — stable across allowlist
-  // reordering and re-runs, so a refresh never shifts an existing row's uid.
-  // (A position-derived uid collides the uid PK — which ON CONFLICT
+  // reordering and re-runs, so a refresh never shifts an existing row's id.
+  // (A position-derived id collides the primary key — which ON CONFLICT
   // (provider, model_id) does not arbitrate — the moment a model is inserted
   // mid-list.) The NUL separator cannot appear in either part, so distinct
   // pairs cannot alias one digest. Nibbles are forced to '7'/'8' to satisfy
-  // the ck_model_library_uid_uuidv7 shape CHECK and the RFC 4122 variant.
+  // the ck_model_library_id_uuidv7 shape CHECK and the RFC 4122 variant.
   const h = createHash("sha256").update(`${provider} ${modelId}`).digest("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-7${h.slice(12, 15)}-8${h.slice(15, 18)}-${h.slice(18, 30)}`;
 }
@@ -277,12 +277,12 @@ function emit(rows, allowlist, stamp, opts = {}) {
     if (r.tier) lines.push(`-- ${r.provider}/${r.model_id}: upper tier seeded (see allowlist)`);
     lines.push(`-- source: ${r.source_url}`);
     lines.push(
-      `INSERT INTO core.model_library (uid, provider, model_id, context_cap_tokens, ` +
+      `INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, ` +
         `input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, ` +
-        `created_at_ms, updated_at_ms) VALUES (`,
+        `created_at, updated_at) VALUES (`,
     );
     lines.push(
-      `  '${uidFor(r.provider, r.model_id)}', ${sqlStr(r.provider)}, ${sqlStr(r.model_id)}, ` +
+      `  '${idFor(r.provider, r.model_id)}', ${sqlStr(r.provider)}, ${sqlStr(r.model_id)}, ` +
         `${r.context_cap_tokens}, ${r.input}, ${r.cached}, ${r.output}, ${stamp.ms}, ${stamp.ms})`,
     );
     lines.push(`ON CONFLICT (provider, model_id) DO UPDATE SET`);
@@ -294,7 +294,7 @@ function emit(rows, allowlist, stamp, opts = {}) {
       `  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, ` +
         `output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,`,
     );
-    lines.push(`  updated_at_ms = EXCLUDED.updated_at_ms;`);
+    lines.push(`  updated_at = EXCLUDED.updated_at;`);
     lines.push(``);
   });
   if (!opts.no_transaction) lines.push(`COMMIT;`);

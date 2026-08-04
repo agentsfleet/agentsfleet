@@ -41,8 +41,6 @@ const SECRET_WRITE = [_]S{.secret_write};
 const APIKEY_READ = [_]S{.apikey_read};
 const APIKEY_WRITE = [_]S{.apikey_write};
 const APIKEY_ADMIN = [_]S{.apikey_admin};
-const FLEETKEY_READ = [_]S{.fleetkey_read};
-const FLEETKEY_WRITE = [_]S{.fleetkey_write};
 const GRANT_READ = [_]S{.grant_read};
 const GRANT_WRITE = [_]S{.grant_write};
 const CONNECTOR_READ = [_]S{.connector_read};
@@ -84,13 +82,11 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .receive_webhook,
         .receive_svix_webhook,
         .approval_webhook,
-        .grant_approval_webhook,
         .github_webhook,
         .app_ingress,
         .qstash_schedule_ingress,
         .connector_callback,
         .slack_events,
-        .request_integration_grant,
         => &NONE,
 
         // ── Authenticated-only (self-service; in-handler session ownership) ──
@@ -108,7 +104,6 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         // ── Billing (read-only) ──
         .get_tenant_billing,
         .get_tenant_billing_charges,
-        .get_tenant_metering_periods,
         => &BILLING_READ,
 
         // ── Tenant LLM-provider config (provider credential) ──
@@ -165,6 +160,7 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .workspace_fleet_schedule_sync => &SCHEDULE_WRITE,
         .workspace_fleet_events,
         .workspace_fleet_events_stream,
+        .workspace_fleet_event,
         .workspace_events,
         .workspace_events_stream,
         .workspace_fleet_memories,
@@ -197,11 +193,6 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .workspace_secret => &SECRET_WRITE,
 
         // ── Fleet keys ──
-        .fleet_keys => switch (method) {
-            .GET => &FLEETKEY_READ,
-            else => &FLEETKEY_WRITE,
-        },
-        .delete_fleet_key => &FLEETKEY_WRITE,
 
         // ── Integration grants ──
         .list_integration_grants => &GRANT_READ,

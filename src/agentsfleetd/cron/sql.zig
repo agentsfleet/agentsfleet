@@ -1,7 +1,7 @@
 //! Production SQL for the cron store. Keep statement text out of adapters.
 
 pub const ROW_COLUMNS =
-    "uid::text, fleet_id::text, source, source_key, cron_expression, " ++
+    "id::text, fleet_id::text, source, source_key, cron_expression, " ++
     "timezone, message, desired_status, sync_status, generation, " ++
     "sync_token::text, sync_lease_until, last_error, created_at, updated_at";
 
@@ -14,9 +14,9 @@ const FINALIZE_SUCCESS_FIELDS =
 const FINALIZE_FAILURE_FIELDS =
     "sync_lease_until = NULL, last_error = $5, updated_at = $6 ";
 const FINALIZE_WHERE =
-    "WHERE uid = $1::uuid AND generation = $2 AND sync_token = $3::uuid ";
+    "WHERE id = $1::uuid AND generation = $2 AND sync_token = $3::uuid ";
 const SCHEDULE_FLEET_WHERE =
-    "WHERE uid = $1::uuid AND fleet_id = $2::uuid AND ";
+    "WHERE id = $1::uuid AND fleet_id = $2::uuid AND ";
 
 pub const LOCK_FLEET =
     \\SELECT f.id::text
@@ -45,7 +45,7 @@ pub const SOURCE_KEY_EXISTS =
 
 pub const INSERT =
     "INSERT INTO core.fleet_schedules " ++
-    "(uid, fleet_id, source, source_key, cron_expression, timezone, message, " ++
+    "(id, fleet_id, source, source_key, cron_expression, timezone, message, " ++
     "desired_status, sync_status, generation, sync_token, sync_lease_until, " ++
     "last_error, created_at, updated_at) " ++
     "VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, " ++
@@ -53,7 +53,7 @@ pub const INSERT =
 
 pub const SELECT_ONE =
     SELECT_PREFIX ++ ROW_COLUMNS ++
-    " FROM core.fleet_schedules WHERE uid = $1::uuid AND fleet_id = $2::uuid";
+    " FROM core.fleet_schedules WHERE id = $1::uuid AND fleet_id = $2::uuid";
 
 pub const SELECT_SOURCE_KEY =
     SELECT_PREFIX ++ ROW_COLUMNS ++
@@ -61,7 +61,7 @@ pub const SELECT_SOURCE_KEY =
 
 pub const LIST_FOR_FLEET =
     SELECT_PREFIX ++ ROW_COLUMNS ++
-    " FROM core.fleet_schedules WHERE fleet_id = $1::uuid ORDER BY created_at, uid";
+    " FROM core.fleet_schedules WHERE fleet_id = $1::uuid ORDER BY created_at, id";
 
 pub const CLAIM_MUTATION =
     "UPDATE core.fleet_schedules SET cron_expression = COALESCE($3, cron_expression), " ++
@@ -83,7 +83,7 @@ pub const CLAIM_CURRENT =
 
 pub const EXISTS =
     "SELECT 1::bigint FROM core.fleet_schedules " ++
-    "WHERE uid = $1::uuid AND fleet_id = $2::uuid LIMIT 1";
+    "WHERE id = $1::uuid AND fleet_id = $2::uuid LIMIT 1";
 
 pub const FINALIZE_SUCCESS =
     FINALIZE_PREFIX ++ FINALIZE_SUCCESS_FIELDS ++
@@ -103,8 +103,8 @@ pub const FINALIZE_FAILURE_STATE =
 
 pub const DELETE_CLAIMED =
     \\DELETE FROM core.fleet_schedules
-    \\WHERE uid = $1::uuid AND generation = $2 AND sync_token = $3::uuid
-    \\RETURNING uid::text
+    \\WHERE id = $1::uuid AND generation = $2 AND sync_token = $3::uuid
+    \\RETURNING id::text
 ;
 
 pub const FIRE_TARGET =
@@ -112,5 +112,5 @@ pub const FIRE_TARGET =
     \\       s.desired_status, s.sync_status, f.status
     \\FROM core.fleet_schedules s
     \\JOIN core.fleets f ON f.id = s.fleet_id
-    \\WHERE s.uid = $1::uuid
+    \\WHERE s.id = $1::uuid
 ;

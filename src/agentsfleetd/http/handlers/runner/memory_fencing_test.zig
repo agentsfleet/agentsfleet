@@ -25,7 +25,6 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8a01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8c01";
 const OTHER_AGENT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8c99";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8f01";
 const OTHER_LEASE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8f99";
 const EVENT_ID = "evt-mem-fence-1";
@@ -46,12 +45,12 @@ fn seedRunner(conn: *pg.Conn) !void {
 fn seedAffinity(conn: *pg.Conn, fencing_seq: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = EXCLUDED.fencing_seq
-    , .{ AFFINITY_ID, FLEET_ID, RUNNER_ID, fencing_seq, NOW_MS + 30_000 });
+    , .{ FLEET_ID, RUNNER_ID, fencing_seq, NOW_MS + 30_000 });
 }
 
 /// Seed an active, unexpired lease for the runner naming `lease_id`/`fleet_id`.
@@ -59,11 +58,11 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, fleet_id: []const u8, fencing
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'steer:test',
-        \\        'chat', '{"message":"hi"}', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
+        \\        'chat', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
         \\        $7, $8, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ lease_id, RUNNER_ID, fleet_id, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + 30_000 });

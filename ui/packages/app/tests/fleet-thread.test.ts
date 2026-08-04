@@ -84,7 +84,7 @@ vi.mock("@/components/domain/SteerComposer", async () => {
 
 import { FleetThread } from "@/components/domain/FleetThread";
 import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
-import type { EventRow } from "@/lib/api/events";
+import type { EventDetail, EventRow } from "@/lib/api/events";
 import {
   CONNECTION_STATUS,
   type FleetEvent,
@@ -199,7 +199,7 @@ function renderThreadWithInitial(initial: EventRow[]) {
   );
 }
 
-function serverEvent(over: Partial<EventRow> = {}): EventRow {
+function serverEvent(over: Partial<EventDetail> = {}): EventDetail {
   const now = Date.UTC(2026, 4, 15, 9, 0, 0);
   return {
     event_id: "event-server-terminal",

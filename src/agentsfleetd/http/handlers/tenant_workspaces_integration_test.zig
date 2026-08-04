@@ -70,20 +70,20 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn seedIdentityFixtures(conn: *pg.Conn) !void {
     const now_ms = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'TenantWsClaim', $3, $3), ($2, 'TenantWsMapped', $3, $3)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO core.tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'TenantWsClaim', $3, $3), ($2, 'TenantWsMapped', $3, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ CLAIM_TENANT_ID, DATABASE_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
-        \\VALUES ($1, $2, $3, 'tenant-workspaces@test.agentsfleet', $4, $4)
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, 'tenant-workspaces@test.agentsfleet', $4, $4)
         \\ON CONFLICT (oidc_subject) DO UPDATE
         \\SET tenant_id = EXCLUDED.tenant_id, updated_at = EXCLUDED.updated_at
     , .{ DATABASE_USER_ID, DATABASE_TENANT_ID, TOKEN_SUBJECT, now_ms });
     const key_hash = api_key.sha256Hex(TENANT_API_KEY);
     _ = try conn.exec(
         \\INSERT INTO core.api_keys
-        \\  (uid, tenant_id, key_name, description, key_hash, created_by,
+        \\  (id, tenant_id, key_name, description, key_hash, created_by,
         \\   active, created_at, updated_at)
         \\VALUES ($1, $2, 'workspace-reconciliation', '', $3, $4, TRUE, $5, $5)
         \\ON CONFLICT (key_hash) DO UPDATE
@@ -102,7 +102,7 @@ fn seedIdentityFixtures(conn: *pg.Conn) !void {
 
 fn cleanupFixtures(conn: *pg.Conn) void {
     _ = conn.exec(
-        "DELETE FROM core.api_keys WHERE uid = $1::uuid",
+        "DELETE FROM core.api_keys WHERE id = $1::uuid",
         .{API_KEY_ROW_ID},
     ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
@@ -114,11 +114,11 @@ fn cleanupFixtures(conn: *pg.Conn) void {
         .{DATABASE_USER_ID},
     ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
-        "DELETE FROM core.users WHERE user_id = $1::uuid",
+        "DELETE FROM core.users WHERE id = $1::uuid",
         .{DATABASE_USER_ID},
     ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
-        "DELETE FROM core.tenants WHERE tenant_id IN ($1::uuid, $2::uuid)",
+        "DELETE FROM core.tenants WHERE id IN ($1::uuid, $2::uuid)",
         .{ CLAIM_TENANT_ID, DATABASE_TENANT_ID },
     ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
@@ -155,9 +155,9 @@ fn expectCreateUsesMappedTenant(
 
 fn seedSameNameAcrossTenants(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.workspaces (workspace_id, tenant_id, name, created_at)
-        \\VALUES ($1, $2, $5, 1), ($3, $4, $5, 2)
-        \\ON CONFLICT (workspace_id) DO UPDATE
+        \\INSERT INTO core.workspaces (id, tenant_id, name, created_at)
+        \\VALUES ($1::uuid, $2, $5, 1), ($3, $4, $5, 2)
+        \\ON CONFLICT (id) DO UPDATE
         \\SET tenant_id = EXCLUDED.tenant_id, name = EXCLUDED.name,
         \\    created_at = EXCLUDED.created_at
     , .{
@@ -242,7 +242,7 @@ fn expectApiKeyUsesIssuingTenant(
 fn seedPaginatedWorkspaces(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM core.workspaces WHERE tenant_id = $1::uuid", .{DATABASE_TENANT_ID});
     _ = try conn.exec(
-        \\INSERT INTO core.workspaces (workspace_id, tenant_id, name, created_at)
+        \\INSERT INTO core.workspaces (id, tenant_id, name, created_at)
         \\SELECT
         \\  ('0195b4ba-8d3a-7f13-8abc-2b3f' || lpad(to_hex(n), 8, '0'))::uuid,
         \\  $1::uuid,

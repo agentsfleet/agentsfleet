@@ -30,7 +30,6 @@ import {
 } from "./console-copy";
 
 const COUNT_FORMATTER = new Intl.NumberFormat("en-US");
-const OUTCOME_PREVIEW_CHARS = 120;
 
 // Tokens · wall · cost for the latest run (§3). Every figure is a server field
 // off the event row — the strip does no token→cost arithmetic (Invariant 1);
@@ -132,8 +131,8 @@ function Metric({
 function latestOutcome(latest: EventRow | null, available: boolean): string {
   if (!available) return METRICS_UNAVAILABLE;
   if (latest === null) return METRICS_EMPTY;
-  const response = latest.response_text?.replace(/\s+/g, " ").trim();
-  if (response) return response.slice(0, OUTCOME_PREVIEW_CHARS);
+  // The reply text is not on the list row any more (the list read carries no
+  // bodies), so the strip states the outcome rather than quoting the answer.
   return outcomeFor(latest);
 }
 

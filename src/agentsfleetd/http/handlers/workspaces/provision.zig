@@ -6,7 +6,11 @@ const sql = @import("sql.zig");
 
 const S_FAILED_TO_CREATE_WORKSPACE = "Failed to create workspace";
 const POSTGRES_UNIQUE_VIOLATION = "23505";
-const UNIQUE_WORKSPACE_NAME_CONSTRAINT = "uq_workspaces_tenant_name";
+/// Must equal the index name in `schema/210_workspaces.sql`. Classification is
+/// by exact constraint name, so a rename that lands only on one side turns a
+/// duplicate-name conflict into a 500 — which is what the rebuild did until the
+/// concurrent-create test caught it.
+const UNIQUE_WORKSPACE_NAME_CONSTRAINT = "uq_workspaces_tenant_id_name";
 
 pub const CreateInput = struct {
     name: []const u8,

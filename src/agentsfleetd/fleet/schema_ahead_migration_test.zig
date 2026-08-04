@@ -7,9 +7,12 @@ const base = @import("../db/test_fixtures.zig");
 const cmd_common = @import("../cmd/common.zig");
 const db = @import("../db/pool.zig");
 
-const TENANT_WORKSPACE_LIST_INDEX_VERSION: i32 = 38;
+// The workspace list index moved from retired slot 038 into the slot that
+// creates the table (patch-only slots fold into what they patched),
+// and was renamed with the `workspace_id` -> `id` identity collapse.
+const TENANT_WORKSPACE_LIST_INDEX_VERSION: i32 = 210;
 const WORKSPACE_LIST_INDEX_SQL =
-    "CREATE INDEX IF NOT EXISTS idx_workspaces_tenant_created";
+    "CREATE INDEX IF NOT EXISTS idx_workspaces_tenant_id_created_at_id";
 const CONCURRENT_INDEX_SQL = "CONCURRENTLY";
 
 fn workspaceListIndexMigrationSql() ![]const u8 {

@@ -193,7 +193,7 @@ fn releaseWonClaim(conn: *pg.Conn, fleet_id: []const u8, token: u64, stage: Kind
 /// one. Returns null when the slot is taken or has no leasable work.
 fn tryCandidate(ctx: *Context, conn: *pg.Conn, alloc: std.mem.Allocator, runner_id: []const u8, candidate: Candidate, cost: *PollCost) !?Acquired {
     cost.countDb(1);
-    const won = switch (try affinity.claim(conn, alloc, candidate.fleet_id, runner_id, constants.LEASE_TTL_MS)) {
+    const won = switch (try affinity.claim(conn, candidate.fleet_id, runner_id, constants.LEASE_TTL_MS)) {
         .taken => return null,
         .won => |w| w,
     };

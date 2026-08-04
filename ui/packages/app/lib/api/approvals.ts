@@ -23,7 +23,7 @@ export type ApprovalGate = {
   status: ApprovalStatusValue;
   detail: string;
   /** epoch ms */
-  requested_at: number;
+  created_at: number;
   /** epoch ms — sweeper auto-denies after this */
   timeout_at: number;
   /** epoch ms; null when still pending */

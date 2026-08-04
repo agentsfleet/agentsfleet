@@ -50,17 +50,22 @@ pub const FleetBudget = config_types.FleetBudget;
 /// "Rolling 24-hour dollar ceiling", so the window slides with `now_ms`.
 const ROLLING_DAY_MS: i64 = std.time.ms_per_day;
 
-/// Why these queries sum `metering_periods`, not the telemetry stage row: a run
-/// drains slice-by-slice across up to `MAX_RUNTIME_MS`, but the accumulating
-/// telemetry STAGE row pins `recorded_at` at the first renewal (~run start) and
-/// never advances it, so it cannot answer "how much drained in the last 24h".
-/// The accurate per-slice times live in `metering_periods.created_at`; the stage
-/// telemetry row is joined only for fleet scope + index pruning. The receive fee
-/// is one telemetry row written once at gate-pass, so ITS `recorded_at` is
-/// already the drain time. Pruning: a slice draining in `[floor, now]` cannot
-/// belong to a run started before `floor - MAX_RUNTIME`, so bounding the stage
-/// scan there drops no slice while keeping the index range small.
-const DRAIN_BACKOFF_MS: i64 = common.MAX_RUNTIME_MS;
+// Why the drain apportions instead of summing rows at one instant: a run drains
+// slice-by-slice across up to `MAX_RUNTIME_MS` (12h) while this window is a
+// rolling 24h, and the accumulating ledger STAGE row is a single row for the
+// whole run. The retired `metering_periods` table solved that with a row per
+// slice, at the cost of the highest insert rate in the money path.
+//
+// `billing.usage_ledger.last_charged_at` replaces it: with the run's span
+// `[created_at, last_charged_at]` on the row itself, the drain can attribute the
+// covered fraction of the total to the window. That also retires the old
+// `DRAIN_BACKOFF_MS` pruning bind — it existed because a stage row's timestamp
+// pinned at ~run start could not bound which slices were in range, so the scan
+// had to be widened by a whole MAX_RUNTIME to be safe. `last_charged_at` states
+// when the run stopped charging, so `last_charged_at >= floor` is exact.
+//
+// The receive fee is one row written once at gate-pass, so its span is a point
+// and apportioning it degenerates to the all-or-nothing it always was.
 
 /// Credit drained by one fleet inside each window, in nanos.
 pub const Spend = struct {
@@ -188,8 +193,8 @@ pub fn spendForFleet(
 pub fn spendForFleetOn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, now_ms: i64) !?Spend {
     const floors = windowFloors(now_ms);
     var q = PgQuery.from(try conn.query(sql.SELECT_BUDGET_DRAIN, .{
-        workspace_id,             fleet_id,                   floors.day,       floors.month,
-        ChargeType.stage.label(), ChargeType.receive.label(), DRAIN_BACKOFF_MS,
+        workspace_id,             fleet_id,                   floors.day, floors.month,
+        ChargeType.stage.label(), ChargeType.receive.label(),
     }));
     defer q.deinit();
     const row = try q.next() orelse return Spend{ .day_nanos = 0, .month_nanos = 0 };
@@ -237,8 +242,8 @@ pub fn fetchBudgetAndSpend(
 ) !?BudgetAndSpend {
     const floors = windowFloors(now_ms);
     var q = PgQuery.from(try conn.query(sql.SELECT_BUDGET_POLICY_AND_DRAIN, .{
-        fleet_id,                 workspace_id,               fleet_id,         floors.day, floors.month,
-        ChargeType.stage.label(), ChargeType.receive.label(), DRAIN_BACKOFF_MS,
+        fleet_id,                 workspace_id,               fleet_id, floors.day, floors.month,
+        ChargeType.stage.label(), ChargeType.receive.label(),
     }));
     defer q.deinit();
     const row = try q.next() orelse return null; // no fleet row

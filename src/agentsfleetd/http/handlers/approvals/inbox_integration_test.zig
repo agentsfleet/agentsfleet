@@ -64,28 +64,28 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn seedTestData(conn: *pg.Conn) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'ApprovalsTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'ApprovalsTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ OTHER_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'approvals-a', '---\nname: approvals-a\n---', '{"name":"approvals-a"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'approvals-a', '---\nname: approvals-a\n---', '{"name":"approvals-a"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_A, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'approvals-b', '---\nname: approvals-b\n---', '{"name":"approvals-b"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'approvals-b', '---\nname: approvals-b\n---', '{"name":"approvals-b"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_B, TEST_WORKSPACE_ID });
 }
@@ -94,8 +94,8 @@ fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.fleet_approval_gates WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_approval_gates WHERE workspace_id = $1::uuid", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE id = $1", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE id = $1", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 const SeedGate = struct {
@@ -109,7 +109,7 @@ const SeedGate = struct {
     proposed_action: []const u8 = "Open PR titled 'wire approval inbox'",
     evidence_json: []const u8 = "{\"files\":[\"src/x.zig\"]}",
     blast_radius: []const u8 = "single repo branch",
-    requested_at: i64 = 1_700_000_000_000,
+    created_at: i64 = 1_700_000_000_000,
     timeout_at: i64 = 1_700_000_086_400_000, // requested + 24h
 };
 
@@ -118,14 +118,14 @@ fn insertGate(conn: *pg.Conn, g: SeedGate) !void {
         \\INSERT INTO core.fleet_approval_gates
         \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
         \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-        \\   resolved_by, status, detail, requested_at, created_at)
+        \\   resolved_by, status, detail, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
         \\        $7, $8, $9::jsonb, $10, $11,
         \\        '', 'pending', '', $12, $12)
         \\ON CONFLICT (id) DO NOTHING
     , .{
         g.gate_id,   g.fleet_id,        g.workspace_id,  g.action_id,    g.tool_name,  g.action_name,
-        g.gate_kind, g.proposed_action, g.evidence_json, g.blast_radius, g.timeout_at, g.requested_at,
+        g.gate_kind, g.proposed_action, g.evidence_json, g.blast_radius, g.timeout_at, g.created_at,
     });
 }
 
@@ -266,7 +266,7 @@ test "integration: approvals GET — cursor pagination yields next_cursor" {
         try insertGate(conn, .{
             .gate_id = gid,
             .action_id = aid,
-            .requested_at = 1_700_000_000_000 + @as(i64, i),
+            .created_at = 1_700_000_000_000 + @as(i64, i),
         });
     }
 

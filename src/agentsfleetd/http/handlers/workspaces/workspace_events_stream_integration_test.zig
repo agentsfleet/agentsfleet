@@ -112,7 +112,7 @@ const IsolatedFanIn = struct {
         const conn = self.h.acquireConn() catch return;
         defer self.h.releaseConn(conn);
         _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{self.workspace_id}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
-        _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{self.workspace_id}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
+        _ = conn.exec("DELETE FROM workspaces WHERE id = $1", .{self.workspace_id}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
     }
 };
 
@@ -128,8 +128,8 @@ fn principal(tenant_id: []const u8) principal_mod.AuthPrincipal {
 
 fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8, tenant_id: []const u8) !void {
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3) ON CONFLICT (id) DO NOTHING
     , .{ workspace_id, tenant_id, clock.nowMillis() });
 }
 
@@ -256,8 +256,8 @@ test "integration: membership revoked mid-stream unsubscribes the caller on the 
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
         _ = try conn.exec(
-            \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-            \\VALUES ($1, 'RevOtherTenant', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
+            \\INSERT INTO tenants (id, name, created_at, updated_at)
+            \\VALUES ($1::uuid, 'RevOtherTenant', $2, $2) ON CONFLICT (id) DO NOTHING
         , .{ OTHER_TENANT, clock.nowMillis() });
     }
     var iso = try IsolatedFanIn.open(h, WS, &.{FLEET});
@@ -270,7 +270,18 @@ test "integration: membership revoked mid-stream unsubscribes the caller on the 
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        _ = try conn.exec("UPDATE workspaces SET tenant_id = $2 WHERE workspace_id = $1", .{ WS, OTHER_TENANT });
+        // The workspace and its fleets move together, in ONE statement.
+        // `fk_fleets_workspace_id_tenant_id` is composite over
+        // (workspace_id, tenant_id) and not deferrable, so moving either side
+        // alone is refused — the fleet would name a tenant its workspace no
+        // longer has. A single statement defers the check to its end, by which
+        // point both rows agree. The fleet set is unchanged, only its owner.
+        _ = try conn.exec(
+            \\WITH moved_fleets AS (
+            \\    UPDATE core.fleets SET tenant_id = $2::uuid WHERE workspace_id = $1::uuid RETURNING id
+            \\)
+            \\UPDATE core.workspaces SET tenant_id = $2::uuid WHERE id = $1::uuid
+        , .{ WS, OTHER_TENANT });
     }
 
     // The next tick re-authorizes THIS caller (never cached), finds it can no
@@ -633,5 +644,5 @@ fn httpCleanup(h: *TestHarness, fleet_id: []const u8) void {
 fn cleanupTenant(h: *TestHarness, tenant_id: []const u8) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
-    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{tenant_id}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM tenants WHERE id = $1", .{tenant_id}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
 }

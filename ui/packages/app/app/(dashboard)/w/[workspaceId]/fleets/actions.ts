@@ -15,6 +15,7 @@ import {
   type FleetStatusSettable,
   type FleetStatusUpdate,
 } from "@/lib/api/fleets";
+import { getFleetEvent as apiGetFleetEvent, type EventDetail } from "@/lib/api/events";
 import { forgetMemory as apiForgetMemory } from "@/lib/api/memory";
 import type {
   InstallFleetRequest,
@@ -28,6 +29,22 @@ export async function listFleetsAction(
   opts?: { starting_after?: string; limit?: number },
 ): Promise<ActionResult<FleetListResponse>> {
   return withToken((t) => apiListFleets(workspaceId, t, opts));
+}
+
+/**
+ * One event's bodies, for a row the operator expanded.
+ *
+ * The events list carries no request or response body — it is kept off
+ * oversized-attribute storage — so the dialog asks for them per event. It goes
+ * through an action rather than a browser fetch because the dashboard's
+ * credential never leaves the server (gate: `no-api-template-mint.test.ts`).
+ */
+export async function getFleetEventAction(
+  workspaceId: string,
+  fleetId: string,
+  eventId: string,
+): Promise<ActionResult<EventDetail>> {
+  return withToken((t) => apiGetFleetEvent(workspaceId, fleetId, eventId, t));
 }
 
 export async function setFleetStatusAction(

@@ -2,14 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { FunnelIcon, LayoutListIcon } from "lucide-react";
+import { LayoutListIcon } from "lucide-react";
 import {
   Badge,
   type BadgeVariant,
   DataTable,
   type DataTableColumn,
   EmptyState,
-  IconAction,
   PAGINATION_KIND,
   Time,
   WakePulse,
@@ -20,16 +19,12 @@ import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
 import { formatMs } from "@/lib/utils";
 import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
-import {
-  LeaseWorkspaceFilter,
-  shortWorkspaceId,
-  useLeaseWorkspaceFilter,
-} from "./LeaseWorkspaceFilter";
+import { LeaseFilterBar, useLeaseFilters } from "./LeaseFilterBar";
+import { shortWorkspaceId } from "./lease-filter-query";
 import { ReviewLease } from "./ReviewLease";
 import {
   EXPIRED_ROW_DETAIL,
   EXPIRED_ROW_SENTENCE,
-  FILTER_BY_WORKSPACE_LABEL,
   LEASES_EMPTY_DESCRIPTION,
   LEASES_EMPTY_TITLE,
   LEASES_TABLE_LABEL,
@@ -54,7 +49,7 @@ const SETTLED_OUTCOME_VARIANT: Partial<Record<RunnerLease["outcome"], BadgeVaria
 export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse; pageSize: number }) {
   const [selected, setSelected] = useState<RunnerLease | null>(null);
   const feed = useUrlCursorPages(initial.next_cursor, pageSize);
-  const workspaceFilter = useLeaseWorkspaceFilter();
+  const filters = useLeaseFilters();
 
   // Live work leads: within the page, every running row precedes every
   // settled row, each group keeping the server's newest-first order.
@@ -77,7 +72,7 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
         key: "workspace",
         header: WORKSPACE_LABEL,
         hideOnMobile: true,
-        cell: (lease) => <WorkspaceCell lease={lease} onFilter={workspaceFilter.filterTo} />,
+        cell: (lease) => <WorkspaceCell lease={lease} />,
       },
       {
         key: "work",
@@ -118,16 +113,14 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
         cell: (lease) => <OutcomeCell lease={lease} />,
       },
     ],
-    [workspaceFilter.filterTo],
+    [],
   );
 
   // The relative `Time` cells here, and Review lease's own, take tooltip
   // context from the root layout's single provider — see `app/layout.tsx`.
   return (
     <div>
-      {workspaceFilter.active !== null ? (
-        <LeaseWorkspaceFilter workspaceId={workspaceFilter.active} onClear={workspaceFilter.clear} />
-      ) : null}
+      <LeaseFilterBar filters={filters} />
       <DataTable
         caption={LEASES_TABLE_LABEL}
         columns={columns}
@@ -159,17 +152,10 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
   );
 }
 
-// The workspace cell carries two affordances: the id opens the workspace's
-// fleet wall, the funnel narrows this table to the row's workspace. Both stop
-// propagation — a click on the row itself means "review this lease", and
-// neither of these is that.
-function WorkspaceCell({
-  lease,
-  onFilter,
-}: {
-  lease: RunnerLease;
-  onFilter: (workspaceId: string) => void;
-}) {
+// The workspace id opens the workspace's fleet wall. It stops propagation — a
+// click on the row itself means "review this lease", and this is not that.
+// Narrowing the feed is the filter bar's job, not the row's.
+function WorkspaceCell({ lease }: { lease: RunnerLease }) {
   return (
     <span className="flex min-w-0 items-center gap-md">
       <Link
@@ -180,15 +166,6 @@ function WorkspaceCell({
       >
         {shortWorkspaceId(lease.workspace_id)}
       </Link>
-      <IconAction
-        label={FILTER_BY_WORKSPACE_LABEL}
-        onClick={(event) => {
-          event.stopPropagation();
-          onFilter(lease.workspace_id);
-        }}
-      >
-        <FunnelIcon />
-      </IconAction>
     </span>
   );
 }

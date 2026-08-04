@@ -35,12 +35,12 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 
 fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'ListPaginationTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'ListPaginationTest', $2, $2) ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3) ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now_ms });
 }
 
@@ -57,9 +57,9 @@ fn seedFleets(alloc: std.mem.Allocator, conn: *pg.Conn, count: usize, base_ms: i
         defer alloc.free(name);
         _ = try conn.exec(
             \\INSERT INTO core.fleets
-            \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+            \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
             \\   status, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
+            \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
         , .{ id, TEST_WORKSPACE_ID, name, base_ms + @as(i64, @intCast(i)) });
     }
     return ids;
@@ -311,9 +311,9 @@ test "integration: fleets list — projects triggers array from config_json" {
     ;
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
         \\   status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, $4::jsonb, 'active', $5, $5)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, 'seed', null, $4::jsonb, 'active', $5, $5)
     , .{ zid, TEST_WORKSPACE_ID, "triggers-projection", config_json, now_ms + 9_000 });
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=20", .{TEST_WORKSPACE_ID});
@@ -335,7 +335,7 @@ test "integration: fleets list — projects triggers array from config_json" {
 
 // list.zig projects two per-fleet aggregates the `agentsfleet status` table
 // renders: events_processed (COUNT of core.fleet_events) and budget_used_nanos
-// (SUM of fleet_execution_telemetry.credit_deducted_nanos). Seed 3 events + 2
+// (SUM of billing.usage_ledger.credit_deducted_nanos). Seed 3 events + 2
 // telemetry rows for one fleet and assert the list reflects 3 / 3_000_000.
 test "integration: fleets list — projects events_processed and budget_used_nanos aggregates" {
     const alloc = std.testing.allocator;
@@ -356,47 +356,43 @@ test "integration: fleets list — projects events_processed and budget_used_nan
     defer alloc.free(zid);
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
         \\   status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
     , .{ zid, TEST_WORKSPACE_ID, "aggregates-fleet", now_ms + 20_000 });
 
     // Telemetry is tenant-scoped with no FK cascade; clean up the rows this
     // test seeds (and the fleet, which cascades its events) so the shared test
     // tenant stays telemetry-free for the billing "no telemetry" suite.
     defer {
-        _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE fleet_id = $1", .{zid}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+        _ = conn.exec("DELETE FROM billing.usage_ledger WHERE fleet_id = $1", .{zid}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
         _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{zid}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     }
 
     // 3 events → events_processed = 3.
     for (0..3) |i| {
-        const uid = try id_format.generateFleetId(alloc);
-        defer alloc.free(uid);
         const event_id = try std.fmt.allocPrint(alloc, "evt-agg-{d}", .{i});
         defer alloc.free(event_id);
         _ = try conn.exec(
             \\INSERT INTO core.fleet_events
-            \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status, request_json, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'webhook:test', 'webhook', 'done', '{}'::jsonb, $5, $5)
-        , .{ uid, zid, event_id, TEST_WORKSPACE_ID, now_ms });
+            \\  (fleet_id, event_id, workspace_id, actor, event_type, status, request_json, created_at, updated_at)
+            \\VALUES ($1::uuid, $2, $3::uuid, 'webhook:test', 'webhook', 'done', '{}'::jsonb, $4, $4)
+        , .{ zid, event_id, TEST_WORKSPACE_ID, now_ms });
     }
 
-    // 2 telemetry rows → budget_used_nanos = 1_000_000 + 2_000_000 = 3_000_000.
-    // (telemetry workspace_id / fleet_id columns are TEXT, not uuid.)
+    // 2 ledger rows → budget_used_nanos = 1_000_000 + 2_000_000 = 3_000_000.
     const charges = [_]i64{ 1_000_000, 2_000_000 };
     for (charges, 0..) |nanos, i| {
-        const uid = try id_format.generateFleetId(alloc);
-        defer alloc.free(uid);
-        const tid = try std.fmt.allocPrint(alloc, "tel-agg-{d}", .{i});
-        defer alloc.free(tid);
+        const row_id = try id_format.generateFleetId(alloc);
+        defer alloc.free(row_id);
         const event_id = try std.fmt.allocPrint(alloc, "tel-evt-agg-{d}", .{i});
         defer alloc.free(event_id);
         _ = try conn.exec(
-            \\INSERT INTO core.fleet_execution_telemetry
-            \\  (uid, id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture, model, credit_deducted_nanos, recorded_at)
-            \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, 'stage', 'platform', 'claude', $7, $8)
-        , .{ uid, tid, TEST_TENANT_ID, TEST_WORKSPACE_ID, zid, event_id, nanos, now_ms });
+            \\INSERT INTO billing.usage_ledger
+            \\  (id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture, model,
+            \\   credit_deducted_nanos, event_created_at, created_at, last_charged_at)
+            \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, 'stage', 'platform', 'claude', $6, $7, $7, $7)
+        , .{ row_id, TEST_TENANT_ID, TEST_WORKSPACE_ID, zid, event_id, nanos, now_ms });
     }
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?limit=50", .{TEST_WORKSPACE_ID});

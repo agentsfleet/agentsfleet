@@ -25,7 +25,6 @@ const OTHER_WS_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aff01";
 const FLEET_IDLE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa01";
 const AGENTSFLEET_ACTIVE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa02";
 const AGENTSFLEET_OTHER_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa03";
-const SESSION_ACTIVE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa10";
 const EXECUTION_STARTED_AT_MS: i64 = 1000;
 
 const ACTIVE_EXEC_ID = "test-exec-messages-001";
@@ -53,39 +52,39 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 
 fn seedTestData(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'MessagesTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'MessagesTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, clock.nowMillis() });
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ OTHER_WS_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'msg-idle', '---\nname: msg-idle\n---\ntest', '{"name":"msg-idle"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'msg-idle', '---\nname: msg-idle\n---\ntest', '{"name":"msg-idle"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ FLEET_IDLE, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'msg-active', '---\nname: msg-active\n---\ntest', '{"name":"msg-active"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'msg-active', '---\nname: msg-active\n---\ntest', '{"name":"msg-active"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_ACTIVE, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.fleet_sessions (id, fleet_id, context_json, execution_id, execution_started_at, checkpoint_at, created_at, updated_at)
-        \\VALUES ($1, $2, '{}', $3, $4, 0, 0, 0)
+        \\INSERT INTO core.fleet_sessions (fleet_id, context_json, execution_id, execution_started_at, checkpoint_at, created_at, updated_at)
+        \\VALUES ($1::uuid, '{}', $2, $3, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE SET execution_id=EXCLUDED.execution_id, execution_started_at=EXCLUDED.execution_started_at
-    , .{ SESSION_ACTIVE, AGENTSFLEET_ACTIVE, ACTIVE_EXEC_ID, EXECUTION_STARTED_AT_MS });
+    , .{ AGENTSFLEET_ACTIVE, ACTIVE_EXEC_ID, EXECUTION_STARTED_AT_MS });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'msg-otherws', '---\nname: msg-otherws\n---\ntest', '{"name":"msg-otherws"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'msg-otherws', '---\nname: msg-otherws\n---\ntest', '{"name":"msg-otherws"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_OTHER_WS, OTHER_WS_ID });
 }
@@ -101,7 +100,7 @@ fn forgetFleet(h: *harness_mod.TestHarness, fleet_id: []const u8) void {
 fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.fleet_sessions WHERE fleet_id IN ($1, $2, $3)", .{ FLEET_IDLE, AGENTSFLEET_ACTIVE, AGENTSFLEET_OTHER_WS }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id IN ($1, $2)", .{ TEST_WORKSPACE_ID, OTHER_WS_ID }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── Auth + body validation (no Redis needed) ────────────────────────────────
@@ -199,8 +198,8 @@ test "integration: steer paused fleet — 409 UZ-AGT-012; resumed fleet steers f
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
         _ = try conn.exec(
-            \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-            \\VALUES ($1, $2, 'msg-paused', '---\nname: msg-paused\n---\ntest', '{"name":"msg-paused"}', 'paused', 0, 0)
+            \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+            \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'msg-paused', '---\nname: msg-paused\n---\ntest', '{"name":"msg-paused"}', 'paused', 0, 0)
             \\ON CONFLICT (id) DO UPDATE SET status = 'paused'
         , .{ AGENTSFLEET_PAUSED, TEST_WORKSPACE_ID });
     }

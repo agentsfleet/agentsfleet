@@ -60,7 +60,7 @@ describe("admin model catalogue client", () => {
   });
 
   it("should POST a new catalogue row as JSON", async () => {
-    fetchMock.mockResolvedValue(okJson({ uid: "u1" }));
+    fetchMock.mockResolvedValue(okJson({ id: "u1" }));
     const body = {
       provider: "fireworks",
       model_id: "glm-5.2",
@@ -76,8 +76,8 @@ describe("admin model catalogue client", () => {
     expect(JSON.parse(init.body)).toEqual(body);
   });
 
-  it("should PATCH caps/rates by uid (identity stays immutable)", async () => {
-    fetchMock.mockResolvedValue(okJson({ uid: "u1", updated: true }));
+  it("should PATCH caps/rates by id (identity stays immutable)", async () => {
+    fetchMock.mockResolvedValue(okJson({ id: "u1", updated: true }));
     await updateAdminModel("tok", "u1", {
       context_cap_tokens: 200000,
       input_nanos_per_mtok: 1,
@@ -89,7 +89,7 @@ describe("admin model catalogue client", () => {
     expect(init.method).toBe("PATCH");
   });
 
-  it("should DELETE a catalogue row by uid", async () => {
+  it("should DELETE a catalogue row by id", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204, statusText: "No Content", json: async () => ({}) });
     await deleteAdminModel("tok", "u1");
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -110,7 +110,7 @@ describe("admin model catalogue client", () => {
     expect(JSON.parse(init.body)).toMatchObject({ provider: "fireworks", model: "glm-5.2", source_workspace_id: "ws1" });
   });
 
-  it("should url-encode a uid with reserved characters in the path", async () => {
+  it("should url-encode a id with reserved characters in the path", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204, statusText: "No Content", json: async () => ({}) });
     await deleteAdminModel("tok", "a/b");
     const [url] = fetchMock.mock.calls[0]!;

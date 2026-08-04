@@ -1,18 +1,19 @@
 //! SQL statement text for the api-key handler domain (RULE SQLMOD — query text
 //! lives here, grepable in one place).
 //!
-//! Two key families share this domain: tenant api-keys (`core.api_keys`, the
-//! `agt_t` credentials) and per-fleet keys (`core.fleet_keys`). Neither
-//! statement family ever selects `key_hash` back out — a key's plaintext exists
-//! only at mint time, and the hash is written once and compared, never read
-//! into a response.
+//! Tenant api-keys (`core.api_keys`, the `agt_t` credentials). No statement
+//! here ever selects `key_hash` back out — a key's plaintext exists only at
+//! mint time, and the hash is written once and compared, never read into a
+//! response.
+//!
+//! The per-fleet `core.fleet_keys` family retired with its surface (M154 §8).
 
 // ── Tenant api-keys ─────────────────────────────────────────────────────────
 
 /// Mint. `active` starts TRUE with a null `revoked_at`, the pairing
 /// `api_keys_revoked_iff_inactive` enforces.
 pub const INSERT_TENANT_KEY =
-    \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
+    \\INSERT INTO core.api_keys (id, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
     \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, TRUE, $7, $7)
 ;
 
@@ -24,20 +25,20 @@ pub const INSERT_TENANT_KEY =
 /// `changed = FALSE` rather than a spurious success or a 404.
 pub const REVOKE_TENANT_KEY =
     \\WITH current_row AS (
-    \\    SELECT uid, active
+    \\    SELECT id, active
     \\    FROM core.api_keys
-    \\    WHERE uid = $1::uuid AND tenant_id = $2::uuid
+    \\    WHERE id = $1::uuid AND tenant_id = $2::uuid
     \\), updated AS (
     \\    UPDATE core.api_keys k
     \\    SET active = FALSE, revoked_at = $3, updated_at = $3
     \\    FROM current_row c
-    \\    WHERE k.uid = c.uid AND c.active = TRUE
-    \\    RETURNING k.uid::text, k.revoked_at
+    \\    WHERE k.id = c.id AND c.active = TRUE
+    \\    RETURNING k.id::text, k.revoked_at
     \\)
-    \\SELECT u.uid, u.revoked_at, TRUE AS changed, FALSE AS active
+    \\SELECT u.id, u.revoked_at, TRUE AS changed, FALSE AS active
     \\FROM updated u
     \\UNION ALL
-    \\SELECT c.uid::text, NULL::bigint AS revoked_at, FALSE AS changed, c.active
+    \\SELECT c.id::text, NULL::bigint AS revoked_at, FALSE AS changed, c.active
     \\FROM current_row c
     \\WHERE NOT EXISTS (SELECT 1 FROM updated)
     \\LIMIT 1
@@ -48,19 +49,19 @@ pub const REVOKE_TENANT_KEY =
 /// come first, so a live credential cannot vanish in one call.
 pub const DELETE_TENANT_KEY =
     \\WITH current_row AS (
-    \\    SELECT uid, active
+    \\    SELECT id, active
     \\    FROM core.api_keys
-    \\    WHERE uid = $1::uuid AND tenant_id = $2::uuid
+    \\    WHERE id = $1::uuid AND tenant_id = $2::uuid
     \\), deleted AS (
     \\    DELETE FROM core.api_keys k
     \\    USING current_row c
-    \\    WHERE k.uid = c.uid AND c.active = FALSE
-    \\    RETURNING k.uid::text
+    \\    WHERE k.id = c.id AND c.active = FALSE
+    \\    RETURNING k.id::text
     \\)
-    \\SELECT d.uid, TRUE AS changed, FALSE AS active
+    \\SELECT d.id, TRUE AS changed, FALSE AS active
     \\FROM deleted d
     \\UNION ALL
-    \\SELECT c.uid::text, FALSE AS changed, c.active
+    \\SELECT c.id::text, FALSE AS changed, c.active
     \\FROM current_row c
     \\WHERE NOT EXISTS (SELECT 1 FROM deleted)
     \\LIMIT 1
@@ -79,7 +80,7 @@ pub const SELECT_TENANT_KEY_COUNT =
 /// Sorting at that size is free; revisit with slot 033 if key counts climb.
 /// `$1` tenant_id, `$2` limit.
 pub const SELECT_TENANT_KEY_KEYSET_FIRST_FMT =
-    \\SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at
+    \\SELECT id::text, key_name, active, created_at, last_used_at, revoked_at
     \\FROM core.api_keys
     \\WHERE tenant_id = $1::uuid
     \\ORDER BY {s}
@@ -88,53 +89,26 @@ pub const SELECT_TENANT_KEY_KEYSET_FIRST_FMT =
 
 /// Continuation for the created_at orderings. Two `{s}` slots — the row-value
 /// comparator (direction) and the ORDER BY clause — both from the allowlist.
-/// `$1` tenant_id, `$2` boundary created_at, `$3` boundary uid, `$4` limit.
+/// `$1` tenant_id, `$2` boundary created_at, `$3` boundary id, `$4` limit.
 pub const SELECT_TENANT_KEY_KEYSET_AFTER_CREATED_FMT =
-    \\SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at
+    \\SELECT id::text, key_name, active, created_at, last_used_at, revoked_at
     \\FROM core.api_keys
     \\WHERE tenant_id = $1::uuid
-    \\  AND (created_at, uid) {s} ($2::bigint, $3::uuid)
+    \\  AND (created_at, id) {s} ($2::bigint, $3::uuid)
     \\ORDER BY {s}
     \\LIMIT $4
 ;
 
 /// Continuation for the key_name orderings — the boundary sort value is the
 /// text key the cursor carried. Same two allowlist-fed `{s}` slots.
-/// `$1` tenant_id, `$2` boundary key_name, `$3` boundary uid, `$4` limit.
+/// `$1` tenant_id, `$2` boundary key_name, `$3` boundary id, `$4` limit.
 pub const SELECT_TENANT_KEY_KEYSET_AFTER_NAME_FMT =
-    \\SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at
+    \\SELECT id::text, key_name, active, created_at, last_used_at, revoked_at
     \\FROM core.api_keys
     \\WHERE tenant_id = $1::uuid
-    \\  AND (key_name, uid) {s} ($2::text, $3::uuid)
+    \\  AND (key_name, id) {s} ($2::text, $3::uuid)
     \\ORDER BY {s}
     \\LIMIT $4
 ;
 
 // ── Per-fleet keys ──────────────────────────────────────────────────────────
-
-/// Existence + ownership check before minting a fleet key: the fleet must live
-/// in the caller's workspace, so a valid fleet id from another tenant fails.
-pub const SELECT_FLEET_IN_WORKSPACE =
-    \\SELECT 1 FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid LIMIT 1
-;
-
-pub const INSERT_FLEET_KEY =
-    \\INSERT INTO core.fleet_keys
-    \\  (uid, fleet_key_id, workspace_id, fleet_id, name, description, key_hash, created_at)
-    \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, $4, $5, $6, $7)
-;
-
-pub const SELECT_FLEET_KEYS_FOR_WORKSPACE =
-    \\SELECT fleet_key_id, fleet_id::text, name, description, created_at, last_used_at
-    \\FROM core.fleet_keys
-    \\WHERE workspace_id = $1::uuid
-    \\ORDER BY created_at DESC
-;
-
-/// `RETURNING` distinguishes a real deletion from a no-op, so the handler can
-/// answer 404 rather than a false success.
-pub const DELETE_FLEET_KEY =
-    \\DELETE FROM core.fleet_keys
-    \\WHERE fleet_key_id = $1 AND workspace_id = $2::uuid
-    \\RETURNING fleet_key_id
-;

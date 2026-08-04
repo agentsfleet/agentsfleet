@@ -71,8 +71,23 @@ test-coverage-all: test-coverage-zig  ## Run coverage gates across Zig, app, web
 	@cd ui/packages/design-system && bun run test:coverage
 	@echo "✓ All package coverage gates passed"
 
-test-coverage-zig:  ## Run and gate merged Zig line coverage for daemon, runner, and shared libraries
+# Coverage measures the codebase, not a lane. The unit binaries and the
+# integration binary cover largely DISJOINT code — the unit lanes never reach an
+# HTTP handler or a store, because reaching one needs a live Postgres and Redis,
+# which is exactly what the integration suite provides. Measuring only the unit
+# binaries reported handlers at 0% and dragged the whole figure ~28 points below
+# the truth, so this target runs both and merges them.
+#
+# It depends on the same datastore bootstrap `test-integration` uses, so the
+# target boots what it needs instead of failing on a missing database.
+test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lanes and the live-service integration suite
 	@command -v kcov >/dev/null 2>&1 || { echo "✗ kcov is required for Zig coverage (install: brew install kcov or apt-get install kcov)"; exit 1; }
+	@# The datastore bootstrap is invoked here rather than declared as a
+	@# prerequisite so the tool check above runs first — booting containers only
+	@# to fail on a missing kcov wastes a minute and buries the real message.
+	@# Recipe bodies also expand at run time, so this reads TEST_STATE_DEP
+	@# correctly regardless of the order the make fragments are included in.
+	@$(MAKE) --no-print-directory $(TEST_STATE_DEP)
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)" "$(ZIG_COVERAGE_DIR)" .tmp
 	@echo "→ [zig] Building component test binaries for coverage..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
@@ -84,38 +99,129 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage for daemon, runner,
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build test-lib-bin
-	@# The five components are independent kcov runs over already-built binaries
+	@# The integration suite execs the runner binary and reads a migrated
+	@# database; `install` builds the daemon exe that performs the migration.
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build --build-file build_runner.zig
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build install test-integration-bin
+	@echo "→ [zig] Migrating the coverage database..."
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 DATABASE_URL_MIGRATOR="$${TEST_DATABASE_URL:-$(TEST_DATABASE_URL_LOCAL)}" \
+	 zig build run -- migrate
+	@# The components are independent kcov runs over already-built binaries
 	@# writing to disjoint output directories, so they run concurrently and only
 	@# the merge below needs them all. Each records its own exit status to a file
 	@# rather than being tracked by process id: the status is what decides the
 	@# gate, and a file maps it back to the component name without the shell
 	@# gymnastics of pairing a pid list against a name list.
+	@#
+	@# Each component directory is REMOVED, not just `--clean`ed. kcov names its
+	@# output subdirectory after a hash of the binary, and `--clean` only resets
+	@# the directory for the hash it is writing — a rebuilt binary lands beside
+	@# its predecessor rather than replacing it. `kcov --merge` is handed the
+	@# parent, so every stale sibling silently rejoined the merge; a run whose
+	@# suite never executed kept dragging the figure down for days after.
+	@#
+	@# `--exclude-pattern` keeps the test bodies OUT of the denominator. They are
+	@# ~23k of the measured lines and are themselves ~90% covered — counting them
+	@# inflated the figure by roughly seven points and, worse, made the gate
+	@# satisfiable by writing more test files rather than covering more product.
+	@#
+	@# The integration component runs AFTER the unit group, not alongside it. Both
+	@# binaries stand up test HTTP servers on ephemeral ports, and running them
+	@# together lost a test to AddressInUse even though the harness retried on a
+	@# fresh port. It is the long pole either way; a gate that flakes is worth
+	@# less than the few minutes serialising it costs.
+	@#
+	@# It carries its own environment: every one of its tests bails at a guard
+	@# without a live database and Redis, which is how a previous run produced a
+	@# report over a suite that never executed. That binary also exits 0 whether
+	@# or not its tests ran AND whether
+	@# or not they passed, so its exit status proves nothing — the counts are read
+	@# off the run below. Zero passes means the suite never ran; any failure means
+	@# the number describes a broken suite. Both fail the target rather than
+	@# yielding a report that is technically valid and completely wrong.
 	@set -eu; \
+	 db_url="$${TEST_DATABASE_URL:-$(TEST_DATABASE_URL_LOCAL)}"; \
+	 redis_url="$${TEST_REDIS_TLS_URL:-$(TEST_REDIS_TLS_URL_LOCAL)}"; \
 	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests"; \
 	 inputs=""; names=""; \
 	 for component in $$components; do \
 	   name=$${component%%:*}; binary=$${component#*:}; output="$(ZIG_COVERAGE_DIR)/$$name"; \
 	   echo "→ [zig] kcov component=$$name binary=$$binary"; \
-	   mkdir -p "$$output"; \
+	   rm -rf "$$output"; mkdir -p "$$output"; \
 	   rm -f ".tmp/kcov-$$name.rc"; \
-	   ( set +e; kcov --clean --include-pattern="$(CURDIR)/src" "$$output" "zig-out/bin/$$binary" \
+	   ( set +e; \
+	     LIVE_DB=1 \
+	     TEST_DATABASE_URL="$$db_url" \
+	     TEST_REDIS_TLS_URL="$$redis_url" \
+	     REDIS_URL_API="$$redis_url" \
+	     REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
+	     AGENTSFLEET_RUNNER_BIN="$(CURDIR)/zig-out/bin/agentsfleet-runner" \
+	     AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
+	     AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
+	     kcov --clean --include-pattern="$(CURDIR)/src" --exclude-pattern=_test.zig \
+	       "$$output" "zig-out/bin/$$binary" \
 	       >".tmp/kcov-$$name.log" 2>&1; echo $$? >".tmp/kcov-$$name.rc" ) & \
 	   names="$$names $$name"; \
 	   inputs="$$inputs $$output"; \
 	 done; \
 	 wait; \
+	 integration_output="$(ZIG_COVERAGE_DIR)/integration"; \
+	 echo "→ [zig] kcov component=integration binary=agentsfleetd-integration-tests (live datastores, serial)"; \
+	 rm -rf "$$integration_output"; mkdir -p "$$integration_output"; \
+	 rm -f ".tmp/kcov-integration.rc"; \
+	 ( set +e; \
+	   LIVE_DB=1 \
+	   TEST_DATABASE_URL="$$db_url" \
+	   TEST_REDIS_TLS_URL="$$redis_url" \
+	   REDIS_URL_API="$$redis_url" \
+	   REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
+	   AGENTSFLEET_RUNNER_BIN="$(CURDIR)/zig-out/bin/agentsfleet-runner" \
+	   AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
+	   AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
+	   kcov --clean --include-pattern="$(CURDIR)/src" --exclude-pattern=_test.zig \
+	     "$$integration_output" "zig-out/bin/agentsfleetd-integration-tests" \
+	     >".tmp/kcov-integration.log" 2>&1; echo $$? >".tmp/kcov-integration.rc" ); \
+	 names="$$names integration"; \
+	 inputs="$$inputs $$integration_output"; \
 	 failed=0; \
 	 for name in $$names; do \
 	   rc=$$(cat ".tmp/kcov-$$name.rc" 2>/dev/null || echo 1); \
 	   case "$$rc" in ''|*[!0-9]*) rc=1;; esac; \
 	   if [ "$$rc" -ne 0 ]; then \
-	     echo "✗ Zig coverage component $$name exited $$rc"; tail -n 40 ".tmp/kcov-$$name.log"; failed=1; continue; \
+	     echo "✗ Zig coverage component $$name exited $$rc"; \
+	     echo "--- failing tests (component=$$name) ---"; \
+	     grep -E '\.\.\.FAIL|^error: .*failed:' ".tmp/kcov-$$name.log" | head -n 60 || true; \
+	     echo "--- tally (component=$$name) ---"; \
+	     grep -E '^[0-9]+ passed;' ".tmp/kcov-$$name.log" | tail -n 1 || true; \
+	     echo "--- last 40 lines (component=$$name) ---"; \
+	     tail -n 40 ".tmp/kcov-$$name.log"; failed=1; continue; \
 	   fi; \
 	   report=$$(find "$(ZIG_COVERAGE_DIR)/$$name" -name cobertura.xml -type f -size +0c -print -quit); \
 	   test -n "$$report" || { echo "✗ Zig coverage component $$name produced no Cobertura report"; failed=1; }; \
 	 done; \
 	 [ "$$failed" -eq 0 ] || exit 1; \
+	 summary=$$(grep -E '^[0-9]+ passed;' ".tmp/kcov-integration.log" | tail -n 1); \
+	 passed=$$(printf '%s' "$$summary" | sed -n 's/^\([0-9][0-9]*\) passed;.*/\1/p'); \
+	 suite_failed=$$(printf '%s' "$$summary" | sed -n 's/.*; \([0-9][0-9]*\) failed.*/\1/p'); \
+	 if [ -z "$$passed" ] || [ "$$passed" -eq 0 ]; then \
+	   echo "✗ the integration suite reported no passing tests — coverage would be measured over a suite that never ran"; \
+	   tail -n 20 ".tmp/kcov-integration.log"; exit 1; \
+	 fi; \
+	 if [ -n "$$suite_failed" ] && [ "$$suite_failed" -ne 0 ]; then \
+	   echo "✗ the integration suite reported $$suite_failed failing test(s) — coverage over a failing suite is not a measurement"; \
+	   echo "--- failing tests (component=integration) ---"; \
+	   grep -E '\.\.\.FAIL|^error: .*failed:' ".tmp/kcov-integration.log" | head -n 60 || true; \
+	   exit 1; \
+	 fi; \
+	 echo "✓ [zig] integration suite executed ($$summary)"; \
 	 merged="$(ZIG_COVERAGE_DIR)/merged"; \
+	 rm -rf "$$merged"; \
 	 kcov --merge "$$merged" $$inputs >/dev/null; \
 	 merged_report=$$(find "$$merged" -name cobertura.xml -type f -size +0c -print -quit); \
 	 test -n "$$merged_report" || { echo "✗ merged Zig coverage produced no Cobertura report"; exit 1; }; \

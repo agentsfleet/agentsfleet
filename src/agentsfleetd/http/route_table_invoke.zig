@@ -23,9 +23,7 @@ const tenant_model_entries_list_h = @import("handlers/tenant_model_entries_list.
 const tenant_model_entries_delete_h = @import("handlers/tenant_model_entries_delete.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
 const admin_models = @import("handlers/admin/model_library_admin.zig");
-const grants = @import("handlers/integration_grants/handler.zig");
 const grants_ws = @import("handlers/integration_grants/workspace.zig");
-const fleet_keys_h = @import("handlers/api_keys/fleet.zig");
 const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
@@ -36,6 +34,7 @@ const fleet_messages = @import("handlers/fleets/messages.zig");
 const events_invokes = @import("route_table_invoke_events.zig");
 pub const invokeFleetEvents = events_invokes.invokeFleetEvents;
 pub const invokeFleetEventsStream = events_invokes.invokeFleetEventsStream;
+pub const invokeFleetEvent = events_invokes.invokeFleetEvent;
 pub const invokeWorkspaceEvents = events_invokes.invokeWorkspaceEvents;
 pub const invokeWorkspaceEventsStream = events_invokes.invokeWorkspaceEventsStream;
 const approvals_invokes = @import("route_table_invoke_approvals.zig");
@@ -133,11 +132,6 @@ pub fn invokeGetTenantBillingCharges(hx: *Hx, req: *httpz.Request, route: router
     tenant_billing_h.innerGetTenantBillingCharges(hx.*, req);
 }
 
-pub fn invokeGetTenantMeteringPeriods(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (!common.requireMethod(hx.res, req.method, .GET)) return;
-    tenant_billing_h.innerGetTenantMeteringPeriods(hx.*, req, route.get_tenant_metering_periods);
-}
-
 pub fn invokeListTenantWorkspaces(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (!common.requireMethod(hx.res, req.method, .GET)) return;
@@ -198,10 +192,10 @@ pub fn invokeAdminModels(hx: *Hx, req: *httpz.Request, route: router.Route) void
 }
 
 pub fn invokeAdminModelById(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const uid = route.admin_model_by_id;
+    const id = route.admin_model_by_id;
     switch (req.method) {
-        .PATCH => admin_models.innerPatchAdminModel(hx.*, req, uid),
-        .DELETE => admin_models.innerDeleteAdminModel(hx.*, req, uid),
+        .PATCH => admin_models.innerPatchAdminModel(hx.*, req, id),
+        .DELETE => admin_models.innerDeleteAdminModel(hx.*, req, id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
@@ -284,12 +278,6 @@ pub fn invokeFleetMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Route
 
 // ── Integration grants ────────────────────────────────────────────────────
 
-pub fn invokeRequestGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (!common.requireMethod(hx.res, req.method, .POST)) return;
-    const r = route.request_integration_grant;
-    grants.innerRequestGrant(hx.*, req, r.workspace_id, r.fleet_id);
-}
-
 pub fn invokeListGrants(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (!common.requireMethod(hx.res, req.method, .GET)) return;
     const r = route.list_integration_grants;
@@ -300,22 +288,6 @@ pub fn invokeRevokeGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void
     if (!common.requireMethod(hx.res, req.method, .DELETE)) return;
     const r = route.revoke_integration_grant;
     grants_ws.innerRevokeGrant(hx.*, r.workspace_id, r.fleet_id, r.grant_id);
-}
-
-// ── Fleet keys ────────────────────────────────────────────────────────────
-
-pub fn invokeFleetKeys(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    switch (req.method) {
-        .POST => fleet_keys_h.innerCreateFleetKey(hx.*, req, route.fleet_keys),
-        .GET => fleet_keys_h.innerListFleetKeys(hx.*, route.fleet_keys),
-        else => common.respondMethodNotAllowed(hx.res),
-    }
-}
-
-pub fn invokeDeleteFleetKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (!common.requireMethod(hx.res, req.method, .DELETE)) return;
-    const r = route.delete_fleet_key;
-    fleet_keys_h.innerDeleteFleetKey(hx.*, r.workspace_id, r.fleet_key_id);
 }
 
 // ── Runner control plane — split to route_table_invoke_runner.zig (RULE FLL) ──

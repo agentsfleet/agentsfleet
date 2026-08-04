@@ -26,7 +26,7 @@ export function usdPerMtokToNanos(usd: number): number {
 export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible";
 
 export interface AdminModel {
-  uid: string;
+  id: string;
   provider: string;
   model_id: string;
   context_cap_tokens: number;
@@ -83,14 +83,14 @@ export async function createAdminModel(token: string, body: LibraryModelInput): 
 
 export async function updateAdminModel(
   token: string,
-  uid: string,
+  id: string,
   body: ModelRatesInput,
-): Promise<{ uid: string; updated: boolean }> {
-  return request(`${ADMIN_MODELS_PATH}/${encodeURIComponent(uid)}`, { method: "PATCH", body: JSON.stringify(body) }, token);
+): Promise<{ id: string; updated: boolean }> {
+  return request(`${ADMIN_MODELS_PATH}/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }, token);
 }
 
-export async function deleteAdminModel(token: string, uid: string): Promise<void> {
-  return request<void>(`${ADMIN_MODELS_PATH}/${encodeURIComponent(uid)}`, { method: "DELETE" }, token);
+export async function deleteAdminModel(token: string, id: string): Promise<void> {
+  return request<void>(`${ADMIN_MODELS_PATH}/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
 }
 
 export async function setPlatformDefault(

@@ -188,7 +188,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     // Receive debits exactly once per event — a re-delivered entry already
     // paid on its first delivery (the balance debit is not replay-guarded;
     // only the telemetry row is).
-    if (first_delivery) switch (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, policy)) {
+    if (first_delivery) switch (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, event.created_at_ms, policy)) {
         // Post-commit, fire-and-forget OTLP metric: the receive credit debit.
         // The debit already committed inside debitReceive; this never blocks it.
         // Workspace identity deliberately does not travel — per-workspace cost

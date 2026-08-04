@@ -30,7 +30,7 @@ pub const PendingRow = struct {
     blast_radius: []const u8,
     status: []const u8,
     detail: []const u8,
-    requested_at: i64,
+    created_at: i64,
     timeout_at: i64,
     updated_at: ?i64,
     resolved_by: []const u8,
@@ -148,7 +148,7 @@ fn readPendingRow(alloc: Allocator, row: pg.Row) !PendingRow {
     const blast_radius = try dupTracked(alloc, &owned, try row.get([]const u8, 10));
     const status = try dupTracked(alloc, &owned, try row.get([]const u8, 11));
     const detail = try dupTracked(alloc, &owned, try row.get([]const u8, 12));
-    const requested_at = try row.get(i64, 13);
+    const created_at = try row.get(i64, 13);
     const timeout_at = try row.get(i64, 14);
     const updated_at = try row.get(?i64, 15);
     const resolved_by = try dupTracked(alloc, &owned, try row.get([]const u8, 16));
@@ -168,7 +168,7 @@ fn readPendingRow(alloc: Allocator, row: pg.Row) !PendingRow {
         .blast_radius = blast_radius,
         .status = status,
         .detail = detail,
-        .requested_at = requested_at,
+        .created_at = created_at,
         .timeout_at = timeout_at,
         .updated_at = updated_at,
         .resolved_by = resolved_by,

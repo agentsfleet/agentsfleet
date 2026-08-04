@@ -56,10 +56,6 @@ pub fn generateVaultSecretId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generatePlatformLlmKeyId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
 pub fn generateRunnerId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
@@ -69,10 +65,6 @@ pub fn generateRunnerLeaseId(alloc: std.mem.Allocator) ![]const u8 {
 }
 
 pub fn generateRunnerEventId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateRunnerAffinityId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 

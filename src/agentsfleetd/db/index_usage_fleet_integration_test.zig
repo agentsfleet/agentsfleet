@@ -104,11 +104,11 @@ fn seedGraph(conn: *pg.Conn) !void {
     , .{ RUNNER_PROBE, NAME_PREFIX ++ "runner" });
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status,
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status,
         \\   created_at, updated_at)
         \\SELECT CASE WHEN g = 1 THEN $1::uuid
         \\            ELSE overlay(md5('f' || g)::uuid::text placing '7' from 15 for 1)::uuid END,
-        \\       $2::uuid, $3 || g, '', '{}'::jsonb, 'active', 1750000000000 + g, 0
+        \\       $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3 || g, '', '{}'::jsonb, 'active', 1750000000000 + g, 0
         \\FROM generate_series(1, $4::int) g
         \\ON CONFLICT DO NOTHING
     , .{ FLEET_PROBE, WS_PROBE, NAME_PREFIX, FLEET_ROWS });
@@ -119,11 +119,10 @@ fn seedGraph(conn: *pg.Conn) !void {
 fn seedAffinity(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, created_at, updated_at)
-        \\SELECT overlay(md5('a' || f.id::text)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\       f.id,
+        \\   last_metered_at, created_at, updated_at)
+        \\SELECT f.id,
         \\       CASE WHEN row_number() OVER (ORDER BY f.created_at) <= $2::int
         \\            THEN $1::uuid ELSE NULL END,
         \\       1, 9999999999999, 0, 0, 0, 0, 0, 0
@@ -140,15 +139,15 @@ fn seedLeases(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   event_type, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, fencing_token, lease_expires_at, status,
+        \\   last_metered_at, fencing_token, lease_expires_at, status,
         \\   created_at, updated_at)
         \\SELECT overlay(md5('l' || g)::uuid::text placing '7' from 15 for 1)::uuid,
         \\       $1::uuid,
         \\       CASE WHEN g <= $2::int THEN $3::uuid
         \\            ELSE overlay(md5('f' || (g % ($4::int - 1) + 2))::uuid::text placing '7' from 15 for 1)::uuid END,
-        \\       $5::uuid, $6::uuid, 'e' || g, 'actor', 'fleet.run', '{}', 0,
+        \\       $5::uuid, $6::uuid, 'e' || g, 'actor', 'fleet.run', 0,
         \\       'standard', 'anthropic', 'claude', 0, 0, 0, 0, g, 9999999999999,
         \\       'active', 0, 0
         \\FROM generate_series(1, $7::int) g
@@ -162,10 +161,9 @@ fn seedLeases(conn: *pg.Conn) !void {
 fn seedEvents(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
-        \\SELECT overlay(md5('e' || g)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\       $1::uuid, 'evt-' || g, $2::uuid, 'actor', 'fleet.run', 'ok',
+        \\SELECT $1::uuid, 'evt-' || g, $2::uuid, 'actor', 'fleet.run', 'ok',
         \\       '{}'::jsonb, 1750000000000 + g, 0
         \\FROM generate_series(1, $3::int) g
         \\ON CONFLICT DO NOTHING

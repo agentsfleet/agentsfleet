@@ -1,14 +1,27 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { EventDetailsDialog } from "@/components/domain/EventDetailsDialog";
-import type { EventRow } from "@/lib/api/events";
+import type { EventDetail, EventRow } from "@/lib/api/events";
 import { GUIDANCE } from "@/lib/events/event-summary";
 
 const COPY_DIAGNOSTIC_LABEL = "Copy diagnostic";
+
+// The dialog reads bodies through the Server Action (the list row carries
+// none). Every fixture below is already detail-shaped, so the action simply
+// serves back the row the test opened.
+let servedDetail: EventDetail | null = null;
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
+  getFleetEventAction: () =>
+    Promise.resolve(
+      servedDetail === null
+        ? { ok: false as const, error: "not found" }
+        : { ok: true as const, data: servedDetail },
+    ),
+}));
 
 afterEach(() => {
   cleanup();
@@ -25,7 +38,7 @@ function stubClipboardWriteText() {
   return vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
 }
 
-function event(over: Partial<EventRow> = {}): EventRow {
+function event(over: Partial<EventDetail> = {}): EventDetail {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);
   return {
     event_id: "evt_1",
@@ -49,17 +62,31 @@ function event(over: Partial<EventRow> = {}): EventRow {
   };
 }
 
-function renderDialog(row: EventRow) {
-  return render(
+function renderDialog(row: EventDetail) {
+  servedDetail = row;
+  const rendered = render(
     <TooltipProvider>
       <EventDetailsDialog row={row} onOpenChange={vi.fn()} />
     </TooltipProvider>,
   );
+  return rendered;
+}
+
+/// Settle the body fetch. The dialog paints its header and metrics from the
+/// row immediately; the request context and the recorded answer arrive a tick
+/// later, so a body assertion has to wait for that tick.
+async function renderDialogWithBody(row: EventDetail) {
+  let rendered!: ReturnType<typeof renderDialog>;
+  await act(async () => {
+    rendered = renderDialog(row);
+    await Promise.resolve();
+  });
+  return rendered;
 }
 
 describe("EventDetailsDialog", () => {
-  it("shows the runner's exact response as the failure reason", () => {
-    renderDialog(event({
+  it("shows the runner's exact response as the failure reason", async () => {
+    await renderDialogWithBody(event({
       response_text: "Installed fleet instructions are empty.",
       failure_label: "startup_posture",
     }));
@@ -73,27 +100,27 @@ describe("EventDetailsDialog", () => {
     )).toBeNull();
   });
 
-  it("does not call a specific failure tag an unrecorded reason", () => {
-    renderDialog(event({ failure_label: "oom_kill" }));
+  it("does not call a specific failure tag an unrecorded reason", async () => {
+    await renderDialogWithBody(event({ failure_label: "oom_kill" }));
     expect(screen.getByText("Ran out of memory")).toBeTruthy();
     expect(screen.queryByText("No specific reason was recorded for this event.")).toBeNull();
     expect(screen.queryByText("Fix")).toBeNull();
   });
 
-  it("treats a whitespace-only startup response as unrecorded", () => {
-    renderDialog(event({ response_text: "   ", failure_label: "startup_posture" }));
+  it("treats a whitespace-only startup response as unrecorded", async () => {
+    await renderDialogWithBody(event({ response_text: "   ", failure_label: "startup_posture" }));
     expect(screen.getByText("Failed a startup safety check")).toBeTruthy();
     expect(screen.getByText("Fix")).toBeTruthy();
   });
 
-  it("shows an unknown recorded failure without inventing startup guidance", () => {
-    renderDialog(event({ failure_label: "brand_new_class" }));
+  it("shows an unknown recorded failure without inventing startup guidance", async () => {
+    await renderDialogWithBody(event({ failure_label: "brand_new_class" }));
     expect(screen.getByText("brand_new_class")).toBeTruthy();
     expect(screen.queryByText("Fix")).toBeNull();
   });
 
-  it("keeps the identifier and relative created time in the header and the copy icon in the footer", () => {
-    renderDialog(event({
+  it("keeps the identifier and relative created time in the header and the copy icon in the footer", async () => {
+    await renderDialogWithBody(event({
       event_id: "evt_header",
       actor: "github-app",
       event_type: "webhook",
@@ -119,8 +146,8 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText("Type")).toBeNull();
   });
 
-  it("formats request context into readable fields and removes internal metadata", () => {
-    renderDialog(event({
+  it("formats request context into readable fields and removes internal metadata", async () => {
+    await renderDialogWithBody(event({
       actor: "github-app",
       event_type: "webhook",
       request_json: JSON.stringify({
@@ -153,13 +180,13 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText("Event metadata")).toBeNull();
   });
 
-  it("keeps array request context readable", () => {
-    renderDialog(event({ request_json: '["opened",482]' }));
+  it("keeps array request context readable", async () => {
+    await renderDialogWithBody(event({ request_json: '["opened",482]' }));
     expect(screen.getByText('["opened",482]')).toBeTruthy();
   });
 
-  it("orders failure details before context and the honest next step", () => {
-    renderDialog(event({
+  it("orders failure details before context and the honest next step", async () => {
+    await renderDialogWithBody(event({
       event_id: "evt_startup",
       failure_label: "startup_posture",
       request_json: '{"action":"opened"}',
@@ -185,9 +212,9 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText("startup_posture")).toBeNull();
   });
 
-  it("shows the recorded cause in full and drops the no-cause advice", () => {
+  it("shows the recorded cause in full and drops the no-cause advice", async () => {
     const cause = "startup check 'instructions' failed: no instructions configured";
-    renderDialog(event({ failure_label: "startup_posture", failure_detail: cause }));
+    await renderDialogWithBody(event({ failure_label: "startup_posture", failure_detail: cause }));
 
     // Inspect is where the whole stored value is readable — sentence AND cause.
     const content = screen.getByRole("dialog").textContent ?? "";
@@ -199,15 +226,15 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText(/did not record which check failed/)).toBeNull();
   });
 
-  it("renders no guidance for a failure class the operator cannot act on", () => {
-    renderDialog(event({ failure_label: "oom_kill", failure_detail: "child exceeded its memory cap" }));
+  it("renders no guidance for a failure class the operator cannot act on", async () => {
+    await renderDialogWithBody(event({ failure_label: "oom_kill", failure_detail: "child exceeded its memory cap" }));
 
     expect(screen.queryByText(GUIDANCE.STARTUP)).toBeNull();
     expect(screen.queryByText("Fix")).toBeNull();
   });
 
-  it("renders no guidance when the fleet recorded a real reply", () => {
-    renderDialog(event({
+  it("renders no guidance when the fleet recorded a real reply", async () => {
+    await renderDialogWithBody(event({
       failure_label: "startup_posture",
       failure_detail: "no instructions configured",
       response_text: "I recovered and reviewed the pull request.",
@@ -217,8 +244,8 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText(GUIDANCE.STARTUP)).toBeNull();
   });
 
-  it("does not repeat the coarse event status in the detail body", () => {
-    renderDialog(event({ failure_label: "startup_posture" }));
+  it("does not repeat the coarse event status in the detail body", async () => {
+    await renderDialogWithBody(event({ failure_label: "startup_posture" }));
 
     const resultAlert = screen.getByLabelText("Failed event").closest("[role='alert']");
     if (!resultAlert) throw new Error("Event result alert was not rendered");
@@ -228,7 +255,7 @@ describe("EventDetailsDialog", () => {
 
   it("copies a complete diagnostic payload for a coding agent", async () => {
     const writeText = stubClipboardWriteText();
-    renderDialog(event({
+    await renderDialogWithBody(event({
       event_id: "evt_copy",
       actor: "github-app",
       event_type: "webhook",
@@ -260,7 +287,7 @@ describe("EventDetailsDialog", () => {
   });
 
   it("shows relative time and exposes the browser timezone on hover", async () => {
-    renderDialog(event());
+    await renderDialogWithBody(event());
     const time = document.querySelector("time");
     if (!time) throw new Error("Created time was not rendered");
 
@@ -276,7 +303,7 @@ describe("EventDetailsDialog", () => {
       numberingSystem: "latn",
       timeZone: "",
     });
-    renderDialog(event());
+    await renderDialogWithBody(event());
     const time = document.querySelector("time");
     if (!time) throw new Error("Created time was not rendered");
 
@@ -284,8 +311,8 @@ describe("EventDetailsDialog", () => {
     expect((await screen.findByRole("tooltip")).textContent).toContain("Local time");
   });
 
-  it("uses success and warning icons for their event states", () => {
-    const { rerender } = renderDialog(event({
+  it("uses success and warning icons for their event states", async () => {
+    const { rerender } = await renderDialogWithBody(event({
       status: "processed",
       response_text: "Pull request review completed",
     }));
@@ -312,14 +339,14 @@ describe("EventDetailsDialog", () => {
     expect(screen.getByLabelText("Warning event")).toBeTruthy();
   });
 
-  it("presents a received event as healthy work in progress", () => {
-    renderDialog(event({ status: "received", response_text: null }));
+  it("presents a received event as healthy work in progress", async () => {
+    await renderDialogWithBody(event({ status: "received", response_text: null }));
     expect(screen.getByLabelText("Event in progress")).toBeTruthy();
     expect(screen.queryByLabelText("Warning event")).toBeNull();
   });
 
-  it("keeps a generic request URL provider-neutral", () => {
-    renderDialog(event({
+  it("keeps a generic request URL provider-neutral", async () => {
+    await renderDialogWithBody(event({
       actor: "webhook:generic",
       request_json: '{"url":"https://example.com/ticket/7"}',
     }));
@@ -330,7 +357,7 @@ describe("EventDetailsDialog", () => {
   it("bounds a large result in both the dialog and copied diagnostic", async () => {
     const writeText = stubClipboardWriteText();
     const response = `${"x".repeat(20_000)}hidden-result-tail`;
-    renderDialog(event({ response_text: response }));
+    await renderDialogWithBody(event({ response_text: response }));
 
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toHaveLength(20_000);
@@ -346,9 +373,9 @@ describe("EventDetailsDialog", () => {
     expect(diagnostic.recorded_response.endsWith("…")).toBe(true);
   });
 
-  it("marks a whitespace-prefixed large result as truncated", () => {
+  it("marks a whitespace-prefixed large result as truncated", async () => {
     const response = `   ${"x".repeat(20_000)}hidden-result-tail`;
-    renderDialog(event({ response_text: response }));
+    await renderDialogWithBody(event({ response_text: response }));
     const result = screen.getByRole("alert").textContent ?? "";
     expect(result.endsWith("…")).toBe(true);
     expect(result).not.toContain("hidden-result-tail");
@@ -356,7 +383,7 @@ describe("EventDetailsDialog", () => {
 
   it("preserves an invalid created value in the copied diagnostic", async () => {
     const writeText = stubClipboardWriteText();
-    renderDialog(event({ created_at: Number.NaN }));
+    await renderDialogWithBody(event({ created_at: Number.NaN }));
 
     fireEvent.click(screen.getByRole("button", { name: COPY_DIAGNOSTIC_LABEL }));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
@@ -366,7 +393,7 @@ describe("EventDetailsDialog", () => {
 
   it("keeps malformed request context visible but omits it from copied diagnostics", async () => {
     const writeText = stubClipboardWriteText();
-    renderDialog(event({ request_json: "{not-json" }));
+    await renderDialogWithBody(event({ request_json: "{not-json" }));
     expect(screen.getByText("{not-json")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: COPY_DIAGNOSTIC_LABEL }));
@@ -375,15 +402,15 @@ describe("EventDetailsDialog", () => {
     expect(writeText.mock.calls[0]?.[0]).toMatch(/omitted.*private or secret/i);
   });
 
-  it("explains when no request context was recorded", () => {
-    renderDialog(event({ request_json: "   " }));
+  it("explains when no request context was recorded", async () => {
+    await renderDialogWithBody(event({ request_json: "   " }));
     expect(screen.getByText("No request context recorded")).toBeTruthy();
   });
 
   it("limits rendered request context and omits the hidden tail from copied diagnostics", async () => {
     const writeText = stubClipboardWriteText();
     const visible = "x".repeat(10_000);
-    renderDialog(event({ request_json: `${visible}hidden-tail` }));
+    await renderDialogWithBody(event({ request_json: `${visible}hidden-tail` }));
     const context = screen.getByText(visible);
     expect(context.textContent).toHaveLength(10_000);
     expect(screen.queryByText(/hidden-tail/)).toBeNull();
@@ -399,7 +426,7 @@ describe("EventDetailsDialog", () => {
     const request = Object.fromEntries(
       Array.from({ length: 150 }, (_, index) => [`field_${index}`, `value_${index}`]),
     );
-    renderDialog(event({ request_json: JSON.stringify(request) }));
+    await renderDialogWithBody(event({ request_json: JSON.stringify(request) }));
 
     expect(screen.getByText("field 99")).toBeTruthy();
     expect(screen.queryByText("field 100")).toBeNull();

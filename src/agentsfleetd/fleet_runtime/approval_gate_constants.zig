@@ -25,6 +25,17 @@ pub const GATE_PENDING_TTL_SECONDS: u32 = 7200;
 pub const GATE_DECISION_APPROVE = "approve";
 pub const GATE_DECISION_DENY = "deny";
 
+/// `core.fleet_approval_gates.gate_kind` for a standing integration
+/// authorization, raised at install from the bundle's required credentials.
+///
+/// It is the arm selector in `RESOLVE_GATE`: resolving a gate carrying this
+/// kind also moves the matching `core.integration_grants` row, so the standing
+/// answer cannot drift from the decision that authorized it. The service it
+/// asks about travels in `evidence->>'service'`, which that statement reads.
+pub const GATE_KIND_INTEGRATION_GRANT = "integration_grant";
+/// The `evidence` key naming the service an integration-grant gate covers.
+pub const GATE_EVIDENCE_SERVICE_KEY = "service";
+
 // Gate activity event types
 pub const GATE_EVENT_REQUIRED = "gate_approval_required";
 pub const GATE_EVENT_APPROVED = "gate_approved";

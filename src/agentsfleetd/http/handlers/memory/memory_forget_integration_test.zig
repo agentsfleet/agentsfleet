@@ -45,12 +45,12 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 
 fn seed(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'MemForgetTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'MemForgetTest', $2, $2) ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3) ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now_ms });
     const fleets = [_]struct { id: []const u8, name: []const u8 }{
         .{ .id = FLEET_A, .name = "mem-forget-a" },
@@ -58,8 +58,8 @@ fn seed(conn: *pg.Conn, now_ms: i64) !void {
     };
     for (fleets) |fleet| {
         _ = try conn.exec(
-            \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, $3, 'seed', '{}'::jsonb, 'active', $4, $4)
+            \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+            \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, 'seed', '{}'::jsonb, 'active', $4, $4)
             \\ON CONFLICT (id) DO NOTHING
         , .{ fleet.id, TEST_WORKSPACE_ID, fleet.name, now_ms });
     }
@@ -69,14 +69,12 @@ fn seedEntry(conn: *pg.Conn, fleet_id: []const u8, key: []const u8, content: []c
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer _ = conn.exec("RESET ROLE", .{}) catch |e| std.log.warn("cleanup ignored: {s}", .{@errorName(e)});
     const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
-    var id_buf: [128]u8 = undefined;
-    const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ fleet_id, key });
+    const row_id: []const u8 = &uid_value;
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
+        \\INSERT INTO memory.memory_entries (id, key, content, category, fleet_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $6)
         \\ON CONFLICT (key, fleet_id) DO UPDATE SET content = EXCLUDED.content
-    , .{ uid, id, key, content, CATEGORY_CORE, fleet_id, SEED_TS_MS });
+    , .{ row_id, key, content, CATEGORY_CORE, fleet_id, SEED_TS_MS });
 }
 
 fn entryExists(conn: *pg.Conn, fleet_id: []const u8, key: []const u8) !bool {

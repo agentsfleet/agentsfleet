@@ -96,11 +96,11 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, fleet_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'steer:test',
-        \\        'chat', '{"message":"hi"}', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
+        \\        'chat', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
         \\        $7, $8, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ lease_id, RUNNER_ID, fleet_id, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, @as(i64, FENCE), NOW_MS + 30_000 });
@@ -184,18 +184,16 @@ fn seedRows(env: Env, fleet_id: []const u8, n: usize, content_len: usize) !void 
     defer env.h.releaseConn(conn);
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer execIgnore(conn, "RESET ROLE", .{});
-    // uid must satisfy the UUIDv7 check (version nibble '7'); compose a
-    // deterministic v7-shaped uid from the fleet's distinguishing tail
-    // (dashless chars 25..32) + n, so uids never collide across the six
-    // fixture fleets. The id column is globally UNIQUE, so it carries the
-    // same tail; the key column stays per-fleet ('hk' || n) because the
+    // The identifier must satisfy the UUIDv7 check (version nibble '7'); compose
+    // a deterministic v7-shaped one from the fleet's distinguishing tail
+    // (dashless chars 25..32) + n, so identifiers never collide across the six
+    // fixture fleets. The key column stays per-fleet ('hk' || n) because the
     // hydrate byte arithmetic depends on its exact length.
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
+        \\  (id, key, content, category, fleet_id, created_at, updated_at)
         \\SELECT (('0195e2aa-4c1b-7' || lpad(to_hex(n), 3, '0') || '-8abc-'
         \\         || substr(replace($1::uuid::text, '-', ''), 25, 8) || lpad(to_hex(n), 4, '0')))::uuid,
-        \\       'hk-' || substr(replace($1::uuid::text, '-', ''), 29, 4) || '-' || n,
         \\       'hk' || n, repeat('x', $2::int), 'c', $1::uuid,
         \\       1700000000000, 1700000000000 + n
         \\FROM generate_series(1, $3::int) n
@@ -212,16 +210,15 @@ fn seedCoreRow(env: Env, fleet_id: []const u8, key: []const u8) !void {
     defer execIgnore(conn, "RESET ROLE", .{});
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
+        \\  (id, key, content, category, fleet_id, created_at, updated_at)
         \\VALUES (('0195e2aa-4c1b-7fff-8abc-' || substr(replace($1::uuid::text, '-', ''), 25, 8) || 'ffff')::uuid,
-        \\        'ck-' || substr(replace($1::uuid::text, '-', ''), 29, 4),
         \\        $2, 'indy', $3, $1::uuid, 1600000000000, 1600000000000)
         \\ON CONFLICT (key, fleet_id) DO NOTHING
     , .{ fleet_id, key, memory_adapter.CATEGORY_CORE });
 }
 
 /// Seed one `daily` row at an explicit `updated_at` (epoch ms) — the retention
-/// sweep's age fixture. `n` (1..15) keys the uid lane ('7dd' + hex nibble), so
+/// sweep's age fixture. `n` (1..15) keys the identifier lane ('7dd' + hex nibble), so
 /// rows never collide with seedRows ('7' + 3-hex) or seedCoreRow ('7fff').
 fn seedDailyAt(env: Env, fleet_id: []const u8, key: []const u8, n: u8, updated_at_ms: i64) !void {
     const conn = try env.h.acquireConn();
@@ -230,10 +227,9 @@ fn seedDailyAt(env: Env, fleet_id: []const u8, key: []const u8, n: u8, updated_a
     defer execIgnore(conn, "RESET ROLE", .{});
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, fleet_id, created_at, updated_at)
+        \\  (id, key, content, category, fleet_id, created_at, updated_at)
         \\VALUES (('0195e2aa-4c1b-7dd' || to_hex($5::int) || '-8abc-'
         \\         || substr(replace($1::uuid::text, '-', ''), 25, 8) || '0' || to_hex($5::int) || '00')::uuid,
-        \\        'sk-' || substr(replace($1::uuid::text, '-', ''), 29, 4) || '-' || $5::int,
         \\        $2, 'scratch', $3, $1::uuid, $4, $4)
         \\ON CONFLICT (key, fleet_id) DO NOTHING
     , .{ fleet_id, key, memory_adapter.CATEGORY_DAILY, updated_at_ms, @as(i32, n) });

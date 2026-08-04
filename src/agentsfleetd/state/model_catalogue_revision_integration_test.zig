@@ -170,8 +170,8 @@ test "integration: test_catalogue_revision_governs_both_caches: the hot-path rea
 
 // ── The billing half: cross-replica fail-closed pricing ─────────────────────
 
-/// Suite-private catalogue identity. The uid's 15th character is the uuidv7
-/// version nibble `ck_model_library_uid_uuidv7` requires.
+/// Suite-private catalogue identity. Its 15th character is the uuidv7 version
+/// nibble `ck_model_library_id_uuidv7` requires.
 const BILL_UID = "0195b4ba-8d3a-7f15-8abe-2b3e1e0abd01";
 const BILL_PROVIDER = "revision-billing-probe";
 const BILL_MODEL = "rb-probe-model";
@@ -182,12 +182,12 @@ const BILL_PRICE_AFTER: i64 = 7_777;
 fn seedBillingRow(conn: *pg.Conn, input_nanos: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, 0, 0, $6, $6)
         \\ON CONFLICT (provider, model_id) DO UPDATE SET
         \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-        \\   updated_at_ms = EXCLUDED.updated_at_ms
+        \\   updated_at = EXCLUDED.updated_at
     , .{ BILL_UID, BILL_MODEL, BILL_PROVIDER, BILL_CAP, input_nanos, @as(i64, 1_745_884_800_000) });
 }
 

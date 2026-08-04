@@ -36,10 +36,23 @@ afterEach(() => cleanup());
 // ── EventsList ─────────────────────────────────────────────────────────────
 
 import { EventsList } from "../components/domain/EventsList";
-import { type EventRow, type EventsPage } from "@/lib/api/events";
+import { type EventDetail, type EventRow, type EventsPage } from "@/lib/api/events";
 import { GUIDANCE } from "@/lib/events/event-summary";
 
-function row(over: Partial<EventRow> = {}): EventRow {
+// Opening a row fetches its bodies through the Server Action — the list row
+// carries none. Fixtures here are detail-shaped, so the action serves back the
+// row under inspection.
+let servedDetail: EventDetail | null = null;
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
+  getFleetEventAction: () =>
+    Promise.resolve(
+      servedDetail === null
+        ? { ok: false as const, error: "not found" }
+        : { ok: true as const, data: servedDetail },
+    ),
+}));
+
+function row(over: Partial<EventDetail> = {}): EventDetail {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);
   return {
     event_id: "evt_1",
@@ -66,6 +79,9 @@ function row(over: Partial<EventRow> = {}): EventRow {
 // The wrapper stands in for a real ancestor: the root layout mounts the app's
 // one TooltipProvider, which the relative `Time` cells here read from.
 function renderList(initial: EventsPage, fleetId?: string) {
+  // Whatever a test inspects, the action serves that row's own bodies back.
+  // Every fixture in this file is built detail-shaped by `row()` above.
+  servedDetail = (initial.items[0] as EventDetail | undefined) ?? null;
   return render(
     React.createElement(EventsList, { initial, pageSize: 25, fleetId }),
     { wrapper: TooltipProvider },
@@ -222,7 +238,10 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.getByRole("table")).toBeTruthy();
     // 1 header row + 5 event rows.
     expect(screen.getAllByRole("row").length).toBe(6);
-    expect(screen.getByText("first event")).toBeTruthy();
+    // The reply is NOT on a list row any more: the list read carries no
+    // bodies. A completed run with nothing else to say says exactly that.
+    expect(screen.queryByText("first event")).toBeNull();
+    expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
     // failure_label fallback for null response_text — "boom" isn't a real
     // FailureClass tag, so it renders raw (fails soft on unknown tags).
     expect(screen.getByText("boom")).toBeTruthy();
@@ -322,8 +341,8 @@ describe("EventsList — the standard workspace events table", () => {
           failure_label: "oom_kill",
         }),
         row({
-          event_id: "response",
-          response_text: "  Quiet   result ",
+          event_id: "no-reply",
+          response_text: null,
           failure_label: null,
         }),
       ],
@@ -332,7 +351,7 @@ describe("EventsList — the standard workspace events table", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Result" }));
     expect(screen.getAllByRole("row")[1]?.textContent).toContain(
-      "Quiet result",
+      "No result recorded",
     );
   });
 
@@ -366,7 +385,7 @@ describe("EventsList — the standard workspace events table", () => {
     ).toContain("min-h-11");
   });
 
-  it("keeps a recorded response visible without exposing its internal failure tag", () => {
+  it("names a failure in plain language without exposing its internal tag", () => {
     renderList({
       items: [
         row({
@@ -378,9 +397,11 @@ describe("EventsList — the standard workspace events table", () => {
       ],
       next_cursor: null,
     });
+    // The reply text is not on the list row; the actionable sentence is.
     expect(
-      screen.getByText("Engine configuration could not be assembled."),
-    ).toBeTruthy();
+      screen.queryByText("Engine configuration could not be assembled."),
+    ).toBeNull();
+    expect(screen.getByText("Failed a startup safety check")).toBeTruthy();
     expect(screen.queryByText("startup_posture")).toBeNull();
   });
 
@@ -422,21 +443,6 @@ describe("EventsList — the standard workspace events table", () => {
     });
     expect(screen.getByText("Fleet budget limit reached")).toBeTruthy();
     expect(screen.queryByText("budget_breach")).toBeNull();
-  });
-
-  it("collapses whitespace and truncates long summary text to 160 chars", () => {
-    const long = "x".repeat(300);
-    renderList({
-      items: [
-        row({ event_id: "z", response_text: `  multi  \n  line   ${long}` }),
-      ],
-      next_cursor: null,
-    });
-    const cell = screen.getByTitle(/multi/);
-    const txt = cell.textContent ?? "";
-    expect(txt.length).toBeLessThanOrEqual(161); // 157 + "…"
-    expect(txt.endsWith("…")).toBe(true);
-    expect(txt).not.toMatch(/\s\s/);
   });
 
   it("renders the short fleet id in the Fleet column", () => {
@@ -499,6 +505,9 @@ describe("EventsList — the standard workspace events table", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Inspect event evt_startup_1" }),
     );
+    // The bodies land a tick after the dialog opens (they are fetched, not
+    // carried on the row), and the request-context assertions below read them.
+    await screen.findByText("Pull request");
 
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getByLabelText("Failed event")).toBeTruthy();

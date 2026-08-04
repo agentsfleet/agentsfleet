@@ -6,7 +6,7 @@
 //!
 //! ## The fixtures tie on purpose
 //!
-//! §2 sorts by normalized display, then normalized vendor, then uid — three
+//! §2 sorts by normalized display, then normalized vendor, then id — three
 //! keys, each `COLLATE "C"`. The second and third are UNREACHABLE until the one
 //! before them ties, so a fixture set with four distinct `model_id`s would pass
 //! against a single-key sort and against a reversed vendor tiebreak alike. Two
@@ -41,8 +41,8 @@ const catalogue_key = @import("library/catalogue_key.zig");
 const MODELS_PATH = "/v1/models";
 const VIEWER = scope_fixtures.VIEWER;
 
-/// uuidv7 literals (version nibble 7) so the library uid CHECK passes. Ordered
-/// ascending so the uid tiebreak is predictable where it is reached.
+/// uuidv7 literals (version nibble 7) so the library id CHECK passes. Ordered
+/// ascending so the id tiebreak is predictable where it is reached.
 const UID_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9001";
 const UID_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9002";
 const UID_C = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9003";
@@ -96,7 +96,7 @@ fn openOrSkip(alloc: std.mem.Allocator) !*TestHarness {
 /// Seed four rows whose normalized sort order is known and whose first key TIES,
 /// into a catalogue that holds nothing else.
 ///
-/// Expected order — display, then vendor, then uid:
+/// Expected order — display, then vendor, then id:
 ///   1. m143page-alpha / vendor-a   (display ties with 2; vendor decides)
 ///   2. m143page-alpha / vendor-b
 ///   3. m143page-mid   / vendor-g
@@ -130,25 +130,25 @@ fn seed(h: *TestHarness) !void {
     // Inserted out of sort order so a passing assertion cannot be insertion
     // order wearing the ORDER BY's clothes.
     try expectInserted(model_library_store.create(conn, .{
-        .uid = UID_D,
+        .id = UID_D,
         .provider = VENDOR_ALPHA,
         .model_id = MODEL_ZETA,
         .rates = RATES,
     }, now));
     try expectInserted(model_library_store.create(conn, .{
-        .uid = UID_B,
+        .id = UID_B,
         .provider = VENDOR_BETA,
         .model_id = MODEL_ALPHA,
         .rates = RATES,
     }, now));
     try expectInserted(model_library_store.create(conn, .{
-        .uid = UID_A,
+        .id = UID_A,
         .provider = VENDOR_ALPHA,
         .model_id = MODEL_ALPHA,
         .rates = RATES,
     }, now));
     try expectInserted(model_library_store.create(conn, .{
-        .uid = UID_C,
+        .id = UID_C,
         .provider = VENDOR_GAMMA,
         .model_id = MODEL_MID,
         .rates = RATES,
@@ -162,8 +162,8 @@ fn expectInserted(res: anyerror!?i64) !void {
 fn cleanup(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
-    for ([_][]const u8{ UID_A, UID_B, UID_C, UID_D }) |uid| {
-        _ = model_library_store.remove(conn, uid) catch |err|
+    for ([_][]const u8{ UID_A, UID_B, UID_C, UID_D }) |id| {
+        _ = model_library_store.remove(conn, id) catch |err|
             std.log.warn("page-suite cleanup ignored: {s}", .{@errorName(err)});
     }
 }
@@ -421,7 +421,7 @@ test "integration: test_model_page_and_conditional_headers — every §Error Con
     }
 
     // A cursor that DECODES cleanly but names a non-UUID id is the same
-    // UZ-LIBRARY-001: the uid rides the page SQL as a `::uuid` cast, and a
+    // UZ-LIBRARY-001: the id rides the page SQL as a `::uuid` cast, and a
     // hand-minted id must be rejected as malformed input rather than surface
     // as a Postgres cast error dressed in a 503.
     {

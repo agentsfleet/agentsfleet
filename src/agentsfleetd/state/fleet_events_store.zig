@@ -42,13 +42,13 @@ const parseCursor = filter_mod.parseCursor;
 // here is one fleet, not the workspace-wide Live Wall).
 const EVENTS_SELECT =
     \\SELECT fleet_id::text, event_id, workspace_id::text, actor, event_type,
-    \\       status, request_json::text, response_text, tokens, wall_ms,
+    \\       status, tokens, wall_ms,
     \\       failure_label, failure_detail, checkpoint_id, resumes_event_id,
     \\       created_at, updated_at,
     \\       (SELECT SUM(te.credit_deducted_nanos)::bigint
-    \\          FROM core.fleet_execution_telemetry te
+    \\          FROM billing.usage_ledger te
     \\         WHERE te.event_id = core.fleet_events.event_id
-    \\           AND te.fleet_id = core.fleet_events.fleet_id::text) AS cost_nanos
+    \\           AND te.fleet_id = core.fleet_events.fleet_id) AS cost_nanos
     \\FROM core.fleet_events
     \\
 ;
@@ -62,8 +62,6 @@ pub const EventRow = struct {
     actor: []u8,
     event_type: []u8,
     status: []u8,
-    request_json: []u8,
-    response_text: ?[]u8,
     tokens: ?i64,
     wall_ms: ?i64,
     failure_label: ?[]u8,
@@ -86,8 +84,6 @@ pub const EventRow = struct {
         alloc.free(self.actor);
         alloc.free(self.event_type);
         alloc.free(self.status);
-        alloc.free(self.request_json);
-        if (self.response_text) |v| alloc.free(v);
         if (self.failure_label) |v| alloc.free(v);
         if (self.failure_detail) |v| alloc.free(v);
         if (self.checkpoint_id) |v| alloc.free(v);
@@ -251,23 +247,19 @@ fn readRow(alloc: std.mem.Allocator, row: pg.Row) !EventRow {
     errdefer alloc.free(event_type);
     const status = try alloc.dupe(u8, try row.get([]const u8, 5));
     errdefer alloc.free(status);
-    const request_json = try alloc.dupe(u8, try row.get([]const u8, 6));
-    errdefer alloc.free(request_json);
-    const response_text = try dupeOptionalString(alloc, row, 7);
-    errdefer if (response_text) |v| alloc.free(v);
-    const tokens = try row.get(?i64, 8);
-    const wall_ms = try row.get(?i64, 9);
-    const failure_label = try dupeOptionalString(alloc, row, 10);
+    const tokens = try row.get(?i64, 6);
+    const wall_ms = try row.get(?i64, 7);
+    const failure_label = try dupeOptionalString(alloc, row, 8);
     errdefer if (failure_label) |v| alloc.free(v);
-    const failure_detail = try dupeOptionalString(alloc, row, 11);
+    const failure_detail = try dupeOptionalString(alloc, row, 9);
     errdefer if (failure_detail) |v| alloc.free(v);
-    const checkpoint_id = try dupeOptionalString(alloc, row, 12);
+    const checkpoint_id = try dupeOptionalString(alloc, row, 10);
     errdefer if (checkpoint_id) |v| alloc.free(v);
-    const resumes_event_id = try dupeOptionalString(alloc, row, 13);
+    const resumes_event_id = try dupeOptionalString(alloc, row, 11);
     errdefer if (resumes_event_id) |v| alloc.free(v);
-    const created_at = try row.get(i64, 14);
-    const updated_at = try row.get(i64, 15);
-    const cost_nanos = try row.get(?i64, 16);
+    const created_at = try row.get(i64, 12);
+    const updated_at = try row.get(i64, 13);
+    const cost_nanos = try row.get(?i64, 14);
 
     return .{
         .fleet_id = fleet_id,
@@ -276,8 +268,6 @@ fn readRow(alloc: std.mem.Allocator, row: pg.Row) !EventRow {
         .actor = actor,
         .event_type = event_type,
         .status = status,
-        .request_json = request_json,
-        .response_text = response_text,
         .tokens = tokens,
         .wall_ms = wall_ms,
         .failure_label = failure_label,

@@ -10,13 +10,20 @@
 //   * renewal  — service_renew, once per successful metered slice
 //   * settle   — service_report, once per terminal claim
 //
-// So the reconciliation reads both durable homes — `fleet.metering_periods`
-// (renewal + settle slices) and `core.fleet_execution_telemetry` (the receive
-// debit) — and compares their total against the drained samples. The zero arms
-// matter as much as the sum: a replayed report, a lost fence, and a failed
-// settlement write must each contribute nothing, which is only true while the
-// emit stays post-commit. Move any of the three emits above its commit and the
-// zero arms below go red.
+// So the reconciliation reads `billing.usage_ledger`, now the single durable
+// home for all three, and compares its total against the drained samples. The
+// zero arms matter as much as the sum: a replayed report and a lost fence must
+// each contribute nothing, which is only true while the emit stays post-commit.
+// Move any of the three emits above its commit and the zero arms below go red.
+//
+// The sample COUNT no longer reconciles against a row count, and cannot. The
+// retired `fleet.metering_periods` appended a row per slice, so four samples
+// meant four rows. The ledger accumulates in place under
+// `ON CONFLICT (event_id, charge_type)`, so the same four samples leave two
+// rows — one `receive`, one `stage` that every renewal and the settle fold
+// into. What replaces the count is the stage row's SPAN: `created_at` is the
+// first renewal that created it and `last_charged_at` the settle that wrote it
+// last, which pins exactly the window the budget apportionment reads.
 //
 // Free-trial note: the boundary is a tenant fact (§7), so arrange() closes this
 // suite's tenant's trial and raises the fixture pair's token rates above zero —
@@ -40,6 +47,7 @@ const base = @import("../db/test_fixtures.zig");
 const otel_metrics = @import("../observability/otel_metrics.zig");
 const otlp_config = @import("../observability/otlp/config.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
+const ChargeType = @import("../state/fleet_telemetry_store.zig").ChargeType;
 
 const ALLOC = std.testing.allocator;
 
@@ -48,8 +56,6 @@ const ALLOC = std.testing.allocator;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ec011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eca01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecc01";
-const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ecd01";
-const COLLISION_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ec0f1";
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
 const RECON_HOST_ID = "credit-reconciliation-host";
 const FLEET_NAME = "credit-reconciliation-bot";
@@ -116,7 +122,7 @@ fn seedRunner(conn: *pg.Conn) !void {
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'credit-reconciliation-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
@@ -150,13 +156,8 @@ fn forgetFleet(h: *TestHarness) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     forgetFleet(h);
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE uid = $1::uuid", .{COLLISION_UID});
     execIgnore(conn,
-        \\DELETE FROM fleet.metering_periods WHERE event_id IN
-        \\  (SELECT event_id FROM core.fleet_events WHERE fleet_id = $1::uuid)
-    , .{FLEET_ID});
-    execIgnore(conn,
-        \\DELETE FROM core.fleet_execution_telemetry WHERE fleet_id = $1::uuid
+        \\DELETE FROM billing.usage_ledger WHERE fleet_id = $1::uuid
     , .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
@@ -193,7 +194,7 @@ fn arrange() !Setup {
     try base.endFreeTrialFor(conn, base.TEST_TENANT_ID);
     try seedRunner(conn);
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, FLEET_NAME, CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, "{}");
+    try base.seedFleetSession(conn, FLEET_ID, "{}");
     try publishFreshEvent(h);
     otel_metrics.testClear();
     otel_metrics.testSetInstalled(METRICS_TEST_CFG);
@@ -300,41 +301,36 @@ fn scalar(conn: *pg.Conn, sql: []const u8, event_id: []const u8) !i64 {
     return row.get(i64, 0);
 }
 
-/// Every nanocredit Postgres committed for this event: the renewal + settle
-/// slices from `fleet.metering_periods`, plus the receive debit — which is the
-/// ONLY telemetry row counted. The renewal CTE also accumulates the slice
-/// charges into `core.fleet_execution_telemetry` (the customer charges
-/// surface, ON CONFLICT-summed per charge_type), so summing that table whole
-/// counts the same money twice. Zero-priced trials masked exactly that
-/// double-count until the suite armed itself with real rates.
+/// Every nanocredit Postgres committed for this event — the receive debit plus
+/// the accumulated stage charge, both rows of the one table that now owns them.
+///
+/// The retired shape spread this across `fleet.metering_periods` and
+/// `core.fleet_execution_telemetry`, where the renewal accumulated slice
+/// charges into BOTH — so summing the second table whole double-counted the
+/// same money, and a zero-priced trial hid it. One table, one sum, no mirror.
 fn committedDebitTotal(conn: *pg.Conn, event_id: []const u8) !i64 {
-    // `SUM(bigint)` is `numeric` in Postgres, so each aggregate is cast back to
-    // bigint for the i64 read. Both columns are bigint, so the cast is lossless.
-    const slices = try scalar(conn,
-        \\SELECT COALESCE(SUM(charged_nanos), 0)::bigint
-        \\FROM fleet.metering_periods WHERE event_id = $1
-    , event_id);
-    const receive = try scalar(conn,
+    // `SUM(bigint)` is `numeric` in Postgres, so the aggregate is cast back to
+    // bigint for the i64 read. The column is bigint, so the cast is lossless.
+    return scalar(conn,
         \\SELECT COALESCE(SUM(credit_deducted_nanos), 0)::bigint
-        \\FROM core.fleet_execution_telemetry
-        \\WHERE event_id = $1 AND charge_type = 'receive'
+        \\FROM billing.usage_ledger WHERE event_id = $1
     , event_id);
-    return slices + receive;
 }
 
-/// A zero-valued debit must produce no sample at all — a zero-delta series is
-/// noise a backend cannot distinguish from a stalled exporter. So the emitted
-/// sample count reconciles against the NON-ZERO committed debits, not all rows
-/// — and, as above, only the receive-typed telemetry row, never the aggregate
-/// mirror of the slices.
-fn nonZeroDebitCount(conn: *pg.Conn, event_id: []const u8) !i64 {
-    return scalar(conn,
-        \\SELECT (SELECT COUNT(*) FROM fleet.metering_periods
-        \\        WHERE event_id = $1 AND charged_nanos <> 0)
-        \\     + (SELECT COUNT(*) FROM core.fleet_execution_telemetry
-        \\        WHERE event_id = $1 AND charge_type = 'receive'
-        \\          AND credit_deducted_nanos <> 0)
-    , event_id);
+/// The window the accumulating stage row covers. `created_at` is stamped once,
+/// by the write that inserted the row; `last_charged_at` advances on every
+/// write after it (`GREATEST(existing, EXCLUDED)`), so the pair brackets the
+/// first and last charge without counting how many landed in between.
+const LedgerSpan = struct { created_at: i64, last_charged_at: i64 };
+
+fn stageLedgerSpan(conn: *pg.Conn, event_id: []const u8) !LedgerSpan {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT created_at, last_charged_at FROM billing.usage_ledger
+        \\WHERE event_id = $1 AND charge_type = $2
+    , .{ event_id, ChargeType.stage.label() }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.StageLedgerRowMissing;
+    return .{ .created_at = try row.get(i64, 0), .last_charged_at = try row.get(i64, 1) };
 }
 
 // Token rates for the fixture platform pair, raised from the seeded zeros so a
@@ -355,62 +351,50 @@ fn setFixturePairRates(conn: *pg.Conn, input: i64, cached: i64, output: i64) voi
     model_rate_cache.clear();
 }
 
-/// The slice ordinal the next settle will claim — `claimAndSettle` writes its
-/// final slice at `meter_slice_seq + 1`.
-fn nextSettleSliceSeq(conn: *pg.Conn) !i64 {
-    var q = PgQuery.from(try conn.query(
-        "SELECT meter_slice_seq FROM fleet.runner_affinity WHERE fleet_id = $1::uuid",
-        .{FLEET_ID},
-    ));
-    defer q.deinit();
-    const row = (try q.next()) orelse return error.AffinityRowMissing;
-    return try row.get(i64, 0) + 1;
-}
-
-/// Occupy the slot the settle INSERT is about to take. `metering_periods` has no
-/// ON CONFLICT clause, so the unique (event_id, slice_seq) key turns the whole
-/// claim+settle statement into a database error — a real failure at the
-/// settlement write, with no fault-injection seam in production code.
-fn blockNextSettleSlice(conn: *pg.Conn, event_id: []const u8) !void {
-    // Read the slot in its own scope: the result must be closed before the
-    // INSERT below writes on the same connection.
-    const next_seq = try nextSettleSliceSeq(conn);
-    _ = try conn.exec(
-        \\INSERT INTO fleet.metering_periods
-        \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
-        \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-        \\VALUES ($1::uuid, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0)
-    , .{ COLLISION_UID, event_id, next_seq });
-}
-
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 test "integration: test_credit_metric_reconciles_committed_debits" {
     const s = try arrange();
     defer cleanup(s);
 
-    // Receive (at lease) + two metered renewals + the terminal settle.
+    // Receive (at lease) + two metered renewals + the terminal settle. The
+    // instants around the first renewal and the settle bracket the span the
+    // stage row must end up covering.
     const lv = try leaseOne(s.h);
     defer lv.free();
+    const before_first_renewal = clock.nowMillis();
     try renewOnce(s.h, lv.lease_id, .{
         .input_tokens = RENEW_ONE_INPUT,
         .cached_input_tokens = RENEW_ONE_CACHED,
         .output_tokens = RENEW_ONE_OUTPUT,
     });
+    const after_first_renewal = clock.nowMillis();
     try renewOnce(s.h, lv.lease_id, .{
         .input_tokens = RENEW_TWO_INPUT,
         .cached_input_tokens = RENEW_TWO_CACHED,
         .output_tokens = RENEW_TWO_OUTPUT,
     });
+    const before_settle = clock.nowMillis();
     const settle = try postReport(s.h, reportBody(lv, lv.fencing_token));
     defer settle.deinit();
     try settle.expectStatus(.ok);
+    const after_settle = clock.nowMillis();
 
     // The identity: what was emitted is exactly what committed.
     const emitted = drainCredit();
     const committed = try committedDebitTotal(s.conn, lv.event_id);
     try std.testing.expectEqual(committed, emitted.total);
-    try std.testing.expectEqual(try nonZeroDebitCount(s.conn, lv.event_id), @as(i64, @intCast(emitted.count)));
+
+    // And every one of those samples reached the row. A count cannot say so —
+    // four samples accumulate into one stage row — but the span can: the row
+    // was born in the first renewal and last written by the settle, so a
+    // renewal that never committed would leave `created_at` late and a settle
+    // that never committed would leave `last_charged_at` back in the renewals.
+    const span = try stageLedgerSpan(s.conn, lv.event_id);
+    try std.testing.expect(span.created_at >= before_first_renewal);
+    try std.testing.expect(span.created_at <= after_first_renewal);
+    try std.testing.expect(span.last_charged_at >= before_settle);
+    try std.testing.expect(span.last_charged_at <= after_settle);
 
     // The trial is closed and the pair is rated, so the identity above carries
     // real money rather than agreeing on zero — unconditionally.
@@ -449,22 +433,111 @@ test "integration: a settle that loses its fence commits nothing and emits nothi
     try std.testing.expectEqual(@as(usize, 0), drainCredit().count);
 }
 
-test "integration: a settle whose database write fails emits nothing" {
+/// The tenant's remaining credit. The wallet is the other half of every debit
+/// the ledger records, and the only half a user feels.
+fn walletBalance(conn: *pg.Conn) !i64 {
+    return scalar(conn,
+        \\SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid
+    , base.TEST_TENANT_ID);
+}
+
+/// One ledger row's `event_created_at`, read per charge type so the two rows
+/// written at different instants can be compared against each other.
+fn ledgerEventCreatedAt(conn: *pg.Conn, event_id: []const u8, charge_type: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT event_created_at FROM billing.usage_ledger
+        \\WHERE event_id = $1 AND charge_type = $2
+    , .{ event_id, charge_type }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.LedgerRowMissing;
+    return row.get(i64, 0);
+}
+
+// Invariant 5 — "the wallet drain equals the ledger sum" — is the one property
+// that makes the ledger a billing record rather than a log. §4 deleted the
+// accrual table that used to carry the per-slice detail, so the question this
+// answers is whether the surviving two-row shape still accounts for every
+// nanocredit that actually left the pool.
+//
+// The sibling test above reconciles the emitted METRIC against the ledger. That
+// is a different claim: it proves the telemetry does not lie about the ledger,
+// and would still pass if the ledger and the wallet disagreed with each other.
+// Nothing asserted the wallet side until here.
+test "integration: the wallet drain equals the ledger sum across a metered run" {
+    const s = try arrange();
+    defer cleanup(s);
+
+    const opening = try walletBalance(s.conn);
+
+    // Receive at lease + two metered renewals + the terminal settle: four
+    // separate debits, accumulating into two ledger rows.
+    const lv = try leaseOne(s.h);
+    defer lv.free();
+    try renewOnce(s.h, lv.lease_id, .{
+        .input_tokens = RENEW_ONE_INPUT,
+        .cached_input_tokens = RENEW_ONE_CACHED,
+        .output_tokens = RENEW_ONE_OUTPUT,
+    });
+    try renewOnce(s.h, lv.lease_id, .{
+        .input_tokens = RENEW_TWO_INPUT,
+        .cached_input_tokens = RENEW_TWO_CACHED,
+        .output_tokens = RENEW_TWO_OUTPUT,
+    });
+    const settle = try postReport(s.h, reportBody(lv, lv.fencing_token));
+    defer settle.deinit();
+    try settle.expectStatus(.ok);
+
+    const drained = opening - try walletBalance(s.conn);
+    const ledgered = try committedDebitTotal(s.conn, lv.event_id);
+
+    // Non-vacuous first: the trial is closed and the pair is rated by arrange(),
+    // so a run that charged nothing means the fixture broke, not that the
+    // identity held. Without this the assertion below passes on 0 == 0.
+    try std.testing.expect(ledgered > 0);
+    try std.testing.expectEqual(ledgered, drained);
+}
+
+// The partition key the ledger carries is only usable if every row for one event
+// agrees on it. The receive row is written at lease issue and the stage row is
+// last written by the settle — potentially hours apart on a long run. Were the
+// column the ROW's creation instant, those two would diverge, a late renewal
+// would hash to a different partition, miss the `ON CONFLICT` target, and
+// silently insert a duplicate charge instead of accumulating into the existing
+// one. The catalogue test asserts the column exists and is NOT NULL; only a run
+// can assert it means what it says.
+test "integration: every ledger row for one event carries the event's creation time, not its own" {
     const s = try arrange();
     defer cleanup(s);
 
     const lv = try leaseOne(s.h);
     defer lv.free();
-    _ = drainCredit(); // discard the receive debit; this arm is about the settle
+    try renewOnce(s.h, lv.lease_id, .{
+        .input_tokens = RENEW_ONE_INPUT,
+        .cached_input_tokens = RENEW_ONE_CACHED,
+        .output_tokens = RENEW_ONE_OUTPUT,
+    });
+    const settle = try postReport(s.h, reportBody(lv, lv.fencing_token));
+    defer settle.deinit();
+    try settle.expectStatus(.ok);
 
-    // Take the slot the settle INSERT wants, so the claim+settle statement dies
-    // on the unique key. If the metric were recorded before the commit, the
-    // drain below would find a sample for money that never moved.
-    try blockNextSettleSlice(s.conn, lv.event_id);
+    const receive_key = try ledgerEventCreatedAt(s.conn, lv.event_id, ChargeType.receive.label());
+    const stage_key = try ledgerEventCreatedAt(s.conn, lv.event_id, ChargeType.stage.label());
+    try std.testing.expectEqual(receive_key, stage_key);
 
-    const resp = try postReport(s.h, reportBody(lv, lv.fencing_token));
-    defer resp.deinit();
-    try resp.expectStatus(.internal_server_error);
-
-    try std.testing.expectEqual(@as(usize, 0), drainCredit().count);
+    // And it is the EVENT's instant, not the row's: the stage row was created at
+    // the first renewal and rewritten by the settle, both of which happen after
+    // the event existed. A column silently carrying the write time would fail
+    // this the moment a renewal landed in a later millisecond.
+    const span = try stageLedgerSpan(s.conn, lv.event_id);
+    try std.testing.expect(stage_key <= span.created_at);
+    try std.testing.expect(stage_key <= span.last_charged_at);
 }
+
+// A test named "a settle whose database write fails emits nothing" stood here.
+// It forced the failure by occupying the (event_id, slice_seq) slot the settle
+// was about to write, which raised only because `fleet.metering_periods` had no
+// ON CONFLICT clause. Every write that replaced it arbitrates its own conflict,
+// so the seam is gone and the settle path has no fault injection by design.
+// Dropped rather than faked; the emit-after-commit ordering it guarded is still
+// covered on the fence-loss and replay arms above, both of which also require a
+// settle that moves no money to emit nothing.
