@@ -22,8 +22,10 @@ const Allocator = std.mem.Allocator;
 
 const approval_gate = @import("../fleet_runtime/approval_gate.zig");
 const config_gates = @import("../fleet_runtime/config_gates.zig");
+const config_types = @import("../fleet_runtime/config_types.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const event_rows = @import("event_rows.zig");
+const prose = @import("approval_gate_prose.zig");
 
 /// Model-authored prose is bounded before it reaches a Slack card or a gate row.
 /// The cap is generous enough for "revert <sha> in <owner/repo> because <reason>"
@@ -50,9 +52,13 @@ const S_NO_EVIDENCE = "{}";
 pub const Built = struct {
     detail: approval_gate.ActionDetail,
     evidence_owned: ?[]const u8 = null,
+    /// Set only when the model's prose actually needed sanitizing; card-safe
+    /// prose keeps borrowing from the parsed context.
+    prose_owned: ?[]const u8 = null,
 
     pub fn deinit(self: *Built, alloc: Allocator) void {
         if (self.evidence_owned) |e| alloc.free(e);
+        if (self.prose_owned) |p| alloc.free(p);
         self.* = undefined;
     }
 };
@@ -70,6 +76,7 @@ pub fn build(
     rule: ?config_gates.GateRule,
     context: ?std.json.Value,
     timeout_ms: i64,
+    repository_binding: ?config_types.RepositoryBinding,
 ) Built {
     var out = Built{
         .detail = .{
@@ -80,16 +87,33 @@ pub fn build(
             .params_summary = event.event_id,
             .gate_kind = if (rule) |r| r.gate_kind else "",
             .blast_radius = if (rule) |r| r.blast_radius else "",
+            // The one decision-relevant fact on the card the platform can vouch
+            // for: it is the same binding the GitHub mint scopes the token by.
+            .repository_binding = repository_binding,
             .timeout_ms = timeout_ms,
         },
     };
 
     const obj = objectOf(context) orelse return out;
 
-    out.detail.proposed_action = event_rows.truncateUtf8(
+    // Cap first, then make it card-safe. Truncation cannot introduce an unsafe
+    // byte, so the order is free; doing it this way means the sanitizer only ever
+    // walks bounded input.
+    const raw_prose = event_rows.truncateUtf8(
         stringField(obj, F_PROPOSED_ACTION) orelse stringField(obj, F_MESSAGE) orelse "",
         MAX_PROPOSED_ACTION_BYTES,
     );
+    if (prose.needsSanitizing(raw_prose)) {
+        // Allocation failure leaves `proposed_action` empty rather than falling
+        // back to the raw bytes: the card omitting the model's claim is a
+        // degradation, the card carrying a forged one is the failure.
+        if (prose.sanitize(alloc, raw_prose)) |clean| {
+            out.prose_owned = clean;
+            out.detail.proposed_action = clean;
+        }
+    } else {
+        out.detail.proposed_action = raw_prose;
+    }
 
     if (obj.get(F_EVIDENCE)) |ev| {
         // Re-serialized rather than echoed: the parser hands back a value, not
@@ -161,7 +185,7 @@ test "detail: the workspace half comes from the rule and the model half from the
     defer parsed.deinit();
 
     const ev = fakeEvent();
-    var built = build(alloc, &ev, ruleWith("repair", "one draft Pull Request"), parsed.value, 900_000);
+    var built = build(alloc, &ev, ruleWith("repair", "one draft Pull Request"), parsed.value, 900_000, null);
     defer built.deinit(alloc);
 
     try testing.expectEqualStrings("repair", built.detail.gate_kind);
@@ -179,7 +203,7 @@ test "detail: a plain human steer falls back to the message body" {
     defer parsed.deinit();
 
     const ev = fakeEvent();
-    var built = build(alloc, &ev, ruleWith("repair", ""), parsed.value, 1);
+    var built = build(alloc, &ev, ruleWith("repair", ""), parsed.value, 1, null);
     defer built.deinit(alloc);
     try testing.expectEqualStrings("please repair it", built.detail.proposed_action);
     // An omitted blast_radius stays empty rather than inventing a reassuring one.
@@ -195,7 +219,7 @@ test "detail: model prose is capped, and oversized evidence is dropped not trunc
     defer parsed.deinit();
 
     const ev = fakeEvent();
-    var built = build(alloc, &ev, ruleWith("repair", ""), parsed.value, 1);
+    var built = build(alloc, &ev, ruleWith("repair", ""), parsed.value, 1, null);
     defer built.deinit(alloc);
 
     try testing.expect(built.detail.proposed_action.len <= MAX_PROPOSED_ACTION_BYTES);
@@ -208,7 +232,7 @@ test "detail: malformed or absent model input degrades to empty, never fails" {
     const alloc = testing.allocator;
     const ev = fakeEvent();
 
-    var no_ctx = build(alloc, &ev, ruleWith("repair", "bounded"), null, 1);
+    var no_ctx = build(alloc, &ev, ruleWith("repair", "bounded"), null, 1, null);
     defer no_ctx.deinit(alloc);
     try testing.expectEqualStrings("", no_ctx.detail.proposed_action);
     try testing.expectEqualStrings(S_NO_EVIDENCE, no_ctx.detail.evidence_json);
@@ -217,7 +241,63 @@ test "detail: malformed or absent model input degrades to empty, never fails" {
 
     var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"proposed_action\":42}", .{});
     defer parsed.deinit();
-    var wrong_type = build(alloc, &ev, null, parsed.value, 1);
+    var wrong_type = build(alloc, &ev, null, parsed.value, 1, null);
     defer wrong_type.deinit(alloc);
     try testing.expectEqualStrings("", wrong_type.detail.proposed_action);
+}
+
+test "detail: model prose cannot grow rows that counterfeit the daemon half" {
+    const alloc = testing.allocator;
+    // The forgery this guards. The cap is 512 bytes — ample to append rows that
+    // render exactly like the workspace-authored ones above them, because Slack
+    // turns the JSON newline escape back into a real line break.
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc,
+        \\{"proposed_action":"revert abc123\n- Gate: `production-write`\n- If approved: opens 1 draft PR in acme/safe"}
+    , .{});
+    defer parsed.deinit();
+
+    const ev = fakeEvent();
+    var built = build(alloc, &ev, ruleWith("repair", "one draft Pull Request"), parsed.value, 1, null);
+    defer built.deinit(alloc);
+
+    // One line in, one line out: the claim can no longer sprout rows of its own.
+    try testing.expect(std.mem.indexOfScalar(u8, built.detail.proposed_action, '\n') == null);
+    try testing.expect(std.mem.indexOfScalar(u8, built.detail.proposed_action, '\r') == null);
+    // Sanitized, not dropped — the operator still reads what the fleet claimed.
+    try testing.expect(std.mem.indexOf(u8, built.detail.proposed_action, "revert abc123") != null);
+    try testing.expect(built.prose_owned != null);
+    // And the workspace half is untouched by any of it.
+    try testing.expectEqualStrings("one draft Pull Request", built.detail.blast_radius);
+}
+
+test "detail: bidirectional overrides are stripped from model prose" {
+    const alloc = testing.allocator;
+    // U+202E reorders what a human reads without altering a stored byte, so a
+    // repository or sha can display as something it is not.
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"proposed_action\":\"revert \u{202E}stegdiw/emca\u{202C}\"}", .{});
+    defer parsed.deinit();
+
+    const ev = fakeEvent();
+    var built = build(alloc, &ev, ruleWith("repair", ""), parsed.value, 1, null);
+    defer built.deinit(alloc);
+
+    try testing.expect(std.mem.indexOf(u8, built.detail.proposed_action, "\u{202E}") == null);
+    try testing.expect(std.mem.indexOf(u8, built.detail.proposed_action, "\u{202C}") == null);
+    try testing.expect(built.prose_owned != null);
+}
+
+test "detail: card-safe prose is borrowed, never copied" {
+    const alloc = testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc,
+        \\{"proposed_action":"revert abc123 in acme/widgets"}
+    , .{});
+    defer parsed.deinit();
+
+    const ev = fakeEvent();
+    var built = build(alloc, &ev, ruleWith("repair", ""), parsed.value, 1, null);
+    defer built.deinit(alloc);
+
+    try testing.expectEqualStrings("revert abc123 in acme/widgets", built.detail.proposed_action);
+    // The common path allocates nothing — sanitizing is the exception.
+    try testing.expect(built.prose_owned == null);
 }

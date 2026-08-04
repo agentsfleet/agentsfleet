@@ -8,6 +8,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const approval_gate = @import("approval_gate.zig");
+const config_types = @import("config_types.zig");
 
 /// Build a Slack Block Kit JSON payload for the approval message.
 /// Returns an owned JSON string. Caller must free.
@@ -34,11 +35,26 @@ pub fn buildSlackApprovalMessage(
     defer alloc.free(gate_line);
     const radius_line = if (detail.blast_radius.len == 0) try alloc.dupe(u8, "") else try std.fmt.allocPrint(alloc, "\n- If approved: {s}", .{detail.blast_radius});
     defer alloc.free(radius_line);
+    // The last DAEMON-derived line, and the only decision-relevant one: the
+    // repositories this run's minted token can reach at all. Everything above it
+    // is event metadata; without it the card's factual half named no repository,
+    // leaving "revert abc123 in acme/widgets" resting entirely on the model.
+    const reach_line = try buildReachLine(alloc, detail.repository_binding);
+    defer alloc.free(reach_line);
     // ATTRIBUTED, never stated. This text was written by a language model that
     // may have been talked into something; rendering it as the platform's own
     // statement is exactly the confusion an approval card must not create.
     const claim_line = if (detail.proposed_action.len == 0) try alloc.dupe(u8, "") else try std.fmt.allocPrint(alloc, "\n\n_The fleet says it will:_ {s}", .{detail.proposed_action});
     defer alloc.free(claim_line);
+    // The model's cited evidence, attributed alongside its claim and never
+    // above it. Rendered as a code span: the JSON was re-serialized by
+    // `approval_gate_detail`, so its own newlines are already `\\n` TEXT and
+    // cannot break the line, and a code span keeps the rest inert.
+    const evidence_line = if (detail.evidence_json.len == 0 or std.mem.eql(u8, detail.evidence_json, S_NO_EVIDENCE))
+        try alloc.dupe(u8, "")
+    else
+        try std.fmt.allocPrint(alloc, "\n_…citing:_ `{s}`", .{detail.evidence_json});
+    defer alloc.free(evidence_line);
     const fallback = try std.fmt.allocPrint(alloc, "Approval required for {s}: {s}.{s}", .{
         fleet_name, detail.tool, detail.action,
     });
@@ -55,7 +71,9 @@ pub fn buildSlackApprovalMessage(
     try writeJsonEscaped(w, desc);
     try writeJsonEscaped(w, gate_line);
     try writeJsonEscaped(w, radius_line);
+    try writeJsonEscaped(w, reach_line);
     try writeJsonEscaped(w, claim_line);
+    try writeJsonEscaped(w, evidence_line);
     try w.writeAll("\"}},{\"type\":\"actions\",\"block_id\":\"gate_");
     try writeJsonEscaped(w, action_id);
     try w.writeAll("\",\"elements\":[{\"type\":\"button\",\"text\":{\"type\":\"plain_text\",\"text\":\"Approve\"},\"style\":\"primary\",\"action_id\":\"gate_approve\",\"value\":\"");
@@ -66,6 +84,37 @@ pub fn buildSlackApprovalMessage(
     try writeJsonEscaped(w, fallback);
     try w.writeAll("\"}");
 
+    return aw.toOwnedSlice();
+}
+
+/// The empty-evidence spelling, shared with `ActionDetail.evidence_json`'s
+/// default so "no evidence" renders as nothing rather than as an empty object
+/// (RULE UFS).
+const S_NO_EVIDENCE = "{}";
+
+/// Render the fleet's repository egress binding as a daemon-derived fact.
+///
+/// This is the one line on the card whose decision-relevant content the platform
+/// can vouch for: it is the same binding `credentials/integration_github.zig`
+/// pins the minted token to, so whatever the model claims, the released run
+/// cannot reach outside this list. Empty when the fleet declares none — the mint
+/// then refuses and the run reaches nothing at all, so there is no reach to
+/// state and a reassuring default would be the wrong thing to invent.
+fn buildReachLine(alloc: Allocator, binding: ?config_types.RepositoryBinding) ![]const u8 {
+    const b = binding orelse return alloc.dupe(u8, "");
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    errdefer aw.deinit();
+    const w = &aw.writer;
+    try w.writeAll("\n- Token reaches: ");
+    for (b.repositories, 0..) |repo, i| {
+        if (i > 0) try w.writeAll(", ");
+        try w.writeByte('`');
+        try w.writeAll(repo);
+        try w.writeByte('`');
+    }
+    try w.writeAll(" (");
+    try w.writeAll(@tagName(b.access));
+    try w.writeAll(")");
     return aw.toOwnedSlice();
 }
 
@@ -200,4 +249,50 @@ test "buildSlackApprovalMessage: model prose carrying JSON metacharacters cannot
     defer parsed.deinit();
     // One blocks array — the injected one did not become structure.
     try std.testing.expectEqual(@as(usize, 2), parsed.value.object.get("blocks").?.array.items.len);
+}
+
+test "buildSlackApprovalMessage: the token's reach is stated as fact, the model's evidence is cited after its claim" {
+    const alloc = std.testing.allocator;
+    const repos = [_][]const u8{"acme/widgets"};
+    const msg = try buildSlackApprovalMessage(alloc, "incident-repairer", "act-1", .{
+        .tool = "api",
+        .action = "steer:api",
+        .params_summary = "evt-9",
+        .gate_kind = "repair",
+        .blast_radius = "one draft Pull Request",
+        .proposed_action = "revert abc123 in acme/widgets",
+        .evidence_json = "{\"commit\":\"abc123\"}",
+        .repository_binding = .{ .repositories = &repos, .access = .write },
+    }, "");
+    defer alloc.free(msg);
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, msg, .{});
+    defer parsed.deinit();
+
+    // The reach names the repository AND the access level the mint will grant —
+    // the only decision-relevant content on this card the platform can vouch for.
+    try std.testing.expect(std.mem.indexOf(u8, msg, "Token reaches") != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "acme/widgets") != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "(write)") != null);
+
+    // Order is the trust boundary: daemon-vouched reach BEFORE the model's claim,
+    // and the model's evidence after it, so a reader meets facts first.
+    const reach_at = std.mem.indexOf(u8, msg, "Token reaches").?;
+    const claim_at = std.mem.indexOf(u8, msg, "The fleet says it will").?;
+    const cite_at = std.mem.indexOf(u8, msg, "citing").?;
+    try std.testing.expect(reach_at < claim_at);
+    try std.testing.expect(claim_at < cite_at);
+}
+
+test "buildSlackApprovalMessage: a fleet with no binding claims no reach" {
+    const alloc = std.testing.allocator;
+    const msg = try buildSlackApprovalMessage(alloc, "f", "a", .{
+        .tool = "api",
+        .action = "x",
+        .params_summary = "e",
+    }, "");
+    defer alloc.free(msg);
+    // An unbound fleet mints nothing, so the card invents no reassuring reach —
+    // and with no evidence sent, no citation line either.
+    try std.testing.expect(std.mem.indexOf(u8, msg, "Token reaches") == null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "citing") == null);
 }

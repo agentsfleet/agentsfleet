@@ -22,6 +22,7 @@ const error_codes = @import("../errors/error_registry.zig");
 const gate_constants = @import("../fleet_runtime/approval_gate_constants.zig");
 const config_gates = @import("../fleet_runtime/config_gates.zig");
 const gate_detail = @import("approval_gate_detail.zig");
+const gate_route = @import("approval_gate_route.zig");
 const FleetSession = @import("fleet_session.zig");
 const logging = @import("log");
 
@@ -39,6 +40,37 @@ const GateCheckResult = union(enum) {
     auto_killed: AutoKillTrigger,
 };
 
+/// Outcome of the pre-policy recorded-gate lookup. `unreadable` stays distinct
+/// from `absent` because collapsing them is unsafe in both directions: an absent
+/// ref means this event was never parked, while an unreadable one means we
+/// cannot tell — and raising a SECOND approval card for an event that may
+/// already hold one is worse than waiting a poll.
+const RefLookup = union(enum) {
+    found: approval_gate_async.EventGateRef,
+    absent,
+    unreadable,
+
+    fn state(self: @This()) gate_route.RefState {
+        return switch (self) {
+            .found => .found,
+            .absent => .absent,
+            .unreadable => .unreadable,
+        };
+    }
+};
+
+fn lookupGateRef(
+    redis: *queue_redis.Client,
+    session: *FleetSession,
+    event: *const redis_fleet.FleetEvent,
+) RefLookup {
+    const maybe_ref = approval_gate_async.lookupEventGateRef(redis, session.fleet_id, event.event_id) catch |err| {
+        log.warn("gate_ref_lookup_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+        return .unreadable;
+    };
+    return if (maybe_ref) |ref| .{ .found = ref } else .absent;
+}
+
 /// Check the approval gate for an incoming event.
 /// Returns .passed if execution should proceed; .pending while a human
 /// decision is outstanding; .blocked or .auto_killed otherwise.
@@ -49,9 +81,34 @@ pub fn checkApprovalGate(
     pool: *pg.Pool,
     redis: *queue_redis.Client,
 ) GateCheckResult {
+    // A recorded gate ref means this event was ALREADY parked and a human was
+    // already asked. That question outlives the policy that raised it, so the ref
+    // is read BEFORE any policy is consulted.
+    //
+    // Reading policy first let a mid-flight `config_json` PATCH silently withdraw
+    // a question already put to a human: dropping `gates` returned .passed at the
+    // top, and emptying `gates.rules` fell through to `.auto_approve` — either
+    // way the parked event executed while its approval card still sat unanswered
+    // in Slack. Waking a fleet and reconfiguring one are ONE scope today
+    // (`fleet:write`), so that PATCH asks for no approval of its own; splitting
+    // `fleet:message` out of it is its own piece of work, but honouring a gate
+    // this daemon already raised does not have to wait for that.
+    //
+    // Cost: one Redis GET per event, ungated fleets included. It is bought on the
+    // path that issues a lease — a whole model run — so it does not register.
+    const lookup = lookupGateRef(redis, session, event);
+    switch (lookup) {
+        // Re-encounter: the recorded gate decides, whatever policy now says.
+        .found => |*ref| return evaluatePendingGate(alloc, session, pool, redis, ref),
+        .absent, .unreadable => {},
+    }
+
     const gates = session.config.gates orelse return .{ .passed = {} };
 
-    // 1. Anomaly check (fast path — before approval)
+    // 1. Anomaly check (fast path — before approval). Reached only on a FIRST
+    // encounter: the counter is an INCR, so re-polling a parked event through it
+    // would count one waiting human as N runaway attempts and eventually
+    // auto-kill the fleet for being patient.
     const anomaly = approval_gate.checkAnomaly(
         redis,
         session.fleet_id,
@@ -76,44 +133,26 @@ pub fn checkApprovalGate(
         context,
     );
 
-    switch (decision) {
-        .auto_approve => {
-            return .{ .passed = {} };
-        },
-        .auto_kill => {
+    return switch (gate_route.route(lookup.state(), decision)) {
+        // Returned above, before any policy was read.
+        .evaluate_recorded => unreachable,
+        .pass => .{ .passed = {} },
+        .kill => blk: {
             logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_AUTO_KILL, event.event_id);
             pauseFleet(pool, redis, session.fleet_id);
-            return .{ .auto_killed = .policy };
+            break :blk .{ .auto_killed = .policy };
         },
-        .requires_approval => {
+        // An unreadable ref must not become a SECOND card for this event: wait a
+        // poll rather than re-notify a human who may already hold one.
+        .wait => .{ .pending = {} },
+        .request_new => blk: {
             // The matched rule carries the workspace-authored approval copy that
             // the decision enum discards. Same traversal, so it cannot disagree
             // about which rule applied.
             const rule = approval_gate.matchRule(gates, event.event_type, event.actor, context);
-            return handleApprovalFlow(alloc, session, event, pool, redis, gates, rule, context);
+            break :blk requestNewGate(alloc, session, event, pool, redis, gates, rule, context);
         },
-    }
-}
-
-fn handleApprovalFlow(
-    alloc: Allocator,
-    session: *FleetSession,
-    event: *const redis_fleet.FleetEvent,
-    pool: *pg.Pool,
-    redis: *queue_redis.Client,
-    gates: fleet_config.GatePolicy,
-    rule: ?config_gates.GateRule,
-    context: ?std.json.Value,
-) GateCheckResult {
-    // Re-encounter: this event already has a recorded gate — evaluate it.
-    if (approval_gate_async.lookupEventGateRef(redis, session.fleet_id, event.event_id)) |maybe_ref| {
-        if (maybe_ref) |ref| return evaluatePendingGate(alloc, session, pool, redis, &ref);
-    } else |err| {
-        // Redis blip: stay pending rather than re-notify or fail the gate.
-        log.warn("gate_ref_lookup_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
-        return .{ .pending = {} };
-    }
-    return requestNewGate(alloc, session, event, pool, redis, gates, rule, context);
+    };
 }
 
 fn requestNewGate(
@@ -129,7 +168,10 @@ fn requestNewGate(
     // Two sources, deliberately separated: the workspace-authored half from the
     // matched rule (statable as fact) and the model-authored half from the event
     // (rendered as an attributed claim). See `approval_gate_detail`.
-    var built = gate_detail.build(alloc, event, rule, context, @intCast(gates.timeout_ms));
+    // The binding comes from the fleet's own config, never from the event — it is
+    // the same value the GitHub mint scopes the token by, so the card can state
+    // the run's reach as fact while the model's claim about it stays a claim.
+    var built = gate_detail.build(alloc, event, rule, context, @intCast(gates.timeout_ms), session.config.repository_binding);
     defer built.deinit(alloc);
     const detail = built.detail;
 
