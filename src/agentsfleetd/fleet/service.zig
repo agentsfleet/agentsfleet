@@ -286,6 +286,6 @@ test {
     _ = service_endpoint; // pull the split module's tests into discovery
 }
 
-test "FleetSession size pinned at 336 bytes (pin relocated beside its consumer)" {
-    try std.testing.expectEqual(@as(usize, 336), @sizeOf(FleetSession));
+test "FleetSession size pinned at 368 bytes (pin relocated beside its consumer)" {
+    try std.testing.expectEqual(@as(usize, 368), @sizeOf(FleetSession));
 }

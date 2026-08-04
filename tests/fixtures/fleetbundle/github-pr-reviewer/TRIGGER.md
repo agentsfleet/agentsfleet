@@ -10,6 +10,15 @@ x-agentsfleet:
     - http_request
   credentials:
     - github
+  # Repository EGRESS binding — which repositories this fleet's minted token may
+  # reach, and how far. Distinct from a webhook trigger's `repositories`, which
+  # is an INGRESS binding naming what may WAKE the fleet. Both keys are required
+  # together: a fleet declaring neither mints nothing, because an unbound mint
+  # would carry the App installation's full permissions across every repository
+  # it covers. Reviewing a Pull Request needs write (it posts review comments).
+  repositories:
+    - agentsfleet/agentsfleet
+  repository_access: write
   network:
     allow:
       - api.github.com

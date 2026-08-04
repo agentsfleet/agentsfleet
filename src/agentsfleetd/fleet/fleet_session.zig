@@ -34,7 +34,7 @@ execution_started_at: i64 = 0,
 
 comptime {
     const actual = @sizeOf(Self);
-    if (actual != 336) @compileError(std.fmt.comptimePrint("FleetSession size changed: {d}, expected 336", .{actual}));
+    if (actual != 368) @compileError(std.fmt.comptimePrint("FleetSession size changed: {d}, expected 368", .{actual}));
 }
 
 pub fn deinit(self: *Self, alloc: Allocator) void {
