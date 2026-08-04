@@ -144,12 +144,6 @@ pub const ERR_LIBRARY_REVISION_UNAVAILABLE = "UZ-LIBRARY-004";
 pub const ERR_LIBRARY_BODY_CEILING = "UZ-LIBRARY-005";
 pub const ERR_LIBRARY_DB_UNAVAILABLE = "UZ-LIBRARY-006";
 pub const ERR_LIBRARY_REFERENCE_RACE = "UZ-LIBRARY-008";
-// REPAIR (an approved repair proposal applied to a repository)
-pub const ERR_REPAIR_STALE_BASE = "UZ-REPAIR-001";
-pub const ERR_REPAIR_BOUNDS_EXCEEDED = "UZ-REPAIR-002";
-pub const ERR_REPAIR_DUPLICATE = "UZ-REPAIR-003";
-pub const ERR_REPAIR_UPSTREAM_FAILED = "UZ-REPAIR-004";
-pub const ERR_REPAIR_PROPOSAL_INVALID = "UZ-REPAIR-005";
 // PREFS (per-user dashboard UI prefs — /v1/workspaces/{workspace_id}/preferences)
 pub const ERR_PREF_KEY_UNKNOWN = "UZ-PREFS-001";
 pub const ERR_PREF_VALUE_TOO_LARGE = "UZ-PREFS-002";
