@@ -134,11 +134,12 @@ jobs:
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-
       - name: Gate merged Zig line coverage
         run: |
-          # Boot the datastores on the host now, without --wait: the make
-          # target's own `docker compose up --wait` runs inside the image below
-          # and blocks on the healthchecks, so this boot overlaps the compile
-          # instead of running serially ahead of it.
-          docker compose up -d postgres redis
+          # The HOST provisions infra with the same recipe the gate runs locally
+          # — no forked logic — exactly as memleak.yml does. This replaces a bare
+          # `docker compose up -d`: that left the container to boot the rest
+          # itself, which is the only reason it ever needed the host's Docker
+          # socket. It does not need it now.
+          make _ensure-test-infra
           # Run inside the project's CI image via `docker run` rather than a job
           # `container:`, for the reason test-integration.yml already records:
           # --network host keeps localhost:5432/6379 pointing at the compose-
@@ -148,11 +149,19 @@ jobs:
           # personality(ADDR_NO_RANDOMIZE) to pin addresses across runs, which
           # Docker's default seccomp profile omits from its personality
           # allow-list, and it drives the binary under ptrace.
+          #
+          # NO `-v /var/run/docker.sock`. This job runs branch-controlled make
+          # targets on a pull_request trigger, so mounting the host socket would
+          # let any contributor spawn privileged sibling containers, mount host
+          # paths, and take over the runner. TEST_INFRA=provided removes the
+          # reason it was ever mounted, and fails closed: it re-verifies the CA
+          # cert the host extracted and dies loudly if infra was claimed but not
+          # provided.
           docker run --rm --network host \
             --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
-            -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}":"${{ github.workspace }}" \
             -w "${{ github.workspace }}" \
+            -e TEST_INFRA=provided \
             -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable" \
             -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
             ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r2@sha256:40cbacd00584601a4794471e01cb11942ef5319c0531e4185c54d78733285803 \
