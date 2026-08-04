@@ -11,6 +11,7 @@ const builtin = @import("builtin");
 const logging = @import("log");
 
 const Config = @import("daemon/config.zig");
+const StorageHome = @import("daemon/StorageHome.zig");
 const loop = @import("daemon/loop.zig");
 const startup = @import("daemon/startup.zig");
 const runner_deadline = @import("daemon/runner_deadline.zig");
@@ -95,6 +96,14 @@ pub fn main(init: std.process.Init) void {
             std.process.exit(1);
         },
     };
+
+    // Claim the storage home and reap the workspaces an unclean shutdown
+    // orphaned — here, before the poll loop, "no lease is held" is a fact rather
+    // than a hope. The claim is held for the process lifetime: releasing it
+    // early would let a second daemon sweep this home while our leases are live.
+    // An unclaimable home is logged and the daemon runs on without reaping.
+    var storage = StorageHome.claimAndSweep(io, cfg.storage_home);
+    defer if (storage.home) |*claimed| claimed.close(io);
 
     // The ONE process scheduler every outbound control-plane call arms against.
     // Registered after `cfg`, so it is torn down FIRST (LIFO): `runLoop` has
