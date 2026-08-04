@@ -155,7 +155,16 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	   echo "→ [zig] kcov component=$$name binary=$$binary"; \
 	   rm -rf "$$output"; mkdir -p "$$output"; \
 	   rm -f ".tmp/kcov-$$name.rc"; \
-	   ( set +e; kcov --clean --include-pattern="$(CURDIR)/src" --exclude-pattern=_test.zig \
+	   ( set +e; \
+	     LIVE_DB=1 \
+	     TEST_DATABASE_URL="$$db_url" \
+	     TEST_REDIS_TLS_URL="$$redis_url" \
+	     REDIS_URL_API="$$redis_url" \
+	     REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
+	     AGENTSFLEET_RUNNER_BIN="$(CURDIR)/zig-out/bin/agentsfleet-runner" \
+	     AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
+	     AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
+	     kcov --clean --include-pattern="$(CURDIR)/src" --exclude-pattern=_test.zig \
 	       "$$output" "zig-out/bin/$$binary" \
 	       >".tmp/kcov-$$name.log" 2>&1; echo $$? >".tmp/kcov-$$name.rc" ) & \
 	   names="$$names $$name"; \
@@ -185,7 +194,13 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	   rc=$$(cat ".tmp/kcov-$$name.rc" 2>/dev/null || echo 1); \
 	   case "$$rc" in ''|*[!0-9]*) rc=1;; esac; \
 	   if [ "$$rc" -ne 0 ]; then \
-	     echo "✗ Zig coverage component $$name exited $$rc"; tail -n 40 ".tmp/kcov-$$name.log"; failed=1; continue; \
+	     echo "✗ Zig coverage component $$name exited $$rc"; \
+	     echo "--- failing tests (component=$$name) ---"; \
+	     grep -E '\.\.\.FAIL|^error: .*failed:' ".tmp/kcov-$$name.log" | head -n 60 || true; \
+	     echo "--- tally (component=$$name) ---"; \
+	     grep -E '^[0-9]+ passed;' ".tmp/kcov-$$name.log" | tail -n 1 || true; \
+	     echo "--- last 40 lines (component=$$name) ---"; \
+	     tail -n 40 ".tmp/kcov-$$name.log"; failed=1; continue; \
 	   fi; \
 	   report=$$(find "$(ZIG_COVERAGE_DIR)/$$name" -name cobertura.xml -type f -size +0c -print -quit); \
 	   test -n "$$report" || { echo "✗ Zig coverage component $$name produced no Cobertura report"; failed=1; }; \
@@ -200,7 +215,9 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	 fi; \
 	 if [ -n "$$suite_failed" ] && [ "$$suite_failed" -ne 0 ]; then \
 	   echo "✗ the integration suite reported $$suite_failed failing test(s) — coverage over a failing suite is not a measurement"; \
-	   grep -B2 -E '\.\.\.FAIL|error:' ".tmp/kcov-integration.log" | tail -n 30; exit 1; \
+	   echo "--- failing tests (component=integration) ---"; \
+	   grep -E '\.\.\.FAIL|^error: .*failed:' ".tmp/kcov-integration.log" | head -n 60 || true; \
+	   exit 1; \
 	 fi; \
 	 echo "✓ [zig] integration suite executed ($$summary)"; \
 	 merged="$(ZIG_COVERAGE_DIR)/merged"; \

@@ -11,6 +11,13 @@ const POOL_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-105000000301";
 const POOL_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-105000000302";
 const RECOVER_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-105000000311";
 const RECOVER_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-105000000312";
+// A lease token is a UUID, not a label: `core.fleet_schedules.sync_token` is
+// UUID (schema/520) and `CLAIM_CURRENT` binds it `$4::uuid`, so a descriptive
+// string is refused by the driver before Postgres ever sees it. The lost-lease
+// token is well-formed on purpose — the test proves it matches no row, which is
+// a different thing from failing to encode.
+const LOST_LEASE_TOKEN = "0195b4ba-8d3a-7f13-8abc-105000000313";
+const LIVE_LEASE_TOKEN = "0195b4ba-8d3a-7f13-8abc-105000000314";
 const OOM_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-105000000321";
 const OOM_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-105000000322";
 const CONCURRENCY_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-105000000331";
@@ -378,7 +385,7 @@ test "service: finalize fallback writes state under a live lease, touches nothin
     // (a) Lease lost mid-recovery: a bogus token matches no row. The helper
     // returns void BY TYPE (it cannot mask the caller's original error) and
     // must leave the synced row untouched.
-    service.fallbackFinalizeState(schedule_id, generation, "bogus-lease-token", "unwritten detail", error.ProviderExploded);
+    service.fallbackFinalizeState(schedule_id, generation, LOST_LEASE_TOKEN, "unwritten detail", error.ProviderExploded);
     var after_lost = (try fixture.store.get(alloc, RECOVER_FLEET_ID, schedule_id)).?;
     defer after_lost.deinit(alloc);
     try std.testing.expectEqual(model.SyncStatus.synced, after_lost.sync_status);
@@ -386,12 +393,12 @@ test "service: finalize fallback writes state under a live lease, touches nothin
     // (b) Live lease: claim the row, run the failure fallback with the REAL
     // token — the state write lands: status failed, detail preserved.
     const now_ms = common.clock.nowMillis();
-    var claim = try fixture.store.claimCurrent(alloc, RECOVER_FLEET_ID, schedule_id, "fallback-lease", now_ms + 15_000, now_ms);
+    var claim = try fixture.store.claimCurrent(alloc, RECOVER_FLEET_ID, schedule_id, LIVE_LEASE_TOKEN, now_ms + 15_000, now_ms);
     switch (claim) {
         .claimed => |*s| {
             const claimed_generation = s.generation;
             s.deinit(alloc);
-            service.fallbackFinalizeState(schedule_id, claimed_generation, "fallback-lease", "provider exploded during finalize", error.StoreExploded);
+            service.fallbackFinalizeState(schedule_id, claimed_generation, LIVE_LEASE_TOKEN, "provider exploded during finalize", error.StoreExploded);
         },
         else => return error.UnexpectedOutcome,
     }

@@ -413,6 +413,20 @@ test "migration lock: a held lock blocks runMigrations before any bookkeeping DD
 // deletes bookkeeping rows outside the given list, so a synthetic list must
 // never run against the real bookkeeping tables.
 const SYNTHETIC_MIGRATION_VERSION: i32 = 1;
+// These three tests stash the real `audit` schema away and let the runner build
+// a fresh one, so the only row that can appear is the SYNTHETIC migration's.
+// Counting `APPLIED_PROBE_VERSION` here read the first CANONICAL slot instead —
+// which the M154 renumbering moved from 1 to 100, the very drift the comment on
+// that constant warns about. The two agreed only while both happened to be 1.
+const COUNT_SYNTHETIC_VERSION_SQL = std.fmt.comptimePrint(
+    "SELECT count(*)::bigint FROM audit.schema_migrations WHERE version = {d}",
+    .{SYNTHETIC_MIGRATION_VERSION},
+);
+const COUNT_SYNTHETIC_FAILURE_SQL = std.fmt.comptimePrint(
+    "SELECT count(*)::bigint FROM audit.schema_migration_failures " ++
+        "WHERE version = {d} AND error_text = 'UnterminatedDollarQuote'",
+    .{SYNTHETIC_MIGRATION_VERSION},
+);
 const SYNTHETIC_OK_MIGRATION = [_]Migration{.{ .version = SYNTHETIC_MIGRATION_VERSION, .sql = "SELECT 1;" }};
 // No closing $body$ — structurally unterminated on purpose.
 const SYNTHETIC_UNTERMINATED_MIGRATION = [_]Migration{.{
@@ -440,14 +454,14 @@ test "fresh bookkeeping: a migration applies once and a re-run is a no-op" {
         FAST_LOCK_MAX_ATTEMPTS,
         FAST_LOCK_RETRY_MS,
     );
-    const rows_after_first = scalarI64(probe.conn, COUNT_APPLIED_PROBE_VERSION_SQL) catch -1;
+    const rows_after_first = scalarI64(probe.conn, COUNT_SYNTHETIC_VERSION_SQL) catch -1;
     const second = pool_migrations.runMigrationsBounded(
         runner.pool,
         &SYNTHETIC_OK_MIGRATION,
         FAST_LOCK_MAX_ATTEMPTS,
         FAST_LOCK_RETRY_MS,
     );
-    const rows_after_second = scalarI64(probe.conn, COUNT_APPLIED_PROBE_VERSION_SQL) catch -1;
+    const rows_after_second = scalarI64(probe.conn, COUNT_SYNTHETIC_VERSION_SQL) catch -1;
     healAuditStash(probe.conn);
 
     try first;
@@ -479,9 +493,9 @@ test "fresh bookkeeping: an unterminated migration fails loudly and records the 
     // The failure row must carry the named SplitError, and no version row may exist.
     const failure_rows = scalarI64(
         probe.conn,
-        "SELECT count(*)::bigint FROM audit.schema_migration_failures WHERE version = 1 AND error_text = 'UnterminatedDollarQuote'",
+        COUNT_SYNTHETIC_FAILURE_SQL,
     ) catch -1;
-    const version_rows = scalarI64(probe.conn, COUNT_APPLIED_PROBE_VERSION_SQL) catch -1;
+    const version_rows = scalarI64(probe.conn, COUNT_SYNTHETIC_VERSION_SQL) catch -1;
     healAuditStash(probe.conn);
 
     try std.testing.expectError(error.UnterminatedDollarQuote, run);

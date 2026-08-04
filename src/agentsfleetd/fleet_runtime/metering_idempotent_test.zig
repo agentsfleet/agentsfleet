@@ -27,9 +27,15 @@ const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-fa0900000000";
 const WS_PROVISION_REPLAY = "0195b4ba-8d3a-7f13-8abc-aa0900000001";
 const WS_ZERO_DEBIT = "0195b4ba-8d3a-7f13-8abc-aa0900000002";
 
+// §3 put the ledger's `fleet_id` behind `UUID REFERENCES core.fleets(id)`, so
+// the debit path needs a fleet that exists — a descriptive string is refused by
+// the driver, and a well-formed UUID naming no row is refused by the key.
+const FLEET_IDEMPOTENT = "0195b4ba-8d3a-7f13-8abc-aa0900000f01";
+
 fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {
     try base.seedTenantById(conn, TENANT_ID, "metering-idempotent-suite");
     try base.seedWorkspaceWithTenant(conn, workspace_id, TENANT_ID);
+    try base.seedFleet(conn, FLEET_IDEMPOTENT, workspace_id, "metering idempotent fixture", "{}", "");
 }
 
 fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
@@ -40,7 +46,7 @@ fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
 fn selfManagedCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightContext {
     return .{
         .workspace_id = workspace_id,
-        .fleet_id = "fleet-idem-test",
+        .fleet_id = FLEET_IDEMPOTENT,
         .event_id = event_id,
         .posture = .self_managed,
         .provider = "self-managed-test",

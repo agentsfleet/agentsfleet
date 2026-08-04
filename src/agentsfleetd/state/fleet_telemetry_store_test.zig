@@ -10,7 +10,12 @@ const MS_PER_SECOND = 1000;
 
 const ALLOC = std.testing.allocator;
 const WS_A = "0195b4ba-8d3a-7f13-8abc-aa1900000001";
-const AGENTSFLEET_A = "fleet-telem-a";
+// A real `core.fleets` id, not a label. §3 moved the ledger's `fleet_id` from
+// bare TEXT to `UUID REFERENCES core.fleets(id)`, so the old `"fleet-telem-a"`
+// is refused by the driver before it reaches Postgres, and a UUID that names no
+// row is refused by the foreign key. The third group must start with `7` to
+// satisfy `ck_fleets_id_uuidv7`.
+const AGENTSFLEET_A = "0195b4ba-8d3a-7f13-8abc-aa1900000101";
 // Arbitrary model id for the telemetry fixtures — the value is opaque to these
 // tests (they only store + read it back), so it's a plain test string.
 const FIXTURE_MODEL = "telemetry-test-model";
@@ -57,6 +62,9 @@ test "insert_telemetry_idempotent_on_event_charge" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try uc1.seed(db_ctx.conn, WS_A);
+    // uc1 seeds the tenant and workspace only; the ledger's fleet foreign key
+    // needs the fleet row to exist before any telemetry references it.
+    try base.seedFleet(db_ctx.conn, AGENTSFLEET_A, WS_A, "telemetry fixture", "{}", "");
     defer uc1.teardown(db_ctx.conn, WS_A);
     defer teardownTelemetry(db_ctx.conn, WS_A);
 
@@ -81,6 +89,9 @@ test "insert_telemetry_two_rows_per_event" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try uc1.seed(db_ctx.conn, WS_A);
+    // uc1 seeds the tenant and workspace only; the ledger's fleet foreign key
+    // needs the fleet row to exist before any telemetry references it.
+    try base.seedFleet(db_ctx.conn, AGENTSFLEET_A, WS_A, "telemetry fixture", "{}", "");
     defer uc1.teardown(db_ctx.conn, WS_A);
     defer teardownTelemetry(db_ctx.conn, WS_A);
 
@@ -105,6 +116,9 @@ test "insert_receive_has_null_tokens_and_wall_ms" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try uc1.seed(db_ctx.conn, WS_A);
+    // uc1 seeds the tenant and workspace only; the ledger's fleet foreign key
+    // needs the fleet row to exist before any telemetry references it.
+    try base.seedFleet(db_ctx.conn, AGENTSFLEET_A, WS_A, "telemetry fixture", "{}", "");
     defer uc1.teardown(db_ctx.conn, WS_A);
     defer teardownTelemetry(db_ctx.conn, WS_A);
 
