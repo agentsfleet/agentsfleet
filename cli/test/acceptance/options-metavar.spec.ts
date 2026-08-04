@@ -39,7 +39,6 @@ setDefaultTimeout(15_000);
 // the validator embeds in its error message keeps the test fixture in
 // lock-step with the user-visible stem.
 const FIXTURE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
-const FIXTURE_UUIDV7_B = "0192a3b4-c5d6-7e8f-9012-345678901235";
 
 interface CapturedRequest {
   readonly method: string | undefined;
@@ -127,7 +126,6 @@ describe("--help bodies use angle-bracket metavar convention", () => {
     ["agentsfleet install --help",              ["install", "--help"],              ["--library <id>", "--name <name>"]],
     ["agentsfleet login --help",                ["login", "--help"],                ["--token <token>", "--token-name <label>"]],
     ["agentsfleet billing show --help",         ["billing", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
-    ["agentsfleet fleet-key create --help",        ["fleet-key", "create", "--help"],     ["--workspace <id>", "--fleet <id>", "--name <name>"]],
     ["agentsfleet tenant provider create --help",  ["tenant", "provider", "create", "--help"], ["--secret <name>", "--model <name>"]],
   ];
 
@@ -162,8 +160,6 @@ describe("validators reject invalid values with clear error stem", () => {
     ["logs --limit 9999",     ["logs", "--limit", "9999"],       /must be ≤ 500/],
     ["events <id> --limit 9999", ["events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
     // parseIdOption rejections (uuidv7 enforced)
-    ["fleet-key create --workspace not-a-uuid", ["fleet-key", "create", "--workspace", "not-a-uuid", "--fleet", FIXTURE_UUIDV7], /uuidv7 format/],
-    ["fleet-key create --fleet not-a-uuid",    ["fleet-key", "create", "--workspace", FIXTURE_UUIDV7, "--fleet", "not-a-uuid"], /uuidv7 format/],
     ["list --workspace-id not-a-uuid",   ["list", "--workspace-id", "not-a-uuid"], /uuidv7 format/],
   ];
 
@@ -237,22 +233,6 @@ describe("option values flow end-to-end into the wire request", () => {
     // and forwards the operator's cursor verbatim. We assert both.
     assert.match(charges.url, /[?&]limit=10(&|$)/);
     assert.match(charges.url, /[?&]cursor=xyz(&|$)/);
-  });
-
-  it("fleet-key create --workspace <uuid7> --fleet <uuid7> --name fred → POST body has name=fred", async () => {
-    clear();
-    const result = await runFleetctl(
-      ["fleet-key", "create", "--workspace", workspaceUuid, "--fleet", FIXTURE_UUIDV7_B, "--name", "fred", "--json"],
-      { env: apiEnv() },
-    );
-    assert.equal(result.code, 0, `stderr=${result.stderr}`);
-    const captured = requireStub().captured;
-    const post = captured.find((c) => c.method === "POST" && c.url.includes("/fleet-keys"));
-    assert.ok(post, `no fleet-keys POST captured: ${JSON.stringify(captured)}`);
-    assert.ok(post.url.includes(`/workspaces/${workspaceUuid}/fleet-keys`), `wrong workspace in URL: ${post.url}`);
-    const body = JSON.parse(post.body) as { name?: string; fleet_id?: string };
-    assert.equal(body.name, "fred", `expected name=fred in POST body; body=${post.body}`);
-    assert.equal(body.fleet_id, FIXTURE_UUIDV7_B, `expected fleet_id in POST body; body=${post.body}`);
   });
 
   it("tenant provider create --secret keyname --model gpt-x → PUT body has secret_ref + model", async () => {

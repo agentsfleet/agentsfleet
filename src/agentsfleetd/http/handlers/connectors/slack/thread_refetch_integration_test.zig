@@ -148,15 +148,15 @@ fn seedBotToken(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
 }
 
 fn seedInstall(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
-    const uid = try id_format.generateConnectorInstallId(alloc);
-    defer alloc.free(uid);
+    const row_id = try id_format.generateConnectorInstallId(alloc);
+    defer alloc.free(row_id);
     const scopes: []const []const u8 = &.{ "app_mentions:read", "chat:write", "channels:history" };
     _ = try conn.exec(
         \\INSERT INTO core.connector_installs
-        \\  (uid, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
+        \\  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::text[], $7, $7)
         \\ON CONFLICT (provider, external_account_id) DO UPDATE SET workspace_id = EXCLUDED.workspace_id
-    , .{ uid, spec.PROVIDER, TEAM_ID, TARGET_WS, "UADMIN", scopes, common.clock.nowMillis() });
+    , .{ row_id, spec.PROVIDER, TEAM_ID, TARGET_WS, "UADMIN", scopes, common.clock.nowMillis() });
 }
 
 fn preClean(conn: *pg.Conn) void {

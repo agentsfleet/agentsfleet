@@ -64,7 +64,7 @@ function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
     blast_radius: over.blast_radius ?? "single repo branch",
     status: "pending",
     detail: "",
-    requested_at: over.requested_at ?? Date.now() - 60_000,
+    created_at: over.created_at ?? Date.now() - 60_000,
     timeout_at: over.timeout_at ?? Date.now() + 3_600_000,
     updated_at: null,
     resolved_by: "",
@@ -580,7 +580,7 @@ describe("ApprovalsList — 5s polling effect", () => {
   it("refreshes the ApprovalCard relative-age label on its 30s timer", async () => {
     const base = Date.UTC(2026, 4, 15, 18, 0, 0);
     vi.setSystemTime(base);
-    const persisted = gate({ requested_at: base - 50_000, timeout_at: base + 600_000 });
+    const persisted = gate({ created_at: base - 50_000, timeout_at: base + 600_000 });
     // Polls re-fetch the same row so the card (and its `now` state) persists
     // across the 30s window; the 30s interval re-reads Date.now() into `now`.
     listApprovalsActionMock.mockResolvedValue({

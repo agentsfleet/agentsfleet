@@ -2,8 +2,6 @@
 // Split from memory_http.zig for RULE FLL (350-line gate).
 
 const std = @import("std");
-const constants = @import("common");
-const clock = constants.clock;
 const logging = @import("log");
 const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -126,20 +124,6 @@ pub fn escapeLikePattern(alloc: std.mem.Allocator, input: []const u8) error{OutO
         i += 1;
     }
     return out;
-}
-
-/// Sentinel ID returned when the CSPRNG or the format alloc fails — genId never
-/// returns an error, so callers always get a usable (if non-unique) id.
-const S_FALLBACK_ID = "fallback-id";
-
-/// Generate a NullClaw-compatible memory entry ID.
-pub fn genId(alloc: std.mem.Allocator) []const u8 {
-    const ts = clock.nowNanos();
-    var buf: [16]u8 = undefined;
-    constants.secureRandomBytes(&buf) catch return S_FALLBACK_ID;
-    const hi = std.mem.readInt(u64, buf[0..8], .little);
-    const lo = std.mem.readInt(u64, buf[8..16], .little);
-    return std.fmt.allocPrint(alloc, "{d}-{x}-{x}", .{ ts, hi, lo }) catch S_FALLBACK_ID;
 }
 
 /// Drain a PgQuery result into an ArrayList(MemoryEntry), arena-allocated.

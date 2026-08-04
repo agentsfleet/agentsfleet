@@ -132,15 +132,24 @@ pub fn balanceCoversEstimate(
 /// Charge `computeReceiveCharge(ctx.posture)` and INSERT a `receive`
 /// telemetry row. Both ops in a single transaction; rollback on either
 /// failure leaves the balance untouched and the row absent.
+/// `event_created_at` is the event envelope's creation instant, passed in rather
+/// than read from a local clock. Every ledger row for one event must hold the
+/// SAME value (schema/710), and the receive row is written on a different path,
+/// at a different moment, from the stage row the lease later accumulates — so a
+/// `clock.nowMillis()` here would disagree with the lease's copy whenever the
+/// two reads straddle a millisecond. It is a parameter and not a
+/// `PreflightContext` field because the other three consumers of that struct are
+/// span emitters that neither need the value nor have access to it.
 pub fn debitReceive(
     pool: *pg.Pool,
     alloc: Allocator,
     tenant_id: []const u8,
     ctx: PreflightContext,
+    event_created_at: i64,
     policy: balance_policy.Policy,
 ) DebitOutcome {
     const nanos = tenant_billing.computeReceiveCharge(ctx.posture);
-    return debitAndInsert(pool, alloc, tenant_id, ctx, .receive, nanos, policy);
+    return debitAndInsert(pool, alloc, tenant_id, ctx, event_created_at, .receive, nanos, policy);
 }
 
 const NANOS_PER_MILLI: u64 = 1_000_000;
@@ -219,6 +228,7 @@ fn debitAndInsert(
     alloc: Allocator,
     tenant_id: []const u8,
     ctx: PreflightContext,
+    event_created_at: i64,
     charge_type: fleet_telemetry_store.ChargeType,
     nanos: i64,
     policy: balance_policy.Policy,
@@ -280,9 +290,11 @@ fn debitAndInsert(
         .model = ctx.model,
         .credit_deducted_nanos = nanos,
         .token_count_input = null,
+        .token_count_cached_input = null,
         .token_count_output = null,
         .wall_ms = null,
-        .recorded_at = clock.nowMillis(),
+        .event_created_at = event_created_at,
+        .created_at = clock.nowMillis(),
     }) catch |err| {
         conn.rollback() catch |rb_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(rb_err) });
         tx_open = false;

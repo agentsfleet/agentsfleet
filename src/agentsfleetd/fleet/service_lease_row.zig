@@ -42,10 +42,12 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
     // the renew credit gate + the report settle can key the rate row by
     // (provider, model) without re-resolving. Fresh leases always carry it.
     const provider_name: []const u8 = if (billed.provider) |p| p.provider else "";
-    // metered_* = 0 + last_metered_at_ms = now ($17) seed the incremental-
+    // metered_* = 0 + last_metered_at = now ($16) seed the incremental-
     // metering cursor at issue (Invariant 9 — never read NULL). A reclaimed
     // re-lease carries the dead holder's cursor forward instead (wired with the
     // /renew Δ-charge), so the new holder meters from where it stopped.
+    //
+    // No body bind: the event row already holds it, and reclaim joins for it.
     _ = conn.exec(sql.INSERT_LEASE_WITH_EVENT, .{
         lease_id,
         runner_id,
@@ -55,7 +57,6 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
         acq.event_id,
         acq.actor,
         acq.event_type,
-        acq.request_json,
         acq.event_created_at,
         billed.posture,
         provider_name,

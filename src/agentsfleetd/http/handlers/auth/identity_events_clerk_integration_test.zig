@@ -58,7 +58,7 @@ fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
     _ = conn.exec(
         \\DELETE FROM core.fleets
         \\WHERE workspace_id IN (
-        \\  SELECT workspace_id FROM core.workspaces
+        \\  SELECT id FROM core.workspaces
         \\  WHERE tenant_id IN (SELECT tenant_id FROM core.users WHERE oidc_subject = $1))
     , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
@@ -67,13 +67,13 @@ fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
     , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         \\DELETE FROM core.memberships
-        \\WHERE user_id IN (SELECT user_id FROM core.users WHERE oidc_subject = $1)
+        \\WHERE user_id IN (SELECT id FROM core.users WHERE oidc_subject = $1)
     , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         \\WITH doomed_users AS (
         \\    DELETE FROM core.users WHERE oidc_subject = $1 RETURNING tenant_id
         \\)
-        \\DELETE FROM core.tenants WHERE tenant_id IN (SELECT tenant_id FROM doomed_users)
+        \\DELETE FROM core.tenants WHERE id IN (SELECT tenant_id FROM doomed_users)
     , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
@@ -117,7 +117,7 @@ fn userDeletedBody(alloc: std.mem.Allocator, clerk_user_id: []const u8) ![]u8 {
 /// First workspace of the subject's tenant. Caller owns the returned slice.
 fn fetchWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject: []const u8) ![]u8 {
     var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text FROM core.workspaces
+        \\SELECT id::text FROM core.workspaces
         \\WHERE tenant_id = (SELECT tenant_id FROM core.users WHERE oidc_subject = $1)
         \\LIMIT 1
     , .{oidc_subject}));
@@ -129,8 +129,8 @@ fn fetchWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject: []co
 fn insertFleet(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'purge-victim', '# z', '{}'::jsonb, 'active', 0, 0)
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'purge-victim', '# z', '{}'::jsonb, 'active', 0, 0)
     , .{ fleet_id, workspace_id });
 }
 

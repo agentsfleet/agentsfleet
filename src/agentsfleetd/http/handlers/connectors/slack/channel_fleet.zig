@@ -162,9 +162,9 @@ fn selectFleetByName(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []c
 }
 
 fn insertBinding(alloc: std.mem.Allocator, conn: *pg.Conn, team_id: []const u8, channel_id: []const u8, fleet_id: []const u8) !void {
-    const uid = try id_format.generateConnectorChannelId(alloc);
-    defer alloc.free(uid);
-    _ = try conn.exec(sql.INSERT_CHANNEL_BINDING, .{ uid, spec.PROVIDER, team_id, channel_id, fleet_id, KIND_RESIDENT, clock.nowMillis() });
+    const id = try id_format.generateConnectorChannelId(alloc);
+    defer alloc.free(id);
+    _ = try conn.exec(sql.INSERT_CHANNEL_BINDING, .{ id, spec.PROVIDER, team_id, channel_id, fleet_id, KIND_RESIDENT, clock.nowMillis() });
 }
 
 /// The reactive config (Invariant 2), built in code — one parameterless `api`

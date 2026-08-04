@@ -38,11 +38,8 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0011";
 const GPU_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0a01";
 const PLAIN_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0b01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0c01";
-const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0d01";
-const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0e01";
 // Second fleet + an arm runner for the complex two-fleet routing test.
 const AGENT2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0f01";
-const SESSION2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1001";
 const ARM_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1101";
 
 // Suite-unique token bodies (this file's `2b3e1e0e` node suffix + filler).
@@ -107,7 +104,7 @@ fn seedRunnerWithLabels(conn: *pg.Conn, runner_id: []const u8, host_id: []const 
 /// the test value.
 fn seedFleetWithTags(conn: *pg.Conn, tags_literal: []const u8) !void {
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "placement-bot", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, "{}");
+    try base.seedFleetSession(conn, FLEET_ID, "{}");
     _ = try conn.exec(
         "UPDATE core.fleets SET required_tags = $1::text[] WHERE id = $2::uuid",
         .{ tags_literal, FLEET_ID },
@@ -120,19 +117,19 @@ fn seedFleetWithTags(conn: *pg.Conn, tags_literal: []const u8) !void {
 fn seedExpiredAffinity(conn: *pg.Conn, last_runner_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 0, 0, 0, 0, 0, 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, 1, 0, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id, fencing_seq = EXCLUDED.fencing_seq,
         \\      leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, FLEET_ID, last_runner_id });
+    , .{ FLEET_ID, last_runner_id });
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\INSERT INTO billing.tenant_wallet (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, 'placement-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
@@ -157,7 +154,7 @@ fn publishEventFor(h: *TestHarness, fleet_id: []const u8) !void {
 /// the two-fleet routing test. `tags_literal` is a TEXT[] literal.
 fn seedSecondFleet(h: *TestHarness, conn: *pg.Conn, name: []const u8, tags_literal: []const u8) !void {
     try base.seedFleet(conn, AGENT2_ID, WORKSPACE_ID, name, CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedFleetSession(conn, SESSION2_ID, AGENT2_ID, "{}");
+    try base.seedFleetSession(conn, AGENT2_ID, "{}");
     _ = try conn.exec(
         "UPDATE core.fleets SET required_tags = $1::text[] WHERE id = $2::uuid",
         .{ tags_literal, AGENT2_ID },

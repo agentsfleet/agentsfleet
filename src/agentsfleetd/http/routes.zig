@@ -37,9 +37,6 @@ pub const Route = union(enum) {
     get_tenant_billing,
     // Tenant-scoped credit-pool charges (Usage tab) — GET /v1/tenants/me/billing/charges
     get_tenant_billing_charges,
-    // Per-renewal slice breakdown behind one charge — carries {event_id}.
-    // GET /v1/tenants/me/billing/charges/{event_id}/telemetry
-    get_tenant_metering_periods: []const u8,
     // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
     list_tenant_workspaces,
     // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
@@ -69,8 +66,6 @@ pub const Route = union(enum) {
     auth_identity_event_clerk,
     // Fleet approval gate callback
     approval_webhook: []const u8,
-    // Grant approval webhook — /v1/webhooks/{fleet_id}/grant-approval
-    grant_approval_webhook: []const u8,
     /// POST /v1/webhooks/{fleet_id}/github — signed GitHub ingest. HMAC via
     /// the workspace's GitHub credential. The handler accepts reviewable pull
     /// requests and failed completed workflow runs.
@@ -82,7 +77,7 @@ pub const Route = union(enum) {
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
     // Admin model-library catalogue CRUD (platform-admin)
     admin_models, // GET + POST /v1/admin/models (method-dispatched)
-    admin_model_by_id: []const u8, // PATCH + DELETE /v1/admin/models/{uid}
+    admin_model_by_id: []const u8, // PATCH + DELETE /v1/admin/models/{id}
     // Fleet create/read/update/delete (CRUD), workspace-scoped.
     workspace_fleets: []const u8, // GET|POST /v1/workspaces/{ws}/fleets
     patch_workspace_fleet: matchers.WorkspaceFleetRoute, // PATCH /v1/workspaces/{ws}/fleets/{id}
@@ -96,6 +91,7 @@ pub const Route = union(enum) {
     // Per-Fleet event history + Server-Sent Events (SSE) live tail
     workspace_fleet_events: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events
     workspace_fleet_events_stream: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events/stream
+    workspace_fleet_event: matchers.WorkspaceFleetEventRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events/{event_id}
     // Workspace-aggregate event history
     workspace_events: []const u8, // GET /v1/workspaces/{ws}/events
     /// GET /v1/workspaces/{ws}/events/stream — ONE multiplexed SSE connection
@@ -118,7 +114,6 @@ pub const Route = union(enum) {
     workspace_fleet_memories: matchers.WorkspaceFleetRoute, // GET (list-or-search); POST retired
     workspace_fleet_memory_item: matchers.WorkspaceFleetMemoryRoute, // DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}
     // Integration grant CRUD (workspace-scoped)
-    request_integration_grant: matchers.WorkspaceFleetRoute, // POST /v1/workspaces/{ws}/fleets/{id}/integration-requests
     list_integration_grants: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/integration-grants
     revoke_integration_grant: matchers.WorkspaceFleetGrantRoute, // DELETE /v1/workspaces/{ws}/fleets/{id}/integration-grants/{grant_id}
     // Connector platform — one generic trio resolved against the comptime
@@ -133,9 +128,6 @@ pub const Route = union(enum) {
     // the Slack v0 request signature is the only auth (in-handler). Bespoke:
     // inbound event surfaces are per-provider by nature.
     slack_events,
-    // Workspace fleet-key management
-    fleet_keys: []const u8, // POST|GET /v1/workspaces/{ws}/fleet-keys
-    delete_fleet_key: matchers.WorkspaceFleetKeyRoute, // DELETE /v1/workspaces/{ws}/fleet-keys/{fleet_key_id}
     // Tenant API key CRUD.
     tenant_api_keys, // POST|GET /v1/api-keys
     tenant_api_key_by_id: []const u8, // PATCH|DELETE /v1/api-keys/{id}

@@ -65,16 +65,6 @@ test "matchWorkspaceSecret: workspace_id and secret_name" {
     try std.testing.expect(matchers.matchWorkspaceSecret(parse("/v1/workspaces/ws1/secrets", &buf)) == null);
 }
 
-test "matchWorkspaceFleetKeyDelete: workspace_id and fleet_key_id" {
-    var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    const r = matchers.matchWorkspaceFleetKeyDelete(parse("/v1/workspaces/ws1/fleet-keys/ag1", &buf)).?;
-    try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("ag1", r.fleet_key_id);
-    try std.testing.expect(matchers.matchWorkspaceFleetKeyDelete(parse("/v1/workspaces/ws1/fleet-keys/", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceFleetKeyDelete(parse("/v1/workspaces//fleet-keys/ag1", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceFleetKeyDelete(parse("/v1/workspaces/a/b/fleet-keys/ag1", &buf)) == null);
-}
-
 test "matchWorkspaceFleetGrant: ws_id, fleet_id, grant_id" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     const r = matchers.matchWorkspaceFleetGrant(parse("/v1/workspaces/ws1/fleets/z1/integration-grants/g1", &buf)).?;
@@ -179,17 +169,20 @@ test "matchWebhook: rejects reserved second segment (svix) and reserved actions"
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     // /v1/webhooks/svix/{id} routes to receive_svix_webhook.
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/svix/zid", &buf)) == null);
-    // /v1/webhooks/{id}/approval and /grant-approval route to dedicated handlers.
+    // A 3-segment path is an action route, never the bare webhook receiver.
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/zid/approval", &buf)) == null);
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/zid/grant-approval", &buf)) == null);
 }
 
-test "matchWebhookAction: /approval, /grant-approval, /github; rejects /svix/* prefix" {
+test "matchWebhookAction: /approval, /github, and a hyphenated action; rejects /svix/* prefix" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     try std.testing.expectEqualStrings(
         "zid",
         matchers.matchWebhookAction(parse("/v1/webhooks/zid/approval", &buf), "approval").?,
     );
+    // A hyphenated multi-word action still resolves. The matcher is generic:
+    // it is the router that decides which actions exist, and "grant-approval"
+    // is no longer one of them — see router_test.zig.
     try std.testing.expectEqualStrings(
         "zid",
         matchers.matchWebhookAction(parse("/v1/webhooks/zid/grant-approval", &buf), "grant-approval").?,

@@ -98,6 +98,51 @@ describe("listRunnerLeases", () => {
       "tok",
     );
   });
+
+  it("narrows the page to one fleet by name, riding beside the keyset params", async () => {
+    // A NAME, not an id — the server matches `fleet` against either, and the
+    // table shows operators names, so this is the shape a filter typed from the
+    // UI actually sends. Asserting the encoded value also pins that the name is
+    // passed through rather than resolved to an id client-side.
+    await listRunnerLeases("tok", "runner-1", {
+      starting_after: "lease-9",
+      limit: 25,
+      fleet: "billing-reconciler",
+    });
+    expect(requestMock).toHaveBeenCalledWith(
+      "/v1/fleets/runners/runner-1/leases?starting_after=lease-9&limit=25&fleet=billing-reconciler",
+      { method: "GET" },
+      "tok",
+    );
+  });
+
+  it("intersects the fleet filter with the workspace filter rather than replacing it", async () => {
+    // Both filters on one read. The pair is the client half of the server's
+    // intersect rule: pairing a fleet with a workspace it does not belong to
+    // must match nothing, which is only reachable if BOTH params are sent.
+    await listRunnerLeases("tok", "runner-1", {
+      limit: 25,
+      workspace_id: WORKSPACE_ID,
+      fleet: "billing-reconciler",
+    });
+    expect(requestMock).toHaveBeenCalledWith(
+      `/v1/fleets/runners/runner-1/leases?limit=25&workspace_id=${WORKSPACE_ID}&fleet=billing-reconciler`,
+      { method: "GET" },
+      "tok",
+    );
+  });
+
+  it("sends no fleet filter for an empty value — an unfiltered read, never `fleet=`", async () => {
+    // The empty string is what an operator clearing the toolbar produces. It
+    // must drop the parameter entirely: `fleet=` reaches the server as an empty
+    // filter, which it refuses with 400 rather than treating as "no filter".
+    await listRunnerLeases("tok", "runner-1", { limit: 25, fleet: "" });
+    expect(requestMock).toHaveBeenCalledWith(
+      "/v1/fleets/runners/runner-1/leases?limit=25",
+      { method: "GET" },
+      "tok",
+    );
+  });
 });
 
 describe("createRunner", () => {

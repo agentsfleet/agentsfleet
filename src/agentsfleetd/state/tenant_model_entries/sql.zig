@@ -101,10 +101,10 @@ pub const EXISTS_SECRET_IN_PRIMARY_WORKSPACE =
     \\SELECT 1
     \\  FROM vault.secrets s
     \\ WHERE s.workspace_id = (
-    \\        SELECT workspace_id
+    \\        SELECT id
     \\          FROM core.workspaces
     \\         WHERE tenant_id = $1::uuid
-    \\         ORDER BY created_at ASC, workspace_id ASC
+    \\         ORDER BY created_at ASC, id ASC
     \\         LIMIT 1
     \\       )
     \\   AND s.key_name = $2

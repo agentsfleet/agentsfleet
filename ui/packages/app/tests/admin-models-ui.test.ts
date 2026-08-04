@@ -58,8 +58,8 @@ async function loadedEditDialog(label: string) {
 }
 
 const CATALOGUE: AdminModel[] = [
-  { uid: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000 },
-  { uid: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000 },
+  { id: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000 },
+  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000 },
 ];
 
 const DEFAULT_FIREWORKS: PlatformKey = {
@@ -252,8 +252,8 @@ describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
 });
 
 describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)", () => {
-  it("opens a dialog pre-filled with the row's rates and PATCHes the new rates by uid (test_catalogue_row_edit_dialog_updates_rates)", async () => {
-    updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { uid: "u1", updated: true } });
+  it("opens a dialog pre-filled with the row's rates and PATCHes the new rates by id (test_catalogue_row_edit_dialog_updates_rates)", async () => {
+    updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { id: "u1", updated: true } });
     const onUpdated = vi.fn();
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated }));
 
@@ -274,7 +274,7 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
       output_nanos_per_mtok: 2_190_000_000,
     });
     // The parent gets the row's new shape (identity + edited rates).
-    await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ uid: "u1", input_nanos_per_mtok: 990_000_000 })));
+    await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ id: "u1", input_nanos_per_mtok: 990_000_000 })));
   });
 
   it("shows the immutable provider + model as disabled fields", async () => {
@@ -303,7 +303,7 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
   });
 
   it("rejects a non-positive context cap without calling the action", async () => {
-    updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { uid: "u1", updated: true } });
+    updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { id: "u1", updated: true } });
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
@@ -367,7 +367,7 @@ describe("CatalogueList — Make default (★ minimal key dialog)", () => {
   it("requires a base URL for an openai-compatible row and threads it into the activation", async () => {
     setPlatformDefaultActionMock.mockResolvedValue({ ok: true, data: { provider: OPENAI_COMPATIBLE_PROVIDER, model: "glm-5.2", active: true } });
     const custom: AdminModel[] = [
-      { uid: "c1", provider: OPENAI_COMPATIBLE_PROVIDER, model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+      { id: "c1", provider: OPENAI_COMPATIBLE_PROVIDER, model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
     ];
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: custom, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
@@ -453,7 +453,7 @@ describe("ModelsView", () => {
 
   it("appends a newly created model to the catalogue without a round-trip", async () => {
     const created: AdminModel = {
-      uid: "u3", provider: "moonshot", model_id: "kimi-k2.6", context_cap_tokens: 256000,
+      id: "u3", provider: "moonshot", model_id: "kimi-k2.6", context_cap_tokens: 256000,
       input_nanos_per_mtok: 600_000_000, cached_input_nanos_per_mtok: 150_000_000, output_nanos_per_mtok: 2_300_000_000,
     };
     createAdminModelActionMock.mockResolvedValue({ ok: true, data: created });
@@ -481,7 +481,7 @@ describe("ModelsView", () => {
   });
 
   it("reflects an edited model's new rates in the table without a round-trip", async () => {
-    updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { uid: "u1", updated: true } });
+    updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { id: "u1", updated: true } });
     renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: null }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));

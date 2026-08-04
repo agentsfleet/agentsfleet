@@ -34,14 +34,14 @@ const RATE_MODEL_CAP_TOKENS: i64 = 200_000;
 fn seedRatedModel(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
         \\ON CONFLICT (provider, model_id) DO UPDATE SET
         \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
         \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
         \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-        \\   updated_at_ms = EXCLUDED.updated_at_ms
+        \\   updated_at = EXCLUDED.updated_at
     , .{ RATE_MODEL_UID, RATE_MODEL, RATE_PROVIDER, RATE_MODEL_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, clock.nowMillis() });
 }
 
@@ -61,12 +61,25 @@ const WS_GATE_BLOCK = "0195b4ba-8d3a-7f13-8abc-aa0500000002";
 const WS_RECEIVE_DEBIT = "0195b4ba-8d3a-7f13-8abc-aa0500000003";
 const WS_GATE_COVERED = "0195b4ba-8d3a-7f13-8abc-aa0500000004";
 
+/// The event envelope's creation instant. Fixed rather than `nowMillis()`:
+/// every ledger row for one event must carry the SAME value (schema/710),
+/// which a per-call clock read cannot guarantee.
+const EVENT_CREATED_AT: i64 = 1_760_000_000_000;
+
+/// The fleet every debit in this suite is attributed to. A real UUIDv7 with a
+/// real row behind it, because `billing.usage_ledger.fleet_id` is a UUID column
+/// with a foreign key onto `core.fleets` — a placeholder like "fleet-test"
+/// fails the cast, the INSERT never lands, and the debit reports `db_error`.
+const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-fa0500000010";
+
 fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {
     try base.seedTenantById(conn, TENANT_ID, "metering-suite");
     try base.seedWorkspaceWithTenant(conn, workspace_id, TENANT_ID);
+    try base.seedFleet(conn, FLEET_ID, workspace_id, "metering-suite-fleet", "{}", "# z");
 }
 
 fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
+    base.teardownFleets(conn, workspace_id);
     base.teardownWorkspace(conn, workspace_id);
     base.teardownTenantById(conn, TENANT_ID);
 }
@@ -74,7 +87,7 @@ fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
 fn makeCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightContext {
     return .{
         .workspace_id = workspace_id,
-        .fleet_id = "fleet-test",
+        .fleet_id = FLEET_ID,
         .event_id = event_id,
         .posture = .self_managed,
         .provider = "self-managed-test",
@@ -173,7 +186,7 @@ test "integration: debitReceive self-managed EVENT_NANOS=0 charge writes telemet
 
     try seed(db_ctx.conn, WS_RECEIVE_DEBIT);
     defer teardown(db_ctx.conn, WS_RECEIVE_DEBIT);
-    defer _ = db_ctx.conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_DEBIT}) catch {};
+    defer _ = db_ctx.conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1", .{WS_RECEIVE_DEBIT}) catch {};
 
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
     try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
@@ -184,6 +197,7 @@ test "integration: debitReceive self-managed EVENT_NANOS=0 charge writes telemet
         ALLOC,
         TENANT_ID,
         makeCtx(WS_RECEIVE_DEBIT, event_id),
+        EVENT_CREATED_AT,
         .stop,
     );
     switch (result) {
@@ -199,7 +213,7 @@ test "integration: debitReceive self-managed EVENT_NANOS=0 charge writes telemet
     // Telemetry row must exist with charge_type='receive'.
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT charge_type, posture, credit_deducted_nanos
-        \\FROM core.fleet_execution_telemetry WHERE event_id = $1
+        \\FROM billing.usage_ledger WHERE event_id = $1
     , .{event_id}));
     defer q.deinit();
     const r = (try q.next()) orelse return error.RowNotFound;
@@ -216,7 +230,7 @@ test "integration: telemetry insert is idempotent — same event_id+charge_type 
     const ws = "0195b4ba-8d3a-7f13-8abc-aa0500000008";
     try seed(db_ctx.conn, ws);
     defer teardown(db_ctx.conn, ws);
-    defer _ = db_ctx.conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{ws}) catch {};
+    defer _ = db_ctx.conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1", .{ws}) catch {};
 
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
     try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
@@ -224,12 +238,12 @@ test "integration: telemetry insert is idempotent — same event_id+charge_type 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a06";
     const ctx = makeCtx(ws, event_id);
 
-    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, .stop);
+    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, EVENT_CREATED_AT, .stop);
     // Replay: the second INSERT must hit ON CONFLICT DO NOTHING.
-    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, .stop);
+    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, EVENT_CREATED_AT, .stop);
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT COUNT(*)::BIGINT FROM core.fleet_execution_telemetry
+        \\SELECT COUNT(*)::BIGINT FROM billing.usage_ledger
         \\WHERE event_id = $1 AND charge_type = 'receive'
     , .{event_id}));
     defer q.deinit();

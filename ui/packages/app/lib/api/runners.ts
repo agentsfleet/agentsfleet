@@ -186,6 +186,7 @@ export const QUERY_STARTING_AFTER = "starting_after";
 export const QUERY_LIMIT = "limit";
 /** Lease-list filter parameter: only leases held for this workspace. */
 export const QUERY_WORKSPACE_ID = "workspace_id";
+export const QUERY_FLEET = "fleet";
 
 const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
 const RUNNERS_ENROLLMENT_PATH = "/v1/runners";
@@ -331,6 +332,11 @@ export interface LeaseListParams {
   limit?: number;
   /** When set, the page holds only leases for this workspace. */
   workspace_id?: string;
+  /**
+   * When set, the page holds only leases for this fleet, named by its id or its
+   * exact name. Intersects with `workspace_id` rather than replacing it.
+   */
+  fleet?: string;
 }
 
 function keysetParams(params: ListParams): URLSearchParams {
@@ -357,6 +363,7 @@ export async function listRunnerLeases(
 ): Promise<RunnerLeaseResponse> {
   const qs = keysetParams(params);
   if (params.workspace_id) qs.set(QUERY_WORKSPACE_ID, params.workspace_id);
+  if (params.fleet) qs.set(QUERY_FLEET, params.fleet);
   const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
   return request<RunnerLeaseResponse>(
     `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}/leases${suffix}`,

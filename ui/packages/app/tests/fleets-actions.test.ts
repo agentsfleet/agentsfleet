@@ -18,8 +18,10 @@ const {
   installFleetMock,
   steerFleetMock,
   onboardWorkspaceFleetLibraryMock,
+  getFleetEventMock,
 } =
   vi.hoisted(() => ({
+    getFleetEventMock: vi.fn(),
     withTokenMock: vi.fn(),
     listFleetsMock: vi.fn(),
     setFleetStatusMock: vi.fn(),
@@ -48,6 +50,9 @@ vi.mock("@/lib/api/memory", () => ({
 vi.mock("@/lib/api/fleet-library", () => ({
   onboardWorkspaceFleetLibrary: onboardWorkspaceFleetLibraryMock,
 }));
+vi.mock("@/lib/api/events", () => ({
+  getFleetEvent: getFleetEventMock,
+}));
 
 import {
   listFleetsAction,
@@ -59,6 +64,7 @@ import {
   installFleetAction,
   steerFleetAction,
   onboardLibraryEntryAction,
+  getFleetEventAction,
 } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 
 beforeEach(() => {
@@ -88,6 +94,17 @@ describe("fleet server actions — thin token-forwarders", () => {
     const r = await listFleetsAction("ws1");
     expect(r).toEqual({ ok: true, data: page });
     expect(listFleetsMock).toHaveBeenCalledWith("ws1", "tok", undefined);
+  });
+
+  // The detail read the events list no longer carries. The identifier is the
+  // only argument the row supplies, so its position is what a regression here
+  // would scramble; the body it returns is the payload the list dropped.
+  it("getFleetEventAction forwards ws, fleet and event with token last", async () => {
+    const detail = { event_id: "e1", request_json: "{}", response_text: "done" };
+    getFleetEventMock.mockResolvedValueOnce(detail);
+    const r = await getFleetEventAction("ws1", "z1", "e1");
+    expect(r).toEqual({ ok: true, data: detail });
+    expect(getFleetEventMock).toHaveBeenCalledWith("ws1", "z1", "e1", "tok");
   });
 
   it("setFleetStatusAction forwards ws, id, status with token last", async () => {

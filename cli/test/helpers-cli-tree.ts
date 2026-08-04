@@ -47,11 +47,6 @@ export function makeSpyTree(): SpyTree {
       secrets: spy("workspace.secrets"),
       delete: spy("workspace.delete"),
     },
-    fleetKey: {
-      create: spy("fleet-key.create"),
-      list: spy("fleet-key.list"),
-      delete: spy("fleet-key.delete"),
-    },
     apiKey: {
       create: spy("api-key.create"),
       list: spy("api-key.list"),

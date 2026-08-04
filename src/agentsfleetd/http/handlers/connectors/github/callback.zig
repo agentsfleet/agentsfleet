@@ -68,8 +68,8 @@ fn storeHandle(hx: hx_mod.Hx, workspace_id: []const u8, raw_state: []const u8, i
     const handle = try std.fmt.allocPrint(hx.alloc, HANDLE_FMT, .{installation_id});
     defer hx.alloc.free(handle);
 
-    const uid = try id_format.generateConnectorInstallId(hx.alloc);
-    defer hx.alloc.free(uid);
+    const row_id = try id_format.generateConnectorInstallId(hx.alloc);
+    defer hx.alloc.free(row_id);
     const no_scopes: []const []const u8 = &.{};
     const now = clock.nowMillis();
 
@@ -85,7 +85,7 @@ fn storeHandle(hx: hx_mod.Hx, workspace_id: []const u8, raw_state: []const u8, i
     try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, spec.PROVIDER, handle);
     {
         var query = PgQuery.from(try conn.query(sql.UPSERT_INSTALL, .{
-            uid,
+            row_id,
             spec.PROVIDER,
             installation_id,
             workspace_id,

@@ -1,5 +1,5 @@
-//! Integration: the runner-fleet schema migrations land `fleet.runners` (`021`)
-//! `fleet.runner_leases` (`022`), and `fleet.runner_events` (`025`) with their
+//! Integration: the runner-fleet schema migrations land `fleet.runners` (`600`)
+//! `fleet.runner_leases` (`610`), and `fleet.runner_events` (`640`) with their
 //! columns and constraints in a migrated database.
 //!
 //! DB-gated — skips when `TEST_DATABASE_URL` is unset; the live test DB has the
@@ -18,22 +18,34 @@ const pool_migrations = @import("../db/pool_migrations.zig");
 const Migration = @import("../db/pool_types.zig").Migration;
 const cmd_common = @import("../cmd/common.zig");
 
-// `uid id host_id token_hash sandbox_tier admin_state labels tenant_id last_seen_at
-//  created_at updated_at` — the frozen `fleet.runners` column set.
-const EXPECTED_COLUMN_COUNT: i64 = 11;
+// `id host_id token_hash sandbox_tier admin_state labels tenant_id network_policy
+//  registry_allowlist worker_count capability_report capability_reported_at
+//  degraded degraded_reason last_seen_at created_at updated_at` — the
+//  `fleet.runners` column set. One identity column, not the generated/text pair
+//  the frozen-slot model was stuck with.
+const EXPECTED_COLUMN_COUNT: i64 = 17;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
-const EXPECTED_CORE_KEY_CONSTRAINTS: i64 = 6;
+/// The retired identity twins: a generated UUID, a text `id` beside it, and a
+/// CHECK tying the two together, on both tables that carried the shape. Rebuilt
+/// from empty they simply do not exist, so this counts to ZERO — the assertion
+/// is inverted rather than deleted, because it is the one that would notice a
+/// slot quietly reintroducing the pair.
+const EXPECTED_RETIRED_TWIN_CONSTRAINTS: i64 = 0;
 
-// `uid id runner_id fleet_id workspace_id tenant_id event_id actor event_type
-//  request_json event_created_at posture provider model metered_input_tokens
-//  metered_cached_tokens metered_output_tokens last_metered_at_ms fencing_token
+// `id runner_id fleet_id workspace_id tenant_id event_id actor event_type
+//  event_created_at posture provider model metered_input_tokens
+//  metered_cached_tokens metered_output_tokens last_metered_at fencing_token
 //  lease_expires_at status created_at updated_at` — the `fleet.runner_leases`
-//  column set. The actor/event_type/request_json/event_created_at envelope is
-//  stored so a reclaim can re-lease the event from Postgres alone (no Redis
-//  re-read); `provider` keys the composite rate lookup; the `metered_*` +
-//  `last_metered_at_ms` cursor backs the incremental renewal metering.
-const EXPECTED_LEASE_COLUMN_COUNT: i64 = 23;
-const EXPECTED_EVENT_COLUMN_COUNT: i64 = 8;
+//  column set. The actor/event_type/event_created_at envelope is stored so the
+//  report path rebuilds its context without re-resolving; `provider` keys the
+//  composite rate lookup; the `metered_*` + `last_metered_at` cursor backs the
+//  incremental renewal metering. No `request_json`: the body lives on the event
+//  row and reclaim joins for it.
+const EXPECTED_LEASE_COLUMN_COUNT: i64 = 21;
+/// `id runner_id event_type metadata dedup_key created_at`. No `occurred_at`:
+/// an append-only row occurs when it is created, and the retired shape stored
+/// that one instant under two names.
+const EXPECTED_EVENT_COLUMN_COUNT: i64 = 6;
 
 fn openConnOrSkip(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
     const url = common.env.testLiveValue("TEST_DATABASE_URL") orelse return null;
@@ -86,7 +98,7 @@ test "runner schema: fleet.runners is migrated with its columns and constraints"
     // (UUIDv7) Unique Identifier (UID) check. Pin test: constraint names are the schema rule.
     try std.testing.expectEqual(EXPECTED_NAMED_CONSTRAINTS, try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_constraint WHERE conname IN ('uq_runners_token_hash', 'ck_runners_uid_uuidv7')",
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname IN ('uq_runners_token_hash', 'ck_runners_id_uuidv7')",
     ));
 }
 
@@ -109,27 +121,24 @@ test "runner schema: fleet.runner_leases is migrated with its columns and constr
     // Pin test: constraint name is the schema rule.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_uid_uuidv7'",
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_id_uuidv7'",
     ));
 }
 
-test "core key schemas: public text ids have explicit UUIDv7 constraints" {
+test "core key schemas: the retired identity twins are gone and stay gone" {
     const alloc = std.testing.allocator;
     const ctx = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
     defer ctx.pool.deinit();
     defer ctx.pool.release(ctx.conn);
 
-    try std.testing.expectEqual(EXPECTED_CORE_KEY_CONSTRAINTS, try scalarI64(ctx.conn,
+    try std.testing.expectEqual(EXPECTED_RETIRED_TWIN_CONSTRAINTS, try scalarI64(ctx.conn,
         \\SELECT count(*)::bigint
         \\FROM pg_constraint c
         \\JOIN pg_class rel ON rel.oid = c.conrelid
         \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
         \\WHERE nsp.nspname = 'core'
-        \\  AND rel.relname IN ('fleet_keys', 'integration_grants')
+        \\  AND rel.relname = 'integration_grants'
         \\  AND c.conname IN (
-        \\    'ck_fleet_keys_uid_uuidv7',
-        \\    'ck_fleet_keys_fleet_key_id_uuidv7',
-        \\    'ck_fleet_keys_uid_matches_fleet_key_id',
         \\    'ck_integration_grants_uid_uuidv7',
         \\    'ck_integration_grants_grant_id_uuidv7',
         \\    'ck_integration_grants_uid_matches_grant_id'
@@ -157,12 +166,12 @@ test "runner schema: fleet.runner_events is migrated append-only" {
     // Pin test: constraint name is the schema rule.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_events_uid_uuidv7'",
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_events_id_uuidv7'",
     ));
     // pin test: index name is the schema promise.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'fleet' AND indexname = 'runner_events_offline_dedup_idx'",
+        "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'fleet' AND indexname = 'uq_runner_events_runner_id_dedup_key_offline'",
     ));
 }
 
@@ -177,7 +186,6 @@ const FK_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fa011";
 const FK_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fac01";
 const FK_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0faa01";
 const FK_LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0faf01";
-const FK_AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fae01";
 // A fleet id with NO core.fleets row — the orphan the FK must reject.
 const FK_ORPHAN_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fad99";
 
@@ -186,28 +194,31 @@ const FK_ORPHAN_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0fad99";
 const FK_LEASE_INSERT =
     \\INSERT INTO fleet.runner_leases
     \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-    \\   event_type, request_json, event_created_at, posture, provider, model,
-    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+    \\   event_type, event_created_at, posture, provider, model,
+    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
     \\   fencing_token, lease_expires_at, status, created_at, updated_at)
     \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-fk-1', 'steer:test',
-    \\        'chat', '{"message":"hi"}', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
+    \\        'chat', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
     \\        1, 0, 'active', 0, 0)
 ;
 
-// Params: $1 id, $2 fleet_id. last_runner_id NULL isolates the fleet_id FK.
+// Params: $1 fleet_id — the slot's primary key. last_runner_id NULL isolates
+// the fleet_id FK, which is the only one under test here.
 const FK_AFFINITY_INSERT =
     \\INSERT INTO fleet.runner_affinity
-    \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
-    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+    \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+    \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
     \\   created_at, updated_at)
-    \\VALUES ($1::uuid, $2::uuid, NULL, 1, 0, 0, 0, 0, 0, 0, 0)
+    \\VALUES ($1::uuid, NULL, 1, 0, 0, 0, 0, 0, 0, 0)
 ;
 
-// Count probes, keyed on the row's own id so the cascade proof stays valid even
-// if either FK were ever changed to ON DELETE SET NULL (a fleet_id-keyed affinity
-// probe would read 0 on a nulled-but-surviving row and false-pass).
+// The lease probe keys on the row's own id so the cascade proof stays valid even
+// if its FK were ever changed to ON DELETE SET NULL — a fleet_id-keyed lease
+// probe would read 0 on a nulled-but-surviving row and false-pass. The affinity
+// slot has no such alternative: `fleet_id` IS its primary key, so it is NOT NULL
+// by construction and SET NULL is not a reachable state for it.
 const FK_LEASE_COUNT = "SELECT count(*)::bigint FROM fleet.runner_leases WHERE id = '" ++ FK_LEASE_ID ++ "'::uuid";
-const FK_AFFINITY_COUNT = "SELECT count(*)::bigint FROM fleet.runner_affinity WHERE id = '" ++ FK_AFFINITY_ID ++ "'::uuid";
+const FK_AFFINITY_COUNT = "SELECT count(*)::bigint FROM fleet.runner_affinity WHERE fleet_id = '" ++ FK_FLEET_ID ++ "'::uuid";
 
 fn seedFkRunner(conn: *pg.Conn) !void {
     _ = try conn.exec(
@@ -231,7 +242,7 @@ fn fkCleanup(alloc: std.mem.Allocator) void {
     defer db.pool.release(db.conn);
     const c = db.conn;
     fkExecIgnore(c, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{FK_LEASE_ID});
-    fkExecIgnore(c, "DELETE FROM fleet.runner_affinity WHERE id = $1::uuid", .{FK_AFFINITY_ID});
+    fkExecIgnore(c, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FK_FLEET_ID});
     fkExecIgnore(c, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{FK_RUNNER_ID});
     base.teardownFleets(c, FK_WORKSPACE_ID); // fleet delete cascades any residual lease/affinity
     base.teardownWorkspace(c, FK_WORKSPACE_ID);
@@ -257,7 +268,7 @@ test "fleet FK: deleting a core.fleets row cascades its runner_leases and runner
     try base.seedFleet(conn, FK_FLEET_ID, FK_WORKSPACE_ID, "fk-cascade", "{}", "# z");
     try seedFkRunner(conn);
     _ = try conn.exec(FK_LEASE_INSERT, .{ FK_LEASE_ID, FK_RUNNER_ID, FK_FLEET_ID, FK_WORKSPACE_ID, base.TEST_TENANT_ID });
-    _ = try conn.exec(FK_AFFINITY_INSERT, .{ FK_AFFINITY_ID, FK_FLEET_ID });
+    _ = try conn.exec(FK_AFFINITY_INSERT, .{FK_FLEET_ID});
 
     // Children present before the delete.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(conn, FK_LEASE_COUNT));
@@ -281,7 +292,7 @@ test "fleet FK: an orphan fleet_id on runner_lease / runner_affinity is rejected
         const db = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
         defer db.pool.deinit();
         defer db.pool.release(db.conn);
-        try std.testing.expectError(error.PG, db.conn.exec(FK_AFFINITY_INSERT, .{ FK_AFFINITY_ID, FK_ORPHAN_FLEET_ID }));
+        try std.testing.expectError(error.PG, db.conn.exec(FK_AFFINITY_INSERT, .{FK_ORPHAN_FLEET_ID}));
         try expectFkViolation(db.conn);
     }
     // lease — a valid runner satisfies runner_id; the bogus fleet_id fires the FK.
@@ -305,9 +316,11 @@ const FAST_LOCK_RETRY_MS: u64 = 5;
 // Temporary rename target hiding the live `audit` schema, so a blocked
 // migration attempt's (absent) bookkeeping DDL is observable on a migrated DB.
 const AUDIT_STASH_SCHEMA = "audit_lock_ordering_stash";
-// Failure-row probe versions: 1 is always applied on the migrated test DB
-// (versions are contiguous from 1); 999_999 is far outside the canonical list.
-const APPLIED_PROBE_VERSION: i32 = 1;
+// Failure-row probe versions: the first canonical slot is always applied on the
+// migrated test DB; 999_999 is far outside the canonical list. Derived rather
+// than written, because the M154 renumbering moved the first version from 1 to
+// 100 and a literal here would have gone quietly stale (RULE MIG).
+const APPLIED_PROBE_VERSION: i32 = cmd_common.canonicalMigrations()[0].version;
 const UNAPPLIED_PROBE_VERSION: i32 = 999_999;
 
 const COUNT_APPLIED_MIGRATIONS_SQL = "SELECT count(*)::bigint FROM audit.schema_migrations";
@@ -400,6 +413,20 @@ test "migration lock: a held lock blocks runMigrations before any bookkeeping DD
 // deletes bookkeeping rows outside the given list, so a synthetic list must
 // never run against the real bookkeeping tables.
 const SYNTHETIC_MIGRATION_VERSION: i32 = 1;
+// These three tests stash the real `audit` schema away and let the runner build
+// a fresh one, so the only row that can appear is the SYNTHETIC migration's.
+// Counting `APPLIED_PROBE_VERSION` here read the first CANONICAL slot instead —
+// which the M154 renumbering moved from 1 to 100, the very drift the comment on
+// that constant warns about. The two agreed only while both happened to be 1.
+const COUNT_SYNTHETIC_VERSION_SQL = std.fmt.comptimePrint(
+    "SELECT count(*)::bigint FROM audit.schema_migrations WHERE version = {d}",
+    .{SYNTHETIC_MIGRATION_VERSION},
+);
+const COUNT_SYNTHETIC_FAILURE_SQL = std.fmt.comptimePrint(
+    "SELECT count(*)::bigint FROM audit.schema_migration_failures " ++
+        "WHERE version = {d} AND error_text = 'UnterminatedDollarQuote'",
+    .{SYNTHETIC_MIGRATION_VERSION},
+);
 const SYNTHETIC_OK_MIGRATION = [_]Migration{.{ .version = SYNTHETIC_MIGRATION_VERSION, .sql = "SELECT 1;" }};
 // No closing $body$ — structurally unterminated on purpose.
 const SYNTHETIC_UNTERMINATED_MIGRATION = [_]Migration{.{
@@ -427,14 +454,14 @@ test "fresh bookkeeping: a migration applies once and a re-run is a no-op" {
         FAST_LOCK_MAX_ATTEMPTS,
         FAST_LOCK_RETRY_MS,
     );
-    const rows_after_first = scalarI64(probe.conn, COUNT_APPLIED_PROBE_VERSION_SQL) catch -1;
+    const rows_after_first = scalarI64(probe.conn, COUNT_SYNTHETIC_VERSION_SQL) catch -1;
     const second = pool_migrations.runMigrationsBounded(
         runner.pool,
         &SYNTHETIC_OK_MIGRATION,
         FAST_LOCK_MAX_ATTEMPTS,
         FAST_LOCK_RETRY_MS,
     );
-    const rows_after_second = scalarI64(probe.conn, COUNT_APPLIED_PROBE_VERSION_SQL) catch -1;
+    const rows_after_second = scalarI64(probe.conn, COUNT_SYNTHETIC_VERSION_SQL) catch -1;
     healAuditStash(probe.conn);
 
     try first;
@@ -466,9 +493,9 @@ test "fresh bookkeeping: an unterminated migration fails loudly and records the 
     // The failure row must carry the named SplitError, and no version row may exist.
     const failure_rows = scalarI64(
         probe.conn,
-        "SELECT count(*)::bigint FROM audit.schema_migration_failures WHERE version = 1 AND error_text = 'UnterminatedDollarQuote'",
+        COUNT_SYNTHETIC_FAILURE_SQL,
     ) catch -1;
-    const version_rows = scalarI64(probe.conn, COUNT_APPLIED_PROBE_VERSION_SQL) catch -1;
+    const version_rows = scalarI64(probe.conn, COUNT_SYNTHETIC_VERSION_SQL) catch -1;
     healAuditStash(probe.conn);
 
     try std.testing.expectError(error.UnterminatedDollarQuote, run);

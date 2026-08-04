@@ -4,6 +4,7 @@
 //! PostgreSQL, Redis, or QStash and therefore belongs only to integration lanes.
 
 test {
+    _ = @import("db/schema_shape_integration_test.zig");
     _ = @import("db/index_usage_integration_test.zig");
     _ = @import("db/index_usage_fleet_integration_test.zig");
     _ = @import("db/index_removal_integration_test.zig");
@@ -47,6 +48,7 @@ test {
     _ = @import("http/fleet_operator_integration_test.zig");
     _ = @import("http/fleet_runner_events_integration_test.zig");
     _ = @import("http/runner_read_integration_test.zig");
+    _ = @import("state/accrual_surface_integration_test.zig");
     _ = @import("http/runner_enrollment_integration_test.zig");
     _ = @import("http/route_trace_integration_test.zig");
     _ = @import("http/secrets_json_metadata_integration_test.zig");
@@ -68,6 +70,10 @@ test {
     _ = @import("memory/fleet_memory_integration_test.zig");
     _ = @import("http/handlers/fleets/api_integration_test.zig");
     _ = @import("http/handlers/fleets/get_integration_test.zig");
+    _ = @import("http/handlers/fleets/grant_surface_integration_test.zig");
+    _ = @import("http/handlers/fleets/create_grants_integration_test.zig");
+    _ = @import("http/handlers/fleets/event_detail_integration_test.zig");
+    _ = @import("http/handlers/fleets/events_payload_free_integration_test.zig");
     _ = @import("http/handlers/fleets/events_cost_integration_test.zig");
     _ = @import("http/handlers/fleets/list_aggregate_integration_test.zig");
     _ = @import("http/handlers/fleets/patch_if_match_integration_test.zig");
@@ -91,6 +97,8 @@ test {
     _ = @import("http/handlers/library/gallery_keyset_integration_test.zig");
     _ = @import("http/handlers/admin/model_library_admin_integration_test.zig");
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
+    _ = @import("http/handlers/auth/sessions_integration_test.zig");
+    _ = @import("http/handlers/webhooks/approval_integration_test.zig");
     _ = @import("http/handlers/fleets/messages_integration_test.zig");
     _ = @import("http/handlers/schedules/api_integration_test.zig");
     _ = @import("http/handlers/memory/memories_integration_test.zig");

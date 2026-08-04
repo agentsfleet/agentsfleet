@@ -29,7 +29,6 @@ const std = @import("std");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
 const common = @import("common");
 const clock = common.clock;
-const id_format = @import("../../../types/id_format.zig");
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -187,14 +186,14 @@ fn seedAndHarness(alloc: std.mem.Allocator, ids: FleetPair) !*TestHarness {
 fn seedFixture(conn: *pg.Conn, ids: FleetPair) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'PatchConcurrentTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'PatchConcurrentTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     // uq_fleets_workspace_id_name forbids two rows sharing (workspace_id, name);
     // Both fixture rows coexist in TEST_WORKSPACE_ID, so each row needs
@@ -215,9 +214,9 @@ fn seedFixture(conn: *pg.Conn, ids: FleetPair) !void {
     for (rows) |r| {
         _ = try conn.exec(
             \\INSERT INTO core.fleets
-            \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+            \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown, config_json,
             \\   status, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, 'active', $7, $7)
+            \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), $3, $4, $5, $6::jsonb, 'active', $7, $7)
             \\ON CONFLICT (id) DO UPDATE SET
             \\    name = EXCLUDED.name,
             \\    source_markdown = EXCLUDED.source_markdown,
@@ -311,18 +310,13 @@ const Worker = struct {
         };
         defer h.releaseConn(conn);
         const now = clock.nowMillis();
-        const uid_value = id_format.generateUuidV7() catch |err| {
-            slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = clock.nowMillis() - t0 };
-            return;
-        };
-        const uid: []const u8 = &uid_value;
         _ = conn.exec(
             \\INSERT INTO core.fleet_events
-            \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
+            \\  (fleet_id, event_id, workspace_id, actor, event_type, status,
             \\   request_json, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'steer:test', 'message', 'received',
-            \\        '{}'::jsonb, $5, $5)
-        , .{ uid, zid, event_id, TEST_WORKSPACE_ID, now }) catch |err| {
+            \\VALUES ($1::uuid, $2, $3::uuid, 'steer:test', 'message', 'received',
+            \\        '{}'::jsonb, $4, $4)
+        , .{ zid, event_id, TEST_WORKSPACE_ID, now }) catch |err| {
             slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = clock.nowMillis() - t0 };
             return;
         };

@@ -60,7 +60,9 @@ pub const ReportRequest = struct {
     /// `failure_reason`).
     failure_detail: []const u8 = "",
     response_text: []const u8,
-    /// Billing token count → `fleet_execution_telemetry.token_count`.
+    /// The run's total, emitted to product analytics as `FleetCompleted`.
+    /// Billing does NOT charge from this — it charges from the three cumulative
+    /// fields below, which is what settles against `billing.usage_ledger`.
     tokens: u64,
     /// The runner's **cumulative** token counts for the whole run (NOT deltas) —
     /// the same three fields `RenewRequest` carries, so the report-settle can

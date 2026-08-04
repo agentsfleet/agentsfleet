@@ -27,33 +27,33 @@ const DETAIL_INVALID_CURSOR = "Invalid starting_after cursor";
 const DETAIL_INVALID_NAME = "Name must be between 1 and 128 Unicode code points";
 
 const SQL_FIRST =
-    \\SELECT w.workspace_id::text AS id, w.name, w.created_at
+    \\SELECT w.id::text AS id, w.name, w.created_at
     \\FROM core.workspaces AS w
     \\WHERE w.tenant_id = $1::uuid
-    \\ORDER BY w.created_at ASC, w.workspace_id ASC
+    \\ORDER BY w.created_at ASC, w.id ASC
     \\LIMIT $2
 ;
 const SQL_AFTER =
-    \\SELECT w.workspace_id::text AS id, w.name, w.created_at
+    \\SELECT w.id::text AS id, w.name, w.created_at
     \\FROM core.workspaces AS w
     \\WHERE w.tenant_id = $1::uuid
-    \\  AND (w.created_at, w.workspace_id) > ($2, $3::uuid)
-    \\ORDER BY w.created_at ASC, w.workspace_id ASC
+    \\  AND (w.created_at, w.id) > ($2, $3::uuid)
+    \\ORDER BY w.created_at ASC, w.id ASC
     \\LIMIT $4
 ;
 const SQL_FIRST_BY_NAME =
-    \\SELECT w.workspace_id::text AS id, w.name, w.created_at
+    \\SELECT w.id::text AS id, w.name, w.created_at
     \\FROM core.workspaces AS w
     \\WHERE w.tenant_id = $1::uuid AND w.name = $2
-    \\ORDER BY w.created_at ASC, w.workspace_id ASC
+    \\ORDER BY w.created_at ASC, w.id ASC
     \\LIMIT $3
 ;
 const SQL_AFTER_BY_NAME =
-    \\SELECT w.workspace_id::text AS id, w.name, w.created_at
+    \\SELECT w.id::text AS id, w.name, w.created_at
     \\FROM core.workspaces AS w
     \\WHERE w.tenant_id = $1::uuid AND w.name = $2
-    \\  AND (w.created_at, w.workspace_id) > ($3, $4::uuid)
-    \\ORDER BY w.created_at ASC, w.workspace_id ASC
+    \\  AND (w.created_at, w.id) > ($3, $4::uuid)
+    \\ORDER BY w.created_at ASC, w.id ASC
     \\LIMIT $5
 ;
 

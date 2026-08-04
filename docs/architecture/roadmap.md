@@ -19,16 +19,13 @@ One row per item, so an agent can check a status without reading the ledger; eac
 | Security Reviewer prebuilt fleet | forward-looking, unspecced | §Security Reviewer |
 | Slack consumption ladder | Rung 0 ✅ (M106_001); Rung 1 is direction, not a commitment | §Slack-resident surface |
 | Bastion | post-MVP shape, documented so specs don't foreclose it | §Bastion |
+| Payload offload + durable stream | specced, not started (M155_001, `docs/v2/pending/`) | §Payload offload and the durable stream |
 
 ## v2.1 — authorization
 
 ### Scope-based authorization — ✅ DELIVERED (M104_001)
 
 Authorization is now **scope-based**. The role ladder (`AuthRole = user < operator < admin`) and the `platform_admin` bool were deleted; every capability is an explicit `resource:action` scope on the verified token's `scopes` claim, surfaced as `principal.scopes` and enforced by a single `requireScope` gate against a declarative route→scope table (`src/agentsfleetd/http/route_scopes.zig`). The resource/ownership axis (`authorizeWorkspace`) is unchanged, plus an audited `workspace:any` cross-tenant override. Runner enrollment is gated by the discrete `runner:enroll` scope (independently grantable from `runner:{read,write}`), replacing the old `platform_admin` claim. See [`../AUTH.md`](../AUTH.md) → *Scope catalogue* for the full vocabulary, hierarchy, and provisioning bundles.
-
-### Fleet keys → first-class principal
-
-Today fleet keys (`agt_a`) authenticate via a bespoke handler-local lookup (`integration_grants/handler.zig::authenticateFleet`), not the shared middleware, and never become an `AuthPrincipal` (there is no `AuthMode.fleet_key`). v2.1 revamps them into a first-class principal — a dedicated middleware branch + `AuthMode.fleet_key` + a `fleet_id`-scoped principal — aligning with the reference auth design at `~/Projects/oss/auth.md`. The revamp must also fold in the `Session {uuid}` fleet-identity path that the same handler accepts today.
 
 ## v2.1+ — other deferred items
 
@@ -89,3 +86,28 @@ Structural changes from MVP to bastion:
 5. **Per-actor retention** — customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `core.fleet_events` retention becomes per-actor configurable.
 
 What does not change: the runtime architecture, the sandbox boundary, the trigger model, and the secret vault / network policy / budget caps / context lifecycle. Bastion audience routing applies to work-events only — worker-emitted `system:*` rows stay on the internal operator timeline. The bastion is a `SKILL.md` authoring pattern plus a few tool primitives plus a rendering surface — not a different product.
+
+## Payload offload and the durable stream
+
+Specced as **M155_001** (`docs/v2/pending/`), not started. Recorded here because
+M154 §4 deleted the per-renewal breakdown table and deliberately did **not**
+replace it in Postgres, so the question "where did the slice-by-slice detail go?"
+has to resolve somewhere.
+
+M154 retired `fleet.metering_periods`: at a renewal roughly every twenty seconds
+it was the fastest-growing table in the schema, and its only reader was the budget
+gate, which `billing.usage_ledger`'s span columns (`created_at`,
+`last_charged_at`) now serve directly by apportioning the accumulated total across
+the window. Revenue-by-charge-type stays a one-line query against the ledger.
+
+What is no longer answerable from Postgres is the **slice-by-slice accrual
+detail** — the per-renewal audit trail. That is a durable-stream concern rather
+than a money-table one: it is high-volume, append-only, read rarely, and never
+needed transactionally alongside the wallet. Rebuilding it as a Postgres table
+would reintroduce exactly the growth M154 removed. M155_001 §2 emits it to the
+durable event stream instead.
+
+The distinction that makes this safe: **enforcement** (does this run have budget?)
+is answered from the ledger inside the transaction, and **audit** (what did each
+slice cost?) is answered from the stream, after the fact. Only the first needs to
+be correct synchronously.

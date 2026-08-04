@@ -1,7 +1,7 @@
 /**
  * Referential-integrity / cross-resource acceptance scenarios (live,
  * seeded-credentials session). Mirrors lifecycle-with-token / secret-vault
- * / fleet-key-mutation: mint a Clerk session JWT, hydrate workspaces.json from
+ * : mint a Clerk session JWT, hydrate workspaces.json from
  * the API, then walk cross-resource deletes whose outcome the suite DISCOVERS
  * and DOCUMENTS against api-dev rather than presumes. The load-bearing rule
  * for each scenario is restated as an inline comment at its `describe` block:
@@ -10,10 +10,8 @@
  *       cascade-with-credential_missing disjunction; baseline restored on fail.
  *   (b) `workspace delete` is LOCAL-only (no server DELETE) → the server fleet
  *       survives and stays reachable via `list --workspace-id`.
- *   (c) an `agt_a…` fleet key is NOT a control-plane credential — it is rejected
- *       on a control-plane read (`fleet-key list`) both before AND after revoke.
  *
- * Prefix-scoped: every fleet + secret + key is ACCEPTANCE_RUN_PREFIX-named
+ * Prefix-scoped: every fleet + secret is ACCEPTANCE_RUN_PREFIX-named
  * and cleaned in afterAll; no assertion claims global emptiness. Live-only:
  * real tests register only when AGENTSFLEET_ACCEPTANCE_TARGET is an https URL;
  * otherwise the suite skips cleanly (CI runs it live).
@@ -46,15 +44,7 @@ import {
   showProvider,
 } from "./fixtures/tenant-provider-ops.ts";
 import type { ProviderSnapshot } from "./fixtures/tenant-provider-ops.ts";
-import {
-  AGENT_KEY_SECRET_PREFIX,
-  REJECTED_AUTH_RE,
-  assertSecretDeleteDisjunction,
-  mintFleetKey,
-  readWithFleetKey,
-  revokeFleetKey,
-} from "./fixtures/referential-ops.ts";
-import type { MintedFleetKey } from "./fixtures/referential-ops.ts";
+import { assertSecretDeleteDisjunction } from "./fixtures/referential-ops.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
@@ -64,18 +54,15 @@ const CMD_SECRET = "secret" as const;
 const CMD_TENANT = "tenant" as const;
 const CMD_PROVIDER = "provider" as const;
 const CMD_WORKSPACE = "workspace" as const;
-const CMD_AGENT_KEY = "fleet-key" as const;
 const CMD_LIST = "list" as const;
 const SUB_CREATE = "create" as const;
 const SUB_DELETE = "delete" as const;
-const SUB_LIST = "list" as const;
 const FLAG_DATA = "--data" as const;
 const FLAG_SECRET = "--secret" as const;
 const FLAG_MODEL = "--model" as const;
 const FLAG_JSON = "--json" as const;
 
 const KEY_STATUS = "status" as const;
-const KEY_DELETED = "deleted" as const;
 const STATUS_STORED = "stored" as const;
 
 const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
@@ -120,7 +107,6 @@ if (!isLive) {
     let workspaceId = "";
     let providerBaseline: ProviderSnapshot | null = null;
     let providerMutated = false;
-    let mintedKey: MintedFleetKey | null = null;
 
     async function run(args: ReadonlyArray<string>): Promise<RunResult> {
       const result = await runFleetctl(args, { env, stdin: "" });
@@ -159,10 +145,6 @@ if (!isLive) {
           providerBaseline ?? ({ mode: TENANT_PROVIDER_MODE.platform } as ProviderSnapshot);
         try { await restoreProviderBaseline(env, sessionJwt, restoreTo); }
         catch { /* best-effort teardown */ }
-      }
-      if (mintedKey) {
-        try { await revokeFleetKey(env, mintedKey.fleetKeyId); }
-        catch { /* best-effort key revoke */ }
       }
       if (apiUrl && sessionJwt && workspaceId) {
         try { await sweepSecrets({ apiUrl, token: sessionJwt, workspaceId }, { runPrefix: ACCEPTANCE_RUN_PREFIX }); }
@@ -257,60 +239,5 @@ if (!isLive) {
       }, SCENARIO_TIMEOUT_MS);
     });
 
-    // ── (c) fleet-key secret is rejected on control-plane reads, pre+post revoke ──
-    describe("(c) an agt_a… key is not a control-plane credential, before and after revoke", () => {
-      let fleetId = "";
-
-      // The control-plane read attempted with the fleet key as the bearer.
-      // `fleet-key list` is workspace-scoped (same resource family the key
-      // belongs to), uses the JWT-hydrated state dir, and — crucially — its
-      // route is guarded by `bearer()` (JWT / agt_t only). An agt_a key is
-      // rejected here both before AND after revocation.
-      const KEY_AUTHED_READ: ReadonlyArray<string> = [CMD_AGENT_KEY, SUB_LIST];
-
-      it("install a prefix-named fleet to bind the key to", async () => {
-        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
-        fleetId = (installed.fleet_id ?? installed.id) as string;
-        assert.ok(fleetId, `install missing id: ${JSON.stringify(installed)}`);
-      }, INSTALL_TIMEOUT_MS);
-
-      it("mint a key and capture the agt_a… secret from the add response", async () => {
-        mintedKey = await mintFleetKey(env, sessionJwt, { fleetId, name: refName("authkey") });
-        assert.ok(
-          mintedKey.secret.startsWith(AGENT_KEY_SECRET_PREFIX),
-          `minted secret is not an ${AGENT_KEY_SECRET_PREFIX}… key (shape changed?): ${mintedKey.secret.slice(0, 6)}…`,
-        );
-      });
-
-      it("the agt_a… key is rejected on a control-plane read while still live (401/403)", async () => {
-        assert.ok(mintedKey, "key must have been minted");
-        // The key is NOT a control-plane credential: the `bearer()` middleware
-        // accepts only JWT / agt_t, so this read is rejected at the auth
-        // boundary even though the key was just minted and not yet revoked.
-        const result = await readWithFleetKey(env, mintedKey.secret, KEY_AUTHED_READ);
-        assert.notEqual(result.code, 0,
-          `an agt_a key must NOT authenticate a control-plane read; got exit 0: ${result.stdout}`);
-        assert.match(`${result.stdout}\n${result.stderr}`, REJECTED_AUTH_RE,
-          `live agt_a control-plane read should be rejected at the auth boundary; got ${result.stderr || result.stdout}`);
-      }, SCENARIO_TIMEOUT_MS);
-
-      it("after fleet-key delete, the SAME read is still rejected (non-zero, 401/403)", async () => {
-        assert.ok(mintedKey, "key must have been minted");
-        const revoked = await revokeFleetKey(env, mintedKey.fleetKeyId);
-        assert.equal(revoked.code, 0, `fleet-key delete exited ${revoked.code}: ${revoked.stderr}`);
-        assert.equal(
-          parseJson<Record<string, unknown>>(revoked.stdout, "key-del")[KEY_DELETED],
-          true,
-          `unexpected fleet-key delete envelope: ${revoked.stdout}`,
-        );
-
-        const afterRevoke = await readWithFleetKey(env, mintedKey.secret, KEY_AUTHED_READ);
-        assert.notEqual(afterRevoke.code, 0,
-          `a revoked fleet key must NOT authenticate; read exited 0: ${afterRevoke.stdout}`);
-        assert.match(`${afterRevoke.stdout}\n${afterRevoke.stderr}`, REJECTED_AUTH_RE,
-          `revoked-key read should be rejected at the auth boundary; got ${afterRevoke.stderr || afterRevoke.stdout}`);
-        mintedKey = null; // already revoked — skip the afterAll re-revoke.
-      }, SCENARIO_TIMEOUT_MS);
-    });
   });
 }

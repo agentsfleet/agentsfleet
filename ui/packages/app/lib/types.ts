@@ -294,7 +294,7 @@ export const RUN_NANOS_PER_SEC = 100_000;
 // `compute_stage_charge` returns this regardless of posture / model / tokens.
 //
 // The trial's END is deliberately NOT a constant here. It lives on the tenant's
-// own billing row (`billing.tenant_billing.free_trial_ends_at`, NULL =
+// own billing row (`billing.tenant_wallet.free_trial_ends_at`, NULL =
 // open-ended) and reaches this surface as `free_trial.ends_at_ms` below. A
 // build-time date is what let one instant flip pricing for every tenant at once
 // with no deploy; the dashboard reads the tenant's boundary and never its own.

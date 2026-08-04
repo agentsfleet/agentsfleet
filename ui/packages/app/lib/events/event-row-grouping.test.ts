@@ -5,11 +5,11 @@ import {
   isZeroMetricOnFailure,
   MIN_ROW_GROUP,
 } from "@/lib/events/event-row-grouping";
-import type { EventRow } from "@/lib/api/events";
+import type { EventDetail, EventRow } from "@/lib/api/events";
 
 let seq = 0;
 
-function row(over: Partial<EventRow> = {}): EventRow {
+function row(over: Partial<EventDetail> = {}): EventDetail {
   seq += 1;
   return {
     event_id: over.event_id ?? `evt_${seq}`,
@@ -32,7 +32,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
   };
 }
 
-function failures(count: number, over: Partial<EventRow> = {}): EventRow[] {
+function failures(count: number, over: Partial<EventDetail> = {}): EventDetail[] {
   return Array.from({ length: count }, () => row(over));
 }
 

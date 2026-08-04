@@ -12,7 +12,6 @@ const scope_fixtures = @import("../../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
-const id_format = @import("../../../types/id_format.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -53,23 +52,23 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn seedTestData(conn: *pg.Conn) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'EventsTest', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\INSERT INTO tenants (id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'EventsTest', $2, $2)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
-        \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2, $3)
+        \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'events-a', '---\nname: events-a\n---\ntest', '{"name":"events-a"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'events-a', '---\nname: events-a\n---\ntest', '{"name":"events-a"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_A, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'events-b', '---\nname: events-b\n---\ntest', '{"name":"events-b"}', 'active', 0, 0)
+        \\INSERT INTO core.fleets (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2), 'events-b', '---\nname: events-b\n---\ntest', '{"name":"events-b"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_B, TEST_WORKSPACE_ID });
 
@@ -83,22 +82,20 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn insertEvent(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, actor: []const u8, event_type: []const u8, ts: i64) !void {
-    const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type,
         \\   status, request_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, 'processed',
-        \\        '{"message":"test"}'::jsonb, $7, $7)
+        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, 'processed',
+        \\        '{"message":"test"}'::jsonb, $6, $6)
         \\ON CONFLICT (fleet_id, event_id) DO NOTHING
-    , .{ uid, fleet_id, event_id, TEST_WORKSPACE_ID, actor, event_type, ts });
+    , .{ fleet_id, event_id, TEST_WORKSPACE_ID, actor, event_type, ts });
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.fleet_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE id = $1", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── Auth + path-shape (no Redis needed) ─────────────────────────────────────
@@ -380,16 +377,14 @@ fn insertEventWithParent(
     resumes_event_id: ?[]const u8,
     ts: i64,
 ) !void {
-    const uid_value = try id_format.generateUuidV7();
-    const uid: []const u8 = &uid_value;
     _ = try conn.exec(
         \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,
+        \\  (fleet_id, event_id, workspace_id, actor, event_type,
         \\   status, request_json, resumes_event_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, 'chat', $6,
-        \\        '{"message":"test"}'::jsonb, $7, $8, $8)
+        \\VALUES ($1::uuid, $2, $3::uuid, $4, 'chat', $5,
+        \\        '{"message":"test"}'::jsonb, $6, $7, $7)
         \\ON CONFLICT (fleet_id, event_id) DO NOTHING
-    , .{ uid, fleet_id, event_id, TEST_WORKSPACE_ID, actor, status, resumes_event_id, ts });
+    , .{ fleet_id, event_id, TEST_WORKSPACE_ID, actor, status, resumes_event_id, ts });
 }
 
 // test_resumes_event_id_immediate_parent

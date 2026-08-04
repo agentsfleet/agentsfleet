@@ -38,7 +38,7 @@ pub const RUN_NANOS_PER_SEC: i64 = 100_000;
 /// the standard rate constants apply.
 ///
 /// The boundary itself is NOT a constant here. It lives per tenant on
-/// `billing.tenant_billing.free_trial_ends_at`, where NULL means open-ended.
+/// `billing.tenant_wallet.free_trial_ends_at`, where NULL means open-ended.
 /// It used to be a build-time date mirrored across Zig and two TypeScript
 /// surfaces: when it passed, pricing flipped for every tenant at once with no
 /// deploy, and two integration suites that had been skipping their assertions
@@ -89,7 +89,7 @@ pub fn computeReceiveCharge(posture: Posture) i64 {
 }
 
 /// True while this tenant's trial is open. `ends_at_ms` is the tenant's own
-/// boundary from `billing.tenant_billing.free_trial_ends_at`; `null` means
+/// boundary from `billing.tenant_wallet.free_trial_ends_at`; `null` means
 /// open-ended, so the trial never lapses on its own. Pure — the caller supplies
 /// both the boundary and the clock, which is what lets the billing suites price
 /// a post-trial tenant without waiting for a wall-clock date to arrive. Public

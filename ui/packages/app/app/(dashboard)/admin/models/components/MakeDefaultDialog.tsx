@@ -26,7 +26,7 @@ const LABEL = "block text-xs font-semibold uppercase tracking-wider text-muted-f
 // for the openai-compatible provider). Reuses setPlatformDefaultAction — the key
 // is written to the acting admin's vault server-side and never echoed back, which
 // is why a re-set always re-enters it. Mounted only while a row is targeted
-// (parent keys it by uid), so it opens clean each time.
+// (parent keys it by id), so it opens clean each time.
 export default function MakeDefaultDialog({
   model,
   onOpenChange,

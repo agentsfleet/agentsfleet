@@ -140,11 +140,11 @@ fn seedLeaseFull(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fl
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   event_type, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, 'steer:test',
-        \\        'chat', '{"message":"hi"}', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
+        \\        'chat', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
         \\        5, $7, $8, 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ lease_id, runner_id, fleet_id, workspace_id, base.TEST_TENANT_ID, EVENT_ID, lease_expires_at, status });
@@ -161,8 +161,8 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_
 fn setGrantStatus(conn: *pg.Conn, fleet_id: []const u8, service: []const u8, status: GrantStatus) !void {
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, 0, 'mint integration test')
+        \\  (id, fleet_id, service, status, created_at, requested_reason)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, 0, 'mint integration test')
         \\ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status
     , .{ GRANT_OWNER, fleet_id, service, status.toSlice() });
 }

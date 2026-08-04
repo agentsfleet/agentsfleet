@@ -19,7 +19,6 @@ const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
-const id_format = @import("../../../types/id_format.zig");
 const tenant_provider = @import("../../../state/tenant_provider.zig");
 const model_library_store = @import("../../../state/model_library_store.zig");
 const hx_mod = @import("../hx.zig");
@@ -95,10 +94,6 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
         return;
     };
 
-    const key_id = id_format.generatePlatformLlmKeyId(hx.alloc) catch {
-        common.internalOperationError(hx.res, "Failed to generate platform key id", hx.req_id);
-        return;
-    };
     const now_ms = clock.nowMillis();
 
     const conn = hx.ctx.pool.acquire() catch {
@@ -116,7 +111,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
         return;
     };
 
-    if (!activateDefault(hx, conn, key_id, input, validated_base_url, cap, now_ms)) return;
+    if (!activateDefault(hx, conn, input, validated_base_url, cap, now_ms)) return;
 
     log.debug("admin_platform_default_set", .{ .provider = input.provider, .model = input.model });
 
@@ -153,7 +148,6 @@ fn workspaceExists(hx: hx_mod.Hx, conn: anytype, workspace_id: []const u8) bool 
 fn activateDefault(
     hx: hx_mod.Hx,
     conn: anytype,
-    key_id: []const u8,
     input: PutInput,
     base_url: ?[]const u8,
     cap: i32,
@@ -163,7 +157,7 @@ fn activateDefault(
         common.internalOperationError(hx.res, "Failed to begin transaction", hx.req_id);
         return false;
     };
-    activateDefaultTx(conn, key_id, input, base_url, cap, now_ms) catch |tx_err| {
+    activateDefaultTx(conn, input, base_url, cap, now_ms) catch |tx_err| {
         // Inspect the sqlstate BEFORE rollback (rollback issues a new command that
         // clears conn.err). A foreign_key_violation here means the catalogued
         // model was deleted between capFor and commit — the model-delete won the
@@ -191,13 +185,12 @@ fn activateDefault(
 
 fn activateDefaultTx(
     conn: anytype,
-    key_id: []const u8,
     input: PutInput,
     base_url: ?[]const u8,
     cap: i32,
     now_ms: i64,
 ) !void {
-    _ = try conn.exec(sql.UPSERT_ACTIVE_DEFAULT, .{ key_id, input.provider, input.source_workspace_id, input.model, base_url, cap, now_ms });
+    _ = try conn.exec(sql.UPSERT_ACTIVE_DEFAULT, .{ input.provider, input.source_workspace_id, input.model, base_url, cap, now_ms });
     // Exactly one active row: stand every other provider down. NULL their model
     // so an inactive row never pins fk_platform_provider_defaults_model — otherwise a
     // deactivated provider's stale model would block deleting that catalogue row.

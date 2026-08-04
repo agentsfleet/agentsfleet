@@ -6,7 +6,7 @@
       Returns approval gates oldest-first (oldest is most urgent). Each row
       surfaces the fleet's proposed action, gathered evidence, blast-radius
       assessment, and timeout countdown. Filter by fleet, gate kind, or
-      status. Cursor pagination over (requested_at, id) so concurrent
+      status. Cursor pagination over (created_at, id) so concurrent
       inserts don't cause silent skips.
     tags:
     - Approvals
@@ -183,7 +183,7 @@ components:
   schemas:
     ApprovalGate:
       type: object
-      required: [gate_id, fleet_id, workspace_id, action_id, status, requested_at, timeout_at]
+      required: [gate_id, fleet_id, workspace_id, action_id, status, created_at, timeout_at]
       properties:
         gate_id: { type: string, format: uuid }
         fleet_id: { type: string, format: uuid }
@@ -210,7 +210,7 @@ components:
         detail:
           type: string
           description: Optional reason text supplied by the resolver.
-        requested_at: { type: integer, format: int64, description: ms epoch }
+        created_at: { type: integer, format: int64, description: ms epoch }
         timeout_at: { type: integer, format: int64, description: ms epoch — sweeper auto-denies after this point }
         updated_at:
           type: integer

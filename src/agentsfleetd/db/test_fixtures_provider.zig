@@ -9,6 +9,7 @@ const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
+const id_format = @import("../types/id_format.zig");
 const pg = @import("pg");
 const base = @import("test_fixtures.zig");
 
@@ -31,6 +32,51 @@ const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
 /// real rates (see service_token_splits_wire_integration_test), not this default.
 pub const TEST_PLATFORM_MODEL = "accounts/fireworks/models/kimi-k2.6";
 pub const TEST_PLATFORM_CAP_TOKENS: i32 = 256_000;
+
+/// A REAL catalogue row, for the tests that need a non-zero estimate.
+///
+/// `TEST_PLATFORM_MODEL` above prices at zero on purpose, so it can never size a
+/// token floor — and a gate that must prove it BLOCKS a drained tenant needs one.
+/// These are the live Fireworks rates for GLM 5.2, copied from the product seed
+/// (`samples/fixtures/model-library/seed.sql`).
+///
+/// Seeded by `seedPricedModel` rather than read from the product catalogue,
+/// which the migrations do NOT install: those rows exist only once
+/// `model_library_seed_integration_test` has applied the fixture, so a test that
+/// merely ASSUMED them would pass or fail on suite ordering.
+pub const TEST_PRICED_PROVIDER = "fireworks";
+pub const TEST_PRICED_MODEL = "accounts/fireworks/models/glm-5p2";
+pub const TEST_PRICED_INPUT_NANOS_PER_MTOK: i64 = 1_400_000_000;
+pub const TEST_PRICED_CACHED_INPUT_NANOS_PER_MTOK: i64 = 140_000_000;
+pub const TEST_PRICED_OUTPUT_NANOS_PER_MTOK: i64 = 4_400_000_000;
+pub const TEST_PRICED_CAP_TOKENS: i32 = 1_048_576;
+
+/// Install the priced catalogue row above. Idempotent, and independent of every
+/// other fixture — a caller needs only this to price a non-zero estimate.
+pub fn seedPricedModel(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
+    const row_id = try id_format.generateFleetId(alloc);
+    defer alloc.free(row_id);
+    _ = try conn.exec(
+        \\INSERT INTO core.model_library
+        \\  (id, model_id, provider, context_cap_tokens,
+        \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+        \\ON CONFLICT (provider, model_id) DO UPDATE
+        \\SET input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
+        \\    cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
+        \\    output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok
+    , .{
+        row_id,
+        TEST_PRICED_MODEL,
+        TEST_PRICED_PROVIDER,
+        TEST_PRICED_CAP_TOKENS,
+        TEST_PRICED_INPUT_NANOS_PER_MTOK,
+        TEST_PRICED_CACHED_INPUT_NANOS_PER_MTOK,
+        TEST_PRICED_OUTPUT_NANOS_PER_MTOK,
+        clock.nowMillis(),
+    });
+}
 
 /// Set ENCRYPTION_MASTER_KEY in the process env so vault.storeJson /
 /// crypto_store.load can wrap/unwrap DEKs in tests. Idempotent; safe to
@@ -64,22 +110,21 @@ pub fn seedPlatformProviderWithKey(
     setTestEncryptionKey();
 
     const tenant_billing = @import("../state/tenant_billing.zig");
-    const id_format = @import("../types/id_format.zig");
 
     // The catalogue row the platform default points at — required by
     // fk_platform_provider_defaults_model. Zero token rates keep the lease run-fee-only
     // (cache resolves run-fee + 0 token nanos), matching the pre-FK MISS path.
     // No cache warm needed: rates load on first use straight from this row.
-    const caps_uid = try id_format.generateFleetId(alloc);
-    defer alloc.free(caps_uid);
+    const caps_id = try id_format.generateFleetId(alloc);
+    defer alloc.free(caps_id);
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens,
+        \\  (id, model_id, provider, context_cap_tokens,
         \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
-        \\   created_at_ms, updated_at_ms)
+        \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, $5, $5)
         \\ON CONFLICT (provider, model_id) DO NOTHING
-    , .{ caps_uid, TEST_PLATFORM_MODEL, TEST_PROVIDER_NAME, TEST_PLATFORM_CAP_TOKENS, clock.nowMillis() });
+    , .{ caps_id, TEST_PLATFORM_MODEL, TEST_PROVIDER_NAME, TEST_PLATFORM_CAP_TOKENS, clock.nowMillis() });
 
     // Vault credential at (workspace_id, TEST_PROVIDER_NAME).
     var obj: std.json.ObjectMap = .empty;
@@ -89,20 +134,18 @@ pub fn seedPlatformProviderWithKey(
     try base.storeVaultJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj });
 
     // platform_provider_defaults row pointing at the seeded vault credential.
-    const key_id = try id_format.generateFleetId(alloc);
-    defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.platform_provider_defaults
-        \\  (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, true, $6, $6)
+        \\  (provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
+        \\VALUES ($1, $2::uuid, $3, $4, true, $5, $5)
         \\ON CONFLICT (provider) DO UPDATE
         \\SET source_workspace_id = EXCLUDED.source_workspace_id,
         \\    model = EXCLUDED.model,
         \\    context_cap_tokens = EXCLUDED.context_cap_tokens,
         \\    active = true,
         \\    updated_at = EXCLUDED.updated_at
-    , .{ key_id, TEST_PROVIDER_NAME, workspace_id, TEST_PLATFORM_MODEL, TEST_PLATFORM_CAP_TOKENS, now_ms });
+    , .{ TEST_PROVIDER_NAME, workspace_id, TEST_PLATFORM_MODEL, TEST_PLATFORM_CAP_TOKENS, now_ms });
 
     // Starter grant — funds the receive + stage debits the writepath fires.
     // Granted to the workspace's OWNING tenant (not the shared TEST_TENANT_ID)
@@ -116,7 +159,7 @@ pub fn seedPlatformProviderWithKey(
 /// helpers workspace-derived so they follow per-suite tenants automatically.
 /// Run while the workspace row still exists (defer order: provider teardown
 /// fires before the workspace teardown declared above it).
-const TENANT_OF_WORKSPACE_SUBQ = "(SELECT tenant_id FROM core.workspaces WHERE workspace_id = $1::uuid)";
+const TENANT_OF_WORKSPACE_SUBQ = "(SELECT tenant_id FROM core.workspaces WHERE id = $1::uuid)";
 
 /// Counterpart to seedPlatformProvider — drops the platform key + vault row
 /// for the workspace, resets the owning tenant's billing row (the seed's
@@ -124,7 +167,7 @@ const TENANT_OF_WORKSPACE_SUBQ = "(SELECT tenant_id FROM core.workspaces WHERE w
 pub fn teardownPlatformProvider(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.platform_provider_defaults WHERE provider = $1", .{TEST_PROVIDER_NAME}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, TEST_PROVIDER_NAME }) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = " ++ TENANT_OF_WORKSPACE_SUBQ, .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM billing.tenant_wallet WHERE tenant_id = " ++ TENANT_OF_WORKSPACE_SUBQ, .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = " ++ TENANT_OF_WORKSPACE_SUBQ, .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1::uuid", .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }

@@ -191,8 +191,8 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     // INSERT with generated ids
     const tid = try id_format.allocUuidV7(alloc);
     defer alloc.free(tid);
-    const uid = try id_format.allocUuidV7(alloc);
-    defer alloc.free(uid);
+    const row_id = try id_format.allocUuidV7(alloc);
+    defer alloc.free(row_id);
     const pid = try id_format.allocUuidV7(alloc);
     defer alloc.free(pid);
 
@@ -202,7 +202,7 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     );
     _ = try db_ctx.conn.exec(
         "INSERT INTO t6_usage_ledger (id, run_id) VALUES ($1::uuid, 'run-1')",
-        .{uid},
+        .{row_id},
     );
     _ = try db_ctx.conn.exec(
         "INSERT INTO t6_policy_events (id, workspace_id) VALUES ($1::uuid, 'ws-1')",
@@ -222,11 +222,11 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     {
         var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT id::text FROM t6_usage_ledger WHERE id = $1::uuid",
-            .{uid},
+            .{row_id},
         ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
-        try std.testing.expectEqualStrings(uid, try row.get([]const u8, 0));
+        try std.testing.expectEqualStrings(row_id, try row.get([]const u8, 0));
     }
     {
         var q = PgQuery.from(try db_ctx.conn.query(
@@ -363,7 +363,10 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    const schema_checks = [_][]const u8{ "core", "fleet", "billing", "vault", "audit", "ops_ro" };
+    // `ops_ro` is not in this list: slot 100 deliberately stopped creating it —
+    // the read-only operator principals are ROLES with grants, not a schema of
+    // their own. `memory` is, and owns `memory.memory_entries`.
+    const schema_checks = [_][]const u8{ "core", "fleet", "billing", "vault", "audit", "memory" };
     inline for (schema_checks) |schema_name| {
         var schema_q = PgQuery.from(try db_ctx.conn.query(
             "SELECT 1 FROM information_schema.schemata WHERE schema_name = $1",
@@ -660,18 +663,19 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    // The full lease/report write set: the per-event lifecycle tables
-    // (events/sessions/fleets), metering + approval writes, and the billing
-    // ledger the report path debits. fleet_sessions + fleet_events were the
-    // two formerly granted to worker_runtime only — the rest api_runtime always
-    // held; covering all of them keeps the guard faithful to the write path.
+    // The lease/report write set api_runtime reaches UNELEVATED: the per-event
+    // lifecycle tables. fleet_sessions + fleet_events were the two formerly
+    // granted to worker_runtime only — the rest api_runtime always held.
+    //
+    // The two money tables are deliberately absent. They moved behind roles the
+    // handler must assume, so their reachability is asserted below instead of
+    // here; leaving them in this list would have kept passing while the fence
+    // it now proves did not exist.
     const write_set = [_][]const u8{
         "core.fleets",
         "core.fleet_events",
         "core.fleet_sessions",
-        "core.fleet_execution_telemetry",
         "core.fleet_approval_gates",
-        "billing.tenant_billing",
     };
     inline for (write_set) |tbl| {
         var q = PgQuery.from(try db_ctx.conn.query(
@@ -685,6 +689,214 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
         try std.testing.expect(try row.get(bool, 0)); // SELECT
         try std.testing.expect(try row.get(bool, 1)); // INSERT
         try std.testing.expect(try row.get(bool, 2)); // UPDATE
+    }
+}
+
+// The role/table privilege matrix, asserted from the catalogue rather than from
+// the grant text. `has_table_privilege` answers what a role can actually DO, so
+// it accounts for membership and inheritance that reading the GRANT statements
+// cannot.
+//
+// Two-sided on purpose: every row states BOTH what the role may do and what it
+// may not, because a one-sided check cannot tell "the boundary holds" from "the
+// grant was dropped". The `crypto_store` and metering suites exercise every one
+// of these statements already, but they connect as the database OWNER, which
+// bypasses grants entirely — so they stay green whether or not the runtime role
+// can reach the table. This asks the question a superuser connection cannot
+// answer by accident.
+//
+// `db_migrator` is deliberately absent: its authority comes from OWNING the
+// tables, and the owning role is a deployment property (locally the superuser
+// that runs compose owns them), not something this schema grants. Pinning it
+// here would pin a local artifact.
+const RolePrivilege = struct {
+    role: []const u8,
+    table: []const u8,
+    select: bool,
+    insert: bool,
+    update: bool,
+    delete: bool,
+};
+
+const ROLE_PRIVILEGE_MATRIX = [_]RolePrivilege{
+    // api_runtime — every Hypertext Transfer Protocol handler runs as this role.
+    // The secret store and the wallet are reachable directly: `insertStarterGrant`
+    // writes the wallet inside the tenant-create transaction, so revoking either
+    // without an elevation path refuses every signup and every secret read.
+    .{ .role = "api_runtime", .table = "vault.secrets", .select = true, .insert = true, .update = true, .delete = true },
+    .{ .role = "api_runtime", .table = "billing.tenant_wallet", .select = true, .insert = true, .update = true, .delete = true },
+    // No DELETE on the ledger: a charge leaves only with the tenant that paid,
+    // through the cascade. Nothing else in the system may erase one.
+    .{ .role = "api_runtime", .table = "billing.usage_ledger", .select = true, .insert = true, .update = true, .delete = false },
+    // Memory is behind `memory_runtime`; api_runtime must SET ROLE to reach it.
+    .{ .role = "api_runtime", .table = "memory.memory_entries", .select = false, .insert = false, .update = false, .delete = false },
+
+    // memory_runtime — the one elevation role, and it reaches memory ONLY.
+    .{ .role = "memory_runtime", .table = "memory.memory_entries", .select = true, .insert = true, .update = true, .delete = true },
+    .{ .role = "memory_runtime", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
+    .{ .role = "memory_runtime", .table = "billing.tenant_wallet", .select = false, .insert = false, .update = false, .delete = false },
+    .{ .role = "memory_runtime", .table = "billing.usage_ledger", .select = false, .insert = false, .update = false, .delete = false },
+
+    // Read-only operator principals reach neither money nor secrets, in any
+    // direction. Each schema slot REVOKEs explicitly so re-widening is a visible
+    // edit; these rows are what makes that revoke provable.
+    .{ .role = "ops_readonly_human", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
+    .{ .role = "ops_readonly_human", .table = "billing.tenant_wallet", .select = false, .insert = false, .update = false, .delete = false },
+    .{ .role = "ops_readonly_human", .table = "billing.usage_ledger", .select = false, .insert = false, .update = false, .delete = false },
+    .{ .role = "ops_readonly_fleet", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
+    .{ .role = "ops_readonly_fleet", .table = "billing.tenant_wallet", .select = false, .insert = false, .update = false, .delete = false },
+    .{ .role = "ops_readonly_fleet", .table = "billing.usage_ledger", .select = false, .insert = false, .update = false, .delete = false },
+};
+
+fn expectPrivilege(
+    conn: *Conn,
+    role: []const u8,
+    table: []const u8,
+    privilege: []const u8,
+    want: bool,
+) !void {
+    var q = PgQuery.from(try conn.query(
+        "SELECT has_table_privilege($1, $2, $3)",
+        .{ role, table, privilege },
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const got = try row.get(bool, 0);
+    if (got != want) {
+        std.debug.print(
+            "\nFAIL: {s} may {s} {s} — expected {}, found {}\n",
+            .{ role, privilege, table, want, got },
+        );
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "integration: the role/table privilege matrix holds in both directions" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    for (ROLE_PRIVILEGE_MATRIX) |row| {
+        try expectPrivilege(db_ctx.conn, row.role, row.table, "SELECT", row.select);
+        try expectPrivilege(db_ctx.conn, row.role, row.table, "INSERT", row.insert);
+        try expectPrivilege(db_ctx.conn, row.role, row.table, "UPDATE", row.update);
+        try expectPrivilege(db_ctx.conn, row.role, row.table, "DELETE", row.delete);
+    }
+}
+
+// Executed, not declared. `has_table_privilege` answers what the catalogue
+// SAYS; this runs the statements and reads what PostgreSQL DOES. The two can
+// disagree — a column-scoped grant satisfies a table-level SELECT check while
+// every decrypt still fails — and the disagreement is exactly the shape that
+// shipped a schema whose own tests passed while signup was refused.
+//
+// Both directions on the same connection: the writes that must succeed, then
+// the reads that must be refused. A denial is asserted as an error from the
+// statement, not as a catalogue answer, so it cannot pass by mis-reading the
+// question.
+const PRIV_WS = "0195b4ba-8d3a-7f13-8abc-0000000009e1";
+const PRIV_SECRET_ID = "0195b4ba-8d3a-7f13-8abc-0000000009e2";
+
+test "integration: role-scoped statements succeed and are refused as the matrix declares" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    // Seeded as the owner; the role-scoped work below is what is under test.
+    try test_fixtures.seedTenant(conn);
+    try test_fixtures.seedWorkspace(conn, PRIV_WS);
+    defer test_fixtures.teardownTenant(conn);
+    defer test_fixtures.teardownWorkspace(conn, PRIV_WS);
+    defer _ = conn.exec("RESET ROLE", .{}) catch {};
+    defer _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{PRIV_WS}) catch {};
+    defer _ = conn.exec("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", .{test_fixtures.TEST_TENANT_ID}) catch {};
+
+    // ── api_runtime: the money and secret paths must WORK ──────────────────
+    _ = try conn.exec("SET ROLE api_runtime", .{});
+
+    // The write that refuses every signup when the grant is missing.
+    _ = try conn.exec(
+        \\INSERT INTO billing.tenant_wallet
+        \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\VALUES ($1::uuid, 500, 'starter', 0, 0)
+        \\ON CONFLICT (tenant_id) DO NOTHING
+    , .{test_fixtures.TEST_TENANT_ID});
+    // The write every metered debit performs.
+    _ = try conn.exec(
+        "UPDATE billing.tenant_wallet SET balance_nanos = balance_nanos - 1 WHERE tenant_id = $1::uuid",
+        .{test_fixtures.TEST_TENANT_ID},
+    );
+    // The secret write, and a read of the sealed bytes back — a metadata-only
+    // column grant would pass the INSERT and fail this SELECT.
+    _ = try conn.exec(
+        \\INSERT INTO vault.secrets
+        \\  (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag,
+        \\   nonce, ciphertext, tag, kek_version, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 'privilege-probe', 'x', 'x', 'x', 'x', 'x', 'x', 1, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ PRIV_SECRET_ID, PRIV_WS });
+    {
+        var q = PgQuery.from(try conn.query(
+            "SELECT ciphertext FROM vault.secrets WHERE workspace_id = $1::uuid",
+            .{PRIV_WS},
+        ));
+        defer q.deinit();
+        try std.testing.expect((try q.next()) != null);
+    }
+
+    _ = try conn.exec("RESET ROLE", .{});
+
+    // ── read-only operators: the same reads must be REFUSED ────────────────
+    // Asserted as a statement error. `expectError` is not used: the driver
+    // reports a refusal as the generic `error.PG`, so naming that specific
+    // error would pin the driver's error mapping rather than the refusal.
+    inline for (.{ "ops_readonly_human", "ops_readonly_fleet" }) |role| {
+        _ = try conn.exec("SET ROLE " ++ role, .{});
+        if (conn.exec("SELECT ciphertext FROM vault.secrets WHERE workspace_id = $1::uuid", .{PRIV_WS})) |_| {
+            std.debug.print("\n\nFAIL: {s} read vault.secrets — the REVOKE in schema/300 is not holding\n", .{role});
+            _ = conn.exec("RESET ROLE", .{}) catch {};
+            return error.TestUnexpectedResult;
+        } else |_| {}
+        _ = try conn.exec("RESET ROLE", .{});
+
+        _ = try conn.exec("SET ROLE " ++ role, .{});
+        if (conn.exec("SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", .{test_fixtures.TEST_TENANT_ID})) |_| {
+            std.debug.print("\n\nFAIL: {s} read billing.tenant_wallet — the REVOKE in schema/700 is not holding\n", .{role});
+            _ = conn.exec("RESET ROLE", .{}) catch {};
+            return error.TestUnexpectedResult;
+        } else |_| {}
+        _ = try conn.exec("RESET ROLE", .{});
+    }
+}
+
+// The envelope columns specifically. A column-scoped grant covering only the
+// metadata projection satisfies every table-level SELECT asserted above while
+// every decrypt path still fails, so the table grants alone do not prove the
+// read path works — this is the assertion that does.
+test "integration: api_runtime can read the sealed vault columns, not just metadata" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const sealed = [_][]const u8{ "ciphertext", "encrypted_dek", "dek_nonce", "dek_tag", "nonce", "tag", "kek_version" };
+    for (sealed) |column| {
+        var q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT has_column_privilege($1, 'vault.secrets', $2, 'SELECT')",
+            .{ "api_runtime", column },
+        ));
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        if (!(try row.get(bool, 0))) {
+            std.debug.print("\nFAIL: api_runtime cannot read vault.secrets.{s}\n", .{column});
+            return error.TestUnexpectedResult;
+        }
     }
 }
 

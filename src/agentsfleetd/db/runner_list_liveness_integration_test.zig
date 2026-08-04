@@ -44,8 +44,8 @@ fn seedProbeFleet(conn: *pg.Conn) !void {
     , .{ RUNNER_PROBE, NAME_PREFIX ++ "runner" });
     _ = try conn.exec(
         \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'live-fleet', '', '{}'::jsonb, 'active', 0, 0)
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, (SELECT w.tenant_id FROM core.workspaces w WHERE w.id = $2::uuid), 'live-fleet', '', '{}'::jsonb, 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ FLEET_PROBE, WS_PROBE });
 }
@@ -75,13 +75,13 @@ fn seedRunnersWithLeases(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   event_type, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
-        \\   last_metered_at_ms, fencing_token, lease_expires_at, status,
+        \\   last_metered_at, fencing_token, lease_expires_at, status,
         \\   created_at, updated_at)
         \\SELECT overlay(md5('LL' || g)::uuid::text placing '7' from 15 for 1)::uuid,
         \\       overlay(md5('lr' || g)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\       $1::uuid, $2::uuid, $3::uuid, 'le' || g, 'a', 'fleet.run', '{}', 0,
+        \\       $1::uuid, $2::uuid, $3::uuid, 'le' || g, 'a', 'fleet.run', 0,
         \\       'standard', 'anthropic', 'claude', 0, 0, 0, 0, g, 9999999999999,
         \\       'active', 0, 0
         \\FROM generate_series(1, $4::int) g

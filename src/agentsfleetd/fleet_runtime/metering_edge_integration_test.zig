@@ -50,14 +50,14 @@ const RATE_MODEL_CAP_TOKENS: i64 = 200_000;
 fn seedRatedModel(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\  (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
         \\ON CONFLICT (provider, model_id) DO UPDATE SET
         \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
         \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
         \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-        \\   updated_at_ms = EXCLUDED.updated_at_ms
+        \\   updated_at = EXCLUDED.updated_at
     , .{ RATE_MODEL_UID, RATE_MODEL, RATE_PROVIDER, RATE_MODEL_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, clock.nowMillis() });
 }
 

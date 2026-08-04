@@ -115,7 +115,7 @@ fn seedSchedule(h: *TestHarness, ids: Ids) !void {
 }
 
 fn cleanupDb(conn: *pg.Conn, ids: Ids) !void {
-    _ = try conn.exec("DELETE FROM core.fleet_schedules WHERE uid = $1::uuid", .{ids.schedule});
+    _ = try conn.exec("DELETE FROM core.fleet_schedules WHERE id = $1::uuid", .{ids.schedule});
     fixtures.teardownFleets(conn, ids.workspace);
     fixtures.teardownWorkspace(conn, ids.workspace);
     fixtures.teardownTenantById(conn, ids.tenant);
@@ -293,9 +293,9 @@ test "test_fire_skips_inactive" {
     defer missing.deinit();
     try missing.expectStatus(.ok);
     const states = [_]struct { sql: []const u8, id: []const u8 }{
-        .{ .sql = "UPDATE core.fleet_schedules SET desired_status = 'paused' WHERE uid = $1::uuid", .id = "paused" },
-        .{ .sql = "UPDATE core.fleet_schedules SET desired_status = 'deleting' WHERE uid = $1::uuid", .id = "deleting" },
-        .{ .sql = "UPDATE core.fleet_schedules SET desired_status = 'active', sync_status = 'failed' WHERE uid = $1::uuid", .id = "failed" },
+        .{ .sql = "UPDATE core.fleet_schedules SET desired_status = 'paused' WHERE id = $1::uuid", .id = "paused" },
+        .{ .sql = "UPDATE core.fleet_schedules SET desired_status = 'deleting' WHERE id = $1::uuid", .id = "deleting" },
+        .{ .sql = "UPDATE core.fleet_schedules SET desired_status = 'active', sync_status = 'failed' WHERE id = $1::uuid", .id = "failed" },
         .{ .sql = "UPDATE core.fleets SET status = 'stopped' WHERE id = $1::uuid", .id = "stopped" },
         .{ .sql = "UPDATE core.fleets SET status = 'killed' WHERE id = $1::uuid", .id = "killed" },
     };

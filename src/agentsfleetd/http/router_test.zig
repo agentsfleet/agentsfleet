@@ -248,7 +248,7 @@ test "matchWebhookAction excludes reserved literals at slot 1" {
     for (cases) |p| {
         const r = match(p, .POST);
         if (r) |route| switch (route) {
-            .approval_webhook, .grant_approval_webhook => return error.TestExpectedNoActionDispatch,
+            .approval_webhook => return error.TestExpectedNoActionDispatch,
             else => {},
         };
     }
@@ -279,19 +279,17 @@ test "svix route rejects empty and multi-segment fleet_id" {
 
 // ── Custom-method → subpath migration (see v0.19.0 Upgrading) ─────────
 
-test "custom-method subpath: /grant-approval resolves before /approval" {
-    // grant_approval_webhook must match first because "/grant-approval" ends with "/approval"
-    // only by coincidence; the longer suffix is checked first in router.zig.
-    const zid = "z1";
-    const route = match("/v1/webhooks/z1/grant-approval", .GET) orelse return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings(zid, switch (route) {
-        .grant_approval_webhook => |id| id,
-        else => return error.TestExpectedEqual,
-    });
+test "custom-method subpath: /grant-approval no longer routes anywhere" {
+    // The second approval path retired with the fleet-key surface: the gate
+    // webhook below already resolves decisions for this workspace. The suffix
+    // used to be checked BEFORE "/approval" (it ends with it only by
+    // coincidence), so a matcher that still accepted it would silently steal
+    // the surviving route's traffic rather than 404.
+    try std.testing.expect(match("/v1/webhooks/z1/grant-approval", .GET) == null);
+    try std.testing.expect(match("/v1/webhooks/z1/grant-approval", .POST) == null);
 }
 
-test "custom-method subpath: /grant-approval is distinct from /approval" {
-    // A path ending in "/approval" must NOT route to grant_approval_webhook.
+test "custom-method subpath: /approval still resolves after the grant path retired" {
     const route = match("/v1/webhooks/z1/approval", .GET) orelse return error.TestExpectedMatch;
     switch (route) {
         .approval_webhook => {},
@@ -359,12 +357,12 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
     // negative path.
     const approval_old = match("/v1/webhooks/z1:approval", .POST);
     if (approval_old) |r| switch (r) {
-        .approval_webhook, .grant_approval_webhook => return error.TestExpectedNotApproval,
+        .approval_webhook => return error.TestExpectedNotApproval,
         else => {},
     };
     const grant_old = match("/v1/webhooks/z1:grant-approval", .POST);
     if (grant_old) |r| switch (r) {
-        .approval_webhook, .grant_approval_webhook => return error.TestExpectedNotApproval,
+        .approval_webhook => return error.TestExpectedNotApproval,
         else => {},
     };
     const messages_colon_old = match("/v1/workspaces/ws1/fleets/z1:messages", .POST);
@@ -384,18 +382,13 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
     try std.testing.expect(match("/v1/workspaces/ws1:pause", .POST) == null);
 }
 
-test "webhook action routes: approval / grant-approval / svix / github dispatch per action" {
+test "webhook action routes: approval / svix / github dispatch per action" {
     // 3-segment /v1/webhooks/{id}/{action} dispatches via matchWebhookAction.
     // 2-segment /v1/webhooks/{id} is HMAC-only receive_webhook (the legacy
     // URL-embedded-secret form was removed in M43).
     const approval = match("/v1/webhooks/z1/approval", .GET) orelse return error.TestExpectedMatch;
     switch (approval) {
         .approval_webhook => {},
-        else => return error.TestExpectedEqual,
-    }
-    const grant = match("/v1/webhooks/z1/grant-approval", .GET) orelse return error.TestExpectedMatch;
-    switch (grant) {
-        .grant_approval_webhook => {},
         else => return error.TestExpectedEqual,
     }
     // "svix" as slot-1 is the Svix route prefix, not a fleet_id.
@@ -500,17 +493,16 @@ test "match resolves tenant billing charges route" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing_charges, match("/v1/tenants/me/billing/charges", .GET).?);
 }
 
-test "match resolves per-charge telemetry route (carries event_id)" {
-    try std.testing.expectEqualStrings(
-        "evt_42",
-        switch (match("/v1/tenants/me/billing/charges/evt_42/telemetry", .GET).?) {
-            .get_tenant_metering_periods => |event_id| event_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    // The bare charges collection must NOT match the telemetry route.
-    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42", .GET) == null);
+test "match rejects the removed per-charge telemetry route (pre-v2.0 404s)" {
+    // The accrual endpoint retired with `fleet.metering_periods`: derived
+    // data, and no product surface ever called it. Pre-2.0, so the route
+    // is removed outright rather than answering 410 — it must not resolve at all.
+    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42/telemetry", .GET) == null);
     try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42/metering-periods", .GET) == null);
+    // The charge collection itself is untouched and still must not match a
+    // single-charge path, which never existed.
+    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42", .GET) == null);
+    try std.testing.expect(match("/v1/tenants/me/billing/charges", .GET) != null);
 }
 
 test "match rejects removed workspace billing routes (pre-v2.0 404s)" {
