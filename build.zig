@@ -319,31 +319,32 @@ pub fn build(b: *std.Build) void {
         const run_bench_redis = b.addRunArtifact(bench_redis);
         if (b.args) |args| run_bench_redis.addArgs(args);
         b.step("bench-redis", "Run Redis XADD concurrency bench (BENCH_REDIS=1)").dependOn(&run_bench_redis.step);
-
-        // ── Incident-response benchmark harness ─────────────────────────────
-        // Pure-std module rooted outside src/ on purpose: the harness scores
-        // detection findings against seed manifests and must stay buildable
-        // with no daemon internals in reach. Tests ride their own step (the
-        // reachability checker walks src/ only).
-        const bench_incident_mod = b.createModule(.{
-            .root_source_file = b.path("bench/incident-response/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-        const bench_incident = b.addExecutable(.{
-            .name = "bench-incident",
-            .root_module = bench_incident_mod,
-        });
-        const run_bench_incident = b.addRunArtifact(bench_incident);
-        if (b.args) |args| run_bench_incident.addArgs(args);
-        b.step("bench-incident", "Run the incident-response benchmark harness").dependOn(&run_bench_incident.step);
-
-        const bench_incident_tests = b.addTest(.{
-            .name = "bench-incident-tests",
-            .root_module = bench_incident_mod,
-            .filters = test_filters,
-        });
-        const run_bench_incident_tests = b.addRunArtifact(bench_incident_tests);
-        b.step("bench-incident-test", "Run incident-response harness unit tests").dependOn(&run_bench_incident_tests.step);
     }
+
+    // ── Incident-response benchmark harness ─────────────────────────────────
+    // Pure-std module rooted outside src/: it scores detection findings against
+    // seed manifests with no daemon internals in reach, so its tests ride their
+    // own step (the reachability checker walks src/ only). Kept OUTSIDE the
+    // `with_bench_tools` gate — that gate is for the zBench benches, and gating
+    // this left §6's Dimensions pinned by tests no lane ran.
+    const bench_incident_mod = b.createModule(.{
+        .root_source_file = b.path("bench/incident-response/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const bench_incident = b.addExecutable(.{
+        .name = "bench-incident",
+        .root_module = bench_incident_mod,
+    });
+    const run_bench_incident = b.addRunArtifact(bench_incident);
+    if (b.args) |args| run_bench_incident.addArgs(args);
+    b.step("bench-incident", "Run the incident-response benchmark harness").dependOn(&run_bench_incident.step);
+
+    const bench_incident_tests = b.addTest(.{
+        .name = "bench-incident-tests",
+        .root_module = bench_incident_mod,
+        .filters = test_filters,
+    });
+    const run_bench_incident_tests = b.addRunArtifact(bench_incident_tests);
+    b.step("bench-incident-test", "Run incident-response harness unit tests").dependOn(&run_bench_incident_tests.step);
 }

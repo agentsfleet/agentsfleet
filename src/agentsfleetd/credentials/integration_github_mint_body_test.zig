@@ -26,7 +26,9 @@ fn bindingOf(repos: []const []const u8, access: integration.RepositoryAccess) in
     return .{ .repositories = repos, .access = access };
 }
 
-test "mint body: a write binding pins the repository and grants contents + pull_requests" {
+test "test_mint_body_is_repository_and_access_scoped" {
+    // Dimension 2.3, write half — a write binding pins the repository and grants
+    // contents + pull_requests. The read half is the sibling test below.
     const alloc = std.testing.allocator;
     var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201 };
     defer gh.deinit();
@@ -80,7 +82,9 @@ test "mint body: every repository in the binding reaches the body" {
     try std.testing.expect(std.mem.indexOf(u8, gh.body, "\"gadgets\"") != null);
 }
 
-test "mint body: a fleet with no repository binding mints nothing, and never calls GitHub" {
+test "test_unbound_fleet_mints_nothing" {
+    // Dimension 2.4. A fleet with no repository binding mints nothing, and the
+    // refusal happens before GitHub is ever called.
     const alloc = std.testing.allocator;
     var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201 };
     defer gh.deinit();

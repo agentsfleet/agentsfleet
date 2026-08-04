@@ -18,6 +18,7 @@ const pipe_proto = @import("pipe_proto.zig");
 const cred = @import("engine/credential_request.zig");
 const fetch_req = @import("engine/repo_fetch_request.zig");
 const result_mod = @import("child_supervisor_result.zig");
+const renew_mod = @import("child_supervisor_renew.zig");
 const types = @import("engine/types.zig");
 const client_errors = @import("engine/client_errors.zig");
 
@@ -49,12 +50,13 @@ pub const MemorySink = struct {
     forward: *const fn (ctx: *anyopaque, payload: []const u8) void,
 };
 
-/// What the read loop should do after a renewal tick or a progress frame.
-/// `extend` carries the new absolute kill deadline (epoch ms).
-/// `terminate` carries the class the run is reported under, so a fleet-budget
-/// stop reaches the durable `failure_label` instead of collapsing into the
-/// generic `renewal_terminate` every renewal stop used to share.
-pub const RenewDecision = union(enum) { keep, extend: i64, terminate: types.FailureClass };
+// The renewal surface lives in its own module (RULE FLL split) and depends on
+// nothing here, so it is imported rather than defined. Re-exported so every
+// existing `child_supervisor.Renew*` reference keeps resolving.
+pub const RenewDecision = renew_mod.RenewDecision;
+pub const RenewHook = renew_mod.RenewHook;
+pub const RenewTick = renew_mod.RenewTick;
+const RenewPump = renew_mod.RenewPump;
 
 /// Outcome of servicing one `credential_request` (M102 §3): a short-lived token
 /// for the child, or a typed rejection it fails closed on. `token` is owned by the
@@ -95,6 +97,7 @@ pub const FetchHook = struct {
         repository: []const u8,
         commit: []const u8,
         head: []const u8,
+        tick: ?RenewTick,
     ) FetchOutcome,
 };
 
@@ -106,21 +109,6 @@ pub const FetchHook = struct {
 pub const MintHook = struct {
     ctx: *anyopaque,
     onMint: *const fn (ctx: *anyopaque, alloc: std.mem.Allocator, integration: []const u8, scope: ?[]const u8) CredentialOutcome,
-};
-
-/// Hook the daemon installs so the supervisor can drive lease renewal during a
-/// long execution without the supervisor knowing any HTTP. `onTick` fires in
-/// the idle gap between frames (renewal-tick cadence) and after each progress
-/// frame, carrying the current epoch ms and the latest cumulative usage
-/// snapshot (zeros until the child's first usage frame); the daemon renews
-/// inside the window and returns a decision. A live child that emits no
-/// frames still ticks, so a long run renews and is never falsely reclaimed.
-pub const RenewHook = struct {
-    ctx: *anyopaque,
-    onTick: *const fn (ctx: *anyopaque, now_ms: i64, usage: pipe_proto.UsageSnapshot) RenewDecision,
-    /// How often (ms) the read loop wakes between frames to consider renewal.
-    /// Production sets `constants.RENEWAL_TICK_MS`; tests inject a small value.
-    tick_ms: i64,
 };
 
 /// Read the child's framed stdout up to the terminal `result` frame, bounded by
@@ -218,9 +206,11 @@ fn handleFrame(
         .repo_fetch_request => {
             defer alloc.free(f.payload);
             // Same shape as the mint ask: the child is blocked reading its reply,
-            // so no stdout frame races this. The fetch itself is minutes-scale,
-            // which is why the hook's own deadline bounds it rather than this loop.
-            serviceFetchRequest(alloc, f.payload, response_fd, fetch_hook);
+            // so no stdout frame races this. Unlike the mint, the fetch is
+            // minutes-scale — so it carries a renewal pump, because this loop is
+            // the only thing that renews the lease and it is about to be busy.
+            var pump = RenewPump{ .hook = renew_hook, .usage = usage, .deadline = deadline };
+            serviceFetchRequest(alloc, f.payload, response_fd, fetch_hook, pump.tick());
         },
         .result => return .{ .bytes = f.payload },
         // These three are parent→child only — the parent never reads them off the
@@ -269,6 +259,7 @@ fn serviceFetchRequest(
     payload: []const u8,
     response_fd: std.posix.fd_t,
     fetch_hook: ?FetchHook,
+    tick: ?RenewTick,
 ) void {
     const hook = fetch_hook orelse
         return writeFetchResponse(alloc, response_fd, .{ .ok = false, .reason = REASON_FETCH_UNCONFIGURED });
@@ -276,7 +267,7 @@ fn serviceFetchRequest(
         return writeFetchResponse(alloc, response_fd, .{ .ok = false, .reason = REASON_FETCH_MALFORMED_ASK });
     defer parsed.deinit();
 
-    switch (hook.onFetch(hook.ctx, alloc, parsed.value.repository, parsed.value.commit, parsed.value.head)) {
+    switch (hook.onFetch(hook.ctx, alloc, parsed.value.repository, parsed.value.commit, parsed.value.head, tick)) {
         .ready => |path| writeFetchResponse(alloc, response_fd, .{ .ok = true, .path = path }),
         .refused => |reason| writeFetchResponse(alloc, response_fd, .{ .ok = false, .reason = reason }),
     }

@@ -387,10 +387,10 @@ Library upload (already shipped, unreachable): POST /fleet-libraries accepts
 3. No repairer lease is issued for an event whose gate is not approved — the existing pre-lease check is the only path, and this workstream adds no bypass.
 4. Every parked approval names its proposed action, evidence, and blast radius — a blank `ActionDetail` field is a test failure, not a display default.
 5. A minted GitHub token reaches only the repositories the fleet declared — the mint body pins them, and an unbound fleet mints nothing.
-8. No model resolves a merge conflict — a revert that does not apply cleanly is refused before any push, so every shipped diff is git's inverse patch and contains no model-authored source line.
-9. No credential enters the sandbox for repair work — the repository fetch runs pre-fork with the daemon's credential, and the child receives a working tree, never a token.
 6. Raw secret bytes never appear in prompt, result, or logs — existing tool-bridge substitution re-asserted by test for the new credential names.
 7. Benchmark evaluation incidents never inform tuning — calibration and evaluation manifests are disjoint by construction and the scorer enforces it.
+8. No model resolves a merge conflict — a revert that does not apply cleanly is refused before any push, so every shipped diff is git's inverse patch and contains no model-authored source line.
+9. No credential enters the sandbox for repair work — the fetch is daemon-executed on the child's demand (never pre-fork, which §4 rejects: it would fetch on every lease and would have to choose a repository before anything had parsed the ask), the credential rides the git process's environment, and the child receives a working tree, never a token.
 
 ## Metrics & Observability
 
@@ -733,3 +733,63 @@ three-commit depth bounds HISTORY, not BYTES: one commit can carry arbitrarily l
 `disk_write_limit_mb` has no enforcement in `CgroupScope`, and the daemon-side fetch runs
 outside the child's cgroup, so `worker_count × one bounded fetch` needs a real byte quota
 behind it.
+
+### Aug 04, 2026 — gstack `/review`: the fetch path did not work, and no test could tell
+
+Six independent passes over the branch (testing, security, maintainability, api-contract,
+Claude adversarial, Codex adversarial). Four of them converged, without seeing each other, on
+one defect: **`repo_fetch` stopped working thirty seconds into any run.**
+
+`FetchForwarder` clamped each fetch's deadline to `self.lease_expires_at`, a snapshot taken
+once from `payload.lease_expires_at` and never written again — renewal advances
+`RenewDriver.deadline_ms`, a different field. `LEASE_TTL_MS` is 30_000, so
+`@min(now + WALL_BUDGET_MS, <a timestamp already past>)` produced an elapsed deadline and
+`repo_fetch_bounds.watch` returned `.timed_out` on its first poll, *after* a token had been
+minted. The advertised 180 s budget was unreachable by construction. Every test used
+`futureDeadline()`, and `FetchForwarder.onFetch` had no test at all, which is why the whole
+suite was green over a feature that could not run.
+
+**Fixing the deadline alone would have made things worse**, which is why the two findings are
+one change. The fetch is serviced ON the supervisor read loop, and that loop is the only
+driver of lease renewal (`applyTick` fires between frames). Letting a fetch have its full
+180 s against a 30 s lease TTL guarantees the lease lapses mid-fetch and the control plane
+hands the event to a second runner — one approval, two runs. So the fetch now carries a
+`RenewTick`: the read loop owns the renew hook and the live usage snapshot, and passes a pump
+down into the fetch, which drives it on the quota-check cadence it was already waking on. No
+timer thread — `Child.kill` and `Child.wait` both null `child.id`, and that ordering stands.
+
+A third defect fell out of the same loop. **Both bounds were only ever evaluated in the
+poll's `.timed_out` arm**, so a child that kept stderr readable held the loop in `.readable`
+forever and neither the deadline nor the byte quota was checked at all. git talks to stderr
+throughout a fetch, which is exactly that shape. Bounds and renewal now run on a wall-clock
+cadence independent of which arm fired, and a completed step is measured once more before it
+is certified — `git checkout` materializes the working tree after the last tick.
+
+Three regression tests cover it: the tick fires while a child runs, a tick reporting the lease
+lost stops the run, and a child writing steadily to stderr cannot outrun its own deadline.
+The last would have hung forever against the old loop.
+
+**Also corrected.** The shipped investigator could not authenticate to GitHub at all:
+`SKILL.md` asked for `${secrets.github.api_token}`, but a mintable credential answers only
+`.token` (`secret_substitution.zig:117` returns `MissingField` for anything else), so every
+GitHub call failed before dispatch. §6's five Dimensions were pinned by tests **no lane ran** —
+`bench-incident-test` sat behind `-Dwith-bench-tools=true`, reachable only through
+`make bench-incident`, which no workflow calls; nothing in `bench/incident-response/` imports
+zBench, so the gate was never load-bearing and the step now runs in `test-unit-agentsfleet-lib`.
+§2's four Dimensions named tests that did not exist under those names; every DONE Dimension's
+test identifier is now greppable, which is how this repo's spec discipline is meant to be
+checked. Invariant 9 still described the fetch as running *pre-fork* — the design §4 spends
+three paragraphs rejecting — and the Invariants block was numbered out of order.
+
+**Left open, deliberately, for Indy.** Two findings are architecture calls rather than defects:
+(a) the daemon runs `git` inside the child's read-write workspace with only
+`GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` neutralised, and repo-local `.git/config` cannot be
+disabled — whether that is reachable turns on whether a child-backgrounded process survives
+across tool calls, which was not established; and (b) the mint strips the owner from
+`owner/repo`, which `repo_fetch.decide` catches on the fetch path but not on the
+`${secrets.github}` path into `http_request`. Both are recorded here rather than fixed.
+
+Not a defect: `route(.unreadable, null) → .pass` is deliberate, documented, and pinned by
+`approval_gate_route.zig:87`. The unscoped `approval_webhook` route is real but
+`route_scopes.zig` is untouched by this branch — pre-existing, and it qualifies Invariant 1's
+wording rather than this workstream's change.

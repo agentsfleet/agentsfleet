@@ -193,7 +193,9 @@ test "buildSlackApprovalMessage: no memory leaks (leak detector)" {
     alloc.free(msg);
 }
 
-test "buildSlackApprovalMessage: names the gate, the blast radius, and attributes the model's claim" {
+test "test_slack_approval_names_the_action" {
+    // Dimension 2.2. The card names the gate, the blast radius, and the
+    // repository the token reaches, and attributes the model's claim as a claim.
     const alloc = std.testing.allocator;
     const msg = try buildSlackApprovalMessage(alloc, "incident-repairer", "action-77", .{
         .tool = "chat",

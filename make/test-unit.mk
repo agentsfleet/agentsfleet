@@ -34,6 +34,10 @@ test-unit-agentsfleet-lib:  ## Run shared src/lib module unit tests (Zig; named 
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build test-lib --summary all
+	@echo "→ [lib] Running incident-response harness unit tests (M157 §6)..."
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build bench-incident-test --summary all
 	@echo "✓ [lib] Shared src/lib unit tests passed (consumed by agentsfleetd + agentsfleet-runner)"
 
 test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)

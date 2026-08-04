@@ -110,9 +110,6 @@ const FetchForwarder = struct {
     /// `ExecutionPolicy`. Absent → every fetch is refused, exactly as an absent
     /// binding already means no mintable token.
     binding: ?contract.execution_policy.RepositoryBinding,
-    /// Absolute epoch-ms end of the lease. The fetch's own budget is clamped to
-    /// it, so a fetch can never outlive the run that asked for it.
-    lease_expires_at: i64,
     mint_deadline_ms: u31,
 
     fn onFetch(
@@ -121,6 +118,7 @@ const FetchForwarder = struct {
         repository: []const u8,
         commit: []const u8,
         head: []const u8,
+        tick: ?child_supervisor.RenewTick,
     ) child_supervisor.FetchOutcome {
         const self: *FetchForwarder = @ptrCast(@alignCast(ctx));
         const approved = switch (repo_fetch.decide(self.binding, .{
@@ -157,7 +155,13 @@ const FetchForwarder = struct {
             .approved = approved,
             .remote_url = repo_fetch.remoteUrl(&url_buf, approved),
             .token = token,
-            .deadline_ms = @min(clock.nowMillis() + repo_fetch_exec.WALL_BUDGET_MS, self.lease_expires_at),
+            // The fetch's OWN budget, not the lease's. Clamping to a
+            // `lease_expires_at` snapshot meant every fetch issued more than one
+            // lease window into a run was born already expired, because renewal
+            // advances the driver's deadline and never that snapshot. `tick`
+            // holds the lease open instead, and stops the fetch when it cannot.
+            .deadline_ms = clock.nowMillis() + repo_fetch_exec.WALL_BUDGET_MS,
+            .tick = if (tick) |t| repo_fetch_exec.Tick{ .ctx = t.ctx, .onTick = t.onTick } else null,
         });
         return switch (outcome) {
             .ready => .{ .ready = repo_fetch_exec.TARGET_DIR_NAME },
@@ -218,7 +222,6 @@ pub fn executeAndReport(
         .lease_id = payload.lease_id,
         .workspace_path = workspace_path,
         .binding = payload.policy.repository_binding,
-        .lease_expires_at = payload.lease_expires_at,
         .mint_deadline_ms = cfg.cp_deadlines.default_ms,
     };
 

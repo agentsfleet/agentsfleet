@@ -263,3 +263,124 @@ test "test_fetch_is_bounded_by_bytes_not_history" {
     // separately load-bearing, and a test that let them blur would pass on either.
     try testing.expect(clock.nowMillis() - started < PROMPT_RETURN_MS);
 }
+
+// ── The lease has to survive the fetch ──────────────────────────────────────
+// A fetch is minutes-scale and is serviced ON the supervisor read loop, which is
+// also the only driver of lease renewal. Nothing here was tested, and the gap hid
+// two defects at once: renewal starved for the whole fetch, and the bounds were
+// only ever evaluated in the poll's `.timed_out` arm.
+
+/// Counts ticks, and can report the lease lost on demand.
+const Pump = struct {
+    calls: usize = 0,
+    lose_after: ?usize = null,
+
+    fn onTick(ctx: *anyopaque, _: i64) bool {
+        const self: *Pump = @ptrCast(@alignCast(ctx));
+        self.calls += 1;
+        if (self.lose_after) |n| return self.calls <= n;
+        return true;
+    }
+
+    fn tick(self: *Pump) bounds.Tick {
+        return .{ .ctx = self, .onTick = onTick };
+    }
+};
+
+test "the renewal tick fires while a child runs, so a fetch cannot starve the lease" {
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    const root = try freshDir(io, "tick-fires");
+    defer Dir.cwd().deleteTree(io, root) catch {};
+    var dir = try Dir.openDirAbsolute(io, root, .{ .iterate = true });
+    defer dir.close(io);
+
+    var env = try shellEnviron(testing.allocator);
+    defer env.deinit();
+    var buf: [64]u8 = undefined;
+    var pump = Pump{};
+
+    const out = try bounds.run(io, .{
+        .argv = &.{ SHELL, "-c", "sleep 1" },
+        .environ = &env,
+        .cwd = dir,
+        .target = dir,
+        .bounds = .{
+            .deadline_ms = clock.nowMillis() + GENEROUS_DEADLINE_MS,
+            .max_bytes = 1 * KIB,
+            .check_interval_ms = TEST_TICK_MS,
+            .tick = pump.tick(),
+        },
+    }, &buf);
+    try testing.expectEqual(bounds.Stop.completed, out.stop);
+    // The count is deliberately loose — under kcov the cadence measures the
+    // instrumentation. What matters is that renewal ran AT ALL during the child,
+    // which it did not before: the loop only ticked between frames.
+    try testing.expect(pump.calls >= 2);
+}
+
+test "a tick reporting the lease lost stops the run rather than finishing the fetch" {
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    const root = try freshDir(io, "lease-lost");
+    defer Dir.cwd().deleteTree(io, root) catch {};
+    var dir = try Dir.openDirAbsolute(io, root, .{ .iterate = true });
+    defer dir.close(io);
+
+    var env = try shellEnviron(testing.allocator);
+    defer env.deinit();
+    var buf: [64]u8 = undefined;
+    var pump = Pump{ .lose_after = 0 };
+
+    const started = clock.nowMillis();
+    const out = try bounds.run(io, .{
+        .argv = &.{ SHELL, "-c", LINGER_COMMAND },
+        .environ = &env,
+        .cwd = dir,
+        .target = dir,
+        .bounds = .{
+            .deadline_ms = clock.nowMillis() + GENEROUS_DEADLINE_MS,
+            .max_bytes = 1 * KIB,
+            .check_interval_ms = TEST_TICK_MS,
+            .tick = pump.tick(),
+        },
+    }, &buf);
+    // Stopped by the LEASE, with both other bounds nowhere near — a tree built
+    // for a run another runner has already taken over is worth nothing.
+    try testing.expectEqual(bounds.Stop.lease_lost, out.stop);
+    try testing.expect(clock.nowMillis() - started < PROMPT_RETURN_MS);
+}
+
+test "a child writing steadily to stderr cannot outrun its own deadline" {
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    const root = try freshDir(io, "chatty");
+    defer Dir.cwd().deleteTree(io, root) catch {};
+    var dir = try Dir.openDirAbsolute(io, root, .{ .iterate = true });
+    defer dir.close(io);
+
+    var env = try shellEnviron(testing.allocator);
+    defer env.deinit();
+    var buf: [64]u8 = undefined;
+
+    // The regression: the deadline and the quota used to be checked ONLY in the
+    // poll's `.timed_out` arm, so a child that kept stderr readable held the loop
+    // in `.readable` forever and neither bound was ever evaluated. git talks to
+    // stderr throughout a fetch, which is exactly this shape.
+    const started = clock.nowMillis();
+    const out = try bounds.run(io, .{
+        .argv = &.{ SHELL, "-c", "while :; do echo progress >&2; done" },
+        .environ = &env,
+        .cwd = dir,
+        .target = dir,
+        .bounds = .{ .deadline_ms = started + 200, .max_bytes = 1 * KIB, .check_interval_ms = TEST_TICK_MS },
+    }, &buf);
+    try testing.expectEqual(bounds.Stop.timed_out, out.stop);
+    try testing.expect(clock.nowMillis() - started < PROMPT_RETURN_MS);
+}
