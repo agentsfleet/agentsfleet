@@ -18,6 +18,7 @@ const ec = @import("../errors/error_registry.zig");
 const gate_constants = @import("approval_gate_constants.zig");
 const id_format = @import("../types/id_format.zig");
 const config_gates = @import("config_gates.zig");
+const config_types = @import("config_types.zig");
 const gate_condition = @import("gate_condition.zig");
 
 const approval_gate_db = @import("approval_gate_db.zig");
@@ -69,6 +70,22 @@ pub const ActionDetail = struct {
     proposed_action: []const u8 = "",
     evidence_json: []const u8 = "{}",
     blast_radius: []const u8 = "",
+    /// The fleet's repository egress binding as the DAEMON holds it — not as the
+    /// model described it.
+    ///
+    /// Without this the card's trustworthy half named no repository and no
+    /// commit: `tool`/`action`/`params_summary` carry event type, actor, and
+    /// event id, so every decision-relevant word a human read ("revert abc123 in
+    /// acme/widgets") came from `proposed_action`, which a language model wrote.
+    /// The binding is the one decision-relevant fact the platform can vouch for,
+    /// because it is the same value `credentials/integration_github.zig` mints
+    /// the token against: whatever the model claims, the run cannot reach
+    /// outside this list. The sha stays unverifiable — approval releases a
+    /// bounded RUN, not specific bytes — but the blast radius no longer does.
+    ///
+    /// Null when the fleet declares none, which fails the mint closed, so there
+    /// is no reach to state.
+    repository_binding: ?config_types.RepositoryBinding = null,
     timeout_ms: i64 = 24 * 60 * 60 * MS_PER_SECOND,
 };
 
