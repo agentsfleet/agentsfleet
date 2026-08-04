@@ -91,6 +91,8 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `library/incident-repairer/SKILL.md` | CREATE | The revert rung: given a suspect commit, produce one draft revert PR; refuse on conflict; nothing else |
 | `library/incident-repairer/TRIGGER.md` | CREATE | `api` trigger, `git` + `http_request`, `github` credential, `api.github.com` allowlist, top-level `repositories` binding, **non-empty `gates.rules`** |
 | `src/agentsfleetd/fleet_runtime/config_types.zig` | EDIT | Top-level `repositories` egress binding on the fleet config, distinct from the webhook trigger's ingress binding |
+| `src/lib/contract/execution_policy.zig` | EDIT | `repositories` + `repository_access` as additive defaulted fields, so the binding the mint scopes by also reaches the runner that must refuse an out-of-binding fetch BEFORE any network call. Absent → empty → fail closed |
+| `src/agentsfleetd/fleet/service.zig` | EDIT | `resolveExecutionPolicy` populates the two fields from the same fleet config the mint reads, so the two rings cannot disagree |
 | `src/runner/daemon/lease_run.zig` | EDIT | `FetchForwarder` beside `MintForwarder` — forwards the child's on-demand fetch ask, lease-bound server-side |
 | `src/runner/child_supervisor.zig` | EDIT | `FetchHook` alongside `MintHook` on the supervisor surface |
 | `src/runner/repo_fetch.zig` | CREATE | The fetch itself: suspect commit + parent + target head, depth-bounded, binding-validated, credential stays daemon-side |
@@ -616,6 +618,17 @@ what closes it is either a typed repair intent the daemon enforces at fetch, pus
 creation (M157_002-sized), or a Goal sentence that claims what is true: a human released a
 run whose credential reaches only the declared repositories. The `- Token reaches:` line
 above is that claim made legible.
+
+### Aug 04, 2026 — building §4: the binding the fetch must check does not reach the runner
+
+Found while sizing the fetch hook, after Dimension 4.12 landed.
+
+| Finding | Evidence |
+|---|---|
+| **The `repositories` binding is invisible to the runner.** It exists only control-plane-side, read by the mint (`credentials/integration_github.zig`) — `src/lib/contract/` carries no repository field at all, and no runner file mentions one. So §4's *"the daemon validates the repository against the fleet's `repositories` binding and refuses anything outside it"* has nothing to validate against today, and Dimension 4.6a's pre-network refusal is unbuildable as written. The scoped token is NOT a substitute: the review already recorded that the mint discards the declared OWNER (`bareRepositoryName`), so a token minted for `otherorg/payments` reaches `<installed-org>/payments` — the vendor ring cannot tell the two apart, which is exactly why the local ring has to. | `grep -rn 'repositor' src/lib/contract/ src/runner/` → zero hits before this workstream; `credentials/integration_github.zig:157-160` |
+| **The fix is the shipped pattern, not a protocol break.** `ExecutionPolicy` already carries four additive-and-defaulted fields (`mintable`, `provider`, `inference_host`, `base_url`), each documented as parseable both ways against in-flight leases. `repositories` + `repository_access` ride the policy for the same reason `mintable` does — they describe the grant the child may draw on — and `network_policy.allow` is the direct precedent for a per-lease boundary the runner enforces from the policy. No version bump, no migration, and a lease serialized before the field deserializes to an empty binding, which fails closed. | `lib/contract/execution_policy.zig:97-137` |
+
+**Files Changed additions this implies** (recorded here so the R4 sweep stays honest): `src/lib/contract/execution_policy.zig` EDIT — the two additive fields; `src/agentsfleetd/fleet/service.zig` EDIT — `resolveExecutionPolicy` populates them from the fleet config the mint already reads.
 
 **§4 constraints adopted from the review, to build against rather than discover.** The
 planned fetch hook runs AFTER the child starts, and Landlock permits the child to create
