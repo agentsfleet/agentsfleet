@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M158
 **Workstream:** 001
 **Date:** Aug 04, 2026
-**Status:** PENDING
-**Priority:** P1 — operator-facing: a rebuild currently comes back with an empty model catalogue, and a wipe can be silently undone
-**Categories:** DOCS, INFRA, UI
-**Batch:** B1 — one Pull Request; the three slices share no files and can land in any order
-**Branch:** _(unassigned)_
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Status:** IN_PROGRESS
+**Priority:** P1 — operator-facing: a rebuild currently comes back with an empty model catalogue, a wipe can be silently undone, and two Continuous Integration (CI) lanes are red on main
+**Categories:** DOCS, INFRA, UI, API
+**Batch:** B1 — one Pull Request; the five slices share no files and can land in any order
+**Branch:** `feat/m158-priming-and-sweep`
+**Test Baseline:** `unit=3424 integration=587` — recorded at CHORE(open) via `make _lint_zig_test_depth`
 **Depends on:** none — M154_001 is merged and this builds on the playbooks it left in place
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 04, 2026), from a read of the teardown and founding playbooks while planning the dev and production rebuild
 **Canonical architecture:** `playbooks/ARCHITECTURE.md` §the route selector and script shape
@@ -30,20 +30,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A dev environment torn down and rebuilt from the playbooks comes back with a populated `core.model_library`, and an acceptance suite run against it leaves zero fixture fleets behind — including when the run is interrupted.
+**Goal (testable):** A dev environment torn down and rebuilt from the playbooks comes back with a populated `core.model_library`, an acceptance suite run against it leaves zero fixture fleets behind — including when the run is interrupted — and the `memleak` and `test-coverage-zig` lanes pass deterministically on main.
 
-**Problem:** Three gaps surfaced while planning the M154 rebuild, each of which costs an operator a cycle or leaves residue nobody sees:
+**Problem:** Five gaps, the first three found while planning the M154 rebuild and the last two by the red lanes that rebuild left on main. Each costs an operator a cycle, leaves residue nobody sees, or trains the team to re-run a gate:
 
 1. The `app-dev` database holds 400+ fleets. The acceptance suite's per-spec cleanup works, but the backstop sweep that covers interrupted runs reaps six name prefixes while the specs mint about twenty-two. Leaked fleets are not inert — each carries a seeded cron trigger that keeps waking runners.
 2. A freshly rebuilt environment has an empty model catalogue. The priming tool exists and works, but it lives in the local-development Makefile fragment and no playbook references it, so nothing tells an operator to run it. Every fleet needs a model, so the environment looks deployed and is not usable.
-3. Both teardown playbooks require "stop traffic and every writer" as a precondition and give no command for it. A running `agentsfleetd` machine that Fly.io restarts against the just-emptied database re-runs its own older migrations, and the next deployment then fails `ensureCanonical` with `error.MigrationSchemaAhead` — so the teardown has to be run a second time.
+3. Both teardown playbooks require "stop traffic and every writer" as a precondition and give no command for it. A running `agentsfleetd` machine that Fly.io restarts against the just-emptied database re-runs its own older migrations, and the next deployment then fails `ensureCanonical` with `error.MigrationSchemaAhead` — so the teardown has to be run a second time. This is not hypothetical: it is why `deploy (dev)` is red on main.
+4. Every Redis dial routes through `std.Io.net.HostName.connect`, whose happy-eyeballs fan-out awaits an `Io.Group`. Zig 0.16.0's group await parks on a futex word in the awaiter's own stack frame, and the finishing worker publishes the wake *before* dereferencing that word — so the awaiter can return and pop the frame first. The `memleak` lane catches the resulting `futex(2)`-on-reclaimed-stack intermittently and `make/bench.mk` deliberately refuses to suppress it.
+5. `catalog_etag_integration_test`'s lock probe waits five seconds for a lock waiter to appear in `pg_stat_activity` and calls its absence `CatalogPatchNeverBlocked`. Under the coverage lane's kcov instrumentation the patch is slower than that bound, so a timing budget stands in for a correctness claim and the lane fails on a green codebase.
 
-**Solution summary:** Three independent slices. The acceptance sweep stops matching fleet names and sweeps by ownership instead, which cannot rot as specs are added. The model catalogue priming becomes a first-class operations playbook with the approval gates every other destructive-or-billing operation already has, referenced from the deployment step that needs it. The stop-the-writer precondition becomes an executable, verified step of both teardown gates rather than a sentence.
+**Solution summary:** Five independent slices. The acceptance sweep stops matching fleet names and sweeps by ownership instead, which cannot rot as specs are added. The model catalogue priming becomes a first-class operations playbook with the approval gates every other destructive-or-billing operation already has, referenced from the deployment step that needs it. The stop-the-writer precondition becomes an executable, verified step of both teardown gates rather than a sentence. The Redis dial resolves and races addresses itself, so no stdlib futex word ever outlives its frame. The lock probe waits on the worker's own completion rather than on a clock, so it fails when the patch does not block and only then.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** Prime the catalogue on rebuild, sweep fixture fleets by ownership
-- **Intent (one sentence):** An operator who tears down and rebuilds an environment gets a usable one back without remembering an undocumented command, and the acceptance suite stops accumulating fleets in it.
+- **PR title (eventual):** Prime the catalogue on rebuild, sweep fixture fleets by ownership, green the red lanes
+- **Intent (one sentence):** An operator who tears down and rebuilds an environment gets a usable one back without remembering an undocumented command, the acceptance suite stops accumulating fleets in it, and the two lanes that went red on the rebuild fail only when something is actually wrong.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
 
 ## Implementing agent — read these first
@@ -75,23 +77,28 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/operations/teardown/redis/001_playbook.md` | EDIT | Same precondition, same command |
 | `playbooks/operations/teardown/redis/00_gate.sh` | EDIT | Same dispatch change |
 | `playbooks/operations/teardown/database/03_verify.sh` | EDIT | Its closing guidance names the catalogue priming step as the next action |
+| `src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` | EDIT | Takes the serial `common.globalIo()` so no worker thread can lose the stdlib futex race; the detach bookkeeping the owned Io required goes with it, and the comment citing an `std.Io.Select` that `9ee3a075b` deleted is corrected (RULE NLR) |
+| `src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig` | EDIT | The lock probe waits on the worker's completion instead of a five-second clock |
+| `bun.lock` | EDIT | In-range dependency refresh across the workspaces and the CLI project |
 
 ## Applicable Rules
 
 - **`~/Projects/dotfiles/docs/greptile-learnings/RULES.md`** — **NDC** (removing `LEAKED_FLEET_PREFIXES` must leave no unreferenced helper behind), **ORP** (orphan sweep for the removed constant and its imports), **UFS** (the new shell names its environment labels, vault item paths and the approval variable as constants rather than repeating literals), **FLL** (every new shell script and the new test stay under the 350-line cap), **NLR** (the two teardown playbooks are being touched, so their stale prose is corrected in the same edit rather than left).
 - **`~/Projects/dotfiles/dispatch/write_shell.md`** — all five new shell scripts: quoted expansions, array arguments, temporary-file cleanup, no untrusted `eval`, repository shell compatibility.
 - **`~/Projects/dotfiles/dispatch/write_ts_adhere_bun.md`** — the TypeScript sweep change and its test: `const` and import discipline, and the TypeScript file-shape decision recorded at PLAN.
+- **`~/Projects/dotfiles/dispatch/write_zig.md`** — §4 and §5: lifecycle discipline on the Io the fixture stops owning (the detach bookkeeping is deleted, not left inert), atomic publication ordering in §5's `PatchOutcome`, the ≤350/≤50/≤70 caps, and the mandatory cross-compile to both linux targets.
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | no — no `*.zig` in the blast radius | N/A |
-| PUB / Struct-Shape | no — no new Zig public surface | N/A |
-| File & Function Length (≤350/≤50/≤70) | yes — five new shell scripts and one new test file | Each new script does one action; the diff/apply/verify split keeps every file well under the cap |
-| UFS (repeated/semantic literals) | yes — environment labels, vault references and the approval variable appear in more than one place | Declare them once at the top of each script and in a shared block where two scripts need the same value |
+| ZIG GATE | yes — §4 and §5 each edit one Zig test file | Both are test-only edits with no allocation added; cross-compile to `x86_64-linux` and `aarch64-linux` still runs before the Pull Request |
+| PUB / Struct-Shape | no — neither Zig edit adds public surface; §5's `PatchOutcome` is file-private | N/A |
+| File & Function Length (≤350/≤50/≤70) | yes — five new shell scripts and one new test file | Each new script does one action; the diff/apply/verify split keeps every file well under the cap. §4 is a net deletion and §5 adds under ten lines |
+| UFS (repeated/semantic literals) | yes — environment labels, vault references and the approval variable appear in more than one place | Declare them once at the top of each script and in a shared block where two scripts need the same value; §5's poll bound stays the single existing named constant |
 | UI Substitution / DESIGN TOKEN | no — test files only, no components or styling | N/A |
-| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no — no Zig logging surface, no allocator lifecycle, no error registry entry, no `schema/*.sql` change | N/A |
+| LIFECYCLE | yes — §4 removes an owned `std.Io.Threaded` and its teardown bookkeeping | The replacement io is process-immortal and owns no joinable worker, so the detach flag and conditional `deinit` are deleted rather than left inert (RULE NDC) |
+| LOGGING / ERROR REGISTRY / SCHEMA | no — no new operator log surface, no new `UZ-XXX-NNN` code, no `schema/*.sql` change | N/A |
 | MILESTONE-ID (RULE TST-NAM) | yes — new playbook shell and markdown | No `M158_001` string in any `playbooks/` or `ui/` file; the identifier stays in this spec and in commit messages only |
 
 ## Prior-Art / Reference Implementations
@@ -144,6 +151,41 @@ Both teardown playbooks list "stop traffic and every writer" as a precondition a
 - **Dimension 3.3** — a failure to reach zero blocks the teardown instead of warning → Test `test_stop_writers_blocks_on_failure`
 - **Dimension 3.4** — both teardown gates dispatch the step in explicit order before the credential check → Test `test_teardown_gates_dispatch_stop_writers_first`
 
+### §4 — The lifecycle test stops manufacturing a race it no longer needs
+
+`std.Io.net.HostName.connect` is happy-eyeballs: it resolves the host, fans a connect task out per address into an `Io.Group`, and awaits the group. Zig 0.16.0's `Group.Task.start` publishes the wake and *then* dereferences the awaiter's futex word:
+
+```
+_ = to_signal.fetchAdd(1, .release);   // awaiter may now return and pop its frame
+Thread.futexWake(&to_signal.raw, 1);   // ...and this reads that frame
+```
+
+The word lives in the awaiter's own stack frame, so the `futex(2)` syscall can land on reclaimed stack. `make/bench.mk:20-28` records the owner's verdict: a suppression was tried and reverted because *"valgrind was right"*. M143 closed the two test call sites that hit it by moving them to `common.globalIo()`, where `noGroupAsync` runs group tasks inline and no worker thread exists to lose the race.
+
+The boot→drain lane reaches it through a third site. `serve_lifecycle_integration_test.zig` builds its own `std.Io.Threaded`, and the daemon's Redis dial then goes through `HostName.connect` on it. The justification recorded in that file is now false: it cites an `std.Io.Select` in `subscription_hub_wire.connectBounded` that commit `9ee3a075b` deleted. `serve.zig`, `subscription_hub.zig` and `subscription_hub_reader.zig` carry no reference to `io.async`, `concurrent`, `Select` or `ConcurrencyUnavailable` — nothing in the boot path needs io concurrency any more, so the fixture is manufacturing the only concurrency that can lose the race.
+
+**Implementation default:** the test takes `common.globalIo()`, matching the remedy M143 applied to its siblings. This is a net deletion — a process-immortal io needs no `deinit`, so the `daemon_detached` flag, its conditional defer, and the deliberate leak on the detach paths all go with it, along with the use-after-free hazard that bookkeeping existed to dodge.
+
+**What this deliberately does not do:** the daemon still dials Redis through `HostName.connect` on a threaded io in production, so the upstream use-after-scope still ships. Fixing that means the dial owning its own resolve-and-race, which is scoped out by decision — see Discovery. The honest cost is that the lane stops being able to observe the defect; the honest counterweight is that it was never fixing it either, only tripping over it about one run in ten.
+
+- **Dimension 4.1** — the lifecycle test drives the real `serve.run` on the serial io and still reaches boot → SIGTERM → drain, proven by its run marker → Test `SERVE_LIFECYCLE_BOOT_DRAIN_RAN` present in the gated run
+- **Dimension 4.2** — no Io lifecycle bookkeeping survives: the detach flag and its conditional teardown are gone, not merely unused → Test `test_lifecycle_fixture_owns_no_io`
+- **Dimension 4.3** — the boot→drain lane runs clean under valgrind → Test `make memleak`
+- **Dimension 4.4** — the fixture's comment describes the io it now takes and cites no deleted `Io.Select` (RULE NLR) → Test `grep -c "Io.Select" src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` is `0`
+
+### §5 — The catalog lock probe fails on the claim, not on the clock
+
+`waitForCatalogLockWaiter` polls `pg_stat_activity` 250 times at 20 ms and returns `error.CatalogPatchNeverBlocked` if no lock waiter appeared inside five seconds. The claim under test is "the If-Match check serializes with a concurrent write" — but the assertion actually made is "a lock waiter appears within five seconds", and those differ the moment the run is slow. Under the coverage lane's kcov instrumentation the worker's PATCH does not reach its blocking statement inside the budget, so the lane fails on a codebase where the same test passes uninstrumented.
+
+The worker itself carries the real signal. If the PATCH completed without ever blocking, the claim is genuinely false and the test must fail; if it has not completed, waiting longer is correct rather than generous. Publishing the worker's completion through an atomic lets the poll distinguish the two, and the wait bound stops being load-bearing.
+
+**Implementation default:** `PatchOutcome` gains an atomic `done` flag the worker releases after storing its status; the poll acquires it each round and fails fast with `CatalogPatchNeverBlocked` only on an observed completion. The round limit stays as a backstop against a genuine hang and is raised to cover an instrumented run, returning a distinct `CatalogPatchLockWaitTimedOut` so the two causes are never confused again.
+
+- **Dimension 5.1** — a patch that completes without ever taking the lock fails as `CatalogPatchNeverBlocked` → Test `test_probe_fails_when_patch_never_blocks`
+- **Dimension 5.2** — a patch still in flight keeps the probe waiting rather than failing → Test `test_probe_waits_while_patch_in_flight`
+- **Dimension 5.3** — exhausting the backstop reports the timeout distinctly from the never-blocked verdict → Test `test_probe_distinguishes_timeout_from_never_blocked`
+- **Dimension 5.4** — the coverage lane passes with the suite instrumented → Test `make test-coverage-zig`
+
 ## Interfaces
 
 ```
@@ -170,6 +212,14 @@ ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts
     // was Promise<void>; the counts are what makes a silent failure observable
   cleanWorkspaceFleets(handle, workspaceId, namePrefix?): Promise<{ removed: number; failed: number }>
     // namePrefix retained — the per-spec afterEach callers still scope by it
+
+src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig
+  const PatchOutcome = struct {
+      status: std.atomic.Value(u16)   // was a plain u16 read after join
+      done:   std.atomic.Value(bool)  // released by the worker, acquired by the poll
+  }
+  fn waitForCatalogLockWaiter(conn: *pg.Conn, outcome: *const PatchOutcome) !void
+    // was (conn) — the outcome is what tells "never blocked" apart from "slow"
 ```
 
 ## Failure Modes
@@ -184,6 +234,10 @@ ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts
 | Catalogue verify against an empty table | Priming was skipped or silently failed | Verify exits non-zero and names the row count it found, so the deployment step cannot be recorded as green |
 | Writer still running at teardown | `flyctl scale count 0` failed or partially applied | `01_stop_writers.sh` exits 1 and the gate stops; the teardown never reaches the destructive step |
 | Writer application does not exist | Environment was never deployed | Treated as zero machines running — a pass, so a first-time teardown is not blocked by a missing application |
+| Boot path needs io concurrency after all | A future change reintroduces `io.async` or `Io.Select` under `serve.run` | The serial io fails the call with `ConcurrencyUnavailable` and `serve.run` exits non-zero, so the lifecycle test goes red immediately rather than silently running a different shape than production |
+| Upstream futex race reaches another lane | Any test that dials on its own threaded Io | Unchanged by this milestone — the lane reports it, and the remedy is the dial rewrite scoped out in Discovery, not a suppression |
+| Lock probe's patch completes without blocking | The If-Match check stopped taking the row lock — a real regression | The observed completion fails the test as `CatalogPatchNeverBlocked`, immediately rather than after the backstop expires |
+| Lock probe exhausts its backstop | A genuine hang, or an environment far slower than instrumented Continuous Integration (CI) | `CatalogPatchLockWaitTimedOut` — distinct from the never-blocked verdict, so the cause is never inferred from the wrong signal again |
 
 ## Invariants
 
@@ -218,6 +272,14 @@ ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts
 | 3.2 | unit | `test_stop_writers_is_idempotent` | An application already at zero machines, and an application that does not exist → both exit 0 |
 | 3.3 | unit | `test_stop_writers_blocks_on_failure` | The step exits non-zero → the gate stops and the teardown step is never executed |
 | 3.4 | unit | `test_teardown_gates_dispatch_stop_writers_first` | Both teardown gates list the stop-writers step before the credential check in their explicit command list |
+| 4.1 | integration | boot→drain run marker | The gated run prints `SERVE_LIFECYCLE_BOOT_DRAIN_RAN`, so the lifecycle test is proven to have executed rather than skipped on the serial io |
+| 4.2 | unit | `test_lifecycle_fixture_owns_no_io` | `grep -c "daemon_detached\|serve_io.deinit" src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` is `0` — the bookkeeping is deleted, not left inert |
+| 4.3 | integration | `make memleak` | Exit 0, and the boot→drain lane reports no memcheck finding of any class |
+| 4.4 | unit | stale-comment sweep | `grep -c "Io.Select" src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` is `0` |
+| 5.1 | unit | `test_probe_fails_when_patch_never_blocks` | An outcome whose `done` is already released with no lock waiter present → `CatalogPatchNeverBlocked` on the first poll round, not after the backstop |
+| 5.2 | unit | `test_probe_waits_while_patch_in_flight` | `done` unset and no lock waiter yet → the probe keeps polling rather than failing |
+| 5.3 | unit | `test_probe_distinguishes_timeout_from_never_blocked` | Backstop exhausted with `done` never released → `CatalogPatchLockWaitTimedOut`, a different error than 5.1's |
+| 5.4 | integration | `make test-coverage-zig` | Exit 0 with the suite under kcov — the lane that failed on `ae511e71c` |
 | 2.3 | unit | `test_apply_aborts_on_confirmation_mismatch` | `ACTION=apply ENV=prod` with the operator typing `dev` → aborts before any write, and the catalogue is untouched |
 | — | unit | `test_scripts_print_no_credentials` | Every new script run with a stubbed vault emits no vault value, connection string, or Application Programming Interface (API) key on stdout or stderr |
 | — | regression | `test_per_spec_cleanup_still_scopes_by_prefix` | `cleanWorkspaceFleets` called with a prefix removes only matching fleets, so a parallel worker's rows survive — the behaviour §1 must not break |
@@ -234,6 +296,9 @@ ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts
 | R4 | Both teardown playbooks name the stop-writer command (§3) | `grep -rln "flyctl scale count" playbooks/operations/teardown/ \| wc -l` | `2` | P0 | |
 | R5 | Playbooks stay internally consistent — inventory, references, shellcheck, every playbook test | `make check-playbooks` | exit 0 | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R7 | The memleak lane is green and carries no new suppression (§4) | `make memleak` and `git diff origin/main...HEAD -- make/bench.mk \| wc -l` | exit 0, and `0` | P0 | |
+| R8 | The coverage lane is green with the suite instrumented (§5) | `make test-coverage-zig` | exit 0 | P0 | |
+| R9 | Dependencies are at latest across the workspaces and the CLI project | `bun outdated --filter '*'` and `cd cli && bun outdated` | no rows | P1 | |
 | S1 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S2 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S3 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
@@ -262,6 +327,8 @@ ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts
 - **Stale QStash schedules pointing at deleted fleets** — a database teardown removes `core.fleet_schedules` while the provider may still hold its own schedules. Real, but it belongs with the QStash registration playbook rather than here.
 - **Re-encoding `scripts/seed-models.mjs`** — the stray byte that makes `grep` skip it is worth fixing, but it is a one-character change in a file this milestone only reads, and bundling it would put an unrelated edit in the blast radius.
 - **The fork-pull-request approval policy and the coverage lane's host Docker access** — a repository setting and a Continuous Integration (CI) hardening item respectively, both tracked separately.
+- **The production Redis dial's exposure to the Zig 0.16.0 futex use-after-scope** — all three call sites (`redis_connection.zig:245`, `redis_subscriber.zig:109`, `redis_subscriber.zig:189`) keep routing through `std.Io.net.HostName.connect`, whose `Io.Group` await carries the defect. §4 moves the *test* out of its reach, not the daemon. Closing it means the dial owning its own resolve-and-race — a new module plus three call-site swaps, which also retires the connect bound `redis_subscriber.zig:180` records as given up. Deliberately deferred per the Discovery quote; **this is unowned work with no spec, not a tracked follow-up.**
+- **The out-of-range dependency majors** — `@tanstack/react-table` 9.0.0, `@assistant-ui/react` 0.15.4, and seven exactly-pinned `@radix-ui/react-*` packages are bumped in this milestone at Indy's explicit instruction ("just update the packages to the latest as well"), but they are *not* what M158 is about; any behavioural fallout they cause is triaged as its own concern rather than folded into a section here.
 
 ---
 
@@ -290,3 +357,7 @@ ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
+
+  > Indy (2026-08-05 07:1x): "Okay lets do the first row?" — context: §4. Three options were tabled for the Zig 0.16.0 `Io.Threaded` futex use-after-scope that reddens the `memleak` lane: (row 1) move the lifecycle test to the serial io — one line, lane green, daemon still carries the defect and the lane stops observing it; (row 2) the dial resolves and connects sequentially — production fixed, happy-eyeballs lost; (row 3) the dial resolves and races addresses itself — production fixed, racing kept, plus it closes the connect bound `redis_subscriber.zig:180` documents as given up. Row 1 chosen. §4 had been specced as row 3 and was rewritten; no Zig had been written, so nothing was reverted. **The production dial fix is therefore out of scope for M158 and unowned** — it needs its own spec.
+
+- **Gate-flag triage** — the `memleak` valgrind finding is judgment-class, not mechanical, so it was surfaced rather than actioned unilaterally. `make/bench.mk:20-28` records a prior suppression attempt that was reverted with the verdict *"valgrind was right"*; no suppression was added here, and the allowlist was not widened for §5 either. Both lanes go green by making the assertions honest, not by muting them.
