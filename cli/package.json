@@ -37,7 +37,7 @@
   "dependencies": {
     "@vercel/detect-agent": "^1.2.4",
     "commander": "^15.0.0",
-    "effect": "4.0.0-beta.97",
+    "effect": "4.0.0-beta.103",
     "posthog-node": "^5.47.10",
     "uuid": "^14.0.1"
   },
