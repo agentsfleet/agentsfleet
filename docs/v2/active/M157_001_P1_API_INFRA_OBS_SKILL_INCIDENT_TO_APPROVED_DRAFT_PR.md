@@ -303,7 +303,7 @@ That asymmetry is why §4's revert fetches through the daemon's on-demand hook r
 
 - **Dimension 5.1** — **DONE** — Grafana/Elastic secrets stay placeholders in prompt and logs; raw bytes appear only in the egress request → Test `test_data_plane_secrets_stay_placeholders`
 - **Dimension 5.2** — **DONE** — A host outside a bundle's allowlist is refused for that bundle's leases → Test `test_undeclared_host_refused`
-- **Dimension 5.3** — Onboard → publish → workspace-visible → installable, via the existing admin flow → Test `test_bundles_publish_and_list`
+- **Dimension 5.3** — **DONE** — Onboard → publish → workspace-visible → installable, via the existing admin flow → Test `test_bundles_publish_and_list`
 
 ### §6 — The benchmark is honest by construction
 
@@ -949,3 +949,22 @@ model-authored source lines" — the only property that makes revert the safe
 first rung — and re-opens the `.git/config` window recorded above.
 
   - > Indy (2026-08-05): "i think thats an overkill? for now" — context: the `git_revert` child tool deferred out of M157_001. Dimensions 4.4 and 4.5 stay open and are NOT claimed; the milestone ships the gate, the mint, and the fetch, and stops short of the revert executing.
+
+
+### Aug 05, 2026 — building Dimension 5.3: the repairer could not be installed
+
+Dimension 5.3 is the only test that drives the shipped markdown through the
+IMPORTER rather than the config parser, and the two demand different things. It
+found two defects on its first run, both of which had shipped invisibly because
+every other bundle test parses `TRIGGER.md` only.
+
+| Finding | Evidence |
+|---|---|
+| **`library/incident-repairer/SKILL.md` carried no frontmatter at all.** `parseSkillMetadata` opens with `scanFrontmatter(source) orelse MissingRequiredField`, and the importer needs that block for the entry's name — which it then requires to match `TRIGGER.md`'s. So the repairer parsed perfectly as a fleet CONFIG and was impossible to onboard as a library ENTRY. Every crew bundle test to date read `TRIGGER.md`, so nothing noticed. Fixed by adding the block, mirroring the investigator's. | `fleet_runtime/config_markdown.zig:118-119,145-152`; `fleet_library/importer.zig:104,170` |
+| **An apostrophe anywhere in frontmatter silently truncates it.** The repairer's first description read *"…is git's inverse patch…"*, and `zig-yaml` v0.2.0 treats the `'` as opening a single-quoted scalar: the emitted JSON ended mid-word at `"…is git"` and `tags`, `author`, and `version` were simply gone. The failure then surfaced as `MissingRequiredField` for `version` — a required field the author had written. Nothing warns; the document parses "successfully" into a truncated object. Both bundles' frontmatter blocks are now apostrophe-free. **This is a trap for every future bundle author**, and the same class as the gate rule's misleading `tool`/`action` naming: a silent wrong answer rather than a refusal. | `fleet_runtime/yaml_frontmatter.zig` → `zig-yaml` 0.2.0; observed JSON `{"name":…,"description":"…is git"}` |
+
+The investigator's `description` was separately stale — it still advertised
+*"emits a bounded repair proposal for human approval"*, naming the kernel
+`51d2c256f` deleted. Corrected in the same commit (RULE NLR): it now says the
+investigator names a suspect commit and a repair intent and cannot carry the
+repair out, because its token is minted read-only.

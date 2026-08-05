@@ -1,6 +1,6 @@
 ---
 name: incident-responder
-description: Sweeps Elastic and Grafana on a schedule, correlates telemetry with recent repository history, posts an evidence-cited diagnosis to Slack and Jira, and — only when the cause is code-shaped and the fix is small — emits a bounded repair proposal for human approval. Read-only against every data plane; it never writes to a repository.
+description: Sweeps Grafana and Elastic on a schedule, correlates telemetry with recent repository history, and posts an evidence-cited diagnosis to Slack and Jira. When the cause is code-shaped it names a suspect commit and a repair intent, but it cannot carry that repair out — its GitHub token is minted read-only, so it reads history and cannot open a Pull Request.
 tags:
   - incident-response
   - diagnostics
