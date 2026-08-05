@@ -52,7 +52,11 @@ const PROBE_OPTIONAL = Probe{
     .moved_repo = "agentsfleet/etag-probe-optional-moved",
 };
 const LOCK_POLL_NS = 20 * std.time.ns_per_ms;
-const LOCK_POLL_LIMIT = 250;
+/// Backstop only — the never-blocked verdict comes from the worker publishing
+/// completion, not from exhausting this. Sized for the coverage lane, where
+/// kcov's instrumentation stretches the worker's path to its blocking
+/// statement well past the five seconds this used to allow.
+const LOCK_POLL_LIMIT = 1500;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -123,22 +127,48 @@ fn readSourceRepo(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8) ![]c
     return alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
+/// The worker's result, published so the poll below can read it while the
+/// worker is still running. `done` is the release/acquire edge: everything the
+/// worker stored into `status` happens-before an acquiring reader observes it.
 const PatchOutcome = struct {
-    status: u16 = 0,
+    status: std.atomic.Value(u16) = .init(0),
+    /// Released by the worker on EVERY exit, including the early `catch return`
+    /// paths — a probe that waited on a worker which died building its request
+    /// would burn the whole backstop for no reason.
+    done: std.atomic.Value(bool) = .init(false),
+
+    fn finish(self: *PatchOutcome, status: u16) void {
+        self.status.store(status, .monotonic); // safe because: published by the `done` release below
+        self.done.store(true, .release); // safe because: pairs with the poll's acquire load
+    }
 };
 
 const PatchWorker = struct {
     fn run(h: *TestHarness, url: []const u8, body: []const u8, if_match: []const u8, outcome: *PatchOutcome) void {
+        defer if (!outcome.done.load(.monotonic)) outcome.finish(0);
         const req = h.patch(url).bearer(TOKEN_PLATFORM) catch return;
         const with_body = req.json(body) catch return;
         const with_etag = with_body.header(IF_MATCH, if_match) catch return;
         const response = with_etag.send() catch return;
         defer response.deinit();
-        outcome.status = response.status;
+        outcome.finish(response.status);
     }
 };
 
-fn waitForCatalogLockWaiter(conn: *pg.Conn) !void {
+/// Block until the concurrent PATCH is parked on the catalog row's lock.
+///
+/// The claim under test is "the If-Match check serializes with a concurrent
+/// write". The only observation that DISPROVES it is the patch finishing
+/// without ever taking the lock — so that is what fails the wait, and it fails
+/// the moment the worker publishes completion rather than after a clock runs
+/// out. A slow run is not evidence of anything: under the coverage lane's kcov
+/// instrumentation the worker needs far longer than the old five-second budget
+/// to reach its blocking statement, which turned a timing bound into the
+/// assertion and reddened the lane on a correct codebase.
+///
+/// The round limit survives only as a backstop against a genuine hang, and
+/// reports a DISTINCT error so the two causes can never be read for each other.
+fn waitForCatalogLockWaiter(conn: *pg.Conn, outcome: *const PatchOutcome) !void {
     var attempts: usize = 0;
     while (attempts < LOCK_POLL_LIMIT) : (attempts += 1) {
         var q = PgQuery.from(try conn.query(
@@ -147,10 +177,62 @@ fn waitForCatalogLockWaiter(conn: *pg.Conn) !void {
         ));
         defer q.deinit();
         const row = try q.next() orelse return error.LockWaiterQueryEmpty;
-        if (try row.get(i64, 0) > 0) return;
-        @import("common").sleepNanos(LOCK_POLL_NS);
+        const waiters = try row.get(i64, 0);
+        // The completion load happens AFTER the lock read: a worker that parked
+        // and was released between the two observations still counts as having
+        // blocked on that round, which is the claim we are trying to confirm.
+        const done = outcome.done.load(.acquire); // safe because: pairs with `PatchOutcome.finish`'s release
+        switch (classifyPollRound(waiters, done, LOCK_POLL_LIMIT - 1 - attempts)) {
+            .blocked => return,
+            .never_blocked => return error.CatalogPatchNeverBlocked,
+            .timed_out => return error.CatalogPatchLockWaitTimedOut,
+            .keep_waiting => @import("common").sleepNanos(LOCK_POLL_NS),
+        }
     }
-    return error.CatalogPatchNeverBlocked;
+    return error.CatalogPatchLockWaitTimedOut;
+}
+
+const PollVerdict = enum { blocked, keep_waiting, never_blocked, timed_out };
+
+/// One round's decision, split out so the verdict is provable without a live
+/// database — the ordering of these three questions is the whole fix.
+fn classifyPollRound(lock_waiters: i64, worker_done: bool, rounds_left: usize) PollVerdict {
+    if (lock_waiters > 0) return .blocked;
+    // A finished worker that never appeared as a waiter DISPROVES the claim,
+    // and does so immediately — waiting out the backstop would only delay a
+    // verdict already reached.
+    if (worker_done) return .never_blocked;
+    // Distinct from `.never_blocked`: nothing was observed either way, so this
+    // is a hang or an environment slower than any instrumented run, never
+    // evidence about serialization.
+    if (rounds_left == 0) return .timed_out;
+    return .keep_waiting;
+}
+
+test "unit: a patch parked on the lock confirms serialization regardless of worker state" {
+    try std.testing.expectEqual(PollVerdict.blocked, classifyPollRound(1, false, 99));
+    // A waiter seen on the same round a completion lands still counts: the
+    // worker blocked, which is the claim.
+    try std.testing.expectEqual(PollVerdict.blocked, classifyPollRound(1, true, 99));
+}
+
+test "unit: a completed patch that never took the lock fails immediately" {
+    // Dimension 5.1 — the verdict arrives on the round completion is observed,
+    // not after the backstop drains.
+    try std.testing.expectEqual(PollVerdict.never_blocked, classifyPollRound(0, true, 99));
+    try std.testing.expectEqual(PollVerdict.never_blocked, classifyPollRound(0, true, 0));
+}
+
+test "unit: an in-flight patch keeps the probe waiting rather than failing" {
+    // Dimension 5.2 — this is the round kcov's instrumentation produces for
+    // thousands of iterations; it must not be an assertion failure.
+    try std.testing.expectEqual(PollVerdict.keep_waiting, classifyPollRound(0, false, 1));
+}
+
+test "unit: exhausting the backstop is reported apart from never having blocked" {
+    // Dimension 5.3 — a hang and a disproved claim must never be read for each
+    // other, which is exactly what the old single error conflated.
+    try std.testing.expectEqual(PollVerdict.timed_out, classifyPollRound(0, false, 0));
 }
 
 test "integration: catalog stale If-Match → 412 with current etag, nothing written" {
@@ -271,13 +353,13 @@ test "integration: If-Match check serializes with a concurrent catalog write" {
 
     var outcome: PatchOutcome = .{};
     worker = try std.Thread.spawn(.{}, PatchWorker.run, .{ h, url, moved_body, stale_etag, &outcome });
-    try waitForCatalogLockWaiter(conn);
+    try waitForCatalogLockWaiter(conn, &outcome);
     _ = try conn.exec("COMMIT", .{});
     transaction_open = false;
     worker.?.join();
     worker = null;
 
-    try std.testing.expectEqual(@as(u16, 412), outcome.status);
+    try std.testing.expectEqual(@as(u16, 412), outcome.status.load(.acquire)); // safe because: pairs with the worker's `done` release
     const repo = try readSourceRepo(alloc, conn, probe.id);
     defer alloc.free(repo);
     try std.testing.expectEqualStrings(probe.repo, repo);
