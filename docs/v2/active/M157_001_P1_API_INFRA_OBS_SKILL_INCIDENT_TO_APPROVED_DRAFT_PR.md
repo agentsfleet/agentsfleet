@@ -301,8 +301,8 @@ Grafana and Elastic keys are plain workspace secrets (never registry entries, pe
 
 That asymmetry is why §4's revert fetches through the daemon's on-demand hook rather than granting `git` a credential: the outer ring already bounds where git may go, so the only thing missing would be a token — and a daemon-executed fetch means no token is needed inside the sandbox at all.
 
-- **Dimension 5.1** — Grafana/Elastic secrets stay placeholders in prompt and logs; raw bytes appear only in the egress request → Test `test_data_plane_secrets_stay_placeholders`
-- **Dimension 5.2** — A host outside a bundle's allowlist is refused for that bundle's leases → Test `test_undeclared_host_refused`
+- **Dimension 5.1** — **DONE** — Grafana/Elastic secrets stay placeholders in prompt and logs; raw bytes appear only in the egress request → Test `test_data_plane_secrets_stay_placeholders`
+- **Dimension 5.2** — **DONE** — A host outside a bundle's allowlist is refused for that bundle's leases → Test `test_undeclared_host_refused`
 - **Dimension 5.3** — Onboard → publish → workspace-visible → installable, via the existing admin flow → Test `test_bundles_publish_and_list`
 
 ### §6 — The benchmark is honest by construction

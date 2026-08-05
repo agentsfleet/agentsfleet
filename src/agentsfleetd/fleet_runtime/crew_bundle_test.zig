@@ -246,3 +246,117 @@ test "the repairer is bound for write and the investigator is not" {
     const responder_binding = responder.config.repository_binding orelse return error.TestUnexpectedResult;
     try std.testing.expect(responder_binding.access != repairer_binding.access);
 }
+
+/// Every `${secrets.NAME.FIELD}` the prose references, as NAME strings. The tool
+/// bridge substitutes these at egress; a name the bundle never declared reaches
+/// the model as an unresolved literal and the call fails before dispatch.
+fn referencedCredentials(alloc: std.mem.Allocator, md: []const u8) ![][]const u8 {
+    const OPEN = "${secrets.";
+    var out: std.ArrayList([]const u8) = .empty;
+    errdefer out.deinit(alloc);
+    var i: usize = 0;
+    while (std.mem.indexOfPos(u8, md, i, OPEN)) |start| {
+        const after = start + OPEN.len;
+        const dot = std.mem.indexOfScalarPos(u8, md, after, '.') orelse break;
+        const close = std.mem.indexOfScalarPos(u8, md, after, '}') orelse break;
+        if (dot < close) {
+            const name = md[after..dot];
+            var seen = false;
+            for (out.items) |existing| if (std.mem.eql(u8, existing, name)) {
+                seen = true;
+                break;
+            };
+            if (!seen) try out.append(alloc, name);
+        }
+        i = close + 1;
+    }
+    return out.toOwnedSlice(alloc);
+}
+
+fn declares(cfg: config.FleetConfig, name: []const u8) bool {
+    for (cfg.credentials) |c| if (std.mem.eql(u8, c, name)) return true;
+    return false;
+}
+
+test "test_data_plane_secrets_stay_placeholders" {
+    // Dimension 5.1. Two halves, and the second is the one that bites.
+    //
+    // Data-plane values reach a run ONLY as `${secrets.NAME.FIELD}` placeholders
+    // substituted at the tool bridge, so no bundle may carry a raw value — but a
+    // placeholder naming a credential the bundle never DECLARED is just as
+    // broken, and silently so: `secret_substitution` fails closed, the call dies
+    // before dispatch, and the bundle looks correct to every reader.
+    //
+    // That is not hypothetical. The shipped investigator asked for
+    // `${secrets.github.api_token}` when a mintable credential answers only
+    // `.token`, and every GitHub call failed before dispatch until a review
+    // caught it. This is the same defect one level up: the NAME rather than the
+    // field.
+    const alloc = std.testing.allocator;
+
+    for ([_][]const u8{ RESPONDER, REPAIRER }) |slug| {
+        var parsed = try parseTrigger(alloc, slug);
+        defer parsed.deinit(alloc);
+
+        const skill = try loadBundleFile(alloc, slug, SKILL_MD);
+        defer alloc.free(skill);
+        const names = try referencedCredentials(alloc, skill);
+        defer alloc.free(names);
+
+        // The prose reaches for something, or the bundle has no data plane.
+        try std.testing.expect(names.len > 0);
+        for (names) |name| {
+            if (!declares(parsed.config, name)) {
+                std.debug.print(
+                    "\n{s}/SKILL.md references ${{secrets.{s}.*}} but TRIGGER.md declares no `{s}` credential\n",
+                    .{ slug, name, name },
+                );
+                return error.UndeclaredCredentialReferenced;
+            }
+        }
+
+        // And no raw value rides the markdown. A real token would have to appear
+        // as bytes; the placeholder form is the only spelling allowed.
+        try std.testing.expect(!containsAny(skill, &.{ "ghp_", "ghs_", "xoxb-", "glsa_" }));
+    }
+}
+
+test "test_undeclared_host_refused" {
+    // Dimension 5.2. The sandbox refuses a host outside the bundle's allowlist —
+    // `policy_http_request` pins that for `http_request`, and `network/Plan`
+    // enforces it tool-agnostically at the namespace. What neither can check is
+    // that the SHIPPED bundle declared the host its own prose depends on.
+    //
+    // The repairer is the one with a fixed host: it opens the Pull Request
+    // against `api.github.com`, so an allowlist missing it is a fleet that
+    // cannot do its job, and one carrying a wildcard is a fleet that can reach
+    // anything.
+    const alloc = std.testing.allocator;
+
+    var repairer = try parseTrigger(alloc, REPAIRER);
+    defer repairer.deinit(alloc);
+    const net = repairer.config.network orelse return error.TestUnexpectedResult;
+    try std.testing.expect(net.allow.len > 0);
+
+    var has_github = false;
+    for (net.allow) |host| {
+        // No wildcard may widen the gate — an exact-match allowlist is the whole
+        // mechanism (`policy_http_request_test` pins the runtime half).
+        try std.testing.expect(std.mem.indexOfScalar(u8, host, '*') == null);
+        if (std.mem.eql(u8, host, "api.github.com")) has_github = true;
+    }
+    try std.testing.expect(has_github);
+
+    // The investigator keeps its own GitHub reach — Section 3's boundary is the
+    // MINT, not the host list — so a bundle edit dropping it would break the
+    // correlation the diagnosis depends on rather than tightening anything.
+    var responder = try parseTrigger(alloc, RESPONDER);
+    defer responder.deinit(alloc);
+    const responder_net = responder.config.network orelse return error.TestUnexpectedResult;
+    var responder_github = false;
+    for (responder_net.allow) |host| {
+        try std.testing.expect(std.mem.indexOfScalar(u8, host, '*') == null);
+        if (std.mem.eql(u8, host, "api.github.com")) responder_github = true;
+    }
+    try std.testing.expect(responder_github);
+}
