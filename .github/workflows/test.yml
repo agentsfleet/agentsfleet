@@ -173,6 +173,18 @@ jobs:
             -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
             ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r2@sha256:40cbacd00584601a4794471e01cb11942ef5319c0531e4185c54d78733285803 \
             sh -c 'make test-coverage-zig'
+      # Runs on the HOST, after the container step above has produced
+      # zig-out/bin/agentsfleetd: the host has compose (and therefore `docker
+      # compose exec`) but no Zig toolchain, while the container has the reverse.
+      # The lane takes the already-built binary, so neither needs the other's half.
+      #
+      # It migrates a scratch database from empty as a NON-superuser role shaped
+      # like the one managed databases hand the migrator. Every other lane here
+      # connects as the compose superuser, where PostgreSQL bypasses privilege
+      # checks — which is exactly how migration 110 shipped green and then
+      # refused to install on PlanetScale with 42501.
+      - name: Migrate from empty as a non-superuser (managed-database shape)
+        run: make check-migrate-unprivileged
       - name: Publish Zig coverage summary
         if: always()
         run: |

@@ -53,6 +53,17 @@ gh run watch "$PROD_RELEASE_RUN_ID" \
   pass.
 - The development readiness check passes before production deployment.
 - Production API, tunnel, health, and readiness checks pass.
+- `core.model_library` is populated. It ships EMPTY and every fleet needs a
+  model, so a green release is not yet a usable environment. Prime it with
+  `playbooks/operations/model_catalogue/001_playbook.md`, reading the diff
+  before approving the write — these rows are billing rates:
+
+  ```bash
+  ACTION=diff  ENV=prod ALLOW_VAULT_READS=1 \
+    ./playbooks/operations/model_catalogue/00_gate.sh
+  ACTION=apply ENV=prod ALLOW_VAULT_READS=1 ALLOW_MODEL_CATALOGUE_WRITES=1 \
+    ./playbooks/operations/model_catalogue/00_gate.sh
+  ```
 - Production runner jobs skip because `PROD_WORKER_READY=false`.
 - Post-release installation checks pass against the exact package version in
   `VERSION`; live CLI acceptance and `latest` promotion skip.
