@@ -73,7 +73,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/founding/07_deploy_prod/001_playbook.md` | EDIT | Same, for the production route |
 | `playbooks/operations/teardown/database/001_playbook.md` | EDIT | The stop-the-writer precondition gains its command |
 | `playbooks/operations/teardown/database/00_gate.sh` | EDIT | Stop-the-writer becomes a dispatched step |
-| `playbooks/operations/teardown/database/01_stop_writers.sh` | CREATE | The executable precondition, verified rather than assumed |
+| `playbooks/lib/stop_writers.sh` | CREATE | The executable precondition, verified rather than assumed. Landed in `playbooks/lib/` (the existing home for shared playbook code) rather than inside one teardown directory: `operations/explicit_dispatch_test.sh` copies a gate into a temp directory and stubs each step beside it, so a gate reaching outside its own directory for a step cannot be dispatch-tested at all |
+| `playbooks/lib/stop_writers_test.sh` | CREATE | Proves the read-back, both idempotent passes, the unknown-environment refusal, and that no vault value is printed |
+| `playbooks/operations/teardown/database/stop_writers.sh` | CREATE | Thin dispatched step so the gate calls into its own directory |
+| `playbooks/operations/teardown/redis/stop_writers.sh` | CREATE | Same, for the Redis gate |
+| `playbooks/operations/model_catalogue/lib.sh` | CREATE | Not anticipated: the vault item and connection reference are needed by all three steps, and three spellings is how one eventually points at the wrong environment (RULE UFS). Carries the vault preamble itself, which `check-vault-gate-parity` requires of any file resolving an `op://` reference |
+| `playbooks/operations/explicit_dispatch_test.sh` | EDIT | Its pinned dispatch order for both teardown gates gains the new first step |
 | `playbooks/operations/teardown/redis/001_playbook.md` | EDIT | Same precondition, same command |
 | `playbooks/operations/teardown/redis/00_gate.sh` | EDIT | Same dispatch change |
 | `playbooks/operations/teardown/database/03_verify.sh` | EDIT | Its closing guidance names the catalogue priming step as the next action |
@@ -132,13 +137,13 @@ Making it an operations playbook rather than a founding step is deliberate: `see
 
 **Implementation default:** the gate takes an action argument (`diff` or `apply`) and an `ENV` of exactly `dev` or `prod`, mirroring `ip_allowlisting`; the apply arm requires its own `ALLOW_*` variable plus vault-read approval plus a typed environment confirmation, mirroring the Redis teardown.
 
-- **Dimension 2.1** — the gate refuses an unknown or absent `ENV` before executing any step → Test `test_should_reject_unknown_environment_before_dispatch`
-- **Dimension 2.2** — the gate refuses `ENV=all`, so the two environments can never be written in one invocation → Test `test_should_reject_all_environments`
-- **Dimension 2.3** — the apply arm refuses to write without its approval variable → Test `test_should_require_apply_approval`
-- **Dimension 2.4** — the diff arm performs no write and needs no approval variable → Test `test_diff_arm_writes_nothing`
-- **Dimension 2.5** — the verify arm fails when the catalogue is empty and passes when it matches the allowlist → Test `test_verify_fails_on_empty_catalogue`
-- **Dimension 2.6** — the playbooks inventory in `playbooks/README.md` names the new directory, and reference integrity resolves every path it cites → Test `make check-playbooks`
-- **Dimension 2.7** — the development and production deployment steps name the priming step in their required result, so an operator following the founding sequence reaches it → Test `test_deploy_steps_reference_catalogue_priming`
+- **Dimension 2.1** — the gate refuses an unknown or absent `ENV` before executing any step → Test `test_should_reject_unknown_environment_before_dispatch` — **DONE.** All input validation completes before the first `run_step`, so an invalid invocation cannot reach a vault read. The test asserts exit 2 AND that the stubbed `op` recorded nothing.
+- **Dimension 2.2** — the gate refuses `ENV=all`, so the two environments can never be written in one invocation → Test `test_should_reject_all_environments` — **DONE.** `all` fails the dev/prod allowlist and is named explicitly in the error, since it is the value an operator is most likely to reach for.
+- **Dimension 2.3** — the apply arm refuses to write without its approval variable → Test `test_should_require_apply_approval` — **DONE.** Checked in the gate before dispatch and again in `02_apply.sh`, so running the step directly cannot bypass it. The test asserts no vault read occurred on the refusal path.
+- **Dimension 2.4** — the diff arm performs no write and needs no approval variable → Test `test_diff_arm_writes_nothing` — **DONE.** The diff arm runs `01_diff.sh` only. The test asserts the seed script was invoked WITHOUT `--apply`, rather than merely that apply was not dispatched.
+- **Dimension 2.5** — the verify arm fails when the catalogue is empty and passes when it matches the allowlist → Test `test_verify_fails_on_empty_catalogue` — **DONE.** `03_verify.sh` counts `core.model_library` and exits non-zero naming the count, then names the command that fills it. A non-numeric result also fails, so an unreadable count cannot pass as a populated catalogue.
+- **Dimension 2.6** — the playbooks inventory in `playbooks/README.md` names the new directory, and reference integrity resolves every path it cites → Test `make check-playbooks` — **DONE.** `make check-playbooks` is green: vault-gate parity, shellcheck, every playbook test, reference integrity, and README/tree parity.
+- **Dimension 2.7** — the development and production deployment steps name the priming step in their required result, so an operator following the founding sequence reaches it → Test `test_deploy_steps_reference_catalogue_priming` — **DONE.** Both `04_deploy_dev` and `07_deploy_prod` gain a Required-result bullet with the copy-paste invocation; the production one says to read the diff first because the rows are billing rates.
 
 ### §3 — Stop-the-writer is an executable step, not a sentence
 
@@ -146,10 +151,10 @@ Both teardown playbooks list "stop traffic and every writer" as a precondition a
 
 **Implementation default:** a `01_stop_writers.sh` step dispatched by both teardown gates before the credential check, using `flyctl scale count 0` — the form `.github/workflows/release.yml` already uses for scaling — and *verifying* the machine count reached zero rather than assuming the command worked. The step is idempotent: an already-stopped application is a pass, not a failure.
 
-- **Dimension 3.1** — the step scales the environment's application to zero and confirms zero machines are running before the teardown proceeds → Test `test_stop_writers_verifies_zero_machines`
-- **Dimension 3.2** — an application that is already stopped passes rather than erroring → Test `test_stop_writers_is_idempotent`
-- **Dimension 3.3** — a failure to reach zero blocks the teardown instead of warning → Test `test_stop_writers_blocks_on_failure`
-- **Dimension 3.4** — both teardown gates dispatch the step in explicit order before the credential check → Test `test_teardown_gates_dispatch_stop_writers_first`
+- **Dimension 3.1** — the step scales the environment's application to zero and confirms zero machines are running before the teardown proceeds → Test `test_stop_writers_verifies_zero_machines` — **DONE.** The machine count is READ BACK rather than inferred from the scale command's exit status; the test drives a stub where scale succeeds while a machine lingers and asserts the step fails.
+- **Dimension 3.2** — an application that is already stopped passes rather than erroring → Test `test_stop_writers_is_idempotent` — **DONE.** A non-existent app (non-zero `flyctl status`) short-circuits to success before scaling, so a first-time teardown is not blocked by a missing app.
+- **Dimension 3.3** — a failure to reach zero blocks the teardown instead of warning → Test `test_stop_writers_blocks_on_failure` — **DONE.** Exhausting the retry budget exits 1 and the gate's `run_step` halts the ordered list, so the destructive step is never reached. Landed as `stop_writers_verifies_zero_machines`.
+- **Dimension 3.4** — both teardown gates dispatch the step in explicit order before the credential check → Test `test_teardown_gates_dispatch_stop_writers_first` — **DONE.** Asserted by line ORDER in both gates, not by presence — a stop-writers step that ran after the destructive one would prevent nothing. `operations/explicit_dispatch_test.sh` independently pins the full four-step order for both gates.
 
 ### §4 — The lifecycle test stops manufacturing a race it no longer needs
 

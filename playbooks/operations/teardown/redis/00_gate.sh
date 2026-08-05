@@ -36,6 +36,12 @@ run_step() {
 	"$step"
 }
 
+# Stopping the writers comes FIRST, before credentials are even checked: a
+# live agentsfleetd restarted by Fly.io against a just-flushed cache repopulates
+# it, so a teardown that runs while a writer is up is not a teardown. Its
+# non-zero exit halts this list, which is the point — it is a gate step, not a
+# documented precondition anyone has to remember.
+run_step "$SCRIPT_DIR/stop_writers.sh"
 run_step "$SCRIPT_DIR/01_credential_check.sh"
 run_step "$SCRIPT_DIR/02_teardown.sh"
 run_step "$SCRIPT_DIR/03_verify.sh"

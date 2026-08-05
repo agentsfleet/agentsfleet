@@ -36,8 +36,23 @@ run_step() {
 	"$step"
 }
 
+# Stopping the writers comes FIRST, before credentials are even checked. A live
+# agentsfleetd restarted by Fly.io against the just-emptied database re-applies
+# its OWN older migration list; the next deploy then fails ensureCanonical with
+# error.MigrationSchemaAhead and the teardown has to be run again. Its non-zero
+# exit halts this list, which is the point — it is a gate step, not a
+# documented precondition anyone has to remember.
+run_step "$SCRIPT_DIR/stop_writers.sh"
 run_step "$SCRIPT_DIR/01_credential_check.sh"
 run_step "$SCRIPT_DIR/02_teardown.sh"
 run_step "$SCRIPT_DIR/03_verify.sh"
 
 echo "✅ database-teardown complete (env: $ENV)"
+echo ""
+echo "NEXT: the database is empty, so core.model_library is empty too and every"
+echo "fleet needs a model. Prime the catalogue before calling the environment"
+echo "usable:"
+echo "  ACTION=diff  ENV=$ENV ALLOW_VAULT_READS=1 \\"
+echo "    ./playbooks/operations/model_catalogue/00_gate.sh"
+echo "  ACTION=apply ENV=$ENV ALLOW_VAULT_READS=1 ALLOW_MODEL_CATALOGUE_WRITES=1 \\"
+echo "    ./playbooks/operations/model_catalogue/00_gate.sh"

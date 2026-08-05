@@ -11,7 +11,19 @@ the result.
 
 ## Before running
 
-1. Stop traffic and every writer in the selected environment.
+1. Stop traffic and every writer in the selected environment. **The gate now
+   does this for you** — `../stop_writers.sh` runs first, scales the
+   environment's `agentsfleetd` to zero machines, and reads the machine count
+   back before letting the teardown proceed. A live writer that Fly.io restarts
+   against the emptied database re-applies its OWN older migration list, and
+   the next deployment then fails `ensureCanonical` with
+   `error.MigrationSchemaAhead`, forcing a second teardown. To scale down by
+   hand instead:
+
+   ```bash
+   flyctl scale count 0 --app agentsfleetd-dev --process-group app --yes
+   flyctl machine list --app agentsfleetd-dev --json   # must report no machines
+   ```
 2. Confirm Docker and authenticated 1Password Command-Line Interface (CLI)
    access.
 3. Confirm the selected vault item has `migrator-connection-string`.
