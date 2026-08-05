@@ -264,7 +264,7 @@ What that bound can be has a floor worth stating. Reverting commit `C` onto head
 - **Dimension 4.2** — The finding names the failing service and the correlated commit range → Test `eval_finding_names_service_and_commit`
 - **Dimension 4.3** — Provider-outage and data-shaped incidents stay diagnosis-only: no repair intent sent → Test `eval_noncode_incidents_stay_diagnosis_only`
 - **Dimension 4.4** — The repairer's PR is a revert of the named commit and touches nothing else → Test `eval_repair_is_a_revert`
-- **Dimension 4.5** — A revert that does not apply cleanly to the target head is refused with a named reason; no branch is pushed and no model resolves the conflict → Test `test_conflicting_revert_refuses`
+- **Dimension 4.5** — **BLOCKED** (no `revert` operation exists — see Discovery, Aug 05) — A revert that does not apply cleanly to the target head is refused with a named reason; no branch is pushed and no model resolves the conflict → Test `test_conflicting_revert_refuses`
 - **Dimension 4.6** — **DONE** — The fetch is depth-bounded, lands only in the lease's own workspace, and no credential reaches the child → Test `test_fetch_is_bounded_and_credential_free`
 - **Dimension 4.6a** — **DONE** — A lease that asks for no repository fetches nothing; a fetch for a repository outside the fleet's binding is refused → Test `test_fetch_is_on_demand_and_binding_scoped`
 - **Dimension 4.7** — Cold install of both bundles onto a fresh workspace succeeds with declared credentials and hosts → Test `test_cold_install_from_library`
@@ -291,7 +291,7 @@ Exposing the shipped path costs **zero daemon code** and removes the dance. The 
 
 - **Dimension 4a.1** — The dashboard offers an upload source and posts `source_kind:"upload"` with both markdown bodies → Test `test_dashboard_uploads_local_bundle`
 - **Dimension 4a.2** — The CLI creates a library entry from a local bundle directory, and `install --library <it>` yields a fleet whose markdown matches the source byte-for-byte → Test `test_cli_uploads_and_installs_local_bundle`
-- **Dimension 4a.3** — Re-uploading identical markdown is content-addressed to the same entry rather than duplicating it → Test `test_upload_is_content_addressed`
+- **Dimension 4a.3** — **DONE** — Re-uploading identical markdown is content-addressed to the same entry rather than duplicating it → Test `test_upload_is_content_addressed`
 
 ### §5 — Data-plane credentials and library publication use only existing mechanisms
 
@@ -925,3 +925,27 @@ halves are now named files either side of it: `integration_github_body.zig`
 (what the mint asks for) and `integration_github_reach.zig` (whether the token
 it got back matches). Six unit tests on the pure verifier plus two driven
 through the public `mint`, including the stripped-owner regression itself.
+
+### Aug 05, 2026 — the repairer cannot run the one command it exists to run
+
+Found while building Dimension 4.5's conflict fixture.
+
+| Finding | Evidence |
+|---|---|
+| **There is no `revert` operation.** `library/incident-repairer/SKILL.md:45` instructs *"Run `git revert --no-edit <commit>`"*, and the fleet's `git` tool is nullclaw's `GitTool` verbatim — `tool_builders.buildGit` constructs it with no wrapper. That tool dispatches through a closed operation map and answers anything outside it with `Unknown operation: <op>`; the set is `status`, `diff`, `log`, `branch`, `commit`, `add`, `checkout`, `stash`. The repairer holds no `shell` either, and that absence is deliberate and asserted. So the fetch path lands a working tree the fleet has no means to act on. | `library/incident-repairer/SKILL.md:45`; `engine/tool_builders.zig:113-117`; `zig-pkg/nullclaw-*/src/tools/git.zig:19,160,171`; `crew_bundle_test.zig` (`!hasTool(repairer, "shell")`) |
+
+Same shape as the `${secrets.github.api_token}` defect the Aug 04 review caught:
+a bundle asking the runtime for something it does not have. It blocks
+Dimension 4.5 and Dimension 4.4, and with them the milestone's headline claim.
+
+**Indy's call: not now.** The fix is an agentsfleet-side `git_revert` child tool
+mirroring `repo_fetch` — one tool file, one builder, one `BRIDGE_REGISTRY` row,
+needing no network and no credential since the tree is already in the workspace.
+That tool is also where Dimension 4.5's NAMED refusal belongs, so the two land
+together or not at all. Adding `revert` to the vendored tool was rejected for
+the same reason as the other upstream fix (the vendored tree is ahead of the
+local checkout); granting `shell` was rejected outright, since it forfeits "no
+model-authored source lines" — the only property that makes revert the safe
+first rung — and re-opens the `.git/config` window recorded above.
+
+  - > Indy (2026-08-05): "i think thats an overkill? for now" — context: the `git_revert` child tool deferred out of M157_001. Dimensions 4.4 and 4.5 stay open and are NOT claimed; the milestone ships the gate, the mint, and the fetch, and stops short of the revert executing.

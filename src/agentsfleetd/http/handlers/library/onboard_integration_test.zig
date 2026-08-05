@@ -269,6 +269,113 @@ test "integration: tenant onboard dedupes by workspace and content hash" {
     try std.testing.expectEqual(@as(i64, 1), try tenantCount(conn));
 }
 
+/// A crew-shaped upload: BOTH markdown bodies, the way `library/incident-*/`
+/// ships. `onboardBody` above sends `SKILL.md` alone, which is the older probe
+/// shape and cannot say whether the trigger participates in the content hash.
+fn crewUploadBody(alloc: std.mem.Allocator, trigger: []const u8) ![]const u8 {
+    return std.json.Stringify.valueAlloc(alloc, .{
+        .source_kind = "upload",
+        .source_ref = "unit/onboard-probe",
+        .skill_markdown = PROBE_SKILL,
+        .trigger_markdown = trigger,
+    }, .{});
+}
+
+/// The smallest frontmatter that parses AND carries an access level. `triggers`,
+/// `tools`, and `budget` are each required by `config_parser`; the runtime keys
+/// live inside `x-agentsfleet`; and `repositories` + `repository_access` are
+/// optional TOGETHER — one without the other is an authoring error, not a
+/// half-binding.
+const CREW_TRIGGER_READ =
+    \\---
+    \\name: onboard-probe
+    \\x-agentsfleet:
+    \\  triggers:
+    \\    - type: api
+    \\  tools:
+    \\    - http_request
+    \\  budget:
+    \\    daily_dollars: 1.0
+    \\  repositories:
+    \\    - acme/payments
+    \\  repository_access: read
+    \\---
+;
+/// Byte-identical to the above but for the access level — the smallest edit that
+/// changes what a fleet installed from this entry may DO.
+const CREW_TRIGGER_WRITE =
+    \\---
+    \\name: onboard-probe
+    \\x-agentsfleet:
+    \\  triggers:
+    \\    - type: api
+    \\  tools:
+    \\    - http_request
+    \\  budget:
+    \\    daily_dollars: 1.0
+    \\  repositories:
+    \\    - acme/payments
+    \\  repository_access: write
+    \\---
+;
+
+test "test_upload_is_content_addressed" {
+    // Dimension 4a.3. Re-uploading identical markdown converges on one entry, so
+    // a crew applied twice from a checkout does not accumulate rows.
+    //
+    // The load-bearing half is the SECOND assertion: the trigger has to
+    // participate in the hash. Both crew bundles are onboarded into one
+    // workspace and differ in their TRIGGER.md far more than in their SKILL.md —
+    // and `repository_access` lives there. If only the skill were hashed, an
+    // entry could be re-uploaded with `read` silently swapped to `write` and
+    // dedupe to the row that was already published.
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+
+    const read_body = try crewUploadBody(alloc, CREW_TRIGGER_READ);
+    defer alloc.free(read_body);
+
+    const first = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(read_body)).send();
+    defer first.deinit();
+    try first.expectStatus(.created);
+    const first_id = try jsonStringField(alloc, first.body, "id");
+    defer alloc.free(first_id);
+
+    // Identical bytes, again: content-addressed onto the same row.
+    const again = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(read_body)).send();
+    defer again.deinit();
+    try again.expectStatus(.created);
+    const again_id = try jsonStringField(alloc, again.body, "id");
+    defer alloc.free(again_id);
+
+    try std.testing.expectEqualStrings(first_id, again_id);
+    try std.testing.expectEqual(@as(i64, 1), try tenantCount(conn));
+
+    // Same skill, different trigger — a DIFFERENT entry. Converging here would
+    // mean the access level a bundle declares is outside its identity.
+    const write_body = try crewUploadBody(alloc, CREW_TRIGGER_WRITE);
+    defer alloc.free(write_body);
+
+    const escalated = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(write_body)).send();
+    defer escalated.deinit();
+    try escalated.expectStatus(.created);
+    const escalated_id = try jsonStringField(alloc, escalated.body, "id");
+    defer alloc.free(escalated_id);
+
+    try std.testing.expect(!std.mem.eql(u8, first_id, escalated_id));
+    try std.testing.expectEqual(@as(i64, 2), try tenantCount(conn));
+}
+
 fn jsonStringField(alloc: std.mem.Allocator, body: []const u8, field: []const u8) ![]const u8 {
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
     defer parsed.deinit();
