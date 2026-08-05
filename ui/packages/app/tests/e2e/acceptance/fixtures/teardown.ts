@@ -115,6 +115,16 @@ export async function cleanWorkspaceFleets(
  * Per-fixture and per-workspace failures log and continue — one dead tenant
  * must not shield another tenant's leaks — and the same destructive-target
  * guard as cleanWorkspaceFleets runs before any listing or deletion.
+ *
+ * KNOWN BLAST RADIUS, accepted deliberately: "every workspace the fixture user
+ * owns" is only equivalent to "every workspace of test fixtures" while the
+ * fixture users own nothing else. Add a fixture user to a shared or human-owned
+ * workspace and this empties it, where the old prefix scoping would have spared
+ * anything not matching a seed name. Two things bound that: the destructive
+ * target guard refuses any host that is not localhost / *-dev / e2e, so the
+ * reach is a disposable environment by construction; and the fixture users are
+ * provisioned solely by `global-setup`. If a fixture user ever needs to join a
+ * real workspace, this sweep has to be re-scoped first.
  */
 export async function sweepLeakedFixtureFleets(): Promise<SweepCounts> {
   assertDestructiveTargetIsSafe();

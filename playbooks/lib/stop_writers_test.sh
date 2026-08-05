@@ -91,11 +91,12 @@ STUB
 
 run_step() {
   local dir="$1"
+  local confirm="${2:-DEV}"
   PATH="$dir/bin:$PATH" \
     ENV=dev \
     ALLOW_VAULT_READS=1 \
     VERIFY_SLEEP_SECONDS=0 \
-    "$STEP" 2>&1
+    "$STEP" <<<"$confirm" 2>&1
 }
 
 test_stop_writers_verifies_zero_machines() {
@@ -135,6 +136,24 @@ test_stop_writers_is_idempotent() {
     ok "$name"
   else
     bad "$name" "step failed for an app that does not exist"
+  fi
+}
+
+test_stop_writers_refuses_without_confirmation() {
+  local name="stop_writers_refuses_without_confirmation"
+  local dir out
+  dir="$(sandbox_dir "$name")"
+  make_sandbox "$dir" 0
+  # Scaling to zero is an outage and runs BEFORE 02_teardown's own prompt, so a
+  # wrong answer must scale nothing at all — otherwise invoking the gate to read
+  # that later prompt would already have taken the environment down.
+  out="$(run_step "$dir" "nope" || true)"
+  if printf '%s' "$out" | grep -q 'Scaling'; then
+    bad "$name" "the app was scaled despite a failed confirmation"
+  elif ! printf '%s' "$out" | grep -q 'Confirmation failed'; then
+    bad "$name" "no confirmation was requested before scaling"
+  else
+    ok "$name"
   fi
 }
 
@@ -192,7 +211,26 @@ test_scripts_print_no_credentials() {
 test_stop_writers_verifies_zero_machines
 test_stop_writers_reaches_zero
 test_stop_writers_is_idempotent
+test_stop_writers_refuses_without_confirmation() {
+  local name="stop_writers_refuses_without_confirmation"
+  local dir out
+  dir="$(sandbox_dir "$name")"
+  make_sandbox "$dir" 0
+  # Scaling to zero is an outage and runs BEFORE 02_teardown's own prompt, so a
+  # wrong answer must scale nothing at all — otherwise invoking the gate to read
+  # that later prompt would already have taken the environment down.
+  out="$(run_step "$dir" "nope" || true)"
+  if printf '%s' "$out" | grep -q 'Scaling'; then
+    bad "$name" "the app was scaled despite a failed confirmation"
+  elif ! printf '%s' "$out" | grep -q 'Confirmation failed'; then
+    bad "$name" "no confirmation was requested before scaling"
+  else
+    ok "$name"
+  fi
+}
+
 test_stop_writers_rejects_unknown_env
+test_stop_writers_refuses_without_confirmation
 test_teardown_gates_dispatch_stop_writers_first
 test_scripts_print_no_credentials
 

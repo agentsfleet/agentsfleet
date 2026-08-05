@@ -84,14 +84,22 @@ echo "→ [unpriv] Migrating $SCRATCH_DB from empty as $SCRATCH_ROLE (not superu
 
 url="postgres://$SCRATCH_ROLE:$SCRATCH_PASSWORD@localhost:$port/$SCRATCH_DB?sslmode=disable"
 
-# Prefer an already-built binary. Continuous Integration (CI) boots compose on
-# the host runner but builds Zig inside a container, so the host has the
-# artifact and no toolchain; locally the reverse is usually true. Taking
-# whichever exists lets one lane serve both without a second build.
-if [ -x "zig-out/bin/agentsfleetd" ]; then
+# Prefer BUILDING over an existing artifact. A stale `zig-out/bin/agentsfleetd`
+# left by an earlier checkout would migrate a different schema than the one in
+# the working tree, and the lane would report a verdict about code that is not
+# under review — passing vacuously in the one place that must not.
+#
+# The prebuilt binary is the fallback for Continuous Integration (CI), which
+# boots compose on the host runner but builds Zig inside a container: the host
+# has the artifact and no toolchain, and the artifact was produced from this
+# same checkout moments earlier, so it is fresh by construction there.
+if command -v zig >/dev/null 2>&1; then
+  migrate_cmd=(zig build run -- migrate)
+elif [ -x "zig-out/bin/agentsfleetd" ]; then
   migrate_cmd=(./zig-out/bin/agentsfleetd migrate)
 else
-  migrate_cmd=(zig build run -- migrate)
+  echo "✗ [unpriv] neither a zig toolchain nor zig-out/bin/agentsfleetd is available" >&2
+  exit 1
 fi
 
 out="$(DATABASE_URL_MIGRATOR="$url" "${migrate_cmd[@]}" 2>&1)" || {

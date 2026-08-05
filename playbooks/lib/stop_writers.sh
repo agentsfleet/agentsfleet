@@ -86,6 +86,28 @@ if ! flyctl status --app "$app" >/dev/null 2>&1; then
   exit 0
 fi
 
+# Scaling to zero IS an outage, and it happens BEFORE 02_teardown's own
+# confirmation — so without a prompt here, invoking the gate to read that later
+# prompt would already have taken the environment down, and aborting at it would
+# leave zero machines with no step that restores them. Two destructive acts,
+# two confirmations. Shape copied from 02_teardown.sh deliberately.
+env_label="$(printf '%s' "$env_mode" | tr '[:lower:]' '[:upper:]')"
+echo ""
+echo "================================================"
+echo "TARGET: $env_label"
+echo "================================================"
+echo "⚠️  WARNING: this scales $app to ZERO machines. $env_label goes DOWN,"
+echo "    and stays down until a deploy brings it back."
+echo ""
+echo "To proceed, type the environment name: $env_label"
+read -r confirmation
+
+if [ "$confirmation" != "$env_label" ]; then
+  echo "❌ Confirmation failed. Expected '$env_label', got '$confirmation'" >&2
+  echo "Nothing was scaled; the teardown is halted." >&2
+  exit 1
+fi
+
 echo "Scaling $app to zero machines (env: $env_mode)..."
 flyctl scale count 0 \
   --app "$app" \
