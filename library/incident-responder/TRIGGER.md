@@ -9,7 +9,17 @@ x-agentsfleet:
       message: "Sweep the telemetry for new incidents"
 
   tools:
+    # Declared explicitly. An omitted or non-array `tools` key does NOT mean
+    # "http_request only" — `runner_helpers` falls back to the full default set,
+    # so the surface a fleet has would depend on a field nobody wrote.
+    #
+    # The memory pair is load-bearing, not a convenience: an incident stays
+    # broken while its repair is parked, so every sweep re-finds it. Without a
+    # record of what has already been escalated, one incident produces one
+    # approval request per sweep interval, all queued behind the first.
     - http_request
+    - memory_store
+    - memory_recall
 
   credentials:
     - elastic
@@ -29,6 +39,27 @@ x-agentsfleet:
     # jira    = { host: "<site>.atlassian.net",
     #             basic_auth: "<base64 of email:api_token>" }
     # slack   = { host: "slack.com", bot_token: "<bot token>" }
+
+  # Repository EGRESS binding — which repositories this fleet's minted token may
+  # reach, and how far. Distinct from a webhook trigger's `repositories`, which
+  # is an INGRESS binding naming what may WAKE a fleet. Both keys are required
+  # together: declaring neither mints nothing at all, because an unbound mint
+  # would carry the App installation's full permissions across every repository
+  # it covers.
+  #
+  # `read` is the boundary this whole crew is built on. The investigator MUST
+  # reach GitHub — it cannot name a suspect commit without reading commit
+  # history and verifying a branch head — but the token it is handed carries
+  # `contents: read` and no `pull_requests` permission, so it cannot open a Pull
+  # Request no matter what its prompt is talked into. The vendor refuses the
+  # write. That is a property of the credential the daemon mints, not of the
+  # wording below.
+  #
+  # Deployment-specific, like the hosts: the demo playbook (or the operator, via
+  # a fleet PATCH after install) pins the real repository here.
+  repositories:
+    - agentsfleet/agentsfleet
+  repository_access: read
 
   network:
     allow:

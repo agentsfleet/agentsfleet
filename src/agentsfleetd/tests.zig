@@ -19,6 +19,9 @@ test {
     _ = @import("config/runtime.zig");
     _ = @import("fleet_runtime/config.zig");
     _ = @import("fleet_runtime/yaml_frontmatter.zig");
+    // The shipped incident crew's bundles (M157 §3/§4). No natural parent
+    // module: the subject is markdown under library/, not a Zig unit.
+    _ = @import("fleet_runtime/crew_bundle_test.zig");
     _ = @import("http/route_matchers.zig");
     _ = @import("http/route_matchers_library.zig");
     _ = @import("http/route_matchers_library_test.zig");

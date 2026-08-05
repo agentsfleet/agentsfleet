@@ -124,7 +124,7 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/AddLibraryDialog.tsx` | EDIT | Offer an upload source beside GitHub; post `source_kind:"upload"` with both markdown bodies |
 | `cli/src/program/cli-tree-fleet.ts` | EDIT | Verb creating a library entry from a local bundle directory |
 | `cli/src/commands/fleet_library_upload.ts` | CREATE | Reads `SKILL.md` + `TRIGGER.md`, posts `source_kind:"upload"` |
-| `library/incident-repairer/bundle_gate_test.zig` | CREATE | The shipped repairer bundle carries a gate rule — an omitted rule auto-approves |
+| `src/agentsfleetd/fleet_runtime/crew_bundle_test.zig` | CREATE | Both shipped bundles, asserted as the parser and the gate actually see them — one file rather than the per-bundle `bundle_gate_test.zig` this table first named, because every assertion is a comparison BETWEEN the two halves (read vs write binding, which tools each declares, that neither holds a tenant key). Reads `library/` from disk: each property is one a bundle author can break by editing markdown, and none would fail any other test in the tree |
 | `docs/AUTH.md` | EDIT | Record that machine credentials cannot resolve approvals, and why |
 | `docs/architecture/scenarios/production-deploy-repair.md` | EDIT | Describe the gate-bound two-fleet design; flip proven rows |
 | `bench/incident-response/` | KEEP | §5 landed and is frozen; its rubric rows are rewritten to claim only detection |
@@ -231,11 +231,11 @@ Nor can a signed webhook substitute. The manual-route middleware verifies an HMA
 
 So in this workstream a **human** wakes the repairer, from the diagnosis the investigator posts to Slack. Every other property — the gate, the repository-scoped mint, the git-computed revert, the refusal path, the critic — is proven without a machine credential existing anywhere in the crew. The automatic hop and its prerequisites move to M157_002, and until they land the crew is human-triggered by design rather than by omission.
 
-- **Dimension 3.5** — No crew member holds a tenant API key; the repairer's wake carries a human actor → Test `test_crew_holds_no_tenant_key`
-- **Dimension 3.6** — A credential holding `fleet:write` can blank a fleet's gate policy through PATCH — asserted as a *known* bypass so its closure in M157_002 is regression-tested rather than assumed → Test `test_fleet_write_can_blank_gate_policy`
+- **Dimension 3.5** — **DONE** — No crew member holds a tenant API key; the repairer's wake carries a human actor → Test `test_crew_holds_no_tenant_key`
+- **Dimension 3.6** — **DONE** — A credential holding `fleet:write` can blank a fleet's gate policy through PATCH — asserted as a *known* bypass so its closure in M157_002 is regression-tested rather than assumed → Test `test_fleet_write_can_blank_gate_policy`
 
-- **Dimension 3.1** — The investigator's minted GitHub token carries `contents: read` and no `pull_requests` permission, so it can read history and cannot open a Pull Request → Test `test_investigator_token_is_read_only`
-- **Dimension 3.2** — The shipped repairer bundle declares a non-empty gate rule → Test `test_repairer_bundle_declares_a_gate`
+- **Dimension 3.1** — **DONE** — The investigator's minted GitHub token carries `contents: read` and no `pull_requests` permission, so it can read history and cannot open a Pull Request → Test `test_investigator_token_is_read_only`
+- **Dimension 3.2** — **DONE** — The shipped repairer bundle declares a non-empty gate rule → Test `test_repairer_bundle_declares_a_gate`
 - **Dimension 3.3** — A repairer event without an approved gate yields no lease and no PR → Test `test_unapproved_event_opens_no_pr`
 - **Dimension 3.4** — Denial and deadline expiry resolve terminally; the repairer never runs → Test `test_denied_or_timed_out_never_runs`
 
@@ -274,9 +274,9 @@ Second, **escalation memory**: an incident stays broken while its repair is park
 
 Third, **an explicit `tools:` list on both bundles**, because a bundle only gets the tools it names. `runner_helpers.zig:242-243` falls back to `hosted_tools.buildDefault` when `tools` is absent *or* not an array, and that is `allTools` filtered only against `UNSUPPORTED_HOSTED_TOOLS` — the seven cron/schedule names (`tool_bridge.zig:40-48`). An omitted list therefore silently yields NullClaw's entire set rather than the crew's intended surface, which makes what a fleet can do depend on a field nobody wrote. The repairer names `git`, `http_request`, and the memory family it needs to remember what it has already opened; the investigator names `http_request` plus `memory_store` and `memory_recall`.
 
-- **Dimension 4.8** — Both bundles instruct a named degradation at the context threshold, and neither promises continuation → Test `test_bundles_declare_degradation`
+- **Dimension 4.8** — **DONE** — Both bundles instruct a named degradation at the context threshold, and neither promises continuation → Test `test_bundles_declare_degradation`
 - **Dimension 4.9** — A second sweep over an already-escalated, still-broken incident sends no second wake → Test `eval_escalation_is_deduped_by_memory`
-- **Dimension 4.10** — Both bundles declare an explicit `tools:` array; an omitted list would expose the full default set → Test `test_bundles_declare_explicit_tools`
+- **Dimension 4.10** — **DONE** — Both bundles declare an explicit `tools:` array; an omitted list would expose the full default set → Test `test_bundles_declare_explicit_tools`
 - **Dimension 4.11** — A replayed repair intent for a commit the repairer already opened a Pull Request for opens no second one → Test `eval_repairer_dedupes_by_memory`
 - **Dimension 4.12** — **DONE** — A workspace orphaned by an unclean shutdown is reaped at daemon startup; the dot-prefixed bundle cache is not → Test `test_startup_sweep_reaps_orphans`
 
@@ -793,3 +793,44 @@ Not a defect: `route(.unreadable, null) → .pass` is deliberate, documented, an
 `approval_gate_route.zig:87`. The unscoped `approval_webhook` route is real but
 `route_scopes.zig` is untouched by this branch — pre-existing, and it qualifies Invariant 1's
 wording rather than this workstream's change.
+
+### Aug 05, 2026 — building §3: the gate matches events, not tool calls
+
+Two things about the shipped runtime shaped what the repairer's bundle could say.
+
+**The gate rule's `tool`/`action` fields do not mean what they are named.** The
+only production caller is `checkApprovalGate`, which passes
+`evaluateGate(gates, event.event_type, event.actor, context)` — so `tool` is
+matched against the event TYPE (`chat`/`webhook`/`cron`) and `action` against the
+event ACTOR (`steer:<uid>`, `webhook:github`). Every example in the gate tests is
+tool-shaped (`{"tool":"git","action":"push"}`, `{"tool":"github","action":"create_pr"}`)
+and would therefore match nothing at the only site that evaluates it. An author
+following those examples gets a rule that never fires, and `approval_gate.zig:96`
+falls through to `.auto_approve` — an autonomous agent holding a write token,
+which is precisely what Dimension 3.2 exists to prevent. The repairer declares
+`tool: "*", action: "*"`, which is also the semantically correct rule: approval
+RELEASES the run rather than permitting one step inside it. **The naming is worth
+fixing on its own** — it is a trap for every future bundle author — and
+Dimension 3.2's test now asserts the rule MATCHES a real wake rather than merely
+parsing, so a tool-shaped regression fails instead of silently auto-approving.
+
+**The investigator's SKILL.md still described the retired repair kernel.** It
+instructed the model to emit a ` ```json repair_proposal/1 ` block and claimed
+"the platform validates this block, stores it immutably, and asks a human" — but
+`51d2c256f` deleted `repair_proposal.zig`, `repair_bounds.zig` and the whole
+`UZ-REPAIR-*` family when the crew design superseded that kernel. The model would
+have emitted a block nothing reads. Replaced with what the design actually wants:
+a prose repair INTENT, plus the explicit statement that the investigator cannot
+start the repair itself because it holds no credential that can. Its "one tool"
+section was also stale (it now has three), and both bundles gained the named
+degradation and the explicit "nothing continues you" that Dimension 4.8 requires.
+
+`incident-responder` also had no `repositories`/`repository_access` at all, so
+its own GitHub mint failed closed — the bundle shipped with a `github` credential
+it could not use. Both keys are required together; `read` is the boundary the
+whole crew rests on, and Dimension 3.1's test drives the SHIPPED binding through
+the real mint so raising it to `write` fails the suite.
+
+Not fixed here, and flagged: an unrelated `queue/redis_pool_test` acquire-timeout
+test failed once under parallel load and passed on a clean re-run. This branch
+does not touch the Redis pool.

@@ -120,3 +120,35 @@ test "test_no_machine_approval_callers" {
 fn router_fleet() @import("router.zig").Route {
     return .{ .patch_workspace_fleet = .{ .workspace_id = "ws1", .fleet_id = "z1" } };
 }
+
+test "test_fleet_write_can_blank_gate_policy" {
+    // Dimension 3.6 — a KNOWN bypass, asserted so that closing it is
+    // regression-tested rather than assumed. This test is expected to CHANGE
+    // when the fleet:message split lands; it is not expected to be deleted.
+    //
+    // Waking a fleet and reconfiguring one are ONE scope today. `gates` lives in
+    // `config_json`, and PATCH accepts `config_json` — so any credential able to
+    // send the wake message is also able to rewrite the repairer's gate policy to
+    // empty, after which `approval_gate` falls through to `.auto_approve` and no
+    // human is ever asked. That bypass needs no approval of its own, so §1's
+    // removal of `approval_resolve` does not close it, and no narrowing of WHICH
+    // tenant scopes are granted can: the capability the investigator would need
+    // and the capability that breaks the design are the same capability.
+    //
+    // This is why a HUMAN wakes the repairer in this workstream rather than
+    // the investigator. Splitting `fleet:message` out of `fleet:write` is the fix.
+    const wake = route_scopes.requiredScopes(.{ .workspace_fleet_messages = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, .POST);
+    const reconfigure = route_scopes.requiredScopes(router_fleet(), .PATCH);
+
+    try testing.expectEqual(scopes.Scope.fleet_write, onlyScope(wake).?);
+    try testing.expectEqual(scopes.Scope.fleet_write, onlyScope(reconfigure).?);
+
+    // The bypass, stated as the identity it actually is: one scope opens both
+    // doors, so holding the wake implies holding the rewrite.
+    try testing.expectEqual(onlyScope(wake).?, onlyScope(reconfigure).?);
+
+    // And a tenant api-key holds it — the machine grant kept every capability
+    // except approval, which is exactly why this gap survives §1.
+    try testing.expect(scopes.satisfiesAny(scopes.defaultScopes(.tenant_api_key), wake));
+    try testing.expect(scopes.satisfiesAny(scopes.defaultScopes(.tenant_api_key), reconfigure));
+}
