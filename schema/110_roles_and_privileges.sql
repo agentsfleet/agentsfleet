@@ -71,9 +71,33 @@ FROM api_runtime, memory_runtime,
      ops_readonly_human, ops_readonly_fleet;
 
 -- Future tables in the authoritative schemas carry no PUBLIC privilege. Stated
--- as a default privilege so it binds every table a later slot creates; the
--- migration runner owns those tables, so db_migrator is the grantor.
-ALTER DEFAULT PRIVILEGES FOR ROLE db_migrator
+-- as a default privilege so it binds every table a later slot creates, rather
+-- than as `REVOKE … ON ALL TABLES`, which runs here against the empty set and
+-- would miss everything created afterwards.
+--
+-- Deliberately NOT `FOR ROLE db_migrator`, though db_migrator holds the DDL
+-- authority. Two reasons, both load-bearing:
+--
+--   1. Default privileges attach to tables the NAMED role creates. Nothing in
+--      the migration path ever runs `SET ROLE db_migrator` — the runner connects
+--      and creates every table as whatever role the environment handed it — so
+--      naming db_migrator here binds to a grantor that creates nothing. It was a
+--      no-op wherever it succeeded.
+--   2. `FOR ROLE x` requires INHERITED membership in x. PostgreSQL 16 grants a
+--      CREATEROLE creator only ADMIN OPTION (inherit_option = f), so a managed
+--      non-superuser migrator is refused with 42501 — the whole migration fails.
+--      A superuser bypasses the check, which is why every local and Continuous
+--      Integration (CI) database accepted it and the managed ones could not.
+--
+-- Omitting the clause targets the role actually creating the tables, needs no
+-- privilege the migrator lacks, and is the form the pre-rebuild schema used.
+--
+-- Note it stores no `pg_default_acl` row today: PostgreSQL grants PUBLIC no
+-- privileges on new tables, so this revokes something never granted. It is
+-- defence in depth against a later `ALTER DEFAULT PRIVILEGES … GRANT … TO
+-- PUBLIC`, not an active grant removal — `make check-migrate-unprivileged`
+-- pins the behaviour either way.
+ALTER DEFAULT PRIVILEGES
     IN SCHEMA core, fleet, billing, vault, audit, memory
     REVOKE ALL ON TABLES FROM PUBLIC;
 

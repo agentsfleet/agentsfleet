@@ -19,7 +19,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: a rebuild currently comes back with an empty model catalogue, a wipe can be silently undone, and two Continuous Integration (CI) lanes are red on main
 **Categories:** DOCS, INFRA, UI, API
-**Batch:** B1 — one Pull Request; the five slices share no files and can land in any order
+**Batch:** B1 — one Pull Request; the six slices share no files and can land in any order
 **Branch:** `feat/m158-priming-and-sweep`
 **Test Baseline:** `unit=3424 integration=587` — recorded at CHORE(open) via `make _lint_zig_test_depth`
 **Depends on:** none — M154_001 is merged and this builds on the playbooks it left in place
@@ -85,6 +85,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` | EDIT | Takes the serial `common.globalIo()` so no worker thread can lose the stdlib futex race; the detach bookkeeping the owned Io required goes with it, and the comment citing an `std.Io.Select` that `9ee3a075b` deleted is corrected (RULE NLR) |
 | `src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig` | EDIT | The lock probe waits on the worker's completion instead of a five-second clock |
 | `ui/packages/app/tests/e2e/acceptance/global-setup.ts` | EDIT | Not anticipated: it interpolates `cleanWorkspaceFleets`'s result into its summary line, so widening that return type to `{removed, failed}` made it print `[object Object]`. Caught by the lint gate, not by review; it now reports both counts |
+| `schema/110_roles_and_privileges.sql` | EDIT | §6 — drops `FOR ROLE db_migrator` from the default-privilege baseline, the statement that blocks every fresh install on a managed database |
+| `scripts/check-migrate-unprivileged.sh` | CREATE | §6 — migrates a scratch database from empty as a non-superuser role shaped like the managed migrator |
+| `make/quality.mk` | EDIT | §6 — `check-migrate-unprivileged` target |
+| `.github/workflows/test.yml` | EDIT | §6 — runs the lane on the host after the coverage container has produced the binary |
 | `bun.lock`, `cli/bun.lock`, `package.json`, `cli/package.json`, `ui/packages/{app,design-system,website}/package.json` | EDIT | Dependency refresh to latest at Indy's instruction. Two `--latest` resolutions were overridden as regressions rather than updates: `effect` (npm's `latest` tag points at the 3.x stable line, so `--latest` proposed a major DOWNGRADE from the pinned 4.0 beta — now on the 4.x head, `4.0.0-beta.103`) and `typescript-jsapi` (an alias the island-dynamic loader test uses purely as a parser; its own comment records that it aliases typescript@6 on purpose, because TypeScript 7 maps its main export to `lib/version.cjs` and ships no text parser under `unstable/*`) |
 | `ui/packages/design-system/src/design-system/DataTable{.tsx,.types.ts,Model.ts,View.tsx}` | EDIT | `@tanstack/react-table` 8.21.3 → 9.0.0 is a rewrite, not a bump: `useReactTable` → `useTable`, row models into a static `tableFeatures({...})`, a features type parameter on `Table`/`ColumnDef`, `getState()` → `state`, and `getAllCells()` (`getVisibleCells()` now needs `columnVisibilityFeature`, which this table neither uses nor needs). v9's row bound is mirrored locally as `DataTableRowData` rather than re-exported, keeping TanStack names out of the public props surface as `DataTable.types.ts` already intends — so all nine dashboard consumers compile unchanged |
 
@@ -192,6 +196,27 @@ The worker itself carries the real signal. If the PATCH completed without ever b
 - **Dimension 5.2** — a patch still in flight keeps the probe waiting rather than failing → Test `test_probe_waits_while_patch_in_flight` — **DONE.** Landed as `unit: an in-flight patch keeps the probe waiting rather than failing`. This is the round kcov produces for thousands of iterations, and it is now `.keep_waiting` rather than an assertion failure — the whole reason the lane was red. A companion test pins that a lock waiter observed on the same round a completion lands still reads `.blocked`: the worker parked, which is the claim.
 - **Dimension 5.3** — exhausting the backstop reports the timeout distinctly from the never-blocked verdict → Test `test_probe_distinguishes_timeout_from_never_blocked` — **DONE.** Landed as `unit: exhausting the backstop is reported apart from never having blocked`. `waitForCatalogLockWaiter` now returns `CatalogPatchLockWaitTimedOut` on exhaustion and `CatalogPatchNeverBlocked` only on an observed completion, so a genuine hang can never again be reported as a disproved serialization claim. The completion load is deliberately sequenced **after** the lock read, so a worker released between the two observations still counts as having blocked.
 - **Dimension 5.4** — the coverage lane passes with the suite instrumented → Test `make test-coverage-zig` — **DONE.** `821 passed; 7 skipped; 0 failed` under kcov, against `816 passed; 7 skipped; 1 failed` on `ae511e71c`. Same instrumentation, same suite; the `CatalogPatchNeverBlocked` failure is gone and the merged line-coverage gate held at 87.20% ≥ 83%. This is the lane that was actually red, and it is verified locally rather than deferred to CI.
+
+### §6 — A migration that only a superuser can apply is not an applied migration
+
+M154 rebuilt the schema and `deploy (dev)` has been red ever since. Clearing §3's `MigrationSchemaAhead` exposed the real blocker underneath: migration 110 statement 9 fails on PlanetScale with
+
+```
+pg_code=42501  message="permission denied to change default privileges"
+```
+
+`ALTER DEFAULT PRIVILEGES FOR ROLE x` requires INHERITED membership in `x`. PostgreSQL 16 grants a `CREATEROLE` creator only `ADMIN OPTION` — measured on the live database as `admin_option=t, inherit_option=f, set_option=f` — so the managed migrator is refused. A superuser bypasses the check, which is why every local and Continuous Integration (CI) lane accepted it.
+
+The clause is also pointless. Default privileges attach to tables the NAMED role creates, and nothing in the migration path ever runs `SET ROLE db_migrator` — every `SET ROLE` in the tree is in `pool_test.zig`, and the one in `schema/110` is a comment. It named a grantor that creates nothing, so it was a no-op wherever it did succeed. The pre-rebuild schema used the unqualified form, which is what this restores.
+
+**Implementation default:** drop the clause. It targets the role actually creating the tables, needs no privilege the migrator lacks, and behaves identically on superuser and managed databases. Not `GRANT db_migrator TO CURRENT_USER` — that makes a no-op succeed. Not `SET ROLE db_migrator` — that is the right end state but changes the owner of every table and the teardown path with it, which belongs in its own milestone.
+
+The blocking defect is not the statement, though: it is that **no lane runs a migration as anything but a superuser**, so the fixed and unfixed schema are indistinguishable to the entire test suite. §6 is therefore the lane first and the one-clause fix second.
+
+- **Dimension 6.1** — the full migration applies from empty as a non-superuser `CREATEROLE` role carrying the managed membership shape → Test `make check-migrate-unprivileged` — **DONE.** Verified: `✓ [unpriv] full migration applies from empty as a non-superuser migrator` — all 36 versions, 33 tables.
+- **Dimension 6.2** — the lane FAILS when the `FOR ROLE` clause is reintroduced, so it is a gate rather than a rubber stamp → Test `test_unprivileged_lane_catches_the_regression` — **DONE.** Reintroduced the clause and re-ran: the lane failed with `pg_code=42501 permission denied to change default privileges` — byte-identical to the live deploy failure — then passed again on restore. A gate that cannot fail proves nothing, so this was checked rather than assumed.
+- **Dimension 6.3** — the lane refuses to run against a superuser scratch role, so it cannot pass vacuously → Test `test_lane_rejects_a_superuser_scratch_role` — **DONE.** The script asserts `rolsuper = f` on the scratch role before migrating and exits non-zero otherwise, since a superuser there would make every assertion below it meaningless.
+- **Dimension 6.4** — CI runs it on every push → Test `make check-gh-actions-valid` — **DONE.** Added to `test.yml`'s coverage job as a host step after the container produces `zig-out/bin/agentsfleetd`; `✓ [gh-actions] actionlint + make-target refs all green`.
 
 ## Interfaces
 
@@ -305,6 +330,7 @@ src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ all 38 paths declared |
 | R7 | The memleak lane is green and carries no new suppression (§4) | `make memleak` and `git diff origin/main...HEAD -- make/bench.mk \| wc -l` | exit 0, and `0` | P0 |  ⚠️ exit 0 locally and `0` diff to bench.mk — but Darwin arms no valgrind, so the memcheck class is graded on the Linux lane after push (see 4.3) |
 | R8 | The coverage lane is green with the suite instrumented (§5) | `make test-coverage-zig` | exit 0 | P0 |  ✅ `821 passed; 7 skipped; 0 failed`; coverage 87.20% ≥ 83% |
+| R10 | A fresh install applies as a non-superuser (§6) | `make check-migrate-unprivileged` | exit 0 | P0 | ✅ `full migration applies from empty as a non-superuser migrator` |
 | R9 | Dependencies are at latest across the workspaces and the CLI project | `bun outdated --filter '*'` and `cd cli && bun outdated` | no rows | P1 | |
 | S1 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` |
 | S2 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` (4192 commits scanned) |
