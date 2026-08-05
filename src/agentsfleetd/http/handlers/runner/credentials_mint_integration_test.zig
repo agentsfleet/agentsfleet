@@ -68,6 +68,10 @@ const FLEET_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c01";
 const CONFIG_WITH_BINDING =
     \\{"name":"cred-owner","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github"}],"credentials":["github"],"tools":["git"],"budget":{"daily_dollars":1.0},"repositories":["acme/payments"],"repository_access":"write"}}
 ;
+/// The same binding, as a slice — a fake GitHub has to state the reach this
+/// fleet declared or the mint refuses the token it returns (RULE UFS: one
+/// spelling, and the config above is where it is authored).
+const FLEET_OWNER_REPOSITORIES = [_][]const u8{"acme/payments"};
 const FLEET_FOREIGN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c02";
 const LEASE_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e01";
 const LEASE_FOREIGN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e02";
@@ -528,7 +532,13 @@ test "integration: test_mint_rechecks_revoked_grant" {
     };
     defer h.deinit();
 
-    var gh = cred_testing.FakeGitHub{ .alloc = ALLOC };
+    // That same binding is why the fake must state `acme/payments` as its reach:
+    // the mint verifies what GitHub says the token covers against the binding,
+    // and refuses a mismatch before the token is handed on.
+    const reach = try cred_testing.reachResponse(ALLOC, &FLEET_OWNER_REPOSITORIES);
+    defer ALLOC.free(reach);
+
+    var gh = cred_testing.FakeGitHub{ .alloc = ALLOC, .resp_body = reach };
     defer gh.deinit();
     var metrics = cred_testing.RecordingMetrics{};
     var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, cred_testing.brokerDeps(&gh, &metrics));
