@@ -98,6 +98,25 @@ pub const test_binding: integration.RepositoryBinding = .{
     .access = .write,
 };
 
+/// A create-installation-access-token response stating that the minted token
+/// reaches exactly `declared`. The mint verifies the stated reach against the
+/// fleet's binding (`integration_github_reach.zig`), so a test whose fleet
+/// declares something other than `test_binding` must answer with its own reach
+/// or the mint refuses for a reason that test is not about. Caller owns.
+pub fn reachResponse(alloc: std.mem.Allocator, declared: []const []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(alloc);
+    try out.appendSlice(alloc, "{\"token\":\"ghs_minted\",\"repositories\":[");
+    for (declared, 0..) |full_name, i| {
+        if (i > 0) try out.append(alloc, ',');
+        const entry = try std.fmt.allocPrint(alloc, "{{\"full_name\":\"{s}\"}}", .{full_name});
+        defer alloc.free(entry);
+        try out.appendSlice(alloc, entry);
+    }
+    try out.appendSlice(alloc, "]}");
+    return out.toOwnedSlice(alloc);
+}
+
 pub fn githubCtx(alloc: std.mem.Allocator, handle: std.json.Value, gh: *FakeGitHub, now_ms: i64) MintCtx {
     return githubCtxBound(alloc, handle, gh, now_ms, test_binding);
 }

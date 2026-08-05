@@ -77,6 +77,7 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/agentsfleetd/fleet/approval_gate_prose.zig` | CREATE | Making model-authored prose card-safe: C0 controls, DEL, and bidirectional overrides, which otherwise let a claim counterfeit the daemon-derived rows (RULE FLL split) |
 | `src/agentsfleetd/http/handlers/fleets/messages.zig` | EDIT | Attribute the steer actor by credential MODE, not by presence of `user_id` — an `agt_t` key carries its creator's id, so machine wakes were recorded as that human |
 | `src/agentsfleetd/fleet/approval_gate_integration_test.zig` | CREATE | The parked gate carries a populated detail; the Slack message names the action |
+| `src/agentsfleetd/fleet/repairer_gate_integration_test.zig` | CREATE | Dimensions 3.3 + 3.4 driven through the real lease path against the SHIPPED bundle's own config, converted by the install path's own `parseTriggerMarkdownWithJson`. The generic gate lifecycle is already covered against a hand-written config; what was not covered is that the bundle we ship refuses to run without a human |
 | `src/agentsfleetd/credentials/integration_github.zig` | EDIT | Mint body carries `repositories` + `permissions` instead of `""` |
 | `src/agentsfleetd/fleet/repair_proposal.zig` | DELETE | Superseded — approval binds a bounded run, not bytes; no daemon apply exists to re-validate against |
 | `src/agentsfleetd/fleet/repair_proposal_test.zig` | DELETE | Tests of the deleted kernel |
@@ -238,8 +239,8 @@ So in this workstream a **human** wakes the repairer, from the diagnosis the inv
 
 - **Dimension 3.1** — **DONE** — The investigator's minted GitHub token carries `contents: read` and no `pull_requests` permission, so it can read history and cannot open a Pull Request → Test `test_investigator_token_is_read_only`
 - **Dimension 3.2** — **DONE** — The shipped repairer bundle declares a non-empty gate rule → Test `test_repairer_bundle_declares_a_gate`
-- **Dimension 3.3** — A repairer event without an approved gate yields no lease and no PR → Test `test_unapproved_event_opens_no_pr`
-- **Dimension 3.4** — Denial and deadline expiry resolve terminally; the repairer never runs → Test `test_denied_or_timed_out_never_runs`
+- **Dimension 3.3** — **DONE** — A repairer event without an approved gate yields no lease and no PR → Test `test_unapproved_event_opens_no_pr`
+- **Dimension 3.4** — **DONE** — Denial and deadline expiry resolve terminally; the repairer never runs → Test `test_denied_or_timed_out_never_runs`
 
 ### §4 — The crew investigates, diagnoses, and proposes exactly one repair class
 
@@ -872,11 +873,33 @@ the grandchild is left running inside the sandbox for the rest of the lease.
 | **But that safety is bundle-shaped, not design-shaped.** `runner_helpers` falls back to `hosted_tools.buildDefault` when `tools:` is absent *or* not an array, and that set includes `shell` and `file_write`. So the first fleet that declares `repo_fetch` and omits `tools:` gets both the window and the means — and the daemon's git steps carry the minted token in their environment, which is what makes the window worth closing rather than merely noting. | `runner_helpers.zig:242-243`; `hosted_tools.zig:17-27`; Dimension 4.10 |
 
 **Verdict: not reachable today, reachable by omission tomorrow.** Recorded as a
-hardening item with a named trigger rather than as a merge blocker, and left for
-Indy to schedule — the fix is structural (run the git steps in a daemon-private
-directory and `rename(2)` the finished tree into `{workspace}/repo`, so no git
-step ever runs in a directory the child can write), which is a change to a path
-that currently ships and tests green.
+hardening item with a named trigger rather than as a merge blocker.
+
+Two further facts bound it. `sandbox_args.zig:147` passes `--die-with-parent`
+and `--unshare-all`, and the latter includes a Process Identifier (PID)
+namespace — bwrap is PID 1 inside it, so the kernel reaps every descendant when
+the sandbox tears down. **Nothing survives a lease**, so the blast radius was
+never cross-lease; the exposure is strictly within one run, which is where the
+fetch happens. And the root cause is upstream rather than ours: the vendored
+`nullclaw-2026.5.29` is AHEAD of the `~/Projects/oss/nullclaw` checkout
+(`2026.4.17`), so patching `zig-pkg/` directly would evaporate on the next
+dependency bump. The upstream fix is five lines — signal `-child.id` after both
+pipes reach End Of File (EOF) and BEFORE `wait()`, which nulls `child.id` — but
+it is also a policy change, since it kills intentional backgrounding too.
+
+Two fixes, deliberately separated:
+
+- **Ours, and the one that makes the property structural:** run the three git
+  steps in a daemon-private directory and `rename(2)` the finished tree into
+  `{workspace}/repo`. It closes the window regardless of what runs in the
+  sandbox — no dependence on nullclaw's process policy and none on a bundle's
+  `tools:` list, so "reachable by omission" stops being true rather than being
+  guarded. `RepoFetchTarget` claims the scratch path instead of the workspace
+  path; both live under the storage home, so the rename is same-filesystem and
+  atomic.
+- **Upstream, filed separately:** the `process_util.run` sweep.
+
+  - > Indy (2026-08-05): "well keep going i want to test and keeping it. not get bogged down by now" — context: both fixes deferred out of M157_001. The milestone keeps the finding recorded and the shipped crew safe by its declared `tools:` list; neither hardening lands here.
 
 **(b) Fixed: the mint now refuses a token that reaches something else.** The
 request body names repositories by BARE name — GitHub scopes an installation
