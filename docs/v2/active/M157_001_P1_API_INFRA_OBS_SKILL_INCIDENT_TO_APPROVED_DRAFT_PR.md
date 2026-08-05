@@ -289,7 +289,7 @@ Third, **an explicit `tools:` list on both bundles**, because a bundle only gets
 
 Exposing the shipped path costs **zero daemon code** and removes the dance. The dashboard gains an upload source beside the GitHub one; the CLI gains the matching verb so the crew is reproducible from a checkout.
 
-- **Dimension 4a.1** — The dashboard offers an upload source and posts `source_kind:"upload"` with both markdown bodies → Test `test_dashboard_uploads_local_bundle`
+- **Dimension 4a.1** — **DONE** — The dashboard offers an upload source and posts `source_kind:"upload"` with both markdown bodies → Test `test_dashboard_uploads_local_bundle`
 - **Dimension 4a.2** — The CLI creates a library entry from a local bundle directory, and `install --library <it>` yields a fleet whose markdown matches the source byte-for-byte → Test `test_cli_uploads_and_installs_local_bundle`
 - **Dimension 4a.3** — **DONE** — Re-uploading identical markdown is content-addressed to the same entry rather than duplicating it → Test `test_upload_is_content_addressed`
 
