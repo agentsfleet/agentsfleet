@@ -8,6 +8,10 @@
 
 const std = @import("std");
 const integration = @import("integration.zig");
+// The two halves of the repository binding: what the mint asks for, and whether
+// the token it got back reaches what was asked. Split out under RULE FLL.
+const github_body = @import("integration_github_body.zig");
+const github_reach = @import("integration_github_reach.zig");
 
 const MintCtx = integration.MintCtx;
 const Outcome = integration.Outcome;
@@ -63,7 +67,7 @@ pub fn mint(ctx: MintCtx) anyerror!Outcome {
     // gets no token at all. An empty body would mint the App installation's FULL
     // permission set across EVERY repository it covers, for an hour — so the
     // absence of a declaration can never be the permissive branch.
-    const body = (try buildTokenRequestBody(ctx)) orelse return .{ .mint_failed = .permanent };
+    const body = (try github_body.buildTokenRequestBody(ctx)) orelse return .{ .mint_failed = .permanent };
     defer ctx.alloc.free(body);
 
     const jwt = try buildAppJwt(ctx, app);
@@ -96,81 +100,6 @@ fn classifyHttpFailure(status: u16) Outcome {
     return .{ .mint_failed = if (status >= HTTP_SERVER_ERROR_FLOOR) .transient else .permanent };
 }
 
-// Installation-token request body fields + permission values (RULE UFS — shared
-// verbatim with the bundle frontmatter and the mint-body tests).
-const REQ_FIELD_REPOSITORIES = "repositories";
-const REQ_FIELD_PERMISSIONS = "permissions";
-const PERM_CONTENTS = "contents";
-const PERM_PULL_REQUESTS = "pull_requests";
-const PERM_VALUE_READ = "read";
-const PERM_VALUE_WRITE = "write";
-
-/// Build the installation-token request body from the fleet's repository binding.
-/// Returns null when the fleet declared none, so the caller fails closed.
-///
-/// The body is what bounds the token. An empty body — the prior behaviour — asks
-/// GitHub for the App installation's full permission set across every repository
-/// it covers, valid for an hour. Naming `repositories` and `permissions` narrows
-/// it to what the fleet declared, and a read-scoped fleet never receives a
-/// `pull_requests` key at all rather than receiving it set to "read".
-fn buildTokenRequestBody(ctx: MintCtx) !?[]u8 {
-    const binding = ctx.repository_binding orelse return null;
-    if (binding.repositories.len == 0) return null;
-
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(ctx.alloc);
-
-    try out.appendSlice(ctx.alloc, "{\"" ++ REQ_FIELD_REPOSITORIES ++ "\":[");
-    for (binding.repositories, 0..) |qualified, i| {
-        const name = bareRepositoryName(qualified);
-        if (!isSafeRepositoryName(name)) {
-            // Refuse, never escape. `errdefer` does not fire on a null return,
-            // so the partially-built body is released explicitly here.
-            out.deinit(ctx.alloc);
-            return null;
-        }
-        if (i > 0) try out.append(ctx.alloc, ',');
-        try out.append(ctx.alloc, '"');
-        try out.appendSlice(ctx.alloc, name);
-        try out.append(ctx.alloc, '"');
-    }
-    try out.appendSlice(ctx.alloc, "],\"" ++ REQ_FIELD_PERMISSIONS ++ "\":{\"" ++ PERM_CONTENTS ++ "\":\"");
-    try out.appendSlice(ctx.alloc, switch (binding.access) {
-        .read => PERM_VALUE_READ,
-        .write => PERM_VALUE_WRITE,
-    });
-    try out.append(ctx.alloc, '"');
-    // pull_requests is granted ONLY at write. Its absence is the read scope —
-    // opening a Pull Request with this token then fails at the vendor.
-    if (binding.access == .write) {
-        try out.appendSlice(ctx.alloc, ",\"" ++ PERM_PULL_REQUESTS ++ "\":\"" ++ PERM_VALUE_WRITE ++ "\"");
-    }
-    try out.appendSlice(ctx.alloc, "}}");
-    return try out.toOwnedSlice(ctx.alloc);
-}
-
-/// GitHub scopes an installation token by repository NAME, not `owner/repo`: the
-/// installation already fixes the owner, so a slashed value matches no repository
-/// and silently yields a token scoped to nothing. The binding keeps the qualified
-/// spelling — that is what a fleet author writes and what the repository-fetch
-/// validation compares against — so the owner is stripped here, at the wire edge.
-fn bareRepositoryName(qualified: []const u8) []const u8 {
-    const slash = std.mem.lastIndexOfScalar(u8, qualified, '/') orelse return qualified;
-    return qualified[slash + 1 ..];
-}
-
-/// GitHub repository names carry only alphanumerics, `-`, `_`, and `.`. Anything
-/// else is not a repository name, so the mint REFUSES rather than escaping it
-/// into the body — a value needing escaping could never have matched a real
-/// repository, and refusing keeps this builder free of an escaping path.
-fn isSafeRepositoryName(name: []const u8) bool {
-    if (name.len == 0) return false;
-    for (name) |c| {
-        if (!std.ascii.isAlphanumeric(c) and c != '-' and c != '_' and c != '.') return false;
-    }
-    return true;
-}
-
 fn parseToken(ctx: MintCtx, body: []const u8) anyerror!Outcome {
     var parsed = std.json.parseFromSlice(std.json.Value, ctx.alloc, body, .{}) catch return .{ .mint_failed = .permanent };
     defer parsed.deinit();
@@ -179,6 +108,21 @@ fn parseToken(ctx: MintCtx, body: []const u8) anyerror!Outcome {
         else => return .{ .mint_failed = .permanent },
     };
     const tok = strField(obj, RESP_FIELD_TOKEN) orelse return .{ .mint_failed = .permanent };
+
+    // The request named repositories by BARE name (`bareRepositoryName` below),
+    // so the OWNER a fleet declared never reached the wire and GitHub could only
+    // ever have scoped by name within its own installation account. Verify what
+    // the token actually reaches before it is handed to anyone — otherwise the
+    // fetch path compares `owner/repo` and this path compares nothing, and one
+    // declaration means two different things depending on which a model takes.
+    const binding = ctx.repository_binding orelse return .{ .mint_failed = .permanent };
+    switch (github_reach.verify(binding.repositories, obj)) {
+        .exact => {},
+        // The token is never duplicated and never returned; it dies with
+        // `parsed` and expires upstream on its own hour-long clock.
+        .mismatched, .unstated => return .{ .mint_failed = .permanent },
+    }
+
     return .{ .ok = .{
         .token = try ctx.alloc.dupe(u8, tok),
         .expires_at_ms = ctx.now_ms + INSTALL_TOKEN_TTL_MS,
@@ -268,7 +212,11 @@ test "github mint: status → outcome mapping incl. retry class (Dimensions 2.1/
 
 test "github mint: 201 → token with local expiry; URL targets the install; bearer is a 3-part JWT (Dimension 2.1)" {
     const alloc = std.testing.allocator;
-    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = "{\"token\":\"ghs_minted\",\"expires_at\":\"2026-06-26T16:30:00Z\"}" };
+    // The reach echoes `testing.test_binding`, which `githubCtx` declares — the
+    // mint refuses a token stating any other reach, and this test is about the
+    // expiry, the URL, and the JWT shape rather than about the binding.
+    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = "{\"token\":\"ghs_minted\"," ++
+        "\"expires_at\":\"2026-06-26T16:30:00Z\",\"repositories\":[{\"full_name\":\"acme/widgets\"}]}" };
     defer gh.deinit();
     var h = try testing.parse(alloc, HANDLE_GH);
     defer h.deinit();

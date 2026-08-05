@@ -136,6 +136,8 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/agentsfleetd/credentials/integration.zig` | EDIT | `RepositoryBinding` on the integration surface; the registry table split to `integration_registry_test.zig` |
 | `src/agentsfleetd/credentials/integration_ctx.zig` | EDIT | `MintCtx.repository_binding` — what the GitHub mint scopes by |
 | `src/agentsfleetd/credentials/integration_github_mint_body_test.zig` | CREATE | Dimension 2.3: `write` mints contents + pull_requests, `read` mints contents alone and carries NO pull_requests key; an unbound fleet mints nothing |
+| `src/agentsfleetd/credentials/integration_github_body.zig` | CREATE | What the mint ASKS for — the request-body builder and the bare-name reduction, split out when the reach check pushed `integration_github.zig` past RULE FLL |
+| `src/agentsfleetd/credentials/integration_github_reach.zig` | CREATE | Whether the token GitHub RETURNED reaches what was declared. The owner never rides the wire, so only the response can say — this is what stops the `${secrets.github}` path meaning something different from the fetch path |
 | `src/agentsfleetd/credentials/integration_registry_test.zig` | CREATE | Registry coverage, split from `integration.zig` to keep it inside the line budget |
 | `src/agentsfleetd/credentials/testing.zig` | EDIT | A bound fixture (`test_binding`) so tests whose subject is something else are not all asserting the unbound refusal |
 | `src/agentsfleetd/cron/FireQueue.zig` | EDIT | Orphan sweep from the retired repair kernel (RULE ORP) |
@@ -845,3 +847,58 @@ evaluated twice under conditions the `test-integration` lane never applies. The
 fix remains (b) skip those under the coverage lane or (c) exclude integration
 tests from the coverage binaries — never widening an allowlist, which would let
 a real hang pass.
+
+### Aug 05, 2026 — the two architecture calls Indy left open
+
+Both were carried unfixed out of the gstack `/review` session. Indy took them
+separately: settle (a) by establishing its deciding fact, fix (b).
+
+**(a) The deciding fact is established, and the answer is YES.** A process
+backgrounded by a successful `shell` tool call **survives that tool call**.
+`process_util.run` sets `child.pgid = 0` to isolate the child's process group,
+but `terminateChild` — the only thing that signals that group and walks
+`/proc/<pid>/task/<pid>/children` — is reachable **only** from
+`processWatcherMain`, and only on the cancel or timeout arms. The success path
+sets `done`, joins the watcher without signalling anything, reads both pipes to
+EOF, and reaps the direct child alone. A grandchild that redirected its inherited
+descriptors closes those pipes immediately, so the tool call returns promptly and
+the grandchild is left running inside the sandbox for the rest of the lease.
+
+| Finding | Evidence |
+|---|---|
+| A backgrounded grandchild outlives its tool call. `terminateChild` signals `-child.id` and recursively kills the `/proc` children, but nothing calls it unless the watcher observed a cancel or a timeout. | `zig-pkg/nullclaw-*/src/tools/process_util.zig:186-205` (watcher arms), `:160-184` (`terminateChild`), `:409-412` (success-path `defer` — sets `done`, joins, never signals), `:436` (`child.wait()` reaps the direct child only) |
+| So the window between the daemon's three git spawns is real in principle. `git init`, `git fetch`, and `git checkout` are separate spawns against `{workspace}/repo`, which is bound read-write for the child (`sandbox_args.zig:159`), and repo-local `.git/config` is the one layer `repo_fetch_env.build` cannot switch off — `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` cover the other two and git has no equivalent for the local file. | `repo_fetch_env.zig:47-49`; `repo_fetch_exec` step ordering |
+| **The shipped repairer cannot reach it.** Its declared tools are `repo_fetch`, `git`, `http_request`, `memory_store`, `memory_recall`. None can background a process or write an arbitrary file: the `git` tool is restricted to an eight-value `operation` enum (`status`/`diff`/`log`/`branch`/`commit`/`add`/`checkout`/`stash`) with no `config` arm, and it explicitly rejects `-c` config injection. There is no `shell` and no `file_write`. | `library/incident-repairer/TRIGGER.md` `tools:`; `zig-pkg/nullclaw-*/src/tools/git.zig:19` (schema enum), `:73` (`-c` block) |
+| **But that safety is bundle-shaped, not design-shaped.** `runner_helpers` falls back to `hosted_tools.buildDefault` when `tools:` is absent *or* not an array, and that set includes `shell` and `file_write`. So the first fleet that declares `repo_fetch` and omits `tools:` gets both the window and the means — and the daemon's git steps carry the minted token in their environment, which is what makes the window worth closing rather than merely noting. | `runner_helpers.zig:242-243`; `hosted_tools.zig:17-27`; Dimension 4.10 |
+
+**Verdict: not reachable today, reachable by omission tomorrow.** Recorded as a
+hardening item with a named trigger rather than as a merge blocker, and left for
+Indy to schedule — the fix is structural (run the git steps in a daemon-private
+directory and `rename(2)` the finished tree into `{workspace}/repo`, so no git
+step ever runs in a directory the child can write), which is a change to a path
+that currently ships and tests green.
+
+**(b) Fixed: the mint now refuses a token that reaches something else.** The
+request body names repositories by BARE name — GitHub scopes an installation
+token by name within the installation's own account — so the owner a fleet
+declared never reached the wire, and `acme/payments` minted happily against
+`<installed-account>/payments`. `repo_fetch.decide` compared the qualified
+spelling on the fetch path; the `${secrets.github}` path into `http_request`
+compared nothing, so one declaration meant two different things depending on
+which path the model took.
+
+The fix checks the RESPONSE rather than re-deriving the request: a
+create-installation-access-token response echoes a `repositories` array carrying
+the qualified `full_name` of every repository the token reaches, so comparing
+that set against the declared set validates what the credential can actually
+touch — including a mis-scope whose cause nobody modelled. Set equality in both
+directions, case-insensitively (GitHub owners and repository names are), and a
+response stating no reach at all is refused rather than read as "all of them" —
+which is precisely the pre-narrowing behaviour §2 removed. A rejected token is
+never duplicated and never returned; it dies with the parsed document.
+
+`integration_github.zig` crossed RULE FLL on the change, so the binding's two
+halves are now named files either side of it: `integration_github_body.zig`
+(what the mint asks for) and `integration_github_reach.zig` (whether the token
+it got back matches). Six unit tests on the pure verifier plus two driven
+through the public `mint`, including the stripped-owner regression itself.

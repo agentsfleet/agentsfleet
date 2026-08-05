@@ -56,6 +56,8 @@ test {
     _ = @import("credentials/integration_ctx.zig");
     _ = @import("credentials/integration_github.zig");
     _ = @import("credentials/integration_github_mint_body_test.zig");
+    _ = @import("credentials/integration_github_body.zig");
+    _ = @import("credentials/integration_github_reach.zig");
     _ = @import("credentials/integration_oauth_refresh.zig");
     _ = @import("credentials/integration_oauth_refresh_test.zig");
     _ = @import("credentials/broker.zig");

@@ -69,7 +69,14 @@ test "mint body: a read binding grants contents:read and NO pull_requests key at
 
 test "mint body: every repository in the binding reaches the body" {
     const alloc = std.testing.allocator;
-    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201 };
+    // Two declared, so the stated reach must name both — the mint refuses a
+    // token reaching fewer repositories than were asked for.
+    var gh = testing.FakeGitHub{
+        .alloc = alloc,
+        .status = 201,
+        .resp_body = "{\"token\":\"ghs_minted\",\"repositories\":" ++
+            "[{\"full_name\":\"acme/widgets\"},{\"full_name\":\"acme/gadgets\"}]}",
+    };
     defer gh.deinit();
     var h = try testing.parse(alloc, HANDLE_GH);
     defer h.deinit();
@@ -111,6 +118,50 @@ test "mint body: a binding naming zero repositories is a refusal, not an all-rep
     try std.testing.expect(out == .mint_failed);
     try std.testing.expectEqual(Retry.permanent, out.mint_failed);
     try std.testing.expectEqual(@as(usize, 0), gh.body.len);
+}
+
+test "mint: a token scoped to another owner's repository is refused, not returned" {
+    // The owner-stripping mis-scope, driven through the public `mint` rather than
+    // the pure verifier: the binding names `acme/widgets`, the wire carries the
+    // bare `widgets`, and the installation account answers with ITS `megam/widgets`.
+    // Before this refusal the fetch path compared `owner/repo` and the
+    // `${secrets.github}` path compared nothing, so the same declaration meant
+    // two different things depending on which path the model took.
+    const alloc = std.testing.allocator;
+    var gh = testing.FakeGitHub{
+        .alloc = alloc,
+        .status = 201,
+        .resp_body = "{\"token\":\"ghs_minted\",\"repositories\":[{\"full_name\":\"megam/widgets\"}]}",
+    };
+    defer gh.deinit();
+    var h = try testing.parse(alloc, HANDLE_GH);
+    defer h.deinit();
+
+    const out = try github.mint(testing.githubCtxBound(alloc, h.value, &gh, TEST_NOW_MS, bindingOf(&REPOS_ONE, .write)));
+    try std.testing.expect(out == .mint_failed);
+    try std.testing.expectEqual(Retry.permanent, out.mint_failed);
+    // The exchange DID happen — this refusal is response-side, unlike the unbound
+    // one above — but nothing usable came back out of it.
+    try std.testing.expect(gh.calls > 0);
+}
+
+test "mint: a response that states no reach at all is refused" {
+    // The pre-narrowing response shape. Reading a missing `repositories` array as
+    // "every repository in the installation" is the exact behaviour Section 2
+    // removed; it must not return by way of the parser.
+    const alloc = std.testing.allocator;
+    var gh = testing.FakeGitHub{
+        .alloc = alloc,
+        .status = 201,
+        .resp_body = "{\"token\":\"ghs_minted\"}",
+    };
+    defer gh.deinit();
+    var h = try testing.parse(alloc, HANDLE_GH);
+    defer h.deinit();
+
+    const out = try github.mint(testing.githubCtxBound(alloc, h.value, &gh, TEST_NOW_MS, bindingOf(&REPOS_ONE, .write)));
+    try std.testing.expect(out == .mint_failed);
+    try std.testing.expectEqual(Retry.permanent, out.mint_failed);
 }
 
 test "mint body: a repository name that is not a repository name is refused, never escaped" {

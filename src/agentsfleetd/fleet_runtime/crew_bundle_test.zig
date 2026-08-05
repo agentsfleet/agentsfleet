@@ -54,6 +54,24 @@ fn containsAny(haystack: []const u8, needles: []const []const u8) bool {
     return false;
 }
 
+/// A create-installation-access-token response stating that the minted token
+/// reaches exactly `declared`. The mint verifies that stated reach against the
+/// binding (`integration_github_reach.zig`), so a fake answering anything else
+/// fails the mint for a reason the calling test is not about. Caller owns.
+fn reachResponse(alloc: std.mem.Allocator, declared: []const []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(alloc);
+    try out.appendSlice(alloc, "{\"token\":\"ghs_minted\",\"repositories\":[");
+    for (declared, 0..) |full_name, i| {
+        if (i > 0) try out.append(alloc, ',');
+        const entry = try std.fmt.allocPrint(alloc, "{{\"full_name\":\"{s}\"}}", .{full_name});
+        defer alloc.free(entry);
+        try out.appendSlice(alloc, entry);
+    }
+    try out.appendSlice(alloc, "]}");
+    return out.toOwnedSlice(alloc);
+}
+
 /// Collapse every run of whitespace to one space. These assertions are about
 /// PROSE, and prose in a markdown file wraps wherever the line ran out — so
 /// matching raw bytes makes the test fail on a re-wrap rather than on a
@@ -170,7 +188,13 @@ test "test_investigator_token_is_read_only" {
     try std.testing.expectEqual(integration.RepositoryAccess.read, binding.access);
     try std.testing.expect(binding.repositories.len > 0);
 
-    var gh = cred_testing.FakeGitHub{ .alloc = alloc, .status = 201 };
+    // The fake answers with exactly the reach the SHIPPED bundle declared, so
+    // this test keeps failing on the permission level rather than on the mint's
+    // reach check — which is a different Dimension with its own tests.
+    const reach = try reachResponse(alloc, binding.repositories);
+    defer alloc.free(reach);
+
+    var gh = cred_testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = reach };
     defer gh.deinit();
     var h = try cred_testing.parse(alloc, HANDLE_GH);
     defer h.deinit();

@@ -51,7 +51,12 @@ pub fn ctxOver(alloc: std.mem.Allocator, handle: std.json.Value) MintCtx {
 pub const FakeGitHub = struct {
     alloc: std.mem.Allocator,
     status: u16 = 201,
-    resp_body: []const u8 = "{\"token\":\"ghs_minted\"}",
+    /// A real create-installation-access-token response echoes the repositories
+    /// the token was granted, and the mint refuses a token whose stated reach is
+    /// not the declared binding (`integration_github_reach.zig`). So the default
+    /// body states the reach `test_binding` declares — a fake that omitted it
+    /// would make every mint fail closed for a reason no test was about.
+    resp_body: []const u8 = "{\"token\":\"ghs_minted\",\"repositories\":[{\"full_name\":\"acme/widgets\"}]}",
     fail_with: ?anyerror = null,
     calls: usize = 0,
     url: []u8 = &.{},
