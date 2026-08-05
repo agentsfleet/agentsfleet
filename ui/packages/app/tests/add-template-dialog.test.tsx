@@ -181,3 +181,77 @@ describe("AddLibraryDialog", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 });
+
+describe("AddLibraryDialog — upload source (Dimension 4a.1)", () => {
+  // `POST /fleet-libraries` has accepted an inline upload since M103; the
+  // dashboard only ever spoke `github`. That is why hand-setup installed some
+  // unrelated entry and overwrote both of its markdown files afterwards —
+  // nothing of the template survived, so it was a vehicle rather than a choice.
+  const SKILL = "---\nname: incident-repairer\ndescription: d\nversion: 0.1.0\n---\nBody.";
+  const TRIGGER = "---\nname: incident-repairer\nx-agentsfleet:\n  triggers:\n    - type: api\n---";
+
+  async function openUploadTab() {
+    const user = userEvent.setup({ delay: null });
+    render(React.createElement(AddLibraryDialog, { workspaceId: "ws_1" }));
+    await user.click(screen.getByRole("button", { name: /^create fleet library$/i }));
+    await screen.findByLabelText("Repository");
+    await user.click(screen.getByRole("tab", { name: /^paste$/i }));
+    await screen.findByLabelText("SKILL.md");
+    return user;
+  }
+
+  it("test_dashboard_uploads_local_bundle", async () => {
+    onboardLibraryEntryActionMock.mockResolvedValue({ ok: true, data: onboarded });
+    const user = await openUploadTab();
+
+    await user.type(screen.getByLabelText("SKILL.md"), SKILL);
+    await user.type(screen.getByLabelText("TRIGGER.md"), TRIGGER);
+    fireEvent.submit((screen.getByLabelText("SKILL.md") as HTMLTextAreaElement).form!);
+
+    await waitFor(() => expect(onboardLibraryEntryActionMock).toHaveBeenCalledTimes(1));
+    const call = onboardLibraryEntryActionMock.mock.calls[0];
+    if (!call) throw new Error("onboardLibraryEntryAction was not called");
+    const [workspaceId, body] = call;
+    expect(workspaceId).toBe("ws_1");
+    // Both bodies reach the wire, and no `source_ref` rides along — pasted bytes
+    // came from no revision, so recording one would leave a ref the content
+    // never came from.
+    expect(body).toEqual({
+      source_kind: "upload",
+      skill_markdown: SKILL,
+      trigger_markdown: TRIGGER,
+    });
+  });
+
+  it("refuses an upload with no TRIGGER.md rather than installing an ungated fleet", async () => {
+    // The load-bearing refusal. A bundle uploaded without its TRIGGER.md becomes
+    // a fleet declaring no tools, no credentials and no gate — and the runtime
+    // reads an absent gate as approve-everything, so the omission is not a
+    // smaller install, it is an autonomous one.
+    const user = await openUploadTab();
+
+    await user.type(screen.getByLabelText("SKILL.md"), SKILL);
+    fireEvent.submit((screen.getByLabelText("SKILL.md") as HTMLTextAreaElement).form!);
+
+    expect(await screen.findByText(/paste the trigger\.md body/i)).toBeTruthy();
+    expect(onboardLibraryEntryActionMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the GitHub source working when the tab is switched back", async () => {
+    onboardLibraryEntryActionMock.mockResolvedValue({ ok: true, data: onboarded });
+    const user = await openUploadTab();
+    await user.click(screen.getByRole("tab", { name: /^github$/i }));
+
+    const repo = await screen.findByLabelText("Repository");
+    await user.type(repo, "acme/bundle");
+    fireEvent.submit((repo as HTMLInputElement).form!);
+
+    await waitFor(() => expect(onboardLibraryEntryActionMock).toHaveBeenCalledTimes(1));
+    const githubCall = onboardLibraryEntryActionMock.mock.calls[0];
+    if (!githubCall) throw new Error("onboardLibraryEntryAction was not called");
+    expect(githubCall[1]).toEqual({
+      source_kind: SOURCE_KIND_GITHUB,
+      source_ref: "acme/bundle",
+    });
+  });
+});
