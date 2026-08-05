@@ -19,14 +19,6 @@ The `fleet:{fleet_id}:activity` name is an ephemeral publish/subscribe
 
 1. Stop traffic and every `agentsfleetd` machine in the selected environment.
    Otherwise live requests can recreate keys while verification is running.
-   **The gate now does this for you** — `../stop_writers.sh` runs first, scales
-   the environment's `agentsfleetd` to zero machines, and reads the machine
-   count back before letting the flush proceed. To scale down by hand instead:
-
-   ```bash
-   flyctl scale count 0 --app agentsfleetd-dev --process-group app --yes
-   flyctl machine list --app agentsfleetd-dev --json   # must report no machines
-   ```
 2. Confirm Docker and 1Password access.
 3. Confirm the selected vault item has both:
    - `api-url` for the restricted runtime connection

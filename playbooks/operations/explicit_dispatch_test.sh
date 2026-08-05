@@ -74,13 +74,13 @@ run_case credential_rotation \
 
 run_case redis_teardown \
   "$SCRIPT_DIR/teardown/redis/00_gate.sh" \
-  'stop_writers.sh 01_credential_check.sh 02_teardown.sh 03_verify.sh' \
-  stop_writers.sh 01_credential_check.sh 02_teardown.sh 03_verify.sh
+  '01_credential_check.sh 02_teardown.sh 03_verify.sh' \
+  01_credential_check.sh 02_teardown.sh 03_verify.sh
 
 run_case database_teardown \
   "$SCRIPT_DIR/teardown/database/00_gate.sh" \
-  'stop_writers.sh 01_credential_check.sh 02_teardown.sh 03_verify.sh' \
-  stop_writers.sh 01_credential_check.sh 02_teardown.sh 03_verify.sh
+  '01_credential_check.sh 02_teardown.sh 03_verify.sh' \
+  01_credential_check.sh 02_teardown.sh 03_verify.sh
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

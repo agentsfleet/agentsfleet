@@ -19,7 +19,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Status:** DONE
 **Priority:** P1 — operator-facing: a rebuild currently comes back with an empty model catalogue, a wipe can be silently undone, and two Continuous Integration (CI) lanes are red on main
 **Categories:** DOCS, INFRA, UI, API
-**Batch:** B1 — one Pull Request; the six slices share no files and can land in any order
+**Batch:** B1 — one Pull Request; the five shipped slices share no files and can land in any order (§3 withdrawn)
 **Branch:** `feat/m158-priming-and-sweep`
 **Test Baseline:** `unit=3424 integration=587` — recorded at CHORE(open) via `make _lint_zig_test_depth`
 **Depends on:** none — M154_001 is merged and this builds on the playbooks it left in place
@@ -32,15 +32,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** A dev environment torn down and rebuilt from the playbooks comes back with a populated `core.model_library`, an acceptance suite run against it leaves zero fixture fleets behind — including when the run is interrupted — and the `memleak` and `test-coverage-zig` lanes pass deterministically on main.
 
-**Problem:** Five gaps, the first three found while planning the M154 rebuild and the last two by the red lanes that rebuild left on main. Each costs an operator a cycle, leaves residue nobody sees, or trains the team to re-run a gate:
+**Problem:** Five gaps (one later withdrawn), the first three found while planning the M154 rebuild and the last two by the red lanes that rebuild left on main. Each costs an operator a cycle, leaves residue nobody sees, or trains the team to re-run a gate:
 
 1. The `app-dev` database holds 400+ fleets. The acceptance suite's per-spec cleanup works, but the backstop sweep that covers interrupted runs reaps six name prefixes while the specs mint about twenty-two. Leaked fleets are not inert — each carries a seeded cron trigger that keeps waking runners.
 2. A freshly rebuilt environment has an empty model catalogue. The priming tool exists and works, but it lives in the local-development Makefile fragment and no playbook references it, so nothing tells an operator to run it. Every fleet needs a model, so the environment looks deployed and is not usable.
-3. Both teardown playbooks require "stop traffic and every writer" as a precondition and give no command for it. A running `agentsfleetd` machine that Fly.io restarts against the just-emptied database re-runs its own older migrations, and the next deployment then fails `ensureCanonical` with `error.MigrationSchemaAhead` — so the teardown has to be run a second time. This is not hypothetical: it is why `deploy (dev)` is red on main.
+3. ~~Stop-the-writer~~ **WITHDRAWN — the premise was false.** This section claimed a live `agentsfleetd` re-applies its own older migrations against an emptied database. It cannot: `MIGRATE_ON_START` is unset in `fly.toml`, the deploy workflow, and the app config, so `decideServeMigrationPolicy` never reaches its run branch and `serve` never migrates. The real cause of `MigrationSchemaAhead` is that M154 **renumbered every migration** (`001_`/`002_` → `100_`/`110_`…), so any database still carrying pre-M154 history has applied versions absent from the new canonical list of 36. Wiping fixes it; stopping writers is irrelevant to it. Section cut — see Discovery.
 4. Every Redis dial routes through `std.Io.net.HostName.connect`, whose happy-eyeballs fan-out awaits an `Io.Group`. Zig 0.16.0's group await parks on a futex word in the awaiter's own stack frame, and the finishing worker publishes the wake *before* dereferencing that word — so the awaiter can return and pop the frame first. The `memleak` lane catches the resulting `futex(2)`-on-reclaimed-stack intermittently and `make/bench.mk` deliberately refuses to suppress it.
 5. `catalog_etag_integration_test`'s lock probe waits five seconds for a lock waiter to appear in `pg_stat_activity` and calls its absence `CatalogPatchNeverBlocked`. Under the coverage lane's kcov instrumentation the patch is slower than that bound, so a timing budget stands in for a correctness claim and the lane fails on a green codebase.
 
-**Solution summary:** Five independent slices. The acceptance sweep stops matching fleet names and sweeps by ownership instead, which cannot rot as specs are added. The model catalogue priming becomes a first-class operations playbook with the approval gates every other destructive-or-billing operation already has, referenced from the deployment step that needs it. The stop-the-writer precondition becomes an executable, verified step of both teardown gates rather than a sentence. The Redis dial resolves and races addresses itself, so no stdlib futex word ever outlives its frame. The lock probe waits on the worker's own completion rather than on a clock, so it fails when the patch does not block and only then.
+**Solution summary:** Five independent slices. The acceptance sweep stops matching fleet names and sweeps by ownership instead, which cannot rot as specs are added. The model catalogue priming becomes a first-class operations playbook with the approval gates every other destructive-or-billing operation already has, referenced from the deployment step that needs it. The Redis dial resolves and races addresses itself, so no stdlib futex word ever outlives its frame. The lock probe waits on the worker's own completion rather than on a clock, so it fails when the patch does not block and only then.
 
 ## PR Intent & comprehension handshake
 
@@ -71,16 +71,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/README.md` | EDIT | The auto-checked inventory block gains the new operations row |
 | `playbooks/founding/04_deploy_dev/001_playbook.md` | EDIT | Required result gains the catalogue priming step |
 | `playbooks/founding/07_deploy_prod/001_playbook.md` | EDIT | Same, for the production route |
-| `playbooks/operations/teardown/database/001_playbook.md` | EDIT | The stop-the-writer precondition gains its command |
-| `playbooks/operations/teardown/database/00_gate.sh` | EDIT | Stop-the-writer becomes a dispatched step |
-| `playbooks/lib/stop_writers.sh` | CREATE | The executable precondition, verified rather than assumed. Landed in `playbooks/lib/` (the existing home for shared playbook code) rather than inside one teardown directory: `operations/explicit_dispatch_test.sh` copies a gate into a temp directory and stubs each step beside it, so a gate reaching outside its own directory for a step cannot be dispatch-tested at all |
-| `playbooks/lib/stop_writers_test.sh` | CREATE | Proves the read-back, both idempotent passes, the unknown-environment refusal, and that no vault value is printed |
-| `playbooks/operations/teardown/database/stop_writers.sh` | CREATE | Thin dispatched step so the gate calls into its own directory |
-| `playbooks/operations/teardown/redis/stop_writers.sh` | CREATE | Same, for the Redis gate |
 | `playbooks/operations/model_catalogue/lib.sh` | CREATE | Not anticipated: the vault item and connection reference are needed by all three steps, and three spellings is how one eventually points at the wrong environment (RULE UFS). Carries the vault preamble itself, which `check-vault-gate-parity` requires of any file resolving an `op://` reference |
-| `playbooks/operations/explicit_dispatch_test.sh` | EDIT | Its pinned dispatch order for both teardown gates gains the new first step |
-| `playbooks/operations/teardown/redis/001_playbook.md` | EDIT | Same precondition, same command |
-| `playbooks/operations/teardown/redis/00_gate.sh` | EDIT | Same dispatch change |
 | `playbooks/operations/teardown/database/03_verify.sh` | EDIT | Its closing guidance names the catalogue priming step as the next action |
 | `src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` | EDIT | Takes the serial `common.globalIo()` so no worker thread can lose the stdlib futex race; the detach bookkeeping the owned Io required goes with it, and the comment citing an `std.Io.Select` that `9ee3a075b` deleted is corrected (RULE NLR) |
 | `src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig` | EDIT | The lock probe waits on the worker's completion instead of a five-second clock |
@@ -151,16 +142,17 @@ Making it an operations playbook rather than a founding step is deliberate: `see
 - **Dimension 2.6** — the playbooks inventory in `playbooks/README.md` names the new directory, and reference integrity resolves every path it cites → Test `make check-playbooks` — **DONE.** `make check-playbooks` is green: vault-gate parity, shellcheck, every playbook test, reference integrity, and README/tree parity.
 - **Dimension 2.7** — the development and production deployment steps name the priming step in their required result, so an operator following the founding sequence reaches it → Test `test_deploy_steps_reference_catalogue_priming` — **DONE.** Both `04_deploy_dev` and `07_deploy_prod` gain a Required-result bullet with the copy-paste invocation; the production one says to read the diff first because the rows are billing rates.
 
-### §3 — Stop-the-writer is an executable step, not a sentence
+### §3 — WITHDRAWN
 
-Both teardown playbooks list "stop traffic and every writer" as a precondition and neither gives a command. The failure it guards against is concrete and expensive: a live `agentsfleetd` machine restarted by Fly.io against the emptied database re-applies its own older migrations, and the next deployment then refuses to migrate with `error.MigrationSchemaAhead`, forcing a second teardown.
+Specced as "make stop-the-writer an executable gate step", on the belief that a live `agentsfleetd` re-migrates an emptied database and causes `error.MigrationSchemaAhead`. Indy challenged it; the belief was checked and is false.
 
-**Implementation default:** a `01_stop_writers.sh` step dispatched by both teardown gates before the credential check, using `flyctl scale count 0` — the form `.github/workflows/release.yml` already uses for scaling — and *verifying* the machine count reached zero rather than assuming the command worked. The step is idempotent: an already-stopped application is a pass, not a failure.
+`MIGRATE_ON_START` is set nowhere — not `deploy/fly/agentsfleetd-dev/fly.toml`, not `.github/workflows/deploy-dev-fly.yml`, not the live app config. `migrateOnStartEnabledFromEnv` returns `false` when unset, so `decideServeMigrationPolicy` cannot reach its run branch. A running daemon never applies migrations.
 
-- **Dimension 3.1** — the step scales the environment's application to zero and confirms zero machines are running before the teardown proceeds → Test `test_stop_writers_verifies_zero_machines` — **DONE.** The machine count is READ BACK rather than inferred from the scale command's exit status; the test drives a stub where scale succeeds while a machine lingers and asserts the step fails.
-- **Dimension 3.2** — an application that is already stopped passes rather than erroring → Test `test_stop_writers_is_idempotent` — **DONE.** A non-existent app (non-zero `flyctl status`) short-circuits to success before scaling, so a first-time teardown is not blocked by a missing app.
-- **Dimension 3.3** — a failure to reach zero blocks the teardown instead of warning → Test `test_stop_writers_blocks_on_failure` — **DONE.** Exhausting the retry budget exits 1 and the gate's `run_step` halts the ordered list, so the destructive step is never reached. Landed as `stop_writers_verifies_zero_machines`.
-- **Dimension 3.4** — both teardown gates dispatch the step in explicit order before the credential check → Test `test_teardown_gates_dispatch_stop_writers_first` — **DONE.** Asserted by line ORDER in both gates, not by presence — a stop-writers step that ran after the destructive one would prevent nothing. `operations/explicit_dispatch_test.sh` independently pins the full four-step order for both gates.
+The actual cause: M154 renumbered every migration file, so a database carrying pre-M154 history holds applied versions (`1`, `2`, `3`…) absent from the new canonical set — `ensureCanonical` refuses. A wipe fixes it. Live writers are not involved.
+
+Weaker justifications did survive the check (the daemon writes Redis keys continuously, so a live writer can repopulate during `DBSIZE == 0` verification; and `DROP SCHEMA CASCADE` contends with live connections). They were judged not to earn a new gate step, and shipping a step whose stated rationale is a failure mode that cannot occur is worse than shipping none — the next reader reasons from the false comment.
+
+Everything §3 added is removed: `playbooks/lib/stop_writers.sh`, its test, both thin dispatch steps, both gate wirings, and the playbook prose. `deploy (dev)` was never going to be fixed by it; §6 is what fixes it.
 
 ### §4 — The lifecycle test stops manufacturing a race it no longer needs
 
@@ -235,9 +227,6 @@ playbooks/operations/model_catalogue/00_gate.sh
 
   Exit: 0 success · 1 step failure · 2 invalid input (before any step runs)
 
-playbooks/operations/teardown/{database,redis}/01_stop_writers.sh
-  ENV      dev | prod            (required; inherited from the gate)
-  Exit: 0 zero machines running (including already-stopped) · 1 could not reach zero
 
 ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts
   sweepLeakedFixtureFleets(): Promise<{ removed: number; failed: number }>
@@ -264,9 +253,6 @@ src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig
 | Catalogue apply without approval | `ALLOW_MODEL_CATALOGUE_WRITES` unset | Exits 2 before reading the vault or contacting the database; nothing is written |
 | Catalogue apply to the wrong environment | Operator sets `ENV=prod` intending `dev` | The typed confirmation must match the environment label exactly; a mismatch aborts before any write |
 | Catalogue verify against an empty table | Priming was skipped or silently failed | Verify exits non-zero and names the row count it found, so the deployment step cannot be recorded as green |
-| Writer still running at teardown | `flyctl scale count 0` failed or partially applied | `01_stop_writers.sh` exits 1 and the gate stops; the teardown never reaches the destructive step |
-| Writer application does not exist | Environment was never deployed | Treated as zero machines running — a pass, so a first-time teardown is not blocked by a missing application |
-| Boot path needs io concurrency after all | A future change reintroduces `io.async` or `Io.Select` under `serve.run` | The serial io fails the call with `ConcurrencyUnavailable` and `serve.run` exits non-zero, so the lifecycle test goes red immediately rather than silently running a different shape than production |
 | Upstream futex race reaches another lane | Any test that dials on its own threaded Io | Unchanged by this milestone — the lane reports it, and the remedy is the dial rewrite scoped out in Discovery, not a suppression |
 | Lock probe's patch completes without blocking | The If-Match check stopped taking the row lock — a real regression | The observed completion fails the test as `CatalogPatchNeverBlocked`, immediately rather than after the backstop expires |
 | Lock probe exhausts its backstop | A genuine hang, or an environment far slower than instrumented Continuous Integration (CI) | `CatalogPatchLockWaitTimedOut` — distinct from the never-blocked verdict, so the cause is never inferred from the wrong signal again |
@@ -300,10 +286,6 @@ src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig
 | 2.5 | unit | `test_verify_fails_on_empty_catalogue` | Verify against a catalogue reporting zero rows → non-zero exit naming the count; against a populated one → exit 0 |
 | 2.6 | unit | `make check-playbooks` | README inventory matches the tree exactly and every cited path resolves |
 | 2.7 | unit | `test_deploy_steps_reference_catalogue_priming` | Both `04_deploy_dev` and `07_deploy_prod` playbooks cite the catalogue playbook path |
-| 3.1 | unit | `test_stop_writers_verifies_zero_machines` | Scale reports success but a machine remains → exit 1; zero machines → exit 0 |
-| 3.2 | unit | `test_stop_writers_is_idempotent` | An application already at zero machines, and an application that does not exist → both exit 0 |
-| 3.3 | unit | `test_stop_writers_blocks_on_failure` | The step exits non-zero → the gate stops and the teardown step is never executed |
-| 3.4 | unit | `test_teardown_gates_dispatch_stop_writers_first` | Both teardown gates list the stop-writers step before the credential check in their explicit command list |
 | 4.1 | integration | boot→drain run marker | The gated run prints `SERVE_LIFECYCLE_BOOT_DRAIN_RAN`, so the lifecycle test is proven to have executed rather than skipped on the serial io |
 | 4.2 | unit | `test_lifecycle_fixture_owns_no_io` | `grep -c "daemon_detached\|serve_io.deinit" src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` is `0` — the bookkeeping is deleted, not left inert |
 | 4.3 | integration | `make memleak` | Exit 0, and the boot→drain lane reports no memcheck finding of any class |
@@ -315,7 +297,6 @@ src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig
 | 2.3 | unit | `test_apply_aborts_on_confirmation_mismatch` | `ACTION=apply ENV=prod` with the operator typing `dev` → aborts before any write, and the catalogue is untouched |
 | — | unit | `test_scripts_print_no_credentials` | Every new script run with a stubbed vault emits no vault value, connection string, or Application Programming Interface (API) key on stdout or stderr |
 | — | regression | `test_per_spec_cleanup_still_scopes_by_prefix` | `cleanWorkspaceFleets` called with a prefix removes only matching fleets, so a parallel worker's rows survive — the behaviour §1 must not break |
-| — | regression | `test_existing_teardown_gates_still_reject_unknown_env` | The database and Redis gates keep their existing `ENV` rejection after gaining a step |
 | — | idempotency | `test_catalogue_apply_is_repeatable` | **`needs-infra`** — real idempotency needs a live catalogue and two applies. Under the stub harness this could only assert that the harness invoked `node` twice, which proves nothing about row counts. Deliberately not faked; belongs with the M159 rebuild verification, where a real database exists. |
 
 ## Acceptance Rubric (single scoring surface)
@@ -325,7 +306,6 @@ src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig
 | R1 | The name-prefix list is gone from the sweep (§1) | `grep -rn "LEAKED_FLEET_PREFIXES" ui/ \| wc -l` | `0` | P0 |  ✅ `0` |
 | R2 | The sweep and its failure reporting are proven (§1) | `make test-unit-app` | exit 0 | P0 |  ✅ 5 sweep tests pass; app suite 2205 passed |
 | R3 | The catalogue playbook exists and its regression tests pass (§2) | `bash playbooks/operations/model_catalogue/model_catalogue_test.sh` | exit 0 | P0 |  ✅ `7 passed, 0 failed` |
-| R4 | Both teardown playbooks name the stop-writer command (§3) | `grep -rln "flyctl scale count" playbooks/operations/teardown/ \| wc -l` | `2` | P0 |  ✅ `2` |
 | R5 | Playbooks stay internally consistent — inventory, references, shellcheck, every playbook test | `make check-playbooks` | exit 0 | P0 |  ✅ exit 0 — vault-gate parity, shellcheck, all tests, references, README parity |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ all 38 paths declared |
 | R7 | The memleak lane is green and carries no new suppression (§4) | `make memleak` and `git diff origin/main...HEAD -- make/bench.mk \| wc -l` | exit 0, and `0` | P0 |  ⚠️ exit 0 locally and `0` diff to bench.mk — but Darwin arms no valgrind, so the memcheck class is graded on the Linux lane after push (see 4.3) |
@@ -401,6 +381,8 @@ src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig
 
   Areas attacked and found sound: the `schema/110` change (the lane migrates all 36 versions from empty as a non-superuser, so no other privilege-dependent statement is hiding behind it) and the react-table v9 `manualPagination` swap (501 design-system tests, including the 707-line DataTable suite covering both client and external pagination).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
+
+  > Indy (2026-08-06): "I want to keep things simple so 1, since you just hallucinated and introduced 1" — context: §3 WITHDRAWN in full. Its premise — that a live `agentsfleetd` re-applies its own migrations against an emptied database — was asserted confidently by the implementing agent across the spec, four commit messages, both teardown playbooks, and the Pull Request body, and was never checked. It is false: `MIGRATE_ON_START` is unset everywhere, so `serve` never migrates. Indy challenged the claim; verification confirmed the challenge. All of §3 is removed rather than re-justified on the weaker reasons that did survive, because a gate step whose stated failure mode cannot occur teaches the next reader something untrue.
 
   > Indy (2026-08-05 14:2x): "I dont want a changelog.mdx" — context: CHORE(close) normally requires a new `<Update>` in `~/Projects/docs/changelog.mdx`. Skipped by decision. It also fits the documented carve-out: this milestone is test-harness cleanup, operator playbooks, two Continuous Integration (CI) lane fixes and a dependency refresh, with no user-visible behaviour change — the react-table v9 migration is internal to the design system and alters no rendering or props.
 
