@@ -187,32 +187,30 @@ test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean"
     defer restoreDefaultSignals();
     defer serve_shutdown.reset();
 
-    // ── The daemon runs on the statically single-threaded `common.globalIo()`
-    // (`concurrent_limit = .nothing`), where `io.async` and `Group.async`
-    // execute inline and spawn no worker.
+    // ── The daemon runs on the statically single-threaded `common.globalIo()`,
+    // where `io.async` and `Group.async` execute inline and spawn no worker.
     //
-    // This fixture used to build its own `std.Io.Threaded`, because the hub's
-    // bounded dial raced with `std.Io.Select` and would have failed its first
-    // `select.concurrent` with ConcurrencyUnavailable, taking the whole test
-    // binary down through serve.run's exit(1). Commit 9ee3a075b deleted that
-    // Select; nothing under `serve.run` requests io concurrency any more.
+    // This fixture used to own a `std.Io.Threaded`, because the hub's bounded
+    // dial raced with `std.Io.Select` and would have failed its first
+    // `select.concurrent` with ConcurrencyUnavailable, killing the test binary
+    // through serve.run's exit(1). 9ee3a075b deleted that Select; nothing under
+    // `serve.run` requests io concurrency any more.
     //
-    // Owning a threaded Io is not free here: `std.Io.net.HostName.connect`
-    // fans its happy-eyeballs dial into an `Io.Group`, and Zig 0.16.0's group
-    // await parks on a futex word in the awaiter's own stack frame that the
-    // finishing worker dereferences AFTER publishing the wake — so the awaiter
-    // can return and pop the frame first. The boot→drain valgrind lane catches
-    // that use-after-scope intermittently, and `make/bench.mk` deliberately
-    // carries no suppression for it. Inline execution makes it unrepresentable
-    // rather than unlikely, which is the remedy M143 applied to the other two
-    // call sites (otlp/Client_test, queue/redis_subscriber_test).
+    // Owning a threaded Io is not free: `std.Io.net.HostName.connect` fans its
+    // happy-eyeballs dial into an `Io.Group`, and Zig 0.16.0's group await
+    // parks on a futex word in the awaiter's own stack frame that the finishing
+    // worker dereferences AFTER publishing the wake — so the awaiter can return
+    // and pop the frame first. The boot→drain valgrind lane catches that
+    // use-after-scope intermittently and `make/bench.mk` deliberately carries
+    // no suppression. Inline execution makes it unrepresentable rather than
+    // unlikely — the remedy M143 applied to otlp/Client_test and
+    // queue/redis_subscriber_test. NOTE it moves the TEST out of the defect's
+    // reach, not the daemon: production still dials Redis through
+    // `HostName.connect` on the process Io, and closing that needs the dial to
+    // own its own resolve-and-race.
     //
-    // NOTE: this moves the TEST out of the defect's reach, not the daemon —
-    // production still dials Redis through `HostName.connect` on the process
-    // Io. Closing that needs the dial to own its own resolve-and-race.
-    //
-    // A process-immortal Io owns no joinable worker, so there is nothing to
-    // deinit and no use-after-free to dodge on the detach paths below.
+    // It owns no joinable worker, so there is nothing to deinit and no
+    // use-after-free to dodge on the detach paths below.
     const serve_io = common.globalIo();
 
     // ── Boot the REAL serve.run on a thread, retrying on a fresh port if httpz

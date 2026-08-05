@@ -19,7 +19,14 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
+const lock_probe = @import("catalog_lock_probe.zig");
 const TestHarness = harness_mod.TestHarness;
+
+// Façade discovery: Zig strips `test {}` in release builds, so pulling the
+// probe's own tests in from here costs the production binary nothing.
+test {
+    _ = lock_probe;
+}
 
 const TOKEN_PLATFORM = scope_fixtures.PLATFORM_ADMIN;
 const CATALOG_URL = "/v1/admin/fleet-libraries";
@@ -157,17 +164,11 @@ const PatchWorker = struct {
 
 /// Block until the concurrent PATCH is parked on the catalog row's lock.
 ///
-/// The claim under test is "the If-Match check serializes with a concurrent
-/// write". The only observation that DISPROVES it is the patch finishing
-/// without ever taking the lock — so that is what fails the wait, and it fails
-/// the moment the worker publishes completion rather than after a clock runs
-/// out. A slow run is not evidence of anything: under the coverage lane's kcov
-/// instrumentation the worker needs far longer than the old five-second budget
-/// to reach its blocking statement, which turned a timing bound into the
-/// assertion and reddened the lane on a correct codebase.
-///
-/// The round limit survives only as a backstop against a genuine hang, and
-/// reports a DISTINCT error so the two causes can never be read for each other.
+/// The round decision — and the reasoning behind the order of its three
+/// questions — lives in `catalog_lock_probe.zig`, where it is unit-tested
+/// without a database. The round limit here is only a backstop against a
+/// genuine hang, and reports a DISTINCT error so a hang and a disproved claim
+/// can never be read for each other.
 fn waitForCatalogLockWaiter(conn: *pg.Conn, outcome: *const PatchOutcome) !void {
     var attempts: usize = 0;
     while (attempts < LOCK_POLL_LIMIT) : (attempts += 1) {
@@ -182,7 +183,7 @@ fn waitForCatalogLockWaiter(conn: *pg.Conn, outcome: *const PatchOutcome) !void 
         // and was released between the two observations still counts as having
         // blocked on that round, which is the claim we are trying to confirm.
         const done = outcome.done.load(.acquire); // safe because: pairs with `PatchOutcome.finish`'s release
-        switch (classifyPollRound(waiters, done, LOCK_POLL_LIMIT - 1 - attempts)) {
+        switch (lock_probe.classifyPollRound(waiters, done, LOCK_POLL_LIMIT - 1 - attempts)) {
             .blocked => return,
             .never_blocked => return error.CatalogPatchNeverBlocked,
             .timed_out => return error.CatalogPatchLockWaitTimedOut,
@@ -190,49 +191,6 @@ fn waitForCatalogLockWaiter(conn: *pg.Conn, outcome: *const PatchOutcome) !void 
         }
     }
     return error.CatalogPatchLockWaitTimedOut;
-}
-
-const PollVerdict = enum { blocked, keep_waiting, never_blocked, timed_out };
-
-/// One round's decision, split out so the verdict is provable without a live
-/// database — the ordering of these three questions is the whole fix.
-fn classifyPollRound(lock_waiters: i64, worker_done: bool, rounds_left: usize) PollVerdict {
-    if (lock_waiters > 0) return .blocked;
-    // A finished worker that never appeared as a waiter DISPROVES the claim,
-    // and does so immediately — waiting out the backstop would only delay a
-    // verdict already reached.
-    if (worker_done) return .never_blocked;
-    // Distinct from `.never_blocked`: nothing was observed either way, so this
-    // is a hang or an environment slower than any instrumented run, never
-    // evidence about serialization.
-    if (rounds_left == 0) return .timed_out;
-    return .keep_waiting;
-}
-
-test "unit: a patch parked on the lock confirms serialization regardless of worker state" {
-    try std.testing.expectEqual(PollVerdict.blocked, classifyPollRound(1, false, 99));
-    // A waiter seen on the same round a completion lands still counts: the
-    // worker blocked, which is the claim.
-    try std.testing.expectEqual(PollVerdict.blocked, classifyPollRound(1, true, 99));
-}
-
-test "unit: a completed patch that never took the lock fails immediately" {
-    // Dimension 5.1 — the verdict arrives on the round completion is observed,
-    // not after the backstop drains.
-    try std.testing.expectEqual(PollVerdict.never_blocked, classifyPollRound(0, true, 99));
-    try std.testing.expectEqual(PollVerdict.never_blocked, classifyPollRound(0, true, 0));
-}
-
-test "unit: an in-flight patch keeps the probe waiting rather than failing" {
-    // Dimension 5.2 — this is the round kcov's instrumentation produces for
-    // thousands of iterations; it must not be an assertion failure.
-    try std.testing.expectEqual(PollVerdict.keep_waiting, classifyPollRound(0, false, 1));
-}
-
-test "unit: exhausting the backstop is reported apart from never having blocked" {
-    // Dimension 5.3 — a hang and a disproved claim must never be read for each
-    // other, which is exactly what the old single error conflated.
-    try std.testing.expectEqual(PollVerdict.timed_out, classifyPollRound(0, false, 0));
 }
 
 test "integration: catalog stale If-Match → 412 with current etag, nothing written" {
