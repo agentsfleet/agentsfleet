@@ -5,6 +5,7 @@
 //! tests; these exercise the upload (paste) path, which needs no network or R2.
 
 const std = @import("std");
+const common = @import("common");
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -568,4 +569,87 @@ test "test_import_manifest_survives_store_round_trip" {
     const stored = try row.get([]const u8, 0);
     try std.testing.expect(std.mem.indexOf(u8, stored, "docs/NOTES.md") != null);
     try std.testing.expect(std.mem.indexOf(u8, stored, "sha256") != null);
+}
+
+// ── Dimension 5.3 — the SHIPPED crew reaches a workspace ────────────────────
+
+const LIBRARY_BASE = "library";
+const CREW_SLUGS = [_][]const u8{ "incident-responder", "incident-repairer" };
+const MAX_BUNDLE_BYTES = 64 * 1024;
+
+fn loadBundleFile(alloc: std.mem.Allocator, slug: []const u8, file: []const u8) ![]u8 {
+    const path = try std.fs.path.join(alloc, &.{ LIBRARY_BASE, slug, file });
+    defer alloc.free(path);
+    return std.Io.Dir.cwd().readFileAlloc(common.globalIo(), path, alloc, .limited(MAX_BUNDLE_BYTES));
+}
+
+/// Onboard one shipped bundle into the platform tier through the real route,
+/// carrying BOTH markdown bodies exactly as they sit on disk.
+fn onboardCrewBundle(h: *TestHarness, alloc: std.mem.Allocator, slug: []const u8) !void {
+    const skill = try loadBundleFile(alloc, slug, "SKILL.md");
+    defer alloc.free(skill);
+    const trigger = try loadBundleFile(alloc, slug, "TRIGGER.md");
+    defer alloc.free(trigger);
+
+    const body = try std.json.Stringify.valueAlloc(alloc, .{
+        .source_kind = "upload",
+        .source_ref = "library/crew",
+        .skill_markdown = skill,
+        .trigger_markdown = trigger,
+    }, .{});
+    defer alloc.free(body);
+
+    const res = try (try (try h.post(PLATFORM_URL).bearer(TOKEN_PLATFORM)).json(body)).send();
+    defer res.deinit();
+    try res.expectStatus(.created);
+}
+
+test "test_bundles_publish_and_list" {
+    // Dimension 5.3. Onboard → publish → visible → installable, for the bundles
+    // this milestone actually ships, through the existing admin flow.
+    //
+    // It is the only test that drives the shipped markdown through the IMPORTER
+    // rather than the config parser, and the two demand different things. The
+    // importer needs `SKILL.md` frontmatter for the entry's name, and it demands
+    // that name match `TRIGGER.md`'s — so a bundle can parse perfectly as a fleet
+    // config and still be impossible to install, which is exactly the state the
+    // repairer shipped in until this Dimension was built.
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    for (CREW_SLUGS) |slug| {
+        try onboardCrewBundle(h, alloc, slug);
+        // A draft is invisible to every tenant, so publication is the step that
+        // makes a crew reachable — not onboarding.
+        try publishPlatform(h, alloc, slug);
+    }
+
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+    const gallery = try (try h.get(url).bearer(TOKEN_TENANT)).send();
+    defer gallery.deinit();
+    try gallery.expectStatus(.ok);
+
+    for (CREW_SLUGS) |slug| {
+        const quoted = try std.fmt.allocPrint(alloc, "\"{s}\"", .{slug});
+        defer alloc.free(quoted);
+        try std.testing.expect(gallery.bodyContains(quoted));
+    }
+    // Installable, not merely present: a draft is invisible to every tenant and
+    // uninstallable by id, so surfacing at platform visibility IS the reachable
+    // state — publication is what a tenant can act on.
+    try std.testing.expect(gallery.bodyContains("\"visibility\":\"platform\""));
+
+    // The requirements the gallery advertises are derived from the SHIPPED
+    // TRIGGER.md, so an operator sees what each member will ask for before
+    // installing it — the repairer's write reach included.
+    try std.testing.expect(gallery.bodyContains("api.github.com"));
+    try std.testing.expect(gallery.bodyContains("repo_fetch"));
 }
