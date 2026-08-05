@@ -19,7 +19,14 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
+const lock_probe = @import("catalog_lock_probe.zig");
 const TestHarness = harness_mod.TestHarness;
+
+// Façade discovery: Zig strips `test {}` in release builds, so pulling the
+// probe's own tests in from here costs the production binary nothing.
+test {
+    _ = lock_probe;
+}
 
 const TOKEN_PLATFORM = scope_fixtures.PLATFORM_ADMIN;
 const CATALOG_URL = "/v1/admin/fleet-libraries";
@@ -52,7 +59,11 @@ const PROBE_OPTIONAL = Probe{
     .moved_repo = "agentsfleet/etag-probe-optional-moved",
 };
 const LOCK_POLL_NS = 20 * std.time.ns_per_ms;
-const LOCK_POLL_LIMIT = 250;
+/// Backstop only — the never-blocked verdict comes from the worker publishing
+/// completion, not from exhausting this. Sized for the coverage lane, where
+/// kcov's instrumentation stretches the worker's path to its blocking
+/// statement well past the five seconds this used to allow.
+const LOCK_POLL_LIMIT = 1500;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -123,22 +134,42 @@ fn readSourceRepo(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8) ![]c
     return alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
+/// The worker's result, published so the poll below can read it while the
+/// worker is still running. `done` is the release/acquire edge: everything the
+/// worker stored into `status` happens-before an acquiring reader observes it.
 const PatchOutcome = struct {
-    status: u16 = 0,
+    status: std.atomic.Value(u16) = .init(0),
+    /// Released by the worker on EVERY exit, including the early `catch return`
+    /// paths — a probe that waited on a worker which died building its request
+    /// would burn the whole backstop for no reason.
+    done: std.atomic.Value(bool) = .init(false),
+
+    fn finish(self: *PatchOutcome, status: u16) void {
+        self.status.store(status, .monotonic); // safe because: published by the `done` release below
+        self.done.store(true, .release); // safe because: pairs with the poll's acquire load
+    }
 };
 
 const PatchWorker = struct {
     fn run(h: *TestHarness, url: []const u8, body: []const u8, if_match: []const u8, outcome: *PatchOutcome) void {
+        defer if (!outcome.done.load(.monotonic)) outcome.finish(0);
         const req = h.patch(url).bearer(TOKEN_PLATFORM) catch return;
         const with_body = req.json(body) catch return;
         const with_etag = with_body.header(IF_MATCH, if_match) catch return;
         const response = with_etag.send() catch return;
         defer response.deinit();
-        outcome.status = response.status;
+        outcome.finish(response.status);
     }
 };
 
-fn waitForCatalogLockWaiter(conn: *pg.Conn) !void {
+/// Block until the concurrent PATCH is parked on the catalog row's lock.
+///
+/// The round decision — and the reasoning behind the order of its three
+/// questions — lives in `catalog_lock_probe.zig`, where it is unit-tested
+/// without a database. The round limit here is only a backstop against a
+/// genuine hang, and reports a DISTINCT error so a hang and a disproved claim
+/// can never be read for each other.
+fn waitForCatalogLockWaiter(conn: *pg.Conn, outcome: *const PatchOutcome) !void {
     var attempts: usize = 0;
     while (attempts < LOCK_POLL_LIMIT) : (attempts += 1) {
         var q = PgQuery.from(try conn.query(
@@ -147,10 +178,19 @@ fn waitForCatalogLockWaiter(conn: *pg.Conn) !void {
         ));
         defer q.deinit();
         const row = try q.next() orelse return error.LockWaiterQueryEmpty;
-        if (try row.get(i64, 0) > 0) return;
-        @import("common").sleepNanos(LOCK_POLL_NS);
+        const waiters = try row.get(i64, 0);
+        // The completion load happens AFTER the lock read: a worker that parked
+        // and was released between the two observations still counts as having
+        // blocked on that round, which is the claim we are trying to confirm.
+        const done = outcome.done.load(.acquire); // safe because: pairs with `PatchOutcome.finish`'s release
+        switch (lock_probe.classifyPollRound(waiters, done, LOCK_POLL_LIMIT - 1 - attempts)) {
+            .blocked => return,
+            .never_blocked => return error.CatalogPatchNeverBlocked,
+            .timed_out => return error.CatalogPatchLockWaitTimedOut,
+            .keep_waiting => @import("common").sleepNanos(LOCK_POLL_NS),
+        }
     }
-    return error.CatalogPatchNeverBlocked;
+    return error.CatalogPatchLockWaitTimedOut;
 }
 
 test "integration: catalog stale If-Match → 412 with current etag, nothing written" {
@@ -271,13 +311,13 @@ test "integration: If-Match check serializes with a concurrent catalog write" {
 
     var outcome: PatchOutcome = .{};
     worker = try std.Thread.spawn(.{}, PatchWorker.run, .{ h, url, moved_body, stale_etag, &outcome });
-    try waitForCatalogLockWaiter(conn);
+    try waitForCatalogLockWaiter(conn, &outcome);
     _ = try conn.exec("COMMIT", .{});
     transaction_open = false;
     worker.?.join();
     worker = null;
 
-    try std.testing.expectEqual(@as(u16, 412), outcome.status);
+    try std.testing.expectEqual(@as(u16, 412), outcome.status.load(.acquire)); // safe because: pairs with the worker's `done` release
     const repo = try readSourceRepo(alloc, conn, probe.id);
     defer alloc.free(repo);
     try std.testing.expectEqualStrings(probe.repo, repo);
