@@ -49,19 +49,28 @@ function assertDestructiveTargetIsSafe(): void {
   }
 }
 
+/**
+ * What a sweep actually did. `failed` is the point of the shape: a fleet the
+ * sweep matched but could not delete used to vanish into a swallowed catch,
+ * so a run could leak rows and still print a clean summary.
+ */
+export type SweepCounts = { removed: number; failed: number };
+
 export async function cleanWorkspaceFleets(
   handle: ClientHandle,
   workspaceId: string,
   namePrefix?: string,
-): Promise<number> {
+): Promise<SweepCounts> {
   assertDestructiveTargetIsSafe();
   const c = clientFor(handle);
   const fleets = await listFleets(handle, workspaceId);
-  let removed = 0;
+  const counts: SweepCounts = { removed: 0, failed: 0 };
   for (const z of fleets) {
     // Specs run in parallel workers against the shared fixture workspace;
     // an unscoped cleanup deletes a sibling spec's fleet mid-test. Callers
     // pass their seed prefix so each spec tears down only its own rows.
+    // The global-teardown sweep passes nothing: no spec is running then, so
+    // the reason for scoping does not hold and keeping nothing is the rule.
     if (namePrefix !== undefined && !z.name.startsWith(namePrefix)) continue;
     try {
       if (z.status !== AGENTSFLEET_STATUS.killed) {
@@ -70,70 +79,68 @@ export async function cleanWorkspaceFleets(
         });
       }
       await c.delete(`/v1/workspaces/${workspaceId}/fleets/${z.id}`);
-      removed++;
-    } catch {
-      // Swallow stale-state errors (fleets left over from interrupted runs).
-      // Test assertions check the freshly-seeded row, not total count.
+      counts.removed++;
+    } catch (err) {
+      // Counted, not swallowed. A stale-state row from an interrupted run is
+      // expected and must not fail the caller, but it is also exactly the row
+      // that keeps waking runners — so it has to appear in the summary.
+      counts.failed++;
+      console.error(
+        `[e2e:teardown] delete failed for fleet ${z.id} ('${z.name}') in workspace ${workspaceId}:`,
+        err,
+      );
     }
   }
-  return removed;
+  return counts;
 }
 
 /**
- * Seed prefixes known to leak. Every spec that seeds one of these also
- * cleans it in afterEach, but afterEach never runs for a crashed run or an
- * interrupted CI job — and a leaked fleet is not inert: its seeded cron
- * trigger keeps waking runners until someone deletes the row. The
- * global-teardown sweep reaps them across every persistent fixture
- * workspace as the backstop.
+ * Backstop sweep for global-teardown: reap every fleet in every workspace a
+ * persistent fixture user owns.
+ *
+ * It sweeps by OWNERSHIP, not by name. The predecessor matched a
+ * hand-maintained list of six seed prefixes while the specs mint roughly
+ * twenty-two, so most leaked fleets were never reaped and the list had to be
+ * edited every time a spec was added — a check that silently covered less
+ * than it appeared to. Nothing scopes the sweep now, so it cannot fall behind
+ * the specs.
+ *
+ * Deleting everything visible is safe here by construction: the listing runs
+ * through an authenticated fixture handle and returns only workspaces that
+ * user owns, and `global-setup` seeds no persistent fleets — so every fleet
+ * reachable from here is a test artifact. Prefix scoping remains load-bearing
+ * in the per-spec `afterEach` path, where parallel workers share one
+ * workspace; at global teardown no test is running and that reason is gone.
+ *
+ * Per-fixture and per-workspace failures log and continue — one dead tenant
+ * must not shield another tenant's leaks — and the same destructive-target
+ * guard as cleanWorkspaceFleets runs before any listing or deletion.
  */
-export const LEAKED_FLEET_PREFIXES = [
-  "lifecycle-",
-  "journey-fleet-",
-  "steer-probe-",
-  "login-lifecycle-",
-  "thread-spec-",
-  "thread-revisit-",
-] as const;
-
-// operator-journey mints these workspaces outright (a fresh pair per run),
-// so every fleet inside one is a fixture row by construction — sweep them
-// whole rather than by prefix.
-export const JOURNEY_WORKSPACE_RE = /^journey-(primary|secondary)-[0-9a-f]{8}$/;
-
-/**
- * Backstop sweep for global-teardown: reap leaked fleets across all
- * persistent fixture users. Per-fixture and per-workspace failures log and
- * continue — one dead tenant must not shield another tenant's leaks — and
- * the same destructive-target guard as cleanWorkspaceFleets runs before any
- * listing or deletion.
- */
-export async function sweepLeakedFixtureFleets(): Promise<void> {
+export async function sweepLeakedFixtureFleets(): Promise<SweepCounts> {
   assertDestructiveTargetIsSafe();
-  let removed = 0;
+  const total: SweepCounts = { removed: 0, failed: 0 };
   for (const key of FIXTURE_KEYS) {
     const workspaces = await listWorkspaces(key).catch((err: unknown) => {
       console.error(`[e2e:sweep] workspace listing failed for fixture '${key}':`, err);
+      total.failed++;
       return [];
     });
     for (const workspace of workspaces) {
       try {
-        if (JOURNEY_WORKSPACE_RE.test(workspace.name ?? "")) {
-          removed += await cleanWorkspaceFleets(key, workspace.id);
-          continue;
-        }
-        // One fleet listing per prefix — teardown cadence, so clarity beats
-        // shaving round-trips.
-        for (const prefix of LEAKED_FLEET_PREFIXES) {
-          removed += await cleanWorkspaceFleets(key, workspace.id, prefix);
-        }
+        const counts = await cleanWorkspaceFleets(key, workspace.id);
+        total.removed += counts.removed;
+        total.failed += counts.failed;
       } catch (err) {
         console.error(
           `[e2e:sweep] fleet sweep failed in workspace ${workspace.id} ('${key}'):`,
           err,
         );
+        total.failed++;
       }
     }
   }
-  console.log(`[e2e:sweep] done — ${removed} leaked fixture fleet(s) removed`);
+  const summary = `[e2e:sweep] done — ${total.removed} fixture fleet(s) removed, ${total.failed} failed`;
+  if (total.failed > 0) console.error(summary);
+  else console.log(summary);
+  return total;
 }

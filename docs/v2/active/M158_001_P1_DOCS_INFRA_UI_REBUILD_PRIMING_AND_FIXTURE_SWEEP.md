@@ -119,10 +119,10 @@ The list is unnecessary. `sweepLeakedFixtureFleets` authenticates as each persis
 
 Silent failure compounds the gap: `cleanWorkspaceFleets` swallows every delete error, so a fleet the sweep matched but failed to remove leaks with no signal even on a green run.
 
-- **Dimension 1.1** — a fleet whose name matches no previously listed prefix is reaped by the sweep → Test `test_sweep_reaps_a_fleet_under_any_name`
-- **Dimension 1.2** — the sweep reports the count it removed and the count it failed to remove, and a failed delete appears in that second count rather than being discarded → Test `test_sweep_reports_failed_deletes`
-- **Dimension 1.3** — a workspace listing that fails for one fixture user does not stop the sweep for the others → Test `test_sweep_continues_past_a_dead_fixture`
-- **Dimension 1.4** — the destructive-target guard still refuses a non-development Application Programming Interface (API) host before any listing or deletion → Test `test_sweep_refuses_an_unsafe_target`
+- **Dimension 1.1** — a fleet whose name matches no previously listed prefix is reaped by the sweep → Test `test_sweep_reaps_a_fleet_under_any_name` — **DONE.** `LEAKED_FLEET_PREFIXES` is deleted and `sweepLeakedFixtureFleets` calls `cleanWorkspaceFleets` with no prefix, so every fleet in every fixture-owned workspace is reaped. The test seeds `console-ab12`, `pulse-cd34` and `nav-ef56` — three names no entry in the old list would have matched — and asserts each one's identifier reaches a delete call, rather than only checking a total, so a count that happened to add up cannot pass it.
+- **Dimension 1.2** — the sweep reports the count it removed and the count it failed to remove, and a failed delete appears in that second count rather than being discarded → Test `test_sweep_reports_failed_deletes` — **DONE.** `cleanWorkspaceFleets` returns `SweepCounts` instead of a bare number and its `catch` increments `failed` and logs the fleet identifier and name, rather than swallowing. `sweepLeakedFixtureFleets` aggregates both counts and prints its summary through `console.error` when anything failed, so a leaking run cannot look clean.
+- **Dimension 1.3** — a workspace listing that fails for one fixture user does not stop the sweep for the others → Test `test_sweep_continues_past_a_dead_fixture` — **DONE.** The listing rejection for the first fixture user is caught per user, counted as a failure, and the loop continues; the test asserts both that later users were still swept and that the dead one is not silent.
+- **Dimension 1.4** — the destructive-target guard still refuses a non-development Application Programming Interface (API) host before any listing or deletion → Test `test_sweep_refuses_an_unsafe_target` — **DONE.** The test asserts the throw AND that `listWorkspaces`, `listFleets` and `delete` were never called — the guard has to fire before the first read, since listing production with real fixture credentials is already wrong.
 
 ### §2 — Catalogue priming is an operations playbook with the guard rails it lacks
 
@@ -319,7 +319,8 @@ src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `LEAKED_FLEET_PREFIXES` | `grep -rn "LEAKED_FLEET_PREFIXES" ui/ \| head` | 0 matches |
+| `LEAKED_FLEET_PREFIXES` | `grep -rn "LEAKED_FLEET_PREFIXES" ui/ \| head` | 0 matches — **verified 0** |
+| `JOURNEY_WORKSPACE_RE` | `grep -rn "JOURNEY_WORKSPACE_RE" ui/ \| head` | 0 matches — **verified 0.** Not anticipated when this spec was written: the regular expression existed only to identify workspaces safe to sweep whole, and once *every* fixture-owned workspace is swept whole its branch and its sole reference both became unreachable. Left in place it would have read as live scoping logic (RULE NDC). |
 
 ## Out of Scope
 
