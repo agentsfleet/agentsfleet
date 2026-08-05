@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M158
 **Workstream:** 001
 **Date:** Aug 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing: a rebuild currently comes back with an empty model catalogue, a wipe can be silently undone, and two Continuous Integration (CI) lanes are red on main
 **Categories:** DOCS, INFRA, UI, API
 **Batch:** B1 — one Pull Request; the six slices share no files and can land in any order
