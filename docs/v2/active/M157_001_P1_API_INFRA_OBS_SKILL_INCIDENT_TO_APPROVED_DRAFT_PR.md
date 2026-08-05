@@ -831,6 +831,17 @@ it could not use. Both keys are required together; `read` is the boundary the
 whole crew rests on, and Dimension 3.1's test drives the SHIPPED binding through
 the real mint so raising it to `write` fails the suite.
 
-Not fixed here, and flagged: an unrelated `queue/redis_pool_test` acquire-timeout
-test failed once under parallel load and passed on a clean re-run. This branch
-does not touch the Redis pool.
+Not fixed here, and flagged — the coverage lane's timing debt is now live on
+this branch. Two unrelated tests failed once and passed on a clean re-run:
+`queue/redis_pool_test`'s acquire-timeout locally under parallel load, and
+`catalog_etag_integration_test`'s "If-Match check serializes with a concurrent
+catalog write" in Continuous Integration (CI) under `test-coverage-zig`
+(`CatalogPatchNeverBlocked`). Neither file is touched by this branch; the second
+arrived in M131 and polls `pg_stat_activity` for a lock waiter on a bounded
+retry, which is exactly the shape kcov's ptrace slowdown breaks. This is the
+same debt already recorded as Indy's call: `test-coverage-zig` runs the whole
+integration binary under kcov, so every timing-dependent integration test is
+evaluated twice under conditions the `test-integration` lane never applies. The
+fix remains (b) skip those under the coverage lane or (c) exclude integration
+tests from the coverage binaries — never widening an allowlist, which would let
+a real hang pass.
