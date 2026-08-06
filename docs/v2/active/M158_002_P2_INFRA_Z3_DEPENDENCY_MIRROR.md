@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M158
 **Workstream:** 002
 **Date:** Aug 06, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — tooling reliability; no user-facing surface changes, but a single third-party host can currently red every Zig lane at once.
 **Categories:** INFRA
 **Batch:** B1 — standalone; no sibling workstream shares these files.
 **Branch:** feat/m158-z3-mirror
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Test Baseline:** `unit=3428 integration=587` via `make _lint_zig_test_depth`
 **Depends on:** None
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 06, 2026)
 **Canonical architecture:** `docs/architecture/fleet_bundles.md` §Storage map — R2 is the sole bundle content store, and `z3` is the client that reaches it.
