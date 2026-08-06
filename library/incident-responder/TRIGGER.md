@@ -14,9 +14,9 @@ x-agentsfleet:
     # so the surface a fleet has would depend on a field nobody wrote.
     #
     # The memory pair is load-bearing, not a convenience: an incident stays
-    # broken while its repair is parked, so every sweep re-finds it. Without a
-    # record of what has already been escalated, one incident produces one
-    # approval request per sweep interval, all queued behind the first.
+    # broken until a human acts on the diagnosis, so every sweep re-finds it.
+    # Without a record of what has already been escalated, one incident
+    # produces the same escalation again every sweep interval.
     - http_request
     - memory_store
     - memory_recall
@@ -87,5 +87,5 @@ x-agentsfleet:
 
 Wakes every fifteen minutes to sweep the instrumented workload's telemetry.
 A quiet sweep ends silently; an incident produces a diagnosis, and a
-code-shaped incident with a small confident fix produces one bounded repair
-proposal for human approval.
+code-shaped incident with a small confident fix ends the diagnosis with one
+bounded forward-fix repair intent for a human to act on.

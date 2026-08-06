@@ -30,6 +30,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
+> **Aligned Aug 06, 2026 (read this first):** the crew's write half described
+> below — a repairer fleet reverting a commit against a fetched working tree —
+> was built, then superseded on Indy's direction and removed from the branch
+> before merge. The operative design is the canonical architecture doc's: the
+> repair is a **forward fix** the model authors, parked as approved bytes and
+> applied daemon-side. This spec's §1–§3 foundations, the investigator, the
+> benchmark, and the folder upload all shipped and stand; the Dimensions of the
+> dead mechanism are marked SUPERSEDED in place. Discovery (Aug 06) carries the
+> decision record and the follow-up kernel's scope.
+
 **Goal (testable):** A regression in a customer's instrumented workload is detected by a scheduled sweep over the customer's own Grafana, diagnosed with cited evidence, and — after exactly one human approval that names what it is approving — becomes exactly one draft Pull Request (PR) opened by a repairer fleet that holds no path to open it unapproved.
 
 **Problem:** An operational incident today produces a diagnosis at best. Nothing owns the step from "we know the cause" to "a reviewable fix exists", so code-caused incidents fall into limbo between the on-call person who found the cause and the repository where the fix belongs. The architecture scenario documents this repair path and marks its write half unproven (🔨).
@@ -66,6 +76,11 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 
 ## Files Changed (blast radius)
 
+> Aligned Aug 06, 2026: the fetch path, the repairer-as-actor bundle, and their
+> wiring were removed from this branch before merge (see Discovery, Aug 06).
+> Rows below match `git diff --name-only origin/main...HEAD` plus the
+> still-planned §4a.2/§7 surfaces, which are marked as such.
+
 | File | Action | Why |
 |------|--------|-----|
 | `src/agentsfleetd/auth/scopes.zig` | EDIT | Split `DefaultGrant`: a machine-credential variant carrying every tenant capability except `approval_resolve`; `.tenant` stays as-is for the human signup claim |
@@ -75,100 +90,79 @@ Grafana, Elastic, and Fly are **plain workspace secrets**, not connectors — th
 | `src/agentsfleetd/fleet/approval_gate.zig` | EDIT | Thread `gate_kind` / `proposed_action` / `evidence` / `blast_radius` into `ActionDetail` from the triggering event; read the recorded gate ref BEFORE any policy read, so a mid-flight `config_json` PATCH cannot withdraw a question already put to a human |
 | `src/agentsfleetd/fleet/approval_gate_route.zig` | CREATE | The lookup-vs-policy ORDER as a pure function, so the property is pinned by unit tests rather than by a live Redis and Postgres (RULE FLL split) |
 | `src/agentsfleetd/fleet/approval_gate_prose.zig` | CREATE | Making model-authored prose card-safe: C0 controls, DEL, and bidirectional overrides, which otherwise let a claim counterfeit the daemon-derived rows (RULE FLL split) |
+| `src/agentsfleetd/fleet/approval_gate_detail.zig` | CREATE | Builds the `ActionDetail` the gate threads, including the daemon-vouched `- Token reaches:` line the card previously had no way to state |
 | `src/agentsfleetd/http/handlers/fleets/messages.zig` | EDIT | Attribute the steer actor by credential MODE, not by presence of `user_id` — an `agt_t` key carries its creator's id, so machine wakes were recorded as that human |
-| `src/agentsfleetd/fleet/approval_gate_integration_test.zig` | CREATE | The parked gate carries a populated detail; the Slack message names the action |
-| `src/agentsfleetd/fleet/repairer_gate_integration_test.zig` | CREATE | Dimensions 3.3 + 3.4 driven through the real lease path against the SHIPPED bundle's own config, converted by the install path's own `parseTriggerMarkdownWithJson`. The generic gate lifecycle is already covered against a hand-written config; what was not covered is that the bundle we ship refuses to run without a human |
+| `src/agentsfleetd/fleet/event_lifecycle_integration_test.zig` | EDIT | Export the gated fixture fleet so the release-control test drives the same real lease path |
+| `src/agentsfleetd/fleet/gate_release_integration_test.zig` | CREATE | The positive control: approval is what RELEASES a lease. Every other gate assertion in the suite is a negative, and a fleet that simply cannot run satisfies all of them |
+| `src/agentsfleetd/integration_tests.zig` | EDIT | Registration follows the re-homed release-control test |
 | `src/agentsfleetd/credentials/integration_github.zig` | EDIT | Mint body carries `repositories` + `permissions` instead of `""` |
-| `src/agentsfleetd/fleet/repair_proposal.zig` | DELETE | Superseded — approval binds a bounded run, not bytes; no daemon apply exists to re-validate against |
-| `src/agentsfleetd/fleet/repair_proposal_test.zig` | DELETE | Tests of the deleted kernel |
-| `src/agentsfleetd/fleet/repair_bounds.zig` | DELETE | Apply-time diff bounds with no apply site |
-| `src/agentsfleetd/fleet/repair_bounds_test.zig` | DELETE | Tests of the deleted kernel |
-| `src/agentsfleetd/tests.zig` | EDIT | Drop the two deleted module registrations |
-| `src/agentsfleetd/errors/error_entries.zig` | EDIT | Retire `UZ-REPAIR-001..005` — every one names an apply-service failure that no longer has a site |
-| `src/agentsfleetd/errors/error_registry.zig` | EDIT | Retire the `UZ-REPAIR-*` constants |
-| `src/agentsfleetd/errors/gen_error_codes.zig` | EDIT | Retire the REPAIR category copy (its comptime coverage gate pairs with the family) |
-| `library/incident-responder/SKILL.md` | EDIT | Becomes the investigator: read-only, no repair authorship, ends by naming a repair intent |
-| `library/incident-responder/TRIGGER.md` | EDIT | Keep the `github` credential and `api.github.com` — the investigator reads commit history to correlate, and cannot name a suspect commit without them. Declare `repository_access: read` so its minted token carries no write permission. Add `memory_store` + `memory_recall` to the declared `tools`, which today lists `http_request` alone and so cannot satisfy Dimension 4.9 |
-| `library/incident-repairer/SKILL.md` | CREATE | The revert rung: given a suspect commit, produce one draft revert PR; refuse on conflict; nothing else |
-| `library/incident-repairer/TRIGGER.md` | CREATE | `api` trigger, `git` + `http_request`, `github` credential, `api.github.com` allowlist, top-level `repositories` binding, **non-empty `gates.rules`** |
-| `src/agentsfleetd/fleet_runtime/config_types.zig` | EDIT | Top-level `repositories` egress binding on the fleet config, distinct from the webhook trigger's ingress binding |
-| `src/lib/contract/execution_policy.zig` | EDIT | `repositories` + `repository_access` as additive defaulted fields, so the binding the mint scopes by also reaches the runner that must refuse an out-of-binding fetch BEFORE any network call. Absent → empty → fail closed |
-| `src/agentsfleetd/fleet/service.zig` | EDIT | `resolveExecutionPolicy` populates the two fields from the same fleet config the mint reads, so the two rings cannot disagree |
-| `src/runner/daemon/lease_run.zig` | EDIT | `FetchForwarder` beside `MintForwarder` — forwards the child's on-demand fetch ask, lease-bound server-side |
-| `src/runner/child_supervisor.zig` | EDIT | `FetchHook` alongside `MintHook` on the supervisor surface |
-| `src/runner/pipe_proto.zig` | EDIT | Two frame types beside the credential pair — `repo_fetch_request` up the child's stdout, `repo_fetch_response` back down its stdin. No new descriptor and no new sandbox hole, exactly as the mint channel added none |
-| `src/runner/engine/repo_fetch_request.zig` | CREATE | The child half of the fetch channel, mirroring `credential_request.zig`: the ask names the repository, commit, and branch and nothing else — no workspace, no lease id, no path — so a prompt-injected child can ask for the wrong repository and be refused, but cannot ask for the wrong PLACE. The reply is a workspace-relative path, because an absolute one would tell the sandbox a fact it otherwise never has |
-| `src/runner/child_supervisor_read.zig` | EDIT | `FetchHook` + `FetchOutcome` + the `repo_fetch_request` frame arm. Both outcome slices are borrowed static strings, so framing a reply has no allocation and therefore no failure path of its own |
-| `src/runner/engine/runtime/repo_fetch.zig` | CREATE | The child-side tool — the only way a fleet obtains a working tree. It names the repository, the commit, and the branch, and cannot name a workspace, a path, or a credential; a refusal comes back as prose the model reformulates against, and a success puts the single word `repo` into context |
-| `src/runner/engine/runtime/repo_fetch_tool_test.zig` | CREATE | Driven exactly as NullClaw drives it — arguments in, `ToolResult` out — over real pipes: the ask reaches the wire verbatim, a refusal carries its reason, a run with no channel fails closed, and the declared schema matches the arguments `execute` actually reads |
-| `src/runner/engine/tool_builders.zig` | EDIT | `buildRepoFetch`, deriving the fetch channel from the lease's mint channel — one duplex, multiplexed by frame type, so the two cannot drift apart |
-| `src/runner/engine/tool_bridge.zig` | EDIT | One `BRIDGE_REGISTRY` row beside `git`, and the tool census that guards against registry drift |
-| `src/runner/repo_fetch_channel_test.zig` | CREATE | The parent half over real pipes: the ask reaches the hook verbatim, the path is framed back relative, a null hook and a malformed ask both refuse with a reason, and a lease that asks for nothing invokes the hook zero times |
-| `src/runner/child_supervisor_test.zig` | EDIT | The new `readResult` parameter at every existing call site |
-| `src/runner/child_supervisor_edge_test.zig` | EDIT | Same |
-| `src/runner/child_supervisor_concurrency_test.zig` | EDIT | Same |
-| `src/runner/credential_mint_e2e_test.zig` | EDIT | Same |
-| `src/runner/daemon/renew_driver_edge_test.zig` | EDIT | Same |
-| `src/runner/repo_fetch.zig` | CREATE | The ask's refusal surface: a PURE function of the binding and the ask, so "refused before any network call" is a unit test rather than an observation. Also derives the remote URL from the BINDING's spelling, never the model's |
-| `src/runner/repo_fetch_test.zig` | CREATE | Binding refusal, malformed repository / commit / head, the declared-spelling rule |
-| `src/runner/RepoFetchTarget.zig` | CREATE | The daemon-owned directory the fetch lands in. File-as-struct because it owns two open handles and the claim they represent: create-exclusive (a squatting child loses the fetch rather than redirecting it), `O_NOFOLLOW` open (a symlink swap after the create meets ELOOP), beneath-only canonical verify. Never opened by name after the claim — every git step runs against the handle |
-| `src/runner/repo_fetch_target_test.zig` | CREATE | The three squat kinds refuse; a squatting symlink's target is provably unwritten; a missing workspace is a distinct refusal from a squat |
-| `src/runner/repo_fetch_bounds.zig` | CREATE | What actually bounds the fetch: one child run under a shared absolute deadline and a measured byte ceiling. Depth bounds HISTORY, not BYTES, and the daemon-side fetch runs outside the child's cgroup, so the ceiling is measured on a tick and the run killed on breach — **before** the single blocking `wait`, never after it |
-| `src/runner/repo_fetch_bounds_test.zig` | CREATE | The measure (nesting, symlinks, ceiling short-circuit, empty tree) and the two kills (deadline, quota), each proven to return promptly rather than wait the child out |
-| `src/runner/repo_fetch_exec.zig` | CREATE | The three git steps — `init`, depth-2 `fetch` of the suspect and the head into two named refs, detached `checkout`. Fetching by URL rather than adding a remote is what keeps any credential out of `.git/config` |
-| `src/runner/repo_fetch_env.zig` | CREATE | The environment those steps run under, and the one place the minted credential is written: a URL-scoped `http.<url>.extraheader`, never argv (`/proc/PID/cmdline` is world-readable where `environ` is owner-only). Nothing is inherited — the daemon's own environ and the host's `~/.gitconfig` are both excluded, so an operator's credential helper or `insteadOf` rewrite cannot redirect a fleet's fetch. Split from the exec module because it is the security-critical half and earns its own reading and its own tests |
-| `src/runner/repo_fetch_exec_test.zig` | CREATE | Against a local `file://` fixture — no network, no credential. Six commits upstream, three fetched; the token absent from every path and byte of the tree; and the repairer's own `git revert` run to completion, which is what proves the suspect's parent came down |
-| `src/runner/tests.zig` | EDIT | Register the new runner modules for test discovery |
-| `src/runner/daemon/StorageHome.zig` | CREATE | The exclusive claim on the storage home and its startup reaper for orphaned per-lease workspaces — `defer cleanupWorkspace` does not run on SIGKILL / out-of-memory kill / reboot, and a leaked workspace now holds a repository rather than a few hundred KiB. File-as-struct because the claim is state the type owns (an open directory + a process-lifetime lock), which makes "sweep without holding the home" unrepresentable — the Single-Type-Module rule outranks this table's earlier `storage_sweep.zig` name |
-| `src/runner/daemon/storage_home_test.zig` | CREATE | A lease-shaped directory is reaped; a dot-prefixed cache directory, a non-lease name, a lease-shaped symlink, and a lease-shaped regular file are not. Plus the three refusals: shallow path, contended lock, un-adopted home |
-| `src/runner/main.zig` | EDIT | Call the sweep after the storage-home `mkdir`, before the poll loop |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/AddLibraryDialog.tsx` | EDIT | Offer an upload source beside GitHub; post `source_kind:"upload"` with both markdown bodies |
-| `cli/src/program/cli-tree-fleet.ts` | EDIT | Verb creating a library entry from a local bundle directory |
-| `cli/src/commands/fleet_library_upload.ts` | CREATE | Reads `SKILL.md` + `TRIGGER.md`, posts `source_kind:"upload"` |
-| `src/agentsfleetd/fleet_runtime/crew_bundle_test.zig` | CREATE | Both shipped bundles, asserted as the parser and the gate actually see them — one file rather than the per-bundle `bundle_gate_test.zig` this table first named, because every assertion is a comparison BETWEEN the two halves (read vs write binding, which tools each declares, that neither holds a tenant key). Reads `library/` from disk: each property is one a bundle author can break by editing markdown, and none would fail any other test in the tree |
-| `docs/AUTH.md` | EDIT | Record that machine credentials cannot resolve approvals, and why |
-| `docs/architecture/scenarios/production-deploy-repair.md` | EDIT | Describe the gate-bound two-fleet design; flip proven rows |
-| `bench/incident-response/` | KEEP | §5 landed and is frozen; its rubric rows are rewritten to claim only detection |
-| `build.zig` | EDIT | Register the §6 benchmark executable and the new named-module test lanes |
-| `make/bench.mk` | EDIT | `make bench-incident` — the §6 rubric row R6 runs through it |
 | `src/agentsfleetd/credentials/broker.zig` | EDIT | Fold the repository binding + access level into the mint path; the cache key work moved to `broker_key.zig` (RULE FLL split) |
-| `src/agentsfleetd/credentials/broker_key.zig` | CREATE | The cache key, split out and framed. `bindingFingerprint` joined repositories without length framing, so `["acme/a","acme/b"]` and the single entry `"acme/a<SEP>acme/b"` hashed IDENTICALLY — a deterministic alias needing no collision search, on the exact key that decides which fleet's token a second fleet receives |
+| `src/agentsfleetd/credentials/broker_key.zig` | CREATE | The cache key, split out and framed. `bindingFingerprint` joined repositories without length framing, so two different bindings could hash identically — on the exact key that decides which fleet's token a second fleet receives |
 | `src/agentsfleetd/credentials/broker_test.zig` | EDIT | The framed key, and the two-fleets-one-workspace collision the review found |
 | `src/agentsfleetd/credentials/integration.zig` | EDIT | `RepositoryBinding` on the integration surface; the registry table split to `integration_registry_test.zig` |
 | `src/agentsfleetd/credentials/integration_ctx.zig` | EDIT | `MintCtx.repository_binding` — what the GitHub mint scopes by |
-| `src/agentsfleetd/credentials/integration_github_mint_body_test.zig` | CREATE | Dimension 2.3: `write` mints contents + pull_requests, `read` mints contents alone and carries NO pull_requests key; an unbound fleet mints nothing |
+| `src/agentsfleetd/credentials/integration_github_mint_body_test.zig` | CREATE | `write` mints contents + pull_requests, `read` mints contents alone and carries NO pull_requests key; an unbound fleet mints nothing |
 | `src/agentsfleetd/credentials/integration_github_body.zig` | CREATE | What the mint ASKS for — the request-body builder and the bare-name reduction, split out when the reach check pushed `integration_github.zig` past RULE FLL |
-| `src/agentsfleetd/credentials/integration_github_reach.zig` | CREATE | Whether the token GitHub RETURNED reaches what was declared. The owner never rides the wire, so only the response can say — this is what stops the `${secrets.github}` path meaning something different from the fetch path |
+| `src/agentsfleetd/credentials/integration_github_reach.zig` | CREATE | Whether the token GitHub RETURNED reaches what was declared. The owner never rides the wire, so only the response can say |
 | `src/agentsfleetd/credentials/integration_registry_test.zig` | CREATE | Registry coverage, split from `integration.zig` to keep it inside the line budget |
 | `src/agentsfleetd/credentials/testing.zig` | EDIT | A bound fixture (`test_binding`) so tests whose subject is something else are not all asserting the unbound refusal |
 | `src/agentsfleetd/cron/FireQueue.zig` | EDIT | Orphan sweep from the retired repair kernel (RULE ORP) |
+| `src/agentsfleetd/errors/error_entries.zig` | EDIT | Retire `UZ-REPAIR-001..005` — the daemon apply they describe returns with the follow-up kernel, entries and all |
+| `src/agentsfleetd/errors/error_registry.zig` | EDIT | Retire the `UZ-REPAIR-*` constants |
 | `src/agentsfleetd/errors/error_lookup.zig` | CREATE | Lookup split from the registry when the `UZ-REPAIR-*` family was retired (RULE FLL) |
-| `src/agentsfleetd/fleet/approval_gate_detail.zig` | CREATE | Builds the `ActionDetail` §2 threads, including the daemon-vouched `- Token reaches:` line the card previously had no way to state |
 | `src/agentsfleetd/fleet/fleet_session.zig` | EDIT | Orphan sweep from the retired repair kernel |
-| `src/agentsfleetd/fleet_runtime/approval_gate.zig` | EDIT | The `.auto_approve` fallthrough Dimension 3.2 guards, and the detail fields §2 populates |
+| `src/agentsfleetd/fleet_runtime/approval_gate.zig` | EDIT | The `.auto_approve` fallthrough the gate tests guard, and the detail fields the card populates |
 | `src/agentsfleetd/fleet_runtime/approval_gate_slack.zig` | EDIT | Render the evidence in a code span after the attributed claim, so model prose cannot counterfeit the daemon-derived rows above it |
 | `src/agentsfleetd/fleet_runtime/config_gates.zig` | EDIT | Gate policy parsing beside the new repository binding |
 | `src/agentsfleetd/fleet_runtime/config_gates_test.zig` | CREATE | Gate-policy parse coverage, split from the parser suite |
 | `src/agentsfleetd/fleet_runtime/config_parser.zig` | EDIT | Parse the top-level `repositories` + `repository_access` binding; the repository half split to its own module (RULE FLL) |
-| `src/agentsfleetd/fleet_runtime/config_repositories.zig` | CREATE | The binding parser. The two keys are optional TOGETHER — a list without an access level does not know how far to reach and an access level without a list does not know what to reach, and either would have to fall back to the installation's full scope |
+| `src/agentsfleetd/fleet_runtime/config_repositories.zig` | CREATE | The binding parser. The two keys are optional TOGETHER — either alone would have to fall back to the installation's full scope |
+| `src/agentsfleetd/fleet_runtime/config_types.zig` | EDIT | Top-level `repositories` egress binding on the fleet config, distinct from the webhook trigger's ingress binding |
+| `src/agentsfleetd/fleet_runtime/crew_bundle_test.zig` | CREATE | The shipped crew's bundles, asserted as the parser and the mint actually see them. One member ships today — the responder — read from `library/` on disk, because every property is one a bundle author can break by editing markdown |
 | `src/agentsfleetd/fleet_runtime/webhook_constants.zig` | CREATE | Provider constants shared by the verifier and the ingress handlers (RULE UFS) |
-| `src/agentsfleetd/fleet_runtime/webhook_verify.zig` | EDIT | Uses the shared constants; the HMAC-over-body scheme §3 cites for why a signed webhook cannot substitute for the wake |
-| `src/agentsfleetd/http/handlers/auth/identity_events_clerk.zig` | EDIT | The second consumer of `grantMembers(.tenant)` — the human signup claim §1 must leave untouched |
-| `src/agentsfleetd/http/handlers/connectors/slack/events.zig` | EDIT | Resident-fleet resolution, cited in Decomposition alternative (c) for why the crew handoff does not route through Slack |
+| `src/agentsfleetd/fleet_runtime/webhook_verify.zig` | EDIT | Uses the shared constants; the HMAC-over-body scheme that says why a signed webhook cannot substitute for the wake |
+| `src/agentsfleetd/fleet/service.zig` | EDIT | `resolveExecutionPolicy` populates the repository binding from the same fleet config the mint reads, so the two rings cannot disagree |
+| `src/agentsfleetd/fleet/service_repository.zig` | CREATE | The binding conversion and its test, split out when the M154 merge pushed `service.zig` past RULE FLL |
+| `src/agentsfleetd/http/handlers/auth/identity_events_clerk.zig` | EDIT | The second consumer of `grantMembers(.tenant)` — the human signup claim the grant split must leave untouched |
+| `src/agentsfleetd/http/handlers/connectors/slack/events.zig` | EDIT | Resident-fleet resolution, cited in Decomposition alternative (c) for why a crew handoff must not route through Slack |
 | `src/agentsfleetd/http/handlers/connectors/slack/events_integration_test.zig` | EDIT | Follows the handler change |
 | `src/agentsfleetd/http/handlers/connectors/slack/thread_refetch_integration_test.zig` | EDIT | Follows the handler change |
 | `src/agentsfleetd/http/handlers/ingress/github.zig` | EDIT | Shared webhook constants; ingress `repositories` stays the INGRESS binding and is not overloaded by the egress one |
 | `src/agentsfleetd/http/handlers/ingress/github_integration_test.zig` | EDIT | Follows the handler change |
+| `src/agentsfleetd/http/handlers/library/onboard_integration_test.zig` | EDIT | The shipped crew publishes through the real onboard route; the slug list follows the crew's current membership |
 | `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | Thread the fleet's binding into the mint; scope resolution split out (RULE FLL) |
 | `src/agentsfleetd/http/handlers/runner/credentials_mint_scope.zig` | CREATE | Resolve the lease's workspace, fleet, and repository binding in one read. A config that fails to parse degrades to NO binding, so a malformed config withholds a token rather than widening one |
-| `src/agentsfleetd/http/handlers/runner/credentials_mint_integration_test.zig` | EDIT | The grant-gate suite; its GitHub-minting test now seeds a bound fleet, because §2 made an unbound GitHub mint fail closed |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint_integration_test.zig` | EDIT | The grant-gate suite; its GitHub-minting test now seeds a bound fleet, because the fail-closed mint refuses an unbound one |
 | `src/agentsfleetd/http/handlers/runner/sql.zig` | EDIT | `SELECT_LEASE_SCOPE_FOR_MINT` returns the fleet's `config_json` so the binding is read on the same query |
 | `src/agentsfleetd/http/handlers/webhooks/fleet.zig` | EDIT | Shared webhook constants |
 | `src/agentsfleetd/http/handlers/webhooks/github.zig` | EDIT | Shared webhook constants |
-| `src/agentsfleetd/http/route_scopes_test.zig` | EDIT | Dimension 1.4 — the resolve route's requirement and the machine grant are provably disjoint |
+| `src/agentsfleetd/http/route_scopes_test.zig` | EDIT | The resolve route's requirement and the machine grant are provably disjoint; the `fleet:write` PATCH bypass is asserted as KNOWN so its closure is regression-tested rather than assumed |
 | `src/agentsfleetd/http/webhook_http_integration_test.zig` | EDIT | Follows the shared-constant extraction |
-| `tests/fixtures/fleetbundle/github-pr-reviewer/TRIGGER.md` | EDIT | Gains the repository binding, so a fail-closed mint does not stop the fleet installed from it (Indy's call: fail closed anyway, and let M154's teardown take the installed row) |
-| `playbooks/demo/forge-2026/` | CREATE | EC2 + collector + Grafana bring-up, failure injection, replay proof |
+| `src/agentsfleetd/tests.zig` | EDIT | Test-discovery registrations follow the module set this branch adds and retires |
+| `src/lib/contract/execution_policy.zig` | EDIT | `repositories` + `repository_access` as additive defaulted fields carried on the lease policy. Absent → empty → fail closed |
+| `src/runner/daemon/StorageHome.zig` | CREATE | The exclusive claim on the storage home and its startup reaper for orphaned per-lease workspaces — `defer cleanupWorkspace` does not run on SIGKILL, an out-of-memory kill, or reboot. File-as-struct because the claim is state the type owns |
+| `src/runner/daemon/storage_home_test.zig` | CREATE | A lease-shaped directory is reaped; a dot-prefixed cache directory, a non-lease name, a lease-shaped symlink, and a lease-shaped regular file are not. Plus the three refusals: shallow path, contended lock, un-adopted home |
+| `src/runner/main.zig` | EDIT | Call the sweep after the storage-home `mkdir`, before the poll loop |
+| `src/runner/tests.zig` | EDIT | Register the storage-home module for test discovery |
+| `library/incident-responder/SKILL.md` | EDIT | The investigator: read-only, evidence-first, ends a code-shaped diagnosis with a FORWARD-FIX repair intent for a human to act on. No revert anywhere, and no promise the platform parks anything — nothing parses a proposal yet |
+| `library/incident-responder/TRIGGER.md` | EDIT | Keep the `github` credential and `api.github.com` — the investigator reads commit history to correlate. `repository_access: read` so its minted token carries no write permission; `memory_store` + `memory_recall` beside `http_request` |
+| `tests/fixtures/fleetbundle/github-pr-reviewer/TRIGGER.md` | EDIT | Gains the repository binding, so a fail-closed mint does not stop the fleet installed from it |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/AddLibraryDialog.tsx` | EDIT | Offer an upload source beside GitHub; post `source_kind:"upload"` with both markdown bodies |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/BundleFolderPicker.tsx` | CREATE | The folder picker: reads `SKILL.md` + `TRIGGER.md` out of the chosen directory in the browser and fills the boxes so the bytes are readable before they are sent |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/BundleFolderPicker.test.tsx` | CREATE | Picker behaviour, including the swallowed-rejection wedge the review found |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/bundle-files.ts` | CREATE | Framework-free refusals for a picked folder: one bundle only, both files present, size-capped |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/bundle-files.test.ts` | CREATE | The refusals, including the multi-bundle crew folder |
+| `ui/packages/app/tests/add-template-dialog.test.tsx` | EDIT | The dialog's upload source drives the picker path end to end |
+| `ui/packages/app/webkitdirectory.d.ts` | CREATE | The directory-input attributes TypeScript's DOM lib does not declare (an `export {}` augmentation, never a new ambient module) |
+| `bench/incident-response/` | KEEP | Landed and frozen; its rubric rows claim only detection |
+| `build.zig` | EDIT | Register the benchmark executable and its unit lane |
+| `make/bench.mk` | EDIT | `make bench-incident` — the rubric's reproducibility row runs through it |
+| `make/test-unit.mk` | EDIT | The bench assertions run in the lib unit lane rather than behind an unreachable build flag |
+| `docs/AUTH.md` | EDIT | Record that machine credentials cannot resolve approvals, and why |
+| `docs/architecture/scenarios/production-deploy-repair.md` | EDIT | The forward-fix statement in §3, and §3/§6 no longer claim the retired kernel exists |
+| `cli/src/program/cli-tree-fleet.ts` | EDIT | Verb creating a library entry from a local bundle directory (§4a.2 — planned, not yet built) |
+| `cli/src/commands/fleet_library_upload.ts` | CREATE | Reads `SKILL.md` + `TRIGGER.md`, posts `source_kind:"upload"` (§4a.2 — planned, not yet built) |
+| `playbooks/demo/forge-2026/` | CREATE | EC2 + collector + Grafana bring-up, failure injection, replay proof (§7 — planned, not yet built) |
 
 ## Applicable Rules
 
@@ -226,23 +220,37 @@ The two consumers also differ in when the change bites, and the spec relies on b
 
 ### §3 — The write lives behind the gate, structurally
 
-The investigator reaches `api.github.com` with a token minted **read-only**, so its inability to open a PR is a property of the credential the daemon hands it rather than of its prompt. Removing its GitHub access altogether was the earlier design and it does not work: `incident-responder/SKILL.md:53-59,89,115` reads `GET /repos/{owner}/{repo}/commits`, correlates deploy annotations against commit history, and verifies `base_sha` against the branch head — a fleet with no GitHub reach cannot name the suspect commit that Dimension 4.2 requires and the repairer's message depends on. Read is the job; write is the boundary, and §2.3's mint narrowing is where the boundary lives. The repairer's bundle declares a non-empty `gates.rules` — because `approval_gate.zig:96` falls through to `.auto_approve` when nothing matches, an omitted rule silently yields an autonomous agent holding a write token. Approval authorises **one bounded repairer run**, not specific bytes; the draft PR is the review surface where the diff is read.
+> **Aligned Aug 06, 2026:** the repairer-as-actor this Section's prose assumes
+> was removed from the branch (Discovery, Aug 06). The grant split, the gate
+> ordering, the scoped mint, and the bypass assertion below all shipped and
+> stand — they are exactly what the daemon-side write half builds on.
+
+The investigator reaches `api.github.com` with a token minted **read-only**, so its inability to open a PR is a property of the credential the daemon hands it rather than of its prompt. Removing its GitHub access altogether was the earlier design and it does not work: `incident-responder/SKILL.md:53-59,89,115` reads `GET /repos/{owner}/{repo}/commits`, correlates deploy annotations against commit history, and verifies `base_sha` against the branch head — a fleet with no GitHub reach cannot name the suspect commit that Dimension 4.2 requires and the repairer's message depends on. Read is the job; write is the boundary, and §2.3's mint narrowing is where the boundary lives. `approval_gate.zig:96` falls through to `.auto_approve` when nothing matches, and gate rules live in workspace-editable config — which is why the write half, when it lands, parks a repair proposal BY KIND rather than through rules, and approval binds the proposal's exact bytes (canonical architecture §4).
 
 **The investigator does not wake the repairer in this workstream, and that is a security decision rather than a scoping one.** `route_scopes.zig` maps `.workspace_fleet_messages` and the PATCH arm of `.patch_workspace_fleet` to the *same* scope, `fleet:write`. `patch.zig` accepts `trigger_markdown` or `config_json`, and `config_json` is where `gates` lives. So any credential able to send the wake message is also able to rewrite the repairer's gate policy to empty — after which `approval_gate.zig:96` auto-approves and no human is ever asked. That bypass needs no approval at all, so §1's removal of `approval_resolve` does not close it, and no narrowing of *which* tenant scopes are granted can: the capability the investigator needs and the capability that breaks the design are one capability.
 
 Nor can a signed webhook substitute. The manual-route middleware verifies an HMAC over the request body (`fleet_runtime/webhook_verify.zig` `PROVIDER_REGISTRY`), and the investigator is a model holding `http_request`; `${secrets.NAME.FIELD}` substitutes a literal and cannot sign. The credential that fits is a fleet-bound `agt_a` key, which is not yet a principal (`docs/AUTH.md:362` — "Today this is a side door"), and which additionally requires `fleet:message` to be split out of `fleet:write` or it inherits the same problem at smaller scale.
 
-So in this workstream a **human** wakes the repairer, from the diagnosis the investigator posts to Slack. Every other property — the gate, the repository-scoped mint, the git-computed revert, the refusal path, the critic — is proven without a machine credential existing anywhere in the crew. The automatic hop and its prerequisites move to M157_002, and until they land the crew is human-triggered by design rather than by omission.
+So in this workstream a **human** acts on the diagnosis the investigator posts to Slack. Every property that shipped — the gate, the repository-scoped mint, the refusal path — is proven without a machine credential existing anywhere in the crew. The automatic hop and its prerequisites move to M157_002; once proposals park by kind and only a human can approve one, a machine wake hands an attacker nothing but the ability to create more parked proposals.
 
-- **Dimension 3.5** — **DONE** — No crew member holds a tenant API key; the repairer's wake carries a human actor → Test `test_crew_holds_no_tenant_key`
+- **Dimension 3.5** — **DONE** — No crew member holds a tenant API key → Test `test_crew_holds_no_tenant_key`
 - **Dimension 3.6** — **DONE** — A credential holding `fleet:write` can blank a fleet's gate policy through PATCH — asserted as a *known* bypass so its closure in M157_002 is regression-tested rather than assumed → Test `test_fleet_write_can_blank_gate_policy`
 
 - **Dimension 3.1** — **DONE** — The investigator's minted GitHub token carries `contents: read` and no `pull_requests` permission, so it can read history and cannot open a Pull Request → Test `test_investigator_token_is_read_only`
-- **Dimension 3.2** — **DONE** — The shipped repairer bundle declares a non-empty gate rule → Test `test_repairer_bundle_declares_a_gate`
-- **Dimension 3.3** — **DONE** — A repairer event without an approved gate yields no lease and no PR → Tests `test_unapproved_event_opens_no_pr`, `test_approved_event_runs` (the positive control: approval is what releases the run, so the negatives mean "the gate held" rather than "nothing ran")
-- **Dimension 3.4** — **DONE** — Denial and deadline expiry resolve terminally; the repairer never runs → Test `test_denied_or_timed_out_never_runs`
+- **Dimension 3.2** — **SUPERSEDED** (Aug 06 — the repairer-as-actor is deleted; no shipped bundle holds a write credential to gate. The write half parks proposals by kind, daemon-side) — its test left with the bundle
+- **Dimension 3.3** — **DONE** — A gated event without an approved gate yields no lease; approval is what releases the run → Tests: the generic negatives in `event_lifecycle_integration_test.zig`, plus the positive control `test_approved_event_runs` (`gate_release_integration_test.zig`) that makes them mean "the gate held" rather than "nothing ran"
+- **Dimension 3.4** — **DONE** — Denial and deadline expiry resolve terminally; the gated fleet never runs → Tests: "approval denial writes the terminal row" (`event_lifecycle_integration_test.zig`) and "approval deadline expiry writes the terminal row" (`event_lifecycle_reclaim_integration_test.zig`)
 
 ### §4 — The crew investigates, diagnoses, and proposes exactly one repair class
+
+> **SUPERSEDED IN PART, Aug 06, 2026** — the repair mechanism this Section
+> describes (a repairer fleet fetching a working tree and running `git revert`)
+> was built, then removed from the branch on Indy's direction: the repair is a
+> **forward fix** the model authors, applied daemon-side as approved bytes
+> (canonical architecture §4; Discovery, Aug 06). The fetch path, the repairer
+> bundle, and their Dimensions below are marked SUPERSEDED. What stands from
+> this Section: the investigator, its memory dedup, its explicit tools, its
+> named degradation, and the storage-home sweep.
 
 `library/incident-responder/` (investigator) wakes on a cron sweep, queries the customer's Grafana, correlates with recent repository history, posts a diagnosis to Slack, and — only when the cause is code-shaped and the repair is a revert of an identified commit — messages the repairer with repository, commit, and evidence. `library/incident-repairer/` produces one draft revert Pull Request (PR) and does nothing else: the reverted-to code was already green in Continuous Integration (CI), so no model authors any line of the change. Config-in-repo diffs and narrow patches are later rungs. Truth living only in a vendor console is recommended with a link, never written.
 
@@ -263,11 +271,11 @@ What that bound can be has a floor worth stating. Reverting commit `C` onto head
 - **Dimension 4.1** — A seeded regression yields a structured finding citing a real Grafana response digest, never an invented identifier → Test `eval_detection_cites_evidence`
 - **Dimension 4.2** — The finding names the failing service and the correlated commit range → Test `eval_finding_names_service_and_commit`
 - **Dimension 4.3** — Provider-outage and data-shaped incidents stay diagnosis-only: no repair intent sent → Test `eval_noncode_incidents_stay_diagnosis_only`
-- **Dimension 4.4** — The repairer's PR is a revert of the named commit and touches nothing else → Test `eval_repair_is_a_revert`
-- **Dimension 4.5** — **BLOCKED** (no `revert` operation exists — see Discovery, Aug 05) — A revert that does not apply cleanly to the target head is refused with a named reason; no branch is pushed and no model resolves the conflict → Test `test_conflicting_revert_refuses`
-- **Dimension 4.6** — **DONE** — The fetch is depth-bounded, lands only in the lease's own workspace, and no credential reaches the child → Test `test_fetch_is_bounded_and_credential_free`
-- **Dimension 4.6a** — **DONE** — A lease that asks for no repository fetches nothing; a fetch for a repository outside the fleet's binding is refused → Test `test_fetch_is_on_demand_and_binding_scoped`
-- **Dimension 4.7** — Cold install of both bundles onto a fresh workspace succeeds with declared credentials and hosts → Test `test_cold_install_from_library`
+- **Dimension 4.4** — **SUPERSEDED** (Aug 06 — the repair is a forward fix, never a revert; Indy: "I have never seen a revert in my career") — no revert claim survives
+- **Dimension 4.5** — **SUPERSEDED** (Aug 06 — the revert mechanism it guarded is deleted; conflict handling returns as the follow-up kernel's base-freshness refusal)
+- **Dimension 4.6** — **SUPERSEDED** (Aug 06 — the fetch path is deleted; no repair mechanism touches a working tree)
+- **Dimension 4.6a** — **SUPERSEDED** (Aug 06 — with the fetch path; the binding still scopes the MINT, proven by Dimensions 2.3/2.4/3.1)
+- **Dimension 4.7** — Cold install of the responder bundle onto a fresh workspace succeeds with declared credentials and hosts → Test `test_cold_install_from_library`
 
 **Both bundles carry three authoring obligations the runtime cannot enforce.**
 
@@ -277,10 +285,10 @@ Second, **escalation memory**: an incident stays broken while its repair is park
 
 Third, **an explicit `tools:` list on both bundles**, because a bundle only gets the tools it names. `runner_helpers.zig:242-243` falls back to `hosted_tools.buildDefault` when `tools` is absent *or* not an array, and that is `allTools` filtered only against `UNSUPPORTED_HOSTED_TOOLS` — the seven cron/schedule names (`tool_bridge.zig:40-48`). An omitted list therefore silently yields NullClaw's entire set rather than the crew's intended surface, which makes what a fleet can do depend on a field nobody wrote. The repairer names `git`, `http_request`, and the memory family it needs to remember what it has already opened; the investigator names `http_request` plus `memory_store` and `memory_recall`.
 
-- **Dimension 4.8** — **DONE** — Both bundles instruct a named degradation at the context threshold, and neither promises continuation → Test `test_bundles_declare_degradation`
-- **Dimension 4.9** — A second sweep over an already-escalated, still-broken incident sends no second wake → Test `eval_escalation_is_deduped_by_memory`
-- **Dimension 4.10** — **DONE** — Both bundles declare an explicit `tools:` array; an omitted list would expose the full default set → Test `test_bundles_declare_explicit_tools`
-- **Dimension 4.11** — A replayed repair intent for a commit the repairer already opened a Pull Request for opens no second one → Test `eval_repairer_dedupes_by_memory`
+- **Dimension 4.8** — **DONE** — The responder bundle instructs a named degradation at the context threshold and promises no continuation → Test `test_bundles_declare_degradation`
+- **Dimension 4.9** — A second sweep over an already-escalated, still-broken incident raises no second escalation → Test `eval_escalation_is_deduped_by_memory`
+- **Dimension 4.10** — **DONE** — The responder bundle declares an explicit `tools:` array; an omitted list would expose the full default set → Test `test_bundles_declare_explicit_tools`
+- **Dimension 4.11** — **SUPERSEDED** (Aug 06 — no repairer fleet exists; replay safety returns as the follow-up kernel's branch-named-from-proposal-id duplicate refusal)
 - **Dimension 4.12** — **DONE** — A workspace orphaned by an unclean shutdown is reaped at daemon startup; the dot-prefixed bundle cache is not → Test `test_startup_sweep_reaps_orphans`
 
 ### §4a — A crew installs from local markdown, without borrowing a template
@@ -299,7 +307,7 @@ Grafana and Elastic keys are plain workspace secrets (never registry entries, pe
 
 **Egress is bounded twice, and only one of the two rings is tool-shaped.** `ctx.policy` is read by `buildHttpRequest` and no other builder (`tool_builders.zig:183`), and `secret_substitution` is reachable only from `policy_http_request.zig` — so *credential substitution* and the tool-level host check bind `http_request` alone. The outer ring does not: `network/Plan.zig` derives a per-lease egress plan enforced by a network namespace — a veth pair on a point-to-point `/30`, a static `/etc/hosts` carrying only allowlisted names, and a **neutered `/etc/resolv.conf`**. A host off the allowlist has neither name resolution nor a route, for `git` exactly as for `http_request`. The filesystem is fenced the same way, by Landlock: workspace read-write, system paths read-execute, everything else denied — so one lease cannot read another's workspace, and the daemon derives that path from `lease_id` because the child cannot supply one (`lease_run.zig:61-62`).
 
-That asymmetry is why §4's revert fetches through the daemon's on-demand hook rather than granting `git` a credential: the outer ring already bounds where git may go, so the only thing missing would be a token — and a daemon-executed fetch means no token is needed inside the sandbox at all.
+That asymmetry also shaped the deleted fetch design; with the write daemon-side, the stronger statement holds — no repair credential enters a sandbox at all, because no sandboxed run performs any part of the write.
 
 - **Dimension 5.1** — **DONE** — Grafana/Elastic secrets stay placeholders in prompt and logs; raw bytes appear only in the egress request → Test `test_data_plane_secrets_stay_placeholders`
 - **Dimension 5.2** — **DONE** — A host outside a bundle's allowlist is refused for that bundle's leases → Test `test_undeclared_host_refused`
@@ -317,7 +325,7 @@ That asymmetry is why §4's revert fetches through the daemon's on-demand hook r
 
 ### §7 — The demo topology runs on AWS and the stage proof is replay-safe
 
-A playbook stands up a small multi-service instrumented workload on EC2, Grafana receiving its telemetry, an `agentsfleet-runner` host, failure-injection scripts, and both fleets installed by hand. **The runner host installs `git`** — §4's revert rung shells out to the real binary because no API computes a three-way merge, and the daemon resolves it from an absolute-path allowlist rather than `$PATH`; its absence is a named refusal (`git_unavailable`), so a host without it fails every repair loudly instead of subtly. **The runner host sets `RUNNER_STORAGE_HOME` to real disk.** Its default is `/tmp/agentsfleet-runner` (`runner/daemon/config.zig:129`), and `/tmp` is tmpfs on most hosts — memory, not disk. That default was harmless while a workspace held only import-capped bundle support files; §4 puts a repository working tree there, so leaving it on tmpfs charges every fetch against host memory. The stage proof: inject a held-out regression live, watch detection → diagnosis → Slack approval naming the commit → one draft revert PR, then replay the same investigator message and show the second run parks on its own approval rather than opening a second PR.
+A playbook stands up a small multi-service instrumented workload on EC2, Grafana receiving its telemetry, an `agentsfleet-runner` host, failure-injection scripts, and the investigator installed by hand through the folder upload. The runner host needs no `git` binary — the write half is daemon-side through the GitHub HTTP API, and no runner path shells out to git. **The runner host still sets `RUNNER_STORAGE_HOME` to real disk** — the default is `/tmp/agentsfleet-runner` (`runner/daemon/config.zig:129`) and `/tmp` is tmpfs on most hosts; workspaces are small again with the fetch gone, but a reaped-at-startup storage home belongs on disk that survives a reboot. The stage proof runs in two stages: detection → diagnosis naming the suspect change and its forward fix is provable with what shipped; the approval → one draft PR → replay-parks-not-writes half needs the follow-up kernel and is claimed only when it exists.
 
 - **Dimension 7.1** — The playbook's check mode is idempotent: two consecutive runs both exit clean → Test `playbook_check_idempotent`
 - **Dimension 7.2** — An injected failure traverses the collector → Grafana and is detected end-to-end on the live stack → Test `e2e_injected_failure_detected`
@@ -347,20 +355,21 @@ Fleet repository binding (x-agentsfleet frontmatter, top level, NOT under trigge
 Fleet repository access (x-agentsfleet frontmatter, top level, beside `repositories`):
   repository_access: read | write — read mints { contents: "read" }; write mints
   { contents: "write", pull_requests: "write" }. Absent → fail closed (no mint),
-  same as an absent `repositories` binding. Investigator declares read, repairer write.
+  same as an absent `repositories` binding. The investigator declares read; write
+  is minted only daemon-side at apply time (follow-up kernel).
 GitHub mint (credentials/integration_github.zig): POST /app/installations/{id}/access_tokens
   body { repositories: [<fleet binding>], permissions: <per repository_access above> }
   — absent binding or absent access level → no mint (fail closed).
-Investigator → repairer edge: POST /v1/workspaces/{ws}/fleets/{repairer}/messages with a
-  tenant API key (scope fleet:write). The message carries repository, suspect commit,
-  and evidence links — 8 KiB cap, so identifiers and links only, never file contents.
-Repair rung: revert only, computed by git rather than by hand-rolled patch application.
-  On demand mid-run, the daemon fetches the suspect commit, its parent, and the
-  target head (depth-bounded, no history) into the per-lease workspace; the sandboxed
-  child runs the revert with no network and no credential; a revert that does not
-  apply cleanly is REFUSED, never resolved by the model. No model-authored source
-  lines exist in the diff. Nothing is cached across leases and the workspace is
-  deleted at run end, so host cost is bounded by worker_count × one bounded fetch.
+Crew hop: none in this workstream — a human acts on the diagnosis. The machine hop
+  returns with fleet identity (M157_002), harmless once proposals park by kind
+  and only a human can approve one.
+Repair shape (follow-up kernel): a FORWARD fix the model authors — corrected code
+  or new files against the branch head it verified — carried as a proposal in its
+  final report, with the full corrected content of every touched file, so approved
+  bytes and written bytes are provably identical. The daemon validates, hashes,
+  stores immutably, parks BY KIND, and on human approval applies exactly those
+  bytes through the Git Data API and opens one draft PR. No working tree, no git
+  binary, no model at apply time. Nothing parses that proposal yet.
 Library upload (already shipped, unreachable): POST /fleet-libraries accepts
   source_kind:"upload" with inline skill_markdown + trigger_markdown. Exposing it on
   the dashboard and the CLI removes the borrowed-template install dance.
@@ -371,38 +380,36 @@ Library upload (already shipped, unreachable): POST /fleet-libraries accepts
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
 | Machine attempts approval | A fleet or external service resolves a gate with a tenant key | Route refuses on scope; structured log; the gate stays pending until a human decides |
-| Repairer bundle without a gate rule | Hand-install omits `gates.rules` | Bundle test fails at build; on a live workspace the omission is visible as an auto-approved run in the activity stream |
+| Gated fleet without a matching rule | `gates.rules` omitted, or a rule that matches nothing at the evaluation site | `.auto_approve` fallthrough — the reason the write half parks proposals by KIND, never through rules |
 | Denied / timed out | Human denies, or the gate deadline passes | Terminal status; the repairer's lease is never issued; diagnosis artifacts remain |
-| Unbound repository | Repairer fleet declares no top-level `repositories` binding | Mint refuses; the run reports it could not authenticate rather than reaching a wrong repository |
-| Revert does not apply | Target head moved and something else touched the same files | Refused with a named reason before any push. The model never resolves the conflict — that would forfeit "no model-authored source lines", the only property that makes revert the safe first rung. A fresh sweep may propose again against the new head |
-| Fetch fails | Repository unreachable, commit garbage-collected, or depth bound insufficient | The fetch hook answers rejected; the run reports what it could not read and produces no repair. No partial tree is left for a later step to misread |
-| Fetch outside the binding | Repairer asks for a repository its `repositories` list does not name | Daemon refuses before any network call; the ask is logged with the fleet id. A misled repairer cannot read outside its scope, let alone write |
-| Approval left unattended | Nobody resolves a parked gate | The gate's own timeout expires it, and only then does the fleet's next event become reachable — the Pending Entries List is re-delivered ahead of newer entries (`assign.zig:213-217`), so one stale approval blocks that fleet's queue for the whole timeout. The repairer therefore sets a short timeout rather than inheriting the 24-hour default |
-| Duplicate investigator message | Retried or double-delivered steer | Each message parks its own gate; a second PR requires a second human approval. No caller idempotency key exists — the gate is the bound |
+| Unbound repository | A fleet declares no top-level `repositories` binding | Mint refuses; the run reports it could not authenticate rather than reaching a wrong repository |
+| Proposal base moves | The branch head moved after the proposal was authored | Follow-up kernel: apply re-checks base freshness and refuses with a named code; a fresh sweep may propose again against the new head |
+| Approval left unattended | Nobody resolves a parked gate | The gate's own timeout expires it, and only then does the fleet's next event become reachable — the Pending Entries List is re-delivered ahead of newer entries (`assign.zig:213-217`), so one stale approval blocks that fleet's queue for the whole timeout. A gated fleet sets a short timeout rather than inheriting the 24-hour default |
+| Duplicate steer | Retried or double-delivered steer | Each message parks its own gate; a second run requires a second human approval. No caller idempotency key exists — the gate is the bound |
 | Data plane unreachable or secret missing | Grafana down mid-sweep, or a declared credential absent | Finding degrades honestly (names what it could not read); no repair intent sent; existing stop-the-tool-call codes in the activity stream |
-| Upstream write failure | GitHub rejects branch or PR creation | The repairer's tool call fails with the vendor's response class; the run reports it; nothing partial is claimed as done |
+| Upstream write failure | GitHub rejects branch or draft-PR creation | Follow-up kernel: the apply fails with the vendor's response class and a `UZ-REPAIR-*` code; nothing partial is claimed as done |
 | Seed drift | Benchmark run over a corpus whose hash mismatches the manifest | Harness refuses to score; names both hashes |
 
 ## Invariants
 
 1. No machine credential can resolve an approval, and no human loses the ability to — the machine grant excludes `approval_resolve` while the signup claim retains it, asserted by a set-difference unit test and by a route-level integration test.
 2. The investigator cannot write to GitHub — its bundle declares `repository_access: read`, so the daemon mints a token carrying `contents: read` and no `pull_requests` permission. The vendor refuses the write regardless of what the model attempts, and the mint is the authoritative gate rather than the prompt.
-3. No repairer lease is issued for an event whose gate is not approved — the existing pre-lease check is the only path, and this workstream adds no bypass.
+3. No lease is issued for an event whose gate is not approved — the existing pre-lease check is the only path, and this workstream adds no bypass.
 4. Every parked approval names its proposed action, evidence, and blast radius — a blank `ActionDetail` field is a test failure, not a display default.
 5. A minted GitHub token reaches only the repositories the fleet declared — the mint body pins them, and an unbound fleet mints nothing.
 6. Raw secret bytes never appear in prompt, result, or logs — existing tool-bridge substitution re-asserted by test for the new credential names.
 7. Benchmark evaluation incidents never inform tuning — calibration and evaluation manifests are disjoint by construction and the scorer enforces it.
-8. No model resolves a merge conflict — a revert that does not apply cleanly is refused before any push, so every shipped diff is git's inverse patch and contains no model-authored source line.
-9. No credential enters the sandbox for repair work — the fetch is daemon-executed on the child's demand (never pre-fork, which §4 rejects: it would fetch on every lease and would have to choose a repository before anything had parsed the ask), the credential rides the git process's environment, and the child receives a working tree, never a token.
+8. Nothing in the shipped tree writes repository code — no fleet holds a write-capable credential and no daemon path pushes. The write half returns as approved-bytes daemon apply (canonical architecture §4), where the repair is a FORWARD fix and approval binds its exact bytes.
+9. No repair credential enters a sandbox — the only GitHub token a run can hold is minted `contents: read` for the declared repositories, and the mint response's stated reach is verified against the declaration.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `repair_intent_sent` | ops | Investigator messages the repairer | investigator fleet id, repo, commit, evidence kinds | no secrets, no file contents | `eval_finding_names_service_and_commit` |
-| `repair_approval_requested` | ops | Gate parks a repairer event | gate action id, repo, commit | detail fields only, no payloads | `test_gate_detail_is_populated` |
-| `repair_approval_resolved` | ops | Gate resolves approve/deny/timeout | action id, resolution, actor kind | no actor PII beyond existing gate fields | `test_denied_or_timed_out_never_runs` |
-| `repair_pr_opened` | ops | Repairer opens the draft PR | repo, pr url, reverted commit | no diff bytes | `e2e_single_pr_on_approval` |
+| `repair_intent_sent` | ops | Investigator ends a diagnosis with a repair intent | investigator fleet id, repo, commit, evidence kinds | no secrets, no file contents | `eval_finding_names_service_and_commit` |
+| `repair_approval_requested` | ops | A repair proposal parks behind the gate (follow-up kernel) | gate action id, repo, commit | detail fields only, no payloads | `test_gate_detail_is_populated` |
+| `repair_approval_resolved` | ops | Gate resolves approve/deny/timeout | action id, resolution, actor kind | no actor PII beyond existing gate fields | `test_approved_event_runs` |
+| `repair_pr_opened` | ops | The daemon opens the draft PR (follow-up kernel) | repo, pr url, fixed commit range | no diff bytes | `e2e_single_pr_on_approval` |
 | `machine_approval_refused` | ops | A machine credential is refused at the resolve route | principal mode, route | no key material | `test_api_key_cannot_resolve_approval` |
 | `benchmark_run_completed` | ops | Harness finishes a scored run | corpus hash, metric summary | aggregate numbers only | `test_report_metrics_complete` |
 
@@ -419,23 +426,23 @@ Library upload (already shipped, unreachable): POST /fleet-libraries accepts
 | 2.3 | unit | `test_mint_body_is_repository_and_access_scoped` | `repository_access: write` → body carries the declared repo + contents/pull_requests; `read` → contents:read only, no pull_requests key |
 | 2.4 | unit | `test_unbound_fleet_mints_nothing` | fleet with null repositories → mint refused, no token returned |
 | 3.1 | integration | `test_investigator_token_is_read_only` | investigator mint → token with `contents: read`, no `pull_requests`; a PR-create call with it is refused by the vendor |
-| 3.2 | unit | `test_repairer_bundle_declares_a_gate` | shipped TRIGGER.md parses to a non-empty `gates.rules` |
-| 3.3 | integration | `test_unapproved_event_opens_no_pr` | repairer event, gate pending → no lease issued, fake GitHub sees zero calls |
-| 3.3 | integration | `test_approved_event_runs` | same shipped bundle, gate approved → the poll that refused a moment ago issues the lease; the negatives are not vacuous |
-| 3.4 | integration | `test_denied_or_timed_out_never_runs` | deny and deadline expiry → terminal, repairer lease never issued |
+| 3.2 | — | SUPERSEDED (Aug 06) | the repairer-as-actor is deleted; no shipped bundle holds a write credential to gate |
+| 3.3 | integration | `test_approved_event_runs` | gated fixture fleet, gate approved → the poll that refused a moment ago issues the lease FOR THAT FLEET AND EVENT (`fleet.runner_leases` row asserted); the suite's negatives are not vacuous |
+| 3.3 | integration | `test_approved_event_runs_with_declared_credential` | same sequence on a fleet declaring `github` with vault row + approved grant seeded — the answer still releases the run when secret resolution and the grant check sit in front of the gate |
+| 3.3 | integration | "approval denial writes the terminal row" (`event_lifecycle_integration_test.zig`) | gate pending → no lease issued while the question is outstanding |
+| 3.4 | integration | "approval denial…" + "approval deadline expiry writes the terminal row" (`event_lifecycle_reclaim_integration_test.zig`) | deny and deadline expiry → terminal, no lease ever issued |
 | 4.1 | eval | `eval_detection_cites_evidence` | seeded regression → finding cites a returned Grafana digest |
 | 4.2 | eval | `eval_finding_names_service_and_commit` | traced failure → service + commit range named |
 | 4.3 | eval | `eval_noncode_incidents_stay_diagnosis_only` | provider-outage seed → no repair intent message sent |
-| 4.4 | eval | `eval_repair_is_a_revert` | repairer output diff equals the revert of the named commit |
-| 4.5 | integration | `test_conflicting_revert_refuses` | head moved with a conflicting edit to the same file → refused with a named reason, zero pushes, no model conflict resolution |
-| 4.6 | integration | `test_fetch_is_bounded_and_credential_free` | six-commit `file://` remote → three commits fetched (depth 2 over two tips), `.git/shallow` present, the workspace holds only the daemon-created `repo`, and neither the token nor its base64 spelling appears in any path or byte of the tree |
-| 4.6 | unit | `test_fetch_is_bounded_by_bytes_not_history` | a child that writes past the byte ceiling and then lingers is killed on the SIZE bound, with the time bound nowhere near — depth bounds history, this bounds bytes |
-| 4.6a | integration | `test_fetch_is_on_demand_and_binding_scoped` | lease asking for no repository → zero fetches; repository outside the binding → refused before any network call |
-| 4.7 | e2e | `test_cold_install_from_library` | fresh workspace + published entries → both installed, scheduled, policy attached |
-| 4.8 | unit | `test_bundles_declare_degradation` | both `SKILL.md` bodies name a degradation path at the context threshold; neither contains the string `needs continuation` |
-| 4.9 | eval | `eval_escalation_is_deduped_by_memory` | second sweep over an outstanding escalation → zero repair-intent messages sent |
-| 4.10 | unit | `test_bundles_declare_explicit_tools` | both `TRIGGER.md` files parse to a non-empty `tools` array — an absent or non-array value would resolve `hosted_tools.buildDefault` |
-| 4.11 | eval | `eval_repairer_dedupes_by_memory` | replayed repair intent naming a commit the repairer already opened a Pull Request for → zero second Pull Requests; the repairer recalls before it proposes. **Memory is the courtesy, the gate is the bound** — a crash between the vendor call and `memory_store` loses the record, and the second attempt is then stopped by needing a second human approval, not by memory |
+| 4.4 | — | SUPERSEDED (Aug 06) | the repair is a forward fix; no revert claim survives |
+| 4.5 | — | SUPERSEDED (Aug 06) | conflict handling returns as the follow-up kernel's base-freshness refusal |
+| 4.6 | — | SUPERSEDED (Aug 06) | the fetch path is deleted; no repair mechanism touches a working tree |
+| 4.6a | — | SUPERSEDED (Aug 06) | with the fetch path; the binding still scopes the MINT (2.3/2.4/3.1) |
+| 4.7 | e2e | `test_cold_install_from_library` | fresh workspace + published responder entry → installed, scheduled, policy attached |
+| 4.8 | unit | `test_bundles_declare_degradation` | the responder `SKILL.md` body names a degradation path at the context threshold and does not contain the string `needs continuation` |
+| 4.9 | eval | `eval_escalation_is_deduped_by_memory` | second sweep over an outstanding escalation → zero repeated escalations |
+| 4.10 | unit | `test_bundles_declare_explicit_tools` | the responder `TRIGGER.md` parses to a non-empty `tools` array — an absent or non-array value would resolve `hosted_tools.buildDefault` |
+| 4.11 | — | SUPERSEDED (Aug 06) | no repairer fleet exists; replay safety returns as the follow-up kernel's branch-named-from-proposal-id duplicate refusal |
 | 4.12 | unit | `test_startup_sweep_reaps_orphans` | seeded `{storage_home}/<uuid>/` removed after sweep; `{storage_home}/.bundle-cache/` survives |
 | 4a.1 | integration | `test_dashboard_uploads_local_bundle` | upload source posts `source_kind:"upload"` with both markdown bodies → entry created |
 | 4a.1 | integration | `test_dashboard_uploads_picked_folder` | a chosen bundle directory fills both boxes and the same two bodies reach the wire unedited |
@@ -460,9 +467,9 @@ Library upload (already shipped, unreachable): POST /fleet-libraries accepts
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | A machine credential cannot approve, and the human signup claim still can (§1) | `make test-integration TEST_FILTER='approval'` then `make test-unit-all TEST_FILTER='grant'` | exit 0 both; `test_api_key_cannot_resolve_approval` and `test_signup_claim_retains_approval_resolve` listed as pass | P0 | |
 | R2 | The approval names its action and the token is repository-scoped (§2) | `make test-unit-all TEST_FILTER='gate_detail\|mint_body'` | exit 0, both tests listed by name | P0 | |
-| R3 | No unapproved event produces a write (§3) | `make test-integration TEST_FILTER='repairer'` | exit 0, `test_unapproved_event_opens_no_pr` listed as pass | P0 | |
+| R3 | No unapproved event produces a run, and approval releases one (§3) | `make test-integration TEST_FILTER='approv'` | exit 0, `test_approved_event_runs` AND "approval denial writes the terminal row" both listed as pass — a filter matching nothing exits 0, so the named lines are the proof | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| R5 | Cold install of both published bundles on a fresh workspace (§4–§5) | `make test-integration TEST_FILTER='cold_install'` | exit 0 | P0 | |
+| R5 | Cold install of the published responder bundle on a fresh workspace (§4–§5) | `make test-integration TEST_FILTER='cold_install'` | exit 0 | P0 | |
 | R6 | Detection benchmark is reproducible — **detection only, not the crew** (§6) | `make bench-incident SEED_MANIFEST=eval` run twice | identical corpus hash line both runs | P1 | |
 | R7 | The retired repair kernel leaves no orphan | `rg -n 'repair_proposal\|repair_bounds\|UZ-REPAIR' src/ \|\| true` | zero hits | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -474,7 +481,7 @@ Library upload (already shipped, unreachable): POST /fleet-libraries accepts
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
-**Test Delta note (VERIFY):** this diff **deletes 13 registered tests** with the repair kernel. The Test Delta row is measured against the baseline *after* subtracting those; a flat or negative raw count is expected and is not, on its own, grounds to return to EXECUTE. The added tests in §1–§4 must exceed 13 for the delta to be genuinely positive.
+**Test Delta note (VERIFY):** this diff **deletes 13 registered tests** with the repair kernel, and the Aug 06 alignment removes the fetch-path tests the branch had added on top. The Test Delta row is measured against the final branch state versus the baseline; a flat or negative raw count is expected and is not, on its own, grounds to return to EXECUTE — the surviving added tests must carry the delta.
 
 ### Behaviour evals
 
@@ -497,6 +504,8 @@ Four files and one error family leave in this diff, all of them substrate for th
 
 Removal is verified by rubric R7 rather than by inspection.
 
+**Second sweep, Aug 06, 2026 — the crew design's write half leaves the branch before merge.** `library/incident-repairer/` (both files); the runner fetch path — `repo_fetch.zig`, `RepoFetchTarget.zig`, `repo_fetch_{bounds,env,exec}.zig`, `engine/repo_fetch_request.zig`, `engine/runtime/repo_fetch.zig`, `child_supervisor_renew.zig`, and their six test siblings — plus its wiring in `lease_run.zig`, `child_supervisor{,_read}.zig`, `pipe_proto.zig`, `tool_builders.zig`, and `tool_bridge.zig`, which now match `origin/main` byte for byte. All of it was created on this branch, so none of it appears in the merge diff. `repairer_gate_integration_test.zig` re-homed to `gate_release_integration_test.zig`: the generic negatives already lived in the lifecycle suites, so only the positive control moved, now driven by the fixture's own gated config.
+
 ## Out of Scope
 
 - **Fleet identity, and with it the autonomous hop — M157_002.** `fleet:message` split out of `fleet:write` so waking a fleet stops implying the right to reconfigure it; first-class `agt_a` fleet keys (`AuthMode.fleet_key` + middleware branch, per `docs/AUTH.md:362`); `actor=chain:<fleet_id>` on machine hops; a hop cap; and a caller idempotency key on `POST /messages`. **This is a prerequisite for the crew being autonomous, not an enhancement of it** — until it lands, any credential that could wake the repairer could also blank its gate, so this workstream keeps a human on the wake and proves everything else. The Discovery table records the bypass, and Dimension 3.6 asserts it, so its closure is regression-tested rather than assumed.
@@ -512,12 +521,12 @@ Removal is verified by rubric R7 rather than by inspection.
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment** — An operator opens Slack to a diagnosis naming the failing service and the suspect commit, and an approval that says "revert `abc123` in `owner/repo`, opens one draft Pull Request". They click Approve and GitHub shows exactly that.
+1. **Successful user moment** — An operator opens Slack to a diagnosis naming the failing service, the suspect change, and the forward fix that repairs it — and, once the follow-up kernel lands, an approval that says exactly which bytes will land in which repository. They click Approve and GitHub shows exactly that, as one draft Pull Request.
 2. **Preserved user behaviour** — Existing fleets, triggers, approvals, and the platform-ops diagnosis flow are untouched; a workspace that installs neither bundle sees one change only: a tenant API key can no longer resolve an approval.
-3. **Optimal-way check** — Direct: the loop reuses the gate, the mint, the tool bridge, the library, and the message edge. The three code changes are each a single-purpose correction to a mechanism that already exists. Gap to optimal: approval authorises a bounded *run*, not specific bytes, so the human approves an intent and reviews the result on the draft PR. That is the honest shape of a gate that binds before a lease.
+3. **Optimal-way check** — Direct: the loop reuses the gate, the mint, the tool bridge, the library, and the message edge. The three code changes are each a single-purpose correction to a mechanism that already exists. The run-not-bytes gap this item once accepted is now closed by design rather than accepted: the follow-up kernel binds approval to the proposal's exact bytes.
 4. **Rebuild-vs-iterate** — Iterate; every needed substrate exists. The one thing that was genuinely missing — a reason the investigator *cannot* write — comes from credential separation across two fleets rather than from new code.
 5. **What we build** — One scope-grant correction, one approval-detail threading, one mint narrowing, two bundles, a demo playbook, and the scenario-doc flip.
-6. **What we do NOT build** — Everything in Out of Scope; notably no daemon-side apply service, no proposal record, and no second approval mechanism. **The repairer is a model run holding a write credential, deliberately.** That is bounded by three things and no others: it cannot run without an approved gate, its token reaches only the declared repositories, and its only rung is a revert of code CI already passed.
+6. **What we do NOT build** — Everything in Out of Scope. Aligned Aug 06: the daemon-side apply service and the proposal record are exactly what the FOLLOW-UP kernel builds; this workstream ships everything up to and including the human-only approval, and no fleet holds a write credential at all.
 7. **Fit with existing features** — Compounds with approvals, connectors, library, schedules, and the event log. Must not destabilize: the approval gate — a populated `ActionDetail` must never change gate outcomes, only what the human reads.
 8. **Surface order** — Runtime + bundles first; the dashboard shows nothing new beyond a richer gate card. Command-line and web surfaces unchanged.
 9. **Dashboard restraint** — No new approval UI: the existing gate card carries the newly-populated detail fields; the diff is reviewed on the draft PR, where code review already lives.
@@ -972,3 +981,46 @@ The investigator's `description` was separately stale — it still advertised
 `51d2c256f` deleted. Corrected in the same commit (RULE NLR): it now says the
 investigator names a suspect commit and a repair intent and cannot carry the
 repair out, because its token is minted read-only.
+
+### Aug 06, 2026 — the crew design's write half is superseded; the branch aligns before merge
+
+Review-first session over the parked Pull Request (PR). Every claim in the
+session handoff was re-verified against the tree before acting; three were
+corrected: greptile's verdict is a check run ("Greptile Review": success on the
+head commit), not PR reviews — the PR carries zero reviews and zero comments;
+the responder bundle did NOT "conform word-for-word" — its opening promised
+proposal-parking the platform cannot do while its operative section forbade
+proposing a diff at all; and the architecture doc's stale kernel claim was in
+§3 as well as §6.
+
+**The design call, in Indy's words:**
+
+  - > Indy (2026-08-06): "I need a composite of fleets, or a crew." — context: the crew stays; every member is a reader, the daemon is the only writer, the human is the only approver.
+  - > Indy (2026-08-06): "Well i want the repairer to be forward thinking first, its not a rever the commit, i have rarerly seen it happning, but rahter you will change again the same thing may be that was broken or update new files and add new commit. I have never seen a revert in my career" — context: revert is dead as a concept, not just as a mechanism; the repair is a forward fix the model authors.
+  - > Indy (2026-08-06): "I want 3 and the flow must be aligned as per the use case we discussed with actors and calls before. I dont agree that the bundle publiccation is an admin think. I think you have built an upload of the folder that is how the fleet will be setup for this scenario." — context: #588 held until aligned. The folder upload IS the customer setup path for this scenario, so a shipped bundle instructing an impossible step is customer-facing, not admin-gated.
+  - > Indy (2026-08-06): "yes correc" — context: authorising the alignment fold into #588: delete the repairer-as-actor and the fetch path, rewrite the responder, fix the architecture doc, amend this spec.
+
+**Crew setup, decided in principle:** one folder per crew, one subfolder per
+member (`SKILL.md` + `TRIGGER.md` each); the picker walks the subfolders and
+performs one upload + install per member through the shipped endpoint — no new
+daemon concept, no crew schema (consistent with the Aug 03 "no normalized crew
+artifact" call). The `library/` layout adopts that shape when the crew regrows.
+
+**What the follow-up kernel is (next spec, this tree, after #588 merges):**
+recover `repair_proposal.zig` + `repair_bounds.zig` + `UZ-REPAIR-001..005` from
+`51d2c256f^` — restored, not re-authored; parse the proposal out of the final
+report; store it immutably (one new table — in the follow-up spec, which therefore
+claims a schema slot this workstream never needed); park it **by kind,
+unconditionally** — never through gate
+rules, because `.auto_approve` is the no-match fallthrough and rules are
+`fleet:write`-editable, so rule-based parking would let a machine un-park the
+write; route approval to a daemon apply — recompute sha256, re-check base
+freshness, mint a short-lived write token with reach AND permissions verified,
+Git Data API blobs → trees → commits → refs, branch named from the proposal id
+so a replayed approval refuses as a duplicate, one draft PR; wake a
+verification run from the deploy-result webhook. The proposal carries the FULL
+corrected content of every file it touches — approved bytes and written bytes
+are provably identical, file creation costs nothing special, and no patch
+arithmetic exists daemon-side. The responder's proposal-block instruction lands
+in the same diff as the parser that reads it, and the crew regrows (proposer,
+verifier) beside the platform half that consumes each member's output.
