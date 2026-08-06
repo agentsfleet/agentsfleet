@@ -12,6 +12,9 @@ const CHOOSE_FOLDER_HINT =
   `Reads ${SKILL_FILE_NAME} and ${TRIGGER_FILE_NAME} from the folder into the boxes below, so you can read what you are about to send.`;
 const READ_FAILED =
   "That folder could not be read — the files may have changed since you picked them. Try again.";
+// A failed replacement does not clear the boxes — the bytes below stay the
+// truth surface — so the notice must say the old bundle is what would be sent.
+const KEPT_PREVIOUS = " The previously loaded bundle is still filled in below.";
 
 type Props = {
   /** Receives both bodies once a chosen folder resolves to a complete bundle. */
@@ -28,6 +31,7 @@ type Props = {
 export function BundleFolderPicker({ onLoaded }: Props) {
   const inputId = useId();
   const [notice, setNotice] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   async function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const input = event.target;
@@ -35,17 +39,18 @@ export function BundleFolderPicker({ onLoaded }: Props) {
       const bundle = await readBundleFolder(input.files);
       if (bundle.status === BUNDLE_READ.empty) return;
       if (bundle.status === BUNDLE_READ.refused) {
-        setNotice(bundle.reason);
+        setNotice(hasLoaded ? bundle.reason + KEPT_PREVIOUS : bundle.reason);
         return;
       }
       onLoaded(bundle.skillMarkdown, bundle.triggerMarkdown);
+      setHasLoaded(true);
       setNotice(`Loaded ${SKILL_FILE_NAME} and ${TRIGGER_FILE_NAME}.`);
     } catch {
       // A File handle goes stale when the file is edited, moved or deleted
       // between the pick and the read, and then text() rejects. Say so —
       // an unhandled rejection here would leave whatever the last successful
       // pick loaded sitting under a "Loaded" line that no longer describes it.
-      setNotice(READ_FAILED);
+      setNotice(hasLoaded ? READ_FAILED + KEPT_PREVIOUS : READ_FAILED);
     } finally {
       // Clearing the input lets the same folder be picked again after a
       // correction on disk — an unchanged value fires no change event. In
