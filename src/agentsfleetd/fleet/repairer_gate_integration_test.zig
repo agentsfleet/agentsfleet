@@ -55,6 +55,18 @@ const MAX_BUNDLE_BYTES = 64 * BYTES_PER_KIB;
 const CREDENTIAL_GITHUB = "github";
 const HANDLE_GITHUB = "{\"integration\":\"github\",\"installation_id\":\"42\"}";
 
+/// The vault row is only half the credential's authorization. `github` is an
+/// on-demand integration, so the lease path ALSO requires an approved
+/// `core.integration_grants` row — `resolveExecutionPolicy` answers `.parked`
+/// without one and refuses the lease with no terminal write. That refusal is
+/// byte-for-byte indistinguishable from an unanswered gate at the event row
+/// (`received`, still in the Pending Entries List), which is exactly why the
+/// negatives in this file need the positive control below: seed everything the
+/// repairer needs EXCEPT the human's answer, so the only variable left is the
+/// answer.
+const GRANT_ID = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d02";
+const GRANT_STATUS_APPROVED = "approved";
+
 const DECISION_TTL_S: i64 = 60;
 
 /// The shipped bundle's frontmatter, as the fleet row would carry it. This is
@@ -77,6 +89,18 @@ fn seedShippedRepairer(conn: *pg.Conn) !void {
     defer ALLOC.free(config_json);
     try life.seedFleetWithConfig(conn, FLEET_REPAIRER, REPAIRER_SLUG, config_json);
     try vault.storeJsonPlaintext(ALLOC, conn, life.WORKSPACE_ID, CREDENTIAL_GITHUB, HANDLE_GITHUB);
+    try grantGithub(conn);
+}
+
+/// Standing authorization for the declared integration. Idempotent, so the
+/// fixed ids survive a rerun against un-reset state.
+fn grantGithub(conn: *pg.Conn) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.integration_grants
+        \\  (id, fleet_id, service, status, created_at, requested_reason)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, 0, 'repairer gate integration test')
+        \\ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status
+    , .{ GRANT_ID, FLEET_REPAIRER, CREDENTIAL_GITHUB, GRANT_STATUS_APPROVED });
 }
 
 fn forgetRepairer(h: anytype) void {
@@ -133,6 +157,43 @@ test "test_unapproved_event_opens_no_pr" {
     // Polling again changes nothing: still no lease, still no Pull Request. A
     // fleet does not wear its gate down by being asked twice.
     try std.testing.expect(!try life.pollLease(h));
+    try life.expectRow(conn, FLEET_REPAIRER, event_id, event_rows.STATUS_RECEIVED, "");
+}
+
+test "test_approved_event_runs" {
+    // The positive control. Every other assertion in this file is that no lease
+    // was issued — which a fleet that simply cannot run would satisfy just as
+    // well as a gate that held. This is the one test that fails if the shipped
+    // repairer is broken for some reason unrelated to approval, and it is what
+    // makes the negatives mean "the gate held" rather than "nothing happened".
+    var env = life.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer forgetRepairer(h);
+
+    try seedShippedRepairer(conn);
+
+    const event_id = try life.publishEvent(h, FLEET_REPAIRER);
+    defer h.queue.alloc.free(event_id);
+
+    try std.testing.expect(!try life.pollLease(h));
+    const ref = try gateRefFor(h, event_id);
+    try resolveGate(h, &ref, gate_constants.GATE_DECISION_APPROVE);
+
+    // Approval is what releases the run: the same poll that refused a moment
+    // ago now issues the lease, and the entry leaves the Pending Entries List.
+    try std.testing.expect(try life.pollLease(h));
+
+    // Still claimed, and that is the point: a lease is not a completion. The
+    // entry stays in the Pending Entries List until the runner reports, which
+    // is what distinguishes "the run started" from the terminal refusals above,
+    // where the XACK lands with the `gate_blocked` row.
+    try std.testing.expectEqual(@as(i64, 1), try life.pendingCount(h, FLEET_REPAIRER));
     try life.expectRow(conn, FLEET_REPAIRER, event_id, event_rows.STATUS_RECEIVED, "");
 }
 
