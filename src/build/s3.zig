@@ -3,10 +3,11 @@
 //!
 //! z3 (upstream codeberg.org/fellowtraveler/z3, mirrored at agentsfleet/z3)
 //! exposes its S3 client as the module named "s3" (root src/s3_client.zig);
-//! src/lib/s3/r2.zig imports it under the name `z3`. Wired into the DAEMON graph only — the runner holds zero
-//! datastore credentials (build_runner.zig), so on import the daemon PUTs the
-//! immutable raw repo tarball and at lease GETs it; bundle bytes reach the
-//! sandbox via the lease, never a runner-side R2 get.
+//! src/lib/s3/r2.zig imports it under the name `z3`. Wired into the DAEMON
+//! graph only — the runner holds zero datastore credentials
+//! (build_runner.zig), so on import the daemon PUTs the immutable raw repo
+//! tarball and at lease GETs it; bundle bytes reach the sandbox via the
+//! lease, never a runner-side R2 get.
 
 const std = @import("std");
 const test_list = @import("test_list.zig");
