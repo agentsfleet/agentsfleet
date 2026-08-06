@@ -135,8 +135,9 @@ test "test_fleet_write_can_blank_gate_policy" {
     // tenant scopes are granted can: the capability the investigator would need
     // and the capability that breaks the design are the same capability.
     //
-    // This is why a HUMAN wakes the repairer in this workstream rather than
-    // the investigator. Splitting `fleet:message` out of `fleet:write` is the fix.
+    // This is why machine wakes stay un-privileged: any credential that can
+    // wake a fleet can also blank its gate policy through the same scope.
+    // Splitting `fleet:message` out of `fleet:write` is the fix.
     const wake = route_scopes.requiredScopes(.{ .workspace_fleet_messages = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, .POST);
     const reconfigure = route_scopes.requiredScopes(router_fleet(), .PATCH);
 

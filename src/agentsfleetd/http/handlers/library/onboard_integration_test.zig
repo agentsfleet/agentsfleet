@@ -574,7 +574,7 @@ test "test_import_manifest_survives_store_round_trip" {
 // ── Dimension 5.3 — the SHIPPED crew reaches a workspace ────────────────────
 
 const LIBRARY_BASE = "library";
-const CREW_SLUGS = [_][]const u8{ "incident-responder", "incident-repairer" };
+const CREW_SLUGS = [_][]const u8{"incident-responder"};
 const MAX_BUNDLE_BYTES = 64 * 1024;
 
 fn loadBundleFile(alloc: std.mem.Allocator, slug: []const u8, file: []const u8) ![]u8 {
@@ -612,8 +612,8 @@ test "test_bundles_publish_and_list" {
     // rather than the config parser, and the two demand different things. The
     // importer needs `SKILL.md` frontmatter for the entry's name, and it demands
     // that name match `TRIGGER.md`'s — so a bundle can parse perfectly as a fleet
-    // config and still be impossible to install, which is exactly the state the
-    // repairer shipped in until this Dimension was built.
+    // config and still be impossible to install, which is exactly the state one
+    // crew bundle shipped in until this Dimension was built.
     const alloc = std.testing.allocator;
     const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -649,7 +649,10 @@ test "test_bundles_publish_and_list" {
 
     // The requirements the gallery advertises are derived from the SHIPPED
     // TRIGGER.md, so an operator sees what each member will ask for before
-    // installing it — the repairer's write reach included.
+    // installing it. `grafana` is the discriminating probe: a credential name
+    // can only come from the bundle, where a tool name like `http_request`
+    // also lives in the default fallback set a derivation regression would
+    // expose.
     try std.testing.expect(gallery.bodyContains("api.github.com"));
-    try std.testing.expect(gallery.bodyContains("repo_fetch"));
+    try std.testing.expect(gallery.bodyContains("grafana"));
 }

@@ -197,7 +197,7 @@ test "test_slack_approval_names_the_action" {
     // Dimension 2.2. The card names the gate, the blast radius, and the
     // repository the token reaches, and attributes the model's claim as a claim.
     const alloc = std.testing.allocator;
-    const msg = try buildSlackApprovalMessage(alloc, "incident-repairer", "action-77", .{
+    const msg = try buildSlackApprovalMessage(alloc, "incident-responder", "action-77", .{
         .tool = "chat",
         .action = "steer:user_9",
         .params_summary = "evt-123",
@@ -256,7 +256,7 @@ test "buildSlackApprovalMessage: model prose carrying JSON metacharacters cannot
 test "buildSlackApprovalMessage: the token's reach is stated as fact, the model's evidence is cited after its claim" {
     const alloc = std.testing.allocator;
     const repos = [_][]const u8{"acme/widgets"};
-    const msg = try buildSlackApprovalMessage(alloc, "incident-repairer", "act-1", .{
+    const msg = try buildSlackApprovalMessage(alloc, "incident-responder", "act-1", .{
         .tool = "api",
         .action = "steer:api",
         .params_summary = "evt-9",

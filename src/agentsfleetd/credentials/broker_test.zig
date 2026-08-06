@@ -639,14 +639,14 @@ test "mint telemetry: a cache-dupe OOM still emits mint_failed with the hit flag
 
 // ── The repository binding is part of the cache IDENTITY ───────────────────
 //
-// The cache keys on (workspace, integration, handle fingerprint). The incident crew puts two
-// fleets in ONE workspace — an investigator bound `read` and a repairer bound
-// `write` — both minting `github` from the SAME App installation handle. All
-// three original key components therefore agree, so without the binding folded
-// in, whichever fleet minted first would decide the permissions the other
-// received: a read-only investigator handed a write token, or a repairer handed
-// a token that cannot open its Pull Request. Narrowing the mint BODY alone is
-// silently undone by a cache hit, which is why this guard exists.
+// The cache keys on (workspace, integration, handle fingerprint). A workspace
+// can hold two fleets — one bound `read`, one bound `write` — both minting
+// `github` from the SAME App installation handle. All three original key
+// components therefore agree, so without the binding folded in, whichever
+// fleet minted first would decide the permissions the other received: a
+// read-only fleet handed a write token, or a write-bound fleet handed a token
+// that cannot do its job. Narrowing the mint BODY alone is silently undone by
+// a cache hit, which is why this guard exists.
 
 const REPOS_BIND = [_][]const u8{"acme/widgets"};
 

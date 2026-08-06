@@ -187,8 +187,8 @@ describe("AddLibraryDialog — local bundle source", () => {
   // dashboard only ever spoke `github`. That is why hand-setup installed some
   // unrelated entry and overwrote both of its markdown files afterwards —
   // nothing of the template survived, so it was a vehicle rather than a choice.
-  const SKILL = "---\nname: incident-repairer\ndescription: d\nversion: 0.1.0\n---\nBody.";
-  const TRIGGER = "---\nname: incident-repairer\nx-agentsfleet:\n  triggers:\n    - type: api\n---";
+  const SKILL = "---\nname: incident-responder\ndescription: d\nversion: 0.1.0\n---\nBody.";
+  const TRIGGER = "---\nname: incident-responder\nx-agentsfleet:\n  triggers:\n    - type: api\n---";
 
   // A directory pick is what the dialog accepts, and the browser signals it
   // through `webkitRelativePath` — which no File constructor sets.
@@ -254,8 +254,8 @@ describe("AddLibraryDialog — local bundle source", () => {
     fireEvent.change(screen.getByLabelText("Choose bundle folder"), {
       target: {
         files: [
-          bundleFile("incident-repairer/SKILL.md", SKILL),
-          bundleFile("incident-repairer/TRIGGER.md", TRIGGER),
+          bundleFile("incident-responder/SKILL.md", SKILL),
+          bundleFile("incident-responder/TRIGGER.md", TRIGGER),
         ],
       },
     });

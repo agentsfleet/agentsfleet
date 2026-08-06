@@ -12,8 +12,6 @@ const tools_mod = nullclaw.tools;
 const bridge = @import("tool_bridge.zig");
 const BuildCtx = bridge.BuildCtx;
 const PolicyHttpRequestTool = @import("runtime/policy_http_request.zig");
-const RepoFetchTool = @import("runtime/repo_fetch.zig");
-const repo_fetch_request = @import("repo_fetch_request.zig");
 const MAX_RESPONSE_SIZE_BYTES = 1_000_000;
 
 // End-to-end builder tests (stripped from release builds; façade discovery).
@@ -172,18 +170,6 @@ pub fn buildDelegate(ctx: BuildCtx) anyerror!tools_mod.Tool {
 pub fn buildSpawn(ctx: BuildCtx) anyerror!tools_mod.Tool {
     const ptr = try ctx.alloc.create(tools_mod.spawn.SpawnTool);
     ptr.* = .{ .manager = null };
-    return ptr.tool();
-}
-
-/// The repository-fetch tool (M157 §4). Wired only when the session carries the
-/// child↔runner channel; without one the tool still builds and every call fails
-/// closed, which is the honest shape — a fleet that declared `repo_fetch` should
-/// see a refusal it can read, not a missing tool it cannot reason about.
-pub fn buildRepoFetch(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(RepoFetchTool);
-    ptr.* = .{
-        .channel = if (ctx.cred_channel) |mint| repo_fetch_request.channelFrom(mint) else null,
-    };
     return ptr.tool();
 }
 

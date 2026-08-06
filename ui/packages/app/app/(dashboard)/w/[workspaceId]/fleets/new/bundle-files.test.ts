@@ -9,9 +9,9 @@ import {
   TRIGGER_FILE_NAME,
 } from "./bundle-files";
 
-const SKILL_BODY = "---\nname: incident-repairer\nversion: 0.1.0\n---\nBody.";
-const TRIGGER_BODY = "---\nname: incident-repairer\nx-agentsfleet:\n  triggers:\n---";
-const BUNDLE_DIR = "incident-repairer";
+const SKILL_BODY = "---\nname: incident-responder\nversion: 0.1.0\n---\nBody.";
+const TRIGGER_BODY = "---\nname: incident-responder\nx-agentsfleet:\n  triggers:\n---";
+const BUNDLE_DIR = "incident-responder";
 
 // A directory pick is the only shape this surface accepts, and the browser
 // signals it through `webkitRelativePath` — which no File constructor sets.
@@ -77,11 +77,11 @@ describe("readBundleFolder", () => {
   it("refuses the parent of several bundles instead of picking one for you", async () => {
     const bundle = await readBundleFolder([
       ...wholeBundle("crew/incident-investigator"),
-      ...wholeBundle("crew/incident-repairer"),
+      ...wholeBundle("crew/incident-responder"),
     ]);
     expect(bundle).toHaveProperty(
       "reason",
-      "That folder holds more than one bundle (crew/incident-investigator, crew/incident-repairer). Pick a single bundle directory.",
+      "That folder holds more than one bundle (crew/incident-investigator, crew/incident-responder). Pick a single bundle directory.",
     );
   });
 
