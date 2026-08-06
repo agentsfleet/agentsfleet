@@ -60,9 +60,9 @@ The fleet sends a diagnosis without code changes when the cause is unclear. The 
 
 The repair path requires an allowed repository, allowed file paths, file and diff limits, and human approval.
 
-Those limits exist in code. `fleet/repair_proposal.zig` validates a proposal and caps its file count, path shapes, and diff size; `fleet/repair_bounds.zig` re-checks at apply time that the diff touches nothing outside the declared allowlist.
+The repair is a forward fix. The fleet describes the next change that fixes the incident — corrected code, or new files — against the branch head it verified during the run. It never proposes rolling history back.
 
-Nothing calls them yet. The write half remains unproven, and documentation must not present the repair path as shipped.
+Those limits are design, not code. An earlier proposal kernel validated file count, path shapes, and diff size at report time and re-checked them at apply time; it was retired unused. Rebuilding it is the write half's first piece, and documentation must not present the repair path as shipped.
 
 ## 4. Prepare the draft PR
 
@@ -96,7 +96,7 @@ If the deployment still fails, the fleet records the new evidence. The fleet doe
 | Slack diagnosis and activity history | ✅ | The existing platform-operations flow records a result and can post the diagnosis. |
 | File and Git tools | 🟡 | The runner registers these tools. This repair path does not use them — the write is daemon-side (§4). |
 | Vercel Log Drain intake | 🔨 | No Vercel error intake is wired to a fleet. |
-| Proposal validation, content hash, and bounds | 🟡 | `fleet/repair_proposal.zig` and `fleet/repair_bounds.zig` carry unit proof for hash canonicality, path safety, and allowlist enforcement. No production path calls them yet. |
+| Proposal validation, content hash, and bounds | 🔨 | An earlier kernel proved hash canonicality, path safety, and allowlist enforcement, then was retired unused. Nothing validates, hashes, or stores a proposal today. |
 | Proposal record and approval parking | 🔨 | Nothing persists a proposal or requests approval for one. |
 | Draft PR creation | 🔨 | No test proves token minting, branch creation, push, and draft-PR creation together. |
 | Post-deployment verification | 🔨 | No test links the repaired deployment result back to the original incident. |
