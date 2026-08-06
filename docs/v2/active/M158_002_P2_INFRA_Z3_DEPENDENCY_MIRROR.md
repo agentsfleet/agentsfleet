@@ -61,6 +61,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `build.zig.zon` | EDIT | The `z3` entry's `.url` moves to the GitHub mirror, the `.hash` advances with the version bump, and the entry gains the why-and-when-to-drop comment every other pinned dependency already carries. |
+| `src/lib/s3/r2.zig` | EDIT | Doc-comment only. Its header cited `codeberg.org/fellowtraveler/z3` as where the dependency is pinned from; after the move that half-contradicts the manifest, so it now names codeberg as **upstream** and the mirror as the resolved source. Added by the orphan sweep at REVIEW (RULE ORP). |
+| `src/build/s3.zig` | EDIT | Doc-comment only; same stale-provenance fix as `r2.zig`. |
 | `docs/v2/active/M158_002_P2_INFRA_Z3_DEPENDENCY_MIRROR.md` | CREATE | This spec; moves to `done/` at CHORE(close). |
 
 External to the repository, and therefore not a diff row: the `github.com/agentsfleet/z3` mirror repository, created public from a `git clone --mirror` of upstream with branches and tags pushed and the reserved `refs/pull/*` refs omitted.
@@ -108,7 +110,9 @@ This is a real upgrade, not a host change, and it is deliberately a **separate c
 
 - **Dimension 2.1** — DONE — The daemon, runner, and library graphs build against the bumped dependency. → Verified by `test_build_against_bumped_z3`
 - **Dimension 2.2** — DONE — Both Linux cross-compile targets succeed against the bumped dependency. → Verified by `test_cross_compile_both_targets`
-- **Dimension 2.3** — The R2 client's own behaviour is unchanged, including its idle-connection-reuse setting, and leaks no memory across the graphs that link it. → Verified by `test_r2_behaviour_unchanged` and `test_no_leaks_after_bump`
+- **Dimension 2.3** — The R2 client's own behaviour is unchanged, including its idle-connection-reuse setting, and the graphs that link `z3` remain leak-free. → Verified by `test_r2_behaviour_unchanged` and `test_no_leaks_after_bump`
+
+**Coverage honesty (from `/write-unit-test`'s diff ledger):** the upstream commit's ownership changes land on `ListObjectsResult`, `ListBucketsResult`, `HeadObjectResult`, and `parseHeadObject` — **none of which this repository reaches**. `r2.zig` calls only `init`, `putObject`, `getObject`, and `deinit`, and upstream changed no signature among them. So the leak lane proves the linking graphs stay clean; it does **not** exercise the changed types, and no test here can, because there is no call site to exercise them from. Testing them would mean testing the dependency, not this repository. The two upstream changes that do reach our compilation unit are compile-time only — a widened `RequestError` (both call sites use a blanket `catch`, so no new branch exists on our side) and `getAmzValue` taking its receiver by value (never called here) — and `zig build test-s3` is their proof.
 
 ## Interfaces
 
@@ -153,7 +157,7 @@ Metrics review: no analytics or funnel playbook update required — this workstr
 | 2.1 | integration | `test_build_against_bumped_z3` | `zig build test-s3` — the build-wiring gate that compiles `r2.zig` against `z3` — exits 0 with the bumped `.hash` in place. |
 | 2.2 | integration | `test_cross_compile_both_targets` | `zig build -Dtarget=x86_64-linux` and `-Dtarget=aarch64-linux` each exit 0. |
 | 2.3 | unit | `test_r2_behaviour_unchanged` | The pre-existing `"R2 disables idle HTTP connection reuse"` test still passes against the bumped dependency — the connection pool's free size still equals `R2_IDLE_CONNECTION_LIMIT`. Regression row: this behaviour predates the workstream and must not change. |
-| 2.3 | integration | `test_no_leaks_after_bump` | `make memleak` exits 0, covering the retained-response ownership change in the bumped dependency across the graphs that link it. |
+| 2.3 | integration | `test_no_leaks_after_bump` | `make memleak` exits 0 across the graphs that link `z3`. Scope claimed precisely: this proves the linking graphs stay leak-free under the new dependency; it does **not** exercise the upstream result types whose ownership changed, which have no call site in this repository. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -163,7 +167,7 @@ Metrics review: no analytics or funnel playbook update required — this workstr
 | R2 | The mirror is byte-faithful at the previously pinned commit (§1) | `zig fetch git+https://github.com/agentsfleet/z3.git#4553a640ec867ab0355a97e5513ce4ec69a90d49` | `z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS` | P0 | |
 | R3 | The pin sits at the current upstream head (§2) | `grep -c '7f64763e186ebe348989ae229b7551cb6ec79ee0' build.zig.zon` | `1` | P1 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
+| S1 | Unit tests pass (Tier 1 per `docs/VERIFY_TIERS.md`) | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
 | S5 | No leaks (dependency ownership semantics changed) | `make memleak` | exit 0 | P0 | |
@@ -225,5 +229,18 @@ The string survives deliberately in **two** comments: the `pg` entry's, which na
   - URL form, archive vs `git+`. Indy asked whether the git-commit form should be used instead of the archive form the entry previously carried. Measured rather than assumed: `zig fetch` returns the same digest for both forms of the same commit, so the form switch is free, and `git+` matches every other entry in the manifest. The earlier claim that `git+` would change the digest was wrong and is corrected in §1.
   - Mirror creation. Indy chose a public mirror over a private one or vendoring, on the grounds that it matches the `zig-yaml` precedent and Zig fetches it unauthenticated in CI.
 - **Metrics review** — no analytics or funnel playbook update required; the workstream adds no runtime code, so no event can be emitted from it.
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
+- **Skill-chain outcomes**
+  - `/write-unit-test` — Mode: **Deep audit** (the skill routes dependency upgrades there). The diff adds no source lines, so the applicable category reduces to **Regression**: "old test suite passes against new code on dependency upgrades." Diff ledger, 6/6 rows resolved — 4 tested, 2 `won't-test` with reason:
+
+    | Changed unit | Test type | Status | Note |
+    |---|---|---|---|
+    | `.z3 .url` — host swap | Regression | ✅ | `zig fetch` at the pre-existing commit reproduces the original digest; `zig build --fetch` exits 0 |
+    | `.z3 .hash` — pin advance | Regression | ✅ | full existing suite against the new dependency: `lint-all`, `test`, `memleak`, cross-compile ×2, `test-s3` |
+    | upstream `RequestError` widened | Failure | ✅ | compile-proof via `zig build test-s3`; both call sites use a blanket `catch`, so no new branch exists on our side to test |
+    | R2 consumer behaviour | Regression | ✅ | pre-existing `"R2 disables idle HTTP connection reuse"` |
+    | upstream `getAmzValue` receiver by value | — | won't-test | not called from this repository |
+    | upstream `List*`/`Head*` result ownership change | — | won't-test | **unreachable from this repository** — no call site constructs or consumes those types; a test would exercise the dependency, not us |
+
+    Finding raised and fixed: Dimension 2.3 originally claimed `make memleak` "covers the retained-response ownership change." It does not — those types have no call site here. The claim was narrowed to what the lane actually proves. Negative-path ratio is not applicable: the changed surface contains zero branches.
+  - `/review`, `kishore-babysit-prs` — pending; recorded at REVIEW and after push.
 - **Deferrals** — none. The dependency-host gate is not a deferral: it is out of scope by Indy's decision, quoted above, and is recorded in Out of Scope rather than as pending work.
