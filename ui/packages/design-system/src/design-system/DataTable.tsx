@@ -2,7 +2,7 @@
 
 import { EmptyState } from "./EmptyState";
 import { hasExternalPaginationNavigation, useDataTableModel } from "./DataTableModel";
-import type { DataTablePagination, DataTableProps } from "./DataTable.types";
+import type { DataTablePagination, DataTableProps, DataTableRowData } from "./DataTable.types";
 import { DataTableFooter, DataTableView } from "./DataTableView";
 
 export type {
@@ -19,7 +19,7 @@ function isPaginationLoading(pagination: DataTablePagination | undefined): boole
     && pagination.isLoading === true;
 }
 
-export function DataTable<T>({
+export function DataTable<T extends DataTableRowData>({
   columns,
   rows,
   rowKey,

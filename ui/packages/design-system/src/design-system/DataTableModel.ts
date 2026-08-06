@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  createCoreRowModel,
+  createPaginatedRowModel,
+  createSortedRowModel,
+  rowPaginationFeature,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_basic,
+  sortFn_datetime,
+  sortFn_text,
+  tableFeatures,
+  useTable,
   type ColumnDef,
   type PaginationState,
   type SortingState,
@@ -14,8 +21,36 @@ import type {
   DataTableColumn,
   DataTablePagination,
   DataTableProps,
+  DataTableRowData,
 } from "./DataTable.types";
 import { PAGINATION_KIND } from "./Pagination";
+
+/**
+ * The feature set this table is built from. Declared at module scope on
+ * purpose: v9 stitches features into the table's TYPE, so building this per
+ * render would both defeat inference and rebuild the instance every pass.
+ *
+ * `paginatedRowModel` is registered unconditionally even though external
+ * pagination does not use it — v9 features are static, so the v8 trick of
+ * passing the row model only for client pagination is not expressible.
+ * `manualPagination` is what actually decides whether it runs, which is the
+ * option that carried that meaning in v8 too.
+ */
+export const dataTableFeatures = tableFeatures({
+  rowSortingFeature,
+  rowPaginationFeature,
+  coreRowModel: createCoreRowModel(),
+  sortedRowModel: createSortedRowModel(),
+  paginatedRowModel: createPaginatedRowModel(),
+  sortFns: {
+    alphanumeric: sortFn_alphanumeric,
+    basic: sortFn_basic,
+    datetime: sortFn_datetime,
+    text: sortFn_text,
+  },
+});
+
+export type DataTableFeatures = typeof dataTableFeatures;
 
 export const DEFAULT_PAGE_SIZE = 25;
 
@@ -40,7 +75,10 @@ export function hasExternalPaginationNavigation(
   return pagination.total === undefined || pagination.total > pagination.pageSize;
 }
 
-function buildColumns<T>(columns: DataTableColumn<T>[], externallySorted: boolean): ColumnDef<T>[] {
+function buildColumns<T extends DataTableRowData>(
+  columns: DataTableColumn<T>[],
+  externallySorted: boolean,
+): ColumnDef<DataTableFeatures, T>[] {
   return columns.map((column) => {
     const sortingRequested = column.sortable ?? column.sortValue !== undefined;
     const sortingEnabled = sortingRequested && (externallySorted || column.sortValue !== undefined);
@@ -58,12 +96,12 @@ function buildColumns<T>(columns: DataTableColumn<T>[], externallySorted: boolea
   });
 }
 
-type ModelProps<T> = Pick<
+type ModelProps<T extends DataTableRowData> = Pick<
   DataTableProps<T>,
   "columns" | "rows" | "rowKey" | "sortKey" | "sortDirection" | "onSortChange" | "pagination"
 >;
 
-export function useDataTableModel<T>({
+export function useDataTableModel<T extends DataTableRowData>({
   columns,
   rows,
   rowKey,
@@ -104,13 +142,11 @@ export function useDataTableModel<T>({
     setPage((current) => ({ ...current, pageIndex }));
   }
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     columns: tableColumns,
     data: rows,
     getRowId: (row) => rowKey(row),
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: clientPagination ? getPaginationRowModel() : undefined,
     manualSorting: externallySorted,
     manualPagination: !clientPagination,
     autoResetPageIndex: false,

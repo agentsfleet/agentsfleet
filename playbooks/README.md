@@ -94,6 +94,7 @@ These routes deploy an installation that already passed the rebuild sequence.
 - `operations/ip_allowlisting` — restrict datastore ingress to Fly.io egress.
 - `operations/jira_app_registration` — register the platform Jira app.
 - `operations/linear_app_registration` — register the platform Linear app.
+- `operations/model_catalogue` — prime and refresh the model catalogue.
 - `operations/observability` — provision and verify observability providers.
 - `operations/qstash_registration` — register QStash schedule credentials.
 - `operations/runner_onboarding` — prepare and enroll a runner.

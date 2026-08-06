@@ -211,7 +211,8 @@ export default async function globalSetup(): Promise<void> {
       `[e2e:auth] env present (api=${process.env.NEXT_PUBLIC_API_URL}); ` +
         `${fixtures.length} fixture users provisioned in Clerk + bootstrapped in agentsfleetd; ` +
         `JWTs cached to ${JWT_CACHE_PATH}; ` +
-        `${swept} leftover fleet(s) swept from the shared workspace`,
+        `${swept.removed} leftover fleet(s) swept from the shared workspace` +
+        (swept.failed > 0 ? `, ${swept.failed} could not be deleted` : ""),
     );
   } catch (error) {
     throw diagnoseApiError(error, "global setup");

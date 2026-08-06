@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-governance lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check
+.PHONY: check-migrate-unprivileged lint-all lint-zig lint-governance lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -297,6 +297,9 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ workflow target reference check failed"; exit 1; fi; \
 	echo "✓ [gh-actions] actionlint + make-target refs all green"
+
+check-migrate-unprivileged: _ensure-test-infra  ## Migrate from empty as a NON-superuser, the shape managed databases actually hand the migrator
+	@bash scripts/check-migrate-unprivileged.sh
 
 check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + reference integrity + README/tree parity
 	@echo "→ [playbooks] shellcheck on playbooks/**/*.sh..."

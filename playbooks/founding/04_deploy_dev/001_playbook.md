@@ -47,6 +47,16 @@ Keep `DEV_DEPLOY_RUN_ID`; step 05 downloads its runner artifact.
 
 - Credential, compile, image, Fly.io, tunnel, API readiness, and dashboard smoke
   jobs pass.
+- `core.model_library` is populated. It ships EMPTY and every fleet needs a
+  model, so a green deployment is not yet a usable environment. Prime it with
+  `playbooks/operations/model_catalogue/001_playbook.md`:
+
+  ```bash
+  ACTION=diff  ENV=dev ALLOW_VAULT_READS=1 \
+    ./playbooks/operations/model_catalogue/00_gate.sh
+  ACTION=apply ENV=dev ALLOW_VAULT_READS=1 ALLOW_MODEL_CATALOGUE_WRITES=1 \
+    ./playbooks/operations/model_catalogue/00_gate.sh
+  ```
 - `deploy-worker-dev`, browser acceptance, and Command-Line Interface (CLI)
   acceptance skip because `DEV_WORKER_READY=false`.
 - `https://api-dev.agentsfleet.net/readyz` responds successfully through the
