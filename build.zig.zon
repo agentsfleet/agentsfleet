@@ -66,8 +66,27 @@
             .url = "git+https://github.com/agentsfleet/zig-yaml.git?ref=v0.3.0-dev-af.1#11e8c661ca0730194e224b17d7418dfca0bd4841",
             .hash = "zig_yaml-0.3.0-C1161n-rAgDc4O9pSMh-qdZcbCYCyoenayg3WpzM1Z8R",
         },
+        // Mirror agentsfleet/z3 of upstream codeberg.org/fellowtraveler/z3 — an
+        // UNMODIFIED copy, unlike every fork pin above it: no patches ride this
+        // one and upstream stays authoritative, so don't go hunting for a
+        // CHANGES.md that doesn't exist. It was the only dependency resolving
+        // from a non-GitHub host, which made one host a shared single point of
+        // failure: a connection reset there reds the unit, integration,
+        // cross-compile, memory-leak, and deploy-compile lanes at once.
+        //
+        // The archive form (not the git+ form the fork pins use) is deliberate:
+        // Zig hashes the extracted tree, so a mirrored archive of a given commit
+        // reproduces the upstream digest byte for byte — this swap kept the hash
+        // below unchanged, which is what proves the mirror faithful. That same
+        // hash is the standing backstop: any future drift in the mirror fails
+        // the build instead of quietly substituting content.
+        //
+        // Refreshing is a deliberate human act, never automatic — the pin is
+        // what makes builds reproducible: git clone --mirror from upstream, then
+        // push refs/heads + refs/tags only (GitHub reserves refs/pull/*).
+        // Drop the mirror if upstream ever publishes to GitHub itself.
         .z3 = .{
-            .url = "https://codeberg.org/fellowtraveler/z3/archive/4553a640ec867ab0355a97e5513ce4ec69a90d49.tar.gz",
+            .url = "https://github.com/agentsfleet/z3/archive/4553a640ec867ab0355a97e5513ce4ec69a90d49.tar.gz",
             .hash = "z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS",
         },
         .cache = .{

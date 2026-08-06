@@ -97,9 +97,9 @@ Repoint the `z3` entry at the `agentsfleet/z3` mirror **without changing which b
 
 **Implementation default:** the archive-tarball Uniform Resource Locator (URL) form `https://github.com/agentsfleet/z3/archive/{commit}.tar.gz` rather than the `git+https://…#{commit}` form used by the fork pins, because Zig hashes the extracted tree — so the archive form reproduces the existing digest exactly, while the `git+` form would change it and forfeit the proof.
 
-- **Dimension 1.1** — `build.zig.zon` contains no `codeberg.org` reference. → Verified by `test_no_codeberg_reference`
-- **Dimension 1.2** — The mirrored archive of commit `4553a640` hashes to the digest already pinned, `z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS`. → Verified by `test_mirror_hash_matches_pinned`
-- **Dimension 1.3** — The `z3` entry carries a comment explaining that it is an unmodified mirror (not a fork), naming upstream, and stating when the mirror may be dropped. → Verified by `test_z3_entry_documented`
+- **Dimension 1.1** — DONE — No `.url` line in `build.zig.zon` resolves from a host other than `github.com`. → Verified by `test_no_foreign_dependency_host`
+- **Dimension 1.2** — DONE — The mirrored archive of commit `4553a640` hashes to the digest already pinned, `z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS`. → Verified by `test_mirror_hash_matches_pinned`
+- **Dimension 1.3** — DONE — The `z3` entry carries a comment explaining that it is an unmodified mirror (not a fork), naming upstream, and stating when the mirror may be dropped. → Verified by `test_z3_entry_documented`
 
 ### §2 — The version bump, graded separately
 
@@ -168,7 +168,7 @@ Metrics review: no analytics or funnel playbook update required — this workstr
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_no_codeberg_reference` | Grepping `build.zig.zon` for `codeberg.org` returns zero matches. |
+| 1.1 | unit | `test_no_foreign_dependency_host` | Every `.url` line in `build.zig.zon` names `github.com`; the count of `.url` lines that do not is zero. Comments mentioning other hosts are out of scope by design (see 3.3). |
 | 1.2 | unit | `test_mirror_hash_matches_pinned` | `zig fetch` against the mirror archive of `4553a640` prints exactly the digest already pinned in the manifest — the host moved, the bytes did not. |
 | 1.3 | unit | `test_z3_entry_documented` | The lines preceding the `z3` entry mention the upstream URL and the word `mirror`, distinguishing it from the fork pins above it. |
 | 2.1 | integration | `test_build_against_bumped_z3` | `make build` (daemon, runner, library graphs) exits 0 with the bumped `.hash` in place. |
@@ -183,7 +183,7 @@ Metrics review: no analytics or funnel playbook update required — this workstr
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | No build dependency resolves from a non-GitHub host (§1) | `grep -c 'codeberg\.org' build.zig.zon \|\| true` | `0` | P0 | |
+| R1 | No build dependency resolves from a non-GitHub host (§1) | `grep -E '^[[:space:]]*\.url' build.zig.zon \| grep -vc 'github\.com' \|\| true` | `0` | P0 | |
 | R2 | The mirror is byte-faithful at the previously pinned commit (§1) | `zig fetch https://github.com/agentsfleet/z3/archive/4553a640ec867ab0355a97e5513ce4ec69a90d49.tar.gz` | `z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS` | P0 | |
 | R3 | The pin sits at the current upstream head (§2) | `grep -c '7f64763e186ebe348989ae229b7551cb6ec79ee0' build.zig.zon` | `1` | P1 | |
 | R4 | A foreign dependency host fails the build (§3, negative) | `sed -i.bak 's\|https://github.com/agentsfleet/z3/archive\|https://codeberg.org/fellowtraveler/z3/archive\|' build.zig.zon && make lint-governance; echo "exit=$?"; mv build.zig.zon.bak build.zig.zon` | `exit=2` (non-zero), output names the offending line | P0 | |
@@ -208,9 +208,9 @@ N/A — no files deleted.
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `codeberg.org` (as a dependency host) | `grep -rn "codeberg\.org" build.zig.zon` | 0 matches |
+| `codeberg.org` (as a resolvable dependency host) | `grep -E '^[[:space:]]*\.url' build.zig.zon \| grep 'codeberg\.org'` | 0 matches |
 
-The string survives deliberately in the `pg` entry's comment, which narrates a past mis-pin — prose about history, not a resolvable host. The gate must not fire on it, which is exactly Dimension 3.3.
+The string survives deliberately in **two** comments: the `pg` entry's, which narrates a past mis-pin, and the new `z3` entry's, which names upstream so a reader can find the authoritative repository. Both are prose about history and provenance, not resolvable hosts — so the sweep and the gate are scoped to `.url` lines, which is exactly what Dimension 3.3 tests.
 
 ## Out of Scope
 
