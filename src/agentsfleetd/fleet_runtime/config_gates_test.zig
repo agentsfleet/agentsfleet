@@ -134,6 +134,23 @@ test "parseGatePolicy: anomaly threshold_window_s exceeds max returns error" {
     );
 }
 
+test "parseGatePolicy: an invalid behavior frees the condition already duped" {
+    // `condition` is duped before `behavior` is read, so the rejection path has
+    // an allocation to unwind. std.testing.allocator fails this test on a leak,
+    // which is the whole assertion — an errdefer placed after the behavior block
+    // would not cover the one error path it exists for.
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"rules":[{"tool":"git","action":"push","condition":"branch == 'main'","behavior":"autokill"}]}
+    ;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
+    defer parsed.deinit();
+    try std.testing.expectError(
+        GateConfigError.MissingRequiredField,
+        parseGatePolicy(alloc, parsed.value.object),
+    );
+}
+
 test "parseGatePolicy: auto_kill behavior parses correctly" {
     const alloc = std.testing.allocator;
     const json =
