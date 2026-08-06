@@ -43,11 +43,13 @@ import {
 } from "@/lib/fleet-library-source";
 import { onboardLibraryEntryAction } from "../actions";
 import { CREATE_FLEET_LIBRARY_TOOLTIP, CREATE_LIBRARY_DOC_URL } from "./library-docs";
+import { SKILL_FILE_NAME, TRIGGER_FILE_NAME } from "./bundle-files";
+import { BundleFolderPicker } from "./BundleFolderPicker";
 
 const ONBOARD_ACTION = "create the fleet library";
 
-const SKILL_REQUIRED = "Paste the SKILL.md body";
-const TRIGGER_REQUIRED = "Paste the TRIGGER.md body";
+const SKILL_REQUIRED = `Add the ${SKILL_FILE_NAME} body`;
+const TRIGGER_REQUIRED = `Add the ${TRIGGER_FILE_NAME} body`;
 
 // One flat shape rather than a discriminated union: react-hook-form registers
 // fields by name, and a union whose branches carry different names leaves the
@@ -123,6 +125,15 @@ export default function AddLibraryDialog({
     form.reset(EMPTY_FORM);
   }
 
+  // A chosen folder fills the boxes rather than going straight to the wire.
+  // Frontmatter is unforgiving here — a single apostrophe truncates the parse —
+  // so the person uploading gets to read what leaves the browser.
+  function handleBundleLoaded(skillMarkdown: string, triggerMarkdown: string) {
+    form.setValue("skill_markdown", skillMarkdown);
+    form.setValue("trigger_markdown", triggerMarkdown);
+    form.clearErrors();
+  }
+
   // Switching source clears the other tab's error state, so a half-filled
   // GitHub ref does not keep the upload tab's submit button explaining itself.
   function handleSourceChange(next: string) {
@@ -183,8 +194,8 @@ export default function AddLibraryDialog({
         <DialogHeader>
           <DialogTitle>Create fleet library</DialogTitle>
           <DialogDescription>
-            Create from a GitHub repository that contains a fleet library entry, or paste one
-            straight from a local bundle directory.
+            Create from a GitHub repository that contains a fleet library entry, or from a
+            bundle directory on this machine.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -192,15 +203,16 @@ export default function AddLibraryDialog({
             <Tabs value={sourceKind} onValueChange={handleSourceChange}>
               <TabsList>
                 <TabsTrigger value={SOURCE_KIND_GITHUB}>GitHub</TabsTrigger>
-                <TabsTrigger value={SOURCE_KIND_UPLOAD}>Paste</TabsTrigger>
+                <TabsTrigger value={SOURCE_KIND_UPLOAD}>Local folder</TabsTrigger>
               </TabsList>
               <TabsContent value={SOURCE_KIND_UPLOAD} className="space-y-4">
+                <BundleFolderPicker onLoaded={handleBundleLoaded} />
                 <FormField
                   control={form.control}
                   name="skill_markdown"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>SKILL.md</FormLabel>
+                      <FormLabel>{SKILL_FILE_NAME}</FormLabel>
                       <FormControl>
                         <Textarea rows={8} spellCheck={false} placeholder="---&#10;name: my-fleet&#10;---" {...field} />
                       </FormControl>
@@ -217,7 +229,7 @@ export default function AddLibraryDialog({
                   name="trigger_markdown"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>TRIGGER.md</FormLabel>
+                      <FormLabel>{TRIGGER_FILE_NAME}</FormLabel>
                       <FormControl>
                         <Textarea rows={8} spellCheck={false} placeholder="---&#10;name: my-fleet&#10;x-agentsfleet:&#10;  triggers:&#10;---" {...field} />
                       </FormControl>

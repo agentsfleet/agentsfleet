@@ -182,7 +182,7 @@ describe("AddLibraryDialog", () => {
   });
 });
 
-describe("AddLibraryDialog — upload source (Dimension 4a.1)", () => {
+describe("AddLibraryDialog — local bundle source", () => {
   // `POST /fleet-libraries` has accepted an inline upload since M103; the
   // dashboard only ever spoke `github`. That is why hand-setup installed some
   // unrelated entry and overwrote both of its markdown files afterwards —
@@ -190,12 +190,20 @@ describe("AddLibraryDialog — upload source (Dimension 4a.1)", () => {
   const SKILL = "---\nname: incident-repairer\ndescription: d\nversion: 0.1.0\n---\nBody.";
   const TRIGGER = "---\nname: incident-repairer\nx-agentsfleet:\n  triggers:\n    - type: api\n---";
 
+  // A directory pick is what the dialog accepts, and the browser signals it
+  // through `webkitRelativePath` — which no File constructor sets.
+  function bundleFile(relativePath: string, body: string): File {
+    const file = new File([body], relativePath.slice(relativePath.lastIndexOf("/") + 1));
+    Object.defineProperty(file, "webkitRelativePath", { value: relativePath });
+    return file;
+  }
+
   async function openUploadTab() {
     const user = userEvent.setup({ delay: null });
     render(React.createElement(AddLibraryDialog, { workspaceId: "ws_1" }));
     await user.click(screen.getByRole("button", { name: /^create fleet library$/i }));
     await screen.findByLabelText("Repository");
-    await user.click(screen.getByRole("tab", { name: /^paste$/i }));
+    await user.click(screen.getByRole("tab", { name: /^local folder$/i }));
     await screen.findByLabelText("SKILL.md");
     return user;
   }
@@ -233,7 +241,49 @@ describe("AddLibraryDialog — upload source (Dimension 4a.1)", () => {
     await user.type(screen.getByLabelText("SKILL.md"), SKILL);
     fireEvent.submit((screen.getByLabelText("SKILL.md") as HTMLTextAreaElement).form!);
 
-    expect(await screen.findByText(/paste the trigger\.md body/i)).toBeTruthy();
+    expect(await screen.findByText(/add the trigger\.md body/i)).toBeTruthy();
+    expect(onboardLibraryEntryActionMock).not.toHaveBeenCalled();
+  });
+
+  it("test_dashboard_uploads_picked_folder", async () => {
+    // The whole point of the folder affordance: the person points at a bundle
+    // directory and the bodies it holds are what reaches the wire, unedited.
+    onboardLibraryEntryActionMock.mockResolvedValue({ ok: true, data: onboarded });
+    await openUploadTab();
+
+    fireEvent.change(screen.getByLabelText("Choose bundle folder"), {
+      target: {
+        files: [
+          bundleFile("incident-repairer/SKILL.md", SKILL),
+          bundleFile("incident-repairer/TRIGGER.md", TRIGGER),
+        ],
+      },
+    });
+    await screen.findByText("Loaded SKILL.md and TRIGGER.md.");
+    expect((screen.getByLabelText("SKILL.md") as HTMLTextAreaElement).value).toBe(SKILL);
+    expect((screen.getByLabelText("TRIGGER.md") as HTMLTextAreaElement).value).toBe(TRIGGER);
+
+    fireEvent.submit((screen.getByLabelText("SKILL.md") as HTMLTextAreaElement).form!);
+
+    await waitFor(() => expect(onboardLibraryEntryActionMock).toHaveBeenCalledTimes(1));
+    expect(onboardLibraryEntryActionMock.mock.calls[0]?.[1]).toEqual({
+      source_kind: "upload",
+      skill_markdown: SKILL,
+      trigger_markdown: TRIGGER,
+    });
+  });
+
+  it("refuses an upload with no SKILL.md rather than installing a nameless entry", async () => {
+    // The other half of the same refusal. The entry takes its name, description
+    // and version from SKILL.md frontmatter, so a TRIGGER.md arriving alone has
+    // nothing to name the entry after — the importer rejects it server-side, and
+    // the form should say so before spending a round-trip to hear it.
+    const user = await openUploadTab();
+
+    await user.type(screen.getByLabelText("TRIGGER.md"), TRIGGER);
+    fireEvent.submit((screen.getByLabelText("TRIGGER.md") as HTMLTextAreaElement).form!);
+
+    expect(await screen.findByText(/add the skill\.md body/i)).toBeTruthy();
     expect(onboardLibraryEntryActionMock).not.toHaveBeenCalled();
   });
 
