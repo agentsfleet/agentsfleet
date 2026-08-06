@@ -1,17 +1,16 @@
-//! The SHIPPED incident crew's bundles, asserted as the parser and the gate
-//! actually see them (M157 §3, §4).
+//! The SHIPPED incident crew's bundles, asserted as the parser and the mint
+//! actually see them. One member ships today — the responder — and the crew
+//! grows beside the platform half that reads each new member's output.
 //!
 //! These read `library/incident-*/` from disk rather than a fixture on purpose.
 //! Every property here is one a bundle AUTHOR can silently break by editing
-//! markdown — an omitted `tools` array, a gate rule that parses but matches
-//! nothing, a `repository_access` raised from read to write — and none of them
-//! would fail any other test in the tree. Tests run from the repo root (zig
-//! build sets cwd), so the paths are relative to it.
+//! markdown — an omitted `tools` array, a `repository_access` raised from read
+//! to write — and none of them would fail any other test in the tree. Tests run
+//! from the repo root (zig build sets cwd), so the paths are relative to it.
 
 const std = @import("std");
 const common = @import("common");
 const config = @import("config.zig");
-const approval_gate = @import("approval_gate.zig");
 const integration = @import("../credentials/integration.zig");
 const cred_testing = @import("../credentials/testing.zig");
 const github = @import("../credentials/integration_github.zig");
@@ -19,18 +18,11 @@ const github = @import("../credentials/integration_github.zig");
 const BYTES_PER_KIB = 1024;
 const LIBRARY_BASE = "library";
 const RESPONDER = "incident-responder";
-const REPAIRER = "incident-repairer";
 const SKILL_MD = "SKILL.md";
 const TRIGGER_MD = "TRIGGER.md";
 
 const HANDLE_GH = "{\"integration\":\"github\",\"installation_id\":\"42\"}";
 const TEST_NOW_MS: i64 = 1_700_000_000_000;
-
-/// The event a wake actually carries. The pre-lease gate matches a rule's
-/// `tool` against the event TYPE and its `action` against the event ACTOR —
-/// not against a tool call — so this is the pair a shipped rule must match.
-const WAKE_EVENT_TYPE = "chat";
-const WAKE_ACTOR = "steer:user_42";
 
 fn loadBundleFile(alloc: std.mem.Allocator, slug: []const u8, file: []const u8) ![]u8 {
     const path = try std.fs.path.join(alloc, &.{ LIBRARY_BASE, slug, file });
@@ -74,93 +66,56 @@ fn flatten(alloc: std.mem.Allocator, md: []const u8) ![]u8 {
     return out.toOwnedSlice(alloc);
 }
 
-test "test_repairer_bundle_declares_a_gate" {
-    // Dimension 3.2. `approval_gate` falls through to `.auto_approve` when no
-    // rule matches, so "declares a gate" is not satisfied by a gates block that
-    // merely parses — an autonomous agent holding a write token is what an
-    // unmatched rule actually produces.
-    const alloc = std.testing.allocator;
-    var parsed = try parseTrigger(alloc, REPAIRER);
-    defer parsed.deinit(alloc);
-
-    const gates = parsed.config.gates orelse return error.TestUnexpectedResult;
-    try std.testing.expect(gates.rules.len > 0);
-
-    // The load-bearing half: the declared rule must MATCH the wake this fleet
-    // actually receives, and must ask rather than kill.
-    const decision = approval_gate.evaluateGate(gates, WAKE_EVENT_TYPE, WAKE_ACTOR, null);
-    try std.testing.expectEqual(approval_gate.GateDecision.requires_approval, decision);
-
-    // The card has to say what it is approving. A blank field renders as
-    // nothing, which is how a gate ends up asking a human to approve "something".
-    const rule = approval_gate.matchRule(gates, WAKE_EVENT_TYPE, WAKE_ACTOR, null) orelse
-        return error.TestUnexpectedResult;
-    try std.testing.expect(rule.gate_kind.len > 0);
-    try std.testing.expect(rule.blast_radius.len > 0);
-}
-
 test "test_bundles_declare_explicit_tools" {
-    // Dimension 4.10. `runner_helpers` falls back to the FULL default tool set
-    // when `tools` is absent or not an array, so an omitted list does not mean
-    // "no tools" — it means every tool NullClaw ships, chosen by nobody.
+    // `runner_helpers` falls back to the FULL default tool set when `tools` is
+    // absent or not an array, so an omitted list does not mean "no tools" — it
+    // means every tool NullClaw ships, chosen by nobody.
     const alloc = std.testing.allocator;
 
     var responder = try parseTrigger(alloc, RESPONDER);
     defer responder.deinit(alloc);
     try std.testing.expect(responder.config.tools.len > 0);
     try std.testing.expect(hasTool(responder.config, "http_request"));
-    // Dimension 4.9's dedup cannot run without these two.
+    // The escalation dedup cannot run without these two.
     try std.testing.expect(hasTool(responder.config, "memory_store"));
     try std.testing.expect(hasTool(responder.config, "memory_recall"));
-    // The investigator reads; it never fetches a tree and never runs git.
-    try std.testing.expect(!hasTool(responder.config, "repo_fetch"));
+    // The investigator reads. It never holds a working tree, never runs git,
+    // and never gets a shell — the platform writes, and only approved bytes.
     try std.testing.expect(!hasTool(responder.config, "git"));
-
-    var repairer = try parseTrigger(alloc, REPAIRER);
-    defer repairer.deinit(alloc);
-    try std.testing.expect(repairer.config.tools.len > 0);
-    try std.testing.expect(hasTool(repairer.config, "repo_fetch"));
-    try std.testing.expect(hasTool(repairer.config, "git"));
-    try std.testing.expect(hasTool(repairer.config, "http_request"));
-
-    // Neither crew member gets a shell. The repair is `git revert` output, and a
-    // shell is how that stops being true.
     try std.testing.expect(!hasTool(responder.config, "shell"));
-    try std.testing.expect(!hasTool(repairer.config, "shell"));
+    try std.testing.expect(!hasTool(responder.config, "file_write"));
 }
 
 test "test_bundles_declare_degradation" {
-    // Dimension 4.8. `runner_progress` observes the context threshold and logs
-    // it; NullClaw exposes no mid-loop interrupt, and `continuationActor` has
-    // zero callers — so a bundle that promises to resume is promising something
-    // the runtime cannot deliver. Both bundles must instead name what they did
-    // and did not do, and neither may imply a follow-up run.
+    // `runner_progress` observes the context threshold and logs it; NullClaw
+    // exposes no mid-loop interrupt, and `continuationActor` has zero callers —
+    // so a bundle that promises to resume is promising something the runtime
+    // cannot deliver. The bundle must instead name what it did and did not do,
+    // and may not imply a follow-up run.
     const alloc = std.testing.allocator;
 
-    for ([_][]const u8{ RESPONDER, REPAIRER }) |slug| {
-        const raw = try loadBundleFile(alloc, slug, SKILL_MD);
-        defer alloc.free(raw);
-        const md = try flatten(alloc, raw);
-        defer alloc.free(md);
+    const raw = try loadBundleFile(alloc, RESPONDER, SKILL_MD);
+    defer alloc.free(raw);
+    const md = try flatten(alloc, raw);
+    defer alloc.free(md);
 
-        // Instructs a NAMED degradation, not merely "stop".
-        try std.testing.expect(containsAny(md, &.{"named degradation"}));
-        // States outright that nothing resumes it.
-        try std.testing.expect(containsAny(md, &.{ "no continuation", "nothing continues you" }));
-        // And never promises one. The phrase is allowed ONLY inside an
-        // instruction forbidding it, which is how both bundles use it.
-        if (std.ascii.indexOfIgnoreCase(md, "continuing in the next run")) |_| {
-            try std.testing.expect(containsAny(md, &.{"not end with \"continuing in the next run\""}));
-        }
+    // Instructs a NAMED degradation, not merely "stop".
+    try std.testing.expect(containsAny(md, &.{"named degradation"}));
+    // States outright that nothing resumes it.
+    try std.testing.expect(containsAny(md, &.{ "no continuation", "nothing continues you" }));
+    // And never promises one. The phrase is allowed ONLY inside an
+    // instruction forbidding it, which is how the bundle uses it.
+    if (std.ascii.indexOfIgnoreCase(md, "continuing in the next run")) |_| {
+        try std.testing.expect(containsAny(md, &.{"not end with \"continuing in the next run\""}));
     }
 }
 
 test "test_investigator_token_is_read_only" {
-    // Dimension 3.1. The investigator MUST reach GitHub — it cannot name a
-    // suspect commit without reading history — so the boundary is not its host
-    // allowlist and not its prompt. It is the MINT: the bundle declares `read`,
-    // and a read binding yields a token GitHub itself will refuse a Pull Request
-    // from. This drives the SHIPPED binding through the real mint rather than a
+    // The investigator MUST reach GitHub — it cannot name a suspect commit
+    // without reading history — so the boundary is not its host allowlist and
+    // not its prompt. It is the MINT: the bundle declares `read`, and a read
+    // binding yields a token GitHub itself will refuse a Pull Request from.
+    // This drives the SHIPPED binding through the real mint rather than a
     // hand-built one, so editing the bundle to `write` fails here.
     const alloc = std.testing.allocator;
 
@@ -172,7 +127,7 @@ test "test_investigator_token_is_read_only" {
 
     // The fake answers with exactly the reach the SHIPPED bundle declared, so
     // this test keeps failing on the permission level rather than on the mint's
-    // reach check — which is a different Dimension with its own tests.
+    // reach check — which has its own tests.
     const reach = try cred_testing.reachResponse(alloc, binding.repositories);
     defer alloc.free(reach);
 
@@ -192,59 +147,38 @@ test "test_investigator_token_is_read_only" {
     alloc.free(out.ok.token);
 
     try std.testing.expect(std.mem.indexOf(u8, gh.body, "\"contents\":\"read\"") != null);
-    // The absence is the whole Dimension: no pull-requests permission at all,
+    // The absence is the whole property: no pull-requests permission at all,
     // not a pull-requests permission set to read.
     try std.testing.expect(std.mem.indexOf(u8, gh.body, "pull_requests") == null);
 }
 
 test "test_crew_holds_no_tenant_key" {
-    // Dimension 3.5. A tenant `agt_t` key is how an automation reaches the
-    // control plane, and `fleet:write` covers both waking a fleet and rewriting
-    // its `gates` block — so a crew member holding one could delete the very
-    // approval that guards the repairer. Neither bundle declares one, which is
-    // why a HUMAN wakes the repairer in this workstream.
+    // A tenant `agt_t` key is how an automation reaches the control plane, and
+    // `fleet:write` covers both waking a fleet and rewriting its config — so a
+    // crew member holding one could reshape the very platform that bounds it.
+    // No bundle declares one.
     //
-    // The assertion is on the credential NAMES the bundles declare: a tenant key
+    // The assertion is on the credential NAMES the bundle declares: a tenant key
     // would have to arrive as a workspace secret to be usable at all, and this
     // is where that would show up.
     const alloc = std.testing.allocator;
 
-    for ([_][]const u8{ RESPONDER, REPAIRER }) |slug| {
-        var parsed = try parseTrigger(alloc, slug);
-        defer parsed.deinit(alloc);
-        for (parsed.config.credentials) |name| {
-            // Any spelling that would carry a control-plane key for this product.
-            try std.testing.expect(std.ascii.indexOfIgnoreCase(name, "agentsfleet") == null);
-            try std.testing.expect(std.ascii.indexOfIgnoreCase(name, "tenant") == null);
-            try std.testing.expect(std.ascii.indexOfIgnoreCase(name, "agt_t") == null);
-        }
+    var responder = try parseTrigger(alloc, RESPONDER);
+    defer responder.deinit(alloc);
+    for (responder.config.credentials) |name| {
+        // Any spelling that would carry a control-plane key for this product.
+        try std.testing.expect(std.ascii.indexOfIgnoreCase(name, "agentsfleet") == null);
+        try std.testing.expect(std.ascii.indexOfIgnoreCase(name, "tenant") == null);
+        try std.testing.expect(std.ascii.indexOfIgnoreCase(name, "agt_t") == null);
     }
 
-    // And neither reaches the control plane's own host, which is the other way a
-    // key could be used even if it were named something innocuous.
-    var repairer = try parseTrigger(alloc, REPAIRER);
-    defer repairer.deinit(alloc);
-    const net = repairer.config.network orelse return error.TestUnexpectedResult;
+    // And it does not reach the control plane's own host, which is the other
+    // way a key could be used even if it were named something innocuous.
+    const net = responder.config.network orelse return error.TestUnexpectedResult;
     for (net.allow) |host| {
         try std.testing.expect(std.ascii.indexOfIgnoreCase(host, "agentsfleet.net") == null);
         try std.testing.expect(std.ascii.indexOfIgnoreCase(host, "agentsfleet.dev") == null);
     }
-}
-
-test "the repairer is bound for write and the investigator is not" {
-    // The two halves of the boundary, asserted together so a copy-paste edit
-    // that gives the investigator the repairer's binding cannot pass.
-    const alloc = std.testing.allocator;
-
-    var repairer = try parseTrigger(alloc, REPAIRER);
-    defer repairer.deinit(alloc);
-    const repairer_binding = repairer.config.repository_binding orelse return error.TestUnexpectedResult;
-    try std.testing.expectEqual(integration.RepositoryAccess.write, repairer_binding.access);
-
-    var responder = try parseTrigger(alloc, RESPONDER);
-    defer responder.deinit(alloc);
-    const responder_binding = responder.config.repository_binding orelse return error.TestUnexpectedResult;
-    try std.testing.expect(responder_binding.access != repairer_binding.access);
 }
 
 /// Every `${secrets.NAME.FIELD}` the prose references, as NAME strings. The tool
@@ -279,7 +213,7 @@ fn declares(cfg: config.FleetConfig, name: []const u8) bool {
 }
 
 test "test_data_plane_secrets_stay_placeholders" {
-    // Dimension 5.1. Two halves, and the second is the one that bites.
+    // Two halves, and the second is the one that bites.
     //
     // Data-plane values reach a run ONLY as `${secrets.NAME.FIELD}` placeholders
     // substituted at the tool bridge, so no bundle may carry a raw value — but a
@@ -294,48 +228,41 @@ test "test_data_plane_secrets_stay_placeholders" {
     // field.
     const alloc = std.testing.allocator;
 
-    for ([_][]const u8{ RESPONDER, REPAIRER }) |slug| {
-        var parsed = try parseTrigger(alloc, slug);
-        defer parsed.deinit(alloc);
+    var parsed = try parseTrigger(alloc, RESPONDER);
+    defer parsed.deinit(alloc);
 
-        const skill = try loadBundleFile(alloc, slug, SKILL_MD);
-        defer alloc.free(skill);
-        const names = try referencedCredentials(alloc, skill);
-        defer alloc.free(names);
+    const skill = try loadBundleFile(alloc, RESPONDER, SKILL_MD);
+    defer alloc.free(skill);
+    const names = try referencedCredentials(alloc, skill);
+    defer alloc.free(names);
 
-        // The prose reaches for something, or the bundle has no data plane.
-        try std.testing.expect(names.len > 0);
-        for (names) |name| {
-            if (!declares(parsed.config, name)) {
-                std.debug.print(
-                    "\n{s}/SKILL.md references ${{secrets.{s}.*}} but TRIGGER.md declares no `{s}` credential\n",
-                    .{ slug, name, name },
-                );
-                return error.UndeclaredCredentialReferenced;
-            }
+    // The prose reaches for something, or the bundle has no data plane.
+    try std.testing.expect(names.len > 0);
+    for (names) |name| {
+        if (!declares(parsed.config, name)) {
+            std.debug.print(
+                "\n{s}/SKILL.md references ${{secrets.{s}.*}} but TRIGGER.md declares no `{s}` credential\n",
+                .{ RESPONDER, name, name },
+            );
+            return error.UndeclaredCredentialReferenced;
         }
-
-        // And no raw value rides the markdown. A real token would have to appear
-        // as bytes; the placeholder form is the only spelling allowed.
-        try std.testing.expect(!containsAny(skill, &.{ "ghp_", "ghs_", "xoxb-", "glsa_" }));
     }
+
+    // And no raw value rides the markdown. A real token would have to appear
+    // as bytes; the placeholder form is the only spelling allowed.
+    try std.testing.expect(!containsAny(skill, &.{ "ghp_", "ghs_", "xoxb-", "glsa_" }));
 }
 
 test "test_undeclared_host_refused" {
-    // Dimension 5.2. The sandbox refuses a host outside the bundle's allowlist —
+    // The sandbox refuses a host outside the bundle's allowlist —
     // `policy_http_request` pins that for `http_request`, and `network/Plan`
     // enforces it tool-agnostically at the namespace. What neither can check is
     // that the SHIPPED bundle declared the host its own prose depends on.
-    //
-    // The repairer is the one with a fixed host: it opens the Pull Request
-    // against `api.github.com`, so an allowlist missing it is a fleet that
-    // cannot do its job, and one carrying a wildcard is a fleet that can reach
-    // anything.
     const alloc = std.testing.allocator;
 
-    var repairer = try parseTrigger(alloc, REPAIRER);
-    defer repairer.deinit(alloc);
-    const net = repairer.config.network orelse return error.TestUnexpectedResult;
+    var responder = try parseTrigger(alloc, RESPONDER);
+    defer responder.deinit(alloc);
+    const net = responder.config.network orelse return error.TestUnexpectedResult;
     try std.testing.expect(net.allow.len > 0);
 
     var has_github = false;
@@ -345,18 +272,8 @@ test "test_undeclared_host_refused" {
         try std.testing.expect(std.mem.indexOfScalar(u8, host, '*') == null);
         if (std.mem.eql(u8, host, "api.github.com")) has_github = true;
     }
-    try std.testing.expect(has_github);
-
-    // The investigator keeps its own GitHub reach — Section 3's boundary is the
-    // MINT, not the host list — so a bundle edit dropping it would break the
+    // The investigator keeps its GitHub reach — the write boundary is the MINT,
+    // not the host list — so a bundle edit dropping it would break the
     // correlation the diagnosis depends on rather than tightening anything.
-    var responder = try parseTrigger(alloc, RESPONDER);
-    defer responder.deinit(alloc);
-    const responder_net = responder.config.network orelse return error.TestUnexpectedResult;
-    var responder_github = false;
-    for (responder_net.allow) |host| {
-        try std.testing.expect(std.mem.indexOfScalar(u8, host, '*') == null);
-        if (std.mem.eql(u8, host, "api.github.com")) responder_github = true;
-    }
-    try std.testing.expect(responder_github);
+    try std.testing.expect(has_github);
 }

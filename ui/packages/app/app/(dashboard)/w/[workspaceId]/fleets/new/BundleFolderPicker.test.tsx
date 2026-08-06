@@ -5,9 +5,9 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { BundleFolderPicker } from "./BundleFolderPicker";
 import { SKILL_FILE_NAME, TRIGGER_FILE_NAME } from "./bundle-files";
 
-const SKILL_BODY = "---\nname: incident-repairer\n---\nBody.";
-const TRIGGER_BODY = "---\nname: incident-repairer\nx-agentsfleet:\n---";
-const BUNDLE_DIR = "incident-repairer";
+const SKILL_BODY = "---\nname: incident-responder\n---\nBody.";
+const TRIGGER_BODY = "---\nname: incident-responder\nx-agentsfleet:\n---";
+const BUNDLE_DIR = "incident-responder";
 const CHOOSE_FOLDER_LABEL = "Choose bundle folder";
 
 afterEach(() => cleanup());

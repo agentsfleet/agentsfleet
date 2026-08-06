@@ -8,10 +8,9 @@
 //! there. It cannot cross a tenant — an installation belongs to one account —
 //! but it is a real mis-scope inside the operator's own installation.
 //!
-//! `repo_fetch.decide` already compares the qualified spelling on the fetch
-//! path. The `${secrets.github}` path into `http_request` compared nothing, so
-//! one declaration meant two different things depending on which path a model
-//! took. This module is what makes the two agree.
+//! Nothing else on the mint path compares the qualified spelling, so without
+//! this check the declaration and the credential could quietly disagree. This
+//! module is the one place that makes them agree.
 //!
 //! It checks the RESPONSE rather than re-deriving the request. A
 //! create-installation-access-token response echoes a `repositories` array

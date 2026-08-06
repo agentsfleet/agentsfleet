@@ -199,8 +199,8 @@ fn verifyFleetInWorkspace(
 /// created the key. That is worse than no audit trail: it names an uninvolved
 /// person, and it lets an actor-shaped assertion certify "a human woke this
 /// fleet" while automation did — the exact property the incident crew leans on
-/// when it keeps a human on the repairer's wake. Machines now get the flat
-/// category this comment already claimed they got.
+/// when a human acts on its diagnosis. Machines now get the flat category this
+/// comment already claimed they got.
 ///
 /// WHICH key it was stays deliberately unrecorded: per-key and per-fleet machine
 /// provenance (`actor=chain:<fleet_id>`, first-class `agt_a` fleet keys) is its

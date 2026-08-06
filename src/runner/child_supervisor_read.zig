@@ -16,9 +16,7 @@ const logging = @import("log");
 const contract = @import("contract");
 const pipe_proto = @import("pipe_proto.zig");
 const cred = @import("engine/credential_request.zig");
-const fetch_req = @import("engine/repo_fetch_request.zig");
 const result_mod = @import("child_supervisor_result.zig");
-const renew_mod = @import("child_supervisor_renew.zig");
 const types = @import("engine/types.zig");
 const client_errors = @import("engine/client_errors.zig");
 
@@ -50,13 +48,12 @@ pub const MemorySink = struct {
     forward: *const fn (ctx: *anyopaque, payload: []const u8) void,
 };
 
-// The renewal surface lives in its own module (RULE FLL split) and depends on
-// nothing here, so it is imported rather than defined. Re-exported so every
-// existing `child_supervisor.Renew*` reference keeps resolving.
-pub const RenewDecision = renew_mod.RenewDecision;
-pub const RenewHook = renew_mod.RenewHook;
-pub const RenewTick = renew_mod.RenewTick;
-const RenewPump = renew_mod.RenewPump;
+/// What the read loop should do after a renewal tick or a progress frame.
+/// `extend` carries the new absolute kill deadline (epoch ms).
+/// `terminate` carries the class the run is reported under, so a fleet-budget
+/// stop reaches the durable `failure_label` instead of collapsing into the
+/// generic `renewal_terminate` every renewal stop used to share.
+pub const RenewDecision = union(enum) { keep, extend: i64, terminate: types.FailureClass };
 
 /// Outcome of servicing one `credential_request` (M102 §3): a short-lived token
 /// for the child, or a typed rejection it fails closed on. `token` is owned by the
@@ -64,41 +61,6 @@ const RenewPump = renew_mod.RenewPump;
 pub const CredentialOutcome = union(enum) {
     minted: struct { token: []const u8, expires_at_ms: i64 },
     rejected,
-};
-
-/// Outcome of servicing one `repo_fetch_request` (M157 §4): a workspace-relative
-/// path to a ready working tree, or a named refusal the child reformulates
-/// against.
-///
-/// Both slices are BORROWED, valid for the synchronous `onFetch` call only — the
-/// read loop frames them and forgets them, and frees neither. Every real value
-/// is a static string (a `Refusal.reason()`, a `Failure.reason()`, or the fetch
-/// target's fixed name), so there is nothing here to own and no failure path on
-/// which the reply itself could fail to allocate.
-///
-/// Neither arm ever carries a credential: the token authenticated the fetch
-/// daemon-side and stops there (Invariant 9).
-pub const FetchOutcome = union(enum) {
-    ready: []const u8,
-    refused: []const u8,
-};
-
-/// Hook the daemon installs so the supervisor can fetch a repository on the
-/// child's behalf without the read loop knowing any git. `onFetch` validates the
-/// ask against the lease's binding, mints, and fetches into the workspace the
-/// daemon derives from `lease_id` — the child supplies none of those, exactly as
-/// it supplies no workspace on the mint channel (Invariant 2). A null hook means
-/// fetching is unconfigured, and every ask is refused.
-pub const FetchHook = struct {
-    ctx: *anyopaque,
-    onFetch: *const fn (
-        ctx: *anyopaque,
-        alloc: std.mem.Allocator,
-        repository: []const u8,
-        commit: []const u8,
-        head: []const u8,
-        tick: ?RenewTick,
-    ) FetchOutcome,
 };
 
 /// Hook the daemon installs so the supervisor can mint on the child's behalf
@@ -109,6 +71,21 @@ pub const FetchHook = struct {
 pub const MintHook = struct {
     ctx: *anyopaque,
     onMint: *const fn (ctx: *anyopaque, alloc: std.mem.Allocator, integration: []const u8, scope: ?[]const u8) CredentialOutcome,
+};
+
+/// Hook the daemon installs so the supervisor can drive lease renewal during a
+/// long execution without the supervisor knowing any HTTP. `onTick` fires in
+/// the idle gap between frames (renewal-tick cadence) and after each progress
+/// frame, carrying the current epoch ms and the latest cumulative usage
+/// snapshot (zeros until the child's first usage frame); the daemon renews
+/// inside the window and returns a decision. A live child that emits no
+/// frames still ticks, so a long run renews and is never falsely reclaimed.
+pub const RenewHook = struct {
+    ctx: *anyopaque,
+    onTick: *const fn (ctx: *anyopaque, now_ms: i64, usage: pipe_proto.UsageSnapshot) RenewDecision,
+    /// How often (ms) the read loop wakes between frames to consider renewal.
+    /// Production sets `constants.RENEWAL_TICK_MS`; tests inject a small value.
+    tick_ms: i64,
 };
 
 /// Read the child's framed stdout up to the terminal `result` frame, bounded by
@@ -128,8 +105,6 @@ pub fn readResult(
     renew_hook: ?RenewHook,
     /// Services on-demand mint asks (M102 §3); null ⇒ every ask is rejected.
     mint_hook: ?MintHook,
-    /// Services on-demand repository fetches (M157 §4); null ⇒ every ask is refused.
-    fetch_hook: ?FetchHook,
 ) !ReadOutcome {
     var deadline = deadline_ms;
     // Frame parsing and renewal ticks share this one read-loop thread (every
@@ -154,7 +129,7 @@ pub fn readResult(
         switch (try pipe_proto.readFrame(alloc, fd, deadline, MAX_RESULT_BYTES)) {
             .timed_out => return .{ .timed_out = true },
             .eof => return .{},
-            .frame => |f| if (handleFrame(alloc, f, response_fd, sink, mem_sink, renew_hook, mint_hook, fetch_hook, &deadline, &usage)) |outcome|
+            .frame => |f| if (handleFrame(alloc, f, response_fd, sink, mem_sink, renew_hook, mint_hook, &deadline, &usage)) |outcome|
                 return outcome,
         }
     }
@@ -173,7 +148,6 @@ fn handleFrame(
     mem_sink: MemorySink,
     renew_hook: ?RenewHook,
     mint_hook: ?MintHook,
-    fetch_hook: ?FetchHook,
     deadline: *i64,
     usage: *pipe_proto.UsageSnapshot,
 ) ?ReadOutcome {
@@ -203,19 +177,10 @@ fn handleFrame(
             // The child is blocked reading that reply, so no stdout frame races.
             serviceCredentialRequest(alloc, f.payload, response_fd, mint_hook);
         },
-        .repo_fetch_request => {
-            defer alloc.free(f.payload);
-            // Same shape as the mint ask: the child is blocked reading its reply,
-            // so no stdout frame races this. Unlike the mint, the fetch is
-            // minutes-scale — so it carries a renewal pump, because this loop is
-            // the only thing that renews the lease and it is about to be busy.
-            var pump = RenewPump{ .hook = renew_hook, .usage = usage, .deadline = deadline };
-            serviceFetchRequest(alloc, f.payload, response_fd, fetch_hook, pump.tick());
-        },
         .result => return .{ .bytes = f.payload },
-        // These three are parent→child only — the parent never reads them off the
-        // child's stdout. One here is wire skew; drop it.
-        .lease, .credential_response, .repo_fetch_response => {
+        // `lease` / `credential_response` are parent→child only — the parent never
+        // reads them off the child's stdout. One here is wire skew; drop it.
+        .lease, .credential_response => {
             defer alloc.free(f.payload);
             log.warn("unexpected_child_frame", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .ftype = @tagName(f.ftype) });
         },
@@ -248,44 +213,6 @@ fn serviceCredentialRequest(
         .rejected => writePipeResponse(alloc, response_fd, .{ .ok = false }),
     }
 }
-
-/// Parse one `repo_fetch_request`, service it through the hook, and frame the
-/// `repo_fetch_response` back to the child's stdin. Fail-closed: a parse miss, a
-/// null hook, or a refusal all frame `ok=false` with a reason, and the child's
-/// tool call reports it rather than proceeding against a tree that is not there.
-/// The hook's slices are borrowed for the call and freed by nobody.
-fn serviceFetchRequest(
-    alloc: std.mem.Allocator,
-    payload: []const u8,
-    response_fd: std.posix.fd_t,
-    fetch_hook: ?FetchHook,
-    tick: ?RenewTick,
-) void {
-    const hook = fetch_hook orelse
-        return writeFetchResponse(alloc, response_fd, .{ .ok = false, .reason = REASON_FETCH_UNCONFIGURED });
-    const parsed = std.json.parseFromSlice(fetch_req.PipeRequest, alloc, payload, .{}) catch
-        return writeFetchResponse(alloc, response_fd, .{ .ok = false, .reason = REASON_FETCH_MALFORMED_ASK });
-    defer parsed.deinit();
-
-    switch (hook.onFetch(hook.ctx, alloc, parsed.value.repository, parsed.value.commit, parsed.value.head, tick)) {
-        .ready => |path| writeFetchResponse(alloc, response_fd, .{ .ok = true, .path = path }),
-        .refused => |reason| writeFetchResponse(alloc, response_fd, .{ .ok = false, .reason = reason }),
-    }
-}
-
-/// Serialize + frame a `repo_fetch_response` to the child's stdin. Best-effort,
-/// for the same reason the credential reply is: a wedged pipe leaves the child to
-/// time out on its own bounded read rather than hanging the parent.
-fn writeFetchResponse(alloc: std.mem.Allocator, response_fd: std.posix.fd_t, resp: fetch_req.PipeResponse) void {
-    const json = std.json.Stringify.valueAlloc(alloc, resp, .{}) catch return;
-    defer alloc.free(json);
-    pipe_proto.writeFrame(response_fd, .repo_fetch_response, json) catch |err|
-        log.warn("repo_fetch_response_write_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
-}
-
-/// Refusals this layer raises itself, before any hook runs (RULE UFS).
-const REASON_FETCH_UNCONFIGURED = "repository fetch is not configured for this lease";
-const REASON_FETCH_MALFORMED_ASK = "repository fetch ask could not be parsed";
 
 /// Serialize + frame a `credential_response` to the child's stdin. Best-effort:
 /// a write failure leaves the child to time out on its read and fail closed (its

@@ -56,7 +56,7 @@ test "readResult forwards activity frames in order and returns the result frame"
     var cap: Cap = .{};
     const sink = ActivitySink{ .ctx = &cap, .forward = Cap.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), null, null, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), null, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(!outcome.timed_out);
@@ -93,7 +93,7 @@ test "readResult forwards a memory frame's raw bytes to the memory sink, then th
     var cap: Cap = .{};
     const mem_sink = supervisor.MemorySink{ .ctx = &cap, .forward = Cap.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, act_sink, mem_sink, null, null, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, act_sink, mem_sink, null, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expectEqual(@as(usize, 1), cap.count);
@@ -119,7 +119,7 @@ test "readResult tolerates a malformed activity frame and still returns the resu
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = Noop.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), null, null, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), null, null);
     defer std.testing.allocator.free(outcome.bytes);
     try std.testing.expectEqualStrings("{\"exit_ok\":false}", outcome.bytes);
 }
@@ -163,7 +163,7 @@ test "readResult: a hook returning .terminate kills the wait and reports termina
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
 
     const dl = clock.nowMillis() + 60_000; // far; the 10ms tick fires first
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(outcome.terminated);
@@ -189,7 +189,7 @@ test "readResult round-trips one usage frame into the snapshot the tick observes
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
@@ -215,7 +215,7 @@ test "readResult folds a regressed usage frame with max so the snapshot never wa
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(hook_state.ticks >= 2); // one renewal point per usage frame
@@ -237,7 +237,7 @@ test "a malformed usage frame is dropped and the last-known counters survive" {
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes); // run unaffected
@@ -269,7 +269,7 @@ test "readResult: a hook .extend past a near deadline keeps reading to the resul
     defer wt.join();
 
     const near_dl = clock.nowMillis() + 500;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], near_dl, sink, NoopMem.sink(), hook, null, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], near_dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(!outcome.timed_out);
@@ -305,7 +305,7 @@ test "readResult services a credential_request via the mint hook and frames the 
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
 
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, out[0], resp[1], dl, sink, NoopMem.sink(), null, mint_hook, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, out[0], resp[1], dl, sink, NoopMem.sink(), null, mint_hook);
     defer std.testing.allocator.free(outcome.bytes);
     try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
 
@@ -334,7 +334,7 @@ test "readResult rejects a credential_request when no mint hook is configured (Â
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, out[0], resp[1], dl, sink, NoopMem.sink(), null, null, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, out[0], resp[1], dl, sink, NoopMem.sink(), null, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     pipe_proto.testOsClose(resp[1]);

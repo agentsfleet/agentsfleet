@@ -49,9 +49,6 @@ pub const RenewDecision = read_mod.RenewDecision;
 pub const RenewHook = read_mod.RenewHook;
 pub const MintHook = read_mod.MintHook;
 pub const CredentialOutcome = read_mod.CredentialOutcome;
-pub const FetchHook = read_mod.FetchHook;
-pub const FetchOutcome = read_mod.FetchOutcome;
-pub const RenewTick = read_mod.RenewTick;
 pub const readResult = read_mod.readResult;
 pub const ReadOutcome = result_mod.ReadOutcome;
 pub const classify = result_mod.classify;
@@ -81,16 +78,13 @@ pub fn run(
     /// Services the child's on-demand `credential_request` asks (M102 §3); null
     /// (e.g. tests) ⇒ every ask is rejected and the child fails its tool closed.
     mint_hook: ?MintHook,
-    /// Services the child's on-demand `repo_fetch_request` asks (M157 §4); null
-    /// (e.g. tests) ⇒ every ask is refused and the child gets no working tree.
-    fetch_hook: ?FetchHook,
 ) ExecutionResult {
     const input = contract.protocol.RunnerChildInput{ .lease = payload, .hydrated_memory = hydrated_memory };
     const lease_json = std.json.Stringify.valueAlloc(alloc, input, .{}) catch
         return failedDetailed(alloc, .startup_posture, result_mod.DETAIL_LEASE_SERIALIZE);
     defer alloc.free(lease_json);
 
-    return supervise(io, alloc, cfg, env_map, workspace_path, payload, lease_json, sink, mem_sink, renew_hook, mint_hook, fetch_hook) catch |err| {
+    return supervise(io, alloc, cfg, env_map, workspace_path, payload, lease_json, sink, mem_sink, renew_hook, mint_hook) catch |err| {
         log.err("supervise_failed", .{ .error_code = client_errors.ERR_EXEC_CRASH, .lease_id = payload.lease_id, .err = @errorName(err) });
         return failed(.runner_crash);
     };
@@ -110,7 +104,6 @@ fn supervise(
     mem_sink: MemorySink,
     renew_hook: ?RenewHook,
     mint_hook: ?MintHook,
-    fetch_hook: ?FetchHook,
 ) !ExecutionResult {
     // Fail-closed (Invariant 7): if the tier requires isolation and it cannot
     // be established, refuse the lease — never run prompt-injectable tool
@@ -173,7 +166,7 @@ fn supervise(
     pipe_proto.writeFrame(child.stdin.?.handle, .lease, lease_json) catch |err|
         log.warn("lease_write_failed", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
 
-    const outcome = try readResult(alloc, child.stdout.?.handle, child.stdin.?.handle, payload.lease_expires_at, sink, mem_sink, renew_hook, mint_hook, fetch_hook);
+    const outcome = try readResult(alloc, child.stdout.?.handle, child.stdin.?.handle, payload.lease_expires_at, sink, mem_sink, renew_hook, mint_hook);
     defer alloc.free(outcome.bytes);
     // child.stdout + child.stdin are closed by the terminal `wait` below — no manual close.
 

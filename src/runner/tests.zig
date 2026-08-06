@@ -42,16 +42,8 @@ test {
     _ = @import("sandbox_args.zig");
     _ = @import("bundle_extract.zig");
     _ = @import("bundle_extract_test.zig");
-    _ = @import("repo_fetch.zig");
-    _ = @import("RepoFetchTarget.zig");
-    _ = @import("repo_fetch_bounds.zig");
-    _ = @import("repo_fetch_env.zig");
-    _ = @import("repo_fetch_exec.zig");
     _ = @import("pipe_proto.zig");
     _ = @import("engine/credential_request.zig");
-    _ = @import("engine/repo_fetch_request.zig");
-    _ = @import("repo_fetch_channel_test.zig");
-    _ = @import("engine/runtime/repo_fetch.zig");
     _ = @import("UsageSnapshot.zig");
     _ = @import("engine/runner.zig");
     _ = @import("engine/runner_capture.zig");
