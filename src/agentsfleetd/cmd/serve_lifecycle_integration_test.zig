@@ -187,26 +187,31 @@ test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean"
     defer restoreDefaultSignals();
     defer serve_shutdown.reset();
 
-    // ── Concurrency-capable Io for the daemon, mirroring the process Io that
-    // main.zig hands serve.run. `common.globalIo()` is statically
-    // single-threaded (`concurrent_limit = .nothing`), so the hub's raced
-    // bounded dial (`std.Io.Select` in subscription_hub_wire.connectBounded)
-    // would fail its very first `select.concurrent` with ConcurrencyUnavailable
-    // and serve.run would exit(1) the whole test binary. Same fixture shape as
-    // subscription_hub_test.TestScheduler and http/test_harness.
+    // ── The daemon runs on the statically single-threaded `common.globalIo()`,
+    // where `io.async` and `Group.async` execute inline and spawn no worker.
     //
-    // Deinit is skipped once the daemon is `detach()`ed: `Threaded.deinit`
-    // joins the pool and then poisons itself, so freeing it under a
-    // still-running serve.run is a use-after-free. The failure paths below
-    // detach a live daemon and bail loudly (by design — a wedged teardown must
-    // fail the test, never hang the suite); on those we deliberately leak this
-    // Io rather than free it out from under the live thread. Every non-detached
-    // exit (clean shutdown, or all boot attempts joined after dying early) has
-    // no live reference, so it deinits normally. Unlike the process-immortal
-    // `globalIo()` it replaces, this Io owns joinable workers.
-    var serve_io = std.Io.Threaded.init(alloc, .{});
-    var daemon_detached = false;
-    defer if (!daemon_detached) serve_io.deinit();
+    // This fixture used to own a `std.Io.Threaded`, because the hub's bounded
+    // dial raced with `std.Io.Select` and would have failed its first
+    // `select.concurrent` with ConcurrencyUnavailable, killing the test binary
+    // through serve.run's exit(1). 9ee3a075b deleted that Select; nothing under
+    // `serve.run` requests io concurrency any more.
+    //
+    // Owning a threaded Io is not free: `std.Io.net.HostName.connect` fans its
+    // happy-eyeballs dial into an `Io.Group`, and Zig 0.16.0's group await
+    // parks on a futex word in the awaiter's own stack frame that the finishing
+    // worker dereferences AFTER publishing the wake — so the awaiter can return
+    // and pop the frame first. The boot→drain valgrind lane catches that
+    // use-after-scope intermittently and `make/bench.mk` deliberately carries
+    // no suppression. Inline execution makes it unrepresentable rather than
+    // unlikely — the remedy M143 applied to otlp/Client_test and
+    // queue/redis_subscriber_test. NOTE it moves the TEST out of the defect's
+    // reach, not the daemon: production still dials Redis through
+    // `HostName.connect` on the process Io, and closing that needs the dial to
+    // own its own resolve-and-race.
+    //
+    // It owns no joinable worker, so there is nothing to deinit and no
+    // use-after-free to dodge on the detach paths below.
+    const serve_io = common.globalIo();
 
     // ── Boot the REAL serve.run on a thread, retrying on a fresh port if httpz
     // loses the allocFreePort bind race (run() returns before ever serving).
@@ -224,7 +229,7 @@ test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean"
         run_done = .{};
         run_err = null;
         const t = try std.Thread.spawn(.{}, runServe, .{RunArgs{
-            .io = serve_io.io(),
+            .io = serve_io,
             .env_map = &env_map,
             .argv = &argv_store,
             .alloc = alloc,
@@ -244,7 +249,6 @@ test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean"
             // pre-handler window, so detach and fail loudly instead.
             .timed_out => {
                 t.detach();
-                daemon_detached = true;
                 return error.DaemonBootTimedOut;
             },
         }
@@ -263,7 +267,6 @@ test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean"
         // Boot succeeded but the stream didn't attach — detach so a failed
         // assertion never hangs the suite, then surface the connect error.
         thread.detach();
-        daemon_detached = true;
         return err;
     };
     defer sse.deinit();
@@ -281,7 +284,6 @@ test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean"
     // joined and all daemon state was freed.
     run_done.timedWait(SHUTDOWN_NS) catch {
         thread.detach();
-        daemon_detached = true;
         return error.DaemonShutdownTimedOut;
     };
     thread.join();

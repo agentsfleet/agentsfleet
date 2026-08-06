@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { flexRender, type Table } from "@tanstack/react-table";
+import { flexRender, type ReactTable } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import { cn } from "../utils";
@@ -7,15 +7,20 @@ import { Button } from "./Button";
 import {
   hasExternalPaginationNavigation,
   isClientPagination,
+  type DataTableFeatures,
 } from "./DataTableModel";
-import type { DataTableColumn, DataTablePagination } from "./DataTable.types";
+import type {
+  DataTableColumn,
+  DataTablePagination,
+  DataTableRowData,
+} from "./DataTable.types";
 import {
   DEFAULT_PAGE_SIZE_OPTIONS,
   PAGINATION_KIND,
   Pagination,
 } from "./Pagination";
 
-type ColumnMap<T> = Map<string, DataTableColumn<T>>;
+type ColumnMap<T extends DataTableRowData> = Map<string, DataTableColumn<T>>;
 
 // One nominal size across all three states, so the header does not resize as
 // sorting changes.
@@ -31,14 +36,14 @@ function sortIndicator(direction: false | "asc" | "desc") {
   return <ChevronsUpDown size={SORT_ICON_SIZE} aria-hidden="true" />;
 }
 
-function DataTableHead<T>({
+function DataTableHead<T extends DataTableRowData>({
   table,
   columnsByKey,
   sticky,
   isLoading,
   onSortChange,
 }: {
-  table: Table<T>;
+  table: ReactTable<DataTableFeatures, T>;
   columnsByKey: ColumnMap<T>;
   sticky: boolean;
   isLoading?: boolean;
@@ -91,16 +96,16 @@ function DataTableHead<T>({
   );
 }
 
-function DataTableBody<T>({
+function DataTableBody<T extends DataTableRowData>({
   table,
   columnsByKey,
   onRowClick,
 }: {
-  table: Table<T>;
+  table: ReactTable<DataTableFeatures, T>;
   columnsByKey: ColumnMap<T>;
   onRowClick?: (row: T) => void;
 }) {
-  const state = table.getState();
+  const state = table.state;
   const renderKey = `${state.sorting.map((sort) => `${sort.id}:${sort.desc}`).join("|")}:${state.pagination.pageIndex}:${state.pagination.pageSize}`;
   return (
     <tbody key={renderKey} className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-snap">
@@ -120,7 +125,7 @@ function DataTableBody<T>({
           } : undefined}
           tabIndex={onRowClick ? 0 : undefined}
         >
-          {row.getVisibleCells().map((cell) => {
+          {row.getAllCells().map((cell) => {
             const definition = columnsByKey.get(cell.column.id);
             return (
               <td
@@ -141,23 +146,23 @@ function DataTableBody<T>({
   );
 }
 
-export function DataTableFooter<T>({
+export function DataTableFooter<T extends DataTableRowData>({
   table,
   pagination,
   totalRows,
 }: {
-  table: Table<T>;
+  table: ReactTable<DataTableFeatures, T>;
   pagination: DataTablePagination | undefined;
   totalRows: number;
 }) {
   if (pagination === false) return null;
   if (isClientPagination(pagination)) {
     if (totalRows === 0) return null;
-    const pageSize = table.getState().pagination.pageSize;
+    const pageSize = table.state.pagination.pageSize;
     return (
       <Pagination
         kind={PAGINATION_KIND.page}
-        page={table.getState().pagination.pageIndex + 1}
+        page={table.state.pagination.pageIndex + 1}
         pageSize={pageSize}
         total={totalRows}
         onPageChange={(page) => table.setPageIndex(page - 1)}
@@ -179,7 +184,7 @@ export function DataTableFooter<T>({
   );
 }
 
-export function DataTableView<T>({
+export function DataTableView<T extends DataTableRowData>({
   table,
   columnsByKey,
   caption,
@@ -192,7 +197,7 @@ export function DataTableView<T>({
   pagination,
   totalRows,
 }: {
-  table: Table<T>;
+  table: ReactTable<DataTableFeatures, T>;
   columnsByKey: ColumnMap<T>;
   caption?: string;
   onRowClick?: (row: T) => void;
@@ -206,15 +211,15 @@ export function DataTableView<T>({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const numericPage = isClientPagination(pagination)
-    ? table.getState().pagination.pageIndex
+    ? table.state.pagination.pageIndex
     : pagination !== false && pagination.kind === PAGINATION_KIND.page
       ? pagination.page
       : null;
-  const sortingSignature = table.getState().sorting
+  const sortingSignature = table.state.sorting
     .map((sort) => `${sort.id}:${sort.desc}`)
     .join("|");
   const pageSize = isClientPagination(pagination)
-    ? table.getState().pagination.pageSize
+    ? table.state.pagination.pageSize
     : pagination === false
       ? null
       : pagination.pageSize;
