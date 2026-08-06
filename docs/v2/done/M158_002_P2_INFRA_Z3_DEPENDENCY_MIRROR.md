@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M158
 **Workstream:** 002
 **Date:** Aug 06, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — tooling reliability; no user-facing surface changes, but a single third-party host can currently red every Zig lane at once.
 **Categories:** INFRA
 **Batch:** B1 — standalone; no sibling workstream shares these files.
@@ -63,7 +63,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `build.zig.zon` | EDIT | The `z3` entry's `.url` moves to the GitHub mirror, the `.hash` advances with the version bump, and the entry gains the why-and-when-to-drop comment every other pinned dependency already carries. |
 | `src/lib/s3/r2.zig` | EDIT | Doc-comment only. Its header cited `codeberg.org/fellowtraveler/z3` as where the dependency is pinned from; after the move that half-contradicts the manifest, so it now names codeberg as **upstream** and the mirror as the resolved source. Added by the orphan sweep at REVIEW (RULE ORP). |
 | `src/build/s3.zig` | EDIT | Doc-comment only; same stale-provenance fix as `r2.zig`. |
-| `docs/v2/active/M158_002_P2_INFRA_Z3_DEPENDENCY_MIRROR.md` | CREATE | This spec; moves to `done/` at CHORE(close). |
+| `docs/v2/done/M158_002_P2_INFRA_Z3_DEPENDENCY_MIRROR.md` | CREATE | This spec; moves to `done/` at CHORE(close). |
 
 External to the repository, and therefore not a diff row: the `github.com/agentsfleet/z3` mirror repository, created public from a `git clone --mirror` of upstream with branches and tags pushed and the reserved `refs/pull/*` refs omitted.
 
@@ -110,7 +110,7 @@ This is a real upgrade, not a host change, and it is deliberately a **separate c
 
 - **Dimension 2.1** — DONE — The daemon, runner, and library graphs build against the bumped dependency. → Verified by `test_build_against_bumped_z3`
 - **Dimension 2.2** — DONE — Both Linux cross-compile targets succeed against the bumped dependency. → Verified by `test_cross_compile_both_targets`
-- **Dimension 2.3** — The R2 client's own behaviour is unchanged, including its idle-connection-reuse setting, and the graphs that link `z3` remain leak-free. → Verified by `test_r2_behaviour_unchanged` and `test_no_leaks_after_bump`
+- **Dimension 2.3** — DONE — The R2 client's own behaviour is unchanged, including its idle-connection-reuse setting, and the graphs that link `z3` remain leak-free. → Verified by `test_r2_behaviour_unchanged` and `test_no_leaks_after_bump`
 
 **Coverage honesty (from `/write-unit-test`'s diff ledger):** the upstream commit's ownership changes land on `ListObjectsResult`, `ListBucketsResult`, `HeadObjectResult`, and `parseHeadObject` — **none of which this repository reaches**. `r2.zig` calls only `init`, `putObject`, `getObject`, and `deinit`, and upstream changed no signature among them. So the leak lane proves the linking graphs stay clean; it does **not** exercise the changed types, and no test here can, because there is no call site to exercise them from. Testing them would mean testing the dependency, not this repository. The two upstream changes that do reach our compilation unit are compile-time only — a widened `RequestError` (both call sites use a blanket `catch`, so no new branch exists on our side) and `getAmzValue` taking its receiver by value (never called here) — and `zig build test-s3` is their proof.
 
@@ -163,16 +163,18 @@ Metrics review: no analytics or funnel playbook update required — this workstr
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | No build dependency resolves from a non-GitHub host (§1) | `grep -E '^[[:space:]]*\.url' build.zig.zon \| grep -vc 'github\.com' \|\| true` | `0` | P0 | |
-| R2 | The mirror is byte-faithful at the previously pinned commit (§1) | `zig fetch git+https://github.com/agentsfleet/z3.git#4553a640ec867ab0355a97e5513ce4ec69a90d49` | `z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS` | P0 | |
-| R3 | The pin sits at the current upstream head (§2) | `grep -c '7f64763e186ebe348989ae229b7551cb6ec79ee0' build.zig.zon` | `1` | P1 | |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass (Tier 1 per `docs/VERIFY_TIERS.md`) | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks (dependency ownership semantics changed) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig dependency graph touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | No build dependency resolves from a non-GitHub host (§1) | `grep -E '^[[:space:]]*\.url' build.zig.zon \| grep -vc 'github\.com' \|\| true` | `0` | P0 | ✅ `0` |
+| R2 | The mirror is byte-faithful at the previously pinned commit (§1) | `zig fetch git+https://github.com/agentsfleet/z3.git#4553a640ec867ab0355a97e5513ce4ec69a90d49` | `z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS` | P0 | ✅ `z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS` — identical to the digest pinned against codeberg |
+| R3 | The pin sits at the current upstream head (§2) | `grep -c '7f64763e186ebe348989ae229b7551cb6ec79ee0' build.zig.zon` | `1` | P1 | ✅ `1` |
+| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 4 paths, all in the table: `build.zig.zon`, `src/build/s3.zig`, `src/lib/s3/r2.zig`, this spec |
+| S1 | Unit tests pass (Tier 1 per `docs/VERIFY_TIERS.md`) | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — `merged line coverage passed (87.30% >= 83%)` |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ exit 0 — `✓ All lint checks passed` |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 — `✓ [agentsfleetd] All integration tests passed` |
+| S5 | No leaks (dependency ownership semantics changed) | `make memleak` | exit 0 | P0 | ✅ `✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` |
+| S6 | Cross-compile (Zig dependency graph touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both exit 0 |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` (4211 commits scanned) |
+
+**Test Delta (VERIFY, vs the CHORE(open) baseline `unit=3428 integration=587`):** `unit=3428 integration=587` — unchanged. Justified: the diff adds no source lines. `build.zig.zon` is a manifest and the two `.zig` edits are doc comments, so there is no new branch, error path, or public symbol for a test to cover. The `/write-unit-test` ledger above resolves all six changed units, four by the existing suite re-run against the new dependency (the Regression category the skill prescribes for dependency upgrades) and two as `won't-test` with reasons.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -242,5 +244,18 @@ The string survives deliberately in **two** comments: the `pg` entry's, which na
     | upstream `List*`/`Head*` result ownership change | — | won't-test | **unreachable from this repository** — no call site constructs or consumes those types; a test would exercise the dependency, not us |
 
     Finding raised and fixed: Dimension 2.3 originally claimed `make memleak` "covers the retained-response ownership change." It does not — those types have no call site here. The claim was narrowed to what the lane actually proves. Negative-path ratio is not applicable: the changed surface contains zero branches.
-  - `/review`, `kishore-babysit-prs` — pending; recorded at REVIEW and after push.
+  - `/review` — run inline (the skill's specialist-subagent dispatch was skipped: the operating model forbids the Agent tool unless Indy asks for it). Two findings, both fixed in scope: (1) `src/lib/s3/r2.zig` and `src/build/s3.zig` documented `z3`'s origin as codeberg, which half-contradicts the manifest after the move — RULE ORP cross-layer sweep, both corrected and added to Files Changed; (2) this spec's rubric cited `make test`, a target that does not exist in this repository — corrected to `make test-unit-all` per `docs/VERIFY_TIERS.md` Tier 1. Scope check clean: the diff touches exactly the files in Files Changed. Orphan sweep clean: no `.url` resolves from a non-GitHub host, and the two surviving `codeberg` strings are prose about provenance.
+  - `kishore-babysit-prs` — pending; recorded after push.
+
+- **Flaky test observed (not caused by this diff)** — `src/lib/http_pin/http_pin_test.zig` "every production secure endpoint primes its certificate state and pins without panicking" failed once during VERIFY, reporting all five swept hosts refusing the pin: `api-dev.agentsfleet.net`, `slack.com`, `api.github.com`, `codeload.github.com`, `accounts.zoho.com`. The test performs real Transport Layer Security (TLS) handshakes against live hosts, three attempts each.
+
+  Causality was established by comparison rather than argument, because an argument from "z3 cannot affect slack.com" is not evidence:
+
+  | Run | Tree | Result |
+  |---|---|---|
+  | 1 | this branch | 156/157 — sweep failed all five hosts |
+  | 2 | clean `origin/main` (`70a1d8dab`), same machine | **157/157 pass** |
+  | 3 | this branch again | **157/157 pass** |
+
+  A defect introduced by the diff does not heal on re-run, and all five unrelated hosts failing simultaneously matches a momentary local connectivity blip. `curl` reached `slack.com`, `api.github.com`, and `api-dev.agentsfleet.net` with `ssl_verify_result=0` throughout. Recorded as a network-dependent flake in a lane that is otherwise deterministic; no change made to the test, since it is not this workstream's surface.
 - **Deferrals** — none. The dependency-host gate is not a deferral: it is out of scope by Indy's decision, quoted above, and is recorded in Out of Scope rather than as pending work.
