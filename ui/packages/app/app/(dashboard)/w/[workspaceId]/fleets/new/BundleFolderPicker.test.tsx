@@ -98,6 +98,53 @@ describe("BundleFolderPicker", () => {
     expect(onLoaded).toHaveBeenCalledWith(SKILL_BODY, TRIGGER_BODY);
   });
 
+  it("says the previous bundle is kept when a later pick fails to read", async () => {
+    // A failed replacement leaves the parent form holding the last successful
+    // pick's bodies — the notice must say so, or the dialog reports failure
+    // over a form that is still submit-ready with the old bundle.
+    const { onLoaded, input } = renderPicker();
+    fireEvent.change(input, {
+      target: {
+        files: [
+          pickedFile(`${BUNDLE_DIR}/${SKILL_FILE_NAME}`, SKILL_BODY),
+          pickedFile(`${BUNDLE_DIR}/${TRIGGER_FILE_NAME}`, TRIGGER_BODY),
+        ],
+      },
+    });
+    await screen.findByText(`Loaded ${SKILL_FILE_NAME} and ${TRIGGER_FILE_NAME}.`);
+
+    const stale = pickedFile(`${BUNDLE_DIR}/${SKILL_FILE_NAME}`, SKILL_BODY);
+    stale.text = () => Promise.reject(new Error("NotReadableError"));
+    fireEvent.change(input, {
+      target: { files: [stale, pickedFile(`${BUNDLE_DIR}/${TRIGGER_FILE_NAME}`, TRIGGER_BODY)] },
+    });
+
+    expect(await screen.findByText(/previously loaded bundle is still filled in/i)).toBeTruthy();
+    expect(onLoaded).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the previous bundle is kept when a later pick is refused", async () => {
+    const { onLoaded, input } = renderPicker();
+    fireEvent.change(input, {
+      target: {
+        files: [
+          pickedFile(`${BUNDLE_DIR}/${SKILL_FILE_NAME}`, SKILL_BODY),
+          pickedFile(`${BUNDLE_DIR}/${TRIGGER_FILE_NAME}`, TRIGGER_BODY),
+        ],
+      },
+    });
+    await screen.findByText(`Loaded ${SKILL_FILE_NAME} and ${TRIGGER_FILE_NAME}.`);
+
+    fireEvent.change(input, {
+      target: { files: [pickedFile(`${BUNDLE_DIR}/${SKILL_FILE_NAME}`, SKILL_BODY)] },
+    });
+
+    expect(
+      await screen.findByText(new RegExp(`has no ${TRIGGER_FILE_NAME}.*previously loaded bundle`)),
+    ).toBeTruthy();
+    expect(onLoaded).toHaveBeenCalledTimes(1);
+  });
+
   it("stays quiet when the picker is cancelled", async () => {
     const { onLoaded, input } = renderPicker();
     fireEvent.change(input, { target: { files: [] } });
