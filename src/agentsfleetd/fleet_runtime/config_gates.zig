@@ -152,6 +152,10 @@ fn parseOneGateRule(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error 
         const s = jsonStr(obj, "condition") orelse break :blk null;
         break :blk try alloc.dupe(u8, s);
     };
+    // Guards the `behavior` block below, which returns on an unrecognised
+    // string: an errdefer placed after it would leak this dupe on exactly
+    // the error path it exists for.
+    errdefer if (condition) |c| alloc.free(c);
 
     const behavior = blk: {
         const s = jsonStr(obj, "behavior") orelse break :blk GateBehavior.approve;
@@ -159,8 +163,6 @@ fn parseOneGateRule(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error 
         if (std.mem.eql(u8, s, "auto_kill")) break :blk GateBehavior.auto_kill;
         return GateConfigError.MissingRequiredField;
     };
-
-    errdefer if (condition) |c| alloc.free(c);
 
     // Workspace-authored approval copy. Absent → empty, and an empty field is
     // omitted from the card entirely: a gate that does not say what it is
