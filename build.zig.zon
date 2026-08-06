@@ -74,20 +74,23 @@
         // failure: a connection reset there reds the unit, integration,
         // cross-compile, memory-leak, and deploy-compile lanes at once.
         //
-        // The archive form (not the git+ form the fork pins use) is deliberate:
-        // Zig hashes the extracted tree, so a mirrored archive of a given commit
-        // reproduces the upstream digest byte for byte — this swap kept the hash
-        // below unchanged, which is what proves the mirror faithful. That same
-        // hash is the standing backstop: any future drift in the mirror fails
-        // the build instead of quietly substituting content.
+        // Zig hashes the extracted tree filtered by the dependency's own .paths,
+        // which is identical whether fetched as an archive or over git — so the
+        // mirror was verifiable against the digest upstream already produced,
+        // and the host swap landed without the hash moving at all. That hash
+        // stays the standing backstop: any future drift in the mirror fails the
+        // build instead of quietly substituting content.
         //
-        // Refreshing is a deliberate human act, never automatic — the pin is
-        // what makes builds reproducible: git clone --mirror from upstream, then
-        // push refs/heads + refs/tags only (GitHub reserves refs/pull/*).
-        // Drop the mirror if upstream ever publishes to GitHub itself.
+        // Pinned by bare commit (no ?ref=) like the cache entry below, because
+        // upstream publishes no tags or releases — a commit is the only unit
+        // there is to pin. Refreshing is a deliberate human act, never
+        // automatic; the pin is what makes builds reproducible: git clone
+        // --mirror from upstream, then push refs/heads + refs/tags only (GitHub
+        // reserves refs/pull/*). Drop the mirror if upstream ever publishes to
+        // GitHub itself.
         .z3 = .{
-            .url = "https://github.com/agentsfleet/z3/archive/4553a640ec867ab0355a97e5513ce4ec69a90d49.tar.gz",
-            .hash = "z3-0.5.0-N25-cBA7AgAS6j3pBZYNnK0NAFgm_hpNQn4odoFjbcRS",
+            .url = "git+https://github.com/agentsfleet/z3.git#7f64763e186ebe348989ae229b7551cb6ec79ee0",
+            .hash = "z3-0.5.0-N25-cGBCAgDa4owqttqJfaSQDMp5j2HIqduoW4z93w5g",
         },
         .cache = .{
             .url = "git+https://github.com/karlseguin/cache.zig#51b9d77bec8d9f3717349e9a007ff689959f3479",
