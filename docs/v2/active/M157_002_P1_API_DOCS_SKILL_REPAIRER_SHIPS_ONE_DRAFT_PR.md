@@ -142,9 +142,9 @@ The mint's write arm issues only against durable rows: the gate row parked for t
 
 `incident-repairer` mirrors the responder's discipline and adds: read file contents at the head it verified this run (`GET /repos/{owner}/{repo}/contents/{path}`); author the complete corrected files in-context; push via Git Data API over `http_request` (blobs → trees → commit → ref); branch named from the incident event id so a replay finds the ref taken and reports a duplicate instead of pushing twice; open exactly one draft PR carrying cause, evidence, changed files, and forward rationale. Forward-only; no checkout; no git tooling; a partial read ends the run diagnosis-only. Wakes on failed `workflow_run` events and manual steer — the responder keeps the scheduled sweeps, so the picker's choice is deterministic by event type.
 
-- **Dimension 3.1** — SKILL.md ships the write recipe, branch/PR budget, forward-only and grounding rules → Test `test_repairer_bundle_frontmatter_and_rules` (bundle lint tier)
-- **Dimension 3.2** — TRIGGER.md matches webhook incidents and not schedule sweeps → Test `test_repairer_trigger_disjoint_from_responder`
-- **Dimension 3.3** — crew-folder proof: both members upload through `POST /v1/workspaces/{ws}/fleet-libraries`, install, and are pickable → Test `test_crew_folder_two_member_onboard`
+- **Dimension 3.1** — DONE — SKILL.md ships the write recipe, branch/PR budget, forward-only and grounding rules → Test `test_repairer_bundle_frontmatter_and_rules` (plus `test_repairer_token_is_write_scoped_and_workflow_free`, driving the shipped binding through the real mint)
+- **Dimension 3.2** — DONE — TRIGGER.md matches webhook incidents and not schedule sweeps; neither member declares the other's trigger type → Test `test_repairer_trigger_disjoint_from_responder`
+- **Dimension 3.3** — DONE — crew-folder proof: both shipped bundles, read from `library/` as the folder picker hands them up, onboard through `POST /v1/workspaces/{ws}/fleet-libraries` into two distinct catalog rows → Test `test_crew_folder_two_member_onboard`
 
 ### §4 — The linkage: incident → PR → deploy result
 

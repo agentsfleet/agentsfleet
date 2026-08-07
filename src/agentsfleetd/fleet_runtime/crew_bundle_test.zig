@@ -18,6 +18,7 @@ const github = @import("../credentials/integration_github.zig");
 const BYTES_PER_KIB = 1024;
 const LIBRARY_BASE = "library";
 const RESPONDER = "incident-responder";
+const REPAIRER = "incident-repairer";
 const SKILL_MD = "SKILL.md";
 const TRIGGER_MD = "TRIGGER.md";
 
@@ -251,6 +252,124 @@ test "test_data_plane_secrets_stay_placeholders" {
     // And no raw value rides the markdown. A real token would have to appear
     // as bytes; the placeholder form is the only spelling allowed.
     try std.testing.expect(!containsAny(skill, &.{ "ghp_", "ghs_", "xoxb-", "glsa_" }));
+}
+
+test "test_repairer_bundle_frontmatter_and_rules" {
+    // Dimension 3.1 — every property here is one a bundle author can silently
+    // break by editing markdown. The repairer reads AND writes, so its bundle
+    // must carry the write recipe's whole discipline: the shared branch prefix
+    // (the duplicate refusal), the one-branch/one-draft-PR budget, forward-only
+    // language, the partial-read stop, and the same degradation contract as its
+    // sibling.
+    const alloc = std.testing.allocator;
+
+    var repairer = try parseTrigger(alloc, REPAIRER);
+    defer repairer.deinit(alloc);
+    // The same explicit-tools rule as the responder — plus the duplicate guard.
+    try std.testing.expect(hasTool(repairer.config, "http_request"));
+    try std.testing.expect(hasTool(repairer.config, "memory_store"));
+    try std.testing.expect(hasTool(repairer.config, "memory_recall"));
+    // The write is API calls, never a working tree: no git, no shell, no files.
+    try std.testing.expect(!hasTool(repairer.config, "git"));
+    try std.testing.expect(!hasTool(repairer.config, "shell"));
+    try std.testing.expect(!hasTool(repairer.config, "file_write"));
+
+    const raw = try loadBundleFile(alloc, REPAIRER, SKILL_MD);
+    defer alloc.free(raw);
+    const md = try flatten(alloc, raw);
+    defer alloc.free(md);
+
+    // The branch prefix is spelled EXACTLY as the daemon's constant — the
+    // webhook arm matches on it, so a drifted spelling silently unlinks every
+    // repair from its incident.
+    try std.testing.expect(std.mem.indexOf(u8, md, common.REPAIR_BRANCH_PREFIX) != null);
+    try std.testing.expect(containsAny(md, &.{"one draft Pull Request"}));
+    try std.testing.expect(containsAny(md, &.{"draft: true"}));
+    // Forward-only, in the bundle's own voice.
+    try std.testing.expect(containsAny(md, &.{"moves FORWARD"}));
+    try std.testing.expect(containsAny(md, &.{"never propose rolling history back"}));
+    // The grounding stop that gates every push.
+    try std.testing.expect(containsAny(md, &.{"no push ever follows a partial read"}));
+    // The same no-continuation contract as the responder.
+    try std.testing.expect(containsAny(md, &.{"named degradation"}));
+    try std.testing.expect(containsAny(md, &.{ "no continuation", "nothing continues you" }));
+    // And no raw token bytes ride the markdown.
+    try std.testing.expect(!containsAny(raw, &.{ "ghp_", "ghs_", "xoxb-", "glsa_" }));
+}
+
+test "test_repairer_trigger_disjoint_from_responder" {
+    // Dimension 3.2 — which member handles an event is decided by WIRING:
+    // the repairer wakes on concrete incidents (webhook + manual steer), the
+    // responder on scheduled sweeps (cron), and neither declares the other's
+    // trigger type. A bundle edit that overlaps them re-introduces the
+    // picker-judgment ambiguity this split removes.
+    const alloc = std.testing.allocator;
+
+    var repairer = try parseTrigger(alloc, REPAIRER);
+    defer repairer.deinit(alloc);
+    var has_webhook = false;
+    for (repairer.config.triggers) |t| {
+        switch (t) {
+            .webhook => |w| {
+                has_webhook = true;
+                try std.testing.expectEqualStrings("github", w.source);
+                const events = w.events orelse return error.TestUnexpectedResult;
+                try std.testing.expectEqual(@as(usize, 1), events.len);
+                try std.testing.expectEqualStrings("workflow_run", events[0]);
+            },
+            .cron => return error.TestUnexpectedResult, // sweeps belong to the responder
+            .api => {},
+        }
+    }
+    try std.testing.expect(has_webhook);
+
+    var responder = try parseTrigger(alloc, RESPONDER);
+    defer responder.deinit(alloc);
+    var has_cron = false;
+    for (responder.config.triggers) |t| {
+        switch (t) {
+            .cron => has_cron = true,
+            .webhook => return error.TestUnexpectedResult, // incidents belong to the repairer
+            .api => {},
+        }
+    }
+    try std.testing.expect(has_cron);
+}
+
+test "test_repairer_token_is_write_scoped_and_workflow_free" {
+    // The write half of `test_investigator_token_is_read_only`: the SHIPPED
+    // repairer binding, driven through the real mint, yields a token body with
+    // contents:write + pull_requests:write — and NEVER a workflows permission,
+    // which is what makes `.github/workflows/` untouchable as a property of
+    // the credential rather than of the prose above.
+    const alloc = std.testing.allocator;
+
+    var repairer = try parseTrigger(alloc, REPAIRER);
+    defer repairer.deinit(alloc);
+    const binding = repairer.config.repository_binding orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(integration.RepositoryAccess.write, binding.access);
+    try std.testing.expect(binding.repositories.len > 0);
+
+    const reach = try cred_testing.reachResponse(alloc, binding.repositories, binding.access);
+    defer alloc.free(reach);
+    var gh = cred_testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = reach };
+    defer gh.deinit();
+    var h = try cred_testing.parse(alloc, HANDLE_GH);
+    defer h.deinit();
+
+    const out = try github.mint(cred_testing.githubCtxBound(
+        alloc,
+        h.value,
+        &gh,
+        TEST_NOW_MS,
+        .{ .repositories = binding.repositories, .access = binding.access },
+    ));
+    try std.testing.expect(out == .ok);
+    alloc.free(out.ok.token);
+
+    try std.testing.expect(std.mem.indexOf(u8, gh.body, "\"contents\":\"write\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, gh.body, "\"pull_requests\":\"write\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, gh.body, "workflows") == null);
 }
 
 test "test_undeclared_host_refused" {
