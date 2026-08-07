@@ -30,6 +30,7 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const whc = @import("../../../fleet_runtime/webhook_constants.zig");
 const redis_fleet = @import("../../../queue/redis_fleet.zig");
 const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
@@ -135,7 +136,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
             .status = fleet.status,
             .delivery = delivery,
         });
-        hx.ok(.ok, .{ .ignored = ec.IGNORED_REASON_AGENTSFLEET_PAUSED });
+        hx.ok(.ok, .{ .ignored = whc.IGNORED_REASON_AGENTSFLEET_PAUSED });
         return;
     }
 
@@ -178,7 +179,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
     // Atomic claim after validation+filter; released on every post-claim
     // failure below — see file header for why.
     var dedup_key_buf: [256]u8 = undefined;
-    const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, fleet_id, PROVIDER_DEDUP_NAMESPACE, delivery }) catch {
+    const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}:{s}", .{ whc.WEBHOOK_DEDUP_KEY_PREFIX, fleet_id, PROVIDER_DEDUP_NAMESPACE, delivery }) catch {
         common.internalOperationError(hx.res, "Failed to build the duplicate-event check", hx.req_id);
         return;
     };
@@ -237,7 +238,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
         .delivery = delivery,
         .stream_event_id = new_event_id,
     });
-    hx.ok(.accepted, .{ .status = ec.STATUS_ACCEPTED, .event_id = new_event_id });
+    hx.ok(.accepted, .{ .status = whc.STATUS_ACCEPTED, .event_id = new_event_id });
 }
 
 /// Atomically claim the delivery's idempotency slot (SET NX — exactly one of
@@ -328,7 +329,7 @@ test "handler constants pin" {
     // ":gh:" (4) + delivery UUID (36) = 90 bytes. 256-byte buffer is comfortable.
     var key_buf: [256]u8 = undefined;
     const key = try std.fmt.bufPrint(&key_buf, "{s}{s}:{s}:{s}", .{
-        ec.WEBHOOK_DEDUP_KEY_PREFIX,
+        whc.WEBHOOK_DEDUP_KEY_PREFIX,
         "01999999-9999-7999-9999-999999999999",
         PROVIDER_DEDUP_NAMESPACE,
         "abcdef01-2345-6789-abcd-ef0123456789",

@@ -5,6 +5,7 @@
 //! tests; these exercise the upload (paste) path, which needs no network or R2.
 
 const std = @import("std");
+const common = @import("common");
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -269,6 +270,113 @@ test "integration: tenant onboard dedupes by workspace and content hash" {
     try std.testing.expectEqual(@as(i64, 1), try tenantCount(conn));
 }
 
+/// A crew-shaped upload: BOTH markdown bodies, the way `library/incident-*/`
+/// ships. `onboardBody` above sends `SKILL.md` alone, which is the older probe
+/// shape and cannot say whether the trigger participates in the content hash.
+fn crewUploadBody(alloc: std.mem.Allocator, trigger: []const u8) ![]const u8 {
+    return std.json.Stringify.valueAlloc(alloc, .{
+        .source_kind = "upload",
+        .source_ref = "unit/onboard-probe",
+        .skill_markdown = PROBE_SKILL,
+        .trigger_markdown = trigger,
+    }, .{});
+}
+
+/// The smallest frontmatter that parses AND carries an access level. `triggers`,
+/// `tools`, and `budget` are each required by `config_parser`; the runtime keys
+/// live inside `x-agentsfleet`; and `repositories` + `repository_access` are
+/// optional TOGETHER — one without the other is an authoring error, not a
+/// half-binding.
+const CREW_TRIGGER_READ =
+    \\---
+    \\name: onboard-probe
+    \\x-agentsfleet:
+    \\  triggers:
+    \\    - type: api
+    \\  tools:
+    \\    - http_request
+    \\  budget:
+    \\    daily_dollars: 1.0
+    \\  repositories:
+    \\    - acme/payments
+    \\  repository_access: read
+    \\---
+;
+/// Byte-identical to the above but for the access level — the smallest edit that
+/// changes what a fleet installed from this entry may DO.
+const CREW_TRIGGER_WRITE =
+    \\---
+    \\name: onboard-probe
+    \\x-agentsfleet:
+    \\  triggers:
+    \\    - type: api
+    \\  tools:
+    \\    - http_request
+    \\  budget:
+    \\    daily_dollars: 1.0
+    \\  repositories:
+    \\    - acme/payments
+    \\  repository_access: write
+    \\---
+;
+
+test "test_upload_is_content_addressed" {
+    // Dimension 4a.3. Re-uploading identical markdown converges on one entry, so
+    // a crew applied twice from a checkout does not accumulate rows.
+    //
+    // The load-bearing half is the SECOND assertion: the trigger has to
+    // participate in the hash. Both crew bundles are onboarded into one
+    // workspace and differ in their TRIGGER.md far more than in their SKILL.md —
+    // and `repository_access` lives there. If only the skill were hashed, an
+    // entry could be re-uploaded with `read` silently swapped to `write` and
+    // dedupe to the row that was already published.
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+
+    const read_body = try crewUploadBody(alloc, CREW_TRIGGER_READ);
+    defer alloc.free(read_body);
+
+    const first = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(read_body)).send();
+    defer first.deinit();
+    try first.expectStatus(.created);
+    const first_id = try jsonStringField(alloc, first.body, "id");
+    defer alloc.free(first_id);
+
+    // Identical bytes, again: content-addressed onto the same row.
+    const again = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(read_body)).send();
+    defer again.deinit();
+    try again.expectStatus(.created);
+    const again_id = try jsonStringField(alloc, again.body, "id");
+    defer alloc.free(again_id);
+
+    try std.testing.expectEqualStrings(first_id, again_id);
+    try std.testing.expectEqual(@as(i64, 1), try tenantCount(conn));
+
+    // Same skill, different trigger — a DIFFERENT entry. Converging here would
+    // mean the access level a bundle declares is outside its identity.
+    const write_body = try crewUploadBody(alloc, CREW_TRIGGER_WRITE);
+    defer alloc.free(write_body);
+
+    const escalated = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(write_body)).send();
+    defer escalated.deinit();
+    try escalated.expectStatus(.created);
+    const escalated_id = try jsonStringField(alloc, escalated.body, "id");
+    defer alloc.free(escalated_id);
+
+    try std.testing.expect(!std.mem.eql(u8, first_id, escalated_id));
+    try std.testing.expectEqual(@as(i64, 2), try tenantCount(conn));
+}
+
 fn jsonStringField(alloc: std.mem.Allocator, body: []const u8, field: []const u8) ![]const u8 {
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
     defer parsed.deinit();
@@ -461,4 +569,90 @@ test "test_import_manifest_survives_store_round_trip" {
     const stored = try row.get([]const u8, 0);
     try std.testing.expect(std.mem.indexOf(u8, stored, "docs/NOTES.md") != null);
     try std.testing.expect(std.mem.indexOf(u8, stored, "sha256") != null);
+}
+
+// ── Dimension 5.3 — the SHIPPED crew reaches a workspace ────────────────────
+
+const LIBRARY_BASE = "library";
+const CREW_SLUGS = [_][]const u8{"incident-responder"};
+const MAX_BUNDLE_BYTES = 64 * 1024;
+
+fn loadBundleFile(alloc: std.mem.Allocator, slug: []const u8, file: []const u8) ![]u8 {
+    const path = try std.fs.path.join(alloc, &.{ LIBRARY_BASE, slug, file });
+    defer alloc.free(path);
+    return std.Io.Dir.cwd().readFileAlloc(common.globalIo(), path, alloc, .limited(MAX_BUNDLE_BYTES));
+}
+
+/// Onboard one shipped bundle into the platform tier through the real route,
+/// carrying BOTH markdown bodies exactly as they sit on disk.
+fn onboardCrewBundle(h: *TestHarness, alloc: std.mem.Allocator, slug: []const u8) !void {
+    const skill = try loadBundleFile(alloc, slug, "SKILL.md");
+    defer alloc.free(skill);
+    const trigger = try loadBundleFile(alloc, slug, "TRIGGER.md");
+    defer alloc.free(trigger);
+
+    const body = try std.json.Stringify.valueAlloc(alloc, .{
+        .source_kind = "upload",
+        .source_ref = "library/crew",
+        .skill_markdown = skill,
+        .trigger_markdown = trigger,
+    }, .{});
+    defer alloc.free(body);
+
+    const res = try (try (try h.post(PLATFORM_URL).bearer(TOKEN_PLATFORM)).json(body)).send();
+    defer res.deinit();
+    try res.expectStatus(.created);
+}
+
+test "test_bundles_publish_and_list" {
+    // Dimension 5.3. Onboard → publish → visible → installable, for the bundles
+    // this milestone actually ships, through the existing admin flow.
+    //
+    // It is the only test that drives the shipped markdown through the IMPORTER
+    // rather than the config parser, and the two demand different things. The
+    // importer needs `SKILL.md` frontmatter for the entry's name, and it demands
+    // that name match `TRIGGER.md`'s — so a bundle can parse perfectly as a fleet
+    // config and still be impossible to install, which is exactly the state one
+    // crew bundle shipped in until this Dimension was built.
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    for (CREW_SLUGS) |slug| {
+        try onboardCrewBundle(h, alloc, slug);
+        // A draft is invisible to every tenant, so publication is the step that
+        // makes a crew reachable — not onboarding.
+        try publishPlatform(h, alloc, slug);
+    }
+
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+    const gallery = try (try h.get(url).bearer(TOKEN_TENANT)).send();
+    defer gallery.deinit();
+    try gallery.expectStatus(.ok);
+
+    for (CREW_SLUGS) |slug| {
+        const quoted = try std.fmt.allocPrint(alloc, "\"{s}\"", .{slug});
+        defer alloc.free(quoted);
+        try std.testing.expect(gallery.bodyContains(quoted));
+    }
+    // Installable, not merely present: a draft is invisible to every tenant and
+    // uninstallable by id, so surfacing at platform visibility IS the reachable
+    // state — publication is what a tenant can act on.
+    try std.testing.expect(gallery.bodyContains("\"visibility\":\"platform\""));
+
+    // The requirements the gallery advertises are derived from the SHIPPED
+    // TRIGGER.md, so an operator sees what each member will ask for before
+    // installing it. `grafana` is the discriminating probe: a credential name
+    // can only come from the bundle, where a tool name like `http_request`
+    // also lives in the default fallback set a derivation regression would
+    // expose.
+    try std.testing.expect(gallery.bodyContains("api.github.com"));
+    try std.testing.expect(gallery.bodyContains("grafana"));
 }

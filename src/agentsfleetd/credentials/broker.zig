@@ -34,13 +34,6 @@ pub const EXPIRY_SKEW_MS: i64 = 60_000;
 const CACHE_SEGMENTS: u16 = 64;
 const CACHE_MAX_ENTRIES: u32 = 8192;
 
-/// Cache-key separator joining (workspace, integration, fingerprint). ASCII unit
-/// separator — never present in any field, so key boundaries cannot collide.
-const KEY_SEP: u8 = 0x1f;
-
-/// Hex width of the fingerprint appended to the cache key.
-const FP_HEX_LEN: usize = @sizeOf(u64) * 2;
-
 /// Metrics `outcome` labels (RULE UFS — shared by every emit site).
 const OUTCOME_OK: []const u8 = "ok";
 const OUTCOME_RECONNECT: []const u8 = "reconnect_required";
@@ -121,6 +114,7 @@ pub fn mint(
     integration_id: []const u8,
     handle: std.json.Value,
     now_ms: i64,
+    binding: ?integration.RepositoryBinding,
 ) !integration.MintResult {
     const t0 = self.latency_clock();
     const id = parseIntegration(handle) orelse {
@@ -128,7 +122,12 @@ pub fn mint(
         return .unknown_integration;
     };
     var key_buf: [512]u8 = undefined;
-    const key = writeKey(&key_buf, workspace, @tagName(id), self.identityFingerprint(handle)) orelse {
+    // The binding is part of the cache IDENTITY, not just the mint input. Two
+    // fleets in ONE workspace minting the same integration from the same
+    // installation handle agree on workspace + id + handle fingerprint, so
+    // without this a read-scoped fleet could be served the write-scoped token
+    // its neighbour cached (and vice versa) — silently undoing the narrowing.
+    const key = broker_key.writeKey(&key_buf, workspace, @tagName(id), broker_key.identityFingerprint(self.fp_seed, handle), broker_key.bindingFingerprint(self.fp_seed, binding)) orelse {
         self.emit(@tagName(id), OUTCOME_MINT_FAILED, false, self.latency_clock() - t0);
         return .{ .mint_failed = .permanent };
     };
@@ -150,7 +149,7 @@ pub fn mint(
     }
     defer flight.endFlight(self, key);
 
-    switch (self.runMint(id, handle, now_ms)) {
+    switch (self.runMint(id, handle, now_ms, binding)) {
         .ok => |minted| return self.finishColdMint(alloc, key, @tagName(id), minted, now_ms, t0),
         .reconnect_required => {
             self.emit(@tagName(id), OUTCOME_RECONNECT, false, self.latency_clock() - t0);
@@ -210,7 +209,7 @@ fn cachedToken(self: *CredentialBroker, alloc: std.mem.Allocator, key: []const u
 
 /// Dispatch to the integration's mint with a fully-built `MintCtx`. Runs WITHOUT
 /// any cache lock held (the network call must not serialize other minters).
-fn runMint(self: *CredentialBroker, id: integration.Id, handle: std.json.Value, now_ms: i64) integration.Outcome {
+fn runMint(self: *CredentialBroker, id: integration.Id, handle: std.json.Value, now_ms: i64, binding: ?integration.RepositoryBinding) integration.Outcome {
     const spec = integration.resolve(self.registry, id) orelse return .{ .mint_failed = .permanent };
     const ctx = integration.MintCtx{
         .alloc = self.alloc,
@@ -219,6 +218,7 @@ fn runMint(self: *CredentialBroker, id: integration.Id, handle: std.json.Value, 
         .platform = self.deps.platform,
         .http = self.deps.http,
         .sign = self.deps.sign,
+        .repository_binding = binding,
     };
     // The strategy union owns dispatch; the broker never branches on id.
     return spec.mint.run(ctx) catch .{ .mint_failed = .transient };
@@ -231,100 +231,6 @@ fn emit(self: *CredentialBroker, integration_name: []const u8, outcome: []const 
         .latency_ms = latency_ms,
         .cache_hit = cache_hit,
     });
-}
-
-fn writeKey(buf: []u8, workspace: []const u8, id_name: []const u8, fingerprint: u64) ?[]const u8 {
-    if (workspace.len + id_name.len + 2 + FP_HEX_LEN > buf.len) return null;
-    @memcpy(buf[0..workspace.len], workspace);
-    buf[workspace.len] = KEY_SEP;
-    @memcpy(buf[workspace.len + 1 ..][0..id_name.len], id_name);
-    var pos = workspace.len + 1 + id_name.len;
-    buf[pos] = KEY_SEP;
-    pos += 1;
-    // Fixed-width hex keeps the key length predictable and the bytes printable.
-    const fp_hex = std.fmt.bufPrint(buf[pos..], "{x:0>16}", .{fingerprint}) catch return null;
-    return buf[0 .. pos + fp_hex.len];
-}
-
-/// 64-bit fingerprint of the handle's STABLE identity: every top-level field
-/// except the rotating-credential set (`integration.ROTATING_CREDENTIAL_FIELDS`).
-/// An ordinary refresh-token rotation keeps the fingerprint (cache hit); a
-/// reconnect misses ONLY because at least one non-excluded field changed —
-/// which the connect callbacks guarantee by stamping `connected_at_ms` on every
-/// stored handle (a refresh provider's other identity fields can be constants).
-/// Non-object handles (rejected upstream by `parseIntegration`) hash their
-/// raw value defensively.
-fn identityFingerprint(self: *const CredentialBroker, handle: std.json.Value) u64 {
-    var hasher = std.hash.Wyhash.init(self.fp_seed);
-    switch (handle) {
-        .object => |obj| hashObject(&hasher, obj, true),
-        else => hashValue(&hasher, handle),
-    }
-    return hasher.final();
-}
-
-/// Hash `obj` in canonical (ascending key) order via an allocation-free
-/// selection walk, so JSON parser/insertion order cannot change the result.
-/// Every key and string value is length-framed so adjacent fields cannot
-/// alias across boundaries ({"a":"xb","c":…} vs {"a":"x","bc":…}).
-/// `exclude_rotating` drops the rotating-credential fields (top level only).
-fn hashObject(hasher: *std.hash.Wyhash, obj: std.json.ObjectMap, exclude_rotating: bool) void {
-    var prev: ?[]const u8 = null;
-    while (nextKeyAfter(obj, prev, exclude_rotating)) |key| {
-        hashFramed(hasher, key);
-        hashValue(hasher, obj.get(key).?);
-        prev = key;
-    }
-}
-
-/// Length-prefix + bytes: the injective framing for variable-length pieces.
-fn hashFramed(hasher: *std.hash.Wyhash, bytes: []const u8) void {
-    hasher.update(std.mem.asBytes(&bytes.len));
-    hasher.update(bytes);
-}
-
-/// The smallest key strictly greater than `prev` (null → the smallest key),
-/// skipping excluded fields. O(n²) over a vault handle's handful of fields —
-/// cheaper than allocating and sorting a key list on the mint hot path.
-fn nextKeyAfter(obj: std.json.ObjectMap, prev: ?[]const u8, exclude_rotating: bool) ?[]const u8 {
-    var best: ?[]const u8 = null;
-    var it = obj.iterator();
-    while (it.next()) |e| {
-        const k = e.key_ptr.*;
-        if (exclude_rotating and isRotatingField(k)) continue;
-        if (prev) |p| {
-            if (std.mem.order(u8, k, p) != .gt) continue;
-        }
-        if (best == null or std.mem.order(u8, k, best.?) == .lt) best = k;
-    }
-    return best;
-}
-
-fn isRotatingField(name: []const u8) bool {
-    for (integration.ROTATING_CREDENTIAL_FIELDS) |f| {
-        if (std.mem.eql(u8, name, f)) return true;
-    }
-    return false;
-}
-
-/// Hash a JSON value with a leading type tag, so `"5"` and `5` (or `null` and
-/// an empty string) cannot collide. Arrays keep their order (order is
-/// meaningful); nested objects re-canonicalize but never exclude (the rotating
-/// exclusion applies at the handle's top level only).
-fn hashValue(hasher: *std.hash.Wyhash, v: std.json.Value) void {
-    hasher.update(&[_]u8{@intFromEnum(std.meta.activeTag(v))});
-    switch (v) {
-        .null => {},
-        .bool => |b| hasher.update(&[_]u8{@intFromBool(b)}),
-        .integer => |n| hasher.update(std.mem.asBytes(&n)),
-        .float => |f| hasher.update(std.mem.asBytes(&f)),
-        .number_string, .string => |s| hashFramed(hasher, s),
-        .array => |arr| {
-            hasher.update(std.mem.asBytes(&arr.items.len));
-            for (arr.items) |item| hashValue(hasher, item);
-        },
-        .object => |obj| hashObject(hasher, obj, false),
-    }
 }
 
 fn parseIntegration(handle: std.json.Value) ?integration.Id {
@@ -345,5 +251,6 @@ const common = @import("common");
 const cache = @import("cache");
 const secure_memory = @import("../secrets/secure_memory.zig");
 const flight = @import("broker_flight.zig");
+const broker_key = @import("broker_key.zig");
 const integration = @import("integration.zig");
 const Spec = integration.Spec;

@@ -12,7 +12,8 @@
 //! the tag (`fleet_read`) and the wire value (`fleet:read`) are paired in the
 //! comptime table and validated total over the enum.
 //!
-//! `DefaultGrant` maps a credential source (`tenant` / `runner`) to the explicit
+//! `DefaultGrant` maps a credential source (`tenant_owner` / `tenant_api_key` /
+//! `runner`) to the explicit
 //! scope set provisioned onto its principal at construction — PROVISIONING ONLY,
 //! no gate ever checks a grant (Invariant 10); gates take `Scope` values.
 //! Operator/collaborator scope sets are provisioned manually at the IdP
@@ -86,26 +87,39 @@ pub const Set = std.EnumSet(Scope);
 /// `defaultClaim` are NEVER consulted at a gate (gates take `Scope`, not a
 /// grant — Invariant 10). Operator/collaborator grants are provisioned manually
 /// at the IdP (see docs/AUTH.md); nothing in code expands them.
-pub const DefaultGrant = enum { tenant, runner };
+pub const DefaultGrant = enum { tenant_owner, tenant_api_key, runner };
+
+/// Every tenant capability a machine credential may hold. `approval_resolve` is
+/// deliberately absent: an `agt_t` key is how an automation reaches the API —
+/// including a Fleet running in the sandbox — so a holder able to resolve an
+/// approval could approve the gate guarding its own next action, and the human
+/// decision the gate represents would not be one. Approving stays a person's
+/// act; see docs/AUTH.md §Provisioning grants.
+const TENANT_API_KEY_GRANT = [_]Scope{
+    .fleet_admin,
+    .schedule_write,
+    .secret_write,
+    .apikey_admin,
+    .grant_write,
+    .connector_write,
+    .billing_read,
+    .workspace_admin,
+    .library_write,
+};
+
+/// The human tenant owner's grant: the machine set plus the one capability a
+/// person must hold and a credential must not. Derived rather than restated so
+/// the two sets cannot drift apart by more than this line.
+const TENANT_OWNER_GRANT = TENANT_API_KEY_GRANT ++ [_]Scope{.approval_resolve};
 
 /// The minimal scopes provisioned to `src` (before hierarchy closure).
 fn grantMembers(src: DefaultGrant) []const Scope {
     return switch (src) {
-        // Clerk signup owner + `agt_t` tenant api-key: every tenant capability,
-        // NO platform or cross-tenant scope (preserves "an admin api-key cannot
-        // enroll a runner").
-        .tenant => &.{
-            .fleet_admin,
-            .schedule_write,
-            .secret_write,
-            .apikey_admin,
-            .grant_write,
-            .connector_write,
-            .billing_read,
-            .approval_resolve,
-            .workspace_admin,
-            .library_write,
-        },
+        // Clerk signup owner, via the `user.created` writeback. NO platform or
+        // cross-tenant scope (preserves "an admin api-key cannot enroll a runner").
+        .tenant_owner => &TENANT_OWNER_GRANT,
+        // `agt_t` tenant api-key — the owner's capabilities minus approval.
+        .tenant_api_key => &TENANT_API_KEY_GRANT,
         // Host-resident runner credential — self-plane only.
         .runner => &.{.runner_self},
     };

@@ -8,6 +8,10 @@
 
 const std = @import("std");
 const integration = @import("integration.zig");
+// The two halves of the repository binding: what the mint asks for, and whether
+// the token it got back reaches what was asked. Split out under RULE FLL.
+const github_body = @import("integration_github_body.zig");
+const github_reach = @import("integration_github_reach.zig");
 
 const MintCtx = integration.MintCtx;
 const Outcome = integration.Outcome;
@@ -59,6 +63,13 @@ pub fn mint(ctx: MintCtx) anyerror!Outcome {
     const installation_id = strField(obj, FIELD_INSTALLATION_ID) orelse return .reconnect_required;
     const app = ctx.platform.github orelse return .{ .mint_failed = .permanent }; // platform unconfigured
 
+    // Fail closed BEFORE signing: a fleet that declared no repository binding
+    // gets no token at all. An empty body would mint the App installation's FULL
+    // permission set across EVERY repository it covers, for an hour — so the
+    // absence of a declaration can never be the permissive branch.
+    const body = (try github_body.buildTokenRequestBody(ctx)) orelse return .{ .mint_failed = .permanent };
+    defer ctx.alloc.free(body);
+
     const jwt = try buildAppJwt(ctx, app);
     defer ctx.alloc.free(jwt);
 
@@ -74,7 +85,7 @@ pub fn mint(ctx: MintCtx) anyerror!Outcome {
         .bearer = jwt,
         .accept = ACCEPT_GITHUB,
         .user_agent = USER_AGENT,
-        .body = "",
+        .body = body,
     }) catch return .{ .mint_failed = .transient }; // network / timeout → retryable
     defer ctx.alloc.free(resp.body);
 
@@ -97,6 +108,21 @@ fn parseToken(ctx: MintCtx, body: []const u8) anyerror!Outcome {
         else => return .{ .mint_failed = .permanent },
     };
     const tok = strField(obj, RESP_FIELD_TOKEN) orelse return .{ .mint_failed = .permanent };
+
+    // The request named repositories by BARE name (`bareRepositoryName` below),
+    // so the OWNER a fleet declared never reached the wire and GitHub could only
+    // ever have scoped by name within its own installation account. Verify what
+    // the token actually reaches before it is handed to anyone — otherwise the
+    // fetch path compares `owner/repo` and this path compares nothing, and one
+    // declaration means two different things depending on which a model takes.
+    const binding = ctx.repository_binding orelse return .{ .mint_failed = .permanent };
+    switch (github_reach.verify(binding.repositories, obj)) {
+        .exact => {},
+        // The token is never duplicated and never returned; it dies with
+        // `parsed` and expires upstream on its own hour-long clock.
+        .mismatched, .unstated => return .{ .mint_failed = .permanent },
+    }
+
     return .{ .ok = .{
         .token = try ctx.alloc.dupe(u8, tok),
         .expires_at_ms = ctx.now_ms + INSTALL_TOKEN_TTL_MS,
@@ -186,7 +212,11 @@ test "github mint: status → outcome mapping incl. retry class (Dimensions 2.1/
 
 test "github mint: 201 → token with local expiry; URL targets the install; bearer is a 3-part JWT (Dimension 2.1)" {
     const alloc = std.testing.allocator;
-    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = "{\"token\":\"ghs_minted\",\"expires_at\":\"2026-06-26T16:30:00Z\"}" };
+    // The reach echoes `testing.test_binding`, which `githubCtx` declares — the
+    // mint refuses a token stating any other reach, and this test is about the
+    // expiry, the URL, and the JWT shape rather than about the binding.
+    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = "{\"token\":\"ghs_minted\"," ++
+        "\"expires_at\":\"2026-06-26T16:30:00Z\",\"repositories\":[{\"full_name\":\"acme/widgets\"}]}" };
     defer gh.deinit();
     var h = try testing.parse(alloc, HANDLE_GH);
     defer h.deinit();

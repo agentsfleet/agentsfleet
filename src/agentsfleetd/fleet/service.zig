@@ -41,6 +41,7 @@ const secrets_resolve = @import("secrets_resolve.zig");
 const grant_lookup = @import("../state/integration_grant_lookup.zig");
 const integration = @import("../credentials/integration.zig");
 const service_endpoint = @import("service_endpoint.zig");
+const service_repository = @import("service_repository.zig");
 const context_resolve = @import("context_resolve.zig");
 const rows = @import("event_rows.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
@@ -312,6 +313,7 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
         .api_key = if (resolved) |r| r.api_key else "",
         .inference_host = endpoint.inference_host,
         .base_url = endpoint.base_url,
+        .repository_binding = service_repository.wireRepositoryBinding(session.config.repository_binding),
     } };
 }
 
@@ -332,8 +334,9 @@ fn replyNoWork(hx: Hx) void {
 
 test {
     _ = service_endpoint; // pull the split module's tests into discovery
+    _ = service_repository;
 }
 
-test "FleetSession size pinned at 336 bytes (pin relocated beside its consumer)" {
-    try std.testing.expectEqual(@as(usize, 336), @sizeOf(FleetSession));
+test "FleetSession size pinned at 368 bytes (pin relocated beside its consumer)" {
+    try std.testing.expectEqual(@as(usize, 368), @sizeOf(FleetSession));
 }

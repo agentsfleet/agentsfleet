@@ -1,58 +1,26 @@
-/// Compile-time-generated error registry and lookup.
+/// The error-code declaration surface: every ERR_* constant and its message.
+///
 /// Add codes to error_entries.zig or error_entries_runtime.zig, then define the
-/// matching ERR_* constant below. Validation rejects malformed entries.
+/// matching ERR_* constant below; the comptime self-check at the bottom rejects
+/// a constant with no entry.
+///
+/// Code literals may live ONLY in this file. `audits/error-codes.sh` greps this
+/// path alone for declared codes, so a code declared in a sibling reads as an
+/// orphan at every use site. Anything that is not a code declaration belongs
+/// elsewhere — the lookup machinery is in error_lookup.zig (re-exported below),
+/// and the approval-gate and webhook vocabularies moved to the families that
+/// speak them.
 const std = @import("std");
-const entries = @import("error_entries.zig");
-const entries_runtime = @import("error_entries_runtime.zig");
+const error_lookup = @import("error_lookup.zig");
 const EVAL_BRANCH_QUOTA = 1_000_000;
-pub const Entry = entries.Entry;
-pub const UNKNOWN = entries.UNKNOWN;
-pub const ERROR_DOCS_BASE = entries.ERROR_DOCS_BASE;
-pub const REGISTRY = entries.ENTRIES ++ entries_runtime.ENTRIES_RUNTIME;
 
-comptime {
-    @setEvalBranchQuota(REGISTRY.len * REGISTRY.len * 20);
-    for (REGISTRY) |entry| {
-        if (entry.hint.len == 0)
-            @compileError("Entry has empty hint: " ++ entry.code);
-        if (entry.code.len < 4 or !std.mem.startsWith(u8, entry.code, "UZ-"))
-            @compileError("Entry code must start with UZ-: " ++ entry.code);
-        if (entry.user_message) |um| {
-            if (um.len == 0)
-                @compileError("Entry has empty user_message (omit the field instead of authoring an empty string): " ++ entry.code);
-        }
-    }
-    // Invariant 3: no sentinel collision
-    for (REGISTRY) |entry| {
-        if (std.mem.eql(u8, entry.code, UNKNOWN.code))
-            @compileError("REGISTRY entry collides with UNKNOWN sentinel: " ++ entry.code);
-    }
-    // Invariant 5: no duplicate codes
-    for (REGISTRY, 0..) |a, i| {
-        for (REGISTRY[i + 1 ..]) |b| {
-            if (std.mem.eql(u8, a.code, b.code))
-                @compileError("Duplicate code in REGISTRY: " ++ a.code);
-        }
-    }
-}
-const LOOKUP = blk: {
-    @setEvalBranchQuota(REGISTRY.len * REGISTRY.len * 20);
-    var kvs: [REGISTRY.len]struct { []const u8, usize } = undefined;
-    for (REGISTRY, 0..) |entry, i| kvs[i] = .{ entry.code, i };
-    break :blk std.StaticStringMap(usize).initComptime(kvs);
-};
+pub const Entry = error_lookup.Entry;
+pub const UNKNOWN = error_lookup.UNKNOWN;
+pub const ERROR_DOCS_BASE = error_lookup.ERROR_DOCS_BASE;
+pub const REGISTRY = error_lookup.REGISTRY;
+pub const lookup = error_lookup.lookup;
+pub const hint = error_lookup.hint;
 
-/// Lookup by code string. Returns UNKNOWN for unregistered codes.
-/// Never returns null — callers do not need optional handling.
-pub fn lookup(code: []const u8) Entry {
-    const idx = LOOKUP.get(code) orelse return UNKNOWN;
-    return REGISTRY[idx];
-}
-
-/// Lookup hint for an error code. Returns UNKNOWN.hint for unregistered codes.
-pub fn hint(code: []const u8) []const u8 {
-    return lookup(code).hint;
-}
 // UUIDV7
 pub const ERR_UUIDV7_INVALID_ID_SHAPE = "UZ-UUIDV7-009";
 // INTERNAL
@@ -285,30 +253,6 @@ pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolve
 pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
 pub const MSG_APPROVAL_INVALID_DECISION = "Decision must be 'approve' or 'deny'";
 pub const MSG_APPROVAL_CONDITION_INVALID = "Gate condition is invalid. Use field == 'value' or field != 'value' (single-quoted).";
-// Webhook constants
-pub const DEDUP_TTL_SECONDS: u32 = 86400;
-/// Redis key prefix for webhook idempotency slots (RULE UFS — one site; both
-/// webhook handlers + tests import it).
-pub const WEBHOOK_DEDUP_KEY_PREFIX = "webhook:dedup:";
-/// Redis key prefix for the Slack events idempotency slot, keyed on
-/// `(channel_fleet_id, event.ts)` — Slack retries deliver the same `event.ts`.
-pub const SLACK_DEDUP_KEY_PREFIX = "slack:dedup:";
-pub const WEBHOOK_EVENT_TYPE = "webhook_received";
-pub const STATUS_DUPLICATE = "duplicate";
-/// Webhook 200-ignored reason for a paused/non-active fleet:
-/// sender retry queues add no value for an intentionally paused fleet.
-pub const IGNORED_REASON_AGENTSFLEET_PAUSED = "fleet_paused";
-pub const STATUS_ACCEPTED = "accepted";
-// Slack signature constants
-pub const SLACK_SIG_VERSION = "v0";
-pub const SLACK_SIG_HEADER = "x-slack-signature";
-pub const SLACK_TS_HEADER = "x-slack-request-timestamp";
-pub const SLACK_MAX_TS_DRIFT_SECONDS: i64 = 300;
-// Approval-gate constants (Redis prefixes, timeouts, decision verbs, event
-// names) moved to fleet_runtime/approval_gate_constants.zig — none of them was
-// an error code, and they were what left this file with no room for a new
-// namespace.
-
 // ── Comptime self-check: every ERR_* constant exists in REGISTRY ───────────
 comptime {
     @setEvalBranchQuota(EVAL_BRANCH_QUOTA);
@@ -316,7 +260,7 @@ comptime {
     for (decls) |decl| {
         if (std.mem.startsWith(u8, decl.name, "ERR_")) {
             const code: []const u8 = @field(@This(), decl.name);
-            if (LOOKUP.get(code) == null) {
+            if (!error_lookup.isRegistered(code)) {
                 @compileError("ERR_* constant not in REGISTRY: " ++ code);
             }
         }

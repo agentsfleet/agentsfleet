@@ -16,6 +16,8 @@ const pg = @import("pg");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const auth_mw = @import("../../../auth/middleware/mod.zig");
+const api_key_lookup = @import("../../../cmd/api_key_lookup.zig");
+const error_codes = @import("../../../errors/error_registry.zig");
 const approval_gate = @import("../../../fleet_runtime/approval_gate.zig");
 const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
 const approval_gate_sweeper = @import("../../../fleet_runtime/approval_gate_sweeper.zig");
@@ -45,7 +47,30 @@ const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 const TEST_JWKS = scope_fixtures.JWKS;
 const TOKEN_OPERATOR = scope_fixtures.TENANT_ADMIN;
 
-fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
+// Key name for the machine-credential probe. Named because the mint and the
+// cleanup must agree — `core.api_keys` is UNIQUE (tenant_id, key_name), so a
+// drift between the two would 409 every run after the first.
+const MACHINE_KEY_NAME = "approval-machine-probe";
+
+// Real DB-backed api-key lookup, so the probe authenticates as the principal
+// production builds rather than a hand-assembled scope set. Parked at module
+// scope because the ctx must outlive the middleware chain; `zig build test`
+// runs tests sequentially in one process, so reassignment across tests is safe.
+// SAFETY: test fixture; populated by configureRegistry before any read.
+var api_key_ctx: api_key_lookup.Ctx = undefined;
+
+fn configureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
+    api_key_ctx = .{ .pool = h.pool };
+    reg.tenant_api_key_mw = .{ .host = &api_key_ctx, .lookup = api_key_lookup.lookup };
+}
+
+fn parseJsonString(alloc: std.mem.Allocator, body: []const u8, field: []const u8) !?[]const u8 {
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
+    defer parsed.deinit();
+    const v = parsed.value.object.get(field) orelse return null;
+    if (v != .string) return null;
+    return try alloc.dupe(u8, v.string);
+}
 
 fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
     const h = try TestHarness.start(alloc, .{
@@ -91,6 +116,9 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
+    // Before the workspace/tenant rows it depends on. Runs unconditionally so a
+    // failed probe can't leave a row that 409s the next run on the name unique.
+    _ = conn.exec("DELETE FROM core.api_keys WHERE tenant_id = $1::uuid AND key_name = $2", .{ TEST_TENANT_ID, MACHINE_KEY_NAME }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_approval_gates WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_approval_gates WHERE workspace_id = $1::uuid", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
@@ -868,4 +896,62 @@ test "integration: evaluateRef stays pending when the DB row is unresolved and R
     const ref = (try approval_gate_async.lookupEventGateRef(&h.queue, fleet_id, event_id)).?;
     const eval = try approval_gate_async.evaluateRef(&h.queue, h.pool, &ref, clock.nowMillis());
     try std.testing.expectEqual(approval_gate_async.PendingEval.pending, eval);
+}
+
+test "test_api_key_cannot_resolve_approval" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    // Mint a real `agt_t` key the way an operator would, so the principal under
+    // test is the one the middleware actually builds — not a scope set assembled
+    // by hand, which would prove nothing about the provisioning path.
+    const create = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR))
+        .json("{\"key_name\":\"" ++ MACHINE_KEY_NAME ++ "\"}")).send();
+    defer create.deinit();
+    try create.expectStatus(.created);
+    const raw_key = (try parseJsonString(ALLOC, create.body, "key")) orelse return error.TestExpectedEqual;
+    defer ALLOC.free(raw_key);
+
+    // Unique per run, unlike this file's other gates. Alone among them this test
+    // drives a gate to a terminal state and then needs it *unresolved*, so a row
+    // surviving the run answers 409 "already resolved" before the handler ever
+    // consults the credential — and rows do survive: cleanupTestData's DELETE is
+    // not permitted (api_runtime holds arw, not d, on core.fleet_approval_gates),
+    // so every integration target drops schemas first to compensate. A fixed id
+    // would therefore pass the gate run and fail under KEEP_TEST_STATE.
+    var gid_buf: [40]u8 = undefined;
+    var aid_buf: [48]u8 = undefined;
+    const now_ms = clock.nowMillis();
+    const gid = try std.fmt.bufPrint(&gid_buf, "01999999-9000-7000-8000-{x:0>12}", .{@as(u64, @intCast(now_ms))});
+    const action_id = try std.fmt.bufPrint(&aid_buf, "act-machine-probe-{d}", .{now_ms});
+    try insertGate(conn, .{ .gate_id = gid, .action_id = action_id });
+
+    // The Redis decision mirror is keyed on action_id and outlives the row, so
+    // clear it on the way out — the human leg below writes one.
+    defer delDecisionKey(&h.queue, action_id);
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}:approve", .{ TEST_WORKSPACE_ID, gid });
+    defer ALLOC.free(url);
+
+    // The machine credential authenticates fine and is refused on scope. This is
+    // what makes the gate a human gate: a Fleet reaches the API with a key like
+    // this one, so a key able to resolve could approve the gate guarding its own
+    // next action.
+    const as_machine = try (try (try (h.post(url)).bearer(raw_key)).json("{}")).send();
+    defer as_machine.deinit();
+    try as_machine.expectStatus(.forbidden);
+    try as_machine.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
+
+    // Same gate, same request, human token — so the refusal above is about the
+    // credential class and not about the gate being unresolvable.
+    const as_human = try (try (try (h.post(url)).bearer(TOKEN_OPERATOR)).json("{}")).send();
+    defer as_human.deinit();
+    try as_human.expectStatus(.ok);
 }
