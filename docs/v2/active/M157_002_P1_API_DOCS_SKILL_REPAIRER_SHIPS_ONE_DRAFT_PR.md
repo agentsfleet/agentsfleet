@@ -106,10 +106,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 A bundle that may request a write mint declares it (fleet-config capability, §Files `config_types.zig`); the gate parks that bundle's events before consulting rules and even when no gates config exists. Rule-parking is unsafe by construction — `.auto_approve` is the no-match fallthrough and rules are `fleet:write`-PATCHable — so the kind check cannot live in rules. The card states the write blast radius as daemon fact: repository (from the binding), budget (one branch, one draft PR).
 
-- **Dimension 1.1** — write-capable bundle parks with NO gates config present → Test `test_write_kind_parks_without_gates_config`
-- **Dimension 1.2** — write-capable bundle parks when rules would auto-approve → Test `test_write_kind_ignores_rule_fallthrough`
-- **Dimension 1.3** — card carries repository + budget as daemon-derived lines; `evidence_json` renders code-span-safe → Test `test_card_write_radius_and_span_safety`
-- **Dimension 1.4** — approval releases the lease and the run proceeds (extends the shipped positive control) → Test `test_approved_write_kind_releases_lease`
+- **Dimension 1.1** — DONE — write-capable bundle parks with NO gates config present → Test `test_write_kind_parks_without_gates_config`
+- **Dimension 1.2** — DONE — write-capable bundle parks when rules would auto-approve → Test `test_write_kind_ignores_rule_fallthrough`
+- **Dimension 1.3** — DONE — card carries repository + budget as daemon-derived lines; `evidence_json` renders code-span-safe → Test `test_card_write_radius_and_span_safety`
+- **Dimension 1.4** — DONE — approval releases the lease and the run proceeds, proven inside both write-kind tests via the shared park→approve→release harness (`runParkApproveRelease` asserts lease ownership by fleet+event)
 
 ### §2 — The write mint, fenced
 

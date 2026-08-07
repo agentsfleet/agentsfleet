@@ -36,6 +36,17 @@ pub const GATE_KIND_INTEGRATION_GRANT = "integration_grant";
 /// The `evidence` key naming the service an integration-grant gate covers.
 pub const GATE_EVIDENCE_SERVICE_KEY = "service";
 
+/// `core.fleet_approval_gates.gate_kind` for the unconditional write-fleet
+/// park: a fleet whose repository binding declares WRITE access parks
+/// every first-encounter event under this kind. Deliberately NOT a gate rule —
+/// rules ride `config_json` (PATCHable under the same `fleet:write` scope that
+/// wakes the fleet) and `.auto_approve` is their no-match fallthrough.
+pub const GATE_KIND_REPOSITORY_WRITE = "repository_write";
+/// The write-kind card's blast radius, stated as a daemon fact beside the
+/// token-reach line. The repairer bundle instructs the same bound in prose;
+/// this spelling is the daemon's own.
+pub const GATE_BLAST_RADIUS_REPOSITORY_WRITE = "pushes at most one branch and opens at most one draft Pull Request in the bound repository";
+
 // Gate activity event types
 pub const GATE_EVENT_REQUIRED = "gate_approval_required";
 pub const GATE_EVENT_APPROVED = "gate_approved";

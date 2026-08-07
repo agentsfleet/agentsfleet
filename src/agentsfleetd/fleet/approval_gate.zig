@@ -23,6 +23,7 @@ const gate_constants = @import("../fleet_runtime/approval_gate_constants.zig");
 const config_gates = @import("../fleet_runtime/config_gates.zig");
 const gate_detail = @import("approval_gate_detail.zig");
 const gate_route = @import("approval_gate_route.zig");
+const park = @import("approval_gate_park.zig");
 const FleetSession = @import("fleet_session.zig");
 const logging = @import("log");
 
@@ -103,6 +104,16 @@ pub fn checkApprovalGate(
         .absent, .unreadable => {},
     }
 
+    // KIND-PARK: a fleet whose repository binding declares WRITE
+    // access parks every first-encounter event — before the rules walk AND
+    // before the no-gates return below. Gate rules cannot hold this boundary:
+    // `.auto_approve` is their no-match fallthrough and rules ride
+    // `config_json`, PATCHable under the same `fleet:write` scope that wakes
+    // the fleet. Anomaly counters are skipped on this path: each event costs
+    // one card and executes nothing until a human answers, so the human is the
+    // runaway brake here.
+    if (writeAccess(session.config)) return parkWriteKind(alloc, session, event, pool, redis, lookup.state());
+
     const gates = session.config.gates orelse return .{ .passed = {} };
 
     // 1. Anomaly check (fast path — before approval). Reached only on a FIRST
@@ -117,7 +128,7 @@ pub fn checkApprovalGate(
         gates.anomaly_rules,
     );
     if (anomaly == .auto_kill) {
-        logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_AUTO_KILL, event.event_id);
+        park.logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_AUTO_KILL, event.event_id);
         pauseFleet(pool, redis, session.fleet_id);
         return .{ .auto_killed = .anomaly };
     }
@@ -138,7 +149,7 @@ pub fn checkApprovalGate(
         .evaluate_recorded => unreachable,
         .pass => .{ .passed = {} },
         .kill => blk: {
-            logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_AUTO_KILL, event.event_id);
+            park.logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_AUTO_KILL, event.event_id);
             pauseFleet(pool, redis, session.fleet_id);
             break :blk .{ .auto_killed = .policy };
         },
@@ -173,57 +184,46 @@ fn requestNewGate(
     // the run's reach as fact while the model's claim about it stays a claim.
     var built = gate_detail.build(alloc, event, rule, context, @intCast(gates.timeout_ms), session.config.repository_binding);
     defer built.deinit(alloc);
-    const detail = built.detail;
+    return parkOutcomeToResult(park.parkEvent(alloc, session, event, pool, redis, built.detail));
+}
 
-    const action_id = approval_gate.requestApproval(
-        alloc,
-        redis,
-        session.fleet_id,
-        detail,
-    ) catch |err| {
-        // Redis unavailable — fail closed (default-deny). Surface the registry
-        // code so operators can trace the default-deny back to gate-service loss.
-        log.warn("gate_redis_unavailable", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .error_code = error_codes.ERR_APPROVAL_REDIS_UNAVAILABLE, .err = @errorName(err) });
-        logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_DENIED, "gate_unavailable");
-        return .{ .blocked = .unavailable };
+/// True when the fleet's repository egress binding declares write access — the
+/// kind that parks unconditionally.
+fn writeAccess(config: fleet_config.FleetConfig) bool {
+    const binding = config.repository_binding orelse return false;
+    return binding.access == .write;
+}
+
+/// Park a write-fleet event behind the write-kind card. `.unreadable` waits a
+/// poll rather than raising a possible SECOND card for the same event — the
+/// same discipline as the rules path's `.wait` route.
+fn parkWriteKind(
+    alloc: Allocator,
+    session: *FleetSession,
+    event: *const redis_fleet.FleetEvent,
+    pool: *pg.Pool,
+    redis: *queue_redis.Client,
+    ref_state: gate_route.RefState,
+) GateCheckResult {
+    if (ref_state == .unreadable) return .{ .pending = {} };
+    var context_parsed = parseEventContext(alloc, event.request_json);
+    defer if (context_parsed) |*p| p.deinit();
+    const context: ?std.json.Value = if (context_parsed) |p| p.value else null;
+    // No rule carries workspace copy here, so the kind and radius are the
+    // daemon's own constants; the timeout is the gate default rather than a
+    // policy value a PATCH could stretch.
+    var built = gate_detail.build(alloc, event, null, context, @intCast(gate_constants.GATE_DEFAULT_TIMEOUT_MS), session.config.repository_binding);
+    defer built.deinit(alloc);
+    built.detail.gate_kind = gate_constants.GATE_KIND_REPOSITORY_WRITE;
+    built.detail.blast_radius = gate_constants.GATE_BLAST_RADIUS_REPOSITORY_WRITE;
+    return parkOutcomeToResult(park.parkEvent(alloc, session, event, pool, redis, built.detail));
+}
+
+fn parkOutcomeToResult(outcome: park.ParkOutcome) GateCheckResult {
+    return switch (outcome) {
+        .parked => .{ .pending = {} },
+        .unavailable => .{ .blocked = .unavailable },
     };
-    defer alloc.free(action_id);
-
-    logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_REQUIRED, action_id);
-    const slack_msg = approval_gate.buildSlackApprovalMessage(
-        alloc,
-        session.config.name,
-        action_id,
-        detail,
-        "", // callback_url resolved at delivery time by the notification provider
-    ) catch |err| {
-        log.warn("slack_msg_build_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
-        return .{ .blocked = .unavailable };
-    };
-    defer alloc.free(slack_msg);
-
-    // Store the notification payload in Redis for the provider to pick up
-    storeNotificationPayload(redis, session.fleet_id, action_id, slack_msg);
-
-    approval_gate.recordGatePending(
-        pool,
-        alloc,
-        session.fleet_id,
-        session.workspace_id,
-        action_id,
-        detail,
-    );
-
-    const deadline_ms = clock.nowMillis() + @as(i64, @intCast(gates.timeout_ms));
-    approval_gate_async.recordEventGateRef(redis, session.fleet_id, event.event_id, action_id, deadline_ms) catch |err| {
-        // Without the ref the lease path could never resolve this gate —
-        // fail toward unavailable like the requestApproval failure above.
-        log.warn("gate_ref_record_fail", .{ .error_code = error_codes.ERR_APPROVAL_REDIS_UNAVAILABLE, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
-        return .{ .blocked = .unavailable };
-    };
-
-    log.debug("gate_pending", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .action_id = action_id });
-    return .{ .pending = {} };
 }
 
 fn evaluatePendingGate(
@@ -240,15 +240,15 @@ fn evaluatePendingGate(
     };
     switch (eval) {
         .approved => {
-            logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_APPROVED, ref.actionId());
+            park.logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_APPROVED, ref.actionId());
             return .{ .passed = {} };
         },
         .denied => {
-            logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_DENIED, ref.actionId());
+            park.logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_DENIED, ref.actionId());
             return .{ .blocked = .approval_denied };
         },
         .expired => {
-            logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_TIMEOUT, ref.actionId());
+            park.logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_TIMEOUT, ref.actionId());
             // Attribution must be the canonical "system:timeout" string the
             // sweeper also writes (resolve() dedups whichever lands first).
             approval_gate.resolveGateDecision(pool, ref.actionId(), .timed_out, resolver.SYSTEM_TIMEOUT, "", std.heap.page_allocator);
@@ -257,15 +257,6 @@ fn evaluatePendingGate(
         },
         .pending => return .{ .pending = {} },
     }
-}
-
-/// Best-effort gate-event log. Gate transitions currently emit structured
-/// logs; durable terminal state lands in core.fleet_events via the worker's
-/// terminal UPDATE.
-fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *FleetSession, event_type: []const u8, detail: []const u8) void {
-    _ = pool;
-    _ = alloc;
-    log.debug("gate_event", .{ .fleet_id = session.fleet_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });
 }
 
 fn pauseFleet(pool: *pg.Pool, redis: *queue_redis.Client, fleet_id: []const u8) void {
@@ -289,16 +280,6 @@ fn cleanupPendingKey(redis: *queue_redis.Client, fleet_id: []const u8, action_id
     }) catch return;
     var resp = redis.commandAllowError(&.{ "DEL", key }) catch return;
     resp.deinit(redis.alloc);
-}
-
-fn storeNotificationPayload(redis: *queue_redis.Client, fleet_id: []const u8, action_id: []const u8, payload: []const u8) void {
-    var key_buf: [256]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "fleet:gate:notify:{s}:{s}", .{
-        fleet_id, action_id,
-    }) catch return;
-    redis.setEx(key, payload, gate_constants.GATE_PENDING_TTL_SECONDS) catch |err| {
-        log.warn("notify_store_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
-    };
 }
 
 fn parseEventContext(alloc: Allocator, json: []const u8) ?std.json.Parsed(std.json.Value) {
