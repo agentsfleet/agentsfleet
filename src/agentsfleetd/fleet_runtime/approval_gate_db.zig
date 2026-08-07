@@ -16,6 +16,7 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const binding_json = @import("repository_binding_json.zig");
 
 /// Transaction-scoped opt-out of the gates append-only trigger (schema/026).
 /// ONLY the two hard-purge paths (account teardown, fleet hard-delete) may
@@ -94,15 +95,20 @@ pub const getByGateId = reads.getByGateId;
 
 /// Insert a pending gate row. Best-effort — logs on failure, does not propagate.
 /// Resolution updates this row via `ResolveArgs.atomic` / `resolveGateDecision`.
+/// `event_id` is the fleet event the gate parked (null for gates raised outside
+/// an event, e.g. install-time integration grants); the row also records the
+/// detail's repository binding as `stated_binding`, which the write-scoped
+/// credential mint later compares against the fleet's CURRENT binding.
 pub fn recordGatePending(
     pool: *pg.Pool,
     alloc: Allocator,
     fleet_id: []const u8,
     workspace_id: []const u8,
     action_id: []const u8,
+    event_id: ?[]const u8,
     detail: ActionDetail,
 ) void {
-    insertPendingRow(pool, alloc, fleet_id, workspace_id, action_id, detail) catch |err| {
+    insertPendingRow(pool, alloc, fleet_id, workspace_id, action_id, event_id, detail) catch |err| {
         log.err("record_pending_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .action_id = action_id });
     };
 }
@@ -218,10 +224,16 @@ fn insertPendingRow(
     fleet_id: []const u8,
     workspace_id: []const u8,
     action_id: []const u8,
+    event_id: ?[]const u8,
     detail: ActionDetail,
 ) !void {
     const gate_id = try id_format.generateActivityEventId(alloc);
     defer alloc.free(gate_id);
+
+    // Recorded so the write mint can compare the approved reach against the
+    // fleet's current config without trusting anything PATCHable.
+    const stated_binding: ?[]u8 = if (detail.repository_binding) |b| try binding_json.serialize(alloc, b) else null;
+    defer if (stated_binding) |s| alloc.free(s);
 
     const conn = try pool.acquire();
     defer pool.release(conn);
@@ -231,7 +243,7 @@ fn insertPendingRow(
     _ = try conn.exec(sql.INSERT_GATE, .{
         gate_id,          fleet_id,               workspace_id,         action_id,           detail.tool, detail.action,
         detail.gate_kind, detail.proposed_action, detail.evidence_json, detail.blast_radius, timeout_at,  PENDING_STATUS,
-        now_ms,
+        now_ms,           event_id,               stated_binding,
     });
 }
 

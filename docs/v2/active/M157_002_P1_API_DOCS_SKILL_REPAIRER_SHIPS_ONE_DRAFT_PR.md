@@ -54,24 +54,40 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `library/incident-repairer/SKILL.md` | CREATE | The repairer bundle: read telemetry/history/code, author the fix, push one branch, open one draft PR |
 | `library/incident-repairer/TRIGGER.md` | CREATE | Wakes on failed `workflow_run` webhook events and manual steer — disjoint from the responder's scheduled sweeps |
-| `src/agentsfleetd/fleet/approval_gate.zig` | EDIT | Park-by-kind: a write-capable bundle's event parks unconditionally, before rules and before the no-gates-config return |
+| `src/agentsfleetd/fleet/approval_gate.zig` | EDIT | Park-by-kind: a write-access fleet's event parks unconditionally, before rules and before the no-gates-config return |
+| `src/agentsfleetd/fleet/approval_gate_park.zig` | CREATE | The park tail shared by the rules path and the kind path (extracted for FLL headroom) |
 | `src/agentsfleetd/fleet_runtime/approval_gate_slack.zig` | EDIT | Card gains the write blast-radius line (repository, branch budget); `evidence_json` moves off the backtick-closable code span (carried finding folds here) |
-| `src/agentsfleetd/fleet_runtime/config_types.zig` | EDIT | Bundle write-capability declaration the gate and mint read — the park KIND's source of truth |
-| `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | Write arm: issues the write body only when the lease's event carries an approved write-kind gate ref |
-| `src/agentsfleetd/http/handlers/runner/credentials_mint_scope.zig` | EDIT | Cross-check: lease-stamped `execution_policy.repository_binding` must equal the fleet-config binding — the stamp gains its consumer |
-| `src/agentsfleetd/credentials/integration_github_body.zig` | EDIT | Write body: `contents: write` + `pull_requests: write`; no code path can emit a `workflows` permission |
-| `src/agentsfleetd/credentials/integration_github_reach.zig` | EDIT | `verify()` graduates: checks `permissions` against what was requested AND `repositories` against the binding |
+| `src/agentsfleetd/fleet_runtime/approval_gate_constants.zig` | EDIT | The write park kind + its blast-radius copy — `RepositoryAccess.write` in fleet config (shipped in M157_001) is the kind's source of truth, no new declaration needed |
+| `schema/811_fleet_approval_gates_event_binding.sql` | CREATE | Additive migration: gate rows gain `event_id` + `stated_binding` — the durable record the write mint checks |
+| `schema/embed.zig` | EDIT | Register 811 in the embed + migration array |
+| `src/agentsfleetd/fleet_runtime/sql.zig` | EDIT | `INSERT_GATE` writes the two new columns |
+| `src/agentsfleetd/fleet_runtime/approval_gate_db.zig` | EDIT | `recordGatePending` gains the event id and serializes the stated binding |
+| `src/agentsfleetd/fleet_runtime/repository_binding_json.zig` | CREATE | One JSON spelling of a binding: park-side serialize + mint-side match |
+| `src/agentsfleetd/fleet_runtime/config.zig` | EDIT | Test discovery for the new module |
+| `src/agentsfleetd/http/handlers/fleets/create_grants.zig` | EDIT | Install-time gates record a null event id |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | Write arm: refuses without an approved write-kind gate row for the lease's event |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint_write_gate.zig` | CREATE | The durable-row approval check (status + kind + stated-binding match) |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint_scope.zig` | EDIT | `LeaseScope` gains the lease's event id |
+| `src/agentsfleetd/http/handlers/runner/sql.zig` | EDIT | Lease-scope select gains `event_id`; new write-gate select |
+| `src/agentsfleetd/credentials/integration_github_body.zig` | EDIT | Permission constants published for the response-side verify (write body itself shipped in M157_001; no `workflows` path exists) |
+| `src/agentsfleetd/credentials/integration_github_reach.zig` | EDIT | `verifyPermissions`: response permissions must match the request; write/admin extras refuse, ambient read grants pass |
+| `src/agentsfleetd/credentials/integration_github.zig` | EDIT | The mint refuses a token whose stated permissions mismatch |
+| `src/agentsfleetd/credentials/integration_github_mint_body_test.zig` | EDIT | Fixture responses state their permissions |
+| `src/agentsfleetd/credentials/testing.zig` | EDIT | Fake exchange responses echo permissions per access level |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint_integration_test.zig` | EDIT | Write-gate fixtures (append-only-safe) + the two refusal tests; drain fix in `dropWriteBackBlock` (RULE NLR) |
+| `src/agentsfleetd/errors/gen_error_codes.zig` | EDIT | Public copy for the REPAIR category |
 | `src/agentsfleetd/http/handlers/webhooks/github.zig` | EDIT | Two narrow arms: a repair-branch `pull_request` opened → linkage insert; a completed `workflow_run` on a linked branch → deploy stamp |
 | `schema/830_repair_pr_links.sql` | CREATE | Incident → PR → deploy-result linkage; single-concern; 8xx history layer |
 | `schema/embed.zig` | EDIT | Register 830 in the embed + migration array |
 | `src/agentsfleetd/state/repair_pr_links.zig` | CREATE | Store: insert, lookup by branch/event, deploy-status transition; no content UPDATE surface |
 | `src/agentsfleetd/state/repair_pr_links_test.zig` | CREATE | Unit + database tests for the store |
 | `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | New `UZ-REPAIR-*` refusal codes (unapproved write mint, binding mismatch, duplicate linkage), each with a negative test |
+| `src/agentsfleetd/errors/error_registry.zig` | EDIT | The `UZ-REPAIR-010/011` code constants |
 | `src/agentsfleetd/fleet/gate_release_integration_test.zig` | EDIT | Kind-park positive controls: parks with no gates config; parks when rules say auto-approve; approval releases and the mint write arm opens |
 | `src/agentsfleetd/http/webhook_http_integration_test.zig` | EDIT | Linkage arms proven over the real router |
 | `docs/architecture/scenarios/production-deploy-repair.md` | EDIT | §4 rewritten: the fleet writes behind the gated mint; daemon-apply prose removed; status table updated |
 | `docs/v2/active/M157_001_P1_API_INFRA_OBS_SKILL_INCIDENT_TO_APPROVED_DRAFT_PR.md` | EDIT | Discovery gains the design-pivot record; spec moves `active/` → `done/` — its remaining scope IS this spec |
-| `public/openapi/components/schemas.yaml` | EDIT | Mint request gains the optional write-scope field; response documents echoed permissions |
+| ~~`public/openapi/components/schemas.yaml`~~ | — | Dropped at EXECUTE: the write arm keys off the fleet's binding, not a request field — no wire change, and the runner plane is not in the public OpenAPI |
 
 `.github/workflows/**` is NOT in this table: §6 produces a findings report; any workflow edit requires Indy's explicit in-session approval per the CI/CD guard.
 
@@ -79,7 +95,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **`~/Projects/dotfiles/docs/greptile-learnings/RULES.md`** — NDC (no dead code: the write arm ships wired to the gate check, never dormant), NLR (touch-it-fix-it: the `evidence_json` code-span fix rides the card edit), NLG (the scenario rewrite describes the fleet-writes design as *the* design — no "previously the daemon" framing), UFS (park-kind string, permission names, `UZ-REPAIR-*` codes, branch-name prefix shared verbatim across gate/mint/webhook/bundle), ORP (orphan sweep), FLL (length caps — mint and webhook handlers are near budget; split arms into siblings as the shipped `credentials_mint_scope.zig` precedent does), RULES.md #23 (JSON-escape all user-supplied card fields).
 - `~/Projects/dotfiles/dispatch/write_zig.md` — pg-drain (`conn.query` → `.drain()`), tagged-union results, errdefer placement, cross-compile both linux targets; all daemon edits.
-- `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` + STS/NSQ/SGR/ITF — `830` single-concern file; no static strings in DDL (deploy-status values are app-level named constants); edited in place, never ALTERed.
+- `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` + STS/NSQ/SGR/ITF — single-concern files ≤100 lines; no static strings in DDL (deploy-status values are app-level named constants). **The additive model is in force** (the M154 rebuild landed): shipped slots are frozen, changes are new numbered `IF NOT EXISTS`-guarded files — hence `811` for the gate columns rather than editing shipped `810`.
 - `~/Projects/dotfiles/docs/LOGGING_STANDARD.md` + `~/Projects/dotfiles/docs/LIFECYCLE_PATTERNS.md` — structured refusal events; init/deinit lifecycles on the new store.
 - REST guidelines: no new public route; the mint field rides the existing runner-plane endpoint — document in OpenAPI, name no new path.
 
@@ -113,12 +129,14 @@ A bundle that may request a write mint declares it (fleet-config capability, §F
 
 ### §2 — The write mint, fenced
 
-The mint's write arm issues only when the lease's event carries an approved write-kind gate ref. The token body names `contents: write` + `pull_requests: write` for exactly the bound repository; no code path emits `workflows`. Reach verification compares the response's `permissions` to the request AND `repositories` to the binding. The lease-stamped `execution_policy.repository_binding` must equal the fleet-config binding at mint time — a mid-flight config PATCH produces a mismatch and a refusal, giving the stamp its consumer.
+The mint's write arm issues only against durable rows: the gate row parked for the lease's event must be `approved`, of the repository-write kind, and its recorded `stated_binding` (a new column the park writes — the reach the card told the human) must still match the fleet's CURRENT binding. No Redis on the check path, so a cache loss can only withhold a token, never widen one. The token body names `contents: write` + `pull_requests: write` for exactly the bound repository; no code path emits `workflows`. Reach verification compares the response's `permissions` to the request AND `repositories` to the binding.
 
-- **Dimension 2.1** — approved event → write token with exactly the two permissions → Test `test_write_mint_issues_after_approval`
-- **Dimension 2.2** — no approval ref → refusal with its `UZ-REPAIR-*` code → Test `test_write_mint_refuses_unapproved`
-- **Dimension 2.3** — stamp/config binding mismatch → refusal → Test `test_write_mint_refuses_binding_drift`
-- **Dimension 2.4** — reach verify fails a response whose `permissions` exceed or miss the request → Test `test_reach_verifies_permissions`
+**Amended at EXECUTE (recorded in Discovery):** the plan's "lease-stamped `execution_policy.repository_binding` cross-check" was unimplementable — that stamp is wire-only (no lease column) and its runner-side reader died with the fetch path. The real drift hole is approval-to-mint (a `fleet:write` PATCH rebinding between the human's answer and the mint), closed by persisting the stated binding on the gate row at park time. The wire stamp remains reader-less; recorded honestly rather than given a ceremonial consumer.
+
+- **Dimension 2.1** — DONE — approved gate for the lease's event → write token with exactly the two permissions → Test `test_mint_rechecks_revoked_grant` (the file's one successful write mint, now gated)
+- **Dimension 2.2** — DONE — no gate row, or a pending one → refusal `UZ-REPAIR-010`, broker never reached → Test `test_write_mint_refuses_unapproved`
+- **Dimension 2.3** — DONE — stated-binding/config mismatch → refusal `UZ-REPAIR-011` → Test `test_write_mint_refuses_binding_drift`
+- **Dimension 2.4** — DONE — reach verify fails a response whose `permissions` exceed or miss the request; ambient read grants tolerated → Test `test_reach_verifies_permissions`
 
 ### §3 — The repairer bundle
 
@@ -153,12 +171,12 @@ Enumerate every workflow triggered by `pull_request`, list the secrets each moun
 ## Interfaces
 
 ```
-POST /v1/runners/me/credentials/mint
-  request:  { lease_id, scope?: "read" (default) | "write" }
-  write responses: 200 { token, expires_at, repositories, permissions } — permissions echoed
-                   4xx { code: UZ-REPAIR-* } on: no approved write-kind ref · binding mismatch ·
-                   malformed/absent binding · lease not active/owned
-Gate park record: kind "write" ref, read before policy (existing ref shape + kind field)
+POST /v1/runners/me/credentials/mint — wire shape UNCHANGED ({lease_id, integration}).
+  The write arm keys off the fleet's binding access, not a request field.
+  Write refusals: 403 UZ-REPAIR-010 (no approved write-kind gate for the lease's
+  event) · 403 UZ-REPAIR-011 (stated binding no longer matches config).
+Gate row: gains event_id + stated_binding (schema 811, additive); park records both;
+  the write mint reads durable rows only — no Redis on the check path.
 Webhook arms: no new routes — POST /v1/webhooks/{fleet_id}/github gains two accept arms
 Repair branch name: {prefix}/{incident event id} — prefix a named constant shared by bundle
   prose, webhook matcher, and tests (UFS)
@@ -285,6 +303,7 @@ N/A — no files deleted. (`execution_policy.repository_binding` gains its consu
 ## Discovery (consult log)
 
 - **Consults** — Architecture: fleet-writes vs daemon-applies settled by Indy, `> Indy (2026-08-08 02:20): "Well i think we need to use the repairer as a fleet which does the check on the code using null claw llm and send a the fix as PR, why do we need the daemon to do the fix"`; risk acceptance `> Indy (2026-08-08 02:35): "yes its  a PR and not merged, so its safe to send a PR"` — context: same-repo PR branches execute CI pre-review; accepted, mitigated by §2 fencing + §6 audit; north star amended `> Indy (2026-08-08 02:50): "north start is to send the PR as well after finding the fix in the code"`.
+- **EXECUTE findings (Aug 08)** — (1) `RepositoryAccess{read,write}` already ships in fleet config (M157_001's grant split) — the park kind needed no new declaration. (2) The planned lease-stamp cross-check was unimplementable (wire-only stamp, no lease column); replaced by the stronger durable check: gate rows gain `event_id` + `stated_binding` (schema 811) and the write mint compares the approved reach against current config — the wire `execution_policy.repository_binding` REMAINS reader-less; carried honestly for the runner-side egress double-check when that lands. (3) Schema model is additive post-M154 — shipped slots frozen; 811 is a new file, and §4's linkage keeps slot 830 (ascending order holds). (4) Touch-it-fix-it: `dropWriteBackBlock` exec'd while its own SELECT was open (ConnectionBusy) — residue trigger poisoned every vault write in the mint suite; fixed with the drain-correct shape.
 - **Metrics review** — four ops/product events declared above; no analytics/funnel playbook update required (operator-plane signals only, no user funnel touched).
 - **Skill-chain outcomes** — (populated at CHORE(close): `/write-unit-test`, `/write-integration-test`, gstack `/review`, `kishore-babysit-prs`.)
 - **Deferrals** — `> Indy (2026-08-08 02:30): "and verified is not needed? for now."` — context: verifier fleet member deferred; §4's webhook-driven linkage carries the "did the fix work" signal until the member regrows.

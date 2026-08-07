@@ -29,6 +29,7 @@ const CredentialBroker = @import("../../../credentials/broker.zig");
 const connector_oauth_refresh = @import("../connectors/oauth_refresh.zig");
 const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
 const mint_scope = @import("credentials_mint_scope.zig");
+const write_gate = @import("credentials_mint_write_gate.zig");
 const logging = @import("log");
 const protocol = @import("contract").protocol;
 
@@ -48,6 +49,9 @@ const S_CONNECTOR_MINT_FAILED = "Connector token refresh failed";
 // Grant-gate refusal (invariant: no token without an approved
 // grant). The registered UZ-GRANT-001 hint carries the request-grant recovery.
 const S_GRANT_REQUIRED = "No approved integration grant for this fleet and integration";
+// Write-gate refusals — the human's answer is what a write mint spends.
+const S_WRITE_UNAPPROVED = "No approved repository-write gate for this lease's event";
+const S_BINDING_DRIFT = "Fleet repository binding changed since the approval was answered";
 // Rotated-refresh write-back observability (RULE OBS): one event, three
 // outcomes. No token bytes ever ride these lines (VLT).
 const EVT_REFRESH_ROTATED = "refresh_rotated";
@@ -218,6 +222,31 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
             log.warn("credential_mint_denied", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = scope.fleet_id, .integration = mint_req.integration });
             hx.fail(ec.ERR_GRANT_NOT_FOUND, S_GRANT_REQUIRED);
             return null;
+        }
+    }
+
+    // Write-gate invariant: a WRITE-access binding mints only against an
+    // approved repository-write gate for THIS lease's event whose recorded
+    // binding still matches the current one. Checked before the vault load so
+    // an unapproved write request never touches handle bytes; a DB failure
+    // fails CLOSED like the grant gate above.
+    if (scope.repository_binding) |b| {
+        if (b.access == .write) {
+            const verdict = write_gate.verifyWriteApproval(hx, conn, scope.fleet_id, scope.event_id, b) catch {
+                common.internalDbError(hx.res, hx.req_id);
+                return null;
+            };
+            switch (verdict) {
+                .approved => {},
+                .unapproved => {
+                    hx.fail(ec.ERR_REPAIR_WRITE_UNAPPROVED, S_WRITE_UNAPPROVED);
+                    return null;
+                },
+                .binding_drift => {
+                    hx.fail(ec.ERR_REPAIR_BINDING_DRIFT, S_BINDING_DRIFT);
+                    return null;
+                },
+            }
         }
     }
 

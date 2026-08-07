@@ -51,7 +51,10 @@ test "test_mint_body_is_repository_and_access_scoped" {
 
 test "mint body: a read binding grants contents:read and NO pull_requests key at all" {
     const alloc = std.testing.allocator;
-    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201 };
+    // The stated permissions must match the READ request or the mint refuses
+    // the response before this test reaches its subject (the request body).
+    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = "{\"token\":\"ghs_minted\"," ++
+        "\"repositories\":[{\"full_name\":\"acme/widgets\"}],\"permissions\":{\"contents\":\"read\"}}" };
     defer gh.deinit();
     var h = try testing.parse(alloc, HANDLE_GH);
     defer h.deinit();
@@ -75,7 +78,8 @@ test "mint body: every repository in the binding reaches the body" {
         .alloc = alloc,
         .status = 201,
         .resp_body = "{\"token\":\"ghs_minted\",\"repositories\":" ++
-            "[{\"full_name\":\"acme/widgets\"},{\"full_name\":\"acme/gadgets\"}]}",
+            "[{\"full_name\":\"acme/widgets\"},{\"full_name\":\"acme/gadgets\"}]," ++
+            "\"permissions\":{\"contents\":\"write\",\"pull_requests\":\"write\"}}",
     };
     defer gh.deinit();
     var h = try testing.parse(alloc, HANDLE_GH);

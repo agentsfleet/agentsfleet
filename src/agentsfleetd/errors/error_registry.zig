@@ -192,6 +192,9 @@ pub const ERR_APIKEY_MUST_REVOKE_FIRST = "UZ-APIKEY-008";
 pub const ERR_GRANT_NOT_FOUND = "UZ-GRANT-001";
 pub const ERR_GRANT_REVOKE_NOT_FOUND = "UZ-GRANT-002";
 pub const ERR_GRANT_ALREADY_RESOLVED = "UZ-GRANT-003";
+// REPAIR (write-scoped mint behind the repository-write approval)
+pub const ERR_REPAIR_WRITE_UNAPPROVED = "UZ-REPAIR-010";
+pub const ERR_REPAIR_BINDING_DRIFT = "UZ-REPAIR-011";
 // RUNNER (agentsfleet-runner /v1/runners control contract)
 pub const ERR_RUN_INVALID_RUNNER_TOKEN = "UZ-RUN-001";
 pub const ERR_RUN_STALE_FENCING_TOKEN = "UZ-RUN-005";

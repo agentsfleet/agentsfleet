@@ -74,11 +74,23 @@ pub const SELECT_RUNNER_DEGRADED =
 /// read separately so the binding can never be resolved from a different fleet
 /// than the one the lease authorized.
 pub const SELECT_LEASE_SCOPE_FOR_MINT =
-    \\SELECT l.workspace_id::text, l.fleet_id::text, f.config_json::text
+    \\SELECT l.workspace_id::text, l.fleet_id::text, f.config_json::text, l.event_id
     \\FROM fleet.runner_leases l
     \\JOIN core.fleets f ON f.id = l.fleet_id
     \\WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
     \\  AND l.status = $3 AND l.lease_expires_at > $4
+;
+
+/// The write-mint approval check: the newest gate parked for this fleet+event.
+/// The mint requires it approved, of the repository-write kind, and its
+/// `stated_binding` to match the fleet's CURRENT binding — a `fleet:write`
+/// PATCH between the human's answer and this mint is refused as drift.
+pub const SELECT_WRITE_GATE_FOR_MINT =
+    \\SELECT status, gate_kind, stated_binding::text
+    \\FROM core.fleet_approval_gates
+    \\WHERE fleet_id = $1::uuid AND event_id = $2
+    \\ORDER BY created_at DESC
+    \\LIMIT 1
 ;
 
 /// Heartbeat: bump liveness, and emit a `runner_online` event only on a real
