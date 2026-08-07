@@ -1,8 +1,9 @@
-//! Cloudflare R2 object store — a thin wrapper over the z3 S3 client
-//! (codeberg.org/fellowtraveler/z3, pinned in build.zig.zon) for the two
-//! operations Fleet Bundle snapshots need: `put` (import) and `get` (runner
-//! lease). Lives in src/lib so the agentsfleetd (put) and runner (get) build
-//! graphs share one type identity (eng-review; src/lib gating approved).
+//! Cloudflare R2 object store — a thin wrapper over the z3 S3 client (upstream
+//! codeberg.org/fellowtraveler/z3, mirrored at agentsfleet/z3 and pinned in
+//! build.zig.zon) for the two operations Fleet Bundle snapshots need: `put`
+//! (import) and `get` (runner lease). Lives in src/lib so the agentsfleetd
+//! (put) and runner (get) build graphs share one type identity (eng-review;
+//! src/lib gating approved).
 //!
 //! Credentials (vault-fed at deploy) are read from the environment by the CALLER
 //! and passed to `init` as a `Config`: this module imports only z3 + std and
