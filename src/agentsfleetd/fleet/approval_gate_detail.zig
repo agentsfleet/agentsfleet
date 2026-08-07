@@ -63,9 +63,10 @@ pub const Built = struct {
     }
 };
 
-/// Build the detail for a parked gate. `rule` is the gate rule that matched
-/// (null only if the caller parked without a match, which `evaluateGate` cannot
-/// produce); `context` is the already-parsed `request_json`, borrowed.
+/// Build the detail for a parked gate. `rule` is the gate rule that matched —
+/// null when the caller parks without one (the write-kind path, which stamps
+/// its own daemon-authored kind and radius after this returns); `context` is
+/// the already-parsed `request_json`, borrowed.
 ///
 /// Never fails on bad model input: a missing or wrong-typed field degrades to
 /// empty, because a blank field renders as nothing while a hard failure would
