@@ -270,6 +270,63 @@ test "integration: tenant onboard dedupes by workspace and content hash" {
     try std.testing.expectEqual(@as(i64, 1), try tenantCount(conn));
 }
 
+/// One shipped crew subfolder read from disk, as the folder picker would hand
+/// it up: both markdown bodies inline in the JSON. Caller owns.
+fn crewFolderBody(alloc: std.mem.Allocator, slug: []const u8) ![]const u8 {
+    const skill_path = try std.fs.path.join(alloc, &.{ "library", slug, "SKILL.md" });
+    defer alloc.free(skill_path);
+    const trigger_path = try std.fs.path.join(alloc, &.{ "library", slug, "TRIGGER.md" });
+    defer alloc.free(trigger_path);
+    const skill = try std.Io.Dir.cwd().readFileAlloc(common.globalIo(), skill_path, alloc, .limited(256 * 1024));
+    defer alloc.free(skill);
+    const trigger = try std.Io.Dir.cwd().readFileAlloc(common.globalIo(), trigger_path, alloc, .limited(256 * 1024));
+    defer alloc.free(trigger);
+    return std.json.Stringify.valueAlloc(alloc, .{
+        .source_kind = "upload",
+        .source_ref = slug,
+        .skill_markdown = skill,
+        .trigger_markdown = trigger,
+    }, .{});
+}
+
+test "test_crew_folder_two_member_onboard" {
+    // Dimension 3.3 — installing the crew IS this pipeline run once per
+    // subfolder: the two SHIPPED bundles, read from `library/` exactly as the
+    // folder picker hands them up, each onboard through the tenant endpoint
+    // into their own catalog rows. No crew schema, no new daemon concept —
+    // two members are two uploads.
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+
+    const members = [_][]const u8{ "incident-responder", "incident-repairer" };
+    var ids: [members.len][]const u8 = undefined;
+    var stored: usize = 0;
+    defer for (ids[0..stored]) |id| alloc.free(id);
+    for (&members, 0..) |slug, i| {
+        const body = try crewFolderBody(alloc, slug);
+        defer alloc.free(body);
+        const res = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(body)).send();
+        defer res.deinit();
+        try res.expectStatus(.created);
+        ids[i] = try jsonStringField(alloc, res.body, "id");
+        stored = i + 1;
+    }
+
+    // Two members, two rows, two distinct entries.
+    try std.testing.expect(!std.mem.eql(u8, ids[0], ids[1]));
+    try std.testing.expectEqual(@as(i64, 2), try tenantCount(conn));
+}
+
 /// A crew-shaped upload: BOTH markdown bodies, the way `library/incident-*/`
 /// ships. `onboardBody` above sends `SKILL.md` alone, which is the older probe
 /// shape and cannot say whether the trigger participates in the content hash.
