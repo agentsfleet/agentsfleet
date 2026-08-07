@@ -17,25 +17,22 @@
 //! the broker's tagged outcome to the wire (`UZ-CRED-*` / `UZ-GH-*`).
 
 const std = @import("std");
-const sql = @import("sql.zig");
 const httpz = @import("httpz");
-const pg = @import("pg");
 
 const hx_mod = @import("../hx.zig");
 const common = @import("../common.zig");
 const constants = @import("common");
 const ec = @import("../../../errors/error_registry.zig");
-const pg_query = @import("../../../db/pg_query.zig");
 const vault = @import("../../../state/vault.zig");
 const integration = @import("../../../credentials/integration.zig");
 const CredentialBroker = @import("../../../credentials/broker.zig");
 const connector_oauth_refresh = @import("../connectors/oauth_refresh.zig");
 const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
+const mint_scope = @import("credentials_mint_scope.zig");
 const logging = @import("log");
 const protocol = @import("contract").protocol;
 
 const Hx = hx_mod.Hx;
-const PgQuery = pg_query.PgQuery;
 
 const log = logging.scoped(.credential_mint);
 
@@ -67,6 +64,11 @@ const MintInputs = struct {
     /// The vault handle (`{integration, …}`); the broker reads its `integration`
     /// field to dispatch. Caller `.deinit()`s it after the mint.
     handle: std.json.Parsed(std.json.Value),
+    /// The lease's fleet repository EGRESS binding, or null when the fleet
+    /// declared none. Arena-owned (`hx.alloc`) alongside everything else here.
+    /// A repository-scoped integration refuses on null rather than minting the
+    /// installation's full scope.
+    repository_binding: ?integration.RepositoryBinding,
 };
 
 pub fn innerRunnerCredentialsMint(hx: Hx, req: *httpz.Request) void {
@@ -117,6 +119,7 @@ fn mintAndRespond(hx: Hx, broker: *CredentialBroker, mint_req: protocol.MintCred
         mint_req.integration,
         inputs.handle.value,
         constants.clock.nowMillis(),
+        inputs.repository_binding,
     ) catch {
         // mint() only surfaces an error on an OOM-class failure (the integration
         // failures are tagged-union variants, not errors). Treat as transient, with
@@ -189,7 +192,7 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
     };
     defer hx.ctx.pool.release(conn);
 
-    const scope = (resolveLeaseScope(hx, conn, runner_id, mint_req.lease_id) catch {
+    const scope = (mint_scope.resolveLeaseScope(hx, conn, runner_id, mint_req.lease_id) catch {
         common.internalDbError(hx.res, hx.req_id);
         return null;
     }) orelse {
@@ -227,7 +230,7 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
         common.internalOperationError(hx.res, "failed to load integration handle", hx.req_id);
         return null;
     };
-    return .{ .workspace_id = scope.workspace_id, .handle = handle };
+    return .{ .workspace_id = scope.workspace_id, .handle = handle, .repository_binding = scope.repository_binding };
 }
 
 /// True when the integration mints a short-lived token on demand (github App
@@ -236,29 +239,6 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
 fn isOnDemand(integration_id: []const u8) bool {
     const id = integration.idFromString(integration_id) orelse return false;
     return integration.mintsOnDemand(integration.REGISTRY, id);
-}
-
-/// The lease's workspace + fleet, both arena-duped (survive the conn release).
-const LeaseScope = struct {
-    workspace_id: []const u8,
-    fleet_id: []const u8,
-};
-
-/// Resolve the lease scoped to the presenting runner (Invariant 2: the runner-id
-/// scope is the ownership check) AND still live — `status = active` and unexpired.
-/// A foreign, expired, or revoked `lease_id` → null → 404, so mint authority is
-/// bound to the lease's lifetime, not the runner's: a cancelled/expired run, or a
-/// compromised runner replaying a stale `lease_id`, cannot mint past the lease.
-/// Mirrors the active-lease predicate the sibling `memory.zig` already enforces.
-/// Also returns the lease's fleet id — the scope the grant-gate checks (the grant gate).
-fn resolveLeaseScope(hx: Hx, conn: *pg.Conn, runner_id: []const u8, lease_id: []const u8) !?LeaseScope {
-    var q = PgQuery.from(try conn.query(sql.SELECT_LEASE_SCOPE_FOR_MINT, .{ lease_id, runner_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, constants.clock.nowMillis() }));
-    defer q.deinit();
-    const row = try q.next() orelse return null;
-    const workspace_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0));
-    errdefer hx.alloc.free(workspace_id);
-    const fleet_id = try hx.alloc.dupe(u8, try row.get([]const u8, 1));
-    return .{ .workspace_id = workspace_id, .fleet_id = fleet_id };
 }
 
 /// The wire disposition of a broker outcome: a `null` code means success (200 with

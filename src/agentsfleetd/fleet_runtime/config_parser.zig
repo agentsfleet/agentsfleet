@@ -18,6 +18,7 @@ const config_types = @import("config_types.zig");
 const config_gates = @import("config_gates.zig");
 const helpers = @import("config_helpers.zig");
 const validate = @import("config_validate.zig");
+const config_repositories = @import("config_repositories.zig");
 
 const FleetConfig = config_types.FleetConfig;
 const FleetConfigError = config_types.FleetConfigError;
@@ -45,6 +46,8 @@ const S_CREDENTIALS = "credentials";
 const S_STAGE_CHUNK_THRESHOLD = "stage_chunk_threshold";
 const S_TOOL_WINDOW = "tool_window";
 const S_MODEL = "model";
+const S_REPOSITORIES = config_repositories.S_REPOSITORIES;
+const S_REPOSITORY_ACCESS = config_repositories.S_REPOSITORY_ACCESS;
 
 pub fn parseFleetConfig(
     alloc: Allocator,
@@ -87,6 +90,9 @@ pub fn parseFleetConfig(
     const gates = try parseGatesField(alloc, runtime);
     errdefer if (gates) |g| config_gates.freeGatePolicy(alloc, g);
 
+    const repository_binding = try config_repositories.parse(alloc, runtime);
+    errdefer if (repository_binding) |b| freeStringSlice(alloc, b.repositories);
+
     try validate.validateCredentials(credentials);
 
     const skill = try parseSkillRef(alloc, runtime);
@@ -104,6 +110,7 @@ pub fn parseFleetConfig(
         .network = network,
         .budget = budget,
         .gates = gates,
+        .repository_binding = repository_binding,
         .skill = skill,
         .model = model,
         .context = ctx,
@@ -119,8 +126,9 @@ pub fn parseFleetConfig(
 /// no error surfaced).
 fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) FleetConfigError!void {
     const forbidden = [_][]const u8{
-        S_TRIGGERS, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
-        S_GATES,    S_SKILL, S_MODEL,       S_CONTEXT,
+        S_TRIGGERS,          S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_GATES,             S_SKILL, S_MODEL,       S_CONTEXT, S_REPOSITORIES,
+        S_REPOSITORY_ACCESS,
     };
     for (forbidden) |k| {
         if (root.get(k) != null) return FleetConfigError.RuntimeKeysOutsideBlock;
@@ -142,8 +150,9 @@ fn extractRuntimeBlock(root: std.json.ObjectMap) FleetConfigError!std.json.Objec
 /// authoring error. Typos must fail loud.
 fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) FleetConfigError!void {
     const known = [_][]const u8{
-        S_TRIGGERS, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
-        S_GATES,    S_SKILL, S_MODEL,       S_CONTEXT,
+        S_TRIGGERS,          S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_GATES,             S_SKILL, S_MODEL,       S_CONTEXT, S_REPOSITORIES,
+        S_REPOSITORY_ACCESS,
     };
     var it = runtime.iterator();
     while (it.next()) |entry| {

@@ -148,6 +148,39 @@ pub const FleetContextBudget = struct {
     stage_chunk_threshold: f32 = 0.0,
 };
 
+/// Wire spellings of `x-agentsfleet.repository_access` (RULE UFS — the parser,
+/// the mint body, and the bundle fixtures all share these two literals).
+pub const S_REPOSITORY_ACCESS_READ = "read";
+pub const S_REPOSITORY_ACCESS_WRITE = "write";
+
+/// How far a fleet's repository-bearing credentials may reach. `read` mints a
+/// token that can fetch history and nothing more; `write` adds what opening a
+/// draft Pull Request needs. There is no third value: a fleet that declares no
+/// access level mints nothing, rather than inheriting the App installation's
+/// full permission set.
+pub const RepositoryAccess = enum {
+    read,
+    write,
+
+    pub fn fromSlice(s: []const u8) ?RepositoryAccess {
+        if (std.mem.eql(u8, s, S_REPOSITORY_ACCESS_READ)) return .read;
+        if (std.mem.eql(u8, s, S_REPOSITORY_ACCESS_WRITE)) return .write;
+        return null;
+    }
+};
+
+/// The fleet's repository EGRESS binding — which repositories its credentials
+/// may reach, and how far.
+///
+/// Deliberately distinct from `FleetTrigger.webhook.repositories`, which is an
+/// INGRESS binding naming which repositories may WAKE the fleet. Overloading one
+/// for the other would mean any repository allowed to trigger a fleet was also a
+/// repository that fleet could write to.
+pub const RepositoryBinding = struct {
+    repositories: []const []const u8,
+    access: RepositoryAccess,
+};
+
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const FleetConfig = struct {
     const Self = @This();
@@ -159,6 +192,11 @@ pub const FleetConfig = struct {
     network: ?FleetNetwork,
     budget: FleetBudget,
     gates: ?config_gates.GatePolicy,
+    /// Repository egress binding from top-level `x-agentsfleet.repositories` +
+    /// `x-agentsfleet.repository_access`. Null when EITHER is absent — the
+    /// GitHub mint then refuses rather than falling back to the installation's
+    /// full scope across every repository it covers.
+    repository_binding: ?RepositoryBinding,
     // ClaHub skill reference (e.g. "clawhub://queen/lead-hunter@1.0.1").
     // Resolution deferred — stored but not fetched.
     skill: ?[]const u8,
@@ -178,6 +216,7 @@ pub const FleetConfig = struct {
         freeStringSlice(alloc, self.credentials);
         if (self.network) |net| freeStringSlice(alloc, net.allow);
         if (self.gates) |gates| config_gates.freeGatePolicy(alloc, gates);
+        if (self.repository_binding) |b| freeStringSlice(alloc, b.repositories);
         if (self.skill) |s| alloc.free(s);
         if (self.model) |s| alloc.free(s);
     }
@@ -190,7 +229,7 @@ pub const FleetConfig = struct {
 // `FleetTrigger` union. If the layout shifts, update this number rather
 // than papering over with a runtime check.
 comptime {
-    std.debug.assert(@sizeOf(FleetConfig) == 216);
+    std.debug.assert(@sizeOf(FleetConfig) == 248);
 }
 
 /// Authoring metadata extracted from SKILL.md frontmatter (the SOUL file's

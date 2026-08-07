@@ -1,0 +1,6 @@
+{
+  "error_rate_pct_max": 25,
+  "latency_p95_ms_max": 400,
+  "saturation_pct_max": 80,
+  "multi_window_breaches_min": 3
+}

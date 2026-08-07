@@ -1,0 +1,33 @@
+{
+  "set": "evaluation",
+  "epoch_ms": 1754000000000,
+  "seeds": [
+    { "id": "eval-spike-01", "class": "obvious_spike", "service": "checkout", "offset_ms": 600000, "duration_ms": 300000, "magnitude_pct": 45 },
+    { "id": "eval-spike-02", "class": "obvious_spike", "service": "gateway", "offset_ms": 1800000, "duration_ms": 300000, "magnitude_pct": 60 },
+    { "id": "eval-spike-03", "class": "obvious_spike", "service": "billing", "offset_ms": 3000000, "duration_ms": 240000, "magnitude_pct": 35 },
+    { "id": "eval-burn-01", "class": "slow_burn", "service": "billing", "offset_ms": 4200000, "duration_ms": 1800000, "magnitude_pct": 8 },
+    { "id": "eval-burn-02", "class": "slow_burn", "service": "worker", "offset_ms": 6600000, "duration_ms": 2400000, "magnitude_pct": 12 },
+    { "id": "eval-burn-03", "class": "slow_burn", "service": "checkout", "offset_ms": 9600000, "duration_ms": 1800000, "magnitude_pct": 10 },
+    { "id": "eval-trace-01", "class": "trace_failure", "service": "gateway", "offset_ms": 12000000, "duration_ms": 600000, "magnitude_pct": 20 },
+    { "id": "eval-trace-02", "class": "trace_failure", "service": "checkout", "offset_ms": 13200000, "duration_ms": 480000, "magnitude_pct": 25 },
+    { "id": "eval-trace-03", "class": "trace_failure", "service": "worker", "offset_ms": 14400000, "duration_ms": 600000, "magnitude_pct": 18 },
+    { "id": "eval-deploy-01", "class": "deploy_regression", "service": "checkout", "offset_ms": 15600000, "duration_ms": 900000, "magnitude_pct": 22 },
+    { "id": "eval-deploy-02", "class": "deploy_regression", "service": "billing", "offset_ms": 17400000, "duration_ms": 720000, "magnitude_pct": 15 },
+    { "id": "eval-deploy-03", "class": "deploy_regression", "service": "gateway", "offset_ms": 18600000, "duration_ms": 900000, "magnitude_pct": 28 },
+    { "id": "eval-noncode-01", "class": "provider_outage", "service": "gateway", "offset_ms": 20400000, "duration_ms": 600000, "magnitude_pct": 50 },
+    { "id": "eval-noncode-02", "class": "provider_outage", "service": "billing", "offset_ms": 21600000, "duration_ms": 480000, "magnitude_pct": 40 },
+    { "id": "eval-noncode-03", "class": "data_shaped", "service": "worker", "offset_ms": 22800000, "duration_ms": 720000, "magnitude_pct": 30 },
+    { "id": "eval-clean-01", "class": "obvious_spike", "service": "checkout", "offset_ms": 24000000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-02", "class": "obvious_spike", "service": "gateway", "offset_ms": 24600000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-03", "class": "obvious_spike", "service": "billing", "offset_ms": 25200000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-04", "class": "slow_burn", "service": "worker", "offset_ms": 25800000, "duration_ms": 600000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-05", "class": "slow_burn", "service": "checkout", "offset_ms": 26400000, "duration_ms": 600000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-06", "class": "slow_burn", "service": "gateway", "offset_ms": 27000000, "duration_ms": 600000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-07", "class": "trace_failure", "service": "billing", "offset_ms": 27600000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-08", "class": "trace_failure", "service": "worker", "offset_ms": 28200000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-09", "class": "trace_failure", "service": "checkout", "offset_ms": 28800000, "duration_ms": 300000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-10", "class": "deploy_regression", "service": "gateway", "offset_ms": 29400000, "duration_ms": 480000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-11", "class": "deploy_regression", "service": "billing", "offset_ms": 30000000, "duration_ms": 480000, "magnitude_pct": 0, "clean": true },
+    { "id": "eval-clean-12", "class": "deploy_regression", "service": "worker", "offset_ms": 30600000, "duration_ms": 480000, "magnitude_pct": 0, "clean": true }
+  ]
+}

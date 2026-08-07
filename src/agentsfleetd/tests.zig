@@ -19,6 +19,9 @@ test {
     _ = @import("config/runtime.zig");
     _ = @import("fleet_runtime/config.zig");
     _ = @import("fleet_runtime/yaml_frontmatter.zig");
+    // The shipped incident crew's bundles (M157 §3/§4). No natural parent
+    // module: the subject is markdown under library/, not a Zig unit.
+    _ = @import("fleet_runtime/crew_bundle_test.zig");
     _ = @import("http/route_matchers.zig");
     _ = @import("http/route_matchers_library.zig");
     _ = @import("http/route_matchers_library_test.zig");
@@ -41,16 +44,24 @@ test {
     _ = @import("cron/main.zig");
     _ = @import("fleet/service_activity.zig");
     _ = @import("fleet/approval_gate.zig");
+    _ = @import("fleet/approval_gate_detail.zig");
+    _ = @import("fleet/approval_gate_route.zig");
+    _ = @import("fleet/approval_gate_prose.zig");
     _ = @import("fleet_runtime/approval_gate_async.zig");
     _ = @import("fleet/context_resolve.zig");
     _ = @import("fleet/secrets_resolve.zig");
     _ = @import("fleet/secrets_resolve_test.zig");
     _ = @import("credentials/integration.zig");
+    _ = @import("credentials/integration_registry_test.zig");
     _ = @import("credentials/integration_ctx.zig");
     _ = @import("credentials/integration_github.zig");
+    _ = @import("credentials/integration_github_mint_body_test.zig");
+    _ = @import("credentials/integration_github_body.zig");
+    _ = @import("credentials/integration_github_reach.zig");
     _ = @import("credentials/integration_oauth_refresh.zig");
     _ = @import("credentials/integration_oauth_refresh_test.zig");
     _ = @import("credentials/broker.zig");
+    _ = @import("credentials/broker_key.zig");
     _ = @import("credentials/broker_test.zig");
     _ = @import("credentials/serve_broker.zig");
     _ = @import("credentials/serve_broker_test.zig");

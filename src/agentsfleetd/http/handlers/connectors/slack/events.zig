@@ -38,6 +38,7 @@ const clock = constants.clock;
 const common = @import("../../common.zig");
 const hx_mod = @import("../../hx.zig");
 const ec = @import("../../../../errors/error_registry.zig");
+const whc = @import("../../../../fleet_runtime/webhook_constants.zig");
 const redis_fleet = @import("../../../../queue/redis_fleet.zig");
 const PgQuery = @import("../../../../db/pg_query.zig").PgQuery;
 const EventEnvelope = @import("contract").event_envelope;
@@ -103,7 +104,7 @@ pub fn innerSlackEvents(hx: Hx, req: *httpz.Request) void {
     // `.ignore` (RULE OBS: the rejection is logged either way).
     var parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, body, .{}) catch {
         log.warn(EV_INGRESS_IGNORED, .{ .reason = "unparseable_body", .error_code = ec.ERR_INVALID_REQUEST });
-        hx.ok(.ok, .{ .status = ec.STATUS_ACCEPTED });
+        hx.ok(.ok, .{ .status = whc.STATUS_ACCEPTED });
         return;
     };
     defer parsed.deinit();
@@ -111,14 +112,14 @@ pub fn innerSlackEvents(hx: Hx, req: *httpz.Request) void {
         .object => |o| o,
         else => {
             log.warn(EV_INGRESS_IGNORED, .{ .reason = "non_object_body", .error_code = ec.ERR_INVALID_REQUEST });
-            hx.ok(.ok, .{ .status = ec.STATUS_ACCEPTED });
+            hx.ok(.ok, .{ .status = whc.STATUS_ACCEPTED });
             return;
         },
     };
 
     switch (event_parse.parseSlackEvent(root)) {
         .url_verification => |challenge| hx.ok(.ok, .{ .challenge = challenge }),
-        .ignore => hx.ok(.ok, .{ .status = ec.STATUS_ACCEPTED }),
+        .ignore => hx.ok(.ok, .{ .status = whc.STATUS_ACCEPTED }),
         .app_mention => |m| {
             if (maybe_conn == null) {
                 maybe_conn = hx.ctx.pool.acquire() catch {
@@ -201,17 +202,17 @@ fn dispatchMention(hx: Hx, maybe_conn: *?*pg.Conn, m: Mention) void {
 /// Conn-free by design: runs entirely on Redis + the deadline-armed vendor read.
 fn enqueueMention(hx: Hx, bot_token: ?[]const u8, workspace_id: []const u8, channel_fleet_id: []const u8, m: Mention) void {
     var dedup_buf: [256]u8 = undefined;
-    const dedup_key = std.fmt.bufPrint(&dedup_buf, "{s}{s}:{s}", .{ ec.SLACK_DEDUP_KEY_PREFIX, channel_fleet_id, m.ts }) catch {
+    const dedup_key = std.fmt.bufPrint(&dedup_buf, "{s}{s}:{s}", .{ whc.SLACK_DEDUP_KEY_PREFIX, channel_fleet_id, m.ts }) catch {
         common.internalOperationError(hx.res, "Failed to build the duplicate-event check", hx.req_id);
         return;
     };
-    const is_new = hx.ctx.queue.setNx(dedup_key, "1", ec.DEDUP_TTL_SECONDS) catch |err| {
+    const is_new = hx.ctx.queue.setNx(dedup_key, "1", whc.DEDUP_TTL_SECONDS) catch |err| {
         log.err("slack_dedup_error", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .channel_fleet_id = channel_fleet_id, .err = @errorName(err) });
         common.internalOperationError(hx.res, "Failed to check for a duplicate event", hx.req_id);
         return;
     };
     if (!is_new) {
-        hx.ok(.ok, .{ .status = ec.STATUS_DUPLICATE });
+        hx.ok(.ok, .{ .status = whc.STATUS_DUPLICATE });
         return;
     }
 
@@ -252,7 +253,7 @@ fn enqueueMention(hx: Hx, bot_token: ?[]const u8, workspace_id: []const u8, chan
     defer hx.ctx.alloc.free(new_event_id);
 
     log.debug("slack_mention_enqueued", .{ .channel_fleet_id = channel_fleet_id, .stream_event_id = new_event_id, .actor = actor });
-    hx.ok(.ok, .{ .status = ec.STATUS_ACCEPTED });
+    hx.ok(.ok, .{ .status = whc.STATUS_ACCEPTED });
 }
 
 /// `{ text, reply_thread_ts, channel_id, recent_thread_msgs }` — the runner's

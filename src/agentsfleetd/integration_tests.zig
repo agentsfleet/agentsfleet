@@ -28,6 +28,7 @@ test {
     _ = @import("fleet/event_lifecycle_integration_test.zig");
     _ = @import("fleet/budget_integration_test.zig");
     _ = @import("fleet/budget_gate_integration_test.zig");
+    _ = @import("fleet/gate_release_integration_test.zig");
     _ = @import("fleet/event_lifecycle_reclaim_integration_test.zig");
     _ = @import("fleet/assign_ready_integration_test.zig");
     _ = @import("fleet/assign_ready_faults_integration_test.zig");

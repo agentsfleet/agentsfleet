@@ -7,6 +7,7 @@ const harness_mod = @import("../../test_harness.zig");
 const fixtures = @import("../../../db/test_fixtures_app_ingress.zig");
 const base_fixtures = @import("../../../db/test_fixtures.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const whc = @import("../../../fleet_runtime/webhook_constants.zig");
 const hs = @import("hmac_sig");
 const verifier = @import("../../../fleet_runtime/webhook_verify.zig");
 const redis_fleet = @import("../../../queue/redis_fleet.zig");
@@ -85,7 +86,7 @@ fn clearReplaySlots(h: *TestHarness) void {
     const fleets = [_][]const u8{ fixtures.FLEET_PULL_ONE, fixtures.FLEET_PULL_TWO, fixtures.FLEET_WORKFLOW };
     for (fleets) |fleet_id| {
         var pattern_buf: [DEDUP_KEY_BUF_LEN]u8 = undefined;
-        const pattern = std.fmt.bufPrint(&pattern_buf, "{s}{s}:{s}:*", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, fleet_id, DEDUP_NAMESPACE }) catch continue;
+        const pattern = std.fmt.bufPrint(&pattern_buf, "{s}{s}:{s}:*", .{ whc.WEBHOOK_DEDUP_KEY_PREFIX, fleet_id, DEDUP_NAMESPACE }) catch continue;
         var response = h.queue.command(&.{ "KEYS", pattern }) catch continue;
         defer response.deinit(h.queue.alloc);
         const keys = response.array orelse continue;

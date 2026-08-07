@@ -51,7 +51,12 @@ pub fn ctxOver(alloc: std.mem.Allocator, handle: std.json.Value) MintCtx {
 pub const FakeGitHub = struct {
     alloc: std.mem.Allocator,
     status: u16 = 201,
-    resp_body: []const u8 = "{\"token\":\"ghs_minted\"}",
+    /// A real create-installation-access-token response echoes the repositories
+    /// the token was granted, and the mint refuses a token whose stated reach is
+    /// not the declared binding (`integration_github_reach.zig`). So the default
+    /// body states the reach `test_binding` declares — a fake that omitted it
+    /// would make every mint fail closed for a reason no test was about.
+    resp_body: []const u8 = "{\"token\":\"ghs_minted\",\"repositories\":[{\"full_name\":\"acme/widgets\"}]}",
     fail_with: ?anyerror = null,
     calls: usize = 0,
     url: []u8 = &.{},
@@ -83,7 +88,48 @@ pub const FakeGitHub = struct {
 };
 
 /// A `MintCtx` wired with a fake GitHub + fake signer + the fake App key.
+/// A bound repository set for tests whose subject is something other than the
+/// binding (status mapping, JWT shape, key hygiene). A GitHub mint fails closed
+/// without one, so those tests would otherwise all assert the refusal instead of
+/// what they are about. Tests OF the binding pass their own via `githubCtxBound`.
+pub const TEST_REPOSITORIES = [_][]const u8{"acme/widgets"};
+pub const test_binding: integration.RepositoryBinding = .{
+    .repositories = &TEST_REPOSITORIES,
+    .access = .write,
+};
+
+/// A create-installation-access-token response stating that the minted token
+/// reaches exactly `declared`. The mint verifies the stated reach against the
+/// fleet's binding (`integration_github_reach.zig`), so a test whose fleet
+/// declares something other than `test_binding` must answer with its own reach
+/// or the mint refuses for a reason that test is not about. Caller owns.
+pub fn reachResponse(alloc: std.mem.Allocator, declared: []const []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(alloc);
+    try out.appendSlice(alloc, "{\"token\":\"ghs_minted\",\"repositories\":[");
+    for (declared, 0..) |full_name, i| {
+        if (i > 0) try out.append(alloc, ',');
+        const entry = try std.fmt.allocPrint(alloc, "{{\"full_name\":\"{s}\"}}", .{full_name});
+        defer alloc.free(entry);
+        try out.appendSlice(alloc, entry);
+    }
+    try out.appendSlice(alloc, "]}");
+    return out.toOwnedSlice(alloc);
+}
+
 pub fn githubCtx(alloc: std.mem.Allocator, handle: std.json.Value, gh: *FakeGitHub, now_ms: i64) MintCtx {
+    return githubCtxBound(alloc, handle, gh, now_ms, test_binding);
+}
+
+/// `githubCtx` with an explicit repository binding — pass null to exercise the
+/// unbound refusal.
+pub fn githubCtxBound(
+    alloc: std.mem.Allocator,
+    handle: std.json.Value,
+    gh: *FakeGitHub,
+    now_ms: i64,
+    binding: ?integration.RepositoryBinding,
+) MintCtx {
     return .{
         .alloc = alloc,
         .handle = handle,
@@ -91,6 +137,7 @@ pub fn githubCtx(alloc: std.mem.Allocator, handle: std.json.Value, gh: *FakeGitH
         .platform = .{ .github = fake_app },
         .http = gh.exchange(),
         .sign = fakeSign,
+        .repository_binding = binding,
     };
 }
 

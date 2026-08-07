@@ -181,3 +181,127 @@ describe("AddLibraryDialog", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 });
+
+describe("AddLibraryDialog — local bundle source", () => {
+  // `POST /fleet-libraries` has accepted an inline upload since M103; the
+  // dashboard only ever spoke `github`. That is why hand-setup installed some
+  // unrelated entry and overwrote both of its markdown files afterwards —
+  // nothing of the template survived, so it was a vehicle rather than a choice.
+  const SKILL = "---\nname: incident-responder\ndescription: d\nversion: 0.1.0\n---\nBody.";
+  const TRIGGER = "---\nname: incident-responder\nx-agentsfleet:\n  triggers:\n    - type: api\n---";
+
+  // A directory pick is what the dialog accepts, and the browser signals it
+  // through `webkitRelativePath` — which no File constructor sets.
+  function bundleFile(relativePath: string, body: string): File {
+    const file = new File([body], relativePath.slice(relativePath.lastIndexOf("/") + 1));
+    Object.defineProperty(file, "webkitRelativePath", { value: relativePath });
+    return file;
+  }
+
+  async function openUploadTab() {
+    const user = userEvent.setup({ delay: null });
+    render(React.createElement(AddLibraryDialog, { workspaceId: "ws_1" }));
+    await user.click(screen.getByRole("button", { name: /^create fleet library$/i }));
+    await screen.findByLabelText("Repository");
+    await user.click(screen.getByRole("tab", { name: /^local folder$/i }));
+    await screen.findByLabelText("SKILL.md");
+    return user;
+  }
+
+  it("test_dashboard_uploads_local_bundle", async () => {
+    onboardLibraryEntryActionMock.mockResolvedValue({ ok: true, data: onboarded });
+    const user = await openUploadTab();
+
+    await user.type(screen.getByLabelText("SKILL.md"), SKILL);
+    await user.type(screen.getByLabelText("TRIGGER.md"), TRIGGER);
+    fireEvent.submit((screen.getByLabelText("SKILL.md") as HTMLTextAreaElement).form!);
+
+    await waitFor(() => expect(onboardLibraryEntryActionMock).toHaveBeenCalledTimes(1));
+    const call = onboardLibraryEntryActionMock.mock.calls[0];
+    if (!call) throw new Error("onboardLibraryEntryAction was not called");
+    const [workspaceId, body] = call;
+    expect(workspaceId).toBe("ws_1");
+    // Both bodies reach the wire, and no `source_ref` rides along — pasted bytes
+    // came from no revision, so recording one would leave a ref the content
+    // never came from.
+    expect(body).toEqual({
+      source_kind: "upload",
+      skill_markdown: SKILL,
+      trigger_markdown: TRIGGER,
+    });
+  });
+
+  it("refuses an upload with no TRIGGER.md rather than installing an ungated fleet", async () => {
+    // The load-bearing refusal. A bundle uploaded without its TRIGGER.md becomes
+    // a fleet declaring no tools, no credentials and no gate — and the runtime
+    // reads an absent gate as approve-everything, so the omission is not a
+    // smaller install, it is an autonomous one.
+    const user = await openUploadTab();
+
+    await user.type(screen.getByLabelText("SKILL.md"), SKILL);
+    fireEvent.submit((screen.getByLabelText("SKILL.md") as HTMLTextAreaElement).form!);
+
+    expect(await screen.findByText(/add the trigger\.md body/i)).toBeTruthy();
+    expect(onboardLibraryEntryActionMock).not.toHaveBeenCalled();
+  });
+
+  it("test_dashboard_uploads_picked_folder", async () => {
+    // The whole point of the folder affordance: the person points at a bundle
+    // directory and the bodies it holds are what reaches the wire, unedited.
+    onboardLibraryEntryActionMock.mockResolvedValue({ ok: true, data: onboarded });
+    await openUploadTab();
+
+    fireEvent.change(screen.getByLabelText("Choose bundle folder"), {
+      target: {
+        files: [
+          bundleFile("incident-responder/SKILL.md", SKILL),
+          bundleFile("incident-responder/TRIGGER.md", TRIGGER),
+        ],
+      },
+    });
+    await screen.findByText("Loaded SKILL.md and TRIGGER.md.");
+    expect((screen.getByLabelText("SKILL.md") as HTMLTextAreaElement).value).toBe(SKILL);
+    expect((screen.getByLabelText("TRIGGER.md") as HTMLTextAreaElement).value).toBe(TRIGGER);
+
+    fireEvent.submit((screen.getByLabelText("SKILL.md") as HTMLTextAreaElement).form!);
+
+    await waitFor(() => expect(onboardLibraryEntryActionMock).toHaveBeenCalledTimes(1));
+    expect(onboardLibraryEntryActionMock.mock.calls[0]?.[1]).toEqual({
+      source_kind: "upload",
+      skill_markdown: SKILL,
+      trigger_markdown: TRIGGER,
+    });
+  });
+
+  it("refuses an upload with no SKILL.md rather than installing a nameless entry", async () => {
+    // The other half of the same refusal. The entry takes its name, description
+    // and version from SKILL.md frontmatter, so a TRIGGER.md arriving alone has
+    // nothing to name the entry after — the importer rejects it server-side, and
+    // the form should say so before spending a round-trip to hear it.
+    const user = await openUploadTab();
+
+    await user.type(screen.getByLabelText("TRIGGER.md"), TRIGGER);
+    fireEvent.submit((screen.getByLabelText("TRIGGER.md") as HTMLTextAreaElement).form!);
+
+    expect(await screen.findByText(/add the skill\.md body/i)).toBeTruthy();
+    expect(onboardLibraryEntryActionMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the GitHub source working when the tab is switched back", async () => {
+    onboardLibraryEntryActionMock.mockResolvedValue({ ok: true, data: onboarded });
+    const user = await openUploadTab();
+    await user.click(screen.getByRole("tab", { name: /^github$/i }));
+
+    const repo = await screen.findByLabelText("Repository");
+    await user.type(repo, "acme/bundle");
+    fireEvent.submit((repo as HTMLInputElement).form!);
+
+    await waitFor(() => expect(onboardLibraryEntryActionMock).toHaveBeenCalledTimes(1));
+    const githubCall = onboardLibraryEntryActionMock.mock.calls[0];
+    if (!githubCall) throw new Error("onboardLibraryEntryAction was not called");
+    expect(githubCall[1]).toEqual({
+      source_kind: SOURCE_KIND_GITHUB,
+      source_ref: "acme/bundle",
+    });
+  });
+});
