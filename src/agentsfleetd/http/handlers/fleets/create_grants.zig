@@ -146,7 +146,8 @@ fn raiseGate(
     ) catch return;
     defer hx.alloc.free(proposed);
 
-    approval_gate_db.recordGatePending(hx.ctx.pool, hx.alloc, fleet_id, workspace_id, action_id, approval_gate.ActionDetail{
+    // Install-time gate — no fleet event parked it, so no event id to record.
+    approval_gate_db.recordGatePending(hx.ctx.pool, hx.alloc, fleet_id, workspace_id, action_id, null, approval_gate.ActionDetail{
         .tool = S_TOOL,
         .action = S_ACTION,
         .params_summary = service,

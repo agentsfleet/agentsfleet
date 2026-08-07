@@ -23,11 +23,14 @@ const Hx = hx_mod.Hx;
 const PgQuery = pg_query.PgQuery;
 const log = logging.scoped(.credential_mint);
 
-/// The lease's workspace + fleet, both arena-duped (survive the conn release),
-/// plus the fleet's repository egress binding read from the same row.
+/// The lease's workspace + fleet + event, all arena-duped (survive the conn
+/// release), plus the fleet's repository egress binding read from the same row.
+/// `event_id` is what the write-mint approval check keys on: the gate that
+/// parked THIS event is the approval this lease's mint may spend.
 pub const LeaseScope = struct {
     workspace_id: []const u8,
     fleet_id: []const u8,
+    event_id: []const u8,
     repository_binding: ?integration.RepositoryBinding,
 };
 
@@ -47,7 +50,9 @@ pub fn resolveLeaseScope(hx: Hx, conn: *pg.Conn, runner_id: []const u8, lease_id
     const fleet_id = try hx.alloc.dupe(u8, try row.get([]const u8, 1));
     errdefer hx.alloc.free(fleet_id);
     const binding = repositoryBinding(hx, try row.get([]const u8, 2));
-    return .{ .workspace_id = workspace_id, .fleet_id = fleet_id, .repository_binding = binding };
+    const event_id = try hx.alloc.dupe(u8, try row.get([]const u8, 3));
+    errdefer hx.alloc.free(event_id);
+    return .{ .workspace_id = workspace_id, .fleet_id = fleet_id, .event_id = event_id, .repository_binding = binding };
 }
 
 /// Extract the fleet's repository EGRESS binding from its `config_json`.

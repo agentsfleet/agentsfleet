@@ -65,6 +65,10 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     // on-demand mint gate — both landed in the grant-gated mint/lease PR,
     // merged concurrently with this branch). Restored verbatim; see this
     // spec's Discovery for the cross-PR collision this exposed.
+    e("UZ-REPAIR-010", .forbidden, "Write mint requires an approved gate", "A write-scoped repository token issues only when this lease's event carries an approved repository-write gate. " ++
+        "No approval card was answered for this event, or it resolved to something other than approved. The run continues read-only."), // reachable: no — response goes to the runner's credential-mint call, not to a dashboard fetch
+    e("UZ-REPAIR-011", .forbidden, "Fleet binding changed since approval", "The fleet's repository binding no longer matches the one the approval card stated. " ++
+        "Re-raise the approval so a human sees the current reach; the mint refuses rather than widening a decided answer."), // reachable: no — runner-plane refusal, surfaced through the activity stream
     e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This fleet has no approved grant for the target service. " ++
         "A grant is seeded when the fleet is installed, from the credentials its bundle declares; it becomes usable once its approval gate is resolved. " ++
         "Check the grant with: `GET /v1/workspaces/{ws}/fleets/{id}/integration-grants`"), // reachable: no — runner-only mint/lease gate, not fetched by ui/packages/app

@@ -20,11 +20,14 @@
 //! comparison is case-insensitive because GitHub owners and repository names are.
 
 const std = @import("std");
+const ctx = @import("integration_ctx.zig");
+const github_body = @import("integration_github_body.zig");
 
 /// Response fields naming the reach (RULE UFS — the response-side counterparts
 /// of the request field names in `integration_github.zig`).
 const RESP_FIELD_REPOSITORIES: []const u8 = "repositories";
 const RESP_FIELD_FULL_NAME: []const u8 = "full_name";
+const RESP_FIELD_PERMISSIONS: []const u8 = "permissions";
 
 /// What the minted token turned out to reach, relative to the declaration.
 /// A bare enum rather than a union: each variant carries its whole meaning, and
@@ -70,6 +73,60 @@ pub fn verify(declared: []const []const u8, response: std.json.ObjectMap) Verdic
         if (!reaches(reached, want)) return .mismatched;
     }
     return .exact;
+}
+
+/// Compare the PERMISSIONS a response states against what the access level
+/// requested. Load-bearing the moment write mints exist: a token carrying more
+/// write than the fleet declared is the overreach this check refuses.
+///
+/// Rules, strict in the direction that matters:
+///   * every requested permission must be present at exactly the requested
+///     value — `contents` at the access level, `pull_requests: write` only at
+///     write (its absence IS the read scope);
+///   * no granted permission may exceed read unless it was requested — GitHub
+///     attaches ambient read grants (`metadata`) to every installation token,
+///     so read-level extras pass, write/admin-level extras refuse;
+///   * a missing or malformed `permissions` object is `unstated`, refused —
+///     unknown reach must never be the permissive branch.
+pub fn verifyPermissions(access: ctx.RepositoryAccess, response: std.json.ObjectMap) Verdict {
+    const field = response.get(RESP_FIELD_PERMISSIONS) orelse return .unstated;
+    const perms = switch (field) {
+        .object => |o| o,
+        else => return .unstated,
+    };
+
+    const contents_want = switch (access) {
+        .read => github_body.PERM_VALUE_READ,
+        .write => github_body.PERM_VALUE_WRITE,
+    };
+
+    // Scan first, so a value this code does not model (a non-string) is
+    // `unstated` — shape failure — rather than surfacing as a level mismatch.
+    var it = perms.iterator();
+    while (it.next()) |entry| {
+        const key = entry.key_ptr.*;
+        const value = switch (entry.value_ptr.*) {
+            .string => |s| s,
+            else => return .unstated,
+        };
+        if (std.mem.eql(u8, value, github_body.PERM_VALUE_READ)) continue;
+        const requested_at_this_level =
+            (std.mem.eql(u8, key, github_body.PERM_CONTENTS) and std.mem.eql(u8, value, contents_want)) or
+            (access == .write and std.mem.eql(u8, key, github_body.PERM_PULL_REQUESTS) and std.mem.eql(u8, value, github_body.PERM_VALUE_WRITE));
+        if (!requested_at_this_level) return .mismatched;
+    }
+
+    if (!permissionIs(perms, github_body.PERM_CONTENTS, contents_want)) return .mismatched;
+    if (access == .write and !permissionIs(perms, github_body.PERM_PULL_REQUESTS, github_body.PERM_VALUE_WRITE)) return .mismatched;
+    return .exact;
+}
+
+fn permissionIs(perms: std.json.ObjectMap, key: []const u8, want: []const u8) bool {
+    const value = switch (perms.get(key) orelse return false) {
+        .string => |s| s,
+        else => return false,
+    };
+    return std.mem.eql(u8, value, want);
 }
 
 fn fullNameOf(entry: std.json.Value) ?[]const u8 {
@@ -175,4 +232,36 @@ test "reach: an entry with no usable full_name is unstated, not skipped" {
     // the readable entries happened to match.
     try testing.expectEqual(Verdict.unstated, try verdictOf(&declared, "{\"repositories\":[{\"id\":7}]}"));
     try testing.expectEqual(Verdict.unstated, try verdictOf(&declared, "{\"repositories\":[\"acme/payments\"]}"));
+}
+
+/// Parse a response body and run `verifyPermissions` against it.
+fn permissionsVerdictOf(access: ctx.RepositoryAccess, body: []const u8) !Verdict {
+    var parsed = try std.json.parseFromSlice(std.json.Value, testing.allocator, body, .{});
+    defer parsed.deinit();
+    return verifyPermissions(access, parsed.value.object);
+}
+
+test "test_reach_verifies_permissions" {
+    // The requested set at each access level is exact.
+    try testing.expectEqual(Verdict.exact, try permissionsVerdictOf(.read, "{\"permissions\":{\"contents\":\"read\"}}"));
+    try testing.expectEqual(Verdict.exact, try permissionsVerdictOf(.write, "{\"permissions\":{\"contents\":\"write\",\"pull_requests\":\"write\"}}"));
+
+    // A requested permission missing or at the wrong level refuses — a token
+    // NARROWER than asked fails here with a local explanation, and a read
+    // binding answered with write contents is the overreach this check exists for.
+    try testing.expectEqual(Verdict.mismatched, try permissionsVerdictOf(.write, "{\"permissions\":{\"contents\":\"write\"}}"));
+    try testing.expectEqual(Verdict.mismatched, try permissionsVerdictOf(.write, "{\"permissions\":{\"contents\":\"read\",\"pull_requests\":\"write\"}}"));
+    try testing.expectEqual(Verdict.mismatched, try permissionsVerdictOf(.read, "{\"permissions\":{\"contents\":\"write\"}}"));
+
+    // An UNREQUESTED write/admin grant refuses; ambient read grants pass —
+    // GitHub attaches metadata:read to every installation token.
+    try testing.expectEqual(Verdict.mismatched, try permissionsVerdictOf(.read, "{\"permissions\":{\"contents\":\"read\",\"workflows\":\"write\"}}"));
+    try testing.expectEqual(Verdict.mismatched, try permissionsVerdictOf(.write, "{\"permissions\":{\"contents\":\"write\",\"pull_requests\":\"write\",\"administration\":\"admin\"}}"));
+    try testing.expectEqual(Verdict.exact, try permissionsVerdictOf(.read, "{\"permissions\":{\"contents\":\"read\",\"metadata\":\"read\"}}"));
+
+    // Absent or malformed permissions are unstated, refused — never read as
+    // "the installation's full set".
+    try testing.expectEqual(Verdict.unstated, try permissionsVerdictOf(.read, "{\"token\":\"ghs_x\"}"));
+    try testing.expectEqual(Verdict.unstated, try permissionsVerdictOf(.read, "{\"permissions\":\"all\"}"));
+    try testing.expectEqual(Verdict.unstated, try permissionsVerdictOf(.read, "{\"permissions\":{\"contents\":7}}"));
 }

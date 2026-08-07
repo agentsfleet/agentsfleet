@@ -122,6 +122,12 @@ fn parseToken(ctx: MintCtx, body: []const u8) anyerror!Outcome {
         // `parsed` and expires upstream on its own hour-long clock.
         .mismatched, .unstated => return .{ .mint_failed = .permanent },
     }
+    // The same discipline for PERMISSIONS: a token carrying more write than the
+    // binding declared is refused here, before anything can spend it.
+    switch (github_reach.verifyPermissions(binding.access, obj)) {
+        .exact => {},
+        .mismatched, .unstated => return .{ .mint_failed = .permanent },
+    }
 
     return .{ .ok = .{
         .token = try ctx.alloc.dupe(u8, tok),
@@ -216,7 +222,8 @@ test "github mint: 201 → token with local expiry; URL targets the install; bea
     // mint refuses a token stating any other reach, and this test is about the
     // expiry, the URL, and the JWT shape rather than about the binding.
     var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = "{\"token\":\"ghs_minted\"," ++
-        "\"expires_at\":\"2026-06-26T16:30:00Z\",\"repositories\":[{\"full_name\":\"acme/widgets\"}]}" };
+        "\"expires_at\":\"2026-06-26T16:30:00Z\",\"repositories\":[{\"full_name\":\"acme/widgets\"}]," ++
+        "\"permissions\":{\"contents\":\"write\",\"pull_requests\":\"write\"}}" };
     defer gh.deinit();
     var h = try testing.parse(alloc, HANDLE_GH);
     defer h.deinit();

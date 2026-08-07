@@ -131,6 +131,7 @@ const CATEGORY_COPY = [_]CategoryCopy{
     .{ .token = "EXEC", .label = "Runs", .prevention = "Check runner settings and access before starting work." },
     .{ .token = "GH", .label = "GitHub", .prevention = "Keep the GitHub App installed with required repository access." },
     .{ .token = "GRANT", .label = "Integration grants", .prevention = "Use active integration grants approved for the fleet." },
+    .{ .token = "REPAIR", .label = "Repository repair", .prevention = "Have a human approve the repository-write gate before the run mints a write-scoped token." },
     .{ .token = "INTERNAL", .label = "Service failures", .prevention = "Clients cannot prevent this failure. Keep retry handling ready." },
     .{ .token = "LIBRARY", .label = "Library listings", .prevention = "Page with the `next_cursor` returned by the previous page, keep `limit` within 1 to 100, and start over from the first page after changing a filter." },
     .{ .token = "MEM", .label = "Memory", .prevention = "Use an existing fleet and a valid memory category." },

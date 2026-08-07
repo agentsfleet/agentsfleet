@@ -70,6 +70,7 @@ pub const migrations = [_]MigrationEntry{
     // ── 8xx history — 890 last: its triggers attach to 800 and 880 ──────────
     .{ .version = 800, .sql = @embedFile("800_fleet_events.sql") },
     .{ .version = 810, .sql = @embedFile("810_fleet_approval_gates.sql") },
+    .{ .version = 811, .sql = @embedFile("811_fleet_approval_gates_event_binding.sql") },
     .{ .version = 820, .sql = @embedFile("820_memory_entries.sql") },
     .{ .version = 880, .sql = @embedFile("880_fleet_activity_counters.sql") },
     .{ .version = 890, .sql = @embedFile("890_fleet_activity_counter_triggers.sql") },

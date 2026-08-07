@@ -79,8 +79,8 @@ pub const INSERT_GATE =
     \\INSERT INTO core.fleet_approval_gates
     \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
     \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-    \\   resolved_by, status, detail, created_at)
-    \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, '', $12, '', $13)
+    \\   resolved_by, status, detail, created_at, event_id, stated_binding)
+    \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, '', $12, '', $13, $14, $15::jsonb)
 ;
 
 /// One keyset page of pending gates for a workspace. The cursor compares the

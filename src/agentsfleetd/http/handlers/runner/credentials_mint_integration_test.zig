@@ -38,6 +38,8 @@ const protocol = @import("contract").protocol;
 const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
 const cred_testing = @import("../../../credentials/testing.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const gate_constants = @import("../../../fleet_runtime/approval_gate_constants.zig");
+const approval_gate_rt = @import("../../../fleet_runtime/approval_gate.zig");
 
 const GrantStatus = grant_lookup.GrantStatus;
 
@@ -76,6 +78,12 @@ const FLEET_FOREIGN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c02";
 const LEASE_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e01";
 const LEASE_FOREIGN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e02";
 const LEASE_STALE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e03";
+// Write-gate leases: each keys its OWN event id, because the append-only gates
+// table makes rows for a shared event permanent across the whole suite run.
+const LEASE_WRITE_UNAPPROVED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e04";
+const LEASE_WRITE_DRIFT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e05";
+const EVENT_WRITE_UNAPPROVED = "evt-cred-write-unappr";
+const EVENT_WRITE_DRIFT = "evt-cred-write-drift";
 const GRANT_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1f01";
 // A lease_expires_at in the distant past (1970) — guaranteed < the handler's
 // wall-clock now, so the live-lease gate must reject it regardless of run date.
@@ -140,7 +148,7 @@ fn seedRunner(conn: *pg.Conn, runner_id: []const u8, raw_token: []const u8) !voi
 /// Seed a lease binding `runner_id` → `workspace_id` with an explicit
 /// `lease_expires_at` + `status`, so a test can assert the mint handler's
 /// live-lease gate (active + unexpired) rejects a cancelled/expired row.
-fn seedLeaseFull(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_id: []const u8, workspace_id: []const u8, lease_expires_at: i64, status: []const u8) !void {
+fn seedLeaseFull(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_id: []const u8, workspace_id: []const u8, event_id: []const u8, lease_expires_at: i64, status: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
@@ -151,12 +159,17 @@ fn seedLeaseFull(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fl
         \\        'chat', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
         \\        5, $7, $8, 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ lease_id, runner_id, fleet_id, workspace_id, base.TEST_TENANT_ID, EVENT_ID, lease_expires_at, status });
+    , .{ lease_id, runner_id, fleet_id, workspace_id, base.TEST_TENANT_ID, event_id, lease_expires_at, status });
 }
 
 /// Seed an active, unexpired lease binding `runner_id` → `workspace_id`.
 fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_id: []const u8, workspace_id: []const u8) !void {
-    return seedLeaseFull(conn, lease_id, runner_id, fleet_id, workspace_id, NOW_MS + 30_000, protocol.RUNNER_LEASE_STATUS_ACTIVE);
+    return seedLeaseFull(conn, lease_id, runner_id, fleet_id, workspace_id, EVENT_ID, NOW_MS + 30_000, protocol.RUNNER_LEASE_STATUS_ACTIVE);
+}
+
+/// `seedLease` keyed to a caller-owned event id — the write-gate tests' shape.
+fn seedLeaseForEvent(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_id: []const u8, workspace_id: []const u8, event_id: []const u8) !void {
+    return seedLeaseFull(conn, lease_id, runner_id, fleet_id, workspace_id, event_id, NOW_MS + 30_000, protocol.RUNNER_LEASE_STATUS_ACTIVE);
 }
 
 /// Upsert the fleet's grant row for `service` at the given status — the grant
@@ -185,6 +198,42 @@ fn seedGithubHandle(conn: *pg.Conn, workspace_id: []const u8) !void {
     try vault.storeJsonPlaintext(ALLOC, conn, workspace_id, INTEGRATION_GITHUB, "{\"integration\":\"github\",\"installation_id\":\"42\"}");
 }
 
+/// The stated binding the write-kind park would have recorded for
+/// CONFIG_WITH_BINDING — what the approval card told the human (RULE UFS: the
+/// one JSON spelling `repository_binding_json.serialize` produces).
+const STATED_BINDING_OWNER = "{\"repositories\":[\"acme/payments\"],\"access\":\"write\"}";
+/// A stated binding naming a DIFFERENT repository — the drift fixture.
+const STATED_BINDING_DRIFTED = "{\"repositories\":[\"acme/other\"],\"access\":\"write\"}";
+
+// v7-shaped gate row ids (the schema CHECK pins the version nibble). The table
+// is APPEND-ONLY — no DELETE ever, UPDATE only while pending — so every seed
+// is a fresh insert under its own id, idempotent via DO NOTHING, and each test
+// keys its lease to its OWN event id so a sibling's row can never satisfy or
+// starve its check.
+const GATE_ROW_RECHECKS = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e01";
+const GATE_ROW_PENDING = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e02";
+const GATE_ROW_DRIFTED = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e03";
+
+/// Seed a gate row of the given kind/status for (fleet, event) — what the
+/// write-kind park writes, reduced to the columns the write mint reads.
+fn seedGateRow(conn: *pg.Conn, gate_id: []const u8, fleet_id: []const u8, workspace_id: []const u8, event_id: []const u8, gate_kind: []const u8, status: []const u8, stated_binding: ?[]const u8) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_approval_gates
+        \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind,
+        \\   proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
+        \\   detail, created_at, event_id, stated_binding)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'act-' || $4, 'webhook', 'webhook:github', $5,
+        \\        '', '{}'::jsonb, '', 9999999999999, '', $6,
+        \\        '', 1, $4, $7::jsonb)
+        \\ON CONFLICT (id) DO NOTHING
+    , .{ gate_id, fleet_id, workspace_id, event_id, gate_kind, status, stated_binding });
+}
+
+/// The approved repository-write gate the write mint requires.
+fn seedApprovedWriteGate(conn: *pg.Conn, gate_id: []const u8, fleet_id: []const u8, workspace_id: []const u8, event_id: []const u8, stated_binding: []const u8) !void {
+    try seedGateRow(conn, gate_id, fleet_id, workspace_id, event_id, gate_constants.GATE_KIND_REPOSITORY_WRITE, approval_gate_rt.GateStatus.approved.toSlice(), stated_binding);
+}
+
 fn mintBodyFor(lease_id: []const u8, integration_id: []const u8) ![]u8 {
     return std.fmt.allocPrint(ALLOC, "{{\"lease_id\":\"{s}\",\"integration\":\"{s}\"}}", .{ lease_id, integration_id });
 }
@@ -199,8 +248,11 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 
 fn teardown(conn: *pg.Conn) void {
     dropWriteBackBlock(conn); // residue from an aborted write-back-failure test run
+    // No gate-row cleanup on purpose: core.fleet_approval_gates is append-only
+    // (schema trigger refuses DELETE), so the write-gate fixtures use unique
+    // ids + per-test event ids and re-seed idempotently instead.
     execIgnore(conn, "DELETE FROM core.integration_grants WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ FLEET_OWNER, FLEET_FOREIGN });
-    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id IN ($1::uuid, $2::uuid, $3::uuid)", .{ LEASE_OWNER, LEASE_FOREIGN, LEASE_STALE });
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id IN ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid)", .{ LEASE_OWNER, LEASE_FOREIGN, LEASE_STALE, LEASE_WRITE_UNAPPROVED, LEASE_WRITE_DRIFT });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_OWNER, RUNNER_ATTACKER });
     execIgnore(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1", .{WORKSPACE_OWNER});
     execIgnore(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1", .{WORKSPACE_FOREIGN});
@@ -280,16 +332,24 @@ const CREATE_BLOCK_TRIGGER = std.fmt.comptimePrint(
 const DROP_BLOCK_TRIGGER = "DROP TRIGGER IF EXISTS test_block_vault_writeback ON vault.secrets";
 const DROP_BLOCK_FN = "DROP FUNCTION IF EXISTS test_block_vault_writeback()";
 
+/// Whether the write-back block trigger is installed. Its query result is
+/// fully closed at return, so the caller may write on the same conn — the
+/// prior inline shape exec'd the DROP while its own SELECT was still open,
+/// which failed ConnectionBusy and left the residue trigger installed forever,
+/// poisoning every later vault write in this file.
+fn writeBackBlockPresent(conn: *pg.Conn) bool {
+    var q = PgQuery.from(conn.query(
+        \\SELECT 1 FROM pg_trigger WHERE tgname = 'test_block_vault_writeback'
+    , .{}) catch return false);
+    defer q.deinit();
+    return (q.next() catch return false) != null;
+}
+
 fn dropWriteBackBlock(conn: *pg.Conn) void {
     // DROP TRIGGER (even IF EXISTS) takes an ACCESS EXCLUSIVE lock on the
     // table; gate on pg_trigger so the common no-residue path — this runs at
     // the START of every test in this file — takes no lock on the shared vault.
-    var q = PgQuery.from(conn.query(
-        \\SELECT 1 FROM pg_trigger WHERE tgname = 'test_block_vault_writeback'
-    , .{}) catch return);
-    defer q.deinit();
-    const present = (q.next() catch return) != null;
-    if (!present) return;
+    if (!writeBackBlockPresent(conn)) return;
     execIgnore(conn, DROP_BLOCK_TRIGGER, .{});
     execIgnore(conn, DROP_BLOCK_FN, .{});
 }
@@ -418,8 +478,8 @@ test "integration: test_mint_rejects_cancelled_or_expired_lease" {
         try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
         // Only the lifecycle differs between the two leases. `static` is
         // ungated, so a 404 can only be the live-lease gate.
-        try seedLeaseFull(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, PAST_MS, protocol.RUNNER_LEASE_STATUS_ACTIVE);
-        try seedLeaseFull(conn, LEASE_STALE, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, NOW_MS + 30_000, protocol.RUNNER_LEASE_STATUS_EXPIRED);
+        try seedLeaseFull(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, EVENT_ID, PAST_MS, protocol.RUNNER_LEASE_STATUS_ACTIVE);
+        try seedLeaseFull(conn, LEASE_STALE, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, EVENT_ID, NOW_MS + 30_000, protocol.RUNNER_LEASE_STATUS_EXPIRED);
         try seedStaticHandle(conn, WORKSPACE_OWNER, SENTINEL_OWNER);
     }
     defer cleanupAll(h);
@@ -535,7 +595,7 @@ test "integration: test_mint_rechecks_revoked_grant" {
     // That same binding is why the fake must state `acme/payments` as its reach:
     // the mint verifies what GitHub says the token covers against the binding,
     // and refuses a mismatch before the token is handed on.
-    const reach = try cred_testing.reachResponse(ALLOC, &FLEET_OWNER_REPOSITORIES);
+    const reach = try cred_testing.reachResponse(ALLOC, &FLEET_OWNER_REPOSITORIES, .write);
     defer ALLOC.free(reach);
 
     var gh = cred_testing.FakeGitHub{ .alloc = ALLOC, .resp_body = reach };
@@ -561,6 +621,10 @@ test "integration: test_mint_rechecks_revoked_grant" {
         try seedLease(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER);
         try seedGithubHandle(conn, WORKSPACE_OWNER);
         try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_GITHUB, .approved);
+        // CONFIG_WITH_BINDING declares WRITE access, so this fleet's mint also
+        // rides the write gate: an approved repository-write gate for the
+        // lease's event, stating the same binding, is part of the baseline.
+        try seedApprovedWriteGate(conn, GATE_ROW_RECHECKS, FLEET_OWNER, WORKSPACE_OWNER, EVENT_ID, STATED_BINDING_OWNER);
     }
     defer cleanupAll(h);
 
@@ -604,6 +668,120 @@ test "integration: test_mint_rechecks_revoked_grant" {
         try resp.expectStatus(.ok);
         try std.testing.expect(resp.bodyContains(GITHUB_MINTED));
     }
+}
+
+test "integration: test_write_mint_refuses_unapproved" {
+    // Write-gate Dimension 2.2: a WRITE-access fleet with a live lease, a
+    // connected handle, and an APPROVED integration grant still refuses the
+    // github mint when no repository-write gate was approved for the lease's
+    // event — and a PENDING gate is equally not an approval. The broker is
+    // never reached, so no token exists to leak.
+    crypto_primitives.setTestKek();
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    var gh = cred_testing.FakeGitHub{ .alloc = ALLOC };
+    defer gh.deinit();
+    var metrics = cred_testing.RecordingMetrics{};
+    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, cred_testing.brokerDeps(&gh, &metrics));
+    defer broker.deinit();
+    h.ctx.broker = &broker;
+
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        teardown(conn);
+        try base.seedTenant(conn);
+        try base.seedWorkspace(conn, WORKSPACE_OWNER);
+        execIgnore(conn, "DELETE FROM core.fleets WHERE id = $1::uuid", .{FLEET_OWNER});
+        try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", CONFIG_WITH_BINDING, "# z");
+        try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
+        try seedLeaseForEvent(conn, LEASE_WRITE_UNAPPROVED, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, EVENT_WRITE_UNAPPROVED);
+        try seedGithubHandle(conn, WORKSPACE_OWNER);
+        try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_GITHUB, .approved);
+        // Deliberately NO write gate row for THIS lease's event.
+    }
+    defer cleanupAll(h);
+
+    // (1) No gate row at all → 403 UZ-REPAIR-010.
+    {
+        const body = try githubMintBody(LEASE_WRITE_UNAPPROVED);
+        defer ALLOC.free(body);
+        const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.forbidden);
+        try std.testing.expect(resp.bodyContains(ec.ERR_REPAIR_WRITE_UNAPPROVED));
+        try std.testing.expect(!resp.bodyContains(GITHUB_MINTED));
+    }
+
+    // (2) A PENDING write gate is not an approval — still 403.
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try seedGateRow(conn, GATE_ROW_PENDING, FLEET_OWNER, WORKSPACE_OWNER, EVENT_WRITE_UNAPPROVED, gate_constants.GATE_KIND_REPOSITORY_WRITE, approval_gate_rt.GateStatus.pending.toSlice(), STATED_BINDING_OWNER);
+    }
+    {
+        const body = try githubMintBody(LEASE_WRITE_UNAPPROVED);
+        defer ALLOC.free(body);
+        const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.forbidden);
+        try std.testing.expect(resp.bodyContains(ec.ERR_REPAIR_WRITE_UNAPPROVED));
+        try std.testing.expect(!resp.bodyContains(GITHUB_MINTED));
+    }
+
+    // The broker was never reached across either refusal.
+    try std.testing.expectEqual(@as(usize, 0), gh.calls);
+}
+
+test "integration: test_write_mint_refuses_binding_drift" {
+    // Write-gate Dimension 2.3: the gate IS approved, but the binding it stated
+    // to the human no longer matches the fleet's current config — the mint
+    // refuses (403 UZ-REPAIR-011) rather than minting a reach nobody approved.
+    crypto_primitives.setTestKek();
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    var gh = cred_testing.FakeGitHub{ .alloc = ALLOC };
+    defer gh.deinit();
+    var metrics = cred_testing.RecordingMetrics{};
+    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, cred_testing.brokerDeps(&gh, &metrics));
+    defer broker.deinit();
+    h.ctx.broker = &broker;
+
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        teardown(conn);
+        try base.seedTenant(conn);
+        try base.seedWorkspace(conn, WORKSPACE_OWNER);
+        execIgnore(conn, "DELETE FROM core.fleets WHERE id = $1::uuid", .{FLEET_OWNER});
+        try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", CONFIG_WITH_BINDING, "# z");
+        try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
+        try seedLeaseForEvent(conn, LEASE_WRITE_DRIFT, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, EVENT_WRITE_DRIFT);
+        try seedGithubHandle(conn, WORKSPACE_OWNER);
+        try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_GITHUB, .approved);
+        // Approved — but for a DIFFERENT repository than the config now binds.
+        try seedApprovedWriteGate(conn, GATE_ROW_DRIFTED, FLEET_OWNER, WORKSPACE_OWNER, EVENT_WRITE_DRIFT, STATED_BINDING_DRIFTED);
+    }
+    defer cleanupAll(h);
+
+    {
+        const body = try githubMintBody(LEASE_WRITE_DRIFT);
+        defer ALLOC.free(body);
+        const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.forbidden);
+        try std.testing.expect(resp.bodyContains(ec.ERR_REPAIR_BINDING_DRIFT));
+        try std.testing.expect(!resp.bodyContains(GITHUB_MINTED));
+    }
+    try std.testing.expectEqual(@as(usize, 0), gh.calls);
 }
 
 test "integration: test_mint_persists_rotated_refresh_token" {

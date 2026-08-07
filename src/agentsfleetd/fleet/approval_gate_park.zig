@@ -82,6 +82,7 @@ pub fn parkEvent(
         session.fleet_id,
         session.workspace_id,
         action_id,
+        event.event_id,
         detail,
     );
 

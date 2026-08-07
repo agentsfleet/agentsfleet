@@ -128,7 +128,7 @@ test "test_investigator_token_is_read_only" {
     // The fake answers with exactly the reach the SHIPPED bundle declared, so
     // this test keeps failing on the permission level rather than on the mint's
     // reach check — which has its own tests.
-    const reach = try cred_testing.reachResponse(alloc, binding.repositories);
+    const reach = try cred_testing.reachResponse(alloc, binding.repositories, binding.access);
     defer alloc.free(reach);
 
     var gh = cred_testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = reach };
