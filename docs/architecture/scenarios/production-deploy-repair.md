@@ -2,9 +2,9 @@
 
 > Parent: [`README.md`](./README.md) · References: [`../user_flow.md`](../user_flow.md) §8.5, [`../capabilities.md`](../capabilities.md), and [`../connectors.md`](../connectors.md).
 
-**Outcome:** a failed production deployment becomes a diagnosis or a bounded draft Pull Request (PR). A human decides whether the fix ships.
+**Outcome:** a failed production deployment becomes a diagnosis or a bounded draft Pull Request (PR). A human approves the write before any run starts, and a human reviews the actual diff before it ships.
 
-**Proof boundary:** diagnosis works today. Vercel intake, draft-PR creation, and post-deployment checks are not yet proven together. Repository checkout is no longer on the path at all — see §4.
+**Proof boundary:** diagnosis, the write approval gate, the fenced write mint, the repairer bundle, and the incident → PR → deploy-result linkage are implemented and tested. Vercel intake and an end-to-end acceptance run against a live repository are not yet proven together. Repository checkout is not on the path at all — the write is five API calls (§4).
 
 Legend: ✅ implemented and tested · 🟡 present but not proven for this flow · 🔨 not built.
 
@@ -13,78 +13,68 @@ sequenceDiagram
   autonumber
   participant Provider as GitHub Actions or Vercel
   participant API as agentsfleetd
+  participant Human as Human reviewer
   participant Fleet as Repair fleet
   participant GitHub as GitHub repository
-  participant Human as Human reviewer
 
   Provider->>API: report a production failure
-  API->>Fleet: start one run for the incident
+  API->>Human: park the event behind the repository-write card
+  Human-->>API: approve the write
+  API->>Fleet: release the run, with a fenced write token on demand
   Fleet->>Provider: read deployment evidence
-  Fleet->>GitHub: read the failed change
+  Fleet->>GitHub: read history and file contents at a verified head
   alt bounded code or configuration fix
-    Fleet->>API: final report carries a repair proposal
-    API->>Human: request approval for the proposed bytes
-    Human-->>API: approve
-    API->>GitHub: push a branch and open a draft PR
-    Human->>GitHub: review and merge the PR
+    Fleet->>GitHub: push one branch, open one draft PR
+    API->>API: link incident to PR (webhook arm)
+    Human->>GitHub: review the diff and merge
     GitHub->>Provider: run the existing deployment pipeline
-    Provider->>API: report the deployment result
-    API->>Fleet: start the health check
+    Provider->>API: completed run on the repair branch stamps the linkage
   else provider failure, secret failure, or unclear cause
     Fleet->>Human: send diagnosis only
-    Fleet->>API: final report carries no proposal
   end
 ```
 
 ## 1. Start one incident
 
-GitHub can wake the fleet with a failed `workflow_run` event. The GitHub App route verifies the event before selecting a workspace and fleet.
+GitHub wakes the repair fleet with a failed `workflow_run` event over the signed per-fleet webhook; a human can also steer an incident to it directly. GitHub retries use the existing replay guard — repeated delivery does not create another fleet event for the same body and fleet.
 
-GitHub retries use the existing replay guard. Repeated delivery does not create another fleet event for the same body and fleet.
+The responder keeps the scheduled sweeps, and the repairer takes the concrete incidents: the two members' triggers are disjoint by construction, so which one handles an event is wiring, never judgment.
 
 A Vercel Log Drain is a target input. `agentsfleet` does not yet ship the Vercel intake needed by this scenario.
 
-Fly.io is an evidence source in this flow. A GitHub failure, health check, or manual steer starts the run that reads Fly.io evidence.
+## 2. The human answers before the run starts
 
-## 2. Gather evidence
+A fleet whose repository binding declares WRITE access parks **every** first-encounter event at the approval gate — before gate rules are consulted, and even when no gates are configured. Gate rules cannot hold this boundary: they ride the fleet's own config, editable under the same scope that wakes the fleet, and their no-match fallthrough is auto-approve. The kind check lives in the daemon instead.
 
-The fleet reads the failed workflow, recent code changes, and provider evidence. The fleet compares timestamps before naming a cause.
+The card states the daemon's own facts first: the repository the token will reach, the access level, and the blast radius — at most one branch and one draft PR. The gate resolves between runs; approval releases the lease, and the park records the stated binding durably on the gate row.
 
-The hosted run uses workspace secrets and the credential firewall. The hosted run does not use a developer's local 1Password session.
+## 3. Gather evidence, decide whether to change code
 
-A missing grant or secret stops the affected tool call. The activity stream keeps the failure and its stable error code.
+The released run reads the failed workflow, recent code changes, provider telemetry, and — this is what makes a fix authorable — the current file contents at a branch head it verified this run. The hosted run uses workspace secrets and the credential firewall; a missing grant or secret stops the affected tool call.
 
-## 3. Decide whether to change code
+The fleet sends a diagnosis without code changes when the cause is unclear, and always for provider outages and data-shaped incidents. The repair is a **forward fix**: the fleet authors the next change against the head it verified — corrected code, or new files. It never proposes rewinding history.
 
-The fleet sends a diagnosis without code changes when the cause is unclear. The same rule applies to provider outages and secret failures.
+## 4. The fleet ships the draft PR
 
-The repair path requires an allowed repository, allowed file paths, file and diff limits, and human approval.
+The write is five API calls over the same `http_request` tool that does the reading — blobs, tree, commit, ref, then the draft PR. No checkout, no git tooling, no shell.
 
-The repair is a forward fix. The fleet describes the next change that fixes the incident — corrected code, or new files — against the branch head it verified during the run. It never proposes rolling history back.
+What bounds it is the credential, not the prose:
 
-Those limits are design, not code. An earlier proposal kernel validated file count, path shapes, and diff size at report time and re-checked them at apply time; it was retired unused. Rebuilding it is the write half's first piece, and documentation must not present the repair path as shipped.
+- The write-scoped token mints only against an **approved repository-write gate for this lease's event** whose recorded binding still matches the fleet's current one — a config edit between the human's answer and the mint refuses as drift (`UZ-REPAIR-011`).
+- The token carries `contents: write` + `pull_requests: write` for exactly the bound repository, expires in an hour, and never carries a `workflows` permission — GitHub itself refuses a push into `.github/workflows/`.
+- The mint verifies the token GitHub returned: its stated repositories AND its stated permissions must match what was requested; unknown reach refuses.
 
-## 4. Prepare the draft PR
+The branch name derives from the incident event id (`agentsfleet-repair/<event id>`), so a replayed run finds the ref taken and reports a duplicate rather than pushing twice. The webhook arm links the opened PR back to its incident in the same table an operator reads — and repair-branch traffic never re-enters the event stream, so the crew cannot be woken by its own output.
 
-The fleet does not write. It ends its run with a **repair proposal**: the repository, the base commit it read, the files it may touch, the diff, the cause, and the evidence. The daemon validates that proposal, stores it immutably, content-addresses it, and parks it behind the existing approval gate.
-
-This is a deliberate departure from an earlier shape in which the runner checked out the repository and opened the PR itself, and it follows from where approval actually binds. The approval gate resolves at `lease` — between runs, not inside one. A fleet cannot pause mid-reasoning to await a human, so an approval granted during a run would be an approval of intentions, and a second model run would then decide what to write. Approving the bytes instead removes that gap.
-
-On approval the daemon applies the proposal deterministically. No model runs. It recomputes the content hash and refuses on any mismatch, re-checks base freshness and bounds, mints a short-lived GitHub App installation token, creates a branch named from the proposal identifier, applies exactly the approved bytes, and opens a draft PR stating cause, evidence, changed files, and rollback steps.
-
-Because the branch name derives from the proposal identifier, a replayed approval finds the branch already there and refuses as a duplicate rather than opening a second PR. Every refusal — stale base, bounds exceeded, duplicate, upstream failure — carries a `UZ-REPAIR-*` code to Slack and the activity stream, and retries nothing silently.
-
-There is no repository checkout on this path, so the runner's file and Git tools play no part in the write. Repository checks run on the draft PR through the repository's own continuous integration, which is where code review already lives.
-
-The daemon never merges the PR. The daemon never deploys production.
+The human's byte-level approval happens where bytes are best reviewed: on the PR diff itself, with the repository's own continuous integration reporting beside it. The daemon never merges. The daemon never deploys production.
 
 ## 5. Verify the deployment
 
 A human reviews and merges the PR. The repository's existing deployment pipeline handles the merge.
 
-A deployment result starts a later verification run. The fleet links the health result to the original incident and PR.
+A completed workflow run on the repair branch stamps the linkage row (`pending` → `deploy_ok` / `deploy_failed`), so "did the fix work" is a column, not a model run. A richer post-deploy verification member is deliberately deferred: the linkage carries the signal until the crew regrows.
 
-If the deployment still fails, the fleet records the new evidence. The fleet does not roll back production without another approved action.
+If the deployment still fails, the record says so. Undoing anything is a fresh forward fix through the same approval gate.
 
 ## 6. What exists today
 
@@ -92,14 +82,16 @@ If the deployment still fails, the fleet records the new evidence. The fleet doe
 |---|---|---|
 | GitHub App failure routing | ✅ | Signed GitHub events route by installation, repository, event, and approved grant. |
 | GitHub replay protection | ✅ | A repeated signed body does not create another event for the same fleet. |
+| Write-kind approval park | ✅ | A write-access fleet parks with no gates config and past the rule fallthrough; approval releases the owned lease. |
+| Fenced write mint | ✅ | Refuses without the approved gate row, on binding drift, and on a token whose stated permissions exceed the request. |
+| Repairer bundle | ✅ | Read-verify-author-push discipline, driven through the real mint by the crew tests; two-member crew onboards through the shipped library endpoint. |
+| Incident → PR → deploy linkage | ✅ | The webhook arms insert and stamp the slot-830 row; repair-branch traffic never wakes the fleet. |
 | HTTP evidence reads | ✅ | The runner exposes policy-bound HTTP requests with secret substitution and host controls. |
 | Slack diagnosis and activity history | ✅ | The existing platform-operations flow records a result and can post the diagnosis. |
-| File and Git tools | 🟡 | The runner registers these tools. This repair path does not use them — the write is daemon-side (§4). |
+| File and Git tools | 🟡 | The runner registers these tools. This repair path does not use them — the write is five API calls (§4). |
 | Vercel Log Drain intake | 🔨 | No Vercel error intake is wired to a fleet. |
-| Proposal validation, content hash, and bounds | 🔨 | An earlier kernel proved hash canonicality, path safety, and allowlist enforcement, then was retired unused. Nothing validates, hashes, or stores a proposal today. |
-| Proposal record and approval parking | 🔨 | Nothing persists a proposal or requests approval for one. |
-| Draft PR creation | 🔨 | No test proves token minting, branch creation, push, and draft-PR creation together. |
-| Post-deployment verification | 🔨 | No test links the repaired deployment result back to the original incident. |
+| Live-repository acceptance run | 🔨 | No test drives a real GitHub repository end to end; the wire-level path is integration-proven. |
+| Post-deploy verification member | 🔨 | Deferred; the linkage row carries the deploy signal until the crew regrows. |
 | Email notification | Excluded | Slack and the activity stream are the available notification surfaces. |
 
 ## 7. Test fixture boundary
@@ -108,4 +100,4 @@ If the deployment still fails, the fleet records the new evidence. The fleet doe
 
 The API, dashboard, and Command Line Interface (CLI) do not load that directory in production. Platform libraries come from stored library entries and bundle snapshots.
 
-The fixture is not the `github-pr-reviewer` library. The fixture also does not prove the repair path described above.
+The shipped crew lives in `library/` — `incident-responder` (reads, diagnoses) and `incident-repairer` (reads, ships the draft PR) — and installs through the same library endpoints as any bundle, one upload per member.
