@@ -724,3 +724,174 @@ test "C2: generic route — paused fleet → 200 ignored fleet_paused, dedup slo
     try r2.expectStatus(.accepted);
     try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, AGENTSFLEET_LINEAR));
 }
+
+// ── §R: repair-branch linkage arms ────────────────────────────────────────
+
+const common_c = @import("common");
+const repair_links = @import("../state/repair_pr_links.zig");
+
+const REPAIR_INCIDENT_EVENT = "evt-incident-77";
+const REPAIR_BRANCH = common_c.REPAIR_BRANCH_PREFIX ++ REPAIR_INCIDENT_EVENT;
+const REPAIR_PR_BODY = "{\"action\":\"opened\",\"number\":88,\"repository\":{\"full_name\":\"o/r\"}," ++
+    "\"pull_request\":{\"number\":88,\"title\":\"repair\",\"html_url\":\"https://github.com/o/r/pull/88\"," ++
+    "\"state\":\"open\",\"draft\":true,\"user\":{\"login\":\"agentsfleet\"}," ++
+    "\"head\":{\"ref\":\"" ++ REPAIR_BRANCH ++ "\",\"sha\":\"abc123\"},\"base\":{\"ref\":\"main\"}}}";
+const REPAIR_RUN_OK_BODY = "{\"action\":\"completed\",\"workflow_run\":{\"id\":43,\"conclusion\":\"success\"," ++
+    "\"run_attempt\":1,\"head_branch\":\"" ++ REPAIR_BRANCH ++ "\"},\"repository\":{\"full_name\":\"o/r\"}}";
+const REPAIR_RUN_FAIL_BODY = "{\"action\":\"completed\",\"workflow_run\":{\"id\":44,\"conclusion\":\"failure\"," ++
+    "\"run_attempt\":1,\"head_branch\":\"" ++ REPAIR_BRANCH ++ "\"},\"repository\":{\"full_name\":\"o/r\"}}";
+const REPAIR_RUN_UNLINKED_BODY = "{\"action\":\"completed\",\"workflow_run\":{\"id\":45,\"conclusion\":\"success\"," ++
+    "\"run_attempt\":1,\"head_branch\":\"" ++ common_c.REPAIR_BRANCH_PREFIX ++ "evt-nobody\"},\"repository\":{\"full_name\":\"o/r\"}}";
+
+/// Remove this fixture fleet's linkage rows through the sanctioned purge
+/// switch — the same transaction-scoped setting the hard-purge cascade uses.
+fn purgeRepairLinks(s: *Setup) void {
+    const conn = s.h.acquireConn() catch return;
+    defer s.h.releaseConn(conn);
+    _ = conn.exec("BEGIN", .{}) catch return;
+    _ = conn.exec("SET LOCAL fleet.allow_gate_purge = 'on'", .{}) catch |err|
+        std.log.warn("repair link purge ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.repair_pr_links WHERE fleet_id = $1::uuid", .{s.fx.fleet_id}) catch |err|
+        std.log.warn("repair link purge ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("COMMIT", .{}) catch |err|
+        std.log.warn("repair link purge ignored: {s}", .{@errorName(err)});
+}
+
+test "test_pr_opened_arm_inserts_once" {
+    // Dimension 4.3 — the crew's own draft PR echoing back through the webhook
+    // becomes the incident → PR linkage row, NOT a fleet event; a second PR
+    // for the same incident is named a duplicate and not recorded.
+    const alloc = std.testing.allocator;
+    var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    requireRedis(s.h) catch return error.SkipZigTest;
+    purgeRepairLinks(&s);
+    cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{ "del_r1", "del_r2" });
+    defer cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{ "del_r1", "del_r2" });
+
+    const before = try xlen(s.h, alloc, s.fx.fleet_id);
+    const r1 = try postSigned(alloc, &s, "pull_request", "del_r1", REPAIR_PR_BODY);
+    defer r1.deinit();
+    try r1.expectStatus(.ok);
+    try std.testing.expect(r1.bodyContains("linked"));
+    // A linkage, not an incident: the event stream did not grow.
+    try std.testing.expectEqual(before, try xlen(s.h, alloc, s.fx.fleet_id));
+
+    {
+        const conn = try s.h.acquireConn();
+        defer s.h.releaseConn(conn);
+        var link = (try repair_links.lookupByEvent(alloc, conn, s.fx.fleet_id, REPAIR_INCIDENT_EVENT)) orelse return error.TestUnexpectedResult;
+        defer link.deinit(alloc);
+        try std.testing.expectEqualStrings("o/r", link.repository);
+        try std.testing.expectEqual(@as(i64, 88), link.pr_number);
+        try std.testing.expectEqualStrings(repair_links.DEPLOY_STATUS_PENDING, link.deploy_status);
+    }
+
+    // Replay under a fresh delivery id: the row already exists → duplicate,
+    // still exactly one linkage, still no event.
+    const r2 = try postSigned(alloc, &s, "pull_request", "del_r2", REPAIR_PR_BODY);
+    defer r2.deinit();
+    try r2.expectStatus(.ok);
+    try std.testing.expect(r2.bodyContains("duplicate_repair_link"));
+    try std.testing.expectEqual(before, try xlen(s.h, alloc, s.fx.fleet_id));
+}
+
+test "test_deploy_stamp_and_unknown_branch_noop" {
+    // Dimension 4.4 — a completed workflow run on a linked repair branch
+    // stamps the deploy result and does NOT wake the fleet (a FAILED run on
+    // the crew's own branch is a stamp, not a fresh incident); an unlinked
+    // repair-prefixed branch acknowledges and records nothing.
+    const alloc = std.testing.allocator;
+    var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    requireRedis(s.h) catch return error.SkipZigTest;
+    purgeRepairLinks(&s);
+    cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{ "del_r3", "del_r4", "del_r5", "del_r6" });
+    defer cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{ "del_r3", "del_r4", "del_r5", "del_r6" });
+
+    // Seed the linkage through the arm itself.
+    const seed = try postSigned(alloc, &s, "pull_request", "del_r3", REPAIR_PR_BODY);
+    defer seed.deinit();
+    try seed.expectStatus(.ok);
+
+    const before = try xlen(s.h, alloc, s.fx.fleet_id);
+
+    // A FAILED completed run on the repair branch: stamped failed, no event —
+    // this is the arm's load-bearing half, because a failed workflow_run on
+    // any other branch is exactly what wakes this fleet.
+    const rf = try postSigned(alloc, &s, "workflow_run", "del_r4", REPAIR_RUN_FAIL_BODY);
+    defer rf.deinit();
+    try rf.expectStatus(.ok);
+    try std.testing.expect(rf.bodyContains(repair_links.DEPLOY_STATUS_FAILED));
+    try std.testing.expectEqual(before, try xlen(s.h, alloc, s.fx.fleet_id));
+
+    // A later success overwrites the stamp (absolute UPDATE, idempotent).
+    const ro = try postSigned(alloc, &s, "workflow_run", "del_r5", REPAIR_RUN_OK_BODY);
+    defer ro.deinit();
+    try ro.expectStatus(.ok);
+    try std.testing.expect(ro.bodyContains(repair_links.DEPLOY_STATUS_OK));
+    {
+        const conn = try s.h.acquireConn();
+        defer s.h.releaseConn(conn);
+        var link = (try repair_links.lookupByEvent(alloc, conn, s.fx.fleet_id, REPAIR_INCIDENT_EVENT)) orelse return error.TestUnexpectedResult;
+        defer link.deinit(alloc);
+        try std.testing.expectEqualStrings(repair_links.DEPLOY_STATUS_OK, link.deploy_status);
+        try std.testing.expect(link.deploy_stamped_at != null);
+    }
+
+    // Unknown repair-prefixed branch: acknowledged, nothing recorded, no event.
+    const ru = try postSigned(alloc, &s, "workflow_run", "del_r6", REPAIR_RUN_UNLINKED_BODY);
+    defer ru.deinit();
+    try ru.expectStatus(.ok);
+    try std.testing.expect(ru.bodyContains("unlinked_repair_branch"));
+    try std.testing.expectEqual(before, try xlen(s.h, alloc, s.fx.fleet_id));
+}
+
+test "test_repair_link_store_immutability" {
+    // Dimension 4.2 — the schema trigger, not store discipline, is what holds
+    // content immutable: a content UPDATE and a bare DELETE both raise; the
+    // deploy stamp is the single permitted mutation.
+    const alloc = std.testing.allocator;
+    var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    purgeRepairLinks(&s);
+
+    const conn = try s.h.acquireConn();
+    defer s.h.releaseConn(conn);
+    const outcome = try repair_links.insert(alloc, conn, .{
+        .workspace_id = s.fx.workspace_id,
+        .fleet_id = s.fx.fleet_id,
+        .event_id = REPAIR_INCIDENT_EVENT,
+        .repository = "o/r",
+        .branch = REPAIR_BRANCH,
+        .pr_number = 88,
+        .pr_url = "https://github.com/o/r/pull/88",
+    });
+    try std.testing.expectEqual(repair_links.InsertOutcome.inserted, outcome);
+
+    // Insert-only on the incident key: a second insert is a duplicate.
+    const again = try repair_links.insert(alloc, conn, .{
+        .workspace_id = s.fx.workspace_id,
+        .fleet_id = s.fx.fleet_id,
+        .event_id = REPAIR_INCIDENT_EVENT,
+        .repository = "o/other",
+        .branch = REPAIR_BRANCH,
+        .pr_number = 89,
+        .pr_url = "https://github.com/o/r/pull/89",
+    });
+    try std.testing.expectEqual(repair_links.InsertOutcome.duplicate, again);
+
+    // Content is frozen by trigger. Autocommit: each refused statement is its
+    // own aborted transaction, so the conn stays usable for the next one.
+    try std.testing.expectError(error.PG, conn.exec(
+        "UPDATE core.repair_pr_links SET pr_number = 99 WHERE fleet_id = $1::uuid",
+        .{s.fx.fleet_id},
+    ));
+    try std.testing.expectError(error.PG, conn.exec(
+        "DELETE FROM core.repair_pr_links WHERE fleet_id = $1::uuid",
+        .{s.fx.fleet_id},
+    ));
+
+    // The one permitted mutation still works after the refusals.
+    try std.testing.expect(try repair_links.stampDeploy(conn, s.fx.fleet_id, REPAIR_BRANCH, repair_links.DEPLOY_STATUS_OK));
+}

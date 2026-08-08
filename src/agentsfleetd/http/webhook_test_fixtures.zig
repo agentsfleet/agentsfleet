@@ -98,10 +98,32 @@ pub fn insertWebhookCredential(
 
 /// Delete all rows this test created. Idempotent.
 pub fn cleanup(conn: *pg.Conn, fx: Fixture) !void {
-    _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fx.fleet_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.workspaces WHERE id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{fx.tenant_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    // The history layer (approval gates, repair links) refuses DELETE outside
+    // the sanctioned purge switch, and a fleet/workspace/tenant delete CASCADES
+    // into it — so each teardown delete runs its own transaction with the
+    // switch set, exactly as the hard-purge paths do. Without this the first
+    // history row a test creates silently pins the fixture fleet forever, and
+    // the NEXT test's plain insert dies on the leftover.
+    purgeExec(conn, "DELETE FROM core.fleets WHERE id = $1::uuid", .{fx.fleet_id});
+    purgeExec(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{fx.workspace_id});
+    purgeExec(conn, "DELETE FROM core.workspaces WHERE id = $1::uuid", .{fx.workspace_id});
+    purgeExec(conn, "DELETE FROM core.tenants WHERE id = $1::uuid", .{fx.tenant_id});
+}
+
+/// One best-effort delete under the purge switch, transaction-scoped so the
+/// switch dies with the statement and a failure cannot abort its siblings.
+fn purgeExec(conn: *pg.Conn, sql_text: []const u8, args: anytype) void {
+    _ = conn.exec("BEGIN", .{}) catch |err| {
+        std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+        return;
+    };
+    _ = conn.exec("SET LOCAL fleet.allow_gate_purge = 'on'", .{}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    var failed = false;
+    _ = conn.exec(sql_text, args) catch |err| {
+        failed = true;
+        std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    };
+    _ = conn.exec(if (failed) "ROLLBACK" else "COMMIT", .{}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
 /// Convenience: build a trigger config JSON for a given source. Optionally

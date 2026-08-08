@@ -125,3 +125,28 @@ pub const INSERT_WORKSPACE =
     \\VALUES ($1::uuid, $2::uuid, $3, $4, $5)
     \\ON CONFLICT (tenant_id, name) WHERE name IS NOT NULL DO NOTHING
 ;
+
+// ── Repair PR linkage (`state/repair_pr_links.zig`) ─────────────────────────
+
+/// `DO NOTHING` on the (fleet, event) key: a second repair PR for the same
+/// incident is refused as a duplicate, which the store surfaces by row count.
+pub const INSERT_REPAIR_PR_LINK =
+    \\INSERT INTO core.repair_pr_links
+    \\  (id, workspace_id, fleet_id, event_id, repository, branch,
+    \\   pr_number, pr_url, deploy_status, created_at)
+    \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10)
+    \\ON CONFLICT (fleet_id, event_id) DO NOTHING
+;
+
+/// The one permitted mutation — the schema trigger refuses everything else.
+pub const STAMP_REPAIR_PR_DEPLOY =
+    \\UPDATE core.repair_pr_links
+    \\SET deploy_status = $3, deploy_stamped_at = $4
+    \\WHERE fleet_id = $1::uuid AND branch = $2
+;
+
+pub const SELECT_REPAIR_PR_LINK_BY_EVENT =
+    \\SELECT repository, branch, pr_number, pr_url, deploy_status, deploy_stamped_at
+    \\FROM core.repair_pr_links
+    \\WHERE fleet_id = $1::uuid AND event_id = $2
+;
