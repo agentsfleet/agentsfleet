@@ -150,10 +150,10 @@ The mint's write arm issues only against durable rows: the gate row parked for t
 
 Slot 830 stores one row per shipped repair: workspace, fleet, incident event id, repository, branch, PR number/URL, deploy status + stamped-at. Insert-only; deploy status is the single mutable column. Two webhook arms feed it: a `pull_request` opened whose head matches the repair-branch prefix inserts the row; a completed `workflow_run` on a linked branch stamps the result. This replaces the deferred verifier member: "did the fix work" is a column, not a model run. Implementation default: statuses are app-level named constants (STS) — `pending / deploy_ok / deploy_failed`.
 
-- **Dimension 4.1** — migration 830 registers and passes the slot-floor policy → Test `test_migration_830_registered`
-- **Dimension 4.2** — store insert/lookup/transition; content columns immutable → Test `test_repair_link_store_immutability`
-- **Dimension 4.3** — PR-opened arm inserts exactly one row; duplicate event id refuses with its code → Test `test_pr_opened_arm_inserts_once`
-- **Dimension 4.4** — completed `workflow_run` on a linked branch stamps status; unknown branch is ignored → Test `test_deploy_stamp_and_unknown_branch_noop`
+- **Dimension 4.1** — DONE — migration 830 registers and applies (proven by every integration run's migrate-from-empty; ascending-slot policy holds with 830 in the 8xx layer) → migration policy tests + `make test-integration` reset lane
+- **Dimension 4.2** — DONE — store insert/lookup/transition; content frozen by SCHEMA TRIGGER (mirroring 810's, including the sanctioned purge switch), not store discipline → Test `test_repair_link_store_immutability`
+- **Dimension 4.3** — DONE — PR-opened arm inserts exactly one row, produces NO fleet event (the crew's own PR echo can never wake it), duplicate refused with `UZ-REPAIR-012` → Test `test_pr_opened_arm_inserts_once`
+- **Dimension 4.4** — DONE — completed `workflow_run` on a linked branch stamps status without waking the fleet (a FAILED run on the crew's own branch is a stamp, not an incident); unknown branch acknowledged, nothing recorded → Test `test_deploy_stamp_and_unknown_branch_noop`
 
 ### §5 — Documentation reconciled in the same diff
 

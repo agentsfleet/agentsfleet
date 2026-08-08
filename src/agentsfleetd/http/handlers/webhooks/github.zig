@@ -39,6 +39,7 @@ const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("contract").event_envelope;
 const normalizer = @import("../../../fleet_runtime/webhook/normalizer/github_app.zig");
 const filter = @import("github_filter.zig");
+const repair_link = @import("github_repair_link.zig");
 
 const S_FLEET_ID_MUST_BE_UUIDV7 = "fleet_id must be a valid UUIDv7";
 const BYTES_PER_KIB = 1024;
@@ -166,6 +167,15 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return;
     }
+    // Repair-branch traffic is the crew's OWN output echoing back — it feeds
+    // the incident → PR → deploy linkage and never becomes an event, ingest
+    // decision or not (a failed run on a repair branch is a stamp, not a
+    // fresh incident). Runs before the dedup claim; the arms are idempotent.
+    switch (repair_link.intercept(hx, event, root.?, fleet_id, fleet.workspace_id)) {
+        .handled => return,
+        .not_repair => {},
+    }
+
     if (!decision.?.ingest) {
         log.debug("filter_ignored", .{
             .fleet_id = fleet_id,
