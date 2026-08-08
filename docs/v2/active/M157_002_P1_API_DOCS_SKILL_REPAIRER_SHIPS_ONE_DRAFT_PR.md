@@ -166,7 +166,9 @@ Scenario §4 is rewritten to the fleet-writes design (NLG: described as *the* de
 
 Enumerate every workflow triggered by `pull_request`, list the secrets each mounts, and record the findings + minimization proposal in PR Session Notes and Discovery. Edits to `.github/workflows/**` happen only on Indy's explicit approval; none are assumed by this spec.
 
-- **Dimension 6.1** — the audit report exists in Session Notes with per-workflow secret inventory → Test rubric R8
+- **Dimension 6.1** — DONE — the audit report (below and in PR Session Notes) with per-workflow secret inventory → Test rubric R8
+
+**Audit report (Aug 08, 2026):** eight workflows trigger on `pull_request`, none on `pull_request_target`. Five mount **zero** secrets (`cross-compile`, `lint`, `memleak`, `test-integration`, `test`). `gitleaks.yml` mounts the ephemeral `GITHUB_TOKEN` plus `GITLEAKS_LICENSE` (low value). The finding: **`dry.yml` and `dry-smoke.yml` mount `OP_SERVICE_ACCOUNT_TOKEN` with `export-env: true`** — the 1Password service-account token is readable by every subsequent step, and those steps execute repo code a same-repo PR branch can modify. A poisoned test on any PR branch (the repairer's included — its token cannot touch workflows, but can touch tests) could read it. **Minimization proposal (Indy-gated, no edits made):** restrict the credentialed halves of `dry`/`dry-smoke` to `push`/`main`, or drop `export-env` and scope the token to the specific `op read` steps.
 
 ## Interfaces
 
