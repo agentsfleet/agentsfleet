@@ -159,8 +159,8 @@ Slot 830 stores one row per shipped repair: workspace, fleet, incident event id,
 
 Scenario §4 is rewritten to the fleet-writes design (NLG: described as *the* design), its status table updated to what this spec ships; M157_001's Discovery records the pivot with Indy's quotes and the spec moves to `done/` — its residual scope is this workstream.
 
-- **Dimension 5.1** — scenario doc carries no daemon-apply claim and no revert language → Test rubric R6 (grep gate)
-- **Dimension 5.2** — M157_001 in `done/` with the pivot recorded → Test rubric R2 diff review
+- **Dimension 5.1** — DONE — scenario doc carries no daemon-apply claim and no revert language (R6 grep: zero matches) → Test rubric R6 (grep gate)
+- **Dimension 5.2** — DONE — M157_001 in `done/` (Status: DONE) with the Aug 08 pivot Discovery entry carrying Indy's verbatim quotes → Test rubric R2 diff review
 
 ### §6 — Workflow secrets audit (report-only)
 
