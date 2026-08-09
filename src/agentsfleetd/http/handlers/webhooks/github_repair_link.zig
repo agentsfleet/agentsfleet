@@ -24,6 +24,8 @@ const Hx = hx_mod.Hx;
 const log = logging.scoped(.http_webhook_github);
 
 const F_ACTION = "action";
+const F_REPOSITORY = "repository";
+const F_FULL_NAME = "full_name";
 const S_ACTION_OPENED = "opened";
 const S_ACTION_COMPLETED = "completed";
 const S_CONCLUSION_SUCCESS = "success";
@@ -60,8 +62,8 @@ fn interceptPullRequest(hx: Hx, root: std.json.ObjectMap, fleet_id: []const u8, 
         return .handled;
     }
 
-    const repo = objectField(root, "repository") orelse return malformed(hx);
-    const full_name = stringField(repo, "full_name") orelse return malformed(hx);
+    const repo = objectField(root, F_REPOSITORY) orelse return malformed(hx);
+    const full_name = stringField(repo, F_FULL_NAME) orelse return malformed(hx);
     const number = intField(pr, "number") orelse return malformed(hx);
     const html_url = stringField(pr, "html_url") orelse return malformed(hx);
     const incident_event_id = ref[common_c.REPAIR_BRANCH_PREFIX.len..];
@@ -108,6 +110,10 @@ fn interceptWorkflowRun(hx: Hx, root: std.json.ObjectMap, fleet_id: []const u8) 
         hx.ok(.ok, .{ .ignored = IGNORED_REPAIR_BRANCH });
         return .handled;
     }
+    // The stamp names the repository it came from: the linkage row records one,
+    // and a branch name alone does not identify a repository.
+    const repo = objectField(root, F_REPOSITORY) orelse return malformed(hx);
+    const full_name = stringField(repo, F_FULL_NAME) orelse return malformed(hx);
     const conclusion = stringField(wr, "conclusion") orelse "";
     const status = if (std.mem.eql(u8, conclusion, S_CONCLUSION_SUCCESS))
         repair_links.DEPLOY_STATUS_OK
@@ -119,16 +125,17 @@ fn interceptWorkflowRun(hx: Hx, root: std.json.ObjectMap, fleet_id: []const u8) 
         return .handled;
     };
     defer hx.ctx.pool.release(conn);
-    const stamped = repair_links.stampDeploy(conn, fleet_id, head_branch, status) catch {
+    const stamped = repair_links.stampDeploy(conn, fleet_id, full_name, head_branch, status) catch {
         common.internalDbError(hx.res, hx.req_id);
         return .handled;
     };
     if (stamped) {
-        log.info("repair_deploy_stamped", .{ .fleet_id = fleet_id, .branch = head_branch, .status = status });
+        log.info("repair_deploy_stamped", .{ .fleet_id = fleet_id, .repository = full_name, .branch = head_branch, .status = status });
         hx.ok(.ok, .{ .stamped = status });
     } else {
-        // A repair-prefixed branch with no linkage row (the PR never opened,
-        // or another fleet's repair): acknowledged, nothing recorded.
+        // A repair-prefixed (repository, branch) with no linkage row: the PR
+        // never opened, the run belongs to another repository, or it is another
+        // fleet's repair. Acknowledged, nothing recorded.
         hx.ok(.ok, .{ .ignored = IGNORED_UNLINKED_BRANCH });
     }
     return .handled;

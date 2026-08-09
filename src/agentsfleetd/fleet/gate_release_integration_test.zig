@@ -22,7 +22,9 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const life = @import("event_lifecycle_integration_test.zig");
 const event_rows = @import("event_rows.zig");
+const approval_gate = @import("../fleet_runtime/approval_gate.zig");
 const approval_gate_async = @import("../fleet_runtime/approval_gate_async.zig");
+const binding_json = @import("../fleet_runtime/repository_binding_json.zig");
 const gate_constants = @import("../fleet_runtime/approval_gate_constants.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const vault = @import("../state/vault.zig");
@@ -36,6 +38,9 @@ const FLEET_GATED_CRED = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d11";
 /// Write-kind fixtures, also purged by hand.
 const FLEET_WRITE_NO_GATES = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d21";
 const FLEET_WRITE_RULE_FALLTHROUGH = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d22";
+const FLEET_WRITE_ROW = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d23";
+/// The repository the write-kind configs below bind, as the mint compares it.
+const REPOS_BOUND = [_][]const u8{"acme/payments"};
 const GRANT_ID = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d12";
 const GRANT_STATUS_APPROVED = "approved";
 const CREDENTIAL_GITHUB = "github";
@@ -168,6 +173,49 @@ test "test_write_kind_ignores_rule_fallthrough" {
         try life.seedFleetWithConfig(conn, FLEET_WRITE_RULE_FALLTHROUGH, "write-kind-fallthrough", CONFIG_WRITE_RULE_FALLTHROUGH);
     }
     try runParkApproveRelease(&env, FLEET_WRITE_RULE_FALLTHROUGH);
+}
+
+test "test_write_kind_park_records_the_row_the_mint_reads" {
+    // Dimension 1.3 — the park's DURABLE half, which every other test in this
+    // file is blind to. The release tests resolve through Redis, so a park that
+    // wrote a malformed row (or none at all) leaves them green while every
+    // production write mint refuses forever: the mint reads THIS row and
+    // nothing else, and it reads three fields the park is the only writer of.
+    var env = life.setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    defer redis_fleet.purgeFleetRedisState(&env.h.queue, FLEET_WRITE_ROW) catch |err|
+        std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try life.seedFleetWithConfig(conn, FLEET_WRITE_ROW, "write-kind-row", CONFIG_WRITE_NO_GATES);
+
+    const event_id = try life.publishEvent(h, FLEET_WRITE_ROW);
+    defer h.queue.alloc.free(event_id);
+    try std.testing.expect(!try life.pollLease(h));
+
+    // Keyed by (fleet, event) exactly as the mint keys it: a park that recorded
+    // the wrong event id — or none — returns no row here and no token there.
+    var q = PgQuery.from(try conn.query(
+        \\SELECT gate_kind, status, stated_binding::text
+        \\FROM core.fleet_approval_gates
+        \\WHERE fleet_id = $1::uuid AND event_id = $2
+    , .{ FLEET_WRITE_ROW, event_id }));
+    defer q.deinit();
+    const row = try q.next() orelse return error.ParkedGateRowMissing;
+
+    try std.testing.expectEqualStrings(gate_constants.GATE_KIND_REPOSITORY_WRITE, try row.get([]const u8, 0));
+    try std.testing.expectEqualStrings(approval_gate.GateStatus.pending.toSlice(), try row.get([]const u8, 1));
+
+    // The reach the card stated, compared the way the mint compares it. A
+    // swapped insert parameter puts the event id in this column instead, which
+    // no comparison against the fleet's binding can accept.
+    const stated = try row.get(?[]const u8, 2) orelse return error.StatedBindingMissing;
+    try std.testing.expect(binding_json.matches(ALLOC, stated, .{ .repositories = &REPOS_BOUND, .access = .write }));
 }
 
 test "test_approved_event_runs_with_declared_credential" {

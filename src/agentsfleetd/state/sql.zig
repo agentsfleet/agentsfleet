@@ -139,14 +139,13 @@ pub const INSERT_REPAIR_PR_LINK =
 ;
 
 /// The one permitted mutation — the schema trigger refuses everything else.
+///
+/// `repository` is part of the predicate, not decoration: a branch name is not
+/// unique across repositories, and a fleet can receive deliveries from more
+/// than one. Without it, a run finishing on an identically-named branch in some
+/// other repository stamps this incident's outcome.
 pub const STAMP_REPAIR_PR_DEPLOY =
     \\UPDATE core.repair_pr_links
-    \\SET deploy_status = $3, deploy_stamped_at = $4
-    \\WHERE fleet_id = $1::uuid AND branch = $2
-;
-
-pub const SELECT_REPAIR_PR_LINK_BY_EVENT =
-    \\SELECT repository, branch, pr_number, pr_url, deploy_status, deploy_stamped_at
-    \\FROM core.repair_pr_links
-    \\WHERE fleet_id = $1::uuid AND event_id = $2
+    \\SET deploy_status = $4, deploy_stamped_at = $5
+    \\WHERE fleet_id = $1::uuid AND branch = $2 AND repository = $3
 ;

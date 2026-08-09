@@ -230,8 +230,10 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
     // binding still matches the current one. Checked before the vault load so
     // an unapproved write request never touches handle bytes; a DB failure
     // fails CLOSED like the grant gate above.
+    // Scoped to GitHub: the binding governs repository reach only, so a write
+    // fleet minting Slack or Zoho has no repository write for this gate to hold.
     if (scope.repository_binding) |b| {
-        if (b.access == .write) {
+        if (b.access == .write and integration.idFromString(mint_req.integration) == integration.Id.github) {
             const verdict = write_gate.verifyWriteApproval(hx, conn, scope.fleet_id, scope.event_id, b) catch {
                 common.internalDbError(hx.res, hx.req_id);
                 return null;
