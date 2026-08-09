@@ -16,12 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M157
 **Workstream:** 002
 **Date:** Aug 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the north star's write half; operators today retype the responder's prose fix by hand
 **Categories:** API, DOCS, SKILL
 **Batch:** B1 — single workstream, no parallel sibling
 **Branch:** feat/m157-repairer-draft-pr
 **Test Baseline:** unit=3493 integration=587
+**Test Delta (VERIFY):** unit=3512 integration=589 — +19 unit, +2 integration against the CHORE(open) baseline
 **Depends on:** M157_001 (read half — merged in PR #588 at `629319d0d`), M154_001 (schema renumber — the 8xx history layer this spec's slot 830 sits in)
 **Provenance:** LLM-drafted (claude-fable-5, Aug 08, 2026) — design settled interactively with Indy this session; Discovery carries the verbatim quotes
 **Canonical architecture:** `docs/architecture/scenarios/production-deploy-repair.md` §4 — rewritten by this spec's §5 to the fleet-writes design
