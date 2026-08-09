@@ -702,9 +702,13 @@ const DECLARED_INDEXES = [_]DeclaredIndex{
     .{ .schema = "core", .name = "idx_connector_channels_fleet_id" },
     .{ .schema = "core", .name = "idx_connector_installs_workspace_id" },
     .{ .schema = "core", .name = "idx_fleet_approval_gates_action_id" },
+    // Reader: the write-mint approval check — the newest gate for (fleet, event).
+    .{ .schema = "core", .name = "idx_fleet_approval_gates_fleet_id_event_id" },
     .{ .schema = "core", .name = "idx_fleet_approval_gates_fleet_id_status" },
     .{ .schema = "core", .name = "idx_fleet_approval_gates_timeout_at_pending" },
     .{ .schema = "core", .name = "idx_fleet_approval_gates_workspace_id_status_created_at" },
+    // Reader: the deploy-stamp webhook arm, keyed by the repair branch.
+    .{ .schema = "core", .name = "idx_repair_pr_links_fleet_id_branch" },
     .{ .schema = "core", .name = "idx_fleet_events_fleet_id_created_at_event_id" },
     .{ .schema = "core", .name = "idx_fleet_events_fleet_id_resumes_event_id" },
     .{ .schema = "core", .name = "idx_fleet_events_workspace_id_created_at_event_id" },
