@@ -76,6 +76,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/credentials/testing.zig` | EDIT | Fake exchange responses echo permissions per access level |
 | `src/agentsfleetd/http/handlers/runner/credentials_mint_integration_test.zig` | EDIT | Write-gate fixtures (append-only-safe) + the two refusal tests; drain fix in `dropWriteBackBlock` (RULE NLR) |
 | `src/agentsfleetd/errors/gen_error_codes.zig` | EDIT | Public copy for the REPAIR category |
+| `src/agentsfleetd/fleet/approval_gate_detail.zig` | EDIT | Doc-comment: null rule is now a real caller (the write-kind path) |
+| `src/agentsfleetd/fleet_runtime/crew_bundle_test.zig` | EDIT | Repairer bundle assertions + the write-scoped/workflow-free mint proof |
+| `src/agentsfleetd/http/handlers/library/onboard_integration_test.zig` | EDIT | The two-member crew-folder onboard e2e |
+| `src/agentsfleetd/http/webhook_test_fixtures.zig` | EDIT | Teardown purges under the history-layer switch (latent defect fix, RULE NLR) |
+| `src/lib/common/constants.zig` | EDIT | `REPAIR_BRANCH_PREFIX` — one spelling across bundle prose, webhook matcher, tests |
 | `src/agentsfleetd/http/handlers/webhooks/github.zig` | EDIT | Two narrow arms: a repair-branch `pull_request` opened → linkage insert; a completed `workflow_run` on a linked branch → deploy stamp |
 | `schema/830_repair_pr_links.sql` | CREATE | Incident → PR → deploy-result linkage; single-concern; 8xx history layer |
 | `schema/embed.zig` | EDIT | Register 830 in the embed + migration array |
