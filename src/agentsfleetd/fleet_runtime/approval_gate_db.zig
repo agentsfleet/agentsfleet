@@ -93,7 +93,10 @@ pub const getByGateId = reads.getByGateId;
 
 // ── Writes ──────────────────────────────────────────────────────────────
 
-/// Insert a pending gate row. Best-effort — logs on failure, does not propagate.
+/// Insert a pending gate row, propagating a failure to persist it. The row is
+/// the durable record the write-scoped credential mint spends, so a caller that
+/// could not write one must decide what an unanswerable card is worth rather
+/// than inherit a silent success.
 /// Resolution updates this row via `ResolveArgs.atomic` / `resolveGateDecision`.
 /// `event_id` is the fleet event the gate parked (null for gates raised outside
 /// an event, e.g. install-time integration grants); the row also records the
@@ -107,9 +110,10 @@ pub fn recordGatePending(
     action_id: []const u8,
     event_id: ?[]const u8,
     detail: ActionDetail,
-) void {
+) !void {
     insertPendingRow(pool, alloc, fleet_id, workspace_id, action_id, event_id, detail) catch |err| {
         log.err("record_pending_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .action_id = action_id });
+        return err;
     };
 }
 

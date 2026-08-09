@@ -20,6 +20,7 @@ const fx_mod = @import("webhook_test_fixtures.zig");
 const signers = @import("webhook_test_signers.zig");
 const whc = @import("../fleet_runtime/webhook_constants.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const TestHarness = harness_mod.TestHarness;
 
@@ -742,6 +743,36 @@ const REPAIR_RUN_FAIL_BODY = "{\"action\":\"completed\",\"workflow_run\":{\"id\"
     "\"run_attempt\":1,\"head_branch\":\"" ++ REPAIR_BRANCH ++ "\"},\"repository\":{\"full_name\":\"o/r\"}}";
 const REPAIR_RUN_UNLINKED_BODY = "{\"action\":\"completed\",\"workflow_run\":{\"id\":45,\"conclusion\":\"success\"," ++
     "\"run_attempt\":1,\"head_branch\":\"" ++ common_c.REPAIR_BRANCH_PREFIX ++ "evt-nobody\"},\"repository\":{\"full_name\":\"o/r\"}}";
+/// The linked branch name, delivered from a DIFFERENT repository — branch names
+/// are not unique across repositories, and this one must not reach the stamp.
+const REPAIR_RUN_OTHER_REPO_BODY = "{\"action\":\"completed\",\"workflow_run\":{\"id\":46,\"conclusion\":\"failure\"," ++
+    "\"run_attempt\":1,\"head_branch\":\"" ++ REPAIR_BRANCH ++ "\"},\"repository\":{\"full_name\":\"o/elsewhere\"}}";
+/// The repository every linked fixture above belongs to.
+const REPAIR_REPO = "o/r";
+
+/// Assert the one linkage row for this incident. Row slices live only until the
+/// query is released, so the assertions happen inside its scope rather than
+/// duplicating the row out to the caller.
+fn expectLink(s: *Setup, want: struct {
+    repository: []const u8,
+    pr_number: i64,
+    deploy_status: []const u8,
+    stamped: bool,
+}) !void {
+    const conn = try s.h.acquireConn();
+    defer s.h.releaseConn(conn);
+    var q = PgQuery.from(try conn.query(
+        \\SELECT repository, pr_number, deploy_status, deploy_stamped_at
+        \\FROM core.repair_pr_links
+        \\WHERE fleet_id = $1::uuid AND event_id = $2
+    , .{ s.fx.fleet_id, REPAIR_INCIDENT_EVENT }));
+    defer q.deinit();
+    const row = try q.next() orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(want.repository, try row.get([]const u8, 0));
+    try std.testing.expectEqual(want.pr_number, try row.get(i64, 1));
+    try std.testing.expectEqualStrings(want.deploy_status, try row.get([]const u8, 2));
+    try std.testing.expectEqual(want.stamped, (try row.get(?i64, 3)) != null);
+}
 
 /// Remove this fixture fleet's linkage rows through the sanctioned purge
 /// switch — the same transaction-scoped setting the hard-purge cascade uses.
@@ -777,15 +808,12 @@ test "test_pr_opened_arm_inserts_once" {
     // A linkage, not an incident: the event stream did not grow.
     try std.testing.expectEqual(before, try xlen(s.h, alloc, s.fx.fleet_id));
 
-    {
-        const conn = try s.h.acquireConn();
-        defer s.h.releaseConn(conn);
-        var link = (try repair_links.lookupByEvent(alloc, conn, s.fx.fleet_id, REPAIR_INCIDENT_EVENT)) orelse return error.TestUnexpectedResult;
-        defer link.deinit(alloc);
-        try std.testing.expectEqualStrings("o/r", link.repository);
-        try std.testing.expectEqual(@as(i64, 88), link.pr_number);
-        try std.testing.expectEqualStrings(repair_links.DEPLOY_STATUS_PENDING, link.deploy_status);
-    }
+    try expectLink(&s, .{
+        .repository = REPAIR_REPO,
+        .pr_number = 88,
+        .deploy_status = repair_links.DEPLOY_STATUS_PENDING,
+        .stamped = false,
+    });
 
     // Replay under a fresh delivery id: the row already exists → duplicate,
     // still exactly one linkage, still no event.
@@ -806,8 +834,8 @@ test "test_deploy_stamp_and_unknown_branch_noop" {
     defer s.deinit(alloc);
     requireRedis(s.h) catch return error.SkipZigTest;
     purgeRepairLinks(&s);
-    cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{ "del_r3", "del_r4", "del_r5", "del_r6" });
-    defer cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{ "del_r3", "del_r4", "del_r5", "del_r6" });
+    cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{ "del_r3", "del_r4", "del_r5", "del_r6", "del_r7" });
+    defer cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{ "del_r3", "del_r4", "del_r5", "del_r6", "del_r7" });
 
     // Seed the linkage through the arm itself.
     const seed = try postSigned(alloc, &s, "pull_request", "del_r3", REPAIR_PR_BODY);
@@ -830,14 +858,27 @@ test "test_deploy_stamp_and_unknown_branch_noop" {
     defer ro.deinit();
     try ro.expectStatus(.ok);
     try std.testing.expect(ro.bodyContains(repair_links.DEPLOY_STATUS_OK));
-    {
-        const conn = try s.h.acquireConn();
-        defer s.h.releaseConn(conn);
-        var link = (try repair_links.lookupByEvent(alloc, conn, s.fx.fleet_id, REPAIR_INCIDENT_EVENT)) orelse return error.TestUnexpectedResult;
-        defer link.deinit(alloc);
-        try std.testing.expectEqualStrings(repair_links.DEPLOY_STATUS_OK, link.deploy_status);
-        try std.testing.expect(link.deploy_stamped_at != null);
-    }
+    try expectLink(&s, .{
+        .repository = REPAIR_REPO,
+        .pr_number = 88,
+        .deploy_status = repair_links.DEPLOY_STATUS_OK,
+        .stamped = true,
+    });
+
+    // The SAME branch name from a DIFFERENT repository must not reach the row.
+    // Branch names collide across repositories, so without the repository in
+    // the stamp predicate any repo that delivers here could overwrite this
+    // incident's outcome — the column an operator reads as "did the fix work".
+    const rx = try postSigned(alloc, &s, "workflow_run", "del_r7", REPAIR_RUN_OTHER_REPO_BODY);
+    defer rx.deinit();
+    try rx.expectStatus(.ok);
+    try std.testing.expect(rx.bodyContains("unlinked_repair_branch"));
+    try expectLink(&s, .{
+        .repository = REPAIR_REPO,
+        .pr_number = 88,
+        .deploy_status = repair_links.DEPLOY_STATUS_OK,
+        .stamped = true,
+    });
 
     // Unknown repair-prefixed branch: acknowledged, nothing recorded, no event.
     const ru = try postSigned(alloc, &s, "workflow_run", "del_r6", REPAIR_RUN_UNLINKED_BODY);
@@ -862,7 +903,7 @@ test "test_repair_link_store_immutability" {
         .workspace_id = s.fx.workspace_id,
         .fleet_id = s.fx.fleet_id,
         .event_id = REPAIR_INCIDENT_EVENT,
-        .repository = "o/r",
+        .repository = REPAIR_REPO,
         .branch = REPAIR_BRANCH,
         .pr_number = 88,
         .pr_url = "https://github.com/o/r/pull/88",
@@ -892,6 +933,8 @@ test "test_repair_link_store_immutability" {
         .{s.fx.fleet_id},
     ));
 
-    // The one permitted mutation still works after the refusals.
-    try std.testing.expect(try repair_links.stampDeploy(conn, s.fx.fleet_id, REPAIR_BRANCH, repair_links.DEPLOY_STATUS_OK));
+    // The one permitted mutation still works after the refusals — and only for
+    // the repository the row actually names.
+    try std.testing.expect(!try repair_links.stampDeploy(conn, s.fx.fleet_id, "o/elsewhere", REPAIR_BRANCH, repair_links.DEPLOY_STATUS_FAILED));
+    try std.testing.expect(try repair_links.stampDeploy(conn, s.fx.fleet_id, REPAIR_REPO, REPAIR_BRANCH, repair_links.DEPLOY_STATUS_OK));
 }

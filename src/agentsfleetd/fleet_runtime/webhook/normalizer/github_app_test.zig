@@ -34,6 +34,37 @@ test "GitHub App workflow run accepts only completed failures" {
     try std.testing.expectEqualStrings("non_failure_conclusion", ignored.ignored);
 }
 
+test "GitHub App traffic on the crew's own repair branch is never an incident" {
+    // A FAILED run on a repair branch is the one that matters: it is exactly
+    // the shape that wakes a fleet, so without this guard the repairer ingests
+    // its own broken repair as a fresh incident and sets off to fix what it
+    // just wrote — a new approval card every cycle.
+    var failed_repair = try parse(
+        \\{"action":"completed","repository":{"full_name":"agentsfleet/agentsfleet"},"workflow_run":{"id":9,"conclusion":"failure","head_branch":"agentsfleet-repair/evt-1","html_url":"https://example.test/run/9"}}
+    );
+    defer failed_repair.deinit();
+    const run_ignored = try subject.normalizeFromValue(std.testing.allocator, subject.EVENT_WORKFLOW_RUN, failed_repair.value.object, 0);
+    try std.testing.expectEqualStrings("repair_branch", run_ignored.ignored);
+
+    // The draft Pull Request the crew opened, echoing back.
+    var repair_pr = try parse(
+        \\{"action":"opened","number":43,"repository":{"full_name":"agentsfleet/agentsfleet"},"pull_request":{"number":43,"title":"repair","html_url":"https://example.test/pull/43","state":"open","draft":true,"user":{"login":"agentsfleet"},"head":{"ref":"agentsfleet-repair/evt-1","sha":"def456"},"base":{"ref":"main"}}}
+    );
+    defer repair_pr.deinit();
+    const pr_ignored = try subject.normalizeFromValue(std.testing.allocator, subject.EVENT_PULL_REQUEST, repair_pr.value.object, 0);
+    try std.testing.expectEqualStrings("repair_branch", pr_ignored.ignored);
+
+    // An ordinary branch still normalizes — the guard is keyed to the prefix,
+    // not to repair-shaped traffic in general.
+    var ordinary = try parse(
+        \\{"action":"completed","repository":{"full_name":"agentsfleet/agentsfleet"},"workflow_run":{"id":10,"conclusion":"failure","head_branch":"feat/ordinary","html_url":"https://example.test/run/10"}}
+    );
+    defer ordinary.deinit();
+    const accepted = try subject.normalizeFromValue(std.testing.allocator, subject.EVENT_WORKFLOW_RUN, ordinary.value.object, 0);
+    defer std.testing.allocator.free(accepted.accepted);
+    try std.testing.expect(accepted == .accepted);
+}
+
 test "GitHub App normalization rejects unsupported and malformed event shapes" {
     var empty = try parse("{}");
     defer empty.deinit();

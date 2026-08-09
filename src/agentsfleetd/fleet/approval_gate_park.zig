@@ -34,8 +34,9 @@ pub fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *FleetSession,
     log.debug("gate_event", .{ .fleet_id = session.fleet_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });
 }
 
-/// Park `event` behind `detail`'s approval. Any Redis loss returns
-/// `.unavailable` — fail closed (default-deny), never a silently released run.
+/// Park `event` behind `detail`'s approval. Any datastore loss — Redis or the
+/// durable gate row — returns `.unavailable`: fail closed (default-deny), never
+/// a silently released run, and never a card whose answer has nowhere to land.
 /// `detail.timeout_ms` sets the ref deadline, so the two paths cannot disagree
 /// about when an unanswered card expires.
 pub fn parkEvent(
@@ -61,6 +62,25 @@ pub fn parkEvent(
     defer alloc.free(action_id);
 
     logGateActivity(pool, alloc, session, gate_constants.GATE_EVENT_REQUIRED, action_id);
+
+    // The durable row goes down BEFORE the card is staged. That row is what the
+    // resolve path updates and what the write-scoped mint spends, so a card
+    // reaching a human ahead of it would be answerable and worthless: the click
+    // would find nothing to resolve and the mint nothing to honour. Failing
+    // closed here costs a poll; the other order costs a human's decision.
+    approval_gate.recordGatePending(
+        pool,
+        alloc,
+        session.fleet_id,
+        session.workspace_id,
+        action_id,
+        event.event_id,
+        detail,
+    ) catch |err| {
+        log.warn("gate_row_unavailable", .{ .error_code = error_codes.ERR_INTERNAL_DB_QUERY, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+        return .unavailable;
+    };
+
     const slack_msg = approval_gate.buildSlackApprovalMessage(
         alloc,
         session.config.name,
@@ -75,16 +95,6 @@ pub fn parkEvent(
 
     // Store the notification payload in Redis for the provider to pick up
     storeNotificationPayload(redis, session.fleet_id, action_id, slack_msg);
-
-    approval_gate.recordGatePending(
-        pool,
-        alloc,
-        session.fleet_id,
-        session.workspace_id,
-        action_id,
-        event.event_id,
-        detail,
-    );
 
     const deadline_ms = clock.nowMillis() + detail.timeout_ms;
     approval_gate_async.recordEventGateRef(redis, session.fleet_id, event.event_id, action_id, deadline_ms) catch |err| {

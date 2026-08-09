@@ -147,6 +147,9 @@ fn raiseGate(
     defer hx.alloc.free(proposed);
 
     // Install-time gate — no fleet event parked it, so no event id to record.
+    // Best-effort here, unlike the event park: no credential mint reads this
+    // row, so a lost insert costs the inbox a card rather than stranding a
+    // human's answer. `recordGatePending` has already logged the cause.
     approval_gate_db.recordGatePending(hx.ctx.pool, hx.alloc, fleet_id, workspace_id, action_id, null, approval_gate.ActionDetail{
         .tool = S_TOOL,
         .action = S_ACTION,
@@ -155,5 +158,5 @@ fn raiseGate(
         .proposed_action = proposed,
         .evidence_json = evidence,
         .blast_radius = S_BLAST_RADIUS,
-    });
+    }) catch return;
 }

@@ -48,7 +48,8 @@ BEGIN
         END IF;
         RAISE EXCEPTION 'repair_pr_links is append-only -- DELETE is not permitted';
     END IF;
-    IF NEW.workspace_id IS DISTINCT FROM OLD.workspace_id
+    IF NEW.id           IS DISTINCT FROM OLD.id
+        OR NEW.workspace_id IS DISTINCT FROM OLD.workspace_id
         OR NEW.fleet_id   IS DISTINCT FROM OLD.fleet_id
         OR NEW.event_id   IS DISTINCT FROM OLD.event_id
         OR NEW.repository IS DISTINCT FROM OLD.repository

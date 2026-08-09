@@ -8,7 +8,6 @@ const pg = @import("pg");
 const clock = @import("common").clock;
 const sql = @import("sql.zig");
 const id_format = @import("../types/id_format.zig");
-const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 /// `deploy_status` vocabulary (RULE STS — app-enforced, no CHECK in DDL).
 pub const DEPLOY_STATUS_PENDING = "pending";
@@ -41,60 +40,29 @@ pub fn insert(alloc: std.mem.Allocator, conn: *pg.Conn, link: NewLink) !InsertOu
     return if ((affected orelse 0) > 0) .inserted else .duplicate;
 }
 
-/// Stamp the deploy result for the linked branch. Returns whether a row was
-/// stamped — an unknown branch is the caller's no-op, not an error.
-pub fn stampDeploy(conn: *pg.Conn, fleet_id: []const u8, branch: []const u8, status: []const u8) !bool {
+/// Stamp the deploy result for the linked branch in `repository`. Returns
+/// whether a row was stamped — an unknown (repository, branch) is the caller's
+/// no-op, not an error. The repository is matched, never assumed: branch names
+/// collide across repositories and a fleet may hear from several.
+pub fn stampDeploy(
+    conn: *pg.Conn,
+    fleet_id: []const u8,
+    repository: []const u8,
+    branch: []const u8,
+    status: []const u8,
+) !bool {
     const affected = try conn.exec(sql.STAMP_REPAIR_PR_DEPLOY, .{
-        fleet_id, branch, status, clock.nowMillis(),
+        fleet_id, branch, repository, status, clock.nowMillis(),
     });
     return (affected orelse 0) > 0;
 }
 
-/// A linkage row as the dashboard or a test reads it. Slices are arena/caller
-/// owned copies — caller must free via `deinit`.
-pub const Link = struct {
-    repository: []const u8,
-    branch: []const u8,
-    pr_number: i64,
-    pr_url: []const u8,
-    deploy_status: []const u8,
-    deploy_stamped_at: ?i64,
-
-    pub fn deinit(self: *Link, alloc: std.mem.Allocator) void {
-        alloc.free(self.repository);
-        alloc.free(self.branch);
-        alloc.free(self.pr_url);
-        alloc.free(self.deploy_status);
-        self.* = undefined;
-    }
-};
-
-/// The linkage row for an incident, or null when no repair shipped.
-/// Caller must free (`Link.deinit`).
-pub fn lookupByEvent(alloc: std.mem.Allocator, conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8) !?Link {
-    var q = PgQuery.from(try conn.query(sql.SELECT_REPAIR_PR_LINK_BY_EVENT, .{ fleet_id, event_id }));
-    defer q.deinit();
-    const row = try q.next() orelse return null;
-    const repository = try alloc.dupe(u8, try row.get([]const u8, 0));
-    errdefer alloc.free(repository);
-    const branch = try alloc.dupe(u8, try row.get([]const u8, 1));
-    errdefer alloc.free(branch);
-    const pr_number = try row.get(i64, 2);
-    const pr_url = try alloc.dupe(u8, try row.get([]const u8, 3));
-    errdefer alloc.free(pr_url);
-    const deploy_status = try alloc.dupe(u8, try row.get([]const u8, 4));
-    errdefer alloc.free(deploy_status);
-    const deploy_stamped_at = try row.get(?i64, 5);
-    return .{
-        .repository = repository,
-        .branch = branch,
-        .pr_number = pr_number,
-        .pr_url = pr_url,
-        .deploy_status = deploy_status,
-        .deploy_stamped_at = deploy_stamped_at,
-    };
-}
-
+// No read surface here yet, deliberately: nothing in production reads a
+// linkage row back. The operator-facing reader arrives with the dashboard that
+// displays it (RULE NDC — a `pub` function whose only caller is a test is dead
+// code that rots before its first real use). Until then the integration test
+// asserts the stored row with its own query.
+//
 // DB-backed behaviour (insert/duplicate/stamp/immutability) is proven in
 // `http/webhook_http_integration_test.zig` beside the arms that drive it —
 // the state-layer convention (see `fleet_events_store_test.zig`).
