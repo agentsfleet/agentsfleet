@@ -259,6 +259,101 @@ test_existing_teardown_gates_still_reject_unknown_env() {
   fi
 }
 
+# The allowlist is the sole source of every core.model_library row, and those
+# rows are billing rates: a malformed entry becomes a wrong charge rather than a
+# crash. Nothing else validates the file — seed-models.mjs maps model_id and
+# context_cap_tokens straight through with no shape check, so a typo reaches the
+# catalogue unchallenged.
+#
+# Two row shapes are legal. Manual providers carry full rate objects. Providers
+# with source: api (endpoint + field_map) list bare model-id strings and fetch
+# rates live, so only the manual rows can be rate-checked here.
+test_allowlist_rate_rows_are_well_formed() {
+  local name="allowlist_rate_rows_are_well_formed"
+  local root allowlist violations
+  root="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+  allowlist="$root/scripts/model-library-allowlist.json"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    bad "$name" "python3 not found; cannot validate $allowlist"
+    return
+  fi
+
+  violations="$(python3 - "$allowlist" <<'PY'
+import json
+import sys
+
+REQUIRED = ("model_id", "context_cap_tokens", "input", "cached_input", "output")
+OPTIONAL = ("note", "tier")
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        document = json.load(handle)
+except (OSError, ValueError) as error:
+    print(f"unreadable allowlist: {error}")
+    sys.exit(0)
+
+
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+checked = 0
+for provider, config in document.get("providers", {}).items():
+    seen = set()
+    for model in config.get("models", []):
+        # api-sourced providers list ids only; their rates arrive from the API.
+        if isinstance(model, str):
+            if model in seen:
+                print(f"{provider}: duplicate model id {model}")
+            seen.add(model)
+            continue
+
+        checked += 1
+        identifier = model.get("model_id")
+        label = f"{provider}/{identifier}"
+
+        for key in REQUIRED:
+            if key not in model:
+                print(f"{label}: missing required key {key}")
+        for key in model:
+            if key not in REQUIRED and key not in OPTIONAL:
+                print(f"{label}: unexpected key {key}")
+
+        if isinstance(identifier, str) and identifier:
+            if identifier in seen:
+                print(f"{provider}: duplicate model id {identifier}")
+            seen.add(identifier)
+        else:
+            print(f"{label}: model_id must be a non-empty string")
+
+        context = model.get("context_cap_tokens")
+        if not isinstance(context, int) or isinstance(context, bool) or context <= 0:
+            print(f"{label}: context_cap_tokens must be a positive integer, got {context!r}")
+
+        for key in ("input", "cached_input", "output"):
+            rate = model.get(key)
+            if not is_number(rate) or rate < 0:
+                print(f"{label}: {key} must be a non-negative number, got {rate!r}")
+
+        cached = model.get("cached_input")
+        fresh = model.get("input")
+        if is_number(cached) and is_number(fresh) and cached > fresh:
+            print(f"{label}: cached_input {cached} exceeds input {fresh}")
+
+# An empty scan proves nothing — mirror check-playbooks' reference-scan guard.
+if checked == 0:
+    print("scan matched no rate rows — the check is broken, not the tree")
+PY
+  )"
+
+  if [ -n "$violations" ]; then
+    bad "$name" "$violations"
+  else
+    ok "$name"
+  fi
+}
+
 test_should_reject_unknown_environment_before_dispatch
 test_should_reject_all_environments
 test_should_reject_unknown_action
@@ -269,6 +364,7 @@ test_deploy_steps_reference_catalogue_priming
 test_verify_fails_on_empty_catalogue
 test_apply_aborts_on_confirmation_mismatch
 test_existing_teardown_gates_still_reject_unknown_env
+test_allowlist_rate_rows_are_well_formed
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
