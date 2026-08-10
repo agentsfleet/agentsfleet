@@ -132,12 +132,13 @@ Completed repair-branch workflows append by provider run identifier even when th
 
 ### §3 — Linkage proves provenance and merge identity
 
-PR-open verifies installation, author, repository, and non-fork base. PR-closed records a merged hash only when `merged=true` and only once.
+PR-open verifies installation, author, repository, and non-fork base. PR-closed records a merged hash only when `merged=true` and only once. Slot 832 indexes workspace, repository, and non-null merged hash for M157_004's exact lookup.
 
 - **Dimension 3.1** — foreign installation, author, or fork records nothing → `test_foreign_repair_pr_is_refused`
 - **Dimension 3.2** — own PR still links → `test_own_repair_pr_links`
 - **Dimension 3.3** — merged PR stores exact provider hash → `test_merged_pr_records_provider_hash`
 - **Dimension 3.4** — closed-unmerged or hashless PR cannot correlate → `test_unmerged_pr_records_no_hash`
+- **Dimension 3.5** — exact merged-hash lookup has its composite index → `test_repair_merge_correlation_index_exists`
 
 ### §4 — Approval funds bounded write-credential requests
 
@@ -217,7 +218,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 |---|---|---|---|
 | 1.1–1.4 | unit + integration | four §1 tests | exact compact grammar; both routes agree; invalid refs fail closed; no wake-up |
 | 2.1–2.4 | integration | four §2 tests | immutable, early, idempotent history; stamp caller absent |
-| 3.1–3.4 | integration | four §3 tests | provenance fails closed; exact merge hash stored once |
+| 3.1–3.5 | integration | five §3 tests | provenance fails closed; exact merge hash and lookup index are durable |
 | 4.1–4.5 | integration | five §4 tests | pre-secret reservation, failure spend, refusal, card, and concurrency ceiling hold |
 | migration | integration | `test_831_833_apply_to_provisioned_database` | existing slot 830 and gate rows survive |
 | regression | integration | `test_m157_002_write_gate_unchanged` | prior approval refusals keep their meanings |

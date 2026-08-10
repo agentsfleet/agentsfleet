@@ -85,6 +85,7 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 | `src/agentsfleetd/queue/redis_fleet.zig` | EDIT | Atomically append once per dispatch intent and return the original stream identifier on retry |
 | `src/agentsfleetd/fleet/repair_verification_dispatcher.zig` | CREATE | Retry a bounded batch of pending slot 835 intents |
 | `src/agentsfleetd/cmd/serve_background.zig` | EDIT | Start and join the bounded verification dispatcher |
+| `src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` | EDIT | Prove the new dispatcher starts and joins during shutdown |
 | `src/agentsfleetd/http/handlers/ingress/github.zig` | EDIT | Normalize GitHub deployment status without weakening existing ingress |
 | `src/agentsfleetd/http/handlers/ingress/production_repair_result.zig` | CREATE | Exact merge correlation and proof-qualified synthetic event emission |
 | `src/agentsfleetd/http/handlers/webhooks/github_repair_link.zig` | EDIT | Invoke the same reconciler after a merged-hash write |
@@ -139,7 +140,7 @@ GitHub deployment-status events normalize to provider, deployment identifier, re
 
 ### §2 — Correlate exact merged bytes
 
-Slot 834 stores every normalized result before matching. One reconciler runs after either that insert or M157_003's merged-hash write. Exact workspace, repository, and commit equality creates one slot 835 dispatch intent per subscribed verifier Fleet with `verify_after = completed_at + OBSERVATION_WINDOW_MS`. The fixed window is fifteen minutes. A bounded dispatcher selects due intents. Redis enqueue-once keys on the intent and returns the original stream event identifier on retry.
+Slot 834 stores every normalized result before matching. One reconciler runs after either that insert or M157_003's merged-hash write. Exact workspace, repository, and commit equality creates one slot 835 dispatch intent per subscribed verifier Fleet with `verify_after = completed_at + OBSERVATION_WINDOW_MS`. The fixed window is fifteen minutes. Composite indexes serve the exact merge/result lookup and the bounded due-intent scan. Redis enqueue-once keys on the intent and returns the original stream event identifier on retry.
 
 - **Dimension 2.1** — result-first then merge emits once → `test_result_before_merge_reconciles_once`
 - **Dimension 2.2** — merge-first then result emits once → `test_merge_before_result_reconciles_once`
@@ -149,6 +150,8 @@ Slot 834 stores every normalized result before matching. One reconciler runs aft
 - **Dimension 2.6** — crashes before and after Redis converge on one event → `test_verifier_dispatch_crash_retries_once`
 - **Dimension 2.7** — intent stays pending until its fixed window completes → `test_verifier_dispatch_waits_for_evidence_window`
 - **Dimension 2.8** — each matching verifier gets one independent attempt → `test_matching_verifiers_each_receive_once`
+- **Dimension 2.9** — dispatcher starts and joins with the daemon → `test_verification_dispatcher_lifecycle_is_bounded`
+- **Dimension 2.10** — correlation and due scans have exact indexes → `test_repair_verification_indexes_exist`
 
 ### §3 — Install and run the read-only verifier
 
@@ -231,7 +234,7 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 | Dimension | Tier | Test | Concrete assertion |
 |---|---|---|---|
 | 1.1–1.4 | unit + integration | four §1 tests | GitHub shape; Vercel-through-GitHub parity; unready results ignored; registration complete |
-| 2.1–2.8 | integration | eight §2 tests | arrival order, due time, crash boundaries, fan-out, mismatch, replay, and workspace scope stay deterministic |
+| 2.1–2.10 | integration | ten §2 tests | order, due time, crashes, fan-out, lifecycle, indexes, replay, and workspace scope stay deterministic |
 | 3.1–3.4 | unit + integration | four §3 tests | synthetic trigger only, normal onboarding, read-only token, exact-hash prompt |
 | load | integration | `test_production_correlation_100_parallel` | at least 100 deliveries do not serialize globally |
 | migration | integration | `test_834_835_apply_to_provisioned_database` | existing repair rows remain readable |
