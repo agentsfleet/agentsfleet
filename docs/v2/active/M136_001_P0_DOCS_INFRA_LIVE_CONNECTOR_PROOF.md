@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M136
 **Workstream:** 001
 **Date:** Jul 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the flagship reviewer scenario remains incomplete until real provider authorization and replay safety pass.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — starts after the development runner is online
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) via `make _lint_zig_test_depth`
+**Branch:** `feat/m136-live-connector-proof`
+**Test Baseline:** unit=3512 integration=589
 **Depends on:** M135_002 (online runner with advancing heartbeat); M135_001 (provider bags, callback routes, and registration grants); M133_001 (workspace-multiplexed Live Wall, visually accepted with exhaustive deployed proof delegated here)
 **Provenance:** human-directed successor to M135_001 after the Jul 20, 2026 scope decision
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list
