@@ -30,11 +30,11 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A terminal GitHub or Vercel production result wakes a separately installed, read-only `incident-verifier` only when its repository and commit hash exactly match a merged repair PR; the event carries the original incident and evidence window; the verifier reads Grafana and Elasticsearch and leaves its result linked to the incident for an operator.
+**Goal (testable):** A terminal GitHub production deployment status wakes a separately installed, read-only `incident-verifier` only when its repository and commit hash exactly match a merged repair Pull Request (PR); the event carries the original incident and evidence window; the verifier reads Grafana and Elasticsearch and leaves its result linked to the incident for an operator.
 
-**Problem:** M157_002 stops at a draft PR and M157_003 stops at trusted history. Repair-branch runs are previews. Looking at the default branch later can inspect different bytes. No verifier Fleet, Vercel ingress, production-result correlation, or incident-to-verifier result reader exists.
+**Problem:** M157_002 stops at a draft PR and M157_003 stops at trusted history. Repair-branch runs are previews. Looking at the default branch later can inspect different bytes. No verifier Fleet, GitHub production-result correlation, or incident-to-verifier result reader exists.
 
-**Solution summary:** The existing provider ingress shape gains GitHub deployment-status and signed Vercel deployment-result normalization. Normal trigger matching selects installed verifier Fleets; before queueing, the daemon requires production environment and exact workspace + repository + merged commit equality. Slot 834 links the queued verifier event to the repair. The bundle reads the exact merged commit plus Grafana and Elasticsearch, then reports `cleared`, `not_cleared`, or `inconclusive` through the standard Fleet result. Event detail exposes the repair arc; a live disposable repository proves it.
+**Solution summary:** The existing signed GitHub ingress gains deployment-status normalization. Vercel deployments qualify when Vercel surfaces them through GitHub; no direct Vercel webhook is added. Normal trigger matching selects installed verifier Fleets; before queueing, the daemon requires production environment and exact workspace + repository + merged commit equality. Slot 834 links the queued verifier event to the repair. The bundle reads the exact merged commit plus Grafana and Elasticsearch, then reports `cleared`, `not_cleared`, or `inconclusive` through the standard Fleet result. Event detail exposes the repair arc; a live disposable repository proves it.
 
 ## PR Intent & comprehension handshake
 
@@ -50,7 +50,7 @@ responder detects symptom
         -> repairer opens draft PR after approval
         -> human reviews and merges
         -> M157_003 records exact merged commit
-        -> GitHub or Vercel reports terminal production result
+        -> GitHub reports terminal production deployment status
         -> daemon matches workspace + repository + exact commit
         -> installed incident-verifier receives enriched event
         -> verifier reads Grafana + Elasticsearch + exact commit
@@ -66,7 +66,7 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 1. `docs/architecture/scenarios/production-deploy-repair.md` — canonical ordering, correlation rule, and no-crew-row decision.
 2. M157_003 active spec — exact merged-hash and run-history inputs.
 3. `src/agentsfleetd/http/handlers/ingress/github.zig` — signed shared-ingress routing and fan-out.
-4. `src/agentsfleetd/fleet_runtime/webhook_verify.zig` — provider descriptor and signature boundary.
+4. `.github/workflows/smoke-post-deploy.yml` — existing Vercel-through-GitHub deployment-status caller.
 5. `src/agentsfleetd/state/fleet_event_detail_store.zig` — standard operator detail row and response surface.
 6. `library/incident-responder/` and `library/incident-repairer/` — credential, network, and repository-binding precedent.
 
@@ -78,20 +78,16 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 | `schema/embed.zig` | EDIT | Register slot 834 in both migration lists |
 | `src/agentsfleetd/state/repair_verifications.zig` | CREATE | Insert and read verification links idempotently |
 | `src/agentsfleetd/state/sql.zig` | EDIT | Correlation and verification-link statements |
-| `src/agentsfleetd/http/handlers/ingress/github.zig` | EDIT | Dispatch provider-specific shared ingress without weakening GitHub |
-| `src/agentsfleetd/http/handlers/ingress/provider_dispatch.zig` | CREATE | Select GitHub or Vercel verifier and normalizer |
+| `src/agentsfleetd/http/handlers/ingress/github.zig` | EDIT | Normalize GitHub deployment status without weakening existing ingress |
 | `src/agentsfleetd/http/handlers/ingress/production_repair_result.zig` | CREATE | Exact merge correlation, event enrichment, and queue linkage |
 | `src/agentsfleetd/fleet_runtime/webhook/normalizer/github_deployment.zig` | CREATE | Normalize terminal GitHub production deployment status |
-| `src/agentsfleetd/fleet_runtime/webhook/normalizer/vercel_deployment.zig` | CREATE | Normalize signed Vercel failures and production results |
-| `src/agentsfleetd/fleet_runtime/webhook_verify.zig` | EDIT | Add Vercel signature and provider descriptor |
 | `src/agentsfleetd/http/handlers/fleets/event_detail.zig` | EDIT | Return linked repair and verification result |
 | `src/agentsfleetd/state/fleet_event_detail_store.zig` | EDIT | Join incident, PR, production result, and verifier event |
 | `src/agentsfleetd/errors/error_registry.zig` | EDIT | Register production-correlation refusal |
 | `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | Expose runtime refusal metadata |
 | `library/incident-verifier/SKILL.md` | CREATE | Exact-commit, Grafana, and Elasticsearch verification instructions |
-| `library/incident-verifier/TRIGGER.md` | CREATE | GitHub/Vercel production triggers and read-only bindings |
+| `library/incident-verifier/TRIGGER.md` | CREATE | GitHub production trigger and read-only bindings |
 | `src/agentsfleetd/http/handlers/ingress/github_integration_test.zig` | EDIT | Preserve GitHub ingress and prove production correlation |
-| `src/agentsfleetd/http/handlers/ingress/vercel_integration_test.zig` | CREATE | Prove signature, normalization, routing, and replay |
 | `src/agentsfleetd/http/handlers/fleets/event_detail_integration_test.zig` | EDIT | Prove operator repair arc and isolation |
 | `src/agentsfleetd/http/handlers/library/onboard_integration_test.zig` | EDIT | Prove verifier catalogue onboarding |
 | `ui/packages/app/lib/api/events.ts` | EDIT | Type linked repair verification detail |
@@ -127,18 +123,17 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 - `src/agentsfleetd/fleet_runtime/webhook/normalizer/github_app.zig` supplies pure provider normalization returning normalized body or ignore reason.
 - `src/agentsfleetd/state/fleet_event_detail_store.zig` supplies the payload-bearing single-event reader.
 - `library/incident-responder/` supplies Grafana, Elasticsearch, GitHub read-only, network, and budget declarations.
-- GitHub Pull Requests API supplies `merge_commit_sha`; GitHub deployment status supplies deployed commit identity. Vercel production delivery must carry exact repository and commit metadata or be refused.
+- GitHub Pull Requests API supplies `merge_commit_sha`; GitHub deployment status supplies deployed commit identity, including Vercel deployments surfaced through GitHub.
 
 ## Sections (implementation slices)
 
-### §1 — Normalize provider production results
+### §1 — Normalize GitHub production results
 
-GitHub deployment-status and Vercel deployment webhooks normalize to provider, deployment identifier, repository, environment, commit hash, conclusion, and completion time. Vercel failure also remains eligible for repairer incident routing.
+GitHub deployment-status events normalize to provider, deployment identifier, repository, environment, commit hash, conclusion, and completion time. The same path accepts Vercel deployments surfaced through GitHub. Direct Vercel webhook ingestion remains outside this workstream.
 
 - **Dimension 1.1** — terminal GitHub production status normalizes → `test_github_production_status_normalizes`
-- **Dimension 1.2** — signed Vercel production result normalizes identically → `test_vercel_production_result_normalizes`
-- **Dimension 1.3** — Vercel production failure can wake repairer → `test_vercel_failure_routes_to_repairer`
-- **Dimension 1.4** — unsigned/missigned Vercel delivery fails before parse → `test_vercel_signature_precedes_parse`
+- **Dimension 1.2** — Vercel-through-GitHub status uses the same normalized shape → `test_vercel_github_status_normalizes`
+- **Dimension 1.3** — non-terminal or non-production status queues no verifier → `test_unready_deployment_status_is_ignored`
 
 ### §2 — Correlate exact merged bytes
 
@@ -232,7 +227,7 @@ The verifier event request carries this same repair and production context. `res
 
 | Dimension | Tier | Test | Concrete assertion |
 |---|---|---|---|
-| 1.1–1.4 | unit + integration | four §1 tests | provider-neutral shape; signature before parse |
+| 1.1–1.3 | unit + integration | three §1 tests | GitHub shape; Vercel-through-GitHub parity; unready results ignored |
 | 2.1–2.5 | integration | five §2 tests | exact correlation, replay, and workspace isolation |
 | 3.1–3.4 | unit + integration | four §3 tests | normal onboarding, read-only token, exact-hash prompt |
 | 4.1–4.4 | integration + user interface | four §4 tests | additive detail and honest pending/complete rendering |
@@ -244,7 +239,7 @@ The verifier event request carries this same repair and production context. `res
 
 | # | Criterion | Verify | Expected | Priority | Graded |
 |---|---|---|---|---|---|
-| R1 | both providers normalize production identity | `make test-unit-all` | exit 0 | P0 | |
+| R1 | GitHub deployment status normalizes production identity | `make test-unit-all` | exit 0 | P0 | |
 | R2 | only exact merged commit wakes verifier | `make test-integration` | exit 0 | P0 | |
 | R3 | verifier has read-only repository permission | `make test-integration` | exit 0 | P0 | |
 | R4 | incident detail shows linked verifier result | `make test-integration` | exit 0 | P0 | |
@@ -273,6 +268,7 @@ The verifier event request carries this same repair and production context. `res
 - Repair across multiple repositories for one incident.
 - Declaring source-code correctness from model opinion; the verdict is production symptom state.
 - Provider payloads that cannot prove exact repository, environment, and commit identity.
+- Direct Vercel webhook ingestion or Vercel signature handling.
 
 ---
 
@@ -282,8 +278,8 @@ The verifier event request carries this same repair and production context. `res
 2. **Preserved behavior** — human approval, review, and merge remain; no Fleet gains automatic merge or rollback.
 3. **Optimal-way check** — correlate the provider's exact deployment commit; current-branch inference is cheaper but wrong.
 4. **Rebuild-vs-iterate** — reuse trigger routing, Fleet events, event detail, and library onboarding; add one link table.
-5. **What we build** — provider normalization, exact correlation, verifier bundle, linked event detail, live proof.
-6. **What we do not build** — crew coordinator, vendor-specific Fleets, auto-merge/revert, multi-repository orchestration.
+5. **What we build** — GitHub deployment-status normalization, exact correlation, verifier bundle, linked event detail, live proof.
+6. **What we do not build** — direct Vercel ingress, crew coordinator, vendor-specific Fleets, auto-merge/revert, multi-repository orchestration.
 7. **Fit** — responder detects, repairer changes, verifier judges; all use existing Fleet installation and result primitives.
 8. **Surface order** — ingress and durable link, verifier bundle, API detail, then existing dialog.
 9. **Dashboard restraint** — no cleared label before a completed verifier response; inconclusive stays visibly inconclusive.
@@ -291,7 +287,7 @@ The verifier event request carries this same repair and production context. `res
 
 ## Decomposition & alternatives
 
-- **Chosen:** provider-neutral normalized result, exact merged-hash gate, standard target selection, one verification link, standard Fleet response.
+- **Chosen:** GitHub deployment-status result, exact merged-hash gate, standard target selection, one verification link, standard Fleet response.
 - **Rejected:** identify verifier by Fleet name. Installers may rename a bundle, so normal trigger selection is the durable identity.
 - **Rejected:** add a crew table. It adds lifecycle and consistency problems without helping event routing.
 - **Rejected:** let verifier query internal repair rows. The daemon already owns correlation and can provide a smaller, safer event.
@@ -303,5 +299,6 @@ The verifier event request carries this same repair and production context. `res
 - **Crew decision:** one logical incident crew is three independent Fleets in event order: responder, repairer, verifier.
 - **Evidence decision:** Grafana and Elasticsearch are read-only evidence sources for all three Fleets, not separate members.
 - **Correlation decision:** only exact provider-returned merged commit plus production environment can wake verification; preview and current-default-branch inference are excluded.
+- **Provider decision:** Indy chose the verifier spine on Aug 10, 2026: GitHub deployment status, including Vercel-through-GitHub, with no direct Vercel ingress.
 - **Review:** separate Orly Chief Technology Officer adversarial review runs after architecture, both specs, and public docs are updated.
 - **User direction:** Indy approved the M157_003/M157_004 split on Aug 10, 2026 while keeping one branch and milestone PR.

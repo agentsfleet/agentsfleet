@@ -6,7 +6,7 @@
 
 **Crew shape:** three independently installed Fleets cooperate through events and durable repair linkage. There is no crew row, coordinator Fleet, or vendor-specific Grafana/Elasticsearch Fleet. Grafana and Elasticsearch are evidence sources read by all three members.
 
-**Proof boundary:** the first two Fleets, approval boundary, draft-PR writer, and initial incident-to-PR linkage ship in M157_002. M157_003 hardens linkage, provenance, append-only run history, merge correlation, and approval spend. M157_004 adds the read-only verifier, provider production-result intake, operator result surface, and live-repository proof.
+**Proof boundary:** the first two Fleets, approval boundary, draft-PR writer, and initial incident-to-PR linkage ship in M157_002. M157_003 hardens linkage, provenance, append-only run history, merge correlation, and approval spend. M157_004 adds the read-only verifier, GitHub production-result intake, operator result surface, and live-repository proof.
 
 Legend: ✅ implemented and tested · 🟡 being hardened · 🔨 specified, not built.
 
@@ -37,7 +37,7 @@ The arrows show event order, not ownership. Each Fleet is installed, paused, upd
 
 The responder wakes every fifteen minutes and reads Grafana plus Elasticsearch for new production symptoms. A quiet sweep ends silently. A code-shaped incident produces a diagnosis and a repair intent.
 
-The repairer wakes on a concrete failed GitHub workflow, a failed Vercel production deployment, or a human steer. It rereads Grafana and Elasticsearch rather than trusting the responder's prose. Its wake parks behind repository-write approval before any run starts.
+The repairer wakes on a concrete failed GitHub workflow or a human steer. It rereads Grafana and Elasticsearch rather than trusting the responder's prose. Its wake parks behind repository-write approval before any run starts.
 
 Trigger wiring determines which Fleet runs. No model chooses a crew member, and no stored crew relationship is required.
 
@@ -51,15 +51,19 @@ The token is repository-scoped, expires in one hour, carries contents and Pull R
 
 The repairer reads the failed deployment, recent code changes, and current files at a head verified during that run. Provider, secret, or ambiguous failures end diagnosis-only.
 
-For a bounded forward fix, the repairer writes blobs, a tree, a commit, a branch named `agentsfleet-repair/<incident event id>`, and one draft PR through GitHub APIs. It never checks out a repository, merges, deploys, or rewinds history.
+For a bounded forward fix, the repairer writes blobs, a tree, a commit, one daemon-issued branch, and one draft PR through GitHub APIs. It never checks out a repository, merges, deploys, or rewinds history.
+
+The branch is `agentsfleet-repair/<repair_ref>`. The repair reference is the unpadded URL-safe Base64 encoding of the approved repository-write gate's 16 raw Universally Unique Identifier version 7 (UUIDv7) bytes. It is exactly 22 characters, so the complete branch is 41 characters. The daemon supplies the complete branch in trusted run context; the repairer copies it verbatim and never builds identity metadata itself.
 
 When the PR-opened webhook returns, the daemon:
 
-1. extracts the incident event identifier from the branch;
-2. resolves the owning repair Fleet from that event, not from grant matching;
-3. verifies repository, installation, base repository, and author provenance;
+1. decodes the repair reference and loads that exact approved write gate;
+2. reads the gate's workspace, repair Fleet, incident event, and repository binding;
+3. verifies the composite Fleet-plus-event row, repository, installation, base repository, and author provenance;
 4. records the incident-to-PR link; and
 5. drops the repair branch from normal incident routing.
+
+The repair reference is correlation, not authorization. A malformed reference, an unknown gate, a gate that did not approve repository write, or a mismatched event or repository fails closed and records no repair link.
 
 The shared GitHub App ingress and the signed per-Fleet webhook call the same linkage arm.
 
@@ -100,7 +104,7 @@ incident link   merged_commit_sha      repository + commit_sha + environment
 
 ## 6. Wake the verifier only for the exact production result
 
-The verifier is a third, read-only Fleet. Its GitHub and Vercel triggers subscribe to terminal deployment results for the bound repository. Normal routing selects the installed Fleet; no crew lookup is introduced.
+The verifier is a third, read-only Fleet. Its GitHub trigger subscribes to terminal deployment-status results for the bound repository. A Vercel deployment is eligible only when Vercel reports it through GitHub's deployment-status event. Normal routing selects the installed Fleet; no crew lookup is introduced.
 
 Before queueing an event, the daemon requires all of the following:
 
@@ -126,9 +130,9 @@ Its repository binding is read-only and pinned to the exact merged commit carrie
 
 The standard Fleet event stores the verifier's response. A repair-verification link joins that event back to the incident and PR for the operator surface. Human review and merge remain mandatory; verification never auto-merges or auto-reverts.
 
-## 8. Provider normalization
+## 8. Production-result normalization
 
-GitHub production results enter as terminal deployment-status events. Vercel production results enter through the signed Vercel ingress. Both normalize to the same internal shape:
+Production results enter as signed GitHub deployment-status events. This includes Vercel deployments surfaced through GitHub. Direct Vercel webhook ingestion is outside this repair loop. GitHub input normalizes to this internal shape:
 
 ```text
 production_result {
@@ -139,7 +143,7 @@ production_result {
 }
 ```
 
-Provider vocabulary is translated only at ingress. Downstream correlation and verifier prompting are provider-neutral. Unsigned Vercel deliveries fail before parsing. A payload without exact repository, environment, or commit identity fails closed.
+Provider vocabulary is translated only at ingress. Downstream correlation and verifier prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed.
 
 ## 9. What exists and what changes
 
@@ -153,13 +157,15 @@ Provider vocabulary is translated only at ingress. Downstream correlation and ve
 | Exact merged-commit correlation | 🔨 | M157_003, slot 832. |
 | Bounded approval mint spends | 🔨 | M157_003, slot 833. |
 | Incident verifier Fleet | 🔨 | M157_004; independently installed and read-only. |
-| GitHub and Vercel production-result normalization | 🔨 | M157_004. |
+| GitHub production-result normalization | 🔨 | M157_004; includes Vercel deployments surfaced through GitHub. |
 | Incident → verifier-result operator surface | 🔨 | M157_004. |
 | Live-repository acceptance arc | 🔨 | M157_004. |
 
 ## 10. Invariants
 
 - One incident can record at most one repair PR per repair Fleet.
+- A repair branch carries one 22-character daemon-issued gate reference, never raw Fleet-plus-event identifiers.
+- A repair reference resolves one approved write gate and one exact Fleet-plus-event row or records nothing.
 - Repair-branch traffic never becomes a fresh incident.
 - Preview evidence is append-only and never closes the loop.
 - Only exact workspace + repository + merged commit hash correlation can wake verification.

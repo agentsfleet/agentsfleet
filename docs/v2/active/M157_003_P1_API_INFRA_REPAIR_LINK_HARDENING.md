@@ -30,18 +30,18 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A repair PR opened through either GitHub route records one provenance-checked incident link; every repair-branch workflow result is retained independently; a merged PR records GitHub's exact merged commit hash; and one approval funds no more token mints than its declared ceiling.
+**Goal (testable):** A repair Pull Request (PR) opened through either GitHub route records one provenance-checked incident link; every repair-branch workflow result is retained independently; a merged PR records GitHub's exact merged commit hash; and one approval funds no more token mints than its declared ceiling.
 
 **Problem:** The shared GitHub App ingress drops repair traffic before linkage. Slot 830 then stores only one mutable deploy value, so a later lint run can replace a deploy result and an early run disappears. The branch prefix is trusted without installation, repository, or author proof. Separately, an approved gate can mint on every retry.
 
-**Solution summary:** Both GitHub routes call one linkage arm before repair traffic is dropped. The arm resolves the repair Fleet from the incident event and verifies provenance. Slot 831 stores append-only workflow history, slot 832 records the exact `merge_commit_sha` returned by a merged-PR webhook, and slot 833 makes approval spend atomic and bounded. Preview rows remain evidence; only M157_004 may correlate the merged commit with production.
+**Solution summary:** Both GitHub routes call one linkage arm before repair traffic is dropped. The daemon gives the repairer a 41-character branch containing one compact reference to the approved write gate. The arm resolves that gate to the exact Fleet-plus-event pair and verifies provenance. Slot 831 stores append-only workflow history, slot 832 records the exact `merge_commit_sha` returned by a merged-PR webhook, and slot 833 makes approval spend atomic and bounded. Preview rows remain evidence; only M157_004 may correlate the merged commit with production.
 
 ## PR Intent & comprehension handshake
 
 - **PR title (eventual):** `feat(m157): close repair incidents on correlated production evidence`
 - **Intent:** make repair history trustworthy before any verifier is allowed to act on it.
 - **Orly restatement:** A branch run is preview evidence. This workstream records it without overwriting, proves whose repair PR opened, pins the provider-returned merged commit, and caps approval-funded mints; it does not declare production fixed.
-- **ASSUMPTIONS I'M MAKING:** GitHub remains the repository authority; the human still merges; slot 830 is frozen migration history; M157_004 consumes the merged hash but owns production-result routing and the verifier.
+- **ASSUMPTIONS I'M MAKING:** GitHub remains the repository authority; the human still merges; slot 830 is frozen migration history; the approved write-gate Universally Unique Identifier version 7 (UUIDv7) is the repair correlation source; M157_004 consumes the merged hash but owns production-result routing and the verifier.
 
 ## Implementing agent — read these first
 
@@ -60,19 +60,23 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 | `schema/832_repair_pr_merge_correlation.sql` | CREATE | Add merged commit hash and merged time to slot 830 rows |
 | `schema/833_fleet_approval_gates_spend.sql` | CREATE | Add nullable spend count and ceiling for provisioned databases |
 | `schema/embed.zig` | EDIT | Register slots 831–833 in both migration lists |
+| `src/lib/common/repair_branch.zig` | CREATE | Encode and decode one exact 22-character repair reference and branch grammar |
+| `src/agentsfleetd/fleet/service.zig` | EDIT | Supply the daemon-authored repair branch in trusted run context |
 | `src/agentsfleetd/state/repair_pr_links.zig` | EDIT | Insert link, record merged commit once, remove mutable deploy stamp |
 | `src/agentsfleetd/state/repair_run_results.zig` | CREATE | Insert immutable workflow results idempotently |
 | `src/agentsfleetd/state/sql.zig` | EDIT | Statements for repair links and run history |
 | `src/agentsfleetd/http/handlers/webhooks/github_repair_link.zig` | EDIT | Handle PR opened, PR merged, and branch workflow results |
 | `src/agentsfleetd/http/handlers/webhooks/repair_link_provenance.zig` | CREATE | Verify installation, base repository, author, and incident owner |
 | `src/agentsfleetd/http/handlers/ingress/github.zig` | EDIT | Invoke shared linkage before ordinary target routing |
-| `src/agentsfleetd/http/handlers/ingress/repair_fleet_resolve.zig` | CREATE | Resolve the owning Fleet from the branch incident identifier |
+| `src/agentsfleetd/http/handlers/ingress/repair_gate_resolve.zig` | CREATE | Resolve the approved gate reference to its exact Fleet-plus-event pair |
 | `src/agentsfleetd/http/handlers/runner/credentials_mint_write_gate.zig` | EDIT | Spend approval atomically and refuse past ceiling |
 | `src/agentsfleetd/errors/error_registry.zig` | EDIT | Register provenance and spend-ceiling refusals |
 | `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | Expose both runtime errors |
 | `src/agentsfleetd/http/webhook_http_integration_test.zig` | EDIT | Prove both ingress routes, run history, merge correlation, and provenance |
 | `src/agentsfleetd/http/handlers/runner/credentials_mint_write_gate_integration_test.zig` | EDIT | Prove spend and concurrency behavior |
+| `src/agentsfleetd/fleet_runtime/crew_bundle_test.zig` | EDIT | Prove the repairer copies the daemon-issued branch and never composes identifiers |
 | `src/agentsfleetd/db/pool_test.zig` | EDIT | Prove runtime privileges for new history rows |
+| `library/incident-repairer/SKILL.md` | EDIT | Replace model-authored incident branches with the supplied repair branch |
 | `docs/architecture/scenarios/production-deploy-repair.md` | EDIT | Separate preview evidence from production closure |
 
 ## Applicable Rules
@@ -97,18 +101,19 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 
 - `schema/830_repair_pr_links.sql` supplies the history-layer purge and immutability shape, but is not edited.
 - `src/agentsfleetd/fleet_runtime/webhook/normalizer/github_app.zig` supplies the repair-traffic drop that remains after shared linkage.
-- `schema/811_fleet_approval_gates_binding.sql` supplies the nullable additive-migration precedent for a provisioned database.
+- `schema/811_fleet_approval_gates_event_binding.sql` supplies the durable gate-to-event and repository-binding source.
+- `src/agentsfleetd/http/pagination.zig` supplies the existing unpadded URL-safe Base64 codec convention.
 - GitHub's Pull Requests API supplies `merge_commit_sha`; merge, squash, and rebase strategies must use that provider value rather than reconstructing default-branch state.
 
 ## Sections (implementation slices)
 
 ### §1 — Both GitHub routes record the same link
 
-Shared ingress resolves the incident event's owning Fleet and calls the same arm as the signed per-Fleet route before the existing repair-traffic drop.
+The daemon supplies `agentsfleet-repair/<repair_ref>`, where `repair_ref` is the 22-character unpadded URL-safe Base64 encoding of the approved repository-write gate's 16 raw UUIDv7 bytes. Shared ingress resolves that exact gate to its workspace, repair Fleet, incident event, and repository binding. It then calls the same arm as the signed per-Fleet route before the existing repair-traffic drop.
 
-- **Dimension 1.1** — shared ingress PR-open records one link → `test_ingress_repair_pr_records_linkage`
-- **Dimension 1.2** — incident owner wins over a grant-matching Fleet → `test_ingress_resolves_incident_owner`
-- **Dimension 1.3** — unknown incident records nothing and is acknowledged → `test_ingress_unknown_incident_is_ignored`
+- **Dimension 1.1** — daemon supplies one 41-character branch for the approved repair → `test_repair_branch_uses_compact_gate_reference`
+- **Dimension 1.2** — both routes resolve the gate to the same Fleet-plus-event owner → `test_ingress_resolves_gate_event_owner`
+- **Dimension 1.3** — malformed, unknown, or unapproved reference records nothing → `test_invalid_repair_reference_is_ignored`
 - **Dimension 1.4** — repair traffic wakes no Fleet → `test_repair_traffic_never_wakes`
 
 ### §2 — Every branch run remains evidence
@@ -141,6 +146,16 @@ The mint decision increments spend in the same transaction that confirms approva
 ## Interfaces
 
 ```text
+repair branch
+  agentsfleet-repair/<repair_ref>
+  repair_ref = unpadded URL-safe Base64(raw 16-byte approved write-gate UUIDv7)
+  repair_ref length = 22; complete branch length = 41
+  daemon supplies the complete branch; the Fleet copies it verbatim
+
+repair reference resolution
+  repair_ref -> approved gate -> workspace_id + fleet_id + event_id + repository binding
+  linkage requires the exact (fleet_id, event_id) event row in that workspace
+
 core.repair_run_results (slot 831)
   workspace_id, fleet_id, event_id, repository, branch,
   workflow_name, provider_run_id, head_commit_sha,
@@ -162,7 +177,9 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 
 | Mode | Handling |
 |---|---|
-| Unknown incident | acknowledge with named ignore reason; write nothing |
+| Malformed or unknown repair reference | acknowledge with named ignore reason; write nothing |
+| Gate is not an approved repository write | typed refusal; write nothing |
+| Gate event or repository does not match | typed provenance refusal; write nothing |
 | Foreign installation, author, or fork | typed refusal; write nothing |
 | Run arrives before PR | retain it by Fleet, repository, and branch |
 | Provider redelivers run or merge | unique/one-time writes absorb replay |
@@ -173,12 +190,14 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 ## Metrics & Observability
 
 - Structured counters: link inserted/refused, run inserted/replayed, merge correlated/ignored, mint spent/refused.
-- Logs carry workspace, Fleet, incident, repository, provider identifier, and registered error name; never credential values or webhook bodies.
+- Logs carry workspace, Fleet, incident, repair-reference prefix, repository, provider identifier, and registered error name; never full repair references, credential values, or webhook bodies.
 - Existing operator analytics are unchanged because no new user surface ships here.
 
 ## Invariants
 
 - Repair traffic is recorded before it is dropped and never wakes a Fleet.
+- Repair branches contain one compact daemon-issued write-gate reference, not raw Fleet and event identifiers.
+- A repair reference resolves one approved gate and its exact Fleet-plus-event pair or writes nothing.
 - Preview workflows are immutable evidence, never proof of production recovery.
 - The merged commit hash comes from the merged-PR webhook and changes at most once.
 - Provenance failure writes no linkage or run row.
@@ -188,7 +207,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 
 | Dimension | Tier | Test | Concrete assertion |
 |---|---|---|---|
-| 1.1–1.4 | integration | four §1 tests | shared and per-Fleet routes agree; no wake-up |
+| 1.1–1.4 | unit + integration | four §1 tests | exact compact grammar; both routes agree; invalid refs fail closed; no wake-up |
 | 2.1–2.4 | integration | four §2 tests | immutable, early, idempotent history; stamp caller absent |
 | 3.1–3.4 | integration | four §3 tests | provenance fails closed; exact merge hash stored once |
 | 4.1–4.4 | integration | four §4 tests | spend visible, card accurate, concurrency ceiling holds |
@@ -199,7 +218,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 
 | # | Criterion | Verify | Expected | Priority | Graded |
 |---|---|---|---|---|---|
-| R1 | shared ingress links own repair | `make test-integration` | exit 0 | P0 | |
+| R1 | compact gate reference links the exact repair through both routes | `make test-integration` | exit 0 | P0 | |
 | R2 | run history is append-only and replay-safe | `make test-integration` | exit 0 | P0 | |
 | R3 | exact merged hash is stored, never inferred | `make test-integration` | exit 0 | P0 | |
 | R4 | 100 concurrent mints hold the ceiling | `make test-integration` | exit 0 | P0 | |
@@ -221,7 +240,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 ## Out of Scope
 
 - Deciding whether production recovered; M157_004 owns that result.
-- Adding `incident-verifier`, Vercel ingress, an operator result card, or live-repository acceptance.
+- Adding `incident-verifier`, direct Vercel ingress, an operator result card, or live-repository acceptance.
 - Automatic merge, deployment, rollback, or multi-repository repair.
 - A stored crew entity or coordinator Fleet.
 
@@ -233,7 +252,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 2. **Preserved behavior** — one draft PR, human merge, repair traffic never loops, existing refusal meanings remain.
 3. **Optimal-way check** — provider-returned merge identity plus append-only events is the direct path; guessing current `main` is rejected.
 4. **Rebuild-vs-iterate** — iterate on slot 830 with additive migrations and retire only its mutable writer.
-5. **What we build** — shared linkage, provenance, immutable runs, merge correlation, bounded spend.
+5. **What we build** — daemon-issued repair references, shared linkage, provenance, immutable runs, merge correlation, bounded spend.
 6. **What we do not build** — verifier, vendor ingress beyond GitHub, dashboard closure, automatic repository action.
 7. **Fit** — hardens M157_002 and supplies M157_004's trusted correlation input.
 8. **Surface order** — storage and ingress first; no public interface changes.
@@ -243,6 +262,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 ## Decomposition & alternatives
 
 - **Chosen:** M157_003 stops at trusted, bounded repair history. M157_004 consumes it for production closure on the same branch and milestone PR.
+- **Chosen branch identity:** one compact reference to the approved write gate. Raw Fleet-plus-event UUIDv7 values make a long branch and let model-authored text carry identity; the daemon reference is shorter and resolves authoritative stored context.
 - **Rejected:** keep the verifier in this file. It hid provider intake, event routing, and the operator read surface behind one vague section.
 - **Patch-vs-refactor:** shared ingress, provenance, merge correlation, and spend are patches; replacing the mutable run writer with immutable history is the contained refactor.
 
@@ -250,6 +270,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 
 - **Branch lookup:** product work is `feat/m157-repair-loop`; public docs work is `chore/m157-repair-loop-changelog`; both merge to `main`.
 - **Architecture call:** preview evidence cannot close the incident. Only repository plus exact provider-returned merged commit can correlate production.
+- **Repair identity call:** Indy rejected raw Fleet-plus-event UUIDv7 branch components on Aug 10, 2026; the branch carries one 22-character daemon-issued approved-gate reference instead.
 - **Crew call:** responder, repairer, and verifier remain independently installed Fleets; Grafana and Elasticsearch are shared read-only evidence sources.
 - **Review:** separate Orly Chief Technology Officer adversarial review runs after this split and the architecture/public-doc update.
 - **Inherited deferral acknowledgement:** Indy directed the PR #591 items into M157_003 on Aug 10, 2026; M157_004 is a scope split, not a deferral from the milestone PR.
