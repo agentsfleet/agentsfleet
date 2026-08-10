@@ -112,13 +112,14 @@ Every normalized production result is stored before correlation. The same reconc
 - the provider supplies the deployed commit hash; and
 - that hash equals a stored `merge_commit_sha` in the same workspace.
 
-A successful match records one verification attempt and emits one internal `repair_production_result` event. Normal Fleet routing then selects every installed Fleet subscribed to that proof-qualified event type. The verifier subscribes to `repair_production_result`, never raw `deployment_status`; no Fleet name, role, or crew lookup is introduced.
+A successful match records one verification attempt. When its fixed window completes, the dispatcher emits one internal `repair_production_result` event. Normal Fleet routing then selects every installed Fleet subscribed to that proof-qualified event type. The verifier subscribes to `repair_production_result`, never raw `deployment_status`; no Fleet name, role, or crew lookup is introduced.
 
-Each selected verifier Fleet gets one slot 835 dispatch intent before Redis is called. The row starts with `verifier_event_id = NULL`, and its row identifier is the stable dispatch key. Redis atomically appends the Fleet event and remembers the generated stream event identifier, or returns the identifier from an earlier attempt with the same key. The daemon then fills `verifier_event_id` once. A bounded background dispatcher retries rows that still carry `NULL`.
+Each selected verifier Fleet gets one slot 835 dispatch intent before Redis is called. The row starts with `verifier_event_id = NULL` and sets `verify_after` to fifteen minutes after production completion. Its row identifier is the stable dispatch key. A bounded background dispatcher selects due rows. Redis atomically appends the Fleet event and remembers the generated stream event identifier, or returns the identifier from an earlier attempt with the same key. The daemon then fills `verifier_event_id` once.
 
 ```text
 slot 835 intent                 Redis enqueue-once             slot 835 complete
-verifier_event_id = NULL  ---> new or existing event id  ---> verifier_event_id = <id>
+event id = NULL           ---> new or existing event id  ---> event id = <id>
+verify_after = deploy+15m          only when due
           ^                              |
           |                              |
           `------- bounded retry --------+
@@ -135,9 +136,9 @@ The queued verifier event is enriched with the incident event identifier, repair
 
 ## 7. Judge production telemetry read-only
 
-The verifier reads Grafana and Elasticsearch after the production completion time, compares the same incident signals with the pre-deploy baseline, and reports one of:
+The verifier event reuses the linked incident request, repair result, and Pull Request evidence already stored by the normal Fleet path. Fifteen minutes after production completion, the verifier reads Grafana and Elasticsearch over that completed window and judges the original symptom. There is no configurable baseline engine or separate settling period.
 
-- `cleared` — the original symptom is absent through the configured observation window;
+- `cleared` — the original symptom is absent through the complete fifteen-minute window;
 - `not_cleared` — the original symptom remains or regressed; or
 - `inconclusive` — evidence is missing, contradictory, or the window is incomplete.
 
@@ -160,7 +161,7 @@ production_result {
 
 The platform GitHub App subscribes to deployment-status events and holds Deployments read-only permission. Development registration proves one signed delivery reaches `/v1/ingress/github` before the same setting is applied to production. Fixture coverage is not accepted as evidence that the live App subscription exists.
 
-Slot 834 retains every normalized production result idempotently. Slot 835 retains each correlated verification attempt and its nullable-then-final `verifier_event_id`. The same reconciler reads both repair merges and production results, so result-first, merge-first, replayed delivery, and process restart converge on one attempt and one Fleet event. An exact correlation emits `repair_production_result` with the matched incident, repair PR, merged commit, production result, and evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
+Slot 834 retains every normalized production result idempotently. Slot 835 retains each correlated verification attempt, its fixed `verify_after`, and its nullable-then-final `verifier_event_id`. The same reconciler reads both repair merges and production results, so result-first, merge-first, replayed delivery, and process restart converge on one attempt and one Fleet event. An exact correlation schedules `repair_production_result` with the matched incident and repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
 
 ## 9. What exists and what changes
 
@@ -189,7 +190,8 @@ Slot 834 retains every normalized production result idempotently. Slot 835 retai
 - Only exact workspace + repository + merged commit hash correlation can wake verification.
 - Production-first, merge-first, and replayed delivery converge on one durable verification attempt.
 - A Postgres-to-Redis crash leaves a retryable intent or returns the original Fleet event identifier; it never creates a second verifier event.
-- Raw `deployment_status` never wakes the verifier; exact correlation emits `repair_production_result` first.
+- A verifier event is not queued before its fixed fifteen-minute production window is complete.
+- Raw `deployment_status` never wakes the verifier; exact correlation schedules `repair_production_result`, and the due dispatcher emits it.
 - Production verification requires the platform GitHub App's deployment-status subscription and Deployments read-only permission.
 - A production result without a commit hash fails closed.
 - All three Fleets read Grafana and Elasticsearch; those vendors do not become Fleets.

@@ -34,7 +34,7 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Problem:** M157_002 stops at a draft PR and M157_003 stops at trusted history. Repair-branch runs are previews. Looking at the default branch later can inspect different bytes. A production result can also arrive before the merged-PR webhook and vanish unless intake is durable. No verifier Fleet or order-independent production correlation exists.
 
-**Solution summary:** The signed GitHub ingress stores normalized deployment status in slot 834 before correlation; Vercel qualifies only through GitHub. One reconciler runs after either the production insert or M157_003 merged-hash write. An exact match creates one slot 835 attempt and emits `repair_production_result`; the verifier subscribes only to that event, reads the exact commit plus Grafana and Elasticsearch, and writes `cleared`, `not_cleared`, or `inconclusive` to standard Fleet history. Repository integration tests prove both arrival orders and replay without a custom incident card or live-repository target.
+**Solution summary:** The signed GitHub ingress stores normalized deployment status in slot 834 before correlation; Vercel qualifies only through GitHub. One reconciler runs after either the production insert or M157_003 merged-hash write. An exact match creates one due-time-bound slot 835 attempt; the dispatcher later emits `repair_production_result`. The verifier subscribes only to that event, reads the exact commit plus Grafana and Elasticsearch, and writes `cleared`, `not_cleared`, or `inconclusive` to standard Fleet history. Repository integration tests prove both arrival orders and replay without a custom incident card or live-repository target.
 
 ## PR Intent & comprehension handshake
 
@@ -53,8 +53,9 @@ responder detects symptom
         -> GitHub reports terminal production deployment status
         -> slot 834 stores production result
         -> reconciler matches workspace + repository + exact commit
-        -> slot 835 records one verification attempt
-        -> daemon emits repair_production_result
+        -> slot 835 records one verification attempt and fixed due time
+        -> dispatcher waits for the complete evidence window
+        -> daemon emits repair_production_result once
         -> installed incident-verifier receives proof-qualified event
         -> verifier reads Grafana + Elasticsearch + exact commit
         -> standard Fleet event stores result
@@ -76,10 +77,10 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 | File | Action | Why |
 |---|---|---|
 | `schema/834_repair_production_results.sql` | CREATE | Retain normalized terminal production results before correlation |
-| `schema/835_repair_verifications.sql` | CREATE | Retain one correlated verifier attempt per repair, result, and Fleet |
+| `schema/835_repair_verifications.sql` | CREATE | Retain one due-time-bound verifier attempt per repair, result, and Fleet |
 | `schema/embed.zig` | EDIT | Register slots 834–835 in both migration lists |
 | `src/agentsfleetd/state/repair_production_results.zig` | CREATE | Insert production results idempotently and reconcile either arrival order |
-| `src/agentsfleetd/state/repair_verifications.zig` | CREATE | Insert dispatch intents, complete event links once, and scan pending rows |
+| `src/agentsfleetd/state/repair_verifications.zig` | CREATE | Insert dispatch intents, complete event links once, and scan due rows |
 | `src/agentsfleetd/state/sql.zig` | EDIT | Correlation and verification-link statements |
 | `src/agentsfleetd/queue/redis_fleet.zig` | EDIT | Atomically append once per dispatch intent and return the original stream identifier on retry |
 | `src/agentsfleetd/fleet/repair_verification_dispatcher.zig` | CREATE | Retry a bounded batch of pending slot 835 intents |
@@ -138,7 +139,7 @@ GitHub deployment-status events normalize to provider, deployment identifier, re
 
 ### §2 — Correlate exact merged bytes
 
-Slot 834 stores every normalized result before matching. One reconciler runs after either that insert or M157_003's merged-hash write. Exact workspace, repository, and commit equality creates one slot 835 dispatch intent per subscribed verifier Fleet. Redis enqueue-once keys on that intent, returning the original stream event identifier on retry. A bounded dispatcher retries incomplete intents.
+Slot 834 stores every normalized result before matching. One reconciler runs after either that insert or M157_003's merged-hash write. Exact workspace, repository, and commit equality creates one slot 835 dispatch intent per subscribed verifier Fleet with `verify_after = completed_at + OBSERVATION_WINDOW_MS`. The fixed window is fifteen minutes. A bounded dispatcher selects due intents. Redis enqueue-once keys on the intent and returns the original stream event identifier on retry.
 
 - **Dimension 2.1** — result-first then merge emits once → `test_result_before_merge_reconciles_once`
 - **Dimension 2.2** — merge-first then result emits once → `test_merge_before_result_reconciles_once`
@@ -146,10 +147,11 @@ Slot 834 stores every normalized result before matching. One reconciler runs aft
 - **Dimension 2.4** — provider and merge replay leave one result and attempt → `test_reconciliation_replay_is_idempotent`
 - **Dimension 2.5** — second workspace cannot observe or claim correlation → `test_repair_correlation_is_workspace_scoped`
 - **Dimension 2.6** — crashes before and after Redis converge on one event → `test_verifier_dispatch_crash_retries_once`
+- **Dimension 2.7** — intent stays pending until its fixed window completes → `test_verifier_dispatch_waits_for_evidence_window`
 
 ### §3 — Install and run the read-only verifier
 
-`incident-verifier` subscribes to `repair_production_result`, rejects raw `deployment_status`, reads the exact merged commit plus Grafana and Elasticsearch, and returns one named outcome with evidence. It has no write permission and no database tool.
+`incident-verifier` subscribes to `repair_production_result`, rejects raw `deployment_status`, receives the linked incident and repair evidence, reads the exact merged commit plus Grafana and Elasticsearch over the completed fixed window, and returns one named outcome. It has no write permission and no database tool.
 
 - **Dimension 3.1** — bundle onboards through normal library path → `test_incident_verifier_onboards`
 - **Dimension 3.2** — minted repository permission is read-only → `test_incident_verifier_token_is_read_only`
@@ -164,10 +166,10 @@ production_result
   commit_sha, conclusion, completed_at
 
 repair_production_result
-  incident: { workspace_id, fleet_id, event_id }
+  incident: { workspace_id, fleet_id, event_id, linked_evidence }
   repair: { pr_number, pr_url, merged_commit_sha, merged_at }
   production: { provider, deployment_id, conclusion, completed_at }
-  evidence_window
+  evidence_window: { start_at: completed_at, end_at: verify_after }
 
 core.repair_production_results (slot 834)
   id, workspace_id, provider, provider_deployment_id, repository,
@@ -176,7 +178,8 @@ core.repair_production_results (slot 834)
 
 core.repair_verifications (slot 835)
   id, workspace_id, production_result_id, repair_link_id,
-  verifier_fleet_id, verifier_event_id NULL until dispatched, created_at
+  verifier_fleet_id, verify_after,
+  verifier_event_id NULL until dispatched, created_at
   UNIQUE (production_result_id, repair_link_id, verifier_fleet_id)
 ```
 
@@ -198,6 +201,7 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 | Verifier run fails | linked event shows failure; no cleared label |
 | Process stops before Redis append | slot 835 remains pending; bounded dispatcher retries it |
 | Process stops after Redis append | enqueue-once returns the original stream identifier; no second event is created |
+| Observation window is incomplete | dispatcher leaves the intent pending; no Fleet run waits or guesses |
 
 ## Metrics & Observability
 
@@ -210,6 +214,7 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 - Only an exact workspace, repository, production environment, and merged commit match can wake verification.
 - Production-first, merge-first, and replayed delivery converge on one stored result and verification attempt.
 - Every slot 835 intent reaches zero or one Fleet event; retry after any write boundary returns the same event identifier.
+- `OBSERVATION_WINDOW_MS` is fixed at fifteen minutes; M157_004 adds no timing setting or baseline engine.
 - Raw `deployment_status` never wakes the verifier; correlation must emit `repair_production_result` first.
 - The registration playbook requires deployment-status events, Deployments read-only permission, and a signed development delivery proof.
 - Provider data missing commit identity fails closed.
@@ -223,7 +228,7 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 | Dimension | Tier | Test | Concrete assertion |
 |---|---|---|---|
 | 1.1–1.4 | unit + integration | four §1 tests | GitHub shape; Vercel-through-GitHub parity; unready results ignored; registration complete |
-| 2.1–2.6 | integration | six §2 tests | both arrival orders and both crash boundaries emit once; mismatch, replay, and cross-workspace cases stay deterministic |
+| 2.1–2.7 | integration | seven §2 tests | arrival order, due time, crash boundaries, mismatch, replay, and workspace scope stay deterministic |
 | 3.1–3.4 | unit + integration | four §3 tests | synthetic trigger only, normal onboarding, read-only token, exact-hash prompt |
 | load | integration | `test_production_correlation_100_parallel` | at least 100 deliveries do not serialize globally |
 | migration | integration | `test_834_835_apply_to_provisioned_database` | existing repair rows remain readable |
@@ -279,7 +284,7 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 ## Decomposition & alternatives
 
 - **Chosen:** GitHub deployment-status result, exact merged-hash gate, standard target selection, one verification link, standard Fleet response.
-- **Chosen verifier routing:** exact correlation emits `repair_production_result`; the verifier subscribes to that type. This gives tests one fixture-in/event-out seam without adding Fleet roles.
+- **Chosen verifier routing:** exact correlation schedules `repair_production_result`; the due dispatcher emits it and the verifier subscribes to that type. This gives tests one fixture-in/event-out seam without adding Fleet roles.
 - **Rejected:** classify Fleets with a verifier role. It adds stored identity and onboarding behavior when a proof-qualified event already supplies the safe routing boundary.
 - **Rejected:** identify verifier by Fleet name. Installers may rename a bundle, so normal trigger selection is the durable identity.
 - **Rejected:** add a crew table. It adds lifecycle and consistency problems without helping event routing.
@@ -293,7 +298,8 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 - **Evidence decision:** Grafana and Elasticsearch are read-only evidence sources for all three Fleets, not separate members.
 - **Correlation decision:** only exact provider-returned merged commit plus production environment can wake verification; preview and current-default-branch inference are excluded.
 - **Provider decision:** Indy chose GitHub deployment status, including Vercel-through-GitHub, with no direct Vercel ingress; 3A adds the App subscription, Deployments read-only permission, and live proof.
-- **Verifier-routing decision:** `> Indy (Aug 10, 2026: 08:42 PM): "2A i want a simpler approach to get this tested"` — exact correlation emits `repair_production_result`; raw deployment status never selects the verifier.
+- **Verifier-routing decision:** `> Indy (Aug 10, 2026: 08:42 PM): "2A i want a simpler approach to get this tested"` — exact correlation schedules `repair_production_result`; raw deployment status never selects the verifier.
+- **Evidence-window decision:** `> Indy (Aug 10, 2026: 09:14 PM): "I want to keep the scope simple, so dont keep overengineering, if there is a simple way to do so follow that."` — reuse linked Fleet evidence, hold slot 835 for one fixed fifteen-minute window, then run the verifier once; no new setting, baseline engine, or structured target.
 - **Arrival-order decision:** Indy asked Orly to continue with the recommended durable ledger and shared reconciler; both webhook orders must produce the same attempt.
 - **Review:** separate Orly Chief Technology Officer adversarial review runs after architecture, both specs, and public docs are updated.
 - **User direction:** Indy approved the M157_003/M157_004 split on Aug 10, 2026 while keeping one branch and milestone PR.
