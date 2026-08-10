@@ -19,7 +19,7 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** API, INFRA
 **Batch:** B1 — shared linkage and provenance; B2 — immutable run and merge history; B3 — approval spend ceiling
 **Branch:** `feat/m157-repair-loop`
-**Public docs branch:** `chore/m157-repair-loop-docs` in `~/Projects/docs`
+**Public docs branch:** `chore/m157-repair-loop-changelog` in `~/Projects/docs`
 **Base branch:** `main` in both repositories
 **Test Baseline:** unit=3512 integration=589
 **Depends on:** M157_002 (ships the write mint, slot 830 linkage, and `incident-repairer`)
@@ -248,7 +248,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 
 ## Discovery (consult log)
 
-- **Branch lookup:** product work is `feat/m157-repair-loop`; public docs work is `chore/m157-repair-loop-docs`; both merge to `main`.
+- **Branch lookup:** product work is `feat/m157-repair-loop`; public docs work is `chore/m157-repair-loop-changelog`; both merge to `main`.
 - **Architecture call:** preview evidence cannot close the incident. Only repository plus exact provider-returned merged commit can correlate production.
 - **Crew call:** responder, repairer, and verifier remain independently installed Fleets; Grafana and Elasticsearch are shared read-only evidence sources.
 - **Review:** separate Orly Chief Technology Officer adversarial review runs after this split and the architecture/public-doc update.

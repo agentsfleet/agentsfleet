@@ -19,7 +19,7 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** API, INFRA, SKILL
 **Batch:** B1 — provider normalization and correlation; B2 — verifier Fleet and durable result link; B3 — operator surface and live proof
 **Branch:** `feat/m157-repair-loop`
-**Public docs branch:** `chore/m157-repair-loop-docs` in `~/Projects/docs`
+**Public docs branch:** `chore/m157-repair-loop-changelog` in `~/Projects/docs`
 **Base branch:** `main` in both repositories
 **Test Baseline:** unit=3512 integration=589
 **Depends on:** M157_003 (shared provenance-checked repair link plus exact `merged_commit_sha`)
@@ -299,7 +299,7 @@ The verifier event request carries this same repair and production context. `res
 
 ## Discovery (consult log)
 
-- **Branch lookup:** product work is `feat/m157-repair-loop`; public docs work is `chore/m157-repair-loop-docs`; both merge to `main`.
+- **Branch lookup:** product work is `feat/m157-repair-loop`; public docs work is `chore/m157-repair-loop-changelog`; both merge to `main`.
 - **Crew decision:** one logical incident crew is three independent Fleets in event order: responder, repairer, verifier.
 - **Evidence decision:** Grafana and Elasticsearch are read-only evidence sources for all three Fleets, not separate members.
 - **Correlation decision:** only exact provider-returned merged commit plus production environment can wake verification; preview and current-default-branch inference are excluded.
