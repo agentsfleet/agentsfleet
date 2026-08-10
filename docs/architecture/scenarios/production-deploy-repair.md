@@ -145,6 +145,8 @@ production_result {
 }
 ```
 
+The platform GitHub App subscribes to deployment-status events and holds Deployments read-only permission. Development registration proves one signed delivery reaches `/v1/ingress/github` before the same setting is applied to production. Fixture coverage is not accepted as evidence that the live App subscription exists.
+
 An exact correlation emits `repair_production_result` with the matched incident, repair PR, merged commit, production result, and evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
 
 ## 9. What exists and what changes
@@ -160,6 +162,7 @@ An exact correlation emits `repair_production_result` with the matched incident,
 | Bounded approval mint spends | 🔨 | M157_003, slot 833. |
 | Incident verifier Fleet | 🔨 | M157_004; independently installed and read-only. |
 | GitHub production-result normalization | 🔨 | M157_004; includes Vercel deployments surfaced through GitHub. |
+| GitHub App deployment subscription and permission | 🔨 | M157_004; operator playbook plus development live-delivery proof. |
 | Proof-qualified `repair_production_result` event | 🔨 | M157_004; emitted only after exact repair correlation. |
 | Incident → verifier-result operator surface | 🔨 | M157_004. |
 | Live-repository acceptance arc | 🔨 | M157_004. |
@@ -173,6 +176,7 @@ An exact correlation emits `repair_production_result` with the matched incident,
 - Preview evidence is append-only and never closes the loop.
 - Only exact workspace + repository + merged commit hash correlation can wake verification.
 - Raw `deployment_status` never wakes the verifier; exact correlation emits `repair_production_result` first.
+- Production verification requires the platform GitHub App's deployment-status subscription and Deployments read-only permission.
 - A production result without a commit hash fails closed.
 - All three Fleets read Grafana and Elasticsearch; those vendors do not become Fleets.
 - The verifier has no repository write permission.
