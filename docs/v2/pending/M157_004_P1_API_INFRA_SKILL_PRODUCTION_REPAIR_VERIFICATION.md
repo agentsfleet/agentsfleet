@@ -17,7 +17,7 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 **Status:** PENDING
 **Priority:** P1 — a green preview or the current default branch cannot prove that the repaired bytes reached production or cleared the incident
 **Categories:** API, INFRA, SKILL
-**Batch:** B1 — provider normalization and correlation; B2 — verifier Fleet and durable result link; B3 — operator surface and live proof
+**Batch:** B1 — durable production intake and correlation; B2 — verifier Fleet and standard result proof
 **Branch:** `feat/m157-repair-loop`
 **Public docs branch:** `chore/m157-repair-loop-changelog` in `~/Projects/docs`
 **Base branch:** `main` in both repositories
@@ -30,17 +30,17 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A terminal GitHub production deployment status wakes a separately installed, read-only `incident-verifier` only when its repository and commit hash exactly match a merged repair Pull Request (PR); the event carries the original incident and evidence window; the verifier reads Grafana and Elasticsearch and leaves its result linked to the incident for an operator.
+**Goal (testable):** A terminal GitHub production deployment status wakes a separately installed, read-only `incident-verifier` only when its repository and commit hash exactly match a merged repair Pull Request (PR), regardless of webhook order; the verifier reads Grafana and Elasticsearch and stores its verdict in standard Fleet event history.
 
-**Problem:** M157_002 stops at a draft PR and M157_003 stops at trusted history. Repair-branch runs are previews. Looking at the default branch later can inspect different bytes. No verifier Fleet, GitHub production-result correlation, or incident-to-verifier result reader exists.
+**Problem:** M157_002 stops at a draft PR and M157_003 stops at trusted history. Repair-branch runs are previews. Looking at the default branch later can inspect different bytes. A production result can also arrive before the merged-PR webhook and vanish unless intake is durable. No verifier Fleet or order-independent production correlation exists.
 
-**Solution summary:** The existing signed GitHub ingress gains deployment-status normalization. Vercel deployments qualify when Vercel surfaces them through GitHub; no direct Vercel webhook is added. Before Fleet trigger matching, the daemon requires production environment and exact workspace + repository + merged commit equality. A match emits one internal `repair_production_result`; the verifier subscribes only to that proof-qualified event. Slot 834 links the queued verifier event to the repair. The bundle reads the exact merged commit plus Grafana and Elasticsearch, then reports `cleared`, `not_cleared`, or `inconclusive` through the standard Fleet result. Event detail exposes the repair arc; a live disposable repository proves it.
+**Solution summary:** The signed GitHub ingress stores normalized deployment status in slot 834 before correlation; Vercel qualifies only through GitHub. One reconciler runs after either the production insert or M157_003 merged-hash write. An exact match creates one slot 835 attempt and emits `repair_production_result`; the verifier subscribes only to that event, reads the exact commit plus Grafana and Elasticsearch, and writes `cleared`, `not_cleared`, or `inconclusive` to standard Fleet history. Repository integration tests prove both arrival orders and replay without a custom incident card or live-repository target.
 
 ## PR Intent & comprehension handshake
 
 - **PR title (shared with M157_003):** `feat(m157): close repair incidents on correlated production evidence`
 - **Intent:** let an operator trust a verifier result because it is tied to the exact merged bytes and post-deploy telemetry, never to branch-name coincidence.
-- **Orly restatement:** Install a third read-only Fleet. Route only exact production results for M157_003's merged hash, give the Fleet incident context without database access, and join its standard result back to the repair.
+- **Orly restatement:** Store production evidence first, reconcile it with M157_003 from either arrival order, then give the third read-only Fleet exact incident and commit context through one proof-qualified event.
 - **ASSUMPTIONS I'M MAKING:** one milestone PR carries M157_003 and M157_004; the public docs PR remains separate; provider payloads missing repository, production environment, or commit identity fail closed; several matching verifier Fleets may each receive a result because installations remain independent.
 
 ## Golden path
@@ -51,13 +51,14 @@ responder detects symptom
         -> human reviews and merges
         -> M157_003 records exact merged commit
         -> GitHub reports terminal production deployment status
-        -> daemon matches workspace + repository + exact commit
+        -> slot 834 stores production result
+        -> reconciler matches workspace + repository + exact commit
+        -> slot 835 records one verification attempt
         -> daemon emits repair_production_result
         -> installed incident-verifier receives proof-qualified event
         -> verifier reads Grafana + Elasticsearch + exact commit
         -> standard Fleet event stores result
-        -> slot 834 joins result to incident and PR
-        -> operator sees cleared / not cleared / inconclusive
+        -> operator reads cleared / not cleared / inconclusive in Fleet history
 ```
 
 There is no unknown lookup or secret handoff in the path. Provider webhook secrets and Grafana/Elasticsearch credentials use existing vault key-name resolution. The daemon supplies linkage context; the Fleet never queries internal tables.
@@ -68,63 +69,55 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 2. M157_003 active spec — exact merged-hash and run-history inputs.
 3. `src/agentsfleetd/http/handlers/ingress/github.zig` — signed shared-ingress routing and fan-out.
 4. `.github/workflows/smoke-post-deploy.yml` — existing Vercel-through-GitHub deployment-status caller.
-5. `src/agentsfleetd/state/fleet_event_detail_store.zig` — standard operator detail row and response surface.
+5. `src/agentsfleetd/state/fleet_events_store.zig` — standard Fleet result history used as the first operator surface.
 
 ## Files Changed (blast radius)
 
 | File | Action | Why |
 |---|---|---|
-| `schema/834_repair_verifications.sql` | CREATE | Link a correlated production result and verifier event to one repair |
-| `schema/embed.zig` | EDIT | Register slot 834 in both migration lists |
+| `schema/834_repair_production_results.sql` | CREATE | Retain normalized terminal production results before correlation |
+| `schema/835_repair_verifications.sql` | CREATE | Retain one correlated verifier attempt per repair, result, and Fleet |
+| `schema/embed.zig` | EDIT | Register slots 834–835 in both migration lists |
+| `src/agentsfleetd/state/repair_production_results.zig` | CREATE | Insert production results idempotently and reconcile either arrival order |
 | `src/agentsfleetd/state/repair_verifications.zig` | CREATE | Insert and read verification links idempotently |
 | `src/agentsfleetd/state/sql.zig` | EDIT | Correlation and verification-link statements |
 | `src/agentsfleetd/http/handlers/ingress/github.zig` | EDIT | Normalize GitHub deployment status without weakening existing ingress |
 | `src/agentsfleetd/http/handlers/ingress/production_repair_result.zig` | CREATE | Exact merge correlation and proof-qualified synthetic event emission |
+| `src/agentsfleetd/http/handlers/webhooks/github_repair_link.zig` | EDIT | Invoke the same reconciler after a merged-hash write |
 | `src/agentsfleetd/fleet_runtime/webhook/normalizer/github_deployment.zig` | CREATE | Normalize terminal GitHub production deployment status |
-| `src/agentsfleetd/http/handlers/fleets/event_detail.zig` | EDIT | Return linked repair and verification result |
-| `src/agentsfleetd/state/fleet_event_detail_store.zig` | EDIT | Join incident, PR, production result, and verifier event |
 | `src/agentsfleetd/errors/error_registry.zig` | EDIT | Register production-correlation refusal |
 | `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | Expose runtime refusal metadata |
 | `library/incident-verifier/SKILL.md` | CREATE | Exact-commit, Grafana, and Elasticsearch verification instructions |
 | `library/incident-verifier/TRIGGER.md` | CREATE | Subscribe only to `repair_production_result` with read-only bindings |
 | `src/agentsfleetd/http/handlers/ingress/github_integration_test.zig` | EDIT | Preserve GitHub ingress and prove production correlation |
-| `src/agentsfleetd/http/handlers/fleets/event_detail_integration_test.zig` | EDIT | Prove operator repair arc and isolation |
 | `src/agentsfleetd/http/handlers/library/onboard_integration_test.zig` | EDIT | Prove verifier catalogue onboarding |
+| `src/agentsfleetd/db/pool_test.zig` | EDIT | Prove runtime privileges for slots 834–835 |
 | `playbooks/operations/github_app_registration/001_playbook.md` | EDIT | Add deployment-status subscription, Deployments read permission, and live proof |
 | `docs/AUTH.md` | EDIT | Document deployment-status intake before synthetic verifier routing |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Keep shared GitHub App registration requirements complete |
-| `ui/packages/app/lib/api/events.ts` | EDIT | Type linked repair verification detail |
-| `ui/packages/app/components/domain/EventDetailsDialog.tsx` | EDIT | Render PR, merged hash, production result, and verifier response |
-| `ui/packages/app/tests/event-details-dialog.test.tsx` | EDIT | Prove labels, links, empty states, and isolation |
-| `tests/acceptance/repair_live.zig` | CREATE | Disposable-repository end-to-end arc and cleanup |
-| `make/acceptance.mk` | EDIT | On-demand caller for live repair proof |
 | `docs/architecture/scenarios/production-deploy-repair.md` | EDIT | Canonical three-Fleet production flow |
 
 ## Applicable Rules
 
 - `~/Projects/dotfiles/docs/greptile-learnings/RULES.md` — No Dead Code (NDC), No Legacy Retained (NLR), String Literals Are Constants (UFS), Cross-layer Orphan Sweep (ORP), File and Function Length Limits (FLL), pre-v2.0 Schema Removal (SCH), and Integration Tests use real Fixtures (ITF).
 - `~/Projects/dotfiles/dispatch/write_zig.md` — database drain, tagged results, lifecycle, size, and Linux cross-compiles.
-- `~/Projects/dotfiles/dispatch/write_ts_adhere_bun.md` — TypeScript shape, component substitution, and design tokens.
-- `~/Projects/dotfiles/dispatch/write_http.md` plus `~/Projects/dotfiles/docs/REST_API_DESIGN_GUIDELINES.md` — event-detail response remains tenant-scoped and additive.
-- `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` — slot 834 is additive, single concern, immutable except purge cascade.
-- `~/Projects/dotfiles/docs/LOGGING_STANDARD.md`, `~/Projects/dotfiles/docs/LIFECYCLE_PATTERNS.md`, and `~/Projects/dotfiles/docs/DESIGN_SYSTEM.md` — structured failures, owned resources, and existing user-interface primitives.
+- `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` — slots 834–835 are additive, single-concern, and immutable except purge cascade.
+- `~/Projects/dotfiles/docs/LOGGING_STANDARD.md` and `~/Projects/dotfiles/docs/LIFECYCLE_PATTERNS.md` — structured failures and owned resources.
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
 |---|---|---|
 | Zig / public shape / lifecycle | yes | shape verdicts, drains, cleanup, both Linux targets |
-| TypeScript / user interface / design token | yes | existing dialog primitives and semantic tokens only |
 | File and function length | yes | provider dispatch, normalization, and correlation stay separated |
 | Error registry and logging | yes | one typed fail-closed correlation refusal; structured ignore metrics |
-| Schema | yes | slot 834 plus embed, migration array, privilege and provisioned-database tests |
-| HTTP and tenant isolation | yes | additive event-detail field; cross-workspace result remains not found |
+| Schema | yes | slots 834–835 plus embed, migration array, privilege and provisioned-database tests |
 
 ## Prior-Art / Reference Implementations
 
 - `src/agentsfleetd/http/handlers/ingress/github.zig` supplies signature-before-parse, replay, target selection, and fan-out behavior.
 - `src/agentsfleetd/fleet_runtime/webhook/normalizer/github_app.zig` supplies pure provider normalization returning normalized body or ignore reason.
-- `src/agentsfleetd/state/fleet_event_detail_store.zig` supplies the payload-bearing single-event reader.
+- `src/agentsfleetd/state/fleet_events_store.zig` supplies the existing result-history reader.
 - `library/incident-responder/` supplies Grafana, Elasticsearch, GitHub read-only, network, and budget declarations.
 - GitHub Pull Requests API supplies `merge_commit_sha`; GitHub deployment status supplies deployed commit identity, including Vercel deployments surfaced through GitHub.
 
@@ -141,12 +134,12 @@ GitHub deployment-status events normalize to provider, deployment identifier, re
 
 ### §2 — Correlate exact merged bytes
 
-Before ordinary Fleet trigger matching, the daemon matches each normalized result to M157_003 by workspace, repository, and exact merged commit. One match emits one internal `repair_production_result` carrying the repair and production context. Normal routing then selects Fleets subscribed to that synthetic type and inserts slot 834 with the returned verifier event identifier.
+Slot 834 stores every normalized result before matching. One reconciler runs after either that insert or M157_003's merged-hash write. Exact workspace, repository, and commit equality creates one slot 835 attempt and emits one `repair_production_result`; normal routing then selects subscribed Fleets.
 
-- **Dimension 2.1** — exact production commit emits one synthetic event → `test_exact_merged_commit_emits_repair_result`
-- **Dimension 2.2** — preview environment, missing hash, or mismatch emits nothing → `test_unproven_result_emits_nothing`
-- **Dimension 2.3** — later default-branch commit cannot verify earlier repair → `test_later_default_commit_does_not_correlate`
-- **Dimension 2.4** — provider replay leaves one synthetic event and verifier link → `test_production_result_replay_is_idempotent`
+- **Dimension 2.1** — result-first then merge emits once → `test_result_before_merge_reconciles_once`
+- **Dimension 2.2** — merge-first then result emits once → `test_merge_before_result_reconciles_once`
+- **Dimension 2.3** — preview, missing hash, or mismatch remains stored and emits nothing → `test_unproven_result_stays_unmatched`
+- **Dimension 2.4** — provider and merge replay leave one result and attempt → `test_reconciliation_replay_is_idempotent`
 - **Dimension 2.5** — second workspace cannot observe or claim correlation → `test_repair_correlation_is_workspace_scoped`
 
 ### §3 — Install and run the read-only verifier
@@ -157,22 +150,6 @@ Before ordinary Fleet trigger matching, the daemon matches each normalized resul
 - **Dimension 3.2** — minted repository permission is read-only → `test_incident_verifier_token_is_read_only`
 - **Dimension 3.3** — instructions use event merge hash, never current default branch → `test_verifier_uses_event_commit_hash`
 - **Dimension 3.4** — absent/contradictory telemetry yields `inconclusive` → `test_verifier_does_not_guess_without_evidence`
-
-### §4 — Show the linked result to the operator
-
-Incident event detail adds a nullable `repair` object containing PR, merge, production result, verifier event status, and standard response text. The existing dialog renders it without introducing a separate incident dashboard.
-
-- **Dimension 4.1** — incident detail returns linked arc in one tenant-scoped read → `test_incident_detail_returns_repair_verification`
-- **Dimension 4.2** — pending verifier is explicit, never shown as cleared → `test_pending_verifier_has_no_success_label`
-- **Dimension 4.3** — dialog links PR and displays exact abbreviated hash and response → `test_dialog_renders_repair_verification`
-- **Dimension 4.4** — unrelated event detail shape is unchanged → `test_event_without_repair_omits_repair_field`
-
-### §5 — Prove the arc against a live repository
-
-An on-demand acceptance target uses a disposable repository and real GitHub delivery to drive failure, approval, draft PR, merge, production correlation, verifier result, and cleanup.
-
-- **Dimension 5.1** — full arc ends with one linked verifier result → `test_live_repair_arc_closes_on_exact_commit`
-- **Dimension 5.2** — cleanup leaves no branch, open PR, repository, or test rows → `test_live_repair_arc_cleans_up`
 
 ## Interfaces
 
@@ -187,18 +164,15 @@ repair_production_result
   production: { provider, deployment_id, conclusion, completed_at }
   evidence_window
 
-core.repair_verifications (slot 834)
-  id, workspace_id, repair_link_id, verifier_fleet_id,
-  verifier_event_id, provider, provider_deployment_id,
+core.repair_production_results (slot 834)
+  id, workspace_id, provider, provider_deployment_id, repository,
   environment, commit_sha, conclusion, completed_at, created_at
-  UNIQUE (verifier_fleet_id, provider, provider_deployment_id)
+  UNIQUE (workspace_id, provider, provider_deployment_id)
 
-GET /v1/workspaces/{workspace}/fleets/{fleet}/events/{event}
-  repair?: {
-    pr_number, pr_url, merged_commit_sha, merged_at,
-    production: { provider, deployment_id, conclusion, completed_at },
-    verification: { fleet_id, event_id, status, response_text }
-  }
+core.repair_verifications (slot 835)
+  id, workspace_id, production_result_id, repair_link_id,
+  verifier_fleet_id, verifier_event_id, created_at
+  UNIQUE (production_result_id, repair_link_id, verifier_fleet_id)
 ```
 
 The verifier event request carries this same repair and production context. `response_text` remains the standard Fleet result; the bundle's first line names `cleared`, `not_cleared`, or `inconclusive` for human scanning.
@@ -211,9 +185,10 @@ The verifier event request carries this same repair and production context. `res
 | App lacks deployment subscription or permission | development live proof fails; production setup does not proceed |
 | Environment is not production | record named ignore metric; queue nothing |
 | Repository or commit missing | fail closed; queue nothing |
-| Commit does not match merged repair | queue ordinary subscribers only; never verifier closure |
+| Production result or merge arrives first | retain the first side; second side runs the same reconciler |
+| Commit does not match merged repair | retain unmatched result; never emit verifier closure |
 | Several repairs match unexpectedly | refuse correlation and alert; do not guess |
-| Verifier Fleet absent | retain normalized provider result metric; no Fleet event |
+| Verifier Fleet absent | retain durable production result; no verifier event |
 | Grafana/Elasticsearch unavailable | verifier reports `inconclusive` with missing evidence |
 | Verifier run fails | linked event shows failure; no cleared label |
 | Database or queue fails between writes | idempotent retry converges on one link and event |
@@ -223,11 +198,11 @@ The verifier event request carries this same repair and production context. `res
 - Counters: provider result accepted/ignored by reason, correlation matched/missed/ambiguous, synthetic event emitted/replayed, verifier queued/completed.
 - Histograms: production completion to verifier queue and queue to verifier completion.
 - Logs include workspace, repository, provider deployment, commit hash prefix, repair link, and verifier event; never webhook body or credentials.
-- Product analytics: event-detail repair section viewed and PR link opened. No funnel beyond existing event detail.
 
 ## Invariants
 
 - Only an exact workspace, repository, production environment, and merged commit match can wake verification.
+- Production-first, merge-first, and replayed delivery converge on one stored result and verification attempt.
 - Raw `deployment_status` never wakes the verifier; correlation must emit `repair_production_result` first.
 - The registration playbook requires deployment-status events, Deployments read-only permission, and a signed development delivery proof.
 - Provider data missing commit identity fails closed.
@@ -241,12 +216,10 @@ The verifier event request carries this same repair and production context. `res
 | Dimension | Tier | Test | Concrete assertion |
 |---|---|---|---|
 | 1.1–1.4 | unit + integration | four §1 tests | GitHub shape; Vercel-through-GitHub parity; unready results ignored; registration complete |
-| 2.1–2.5 | unit + integration | five §2 tests | one fixture produces one synthetic event; mismatch, replay, and cross-workspace cases stay deterministic |
+| 2.1–2.5 | integration | five §2 tests | both arrival orders emit once; mismatch, replay, and cross-workspace cases stay deterministic |
 | 3.1–3.4 | unit + integration | four §3 tests | synthetic trigger only, normal onboarding, read-only token, exact-hash prompt |
-| 4.1–4.4 | integration + user interface | four §4 tests | additive detail and honest pending/complete rendering |
-| 5.1–5.2 | end-to-end | two §5 tests | live exact-commit closure and complete cleanup |
 | load | integration | `test_production_correlation_100_parallel` | at least 100 deliveries do not serialize globally |
-| migration | integration | `test_834_applies_to_provisioned_database` | existing repair rows remain readable |
+| migration | integration | `test_834_835_apply_to_provisioned_database` | existing repair rows remain readable |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -255,23 +228,21 @@ The verifier event request carries this same repair and production context. `res
 | R1 | GitHub deployment status normalizes production identity | `make test-unit-all` | exit 0 | P0 | |
 | R2 | only exact merged commit wakes verifier | `make test-integration` | exit 0 | P0 | |
 | R3 | verifier has read-only repository permission | `make test-integration` | exit 0 | P0 | |
-| R4 | incident detail shows linked verifier result | `make test-integration` | exit 0 | P0 | |
-| R5 | user-interface dialog states pending and result honestly | `make test-unit-all` | exit 0 | P0 | |
-| R6 | live disposable repository proves full arc and cleanup | `make acceptance-e2e` | exit 0 | P1 | |
-| R7 | 100 parallel results show no global serialization | `make test-integration` | exit 0 | P0 | |
+| R4 | both arrival orders and replay converge once | `make test-integration` | exit 0 | P0 | |
+| R5 | 100 parallel results show no global serialization | `make test-integration` | exit 0 | P0 | |
 | S1 | conformance | `make harness-verify` | exit 0 | P0 | |
 | S2 | repository integration | `make test-integration` | exit 0 | P0 | |
 | S3 | no leaks | `make memleak` | exit 0 | P0 | |
 | S4 | version consistency | `make check-version` | exit 0 | P0 | |
 | S5 | secret scan | `gitleaks detect` | exit 0 | P0 | |
 
-**Grading protocol:** run commands verbatim. Every row must be graded; every P0 row must pass before close. The live P1 row requires an Indy-acknowledged deferral quote if the external environment cannot run it.
+**Grading protocol:** run commands verbatim. Every row must be graded; every P0 row must pass before close.
 
 ## Dead Code Sweep
 
 - Confirm no verifier instruction or correlation path reads current `main` as a substitute for the event hash.
 - Confirm provider-specific vocabulary stops at normalizers.
-- Confirm every slot 834 writer has an event-detail reader and every new dialog field has an API source.
+- Confirm the slot 834 writer and slot 835 writer/readers are called by the reconciler or verifier linkage path.
 - Delete no file outside Files Changed; report newly orphaned code before removal.
 
 ## Out of Scope
@@ -281,21 +252,22 @@ The verifier event request carries this same repair and production context. `res
 - Repair across multiple repositories for one incident.
 - Declaring source-code correctness from model opinion; the verdict is production symptom state.
 - Provider payloads that cannot prove exact repository, environment, and commit identity; direct Vercel webhook ingestion or signature handling.
+- A custom incident card, event-detail API extension, or disposable-repository acceptance target.
 
 ---
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment** — the incident detail shows the repair PR, exact merged hash, production result, and telemetry-backed verifier response together.
+1. **Successful user moment** — standard Fleet history shows a telemetry-backed verifier result for the exact deployed repair.
 2. **Preserved behavior** — human approval, review, and merge remain; no Fleet gains automatic merge or rollback.
 3. **Optimal-way check** — correlate the provider's exact deployment commit; current-branch inference is cheaper but wrong.
-4. **Rebuild-vs-iterate** — reuse trigger routing, Fleet events, event detail, and library onboarding; add one link table.
-5. **What we build** — GitHub deployment-status normalization, exact correlation, verifier bundle, linked event detail, live proof.
+4. **Rebuild-vs-iterate** — reuse trigger routing, Fleet history, and library onboarding; add one result ledger and one attempt ledger.
+5. **What we build** — durable GitHub intake, order-independent correlation, synthetic event, verifier bundle, standard result.
 6. **What we do not build** — direct Vercel ingress, crew coordinator, vendor-specific Fleets, auto-merge/revert, multi-repository orchestration.
 7. **Fit** — responder detects, repairer changes, verifier judges; one synthetic event reuses existing Fleet routing without a special Fleet role.
-8. **Surface order** — ingress and durable link, verifier bundle, API detail, then existing dialog.
-9. **Dashboard restraint** — no cleared label before a completed verifier response; inconclusive stays visibly inconclusive.
-10. **Confused-user next step** — missing correlation names missing hash/environment/link; verifier failures link to their event detail.
+8. **Surface order** — backend and standard Fleet history first; no new dashboard component.
+9. **Dashboard restraint** — no custom incident card until the verifier spine has production evidence.
+10. **Confused-user next step** — unmatched results name the missing hash, environment, or merge link in standard history.
 
 ## Decomposition & alternatives
 
@@ -305,7 +277,7 @@ The verifier event request carries this same repair and production context. `res
 - **Rejected:** identify verifier by Fleet name. Installers may rename a bundle, so normal trigger selection is the durable identity.
 - **Rejected:** add a crew table. It adds lifecycle and consistency problems without helping event routing.
 - **Rejected:** let verifier query internal repair rows. The daemon already owns correlation and can provide a smaller, safer event.
-- **Completeness call:** the operator reader and live acceptance stay in scope; without them the backend would write an unobservable, fixture-only result.
+- **Reduced-scope call:** standard Fleet history is the first operator surface; deterministic repository integration replaces a new live target and custom card.
 
 ## Discovery (consult log)
 
@@ -315,5 +287,6 @@ The verifier event request carries this same repair and production context. `res
 - **Correlation decision:** only exact provider-returned merged commit plus production environment can wake verification; preview and current-default-branch inference are excluded.
 - **Provider decision:** Indy chose GitHub deployment status, including Vercel-through-GitHub, with no direct Vercel ingress; 3A adds the App subscription, Deployments read-only permission, and live proof.
 - **Verifier-routing decision:** `> Indy (Aug 10, 2026: 08:42 PM): "2A i want a simpler approach to get this tested"` — exact correlation emits `repair_production_result`; raw deployment status never selects the verifier.
+- **Arrival-order decision:** Indy asked Orly to continue with the recommended durable ledger and shared reconciler; both webhook orders must produce the same attempt.
 - **Review:** separate Orly Chief Technology Officer adversarial review runs after architecture, both specs, and public docs are updated.
 - **User direction:** Indy approved the M157_003/M157_004 split on Aug 10, 2026 while keeping one branch and milestone PR.
