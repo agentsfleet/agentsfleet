@@ -148,6 +148,7 @@ Slot 834 stores every normalized result before matching. One reconciler runs aft
 - **Dimension 2.5** — second workspace cannot observe or claim correlation → `test_repair_correlation_is_workspace_scoped`
 - **Dimension 2.6** — crashes before and after Redis converge on one event → `test_verifier_dispatch_crash_retries_once`
 - **Dimension 2.7** — intent stays pending until its fixed window completes → `test_verifier_dispatch_waits_for_evidence_window`
+- **Dimension 2.8** — each matching verifier gets one independent attempt → `test_matching_verifiers_each_receive_once`
 
 ### §3 — Install and run the read-only verifier
 
@@ -183,7 +184,7 @@ core.repair_verifications (slot 835)
   UNIQUE (production_result_id, repair_link_id, verifier_fleet_id)
 ```
 
-The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends or returns the stream identifier recorded for that key. Only that returned identifier may complete `verifier_event_id`, once. The verifier event request carries the same repair and production context. `response_text` remains the standard Fleet result; the bundle's first line names `cleared`, `not_cleared`, or `inconclusive` for human scanning.
+The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends or returns the stream identifier recorded for that key. Only that returned identifier may complete `verifier_event_id`, once. The verifier event request carries the same repair and production context. `response_text` remains the human-readable Fleet result; no daemon code parses it into a second status.
 
 ## Failure Modes
 
@@ -202,6 +203,7 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 | Process stops before Redis append | slot 835 remains pending; bounded dispatcher retries it |
 | Process stops after Redis append | enqueue-once returns the original stream identifier; no second event is created |
 | Observation window is incomplete | dispatcher leaves the intent pending; no Fleet run waits or guesses |
+| Several verifier Fleets match | each gets its own slot 835 intent and standard event |
 
 ## Metrics & Observability
 
@@ -219,6 +221,7 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 - The registration playbook requires deployment-status events, Deployments read-only permission, and a signed development delivery proof.
 - Provider data missing commit identity fails closed.
 - Trigger wiring selects verifier Fleets; no Fleet name or crew row is an identity boundary.
+- Several trigger matches intentionally yield several independent responses; no resolver guesses a preferred Fleet.
 - The verifier receives repair context in its event and never reads internal database tables.
 - The verifier has read-only repository access and cannot merge, revert, or deploy.
 - Pending, failed, and inconclusive verification are never presented as cleared.
@@ -228,7 +231,7 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 | Dimension | Tier | Test | Concrete assertion |
 |---|---|---|---|
 | 1.1–1.4 | unit + integration | four §1 tests | GitHub shape; Vercel-through-GitHub parity; unready results ignored; registration complete |
-| 2.1–2.7 | integration | seven §2 tests | arrival order, due time, crash boundaries, mismatch, replay, and workspace scope stay deterministic |
+| 2.1–2.8 | integration | eight §2 tests | arrival order, due time, crash boundaries, fan-out, mismatch, replay, and workspace scope stay deterministic |
 | 3.1–3.4 | unit + integration | four §3 tests | synthetic trigger only, normal onboarding, read-only token, exact-hash prompt |
 | load | integration | `test_production_correlation_100_parallel` | at least 100 deliveries do not serialize globally |
 | migration | integration | `test_834_835_apply_to_provisioned_database` | existing repair rows remain readable |
@@ -300,6 +303,7 @@ The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends 
 - **Provider decision:** Indy chose GitHub deployment status, including Vercel-through-GitHub, with no direct Vercel ingress; 3A adds the App subscription, Deployments read-only permission, and live proof.
 - **Verifier-routing decision:** `> Indy (Aug 10, 2026: 08:42 PM): "2A i want a simpler approach to get this tested"` — exact correlation schedules `repair_production_result`; raw deployment status never selects the verifier.
 - **Evidence-window decision:** `> Indy (Aug 10, 2026: 09:14 PM): "I want to keep the scope simple, so dont keep overengineering, if there is a simple way to do so follow that."` — reuse linked Fleet evidence, hold slot 835 for one fixed fifteen-minute window, then run the verifier once; no new setting, baseline engine, or structured target.
+- **Simple-result decision:** standard trigger fan-out and human-readable Fleet responses remain the surface; no crew resolver or parsed verifier-status column.
 - **Arrival-order decision:** Indy asked Orly to continue with the recommended durable ledger and shared reconciler; both webhook orders must produce the same attempt.
 - **Review:** separate Orly Chief Technology Officer adversarial review runs after architecture, both specs, and public docs are updated.
 - **User direction:** Indy approved the M157_003/M157_004 split on Aug 10, 2026 while keeping one branch and milestone PR.

@@ -11,27 +11,20 @@
 Legend: ✅ implemented and tested · 🟡 being hardened · 🔨 specified, not built.
 
 ```text
-          Grafana + Elasticsearch (read-only evidence)
-                    ^              ^              ^
-                    |              |              |
-       +------------+--+    +------+---------+    +--------+---------+
-       | Fleet 1       |    | Fleet 2        |    | Fleet 3          |
-       | responder     |--->| repairer       |--->| verifier         |
-       | every 15 min  |    | failure/manual |    | production only  |
-       | diagnose      |    | draft PR       |    | cleared?         |
-       +---------------+    +------+---------+    +---------+--------+
-                                   |                        ^
-                                   v                        |
-                            human approve/review            |
-                                   |                        |
-                                   v                        |
-                             merge exact bytes              |
-                                   |                        |
-                                   v                        |
-                   repository + merged commit hash ---------+
+                   Grafana + Elasticsearch
+                    ^          ^          ^
+                    |          |          |
+timer ----------> Fleet 1   Fleet 2    Fleet 3 <----- exact production result
+                  responder  repairer    verifier             + 15 minutes
+                     |          ^
+                     v          |
+                 diagnosis      +----- failed workflow or human steer
+                                |
+                                v
+                     approve -> draft PR -> human merge -> production
 ```
 
-The arrows show event order, not ownership. Each Fleet is installed, paused, updated, budgeted, and deleted independently.
+Fleet 1 never wakes Fleet 2 automatically. Its diagnosis may inform a later human steer. Each Fleet is installed, paused, updated, budgeted, and deleted independently.
 
 ## 1. Start one incident
 
@@ -43,7 +36,7 @@ Trigger wiring determines which Fleet runs. No model chooses a crew member, and 
 
 ## 2. Approve before repository write access exists
 
-A Fleet whose repository binding declares write access parks every first-encounter event before gate rules are evaluated. The approval card states the repository, permissions, and mint ceiling. Approval releases the run, but each token mint atomically spends one unit from that ceiling.
+A Fleet whose repository binding declares write access parks every first-encounter event before gate rules are evaluated. The approval card states the repository, permissions, and a ceiling of 32 write-credential requests. Approval releases the run, but every request reserves one use atomically before the daemon reads a secret or calls GitHub. A failed request still consumes its reserved use; exhaustion requires a new human approval.
 
 The token is repository-scoped, expires in one hour, carries contents and Pull Request write permissions, and never carries workflow-file permission. The daemon verifies the token returned by GitHub before exposing it to the run.
 
@@ -144,7 +137,7 @@ The verifier event reuses the linked incident request, repair result, and Pull R
 
 Its repository binding is read-only and pinned to the exact merged commit carried by the event. It must never inspect whatever commit happens to be current when the Fleet runs.
 
-The standard Fleet event stores the verifier's response and repair context. Operators read that existing event history; M157_004 adds no separate incident card. Human review and merge remain mandatory; verification never auto-merges or auto-reverts.
+The standard Fleet event stores the verifier's response and repair context. Operators read `cleared`, `not_cleared`, or `inconclusive` from that response; the daemon does not parse model prose into another status. M157_004 adds no separate incident card. Human review and merge remain mandatory; verification never auto-merges or auto-reverts.
 
 ## 8. Production-result normalization
 
@@ -161,7 +154,7 @@ production_result {
 
 The platform GitHub App subscribes to deployment-status events and holds Deployments read-only permission. Development registration proves one signed delivery reaches `/v1/ingress/github` before the same setting is applied to production. Fixture coverage is not accepted as evidence that the live App subscription exists.
 
-Slot 834 retains every normalized production result idempotently. Slot 835 retains each correlated verification attempt, its fixed `verify_after`, and its nullable-then-final `verifier_event_id`. The same reconciler reads both repair merges and production results, so result-first, merge-first, replayed delivery, and process restart converge on one attempt and one Fleet event. An exact correlation schedules `repair_production_result` with the matched incident and repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
+Slot 834 retains every normalized production result idempotently. Slot 835 retains each correlated verification attempt, its fixed `verify_after`, and its nullable-then-final `verifier_event_id`. The same reconciler reads both repair merges and production results, so result-first, merge-first, replayed delivery, and process restart converge on one attempt and one Fleet event per matching verifier Fleet. Several matching verifier installations intentionally produce several independent results; normal trigger configuration narrows that set without a crew resolver. An exact correlation schedules `repair_production_result` with the matched incident and repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
 
 ## 9. What exists and what changes
 
@@ -195,6 +188,7 @@ Slot 834 retains every normalized production result idempotently. Slot 835 retai
 - Production verification requires the platform GitHub App's deployment-status subscription and Deployments read-only permission.
 - A production result without a commit hash fails closed.
 - All three Fleets read Grafana and Elasticsearch; those vendors do not become Fleets.
+- Every matching verifier Fleet receives its own attempt; no name, role, or crew resolver chooses one.
 - The verifier has no repository write permission.
 - A human approves write access, reviews the diff, and merges.
 - No repair automatically merges, deploys, reverts, or expands to a second repository.

@@ -15,7 +15,7 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 **Workstream:** 003
 **Date:** Aug 10, 2026
 **Status:** IN_PROGRESS
-**Priority:** P1 — the default GitHub App ingress misses repair linkage, preview runs overwrite each other, and one approval can fund unbounded token mints
+**Priority:** P1 — the default GitHub App ingress misses repair linkage, preview runs overwrite each other, and one approval can fund unbounded write-credential requests
 **Categories:** API, INFRA
 **Batch:** B1 — shared linkage and provenance; B2 — immutable run and merge history; B3 — approval spend ceiling
 **Branch:** `feat/m157-repair-loop`
@@ -30,9 +30,9 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A repair Pull Request (PR) opened through either GitHub route records one provenance-checked incident link; every repair-branch workflow result is retained independently; a merged PR records GitHub's exact merged commit hash; and one approval funds no more token mints than its declared ceiling.
+**Goal (testable):** A repair Pull Request (PR) opened through either GitHub route records one provenance-checked incident link; every repair-branch workflow result is retained independently; a merged PR records GitHub's exact merged commit hash; and one approval funds no more than 32 write-credential requests.
 
-**Problem:** The shared GitHub App ingress drops repair traffic before linkage. Slot 830 then stores only one mutable deploy value, so a later lint run can replace a deploy result and an early run disappears. The branch prefix is trusted without installation, repository, or author proof. Separately, an approved gate can mint on every retry.
+**Problem:** The shared GitHub App ingress drops repair traffic before linkage. Slot 830 then stores only one mutable deploy value, so a later lint run can replace a deploy result and an early run disappears. The branch prefix is trusted without installation, repository, or author proof. Separately, an approved gate can serve unbounded credential requests.
 
 **Solution summary:** Both GitHub routes call one linkage arm before repair traffic is dropped. The daemon gives the repairer a 41-character branch containing one compact reference to the approved write gate. The arm resolves that gate to the exact Fleet-plus-event pair and verifies provenance. Slot 831 stores append-only workflow history, slot 832 records the exact `merge_commit_sha` returned by a merged-PR webhook, and slot 833 makes approval spend atomic and bounded. Preview rows remain evidence; only M157_004 may correlate the merged commit with production.
 
@@ -40,7 +40,7 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** `feat(m157): close repair incidents on correlated production evidence`
 - **Intent:** make repair history trustworthy before any verifier is allowed to act on it.
-- **Orly restatement:** A branch run is preview evidence. This workstream records it without overwriting, proves whose repair PR opened, pins the provider-returned merged commit, and caps approval-funded mints; it does not declare production fixed.
+- **Orly restatement:** A branch run is preview evidence. This workstream records it without overwriting, proves whose repair PR opened, pins the provider-returned merged commit, and caps approval-funded write-credential requests; it does not declare production fixed.
 - **ASSUMPTIONS I'M MAKING:** GitHub remains the repository authority; the human still merges; slot 830 is frozen migration history; the approved write-gate Universally Unique Identifier version 7 (UUIDv7) is the repair correlation source; M157_004 consumes the merged hash but owns production-result routing and the verifier.
 
 ## Implementing agent — read these first
@@ -69,11 +69,16 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/webhooks/repair_link_provenance.zig` | CREATE | Verify installation, base repository, author, and incident owner |
 | `src/agentsfleetd/http/handlers/ingress/github.zig` | EDIT | Invoke shared linkage before ordinary target routing |
 | `src/agentsfleetd/http/handlers/ingress/repair_gate_resolve.zig` | CREATE | Resolve the approved gate reference to its exact Fleet-plus-event pair |
+| `src/agentsfleetd/fleet/approval_gate_park.zig` | EDIT | Stamp the fixed write-request ceiling on repository-write gates |
+| `src/agentsfleetd/fleet_runtime/approval_gate_db.zig` | EDIT | Retain the ceiling the approval card states |
+| `src/agentsfleetd/fleet_runtime/approval_gate_slack.zig` | EDIT | State the 32-request limit on the human approval card |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | Map exhausted spend to a typed refusal before vault or provider access |
 | `src/agentsfleetd/http/handlers/runner/credentials_mint_write_gate.zig` | EDIT | Spend approval atomically and refuse past ceiling |
+| `src/agentsfleetd/http/handlers/runner/sql.zig` | EDIT | Reserve one approved write request under a row lock |
 | `src/agentsfleetd/errors/error_registry.zig` | EDIT | Register provenance and spend-ceiling refusals |
 | `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | Expose both runtime errors |
 | `src/agentsfleetd/http/webhook_http_integration_test.zig` | EDIT | Prove both ingress routes, run history, merge correlation, and provenance |
-| `src/agentsfleetd/http/handlers/runner/credentials_mint_write_gate_integration_test.zig` | EDIT | Prove spend and concurrency behavior |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint_integration_test.zig` | EDIT | Prove reservation, failure, refusal, and concurrency behavior |
 | `src/agentsfleetd/fleet_runtime/crew_bundle_test.zig` | EDIT | Prove the repairer copies the daemon-issued branch and never composes identifiers |
 | `src/agentsfleetd/db/pool_test.zig` | EDIT | Prove runtime privileges for new history rows |
 | `library/incident-repairer/SKILL.md` | EDIT | Replace model-authored incident branches with the supplied repair branch |
@@ -134,14 +139,15 @@ PR-open verifies installation, author, repository, and non-fork base. PR-closed 
 - **Dimension 3.3** — merged PR stores exact provider hash → `test_merged_pr_records_provider_hash`
 - **Dimension 3.4** — closed-unmerged or hashless PR cannot correlate → `test_unmerged_pr_records_no_hash`
 
-### §4 — Approval funds bounded mints
+### §4 — Approval funds bounded write-credential requests
 
-The mint decision increments spend in the same transaction that confirms approval. The card states the ceiling.
+Every GitHub write-credential request reserves one of 32 uses in the same transaction that confirms approval, before vault load or provider access. Cache hits and failures both consume a use because the authorization boundary is the request, not whether GitHub issued fresh bytes. The approval card states the same fixed application constant.
 
-- **Dimension 4.1** — mint increments spend once → `test_mint_spends_approval_once`
-- **Dimension 4.2** — mint past ceiling returns the registered refusal → `test_mint_past_ceiling_refuses`
-- **Dimension 4.3** — at least 100 concurrent mints cannot exceed ceiling → `test_concurrent_mints_hold_ceiling`
-- **Dimension 4.4** — approval card names ceiling → `test_approval_card_states_ceiling`
+- **Dimension 4.1** — request reserves once before secret access → `test_write_request_reserves_before_vault_load`
+- **Dimension 4.2** — failed request retains its reservation → `test_failed_write_request_still_spends`
+- **Dimension 4.3** — request past 32 returns the registered refusal → `test_write_request_past_ceiling_refuses`
+- **Dimension 4.4** — at least 100 concurrent requests cannot exceed 32 → `test_concurrent_write_requests_hold_ceiling`
+- **Dimension 4.5** — approval card names ceiling → `test_approval_card_states_ceiling`
 
 ## Interfaces
 
@@ -168,7 +174,8 @@ core.repair_pr_links additions (slot 832)
 
 core.fleet_approval_gates additions (slot 833)
   spend_count BIGINT NULL, spend_ceiling BIGINT NULL
-  NULL ceiling resolves to an application constant, never a schema literal
+  repository-write gates record spend_ceiling = 32 from an application constant
+  every credential request atomically reserves before vault/provider access
 ```
 
 No public route is added. Slot 830's old deploy columns remain frozen history and lose all production callers.
@@ -184,12 +191,13 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 | Run arrives before PR | retain it by Fleet, repository, and branch |
 | Provider redelivers run or merge | unique/one-time writes absorb replay |
 | PR closes without merge hash | keep link unmerged; never guess current `main` |
-| Concurrent token mints | row lock plus in-transaction spend holds ceiling |
+| Concurrent write-credential requests | row lock plus in-transaction spend holds ceiling |
+| Vault or GitHub fails after reservation | reservation remains spent; retry consumes another use or requires new approval |
 | Database unavailable | fail closed; delivery retry is safe |
 
 ## Metrics & Observability
 
-- Structured counters: link inserted/refused, run inserted/replayed, merge correlated/ignored, mint spent/refused.
+- Structured counters: link inserted/refused, run inserted/replayed, merge correlated/ignored, credential request spent/refused.
 - Logs carry workspace, Fleet, incident, repair-reference prefix, repository, provider identifier, and registered error name; never full repair references, credential values, or webhook bodies.
 - Existing operator analytics are unchanged because no new user surface ships here.
 
@@ -201,7 +209,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 - Preview workflows are immutable evidence, never proof of production recovery.
 - The merged commit hash comes from the merged-PR webhook and changes at most once.
 - Provenance failure writes no linkage or run row.
-- Approval spend cannot exceed its ceiling under concurrent mint attempts.
+- Approval spend cannot exceed 32 under concurrent write-credential requests.
 
 ## Test Specification (tiered)
 
@@ -210,7 +218,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 | 1.1–1.4 | unit + integration | four §1 tests | exact compact grammar; both routes agree; invalid refs fail closed; no wake-up |
 | 2.1–2.4 | integration | four §2 tests | immutable, early, idempotent history; stamp caller absent |
 | 3.1–3.4 | integration | four §3 tests | provenance fails closed; exact merge hash stored once |
-| 4.1–4.4 | integration | four §4 tests | spend visible, card accurate, concurrency ceiling holds |
+| 4.1–4.5 | integration | five §4 tests | pre-secret reservation, failure spend, refusal, card, and concurrency ceiling hold |
 | migration | integration | `test_831_833_apply_to_provisioned_database` | existing slot 830 and gate rows survive |
 | regression | integration | `test_m157_002_write_gate_unchanged` | prior approval refusals keep their meanings |
 
@@ -221,7 +229,7 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 | R1 | compact gate reference links the exact repair through both routes | `make test-integration` | exit 0 | P0 | |
 | R2 | run history is append-only and replay-safe | `make test-integration` | exit 0 | P0 | |
 | R3 | exact merged hash is stored, never inferred | `make test-integration` | exit 0 | P0 | |
-| R4 | 100 concurrent mints hold the ceiling | `make test-integration` | exit 0 | P0 | |
+| R4 | 100 concurrent write-credential requests hold the ceiling | `make test-integration` | exit 0 | P0 | |
 | R5 | prior write-gate behavior remains | `make test-integration` | exit 0 | P0 | |
 | S1 | repository unit suite | `make test-unit-all` | exit 0 | P0 | |
 | S2 | conformance | `make harness-verify` | exit 0 | P0 | |
@@ -272,5 +280,6 @@ No public route is added. Slot 830's old deploy columns remain frozen history an
 - **Architecture call:** preview evidence cannot close the incident. Only repository plus exact provider-returned merged commit can correlate production.
 - **Repair identity call:** Indy rejected raw Fleet-plus-event UUIDv7 branch components on Aug 10, 2026; the branch carries one 22-character daemon-issued approved-gate reference instead.
 - **Crew call:** responder, repairer, and verifier remain independently installed Fleets; Grafana and Elasticsearch are shared read-only evidence sources.
+- **Spend call:** each write-credential request reserves one of 32 uses before vault or GitHub access; failures consume their reservation so crashes cannot mint outside the declared ceiling.
 - **Review:** separate Orly Chief Technology Officer adversarial review runs after this split and the architecture/public-doc update.
 - **Inherited deferral acknowledgement:** Indy directed the PR #591 items into M157_003 on Aug 10, 2026; M157_004 is a scope split, not a deferral from the milestone PR.
