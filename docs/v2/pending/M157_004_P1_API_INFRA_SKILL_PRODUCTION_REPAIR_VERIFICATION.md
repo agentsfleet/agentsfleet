@@ -69,7 +69,6 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 3. `src/agentsfleetd/http/handlers/ingress/github.zig` — signed shared-ingress routing and fan-out.
 4. `.github/workflows/smoke-post-deploy.yml` — existing Vercel-through-GitHub deployment-status caller.
 5. `src/agentsfleetd/state/fleet_event_detail_store.zig` — standard operator detail row and response surface.
-6. `library/incident-responder/` and `library/incident-repairer/` — credential, network, and repository-binding precedent.
 
 ## Files Changed (blast radius)
 
@@ -91,6 +90,9 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 | `src/agentsfleetd/http/handlers/ingress/github_integration_test.zig` | EDIT | Preserve GitHub ingress and prove production correlation |
 | `src/agentsfleetd/http/handlers/fleets/event_detail_integration_test.zig` | EDIT | Prove operator repair arc and isolation |
 | `src/agentsfleetd/http/handlers/library/onboard_integration_test.zig` | EDIT | Prove verifier catalogue onboarding |
+| `playbooks/operations/github_app_registration/001_playbook.md` | EDIT | Add deployment-status subscription, Deployments read permission, and live proof |
+| `docs/AUTH.md` | EDIT | Document deployment-status intake before synthetic verifier routing |
+| `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Keep shared GitHub App registration requirements complete |
 | `ui/packages/app/lib/api/events.ts` | EDIT | Type linked repair verification detail |
 | `ui/packages/app/components/domain/EventDetailsDialog.tsx` | EDIT | Render PR, merged hash, production result, and verifier response |
 | `ui/packages/app/tests/event-details-dialog.test.tsx` | EDIT | Prove labels, links, empty states, and isolation |
@@ -135,6 +137,7 @@ GitHub deployment-status events normalize to provider, deployment identifier, re
 - **Dimension 1.1** — terminal GitHub production status normalizes → `test_github_production_status_normalizes`
 - **Dimension 1.2** — Vercel-through-GitHub status uses the same normalized shape → `test_vercel_github_status_normalizes`
 - **Dimension 1.3** — non-terminal or non-production status queues no verifier → `test_unready_deployment_status_is_ignored`
+- **Dimension 1.4** — App registration declares event, permission, and development live proof → `test_github_app_registration_carries_deployment_status`
 
 ### §2 — Correlate exact merged bytes
 
@@ -205,6 +208,7 @@ The verifier event request carries this same repair and production context. `res
 | Mode | Handling |
 |---|---|
 | Signature missing or invalid | reject before body parsing or routing |
+| App lacks deployment subscription or permission | development live proof fails; production setup does not proceed |
 | Environment is not production | record named ignore metric; queue nothing |
 | Repository or commit missing | fail closed; queue nothing |
 | Commit does not match merged repair | queue ordinary subscribers only; never verifier closure |
@@ -225,6 +229,7 @@ The verifier event request carries this same repair and production context. `res
 
 - Only an exact workspace, repository, production environment, and merged commit match can wake verification.
 - Raw `deployment_status` never wakes the verifier; correlation must emit `repair_production_result` first.
+- The registration playbook requires deployment-status events, Deployments read-only permission, and a signed development delivery proof.
 - Provider data missing commit identity fails closed.
 - Trigger wiring selects verifier Fleets; no Fleet name or crew row is an identity boundary.
 - The verifier receives repair context in its event and never reads internal database tables.
@@ -235,7 +240,7 @@ The verifier event request carries this same repair and production context. `res
 
 | Dimension | Tier | Test | Concrete assertion |
 |---|---|---|---|
-| 1.1–1.3 | unit + integration | three §1 tests | GitHub shape; Vercel-through-GitHub parity; unready results ignored |
+| 1.1–1.4 | unit + integration | four §1 tests | GitHub shape; Vercel-through-GitHub parity; unready results ignored; registration complete |
 | 2.1–2.5 | unit + integration | five §2 tests | one fixture produces one synthetic event; mismatch, replay, and cross-workspace cases stay deterministic |
 | 3.1–3.4 | unit + integration | four §3 tests | synthetic trigger only, normal onboarding, read-only token, exact-hash prompt |
 | 4.1–4.4 | integration + user interface | four §4 tests | additive detail and honest pending/complete rendering |
@@ -275,8 +280,7 @@ The verifier event request carries this same repair and production context. `res
 - A stored crew entity, coordinator Fleet, or Grafana/Elasticsearch vendor Fleet.
 - Repair across multiple repositories for one incident.
 - Declaring source-code correctness from model opinion; the verdict is production symptom state.
-- Provider payloads that cannot prove exact repository, environment, and commit identity.
-- Direct Vercel webhook ingestion or Vercel signature handling.
+- Provider payloads that cannot prove exact repository, environment, and commit identity; direct Vercel webhook ingestion or signature handling.
 
 ---
 
@@ -309,7 +313,7 @@ The verifier event request carries this same repair and production context. `res
 - **Crew decision:** one logical incident crew is three independent Fleets in event order: responder, repairer, verifier.
 - **Evidence decision:** Grafana and Elasticsearch are read-only evidence sources for all three Fleets, not separate members.
 - **Correlation decision:** only exact provider-returned merged commit plus production environment can wake verification; preview and current-default-branch inference are excluded.
-- **Provider decision:** Indy chose the verifier spine on Aug 10, 2026: GitHub deployment status, including Vercel-through-GitHub, with no direct Vercel ingress.
+- **Provider decision:** Indy chose GitHub deployment status, including Vercel-through-GitHub, with no direct Vercel ingress; 3A adds the App subscription, Deployments read-only permission, and live proof.
 - **Verifier-routing decision:** `> Indy (Aug 10, 2026: 08:42 PM): "2A i want a simpler approach to get this tested"` — exact correlation emits `repair_production_result`; raw deployment status never selects the verifier.
 - **Review:** separate Orly Chief Technology Officer adversarial review runs after architecture, both specs, and public docs are updated.
 - **User direction:** Indy approved the M157_003/M157_004 split on Aug 10, 2026 while keeping one branch and milestone PR.
