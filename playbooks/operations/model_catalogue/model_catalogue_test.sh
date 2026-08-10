@@ -285,6 +285,8 @@ import sys
 
 REQUIRED = ("model_id", "context_cap_tokens", "input", "cached_input", "output")
 OPTIONAL = ("note", "tier")
+MANUAL_SOURCE = "manual"
+API_SOURCE = "api"
 
 try:
     with open(sys.argv[1], encoding="utf-8") as handle:
@@ -301,9 +303,19 @@ def is_number(value):
 checked = 0
 for provider, config in document.get("providers", {}).items():
     seen = set()
+    source = config.get("source")
+    if source not in (MANUAL_SOURCE, API_SOURCE):
+        print(f"{provider}: source must be {MANUAL_SOURCE!r} or {API_SOURCE!r}, got {source!r}")
+
     for model in config.get("models", []):
-        # api-sourced providers list ids only; their rates arrive from the API.
+        # Row shape is bound to the declared source rather than inferred from
+        # the JSON type. An api provider lists bare ids and fetches rates live;
+        # a manual provider carries them inline. A row in the other shape would
+        # satisfy a type-only check and then leave the seeder reading rate
+        # fields that are not there, or skipping a lookup it needed to make.
         if isinstance(model, str):
+            if source != API_SOURCE:
+                print(f"{provider}/{model}: bare model id under source {source!r} — only {API_SOURCE} lists ids")
             if model in seen:
                 print(f"{provider}: duplicate model id {model}")
             seen.add(model)
@@ -312,6 +324,8 @@ for provider, config in document.get("providers", {}).items():
         checked += 1
         identifier = model.get("model_id")
         label = f"{provider}/{identifier}"
+        if source != MANUAL_SOURCE:
+            print(f"{label}: inline rate row under source {source!r} — only {MANUAL_SOURCE} carries rates")
 
         for key in REQUIRED:
             if key not in model:
