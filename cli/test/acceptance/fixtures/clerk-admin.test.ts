@@ -26,6 +26,11 @@ const COOKIE_JWT = "cookie.jwt.value";
 const SIGN_IN_TICKET = "fixture-sign-in-ticket";
 const REDACTED_VALUE = "[REDACTED]";
 const MIN_EPHEMERAL_PASSWORD_LENGTH = 64;
+// Clerk hashes with bcrypt, whose input ceiling is 72 bytes. The floor above
+// had no matching ceiling, so a 73-byte credential satisfied every assertion
+// here and still failed every live create with
+// form_password_size_in_bytes_exceeded.
+const MAX_CLERK_PASSWORD_BYTES = 72;
 const HTTP_OK = 200;
 const HTTP_UNAUTHORIZED = 401;
 const HTTP_FORBIDDEN = 403;
@@ -107,6 +112,10 @@ describe("CLI fixture Clerk identity ownership", () => {
     expect(body.email_address).toEqual([FIXTURE_EMAIL]);
     expect(typeof body.password).toBe("string");
     expect((body.password as string).length).toBeGreaterThanOrEqual(MIN_EPHEMERAL_PASSWORD_LENGTH);
+    // Bytes, not characters: Clerk measures the encoded credential, and the
+    // ceiling is what the live lane actually enforces.
+    expect(new TextEncoder().encode(body.password as string).length)
+      .toBeLessThanOrEqual(MAX_CLERK_PASSWORD_BYTES);
     expect(body.public_metadata).toEqual({
       [IS_TEST_FIXTURE_METADATA_KEY]: true,
       owner: FIXTURE_OWNER,
