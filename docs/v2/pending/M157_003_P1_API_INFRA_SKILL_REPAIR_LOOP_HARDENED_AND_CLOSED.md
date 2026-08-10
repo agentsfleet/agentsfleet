@@ -101,9 +101,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Linkage on the route installations actually use
 
-The linkage arm is reachable only from the per-fleet webhook handler, which receives its fleet from the Uniform Resource Locator (URL) path. Standard GitHub App installations deliver to the shared ingress route, where the workspace comes from the installation id and fleets are matched by grant — a match a repair Pull Request need not satisfy. So the linkage row, and therefore the deploy-result column, is absent exactly where most installations live. This slice gives ingress the same arm. The normaliser's existing drop stays: recording happens first, waking still never does.
-
-**Implementation default:** resolution reads the incident event id out of the branch and looks up the fleet owning that event, because grant matching answers a different question and would silently link the wrong fleet.
+The linkage arm is reachable only from the per-fleet webhook handler, which receives its fleet from the Uniform Resource Locator (URL) path. Standard GitHub App installations deliver to the shared ingress route, where the workspace comes from the installation id and fleets are matched by grant — a match a repair Pull Request need not satisfy. So the linkage row, and therefore the deploy-result column, is absent exactly where most installations live. This slice gives ingress the same arm. The normaliser's existing drop stays: recording happens first, waking still never does. **Implementation default:** resolution reads the incident event id out of the branch and looks up the fleet owning it, because grant matching answers a different question and would silently link the wrong fleet.
 
 - **Dimension 1.1** — a repair Pull Request opening on the ingress route records a linkage row → Test `test_ingress_repair_pr_records_linkage`
 - **Dimension 1.2** — the fleet is resolved from the incident id, never from grant matching → Test `test_ingress_resolves_owning_fleet_not_grant_match`
@@ -112,9 +110,7 @@ The linkage arm is reachable only from the per-fleet webhook handler, which rece
 
 ### §2 — Every run keeps its own result
 
-`core.repair_pr_links` carries one mutable outcome pair, so the value an operator reads is whichever workflow finished last — a lint run overwrites a deploy run with no way to tell. A run completing before the Pull Request opens finds no row and is dropped entirely. This slice replaces the pair with append-only run rows carrying workflow identity and run id, so results accumulate, arrive in any order, and a replay changes nothing.
-
-**Implementation default:** rows are keyed by run id and carry workflow identity; the operator-facing answer is the latest row for the deploy workflow, computed on read rather than stored, because a stored summary is the mutable column this slice exists to remove.
+`core.repair_pr_links` carries one mutable outcome pair, so the value an operator reads is whichever workflow finished last — a lint run overwrites a deploy run with no way to tell. A run completing before the Pull Request opens finds no row and is dropped entirely. This slice replaces the pair with append-only run rows carrying workflow identity and run id, so results accumulate, arrive in any order, and a replay changes nothing. **Implementation default:** the operator-facing answer is the latest deploy-workflow row, computed on read rather than stored, because a stored summary is the mutable column this slice exists to remove.
 
 - **Dimension 2.1** — each completed run on a repair branch inserts its own row → Test `test_each_run_appends_its_own_result`
 - **Dimension 2.2** — a run completing before the Pull Request opens is retained and links when the row arrives → Test `test_early_run_is_retained_not_dropped`
@@ -133,9 +129,7 @@ The arm trusts the branch prefix alone: anything named `agentsfleet-repair/<id>`
 
 ### §4 — One answer funds a bounded number of mints
 
-An approved gate is read fresh on every mint and always answers the same way, so every retry of an approved event mints another write token. Each token is short-lived, single-repository, and cannot name `workflows`, so the blast radius is bounded — but "one click, unbounded mints" is not what the card tells the person clicking it. This slice counts spends against the gate row and refuses past a declared ceiling.
-
-**Implementation default:** the counter increments in the same transaction as the mint decision, because a count written afterwards can be lost by the failure that makes counting matter.
+An approved gate is read fresh on every mint and always answers the same way, so every retry of an approved event mints another write token. Each token is short-lived, single-repository, and cannot name `workflows`, so the blast radius is bounded — but "one click, unbounded mints" is not what the card tells the person clicking it. This slice counts spends against the gate row and refuses past a declared ceiling. **Implementation default:** the counter increments in the mint decision's own transaction, because a count written afterwards is lost by the very failure that makes counting matter.
 
 - **Dimension 4.1** — a mint increments the gate row's spend count → Test `test_mint_increments_spend_count`
 - **Dimension 4.2** — a mint past the ceiling is refused with `UZ-REPAIR-013` → Test `test_mint_past_ceiling_refuses`
@@ -169,12 +163,19 @@ Every claim about the write path rests on fixtures and a mocked GitHub. Nothing 
 
 ```
 core.repair_run_results (schema 831)
-  id, repair_link_id → core.repair_pr_links(id), workflow_name, workflow_run_id,
+  id, fleet_id, repository, branch, workflow_name, workflow_run_id,
   conclusion, completed_at, created_at
-  UNIQUE (repair_link_id, workflow_run_id)   -- replay lands nothing
-  content columns immutable; DELETE refused except under the purge switch 830 honours
-core.fleet_approval_gates (schema 832 adds)
-  spend_count BIGINT NOT NULL DEFAULT 0, spend_ceiling BIGINT NOT NULL
+  UNIQUE (fleet_id, repository, workflow_run_id)   -- replay lands nothing
+  Keyed on the branch, NOT by foreign key to a linkage row — a run can complete
+  before the Pull Request opens, and a foreign key would refuse the early run
+  2.2 requires. The linkage join is on (fleet_id, repository, branch) at read
+  time, so whichever lands first is retained.
+  Content columns immutable; DELETE refused except under 830's purge switch.
+core.fleet_approval_gates (schema 832 adds — both NULLABLE, mirroring 811)
+  spend_count BIGINT, spend_ceiling BIGINT
+  Nullable via ADD COLUMN IF NOT EXISTS so the migration applies to an
+  already-provisioned database, exactly as 811 does. NULL ceiling means the
+  platform default, resolved in the app by named constant, never a DDL default.
 Refusals (existing shape; typed, never silent)
   403 UZ-REPAIR-013  approval spend ceiling reached
   403 UZ-REPAIR-014  repair Pull Request provenance rejected
@@ -194,6 +195,7 @@ for repair-branch deliveries, called before the normaliser's existing drop.
 | Ceiling reached | Retries of an approved event exhaust the ceiling | Mint refused; `UZ-REPAIR-013`; run continues read-only |
 | Concurrent mints | Two leases mint against one gate at once | Counted in-transaction; the ceiling holds |
 | Database unavailable | Pool acquire fails on the linkage path | Delivery fails closed; nothing partially recorded |
+| Provisioned-database migration | 832 applied where gate rows already exist | Nullable idempotent columns; existing rows keep NULL and read as the platform default |
 | Unsigned Vercel delivery | Missing or wrong signature | Refused before parsing; no incident raised |
 | Live acceptance leftovers | Acceptance run aborts mid-arc | Cleanup is idempotent and reruns clean |
 
@@ -245,6 +247,7 @@ No product analytics event changes — these are operator signals on an existing
 | 6.3 | integration | `test_vercel_unsigned_delivery_refused` | An unsigned delivery is refused before parsing |
 | 7.1 | e2e | `test_live_repair_arc_opens_one_draft_pr` | Against a live disposable repository, the arc ends in exactly one draft Pull Request |
 | 7.2 | e2e | `test_live_acceptance_cleans_up` | After the run, no repair branch, Pull Request, or row remains |
+| 4.2 | integration | `test_832_applies_to_provisioned_database` | Applying 832 to a database holding gate rows succeeds and leaves them readable |
 | regression | integration | `test_m157_002_write_gate_unchanged` | `UZ-REPAIR-010/011/012` behaviour is byte-identical to M157_002 |
 
 ## Acceptance Rubric (single scoring surface)
@@ -278,9 +281,7 @@ No product analytics event changes — these are operator signals on an existing
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `stampDeploy` | `grep -rn -w "stampDeploy" src/ \| grep -v _test` | 0 matches |
-| `DEPLOY_STATUS_OK` | `grep -rn -w "DEPLOY_STATUS_OK" src/ \| grep -v _test` | 0 matches |
-| `deploy_stamped_at` | `grep -rn -w "deploy_stamped_at" src/ schema/ \| grep -v 830_` | 0 matches |
+| The retired stamp path — `stampDeploy`, `DEPLOY_STATUS_OK`, `deploy_stamped_at` | `grep -rnE -w "stampDeploy\|DEPLOY_STATUS_OK\|deploy_stamped_at" src/ schema/ \| grep -vE "_test\|830_"` | 0 matches |
 
 ## Out of Scope
 
