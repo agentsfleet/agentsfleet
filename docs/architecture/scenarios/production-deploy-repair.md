@@ -2,102 +2,175 @@
 
 > Parent: [`README.md`](./README.md) · References: [`../user_flow.md`](../user_flow.md) §8.5, [`../capabilities.md`](../capabilities.md), and [`../connectors.md`](../connectors.md).
 
-**Outcome:** a failed production deployment becomes a diagnosis or a bounded draft Pull Request (PR). A human approves the write before any run starts, and a human reviews the actual diff before it ships.
+**Outcome:** a failed production deployment becomes a diagnosis or one bounded draft Pull Request (PR). A human approves repository write access, reviews the exact diff, and merges. Only a terminal production result for the exact merged commit can wake post-deploy verification.
 
-**Proof boundary:** diagnosis, the write approval gate, the fenced write mint, the repairer bundle, and the incident → PR → deploy-result linkage are implemented and tested. Vercel intake and an end-to-end acceptance run against a live repository are not yet proven together. Repository checkout is not on the path at all — the write is five API calls (§4).
+**Crew shape:** three independently installed Fleets cooperate through events and durable repair linkage. There is no crew row, coordinator Fleet, or vendor-specific Grafana/Elasticsearch Fleet. Grafana and Elasticsearch are evidence sources read by all three members.
 
-Legend: ✅ implemented and tested · 🟡 present but not proven for this flow · 🔨 not built.
+**Proof boundary:** the first two Fleets, approval boundary, draft-PR writer, and initial incident-to-PR linkage ship in M157_002. M157_003 hardens linkage, provenance, append-only run history, merge correlation, and approval spend. M157_004 adds the read-only verifier, provider production-result intake, operator result surface, and live-repository proof.
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant Provider as GitHub Actions or Vercel
-  participant API as agentsfleetd
-  participant Human as Human reviewer
-  participant Fleet as Repair fleet
-  participant GitHub as GitHub repository
+Legend: ✅ implemented and tested · 🟡 being hardened · 🔨 specified, not built.
 
-  Provider->>API: report a production failure
-  API->>Human: park the event behind the repository-write card
-  Human-->>API: approve the write
-  API->>Fleet: release the run, with a fenced write token on demand
-  Fleet->>Provider: read deployment evidence
-  Fleet->>GitHub: read history and file contents at a verified head
-  alt bounded code or configuration fix
-    Fleet->>GitHub: push one branch, open one draft PR
-    API->>API: link incident to PR (webhook arm)
-    Human->>GitHub: review the diff and merge
-    GitHub->>Provider: run the existing deployment pipeline
-    Provider->>API: completed run on the repair branch stamps the linkage
-  else provider failure, secret failure, or unclear cause
-    Fleet->>Human: send diagnosis only
-  end
+```text
+          Grafana + Elasticsearch (read-only evidence)
+                    ^              ^              ^
+                    |              |              |
+       +------------+--+    +------+---------+    +--------+---------+
+       | Fleet 1       |    | Fleet 2        |    | Fleet 3          |
+       | responder     |--->| repairer       |--->| verifier         |
+       | every 15 min  |    | failure/manual |    | production only  |
+       | diagnose      |    | draft PR       |    | cleared?         |
+       +---------------+    +------+---------+    +---------+--------+
+                                   |                        ^
+                                   v                        |
+                            human approve/review            |
+                                   |                        |
+                                   v                        |
+                             merge exact bytes              |
+                                   |                        |
+                                   v                        |
+                   repository + merged commit hash ---------+
 ```
+
+The arrows show event order, not ownership. Each Fleet is installed, paused, updated, budgeted, and deleted independently.
 
 ## 1. Start one incident
 
-GitHub wakes the repair fleet with a failed `workflow_run` event over the signed per-fleet webhook; a human can also steer an incident to it directly. GitHub retries use the existing replay guard — repeated delivery does not create another fleet event for the same body and fleet.
+The responder wakes every fifteen minutes and reads Grafana plus Elasticsearch for new production symptoms. A quiet sweep ends silently. A code-shaped incident produces a diagnosis and a repair intent.
 
-The responder keeps the scheduled sweeps, and the repairer takes the concrete incidents: the two members' triggers are disjoint by construction, so which one handles an event is wiring, never judgment.
+The repairer wakes on a concrete failed GitHub workflow, a failed Vercel production deployment, or a human steer. It rereads Grafana and Elasticsearch rather than trusting the responder's prose. Its wake parks behind repository-write approval before any run starts.
 
-A Vercel Log Drain is a target input. `agentsfleet` does not yet ship the Vercel intake needed by this scenario.
+Trigger wiring determines which Fleet runs. No model chooses a crew member, and no stored crew relationship is required.
 
-## 2. The human answers before the run starts
+## 2. Approve before repository write access exists
 
-A fleet whose repository binding declares WRITE access parks **every** first-encounter event at the approval gate — before gate rules are consulted, and even when no gates are configured. Gate rules cannot hold this boundary: they ride the fleet's own config, editable under the same scope that wakes the fleet, and their no-match fallthrough is auto-approve. The kind check lives in the daemon instead.
+A Fleet whose repository binding declares write access parks every first-encounter event before gate rules are evaluated. The approval card states the repository, permissions, and mint ceiling. Approval releases the run, but each token mint atomically spends one unit from that ceiling.
 
-The card states the daemon's own facts first: the repository the token will reach, the access level, and the blast radius — at most one branch and one draft PR. The gate resolves between runs; approval releases the lease, and the park records the stated binding durably on the gate row.
+The token is repository-scoped, expires in one hour, carries contents and Pull Request write permissions, and never carries workflow-file permission. The daemon verifies the token returned by GitHub before exposing it to the run.
 
-## 3. Gather evidence, decide whether to change code
+## 3. Diagnose and open one draft PR
 
-The released run reads the failed workflow, recent code changes, provider telemetry, and — this is what makes a fix authorable — the current file contents at a branch head it verified this run. The hosted run uses workspace secrets and the credential firewall; a missing grant or secret stops the affected tool call.
+The repairer reads the failed deployment, recent code changes, and current files at a head verified during that run. Provider, secret, or ambiguous failures end diagnosis-only.
 
-The fleet sends a diagnosis without code changes when the cause is unclear, and always for provider outages and data-shaped incidents. The repair is a **forward fix**: the fleet authors the next change against the head it verified — corrected code, or new files. It never proposes rewinding history.
+For a bounded forward fix, the repairer writes blobs, a tree, a commit, a branch named `agentsfleet-repair/<incident event id>`, and one draft PR through GitHub APIs. It never checks out a repository, merges, deploys, or rewinds history.
 
-## 4. The fleet ships the draft PR
+When the PR-opened webhook returns, the daemon:
 
-The write is five API calls over the same `http_request` tool that does the reading — blobs, tree, commit, ref, then the draft PR. No checkout, no git tooling, no shell.
+1. extracts the incident event identifier from the branch;
+2. resolves the owning repair Fleet from that event, not from grant matching;
+3. verifies repository, installation, base repository, and author provenance;
+4. records the incident-to-PR link; and
+5. drops the repair branch from normal incident routing.
 
-What bounds it is the credential, not the prose:
+The shared GitHub App ingress and the signed per-Fleet webhook call the same linkage arm.
 
-- The write-scoped token mints only against an **approved repository-write gate for this lease's event** whose recorded binding still matches the fleet's current one — a config edit between the human's answer and the mint refuses as drift (`UZ-REPAIR-011`).
-- The token carries `contents: write` + `pull_requests: write` for exactly the bound repository, expires in an hour, and never carries a `workflows` permission — GitHub itself refuses a push into `.github/workflows/`.
-- The mint verifies the token GitHub returned: its stated repositories AND its stated permissions must match what was requested; unknown reach refuses.
+## 4. Keep preview evidence without calling it production
 
-The branch name derives from the incident event id (`agentsfleet-repair/<event id>`), so a replayed run finds the ref taken and reports a duplicate rather than pushing twice. The webhook arm links the opened PR back to its incident in the same table an operator reads — and repair-branch traffic never re-enters the event stream, so the crew cannot be woken by its own output.
+Every completed workflow on the repair branch becomes an immutable run-history row with repository, branch, workflow identity, provider run identifier, head commit hash, conclusion, and completion time. Redelivery is idempotent by provider run identifier.
 
-The human's byte-level approval happens where bytes are best reviewed: on the PR diff itself, with the repository's own continuous integration reporting beside it. The daemon never merges. The daemon never deploys production.
+These rows answer what happened before merge: lint, tests, preview deploys, and any other branch workflow. They never close the incident. A green preview proves only that preview automation accepted the repair branch.
 
-## 5. Verify the deployment
+```text
+repair branch workflow result
+          |
+          v
+  append immutable history
+          |
+          +---- visible evidence
+          |
+          `---- NEVER a closure trigger
+```
 
-A human reviews and merges the PR. The repository's existing deployment pipeline handles the merge.
+## 5. Pin the merge before observing production
 
-A completed workflow run on the repair branch stamps the linkage row (`pending` → `deploy_ok` / `deploy_failed`), so "did the fix work" is a column, not a model run. A richer post-deploy verification member is deliberately deferred: the linkage carries the signal until the crew regrows.
+The human reviews the PR diff and merges through GitHub. A merged PR webhook records GitHub's exact `merge_commit_sha` on the repair link. Merge, squash, and rebase strategies are all represented by that provider-returned value; the daemon never guesses it from the current default branch.
 
-If the deployment still fails, the record says so. Undoing anything is a fresh forward fix through the same approval gate.
+If the webhook says closed-but-not-merged, or omits the merged commit hash, the link remains unmerged and cannot correlate a production result.
 
-## 6. What exists today
+```text
+PR opened       PR merged                     production result
+   |                 |                              |
+   v                 v                              v
+incident link   merged_commit_sha      repository + commit_sha + environment
+                         \                         /
+                          +---- exact equality ----+
+                                    |
+                                    v
+                           verifier event allowed
+```
 
-| Part | Status | Evidence |
+## 6. Wake the verifier only for the exact production result
+
+The verifier is a third, read-only Fleet. Its GitHub and Vercel triggers subscribe to terminal deployment results for the bound repository. Normal routing selects the installed Fleet; no crew lookup is introduced.
+
+Before queueing an event, the daemon requires all of the following:
+
+- the provider marks the deployment terminal;
+- the environment is production;
+- repository identity is exact;
+- the provider supplies the deployed commit hash; and
+- that hash equals a stored `merge_commit_sha` in the same workspace.
+
+A missing or mismatched hash records an ignore reason and wakes nothing. A preview result remains history even if it is green. A default-branch result for a later commit does not verify an earlier repair.
+
+The queued verifier event is enriched with the incident event identifier, repair PR, merged commit hash, provider deployment identifier, production completion time, and evidence window. The Fleet receives this context; it does not read internal database tables.
+
+## 7. Judge production telemetry read-only
+
+The verifier reads Grafana and Elasticsearch after the production completion time, compares the same incident signals with the pre-deploy baseline, and reports one of:
+
+- `cleared` — the original symptom is absent through the configured observation window;
+- `not_cleared` — the original symptom remains or regressed; or
+- `inconclusive` — evidence is missing, contradictory, or the window is incomplete.
+
+Its repository binding is read-only and pinned to the exact merged commit carried by the event. It must never inspect whatever commit happens to be current when the Fleet runs.
+
+The standard Fleet event stores the verifier's response. A repair-verification link joins that event back to the incident and PR for the operator surface. Human review and merge remain mandatory; verification never auto-merges or auto-reverts.
+
+## 8. Provider normalization
+
+GitHub production results enter as terminal deployment-status events. Vercel production results enter through the signed Vercel ingress. Both normalize to the same internal shape:
+
+```text
+production_result {
+  provider, provider_deployment_id,
+  workspace_id, repository,
+  environment, commit_sha,
+  conclusion, completed_at
+}
+```
+
+Provider vocabulary is translated only at ingress. Downstream correlation and verifier prompting are provider-neutral. Unsigned Vercel deliveries fail before parsing. A payload without exact repository, environment, or commit identity fails closed.
+
+## 9. What exists and what changes
+
+| Part | Status | Evidence or owning workstream |
 |---|---|---|
-| GitHub App failure routing | ✅ | Signed GitHub events route by installation, repository, event, and approved grant. |
-| GitHub replay protection | ✅ | A repeated signed body does not create another event for the same fleet. |
-| Write-kind approval park | ✅ | A write-access fleet parks with no gates config and past the rule fallthrough; approval releases the owned lease. |
-| Fenced write mint | ✅ | Refuses without the approved gate row, on binding drift, and on a token whose stated permissions exceed the request. |
-| Repairer bundle | ✅ | Read-verify-author-push discipline, driven through the real mint by the crew tests; two-member crew onboards through the shipped library endpoint. |
-| Incident → PR → deploy linkage | ✅ | The webhook arms insert and stamp the slot-830 row; repair-branch traffic never wakes the fleet. |
-| HTTP evidence reads | ✅ | The runner exposes policy-bound HTTP requests with secret substitution and host controls. |
-| Slack diagnosis and activity history | ✅ | The existing platform-operations flow records a result and can post the diagnosis. |
-| File and Git tools | 🟡 | The runner registers these tools. This repair path does not use them — the write is five API calls (§4). |
-| Vercel Log Drain intake | 🔨 | No Vercel error intake is wired to a fleet. |
-| Live-repository acceptance run | 🔨 | No test drives a real GitHub repository end to end; the wire-level path is integration-proven. |
-| Post-deploy verification member | 🔨 | Deferred; the linkage row carries the deploy signal until the crew regrows. |
-| Email notification | Excluded | Slack and the activity stream are the available notification surfaces. |
+| Incident responder Fleet | ✅ | `library/incident-responder/`; scheduled Grafana and Elasticsearch diagnosis. |
+| Incident repairer Fleet | ✅ | `library/incident-repairer/`; approval-gated draft PR. |
+| Write-kind approval park and fenced mint | ✅ | M157_002 integration coverage. |
+| Incident-to-PR linkage | 🟡 | Slot 830 exists; M157_003 moves it onto shared ingress and adds provenance. |
+| Append-only workflow history | 🔨 | M157_003, slot 831. |
+| Exact merged-commit correlation | 🔨 | M157_003, slot 832. |
+| Bounded approval mint spends | 🔨 | M157_003, slot 833. |
+| Incident verifier Fleet | 🔨 | M157_004; independently installed and read-only. |
+| GitHub and Vercel production-result normalization | 🔨 | M157_004. |
+| Incident → verifier-result operator surface | 🔨 | M157_004. |
+| Live-repository acceptance arc | 🔨 | M157_004. |
 
-## 7. Test fixture boundary
+## 10. Invariants
 
-`tests/fixtures/fleetbundle/platform-ops` is test input. Acceptance tests use the fixture for library upload, install, update, lifecycle, and deletion.
+- One incident can record at most one repair PR per repair Fleet.
+- Repair-branch traffic never becomes a fresh incident.
+- Preview evidence is append-only and never closes the loop.
+- Only exact workspace + repository + merged commit hash correlation can wake verification.
+- A production result without a commit hash fails closed.
+- All three Fleets read Grafana and Elasticsearch; those vendors do not become Fleets.
+- The verifier has no repository write permission.
+- A human approves write access, reviews the diff, and merges.
+- No repair automatically merges, deploys, reverts, or expands to a second repository.
 
-The API, dashboard, and Command Line Interface (CLI) do not load that directory in production. Platform libraries come from stored library entries and bundle snapshots.
+## 11. Test fixture boundary
 
-The shipped crew lives in `library/` — `incident-responder` (reads, diagnoses) and `incident-repairer` (reads, ships the draft PR) — and installs through the same library endpoints as any bundle, one upload per member.
+`tests/fixtures/fleetbundle/platform-ops` remains test input. The API, dashboard, and Command Line Interface (CLI) do not load that directory in production.
+
+The shipped members live in `library/` and install through the normal library endpoints: `incident-responder`, `incident-repairer`, then `incident-verifier`. Installation order does not create an ownership edge; event order supplies the workflow.
