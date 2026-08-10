@@ -130,7 +130,13 @@ async function findUserByEmail(clerkSecret: string, email: string): Promise<Cler
 }
 
 async function createUser(clerkSecret: string, opts: ProvisionUserOptions): Promise<ClerkUser> {
-  const password = `${globalThis.crypto.randomUUID()}-${globalThis.crypto.randomUUID()}`;
+  // Clerk hashes with bcrypt and rejects anything over 72 bytes
+  // (form_password_size_in_bytes_exceeded), which no skip_password_checks flag
+  // relaxes — it is a size ceiling, not a strength policy. Two hyphenated
+  // UUIDs joined by a separator is 73 bytes, one over, so every create failed
+  // deterministically. Dropping the UUID hyphens gives 64 bytes and 244 bits
+  // of entropy: inside the ceiling, still at the fixture's length floor.
+  const password = `${globalThis.crypto.randomUUID()}${globalThis.crypto.randomUUID()}`.replaceAll("-", "");
   const result = await clerkRequest(clerkSecret, "POST", "/users", {
     email_address: [opts.email],
     password,
