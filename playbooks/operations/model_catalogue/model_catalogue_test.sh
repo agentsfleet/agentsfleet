@@ -304,13 +304,30 @@ def is_number(value):
 
 
 checked = 0
-for provider, config in document.get("providers", {}).items():
+providers = document.get("providers")
+if not isinstance(providers, dict):
+    print(f"providers must be an object, got {type(providers).__name__}")
+    providers = {}
+
+for provider, config in providers.items():
     seen = set()
+    if not isinstance(config, dict):
+        print(f"{provider}: provider entry must be an object, got {type(config).__name__}")
+        continue
+
     source = config.get("source")
     if source not in (MANUAL_SOURCE, API_SOURCE):
         print(f"{provider}: source must be {MANUAL_SOURCE!r} or {API_SOURCE!r}, got {source!r}")
 
-    for model in config.get("models", []):
+    # Every container is type-checked before it is walked. A string or object
+    # here iterates characters or keys, each of which is a str and would sail
+    # through the bare-id branch below as though it were a model name.
+    models = config.get("models")
+    if not isinstance(models, list):
+        print(f"{provider}: models must be an array, got {type(models).__name__}")
+        continue
+
+    for model in models:
         # Row shape is bound to the declared source rather than inferred from
         # the JSON type. An api provider lists bare ids and fetches rates live;
         # a manual provider carries them inline. A row in the other shape would
