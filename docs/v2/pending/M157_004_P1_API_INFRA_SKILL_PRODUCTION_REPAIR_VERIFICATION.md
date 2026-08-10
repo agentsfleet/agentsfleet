@@ -79,8 +79,11 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 | `schema/835_repair_verifications.sql` | CREATE | Retain one correlated verifier attempt per repair, result, and Fleet |
 | `schema/embed.zig` | EDIT | Register slots 834–835 in both migration lists |
 | `src/agentsfleetd/state/repair_production_results.zig` | CREATE | Insert production results idempotently and reconcile either arrival order |
-| `src/agentsfleetd/state/repair_verifications.zig` | CREATE | Insert and read verification links idempotently |
+| `src/agentsfleetd/state/repair_verifications.zig` | CREATE | Insert dispatch intents, complete event links once, and scan pending rows |
 | `src/agentsfleetd/state/sql.zig` | EDIT | Correlation and verification-link statements |
+| `src/agentsfleetd/queue/redis_fleet.zig` | EDIT | Atomically append once per dispatch intent and return the original stream identifier on retry |
+| `src/agentsfleetd/fleet/repair_verification_dispatcher.zig` | CREATE | Retry a bounded batch of pending slot 835 intents |
+| `src/agentsfleetd/cmd/serve_background.zig` | EDIT | Start and join the bounded verification dispatcher |
 | `src/agentsfleetd/http/handlers/ingress/github.zig` | EDIT | Normalize GitHub deployment status without weakening existing ingress |
 | `src/agentsfleetd/http/handlers/ingress/production_repair_result.zig` | CREATE | Exact merge correlation and proof-qualified synthetic event emission |
 | `src/agentsfleetd/http/handlers/webhooks/github_repair_link.zig` | EDIT | Invoke the same reconciler after a merged-hash write |
@@ -90,6 +93,7 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 | `library/incident-verifier/SKILL.md` | CREATE | Exact-commit, Grafana, and Elasticsearch verification instructions |
 | `library/incident-verifier/TRIGGER.md` | CREATE | Subscribe only to `repair_production_result` with read-only bindings |
 | `src/agentsfleetd/http/handlers/ingress/github_integration_test.zig` | EDIT | Preserve GitHub ingress and prove production correlation |
+| `src/agentsfleetd/fleet/repair_verification_dispatcher_integration_test.zig` | CREATE | Inject crashes around Redis and prove one verifier event |
 | `src/agentsfleetd/http/handlers/library/onboard_integration_test.zig` | EDIT | Prove verifier catalogue onboarding |
 | `src/agentsfleetd/db/pool_test.zig` | EDIT | Prove runtime privileges for slots 834–835 |
 | `playbooks/operations/github_app_registration/001_playbook.md` | EDIT | Add deployment-status subscription, Deployments read permission, and live proof |
@@ -101,7 +105,7 @@ There is no unknown lookup or secret handoff in the path. Provider webhook secre
 
 - `~/Projects/dotfiles/docs/greptile-learnings/RULES.md` — No Dead Code (NDC), No Legacy Retained (NLR), String Literals Are Constants (UFS), Cross-layer Orphan Sweep (ORP), File and Function Length Limits (FLL), pre-v2.0 Schema Removal (SCH), and Integration Tests use real Fixtures (ITF).
 - `~/Projects/dotfiles/dispatch/write_zig.md` — database drain, tagged results, lifecycle, size, and Linux cross-compiles.
-- `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` — slots 834–835 are additive, single-concern, and immutable except purge cascade.
+- `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` — slots 834–835 are additive and single-concern; slot 835 permits only the fenced `NULL` to event-identifier completion.
 - `~/Projects/dotfiles/docs/LOGGING_STANDARD.md` and `~/Projects/dotfiles/docs/LIFECYCLE_PATTERNS.md` — structured failures and owned resources.
 
 ## Applicable Gates
@@ -134,13 +138,14 @@ GitHub deployment-status events normalize to provider, deployment identifier, re
 
 ### §2 — Correlate exact merged bytes
 
-Slot 834 stores every normalized result before matching. One reconciler runs after either that insert or M157_003's merged-hash write. Exact workspace, repository, and commit equality creates one slot 835 attempt and emits one `repair_production_result`; normal routing then selects subscribed Fleets.
+Slot 834 stores every normalized result before matching. One reconciler runs after either that insert or M157_003's merged-hash write. Exact workspace, repository, and commit equality creates one slot 835 dispatch intent per subscribed verifier Fleet. Redis enqueue-once keys on that intent, returning the original stream event identifier on retry. A bounded dispatcher retries incomplete intents.
 
 - **Dimension 2.1** — result-first then merge emits once → `test_result_before_merge_reconciles_once`
 - **Dimension 2.2** — merge-first then result emits once → `test_merge_before_result_reconciles_once`
 - **Dimension 2.3** — preview, missing hash, or mismatch remains stored and emits nothing → `test_unproven_result_stays_unmatched`
 - **Dimension 2.4** — provider and merge replay leave one result and attempt → `test_reconciliation_replay_is_idempotent`
 - **Dimension 2.5** — second workspace cannot observe or claim correlation → `test_repair_correlation_is_workspace_scoped`
+- **Dimension 2.6** — crashes before and after Redis converge on one event → `test_verifier_dispatch_crash_retries_once`
 
 ### §3 — Install and run the read-only verifier
 
@@ -171,11 +176,11 @@ core.repair_production_results (slot 834)
 
 core.repair_verifications (slot 835)
   id, workspace_id, production_result_id, repair_link_id,
-  verifier_fleet_id, verifier_event_id, created_at
+  verifier_fleet_id, verifier_event_id NULL until dispatched, created_at
   UNIQUE (production_result_id, repair_link_id, verifier_fleet_id)
 ```
 
-The verifier event request carries this same repair and production context. `response_text` remains the standard Fleet result; the bundle's first line names `cleared`, `not_cleared`, or `inconclusive` for human scanning.
+The slot 835 identifier is the Redis enqueue-once key. Redis atomically appends or returns the stream identifier recorded for that key. Only that returned identifier may complete `verifier_event_id`, once. The verifier event request carries the same repair and production context. `response_text` remains the standard Fleet result; the bundle's first line names `cleared`, `not_cleared`, or `inconclusive` for human scanning.
 
 ## Failure Modes
 
@@ -191,11 +196,12 @@ The verifier event request carries this same repair and production context. `res
 | Verifier Fleet absent | retain durable production result; no verifier event |
 | Grafana/Elasticsearch unavailable | verifier reports `inconclusive` with missing evidence |
 | Verifier run fails | linked event shows failure; no cleared label |
-| Database or queue fails between writes | idempotent retry converges on one link and event |
+| Process stops before Redis append | slot 835 remains pending; bounded dispatcher retries it |
+| Process stops after Redis append | enqueue-once returns the original stream identifier; no second event is created |
 
 ## Metrics & Observability
 
-- Counters: provider result accepted/ignored by reason, correlation matched/missed/ambiguous, synthetic event emitted/replayed, verifier queued/completed.
+- Counters: provider result accepted/ignored by reason, correlation matched/missed/ambiguous, dispatch pending/retried, synthetic event emitted/replayed, verifier queued/completed.
 - Histograms: production completion to verifier queue and queue to verifier completion.
 - Logs include workspace, repository, provider deployment, commit hash prefix, repair link, and verifier event; never webhook body or credentials.
 
@@ -203,6 +209,7 @@ The verifier event request carries this same repair and production context. `res
 
 - Only an exact workspace, repository, production environment, and merged commit match can wake verification.
 - Production-first, merge-first, and replayed delivery converge on one stored result and verification attempt.
+- Every slot 835 intent reaches zero or one Fleet event; retry after any write boundary returns the same event identifier.
 - Raw `deployment_status` never wakes the verifier; correlation must emit `repair_production_result` first.
 - The registration playbook requires deployment-status events, Deployments read-only permission, and a signed development delivery proof.
 - Provider data missing commit identity fails closed.
@@ -216,7 +223,7 @@ The verifier event request carries this same repair and production context. `res
 | Dimension | Tier | Test | Concrete assertion |
 |---|---|---|---|
 | 1.1–1.4 | unit + integration | four §1 tests | GitHub shape; Vercel-through-GitHub parity; unready results ignored; registration complete |
-| 2.1–2.5 | integration | five §2 tests | both arrival orders emit once; mismatch, replay, and cross-workspace cases stay deterministic |
+| 2.1–2.6 | integration | six §2 tests | both arrival orders and both crash boundaries emit once; mismatch, replay, and cross-workspace cases stay deterministic |
 | 3.1–3.4 | unit + integration | four §3 tests | synthetic trigger only, normal onboarding, read-only token, exact-hash prompt |
 | load | integration | `test_production_correlation_100_parallel` | at least 100 deliveries do not serialize globally |
 | migration | integration | `test_834_835_apply_to_provisioned_database` | existing repair rows remain readable |
