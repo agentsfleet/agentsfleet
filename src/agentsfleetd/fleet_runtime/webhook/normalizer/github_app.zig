@@ -3,6 +3,7 @@
 //! headers, databases, or secrets.
 
 const std = @import("std");
+const common_c = @import("common");
 const workflow = @import("github.zig");
 
 pub const EVENT_PULL_REQUEST = "pull_request";
@@ -12,8 +13,10 @@ const ACTION_COMPLETED = "completed";
 const CONCLUSION_FAILURE = "failure";
 const FIELD_ACTION = "action";
 const FIELD_HEAD = "head";
+const FIELD_HEAD_BRANCH = "head_branch";
 const FIELD_NUMBER = "number";
 const FIELD_REF = "ref";
+const IGNORED_REPAIR_BRANCH = "repair_branch";
 
 pub const NormalizeError = error{
     MissingRepository,
@@ -60,10 +63,16 @@ pub fn normalizeFromValue(
     if (std.mem.eql(u8, event, EVENT_WORKFLOW_RUN)) {
         if (!std.mem.eql(u8, stringField(root, FIELD_ACTION) orelse "", ACTION_COMPLETED)) return .{ .ignored = "non_completed_action" };
         const run = objectField(root, EVENT_WORKFLOW_RUN) orelse return NormalizeError.MissingWorkflowRun;
+        if (isRepairBranch(stringField(run, FIELD_HEAD_BRANCH))) return .{ .ignored = IGNORED_REPAIR_BRANCH };
         if (!std.mem.eql(u8, stringField(run, "conclusion") orelse "", CONCLUSION_FAILURE)) return .{ .ignored = "non_failure_conclusion" };
         return .{ .accepted = try workflow.normalizeFromValue(alloc, root, received_at_unix) };
     }
     if (!std.mem.eql(u8, event, EVENT_PULL_REQUEST)) return NormalizeError.UnsupportedEvent;
+    if (objectField(root, EVENT_PULL_REQUEST)) |pr| {
+        if (objectField(pr, FIELD_HEAD)) |head| {
+            if (isRepairBranch(stringField(head, FIELD_REF))) return .{ .ignored = IGNORED_REPAIR_BRANCH };
+        }
+    }
     return .{ .accepted = try normalizePullRequest(alloc, root, received_at_unix) };
 }
 
@@ -102,6 +111,15 @@ fn normalizePullRequest(alloc: std.mem.Allocator, root: std.json.ObjectMap, rece
         .head_sha = nestedStringField(pr, FIELD_HEAD, "sha") orelse "",
         .received_at = workflow.formatRfc3339(&ts_buf, received_at_unix),
     }, .{});
+}
+
+/// True when a branch belongs to the repairer's own output. Traffic on one is
+/// the crew hearing itself: waking a fleet on its own failed repair sets it
+/// investigating what it just wrote, one approval card per cycle. The per-fleet
+/// webhook route intercepts these to record incident → Pull Request linkage;
+/// this route has no linkage arm yet, so it drops them rather than ingest them.
+fn isRepairBranch(ref: ?[]const u8) bool {
+    return std.mem.startsWith(u8, ref orelse return false, common_c.REPAIR_BRANCH_PREFIX);
 }
 
 fn objectField(obj: std.json.ObjectMap, key: []const u8) ?std.json.ObjectMap {

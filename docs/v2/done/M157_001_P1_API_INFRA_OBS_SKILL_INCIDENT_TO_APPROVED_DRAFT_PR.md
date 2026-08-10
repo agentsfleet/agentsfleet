@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M157
 **Workstream:** 001
 **Date:** Aug 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — customer/operator-facing; the product wedge and the Forge the Future 2026 hackathon entry are the same build
 **Categories:** API, INFRA, OBS, SKILL
 **Batch:** B1 — single workstream; Sections sequence by dependency
@@ -1024,3 +1024,26 @@ are provably identical, file creation costs nothing special, and no patch
 arithmetic exists daemon-side. The responder's proposal-block instruction lands
 in the same diff as the parser that reads it, and the crew regrows (proposer,
 verifier) beside the platform half that consumes each member's output.
+
+### Discovery — Aug 08, 2026: the write half shipped as M157_002, and the fleet is the writer
+
+The Aug 06 entry above scoped a daemon-apply kernel: proposal parsed from the
+final report, stored immutably, approved as bytes, applied by the daemon. Indy
+reversed that design before authoring the follow-up:
+
+> Indy (2026-08-08 02:20): "Well i think we need to use the repairer as a fleet
+> which does the check on the code using null claw llm and send a the fix as PR,
+> why do we need the daemon to do the fix"
+
+> Indy (2026-08-08 02:50): "north start is to send the PR as well after finding
+> the fix in the code"
+
+The shipped shape (`M157_002`): the repairer fleet reads code at a verified
+head and pushes the draft PR itself over the Git Data API; the human approves
+the WRITE at the kind-parked gate before the run starts, and approves the
+BYTES on the PR diff itself. The mint is the fence — approved gate row,
+recorded binding, contents+pull_requests write only, never workflows. No
+proposal kernel, no daemon apply, no report parsing. The canonical record is
+`docs/architecture/scenarios/production-deploy-repair.md`. This workstream's
+own scope (the read half) shipped in PR #588 and is complete; the spec moves
+to `done/`.

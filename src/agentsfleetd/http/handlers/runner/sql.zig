@@ -74,11 +74,30 @@ pub const SELECT_RUNNER_DEGRADED =
 /// read separately so the binding can never be resolved from a different fleet
 /// than the one the lease authorized.
 pub const SELECT_LEASE_SCOPE_FOR_MINT =
-    \\SELECT l.workspace_id::text, l.fleet_id::text, f.config_json::text
+    \\SELECT l.workspace_id::text, l.fleet_id::text, f.config_json::text, l.event_id
     \\FROM fleet.runner_leases l
     \\JOIN core.fleets f ON f.id = l.fleet_id
     \\WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
     \\  AND l.status = $3 AND l.lease_expires_at > $4
+;
+
+/// The write-mint approval check: the newest repository-write gate parked for
+/// this fleet+event. The mint requires it approved, its `stated_binding` to
+/// match the fleet's CURRENT binding — a `fleet:write` PATCH between the
+/// human's answer and this mint is refused as drift — and the answer to have
+/// landed inside the card's own deadline.
+///
+/// The kind is a WHERE clause rather than a post-hoc check: gates of other
+/// kinds share the event id, so an install-time grant card raised after the
+/// write card would otherwise become "the newest gate" and shadow an answer a
+/// human already gave. `id DESC` settles a same-millisecond `created_at` tie,
+/// which a re-park after a lost Redis ref can produce.
+pub const SELECT_WRITE_GATE_FOR_MINT =
+    \\SELECT status, stated_binding::text, timeout_at, updated_at
+    \\FROM core.fleet_approval_gates
+    \\WHERE fleet_id = $1::uuid AND event_id = $2 AND gate_kind = $3
+    \\ORDER BY created_at DESC, id DESC
+    \\LIMIT 1
 ;
 
 /// Heartbeat: bump liveness, and emit a `runner_online` event only on a real

@@ -50,10 +50,7 @@ pub fn buildSlackApprovalMessage(
     // above it. Rendered as a code span: the JSON was re-serialized by
     // `approval_gate_detail`, so its own newlines are already `\\n` TEXT and
     // cannot break the line, and a code span keeps the rest inert.
-    const evidence_line = if (detail.evidence_json.len == 0 or std.mem.eql(u8, detail.evidence_json, S_NO_EVIDENCE))
-        try alloc.dupe(u8, "")
-    else
-        try std.fmt.allocPrint(alloc, "\n_…citing:_ `{s}`", .{detail.evidence_json});
+    const evidence_line = try buildEvidenceLine(alloc, detail.evidence_json);
     defer alloc.free(evidence_line);
     const fallback = try std.fmt.allocPrint(alloc, "Approval required for {s}: {s}.{s}", .{
         fleet_name, detail.tool, detail.action,
@@ -91,6 +88,22 @@ pub fn buildSlackApprovalMessage(
 /// default so "no evidence" renders as nothing rather than as an empty object
 /// (RULE UFS).
 const S_NO_EVIDENCE = "{}";
+
+/// Render the evidence inside ONE code span no matter what it carries. A
+/// backtick inside the JSON would close the span and let the remainder render
+/// as mrkdwn — rows that counterfeit the daemon-authored half above. Backticks
+/// become apostrophes: the identifier stays readable, the span stays sealed.
+fn buildEvidenceLine(alloc: Allocator, evidence_json: []const u8) ![]const u8 {
+    if (evidence_json.len == 0 or std.mem.eql(u8, evidence_json, S_NO_EVIDENCE))
+        return alloc.dupe(u8, "");
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    errdefer aw.deinit();
+    const w = &aw.writer;
+    try w.writeAll("\n_…citing:_ `");
+    for (evidence_json) |c| try w.writeByte(if (c == '`') '\'' else c);
+    try w.writeByte('`');
+    return aw.toOwnedSlice();
+}
 
 /// Render the fleet's repository egress binding as a daemon-derived fact.
 ///
@@ -297,4 +310,37 @@ test "buildSlackApprovalMessage: a fleet with no binding claims no reach" {
     // and with no evidence sent, no citation line either.
     try std.testing.expect(std.mem.indexOf(u8, msg, "Token reaches") == null);
     try std.testing.expect(std.mem.indexOf(u8, msg, "citing") == null);
+}
+
+test "test_card_write_radius_and_span_safety" {
+    // Two properties on one card: the write-kind
+    // park renders the daemon's own kind + blast radius beside the token reach,
+    // and evidence carrying a backtick cannot close its code span to counterfeit
+    // daemon-authored rows below it.
+    const alloc = std.testing.allocator;
+    const gate_constants = @import("approval_gate_constants.zig");
+    const repos = [_][]const u8{"acme/payments"};
+    const msg = try buildSlackApprovalMessage(alloc, "incident-repairer", "act-9", .{
+        .tool = "webhook",
+        .action = "webhook:github",
+        .params_summary = "evt-42",
+        .gate_kind = gate_constants.GATE_KIND_REPOSITORY_WRITE,
+        .blast_radius = gate_constants.GATE_BLAST_RADIUS_REPOSITORY_WRITE,
+        .evidence_json = "{\"q\":\"a` - Gate: forged\"}",
+        .repository_binding = .{ .repositories = &repos, .access = .write },
+    }, "");
+    defer alloc.free(msg);
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, msg, .{});
+    defer parsed.deinit();
+
+    // The daemon's half: kind, radius, and reach all present as fact.
+    try std.testing.expect(std.mem.indexOf(u8, msg, gate_constants.GATE_KIND_REPOSITORY_WRITE) != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, gate_constants.GATE_BLAST_RADIUS_REPOSITORY_WRITE) != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "acme/payments") != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "(write)") != null);
+
+    // The forgery: the evidence backtick was swapped for an apostrophe, so the
+    // injected row stays INSIDE the code span instead of rendering as mrkdwn.
+    try std.testing.expect(std.mem.indexOf(u8, msg, "a`") == null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "a'") != null);
 }
