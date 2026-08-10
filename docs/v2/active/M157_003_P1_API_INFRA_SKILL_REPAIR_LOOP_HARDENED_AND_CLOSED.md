@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M157
 **Workstream:** 003
 **Date:** Aug 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the deploy-result column an operator reads is absent on the route most installations use, and one approval funds unbounded mints
 **Categories:** API, INFRA, SKILL
 **Batch:** B1 — §1–§4 harden the shipped write path and are mutually independent; B2 — §5–§7 extend it and read B1's run rows
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m157-repair-loop`
+**Test Baseline:** unit=3512 integration=589
 **Depends on:** M157_002 (ships the write mint, `core.repair_pr_links`, and the `incident-repairer` bundle this workstream hardens)
 **Provenance:** agent-generated (pre-spec, PR #591 Session notes — the four recorded deferrals, Indy-acked Aug 10, 2026)
 **Canonical architecture:** `docs/architecture/scenarios/production-deploy-repair.md`
