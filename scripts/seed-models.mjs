@@ -190,7 +190,7 @@ function readLive() {
   const live = new Map();
   for (const line of raw.split("\n").filter(Boolean)) {
     const [provider, model_id, ctx, input, cached, output] = line.split("\t");
-    live.set(`${provider} ${model_id}`, {
+    live.set(`${provider}\0${model_id}`, {
       context_cap_tokens: Number(ctx),
       input: Number(input),
       cached: Number(cached),
@@ -204,7 +204,7 @@ function diff(wanted, live) {
   const added = [];
   const changed = [];
   for (const row of wanted) {
-    const cur = live.get(`${row.provider} ${row.model_id}`);
+    const cur = live.get(`${row.provider}\0${row.model_id}`);
     if (!cur) {
       added.push(row);
       continue;
@@ -214,8 +214,8 @@ function diff(wanted, live) {
       .map((f) => ({ field: f, from: cur[f], to: row[f] }));
     if (deltas.length) changed.push({ row, deltas });
   }
-  const seen = new Set(wanted.map((r) => `${r.provider} ${r.model_id}`));
-  const orphaned = [...live.keys()].filter((k) => !seen.has(k)).map((k) => k.split(" "));
+  const seen = new Set(wanted.map((r) => `${r.provider}\0${r.model_id}`));
+  const orphaned = [...live.keys()].filter((k) => !seen.has(k)).map((k) => k.split("\0"));
   return { added, changed, orphaned };
 }
 
@@ -254,7 +254,7 @@ function idFor(provider, modelId) {
   // mid-list.) The NUL separator cannot appear in either part, so distinct
   // pairs cannot alias one digest. Nibbles are forced to '7'/'8' to satisfy
   // the ck_model_library_id_uuidv7 shape CHECK and the RFC 4122 variant.
-  const h = createHash("sha256").update(`${provider} ${modelId}`).digest("hex");
+  const h = createHash("sha256").update(`${provider}\0${modelId}`).digest("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-7${h.slice(12, 15)}-8${h.slice(15, 18)}-${h.slice(18, 30)}`;
 }
 
