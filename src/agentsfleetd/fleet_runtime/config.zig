@@ -59,5 +59,6 @@ test {
     _ = @import("config_parser_test.zig");
     _ = @import("config_markdown_test.zig");
     _ = @import("config_validate_test.zig");
+    _ = @import("repository_binding_json.zig");
     _ = @import("frontmatter_fixtures_test.zig");
 }

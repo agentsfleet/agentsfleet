@@ -13,13 +13,14 @@ const integration = @import("integration.zig");
 const MintCtx = integration.MintCtx;
 
 // Installation-token request body fields + permission values (RULE UFS — shared
-// verbatim with the bundle frontmatter and the mint-body tests).
+// verbatim with the bundle frontmatter, the mint-body tests, and the
+// response-side permission verification in `integration_github_reach.zig`).
 const REQ_FIELD_REPOSITORIES = "repositories";
 const REQ_FIELD_PERMISSIONS = "permissions";
-const PERM_CONTENTS = "contents";
-const PERM_PULL_REQUESTS = "pull_requests";
-const PERM_VALUE_READ = "read";
-const PERM_VALUE_WRITE = "write";
+pub const PERM_CONTENTS = "contents";
+pub const PERM_PULL_REQUESTS = "pull_requests";
+pub const PERM_VALUE_READ = "read";
+pub const PERM_VALUE_WRITE = "write";
 
 /// Build the installation-token request body from the fleet's repository binding.
 /// Returns null when the fleet declared none, so the caller fails closed.

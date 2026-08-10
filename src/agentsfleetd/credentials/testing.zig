@@ -56,7 +56,7 @@ pub const FakeGitHub = struct {
     /// not the declared binding (`integration_github_reach.zig`). So the default
     /// body states the reach `test_binding` declares — a fake that omitted it
     /// would make every mint fail closed for a reason no test was about.
-    resp_body: []const u8 = "{\"token\":\"ghs_minted\",\"repositories\":[{\"full_name\":\"acme/widgets\"}]}",
+    resp_body: []const u8 = "{\"token\":\"ghs_minted\",\"repositories\":[{\"full_name\":\"acme/widgets\"}],\"permissions\":{\"contents\":\"write\",\"pull_requests\":\"write\"}}",
     fail_with: ?anyerror = null,
     calls: usize = 0,
     url: []u8 = &.{},
@@ -99,11 +99,12 @@ pub const test_binding: integration.RepositoryBinding = .{
 };
 
 /// A create-installation-access-token response stating that the minted token
-/// reaches exactly `declared`. The mint verifies the stated reach against the
-/// fleet's binding (`integration_github_reach.zig`), so a test whose fleet
-/// declares something other than `test_binding` must answer with its own reach
-/// or the mint refuses for a reason that test is not about. Caller owns.
-pub fn reachResponse(alloc: std.mem.Allocator, declared: []const []const u8) ![]u8 {
+/// reaches exactly `declared` at `access` level. The mint verifies both the
+/// stated reach AND the stated permissions against the fleet's binding
+/// (`integration_github_reach.zig`), so a test whose fleet declares something
+/// other than `test_binding` must answer with its own reach or the mint
+/// refuses for a reason that test is not about. Caller owns.
+pub fn reachResponse(alloc: std.mem.Allocator, declared: []const []const u8, access: integration.RepositoryAccess) ![]u8 {
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
     try out.appendSlice(alloc, "{\"token\":\"ghs_minted\",\"repositories\":[");
@@ -113,7 +114,10 @@ pub fn reachResponse(alloc: std.mem.Allocator, declared: []const []const u8) ![]
         defer alloc.free(entry);
         try out.appendSlice(alloc, entry);
     }
-    try out.appendSlice(alloc, "]}");
+    try out.appendSlice(alloc, switch (access) {
+        .read => "],\"permissions\":{\"contents\":\"read\"}}",
+        .write => "],\"permissions\":{\"contents\":\"write\",\"pull_requests\":\"write\"}}",
+    });
     return out.toOwnedSlice(alloc);
 }
 
