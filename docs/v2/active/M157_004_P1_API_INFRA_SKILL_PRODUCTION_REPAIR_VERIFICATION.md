@@ -14,7 +14,7 @@ SPECIFICATION AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M157
 **Workstream:** 004
 **Date:** Aug 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a green preview or the current default branch cannot prove that the repaired bytes reached production or cleared the incident
 **Categories:** API, INFRA, SKILL
 **Batch:** B1 — durable production intake and correlation; B2 — verifier Fleet and standard result proof
