@@ -26,6 +26,10 @@ validate_inputs() {
 verify_host_prepared() {
   runner_remote '
     set -e
+    # Debian omits sbin from non-interactive Tailscale SSH sessions even
+    # though nftables installs nft there. Match host preparation and the
+    # established egress probe.
+    export PATH="/usr/sbin:/sbin:$PATH"
     test -d /opt/agentsfleet/bin
     test -d /opt/agentsfleet/deploy
     test -w /opt/agentsfleet/bin

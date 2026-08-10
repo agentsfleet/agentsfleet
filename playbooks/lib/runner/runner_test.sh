@@ -218,6 +218,40 @@ test_should_not_install_packages_during_deploy() {
     ok "$name"
   fi
 }
+test_should_include_sbin_when_checking_host_tools() {
+  local name="test_should_include_sbin_when_checking_host_tools"
+  local output status=0
+  output="$(run_script ENV=dev ALLOW_RUNNER_HOST_PREPARE=1 bash "$PREPARE")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+    return
+  elif ! awk '
+    $0 == "    export PATH=\"/usr/sbin:/sbin:$PATH\"" {
+      getline
+      if ($0 == "    test \"$(tailscale status --json | jq -r .Self.Online)\" = true") found=1
+    }
+    END { exit !found }
+  ' "$calls"; then
+    bad "$name" "host preparation did not expose Debian sbin tools"
+    return
+  fi
+
+  status=0
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+  elif ! awk '
+    $0 == "    export PATH=\"/usr/sbin:/sbin:$PATH\"" {
+      getline
+      if ($0 == "    test -d /opt/agentsfleet/bin") found=1
+    }
+    END { exit !found }
+  ' "$calls"; then
+    bad "$name" "runner deployment did not expose Debian sbin tools"
+  else
+    ok "$name"
+  fi
+}
 test_should_reject_placeholder_token() {
   local name="test_should_reject_placeholder_token"
   local output status=0
@@ -371,6 +405,7 @@ test_should_refuse_host_without_required_cgroup_support
 test_should_deploy_development_without_secret_arguments
 test_should_select_production_worker
 test_should_not_install_packages_during_deploy
+test_should_include_sbin_when_checking_host_tools
 test_should_reject_placeholder_token
 test_should_use_canonical_unit_refresh
 test_should_reject_shell_unsafe_runner_inputs
