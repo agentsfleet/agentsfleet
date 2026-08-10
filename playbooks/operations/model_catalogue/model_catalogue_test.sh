@@ -270,7 +270,7 @@ test_existing_teardown_gates_still_reject_unknown_env() {
 # rates live, so only the manual rows can be rate-checked here.
 test_allowlist_rate_rows_are_well_formed() {
   local name="allowlist_rate_rows_are_well_formed"
-  local root allowlist violations
+  local root allowlist violations status=0
   root="$(cd "$SCRIPT_DIR/../../.." && pwd)"
   allowlist="$root/scripts/model-library-allowlist.json"
 
@@ -279,7 +279,10 @@ test_allowlist_rate_rows_are_well_formed() {
     return
   fi
 
-  violations="$(python3 - "$allowlist" <<'PY'
+  # stderr is folded in and the exit status is captured: a validator that dies
+  # writes its traceback to stderr and prints no violations, so status-blind
+  # capture would read a crash as a clean bill of health.
+  violations="$(python3 - "$allowlist" 2>&1 <<'PY'
 import json
 import sys
 
@@ -321,6 +324,13 @@ for provider, config in document.get("providers", {}).items():
             seen.add(model)
             continue
 
+        # Anything that is neither a bare id nor a rate object is malformed, and
+        # naming it is the check's job. Falling through would raise on .get and
+        # abandon the scan mid-provider.
+        if not isinstance(model, dict):
+            print(f"{provider}: model entry must be a bare id or a rate object, got {type(model).__name__}")
+            continue
+
         checked += 1
         identifier = model.get("model_id")
         label = f"{provider}/{identifier}"
@@ -359,9 +369,11 @@ for provider, config in document.get("providers", {}).items():
 if checked == 0:
     print("scan matched no rate rows — the check is broken, not the tree")
 PY
-  )"
+  )" || status=$?
 
-  if [ -n "$violations" ]; then
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "validator exited $status without reaching a verdict — a crash is not a pass: $violations"
+  elif [ -n "$violations" ]; then
     bad "$name" "$violations"
   else
     ok "$name"
