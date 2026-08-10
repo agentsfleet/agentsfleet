@@ -104,7 +104,7 @@ incident link   merged_commit_sha      repository + commit_sha + environment
 
 ## 6. Wake the verifier only for the exact production result
 
-The verifier is a third, read-only Fleet. Its GitHub trigger subscribes to terminal deployment-status results for the bound repository. A Vercel deployment is eligible only when Vercel reports it through GitHub's deployment-status event. Normal routing selects the installed Fleet; no crew lookup is introduced.
+The verifier is a third, read-only Fleet. GitHub deployment-status intake runs before Fleet trigger matching. A Vercel deployment is eligible only when Vercel reports it through GitHub's deployment-status event.
 
 Before queueing an event, the daemon requires all of the following:
 
@@ -114,7 +114,9 @@ Before queueing an event, the daemon requires all of the following:
 - the provider supplies the deployed commit hash; and
 - that hash equals a stored `merge_commit_sha` in the same workspace.
 
-A missing or mismatched hash records an ignore reason and wakes nothing. A preview result remains history even if it is green. A default-branch result for a later commit does not verify an earlier repair.
+A successful match emits one internal `repair_production_result` event. Normal Fleet routing then selects every installed Fleet subscribed to that proof-qualified event type. The verifier subscribes to `repair_production_result`, never raw `deployment_status`; no Fleet name, role, or crew lookup is introduced.
+
+A missing or mismatched hash records an ignore reason and emits no synthetic event. A preview result remains history even if it is green. A default-branch result for a later commit does not verify an earlier repair.
 
 The queued verifier event is enriched with the incident event identifier, repair PR, merged commit hash, provider deployment identifier, production completion time, and evidence window. The Fleet receives this context; it does not read internal database tables.
 
@@ -132,7 +134,7 @@ The standard Fleet event stores the verifier's response. A repair-verification l
 
 ## 8. Production-result normalization
 
-Production results enter as signed GitHub deployment-status events. This includes Vercel deployments surfaced through GitHub. Direct Vercel webhook ingestion is outside this repair loop. GitHub input normalizes to this internal shape:
+Production results enter as signed GitHub deployment-status events. This includes Vercel deployments surfaced through GitHub. Direct Vercel webhook ingestion is outside this repair loop. GitHub input normalizes before correlation:
 
 ```text
 production_result {
@@ -143,7 +145,7 @@ production_result {
 }
 ```
 
-Provider vocabulary is translated only at ingress. Downstream correlation and verifier prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed.
+An exact correlation emits `repair_production_result` with the matched incident, repair PR, merged commit, production result, and evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
 
 ## 9. What exists and what changes
 
@@ -158,6 +160,7 @@ Provider vocabulary is translated only at ingress. Downstream correlation and ve
 | Bounded approval mint spends | 🔨 | M157_003, slot 833. |
 | Incident verifier Fleet | 🔨 | M157_004; independently installed and read-only. |
 | GitHub production-result normalization | 🔨 | M157_004; includes Vercel deployments surfaced through GitHub. |
+| Proof-qualified `repair_production_result` event | 🔨 | M157_004; emitted only after exact repair correlation. |
 | Incident → verifier-result operator surface | 🔨 | M157_004. |
 | Live-repository acceptance arc | 🔨 | M157_004. |
 
@@ -169,6 +172,7 @@ Provider vocabulary is translated only at ingress. Downstream correlation and ve
 - Repair-branch traffic never becomes a fresh incident.
 - Preview evidence is append-only and never closes the loop.
 - Only exact workspace + repository + merged commit hash correlation can wake verification.
+- Raw `deployment_status` never wakes the verifier; exact correlation emits `repair_production_result` first.
 - A production result without a commit hash fails closed.
 - All three Fleets read Grafana and Elasticsearch; those vendors do not become Fleets.
 - The verifier has no repository write permission.
