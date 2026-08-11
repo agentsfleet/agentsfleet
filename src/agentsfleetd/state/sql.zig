@@ -149,3 +149,54 @@ pub const STAMP_REPAIR_PR_DEPLOY =
     \\SET deploy_status = $4, deploy_stamped_at = $5
     \\WHERE fleet_id = $1::uuid AND branch = $2 AND repository = $3
 ;
+
+// ── CLI credentials (`state/cli_credentials.zig`) ───────────────────────────
+
+/// Mint a credential. The partial unique index on (user_id, machine_name)
+/// WHERE revoked_at IS NULL is the guard: if a caller inserts without first
+/// revoking this machine's live row, the insert fails here rather than leaving
+/// two live credentials an operator cannot tell apart.
+pub const INSERT_CLI_CREDENTIAL =
+    \\INSERT INTO core.cli_credentials
+    \\    (id, user_id, tenant_id, machine_name, credential_hash,
+    \\     credential_prefix, deployment, created_from_address, created_at)
+    \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9)
+;
+
+/// The authentication lookup. Filters the digest alone — the unique constraint
+/// on `credential_hash` is the whole access path — and returns revocation state
+/// for the caller to judge, so a revoked credential is refused with its own
+/// code rather than being indistinguishable from an unknown one.
+pub const SELECT_CLI_CREDENTIAL_BY_HASH =
+    \\SELECT id::text, user_id::text, tenant_id::text, deployment, revoked_at
+    \\FROM core.cli_credentials
+    \\WHERE credential_hash = $1
+    \\LIMIT 1
+;
+
+/// Revoke this machine's live credential ahead of minting its replacement.
+/// Scoped to one (user, machine): another machine's credential is untouched,
+/// which is what lets a second laptop keep working across a re-login.
+pub const REVOKE_CLI_CREDENTIAL_FOR_MACHINE =
+    \\UPDATE core.cli_credentials
+    \\SET revoked_at = $3
+    \\WHERE user_id = $1::uuid AND machine_name = $2 AND revoked_at IS NULL
+;
+
+/// Revoke one credential by id, scoped to its owner so a caller cannot revoke
+/// a credential belonging to somebody else by guessing an identifier.
+pub const REVOKE_CLI_CREDENTIAL_BY_ID =
+    \\UPDATE core.cli_credentials
+    \\SET revoked_at = $3
+    \\WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL
+;
+
+/// A user's live credentials, newest first. `credential_prefix` is the only
+/// credential-shaped column returned, and it does not authenticate.
+pub const SELECT_LIVE_CLI_CREDENTIALS_FOR_USER =
+    \\SELECT id::text, machine_name, credential_prefix, deployment,
+    \\       created_from_address, created_at
+    \\FROM core.cli_credentials
+    \\WHERE user_id = $1::uuid AND revoked_at IS NULL
+    \\ORDER BY created_at DESC
+;
