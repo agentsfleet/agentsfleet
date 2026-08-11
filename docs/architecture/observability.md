@@ -47,6 +47,24 @@ guard fails on any family outside the registry. `fleet_id`, log event names,
 `EventKind` tags, and the Redis consumer group keep their old spelling; the
 namespace rule covers only exported metric families.
 
+**One registry row is the whole family.** Beside its wire identity, each
+family declares its label dimensions — the closed enum per label key, plus an
+at-most-one dynamic dimension (request model, runner identifier) — in
+`otel_metrics_dims.zig`, the registry's sibling. The instrument layer
+(`otel_instruments.zig`) generates everything downstream from that one table
+at compile time: the flat atomic storage cells (one per label combination), a
+typed writer whose label struct makes a wrong or missing dimension a compile
+error, snapshot reads, and the flush-time collect loop that emits every cell —
+zero values included — into the aggregator. Sources that cannot be storage
+cells (the Redis pool snapshot, the resident-set probe, flush-thread liveness)
+are `live_read` hooks the collect loop runs after the cells; their absence
+keeps the family out of the window rather than faking a zero. Labels are
+interned to comptime indices, so a sample is a fixed ≤128-byte value and the
+aggregator locates a series by open-addressed hash instead of a linear scan.
+Adding a family is one registry row plus one writer call; everything else —
+storage, collection, series ceiling, census membership — derives from the
+declaration, so there is no second copy to drift.
+
 Runtime deployment carries no dashboard files. Grafana dashboard and alert
 definitions live under
 `playbooks/operations/observability/providers/grafana/assets/`, where the

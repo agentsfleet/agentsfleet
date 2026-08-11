@@ -167,7 +167,7 @@ test "the series cap drops surface separately from ring-full drops" {
     var i: usize = 0;
     while (i < aggregate.MAX_SERIES + 1) : (i += 1) {
         var s = payload.newSample(.credit_consumed, 1);
-        _ = payload.addLabel(&s, semconv.ATTR_REQUEST_MODEL, try std.fmt.bufPrint(&buf, MODEL_FIXTURE_FMT, .{i}));
+        _ = payload.setDynamicLabel(&s, semconv.ATTR_REQUEST_MODEL, try std.fmt.bufPrint(&buf, MODEL_FIXTURE_FMT, .{i}));
         otel_metrics.testPush(s);
     }
     var expected_runtime: u64 = families.RUNTIME_FIXED_SERIES;

@@ -1,8 +1,14 @@
 const std = @import("std");
 const mc = @import("metrics_counters.zig");
 const window = @import("otel_metrics_window_test.zig");
-comptime {
-    _ = @import("metrics_fleet.zig");
+
+// ── Fleet trigger counter ───────────────────────────────────────────────
+
+test "single fleet trigger increments the counter by exactly one" {
+    const before = mc.snapshot().fleet_triggered_total;
+    mc.incFleetsTriggered();
+    const after = mc.snapshot().fleet_triggered_total;
+    try std.testing.expectEqual(@as(u64, 1), after - before);
 }
 
 // ── SSE hub counters (dropped frames + reconnects) ──────────────────────
@@ -117,12 +123,27 @@ test "the window carries every signup funnel family with its reason labels" {
     try window.expectFamilySample(body, "agentsfleet_signup_bootstrapped_total"); // pin test: literal is the contract
     try window.expectFamilySample(body, "agentsfleet_signup_replayed_total"); // pin test: literal is the contract
 
-    // Each rejection reason exports its own series off its own counter field.
-    for (mc.SIGNUP_FAIL_REASON_LABELS) |reason| {
+    // Each rejection reason exports its own series, keyed by the enum the
+    // registry declares the dimension off.
+    inline for (@typeInfo(mc.SignupFailReason).@"enum".fields) |reason| {
         var frag_buf: [96]u8 = undefined;
-        const reason_attr = try window.attrFragment(&frag_buf, "reason", reason);
+        const reason_attr = try window.attrFragment(&frag_buf, "reason", reason.name);
         try window.expectFamilyWith(body, "agentsfleet_signup_failed_total", &.{reason_attr}); // pin test: literal is the contract
     }
+}
+
+// Dimension: a reason value physically binds to its declared label — writing
+// one enum member moves exactly that member's cell and no sibling's.
+test "test_reason_labels_bind_by_enum_not_order" {
+    const before = mc.snapshot();
+    mc.incSignupFailed(.stale_ts);
+    const after = mc.snapshot();
+    try std.testing.expectEqual(before.signup_failed_stale_ts_total + 1, after.signup_failed_stale_ts_total);
+    try std.testing.expectEqual(before.signup_failed_bad_sig_total, after.signup_failed_bad_sig_total);
+    try std.testing.expectEqual(before.signup_failed_missing_email_total, after.signup_failed_missing_email_total);
+    try std.testing.expectEqual(before.signup_failed_db_error_total, after.signup_failed_db_error_total);
+    try std.testing.expectEqual(before.signup_failed_pool_unavailable_total, after.signup_failed_pool_unavailable_total);
+    try std.testing.expectEqual(before.signup_failed_metadata_writeback_total, after.signup_failed_metadata_writeback_total);
 }
 
 // ── Lease-poll cost + readiness index ───────────────────────────────────

@@ -29,8 +29,8 @@ const TEST_CFG: otlp_config.GrafanaOtlpConfig = .{
 fn findLabel(s: *const payload.Sample, key: []const u8) ?[]const u8 {
     var i: u8 = 0;
     while (i < s.label_count) : (i += 1) {
-        if (std.mem.eql(u8, s.labels[i].key[0..s.labels[i].key_len], key))
-            return s.labels[i].val[0..s.labels[i].val_len];
+        if (std.mem.eql(u8, payload.labelKey(s.labels[i]), key))
+            return payload.labelValue(s.labels[i], s.dynamic[0..s.dynamic_len]);
     }
     return null;
 }

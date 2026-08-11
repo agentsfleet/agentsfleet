@@ -104,6 +104,7 @@ test {
     _ = @import("observability/otel_metrics.zig");
     _ = @import("observability/otel_metrics_payload.zig");
     _ = @import("observability/otel_metrics_families.zig");
+    _ = @import("observability/otel_instruments.zig");
     _ = @import("observability/otel_metrics_runtime.zig");
     _ = @import("observability/otel_metrics_aggregate.zig");
     _ = @import("observability/otel_metrics_cardinality.zig");
