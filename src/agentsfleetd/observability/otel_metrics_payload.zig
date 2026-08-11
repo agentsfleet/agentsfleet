@@ -246,6 +246,13 @@ pub fn appendSeriesMetric(
     try list.appendSlice(alloc, "}");
 }
 
+/// What the extra-append hook did: metric objects appended into the envelope,
+/// and objects shed because the fixed payload arena could not hold them. The
+/// caller needs both — appended series join the export count the backend's
+/// partial-rejection reply is validated against, and shed series must surface
+/// as a discard rather than vanish.
+pub const ExtraAppendResult = struct { appended: usize = 0, shed: usize = 0 };
+
 /// Serialize aggregated series into one complete OTLP-JSON metrics envelope,
 /// sharing the resource + scope serializer with the logs and traces signals.
 /// `extra` appends any additional metric objects (the streamed per-runner
@@ -255,7 +262,12 @@ pub const ExtraAppendFn = *const fn (
     alloc: std.mem.Allocator,
     times: WireTimes,
     wrote_any: bool,
-) anyerror!bool;
+) anyerror!ExtraAppendResult;
+
+pub const SerializedEnvelope = struct {
+    body: []u8,
+    extra: ExtraAppendResult,
+};
 
 pub fn serializeSeries(
     alloc: std.mem.Allocator,
@@ -263,7 +275,7 @@ pub fn serializeSeries(
     series: []const Series,
     times: WireTimes,
     extra: ?ExtraAppendFn,
-) ![]u8 {
+) !SerializedEnvelope {
     var list: std.ArrayList(u8) = .empty;
     errdefer list.deinit(alloc);
     try otlp_config.appendEnvelopePrefix(&list, alloc, cfg, "resourceMetrics", "scopeMetrics", "metrics");
@@ -271,9 +283,10 @@ pub fn serializeSeries(
         if (i > 0) try list.appendSlice(alloc, ",");
         try appendSeriesMetric(&list, alloc, s, times);
     }
+    var extra_result: ExtraAppendResult = .{};
     if (extra) |append_extra| {
-        _ = try append_extra(&list, alloc, times, series.len > 0);
+        extra_result = try append_extra(&list, alloc, times, series.len > 0);
     }
     try list.appendSlice(alloc, otlp_config.ENVELOPE_SUFFIX);
-    return list.toOwnedSlice(alloc);
+    return .{ .body = try list.toOwnedSlice(alloc), .extra = extra_result };
 }

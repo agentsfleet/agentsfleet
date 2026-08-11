@@ -212,16 +212,25 @@ fn collectLibrary(agg: *aggregate.Aggregator) void {
 
 // ── Streamed per-runner families ────────────────────────────────────────────
 
-/// Comma discipline + progress tracking for metric objects appended after the
-/// aggregated series inside one OTLP envelope.
+/// Comma discipline + budget tracking for metric objects appended after the
+/// aggregated series inside one OTLP envelope. The payload lives in a fixed
+/// arena: when another series no longer fits, streaming stops and the rest of
+/// the runner set is counted as shed — a partially streamed window must never
+/// become a failed serialization that also discards the drained evented
+/// samples, and must never leave the batch as broken JSON.
 const StreamState = struct {
     list: *std.ArrayList(u8),
     alloc: std.mem.Allocator,
     times: payload.WireTimes,
     need_comma: bool,
-    wrote: bool,
+    result: payload.ExtraAppendResult,
+    exhausted: bool,
 
-    fn emit(self: *StreamState, sample: payload.Sample) !void {
+    fn emit(self: *StreamState, sample: payload.Sample) void {
+        if (self.exhausted) {
+            self.result.shed += 1;
+            return;
+        }
         // The per-runner families are sums and gauges only, so a Sample carries
         // everything a Series needs; histogram fields stay zeroed/empty.
         const series = payload.Series{
@@ -232,55 +241,88 @@ const StreamState = struct {
             .hist_sum = 0,
             .bucket_counts = &.{},
         };
+        const rollback_len = self.list.items.len;
+        self.append(series) catch {
+            // Roll the partial object back so the envelope stays valid JSON,
+            // then stop streaming for this window; the shed count surfaces
+            // through the discard health family.
+            self.list.shrinkRetainingCapacity(rollback_len);
+            self.exhausted = true;
+            self.result.shed += 1;
+        };
+    }
+
+    fn append(self: *StreamState, series: payload.Series) !void {
         if (self.need_comma) try self.list.appendSlice(self.alloc, ",");
         try payload.appendSeriesMetric(self.list, self.alloc, series, self.times);
         self.need_comma = true;
-        self.wrote = true;
+        self.result.appended += 1;
     }
 };
 
 /// payload.ExtraAppendFn: append the per-runner families for every live slot,
 /// plus one overflow series when any failure increment ever missed the table.
-/// Returns whether anything was appended.
+/// Returns how many objects were appended and how many were shed at the
+/// payload budget.
 pub fn appendStreamedRunnerFamilies(
     list: *std.ArrayList(u8),
     alloc: std.mem.Allocator,
     times: payload.WireTimes,
     wrote_any: bool,
-) anyerror!bool {
-    var st = StreamState{ .list = list, .alloc = alloc, .times = times, .need_comma = wrote_any, .wrote = false };
+) anyerror!payload.ExtraAppendResult {
+    var st = StreamState{
+        .list = list,
+        .alloc = alloc,
+        .times = times,
+        .need_comma = wrote_any,
+        .result = .{},
+        .exhausted = false,
+    };
     var it = mr.liveSlots();
-    while (it.next()) |slot| try appendSlotFamilies(&st, slot);
+    while (it.next()) |slot| appendSlotFamilies(&st, slot);
+    // Runners routed past the slot table keep their reason/outcome detail
+    // under the shared identity, so fleet-wide sums stay complete.
+    const spill = mr.overflowCounts();
+    appendCounterCells(&st, mr.ID_OTHER, spill.failures, spill.executions);
     const overflow = mr.overflowTotal();
-    if (overflow > 0) try st.emit(payload.newSample(.runner_failures_overflow, satCast(overflow)));
-    return st.wrote;
+    if (overflow > 0) st.emit(payload.newSample(.runner_failures_overflow, satCast(overflow)));
+    return st.result;
 }
 
-fn appendSlotFamilies(st: *StreamState, slot: mr.SlotView) !void {
-    for (mr.REASON_LABELS, slot.failures) |reason, count| {
+fn appendCounterCells(
+    st: *StreamState,
+    runner_id: []const u8,
+    failures: [mr.REASON_LABELS.len]u64,
+    executions: [mr.OUTCOME_LABELS.len]u64,
+) void {
+    for (mr.REASON_LABELS, failures) |reason, count| {
         if (count == 0) continue;
         var s = payload.newSample(.runner_failures, satCast(count));
-        _ = payload.addLabel(&s, LABEL_RUNNER, slot.runner_id);
+        _ = payload.addLabel(&s, LABEL_RUNNER, runner_id);
         _ = payload.addLabel(&s, LABEL_REASON, reason);
-        try st.emit(s);
+        st.emit(s);
     }
-    for (mr.OUTCOME_LABELS, slot.executions) |outcome, count| {
+    for (mr.OUTCOME_LABELS, executions) |outcome, count| {
         if (count == 0) continue;
         var s = payload.newSample(.runner_executions, satCast(count));
-        _ = payload.addLabel(&s, LABEL_RUNNER, slot.runner_id);
+        _ = payload.addLabel(&s, LABEL_RUNNER, runner_id);
         _ = payload.addLabel(&s, LABEL_OUTCOME, outcome);
-        try st.emit(s);
+        st.emit(s);
     }
+}
+
+fn appendSlotFamilies(st: *StreamState, slot: mr.SlotView) void {
+    appendCounterCells(st, slot.runner_id, slot.failures, slot.executions);
     // null = never seen; the retired renderer skipped the gauge for such slots.
     if (slot.last_seen_seconds) |age_s| {
         var s = payload.newSample(.runner_last_seen_seconds, age_s);
         _ = payload.addLabel(&s, LABEL_RUNNER, slot.runner_id);
-        try st.emit(s);
+        st.emit(s);
     }
     // A live runner's lease level is a fact even at zero — absence of this
     // gauge means the runner (or the exporter) is gone, never "no leases".
     // Transient sub-zero reads from the best-effort decrement clamp to zero.
     var leases = payload.newSample(.runner_active_leases, @max(slot.active_leases, 0));
     _ = payload.addLabel(&leases, LABEL_RUNNER, slot.runner_id);
-    try st.emit(leases);
+    st.emit(leases);
 }

@@ -55,6 +55,19 @@ pub const UNIT_NANOCREDITS = "{nanocredit}";
 pub const UNIT_COUNT = "1";
 pub const UNIT_BYTES = "By";
 
+// Annotation units for the level (gauge) families. The OpenTelemetry→
+// Prometheus name translation drops curly-brace annotations entirely, while a
+// bare "1" on a gauge can gain a `_ratio` suffix depending on the store's
+// suffix setting — which would silently break every asset query. Braces make
+// the exported spelling deterministic.
+pub const UNIT_REQUESTS = "{request}";
+pub const UNIT_STREAMS = "{stream}";
+pub const UNIT_WORKERS = "{worker}";
+pub const UNIT_ENTRIES = "{entry}";
+pub const UNIT_FLEETS = "{fleet}";
+pub const UNIT_CONNECTIONS = "{connection}";
+pub const UNIT_LEASES = "{lease}";
+
 // ---------------------------------------------------------------------------
 // Runtime family names (M-prefix free; the operator assets query these exact
 // spellings in PromQL, so they are carried verbatim — Grafana Cloud's OTLP

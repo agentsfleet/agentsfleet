@@ -10,7 +10,7 @@
 //!
 //! No allocator at runtime — compile-time capacity. Counter overflow past the
 //! table accumulates in an in-process sink (reason/outcome preserved) of which
-//! only the failure total is exported (`overflowTotal`); the per-runner gauges
+//! full per-reason/outcome `_other` series plus the failure total export; the per-runner gauges
 //! (last-seen, active-leases) are simply not tracked for overflow runners.
 //! Thread-safe: CAS slot claim, lock-free atomic counters. Tests live in
 //! metrics_runner_test.zig.
@@ -284,6 +284,30 @@ fn viewOf(slot: *const Slot, now_ms: i64) SlotView {
 /// overflow) — the value behind the runner_failures_overflow series.
 pub fn overflowTotal() u64 {
     return g_overflow_total.load(.acquire); // safe because: pairs with the fetchAdd in incRunnerFailure
+}
+
+/// Wire identity for runners routed past the slot table — the shared bucket
+/// the operator assets group residual load under.
+pub const ID_OTHER = "_other";
+
+pub const OverflowCounts = struct {
+    failures: [N_REASONS]u64,
+    executions: [N_OUTCOMES]u64,
+};
+
+/// Per-reason/outcome counts for runners routed past the table, exported
+/// under `runner_id="_other"` so fleet-wide sums stay complete after a
+/// cardinality overflow.
+pub fn overflowCounts() OverflowCounts {
+    var counts: OverflowCounts = .{
+        // SAFETY: the first loop below writes every failure cell before return.
+        .failures = undefined,
+        // SAFETY: the second loop below writes every execution cell before return.
+        .executions = undefined,
+    };
+    for (&g_overflow.failures, 0..) |*v, i| counts.failures[i] = v.load(.acquire); // safe because: pairs with the fetchAdd at the overflow site
+    for (&g_overflow.executions, 0..) |*v, i| counts.executions[i] = v.load(.acquire); // safe because: pairs with the fetchAdd at the overflow site
+    return counts;
 }
 
 // Test-only reset, consumed by metrics_runner_test.zig. Resets the memory

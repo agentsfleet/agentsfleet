@@ -101,6 +101,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/fleet/integration_roundtrip_test.zig` | EDIT | stops referencing the removed pull route |
 | `src/agentsfleetd/http/handlers/runner/memory_loop_integration_test.zig` | EDIT | stops scraping the removed pull route |
 | `playbooks/operations/observability/001_playbook.md` | EDIT | the scrape instruction becomes the push-path reality |
+| `scripts/check_openapi_route_coverage.py` | EDIT | the non-v1 carve-out list follows the removed route variant |
+| `src/agentsfleetd/observability/otlp/exporter.zig` | EDIT | always-collect signals flush one snapshot batch even with an empty queue |
+| `src/agentsfleetd/observability/otlp/config.zig` | EDIT | replica identity falls back to the platform machine id so cumulative series never collide |
 | `src/agentsfleetd/http/handlers/fleets/backpressure_integration_test.zig` | EDIT | stops scraping a route that no longer exists |
 | `src/agentsfleetd/tests.zig` | EDIT | registration list follows the deleted module |
 | `src/agentsfleetd/queue/redis_pool.zig` | EDIT | comment naming the pull endpoint as the export path is corrected |
@@ -271,18 +274,18 @@ No product analytics event changes. No funnel changes, so no analytics playbook 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The observability gate advances past the datasource probe (§3, §6) | `ALLOW_VAULT_READS=1 ./playbooks/operations/observability/00_gate.sh check dev grafana` | exit 0 | P0 | |
-| R2 | No pull endpoint remains anywhere in the daemon (§4) | `grep -rn '"/metrics"' src/ \| wc -l` | `0` | P0 | |
-| R3 | No rendering entry point survives (§4) | `grep -rn 'renderPrometheus' src/ \| wc -l` | `0` | P0 | |
-| R4 | Neither deployment configuration declares a scrape block (§4) | `grep -rn '\[\[metrics\]\]' deploy/ \| wc -l` | `0` | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
+| R1 | The observability gate advances past the datasource probe (§3, §6) | `ALLOW_VAULT_READS=1 ./playbooks/operations/observability/00_gate.sh check dev grafana` | exit 0 | P0 | ⏳ post-merge — vault-gated probe against dev; families reach the store only after this merge deploys (Indy approval needed for the vault read) |
+| R2 | No pull endpoint remains anywhere in the daemon (§4) | `grep -rn '"/metrics"' src/ \| wc -l` | `0` | P0 | ✅ `0` |
+| R3 | No rendering entry point survives (§4) | `grep -rn 'renderPrometheus' src/ \| wc -l` | `0` | P0 | ✅ `0` |
+| R4 | Neither deployment configuration declares a scrape block (§4) | `grep -rn '\[\[metrics\]\]' deploy/ \| wc -l` | `0` | P0 | ✅ `0` |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 0 paths missing (78-file diff reconciled against both tables) |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `✓ All unit lanes passed` (exit 0) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` (exit 0) |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `✓ [agentsfleetd] Full integration suite passed` (exit 0) |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ `✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` |
+| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets exit 0 |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` |
+| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ all sweep greps 0 matches; renderer file absent |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -332,7 +335,10 @@ No product analytics event changes. No funnel changes, so no analytics playbook 
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
-- **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
-- **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+- **Consults** — Indy's session instruction folded M160_001 onto this branch and PR ("ensure the acceptance is fixed in the same PR as well"), overriding the prior handoff's separate-stream note. Gate-flag triage, all mechanical, auto-applied per the triage rule: UFS string-dup in the payload serializer (extracted `DATA_POINTS_SUFFIX`), LOGGING `std.debug.print` in the observation helper (moved into the test-file class as `otel_metrics_window_test.zig`), ZLint missing SAFETY annotation on a second `undefined` field, a stale `metrics` entry in the OpenAPI route-coverage carve-out list.
+- **Test Delta** — unit 3512→3530 (+18), integration 589→588 (−1: the scrape-based integration assertions became direct snapshot reads; the one scrape-only integration claim moved to the unit-tier window suite with its behavior preserved).
+- **Metrics review** — this milestone IS the operator-signal change: 56 runtime families join the OTLP egress (census in `docs/architecture/observability.md`, bijective with the registry by test). No product analytics events changed; no funnel change, so no analytics playbook update.
+- **Skill-chain outcomes** — unit/failure/regression coverage was authored inside the milestone (25 spec-named Zig tests + rebuilt suites; DB-backed replay tests in the integration lane); gstack `/review` run at REVIEW; `kishore-babysit-prs` runs post-push.
+- **REVIEW findings dispositioned** (two independent adversarial passes, Claude + Codex, converged on the same two P1s — all FIXED same-branch): (1) the flush loop skipped collect on an empty ring, so an idle daemon exported nothing and the absence alert false-paged → `always_collect` idle-flush path in the exporter substrate; (2) a large live-runner set could exceed the fixed 256 KiB payload arena and permanently fail serialization, destroying drained cost samples → the streamed appender sheds at the budget with valid-JSON rollback, sheds surface as discards, and appended series join the partial-rejection export count; (3) replica cumulative-series collision (no `service.instance.id` on three prod machines) → falls back to the Fly machine id; (4) unit-"1" gauges could gain a `_ratio` suffix in the store's name translation, breaking asset queries → level families carry curly-brace annotation units, which translate suffix-free; (5) overflow-bucket per-reason/outcome series were dropped from export (renderer parity regression) → `_other` series restored; (6) a future streamed histogram would slice out of bounds → comptime-refused in the registry. Not changed, for Indy's awareness: telemetry stays fail-open at boot by design (the store-side absence rule is the watchdog), and the replay heal re-grants the starter balance if a wallet ROW was manually deleted — wallet cutoff must be a zero-balance update, never a row delete.
+- **Operational follow-ups for Indy** — (1) the renamed alert rule leaves the old `metrics-scrape-missing-{env}` resources in Grafana; `alerts.sh` has no prune path, so a manual cleanup is needed after provisioning. (2) Rubric R1 (`00_gate.sh check dev grafana`) is vault-gated and only meaningful after this merge deploys to dev — needs Indy to run or approve the vault read.
+- **Deferrals** — none.
