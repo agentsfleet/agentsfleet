@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M159
 **Workstream:** 001
 **Date:** Aug 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator dashboards and six alert rules are dark until runtime families reach the metric store
 **Categories:** API, DOCS, INFRA, OBS
 **Batch:** B1 — §1/§2 and §4 run concurrently; §3/§5/§6 follow §1
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m159-otlp-runtime-metrics
+**Test Baseline:** unit=3512 integration=589
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 11, 2026) from a `/plan-eng-review` against the live development environment
 **Canonical architecture:** `docs/architecture/observability.md` §The four signal paths, §Metric family census
