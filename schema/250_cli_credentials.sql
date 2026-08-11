@@ -40,10 +40,19 @@
 -- ever takes is revocation, and `revoked_at` already records when that
 -- happened — an `updated_at` would equal `created_at` until revocation and
 -- `revoked_at` afterwards, which is the two-columns-one-fact problem `240`'s
--- CHECK exists to police. A `last_used_at` provisioned for asynchronous
--- stamping that has not shipped is speculative (RULE NDC); this repository
--- rebuilds its schema from empty, so adding the column when that work lands
--- costs one line.
+-- CHECK exists to police. `last_used_at` is absent because nothing here reads
+-- it: the question it would answer — who else holds a credential for this
+-- account — is already answered at mint, since a shared credential is minted
+-- on the sharer's machine and lands as a second live row under one user_id.
+-- Provisioning a column for a reader that does not exist is speculative
+-- (RULE NDC), and this repository rebuilds its schema from empty, so adding it
+-- if a reader ever arrives costs one line.
+--
+-- (`240` carries `last_used_at` and DOES stamp it on the authentication path —
+-- see `cmd/api_key_lookup.zig`, which mitigates the write with FOR UPDATE SKIP
+-- LOCKED and a swallowed error. The comment in `240` claiming the column stays
+-- NULL predates that and is stale. Noted here so this file's silence is read as
+-- a decision rather than an oversight.)
 --
 -- Unlike `240`, there is likewise no `active` column: revocation is held once,
 -- by `revoked_at`, and the partial unique index below reads it directly.
