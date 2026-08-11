@@ -103,8 +103,16 @@ test {
     _ = @import("observability/otel_traces.zig");
     _ = @import("observability/otel_metrics.zig");
     _ = @import("observability/otel_metrics_payload.zig");
+    _ = @import("observability/otel_metrics_families.zig");
+    _ = @import("observability/otel_metrics_runtime.zig");
     _ = @import("observability/otel_metrics_aggregate.zig");
     _ = @import("observability/otel_metrics_cardinality.zig");
+    _ = @import("observability/otel_metrics_window_test.zig");
+    _ = @import("observability/otel_metrics_flush_test.zig");
+    _ = @import("observability/otel_metrics_attribution_test.zig");
+    _ = @import("observability/otel_metrics_census_test.zig");
+    _ = @import("observability/otel_metrics_egress_test.zig");
+    _ = @import("observability/library_stages_window_test.zig");
     _ = @import("observability/library_read_counters.zig");
     _ = @import("observability/library_stages.zig");
     _ = @import("observability/library_read_scope.zig");

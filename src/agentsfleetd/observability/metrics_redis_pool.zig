@@ -1,10 +1,11 @@
-//! Redis pool metrics — Prometheus snapshot of the live request-path Pool.
+//! Redis pool metrics — flush-time snapshot of the live request-path Pool.
 //!
 //! Pool already keeps its own counters (active/idle/dials/poisoned/etc.); this
-//! module is a thin singleton registry holding one `*Pool` reference so
-//! `metrics_render.zig` can pull `PoolStats` at scrape time without a direct
-//! queue-layer dependency. Registration happens once at boot in `serve.zig`;
-//! deregistration must fire before the Pool deinits to avoid a dangling read.
+//! module is a thin singleton registry holding one `*Pool` reference so the
+//! OTLP flush collector (`otel_metrics_runtime.zig`) can pull `PoolStats` at
+//! flush time without a direct queue-layer dependency. Registration happens
+//! once at boot in `serve.zig`; deregistration must fire before the Pool
+//! deinits to avoid a dangling read.
 //!
 //! No per-instance state — there is exactly one request-path Pool per process.
 //! Tests register a fake Pool through the same entry point.
@@ -31,8 +32,8 @@ pub fn clearRegisteredPool() void {
 }
 
 /// Returns a fresh `PoolStats` snapshot from the registered Pool, or null if
-/// no Pool has been registered yet (early-boot scrape, or post-teardown).
-/// Caller (`metrics_render.zig`) emits no Redis-pool metric lines when null.
+/// no Pool has been registered yet (early-boot flush, or post-teardown).
+/// Caller (`otel_metrics_runtime.zig`) skips every redis_pool_* family when null.
 ///
 /// `g_mutex` is held across `pool.stats()` to close a TOCTOU window: without
 /// the lock, a concurrent `clearRegisteredPool()` + `api_queue.deinit()` in
@@ -57,7 +58,7 @@ test "clearRegisteredPool is idempotent" {
     try std.testing.expect(snapshot() == null);
 }
 
-// Live Pool snapshot rendering is exercised by slice 9's integration test
+// Live Pool snapshot export is exercised by the integration test
 // (tests/integration/redis_pool_test.zig) — that path connects a real Pool,
-// registers it, and asserts the rendered Prometheus text. The unit tests
-// above keep the registry semantics honest in isolation.
+// registers it, and asserts the exported values. The unit tests above keep
+// the registry semantics honest in isolation.

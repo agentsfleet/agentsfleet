@@ -9,7 +9,7 @@ pub const RouteClass = enum { ops, stream, api };
 /// Server-Sent Events limit; api uses the in-flight request ceiling.
 pub fn classFor(route: router.Route) RouteClass {
     return switch (route) {
-        .healthz, .readyz, .metrics => .ops,
+        .healthz, .readyz => .ops,
         .workspace_fleet_events_stream, .workspace_events_stream => .stream,
         .model_library,
         .create_auth_session,
@@ -92,7 +92,6 @@ pub fn classFor(route: router.Route) RouteClass {
 test "classFor: ops probes never shed, the SSE tail is stream, the rest api" {
     try std.testing.expectEqual(RouteClass.ops, classFor(.healthz));
     try std.testing.expectEqual(RouteClass.ops, classFor(.readyz));
-    try std.testing.expectEqual(RouteClass.ops, classFor(.metrics));
     try std.testing.expectEqual(RouteClass.stream, classFor(.{ .workspace_fleet_events_stream = .{ .workspace_id = "ws1", .fleet_id = "z1" } }));
     try std.testing.expectEqual(RouteClass.stream, classFor(.{ .workspace_events_stream = "ws1" }));
     try std.testing.expectEqual(RouteClass.api, classFor(.model_library));

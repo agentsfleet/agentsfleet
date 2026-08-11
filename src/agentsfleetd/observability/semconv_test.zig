@@ -10,6 +10,7 @@
 const std = @import("std");
 const semconv = @import("semconv.zig");
 const payload = @import("otel_metrics_payload.zig");
+const families = @import("otel_metrics_families.zig");
 const aggregate = @import("otel_metrics_aggregate.zig");
 
 const ALL_METRICS = [_]payload.MetricId{
@@ -35,7 +36,7 @@ test "test_semantic_registry_matches_pinned_sources" {
 
 test "no live descriptor uses a rejected metric name" {
     for (ALL_METRICS) |id| {
-        const name = payload.metaFor(id).name;
+        const name = families.metaFor(id).name;
         for (semconv.REJECTED_METRIC_NAMES) |rejected| {
             try std.testing.expect(!std.mem.eql(u8, name, rejected));
         }
@@ -45,7 +46,7 @@ test "no live descriptor uses a rejected metric name" {
 test "billing quantities never declare a time unit" {
     // The superseded series called nanocredits `ns`, which made a money figure
     // read as a duration in every unit-aware backend.
-    const credit = payload.metaFor(.credit_consumed);
+    const credit = families.metaFor(.credit_consumed);
     try std.testing.expectEqualStrings("{nanocredit}", credit.unit); // pin test: literal is the contract
     try std.testing.expect(!std.mem.eql(u8, credit.unit, "ns"));
     try std.testing.expect(!std.mem.eql(u8, credit.unit, semconv.UNIT_SECONDS));
@@ -53,7 +54,7 @@ test "billing quantities never declare a time unit" {
 
 test "no live metric name embeds its unit" {
     for (ALL_METRICS) |id| {
-        const name = payload.metaFor(id).name;
+        const name = families.metaFor(id).name;
         try std.testing.expect(std.mem.indexOf(u8, name, "_ms") == null);
         try std.testing.expect(std.mem.indexOf(u8, name, "_nanos") == null);
         try std.testing.expect(std.mem.indexOf(u8, name, "_seconds") == null);
@@ -61,9 +62,9 @@ test "no live metric name embeds its unit" {
 }
 
 test "duration declares seconds and buckets the pinned agent boundaries" {
-    const duration = payload.metaFor(.invoke_agent_duration);
+    const duration = families.metaFor(.invoke_agent_duration);
     try std.testing.expectEqualStrings("s", duration.unit); // pin test: literal is the contract
-    try std.testing.expect(duration.millis_to_seconds);
+    try std.testing.expectEqual(families.Scale.millis_to_seconds, duration.scale);
     // `gen_ai.invoke_agent.duration`'s OWN pinned boundaries, expressed in the
     // milliseconds the runner reports: 0.1s .. 409.6s. The client-call table
     // (0.01s .. 81.92s) belongs to `gen_ai.client.operation.duration` and would
@@ -74,16 +75,16 @@ test "duration declares seconds and buckets the pinned agent boundaries" {
 
 test "token usage declares the token annotation and never converts to seconds" {
     for ([_]payload.MetricId{ .token_usage, .cache_read_token_usage }) |id| {
-        const meta = payload.metaFor(id);
+        const meta = families.metaFor(id);
         try std.testing.expectEqualStrings("{token}", meta.unit); // pin test: literal is the contract
-        try std.testing.expect(!meta.millis_to_seconds);
+        try std.testing.expectEqual(families.Scale.none, meta.scale);
         try std.testing.expectEqualSlices(u64, &semconv.TOKEN_BUCKET_BOUNDS, meta.bounds);
     }
 }
 
 test "every histogram bucket table fits the payload bucket array" {
     for (ALL_METRICS) |id| {
-        const meta = payload.metaFor(id);
+        const meta = families.metaFor(id);
         if (meta.kind != .histogram) {
             try std.testing.expectEqual(@as(usize, 0), meta.bounds.len);
             continue;

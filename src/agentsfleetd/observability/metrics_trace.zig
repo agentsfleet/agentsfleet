@@ -6,6 +6,17 @@ const trace_policy = @import("../http/route_trace.zig");
 pub const SUPPRESSED_NAME = "agentsfleet_http_trace_suppressed_total";
 pub const SUPPRESSED_HELP = "HTTP request spans suppressed by the bounded trace admission policy.";
 
+/// Wire label values for the `reason` dimension, in Snapshot field order —
+/// the exporter iterates this list, so a new suppression reason must land
+/// here, in Snapshot, and in `inc` in the same change.
+pub const SUPPRESSION_REASON_LABELS = [_][]const u8{
+    "noisy_route",
+    "runner_rejection_budget",
+    "server_error_budget",
+    "sampled_success_budget",
+    "sample_miss",
+};
+
 pub const Snapshot = struct {
     noisy_route_total: u64,
     runner_rejection_budget_total: u64,
