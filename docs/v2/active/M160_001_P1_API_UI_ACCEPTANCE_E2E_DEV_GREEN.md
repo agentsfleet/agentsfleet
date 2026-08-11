@@ -57,6 +57,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `src/agentsfleetd/state/signup_bootstrap.zig` | EDIT | replay path converges the wallet invariant via the idempotent starter grant |
 | `src/agentsfleetd/state/signup_bootstrap_test.zig` | EDIT | replay-heal coverage: missing wallet is restored, existing balance untouched |
+| `src/agentsfleetd/state/tenant_billing.zig` | EDIT | gains the heal entry point the replay path calls |
+| `src/agentsfleetd/state/tenant_billing_store.zig` | EDIT | the conflict-safe insert reports whether it inserted |
+| `ui/packages/app/tests/secrets-actions.test.ts` | EDIT | thin-forwarder coverage for the replace action (istanbul 100% gate) |
 | `ui/packages/app/components/layout/WorkspaceSwitcher.tsx` | EDIT | always-mounted trigger merges optimistically created workspaces before resolving its label |
 | `ui/packages/app/components/layout/WorkspaceSwitcher.test.tsx` | CREATE | label resolution coverage incl. the routed-but-not-yet-listed workspace |
 | `ui/packages/app/components/layout/WorkspaceCreationProvider.tsx` | EDIT | gains the read-only created-workspaces hook the trigger consumes |
@@ -226,17 +229,17 @@ No product analytics event changes; no funnel changes, so no analytics playbook 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Shared fixture used everywhere; no local builders (§1) | `command grep -rn 'function triggerMd' ui/packages/app/tests/e2e/acceptance/ \| wc -l` | `1` | P0 | |
-| R2 | Replay heals the wallet hole (§2) | `make test-integration` (suite includes the replay-heal tests) | exit 0 | P0 | |
-| R3 | No networkidle wait survives (§6) | `command grep -rn 'networkidle' ui/packages/app/tests/e2e/acceptance/ \| wc -l` | `0` | P0 | |
-| R4 | Dashboard unit suites cover the three UI fixes (§3, §4, §6) | `cd ui/packages/app && bun run test` | exit 0 | P0 | |
-| R5 | Diff stays inside Files Changed (union with M159_001's table on the shared branch) | `git diff --name-only origin/main...HEAD` | 0 paths missing from the two Files Changed tables | P0 | |
-| R6 | acceptance-e2e-dev goes green post-merge | `gh run list --workflow=deploy-dev.yml -L 1 --json databaseId,conclusion` then the acceptance job of that run | acceptance-e2e-dev conclusion `success` | P1 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
+| R1 | Shared fixture used everywhere; no local builders (§1) | `command grep -rn 'function triggerMd' ui/packages/app/tests/e2e/acceptance/ \| wc -l` | `1` | P0 | ✅ `1` (the shared builder in fixtures/seed.ts) |
+| R2 | Replay heals the wallet hole (§2) | `make test-integration` (suite includes the replay-heal tests) | exit 0 | P0 | ✅ exit 0 (replay-heal tests in the DB-backed lane) |
+| R3 | No networkidle wait survives (§6) | `command grep -rn 'networkidle' ui/packages/app/tests/e2e/acceptance/ \| wc -l` | `0` | P0 | ✅ `0` |
+| R4 | Dashboard unit suites cover the three UI fixes (§3, §4, §6) | `cd ui/packages/app && bun run test` | exit 0 | P0 | ✅ `222 passed (222)` / `2248 passed` at 100% coverage |
+| R5 | Diff stays inside Files Changed (union with M159_001's table on the shared branch) | `git diff --name-only origin/main...HEAD` | 0 paths missing from the two Files Changed tables | P0 | ✅ 0 paths missing (union with M159_001's table) |
+| R6 | acceptance-e2e-dev goes green post-merge | `gh run list --workflow=deploy-dev.yml -L 1 --json databaseId,conclusion` then the acceptance job of that run | acceptance-e2e-dev conclusion `success` | P1 | ⏳ post-merge by design — graded via kishore-babysit-prs on the next deploy-dev run |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `✓ All unit lanes passed` (exit 0) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` (exit 0) |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `✓ [agentsfleetd] Full integration suite passed` (exit 0) |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` |
+| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ all four greps 0 matches |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery. R6 is grade-after-merge by design: the suite only runs against the deployed development environment, deploy-dev fires on pushes to main, and branch runs never deploy — it is graded via `kishore-babysit-prs` on the post-merge run.
 
@@ -285,7 +288,9 @@ N/A — no files deleted; the retired builders are functions inside files that r
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
-- **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
-- **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+- **Consults** — Indy's session instruction placed this workstream on M159_001's branch and PR ("ensure the acceptance is fixed in the same PR as well"), overriding the prior handoff's separate-stream note. Root causes were verified against source, CI artifacts, and the Playwright network trace before this spec was authored (the trace disproved the initial "tight Clerk refresh loop" hypothesis — the loop is a bounded double-fire; the networkidle blocker is the testing proxy's held-open requests).
+- **Test Delta** — shares the branch ledger with M159_001: unit 3512→3530 (+18); this workstream's own additions are the three replay-heal integration tests plus twelve dashboard/hygiene unit tests.
+- **Metrics review** — one operational log record added (`signup_replay_wallet_healed`); no product analytics events, no funnel change, no analytics playbook update required.
+- **Skill-chain outcomes** — unit and integration coverage authored inside the workstream (every fix carries its regression test; the istanbul 100% gate stays green); gstack `/review` run at REVIEW (findings below); `kishore-babysit-prs` runs post-push and grades R6 on the next deploy-dev run.
+- **Out-of-scope surfaced to Indy** — the two cli-acceptance-dev failures on run 31458941845 (`api-key delete` UZ-APIKEY-003 expectation, `steer-live` timeout) are a different job and not covered here.
+- **Deferrals** — none.

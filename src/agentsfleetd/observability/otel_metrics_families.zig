@@ -166,15 +166,15 @@ fn buildMeta(id: MetricId) MetricMeta {
         .credit_consumed => costMeta(.{ .name = semconv.METRIC_BILLING_CREDIT_CONSUMED, .unit = semconv.UNIT_NANOCREDITS, .kind = .sum, .monotonic = true }),
         .samples_dropped => costMeta(.{ .name = semconv.METRIC_SAMPLES_DROPPED, .unit = semconv.UNIT_COUNT, .kind = .sum, .monotonic = true }),
         .api_backpressure_rejections => cum(semconv.METRIC_API_BACKPRESSURE_REJECTIONS, 1),
-        .api_in_flight_requests => gauge(semconv.METRIC_API_IN_FLIGHT_REQUESTS, semconv.UNIT_COUNT, 1),
+        .api_in_flight_requests => gauge(semconv.METRIC_API_IN_FLIGHT_REQUESTS, semconv.UNIT_REQUESTS, 1),
         .sse_backpressure_rejections => cum(semconv.METRIC_SSE_BACKPRESSURE_REJECTIONS, 1),
-        .sse_in_flight_streams => gauge(semconv.METRIC_SSE_IN_FLIGHT_STREAMS, semconv.UNIT_COUNT, 1),
+        .sse_in_flight_streams => gauge(semconv.METRIC_SSE_IN_FLIGHT_STREAMS, semconv.UNIT_STREAMS, 1),
         .sse_dropped_frames => cum(semconv.METRIC_SSE_DROPPED_FRAMES, 1),
         .sse_hub_reconnects => cum(semconv.METRIC_SSE_HUB_RECONNECTS, 1),
-        .worker_running => gauge(semconv.METRIC_WORKER_RUNNING, semconv.UNIT_COUNT, 1),
+        .worker_running => gauge(semconv.METRIC_WORKER_RUNNING, semconv.UNIT_WORKERS, 1),
         .fleet_triggered => cum(semconv.METRIC_FLEET_TRIGGERED, 1),
         .http_trace_suppressed => cum(mt.SUPPRESSED_NAME, mt.SUPPRESSION_REASON_LABELS.len),
-        .otlp_queue_depth => gauge(mot.QUEUE_DEPTH_NAME, semconv.UNIT_COUNT, mot.SIGNALS.len),
+        .otlp_queue_depth => gauge(mot.QUEUE_DEPTH_NAME, semconv.UNIT_ENTRIES, mot.SIGNALS.len),
         .otlp_entries_discarded => cum(mot.DISCARDED_NAME, mot.SIGNALS.len * mot.DISCARD_REASONS.len),
         .otel_attribute_omitted => cum(mot.ATTRIBUTE_OMITTED_NAME, mot.OMITTED_ATTRIBUTES.len * mot.OMISSION_REASONS.len),
         .signup_bootstrapped => cum(semconv.METRIC_SIGNUP_BOOTSTRAPPED, 1),
@@ -183,7 +183,7 @@ fn buildMeta(id: MetricId) MetricMeta {
         .lease_polls => cum(mc.LEASE_POLLS_NAME, 1),
         .lease_poll_candidates_scanned => cum(mc.CANDIDATES_SCANNED_NAME, 1),
         .lease_poll_db_roundtrips => cum(mc.DB_ROUNDTRIPS_NAME, 1),
-        .fleet_ready_depth => gauge(mc.READY_DEPTH_NAME, semconv.UNIT_COUNT, 1),
+        .fleet_ready_depth => gauge(mc.READY_DEPTH_NAME, semconv.UNIT_FLEETS, 1),
         .fleet_ready_write_failures => cum(mc.READY_WRITE_FAILURES_NAME, 1),
         .runner_retention_swept => cum(mc.RETENTION_SWEPT_NAME, 1),
         .runner_retention_sweep_failures => cum(mc.RETENTION_SWEEP_FAILURES_NAME, 1),
@@ -195,8 +195,8 @@ fn buildMeta(id: MetricId) MetricMeta {
         .library_cache_outcome => cum(ls.CACHE_OUTCOME_NAME, ls.CACHE_LABELS.len),
         .library_payload_bytes => .{ .name = ls.PAYLOAD_BYTES_NAME, .unit = semconv.UNIT_BYTES, .kind = .sum, .monotonic = true, .temporality = .cumulative, .max_series = ls.SURFACE_LABELS.len },
         .library_results => cum(ls.RESULTS_NAME, ls.SURFACE_LABELS.len),
-        .redis_pool_active => gauge(semconv.METRIC_REDIS_POOL_ACTIVE, semconv.UNIT_COUNT, 1),
-        .redis_pool_idle => gauge(semconv.METRIC_REDIS_POOL_IDLE, semconv.UNIT_COUNT, 1),
+        .redis_pool_active => gauge(semconv.METRIC_REDIS_POOL_ACTIVE, semconv.UNIT_CONNECTIONS, 1),
+        .redis_pool_idle => gauge(semconv.METRIC_REDIS_POOL_IDLE, semconv.UNIT_CONNECTIONS, 1),
         .redis_pool_dials => cum(semconv.METRIC_REDIS_POOL_DIALS, 1),
         .redis_pool_overflow_dials => cum(semconv.METRIC_REDIS_POOL_OVERFLOW_DIALS, 1),
         .redis_pool_poisoned_connections => cum(semconv.METRIC_REDIS_POOL_POISONED, 1),
@@ -205,7 +205,7 @@ fn buildMeta(id: MetricId) MetricMeta {
         .redis_pool_acquire_timeouts => cum(semconv.METRIC_REDIS_POOL_ACQUIRE_TIMEOUTS, 1),
         .memory_entries_captured => cum(mm.MEM_CAPTURED_NAME, 1),
         .memory_push_failures => cum(mm.MEM_PUSH_FAIL_NAME, 1),
-        .memory_hydration_window_entries => gauge(mm.MEM_HYDRATION_NAME, semconv.UNIT_COUNT, 1),
+        .memory_hydration_window_entries => gauge(mm.MEM_HYDRATION_NAME, semconv.UNIT_ENTRIES, 1),
         .memory_hydration_dropped_entries => cum(mm.HYDRATION_DROPPED_ENTRIES_NAME, 1),
         .memory_hydration_dropped_bytes => .{ .name = mm.HYDRATION_DROPPED_BYTES_NAME, .unit = semconv.UNIT_BYTES, .kind = .sum, .monotonic = true, .temporality = .cumulative },
         .memory_cap_evictions => cum(mm.CAP_EVICTIONS_NAME, 1),
@@ -220,7 +220,7 @@ fn buildMeta(id: MetricId) MetricMeta {
         .runner_failures_overflow => streamedMeta(cum(mr.FAILURES_OVERFLOW_NAME, 1), 1),
         .runner_executions => streamedMeta(cum(mr.EXECUTIONS_NAME, 1), mr.MAX_SLOTS * mr.OUTCOME_LABELS.len),
         .runner_last_seen_seconds => streamedMeta(gauge(mr.LAST_SEEN_NAME, semconv.UNIT_SECONDS, 1), mr.MAX_SLOTS),
-        .runner_active_leases => streamedMeta(gauge(mr.ACTIVE_LEASES_NAME, semconv.UNIT_COUNT, 1), mr.MAX_SLOTS),
+        .runner_active_leases => streamedMeta(gauge(mr.ACTIVE_LEASES_NAME, semconv.UNIT_LEASES, 1), mr.MAX_SLOTS),
     };
 }
 
@@ -281,4 +281,8 @@ comptime {
     // A zero-width runtime set would mean the registry lost its declarations.
     std.debug.assert(RUNTIME_FIXED_SERIES > 0);
     std.debug.assert(STREAMED_SERIES_WORST_CASE > 0);
+    // The streamed appender serializes from a Sample, which carries no bucket
+    // state — a streamed histogram would slice empty bucket_counts out of
+    // bounds at flush time, so the registry refuses the combination here.
+    for (METAS) |meta| std.debug.assert(!(meta.streamed and meta.kind == .histogram));
 }

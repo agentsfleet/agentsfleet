@@ -209,7 +209,8 @@ test "the serialized payload matches the pinned OTLP-JSON fixture" {
     // are delta, so the cumulative process-start stamp never reaches the wire
     // here and the pre-widening fixture stays byte-identical.
     const times = payload.WireTimes{ .window_start_ns = 1000, .process_start_ns = 500, .now_ns = 2000 };
-    const body = try payload.serializeSeries(alloc, TEST_CFG, &series, times, null);
+    const envelope = try payload.serializeSeries(alloc, TEST_CFG, &series, times, null);
+    const body = envelope.body;
     defer alloc.free(body);
 
     const fixture = @embedFile("otlp_metrics.json");
@@ -235,7 +236,8 @@ test "test_gauge_serializes_as_gauge" {
         .bucket_counts = &[_]u64{},
     }};
     const times = payload.WireTimes{ .window_start_ns = 1000, .process_start_ns = 500, .now_ns = 2000 };
-    const body = try payload.serializeSeries(alloc, TEST_CFG, &series, times, null);
+    const envelope = try payload.serializeSeries(alloc, TEST_CFG, &series, times, null);
+    const body = envelope.body;
     defer alloc.free(body);
 
     try std.testing.expect(std.mem.indexOf(u8, body, "\"gauge\":{\"dataPoints\":[{") != null); // pin test: literal is the contract

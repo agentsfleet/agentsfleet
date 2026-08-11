@@ -47,6 +47,10 @@ const Exporter = otlp_exporter.Exporter(.{
     .collect = collectMetrics,
     .pending_count = metricsPendingCount,
     .wake_threshold = 768,
+    // Level and cumulative families are pending work even when no evented
+    // sample is: an idle daemon must keep pushing, or dashboards go stale and
+    // store-side absence stops meaning "exporter dead".
+    .always_collect = true,
 });
 
 pub const install = Exporter.install;
@@ -268,9 +272,16 @@ fn serializeMetrics(
         };
         count += 1;
     }
+    const envelope = try payload.serializeSeries(alloc, cfg, series_buf[0..count], times, runtime.appendStreamedRunnerFamilies);
+    // Streamed series shed at the payload budget are a real data loss the
+    // operator must be able to see; appended ones join the export count the
+    // backend's partial-rejection reply is validated against.
+    if (envelope.extra.shed > 0) {
+        health.recordDiscard(.metrics, .aggregate_cap, @intCast(envelope.extra.shed));
+    }
     return .{
-        .body = try payload.serializeSeries(alloc, cfg, series_buf[0..count], times, runtime.appendStreamedRunnerFamilies),
-        .export_count = count,
+        .body = envelope.body,
+        .export_count = count + envelope.extra.appended,
     };
 }
 
