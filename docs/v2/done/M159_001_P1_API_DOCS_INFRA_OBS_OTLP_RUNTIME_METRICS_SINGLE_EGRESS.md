@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M159
 **Workstream:** 001
 **Date:** Aug 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator dashboards and six alert rules are dark until runtime families reach the metric store
 **Categories:** API, DOCS, INFRA, OBS
 **Batch:** B1 — §1/§2 and §4 run concurrently; §3/§5/§6 follow §1

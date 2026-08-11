@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M160
 **Workstream:** 001
 **Date:** Aug 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — two shipped product defects (workspace switcher label, secret rotation) plus a dev-environment data hole are user-visible; the suite is the deploy gate's only end-to-end proof
 **Categories:** API, UI
 **Batch:** B1 — all seven sections are independent and run concurrently
