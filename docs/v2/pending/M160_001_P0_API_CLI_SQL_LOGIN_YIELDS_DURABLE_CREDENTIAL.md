@@ -119,6 +119,7 @@ The platform issues exactly one durable credential today and it belongs to a ten
 - **Dimension 1.3** — only a hash is stored; the credential itself is unreadable from the row → Test `test_row_holds_no_recoverable_credential`
 - **Dimension 1.4** — a value lacking the credential prefix is refused on load rather than sent → Test `test_non_prefixed_value_is_refused_on_load`
 - **Dimension 1.5** — a revoked credential authenticates nothing → Test `test_revoked_credential_is_refused`
+- **Dimension 1.6** — each use records where it was used from, overwriting in place so one credential is always one row → Test `test_use_records_attribution_without_growth`
 
 ### §2 — Login spends its sixty seconds on something that lasts
 
@@ -159,11 +160,14 @@ Stored state records the credential and the workspaces and nothing about where e
 NEW TABLE  core.cli_credentials (schema 250)
   id, user_id -> core.users, tenant_id -> core.tenants, machine_name,
   credential_hash, credential_prefix, deployment, created_at,
-  last_used_at, revoked_at
+  last_used_at, last_used_address, last_used_agent, revoked_at
   UNIQUE (user_id, machine_name) WHERE revoked_at IS NULL
         -- one live credential per machine is unrepresentable, not merely
         -- unwritten; §3.1 rests on the index, not on store discipline
   Content columns immutable; revocation is the only mutation.
+  The three last_used_* columns are overwritten in place on the update the
+  authenticate path already performs — one row per credential, never a
+  history table, so attribution costs no growth.
 
 NEW  POST   /v1/cli-credentials          mint; auth: session token OR credential
 NEW  GET    /v1/cli-credentials          list this user's live credentials
@@ -224,6 +228,7 @@ REFUSALS   registered codes; typed, never silent
 | `cli_prior_credential_revoked` | CLI | A previous credential for this machine is revoked | count, identifiers | no credential material | `test_relogin_leaves_one_live_credential` |
 | `cli_deployment_mismatch_refused` | CLI | A credential is refused against another deployment | stored host, requested host | no credential material | `test_credential_refused_against_other_deployment` |
 | `cli_credential_minted` | ops | The daemon mints a credential | user id, machine name, deployment | no credential material | `test_credential_resolves_to_its_user` |
+| credential last-use attribution | ops | A credential authenticates a request | machine name, network address, user agent, timestamp | operator-only; overwritten in place, never a per-request history; no request path or payload | `test_use_records_attribution_without_growth` |
 
 The existing login-completed analytics event keeps its name and its position in the flow; only its properties change. No funnel or playbook update is required — the event fires at the same point in the same flow.
 
@@ -236,6 +241,7 @@ The existing login-completed analytics event keeps its name and its position in 
 | 1.3 | integration | `test_row_holds_no_recoverable_credential` | The stored row's columns cannot reconstruct the issued value |
 | 1.4 | unit | `test_non_prefixed_value_is_refused_on_load` | A stored value without the prefix is refused at read, before any request |
 | 1.5 | integration | `test_revoked_credential_is_refused` | A revoked credential answers the registered code |
+| 1.6 | integration | `test_use_records_attribution_without_growth` | Two uses from different addresses leave one row carrying the later address; the row count is unchanged |
 | 2.1 | unit | `test_login_persists_credential_not_session_token` | After a stubbed flow, the persisted value is the credential and the session token appears nowhere in the file |
 | 2.2 | integration | `test_credential_outlives_the_session_window` | A credential authenticates a call issued after the session token's lifetime has elapsed |
 | 2.3 | integration | `test_mint_accepts_session_token_auth` | A mint authorised by a session token succeeds, so the exchange is possible inside the window |
@@ -306,6 +312,7 @@ The existing login-completed analytics event keeps its name and its position in 
 - **Named multi-deployment profiles.** §4 binds a credential to the one deployment that minted it, which is what stops the silent production fallback. Holding several deployments at once and switching between them is a larger surface and is not needed here.
 - **Changing the handshake or the verification-code surface.** Both are correct, and the public key is already kept out of the browser URL, which the reference implementation does not manage. Untouched.
 - **A global sign-out.** Logout ends this terminal's credential. Revoking every credential a user holds everywhere is a distinct product action with a distinct surface.
+- **Preventing credential sharing.** A durable credential can be handed to someone else by the account holder, who approves in their browser and forwards the six-digit code — every control fires correctly, because the person consenting is the person sharing. That cannot be closed cryptographically, and this workstream does not try: Dimension 1.6 makes each use attributable so the question is answerable from a query, and nothing here limits concurrency, counts seats, or refuses a second machine. Whether that data warrants enforcement is a billing decision, taken with the data rather than ahead of it.
 - **Retiring `core.api_keys`.** Tenant keys remain the right credential for service-to-service callers. This adds a second class; it does not replace the first.
 - **Credential expiry policy.** A durable credential is durable. Rotation on a timer is a server-side product decision.
 
@@ -349,6 +356,9 @@ The existing login-completed analytics event keeps its name and its position in 
 - **Adversarial review, Aug 11, 2026 (Orly, Chief Technology Officer capacity).** The first draft of this spec was rejected before commit. Five findings: the tenant-scoped credential was the wrong ownership model and invalidated the CLI-only scope (F1, blocking — this rewrite); one precedence ladder conflated credential selection with target selection (F2 — now two ladders, Dimensions 4.3 and 4.4); the "no session token on disk" invariant claimed type-safety over a JSON file (F3 — now a prefix validated on load, Dimension 1.4, adopted from `access_token.go:16`); the mint endpoint's acceptance of session-token authorisation was assumed and unverified (F4 — now Dimension 2.3); and the only live rubric row raced a wall clock (F5 — now R12, asserting the stored credential carries no expiry).
 
 - **Consult — device-flow security review, Aug 11, 2026.** The ECDH exchange was examined for whether encrypting to a CLI-supplied public key creates exposure. It does not: the public key is public by construction, and only the ephemeral private key — which never leaves the CLI process — decrypts. The phishing path (an attacker starts a login and sends the approval link to a signed-in victim) is closed by the verification code, which is generated in the victim's browser with `crypto.getRandomValues` under rejection sampling and never reaches the attacker; `MAX_VERIFY_ATTEMPTS` bounds guessing against the code space. Both properties are load-bearing for a *durable* credential and are pinned by `test_verify_attempt_ceiling_unchanged` (Invariant 8).
+
+- **Sharing is a known, accepted consequence (Aug 11, 2026).** Raised during the use-case walk: today's sixty-second token is incidentally an anti-sharing control, and making the credential durable turns account sharing from a pointless nuisance into a one-time arrangement. Named here so it is on the record before it ships.
+  > Indy (2026-08-11): "I dont want to spin too much time on such loop holes, since I have used the above mechanism to share my Claude subscription with my other team make lets say Bob. Sp add what is needed cheap to have auditable results and lets move on." — context: Dimension 1.6 adds last-use attribution on the update the authenticate path already performs. No enforcement, no concurrency limit, no seat counting.
 
 - **Metrics review** — to be recorded at CHORE(close).
 - **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, `/review`, `kishore-babysit-prs` results to be recorded per `AGENTS.md` CHORE(close).
