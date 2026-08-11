@@ -229,6 +229,9 @@ N/A — no files deleted.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage:
 - **Metrics review** —
 - **Skill-chain outcomes** —
+- **Parked (Aug 11, 2026) — local proof blocked on Vercel deployment protection.** Preflight against dev passes 10 of 13; the three failures are browser-side only, landing on Vercel's protection wall rather than the dashboard sign-in (`global-setup.ts:141-151` trades `VERCEL_BYPASS_SECRET` for a short-lived cookie, and that secret is in none of the three 1Password vaults). Every API-side check passes against `api-dev`, so the environment is live and the harness reaches it. §5's acceptance specs are not written; §1–§4 external proof is not run.
+  > Indy (2026-08-11): "I think if you are able to run the test i defer till we do the full login and so on? can we defer the tests and move on the 161 implementation? I would defer the test to CI" — context: local execution of the wall and connector proof is deferred to Continuous Integration, where the Vercel bypass secret is already available to the workflow; M160_001 takes priority. This workstream stays IN_PROGRESS with no Section marked DONE.
+
 - **Deferrals** —
   > Indy (2026-07-20 22:23): "And move th 2,3,4 to the next milestone and read and move this milestone to done?" — context: live Slack authorization/signed mention and real GitHub review/replay proof move from M135_001 to this successor; runner activation remains M135_002 and is this workstream's prerequisite.
   > Indy (2026-07-26): "I think move this to DONE. I have eyeballed it, on fleets getting added, i will do an exhaustive check in M136_001" — context: M133 closes on direct visual acceptance; M136 inherits the unrun deployed `live-counter` and `pulse-wall` proof and must exercise them with the real `github-pr-reviewer` Fleet.
