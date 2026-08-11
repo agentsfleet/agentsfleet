@@ -119,7 +119,7 @@ The platform issues exactly one durable credential today and it belongs to a ten
 - **Dimension 1.3** — only a hash is stored; the credential itself is unreadable from the row → Test `test_row_holds_no_recoverable_credential`
 - **Dimension 1.4** — a value lacking the credential prefix is refused on load rather than sent → Test `test_non_prefixed_value_is_refused_on_load`
 - **Dimension 1.5** — a revoked credential authenticates nothing → Test `test_revoked_credential_is_refused`
-- **Dimension 1.6** — each use records where it was used from, overwriting in place so one credential is always one row → Test `test_use_records_attribution_without_growth`
+- **Dimension 1.6** — the row records the machine and address that minted it, written once at mint and never on the authenticate path → Test `test_mint_records_attribution_and_auth_path_writes_nothing`
 
 ### §2 — Login spends its sixty seconds on something that lasts
 
@@ -160,14 +160,20 @@ Stored state records the credential and the workspaces and nothing about where e
 NEW TABLE  core.cli_credentials (schema 250)
   id, user_id -> core.users, tenant_id -> core.tenants, machine_name,
   credential_hash, credential_prefix, deployment, created_at,
-  last_used_at, last_used_address, last_used_agent, revoked_at
+  created_from_address, revoked_at
   UNIQUE (user_id, machine_name) WHERE revoked_at IS NULL
         -- one live credential per machine is unrepresentable, not merely
         -- unwritten; §3.1 rests on the index, not on store discipline
-  Content columns immutable; revocation is the only mutation.
-  The three last_used_* columns are overwritten in place on the update the
-  authenticate path already performs — one row per credential, never a
-  history table, so attribution costs no growth.
+  Revocation is the only mutation this row ever takes, so there is no
+  `updated_at` (it would be redundant with `revoked_at`) and no `last_used_at`
+  (a column provisioned for stamping that has not shipped is speculative,
+  RULE NDC — and stamping on the authenticate path would turn the hottest
+  indexed read in the system into a write).
+  Attribution is a MINT-TIME fact: machine_name and created_from_address are
+  written once, at creation, and the authenticate path writes nothing at all.
+  Sharing stays visible without any per-request bookkeeping, because a shared
+  credential is minted on the sharer's own machine and therefore arrives as a
+  second live row under one user_id carrying a different machine_name.
 
 NEW  POST   /v1/cli-credentials          mint; auth: session token OR credential
 NEW  GET    /v1/cli-credentials          list this user's live credentials
@@ -218,6 +224,7 @@ REFUSALS   registered codes; typed, never silent
 6. **The row never holds a recoverable credential** — only a hash and a display prefix are stored, mirroring `240`.
 7. **Credential material never enters a log, an error body, or telemetry** — enforced by the redaction wrapper, asserted by a test scanning emitted output across every path.
 8. **The verify attempt ceiling is unchanged** — `MAX_VERIFY_ATTEMPTS` stays at its current value; this workstream must not widen the brute-force surface it bounds.
+9. **The credential is drawn from a cryptographically secure source at full entropy** — enforced by test against the generator, not by convention. The stored digest is plain and unsalted, which is safe only while the input is unguessable; a generator that ever drew from a clock, a counter, or a non-cryptographic source would silently turn the digest into a reversible record of live credentials.
 
 ## Metrics & Observability
 
@@ -228,7 +235,7 @@ REFUSALS   registered codes; typed, never silent
 | `cli_prior_credential_revoked` | CLI | A previous credential for this machine is revoked | count, identifiers | no credential material | `test_relogin_leaves_one_live_credential` |
 | `cli_deployment_mismatch_refused` | CLI | A credential is refused against another deployment | stored host, requested host | no credential material | `test_credential_refused_against_other_deployment` |
 | `cli_credential_minted` | ops | The daemon mints a credential | user id, machine name, deployment | no credential material | `test_credential_resolves_to_its_user` |
-| credential last-use attribution | ops | A credential authenticates a request | machine name, network address, user agent, timestamp | operator-only; overwritten in place, never a per-request history; no request path or payload | `test_use_records_attribution_without_growth` |
+| credential mint attribution | ops | A credential is minted at login | machine name, creating address, deployment, timestamp | operator-only; written once at mint, never on the authenticate path; no request path or payload | `test_mint_records_attribution_and_auth_path_writes_nothing` |
 
 The existing login-completed analytics event keeps its name and its position in the flow; only its properties change. No funnel or playbook update is required — the event fires at the same point in the same flow.
 
@@ -241,7 +248,7 @@ The existing login-completed analytics event keeps its name and its position in 
 | 1.3 | integration | `test_row_holds_no_recoverable_credential` | The stored row's columns cannot reconstruct the issued value |
 | 1.4 | unit | `test_non_prefixed_value_is_refused_on_load` | A stored value without the prefix is refused at read, before any request |
 | 1.5 | integration | `test_revoked_credential_is_refused` | A revoked credential answers the registered code |
-| 1.6 | integration | `test_use_records_attribution_without_growth` | Two uses from different addresses leave one row carrying the later address; the row count is unchanged |
+| 1.6 | integration | `test_mint_records_attribution_and_auth_path_writes_nothing` | A mint records machine and address; a hundred authenticated requests afterwards leave every column byte-identical, `last_used_at` still NULL |
 | 2.1 | unit | `test_login_persists_credential_not_session_token` | After a stubbed flow, the persisted value is the credential and the session token appears nowhere in the file |
 | 2.2 | integration | `test_credential_outlives_the_session_window` | A credential authenticates a call issued after the session token's lifetime has elapsed |
 | 2.3 | integration | `test_mint_accepts_session_token_auth` | A mint authorised by a session token succeeds, so the exchange is possible inside the window |
@@ -264,6 +271,7 @@ The existing login-completed analytics event keeps its name and its position in 
 | failure | unit | `test_corrupt_state_reads_as_logged_out` | An unreadable state file reads as logged out, never as another deployment |
 | failure | integration | `test_tenant_key_refused_on_user_scoped_route` | A tenant API key does not satisfy a route requiring a user principal |
 | invariant | unit | `test_no_credential_material_in_emitted_output` | Across login, failure, and refusal paths, no emitted string contains credential or token material |
+| invariant | unit | `test_credential_is_full_entropy_from_a_secure_source` | The generator draws from the cryptographic source; a large sample yields no duplicate, no shared prefix beyond the declared one, and passes the declared entropy floor |
 | regression | integration | `test_device_flow_handshake_unchanged` | The session, approve, and verify calls are byte-identical to today |
 | regression | integration | `test_verify_attempt_ceiling_unchanged` | The verify attempt ceiling is unchanged and still refuses past it |
 | regression | integration | `test_tenant_api_keys_unchanged` | `/v1/api-keys` behaviour is identical to before |
@@ -283,6 +291,7 @@ The existing login-completed analytics event keeps its name and its position in 
 | R9 | The handshake is untouched | `zig-out/bin/agentsfleetd-integration-tests --test-filter test_device_flow_handshake_unchanged` | `1 passed` | P0 | |
 | R10 | The brute-force ceiling is not widened | `zig-out/bin/agentsfleetd-integration-tests --test-filter test_verify_attempt_ceiling_unchanged` | `1 passed` | P0 | |
 | R11 | No credential material is emitted | `cd cli && bun test --test-name-pattern 'test_no_credential_material_in_emitted_output'` | `0 fail` | P0 | |
+| R11b | The credential carries full entropy, so the unsalted digest is safe | `zig-out/bin/agentsfleetd-tests --test-filter test_credential_is_full_entropy_from_a_secure_source` | `1 passed` | P0 | |
 | R12 | Live proof: a credential survives past the session window | `agentsfleet login && agentsfleet auth status --json \| jq -e '.expires_at == null'` | exit 0 — the stored credential carries no expiry | P0 | |
 | R13 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | |
@@ -359,6 +368,12 @@ The existing login-completed analytics event keeps its name and its position in 
 
 - **Sharing is a known, accepted consequence (Aug 11, 2026).** Raised during the use-case walk: today's sixty-second token is incidentally an anti-sharing control, and making the credential durable turns account sharing from a pointless nuisance into a one-time arrangement. Named here so it is on the record before it ships.
   > Indy (2026-08-11): "I dont want to spin too much time on such loop holes, since I have used the above mechanism to share my Claude subscription with my other team make lets say Bob. Sp add what is needed cheap to have auditable results and lets move on." — context: Dimension 1.6 adds last-use attribution on the update the authenticate path already performs. No enforcement, no concurrency limit, no seat counting.
+
+- **Consult — attribution belongs at mint, not at use (Aug 11, 2026, PLAN).** The first amendment specified last-use columns written on the authenticate path. `240_api_keys.sql:12-15` had already refused exactly that, in writing: stamping every request turns the hottest indexed read in the system into a write. A coalesced-write compromise was then proposed and also rejected as unnecessary. The reference implementation settles it — `~/Projects/oss/cli` tracks no usage at all; its whole token record is identity and creation time. Attribution is therefore a mint-time fact, and the sharing question it exists to answer is already answered by mint-time data: a shared credential is minted on the sharer's own machine, so it appears as a second live row under one `user_id` with a different `machine_name`. `last_used_at` is provisioned NULL and left unwritten, mirroring `240`'s posture and its deferral to asynchronous stamping.
+  > Indy (2026-08-11): "1. Is politically stupid, since you only update when you logout and login back - not on every call like list or so?" — context: per-request stamping removed; Dimension 1.6 now asserts the authenticate path writes nothing.
+
+- **Consult — the user foreign key diverges from `240`, deliberately (Aug 11, 2026, PLAN).** `240:7-10` makes `created_by` a plain string specifically so an automation key outlives the admin who minted it; erasing a departed admin must not break nightly jobs. A personal credential inverts that requirement: if the human is erased, every terminal holding their credential must stop, or offboarding is theatre — and a credential shared with a colleague would outlive the account it belongs to. `250` therefore carries `user_id UUID NOT NULL REFERENCES core.users ON DELETE CASCADE`, and the schema file records the divergence so the next reader does not read it as an oversight.
+  > Indy (2026-08-11): "2. Yes makes sense, go ahead to have cli_credentials with a FK to user_id" — context: the divergence is intended, not an inconsistency with the sibling table.
 
 - **Metrics review** — to be recorded at CHORE(close).
 - **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, `/review`, `kishore-babysit-prs` results to be recorded per `AGENTS.md` CHORE(close).
