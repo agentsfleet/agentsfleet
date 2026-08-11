@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P0 — the flagship reviewer scenario remains incomplete until real provider authorization and replay safety pass.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — starts after the development runner is online
-**Branch:** `feat/m136-live-connector-proof`
+**Branch:** `feat/m136-live-connector-proof` — shared with M160_001 by Indy's call, Aug 11, 2026; both workstreams land from one branch and one worktree
 **Test Baseline:** unit=3512 integration=589
 **Depends on:** M135_002 (online runner with advancing heartbeat); M135_001 (provider bags, callback routes, and registration grants); M133_001 (workspace-multiplexed Live Wall, visually accepted with exhaustive deployed proof delegated here)
 **Provenance:** human-directed successor to M135_001 after the Jul 20, 2026 scope decision
