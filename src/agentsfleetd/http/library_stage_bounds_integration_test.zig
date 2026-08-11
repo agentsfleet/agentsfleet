@@ -249,7 +249,7 @@ test "integration: test_library_deterministic_resource_gate — a saturated pool
     //
     // This is the branch `hx.db()` was changed to preserve, exercised through
     // the real router and middleware rather than against the pool in isolation:
-    // `pool_bounded_progress_integration_test.zig` proves `pg.Pool` produces
+    // `pool_bounded_progress_integration_test.zig` proves `db.Pool` produces
     // `error.Timeout`, and this proves the handler turns that into the outcome
     // an operator reads.
     var held: std.ArrayList(*pg.Conn) = .empty;

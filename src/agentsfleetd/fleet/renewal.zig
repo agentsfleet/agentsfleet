@@ -32,96 +32,16 @@
 //! Runs on a caller-supplied pooled connection (drained via PgQuery).
 
 const pg = @import("pg");
-const logging = @import("log");
-const ec = @import("../errors/error_registry.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 const constants = @import("common");
 const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
 const telemetry = @import("../state/fleet_telemetry_store.zig");
-const tenant_billing = @import("../state/tenant_billing.zig");
-const billing_rates = @import("../state/tenant_billing_rates.zig");
-const billing_store = @import("../state/tenant_billing_store.zig");
-const tenant_provider = @import("../state/tenant_provider.zig");
+const renewal_meter = @import("renewal_meter.zig");
 
-const log = logging.scoped(.fleet_metering);
 const MS_PER_SECOND: i64 = 1000;
 const TOKENS_PER_MTOK: i64 = 1000000;
-
-/// The runner's cumulative token counts + the resolved per-unit slice rates for
-/// this renewal. Cumulatives are diffed against the lease's metering cursor IN
-/// the CTE (this struct never carries deltas — no double-count). Rates already
-/// encode posture + free-trial (all-zero during the trial; token tiers zero
-/// under self_managed), so the SQL applies them uniformly.
-pub const MeterInputs = struct {
-    cumulative_input: i64 = 0,
-    cumulative_cached: i64 = 0,
-    cumulative_output: i64 = 0,
-    run_nanos_per_sec: i64 = 0,
-    input_nanos_per_mtok: i64 = 0,
-    cached_input_nanos_per_mtok: i64 = 0,
-    output_nanos_per_mtok: i64 = 0,
-};
-
-/// Resolve the four slice rates (free-trial / posture aware) and pair them with
-/// the runner's cumulative token counts. Shared by `renew` (service_renew) and
-/// `settle` (service_report) so both meter at the identical rates.
-///
-/// Takes the caller's already-acquired connection: the platform branch prices
-/// against the catalogue generation that connection observes, so a slice
-/// can never be metered at a rate the catalogue has moved past. Free-trial and
-/// self-managed slices issue no statement — they never reach the catalogue.
-///
-/// Never panics and never propagates: both a generation that cannot be verified
-/// and a model the catalogue does not carry meter run-fee-only and log. See the
-/// body for why those two are logged apart.
-pub fn buildMeterInputs(
-    conn: *pg.Conn,
-    tenant_id: []const u8,
-    provider: []const u8,
-    posture: tenant_provider.Mode,
-    model: []const u8,
-    now_ms: i64,
-    cum_input: u32,
-    cum_cached: u32,
-    cum_output: u32,
-) MeterInputs {
-    // Two distinct failures, deliberately kept apart. An ERROR means the
-    // catalogue generation could not be established, so no rate here is known to
-    // be current — metering the token tiers from anything would be pricing a
-    // slice against an unverified generation, which is the one thing that must
-    // never happen. A NULL means the catalogue authoritatively has no such
-    // row. Both land on run-fee-only, but they are logged apart because one is a
-    // database fault to page on and the other is a catalogue gap to fix.
-    //
-    // Run-fee-only is the fail-closed answer HERE, not a fallback: the token
-    // component is dropped rather than guessed, and the run keeps going. The
-    // alternative — refusing the renewal — kills a live agent mid-run over a
-    // transient database fault, which is the posture `budgetRefusal` already
-    // rejected for exactly this trade.
-    // The tenant's own trial boundary. A lookup failure prices as open-ended
-    // rather than refusing the renewal: the same posture the two branches below
-    // take, and the cheaper error for a live agent mid-run.
-    const trial_ends_at_ms: ?i64 = billing_store.loadTrialBoundary(conn, tenant_id) catch null;
-    const resolved: ?billing_rates.SliceRates =
-        billing_rates.resolveRenewSliceRates(conn, provider, posture, model, trial_ends_at_ms, now_ms) catch |err| unverified: {
-            log.warn("meter_rate_generation_unverified_run_fee_only", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = provider, .model = model, .err = @errorName(err) });
-            break :unverified null;
-        };
-    const rates = resolved orelse blk: {
-        log.warn("meter_rate_missing_run_fee_only", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = provider, .model = model });
-        break :blk billing_rates.SliceRates{ .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 };
-    };
-    return .{
-        .cumulative_input = @intCast(cum_input),
-        .cumulative_cached = @intCast(cum_cached),
-        .cumulative_output = @intCast(cum_output),
-        .run_nanos_per_sec = rates.run_nanos_per_sec,
-        .input_nanos_per_mtok = rates.input_nanos_per_mtok,
-        .cached_input_nanos_per_mtok = rates.cached_input_nanos_per_mtok,
-        .output_nanos_per_mtok = rates.output_nanos_per_mtok,
-    };
-}
 
 /// A renewal that committed: both rows advanced and the slice was metered.
 pub const Renewed = struct {
@@ -264,44 +184,75 @@ const RENEW_METER_SQL =
 /// guarded by `status = 'active'` AND the presenting runner still being the live
 /// fencing holder. All writes ride one fenced statement: both rows advance and
 /// the wallet and ledger are charged, or none do.
+/// The fenced renew statement's bound values, and the one elevated call that
+/// issues it.
+const RenewMeterArgs = struct {
+    lease_id: []const u8,
+    runner_id: []const u8,
+    want_until: i64,
+    now_ms: i64,
+    meter: renewal_meter.MeterInputs,
+    ledger_uid: []const u8,
+
+    /// The result drains (defer) before this returns and the commit runs:
+    /// COMMIT with a result in flight is a protocol error.
+    fn run(c: RenewMeterArgs, v: pool_elevation.Elevated(.metering)) !?OutcomeRow {
+        var q = PgQuery.from(try v.conn.query(RENEW_METER_SQL, .{
+            c.lease_id,
+            c.runner_id,
+            c.want_until,
+            constants.MAX_RUNTIME_MS,
+            protocol.RUNNER_LEASE_STATUS_ACTIVE,
+            c.now_ms,
+            c.meter.cumulative_input,
+            c.meter.cumulative_cached,
+            c.meter.cumulative_output,
+            c.meter.run_nanos_per_sec,
+            c.meter.input_nanos_per_mtok,
+            c.meter.cached_input_nanos_per_mtok,
+            c.meter.output_nanos_per_mtok,
+            telemetry.ChargeType.stage.label(),
+            MS_PER_SECOND,
+            TOKENS_PER_MTOK,
+            c.ledger_uid,
+        }));
+        defer q.deinit();
+        const row = try q.next() orelse return null;
+        return .{
+            .probe_found = try row.get(i64, 0),
+            .new_until = try row.get(?i64, 1),
+            .hard_cap = try row.get(?i64, 2),
+            .aff_updated = try row.get(i64, 3),
+            .charged_nanos = try row.get(?i64, 4),
+        };
+    }
+};
+
 pub fn renew(
     conn: *pg.Conn,
     lease_id: []const u8,
     runner_id: []const u8,
     now_ms: i64,
-    meter: MeterInputs,
+    meter: renewal_meter.MeterInputs,
 ) !RenewOutcome {
     const want_until = now_ms + constants.LEASE_TTL_MS;
     const ledger_uid_value = try id_format.generateUuidV7();
     const ledger_uid: []const u8 = &ledger_uid_value;
-    var q = PgQuery.from(try conn.query(RENEW_METER_SQL, .{
-        lease_id,
-        runner_id,
-        want_until,
-        constants.MAX_RUNTIME_MS,
-        protocol.RUNNER_LEASE_STATUS_ACTIVE,
-        now_ms,
-        meter.cumulative_input,
-        meter.cumulative_cached,
-        meter.cumulative_output,
-        meter.run_nanos_per_sec,
-        meter.input_nanos_per_mtok,
-        meter.cached_input_nanos_per_mtok,
-        meter.output_nanos_per_mtok,
-        telemetry.ChargeType.stage.label(),
-        MS_PER_SECOND,
-        TOKENS_PER_MTOK,
-        ledger_uid,
-    }));
-    defer q.deinit();
-    const row = try q.next() orelse return .lost;
-    return mapOutcome(.{
-        .probe_found = try row.get(i64, 0),
-        .new_until = try row.get(?i64, 1),
-        .hard_cap = try row.get(?i64, 2),
-        .aff_updated = try row.get(i64, 3),
-        .charged_nanos = try row.get(?i64, 4),
-    }, now_ms);
+
+    // The statement's tables belong to `metering_runtime` (schema/120), not to
+    // the connection's `api_runtime`. The statement itself is not modified —
+    // the elevation transaction brackets the same single fenced statement, so
+    // its atomicity argument (charge and cursor advance commit together) is
+    // untouched.
+    const outcome = try pool_elevation.withRole(conn, .metering, RenewMeterArgs{
+        .lease_id = lease_id,
+        .runner_id = runner_id,
+        .want_until = want_until,
+        .now_ms = now_ms,
+        .meter = meter,
+        .ledger_uid = ledger_uid,
+    }, RenewMeterArgs.run);
+    return mapOutcome(outcome orelse return .lost, now_ms);
 }
 
 /// The trailing SELECT's five columns, named so `mapOutcome` cannot transpose

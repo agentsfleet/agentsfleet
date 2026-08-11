@@ -15,6 +15,7 @@ const httpz = @import("httpz");
 const common = @import("common.zig");
 const sensitive_response = @import("sensitive_response.zig");
 const pg = @import("pg");
+const db_pool = @import("../../db/pool.zig");
 
 /// Scoped DB connection — acquire-on-construct, release-on-end. Use via
 /// `hx.db()` so the acquire+release pair can never be separated by an early
@@ -43,7 +44,7 @@ pub fn classifyAcquireError(err: anyerror) DbAcquireError {
 
 pub const DbScope = struct {
     conn: *pg.Conn,
-    pool: *pg.Pool,
+    pool: *db_pool.Pool,
 
     pub fn end(self: *DbScope) void {
         self.pool.release(self.conn);

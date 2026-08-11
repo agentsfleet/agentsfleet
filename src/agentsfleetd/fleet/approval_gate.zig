@@ -8,7 +8,7 @@
 
 const std = @import("std");
 const clock = @import("common").clock;
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const Allocator = std.mem.Allocator;
 
 const fleet_config = @import("../fleet_runtime/config.zig");
@@ -79,7 +79,7 @@ pub fn checkApprovalGate(
     alloc: Allocator,
     session: *FleetSession,
     event: *const redis_fleet.FleetEvent,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     redis: *queue_redis.Client,
 ) GateCheckResult {
     // A recorded gate ref means this event was ALREADY parked and a human was
@@ -170,7 +170,7 @@ fn requestNewGate(
     alloc: Allocator,
     session: *FleetSession,
     event: *const redis_fleet.FleetEvent,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     redis: *queue_redis.Client,
     gates: fleet_config.GatePolicy,
     rule: ?config_gates.GateRule,
@@ -201,7 +201,7 @@ fn parkWriteKind(
     alloc: Allocator,
     session: *FleetSession,
     event: *const redis_fleet.FleetEvent,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     redis: *queue_redis.Client,
     ref_state: gate_route.RefState,
 ) GateCheckResult {
@@ -229,7 +229,7 @@ fn parkOutcomeToResult(outcome: park.ParkOutcome) GateCheckResult {
 fn evaluatePendingGate(
     alloc: Allocator,
     session: *FleetSession,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     redis: *queue_redis.Client,
     ref: *const approval_gate_async.EventGateRef,
 ) GateCheckResult {
@@ -259,7 +259,7 @@ fn evaluatePendingGate(
     }
 }
 
-fn pauseFleet(pool: *pg.Pool, redis: *queue_redis.Client, fleet_id: []const u8) void {
+fn pauseFleet(pool: *db.Pool, redis: *queue_redis.Client, fleet_id: []const u8) void {
     const conn = pool.acquire() catch return;
     defer pool.release(conn);
     _ = conn.exec(

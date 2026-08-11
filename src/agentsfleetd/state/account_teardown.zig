@@ -19,6 +19,7 @@ const pg = @import("pg");
 const logging = @import("log");
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 const approval_gate_db = @import("../fleet_runtime/approval_gate_db.zig");
 
 const log = logging.scoped(.account_teardown);
@@ -31,37 +32,121 @@ const WS_OF_TENANT = "(SELECT id FROM core.workspaces WHERE tenant_id = $1::uuid
 /// Fleet ids in those workspaces.
 const AGENTS_OF_TENANT = "(SELECT id FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT ++ ")";
 
-/// Child-before-parent delete order. Every statement binds `$1` = tenant_id.
+/// One purge statement: its SQL and the role whose grants it needs. `null`
+/// runs as the connection's own `api_runtime`; a named role is elevated for
+/// exactly that statement inside the purge transaction — the memory and vault
+/// tables grant `api_runtime` nothing (schema/110, schema/300), and the wallet
+/// rides the tenant cascade rather than a grant. An elevated statement also
+/// names the id set it binds: the elevation roles hold no `core` grants, so a
+/// `core` subquery inside their statement is refused whole — the ids are
+/// resolved unelevated first and travel as a bound array, the same split the
+/// onboarding and model-entry probes use.
+const PurgeStatement = struct { sql: []const u8, role: ?pool_elevation.Role = null, bind: ?ElevatedBind = null };
+
+/// Which pre-resolved id set an elevated statement binds as `$1`.
+const ElevatedBind = enum { fleet_ids, workspace_ids };
+
+/// Child-before-parent delete order. An unelevated statement binds `$1` =
+/// tenant_id; a statement carrying a `.role` binds `$1` = the `ElevatedBind`
+/// id array `ElevatedIds.resolve` pre-resolved for it.
 /// The fleet-scoped child deletes run before `core.fleets` (which their
 /// subqueries read), and all workspace children run before `core.workspaces`.
-const PURGE_STATEMENTS = [_][]const u8{
+const PURGE_STATEMENTS = [_]PurgeStatement{
     // No ledger delete. It resolves to the tenant through a NOT NULL foreign
     // key now, so dropping the tenant below erases it by cascade — and no role
     // reachable from here may delete a charge any other way (schema/710 grants
     // no DELETE at all, to anyone). An explicit sweep would fail closed on
     // privilege rather than tidy up.
     // Keyed, no FK — memory fleet_id is the owning fleet UUID (schema/820).
-    "DELETE FROM memory.memory_entries WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
+    .{ .sql = "DELETE FROM memory.memory_entries WHERE fleet_id = ANY($1::uuid[])", .role = .memory, .bind = .fleet_ids },
     // `fleet.metering_periods` is gone: derived per-renewal detail
     // with no product consumer, deleted rather than carried. runner_leases and
     // runner_affinity carry an ON DELETE CASCADE FK to core.fleets but stay
     // swept explicitly here — before core.fleets below — so an erased account
     // leaves no identifying rows behind, not only whatever the cascade catches.
-    "DELETE FROM fleet.runner_leases WHERE tenant_id = $1::uuid",
-    "DELETE FROM fleet.runner_affinity WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
+    .{ .sql = "DELETE FROM fleet.runner_leases WHERE tenant_id = $1::uuid" },
+    .{ .sql = "DELETE FROM fleet.runner_affinity WHERE fleet_id IN " ++ AGENTS_OF_TENANT },
     // Gates are append-only by trigger; the purge transaction opts out via
     // SET_GATE_PURGE_BYPASS_SQL below. Deleted by workspace OR fleet so a
     // row referencing either parent cannot strand the erasure on its FK.
-    "DELETE FROM core.fleet_approval_gates WHERE workspace_id IN " ++ WS_OF_TENANT ++ " OR fleet_id IN " ++ AGENTS_OF_TENANT,
-    "DELETE FROM core.fleet_sessions WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
-    "DELETE FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT,
-    "DELETE FROM vault.secrets WHERE workspace_id IN " ++ WS_OF_TENANT,
-    "DELETE FROM core.platform_provider_defaults WHERE source_workspace_id IN " ++ WS_OF_TENANT,
-    "DELETE FROM core.workspaces WHERE tenant_id = $1::uuid",
-    "DELETE FROM core.memberships WHERE tenant_id = $1::uuid",
-    "DELETE FROM core.users WHERE tenant_id = $1::uuid",
-    "DELETE FROM core.tenants WHERE id = $1::uuid",
+    .{ .sql = "DELETE FROM core.fleet_approval_gates WHERE workspace_id IN " ++ WS_OF_TENANT ++ " OR fleet_id IN " ++ AGENTS_OF_TENANT },
+    .{ .sql = "DELETE FROM core.fleet_sessions WHERE fleet_id IN " ++ AGENTS_OF_TENANT },
+    .{ .sql = "DELETE FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT },
+    .{ .sql = "DELETE FROM vault.secrets WHERE workspace_id = ANY($1::uuid[])", .role = .vault, .bind = .workspace_ids },
+    .{ .sql = "DELETE FROM core.platform_provider_defaults WHERE source_workspace_id IN " ++ WS_OF_TENANT },
+    .{ .sql = "DELETE FROM core.workspaces WHERE tenant_id = $1::uuid" },
+    .{ .sql = "DELETE FROM core.memberships WHERE tenant_id = $1::uuid" },
+    .{ .sql = "DELETE FROM core.users WHERE tenant_id = $1::uuid" },
+    // The wallet and the ledger go with the tenant row by ON DELETE CASCADE
+    // (schema/700, schema/710) — referential actions run with the table
+    // owner's authority, so no billing elevation is needed here.
+    .{ .sql = "DELETE FROM core.tenants WHERE id = $1::uuid" },
 };
+
+/// The id sets the elevated statements bind, resolved unelevated (still the
+/// connection's `api_runtime`, which owns the `core` reads) inside the purge
+/// transaction while every row exists. The ids travel as text and the ARRAY
+/// side casts to uuid[] in the statement — casting the column instead would
+/// defeat the fleet_id/workspace_id btree indexes and seq-scan the global
+/// multi-tenant tables on every purge.
+const ElevatedIds = struct {
+    workspace_ids: [][]const u8,
+    fleet_ids: [][]const u8,
+
+    /// Lock the tenant row before reading the id sets. A workspace or fleet
+    /// inserted concurrently takes a KEY SHARE lock on `core.tenants` through
+    /// its foreign key, which this FOR UPDATE blocks — without it the arrays
+    /// freeze at transaction start while the later `core` deletes re-evaluate
+    /// their own subqueries per statement, so a workspace created in between
+    /// would lose its `core` rows while its secrets and memory entries, bound
+    /// from the stale arrays, survived the erasure.
+    fn lockTenant(conn: *pg.Conn, tenant_id: []const u8) !void {
+        var q = PgQuery.from(try conn.query("SELECT id FROM core.tenants WHERE id = $1::uuid FOR UPDATE", .{tenant_id}));
+        defer q.deinit();
+        _ = try q.next();
+    }
+
+    fn resolve(conn: *pg.Conn, alloc: std.mem.Allocator, tenant_id: []const u8) !ElevatedIds {
+        try lockTenant(conn, tenant_id);
+        const ws = try idsText(conn, alloc, "SELECT id::text FROM core.workspaces WHERE tenant_id = $1::uuid", tenant_id);
+        errdefer freeIds(alloc, ws);
+        const fleets = try idsText(conn, alloc, "SELECT id::text FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT, tenant_id);
+        return .{ .workspace_ids = ws, .fleet_ids = fleets };
+    }
+
+    fn deinit(self: ElevatedIds, alloc: std.mem.Allocator) void {
+        freeIds(alloc, self.workspace_ids);
+        freeIds(alloc, self.fleet_ids);
+    }
+
+    fn slice(self: ElevatedIds, bind: ElevatedBind) []const []const u8 {
+        return switch (bind) {
+            .fleet_ids => self.fleet_ids,
+            .workspace_ids => self.workspace_ids,
+        };
+    }
+};
+
+/// Collect the `id::text` column of a `$1 = tenant_id` query. Caller frees
+/// through `freeIds`.
+fn idsText(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8, tenant_id: []const u8) ![][]const u8 {
+    var q = PgQuery.from(try conn.query(sql, .{tenant_id}));
+    defer q.deinit();
+    var ids: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (ids.items) |id| alloc.free(id);
+        ids.deinit(alloc);
+    }
+    while (try q.next()) |row| {
+        try ids.append(alloc, try alloc.dupe(u8, try row.get([]const u8, 0)));
+    }
+    return try ids.toOwnedSlice(alloc);
+}
+
+fn freeIds(alloc: std.mem.Allocator, ids: [][]const u8) void {
+    for (ids) |id| alloc.free(id);
+    alloc.free(ids);
+}
 
 pub const PurgeResult = struct {
     /// False when the subject was unknown or already purged — the idempotent
@@ -111,8 +196,22 @@ pub fn purgeByOidcSubject(
     // authoritative view of what the purge is about to erase, and the only
     // place a fleet created after the caller's enumeration becomes visible.
     const unenumerated = try countUnenumeratedFleets(conn, tenant_id, enumerated);
-    for (PURGE_STATEMENTS) |stmt| {
-        _ = try conn.exec(stmt, .{tenant_id});
+    const elevated_ids = try ElevatedIds.resolve(conn, alloc, tenant_id);
+    defer elevated_ids.deinit(alloc);
+    // `inline for`: the statement list is comptime, so each tagged statement
+    // gets its own `withRole` instantiation — elevated for exactly that
+    // statement inside the purge transaction, stepping back down so the next
+    // statement runs as `api_runtime` again. A refusal rolls the purge back.
+    inline for (PURGE_STATEMENTS) |stmt| {
+        if (comptime stmt.role) |role| {
+            try pool_elevation.withRole(conn, role, elevated_ids.slice(stmt.bind.?), struct {
+                fn run(ids: []const []const u8, v: pool_elevation.Elevated(role)) !void {
+                    _ = try v.conn.exec(stmt.sql, .{ids});
+                }
+            }.run);
+        } else {
+            _ = try conn.exec(stmt.sql, .{tenant_id});
+        }
     }
     _ = try conn.exec(S_COMMIT, .{});
     return .{ .purged = true, .unenumerated_fleets = unenumerated };

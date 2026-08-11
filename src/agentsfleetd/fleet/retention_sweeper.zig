@@ -45,6 +45,7 @@ const clock = constants.clock;
 const logging = @import("log");
 const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const protocol = @import("contract").protocol;
 const metrics = @import("../observability/metrics_counters.zig");
 
@@ -192,7 +193,7 @@ pub const SweepTotals = struct {
 };
 
 /// Run until shutdown is signalled. Spawned by the serve lifecycle.
-pub fn run(pool: *pg.Pool, shutdown: *std.atomic.Value(bool)) void {
+pub fn run(pool: *db.Pool, shutdown: *std.atomic.Value(bool)) void {
     log.debug(LOG_SWEEPER_STARTED, .{ .interval_ms = SWEEP_INTERVAL_NS / std.time.ns_per_ms, .window_ms = RETENTION_WINDOW_MS });
     while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown's background-stop release-store.
         // Totals live out here so a mid-cycle failure still reports the rows
@@ -227,7 +228,7 @@ fn reportCycle(totals: SweepTotals) void {
 }
 
 /// Execute one bounded sweep cycle. Tests call this directly.
-pub fn sweepOnce(pool: *pg.Pool) !SweepTotals {
+pub fn sweepOnce(pool: *db.Pool) !SweepTotals {
     var totals = SweepTotals{};
     try sweepInto(pool, &totals);
     return totals;
@@ -240,7 +241,7 @@ pub fn sweepOnce(pool: *pg.Pool) !SweepTotals {
 /// `updated_at = now`, so they are deliberately NOT eligible for the lease
 /// delete pass that follows. A reaped lease serves its readable window like any
 /// other settled one and leaves on a later cycle.
-fn sweepInto(pool: *pg.Pool, totals: *SweepTotals) !void {
+fn sweepInto(pool: *db.Pool, totals: *SweepTotals) !void {
     const now_ms = clock.nowMillis();
     const cutoff = now_ms - RETENTION_WINDOW_MS;
     const terminal = [_][]const u8{

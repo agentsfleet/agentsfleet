@@ -28,6 +28,7 @@ const std = @import("std");
 const scope_fixtures = @import("../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
+const db = @import("../../db/pool.zig");
 const logging = @import("log");
 const session_store_redis = @import("../../session/session_store_redis.zig");
 const audit_events = @import("../../auth/audit_events.zig");
@@ -97,7 +98,7 @@ const LISTEN_ADDRESS_IN_USE: u8 = 1;
 const LISTEN_OTHER_ERR: u8 = 2;
 
 const TestServer = struct {
-    pool: *pg.Pool,
+    pool: *db.Pool,
     /// Cold shared-SSE hub (never started): IDOR tests exercise no SSE
     /// route, but Context.hub must point at a valid hub.
     hub: subscription_hub,

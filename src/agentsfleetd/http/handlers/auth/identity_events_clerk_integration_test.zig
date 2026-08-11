@@ -8,6 +8,7 @@ const std = @import("std");
 const common = @import("common");
 const clock = @import("common").clock;
 const pg = @import("pg");
+const db = @import("../../../db/pool.zig");
 const hs = @import("hmac_sig");
 
 const auth_mw = @import("../../../auth/middleware/mod.zig");
@@ -716,7 +717,7 @@ const TeardownSetup = struct {
     h: *TestHarness,
     creds: *Credentials,
     fake: *FakeQStash,
-    probe_pool: *pg.Pool,
+    probe_pool: *db.Pool,
     probe_conn: *pg.Conn,
 
     fn init() !TeardownSetup {
@@ -936,7 +937,7 @@ test "integration: teardown unregisters with only one pool connection free" {
     }
 
     // Take everything, then hand exactly one back.
-    setup.h.pool._timeout = FAST_ACQUIRE_TIMEOUT_NS;
+    setup.h.pool.inner._timeout = FAST_ACQUIRE_TIMEOUT_NS;
     var held: [MAX_HELD_CONNS]?*pg.Conn = @splat(null);
     var held_count: usize = 0;
     while (held_count < MAX_HELD_CONNS) {

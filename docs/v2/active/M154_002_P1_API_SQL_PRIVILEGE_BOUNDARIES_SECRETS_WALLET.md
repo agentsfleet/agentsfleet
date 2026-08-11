@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** shared with M154_001 — `refactor(m154): rebuild schema from empty — single identity key, money behind FKs`
+- **PR title (eventual):** `feat(m154): the secret store and the wallet get their own privileges` — *(amended at EXECUTE: M154_001 merged alone as PR #587, so the original "shared title" plan is stale and this workstream ships as its own PR)*
 - **Intent (one sentence):** A bug in an unrelated handler should be unable to read a secret or move money, as a matter of privilege rather than of code review.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
 
@@ -65,6 +65,24 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/db/pool*.zig` | EDIT | Release refuses a still-elevated connection |
 | `src/agentsfleetd/state/account_teardown.zig` | EDIT | The purge deletes secrets and the wallet row, so it elevates too |
 | `docs/architecture/runner_fleet.md` | EDIT | Corrects the trust-boundary claim to describe what grants now enforce |
+
+**Amended at EXECUTE — blast radius the authoring pass under-counted** (each a discovery, none opportunistic):
+
+| File | Action | Why |
+|------|--------|-----|
+| `schema/embed.zig` | EDIT | One-line registration of slot 120 (the migration array IS this file) |
+| `src/agentsfleetd/errors/error_registry.zig`, `errors/error_entries.zig` | EDIT | The two registered codes: `UZ-INTERNAL-004` (elevation refused), `UZ-INTERNAL-005` (elevated release refused) |
+| `src/agentsfleetd/db/pool_elevation.zig` | CREATE | The elevation module: `Elevated(role)` typestate handles + `withRole` closure scopes (within the `pool*.zig` glob above; named for greppability) |
+| `src/agentsfleetd/db/schema_privilege_test.zig`, `db/schema_privilege_integration_test.zig` | CREATE | The unit and integration proof tiers |
+| `src/agentsfleetd/state/fleet_telemetry_store.zig` | EDIT | A ledger WRITER the spec's inventory missed — the per-event stage row elevates to `billing_runtime` |
+| `src/agentsfleetd/state/secret_reference_txn.zig` | EDIT | Its step-1 `FOR UPDATE` on `vault.secrets` needs `vault_runtime` inside the protocol's own transaction |
+| `src/agentsfleetd/state/workspace_onboarding.zig` + `workspace_onboarding/sql.zig` | EDIT | The onboarding signal probe spanned `core` + `vault` in one statement; split so the vault EXISTS elevates alone |
+| `src/agentsfleetd/state/tenant_model_entries.zig` + `tenant_model_entries/sql.zig` | EDIT | Same split for the primary-workspace secret probe |
+| `src/agentsfleetd/fleet_library/store.zig` | EDIT | The fleet-library install check probes `vault.secrets` presence — elevates |
+| `src/agentsfleetd/secrets/metadata_backfill.zig`, `cmd/backfill.zig` | EDIT | The backfill's vault UPDATE elevates; the stale grant comment corrected |
+| `src/agentsfleetd/integration_tests.zig` | EDIT | Roster line for the new integration suite |
+| ~50 files under `cmd/`, `fleet/`, `fleet_runtime/`, `http/`, `cron/`, `auth/`, `credentials/`, `memory/`, `events/`, `db/`, `state/` | EDIT | Mechanical `*pg.Pool` → `*db.Pool` type respell so every borrower passes through the wrapper's release backstop; test files gain `db.adopt` at construction seams |
+| `build.zig.zon` | EDIT | pg.zig re-pinned to fork tag `v0.0.0-af.4`: upstream `b5a1f25` merge + the `peekForError` use-after-reset fix the coverage lane exposed (Indy-directed; Discovery) |
 
 ## Applicable Rules
 
@@ -184,15 +202,15 @@ INTERNAL   pool release gains a base-role assertion. A connection whose
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | No grant on the two tables names `api_runtime` (§1) | `grep -nE "GRANT.*(vault\.secrets\|tenant_wallet).*api_runtime" schema/` | no output | P0 | |
-| R2 | Every elevated path releases on the error path too (§2) | `grep -rn "elevate" src/agentsfleetd --include='*.zig' \| grep -v errdefer \| grep -v _test` | reviewed: every hit is inside a scope that releases | P0 | |
-| R3 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | No grant on the two tables names `api_runtime` (§1) | `grep -nE "GRANT.*(vault\.secrets\|tenant_wallet).*api_runtime" schema/` | no output | P0 | ✅ no output (grep exit 1) |
+| R2 | Every elevated path releases on the error path too (§2) | `grep -rn "elevate" src/agentsfleetd --include='*.zig' \| grep -v errdefer \| grep -v _test` | reviewed: every hit is inside a scope that releases | P0 | ✅ 12 non-comment hits: 8 module-internal (`pool_elevation.zig`), 4 error-catalog prose; every call site rides `withRole`'s releasing scope; only raw `SET ROLE` outside the module is the documented legacy memory-handler path |
+| R3 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 103 paths, 0 outside the table (`state/` added to the respell row; `build.zig.zon` row added with the af.4 re-pin — both at VERIFY) |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ Zig lanes + coverage green: agentsfleetd 2111 pass/284 skip/0 fail · runner 414/7/0 · lib 157+6 · zig coverage 87.40% ≥ 83. The TypeScript acceptance lane fails 7 auth-guard tests on logged-in machines only (pre-existing `composeEnv` HOME leak × M160 durable credential — Indy-acked to another agent's M160_001 stream; Discovery + PR note) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ "✓ All lint checks passed" |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 — "✓ Full integration suite passed", 0 failing tests |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ "✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)" |
+| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ `X86_64 OK` · `AARCH64 OK` (final tree) |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ "no leaks found" — 4248 commits scanned |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -252,6 +270,42 @@ N/A — no files deleted.
 - **Defect found during implementation (P0, fixed).** The authored membership grants were bare — `GRANT vault_runtime TO api_runtime;` — which takes its inheritance from `api_runtime`'s INHERIT attribute, defaulted TRUE by `CREATE ROLE`. Every handler would have held vault and billing privileges ambiently, with the boundary existing only in the comment above the grant, and Dimension 1.1's catalogue query would still have passed. Fixed with `WITH INHERIT FALSE, SET TRUE` on all three, plus Dimension 1.4 as the regression guard. Red-green proved: re-introducing the bare grant fails `test_role_membership_is_dormant_until_set_role` naming the slot and line.
 
 - **Defect found during implementation (P1, fixed).** `schema/710` granted the ledger to `billing_runtime` only, which would have answered the charges list, the events-list cost join, the per-fleet outcome reads and the fleet delete path with `insufficient_privilege`. `api_runtime` keeps SELECT; every write still runs elevated.
+
+- **Consult — in-PR reshape to the typestate design (2026-08-11).**
+
+  > Indy (2026-08-11): "reshape now inside this PR and push it up with tests integrations tests and so on." — context: after a canon review (`oss/bun`'s closure-scoped `sql.begin` transactions; `oss/ghostty`'s owner-holds-the-state guards), the guard-object API was replaced in place by `Elevated(comptime role)` typestate handles + `withRole` closure scopes: an unelevated call to a privileged statement is now a compile error, the closure cannot leak an open scope, and the pool-release audit remains as the belt-and-braces backstop. Per-role pool facades with separate LOGIN credentials were surfaced as the next rung and deferred (the Row-Level Security-tier conversation).
+
+  > Indy (2026-08-11): "Make the code robust performant and make zig coverage above 90% as well?" — context: quality bar for the diff. Performance: envelope crypto runs BEFORE elevating so no transaction spans key derivation; elevation adds BEGIN/SET LOCAL/COMMIT round-trips only on cold or per-slice paths. Coverage: unit + integration tiers below.
+
+- **Defects found during implementation (both latent on `main`, both fixed here).** (1) `state/fleet_telemetry_store.zig` writes the ledger's per-event stage row — a writer the spec's inventory missed; it now elevates to `billing_runtime`. (2) The account purge's `DELETE FROM memory.memory_entries` statement had NO privilege under `api_runtime` (schema/820 grants only `memory_runtime`; api holds no USAGE on the schema) — masked everywhere by superuser test connections, it would have failed the first production purge. The purge's statement list is now role-tagged and elevates per statement (`.memory`, `.vault`) inside its one transaction.
+
+- **Composite-statement discovery.** Two probes spanned `core` + `vault` in a single statement (`workspace_onboarding` signals; `tenant_model_entries` primary-workspace secret check) — impossible under any single role once `SET ROLE` replaces the privilege set. Both split into an unelevated `core` statement plus an elevated vault EXISTS; the alternatives (granting `vault_runtime` core SELECTs, or column grants on the non-secret projection) were rejected because both widen a reach the spec pins to zero (R1, Dimension 1.1).
+
+- **Defects found at VERIFY (live integration run, all fixed here).** (1) The purge's two role-tagged DELETEs repeated the composite-statement trap this log already names: their `WHERE … IN (SELECT … FROM core.…)` subqueries ran under `memory_runtime`/`vault_runtime`, which hold no `core` grants — PostgreSQL refused the whole statement and every `user.deleted` webhook answered 500. Same split as the probes: the ids resolve unelevated inside the purge transaction and the elevated DELETEs bind them as text arrays. The failed purges also left pooled connections dirty, which is what crashed a later credentials test in full-suite runs. (2) `db/pool_test.zig` still pinned the pre-boundary world — the privilege matrix granted `api_runtime` full CRUD on both tables, the executed-statements test ran the money/secret paths unelevated expecting success, and the sealed-columns test named `api_runtime` as the decrypting role; all flipped to the new grants (`billing_runtime`/`vault_runtime`). (3) The migration-role test queried `information_schema.role_usage_grants`, which never carries schema Access Control Lists in PostgreSQL — rewritten against `has_schema_privilege`, asserting all four grants exactly. (4) The two vault-touching privilege tests hit `MissingMasterKey`; they now seed the process Key Encryption Key (KEK) via the existing `setTestKek` convention.
+
+- **Consult — pg.zig driver crash under the coverage lane (2026-08-11).**
+
+  > Indy (2026-08-11): "Why is it crashing now? than before what changed now? Also can you take a pull from the upstream for pg.zig and then apply the patch on to the newly moved upstream commit in main and apply your patch and tag the next version liek you have there, and re-pin build.zig.zon in this branch. But first find the cause of the crash."
+
+  Cause, from the driver source: `Conn.peekForError` borrows the error payload from the reader's buffer; when the `ErrorResponse` is the last buffered message the reader resets its positions to 0, and the socket read inside the subsequent `readyForQuery()` overwrites the peeked bytes before `setErr` dupes them — `Error.parse` then panics (`else => unreachable`) on the `Z` frame's transaction-state byte. Why now: the driver is unchanged; this workstream's elevated write-back made the trigger-raised error path run inside an explicit transaction, and macOS kcov's slowdown reliably hits the window where the `E` and `Z` frames arrive in separate reads. Landed per the directive: upstream `b5a1f25` merged into `agentsfleet/pg.zig` `patch/agentsfleet-0.16`, the reorder patch on top (`setErr` before `readyForQuery`), tagged `v0.0.0-af.4` (`d50a33d`), `build.zig.zon` re-pinned by tag and commit.
+
+- **In-PR structural pass (2026-08-11).**
+
+  > Indy (2026-08-11): "Have you made a large refactor that results in optimium code, performant and concurrent fault free error free optimized code base easy for you to maintain?" … "go"
+
+  The honest answer was no, and three findings said why. **(1) RULE FLL was being violated by this diff.** `dispatch_length_gate` enforces only the file cap — the function sub-cap is a documented TODO-CHECK with no leaf wired — so `harness-verify` stayed green while `writeEnvelope` sat at 104 lines. Measured and fixed: `writeEnvelope` 104→43 (envelope crypto extracted to `seal`, argument shapes to `SealedWrite`), `renew` 66→26, `claimAndSettle` 60→23 (bound values + their one elevated call became named argument structs), `loadAllForWorkspace` 59→31, `secret_reference_txn.begin` 61→45, `debitAndInsert` 69→47, `withRole` 54→39. Two files crossed the 350-line file cap during the work and were split on real seams: `db/pool_elevation_tracker.zig` (the elevation table — it stores role NAMES, which removes the circular import and keeps the module free of anything that dereferences a possibly-dead connection) and `fleet_runtime/metering_billing_span.zig`. `execAs` was added for the single-statement sites the closure form over-served.
+
+  **(2) The composite role was wider than its own comment claimed.** `GRANT billing_runtime TO metering_runtime WITH INHERIT TRUE` carried INSERT and DELETE on `billing.tenant_wallet` into every renewal; the two fenced statements only ever SELECT and UPDATE it (verified against `RENEW_METER_SQL` and `CLAIM_SETTLE_SQL`). Replaced by direct grants composed to that footprint, so "the grant list IS the statement's table list" is now literally true. `billing_runtime` also lost `DELETE ON billing.tenant_wallet` — zero production callers, erasure rides the tenant cascade. **A live-catalogue matrix row was added for every elevation role**, which immediately earned itself: the narrowing did NOT take, because roles and their memberships are CLUSTER-level and survive `DROP DATABASE`. Removing the grant line only governs new clusters; slot 120 now REVOKEs the membership explicitly so it converges from either starting state.
+
+  **(3) The telemetry hot path elevated two-to-three times per event.** The debit, the exhaustion mark and the ledger row each opened their own scope inside one transaction. Now one `billing_runtime` span via `*Elevated` variants that take the handle. Declined, with reason: composing `BEGIN; SET LOCAL ROLE` into one simple-query exec (saves one round trip, risks the driver's `_state` tracking — the exact class of bug the `peekForError` fix above addressed).
+
+  Also closed a Time-Of-Check-To-Time-Of-Use (TOCTOU) hole the pass surfaced: the purge's id arrays froze at transaction start while the later `core` deletes re-evaluated their subqueries per statement, so a workspace created mid-purge lost its `core` rows but kept its secrets. It now takes `FOR UPDATE` on the tenant row before resolving.
+
+  **A regression the pass introduced and the tests caught.** Stepping down with `SET LOCAL ROLE api_runtime` instead of `NONE` *forces* a role rather than restoring one: a session entering broader (the integration harness is a superuser) was silently downgraded mid-transaction, and the purge's later unelevated statements lost privileges they held on entry — nine integration failures. Reverted to `NONE`, with the invariant that makes it correct now written into the module: elevation is API-pool-only and that pool logs in AS `api_runtime`, so `NONE` restores the right role in production. The reviewer's underlying point stands and is recorded — the integration suite's post-callback statements do run with more rights than production, which is why the refusal assertions that matter drop to `SET ROLE api_runtime` explicitly rather than leaning on the step-down.
+
+- **Consult — CLI acceptance failures under `make test-unit-all` (2026-08-11).** Seven `cli/test/acceptance` auth-guard tests fail on any machine holding a real login: `composeEnv` passes the operator's `HOME` through, and the durable credential the login flow now mints (`~/.config/agentsfleet/credentials.json`) satisfies the auth guard the tests expect to refuse. Zero `cli/` files in this diff; Continuous Integration (CI) is green only because it holds no credential file.
+
+  > Indy (2026-08-11): "I have another agent to fix this cli acceptance failure (M160_001 spec) so keep moving on this by just adding a note in the PR about that spec in progress by another agent."
 
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).

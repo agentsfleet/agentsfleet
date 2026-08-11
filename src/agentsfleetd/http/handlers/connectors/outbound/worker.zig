@@ -13,7 +13,7 @@
 const std = @import("std");
 const constants = @import("common");
 const logging = @import("log");
-const pg = @import("pg");
+const db = @import("../../../../db/pool.zig");
 const queue_redis = @import("../../../../queue/redis_client.zig");
 const connector_outbound = @import("../../../../queue/connector_outbound.zig");
 const ec = @import("../../../../errors/error_registry.zig");
@@ -38,7 +38,7 @@ const BACKOFF_BASE_MS: u64 = 200;
 /// `slack_api_base` is the Slack Web API root (default in prod; a FakeSlack
 /// loopback when a test drives this worker directly).
 pub fn run(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     queue: *queue_redis.Client,
     alloc: std.mem.Allocator,
     shutdown: *std.atomic.Value(bool),
@@ -92,7 +92,7 @@ fn readNextSafe(queue: *queue_redis.Client, consumer_id: []const u8) ?connector_
 /// Deliver a job (with bounded retry) then XACK it. A delivered or permanently-
 /// failed job is acked; a retry-exhausted job is also acked (dropped, logged) so
 /// it cannot hammer. Only a crash BEFORE the ack leaves it pending for redelivery.
-fn deliverAndAck(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, sched: *bounded_fetch.Scheduler, job: *connector_outbound.Delivery, slack_api_base: []const u8) void {
+fn deliverAndAck(pool: *db.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, sched: *bounded_fetch.Scheduler, job: *connector_outbound.Delivery, slack_api_base: []const u8) void {
     defer job.deinit(alloc);
     const verdict = deliverWithRetry(pool, alloc, sched, job.*, slack_api_base);
     if (verdict == .retryable) {
@@ -104,7 +104,7 @@ fn deliverAndAck(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allo
 
 /// Dispatch to the provider poster, retrying a `retryable` verdict up to
 /// `MAX_ATTEMPTS` with exponential backoff. Returns the final verdict.
-fn deliverWithRetry(pool: *pg.Pool, alloc: std.mem.Allocator, sched: *bounded_fetch.Scheduler, job: connector_outbound.Delivery, slack_api_base: []const u8) slack_post.Outcome {
+fn deliverWithRetry(pool: *db.Pool, alloc: std.mem.Allocator, sched: *bounded_fetch.Scheduler, job: connector_outbound.Delivery, slack_api_base: []const u8) slack_post.Outcome {
     var attempt: u32 = 0;
     while (attempt < MAX_ATTEMPTS) : (attempt += 1) {
         switch (dispatch(pool, alloc, sched, job, slack_api_base)) {
@@ -120,7 +120,7 @@ fn deliverWithRetry(pool: *pg.Pool, alloc: std.mem.Allocator, sched: *bounded_fe
 
 /// Route one job to its connector poster by `provider`. Adding Grafana/Jira/
 /// Linear is one more arm here + a sibling `post.zig` — never a new worker.
-fn dispatch(pool: *pg.Pool, alloc: std.mem.Allocator, sched: *bounded_fetch.Scheduler, job: connector_outbound.Delivery, slack_api_base: []const u8) slack_post.Outcome {
+fn dispatch(pool: *db.Pool, alloc: std.mem.Allocator, sched: *bounded_fetch.Scheduler, job: connector_outbound.Delivery, slack_api_base: []const u8) slack_post.Outcome {
     if (std.mem.eql(u8, job.provider, constants.PROVIDER_SLACK)) {
         return slack_post.deliver(alloc, constants.globalIo(), sched, pool, slack_api_base, job.workspace_id, job.fleet_id, job.event_id, job.answer);
     }

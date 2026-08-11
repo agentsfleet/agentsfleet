@@ -7,6 +7,7 @@ const Store = @This();
 
 const std = @import("std");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const logging = @import("log");
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -16,7 +17,7 @@ const sql = @import("sql.zig");
 
 const log = logging.scoped(.cron_store);
 
-pool: *pg.Pool,
+pool: *db.Pool,
 
 pub const CreateOutcome = union(enum) {
     created: model.Schedule,
@@ -31,7 +32,7 @@ pub const ClaimOutcome = union(enum) {
     not_found,
 };
 
-pub fn init(pool: *pg.Pool) Store {
+pub fn init(pool: *db.Pool) Store {
     return .{ .pool = pool };
 }
 

@@ -6,6 +6,7 @@ const clock = @import("common").clock;
 const logging = @import("log");
 const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const protocol = @import("contract").protocol;
@@ -97,7 +98,7 @@ fn eventTypeNames(alloc: std.mem.Allocator, filter: Filter) !?[]const []const u8
 }
 
 pub fn appendLeaseReleasedBestEffort(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     alloc: std.mem.Allocator,
     runner_id: []const u8,
     lease_id: []const u8,
@@ -110,7 +111,7 @@ pub fn appendLeaseReleasedBestEffort(
 }
 
 fn appendLeaseReleased(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     alloc: std.mem.Allocator,
     runner_id: []const u8,
     lease_id: []const u8,

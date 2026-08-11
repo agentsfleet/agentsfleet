@@ -25,7 +25,7 @@
 const std = @import("std");
 const constants = @import("common");
 const logging = @import("log");
-const pg = @import("pg");
+const db = @import("../../../db/pool.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const queue_redis = @import("../../../queue/redis_client.zig");
 const activity_publisher = @import("../../../fleet_runtime/activity_publisher.zig");
@@ -55,7 +55,7 @@ const PRE_FLIP_STEPS = [_][]const u8{
 /// hands ownership across). A dedicated stable allocator (`c_allocator`) is
 /// used so the lifetime is independent of any request arena.
 const Job = struct {
-    pool: *pg.Pool,
+    pool: *db.Pool,
     queue: *queue_redis.Client,
     workspace_id: []const u8,
     fleet_id: []const u8,
@@ -73,7 +73,7 @@ fn allocator() std.mem.Allocator {
 /// caller can observe is job allocation / thread-spawn — both non-fatal (the
 /// row stays `installing` and reconciles later), so the caller logs + proceeds.
 pub fn spawn(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     queue: *queue_redis.Client,
     workspace_id: []const u8,
     fleet_id: []const u8,
@@ -98,7 +98,7 @@ pub fn spawn(
 /// Build a heap-owned `*Job` or bubble up the allocation error. Every cleanup
 /// errdefer lives here, never past the spawn boundary.
 fn prepareJob(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     queue: *queue_redis.Client,
     workspace_id: []const u8,
     fleet_id: []const u8,

@@ -11,12 +11,11 @@
 -- platform-managed and $0.0001 under self-managed. No plan tiers. The rate
 -- constants live in state/tenant_billing.zig.
 --
--- PRIVILEGE: `api_runtime`, the role every Hypertext Transfer Protocol handler
--- runs as, holds the grants directly, so nothing at the database layer stops a
--- malformed query from moving a balance. Narrowing that to a `billing_runtime`
--- role assumed for the span of one transaction is deferred to its own milestone,
--- because the revoke and the elevation that hands access back are two halves of
--- one change.
+-- PRIVILEGE: `billing_runtime` owns the grants. `api_runtime`, the role every
+-- Hypertext Transfer Protocol handler runs as, holds nothing here — a malformed
+-- query in an unelevated handler cannot move a balance; the paths that may
+-- (starter grant, metered debit, balance read, erasure) assume `billing_runtime`
+-- for the span of one transaction (schema/110, `WITH INHERIT FALSE, SET TRUE`).
 --
 -- Keyed by its parent, per the pattern stated in
 -- `schema/430_tenant_model_selection.sql`: at most one wallet exists per tenant,
@@ -57,15 +56,25 @@ CREATE TABLE IF NOT EXISTS billing.tenant_wallet (
 -- so it was a btree maintained on every debit — the hottest write in the money
 -- path — to serve no query.
 
--- api_runtime reads and writes the wallet directly: the starter grant at signup
--- (`state/signup_bootstrap.zig`), every metered debit, and the balance read.
--- DELETE is for account erasure.
+-- billing_runtime reads and writes the wallet: the starter grant at signup
+-- (`state/signup_bootstrap.zig`), the balance reads, and the exhausted-marker
+-- transitions — each elevating for one transaction. api_runtime holds no
+-- direct grant; the catalogue test asserts zero rows for it here.
 --
--- Moving these onto a `billing_runtime` role api_runtime must assume is
--- deliberately not here — see the note in schema/300. The revoke without the
--- matching elevation refuses every signup, because the starter grant is written
--- inside the tenant-create transaction.
-GRANT SELECT, INSERT, UPDATE, DELETE ON billing.tenant_wallet TO api_runtime;
+-- No DELETE, to anyone. A wallet leaves only with the tenant that owns it,
+-- through the `core.tenants` cascade — referential actions run with the table
+-- owner's authority, so the purge needs no billing elevation for it
+-- (`state/account_teardown.zig` says so at its statement list). The grant was
+-- carried over from a draft where erasure deleted the row explicitly; nothing
+-- in the tree issues that statement, so it was reach with no caller.
+GRANT SELECT, INSERT, UPDATE ON billing.tenant_wallet TO billing_runtime;
+
+-- metering_runtime reaches the wallet directly, composed to exactly what the
+-- fenced renew/settle statement issues against it: it reads the balance and
+-- updates it. Never INSERT (the starter grant above is the only creator) and
+-- never DELETE (the cascade is). See schema/120 for why this is a direct grant
+-- rather than a membership.
+GRANT SELECT, UPDATE ON billing.tenant_wallet TO metering_runtime;
 
 -- Read-only operator principals never see a balance. Stated explicitly rather
 -- than relied upon: these roles hold no grant here, and saying so makes

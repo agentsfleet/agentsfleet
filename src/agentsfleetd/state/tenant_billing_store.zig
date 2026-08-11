@@ -3,6 +3,7 @@ const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 const BillingRow = struct {
@@ -27,7 +28,21 @@ pub fn insertIfAbsent(
     grant_source: []const u8,
 ) !void {
     const now_ms = clock.nowMillis();
-    _ = try conn.exec(sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
+    // The wallet belongs to `billing_runtime` (schema/700). Inside the signup
+    // bootstrap's transaction the callback brackets just the starter-grant
+    // INSERT, so the tenant-create statements around it keep running as
+    // `api_runtime`.
+    const Ctx = struct { tenant_id: []const u8, balance_nanos: i64, grant_source: []const u8, now_ms: i64 };
+    try pool_elevation.withRole(conn, .billing, Ctx{
+        .tenant_id = tenant_id,
+        .balance_nanos = balance_nanos,
+        .grant_source = grant_source,
+        .now_ms = now_ms,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !void {
+            _ = try v.conn.exec(sql.INSERT_TENANT_BILLING, .{ c.tenant_id, c.balance_nanos, c.grant_source, c.now_ms });
+        }
+    }.run);
 }
 
 pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
@@ -45,24 +60,50 @@ pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
 /// only fires on the 0-row path, so the happy path stays one round-trip.
 pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
     if (nanos < 0) return error.InvalidDebit;
-    const now_ms = clock.nowMillis();
-    // A successful debit clears `balance_exhausted_at` — the only path
-    // there is a prior top-up moving balance_nanos above zero. Keeping
-    // this in the same UPDATE keeps the transition atomic so the `stop`
-    // gate can never see "positive balance AND exhausted_at set".
-    var q = PgQuery.from(try conn.query(sql.DEBIT_TENANT_BALANCE, .{ tenant_id, nanos, now_ms }));
-    defer q.deinit();
-    const row = (try q.next()) orelse {
-        if (!try rowExists(conn, tenant_id)) return error.TenantBillingMissing;
-        return error.CreditExhausted;
-    };
-    const bal = try row.get(i64, 0);
-    const ts = try row.get(i64, 1);
-    return .{ .balance_nanos = bal, .updated_at_ms = ts };
+    // Both statements here (the debit and the 0-row probe) are wallet reads
+    // and writes, so one `billing_runtime` callback covers the pair; each
+    // result drains (defer) before the next statement or the commit.
+    const Ctx = struct { tenant_id: []const u8, nanos: i64 };
+    return pool_elevation.withRole(conn, .billing, Ctx{
+        .tenant_id = tenant_id,
+        .nanos = nanos,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !DebitResult {
+            return debitElevated(v, c.tenant_id, c.nanos);
+        }
+    }.run);
 }
 
-fn rowExists(conn: *pg.Conn, tenant_id: []const u8) !bool {
-    var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_BILLING_EXISTS, .{tenant_id}));
+/// The debit on a connection the caller already elevated. The metering path
+/// debits, may mark exhaustion, and writes the ledger row in ONE
+/// `billing_runtime` span, so taking the handle keeps a telemetry event to a
+/// single elevation instead of one per store call.
+pub fn debitElevated(
+    v: pool_elevation.Elevated(.billing),
+    tenant_id: []const u8,
+    nanos: i64,
+) !DebitResult {
+    if (nanos < 0) return error.InvalidDebit;
+    const now_ms = clock.nowMillis();
+    // A successful debit clears `balance_exhausted_at` — the only path there is
+    // a prior top-up moving balance_nanos above zero. Keeping this in the same
+    // UPDATE keeps the transition atomic so the `stop` gate can never see
+    // "positive balance AND exhausted_at set".
+    const debited: ?DebitResult = blk: {
+        var q = PgQuery.from(try v.conn.query(sql.DEBIT_TENANT_BALANCE, .{ tenant_id, nanos, now_ms }));
+        defer q.deinit();
+        const row = (try q.next()) orelse break :blk null;
+        break :blk .{ .balance_nanos = try row.get(i64, 0), .updated_at_ms = try row.get(i64, 1) };
+    };
+    if (debited) |d| return d;
+    if (!try rowExists(v, tenant_id)) return error.TenantBillingMissing;
+    return error.CreditExhausted;
+}
+
+/// Wallet read; the `Elevated(.billing)` parameter is the compile-time proof
+/// it runs only inside an already-elevated callback (RULE OWN).
+fn rowExists(v: pool_elevation.Elevated(.billing), tenant_id: []const u8) !bool {
+    var q = PgQuery.from(try v.conn.query(sql.SELECT_TENANT_BILLING_EXISTS, .{tenant_id}));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -71,10 +112,15 @@ fn rowExists(conn: *pg.Conn, tenant_id: []const u8) !bool {
 /// the tenant has no billing row at all — a tenant that was never granted a
 /// balance is not mid-trial, and the metering path treats both the same.
 pub fn loadTrialBoundary(conn: *pg.Conn, tenant_id: []const u8) !?i64 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_TRIAL_BOUNDARY, .{tenant_id}));
-    defer q.deinit();
-    const row = (try q.next()) orelse return null;
-    return try row.get(?i64, 0);
+    const Ctx = struct { tenant_id: []const u8 };
+    return pool_elevation.withRole(conn, .billing, Ctx{ .tenant_id = tenant_id }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !?i64 {
+            var q = PgQuery.from(try v.conn.query(sql.SELECT_TENANT_TRIAL_BOUNDARY, .{c.tenant_id}));
+            defer q.deinit();
+            const row = (try q.next()) orelse return null;
+            return try row.get(?i64, 0);
+        }
+    }.run);
 }
 
 pub fn loadByTenant(
@@ -82,30 +128,55 @@ pub fn loadByTenant(
     alloc: std.mem.Allocator,
     tenant_id: []const u8,
 ) !?BillingRow {
-    var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_BALANCE, .{tenant_id}));
-    defer q.deinit();
-    const row = (try q.next()) orelse return null;
-    const bal = try row.get(i64, 0);
-    const grant_source = try alloc.dupe(u8, try row.get([]const u8, 1));
-    errdefer alloc.free(grant_source);
-    const ts = try row.get(i64, 2);
-    const exhausted_at_ms = try row.get(?i64, 3);
-    const free_trial_ends_at_ms = try row.get(?i64, 4);
-    return .{
-        .balance_nanos = bal,
-        .grant_source = grant_source,
-        .updated_at_ms = ts,
-        .exhausted_at_ms = exhausted_at_ms,
-        .free_trial_ends_at_ms = free_trial_ends_at_ms,
-    };
+    // The row's owned string rides an out-parameter so the caller-side
+    // errdefer owns it if the commit fails after the callback succeeded.
+    var out: ?BillingRow = null;
+    errdefer if (out) |*r| r.deinit(alloc);
+    const Ctx = struct { alloc: std.mem.Allocator, tenant_id: []const u8, out: *?BillingRow };
+    try pool_elevation.withRole(conn, .billing, Ctx{
+        .alloc = alloc,
+        .tenant_id = tenant_id,
+        .out = &out,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !void {
+            var q = PgQuery.from(try v.conn.query(sql.SELECT_TENANT_BALANCE, .{c.tenant_id}));
+            defer q.deinit();
+            const row = (try q.next()) orelse return;
+            const bal = try row.get(i64, 0);
+            const grant_source = try c.alloc.dupe(u8, try row.get([]const u8, 1));
+            errdefer c.alloc.free(grant_source);
+            const ts = try row.get(i64, 2);
+            const exhausted_at_ms = try row.get(?i64, 3);
+            const free_trial_ends_at_ms = try row.get(?i64, 4);
+            c.out.* = .{
+                .balance_nanos = bal,
+                .grant_source = grant_source,
+                .updated_at_ms = ts,
+                .exhausted_at_ms = exhausted_at_ms,
+                .free_trial_ends_at_ms = free_trial_ends_at_ms,
+            };
+        }
+    }.run);
+    return out;
 }
 
 /// Atomic first-debit-exhaustion mark. Sets balance_exhausted_at=now_ms only
 /// if currently NULL. Returns true if the transition happened (first call),
 /// false if the row was already marked (idempotent replay).
 pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
-    const now_ms = clock.nowMillis();
-    var q = PgQuery.from(try conn.query(sql.MARK_BALANCE_EXHAUSTED, .{ tenant_id, now_ms }));
+    const Ctx = struct { tenant_id: []const u8 };
+    return pool_elevation.withRole(conn, .billing, Ctx{ .tenant_id = tenant_id }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !bool {
+            return markExhaustedElevated(v, c.tenant_id);
+        }
+    }.run);
+}
+
+/// The exhaustion mark on a connection the caller already elevated — the
+/// metering path reaches it from inside its own billing span (see
+/// `debitElevated`).
+pub fn markExhaustedElevated(v: pool_elevation.Elevated(.billing), tenant_id: []const u8) !bool {
+    var q = PgQuery.from(try v.conn.query(sql.MARK_BALANCE_EXHAUSTED, .{ tenant_id, clock.nowMillis() }));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -117,10 +188,17 @@ pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
 /// going through `debit`, e.g. an admin manual credit. Required so the
 /// `stop` gate is not a one-way door (greptile #3121312916 follow-up).
 pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
-    const now_ms = clock.nowMillis();
-    var q = PgQuery.from(try conn.query(sql.CLEAR_BALANCE_EXHAUSTED, .{ tenant_id, now_ms }));
-    defer q.deinit();
-    return (try q.next()) != null;
+    const Ctx = struct { tenant_id: []const u8, now_ms: i64 };
+    return pool_elevation.withRole(conn, .billing, Ctx{
+        .tenant_id = tenant_id,
+        .now_ms = clock.nowMillis(),
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !bool {
+            var q = PgQuery.from(try v.conn.query(sql.CLEAR_BALANCE_EXHAUSTED, .{ c.tenant_id, c.now_ms }));
+            defer q.deinit();
+            return (try q.next()) != null;
+        }
+    }.run);
 }
 
 pub fn resolveTenantFromWorkspace(

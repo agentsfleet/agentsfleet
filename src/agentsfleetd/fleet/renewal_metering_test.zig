@@ -13,6 +13,7 @@ const harness_mod = @import("../http/test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const base = @import("../db/test_fixtures.zig");
 const renewal = @import("renewal.zig");
+const renewal_meter = @import("renewal_meter.zig");
 const renewal_settle = @import("renewal_settle.zig");
 const affinity = @import("affinity.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
@@ -50,7 +51,7 @@ const RATES = billing_rates.SliceRates{
     .output_nanos_per_mtok = 15_000_000,
 };
 
-fn meterOf(cum_in: i64, cum_cached: i64, cum_out: i64) renewal.MeterInputs {
+fn meterOf(cum_in: i64, cum_cached: i64, cum_out: i64) renewal_meter.MeterInputs {
     return .{
         .cumulative_input = cum_in,
         .cumulative_cached = cum_cached,

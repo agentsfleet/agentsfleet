@@ -29,6 +29,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const db = @import("./pool.zig");
 
 const common = @import("common");
 const env = common.env;
@@ -49,7 +50,7 @@ const GENEROUS_TIMEOUT_MS: u32 = 10_000;
 const HOLD_NS: u64 = 50 * std.time.ns_per_ms;
 
 const Waiter = struct {
-    pool: *pg.Pool,
+    pool: *db.Pool,
     /// Set when this waiter acquired and released cleanly.
     acquired: std.atomic.Value(bool) = .init(false),
     /// Set when this waiter received the pool's typed timeout.
@@ -78,20 +79,24 @@ const Waiter = struct {
 
 /// A size-1 pool with an explicit acquire budget, or null when no live database
 /// is configured.
-fn openSaturablePool(alloc: std.mem.Allocator, timeout_ms: u32) !?*pg.Pool {
+fn openSaturablePool(alloc: std.mem.Allocator, timeout_ms: u32) !?*db.Pool {
     const url = env.testLiveValue("TEST_DATABASE_URL") orelse return null;
     // parseUrl allocates host/auth strings that must outlive the pool, so they
     // come from the page allocator exactly as production does.
     var opts = try pool_mod.parseUrl(std.heap.page_allocator, url);
     opts.size = 1;
     opts.timeout = timeout_ms;
-    return pg.Pool.init(common.globalIo(), alloc, opts) catch null;
+    const inner = pg.Pool.init(common.globalIo(), alloc, opts) catch return null;
+    return db.adopt(inner, alloc) catch {
+        inner.deinit();
+        return null;
+    };
 }
 
 /// Prove the pool is whole: it can still hand out its full complement. Run
 /// after every arm, because "no connection leaked" is the claim that a test
 /// which only counts errors would never notice failing.
-fn expectNoLeakedConnections(pool: *pg.Pool) !void {
+fn expectNoLeakedConnections(pool: *db.Pool) !void {
     const conn = pool.acquire() catch |err| {
         std.debug.print("pool could not produce its one connection after the arm: {s}\n", .{@errorName(err)});
         return error.LeakedConnection;

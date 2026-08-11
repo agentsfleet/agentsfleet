@@ -51,6 +51,7 @@ const std = @import("std");
 const pg = @import("pg");
 const logging = @import("log");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 
 const log = logging.scoped(.secret_reference_txn);
 
@@ -171,6 +172,24 @@ pub const Txn = struct {
 ///
 /// On any failure the transaction is rolled back before returning, so a caller
 /// that never receives a `Txn` has nothing to clean up.
+/// Step 1's `FOR UPDATE` on `vault.secrets` needs `vault_runtime`
+/// (schema/300), so it runs in an elevated callback inside the caller's
+/// transaction and steps back down before the `core.*` steps — which run as
+/// `api_runtime`, whose privileges those steps need in turn.
+fn lockSecretRow(conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8) !bool {
+    const Ctx = struct { workspace_id: []const u8, key_name: []const u8 };
+    return pool_elevation.withRole(conn, .vault, Ctx{
+        .workspace_id = workspace_id,
+        .key_name = key_name,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !bool {
+            var q = PgQuery.from(try v.conn.query(LOCK_SECRET, .{ c.workspace_id, c.key_name }));
+            defer q.deinit();
+            return (try q.next()) != null;
+        }
+    }.run);
+}
+
 pub fn begin(
     conn: *pg.Conn,
     workspace_id: []const u8,
@@ -182,11 +201,7 @@ pub fn begin(
 
     // Step 1 — the credential itself. Absent means a concurrent delete got
     // here first; every caller treats that as fatal to its own write.
-    {
-        var q = PgQuery.from(try conn.query(LOCK_SECRET, .{ workspace_id, key_name }));
-        defer q.deinit();
-        if ((try q.next()) == null) return Error.SecretGone;
-    }
+    if (!try lockSecretRow(conn, workspace_id, key_name)) return Error.SecretGone;
 
     // Step 0, issued here because step 1 is the cheaper rejection: no point
     // resolving an owner for a credential that is already gone. Copied out

@@ -18,7 +18,7 @@
 const std = @import("std");
 const clock = @import("common").clock;
 const httpz = @import("httpz");
-const pg = @import("pg");
+const db = @import("../../../db/pool.zig");
 const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
@@ -53,7 +53,7 @@ fn deinitFleetRow(row: *const FleetRow, alloc: std.mem.Allocator) void {
     if (row.source) |s| alloc.free(s);
 }
 
-fn fetchFleetById(pool: *pg.Pool, alloc: std.mem.Allocator, fleet_id: []const u8) !?FleetRow {
+fn fetchFleetById(pool: *db.Pool, alloc: std.mem.Allocator, fleet_id: []const u8) !?FleetRow {
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(

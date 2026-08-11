@@ -15,7 +15,7 @@
 const std = @import("std");
 const sql = @import("sql.zig");
 const clock = @import("common").clock;
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const Allocator = std.mem.Allocator;
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -70,7 +70,7 @@ pub const MAX_CHECKPOINT_RESPONSE_BYTES: usize = 2048;
 /// the receive debit + the duplicate `event_received` frame).
 pub fn insertReceivedRow(
     alloc: Allocator,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     session: *FleetSession,
     event: *const redis_fleet.FleetEvent,
 ) !bool {
@@ -111,7 +111,7 @@ pub fn insertReceivedRow(
 /// before the stream entry is acked, or the delivery would be lost. Returns
 /// rows affected (0 = the row was already terminal; the XACK is still owed).
 pub fn markBlocked(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     fleet_id: []const u8,
     event_id: []const u8,
     failure_label: []const u8,
@@ -137,7 +137,7 @@ pub fn markBlocked(
 /// conflicting insert but is treated as a proceed.
 pub const RowClass = enum { absent, received, terminal };
 
-pub fn classifyStatus(pool: *pg.Pool, fleet_id: []const u8, event_id: []const u8) !RowClass {
+pub fn classifyStatus(pool: *db.Pool, fleet_id: []const u8, event_id: []const u8) !RowClass {
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(sql.SELECT_FLEET_EVENT_STATUS, .{ fleet_id, event_id }));
@@ -153,7 +153,7 @@ pub fn classifyStatus(pool: *pg.Pool, fleet_id: []const u8, event_id: []const u8
 /// the runner's `FailureClass` tag (NULL on a clean run, or a failure whose
 /// reason the runner did not report). Best-effort (failures logged, not raised).
 pub fn markTerminal(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     fleet_id: []const u8,
     event_id: []const u8,
     result: ExecutionResult,
@@ -201,7 +201,7 @@ pub fn markTerminal(
 
 /// UPSERT the session resume cursor. Reads only `fleet_id` + the pre-built
 /// `context_json` ({last_event_id, last_response}).
-pub fn checkpointFleetSession(pool: *pg.Pool, fleet_id: []const u8, context_json: []const u8) !void {
+pub fn checkpointFleetSession(pool: *db.Pool, fleet_id: []const u8, context_json: []const u8) !void {
     const now_ms = clock.nowMillis();
     const conn = try pool.acquire();
     defer pool.release(conn);

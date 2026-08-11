@@ -12,6 +12,7 @@ const std = @import("std");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
+const db = @import("../../../db/pool.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -750,7 +751,7 @@ fn cleanupGateRedis(q: *queue_redis.Client, fleet_id: []const u8, event_id: []co
 // Commit a terminal decision to the DB ONLY. ResolveArgs.atomic never touches
 // Redis, so this reproduces the exact "DB commit succeeded, Redis mirror write
 // failed" state the durability fix targets.
-fn resolveDbOnly(pool: *pg.Pool, action_id: []const u8, outcome: approval_gate.GateStatus) !void {
+fn resolveDbOnly(pool: *db.Pool, action_id: []const u8, outcome: approval_gate.GateStatus) !void {
     const args = approval_gate_db.ResolveArgs{ .action_id = action_id, .outcome = outcome, .by = "user:op" };
     var oc = try args.atomic(pool, ALLOC);
     defer oc.deinit(ALLOC);

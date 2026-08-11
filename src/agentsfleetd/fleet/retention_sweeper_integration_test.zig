@@ -9,6 +9,7 @@ const std = @import("std");
 const constants = @import("common");
 const clock = constants.clock;
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
 const protocol = @import("contract").protocol;
@@ -145,7 +146,7 @@ fn leaseExists(conn: *pg.Conn, lease_id: []const u8) !bool {
 /// Same question asked on a connection of its own — the suite's own connection
 /// is inside an open transaction whenever a test is holding row locks, and a
 /// read there would see that transaction's own uncommitted view.
-fn leaseExistsOn(pool: *pg.Pool, lease_id: []const u8) !bool {
+fn leaseExistsOn(pool: *db.Pool, lease_id: []const u8) !bool {
     const conn = try pool.acquire();
     defer pool.release(conn);
     return leaseExists(conn, lease_id);

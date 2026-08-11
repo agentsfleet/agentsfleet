@@ -10,6 +10,7 @@ test {
     _ = @import("db/index_removal_integration_test.zig");
     _ = @import("db/runner_list_liveness_integration_test.zig");
     _ = @import("db/pool_bounded_progress_integration_test.zig");
+    _ = @import("db/schema_privilege_integration_test.zig");
     _ = @import("http/handlers/fleet/runners_list_integration_test.zig");
     _ = @import("http/handlers/fleets/secret_list_integration_test.zig");
     _ = @import("http/handlers/connectors/registry_integration_test.zig");

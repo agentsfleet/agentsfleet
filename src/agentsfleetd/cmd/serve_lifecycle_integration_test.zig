@@ -378,7 +378,7 @@ fn seedFixtures(conn: *pg.Conn) !void {
     , .{ API_KEY_ROW_ID, TENANT_ID, key_hash[0..], now_ms });
 }
 
-fn cleanupFixtures(pool: *pg.Pool) void {
+fn cleanupFixtures(pool: *db.Pool) void {
     const conn = pool.acquire() catch return;
     defer pool.release(conn);
     base.teardownFleets(conn, WORKSPACE_ID);

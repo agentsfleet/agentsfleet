@@ -19,15 +19,17 @@ BEGIN
     -- No role is named after the runner: it holds zero datastore credentials and
     -- reaches PostgreSQL only through agentsfleetd. The worker role went with the
     -- worker process in the runtime split.
-    -- `memory_runtime` is the one elevation role today: api_runtime is a MEMBER
-    -- of it but holds no privilege of its own on `memory`, so reaching that
-    -- schema is a deliberate, greppable elevation rather than an ambient
-    -- capability. Giving the secret store and the wallet the same treatment is
-    -- its own milestone.
+    -- `memory_runtime`, `vault_runtime` and `billing_runtime` are elevation
+    -- roles: api_runtime is a MEMBER of each but holds no privilege of its own
+    -- on their tables, so reaching them is a deliberate, greppable elevation
+    -- rather than an ambient capability. `metering_runtime` (schema/120) is the
+    -- composite for the one fenced statement that spans fleet and billing.
     FOREACH r IN ARRAY ARRAY[
         'db_migrator',
         'api_runtime',
         'memory_runtime',
+        'vault_runtime',
+        'billing_runtime',
         'ops_readonly_human',
         'ops_readonly_fleet'
     ]
@@ -51,6 +53,8 @@ GRANT ALL ON SCHEMA public, core, fleet, billing, vault, audit, memory TO db_mig
 -- CREATE TABLE.
 GRANT USAGE ON SCHEMA core, fleet, billing, vault, audit TO api_runtime;
 GRANT USAGE ON SCHEMA memory TO memory_runtime;
+GRANT USAGE ON SCHEMA vault TO vault_runtime;
+GRANT USAGE ON SCHEMA billing TO billing_runtime;
 GRANT USAGE ON SCHEMA audit TO ops_readonly_human, ops_readonly_fleet;
 
 -- Membership, not privilege — and `INHERIT FALSE` is the whole reason that
@@ -61,13 +65,12 @@ GRANT USAGE ON SCHEMA audit TO ops_readonly_human, ops_readonly_fleet;
 -- dormant until `SET ROLE` names it; SET TRUE is what permits that
 -- (RULE CTX: the role boundary is the process boundary).
 --
--- Only `memory_runtime` today. Giving the secret store and the wallet the same
--- treatment is deferred to its own milestone — see the notes in schema/300 and
--- schema/700 on why the revoke and the elevation cannot ship apart.
 GRANT memory_runtime TO api_runtime WITH INHERIT FALSE, SET TRUE;
+GRANT vault_runtime TO api_runtime WITH INHERIT FALSE, SET TRUE;
+GRANT billing_runtime TO api_runtime WITH INHERIT FALSE, SET TRUE;
 
 REVOKE CREATE ON SCHEMA public, core, fleet, billing, vault, audit, memory
-FROM api_runtime, memory_runtime,
+FROM api_runtime, memory_runtime, vault_runtime, billing_runtime,
      ops_readonly_human, ops_readonly_fleet;
 
 -- Future tables in the authoritative schemas carry no PUBLIC privilege. Stated

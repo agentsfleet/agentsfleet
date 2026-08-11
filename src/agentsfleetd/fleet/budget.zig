@@ -31,6 +31,7 @@
 const std = @import("std");
 const sql = @import("sql.zig");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const logging = @import("log");
 const common = @import("common");
 const clock = common.clock;
@@ -171,7 +172,7 @@ pub fn windowFloors(now_ms: i64) struct { day: i64, month: i64 } {
 /// Credit drained by `fleet_id` inside each window. `null` on ANY database
 /// fault — the caller then fails open explicitly rather than by coincidence.
 pub fn spendForFleet(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     workspace_id: []const u8,
     fleet_id: []const u8,
     now_ms: i64,

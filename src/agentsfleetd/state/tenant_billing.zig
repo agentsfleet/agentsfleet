@@ -2,6 +2,7 @@ const std = @import("std");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const store = @import("tenant_billing_store.zig");
+const pool_elevation = @import("../db/pool_elevation.zig");
 const tenant_provider = @import("tenant_provider.zig");
 const logging = @import("log");
 
@@ -103,6 +104,22 @@ pub fn isFreeTrialActive(ends_at_ms: ?i64, now_ms: i64) bool {
 pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
     const r = try store.debit(conn, tenant_id, nanos);
     return .{ .balance_nanos = r.balance_nanos, .updated_at_ms = r.updated_at_ms };
+}
+
+/// `debit` for a caller that already holds a `billing_runtime` elevation — the
+/// metering path, which debits and writes the ledger row in one span.
+pub fn debitElevated(
+    v: pool_elevation.Elevated(.billing),
+    tenant_id: []const u8,
+    nanos: i64,
+) !DebitResult {
+    const r = try store.debitElevated(v, tenant_id, nanos);
+    return .{ .balance_nanos = r.balance_nanos, .updated_at_ms = r.updated_at_ms };
+}
+
+/// `markExhausted` from inside an existing billing span (see `debitElevated`).
+pub fn markExhaustedElevated(v: pool_elevation.Elevated(.billing), tenant_id: []const u8) !bool {
+    return store.markExhaustedElevated(v, tenant_id);
 }
 
 /// Atomically stamp `balance_exhausted_at` on the first CreditExhausted debit.

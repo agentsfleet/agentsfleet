@@ -87,8 +87,15 @@ CREATE TABLE IF NOT EXISTS billing.usage_ledger (
 --
 -- Four readers need SELECT — the charges list, the events-list cost join
 -- (`state/fleet_events_store.zig`), the per-fleet outcome reads and the fleet
--- delete path. The metered writes come from the same runtime role.
-GRANT SELECT, INSERT, UPDATE ON billing.usage_ledger TO api_runtime;
+-- delete path. A charge history does not move, so api_runtime keeps SELECT and
+-- nothing more; the telemetry stage row (`state/fleet_telemetry_store.zig`)
+-- elevates to `billing_runtime`, and the fenced renew/settle statement reaches
+-- the ledger under `metering_runtime` (schema/120 — a direct grant, not an
+-- inherited one). Both writers accumulate through ON CONFLICT DO UPDATE, which
+-- reads the existing row, so SELECT rides with INSERT and UPDATE for each.
+GRANT SELECT ON billing.usage_ledger TO api_runtime;
+GRANT SELECT, INSERT, UPDATE ON billing.usage_ledger TO billing_runtime;
+GRANT SELECT, INSERT, UPDATE ON billing.usage_ledger TO metering_runtime;
 
 -- Read-only operator principals see no money rows, stated explicitly so
 -- re-widening them is a visible edit to this line.

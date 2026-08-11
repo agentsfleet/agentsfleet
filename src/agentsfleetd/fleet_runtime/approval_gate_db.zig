@@ -13,6 +13,7 @@ const std = @import("std");
 const sql = @import("sql.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const Allocator = std.mem.Allocator;
 const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -103,7 +104,7 @@ pub const getByGateId = reads.getByGateId;
 /// detail's repository binding as `stated_binding`, which the write-scoped
 /// credential mint later compares against the fleet's CURRENT binding.
 pub fn recordGatePending(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     alloc: Allocator,
     fleet_id: []const u8,
     workspace_id: []const u8,
@@ -122,7 +123,7 @@ pub fn recordGatePending(
 /// dedup attribution. New code should call `approval_gate.resolve()` or
 /// `ResolveArgs.atomic()` directly.
 pub fn resolveGateDecision(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     action_id: []const u8,
     status: GateStatus,
     by: []const u8,
@@ -171,7 +172,7 @@ pub const ResolveArgs = struct {
     /// way: .resolved means this caller won the race; .already_resolved
     /// means an earlier writer (different channel or concurrent retry)
     /// already terminated the row.
-    pub fn atomic(self: Self, pool: *pg.Pool, alloc: Allocator) !ResolveDbOutcome {
+    pub fn atomic(self: Self, pool: *db.Pool, alloc: Allocator) !ResolveDbOutcome {
         if (self.outcome == .pending) return error.InvalidGateStatus;
 
         const conn = try pool.acquire();
@@ -206,7 +207,7 @@ pub const ResolveArgs = struct {
 /// of truth, so a committed resolve is observable even if its best-effort Redis
 /// mirror write failed. Returns null when the row is missing or still pending.
 /// Allocation-free: reads a single status enum, no row materialization.
-pub fn readTerminalDecision(pool: *pg.Pool, action_id: []const u8) !?GateStatus {
+pub fn readTerminalDecision(pool: *db.Pool, action_id: []const u8) !?GateStatus {
     const conn = try pool.acquire();
     defer pool.release(conn);
 
@@ -223,7 +224,7 @@ pub fn readTerminalDecision(pool: *pg.Pool, action_id: []const u8) !?GateStatus 
 // ── Internals ───────────────────────────────────────────────────────────
 
 fn insertPendingRow(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     alloc: Allocator,
     fleet_id: []const u8,
     workspace_id: []const u8,

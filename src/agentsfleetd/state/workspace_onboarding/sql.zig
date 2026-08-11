@@ -8,9 +8,16 @@
 pub const SELECT_SIGNALS =
     \\SELECT
     \\  EXISTS(SELECT 1 FROM core.fleets WHERE workspace_id = $1::uuid)                              AS has_fleet,
-    \\  EXISTS(SELECT 1 FROM vault.secrets WHERE workspace_id = $1::uuid)                            AS has_secret,
     \\  EXISTS(SELECT 1 FROM core.fleet_events WHERE workspace_id = $1::uuid)                        AS has_event,
     \\  EXISTS(SELECT 1 FROM core.fleet_events WHERE workspace_id = $1::uuid AND actor LIKE $2)      AS has_steer,
     \\  EXISTS(SELECT 1 FROM core.tenant_model_selection
     \\         WHERE tenant_id = $3::uuid AND length(btrim(model)) > 0)                              AS tenant_model
+;
+
+/// The secret signal, split out of SELECT_SIGNALS: `vault.secrets` grants
+/// `api_runtime` nothing (schema/300), so the probe runs under an elevated
+/// `vault_runtime` scope while the core signals above stay unelevated — one
+/// statement cannot span both privilege sets.
+pub const SELECT_HAS_SECRET =
+    \\SELECT EXISTS(SELECT 1 FROM vault.secrets WHERE workspace_id = $1::uuid) AS has_secret
 ;

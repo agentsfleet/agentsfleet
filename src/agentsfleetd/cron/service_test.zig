@@ -1,5 +1,5 @@
 const std = @import("std");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const common = @import("common");
 
 const QStashClient = @import("QStashClient.zig");
@@ -29,7 +29,7 @@ const DESTINATION = "https://api.agentsfleet.net/v1/ingress/qstash/schedules";
 const CONTENDERS: usize = 100;
 
 const Fake = struct {
-    pool: ?*pg.Pool = null,
+    pool: ?*db.Pool = null,
     status: u16 = 200,
     failure: ?anyerror = null,
     probe_pool: bool = false,

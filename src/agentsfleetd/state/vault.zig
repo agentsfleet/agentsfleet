@@ -20,6 +20,7 @@ const sql = @import("../secrets/sql.zig");
 const secure_memory = @import("../secrets/secure_memory.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 
 const log = logging.scoped(.vault);
 
@@ -178,18 +179,29 @@ pub fn markExisting(
     std.debug.assert(present_out.len == candidates.len);
     @memset(present_out, false);
     if (candidates.len == 0) return;
-    var q = PgQuery.from(try conn.query(
-        \\SELECT key_name FROM vault.secrets WHERE workspace_id = $1 AND key_name = ANY($2::text[])
-    , .{ workspace_id, candidates }));
-    defer q.deinit();
-    while (try q.next()) |row| {
-        const found = try row.get([]const u8, 0);
-        // candidates is tiny (≤ the registry size); a linear match is trivial and
-        // avoids allocating/duping the borrowed row key into a set.
-        for (candidates, 0..) |c, i| {
-            if (std.mem.eql(u8, c, found)) present_out[i] = true;
+    // Presence still requires SELECT on the table, which only `vault_runtime`
+    // holds (schema/300); the result drains (defer) before the commit.
+    const Ctx = struct { workspace_id: []const u8, candidates: []const []const u8, present_out: []bool };
+    try pool_elevation.withRole(conn, .vault, Ctx{
+        .workspace_id = workspace_id,
+        .candidates = candidates,
+        .present_out = present_out,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !void {
+            var q = PgQuery.from(try v.conn.query(
+                \\SELECT key_name FROM vault.secrets WHERE workspace_id = $1 AND key_name = ANY($2::text[])
+            , .{ c.workspace_id, c.candidates }));
+            defer q.deinit();
+            while (try q.next()) |row| {
+                const found = try row.get([]const u8, 0);
+                // candidates is tiny (≤ the registry size); a linear match is trivial and
+                // avoids allocating/duping the borrowed row key into a set.
+                for (c.candidates, 0..) |cand, i| {
+                    if (std.mem.eql(u8, cand, found)) c.present_out[i] = true;
+                }
+            }
         }
-    }
+    }.run);
 }
 
 /// One credential's non-secret projection, read from columns rather than
@@ -242,26 +254,40 @@ pub fn loadMetadata(
     if (candidates.len == 0) return;
     errdefer freeMetadata(alloc, out);
 
-    var q = PgQuery.from(try conn.query(sql.SELECT_METADATA_FOR_KEYS, .{ workspace_id, candidates }));
-    defer q.deinit();
-    while (try q.next()) |row| {
-        const found = try row.get([]const u8, 0);
-        // EVERY matching slot is filled, not just the first. Callers pass a
-        // positional list rather than a deduplicated set — one credential backs
-        // several model rows, and letting `out[i]` belong to `candidates[i]` by
-        // construction is cheaper than deduplicating and then matching back.
-        // Each duplicate gets its OWN owned copy, so `freeMetadata` releases
-        // them independently and no slot aliases another's strings.
-        //
-        // Linear match, mirroring markExisting: `candidates` is bounded by the
-        // page limit, and comparing is cheaper than allocating a set and duping
-        // the borrowed row key into it.
-        for (candidates, 0..) |c, i| {
-            if (out[i] == null and std.mem.eql(u8, c, found)) {
-                out[i] = try rowToMetadata(alloc, row);
+    // The projection columns hold no key material, but the table's SELECT
+    // belongs to `vault_runtime` alone (schema/300). `out` fills in the
+    // caller's frame — the errdefer above owns it on any failure, the
+    // commit's included.
+    const Ctx = struct { alloc: std.mem.Allocator, workspace_id: []const u8, candidates: []const []const u8, out: []?SecretMetadata };
+    try pool_elevation.withRole(conn, .vault, Ctx{
+        .alloc = alloc,
+        .workspace_id = workspace_id,
+        .candidates = candidates,
+        .out = out,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !void {
+            var q = PgQuery.from(try v.conn.query(sql.SELECT_METADATA_FOR_KEYS, .{ c.workspace_id, c.candidates }));
+            defer q.deinit();
+            while (try q.next()) |row| {
+                const found = try row.get([]const u8, 0);
+                // EVERY matching slot is filled, not just the first. Callers pass a
+                // positional list rather than a deduplicated set — one credential backs
+                // several model rows, and letting `out[i]` belong to `candidates[i]` by
+                // construction is cheaper than deduplicating and then matching back.
+                // Each duplicate gets its OWN owned copy, so `freeMetadata` releases
+                // them independently and no slot aliases another's strings.
+                //
+                // Linear match, mirroring markExisting: `candidates` is bounded by the
+                // page limit, and comparing is cheaper than allocating a set and duping
+                // the borrowed row key into it.
+                for (c.candidates, 0..) |cand, i| {
+                    if (c.out[i] == null and std.mem.eql(u8, cand, found)) {
+                        c.out[i] = try rowToMetadata(c.alloc, row);
+                    }
+                }
             }
         }
-    }
+    }.run);
 }
 
 /// Release every projection in `out` and blank the slots, so a double call and a
@@ -308,8 +334,16 @@ pub fn deleteCredential(
     workspace_id: []const u8,
     key_name: []const u8,
 ) !bool {
-    const rowcount = try conn.exec(
-        \\DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2
-    , .{ workspace_id, key_name });
+    // DELETE belongs to `vault_runtime` (schema/300). Inside the secret
+    // reference protocol's transaction the callback brackets just the
+    // statement.
+    const Ctx = struct { workspace_id: []const u8, key_name: []const u8 };
+    const rowcount = try pool_elevation.withRole(conn, .vault, Ctx{ .workspace_id = workspace_id, .key_name = key_name }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !?i64 {
+            return try v.conn.exec(
+                \\DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2
+            , .{ c.workspace_id, c.key_name });
+        }
+    }.run);
     return (rowcount orelse 0) > 0;
 }

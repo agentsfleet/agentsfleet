@@ -15,7 +15,7 @@ const std = @import("std");
 const sql = @import("sql.zig");
 const constants = @import("common");
 const clock = constants.clock;
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const Allocator = std.mem.Allocator;
 
 const queue_redis = @import("../queue/redis_client.zig");
@@ -37,7 +37,7 @@ const RESOLVER = resolver.SYSTEM_TIMEOUT;
 /// Run the sweeper loop until shutdown is signalled. Intended to be spawned
 /// in its own thread by the worker process at boot time.
 pub fn run(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     redis: *queue_redis.Client,
     alloc: Allocator,
     shutdown: *std.atomic.Value(bool),
@@ -52,7 +52,7 @@ pub fn run(
     log.debug("shutdown", .{});
 }
 
-fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void {
+fn sweepOnce(pool: *db.Pool, redis: *queue_redis.Client, alloc: Allocator) !void {
     const expired = try fetchExpired(pool, alloc);
     defer freeExpired(alloc, expired);
 
@@ -82,7 +82,7 @@ fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void
     }
 }
 
-fn fetchExpired(pool: *pg.Pool, alloc: Allocator) ![][]const u8 {
+fn fetchExpired(pool: *db.Pool, alloc: Allocator) ![][]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);
 

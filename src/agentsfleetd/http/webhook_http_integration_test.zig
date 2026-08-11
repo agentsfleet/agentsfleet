@@ -9,7 +9,7 @@
 // is unavailable. Run via `make test-integration` (sets up both).
 
 const std = @import("std");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const webhook_sig = @import("../auth/middleware/webhook_sig.zig");
 const svix_signature = @import("../auth/middleware/svix_signature.zig");
@@ -27,9 +27,9 @@ const TestHarness = harness_mod.TestHarness;
 // ── Middleware wiring ─────────────────────────────────────────────────────
 
 // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-var wired_webhook_sig: webhook_sig.WebhookSig(*pg.Pool) = undefined;
+var wired_webhook_sig: webhook_sig.WebhookSig(*db.Pool) = undefined;
 // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-var wired_svix: svix_signature.SvixSignature(*pg.Pool) = undefined;
+var wired_svix: svix_signature.SvixSignature(*db.Pool) = undefined;
 
 fn wireWebhookMiddleware(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     wired_webhook_sig = .{

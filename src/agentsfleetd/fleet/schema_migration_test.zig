@@ -10,6 +10,7 @@
 const std = @import("std");
 const common = @import("common");
 const pg = @import("pg");
+const db_pool = @import("../db/pool.zig");
 const parseUrl = @import("../db/pool.zig").parseUrl;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
@@ -47,11 +48,15 @@ const EXPECTED_LEASE_COLUMN_COUNT: i64 = 21;
 /// that one instant under two names.
 const EXPECTED_EVENT_COLUMN_COUNT: i64 = 6;
 
-fn openConnOrSkip(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
+fn openConnOrSkip(alloc: std.mem.Allocator) !?struct { pool: *db_pool.Pool, conn: *pg.Conn } {
     const url = common.env.testLiveValue("TEST_DATABASE_URL") orelse return null;
     // parseUrl allocates host/auth strings that must outlive the pool.
     const opts = try parseUrl(std.heap.page_allocator, url);
-    const pool = pg.Pool.init(common.globalIo(), alloc, opts) catch return null;
+    const inner = pg.Pool.init(common.globalIo(), alloc, opts) catch return null;
+    const pool = db_pool.adopt(inner, alloc) catch {
+        inner.deinit();
+        return null;
+    };
     errdefer pool.deinit();
     const conn = pool.acquire() catch {
         pool.deinit();
@@ -392,7 +397,7 @@ test "migration lock: a held lock blocks runMigrations before any bookkeeping DD
 
     const migrations = cmd_common.canonicalMigrations();
     const blocked = pool_migrations.runMigrationsBounded(
-        runner.pool,
+        runner.pool.inner,
         &migrations,
         FAST_LOCK_MAX_ATTEMPTS,
         FAST_LOCK_RETRY_MS,
@@ -449,14 +454,14 @@ test "fresh bookkeeping: a migration applies once and a re-run is a no-op" {
     errdefer healAuditStash(probe.conn); // heal even when a mid-test `try` fails
 
     const first = pool_migrations.runMigrationsBounded(
-        runner.pool,
+        runner.pool.inner,
         &SYNTHETIC_OK_MIGRATION,
         FAST_LOCK_MAX_ATTEMPTS,
         FAST_LOCK_RETRY_MS,
     );
     const rows_after_first = scalarI64(probe.conn, COUNT_SYNTHETIC_VERSION_SQL) catch -1;
     const second = pool_migrations.runMigrationsBounded(
-        runner.pool,
+        runner.pool.inner,
         &SYNTHETIC_OK_MIGRATION,
         FAST_LOCK_MAX_ATTEMPTS,
         FAST_LOCK_RETRY_MS,
@@ -485,7 +490,7 @@ test "fresh bookkeeping: an unterminated migration fails loudly and records the 
     errdefer healAuditStash(probe.conn); // heal even when a mid-test `try` fails
 
     const run = pool_migrations.runMigrationsBounded(
-        runner.pool,
+        runner.pool.inner,
         &SYNTHETIC_UNTERMINATED_MIGRATION,
         FAST_LOCK_MAX_ATTEMPTS,
         FAST_LOCK_RETRY_MS,
@@ -510,14 +515,14 @@ test "runMigrations: fully-applied database is idempotent across repeated runs" 
     defer db.pool.release(db.conn);
 
     const migrations = cmd_common.canonicalMigrations();
-    try pool_migrations.runMigrations(db.pool, &migrations);
+    try pool_migrations.runMigrations(db.pool.inner, &migrations);
 
     const applied_count = try scalarI64(db.conn, COUNT_APPLIED_MIGRATIONS_SQL);
     const applied_stamp_sum = try scalarI64(db.conn, SUM_APPLIED_STAMPS_SQL);
     try std.testing.expectEqual(@as(i64, @intCast(migrations.len)), applied_count);
 
     // Second run applies zero: same row count, same applied_at stamps.
-    try pool_migrations.runMigrations(db.pool, &migrations);
+    try pool_migrations.runMigrations(db.pool.inner, &migrations);
     try std.testing.expectEqual(applied_count, try scalarI64(db.conn, COUNT_APPLIED_MIGRATIONS_SQL));
     try std.testing.expectEqual(applied_stamp_sum, try scalarI64(db.conn, SUM_APPLIED_STAMPS_SQL));
 }
@@ -536,7 +541,7 @@ test "stale failure row: an already-applied version resolves instead of blocking
     errdefer failureRowCleanup(db.conn, APPLIED_PROBE_VERSION);
 
     const migrations = cmd_common.canonicalMigrations();
-    const state = pool_migrations.inspectMigrationState(db.pool, &migrations);
+    const state = pool_migrations.inspectMigrationState(db.pool.inner, &migrations);
     failureRowCleanup(db.conn, APPLIED_PROBE_VERSION);
 
     try std.testing.expect(!(try state).has_failed_migrations);
@@ -553,7 +558,7 @@ test "genuine failure row: an unapplied version still blocks boot" {
     errdefer failureRowCleanup(db.conn, UNAPPLIED_PROBE_VERSION);
 
     const migrations = cmd_common.canonicalMigrations();
-    const state = pool_migrations.inspectMigrationState(db.pool, &migrations);
+    const state = pool_migrations.inspectMigrationState(db.pool.inner, &migrations);
     failureRowCleanup(db.conn, UNAPPLIED_PROBE_VERSION);
 
     try std.testing.expect((try state).has_failed_migrations);

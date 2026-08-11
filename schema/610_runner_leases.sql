@@ -87,3 +87,8 @@ CREATE TABLE IF NOT EXISTS fleet.runner_leases (
 -- older than the retention window — the one retention policy that exists, kept
 -- exactly as M149 shipped it.
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.runner_leases TO api_runtime;
+
+-- metering_runtime (schema/120): the fenced renew/settle statement locks and
+-- advances this table's lease rows in the same transaction that debits the
+-- wallet, and `SET ROLE` replaces the privilege set rather than adding to it.
+GRANT SELECT, UPDATE ON fleet.runner_leases TO metering_runtime;

@@ -6,11 +6,12 @@
 // tenant_billing_integration_test.zig.
 //
 // Each worker thread calls the public metering entrypoint, which acquires
-// its own pooled connection; the pg.Pool (size 4) serializes acquisition so
+// its own pooled connection; the db.Pool (size 4) serializes acquisition so
 // 100 threads contend through a handful of real connections.
 
 const std = @import("std");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const metering = @import("metering.zig");
@@ -51,7 +52,7 @@ const N_WORKERS = 100;
 // Per-worker context: a distinct event_id so each debit writes its own
 // telemetry row (UNIQUE event_id+charge_type). Outcome captured by-ref.
 const Job = struct {
-    pool: *@import("pg").Pool,
+    pool: *db.Pool,
     workspace_id: []const u8,
     event_id: [40]u8,
     event_len: usize,

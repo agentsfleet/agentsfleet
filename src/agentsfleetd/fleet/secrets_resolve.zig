@@ -7,7 +7,7 @@
 //! `${secrets.<name>.<field>}`.
 
 const std = @import("std");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const Allocator = std.mem.Allocator;
 
 const error_codes = @import("../errors/error_registry.zig");
@@ -32,7 +32,7 @@ pub const ResolvedSecret = struct {
 /// any entries already resolved are released before returning.
 pub fn resolveSecretsMap(
     alloc: Allocator,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     workspace_id: []const u8,
     names: []const []const u8,
 ) ![]ResolvedSecret {

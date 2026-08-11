@@ -97,16 +97,21 @@ pub const DELETE =
 /// credential, so the credential has to be named first.
 pub const SELECT_BY_ID = SELECT_PROJECTION ++ WHERE ++ MATCH_ID_TENANT;
 
-pub const EXISTS_SECRET_IN_PRIMARY_WORKSPACE =
+/// Split in two: the workspace resolution reads `core.*` as `api_runtime`,
+/// while the secret probe needs `vault_runtime` (schema/300) — `SET ROLE`
+/// replaces the privilege set, so one statement cannot span both.
+pub const SELECT_PRIMARY_WORKSPACE =
+    \\SELECT id::text
+    \\  FROM core.workspaces
+    \\ WHERE tenant_id = $1::uuid
+    \\ ORDER BY created_at ASC, id ASC
+    \\ LIMIT 1
+;
+
+pub const EXISTS_SECRET_IN_WORKSPACE =
     \\SELECT 1
     \\  FROM vault.secrets s
-    \\ WHERE s.workspace_id = (
-    \\        SELECT id
-    \\          FROM core.workspaces
-    \\         WHERE tenant_id = $1::uuid
-    \\         ORDER BY created_at ASC, id ASC
-    \\         LIMIT 1
-    \\       )
+    \\ WHERE s.workspace_id = $1::uuid
     \\   AND s.key_name = $2
     \\ LIMIT 1
 ;

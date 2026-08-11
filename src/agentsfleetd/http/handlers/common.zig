@@ -2,7 +2,7 @@ const std = @import("std");
 const constants = @import("common");
 const call_deadline = @import("call_deadline");
 const httpz = @import("httpz");
-const pg = @import("pg");
+const db = @import("../../db/pool.zig");
 const R2 = @import("s3");
 const oidc = @import("../../auth/oidc.zig");
 const session_store_redis = @import("../../session/session_store_redis.zig");
@@ -54,7 +54,7 @@ pub const Context = struct {
     /// constructing one — and it means a boot path that forgot to wire it
     /// degrades to correct-but-slow rather than serving something wrong.
     model_library_cache: ?*model_library_cache.Cache = null,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     queue: *queue_redis.Client,
     alloc: std.mem.Allocator,
     /// Io threaded from `main` → `serve.run` (Zig 0.16 DI seam). Handlers that

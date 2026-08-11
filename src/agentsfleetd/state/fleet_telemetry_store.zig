@@ -10,6 +10,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 const id_format = @import("../types/id_format.zig");
 const tenant_provider = @import("tenant_provider.zig");
 const cursor_mod = @import("fleet_telemetry_cursor.zig");
@@ -114,10 +115,27 @@ pub const InsertTelemetryParams = struct {
     last_charged_at: ?i64 = null,
 };
 
-/// Insert one telemetry row. ON CONFLICT (event_id, charge_type) DO NOTHING —
-/// safe to call on replay.
-pub fn insertTelemetry(
-    conn: *pg.Conn,
+/// `last_charged_at` equals `created_at` here: a receive fee is charged once,
+/// so its span is a point and the budget drain's apportionment degenerates to
+/// all-or-nothing, which is what it always was for this row (schema/710).
+const INSERT_TELEMETRY_SQL =
+    \\INSERT INTO billing.usage_ledger
+    \\  (id, tenant_id, workspace_id, fleet_id, event_id,
+    \\   charge_type, posture, model,
+    \\   credit_deducted_nanos,
+    \\   token_count_input, token_count_cached_input, token_count_output, wall_ms,
+    \\   event_created_at, created_at, last_charged_at)
+    \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10,
+    \\        $11, $12, $13, $14, $15, $16)
+    \\ON CONFLICT (event_id, charge_type) DO NOTHING
+;
+
+/// The ledger write on a connection the caller already elevated. The metering
+/// path debits the wallet and writes this row in one span, so taking the
+/// handle lets one `billing_runtime` elevation cover both rather than the
+/// event paying for two.
+pub fn insertTelemetryElevated(
+    v: pool_elevation.Elevated(.billing),
     alloc: std.mem.Allocator,
     params: InsertTelemetryParams,
 ) !void {
@@ -126,21 +144,7 @@ pub fn insertTelemetry(
     // UUID and a TEXT `id` holding the same value; one column replaces them.
     const row_id = try id_format.allocUuidV7(alloc);
     defer alloc.free(row_id);
-
-    // `last_charged_at` equals `created_at` here: a receive fee is charged once,
-    // so its span is a point and the budget drain's apportionment degenerates to
-    // all-or-nothing, which is what it always was for this row (schema/710).
-    _ = try conn.exec(
-        \\INSERT INTO billing.usage_ledger
-        \\  (id, tenant_id, workspace_id, fleet_id, event_id,
-        \\   charge_type, posture, model,
-        \\   credit_deducted_nanos,
-        \\   token_count_input, token_count_cached_input, token_count_output, wall_ms,
-        \\   event_created_at, created_at, last_charged_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10,
-        \\        $11, $12, $13, $14, $15, $16)
-        \\ON CONFLICT (event_id, charge_type) DO NOTHING
-    , .{
+    _ = try v.conn.exec(INSERT_TELEMETRY_SQL, .{
         row_id,
         params.tenant_id,
         params.workspace_id,
@@ -158,6 +162,25 @@ pub fn insertTelemetry(
         params.created_at,
         params.last_charged_at orelse params.created_at,
     });
+}
+
+/// Insert one telemetry row. ON CONFLICT (event_id, charge_type) DO NOTHING —
+/// safe to call on replay. Ledger writes belong to `billing_runtime`
+/// (schema/710); api_runtime keeps SELECT only.
+pub fn insertTelemetry(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    params: InsertTelemetryParams,
+) !void {
+    const Ctx = struct { alloc: std.mem.Allocator, params: InsertTelemetryParams };
+    return pool_elevation.withRole(conn, .billing, Ctx{
+        .alloc = alloc,
+        .params = params,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !void {
+            return insertTelemetryElevated(v, c.alloc, c.params);
+        }
+    }.run);
 }
 
 /// Build an opaque base64url cursor token from the last row of a page.

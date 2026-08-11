@@ -11,6 +11,7 @@
 const std = @import("std");
 const constants = @import("common");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
 const protocol = @import("contract").protocol;
@@ -245,7 +246,7 @@ test "counter row equals a recount of the lease rows after mixed transitions" {
     cleanup(ctx.conn);
 }
 
-fn acquireRetry(pool: *pg.Pool) ?*pg.Conn {
+fn acquireRetry(pool: *db.Pool) ?*pg.Conn {
     // Workers outnumber the pool; treat an acquire timeout as "pool busy" and
     // retry, bounded so a dead pool still fails instead of hanging.
     var attempt: usize = 0;
@@ -262,7 +263,7 @@ fn acquireRetry(pool: *pg.Pool) ?*pg.Conn {
 // The verdict parity (index + cycle) makes the suite-wide succeeded/failed
 // split deterministic. Joins are the only synchronization.
 const CycleWorker = struct {
-    pool: *pg.Pool,
+    pool: *db.Pool,
     index: usize,
     err: ?anyerror = null,
 

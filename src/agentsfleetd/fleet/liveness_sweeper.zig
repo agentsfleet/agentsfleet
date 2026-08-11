@@ -7,6 +7,7 @@ const clock = constants.clock;
 const logging = @import("log");
 const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const protocol = @import("contract").protocol;
@@ -55,7 +56,7 @@ pub const SweepStats = struct {
 };
 
 /// Run until shutdown is signalled. Spawned by the serve lifecycle.
-pub fn run(pool: *pg.Pool, alloc: std.mem.Allocator, shutdown: *std.atomic.Value(bool)) void {
+pub fn run(pool: *db.Pool, alloc: std.mem.Allocator, shutdown: *std.atomic.Value(bool)) void {
     log.debug(LOG_SWEEPER_STARTED, .{ .interval_ms = constants.HEARTBEAT_INTERVAL_MS, .batch_limit = SWEEP_BATCH_LIMIT });
     while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown's background-stop release-store (watcher server-stop / teardown disarm).
         const stats = sweepOnce(pool, alloc) catch |err| {
@@ -75,7 +76,7 @@ pub fn run(pool: *pg.Pool, alloc: std.mem.Allocator, shutdown: *std.atomic.Value
 }
 
 /// Execute one bounded sweep. Tests call this directly.
-pub fn sweepOnce(pool: *pg.Pool, alloc: std.mem.Allocator) !SweepStats {
+pub fn sweepOnce(pool: *db.Pool, alloc: std.mem.Allocator) !SweepStats {
     const now_ms = clock.nowMillis();
     const runners = try fetchDueRunners(pool, alloc, now_ms);
     defer freeRunnerRefs(alloc, runners);
@@ -85,7 +86,7 @@ pub fn sweepOnce(pool: *pg.Pool, alloc: std.mem.Allocator) !SweepStats {
 }
 
 fn sweepRunner(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     alloc: std.mem.Allocator,
     runner: RunnerRef,
     now_ms: i64,
@@ -104,7 +105,7 @@ fn sweepRunner(
     }
 }
 
-fn fetchDueRunners(pool: *pg.Pool, alloc: std.mem.Allocator, now_ms: i64) ![]RunnerRef {
+fn fetchDueRunners(pool: *db.Pool, alloc: std.mem.Allocator, now_ms: i64) ![]RunnerRef {
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(sql.SELECT_DUE_RUNNERS, .{
@@ -146,7 +147,7 @@ fn fetchDueRunners(pool: *pg.Pool, alloc: std.mem.Allocator, now_ms: i64) ![]Run
 }
 
 fn sweepOfflineRunner(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     alloc: std.mem.Allocator,
     runner_id: []const u8,
     last_seen_at: i64,
@@ -187,7 +188,7 @@ fn insertOfflineEvent(
     return (try row.get(i64, 0)) == 1;
 }
 
-fn expireRunnerSlots(pool: *pg.Pool, runner_id: []const u8, now_ms: i64) !i64 {
+fn expireRunnerSlots(pool: *db.Pool, runner_id: []const u8, now_ms: i64) !i64 {
     const conn = try pool.acquire();
     defer pool.release(conn);
     return expireActiveLeaseSlots(conn, runner_id, now_ms);
@@ -201,7 +202,7 @@ fn expireActiveLeaseSlots(conn: *pg.Conn, runner_id: []const u8, now_ms: i64) !i
     return row.get(i64, 0);
 }
 
-fn markDrainedIfIdle(pool: *pg.Pool, alloc: std.mem.Allocator, runner_id: []const u8, now_ms: i64) !bool {
+fn markDrainedIfIdle(pool: *db.Pool, alloc: std.mem.Allocator, runner_id: []const u8, now_ms: i64) !bool {
     const event_row_id = try id_format.generateRunnerEventId(alloc);
     defer alloc.free(event_row_id);
     const conn = try pool.acquire();

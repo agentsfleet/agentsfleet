@@ -18,6 +18,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const common = @import("common");
 const logging = @import("log");
 const call_deadline = @import("call_deadline");
@@ -114,7 +115,7 @@ fn freeOauthApp(alloc: std.mem.Allocator, app: ?integration.OauthApp) void {
 /// HTTP boundary + the RS256 signer + the metrics sink. Degrades closed: an unset
 /// pointer or a vault miss leaves that integration null, never failing the boot.
 /// `exchange` must outlive the broker (a stable pointer in the caller's frame).
-pub fn buildDeps(alloc: std.mem.Allocator, pool: *pg.Pool, exchange: *HttpClientExchange, admin_ws_id: []const u8) Built {
+pub fn buildDeps(alloc: std.mem.Allocator, pool: *db.Pool, exchange: *HttpClientExchange, admin_ws_id: []const u8) Built {
     const secrets = loadPlatformSecrets(alloc, pool, admin_ws_id);
     return .{
         .github_app = secrets.github,
@@ -136,7 +137,7 @@ pub fn buildDeps(alloc: std.mem.Allocator, pool: *pg.Pool, exchange: *HttpClient
 /// independently on a miss/parse error, so an unconfigured provider leaves the
 /// others live and the broker still boots. An unset admin workspace or a pool
 /// acquire failure yields all-null (static-only) — never a boot failure.
-fn loadPlatformSecrets(alloc: std.mem.Allocator, pool: *pg.Pool, admin_ws_id: []const u8) integration.PlatformSecrets {
+fn loadPlatformSecrets(alloc: std.mem.Allocator, pool: *db.Pool, admin_ws_id: []const u8) integration.PlatformSecrets {
     if (admin_ws_id.len == 0) {
         log.info(S_STATIC_ONLY, .{ .reason = "platform_admin_workspace_id_unset" });
         return .{};

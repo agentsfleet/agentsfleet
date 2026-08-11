@@ -3,14 +3,14 @@
 const FireStore = @This();
 
 const std = @import("std");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const fleet_config = @import("../fleet_runtime/config.zig");
 const model = @import("model.zig");
 const sql = @import("sql.zig");
 
-pool: *pg.Pool,
+pool: *db.Pool,
 
 pub const Target = struct {
     fleet_id: []u8,
@@ -36,7 +36,7 @@ pub const Target = struct {
     }
 };
 
-pub fn init(pool: *pg.Pool) FireStore {
+pub fn init(pool: *db.Pool) FireStore {
     return .{ .pool = pool };
 }
 

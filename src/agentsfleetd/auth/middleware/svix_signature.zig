@@ -48,7 +48,7 @@ pub const SvixLookupResult = struct {
 };
 
 /// Comptime-generic Svix middleware. `LookupCtx` is the concrete type of
-/// the host context (e.g. `*pg.Pool`) — no `*anyopaque` in the callback.
+/// the host context (e.g. `*db.Pool`) — no `*anyopaque` in the callback.
 pub fn SvixSignature(comptime LookupCtx: type) type {
     return struct {
         const Self = @This();

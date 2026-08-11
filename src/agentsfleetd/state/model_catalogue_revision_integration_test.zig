@@ -27,6 +27,7 @@
 const std = @import("std");
 const common = @import("common");
 const pg = @import("pg");
+const db_pool = @import("../db/pool.zig");
 
 const base = @import("../db/test_fixtures.zig");
 const revision = @import("model_catalogue_revision.zig");
@@ -38,7 +39,7 @@ const LOCK_TIMEOUT = "SET lock_timeout = '400ms'";
 const LOCK_TIMEOUT_OFF = "SET lock_timeout = 0";
 
 const TestDb = struct {
-    pool: *pg.Pool,
+    pool: *db_pool.Pool,
     a: *pg.Conn,
     b: *pg.Conn,
 

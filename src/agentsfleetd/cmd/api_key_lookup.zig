@@ -36,7 +36,7 @@ pub const LookupResult = tenant_api_key.LookupResult;
 /// Host context carrying the shared connection pool. A stable pointer to a
 /// value of this type is passed as `host` in the `LookupFn` call.
 pub const Ctx = struct {
-    pool: *pg.Pool,
+    pool: *db.Pool,
 };
 
 /// Resolve a SHA-256 hex digest to a `core.api_keys` row. Returns null when

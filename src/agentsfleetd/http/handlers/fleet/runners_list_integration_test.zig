@@ -19,6 +19,7 @@
 const std = @import("std");
 const common = @import("common");
 const pg = @import("pg");
+const db_pool = @import("../../../db/pool.zig");
 const base = @import("../../../db/test_fixtures.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const protocol = @import("contract").protocol;
@@ -33,7 +34,7 @@ const LIVE_UNTIL: i64 = NOW_MS + 60_000;
 const EXPIRED_AT: i64 = NOW_MS - 60_000;
 
 const TestDb = struct {
-    pool: *pg.Pool,
+    pool: *db_pool.Pool,
     conn: *pg.Conn,
 
     fn open(alloc: std.mem.Allocator) !?TestDb {

@@ -289,19 +289,20 @@ pub const TEST_PRICED_MODEL = provider_fixtures.TEST_PRICED_MODEL;
 /// Open a test DB connection. Returns null when TEST_DATABASE_URL / DATABASE_URL
 /// is unset, causing the test to be skipped via `return error.SkipZigTest`.
 ///
-/// Uses page_allocator for URL parse results so they outlive the pool. pg.Pool
+/// Uses page_allocator for URL parse results so they outlive the pool. db.Pool
 /// stores shallow references to host/auth strings — if parsed via an arena that
 /// is freed first, pool.release() crashes on non-idle connections.
 /// Named so suites can spell the return type (anonymous structs don't unify
 /// across functions).
-pub const TestConnCtx = struct { pool: *pg.Pool, conn: *pg.Conn };
+pub const TestConnCtx = struct { pool: *db.Pool, conn: *pg.Conn };
 
 pub fn openTestConn(alloc: std.mem.Allocator) !?TestConnCtx {
     const url = env.testLiveValue("TEST_DATABASE_URL") orelse
         env.testLiveValue("DATABASE_URL") orelse return null;
 
     const opts = try db.parseUrl(std.heap.page_allocator, url);
-    const pool = try pg.Pool.init(common.globalIo(), alloc, opts);
+    const inner = try pg.Pool.init(common.globalIo(), alloc, opts);
+    const pool = try db.adopt(inner, alloc);
 
     errdefer pool.deinit();
     const conn = try pool.acquire();
@@ -312,7 +313,7 @@ pub fn openTestConn(alloc: std.mem.Allocator) !?TestConnCtx {
 /// LIVE_DB-gated pool+conn pair — the shared setup the index/liveness plan
 /// suites use (formerly four identical local copies; Dimension 6.3).
 pub const TestDb = struct {
-    pool: *pg.Pool,
+    pool: *db.Pool,
     conn: *pg.Conn,
 
     pub fn open(alloc: std.mem.Allocator) !?TestDb {

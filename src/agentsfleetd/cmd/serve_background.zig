@@ -1,5 +1,5 @@
 const std = @import("std");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const events_bus = @import("../events/bus.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const approval_gate_sweeper = @import("../fleet_runtime/approval_gate_sweeper.zig");
@@ -32,7 +32,7 @@ pub const Threads = struct {
 
     pub fn start(
         self: *Self,
-        pool: *pg.Pool,
+        pool: *db.Pool,
         queue: *queue_redis.Client,
         alloc: std.mem.Allocator,
         sched: *bounded_fetch.Scheduler,

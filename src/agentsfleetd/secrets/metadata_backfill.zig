@@ -29,6 +29,7 @@ const pg = @import("pg");
 const logging = @import("log");
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 const crypto_store = @import("crypto_store.zig");
 const metadata = @import("metadata.zig");
 const sql = @import("sql.zig");
@@ -146,14 +147,24 @@ fn write(
     key_name: []const u8,
     projection: metadata.Projection,
 ) !bool {
-    const affected = try conn.exec(sql.UPDATE_SECRET_METADATA, .{
-        workspace_id,
-        key_name,
-        projection.kind.wire(),
-        projection.provider,
-        projection.base_url,
-        projection.has_key,
-    });
+    // The UPDATE lands only as `vault_runtime` (schema/300).
+    const Ctx = struct { workspace_id: []const u8, key_name: []const u8, projection: metadata.Projection };
+    const affected = try pool_elevation.withRole(conn, .vault, Ctx{
+        .workspace_id = workspace_id,
+        .key_name = key_name,
+        .projection = projection,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !?i64 {
+            return try v.conn.exec(sql.UPDATE_SECRET_METADATA, .{
+                c.workspace_id,
+                c.key_name,
+                c.projection.kind.wire(),
+                c.projection.provider,
+                c.projection.base_url,
+                c.projection.has_key,
+            });
+        }
+    }.run);
     return (affected orelse 0) > 0;
 }
 

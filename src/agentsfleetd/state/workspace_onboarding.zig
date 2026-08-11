@@ -10,6 +10,7 @@ const std = @import("std");
 const pg = @import("pg");
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 const sql = @import("workspace_onboarding/sql.zig");
 const tenant_provider = @import("tenant_provider.zig");
 
@@ -48,12 +49,27 @@ pub fn read(
         const row = (try q.next()) orelse return error.RowMissing;
         break :blk .{
             .has_fleet = try row.get(bool, 0),
-            .has_secret = try row.get(bool, 1),
-            .has_event = try row.get(bool, 2),
-            .has_steer = try row.get(bool, 3),
-            .tenant_model = try row.get(bool, 4),
+            .has_event = try row.get(bool, 1),
+            .has_steer = try row.get(bool, 2),
+            .tenant_model = try row.get(bool, 3),
         };
     };
+
+    // The secret signal runs as its own elevated statement (see
+    // sql.SELECT_HAS_SECRET). The five signals were always five independent
+    // EXISTS probes, so reading this one a statement later loses nothing a
+    // caller could observe.
+    const HasSecretCtx = struct { workspace_id: []const u8 };
+    const has_secret = try pool_elevation.withRole(conn, .vault, HasSecretCtx{
+        .workspace_id = workspace_id,
+    }, struct {
+        fn run(c: HasSecretCtx, v: pool_elevation.Elevated(.vault)) !bool {
+            var q = PgQuery.from(try v.conn.query(sql.SELECT_HAS_SECRET, .{c.workspace_id}));
+            defer q.deinit();
+            const row = (try q.next()) orelse return false;
+            return try row.get(bool, 0);
+        }
+    }.run);
 
     // The query result is fully drained (defer above) before this second read on
     // the same connection — the platform-default view runs its own query.
@@ -61,7 +77,7 @@ pub fn read(
 
     return .{
         .has_fleet = row_vals.has_fleet,
-        .has_secret = row_vals.has_secret,
+        .has_secret = has_secret,
         .has_processed_event = row_vals.has_event,
         .has_steer_event = row_vals.has_steer,
         .model_configured = model_configured,

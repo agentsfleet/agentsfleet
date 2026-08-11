@@ -31,7 +31,7 @@ const std = @import("std");
 const constants = @import("common");
 const logging = @import("log");
 const ec = @import("../errors/error_registry.zig");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const queue_consts = @import("../queue/constants.zig");
 const queue_redis = @import("../queue/redis_client.zig");
@@ -100,7 +100,7 @@ pub const Cursor = struct {
 };
 
 /// Run until shutdown is signalled. Spawned by the serve lifecycle.
-pub fn run(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, shutdown: *std.atomic.Value(bool)) void {
+pub fn run(pool: *db.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, shutdown: *std.atomic.Value(bool)) void {
     log.debug(LOG_SWEEPER_STARTED, .{ .interval_ms = queue_consts.fleet_reclaim_interval_ms, .min_idle_ms = queue_consts.fleet_xautoclaim_min_idle_ms_int, .batch_limit = SWEEP_BATCH_LIMIT });
     var cursor = Cursor{}; // only touched by this thread
     while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown's background-stop release-store (watcher server-stop / teardown disarm).
@@ -120,7 +120,7 @@ pub fn run(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator,
 }
 
 /// Execute one bounded sweep, advancing `cursor`. Tests call this directly.
-pub fn sweepOnce(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, cursor: *Cursor) !SweepStats {
+pub fn sweepOnce(pool: *db.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, cursor: *Cursor) !SweepStats {
     const fleets = try fetchActiveFleets(pool, alloc, cursor);
     defer freeIds(alloc, fleets);
     var consumer_buf: [queue_redis.CONSUMER_ID_BUF_LEN]u8 = undefined;
@@ -193,7 +193,7 @@ fn reclaimFleetStrays(queue: *queue_redis.Client, fleet_id: []const u8, consumer
 /// a fleet whose `updated_at` changes mid-cycle cannot cause the scan to skip or
 /// repeat its neighbours (RULE KYS). A short batch means the end of the population
 /// was reached, so the cursor rewinds and the next pass starts a fresh cycle.
-fn fetchActiveFleets(pool: *pg.Pool, alloc: std.mem.Allocator, cursor: *Cursor) ![][]const u8 {
+fn fetchActiveFleets(pool: *db.Pool, alloc: std.mem.Allocator, cursor: *Cursor) ![][]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(

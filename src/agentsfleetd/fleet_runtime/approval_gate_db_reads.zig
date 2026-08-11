@@ -7,6 +7,7 @@
 const std = @import("std");
 const sql = @import("sql.zig");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const Allocator = std.mem.Allocator;
 const keyset_cursor = @import("keyset_cursor.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -72,7 +73,7 @@ pub const ListResult = struct {
 };
 
 pub fn listPending(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     alloc: Allocator,
     filter: ListFilter,
     cursor: ?keyset_cursor.Cursor,
@@ -111,7 +112,7 @@ pub fn listPending(
 /// row doesn't exist OR belongs to a different workspace (cross-tenant lookup
 /// leaks no information beyond "not found").
 pub fn getByGateId(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     alloc: Allocator,
     gate_id: []const u8,
     workspace_id: []const u8,

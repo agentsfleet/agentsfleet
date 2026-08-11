@@ -34,7 +34,7 @@ const affinity = @import("affinity.zig");
 
 const event_rows = @import("event_rows.zig");
 const metering = @import("../fleet_runtime/metering.zig");
-const renewal = @import("renewal.zig");
+const renewal_meter = @import("renewal_meter.zig");
 const renewal_settle = @import("renewal_settle.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const outbound = @import("service_report_outbound.zig");
@@ -159,7 +159,7 @@ fn claimReportAndSettle(hx: Hx, runner_id: []const u8, lease: Lease, body: proto
     // generation this same connection observes — see service_renew's twin.
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
-    const meter = renewal.buildMeterInputs(
+    const meter = renewal_meter.buildMeterInputs(
         conn,
         lease.tenant_id,
         lease.provider,

@@ -34,8 +34,8 @@
         // rather than a quiet regression. Tags are `v0.0.0-af.N`, one per fork
         // commit this repository consumes.
         .pg = .{
-            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=v0.0.0-af.3#1dea0f9f91bfec3fa49a163c1e6615d4ab7a9b55",
-            .hash = "pg-0.0.0-Wp_7gRO-BgAwfz7gC8A6NYUp-bQRInfmUGxAgu5dVKyf",
+            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=v0.0.0-af.4#d50a33d49ffe374f51e9b805d49f2993a0bbee41",
+            .hash = "pg-0.0.0-Wp_7gTvWBgBhL7jObRq4uVlJC5t6V5_3VOKVo8qTgAuk",
         },
         .posthog = .{
             .url = "git+https://github.com/agentsfleet/posthog-zig.git#v0.2.0",

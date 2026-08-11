@@ -149,7 +149,8 @@ pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, 
     const url = constants.env.testLiveValue("TEST_DATABASE_URL") orelse
         constants.env.testLiveValue("DATABASE_URL") orelse return null;
     const opts = try db.parseUrl(std.heap.page_allocator, url);
-    const pool = try pg.Pool.init(constants.globalIo(), alloc, opts);
+    const inner = try pg.Pool.init(constants.globalIo(), alloc, opts);
+    const pool = try db.adopt(inner, alloc);
     errdefer pool.deinit();
     const conn = try pool.acquire();
     return .{ .pool = pool, .conn = conn };

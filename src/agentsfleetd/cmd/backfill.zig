@@ -29,8 +29,9 @@ const log = logging.scoped(.agentsfleetd);
 const EnvMap = constants.env.Map;
 
 pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
-    // The `api` role, not `migrator`: this writes rows, not schema, and
-    // schema/002 already grants api_runtime UPDATE on vault.secrets. Reaching
+    // The `api` role, not `migrator`: this writes rows, not schema. The vault
+    // reads and writes inside the sweep elevate to `vault_runtime` per
+    // statement (schema/300 grants api_runtime nothing directly). Reaching
     // for the migrator role would hand a data sweep full authority over Data
     // Definition Language for no reason.
     const pool = db.initFromEnvForRole(io, env_map, alloc, .api) catch |err| {

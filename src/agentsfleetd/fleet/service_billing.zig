@@ -15,7 +15,7 @@ const std = @import("std");
 const logging = @import("log");
 const clock = @import("common").clock;
 const ec = @import("../errors/error_registry.zig");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const budget = @import("budget.zig");
 
 const hx_mod = @import("../http/handlers/hx.zig");
@@ -88,7 +88,7 @@ fn eventView(acq: assign.Acquired) redis_fleet.FleetEvent {
 /// carries — no lookup. A spend that could not be read admits the event
 /// (`budget.verdictOrAdmit`), matching `balanceCoversEstimate`'s fail-open
 /// posture: a metering outage must not halt every fleet on the platform.
-fn budgetVerdict(pool: *pg.Pool, session: *FleetSession, event: *const redis_fleet.FleetEvent) budget.Verdict {
+fn budgetVerdict(pool: *db.Pool, session: *FleetSession, event: *const redis_fleet.FleetEvent) budget.Verdict {
     const spend = budget.spendForFleet(pool, session.workspace_id, session.fleet_id, clock.nowMillis());
     if (spend == null) {
         log.warn("lease_budget_unavailable", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = session.fleet_id, .event_id = event.event_id });
@@ -258,7 +258,7 @@ const TenantResolution = union(enum) {
 
 /// One pooled connection resolves tenant id then active provider, mirroring
 /// `event_loop_writepath_resolve.resolveTenantAndProvider`'s drain order.
-fn resolveTenant(alloc: std.mem.Allocator, pool: *pg.Pool, workspace_id: []const u8) TenantResolution {
+fn resolveTenant(alloc: std.mem.Allocator, pool: *db.Pool, workspace_id: []const u8) TenantResolution {
     const conn = pool.acquire() catch |err| {
         log.warn("lease_resolve_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .err = @errorName(err) });
         return .{ .failed_transient = {} };

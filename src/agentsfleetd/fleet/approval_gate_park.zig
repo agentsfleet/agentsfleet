@@ -9,7 +9,7 @@
 
 const std = @import("std");
 const clock = @import("common").clock;
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const Allocator = std.mem.Allocator;
 
 const approval_gate = @import("../fleet_runtime/approval_gate.zig");
@@ -28,7 +28,7 @@ pub const ParkOutcome = enum { parked, unavailable };
 /// Best-effort gate-event log. Gate transitions currently emit structured
 /// logs; durable terminal state lands in core.fleet_events via the worker's
 /// terminal UPDATE.
-pub fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *FleetSession, event_type: []const u8, detail: []const u8) void {
+pub fn logGateActivity(pool: *db.Pool, alloc: Allocator, session: *FleetSession, event_type: []const u8, detail: []const u8) void {
     _ = pool;
     _ = alloc;
     log.debug("gate_event", .{ .fleet_id = session.fleet_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });
@@ -43,7 +43,7 @@ pub fn parkEvent(
     alloc: Allocator,
     session: *FleetSession,
     event: *const redis_fleet.FleetEvent,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     redis: *queue_redis.Client,
     detail: approval_gate.ActionDetail,
 ) ParkOutcome {

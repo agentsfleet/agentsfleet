@@ -14,6 +14,7 @@ const testing = std.testing;
 const common = @import("common");
 const clock = common.clock;
 const pg = @import("pg");
+const db_pool = @import("../db/pool.zig");
 const FleetSetCache = @import("fleet_set_cache.zig");
 const common_authz = @import("../http/handlers/common_authz.zig");
 const base = @import("../db/test_fixtures.zig");
@@ -93,7 +94,7 @@ const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const VIEWERS: usize = 8;
 
 const TestDb = struct {
-    pool: *pg.Pool,
+    pool: *db_pool.Pool,
     conn: *pg.Conn,
 
     fn open() !TestDb {

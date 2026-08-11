@@ -27,6 +27,7 @@
 const std = @import("std");
 const common = @import("common");
 const pg = @import("pg");
+const db_pool = @import("../db/pool.zig");
 
 const base = @import("../db/test_fixtures.zig");
 const cp = @import("../secrets/crypto_primitives.zig");
@@ -79,7 +80,7 @@ const SEEDED: u8 = 5;
 const EXPECTED_ORDER = [SEEDED]u8{ 5, 4, 3, 2, 1 };
 
 const TestDb = struct {
-    pool: *pg.Pool,
+    pool: *db_pool.Pool,
     conn: *pg.Conn,
 
     fn open(alloc: std.mem.Allocator) !?TestDb {

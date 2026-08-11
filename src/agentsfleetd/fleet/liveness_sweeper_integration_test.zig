@@ -4,6 +4,7 @@ const std = @import("std");
 const constants = @import("common");
 const clock = constants.clock;
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
 const affinity = @import("affinity.zig");
@@ -324,7 +325,7 @@ test "fetch_due_runners_partial_row_no_orphan" {
 }
 
 const SweepWorker = struct {
-    pool: *pg.Pool,
+    pool: *db.Pool,
     /// Injected sweep allocator — the concurrent variants pass
     /// `std.testing.allocator` (a thread-safe DebugAllocator) so every
     /// concurrent sweep doubles as a leak proof; nothing rides the
@@ -341,7 +342,7 @@ const SweepWorker = struct {
 
 /// Spawn CONCURRENT_SWEEPERS workers on `testing.allocator`, join them all,
 /// and require every sweep succeeded. Joins are the only synchronization.
-fn runConcurrentSweeps(pool: *pg.Pool) !void {
+fn runConcurrentSweeps(pool: *db.Pool) !void {
     var workers: [CONCURRENT_SWEEPERS]SweepWorker = undefined;
     var threads: [CONCURRENT_SWEEPERS]std.Thread = undefined;
     for (&workers, &threads) |*worker, *thread| {

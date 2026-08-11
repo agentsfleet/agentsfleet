@@ -11,7 +11,7 @@ const EMPTY_JSON = "{}";
 const SINGLE_POOL_TIMEOUT_MS: u32 = 1_000;
 
 pub const Fixture = struct {
-    pool: *pg.Pool,
+    pool: *db.Pool,
     store: Store,
     workspace_id: []const u8,
     fleet_id: []const u8,
@@ -46,7 +46,8 @@ pub const Fixture = struct {
         var opts = try db.parseUrl(std.heap.page_allocator, url);
         opts.size = size;
         opts.timeout = timeout_ms;
-        const pool = try pg.Pool.init(common.globalIo(), std.testing.allocator, opts);
+        const inner = try pg.Pool.init(common.globalIo(), std.testing.allocator, opts);
+        const pool = try db.adopt(inner, std.testing.allocator);
         errdefer pool.deinit();
         const conn = try pool.acquire();
         errdefer pool.release(conn);

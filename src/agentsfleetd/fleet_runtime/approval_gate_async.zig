@@ -12,7 +12,7 @@
 //! Redis mirror write failed after the DB commit.
 
 const std = @import("std");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const clock = @import("common").clock;
 const queue_redis = @import("../queue/redis_client.zig");
 const gate_constants = @import("approval_gate_constants.zig");
@@ -131,7 +131,7 @@ const DecisionRead = union(enum) {
 /// commit already succeeded. `pool` is optional only so the Redis-primitive unit
 /// tests can read decisions without a live DB; production callers always pass the
 /// live pool, keeping the fallback unconditional there.
-fn readDecisionSourced(redis: *queue_redis.Client, pool: ?*pg.Pool, action_id: []const u8) !DecisionRead {
+fn readDecisionSourced(redis: *queue_redis.Client, pool: ?*db.Pool, action_id: []const u8) !DecisionRead {
     if (try readDecision(redis, action_id)) |decision| return .{ .redis = decision };
     const p = pool orelse return .absent;
     const status = (try approval_gate_db.readTerminalDecision(p, action_id)) orelse return .absent;
@@ -157,7 +157,7 @@ fn decisionEval(decision: StoredDecision) PendingEval {
 /// mirror first, then falls back to the durable DB row (via `pool`) when the
 /// mirror key is absent, so a committed decision is enforced even if its Redis
 /// mirror write failed.
-pub fn evaluateRef(redis: *queue_redis.Client, pool: ?*pg.Pool, ref: *const EventGateRef, now_ms: i64) !PendingEval {
+pub fn evaluateRef(redis: *queue_redis.Client, pool: ?*db.Pool, ref: *const EventGateRef, now_ms: i64) !PendingEval {
     switch (try readDecisionSourced(redis, pool, ref.actionId())) {
         .redis => |decision| return decisionEval(decision),
         .db_fallback => |decision| {

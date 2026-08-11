@@ -23,6 +23,7 @@ const TestHarness = harness_mod.TestHarness;
 const base = @import("../db/test_fixtures.zig");
 const constants = @import("common");
 const renewal = @import("renewal.zig");
+const renewal_meter = @import("renewal_meter.zig");
 const renewal_settle = @import("renewal_settle.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
@@ -41,7 +42,7 @@ const RATES = billing_rates.SliceRates{
     .output_nanos_per_mtok = 15_000_000,
 };
 const CURSOR_BASE_MS: i64 = NOW_MS - 20_000;
-const METER = renewal.MeterInputs{
+const METER = renewal_meter.MeterInputs{
     .cumulative_input = TEST_TOKEN_COUNT,
     .cumulative_cached = 500,
     .cumulative_output = 800,
@@ -599,7 +600,7 @@ test "integration: a regressed cumulative token report charges zero tokens and n
     defer teardown(c);
 
     // Report LOWER cumulative tokens than the stored cursor — a regression.
-    const regressed = renewal.MeterInputs{
+    const regressed = renewal_meter.MeterInputs{
         .cumulative_input = 500,
         .cumulative_cached = 500,
         .cumulative_output = 500,

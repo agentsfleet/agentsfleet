@@ -32,6 +32,7 @@
 const std = @import("std");
 const common = @import("common");
 const pg = @import("pg");
+const db_pool = @import("../db/pool.zig");
 
 const base = @import("../db/test_fixtures.zig");
 const cp = @import("../secrets/crypto_primitives.zig");
@@ -64,7 +65,7 @@ const CONTEND_FOR_SECRET =
 ;
 
 const TestDb = struct {
-    pool: *pg.Pool,
+    pool: *db_pool.Pool,
     /// The producer's session.
     a: *pg.Conn,
     /// The deleter's session. A second real connection is the point — two

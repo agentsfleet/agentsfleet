@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const db = @import("../../../../db/pool.zig");
 const logging = @import("log");
 const bounded_fetch = @import("../bounded_fetch.zig");
 const ec = @import("../../../../errors/error_registry.zig");
@@ -52,7 +53,7 @@ pub fn deliver(
     alloc: std.mem.Allocator,
     io: std.Io,
     sched: *bounded_fetch.Scheduler,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     api_base: []const u8,
     workspace_id: []const u8,
     fleet_id: []const u8,
@@ -91,7 +92,7 @@ const LoadResult = union(enum) { ok: Loaded, verdict: Outcome };
 
 fn loadInputs(
     alloc: std.mem.Allocator,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     workspace_id: []const u8,
     fleet_id: []const u8,
     event_id: []const u8,

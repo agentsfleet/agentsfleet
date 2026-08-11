@@ -16,7 +16,7 @@ const preflight = @import("preflight.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const serve_shutdown = @import("serve_shutdown.zig");
 const serve_background = @import("serve_background.zig");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const serve_r2 = @import("serve_r2.zig");
 const serve_caches = @import("serve_caches.zig");
 const serve_secrets = @import("serve_secrets.zig");
@@ -184,15 +184,15 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     var runner_lookup_ctx = serve_runner_lookup.Ctx{ .pool = ctx.pool };
 
     var registry = serve_boot.buildRegistry(ctx.oidc, &api_key_lookup_ctx, &runner_lookup_ctx, approval_signing_secret);
-    // Construct the generic WebhookSig with concrete *pg.Pool type.
+    // Construct the generic WebhookSig with concrete *db.Pool type.
     // Must be declared before initChains() so the pointer is stable, but
     // the chain is set via setWebhookSig() after initChains().
-    var webhook_sig_mw = webhook_sig.WebhookSig(*pg.Pool){
+    var webhook_sig_mw = webhook_sig.WebhookSig(*db.Pool){
         .lookup_ctx = api_pool,
         .lookup_fn = serve_webhook_lookup.lookup,
     };
     // Svix middleware for Clerk resolves whsec_<base64> via the workspace vault.
-    var svix_mw = svix_signature.SvixSignature(*pg.Pool){
+    var svix_mw = svix_signature.SvixSignature(*db.Pool){
         .lookup_ctx = api_pool,
         .lookup_fn = serve_webhook_lookup.lookupSvix,
     };

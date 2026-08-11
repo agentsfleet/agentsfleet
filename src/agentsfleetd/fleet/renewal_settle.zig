@@ -15,7 +15,7 @@
 //! authorizes settlement).
 //!
 //! Charges `now - last_metered` of run fee + the final token delta via the same
-//! rates as `/renew` (shared `renewal.buildMeterInputs`), so a run that finished
+//! rates as `/renew` (shared `renewal_meter.buildMeterInputs`), so a run that finished
 //! inside one renewal window (never renewed) is still charged its real runtime
 //! and gets its telemetry + breakdown rows. Advances BOTH cursors so a replay
 //! settles ≈0. `charged = LEAST(slice, balance)` clamps the audit rows to the
@@ -24,10 +24,11 @@
 
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
 const telemetry = @import("../state/fleet_telemetry_store.zig");
-const renewal = @import("renewal.zig");
+const renewal_meter = @import("renewal_meter.zig");
 
 const MS_PER_SECOND: i64 = 1000;
 const TOKENS_PER_MTOK: i64 = 1000000;
@@ -163,39 +164,67 @@ const CLAIM_SETTLE_SQL =
 /// nanos charged. Errors propagate so the caller answers 500 (the report is
 /// retryable; on retry an uncommitted attempt re-claims a still-`active` lease).
 /// Runs on a caller-supplied pooled connection.
+/// The fenced settle statement's bound values, and the one elevated call that
+/// issues it.
+const ClaimSettleArgs = struct {
+    lease_id: []const u8,
+    runner_id: []const u8,
+    now_ms: i64,
+    meter: renewal_meter.MeterInputs,
+    ledger_uid: []const u8,
+    succeeded: bool,
+
+    /// The result drains before this returns and the commit runs (see
+    /// `renewal.renew` for why that ordering is load-bearing).
+    fn run(c: ClaimSettleArgs, v: pool_elevation.Elevated(.metering)) !?SettleOutcome {
+        var q = PgQuery.from(try v.conn.query(CLAIM_SETTLE_SQL, .{
+            c.lease_id,
+            c.runner_id,
+            c.now_ms,
+            c.meter.cumulative_input,
+            c.meter.cumulative_cached,
+            c.meter.cumulative_output,
+            c.meter.run_nanos_per_sec,
+            c.meter.input_nanos_per_mtok,
+            c.meter.cached_input_nanos_per_mtok,
+            c.meter.output_nanos_per_mtok,
+            telemetry.ChargeType.stage.label(),
+            protocol.RUNNER_LEASE_STATUS_ACTIVE,
+            protocol.RUNNER_LEASE_STATUS_REPORTED,
+            MS_PER_SECOND,
+            TOKENS_PER_MTOK,
+            c.ledger_uid,
+            c.succeeded,
+        }));
+        defer q.deinit();
+        const row = try q.next() orelse return null;
+        return .{
+            .charged_nanos = (try row.get(?i64, 0)) orelse 0,
+            .claimed = (try row.get(i64, 1)) == 1,
+        };
+    }
+};
+
 pub fn claimAndSettle(
     conn: *pg.Conn,
     lease_id: []const u8,
     runner_id: []const u8,
     now_ms: i64,
-    meter: renewal.MeterInputs,
+    meter: renewal_meter.MeterInputs,
     succeeded: bool,
 ) !SettleOutcome {
     const ledger_uid_value = try id_format.generateUuidV7();
     const ledger_uid: []const u8 = &ledger_uid_value;
-    var q = PgQuery.from(try conn.query(CLAIM_SETTLE_SQL, .{
-        lease_id,
-        runner_id,
-        now_ms,
-        meter.cumulative_input,
-        meter.cumulative_cached,
-        meter.cumulative_output,
-        meter.run_nanos_per_sec,
-        meter.input_nanos_per_mtok,
-        meter.cached_input_nanos_per_mtok,
-        meter.output_nanos_per_mtok,
-        telemetry.ChargeType.stage.label(),
-        protocol.RUNNER_LEASE_STATUS_ACTIVE,
-        protocol.RUNNER_LEASE_STATUS_REPORTED,
-        MS_PER_SECOND,
-        TOKENS_PER_MTOK,
-        ledger_uid,
-        succeeded,
-    }));
-    defer q.deinit();
-    const row = try q.next() orelse return .{ .claimed = false, .charged_nanos = 0 };
-    return .{
-        .charged_nanos = (try row.get(?i64, 0)) orelse 0,
-        .claimed = (try row.get(i64, 1)) == 1,
-    };
+
+    // Elevate to `metering_runtime` for the one fenced statement (schema/120).
+    // The statement is unchanged.
+    const outcome = try pool_elevation.withRole(conn, .metering, ClaimSettleArgs{
+        .lease_id = lease_id,
+        .runner_id = runner_id,
+        .now_ms = now_ms,
+        .meter = meter,
+        .ledger_uid = ledger_uid,
+        .succeeded = succeeded,
+    }, ClaimSettleArgs.run);
+    return outcome orelse .{ .claimed = false, .charged_nanos = 0 };
 }

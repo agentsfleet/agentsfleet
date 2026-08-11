@@ -58,3 +58,7 @@ CREATE TABLE IF NOT EXISTS fleet.runner_lifetime_counters (
 -- the version check.
 
 GRANT SELECT, INSERT, UPDATE ON fleet.runner_lifetime_counters TO api_runtime;
+
+-- metering_runtime (schema/120): the settle arm of the fenced statement upserts
+-- the lifetime counter in the same transaction that debits the wallet.
+GRANT SELECT, INSERT, UPDATE ON fleet.runner_lifetime_counters TO metering_runtime;

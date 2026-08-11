@@ -12,17 +12,56 @@ const pg = @import("pg");
 const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
 const pool_migrations = @import("pool_migrations.zig");
+const pool_elevation = @import("pool_elevation.zig");
 const env_resolve = @import("../config/env_resolve.zig");
 const pool_types = @import("pool_types.zig");
+const pool_url = @import("pool_url.zig");
 
 const EnvMap = common.env.Map;
 
 const log = logging.scoped(.db);
 
-pub const Pool = pg.Pool;
 pub const Conn = pg.Conn;
 
-const S_SSLMODE = "sslmode=";
+// URL parsing lives in its own module (RULE FLL); the alias keeps `db.parseUrl`
+// the one spelling every caller uses.
+pub const parseUrl = pool_url.parseUrl;
+
+/// The repository-owned pool: pg.Pool plus the one invariant the vendored pool
+/// cannot state — a connection is never pooled while elevated (spec §3 of the
+/// privilege boundary). Same `acquire`/`release` shape as pg.Pool, so borrowers
+/// are unchanged; release is the single choke point every borrower passes
+/// through, which is why the guard lives here and not at call sites.
+pub const Pool = struct {
+    inner: *pg.Pool,
+    alloc: std.mem.Allocator,
+
+    pub fn acquire(self: *Pool) !*Conn {
+        return self.inner.acquire();
+    }
+
+    /// Release with the elevation backstop. A connection whose elevation scope
+    /// never ended is refused: reported under `UZ-INTERNAL-005` (inside
+    /// `auditRelease`), counted, and handed to pg's dirty path — `begin()`
+    /// moves an idle connection off `.idle`, and the vendored release destroys
+    /// and replaces any non-idle connection rather than pooling it. A failed
+    /// `begin` leaves the connection in `.fail`, which the same path destroys.
+    pub fn release(self: *Pool, conn: *Conn) void {
+        if (pool_elevation.auditRelease(conn) != null) {
+            if (conn._state == .idle) {
+                conn.begin() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+            }
+        }
+        self.inner.release(conn);
+    }
+
+    pub fn deinit(self: *Pool) void {
+        const alloc = self.alloc;
+        self.inner.deinit();
+        self.* = undefined;
+        alloc.destroy(self);
+    }
+};
 
 // Pool sizing + acquire-timeout knobs (env-tunable, role-aware).
 //
@@ -35,16 +74,14 @@ const ACQUIRE_TIMEOUT_MS_ENV = "DATABASE_ACQUIRE_TIMEOUT_MS";
 // many concurrent requests share a handful of DB connections, so the pool need
 // not scale 1:1 with request concurrency. Mirrors the `API_MAX_IN_FLIGHT_REQUESTS`
 // loader default (256) divided by the per-connection request-sharing factor.
-const API_MAX_IN_FLIGHT_REQUESTS_DEFAULT: u16 = 256;
-const POOL_SIZE_INFLIGHT_DIVISOR: u16 = 64;
-const POOL_SIZE_DEFAULT: u16 = API_MAX_IN_FLIGHT_REQUESTS_DEFAULT / POOL_SIZE_INFLIGHT_DIVISOR;
+// One home, in `pool_url`, because `parseUrl` bakes the same two values into
+// the options it returns: defined twice, a tuning edit here would silently
+// disagree with the pool every URL parse produces.
+const POOL_SIZE_DEFAULT = pool_url.POOL_SIZE_DEFAULT;
 
 // Acquire timeout fails fast: a starved pool surfaces as a quick error rather
 // than a multi-second stall that masquerades as a slow request.
-const ACQUIRE_TIMEOUT_MS_DEFAULT: u32 = 2_000;
-
-// Connection (auth handshake) timeout — distinct from the pool acquire timeout.
-const CONNECT_TIMEOUT_MS_DEFAULT: u32 = 10_000;
+const ACQUIRE_TIMEOUT_MS_DEFAULT = pool_url.ACQUIRE_TIMEOUT_MS_DEFAULT;
 
 // Upper bound on a role tag ("migrator" is the longest) and on a fully
 // composed "<KNOB>_<ROLE>" env-var name; both leave slack for future roles.
@@ -68,93 +105,19 @@ pub fn roleEnvVarName(role: DbRole) []const u8 {
 pub const Migration = pool_types.Migration;
 pub const MigrationState = pool_types.MigrationState;
 
-pub const inspectMigrationState = pool_migrations.inspectMigrationState;
-pub const runMigrations = pool_migrations.runMigrations;
-pub const runMigrationsRefusingNewer = pool_migrations.runMigrationsRefusingNewer;
-
-/// Parse a Postgres connection URL into pg.Pool.Opts.
-/// URL format: postgres://user:pass@host:port/dbname[?query]
-/// TLS is always required — all role-separated connections go to hosted Postgres
-/// providers (PlanetScale, Neon, Supabase) that mandate TLS.
-pub fn parseUrl(alloc: std.mem.Allocator, url: []const u8) !pg.Pool.Opts {
-    const rest = if (std.mem.startsWith(u8, url, "postgres://"))
-        url["postgres://".len..]
-    else if (std.mem.startsWith(u8, url, "postgresql://"))
-        url["postgresql://".len..]
-    else
-        return error.InvalidDatabaseUrl;
-
-    const at_pos = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return error.InvalidDatabaseUrl;
-    const userpass = rest[0..at_pos];
-    const hostpath = rest[at_pos + 1 ..];
-
-    var username: []const u8 = "";
-    var password: []const u8 = "";
-    if (std.mem.indexOfScalar(u8, userpass, ':')) |colon| {
-        username = userpass[0..colon];
-        password = userpass[colon + 1 ..];
-    } else {
-        username = userpass;
-    }
-
-    const slash_pos = std.mem.indexOfScalar(u8, hostpath, '/') orelse return error.InvalidDatabaseUrl;
-    const hostport = hostpath[0..slash_pos];
-    const dbpath = hostpath[slash_pos + 1 ..];
-
-    // Split dbname from query string (e.g. "mydb?sslmode=require" → "mydb", "sslmode=require")
-    const query_start = std.mem.indexOfScalar(u8, dbpath, '?');
-    const dbname = if (query_start) |q| dbpath[0..q] else dbpath;
-    const query_string = if (query_start) |q| dbpath[q + 1 ..] else "";
-
-    // TLS defaults to require (hosted Postgres providers mandate it).
-    // Respect ?sslmode=disable for local dev/test with docker Postgres.
-    const tls: pg.Conn.Opts.TLS = if (hasSslModeDisable(query_string)) .off else .require;
-
-    var host: []const u8 = hostport;
-    var port: u16 = 5432;
-    if (std.mem.lastIndexOfScalar(u8, hostport, ':')) |colon| {
-        host = hostport[0..colon];
-        port = std.fmt.parseInt(u16, hostport[colon + 1 ..], 10) catch return error.InvalidDatabaseUrl;
-    }
-
-    // `.size` / `.timeout` (pool acquire timeout) default here and are
-    // overwritten from env-resolved sizing (resolveSizing) in initFromEnvForRole.
-    // One errdefer per dupe: a failed later dupe frees every earlier one
-    // instead of leaking it inside a half-built struct literal.
-    const host_owned = try alloc.dupe(u8, host);
-    errdefer alloc.free(host_owned);
-    const username_owned = try alloc.dupe(u8, username);
-    errdefer alloc.free(username_owned);
-    const password_owned = try alloc.dupe(u8, password);
-    errdefer alloc.free(password_owned);
-    const database_owned = try alloc.dupe(u8, dbname);
-
-    return pg.Pool.Opts{
-        .size = POOL_SIZE_DEFAULT,
-        .timeout = ACQUIRE_TIMEOUT_MS_DEFAULT,
-        .connect = .{
-            .host = host_owned,
-            .port = port,
-            .tls = tls,
-        },
-        .auth = .{
-            .username = username_owned,
-            .password = password_owned,
-            .database = database_owned,
-            .timeout = CONNECT_TIMEOUT_MS_DEFAULT,
-        },
-    };
+// Migration entry points delegate to the raw pg pool: migrations run as
+// db_migrator (or the local superuser) and never elevate, so the release
+// backstop has nothing to audit on that path.
+pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !MigrationState {
+    return pool_migrations.inspectMigrationState(pool.inner, migrations);
 }
 
-fn hasSslModeDisable(query: []const u8) bool {
-    var it = std.mem.splitScalar(u8, query, '&');
-    while (it.next()) |param| {
-        if (std.mem.startsWith(u8, param, S_SSLMODE)) {
-            const val = param[S_SSLMODE.len..];
-            if (std.mem.eql(u8, val, "disable")) return true;
-        }
-    }
-    return false;
+pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
+    return pool_migrations.runMigrations(pool.inner, migrations);
+}
+
+pub fn runMigrationsRefusingNewer(pool: *Pool, migrations: []const Migration) !void {
+    return pool_migrations.runMigrationsRefusingNewer(pool.inner, migrations);
 }
 
 fn resolveDatabaseUrl(env_map: *const EnvMap, alloc: std.mem.Allocator, role: DbRole) ![]const u8 {
@@ -209,6 +172,15 @@ fn resolveSizing(env_map: *const EnvMap, alloc: std.mem.Allocator, role: DbRole)
     return .{ .size = clampPoolSize(size_raw), .timeout_ms = timeout_ms };
 }
 
+/// Wrap a raw pg pool in the repository Pool. The wrapper owns `inner` from
+/// here on — `deinit` tears down both. This is the one construction seam, used
+/// by `initFromEnvForRole` and by tests that build their pg pool directly.
+pub fn adopt(inner: *pg.Pool, alloc: std.mem.Allocator) !*Pool {
+    const pool = try alloc.create(Pool);
+    pool.* = .{ .inner = inner, .alloc = alloc };
+    return pool;
+}
+
 /// Initialize a pool using DATABASE_URL for the selected role. `io` backs the
 /// pg connection/retry loop (Zig 0.16 `pg.Pool.init` takes `Io` first).
 pub fn initFromEnvForRole(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: DbRole) !*Pool {
@@ -226,7 +198,9 @@ pub fn initFromEnvForRole(io: std.Io, env_map: *const EnvMap, alloc: std.mem.All
     const sizing = resolveSizing(env_map, alloc, role);
     opts.size = sizing.size;
     opts.timeout = sizing.timeout_ms;
-    const pool = try pg.Pool.init(io, alloc, opts);
+    const inner = try pg.Pool.init(io, alloc, opts);
+    errdefer inner.deinit();
+    const pool = try adopt(inner, alloc);
     log.info("pool_initialized", .{
         .role = @tagName(role),
         .size = opts.size,
@@ -234,55 +208,6 @@ pub fn initFromEnvForRole(io: std.Io, env_map: *const EnvMap, alloc: std.mem.All
         .host = opts.connect.host orelse "127.0.0.1",
     });
     return pool;
-}
-
-test "hasSslModeDisable detects disable in query string" {
-    try std.testing.expect(hasSslModeDisable("sslmode=disable"));
-    try std.testing.expect(hasSslModeDisable("application_name=test&sslmode=disable"));
-    try std.testing.expect(hasSslModeDisable("sslmode=disable&timeout=10"));
-    try std.testing.expect(!hasSslModeDisable("sslmode=require"));
-    try std.testing.expect(!hasSslModeDisable("sslmode=verify-full"));
-    try std.testing.expect(!hasSslModeDisable(""));
-    try std.testing.expect(!hasSslModeDisable("application_name=test"));
-}
-
-test "parseUrl dupes the connect strings and frees clean under testing.allocator" {
-    // parseUrl is the injectable allocator seam for the pool's connect strings.
-    // initFromEnvForRole passes page_allocator there on purpose: pg.Pool.init
-    // borrows the strings for the pool's whole life and never copies them, so
-    // they are process-lifetime and freed only at exit. Driving the same dupe
-    // path on testing.allocator (and freeing it here) proves the allocation side
-    // is leak-clean — the audit the production page_allocator site cannot do.
-    const a = std.testing.allocator;
-    const opts = try parseUrl(a, "postgres://alice:secret@db.example.com:6543/appdb?sslmode=disable");
-    defer {
-        a.free(opts.connect.host.?);
-        a.free(opts.auth.username);
-        a.free(opts.auth.password.?);
-        a.free(opts.auth.database.?);
-    }
-    try std.testing.expectEqualStrings("db.example.com", opts.connect.host.?);
-    try std.testing.expectEqual(@as(?u16, 6543), opts.connect.port);
-    try std.testing.expectEqualStrings("alice", opts.auth.username);
-    try std.testing.expectEqualStrings("secret", opts.auth.password.?);
-    try std.testing.expectEqualStrings("appdb", opts.auth.database.?);
-    try std.testing.expect(opts.connect.tls == .off); // sslmode=disable
-}
-
-test "parseUrl survives allocation failure without leaking (errdefer ladder)" {
-    // checkAllAllocationFailures fails each of the four dupes in turn and
-    // asserts the error return leaks nothing — the proof that a failed later
-    // dupe frees every earlier one instead of leaking it in the return literal.
-    const Probe = struct {
-        fn run(alloc: std.mem.Allocator) !void {
-            const opts = try parseUrl(alloc, "postgres://alice:secret@db.example.com:6543/appdb?sslmode=disable");
-            alloc.free(opts.connect.host.?);
-            alloc.free(opts.auth.username);
-            alloc.free(opts.auth.password.?);
-            alloc.free(opts.auth.database.?);
-        }
-    };
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{});
 }
 
 test "parseSizeStr accepts a clean u32 and rejects blank/garbage" {
@@ -303,4 +228,5 @@ test "clampPoolSize keeps in-range sizes and floors invalid ones to the default"
 
 test {
     _ = @import("./pool_test.zig");
+    _ = @import("./pool_url.zig");
 }

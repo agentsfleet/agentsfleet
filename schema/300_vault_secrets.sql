@@ -1,12 +1,11 @@
 -- Workspace-scoped encrypted secrets: the envelope, and the non-secret
 -- projection describing it.
 --
--- PRIVILEGE: `api_runtime`, the role every Hypertext Transfer Protocol handler
--- runs as, holds the table grants directly, so the envelope is what stands
--- between a bug in any handler and a stored ciphertext. Narrowing that to a
--- `vault_runtime` role assumed for the span of one transaction is deferred to
--- its own milestone, because the revoke and the elevation that hands access
--- back are two halves of one change.
+-- PRIVILEGE: `vault_runtime` owns the table grants. `api_runtime`, the role
+-- every Hypertext Transfer Protocol handler runs as, holds nothing here — it
+-- reaches the envelope only by assuming `vault_runtime` for the span of one
+-- transaction (schema/110 membership, `WITH INHERIT FALSE, SET TRUE`), so a bug
+-- in an unelevated handler is refused by PostgreSQL rather than by review.
 --
 -- `kek_version` carries NO DEFAULT, and that is load-bearing. A default was the
 -- last way a row could be minted at a version no writer intended: every write
@@ -53,16 +52,11 @@ CREATE TABLE IF NOT EXISTS vault.secrets (
 -- workspace_id prefix serves the per-workspace list and the erasure cascade.
 -- A second index on the same columns would only slow every write.
 
--- api_runtime reads and writes the secret store directly. DELETE is included
--- because account erasure removes a workspace's secrets
--- (`state/account_teardown.zig`).
---
--- Splitting this onto a `vault_runtime` role that api_runtime must assume for
--- the span of one transaction is deferred to its own milestone, because the
--- revoke and the elevation that hands access back are two halves of one change,
--- and shipping the first without the second refuses every secret read and write
--- at runtime. They land together or not at all.
-GRANT SELECT, INSERT, UPDATE, DELETE ON vault.secrets TO api_runtime;
+-- vault_runtime reads and writes the secret store; every secret path elevates
+-- to it for one transaction. DELETE is included because account erasure removes
+-- a workspace's secrets (`state/account_teardown.zig`). api_runtime holds no
+-- direct grant — the catalogue test asserts zero rows for it here.
+GRANT SELECT, INSERT, UPDATE, DELETE ON vault.secrets TO vault_runtime;
 
 -- Read-only operator principals never see ciphertext, sealed or otherwise.
 -- Stated explicitly rather than relied upon: these roles hold no grant here, and

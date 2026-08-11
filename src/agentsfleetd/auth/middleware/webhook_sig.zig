@@ -16,7 +16,7 @@
 //! All comparisons are constant-time (RULE CTM + RULE CTC).
 //!
 //! Generic over `LookupCtx` so the host passes a concrete type (e.g.
-//! `*pg.Pool`) instead of `*anyopaque`. The only `anyopaque` remaining
+//! `*db.Pool`) instead of `*anyopaque`. The only `anyopaque` remaining
 //! is in `executeTypeErased` — required by chain.Middleware's type-erased
 //! function pointer interface.
 
@@ -77,7 +77,7 @@ pub const LookupResult = struct {
 };
 
 /// Comptime-generic webhook auth middleware. `LookupCtx` is the concrete
-/// type of the host-supplied context (e.g. `*pg.Pool`), avoiding unsafe
+/// type of the host-supplied context (e.g. `*db.Pool`), avoiding unsafe
 /// `*anyopaque` casts in the lookup callback.
 pub fn WebhookSig(comptime LookupCtx: type) type {
     return struct {

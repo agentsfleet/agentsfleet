@@ -4,6 +4,7 @@ const pg = @import("pg");
 
 const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const pool_elevation = @import("../db/pool_elevation.zig");
 const sql = @import("tenant_model_entries/sql.zig");
 
 const SQLSTATE_UNIQUE_VIOLATION = "23505";
@@ -189,9 +190,35 @@ pub fn ensureEntry(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const 
 }
 
 pub fn secretExistsForTenant(conn: *pg.Conn, tenant_id: []const u8, secret_ref: []const u8) !bool {
-    var q = PgQuery.from(try conn.query(sql.EXISTS_SECRET_IN_PRIMARY_WORKSPACE, .{ tenant_id, secret_ref }));
-    defer q.deinit();
-    return (try q.next()) != null;
+    // Two statements on purpose: the workspace lookup runs as `api_runtime`,
+    // the vault probe under `vault_runtime` (see sql.zig on the split). The
+    // primary workspace is stable — created at signup, ordered by creation —
+    // so the moment between the statements changes nothing a caller can see.
+    // Sized to what it holds: a workspace id is UUID text, so a longer value
+    // is malformed rather than merely oversized.
+    var ws_buf: [id_format.UUID_TEXT_LEN]u8 = undefined;
+    const ws = blk: {
+        var q = PgQuery.from(try conn.query(sql.SELECT_PRIMARY_WORKSPACE, .{tenant_id}));
+        defer q.deinit();
+        const row = (try q.next()) orelse break :blk null;
+        const id = try row.get([]const u8, 0);
+        if (id.len == 0 or id.len > ws_buf.len) return error.RowMissing;
+        @memcpy(ws_buf[0..id.len], id);
+        break :blk ws_buf[0..id.len];
+    };
+    const workspace_id = ws orelse return false;
+
+    const Ctx = struct { workspace_id: []const u8, secret_ref: []const u8 };
+    return pool_elevation.withRole(conn, .vault, Ctx{
+        .workspace_id = workspace_id,
+        .secret_ref = secret_ref,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !bool {
+            var q = PgQuery.from(try v.conn.query(sql.EXISTS_SECRET_IN_WORKSPACE, .{ c.workspace_id, c.secret_ref }));
+            defer q.deinit();
+            return (try q.next()) != null;
+        }
+    }.run);
 }
 
 pub fn referencedSecretCount(conn: *pg.Conn, tenant_id: []const u8, secret_ref: []const u8) !i64 {

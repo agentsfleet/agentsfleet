@@ -53,7 +53,7 @@ pub fn deinit(self: *Self, alloc: Allocator) void {
 pub fn claimFleet(
     alloc: Allocator,
     fleet_id_input: []const u8,
-    pool: *pg.Pool,
+    pool: *db.Pool,
 ) !Self {
     // 1. Load fleet row from core.fleets
     const conn = try pool.acquire();
@@ -130,7 +130,7 @@ pub fn claimFleet(
 
 /// Read the persisted session resume cursor (`core.fleet_sessions.context_json`),
 /// or `"{}"` when the fleet has no checkpoint yet. Caller must free the returned slice.
-pub fn loadSessionCheckpoint(alloc: Allocator, pool: *pg.Pool, fleet_id: []const u8) ![]const u8 {
+pub fn loadSessionCheckpoint(alloc: Allocator, pool: *db.Pool, fleet_id: []const u8) ![]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);
 
@@ -147,7 +147,7 @@ pub fn loadSessionCheckpoint(alloc: Allocator, pool: *pg.Pool, fleet_id: []const
 
 /// Clear active execution in session and DB. Non-fatal — tracking is
 /// observability only. Called at claimFleet startup (crash recovery).
-pub fn clearExecutionActive(alloc: Allocator, session: *Self, pool: *pg.Pool) void {
+pub fn clearExecutionActive(alloc: Allocator, session: *Self, pool: *db.Pool) void {
     if (session.execution_id) |old| {
         alloc.free(old);
         session.execution_id = null;
@@ -163,7 +163,7 @@ pub fn clearExecutionActive(alloc: Allocator, session: *Self, pool: *pg.Pool) vo
 }
 
 const std = @import("std");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const Allocator = std.mem.Allocator;
 const fleet_config = @import("../fleet_runtime/config.zig");

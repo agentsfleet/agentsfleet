@@ -35,6 +35,7 @@ const budget = @import("budget.zig");
 const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
 const renewal = @import("renewal.zig");
+const renewal_meter = @import("renewal_meter.zig");
 const metering = @import("../fleet_runtime/metering.zig");
 const otel_metrics = @import("../observability/otel_metrics.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
@@ -120,11 +121,11 @@ fn parseMeterBody(hx: Hx, req: *httpz.Request) protocol.RenewRequest {
 
 /// Assemble the meter inputs for this renewal — the four slice rates (resolved
 /// with the same branching `computeStageCharge` uses) paired with the body's
-/// cumulative token counts. Delegates to `renewal.buildMeterInputs`, the shared
+/// cumulative token counts. Delegates to `renewal_meter.buildMeterInputs`, the shared
 /// source `service_report`'s settle uses too, so renew and settle meter at the
 /// identical rates.
-fn buildMeter(conn: *pg.Conn, lease: Lease, body: protocol.RenewRequest, now_ms: i64) renewal.MeterInputs {
-    return renewal.buildMeterInputs(
+fn buildMeter(conn: *pg.Conn, lease: Lease, body: protocol.RenewRequest, now_ms: i64) renewal_meter.MeterInputs {
+    return renewal_meter.buildMeterInputs(
         conn,
         lease.tenant_id,
         lease.provider,

@@ -15,6 +15,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const crypto_store = @import("../secrets/crypto_store.zig");
 const vault = @import("../state/vault.zig");
@@ -31,7 +32,7 @@ const log = logging.scoped(.webhook_sig_lookup);
 const WEBHOOK_SECRET_FIELD = "webhook_secret";
 
 pub fn lookup(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     fleet_id: []const u8,
     alloc: std.mem.Allocator,
 ) anyerror!?LookupResult {
@@ -67,7 +68,7 @@ pub fn lookup(
 /// the fleet's config_json and resolves it to the `whsec_<base64>` secret via
 /// the workspace vault. Middleware handles prefix stripping + base64 decoding.
 pub fn lookupSvix(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     fleet_id: []const u8,
     alloc: std.mem.Allocator,
 ) anyerror!?SvixLookupResult {

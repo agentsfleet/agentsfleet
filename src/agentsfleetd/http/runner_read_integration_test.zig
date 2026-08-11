@@ -1138,7 +1138,7 @@ test "integration: test_runner_read_db_unavailable_is_service_error" {
 
     // Drain the pool so the handler's acquire fails, with a short poll budget
     // so the refusal is fast. Held connections are returned before teardown.
-    h.pool._timeout = FAST_ACQUIRE_TIMEOUT_NS;
+    h.pool.inner._timeout = FAST_ACQUIRE_TIMEOUT_NS;
     var held: [MAX_HELD_CONNS]?*pg.Conn = @splat(null);
     var held_count: usize = 0;
     while (held_count < MAX_HELD_CONNS) {

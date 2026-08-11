@@ -42,7 +42,7 @@ pub const LookupResult = runner_bearer.LookupResult;
 /// Host context carrying the shared connection pool. A stable pointer to a
 /// value of this type is passed as `host` in the `LookupFn` call.
 pub const Ctx = struct {
-    pool: *pg.Pool,
+    pool: *db.Pool,
 };
 
 /// Resolve a SHA-256 hex digest to a `fleet.runners` row. Returns null when no

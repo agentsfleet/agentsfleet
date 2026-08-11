@@ -284,7 +284,7 @@ test "integration(m11_006): concurrent markExhausted calls — exactly one trans
     }
 
     const Worker = struct {
-        pool: *@import("pg").Pool,
+        pool: *@import("../../db/pool.zig").Pool,
         result: bool = false,
         err: ?anyerror = null,
 

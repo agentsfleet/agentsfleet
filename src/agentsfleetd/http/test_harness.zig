@@ -29,6 +29,7 @@ const std = @import("std");
 const constants = @import("common");
 const call_deadline = @import("call_deadline");
 const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const session_store_redis = @import("../session/session_store_redis.zig");
 const audit_events = @import("../auth/audit_events.zig");
 const oidc = @import("../auth/oidc.zig");
@@ -87,7 +88,7 @@ const DEFAULT_JWKS =
 
 pub const TestHarness = struct {
     alloc: std.mem.Allocator,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     session_store: session_store_redis.SessionStore,
     verifier: oidc.Verifier,
     queue: queue_redis.Client,

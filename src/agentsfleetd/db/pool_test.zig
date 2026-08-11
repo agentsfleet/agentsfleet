@@ -144,7 +144,8 @@ test "integration: canary pool acquire + exec + query SELECT 1" {
         env.testLiveValue("DATABASE_URL") orelse return error.SkipZigTest;
 
     const opts = try parseUrl(std.heap.page_allocator, url);
-    const pool = try pg.Pool.init(@import("common").globalIo(), alloc, opts);
+    const inner = try pg.Pool.init(@import("common").globalIo(), alloc, opts);
+    const pool = try pool_mod.adopt(inner, alloc);
 
     defer pool.deinit();
 
@@ -720,22 +721,46 @@ const RolePrivilege = struct {
 
 const ROLE_PRIVILEGE_MATRIX = [_]RolePrivilege{
     // api_runtime — every Hypertext Transfer Protocol handler runs as this role.
-    // The secret store and the wallet are reachable directly: `insertStarterGrant`
-    // writes the wallet inside the tenant-create transaction, so revoking either
-    // without an elevation path refuses every signup and every secret read.
-    .{ .role = "api_runtime", .table = "vault.secrets", .select = true, .insert = true, .update = true, .delete = true },
-    .{ .role = "api_runtime", .table = "billing.tenant_wallet", .select = true, .insert = true, .update = true, .delete = true },
-    // No DELETE on the ledger: a charge leaves only with the tenant that paid,
-    // through the cascade. Nothing else in the system may erase one.
-    .{ .role = "api_runtime", .table = "billing.usage_ledger", .select = true, .insert = true, .update = true, .delete = false },
+    // The secret store and the wallet sit behind `vault_runtime` and
+    // `billing_runtime` (schema/110, 300, 700): api_runtime's membership in
+    // both is non-inheriting, dormant until a statement runs inside
+    // db/pool_elevation.zig's SET ROLE scope. has_table_privilege evaluates
+    // the named role without SET ROLE, so these zeros pin the dormant state.
+    .{ .role = "api_runtime", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
+    .{ .role = "api_runtime", .table = "billing.tenant_wallet", .select = false, .insert = false, .update = false, .delete = false },
+    // The charge history stays readable unelevated — its list endpoints page
+    // through it — but writes belong to `billing_runtime`, and DELETE to
+    // nobody: a charge leaves only with the tenant that paid, via the cascade.
+    .{ .role = "api_runtime", .table = "billing.usage_ledger", .select = true, .insert = false, .update = false, .delete = false },
     // Memory is behind `memory_runtime`; api_runtime must SET ROLE to reach it.
     .{ .role = "api_runtime", .table = "memory.memory_entries", .select = false, .insert = false, .update = false, .delete = false },
 
-    // memory_runtime — the one elevation role, and it reaches memory ONLY.
+    // memory_runtime — the memory elevation role reaches memory ONLY.
     .{ .role = "memory_runtime", .table = "memory.memory_entries", .select = true, .insert = true, .update = true, .delete = true },
     .{ .role = "memory_runtime", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
     .{ .role = "memory_runtime", .table = "billing.tenant_wallet", .select = false, .insert = false, .update = false, .delete = false },
     .{ .role = "memory_runtime", .table = "billing.usage_ledger", .select = false, .insert = false, .update = false, .delete = false },
+
+    // vault_runtime — the sealed store, and nothing that holds money.
+    .{ .role = "vault_runtime", .table = "vault.secrets", .select = true, .insert = true, .update = true, .delete = true },
+    .{ .role = "vault_runtime", .table = "billing.tenant_wallet", .select = false, .insert = false, .update = false, .delete = false },
+    .{ .role = "vault_runtime", .table = "billing.usage_ledger", .select = false, .insert = false, .update = false, .delete = false },
+
+    // billing_runtime — the wallet and the ledger. No DELETE on either: a
+    // wallet leaves with its tenant through the cascade, and a charge never
+    // leaves at all.
+    .{ .role = "billing_runtime", .table = "billing.tenant_wallet", .select = true, .insert = true, .update = true, .delete = false },
+    .{ .role = "billing_runtime", .table = "billing.usage_ledger", .select = true, .insert = true, .update = true, .delete = false },
+    .{ .role = "billing_runtime", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
+
+    // metering_runtime — the composite, and the row that proves it is composed
+    // rather than inherited: it reads and updates the wallet, but may not
+    // CREATE one. An inheriting membership in billing_runtime would silently
+    // flip that INSERT to true, which is exactly the widening this pins shut.
+    .{ .role = "metering_runtime", .table = "billing.tenant_wallet", .select = true, .insert = false, .update = true, .delete = false },
+    .{ .role = "metering_runtime", .table = "billing.usage_ledger", .select = true, .insert = true, .update = true, .delete = false },
+    .{ .role = "metering_runtime", .table = "fleet.runner_leases", .select = true, .insert = false, .update = true, .delete = false },
+    .{ .role = "metering_runtime", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
 
     // Read-only operator principals reach neither money nor secrets, in any
     // direction. Each schema slot REVOKEs explicitly so re-widening is a visible
@@ -816,10 +841,13 @@ test "integration: role-scoped statements succeed and are refused as the matrix 
     defer _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{PRIV_WS}) catch {};
     defer _ = conn.exec("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", .{test_fixtures.TEST_TENANT_ID}) catch {};
 
-    // ── api_runtime: the money and secret paths must WORK ──────────────────
-    _ = try conn.exec("SET ROLE api_runtime", .{});
+    // ── billing_runtime: the money path must WORK under elevation ──────────
+    // The wallet writers reach these statements through db/pool_elevation.zig,
+    // never as bare api_runtime — so the role probed here is the owning one.
+    _ = try conn.exec("SET ROLE billing_runtime", .{});
 
-    // The write that refuses every signup when the grant is missing.
+    // The write that refuses every signup when the grant is missing:
+    // insertStarterGrant runs it inside the tenant-create transaction.
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_wallet
         \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
@@ -831,6 +859,10 @@ test "integration: role-scoped statements succeed and are refused as the matrix 
         "UPDATE billing.tenant_wallet SET balance_nanos = balance_nanos - 1 WHERE tenant_id = $1::uuid",
         .{test_fixtures.TEST_TENANT_ID},
     );
+    _ = try conn.exec("RESET ROLE", .{});
+
+    // ── vault_runtime: the secret path must WORK under elevation ───────────
+    _ = try conn.exec("SET ROLE vault_runtime", .{});
     // The secret write, and a read of the sealed bytes back — a metadata-only
     // column grant would pass the INSERT and fail this SELECT.
     _ = try conn.exec(
@@ -877,8 +909,10 @@ test "integration: role-scoped statements succeed and are refused as the matrix 
 // The envelope columns specifically. A column-scoped grant covering only the
 // metadata projection satisfies every table-level SELECT asserted above while
 // every decrypt path still fails, so the table grants alone do not prove the
-// read path works — this is the assertion that does.
-test "integration: api_runtime can read the sealed vault columns, not just metadata" {
+// read path works — this is the assertion that does. `vault_runtime` is the
+// role every decrypt runs as; api_runtime's zero-grant state is pinned by
+// db/schema_privilege_integration_test.zig.
+test "integration: vault_runtime can read the sealed vault columns, not just metadata" {
     if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
@@ -889,12 +923,12 @@ test "integration: api_runtime can read the sealed vault columns, not just metad
     for (sealed) |column| {
         var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT has_column_privilege($1, 'vault.secrets', $2, 'SELECT')",
-            .{ "api_runtime", column },
+            .{ "vault_runtime", column },
         ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         if (!(try row.get(bool, 0))) {
-            std.debug.print("\nFAIL: api_runtime cannot read vault.secrets.{s}\n", .{column});
+            std.debug.print("\nFAIL: vault_runtime cannot read vault.secrets.{s}\n", .{column});
             return error.TestUnexpectedResult;
         }
     }

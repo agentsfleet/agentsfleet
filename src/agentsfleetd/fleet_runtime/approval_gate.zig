@@ -11,7 +11,7 @@
 // observes the stored decision.
 
 const std = @import("std");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const Allocator = std.mem.Allocator;
 const queue_redis = @import("../queue/redis_client.zig");
 const ec = @import("../errors/error_registry.zig");
@@ -262,7 +262,7 @@ pub const ResolveArgs = approval_gate_db.ResolveArgs;
 /// See `ResolveArgs.fleet_id_filter` for the cross-fleet defense channels
 /// that parse `action_id` from an untrusted URL/payload must enable.
 pub fn resolve(
-    pool: *pg.Pool,
+    pool: *db.Pool,
     redis: *queue_redis.Client,
     alloc: Allocator,
     args: ResolveArgs,

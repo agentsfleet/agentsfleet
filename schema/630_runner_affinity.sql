@@ -73,3 +73,8 @@ CREATE INDEX IF NOT EXISTS idx_runner_affinity_last_runner_id_leased_until
 -- api_runtime: the serve tier claims the slot (upsert) and reads fencing_seq at
 -- lease, then releases and reads it at report.
 GRANT SELECT, INSERT, UPDATE ON fleet.runner_affinity TO api_runtime;
+
+-- metering_runtime (schema/120): the fenced renew/settle statement reads and
+-- advances `last_metered_at` here — the idempotency cursor — in the same
+-- transaction that debits the wallet.
+GRANT SELECT, UPDATE ON fleet.runner_affinity TO metering_runtime;

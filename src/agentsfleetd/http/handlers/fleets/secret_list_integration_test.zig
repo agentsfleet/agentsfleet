@@ -13,6 +13,7 @@
 const std = @import("std");
 const common = @import("common");
 const pg = @import("pg");
+const db_pool = @import("../../../db/pool.zig");
 const base = @import("../../../db/test_fixtures.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const vault = @import("../../../state/vault.zig");
@@ -27,7 +28,7 @@ const WS_MANY = "0195b4ba-8d3a-7f13-8abc-0000000d0002";
 const MANY_SECRETS: usize = 20;
 
 const TestDb = struct {
-    pool: *pg.Pool,
+    pool: *db_pool.Pool,
     conn: *pg.Conn,
 
     fn open(alloc: std.mem.Allocator) !?TestDb {

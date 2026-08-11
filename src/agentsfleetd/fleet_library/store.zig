@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const pool_elevation = @import("../db/pool_elevation.zig");
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
@@ -31,11 +32,21 @@ pub fn freeStringSlice(alloc: std.mem.Allocator, values: []const []const u8) voi
 }
 
 fn secretExists(conn: *pg.Conn, workspace_id: []const u8, name: []const u8) !bool {
-    var q = PgQuery.from(try conn.query(
-        \\SELECT 1 FROM vault.secrets
-        \\WHERE workspace_id = $1::uuid AND key_name = $2
-        \\LIMIT 1
-    , .{ workspace_id, name }));
-    defer q.deinit();
-    return (try q.next()) != null;
+    // Presence still needs SELECT on the table, held only by `vault_runtime`
+    // (schema/300); the result drains (defer) before the commit.
+    const Ctx = struct { workspace_id: []const u8, name: []const u8 };
+    return pool_elevation.withRole(conn, .vault, Ctx{
+        .workspace_id = workspace_id,
+        .name = name,
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !bool {
+            var q = PgQuery.from(try v.conn.query(
+                \\SELECT 1 FROM vault.secrets
+                \\WHERE workspace_id = $1::uuid AND key_name = $2
+                \\LIMIT 1
+            , .{ c.workspace_id, c.name }));
+            defer q.deinit();
+            return (try q.next()) != null;
+        }
+    }.run);
 }

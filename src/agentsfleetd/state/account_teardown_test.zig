@@ -184,6 +184,11 @@ fn execIgnoreTd(conn: *pg.Conn, sql: []const u8, id: []const u8) void {
     _ = conn.exec(sql, .{id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
+fn dropMemoryDeleteInjection(conn: *pg.Conn) void {
+    _ = conn.exec("DROP TRIGGER IF EXISTS trg_test_block_memory_delete ON memory.memory_entries", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DROP FUNCTION IF EXISTS memory.test_block_memory_delete()", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+}
+
 fn dropUserDeleteInjection(conn: *pg.Conn) void {
     _ = conn.exec("DROP TRIGGER IF EXISTS trg_test_block_user_delete ON core.users", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DROP FUNCTION IF EXISTS core.test_block_user_delete()", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
@@ -220,6 +225,36 @@ test "integration: a mid-purge failure rolls back — no partial deletes, conn s
     // Conn healthy: not stuck in an aborted transaction — with the old
     // exec("ROLLBACK") errdefer the driver short-circuits in FAIL state and
     // every later statement on this conn errors out.
+    _ = try conn.exec("SELECT 1", .{});
+}
+
+test "integration: a failure inside the elevated memory delete rolls the purge back" {
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    dropMemoryDeleteInjection(conn);
+    cleanupRollbackAccount(conn);
+    try seedRollbackAccount(conn);
+    defer cleanupRollbackAccount(conn);
+    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, RB_FLEET_ID));
+
+    // The memory delete is the purge's FIRST statement and runs under the
+    // .memory elevation — raising here drives withRole's in-transaction error
+    // branch (best-effort step-down, error surfacing to the purge's rollback),
+    // which the core.users injection above never reaches: that one fires after
+    // every elevated statement has already succeeded and stepped down.
+    _ = try conn.exec("CREATE OR REPLACE FUNCTION memory.test_block_memory_delete() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'injected test failure'; END; $$ LANGUAGE plpgsql", .{});
+    _ = try conn.exec("CREATE TRIGGER trg_test_block_memory_delete BEFORE DELETE ON memory.memory_entries FOR EACH ROW EXECUTE FUNCTION memory.test_block_memory_delete()", .{});
+    defer dropMemoryDeleteInjection(conn);
+
+    try std.testing.expectError(error.PG, teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC, &.{}));
+
+    // Full rollback: the memory row survives, the user row was never reached,
+    // and the connection is healthy, unelevated, and reusable.
+    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, RB_FLEET_ID));
+    try std.testing.expectEqual(@as(i64, 1), try countUsers(conn, RB_OIDC));
     _ = try conn.exec("SELECT 1", .{});
 }
 

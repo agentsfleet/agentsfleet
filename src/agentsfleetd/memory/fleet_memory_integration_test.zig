@@ -8,6 +8,7 @@
 const std = @import("std");
 const common = @import("common");
 const pg = @import("pg");
+const db_pool = @import("../db/pool.zig");
 const base = @import("../db/test_fixtures.zig");
 const adapter = @import("fleet_memory.zig");
 const protocol = @import("contract").protocol;
@@ -33,7 +34,7 @@ const CUTOFF: i64 = 1_700_000_003_000;
 const CUTOFF_ALL: i64 = 2_000_000_000_000;
 
 const TestDb = struct {
-    pool: *pg.Pool,
+    pool: *db_pool.Pool,
     conn: *pg.Conn,
 
     fn open(alloc: std.mem.Allocator) !?TestDb {

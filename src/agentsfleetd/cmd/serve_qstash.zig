@@ -1,7 +1,7 @@
 //! Boot-only QStash credential loading; request threads borrow the result.
 
 const std = @import("std");
-const pg = @import("pg");
+const db = @import("../db/pool.zig");
 const logging = @import("log");
 
 const Credentials = @import("../cron/Credentials.zig");
@@ -11,7 +11,7 @@ const EVENT_QSTASH_UNCONFIGURED = "startup.qstash_unconfigured";
 
 pub fn load(
     alloc: std.mem.Allocator,
-    pool: *pg.Pool,
+    pool: *db.Pool,
     admin_workspace_id: []const u8,
 ) ?Credentials {
     const conn = pool.acquire() catch |err| {
