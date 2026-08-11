@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M160
 **Workstream:** 001
 **Date:** Aug 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the documented front door to the Command-Line Interface (CLI) yields a credential that dies in under a minute, so every command after `login` fails
 **Categories:** API, CLI, SQL
 **Batch:** B1 — §1 and §2 are the defect and ship together; §3 and §4 are the two failures a durable credential introduces and cannot ship later
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) via `make _lint_zig_test_depth`
+**Branch:** `feat/m160-durable-credential`
+**Test Baseline:** unit=3512 integration=589
 **Depends on:** none — no other workstream gates this. The Clerk `api` template lifetime is an operator setting Indy holds (see Discovery); the code path is correct either way and is tested against a stubbed mint
 **Provenance:** found live during M136_001 proof work, Aug 11, 2026 — `agentsfleet login` reported success and `auth status` immediately reported `expired: yes`
 **Canonical architecture:** `docs/AUTH.md`
