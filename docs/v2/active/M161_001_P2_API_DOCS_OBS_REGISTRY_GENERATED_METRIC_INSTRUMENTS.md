@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M161
 **Workstream:** 001
 **Date:** Aug 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — internal quality: same wire output, less code, less memory, fewer places a new family can drift
 **Categories:** API, DOCS, OBS
 **Batch:** B1 — §1→§2 sequential; §3/§4 follow §2 and run concurrently; §5→§6 follow §2; §7 last
 **Branch:** feat/m159-otlp-runtime-metrics (folds into open PR #597 — continuation of M159/M160)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Test Baseline:** unit=3530 integration=588
 **Depends on:** M161 continues M159_001 (the closed family registry this milestone generates from; in `docs/v2/done/`)
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 11, 2026) from a post-REVIEW refactor assessment of the M159 diff, grounded in source on this branch
 **Canonical architecture:** `docs/architecture/observability.md` §Metric family census
