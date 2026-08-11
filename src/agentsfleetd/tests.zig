@@ -110,6 +110,7 @@ test {
     _ = @import("observability/library_read_scope.zig");
     _ = @import("observability/library_failure_matrix_test.zig");
     _ = logging.sinks;
+    _ = @import("state/cli_credentials.zig");
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
     _ = @import("state/user_preferences.zig");
