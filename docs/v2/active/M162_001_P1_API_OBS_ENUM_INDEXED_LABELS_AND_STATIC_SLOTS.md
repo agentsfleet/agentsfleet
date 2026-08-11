@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M162
 **Workstream:** 001
 **Date:** Aug 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — an unvalidated posture string from Postgres silently drops its label today, so a failed run can be counted under the wrong series on an operator dashboard
 **Categories:** API, DOCS, OBS
 **Batch:** B1 — §1 lands first (it renumbers value indices); §2 and §3 follow and are independent of each other; §4 last
 **Branch:** feat/m159-otlp-runtime-metrics (folds into open Pull Request (PR) #597 — continuation of M159/M160/M161)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Test Baseline:** unit=3547 integration=588
 **Depends on:** M161_001 (the generated instrument layer and the family registry this milestone re-indexes)
 **Provenance:** LLM-drafted (claude-opus-5[1m], Aug 11, 2026), verified against source on feat/m159-otlp-runtime-metrics
 **Canonical architecture:** `docs/architecture/observability.md` §"Label registry — money stays in Postgres"
