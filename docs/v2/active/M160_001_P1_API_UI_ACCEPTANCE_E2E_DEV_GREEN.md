@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M160
 **Workstream:** 001
 **Date:** Aug 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — two shipped product defects (workspace switcher label, secret rotation) plus a dev-environment data hole are user-visible; the suite is the deploy gate's only end-to-end proof
 **Categories:** API, UI
 **Batch:** B1 — all seven sections are independent and run concurrently
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m159-otlp-runtime-metrics
+**Test Baseline:** unit=3512 integration=589
 **Depends on:** none (rides the same branch and Pull Request (PR) as M159_001 per Indy's instruction; no code dependency in either direction)
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 11, 2026) from a root-cause investigation of deploy-dev runs 31457489402 and 31458941845 (log + artifact + Playwright network-trace evidence; each cluster verified in source on `main`)
 **Canonical architecture:** `docs/architecture/observability.md` §The four signal paths (unaffected surfaces; no architecture change)
