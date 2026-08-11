@@ -122,7 +122,16 @@ pub fn incSseHubReconnects() void {
 
 // Signup funnel counters. Failure reasons enumerated so a single Prometheus
 // query can answer "how many signups failed for reason X over Y?"
-const SignupFailReason = enum { bad_sig, stale_ts, missing_email, db_error, pool_unavailable, metadata_writeback };
+pub const SignupFailReason = enum { bad_sig, stale_ts, missing_email, db_error, pool_unavailable, metadata_writeback };
+
+/// Wire label values for the signup-failure `reason` dimension, one per
+/// SignupFailReason field, in declaration order — the exporter iterates this.
+pub const SIGNUP_FAIL_REASON_LABELS = blk: {
+    const fields = @typeInfo(SignupFailReason).@"enum".fields;
+    var labels: [fields.len][]const u8 = undefined;
+    for (fields, 0..) |f, i| labels[i] = f.name;
+    break :blk labels;
+};
 
 pub fn incSignupBootstrapped() void {
     _ = g_signup_bootstrapped_total.fetchAdd(1, .monotonic); // safe because: see module note above

@@ -6,10 +6,15 @@
 
 const std = @import("std");
 const payload = @import("otel_metrics_payload.zig");
+const families = @import("otel_metrics_families.zig");
 
-/// Distinct-series cap per flush window. Beyond this, samples for new label sets
-/// are dropped and counted (surfaced as agentsfleet.telemetry.samples_dropped).
-pub const MAX_SERIES: usize = 256;
+/// Distinct-series cap per flush window — derived from the family registry
+/// (cost sub-budget + every declared fixed-label runtime family), never
+/// hand-picked. Beyond this, samples for new label sets are dropped and
+/// counted (surfaced as agentsfleet.telemetry.samples_dropped); the comptime
+/// assertion in otel_metrics_families.zig fails the build before a declared
+/// worst case can reach that path.
+pub const MAX_SERIES: usize = families.MAX_SERIES;
 
 const Accumulator = struct {
     id: payload.MetricId,
@@ -35,20 +40,25 @@ fn matches(acc: *const Accumulator, sample: payload.Sample) bool {
 }
 
 fn accumulate(acc: *Accumulator, sample: payload.Sample) void {
-    const meta = payload.metaFor(sample.id);
-    if (meta.kind == .histogram) {
-        // Clamp once: a negative observation (e.g. clock-skew wall_ms) buckets at
-        // 0 AND adds 0 to the sum, so hist_sum can never disagree with the bucket
-        // counts or go negative.
-        const clamped: i64 = if (sample.value < 0) 0 else sample.value;
-        acc.hist_count += 1;
-        // Saturating add: a runner can report wall_ms that saturates to
-        // maxInt(i64), and two such in one window would overflow a plain += and
-        // trap in ReleaseSafe. Cap at maxInt instead — telemetry, not money.
-        acc.hist_sum +|= clamped;
-        acc.bucket_counts[payload.bucketIndex(@intCast(clamped), meta.bounds)] += 1;
-    } else {
-        acc.sum_value +|= sample.value;
+    const meta = families.metaFor(sample.id);
+    switch (meta.kind) {
+        .histogram => {
+            // Clamp once: a negative observation (e.g. clock-skew wall_ms) buckets at
+            // 0 AND adds 0 to the sum, so hist_sum can never disagree with the bucket
+            // counts or go negative.
+            const clamped: i64 = if (sample.value < 0) 0 else sample.value;
+            acc.hist_count += 1;
+            // Saturating add: a runner can report wall_ms that saturates to
+            // maxInt(i64), and two such in one window would overflow a plain += and
+            // trap in ReleaseSafe. Cap at maxInt instead — telemetry, not money.
+            acc.hist_sum +|= clamped;
+            acc.bucket_counts[payload.bucketIndex(@intCast(clamped), meta.bounds)] += 1;
+        },
+        .sum => acc.sum_value +|= sample.value,
+        // A gauge is a level, not a running total: within one flush window the
+        // newest observation wins, so folding by assignment is the whole rule.
+        // Compile-time kind dispatch makes the additive path unreachable here.
+        .gauge => acc.sum_value = sample.value,
     }
 }
 

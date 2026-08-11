@@ -3,10 +3,14 @@
 //! run-latency histogram); the shared otlp.Exporter batches and POSTs to
 //! GRAFANA_OTLP_ENDPOINT/v1/metrics on a background flush thread, fire-and-forget.
 //!
-//! Migrated onto the generic otlp/ substrate. Delta temporality — a Grafana Cloud
-//! OTel Collector (deltatocumulative) converts before Mimir; see
+//! Migrated onto the generic otlp/ substrate. Evented families are delta — a
+//! Grafana Cloud OTel Collector (deltatocumulative) converts before Mimir; see
 //! otel_metrics_payload.zig. Flush coalesces the window's samples into one
 //! windowed-delta series per (metric, labelset) — see otel_metrics_aggregate.zig.
+//! Each flush additionally snapshots the fixed-label runtime families into the
+//! same Aggregator and streams the per-runner families into the same envelope
+//! (both via otel_metrics_runtime.zig) — the sole egress for every family the
+//! daemon exports.
 
 const std = @import("std");
 const common = @import("common");
@@ -18,6 +22,7 @@ const otlp_exporter = @import("otlp/exporter.zig");
 const payload = @import("otel_metrics_payload.zig");
 const aggregate = @import("otel_metrics_aggregate.zig");
 const cardinality = @import("otel_metrics_cardinality.zig");
+const runtime = @import("otel_metrics_runtime.zig");
 const semconv = @import("semconv.zig");
 
 const OTLP_METRICS_PATH = "/v1/metrics";
@@ -31,6 +36,9 @@ var g_ring: RingT = .{};
 // Flush-thread-owned window state (read/written only by the flush thread).
 var g_window_start_ns: u64 = 0;
 var g_last_ring_dropped: u64 = 0;
+/// Stamped on the first collect; the startTimeUnixNano every cumulative sum
+/// carries, so a restart is visible as a new start time.
+var g_process_start_ns: u64 = 0;
 
 const Exporter = otlp_exporter.Exporter(.{
     .signal = .metrics,
@@ -185,8 +193,13 @@ fn collectMetrics(
 ) otlp_exporter.CollectResult {
     if (max_entries == 0) return .empty;
     const now = currentNanos();
+    if (g_process_start_ns == 0) g_process_start_ns = now;
     var agg = aggregate.Aggregator.init();
     const drained = drainMetrics(&agg, @min(max_entries, BUFFER_CAPACITY));
+    // Runtime families join the same window AFTER the evented drain: their
+    // declared worst case is part of the derived series ceiling, so they can
+    // never be the samples that overflow it.
+    runtime.collect(&agg);
     // Close the attribution window with the sample window it governs. The
     // series ceiling the budget is derived from is per-flush (the Aggregator is
     // rebuilt every window), so holding admissions across windows would let
@@ -195,14 +208,15 @@ fn collectMetrics(
     cardinality.reset();
     const total_dropped = droppedSinceLastFlush(agg.dropped);
     health.recordDiscard(.metrics, .aggregate_cap, @intCast(agg.dropped));
-    if (agg.count == 0 and total_dropped == 0) {
-        g_window_start_ns = now;
-        return .empty;
-    }
 
     const start = if (g_window_start_ns == 0) now else g_window_start_ns;
     g_window_start_ns = now;
-    const serialized = serializeMetrics(alloc, cfg, &agg, total_dropped, start, now) catch {
+    const times = payload.WireTimes{
+        .window_start_ns = start,
+        .process_start_ns = g_process_start_ns,
+        .now_ns = now,
+    };
+    const serialized = serializeMetrics(alloc, cfg, &agg, total_dropped, times) catch {
         return .{ .serialize_failed = drained };
     };
     return .{ .ready = .{
@@ -238,8 +252,7 @@ fn serializeMetrics(
     cfg: otlp_config.GrafanaOtlpConfig,
     agg: *const aggregate.Aggregator,
     total_dropped: u64,
-    start: u64,
-    now: u64,
+    times: payload.WireTimes,
 ) !SerializedMetrics {
     var series_buf: [aggregate.MAX_SERIES + 1]payload.Series = undefined;
     const base = agg.toSeries(series_buf[0..aggregate.MAX_SERIES]);
@@ -256,7 +269,7 @@ fn serializeMetrics(
         count += 1;
     }
     return .{
-        .body = try payload.serializeSeries(alloc, cfg, series_buf[0..count], start, now),
+        .body = try payload.serializeSeries(alloc, cfg, series_buf[0..count], times, runtime.appendStreamedRunnerFamilies),
         .export_count = count,
     };
 }
@@ -294,6 +307,7 @@ pub fn testClear() void {
     Exporter.testClear();
     while (g_ring.pop()) |_| {}
     g_window_start_ns = 0;
+    g_process_start_ns = 0;
     g_last_ring_dropped = g_ring.droppedCount();
     health.setQueueDepth(.metrics, 0);
 }

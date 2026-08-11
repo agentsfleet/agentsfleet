@@ -1,21 +1,29 @@
 //! OTLP-JSON metric serialization for the Grafana Cloud Mimir exporter.
-//! Holds the wire descriptor table (name/unit/kind/bounds resolved against
-//! `semconv.zig`), the fixed-size `Sample` input type, the aggregated `Series`
-//! type, and the per-series serializer the flush loop calls.
+//! Holds the fixed-size `Sample` input type, the aggregated `Series` type,
+//! and the per-series serializer the flush loop calls. Family identity
+//! (names, kinds, units, temporality, ceiling arithmetic) lives in
+//! `otel_metrics_families.zig` — this file only knows how to put a declared
+//! family on the wire.
 //!
-//! Temporality is DELTA: the flush coalesces a window's samples into one
-//! `Series` per (metric, labelset) — see otel_metrics_aggregate.zig — each
-//! serialized as a single dataPoint. A Fly-deployed OTel Collector
-//! (deltatocumulative) converts delta → cumulative before Mimir.
+//! Evented families are DELTA: the flush coalesces a window's samples into
+//! one `Series` per (metric, labelset) — see otel_metrics_aggregate.zig — and
+//! a Fly-deployed OTel Collector (deltatocumulative) converts before Mimir.
+//! Snapshot counters export as CUMULATIVE sums stamped with the process-start
+//! time; gauges carry only the flush instant.
 //!
-//! Duration observations are carried and bucketed as integer milliseconds even
-//! though the metric declares the `s` unit: every pinned bound is a whole
-//! multiple of 10 ms, so integer bucketing is exact and the seconds conversion
-//! happens once, at serialization, with no floating-point arithmetic anywhere.
+//! Duration observations are carried and bucketed as integers in their source
+//! unit (milliseconds or nanoseconds) even where the metric declares `s`:
+//! every pinned bound is a whole multiple of the divisor, so integer
+//! bucketing is exact and the seconds conversion happens once, at
+//! serialization, with no floating-point arithmetic anywhere.
 
 const std = @import("std");
 const semconv = @import("semconv.zig");
+const families = @import("otel_metrics_families.zig");
 const otlp_config = @import("otlp/config.zig");
+
+pub const MetricId = families.MetricId;
+const MetricMeta = families.MetricMeta;
 
 // ---------------------------------------------------------------------------
 // Fixed-size sample (no heap; copied by value into the ring like SpanEntry).
@@ -27,16 +35,6 @@ pub const MAX_LABELS: usize = 5;
 /// Longest live key is `agentsfleet.billing.charge.type` (31 bytes).
 pub const MAX_LABEL_KEY: usize = 32;
 pub const MAX_LABEL_VAL: usize = 64;
-
-pub const MetricId = enum {
-    invoke_agent_duration,
-    token_usage,
-    cache_read_token_usage,
-    credit_consumed,
-    samples_dropped,
-};
-
-pub const MetricKind = enum { sum, histogram };
 
 /// Buckets = the widest pinned bound table plus the trailing +Inf bucket. The
 /// tables differ in length upstream, so this cuts to the longest; each metric is
@@ -54,14 +52,15 @@ pub const Label = struct {
 /// the flush window stamps the aggregated dataPoint, not the individual sample.
 pub const Sample = struct {
     id: MetricId,
-    /// Sum delta, or the observed value for a histogram. Always >= 0.
+    /// Sum delta, gauge level, or the observed value for a histogram.
     value: i64,
     labels: [MAX_LABELS]Label,
     label_count: u8,
 };
 
 /// An aggregated series for one flush window: all same-`(id, labels)` samples
-/// coalesced. Sums use `sum_value`; histograms use `hist_*` + `bucket_counts`.
+/// coalesced. Sums and gauges use `sum_value`; histograms use `hist_*` +
+/// `bucket_counts`.
 pub const Series = struct {
     id: MetricId,
     labels: []const Label,
@@ -73,67 +72,24 @@ pub const Series = struct {
 
 /// OTLP AggregationTemporality enum: 1 = DELTA, 2 = CUMULATIVE.
 const AGGREGATION_TEMPORALITY_DELTA: u8 = 1;
+const AGGREGATION_TEMPORALITY_CUMULATIVE: u8 = 2;
 
 /// A bare unsigned integer — the JSON number form for a count-unit histogram
 /// bound and for its sum.
 const FMT_UNSIGNED = "{d}";
 
-pub const MetricMeta = struct {
-    name: []const u8,
-    unit: []const u8,
-    kind: MetricKind,
-    monotonic: bool,
-    /// Explicit bucket bounds in the metric's *observation* unit; empty for sums.
-    bounds: []const u64,
-    /// Observations arrive in milliseconds but the metric declares seconds, so
-    /// bounds and the histogram sum divide by `MILLIS_PER_SECOND` on the wire.
-    millis_to_seconds: bool,
-};
+/// Closes one dataPoint object, its dataPoints array, and the enclosing
+/// sum/gauge object — the shared suffix of every single-point metric body.
+const DATA_POINTS_SUFFIX = "}]}";
 
-pub fn metaFor(id: MetricId) MetricMeta {
-    return switch (id) {
-        .invoke_agent_duration => .{
-            .name = semconv.METRIC_INVOKE_AGENT_DURATION,
-            .unit = semconv.UNIT_SECONDS,
-            .kind = .histogram,
-            .monotonic = false,
-            .bounds = &semconv.DURATION_BUCKET_BOUNDS_MS,
-            .millis_to_seconds = true,
-        },
-        .token_usage => .{
-            .name = semconv.METRIC_INVOKE_AGENT_TOKEN_USAGE,
-            .unit = semconv.UNIT_TOKENS,
-            .kind = .histogram,
-            .monotonic = false,
-            .bounds = &semconv.TOKEN_BUCKET_BOUNDS,
-            .millis_to_seconds = false,
-        },
-        .cache_read_token_usage => .{
-            .name = semconv.METRIC_INVOKE_AGENT_CACHE_READ,
-            .unit = semconv.UNIT_TOKENS,
-            .kind = .histogram,
-            .monotonic = false,
-            .bounds = &semconv.TOKEN_BUCKET_BOUNDS,
-            .millis_to_seconds = false,
-        },
-        .credit_consumed => .{
-            .name = semconv.METRIC_BILLING_CREDIT_CONSUMED,
-            .unit = semconv.UNIT_NANOCREDITS,
-            .kind = .sum,
-            .monotonic = true,
-            .bounds = &.{},
-            .millis_to_seconds = false,
-        },
-        .samples_dropped => .{
-            .name = semconv.METRIC_SAMPLES_DROPPED,
-            .unit = semconv.UNIT_COUNT,
-            .kind = .sum,
-            .monotonic = true,
-            .bounds = &.{},
-            .millis_to_seconds = false,
-        },
-    };
-}
+/// Wire timestamps for one serialized batch. Delta streams span the flush
+/// window; cumulative streams start at process start; gauges carry only the
+/// flush instant.
+pub const WireTimes = struct {
+    window_start_ns: u64,
+    process_start_ns: u64,
+    now_ns: u64,
+};
 
 /// Initialize an empty sample for `id` with `value`.
 pub fn newSample(id: MetricId, value: i64) Sample {
@@ -198,37 +154,67 @@ fn appendAttributes(list: *std.ArrayList(u8), alloc: std.mem.Allocator, labels: 
     try list.appendSlice(alloc, "]");
 }
 
-/// Print a millisecond quantity as the seconds JSON number the `s` unit
-/// declares — integer part, then exactly three fractional digits. No float
-/// arithmetic: a bound of 10 ms serializes as `0.010`, 81920 ms as `81.920`.
-fn printSeconds(list: *std.ArrayList(u8), alloc: std.mem.Allocator, millis: u64) !void {
-    try list.print(alloc, "{d}.{d:0>3}", .{ millis / semconv.MILLIS_PER_SECOND, millis % semconv.MILLIS_PER_SECOND });
+/// Print an integer source-unit quantity as the seconds JSON number the `s`
+/// unit declares — integer part, then exactly as many fractional digits as
+/// the divisor has zeros. No float arithmetic: 10 ms serializes as `0.010`,
+/// 81920 ms as `81.920`, 1_500_000_000 ns as `1.500000000`.
+fn printScaled(list: *std.ArrayList(u8), alloc: std.mem.Allocator, value: u64, scale: families.Scale) !void {
+    switch (scale) {
+        .none => try list.print(alloc, FMT_UNSIGNED, .{value}),
+        .millis_to_seconds => try list.print(alloc, "{d}.{d:0>3}", .{ value / semconv.MILLIS_PER_SECOND, value % semconv.MILLIS_PER_SECOND }),
+        .nanos_to_seconds => try list.print(alloc, "{d}.{d:0>9}", .{ value / semconv.NANOS_PER_SECOND, value % semconv.NANOS_PER_SECOND }),
+    }
 }
 
-fn appendSum(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Series, meta: MetricMeta, start_ns: u64, now_ns: u64) !void {
+/// The numeric field of one dataPoint: `asInt` (string form) for unscaled
+/// integers, `asDouble` (JSON number, exact decimal) for scaled quantities.
+fn appendPointValue(list: *std.ArrayList(u8), alloc: std.mem.Allocator, value: i64, scale: families.Scale) !void {
+    const magnitude: u64 = @intCast(@max(value, 0));
+    if (scale == .none) {
+        try list.print(alloc, "\"asInt\":\"{d}\"", .{value});
+        return;
+    }
+    try list.appendSlice(alloc, "\"asDouble\":");
+    try printScaled(list, alloc, magnitude, scale);
+}
+
+fn appendSum(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Series, meta: MetricMeta, times: WireTimes) !void {
+    const temporality: u8 = switch (meta.temporality) {
+        .delta => AGGREGATION_TEMPORALITY_DELTA,
+        .cumulative => AGGREGATION_TEMPORALITY_CUMULATIVE,
+    };
+    const start_ns = switch (meta.temporality) {
+        .delta => times.window_start_ns,
+        .cumulative => times.process_start_ns,
+    };
     try list.print(
         alloc,
         "\"sum\":{{\"aggregationTemporality\":{d},\"isMonotonic\":{s},\"dataPoints\":[{{",
-        .{ AGGREGATION_TEMPORALITY_DELTA, if (meta.monotonic) "true" else "false" },
+        .{ temporality, if (meta.monotonic) "true" else "false" },
     );
     try appendAttributes(list, alloc, series.labels);
-    try list.print(
-        alloc,
-        ",\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\",\"asInt\":\"{d}\"}}]}}",
-        .{ start_ns, now_ns, series.sum_value },
-    );
+    try list.print(alloc, ",\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\",", .{ start_ns, times.now_ns });
+    try appendPointValue(list, alloc, series.sum_value, meta.scale);
+    try list.appendSlice(alloc, DATA_POINTS_SUFFIX);
 }
 
-fn appendHistogram(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Series, meta: MetricMeta, start_ns: u64, now_ns: u64) !void {
+/// A gauge is a level: no temporality, no start time — only the instant the
+/// flush observed it. Serialized in the native OTLP gauge shape so a reader
+/// can tell a level from a counter by its type alone.
+fn appendGauge(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Series, meta: MetricMeta, times: WireTimes) !void {
+    try list.appendSlice(alloc, "\"gauge\":{\"dataPoints\":[{");
+    try appendAttributes(list, alloc, series.labels);
+    try list.print(alloc, ",\"timeUnixNano\":\"{d}\",", .{times.now_ns});
+    try appendPointValue(list, alloc, series.sum_value, meta.scale);
+    try list.appendSlice(alloc, DATA_POINTS_SUFFIX);
+}
+
+fn appendHistogram(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Series, meta: MetricMeta, times: WireTimes) !void {
     try list.print(alloc, "\"histogram\":{{\"aggregationTemporality\":{d},\"dataPoints\":[{{", .{AGGREGATION_TEMPORALITY_DELTA});
     try appendAttributes(list, alloc, series.labels);
-    try list.print(alloc, ",\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\",\"count\":\"{d}\",\"sum\":", .{ start_ns, now_ns, series.hist_count });
+    try list.print(alloc, ",\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\",\"count\":\"{d}\",\"sum\":", .{ times.window_start_ns, times.now_ns, series.hist_count });
     const sum_magnitude: u64 = @intCast(@max(series.hist_sum, 0));
-    if (meta.millis_to_seconds) {
-        try printSeconds(list, alloc, sum_magnitude);
-    } else {
-        try list.print(alloc, FMT_UNSIGNED, .{sum_magnitude});
-    }
+    try printScaled(list, alloc, sum_magnitude, meta.scale);
     try list.appendSlice(alloc, ",\"bucketCounts\":[");
     for (series.bucket_counts[0 .. meta.bounds.len + 1], 0..) |bc, b| {
         if (b > 0) try list.appendSlice(alloc, ",");
@@ -237,49 +223,56 @@ fn appendHistogram(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: S
     try list.appendSlice(alloc, "],\"explicitBounds\":[");
     for (meta.bounds, 0..) |bound, i| {
         if (i > 0) try list.appendSlice(alloc, ",");
-        if (meta.millis_to_seconds) {
-            try printSeconds(list, alloc, bound);
-        } else {
-            try list.print(alloc, FMT_UNSIGNED, .{bound});
-        }
+        try printScaled(list, alloc, bound, meta.scale);
     }
     try list.appendSlice(alloc, "]}]}");
 }
 
 /// Serialize one aggregated series as a complete OTLP `metric` JSON object,
-/// appended to `list`. `start_ns`/`now_ns` are the flush window bounds (delta
-/// temporality). Caller writes the inter-object comma.
+/// appended to `list`. Caller writes the inter-object comma.
 pub fn appendSeriesMetric(
     list: *std.ArrayList(u8),
     alloc: std.mem.Allocator,
     series: Series,
-    start_ns: u64,
-    now_ns: u64,
+    times: WireTimes,
 ) !void {
-    const meta = metaFor(series.id);
+    const meta = families.metaFor(series.id);
     try list.print(alloc, "{{\"name\":\"{s}\",\"unit\":\"{s}\",", .{ meta.name, meta.unit });
     switch (meta.kind) {
-        .sum => try appendSum(list, alloc, series, meta, start_ns, now_ns),
-        .histogram => try appendHistogram(list, alloc, series, meta, start_ns, now_ns),
+        .sum => try appendSum(list, alloc, series, meta, times),
+        .gauge => try appendGauge(list, alloc, series, meta, times),
+        .histogram => try appendHistogram(list, alloc, series, meta, times),
     }
     try list.appendSlice(alloc, "}");
 }
 
 /// Serialize aggregated series into one complete OTLP-JSON metrics envelope,
 /// sharing the resource + scope serializer with the logs and traces signals.
+/// `extra` appends any additional metric objects (the streamed per-runner
+/// families) inside the same envelope; pass null when there are none.
+pub const ExtraAppendFn = *const fn (
+    list: *std.ArrayList(u8),
+    alloc: std.mem.Allocator,
+    times: WireTimes,
+    wrote_any: bool,
+) anyerror!bool;
+
 pub fn serializeSeries(
     alloc: std.mem.Allocator,
     cfg: otlp_config.GrafanaOtlpConfig,
     series: []const Series,
-    start_ns: u64,
-    now_ns: u64,
+    times: WireTimes,
+    extra: ?ExtraAppendFn,
 ) ![]u8 {
     var list: std.ArrayList(u8) = .empty;
     errdefer list.deinit(alloc);
     try otlp_config.appendEnvelopePrefix(&list, alloc, cfg, "resourceMetrics", "scopeMetrics", "metrics");
     for (series, 0..) |s, i| {
         if (i > 0) try list.appendSlice(alloc, ",");
-        try appendSeriesMetric(&list, alloc, s, start_ns, now_ns);
+        try appendSeriesMetric(&list, alloc, s, times);
+    }
+    if (extra) |append_extra| {
+        _ = try append_extra(&list, alloc, times, series.len > 0);
     }
     try list.appendSlice(alloc, otlp_config.ENVELOPE_SUFFIX);
     return list.toOwnedSlice(alloc);

@@ -41,6 +41,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **PR title (eventual):** feat(obs): carry runtime metrics over OTLP and retire the /metrics pull endpoint
 - **Intent (one sentence):** operators get a live runtime dashboard and working alerts, delivered through the single telemetry connection the daemon already maintains.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Restatement (Orly, at PLAN):** the one telemetry pipe the daemon already holds starts carrying every metric family the daemon knows, the dashboards and alerts light up from the store, and the never-scraped pull endpoint disappears from code and deploy config alike. `ASSUMPTIONS I'M MAKING:` (1) Dimension 5.2 means the FULL renderer census (~35 families) moves onto the wire, not only the 16 the assets query; (2) fixed-label runtime families snapshot once per flush through the aggregator, while per-runner families stream straight from the pre-aggregated slot table (their ceiling term reuses `MAX_SLOTS` — re-aggregating an aggregate would only add memory); (3) snapshot counters export as CUMULATIVE sums stamped with process start (no per-flush delta memos), evented cost families stay DELTA; (4) the attribution budget derives from the unchanged cost sub-budget (256), so runtime growth provably cannot shrink it; (5) the family registry lives in a new `otel_metrics_families.zig` and the collector in a new `otel_metrics_runtime.zig` — the length gate's sanctioned split.
 
 ## Implementing agent — read these first
 
@@ -54,10 +55,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/agentsfleetd/observability/otel_metrics_payload.zig` | EDIT | gains the gauge metric kind and the new family identities plus metadata |
-| `src/agentsfleetd/observability/otel_metrics_aggregate.zig` | EDIT | gains last-value-wins folding and a derived series ceiling |
-| `src/agentsfleetd/observability/otel_metrics_cardinality.zig` | EDIT | attribution budget re-derives from the new ceiling |
+| `src/agentsfleetd/observability/otel_metrics_payload.zig` | EDIT | gains the gauge wire shape, per-family temporality, and exact unit scaling; family identity moves out |
+| `src/agentsfleetd/observability/otel_metrics_families.zig` | CREATE | the closed family registry: every identity, kind, temporality, and the derived ceiling arithmetic |
+| `src/agentsfleetd/observability/otel_metrics_runtime.zig` | CREATE | flush-time collector for runtime families + streamed per-runner serialization |
+| `src/agentsfleetd/observability/otel_metrics_aggregate.zig` | EDIT | gains last-value-wins folding and the derived series ceiling |
+| `src/agentsfleetd/observability/otel_metrics_cardinality.zig` | EDIT | attribution budget derives from the cost sub-budget the registry declares |
 | `src/agentsfleetd/observability/otel_metrics.zig` | EDIT | collects and serializes the runtime families alongside the cost families |
+| `src/agentsfleetd/observability/semconv.zig` | EDIT | gains the runtime family names whose single source was the deleted renderer |
+| `src/agentsfleetd/observability/metrics_counters.zig` | EDIT | signup-failure reason labels become a declared wire list |
+| `src/agentsfleetd/observability/metrics_trace.zig` | EDIT | suppression reason labels become a declared wire list |
 | `src/agentsfleetd/observability/metrics_render.zig` | DELETE | the Prometheus rendering layer and its format constants lose their only consumer |
 | `src/agentsfleetd/observability/metrics_runner.zig` | EDIT | drops its rendering entry point, keeps the per-runner slot table |
 | `src/agentsfleetd/observability/metrics_sensitive_memory.zig` | EDIT | drops its rendering entry point, keeps the resident-memory probe |
@@ -70,6 +76,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/route_scopes.zig` | EDIT | the scope registration is removed |
 | `src/agentsfleetd/http/route_table.zig` | EDIT | the table registration is removed |
 | `src/agentsfleetd/http/route_trace.zig` | EDIT | the trace registration is removed |
+| `src/agentsfleetd/http/route_admission.zig` | EDIT | the admission class switch follows the removed variant |
+| `src/agentsfleetd/http/route_table_invoke.zig` | EDIT | the invoke registration is removed |
+| `src/agentsfleetd/http/handlers/health.zig` | EDIT | the pull handler and its renderer import are removed |
 | `src/agentsfleetd/observability/semantic_schema_test.zig` | EDIT | namespace and superseded-name guards move from renderer sources to the OTLP payload source |
 | `src/agentsfleetd/observability/metrics_counters_test.zig` | EDIT | assertions move to the OTLP payload observation window |
 | `src/agentsfleetd/observability/metrics_runner_test.zig` | EDIT | same observation-window move |
@@ -77,6 +86,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/observability/metrics_otel_test.zig` | EDIT | same observation-window move |
 | `src/agentsfleetd/observability/metrics_sensitive_memory_test.zig` | EDIT | same observation-window move |
 | `src/agentsfleetd/observability/otel_metrics_aggregate_test.zig` | EDIT | gains gauge folding and ceiling-derivation coverage |
+| `src/agentsfleetd/observability/otel_metrics_test.zig` | EDIT | follows the wire-times surface; gauge serialization and cost-family regression coverage |
+| `src/agentsfleetd/observability/otel_metrics_window_test.zig` | CREATE | the shared payload observation helper the rebuilt suite asserts through |
+| `src/agentsfleetd/observability/otel_metrics_flush_test.zig` | CREATE | flush-behavior slice of the split exporter suite (length cap) |
+| `src/agentsfleetd/observability/otel_metrics_attribution_test.zig` | CREATE | attribution slice of the split exporter suite (length cap) |
+| `src/agentsfleetd/observability/otel_metrics_egress_test.zig` | CREATE | removed-surface and liveness-rule declaration tests |
+| `src/agentsfleetd/observability/library_stages_window_test.zig` | CREATE | window slice of the library-stages suite (length cap) |
+| `src/agentsfleetd/observability/semconv_test.zig` | EDIT | follows metaFor to the registry and the scale enum |
+| `src/agentsfleetd/http/router_test.zig` | EDIT | the former pull path is proven unrouted |
+| `src/agentsfleetd/http/handlers/grant_surface_integration_test.zig` | EDIT | unauthenticated-route census follows the removed identity |
+| `src/agentsfleetd/observability/otel_metrics_census_test.zig` | CREATE | asset/census/route-absence/liveness-rule declaration tests |
+| `src/agentsfleetd/observability/library_stages_test.zig` | EDIT | same observation-window move |
+| `src/agentsfleetd/queue/redis_pool_test.zig` | EDIT | same observation-window move |
+| `src/agentsfleetd/fleet/integration_roundtrip_test.zig` | EDIT | stops referencing the removed pull route |
+| `src/agentsfleetd/http/handlers/runner/memory_loop_integration_test.zig` | EDIT | stops scraping the removed pull route |
+| `playbooks/operations/observability/001_playbook.md` | EDIT | the scrape instruction becomes the push-path reality |
 | `src/agentsfleetd/http/handlers/fleets/backpressure_integration_test.zig` | EDIT | stops scraping a route that no longer exists |
 | `src/agentsfleetd/tests.zig` | EDIT | registration list follows the deleted module |
 | `src/agentsfleetd/queue/redis_pool.zig` | EDIT | comment naming the pull endpoint as the export path is corrected |
@@ -115,10 +139,10 @@ The exporter understands running totals and distributions. Most runtime families
 
 **Implementation default:** the gauge serializes as a native OTLP gauge rather than a non-monotonic sum, because the reader should be able to tell a level from a counter by its type alone.
 
-- **Dimension 1.1** — the metric kind admits a gauge alongside sum and histogram → Test `test_metric_kind_admits_gauge`
-- **Dimension 1.2** — repeated samples of one gauge label set within a flush window fold to the newest value, not their sum → Test `test_gauge_folds_to_last_value`
-- **Dimension 1.3** — a gauge and a sum sharing a flush window each fold by their own rule → Test `test_mixed_kinds_fold_independently`
-- **Dimension 1.4** — a gauge series serializes in the OTLP gauge shape → Test `test_gauge_serializes_as_gauge`
+- **Dimension 1.1** — the metric kind admits a gauge alongside sum and histogram → Test `test_metric_kind_admits_gauge` — **DONE**
+- **Dimension 1.2** — repeated samples of one gauge label set within a flush window fold to the newest value, not their sum → Test `test_gauge_folds_to_last_value` — **DONE**
+- **Dimension 1.3** — a gauge and a sum sharing a flush window each fold by their own rule → Test `test_mixed_kinds_fold_independently` — **DONE**
+- **Dimension 1.4** — a gauge series serializes in the OTLP gauge shape → Test `test_gauge_serializes_as_gauge` — **DONE**
 
 ### §2 — The series ceiling is derived, never chosen
 
@@ -126,28 +150,28 @@ The distinct-series cap is a hand-picked number, and the per-model cost attribut
 
 **Implementation default:** the runner-family term reuses the existing per-runner slot capacity as its bound rather than introducing a second, independently drifting constant.
 
-- **Dimension 2.1** — the ceiling is computed at compile time from declared families, their maximum label combinations, the runner capacity, and the attribution budget → Test `test_series_ceiling_is_derived_from_declarations`
-- **Dimension 2.2** — a compile-time assertion fails the build when the declared worst case exceeds the ceiling → Test `test_declared_worst_case_fits_under_ceiling`
-- **Dimension 2.3** — the attribution budget re-derives from the new ceiling and does not shrink when runtime families are added → Test `test_attribution_budget_survives_family_growth`
+- **Dimension 2.1** — the ceiling is computed at compile time from declared families, their maximum label combinations, the runner capacity, and the attribution budget → Test `test_series_ceiling_is_derived_from_declarations` — **DONE**
+- **Dimension 2.2** — a compile-time assertion fails the build when the declared worst case exceeds the ceiling → Test `test_declared_worst_case_fits_under_ceiling` — **DONE**
+- **Dimension 2.3** — the attribution budget re-derives from the new ceiling and does not shrink when runtime families are added → Test `test_attribution_budget_survives_family_growth` — **DONE**
 
 ### §3 — Runtime families reach the wire
 
 The operator assets query families the exporter has never carried. This slice adds each family the dashboard and alert rules name, with the label sets those queries expect, so the provisioning gate can advance and the dashboard renders real data.
 
-- **Dimension 3.1** — every family named by the dashboard and alert assets exists as a declared metric identity → Test `test_every_asset_family_is_declared`
-- **Dimension 3.2** — saturation and pool levels export as gauges carrying their live values → Test `test_saturation_families_export_current_level`
-- **Dimension 3.3** — cumulative families export as monotonic sums → Test `test_cumulative_families_export_as_sums`
-- **Dimension 3.4** — per-runner families carry the runner label and route overflow to the shared bucket → Test `test_runner_families_carry_identity_and_overflow`
-- **Dimension 3.5** — the Redis pool snapshot reaches the collector without the deleted renderer → Test `test_pool_snapshot_reaches_the_collector`
+- **Dimension 3.1** — every family named by the dashboard and alert assets exists as a declared metric identity → Test `test_every_asset_family_is_declared` — **DONE**
+- **Dimension 3.2** — saturation and pool levels export as gauges carrying their live values → Test `test_saturation_families_export_current_level` — **DONE**
+- **Dimension 3.3** — cumulative families export as monotonic sums → Test `test_cumulative_families_export_as_sums` — **DONE**
+- **Dimension 3.4** — per-runner families carry the runner label and route overflow to the shared bucket → Test `test_runner_families_carry_identity_and_overflow` — **DONE**
+- **Dimension 3.5** — the Redis pool snapshot reaches the collector without the deleted renderer → Test `test_pool_snapshot_reaches_the_collector` — **DONE**
 
 ### §4 — The pull endpoint and its rendering layer are removed
 
 A private daemon cannot be scraped, the deployment configuration has pointed at an unbound port in both environments since it was written, and after §3 the rendering layer has no production consumer. Leaving any part of it is configuration and code that reads as live and is not. This slice removes the route identity everywhere it is registered, the rendering entry points, and the deployment blocks.
 
-- **Dimension 4.1** — the daemon answers no route at the former metrics path → Test `test_metrics_path_is_not_routed`
-- **Dimension 4.2** — the route identity is absent from every registration surface → Test `test_metrics_route_identity_is_absent`
-- **Dimension 4.3** — no rendering entry point survives in any observability module → Test `test_no_prometheus_rendering_entry_point_remains`
-- **Dimension 4.4** — neither deployment configuration declares a scrape block → Test `test_deploy_configs_declare_no_scrape_block`
+- **Dimension 4.1** — the daemon answers no route at the former metrics path → Test `test_metrics_path_is_not_routed` — **DONE**
+- **Dimension 4.2** — the route identity is absent from every registration surface → Test `test_metrics_route_identity_is_absent` — **DONE**
+- **Dimension 4.3** — no rendering entry point survives in any observability module → Test `test_no_prometheus_rendering_entry_point_remains` — **DONE**
+- **Dimension 4.4** — neither deployment configuration declares a scrape block → Test `test_deploy_configs_declare_no_scrape_block` — **DONE**
 
 ### §5 — The test observation window moves to the wire format
 
@@ -155,18 +179,18 @@ Metric tests deliberately observe instrumentation through the rendered output ra
 
 **Implementation default:** one shared test helper renders a flush window to an inspectable form, mirroring how the deleted renderer was shared, so individual tests change their target and not their shape.
 
-- **Dimension 5.1** — a shared helper exposes a flush window for assertion without reaching into instrumentation internals → Test `test_payload_observation_helper_exposes_a_window`
-- **Dimension 5.2** — every previously rendered family is asserted through the new window with its prior behavioural claim intact → Test `test_rebuilt_suite_covers_every_previously_rendered_family`
-- **Dimension 5.3** — the namespace guard rejects any family outside the project namespace on the payload source → Test `test_namespace_guard_runs_against_the_payload_source`
-- **Dimension 5.4** — the superseded-name guard scans the exporter source rather than the deleted renderer sources → Test `test_superseded_name_guard_scans_the_exporter`
+- **Dimension 5.1** — a shared helper exposes a flush window for assertion without reaching into instrumentation internals → Test `test_payload_observation_helper_exposes_a_window` — **DONE**
+- **Dimension 5.2** — every previously rendered family is asserted through the new window with its prior behavioural claim intact → Test `test_rebuilt_suite_covers_every_previously_rendered_family` — **DONE**
+- **Dimension 5.3** — the namespace guard rejects any family outside the project namespace on the payload source → Test `test_namespace_guard_runs_against_the_payload_source` — **DONE**
+- **Dimension 5.4** — the superseded-name guard scans the exporter source rather than the deleted renderer sources → Test `test_superseded_name_guard_scans_the_exporter` — **DONE**
 
 ### §6 — The operator can tell when the pipe itself is dead
 
 Deleting the pull endpoint removes the out-of-band way to observe the daemon, and the existing exporter-health alerts travel through the exporter they watch. This slice adds an absence-based rule that evaluates in the metric store rather than in the process, plus the documentation the census promises.
 
-- **Dimension 6.1** — an alert rule fires on absence of the saturation family rather than on a threshold over it → Test `test_liveness_rule_fires_on_absent_series`
-- **Dimension 6.2** — the alert asset validates and carries the project service label used by the routing policy → Test `test_liveness_rule_validates_and_carries_service_label`
-- **Dimension 6.3** — the census lists every exported family and the four-signal description no longer claims a pull path → Test `test_census_matches_exported_families`
+- **Dimension 6.1** — an alert rule fires on absence of the saturation family rather than on a threshold over it → Test `test_liveness_rule_fires_on_absent_series` — **DONE**
+- **Dimension 6.2** — the alert asset validates and carries the project service label used by the routing policy → Test `test_liveness_rule_validates_and_carries_service_label` — **DONE**
+- **Dimension 6.3** — the census lists every exported family and the four-signal description no longer claims a pull path → Test `test_census_matches_exported_families` — **DONE**
 
 ## Interfaces
 
