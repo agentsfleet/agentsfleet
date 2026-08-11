@@ -32,8 +32,10 @@ const Outcome = contract.protocol.Outcome;
 /// Max distinct runner_ids tracked. Overflow → `_other` (counters only).
 /// pub so the test file can drive the table to its cardinality edge.
 pub const MAX_SLOTS: usize = 4096;
-/// Truncated runner_id length stored per slot (enough for a metric label value).
-const ID_LEN: usize = 48;
+/// Truncated runner_id length stored per slot (enough for a metric label
+/// value). pub for the streamed appender's comptime bound check against the
+/// sample's inline dynamic buffer.
+pub const ID_LEN: usize = 48;
 const MS_PER_S: i64 = 1000;
 /// How long a claimer waits for another thread's in-flight `initSlot` before it
 /// gives up and drops the record. Bounded so a descheduled initializer can never

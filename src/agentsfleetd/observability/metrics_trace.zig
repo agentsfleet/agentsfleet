@@ -1,21 +1,16 @@
-//! Fixed-cardinality counters for trace admission decisions.
+//! Fixed-cardinality counters for trace admission decisions. Storage lives in
+//! the generated instrument layer (otel_instruments.zig); the registry
+//! declares the `reason` dimension off the admission policy's own enum.
 
-const std = @import("std");
 const trace_policy = @import("../http/route_trace.zig");
+const instruments = @import("otel_instruments.zig");
 
 pub const SUPPRESSED_NAME = "agentsfleet_http_trace_suppressed_total";
-pub const SUPPRESSED_HELP = "HTTP request spans suppressed by the bounded trace admission policy.";
 
-/// Wire label values for the `reason` dimension, in Snapshot field order —
-/// the exporter iterates this list, so a new suppression reason must land
-/// here, in Snapshot, and in `inc` in the same change.
-pub const SUPPRESSION_REASON_LABELS = [_][]const u8{
-    "noisy_route",
-    "runner_rejection_budget",
-    "server_error_budget",
-    "sampled_success_budget",
-    "sample_miss",
-};
+/// The label source for the suppression `reason` dimension: the registry
+/// (otel_metrics_families.zig) declares the dimension with this enum, so its
+/// tag names are the wire values.
+pub const SuppressionReason = trace_policy.SuppressionReason;
 
 pub const Snapshot = struct {
     noisy_route_total: u64,
@@ -25,41 +20,22 @@ pub const Snapshot = struct {
     sample_miss_total: u64,
 };
 
-var g_noisy_route = std.atomic.Value(u64).init(0);
-var g_runner_rejection_budget = std.atomic.Value(u64).init(0);
-var g_server_error_budget = std.atomic.Value(u64).init(0);
-var g_sampled_success_budget = std.atomic.Value(u64).init(0);
-var g_sample_miss = std.atomic.Value(u64).init(0);
-
-pub fn inc(reason: trace_policy.SuppressionReason) void {
-    const counter = switch (reason) {
-        .noisy_route => &g_noisy_route,
-        .runner_rejection_budget => &g_runner_rejection_budget,
-        .server_error_budget => &g_server_error_budget,
-        .sampled_success_budget => &g_sampled_success_budget,
-        .sample_miss => &g_sample_miss,
-    };
-    // safe because: these are independent observability counters; scrape-time
-    // staleness is acceptable and no data is published through them.
-    _ = counter.fetchAdd(1, .monotonic);
+pub fn inc(reason: SuppressionReason) void {
+    instruments.inc(.http_trace_suppressed, .{ .reason = reason });
 }
 
 pub fn snapshot() Snapshot {
     return .{
-        .noisy_route_total = g_noisy_route.load(.acquire),
-        .runner_rejection_budget_total = g_runner_rejection_budget.load(.acquire),
-        .server_error_budget_total = g_server_error_budget.load(.acquire),
-        .sampled_success_budget_total = g_sampled_success_budget.load(.acquire),
-        .sample_miss_total = g_sample_miss.load(.acquire),
+        .noisy_route_total = instruments.snapshotCell(.http_trace_suppressed, .{ .reason = .noisy_route }),
+        .runner_rejection_budget_total = instruments.snapshotCell(.http_trace_suppressed, .{ .reason = .runner_rejection_budget }),
+        .server_error_budget_total = instruments.snapshotCell(.http_trace_suppressed, .{ .reason = .server_error_budget }),
+        .sampled_success_budget_total = instruments.snapshotCell(.http_trace_suppressed, .{ .reason = .sampled_success_budget }),
+        .sample_miss_total = instruments.snapshotCell(.http_trace_suppressed, .{ .reason = .sample_miss }),
     };
 }
 
 pub fn resetForTest() void {
-    g_noisy_route.store(0, .release);
-    g_runner_rejection_budget.store(0, .release);
-    g_server_error_budget.store(0, .release);
-    g_sampled_success_budget.store(0, .release);
-    g_sample_miss.store(0, .release);
+    instruments.resetCellsForTest(&.{.http_trace_suppressed});
 }
 
 test {

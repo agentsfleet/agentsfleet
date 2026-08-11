@@ -2,16 +2,17 @@
 //! the capture/hydrate loop counters plus the memory-loss counters (hydration
 //! window drops, cap evictions, capture truncations/skips, zero-hit searches).
 //! The OTLP registry (`otel_metrics_families.zig`) declares each family by the
-//! `*_NAME` constants below; export rides the push pipeline.
+//! `*_NAME` constants below; storage lives in the generated instrument layer
+//! (otel_instruments.zig) and export rides the push pipeline.
 //!
 //! All families are GLOBAL (unlabelled): per-fleet labels would explode
 //! cardinality. The fleet scope rides the structured log line, never a metric
 //! label — the inc* functions take counts only, so no identifier can leak in.
-//! Lock-free atomic counters, no allocator, no database on the export path.
-//! Counters are monotonic: only fetchAdd is exposed (resetForTest excepted).
-//! Tests live in metrics_memory_test.zig.
+//! Counters are monotonic: only additive writers are exposed (resetForTest
+//! excepted). Tests live in metrics_memory_test.zig.
 
 const std = @import("std");
+const instruments = @import("otel_instruments.zig");
 
 pub const MEM_CAPTURED_NAME = "agentsfleet_memory_entries_captured_total";
 pub const MEM_PUSH_FAIL_NAME = "agentsfleet_memory_push_failures_total";
@@ -23,32 +24,22 @@ pub const CAPTURE_TRUNCATED_NAME = "agentsfleet_memory_capture_truncated_total";
 pub const CAPTURE_SKIPPED_NAME = "agentsfleet_memory_capture_skipped_total";
 pub const SEARCH_ZERO_HITS_NAME = "agentsfleet_memory_search_zero_hits_total";
 
-var g_captured_total = std.atomic.Value(u64).init(0);
-var g_push_failures_total = std.atomic.Value(u64).init(0);
-var g_hydration_entries = std.atomic.Value(i64).init(0);
-var g_hydration_dropped_entries_total = std.atomic.Value(u64).init(0);
-var g_hydration_dropped_bytes_total = std.atomic.Value(u64).init(0);
-var g_cap_evictions_total = std.atomic.Value(u64).init(0);
-var g_capture_truncated_total = std.atomic.Value(u64).init(0);
-var g_capture_skipped_total = std.atomic.Value(u64).init(0);
-var g_search_zero_hits_total = std.atomic.Value(u64).init(0);
-
 // ── Push API (called from the memory handlers) ──────────────────────────────
 
 /// `n` memory entries were persisted by a capture push. Global counter (no label).
 pub fn incMemoryCaptured(n: usize) void {
     if (n == 0) return;
-    _ = g_captured_total.fetchAdd(@intCast(n), .monotonic); // safe because: independent counter
+    instruments.add(.memory_entries_captured, .{}, @intCast(n));
 }
 
 /// A memory capture push failed to persist (ERR_MEM_UNAVAILABLE). Global counter.
 pub fn incMemoryPushFailure() void {
-    _ = g_push_failures_total.fetchAdd(1, .monotonic); // safe because: independent counter
+    instruments.inc(.memory_push_failures, .{});
 }
 
 /// Record the entry count of the most recent hydration window (gauge, last-writer-wins).
 pub fn setMemoryHydrationEntries(n: usize) void {
-    g_hydration_entries.store(@intCast(n), .monotonic); // safe because: lone gauge, last-writer-wins
+    instruments.set(.memory_hydration_window_entries, .{}, @intCast(n));
 }
 
 /// The category-pinned hydration window dropped `entries` entries totalling
@@ -57,35 +48,35 @@ pub fn setMemoryHydrationEntries(n: usize) void {
 /// design, so never pass (0, nonzero).
 pub fn incHydrationDropped(entries: usize, dropped_bytes: usize) void {
     if (entries == 0) return;
-    _ = g_hydration_dropped_entries_total.fetchAdd(@intCast(entries), .monotonic); // safe because: independent counter
-    _ = g_hydration_dropped_bytes_total.fetchAdd(@intCast(dropped_bytes), .monotonic); // safe because: independent counter
+    instruments.add(.memory_hydration_dropped_entries, .{}, @intCast(entries));
+    instruments.add(.memory_hydration_dropped_bytes, .{}, @intCast(dropped_bytes));
 }
 
 /// The per-fleet cap eviction after a capture push deleted `n` rows.
 pub fn incCapEvictions(n: u64) void {
     if (n == 0) return;
-    _ = g_cap_evictions_total.fetchAdd(n, .monotonic); // safe because: independent counter
+    instruments.add(.memory_cap_evictions, .{}, n);
 }
 
 /// One capture push hit the push byte budget and stopped early (tail not persisted).
 pub fn incCaptureTruncated() void {
-    _ = g_capture_truncated_total.fetchAdd(1, .monotonic); // safe because: independent counter
+    instruments.inc(.memory_capture_truncated, .{});
 }
 
 /// One capture delta was skipped by validation (oversized/empty key, content, or category).
 pub fn incCaptureSkipped() void {
-    _ = g_capture_skipped_total.fetchAdd(1, .monotonic); // safe because: independent counter
+    instruments.inc(.memory_capture_skipped, .{});
 }
 
 /// One tenant memory search returned zero rows (recall-miss signal).
 pub fn incSearchZeroHit() void {
-    _ = g_search_zero_hits_total.fetchAdd(1, .monotonic); // safe because: independent counter
+    instruments.inc(.memory_search_zero_hits, .{});
 }
 
 // ── Read API ────────────────────────────────────────────────────────────────
 
 /// Point-in-time copy of every family, for exact-delta test assertions
-/// (mirrors metrics.zig's snapshot pattern).
+/// (mirrors metrics_counters.zig's snapshot pattern).
 pub const Snapshot = struct {
     captured_total: u64,
     push_failures_total: u64,
@@ -102,34 +93,34 @@ comptime {
     std.debug.assert(@sizeOf(Snapshot) == 9 * @sizeOf(u64));
 }
 
-// safe because: every load below is .monotonic — these are independent
-// monotonic counters with no cross-variable ordering requirement; a snapshot
-// is a per-counter point-in-time read, not a consistent cut (same guarantee
-// as the existing agentsfleet_runner_* families under concurrent scrapes).
 pub fn snapshot() Snapshot {
     return .{
-        .captured_total = g_captured_total.load(.monotonic),
-        .push_failures_total = g_push_failures_total.load(.monotonic),
-        .hydration_entries = g_hydration_entries.load(.monotonic),
-        .hydration_dropped_entries_total = g_hydration_dropped_entries_total.load(.monotonic),
-        .hydration_dropped_bytes_total = g_hydration_dropped_bytes_total.load(.monotonic),
-        .cap_evictions_total = g_cap_evictions_total.load(.monotonic),
-        .capture_truncated_total = g_capture_truncated_total.load(.monotonic),
-        .capture_skipped_total = g_capture_skipped_total.load(.monotonic),
-        .search_zero_hits_total = g_search_zero_hits_total.load(.monotonic),
+        .captured_total = instruments.snapshotCell(.memory_entries_captured, .{}),
+        .push_failures_total = instruments.snapshotCell(.memory_push_failures, .{}),
+        // The setter takes a usize entry count, so the cell can never exceed
+        // i64; the clamp keeps the cast total rather than trusting that.
+        .hydration_entries = @intCast(@min(instruments.snapshotCell(.memory_hydration_window_entries, .{}), std.math.maxInt(i64))),
+        .hydration_dropped_entries_total = instruments.snapshotCell(.memory_hydration_dropped_entries, .{}),
+        .hydration_dropped_bytes_total = instruments.snapshotCell(.memory_hydration_dropped_bytes, .{}),
+        .cap_evictions_total = instruments.snapshotCell(.memory_cap_evictions, .{}),
+        .capture_truncated_total = instruments.snapshotCell(.memory_capture_truncated, .{}),
+        .capture_skipped_total = instruments.snapshotCell(.memory_capture_skipped, .{}),
+        .search_zero_hits_total = instruments.snapshotCell(.memory_search_zero_hits, .{}),
     };
 }
 
 // Test-only reset, consumed by metrics_memory_test.zig (and delegated to by
 // metrics_runner.resetForTest so existing call sites reset both modules).
 pub fn resetForTest() void {
-    g_captured_total.store(0, .release);
-    g_push_failures_total.store(0, .release);
-    g_hydration_entries.store(0, .release);
-    g_hydration_dropped_entries_total.store(0, .release);
-    g_hydration_dropped_bytes_total.store(0, .release);
-    g_cap_evictions_total.store(0, .release);
-    g_capture_truncated_total.store(0, .release);
-    g_capture_skipped_total.store(0, .release);
-    g_search_zero_hits_total.store(0, .release);
+    instruments.resetCellsForTest(&.{
+        .memory_entries_captured,
+        .memory_push_failures,
+        .memory_hydration_window_entries,
+        .memory_hydration_dropped_entries,
+        .memory_hydration_dropped_bytes,
+        .memory_cap_evictions,
+        .memory_capture_truncated,
+        .memory_capture_skipped,
+        .memory_search_zero_hits,
+    });
 }

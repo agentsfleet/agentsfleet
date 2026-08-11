@@ -10,16 +10,16 @@ const MODEL = "claude-opus-4-8";
 
 fn sumSample(value: i64, charge: []const u8) payload.Sample {
     var s = payload.newSample(.credit_consumed, value);
-    _ = payload.addLabel(&s, semconv.ATTR_CHARGE_TYPE, charge);
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
-    _ = payload.addLabel(&s, semconv.ATTR_REQUEST_MODEL, MODEL);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_CHARGE_TYPE, charge);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
+    _ = payload.setDynamicLabel(&s, semconv.ATTR_REQUEST_MODEL, MODEL);
     return s;
 }
 
 fn histSample(value: i64) payload.Sample {
     var s = payload.newSample(.invoke_agent_duration, value);
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
-    _ = payload.addLabel(&s, semconv.ATTR_REQUEST_MODEL, MODEL);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
+    _ = payload.setDynamicLabel(&s, semconv.ATTR_REQUEST_MODEL, MODEL);
     return s;
 }
 
@@ -82,17 +82,56 @@ test "distinct label sets aggregate into distinct series" {
     try std.testing.expectEqual(@as(usize, 2), agg.count);
 }
 
-test "test_registry_cap_drops_and_counts: distinct series beyond the cap are dropped + counted" {
+fn dynamicSample(value: i64, model: []const u8) payload.Sample {
+    var s = payload.newSample(.credit_consumed, value);
+    _ = payload.setDynamicLabel(&s, semconv.ATTR_REQUEST_MODEL, model);
+    return s;
+}
+
+test "test_aggregator_full_drops_and_counts: distinct series beyond the cap are dropped + counted" {
     var agg = aggregate.Aggregator.init();
-    var buf: [16]u8 = undefined;
+    var buf: [24]u8 = undefined;
     const overflow: usize = 10;
     var i: usize = 0;
     while (i < aggregate.MAX_SERIES + overflow) : (i += 1) {
-        const charge = try std.fmt.bufPrint(&buf, "charge-{d}", .{i});
-        agg.add(sumSample(1, charge));
+        agg.add(dynamicSample(1, try std.fmt.bufPrint(&buf, "model-{d}", .{i})));
     }
     try std.testing.expectEqual(aggregate.MAX_SERIES, agg.count);
     try std.testing.expectEqual(@as(u64, overflow), agg.dropped);
+}
+
+test "test_aggregator_collision_probe: bucket-colliding identities stay distinct series" {
+    // Deterministically find two identity-distinct samples whose hashes land
+    // in the same bucket (the hash seed is a fixed constant, so the search
+    // result never varies), then prove the open-addressed probe keeps them as
+    // separate series with separate values — no cross-series merge.
+    // Far larger than the bucket table, so a collider provably exists inside it.
+    const COLLISION_SEARCH_BOUND: usize = 100_000;
+    var probe_buf: [24]u8 = undefined;
+    const base = dynamicSample(5, "model-base");
+    const target_bucket = aggregate.testIdentityBucket(base);
+    var i: usize = 0;
+    var collider: ?payload.Sample = null;
+    while (i < COLLISION_SEARCH_BOUND) : (i += 1) {
+        const candidate = dynamicSample(7, try std.fmt.bufPrint(&probe_buf, "model-{d}", .{i}));
+        if (aggregate.testIdentityBucket(candidate) == target_bucket) {
+            collider = candidate;
+            break;
+        }
+    }
+    // The bucket table is far smaller than the search bound, so a collider
+    // always exists within it.
+    try std.testing.expect(collider != null);
+
+    var agg = aggregate.Aggregator.init();
+    agg.add(base);
+    agg.add(collider.?);
+    agg.add(base); // folds onto the first series, not the collider's
+    try std.testing.expectEqual(@as(usize, 2), agg.count);
+    var buf: [aggregate.MAX_SERIES]payload.Series = undefined;
+    const series = agg.toSeries(&buf);
+    try std.testing.expectEqual(@as(i64, 10), series[0].sum_value);
+    try std.testing.expectEqual(@as(i64, 7), series[1].sum_value);
 }
 
 test "a fresh aggregator starts empty (per-window reset)" {

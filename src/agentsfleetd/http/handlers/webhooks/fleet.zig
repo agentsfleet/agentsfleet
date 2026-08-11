@@ -259,14 +259,11 @@ fn recordWebhookAccepted(
 // Successful 202 path increments fleets_triggered_total and emits the
 // fleet_triggered PostHog event.
 test "successful webhook acceptance increments fleets_triggered counter" {
-    const metrics_fleet = @import("../../../observability/metrics_fleet.zig");
     const tel_mod = @import("../../../observability/telemetry.zig");
-    metrics_fleet.resetForTest();
-    defer metrics_fleet.resetForTest();
     var tel = tel_mod.Telemetry.initTest();
-    const before = metrics_fleet.snapshotFleetFields().fleet_triggered_total;
+    const before = metrics_counters.snapshot().fleet_triggered_total;
     recordWebhookAccepted(&tel, "ws_001", "z_001", "evt_001", "webhook");
-    try std.testing.expectEqual(@as(u64, 1), metrics_fleet.snapshotFleetFields().fleet_triggered_total - before);
+    try std.testing.expectEqual(@as(u64, 1), metrics_counters.snapshot().fleet_triggered_total - before);
     try tel_mod.TestBackend.assertLastEventIs(.fleet_triggered);
 }
 

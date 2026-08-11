@@ -1,27 +1,28 @@
 //! The closed metric-family registry for the OTLP exporter.
 //!
 //! Every family the daemon exports — evented cost families and flush-time
-//! runtime families alike — is declared here, once. The wire serializer
+//! runtime families alike — is declared here, once: its wire identity
+//! (`MetricMeta`) and its label dimensions (`dimsFor`). The wire serializer
 //! (otel_metrics_payload.zig), the aggregator's series ceiling
 //! (otel_metrics_aggregate.zig), the model-attribution budget
-//! (otel_metrics_cardinality.zig), the runtime collector
-//! (otel_metrics_runtime.zig), and the census/namespace guard tests all read
-//! this table, so a family cannot exist on the wire without being declared —
-//! and the ceiling arithmetic cannot drift from what is actually exported.
+//! (otel_metrics_cardinality.zig), the generated instrument layer
+//! (otel_instruments.zig — storage cells, typed writer, collect loop), and the
+//! census/namespace guard tests all read this table, so a family cannot exist
+//! on the wire without being declared — and neither the ceiling arithmetic nor
+//! the storage layout can drift from what is actually exported.
 //!
-//! Three collection shapes:
-//!   - `cost = true`  — evented samples through the lock-free ring; their
-//!     series budget is `COST_SERIES_BUDGET` and the model-attribution cap
-//!     derives from it, so widening the runtime set can never shrink it.
-//!   - `streamed = true` — pre-aggregated per-runner families serialized
-//!     straight from the slot table; they never enter the Aggregator, and
-//!     their worst case is bounded by that table's own capacity.
-//!   - neither — fixed-label runtime families, snapshot once per flush window
-//!     into the Aggregator; `max_series` is the comptime product of their
-//!     closed label enums.
+//! Collection shapes: `cost` — evented samples through the lock-free ring,
+//! budgeted by `COST_SERIES_BUDGET` so runtime growth can never shrink model
+//! attribution; `streamed` — pre-aggregated per-runner families serialized
+//! straight from the slot table, never entering the Aggregator; `live_read` —
+//! read at flush time by an explicit collect hook (pool stats, resident-set
+//! probe, flush-thread liveness), no generated cell so absence semantics stay
+//! with the source; none of the above — fixed-label families stored in the
+//! generated cell table, `max_series` derived from the declared dimensions.
 
 const std = @import("std");
 const semconv = @import("semconv.zig");
+const dims = @import("otel_metrics_dims.zig");
 const mot = @import("metrics_otel.zig");
 const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_runner.zig");
@@ -53,11 +54,14 @@ pub const MetricMeta = struct {
     bounds: []const u64 = &.{},
     scale: Scale = .none,
     /// Worst-case distinct label sets this family can carry in one flush.
+    /// Derived from `dimsFor` for fixed-label families — never hand-set there.
     max_series: usize = 1,
     /// Serialized from a pre-aggregated source; never enters the Aggregator.
     streamed: bool = false,
     /// Evented cost family riding the ring; budgeted by COST_SERIES_BUDGET.
     cost: bool = false,
+    /// Collected by an explicit flush-time hook; no generated storage cell.
+    live_read: bool = false,
 };
 
 pub const MetricId = enum {
@@ -136,13 +140,23 @@ pub const MetricId = enum {
     runner_active_leases,
 };
 
-/// Cumulative monotonic count sum with a fixed number of label combinations.
-fn cum(name: []const u8, max_series: usize) MetricMeta {
-    return .{ .name = name, .unit = semconv.UNIT_COUNT, .kind = .sum, .monotonic = true, .temporality = .cumulative, .max_series = max_series };
+/// Cumulative monotonic count sum. Series width comes from `dimsFor`.
+fn cum(name: []const u8) MetricMeta {
+    return .{ .name = name, .unit = semconv.UNIT_COUNT, .kind = .sum, .monotonic = true, .temporality = .cumulative };
 }
 
-fn gauge(name: []const u8, unit: []const u8, max_series: usize) MetricMeta {
-    return .{ .name = name, .unit = unit, .kind = .gauge, .max_series = max_series };
+fn gauge(name: []const u8, unit: []const u8) MetricMeta {
+    return .{ .name = name, .unit = unit, .kind = .gauge };
+}
+
+fn cumBytes(name: []const u8) MetricMeta {
+    return .{ .name = name, .unit = semconv.UNIT_BYTES, .kind = .sum, .monotonic = true, .temporality = .cumulative };
+}
+
+fn liveRead(base: MetricMeta) MetricMeta {
+    var meta = base;
+    meta.live_read = true;
+    return meta;
 }
 
 fn streamedMeta(base: MetricMeta, worst_case: usize) MetricMeta {
@@ -158,6 +172,9 @@ fn costMeta(base: MetricMeta) MetricMeta {
     return meta;
 }
 
+// Operator help prose (the retired Prometheus HELP knowledge) rides the
+// family rows below, beside the wire identity it describes.
+
 fn buildMeta(id: MetricId) MetricMeta {
     return switch (id) {
         .invoke_agent_duration => costMeta(.{ .name = semconv.METRIC_INVOKE_AGENT_DURATION, .unit = semconv.UNIT_SECONDS, .kind = .histogram, .bounds = &semconv.DURATION_BUCKET_BOUNDS_MS, .scale = .millis_to_seconds }),
@@ -165,62 +182,82 @@ fn buildMeta(id: MetricId) MetricMeta {
         .cache_read_token_usage => costMeta(.{ .name = semconv.METRIC_INVOKE_AGENT_CACHE_READ, .unit = semconv.UNIT_TOKENS, .kind = .histogram, .bounds = &semconv.TOKEN_BUCKET_BOUNDS }),
         .credit_consumed => costMeta(.{ .name = semconv.METRIC_BILLING_CREDIT_CONSUMED, .unit = semconv.UNIT_NANOCREDITS, .kind = .sum, .monotonic = true }),
         .samples_dropped => costMeta(.{ .name = semconv.METRIC_SAMPLES_DROPPED, .unit = semconv.UNIT_COUNT, .kind = .sum, .monotonic = true }),
-        .api_backpressure_rejections => cum(semconv.METRIC_API_BACKPRESSURE_REJECTIONS, 1),
-        .api_in_flight_requests => gauge(semconv.METRIC_API_IN_FLIGHT_REQUESTS, semconv.UNIT_REQUESTS, 1),
-        .sse_backpressure_rejections => cum(semconv.METRIC_SSE_BACKPRESSURE_REJECTIONS, 1),
-        .sse_in_flight_streams => gauge(semconv.METRIC_SSE_IN_FLIGHT_STREAMS, semconv.UNIT_STREAMS, 1),
-        .sse_dropped_frames => cum(semconv.METRIC_SSE_DROPPED_FRAMES, 1),
-        .sse_hub_reconnects => cum(semconv.METRIC_SSE_HUB_RECONNECTS, 1),
-        .worker_running => gauge(semconv.METRIC_WORKER_RUNNING, semconv.UNIT_WORKERS, 1),
-        .fleet_triggered => cum(semconv.METRIC_FLEET_TRIGGERED, 1),
-        .http_trace_suppressed => cum(mt.SUPPRESSED_NAME, mt.SUPPRESSION_REASON_LABELS.len),
-        .otlp_queue_depth => gauge(mot.QUEUE_DEPTH_NAME, semconv.UNIT_ENTRIES, mot.SIGNALS.len),
-        .otlp_entries_discarded => cum(mot.DISCARDED_NAME, mot.SIGNALS.len * mot.DISCARD_REASONS.len),
-        .otel_attribute_omitted => cum(mot.ATTRIBUTE_OMITTED_NAME, mot.OMITTED_ATTRIBUTES.len * mot.OMISSION_REASONS.len),
-        .signup_bootstrapped => cum(semconv.METRIC_SIGNUP_BOOTSTRAPPED, 1),
-        .signup_replayed => cum(semconv.METRIC_SIGNUP_REPLAYED, 1),
-        .signup_failed => cum(semconv.METRIC_SIGNUP_FAILED, mc.SIGNUP_FAIL_REASON_LABELS.len),
-        .lease_polls => cum(mc.LEASE_POLLS_NAME, 1),
-        .lease_poll_candidates_scanned => cum(mc.CANDIDATES_SCANNED_NAME, 1),
-        .lease_poll_db_roundtrips => cum(mc.DB_ROUNDTRIPS_NAME, 1),
-        .fleet_ready_depth => gauge(mc.READY_DEPTH_NAME, semconv.UNIT_FLEETS, 1),
-        .fleet_ready_write_failures => cum(mc.READY_WRITE_FAILURES_NAME, 1),
-        .runner_retention_swept => cum(mc.RETENTION_SWEPT_NAME, 1),
-        .runner_retention_sweep_failures => cum(mc.RETENTION_SWEEP_FAILURES_NAME, 1),
-        .account_teardown_unregister_failures => cum(mc.TEARDOWN_UNREGISTER_FAILURES_NAME, 1),
-        .library_stage_duration => .{ .name = ls.STAGE_DURATION_NAME, .unit = semconv.UNIT_SECONDS, .kind = .sum, .monotonic = true, .temporality = .cumulative, .scale = .nanos_to_seconds, .max_series = ls.SURFACE_LABELS.len * ls.STAGE_LABELS.len },
-        .library_stage_observations => cum(ls.STAGE_OBSERVATIONS_NAME, ls.SURFACE_LABELS.len * ls.STAGE_LABELS.len),
-        .library_read_outcome => cum(ls.READ_OUTCOME_NAME, ls.SURFACE_LABELS.len * ls.OUTCOME_LABELS.len),
-        .library_pool_result => cum(ls.POOL_RESULT_NAME, ls.POOL_RESULT_LABELS.len),
-        .library_cache_outcome => cum(ls.CACHE_OUTCOME_NAME, ls.CACHE_LABELS.len),
-        .library_payload_bytes => .{ .name = ls.PAYLOAD_BYTES_NAME, .unit = semconv.UNIT_BYTES, .kind = .sum, .monotonic = true, .temporality = .cumulative, .max_series = ls.SURFACE_LABELS.len },
-        .library_results => cum(ls.RESULTS_NAME, ls.SURFACE_LABELS.len),
-        .redis_pool_active => gauge(semconv.METRIC_REDIS_POOL_ACTIVE, semconv.UNIT_CONNECTIONS, 1),
-        .redis_pool_idle => gauge(semconv.METRIC_REDIS_POOL_IDLE, semconv.UNIT_CONNECTIONS, 1),
-        .redis_pool_dials => cum(semconv.METRIC_REDIS_POOL_DIALS, 1),
-        .redis_pool_overflow_dials => cum(semconv.METRIC_REDIS_POOL_OVERFLOW_DIALS, 1),
-        .redis_pool_poisoned_connections => cum(semconv.METRIC_REDIS_POOL_POISONED, 1),
-        .redis_pool_reconnects => cum(semconv.METRIC_REDIS_POOL_RECONNECTS, 1),
-        .redis_pool_forced_closes => cum(semconv.METRIC_REDIS_POOL_FORCED_CLOSES, 1),
-        .redis_pool_acquire_timeouts => cum(semconv.METRIC_REDIS_POOL_ACQUIRE_TIMEOUTS, 1),
-        .memory_entries_captured => cum(mm.MEM_CAPTURED_NAME, 1),
-        .memory_push_failures => cum(mm.MEM_PUSH_FAIL_NAME, 1),
-        .memory_hydration_window_entries => gauge(mm.MEM_HYDRATION_NAME, semconv.UNIT_ENTRIES, 1),
-        .memory_hydration_dropped_entries => cum(mm.HYDRATION_DROPPED_ENTRIES_NAME, 1),
-        .memory_hydration_dropped_bytes => .{ .name = mm.HYDRATION_DROPPED_BYTES_NAME, .unit = semconv.UNIT_BYTES, .kind = .sum, .monotonic = true, .temporality = .cumulative },
-        .memory_cap_evictions => cum(mm.CAP_EVICTIONS_NAME, 1),
-        .memory_capture_truncated => cum(mm.CAPTURE_TRUNCATED_NAME, 1),
-        .memory_capture_skipped => cum(mm.CAPTURE_SKIPPED_NAME, 1),
-        .memory_search_zero_hits => cum(mm.SEARCH_ZERO_HITS_NAME, 1),
-        .process_resident_memory_bytes => gauge(msm.METRIC_PROCESS_RESIDENT_MEMORY, semconv.UNIT_BYTES, 1),
-        .sensitive_request_erased_bytes => .{ .name = msm.METRIC_REQUEST_ERASED_BYTES, .unit = semconv.UNIT_BYTES, .kind = .sum, .monotonic = true, .temporality = .cumulative },
-        .sensitive_response_erased_bytes => .{ .name = msm.METRIC_RESPONSE_ERASED_BYTES, .unit = semconv.UNIT_BYTES, .kind = .sum, .monotonic = true, .temporality = .cumulative },
-        .sensitive_response_write_failures => cum(msm.METRIC_RESPONSE_WRITE_FAILURES, 1),
-        .runner_failures => streamedMeta(cum(mr.FAILURES_NAME, 1), mr.MAX_SLOTS * mr.REASON_LABELS.len),
-        .runner_failures_overflow => streamedMeta(cum(mr.FAILURES_OVERFLOW_NAME, 1), 1),
-        .runner_executions => streamedMeta(cum(mr.EXECUTIONS_NAME, 1), mr.MAX_SLOTS * mr.OUTCOME_LABELS.len),
-        .runner_last_seen_seconds => streamedMeta(gauge(mr.LAST_SEEN_NAME, semconv.UNIT_SECONDS, 1), mr.MAX_SLOTS),
-        .runner_active_leases => streamedMeta(gauge(mr.ACTIVE_LEASES_NAME, semconv.UNIT_LEASES, 1), mr.MAX_SLOTS),
+        .api_backpressure_rejections => cum(semconv.METRIC_API_BACKPRESSURE_REJECTIONS),
+        .api_in_flight_requests => gauge(semconv.METRIC_API_IN_FLIGHT_REQUESTS, semconv.UNIT_REQUESTS),
+        .sse_backpressure_rejections => cum(semconv.METRIC_SSE_BACKPRESSURE_REJECTIONS),
+        .sse_in_flight_streams => gauge(semconv.METRIC_SSE_IN_FLIGHT_STREAMS, semconv.UNIT_STREAMS),
+        .sse_dropped_frames => cum(semconv.METRIC_SSE_DROPPED_FRAMES),
+        .sse_hub_reconnects => cum(semconv.METRIC_SSE_HUB_RECONNECTS),
+        // Liveness: read by hook as constant 1 — the flush thread only runs inside a live daemon.
+        .worker_running => liveRead(gauge(semconv.METRIC_WORKER_RUNNING, semconv.UNIT_WORKERS)),
+        .fleet_triggered => cum(semconv.METRIC_FLEET_TRIGGERED),
+        // HTTP request spans suppressed by the bounded trace admission policy.
+        .http_trace_suppressed => cum(mt.SUPPRESSED_NAME),
+        // Current entries buffered for OTLP export, per signal.
+        .otlp_queue_depth => gauge(mot.QUEUE_DEPTH_NAME, semconv.UNIT_ENTRIES),
+        // Entries discarded locally or reported rejected by the OTLP backend.
+        .otlp_entries_discarded => cum(mot.DISCARDED_NAME),
+        // Attributes omitted to keep series bounded and standard; the measurement itself still exported.
+        .otel_attribute_omitted => cum(mot.ATTRIBUTE_OMITTED_NAME),
+        .signup_bootstrapped => cum(semconv.METRIC_SIGNUP_BOOTSTRAPPED),
+        .signup_replayed => cum(semconv.METRIC_SIGNUP_REPLAYED),
+        .signup_failed => cum(semconv.METRIC_SIGNUP_FAILED),
+        // Lease polls served, the denominator for the per-poll cost families.
+        .lease_polls => cum(mc.LEASE_POLLS_NAME),
+        // Fleets examined across all lease polls; divide by lease polls for mean fan-out.
+        .lease_poll_candidates_scanned => cum(mc.CANDIDATES_SCANNED_NAME),
+        // Postgres round-trips issued on the lease path; an idle poll must contribute zero.
+        .lease_poll_db_roundtrips => cum(mc.DB_ROUNDTRIPS_NAME),
+        // Fleets in the shared readiness index; NOT summable across replicas (all sample the same index).
+        .fleet_ready_depth => gauge(mc.READY_DEPTH_NAME, semconv.UNIT_FLEETS),
+        // Readiness index writes that failed against Redis; the log line carries which of mark/clear.
+        .fleet_ready_write_failures => cum(mc.READY_WRITE_FAILURES_NAME),
+        // Rows deleted by the retention sweep; a flat line on a busy plane means it stopped or always fails.
+        .runner_retention_swept => cum(mc.RETENTION_SWEPT_NAME),
+        // Sweep cycles that ended in error — rising means history is no longer pruned.
+        .runner_retention_sweep_failures => cum(mc.RETENTION_SWEEP_FAILURES_NAME),
+        // Unregister calls that failed during an account purge — an erased tenant may still have a firing timer.
+        .account_teardown_unregister_failures => cum(mc.TEARDOWN_UNREGISTER_FAILURES_NAME),
+        // Seconds in one library read stage; divide by the observations counter for mean cost.
+        .library_stage_duration => .{ .name = ls.STAGE_DURATION_NAME, .unit = semconv.UNIT_SECONDS, .kind = .sum, .monotonic = true, .temporality = .cumulative, .scale = .nanos_to_seconds },
+        // Completed library read stages — the denominator for the duration sum.
+        .library_stage_observations => cum(ls.STAGE_OBSERVATIONS_NAME),
+        // Library reads by surface and terminal outcome, exactly once per request.
+        .library_read_outcome => cum(ls.READ_OUTCOME_NAME),
+        // Pool acquisitions by result; unlabelled — a starving pool is process-wide.
+        .library_pool_result => cum(ls.POOL_RESULT_NAME),
+        // Cache dispositions; global cache only, no tenant or request identity.
+        .library_cache_outcome => cum(ls.CACHE_OUTCOME_NAME),
+        // Encoded response bytes produced by library reads, by surface.
+        .library_payload_bytes => .{ .name = ls.PAYLOAD_BYTES_NAME, .unit = semconv.UNIT_BYTES, .kind = .sum, .monotonic = true, .temporality = .cumulative },
+        // Rows materialised into library read projections, by surface.
+        .library_results => cum(ls.RESULTS_NAME),
+        .redis_pool_active => liveRead(gauge(semconv.METRIC_REDIS_POOL_ACTIVE, semconv.UNIT_CONNECTIONS)),
+        .redis_pool_idle => liveRead(gauge(semconv.METRIC_REDIS_POOL_IDLE, semconv.UNIT_CONNECTIONS)),
+        .redis_pool_dials => liveRead(cum(semconv.METRIC_REDIS_POOL_DIALS)),
+        .redis_pool_overflow_dials => liveRead(cum(semconv.METRIC_REDIS_POOL_OVERFLOW_DIALS)),
+        .redis_pool_poisoned_connections => liveRead(cum(semconv.METRIC_REDIS_POOL_POISONED)),
+        .redis_pool_reconnects => liveRead(cum(semconv.METRIC_REDIS_POOL_RECONNECTS)),
+        .redis_pool_forced_closes => liveRead(cum(semconv.METRIC_REDIS_POOL_FORCED_CLOSES)),
+        .redis_pool_acquire_timeouts => liveRead(cum(semconv.METRIC_REDIS_POOL_ACQUIRE_TIMEOUTS)),
+        .memory_entries_captured => cum(mm.MEM_CAPTURED_NAME),
+        .memory_push_failures => cum(mm.MEM_PUSH_FAIL_NAME),
+        .memory_hydration_window_entries => gauge(mm.MEM_HYDRATION_NAME, semconv.UNIT_ENTRIES),
+        .memory_hydration_dropped_entries => cum(mm.HYDRATION_DROPPED_ENTRIES_NAME),
+        .memory_hydration_dropped_bytes => cumBytes(mm.HYDRATION_DROPPED_BYTES_NAME),
+        .memory_cap_evictions => cum(mm.CAP_EVICTIONS_NAME),
+        .memory_capture_truncated => cum(mm.CAPTURE_TRUNCATED_NAME),
+        .memory_capture_skipped => cum(mm.CAPTURE_SKIPPED_NAME),
+        .memory_search_zero_hits => cum(mm.SEARCH_ZERO_HITS_NAME),
+        .process_resident_memory_bytes => liveRead(gauge(msm.METRIC_PROCESS_RESIDENT_MEMORY, semconv.UNIT_BYTES)),
+        .sensitive_request_erased_bytes => cumBytes(msm.METRIC_REQUEST_ERASED_BYTES),
+        .sensitive_response_erased_bytes => cumBytes(msm.METRIC_RESPONSE_ERASED_BYTES),
+        .sensitive_response_write_failures => cum(msm.METRIC_RESPONSE_WRITE_FAILURES),
+        .runner_failures => streamedMeta(cum(mr.FAILURES_NAME), mr.MAX_SLOTS * mr.REASON_LABELS.len),
+        .runner_failures_overflow => streamedMeta(cum(mr.FAILURES_OVERFLOW_NAME), 1),
+        .runner_executions => streamedMeta(cum(mr.EXECUTIONS_NAME), mr.MAX_SLOTS * mr.OUTCOME_LABELS.len),
+        .runner_last_seen_seconds => streamedMeta(gauge(mr.LAST_SEEN_NAME, semconv.UNIT_SECONDS), mr.MAX_SLOTS),
+        .runner_active_leases => streamedMeta(gauge(mr.ACTIVE_LEASES_NAME, semconv.UNIT_LEASES), mr.MAX_SLOTS),
     };
 }
 
@@ -228,7 +265,14 @@ pub const METRIC_ID_COUNT = @typeInfo(MetricId).@"enum".fields.len;
 
 const METAS = blk: {
     var metas: [METRIC_ID_COUNT]MetricMeta = undefined;
-    for (0..METRIC_ID_COUNT) |i| metas[i] = buildMeta(@enumFromInt(i));
+    for (0..METRIC_ID_COUNT) |i| {
+        const id: MetricId = @enumFromInt(i);
+        var meta = buildMeta(id);
+        // Fixed-label (and live-read) runtime families derive their worst case
+        // from the declared dimensions; cost and streamed budgets stay theirs.
+        if (!meta.cost and !meta.streamed) meta.max_series = dims.fixedDimProduct(dims.dimsFor(id));
+        metas[i] = meta;
+    }
     break :blk metas;
 };
 
@@ -281,8 +325,22 @@ comptime {
     // A zero-width runtime set would mean the registry lost its declarations.
     std.debug.assert(RUNTIME_FIXED_SERIES > 0);
     std.debug.assert(STREAMED_SERIES_WORST_CASE > 0);
-    // The streamed appender serializes from a Sample, which carries no bucket
-    // state — a streamed histogram would slice empty bucket_counts out of
-    // bounds at flush time, so the registry refuses the combination here.
-    for (METAS) |meta| std.debug.assert(!(meta.streamed and meta.kind == .histogram));
+    for (0..METRIC_ID_COUNT) |i| {
+        const id: MetricId = @enumFromInt(i);
+        const meta = METAS[i];
+        // The streamed appender serializes from a Sample, which carries no
+        // bucket state — a streamed histogram would slice empty bucket_counts
+        // out of bounds at flush time, so the registry refuses the combination.
+        std.debug.assert(!(meta.streamed and meta.kind == .histogram));
+        // One inline dynamic value per sample — see dims.MAX_DYNAMIC_DIMS.
+        std.debug.assert(dims.validDims(dims.dimsFor(id)));
+        for (dims.dimsFor(id)) |dim| {
+            // Storage cells exist only for closed dimensions; a dynamic
+            // dimension on a cell-stored family would have unbounded cells.
+            if (!meta.cost and !meta.streamed) std.debug.assert(dim == .fixed);
+            // Hooked families read live state; declared dimensions would
+            // promise cells the hook never fills.
+            if (meta.live_read) std.debug.assert(false);
+        }
+    }
 }

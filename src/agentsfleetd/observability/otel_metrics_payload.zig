@@ -1,25 +1,28 @@
-//! OTLP-JSON metric serialization for the Grafana Cloud Mimir exporter.
-//! Holds the fixed-size `Sample` input type, the aggregated `Series` type,
-//! and the per-series serializer the flush loop calls. Family identity
-//! (names, kinds, units, temporality, ceiling arithmetic) lives in
-//! `otel_metrics_families.zig` — this file only knows how to put a declared
-//! family on the wire.
+//! OTLP-JSON metric serialization for the Grafana Cloud Mimir exporter: the
+//! fixed-size `Sample` input type, the aggregated `Series` type, and the
+//! per-series serializer. Family identity lives in `otel_metrics_families.zig`
+//! — this file only knows how to put a declared family on the wire.
+//!
+//! Labels are interned: a `Label` is a pair of indices into the comptime
+//! key/value tables in otel_metrics_dims.zig. Exactly one label per sample may
+//! carry a caller-supplied value (request model, runner id), riding the
+//! sample's single inline buffer; serialization resolves indices back to the
+//! same strings, so the wire bytes are unchanged by interning.
 //!
 //! Evented families are DELTA: the flush coalesces a window's samples into
 //! one `Series` per (metric, labelset) — see otel_metrics_aggregate.zig — and
 //! a Fly-deployed OTel Collector (deltatocumulative) converts before Mimir.
 //! Snapshot counters export as CUMULATIVE sums stamped with the process-start
-//! time; gauges carry only the flush instant.
-//!
-//! Duration observations are carried and bucketed as integers in their source
-//! unit (milliseconds or nanoseconds) even where the metric declares `s`:
-//! every pinned bound is a whole multiple of the divisor, so integer
-//! bucketing is exact and the seconds conversion happens once, at
-//! serialization, with no floating-point arithmetic anywhere.
+//! time; gauges carry only the flush instant. Duration observations stay
+//! integers in their source unit even where the metric declares `s`: every
+//! pinned bound is a whole multiple of the divisor, so integer bucketing is
+//! exact and the seconds conversion happens once, at serialization, with no
+//! floating-point arithmetic anywhere.
 
 const std = @import("std");
 const semconv = @import("semconv.zig");
 const families = @import("otel_metrics_families.zig");
+const dims = @import("otel_metrics_dims.zig");
 const otlp_config = @import("otlp/config.zig");
 
 pub const MetricId = families.MetricId;
@@ -32,38 +35,66 @@ const MetricMeta = families.MetricMeta;
 /// Widest live labelset is token usage: operation name, provider, model, token
 /// type, posture.
 pub const MAX_LABELS: usize = 5;
-/// Longest live key is `agentsfleet.billing.charge.type` (31 bytes).
-pub const MAX_LABEL_KEY: usize = 32;
+/// Longest caller-supplied label value (request model, runner id) a sample
+/// can carry inline; longer values are omitted and counted, never truncated.
 pub const MAX_LABEL_VAL: usize = 64;
 
-/// Buckets = the widest pinned bound table plus the trailing +Inf bucket. The
-/// tables differ in length upstream, so this cuts to the longest; each metric is
-/// serialized against its own `meta.bounds.len + 1` slice of the array.
+/// Comptime bound the compact sample layout is held to: the ring holds 1024
+/// samples and the flush thread stacks one accumulator per series.
+pub const SAMPLE_SIZE_BOUND: usize = 128;
+
+/// Buckets = the widest pinned bound table plus the trailing +Inf bucket;
+/// each metric serializes its own `meta.bounds.len + 1` slice of the array.
 pub const N_BUCKETS: usize = semconv.MAX_BUCKET_BOUNDS + 1;
 
+/// Sentinel `val_idx` routing a label's value to the sample's inline dynamic
+/// buffer instead of the interned table (otel_metrics_dims.zig).
+const DYNAMIC_VALUE_INDEX: u16 = std.math.maxInt(u16);
+
+comptime {
+    std.debug.assert(dims.VALUES.len < DYNAMIC_VALUE_INDEX);
+}
+
+/// Resolve one label's key string (test/serializer surface).
+pub fn labelKey(label: Label) []const u8 {
+    return dims.KEYS[label.key_idx];
+}
+
+/// Resolve one label's value string against its sample's dynamic buffer.
+pub fn labelValue(label: Label, dynamic: []const u8) []const u8 {
+    return if (label.val_idx == DYNAMIC_VALUE_INDEX) dynamic else dims.VALUES[label.val_idx];
+}
+
+/// One interned label — the index pair is its whole aggregation identity.
 pub const Label = struct {
-    key: [MAX_LABEL_KEY]u8,
-    key_len: u8,
-    val: [MAX_LABEL_VAL]u8,
-    val_len: u8,
+    key_idx: u8,
+    val_idx: u16,
 };
 
 /// One emitted measurement, the input to flush-time aggregation. No timestamp:
-/// the flush window stamps the aggregated dataPoint, not the individual sample.
+/// the flush window stamps the aggregated dataPoint, not the sample.
 pub const Sample = struct {
-    id: MetricId,
     /// Sum delta, gauge level, or the observed value for a histogram.
     value: i64,
+    /// The at-most-one caller-supplied label value (model, runner id).
+    dynamic: [MAX_LABEL_VAL]u8,
     labels: [MAX_LABELS]Label,
+    id: MetricId,
     label_count: u8,
+    dynamic_len: u8,
 };
+
+comptime {
+    std.debug.assert(@sizeOf(Sample) <= SAMPLE_SIZE_BOUND);
+}
 
 /// An aggregated series for one flush window: all same-`(id, labels)` samples
 /// coalesced. Sums and gauges use `sum_value`; histograms use `hist_*` +
-/// `bucket_counts`.
+/// `bucket_counts`; `dynamic` backs the sample's inline dynamic label value.
 pub const Series = struct {
     id: MetricId,
     labels: []const Label,
+    dynamic: []const u8,
     sum_value: i64,
     hist_count: u64,
     hist_sum: i64,
@@ -82,9 +113,8 @@ const FMT_UNSIGNED = "{d}";
 /// sum/gauge object — the shared suffix of every single-point metric body.
 const DATA_POINTS_SUFFIX = "}]}";
 
-/// Wire timestamps for one serialized batch. Delta streams span the flush
-/// window; cumulative streams start at process start; gauges carry only the
-/// flush instant.
+/// Wire timestamps for one batch: delta streams span the flush window,
+/// cumulative streams start at process start, gauges carry only the instant.
 pub const WireTimes = struct {
     window_start_ns: u64,
     process_start_ns: u64,
@@ -96,31 +126,61 @@ pub fn newSample(id: MetricId, value: i64) Sample {
     return .{
         .id = id,
         .value = value,
-        // SAFETY: indices [0, label_count) are written by addLabel before any
-        // reader (aggregation) touches them; slots past label_count are never read.
+        // SAFETY: only slots [0, label_count) are ever read, and the
+        // add*Label writers fill each slot before bumping the count.
         .labels = undefined,
         .label_count = 0,
+        // SAFETY: only bytes [0, dynamic_len) are ever read, and
+        // setDynamicLabel copies them before setting the length.
+        .dynamic = undefined,
+        .dynamic_len = 0,
     };
 }
 
-/// Append a label to a sample. Returns false (and drops the label) when full or
-/// when key/value would overflow their fixed buffers — never partially writes.
-/// A dropped value is the caller's signal to count an attribute omission rather
-/// than export a truncated value that reads as a different model or provider.
-pub fn addLabel(sample: *Sample, key: []const u8, val: []const u8) bool {
+/// Snapshot counters are u64; Sample.value is i64. Saturate rather than trap:
+/// telemetry, not money.
+pub fn satCast(value: u64) i64 {
+    return @intCast(@min(value, std.math.maxInt(i64)));
+}
+
+/// Attach a label whose value is one of the declared closed values. False
+/// (label dropped) when the sample is full or the value is not in the closed
+/// table — the caller counts an omission rather than exporting it.
+pub fn addClosedLabel(sample: *Sample, comptime key: []const u8, val: []const u8) bool {
     if (sample.label_count >= MAX_LABELS) return false;
-    if (key.len > MAX_LABEL_KEY or val.len > MAX_LABEL_VAL) return false;
-    const idx = sample.label_count;
-    sample.labels[idx].key_len = @intCast(key.len);
-    @memcpy(sample.labels[idx].key[0..key.len], key);
-    sample.labels[idx].val_len = @intCast(val.len);
-    @memcpy(sample.labels[idx].val[0..val.len], val);
+    const val_idx = dims.runtimeValueIndex(val) orelse return false;
+    sample.labels[sample.label_count] = .{ .key_idx = comptime dims.keyIndexOf(key), .val_idx = val_idx };
     sample.label_count += 1;
     return true;
 }
 
-/// True when `val` would survive `addLabel` intact. Lets a caller decide to omit
-/// an attribute (and count it) before mutating the sample.
+/// Sibling of addClosedLabel with validation moved to the build: a misspelled
+/// key or value is a compile error, not a false return the caller must count.
+pub fn addInternedLabel(sample: *Sample, comptime key: []const u8, comptime val: []const u8) bool {
+    if (sample.label_count >= MAX_LABELS) return false;
+    sample.labels[sample.label_count] = .{ .key_idx = comptime dims.keyIndexOf(key), .val_idx = comptime dims.internedValueIndex(val) };
+    sample.label_count += 1;
+    return true;
+}
+
+/// Attach the sample's single caller-supplied label value. False when the
+/// sample is full, the value would overflow the inline buffer (the caller
+/// counts an omission — never truncates), or a dynamic label already exists.
+pub fn setDynamicLabel(sample: *Sample, comptime key: []const u8, val: []const u8) bool {
+    if (sample.label_count >= MAX_LABELS) return false;
+    if (val.len > MAX_LABEL_VAL) return false;
+    for (sample.labels[0..sample.label_count]) |label| {
+        if (label.val_idx == DYNAMIC_VALUE_INDEX) return false;
+    }
+    @memcpy(sample.dynamic[0..val.len], val);
+    sample.dynamic_len = @intCast(val.len);
+    sample.labels[sample.label_count] = .{ .key_idx = comptime dims.keyIndexOf(key), .val_idx = DYNAMIC_VALUE_INDEX };
+    sample.label_count += 1;
+    return true;
+}
+
+/// True when `val` would survive `setDynamicLabel` intact — lets a caller
+/// omit an attribute (and count it) before mutating the sample.
 pub fn valueFits(val: []const u8) bool {
     return val.len <= MAX_LABEL_VAL;
 }
@@ -138,7 +198,7 @@ pub fn bucketIndex(value: u64, bounds: []const u64) usize {
 // Serialization
 // ---------------------------------------------------------------------------
 
-fn appendAttributes(list: *std.ArrayList(u8), alloc: std.mem.Allocator, labels: []const Label) !void {
+fn appendAttributes(list: *std.ArrayList(u8), alloc: std.mem.Allocator, labels: []const Label, dynamic: []const u8) !void {
     try list.appendSlice(alloc, "\"attributes\":[");
     for (labels, 0..) |lbl, i| {
         if (i > 0) try list.appendSlice(alloc, ",");
@@ -147,8 +207,8 @@ fn appendAttributes(list: *std.ArrayList(u8), alloc: std.mem.Allocator, labels: 
         // them through json.fmt keeps the whole attribute escape-safe and
         // consistent with the value + the traces/logs serializers.
         try list.print(alloc, "{{\"key\":{f},\"value\":{{\"stringValue\":{f}}}}}", .{
-            std.json.fmt(lbl.key[0..lbl.key_len], .{}),
-            std.json.fmt(lbl.val[0..lbl.val_len], .{}),
+            std.json.fmt(labelKey(lbl), .{}),
+            std.json.fmt(labelValue(lbl, dynamic), .{}),
         });
     }
     try list.appendSlice(alloc, "]");
@@ -192,7 +252,7 @@ fn appendSum(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Series,
         "\"sum\":{{\"aggregationTemporality\":{d},\"isMonotonic\":{s},\"dataPoints\":[{{",
         .{ temporality, if (meta.monotonic) "true" else "false" },
     );
-    try appendAttributes(list, alloc, series.labels);
+    try appendAttributes(list, alloc, series.labels, series.dynamic);
     try list.print(alloc, ",\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\",", .{ start_ns, times.now_ns });
     try appendPointValue(list, alloc, series.sum_value, meta.scale);
     try list.appendSlice(alloc, DATA_POINTS_SUFFIX);
@@ -203,7 +263,7 @@ fn appendSum(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Series,
 /// can tell a level from a counter by its type alone.
 fn appendGauge(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Series, meta: MetricMeta, times: WireTimes) !void {
     try list.appendSlice(alloc, "\"gauge\":{\"dataPoints\":[{");
-    try appendAttributes(list, alloc, series.labels);
+    try appendAttributes(list, alloc, series.labels, series.dynamic);
     try list.print(alloc, ",\"timeUnixNano\":\"{d}\",", .{times.now_ns});
     try appendPointValue(list, alloc, series.sum_value, meta.scale);
     try list.appendSlice(alloc, DATA_POINTS_SUFFIX);
@@ -211,7 +271,7 @@ fn appendGauge(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Serie
 
 fn appendHistogram(list: *std.ArrayList(u8), alloc: std.mem.Allocator, series: Series, meta: MetricMeta, times: WireTimes) !void {
     try list.print(alloc, "\"histogram\":{{\"aggregationTemporality\":{d},\"dataPoints\":[{{", .{AGGREGATION_TEMPORALITY_DELTA});
-    try appendAttributes(list, alloc, series.labels);
+    try appendAttributes(list, alloc, series.labels, series.dynamic);
     try list.print(alloc, ",\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\",\"count\":\"{d}\",\"sum\":", .{ times.window_start_ns, times.now_ns, series.hist_count });
     const sum_magnitude: u64 = @intCast(@max(series.hist_sum, 0));
     try printScaled(list, alloc, sum_magnitude, meta.scale);
@@ -246,11 +306,9 @@ pub fn appendSeriesMetric(
     try list.appendSlice(alloc, "}");
 }
 
-/// What the extra-append hook did: metric objects appended into the envelope,
-/// and objects shed because the fixed payload arena could not hold them. The
-/// caller needs both — appended series join the export count the backend's
-/// partial-rejection reply is validated against, and shed series must surface
-/// as a discard rather than vanish.
+/// What the extra-append hook did: appended series join the export count the
+/// backend's partial-rejection reply is validated against; series shed at the
+/// fixed payload arena must surface as a discard rather than vanish.
 pub const ExtraAppendResult = struct { appended: usize = 0, shed: usize = 0 };
 
 /// Serialize aggregated series into one complete OTLP-JSON metrics envelope,

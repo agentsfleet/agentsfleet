@@ -5,6 +5,7 @@
 const std = @import("std");
 const otel_metrics = @import("otel_metrics.zig");
 const payload = @import("otel_metrics_payload.zig");
+const dims = @import("otel_metrics_dims.zig");
 const families = @import("otel_metrics_families.zig");
 const semconv = @import("semconv.zig");
 const otlp_config = @import("otlp/config.zig");
@@ -29,8 +30,8 @@ const TEST_CFG: otlp_config.GrafanaOtlpConfig = .{
 
 fn sampleWithLabels(id: payload.MetricId, value: i64) payload.Sample {
     var s = payload.newSample(id, value);
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
-    _ = payload.addLabel(&s, semconv.ATTR_REQUEST_MODEL, MODEL);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
+    _ = payload.setDynamicLabel(&s, semconv.ATTR_REQUEST_MODEL, MODEL);
     return s;
 }
 
@@ -70,31 +71,83 @@ test "enqueue drops on full and never blocks" {
     try std.testing.expectEqual(@as(u64, 1), ring.dropped.load(.acquire));
 }
 
-test "addLabel respects max count and rejects overflow" {
+test "label writers respect max count and reject overflow" {
     var s = payload.newSample(.token_usage, 1);
     var i: usize = 0;
     while (i < payload.MAX_LABELS) : (i += 1) {
-        try std.testing.expect(payload.addLabel(&s, "k", "v"));
+        try std.testing.expect(payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, POSTURE));
     }
-    try std.testing.expect(!payload.addLabel(&s, "overflow", "x"));
+    try std.testing.expect(!payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, POSTURE));
+    // The dynamic writer honours the same slot cap — no sixth label by any door.
+    try std.testing.expect(!payload.setDynamicLabel(&s, semconv.ATTR_REQUEST_MODEL, MODEL));
     try std.testing.expectEqual(@as(u8, payload.MAX_LABELS), s.label_count);
 }
 
-test "addLabel rejects an oversized key or value without partial write" {
+test "test_sample_size_bound" {
+    // pin test: literal is the contract — the compact-sample memory story.
+    try std.testing.expectEqual(@as(usize, 128), payload.SAMPLE_SIZE_BOUND);
+    try std.testing.expect(@sizeOf(payload.Sample) <= payload.SAMPLE_SIZE_BOUND);
+}
+
+test "satCast saturates past-maxInt counters instead of trapping" {
+    try std.testing.expectEqual(@as(i64, 7), payload.satCast(7));
+    try std.testing.expectEqual(@as(i64, std.math.maxInt(i64)), payload.satCast(std.math.maxInt(u64)));
+}
+
+test "setDynamicLabel rejects an oversized value without partial write" {
     var s = payload.newSample(.token_usage, 1);
     const huge_val = "v" ** (payload.MAX_LABEL_VAL + 1);
     try std.testing.expect(!payload.valueFits(huge_val));
-    try std.testing.expect(!payload.addLabel(&s, semconv.ATTR_REQUEST_MODEL, huge_val));
-    try std.testing.expectEqual(@as(u8, 0), s.label_count);
-
-    const huge_key = "k" ** (payload.MAX_LABEL_KEY + 1);
-    try std.testing.expect(!payload.addLabel(&s, huge_key, "v"));
+    try std.testing.expect(!payload.setDynamicLabel(&s, semconv.ATTR_REQUEST_MODEL, huge_val));
     try std.testing.expectEqual(@as(u8, 0), s.label_count);
 }
 
-test "every live attribute key fits the payload key bound" {
-    // The bound is what makes the sample fixed-size; a registry key that did not
-    // fit would be silently dropped from every point that carries it.
+test "a second dynamic label is refused — one caller-supplied value per sample" {
+    var s = payload.newSample(.token_usage, 1);
+    try std.testing.expect(payload.setDynamicLabel(&s, semconv.ATTR_REQUEST_MODEL, MODEL));
+    try std.testing.expect(!payload.setDynamicLabel(&s, semconv.ATTR_REQUEST_MODEL, MODEL));
+    try std.testing.expectEqual(@as(u8, 1), s.label_count);
+}
+
+test "a value outside the closed table is refused, never partially written" {
+    var s = payload.newSample(.token_usage, 1);
+    try std.testing.expect(!payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, "fixture-unregistered-value"));
+    try std.testing.expectEqual(@as(u8, 0), s.label_count);
+}
+
+test "closed-table validation is pool-wide, not per-key — pinned as the contract" {
+    // The intern pool is one global closed set: a value declared for a
+    // different dimension is accepted under any key. Bounded either way (only
+    // declared values exist at all); per-key value sets would add tables for
+    // a mismatch no writer can express through the typed instrument layer.
+    var s = payload.newSample(.token_usage, 1);
+    try std.testing.expect(payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, semconv.TokenType.input.label()));
+    try std.testing.expectEqual(@as(u8, 1), s.label_count);
+}
+
+test "an unregistered error_type is dropped while the duration sample still exports" {
+    // The closed pool registers exactly the one error verdict production can
+    // pass (semconv.ERROR_TYPE_FLEET_ERROR); an undeclared spelling loses the
+    // label, never the measurement — the same omission posture as provider
+    // and model, without a counter because no live caller can reach it.
+    otel_metrics.testSetInstalled(TEST_CFG);
+    defer otel_metrics.testClear();
+    otel_metrics.observeInvokeAgentDuration(42, "fixture-unregistered-error", ATTR);
+    const popped = otel_metrics.testPop();
+    try std.testing.expect(popped != null);
+    var has_error_key = false;
+    var i: u8 = 0;
+    while (i < popped.?.label_count) : (i += 1) {
+        if (std.mem.eql(u8, payload.labelKey(popped.?.labels[i]), semconv.ATTR_ERROR_TYPE)) has_error_key = true;
+    }
+    try std.testing.expect(!has_error_key);
+    // Posture, provider, and model all survived the dropped error label.
+    try std.testing.expectEqual(@as(u8, 3), popped.?.label_count);
+}
+
+test "every live attribute key has a registered intern index" {
+    // A key missing from the payload key table fails the build here — the
+    // interned sample cannot carry an undeclared key at all.
     inline for (.{
         semconv.ATTR_OPERATION_NAME,
         semconv.ATTR_PROVIDER_NAME,
@@ -104,7 +157,7 @@ test "every live attribute key fits the payload key bound" {
         semconv.ATTR_EXECUTION_POSTURE,
         semconv.ATTR_CHARGE_TYPE,
     }) |key| {
-        try std.testing.expect(key.len <= payload.MAX_LABEL_KEY);
+        _ = comptime dims.keyIndexOf(key);
     }
 }
 
@@ -172,21 +225,21 @@ test "the serialized payload matches the pinned OTLP-JSON fixture" {
 
     // Window = [1000, 2000] (delta temporality, one window stamp).
     var s_credit = payload.newSample(.credit_consumed, 0);
-    _ = payload.addLabel(&s_credit, semconv.ATTR_CHARGE_TYPE, semconv.ChargeClass.settle.label());
-    _ = payload.addLabel(&s_credit, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
-    _ = payload.addLabel(&s_credit, semconv.ATTR_PROVIDER_NAME, PROVIDER);
-    _ = payload.addLabel(&s_credit, semconv.ATTR_REQUEST_MODEL, MODEL);
+    _ = payload.addClosedLabel(&s_credit, semconv.ATTR_CHARGE_TYPE, semconv.ChargeClass.settle.label());
+    _ = payload.addClosedLabel(&s_credit, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
+    _ = payload.addClosedLabel(&s_credit, semconv.ATTR_PROVIDER_NAME, PROVIDER);
+    _ = payload.setDynamicLabel(&s_credit, semconv.ATTR_REQUEST_MODEL, MODEL);
 
     var s_tokens = payload.newSample(.token_usage, 0);
-    _ = payload.addLabel(&s_tokens, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
-    _ = payload.addLabel(&s_tokens, semconv.ATTR_TOKEN_TYPE, semconv.TokenType.input.label());
-    _ = payload.addLabel(&s_tokens, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
-    _ = payload.addLabel(&s_tokens, semconv.ATTR_PROVIDER_NAME, PROVIDER);
-    _ = payload.addLabel(&s_tokens, semconv.ATTR_REQUEST_MODEL, MODEL);
+    _ = payload.addInternedLabel(&s_tokens, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
+    _ = payload.addClosedLabel(&s_tokens, semconv.ATTR_TOKEN_TYPE, semconv.TokenType.input.label());
+    _ = payload.addClosedLabel(&s_tokens, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
+    _ = payload.addClosedLabel(&s_tokens, semconv.ATTR_PROVIDER_NAME, PROVIDER);
+    _ = payload.setDynamicLabel(&s_tokens, semconv.ATTR_REQUEST_MODEL, MODEL);
 
     var s_dur = payload.newSample(.invoke_agent_duration, 0);
-    _ = payload.addLabel(&s_dur, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
-    _ = payload.addLabel(&s_dur, semconv.ATTR_REQUEST_MODEL, MODEL);
+    _ = payload.addClosedLabel(&s_dur, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
+    _ = payload.setDynamicLabel(&s_dur, semconv.ATTR_REQUEST_MODEL, MODEL);
 
     // One 37ms observation → the first bucket (≤ 0.1s), index 0. On the
     // client-call table this landed at index 2; the agent table starts a decade
@@ -200,9 +253,9 @@ test "the serialized payload matches the pinned OTLP-JSON fixture" {
     // pin test: literal is the contract — these values are what
     // tests/fixtures/telemetry/otlp_metrics.json encodes.
     const series = [_]payload.Series{
-        .{ .id = .credit_consumed, .labels = s_credit.labels[0..s_credit.label_count], .sum_value = 123456, .hist_count = 0, .hist_sum = 0, .bucket_counts = &[_]u64{} },
-        .{ .id = .token_usage, .labels = s_tokens.labels[0..s_tokens.label_count], .sum_value = 0, .hist_count = 1, .hist_sum = 42, .bucket_counts = &tok_buckets },
-        .{ .id = .invoke_agent_duration, .labels = s_dur.labels[0..s_dur.label_count], .sum_value = 0, .hist_count = 1, .hist_sum = 37, .bucket_counts = &dur_buckets },
+        .{ .id = .credit_consumed, .labels = s_credit.labels[0..s_credit.label_count], .dynamic = s_credit.dynamic[0..s_credit.dynamic_len], .sum_value = 123456, .hist_count = 0, .hist_sum = 0, .bucket_counts = &[_]u64{} },
+        .{ .id = .token_usage, .labels = s_tokens.labels[0..s_tokens.label_count], .dynamic = s_tokens.dynamic[0..s_tokens.dynamic_len], .sum_value = 0, .hist_count = 1, .hist_sum = 42, .bucket_counts = &tok_buckets },
+        .{ .id = .invoke_agent_duration, .labels = s_dur.labels[0..s_dur.label_count], .dynamic = s_dur.dynamic[0..s_dur.dynamic_len], .sum_value = 0, .hist_count = 1, .hist_sum = 37, .bucket_counts = &dur_buckets },
     };
 
     // pin test: literal is the contract (window start/now). All three families
@@ -230,6 +283,7 @@ test "test_gauge_serializes_as_gauge" {
     const series = [_]payload.Series{.{
         .id = .api_in_flight_requests,
         .labels = &[_]payload.Label{},
+        .dynamic = &.{},
         .sum_value = 5,
         .hist_count = 0,
         .hist_sum = 0,

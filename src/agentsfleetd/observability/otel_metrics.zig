@@ -83,7 +83,7 @@ pub const Attribution = struct {
 /// interoperability the value does not have.
 fn appendProviderAndModel(sample: *Sample, attr: Attribution) void {
     if (semconv.normalizeProvider(attr.provider)) |known| {
-        _ = payload.addLabel(sample, semconv.ATTR_PROVIDER_NAME, known);
+        _ = payload.addClosedLabel(sample, semconv.ATTR_PROVIDER_NAME, known);
     } else {
         health.recordAttributeOmission(.provider_name, .unmapped_provider);
     }
@@ -96,7 +96,7 @@ fn appendProviderAndModel(sample: *Sample, attr: Attribution) void {
         health.recordAttributeOmission(.request_model, .budget_exhausted);
         return;
     }
-    _ = payload.addLabel(sample, semconv.ATTR_REQUEST_MODEL, attr.model);
+    _ = payload.setDynamicLabel(sample, semconv.ATTR_REQUEST_MODEL, attr.model);
 }
 
 /// Record a committed credit debit (nanocredits) under its fixed charge class.
@@ -106,8 +106,8 @@ pub fn recordCreditConsumed(nanos: i64, charge: semconv.ChargeClass, attr: Attri
     if (!isInstalled()) return;
     if (nanos == 0) return;
     var s = payload.newSample(.credit_consumed, nanos);
-    _ = payload.addLabel(&s, semconv.ATTR_CHARGE_TYPE, charge.label());
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_CHARGE_TYPE, charge.label());
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
     appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
@@ -119,9 +119,9 @@ pub fn observeTokenUsage(count: i64, token_type: semconv.TokenType, attr: Attrib
     if (!isInstalled()) return;
     if (count == 0) return;
     var s = payload.newSample(.token_usage, count);
-    _ = payload.addLabel(&s, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
-    _ = payload.addLabel(&s, semconv.ATTR_TOKEN_TYPE, token_type.label());
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    _ = payload.addInternedLabel(&s, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_TOKEN_TYPE, token_type.label());
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
     appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
@@ -131,7 +131,7 @@ pub fn observeCacheReadTokens(count: i64, attr: Attribution) void {
     if (!isInstalled()) return;
     if (count == 0) return;
     var s = payload.newSample(.cache_read_token_usage, count);
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
     appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
@@ -142,8 +142,8 @@ pub fn observeCacheReadTokens(count: i64, attr: Attribution) void {
 pub fn observeInvokeAgentDuration(wall_ms: i64, error_type: ?[]const u8, attr: Attribution) void {
     if (!isInstalled()) return;
     var s = payload.newSample(.invoke_agent_duration, wall_ms);
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
-    if (error_type) |value| _ = payload.addLabel(&s, semconv.ATTR_ERROR_TYPE, value);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    if (error_type) |value| _ = payload.addClosedLabel(&s, semconv.ATTR_ERROR_TYPE, value);
     appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
@@ -265,6 +265,7 @@ fn serializeMetrics(
         series_buf[count] = .{
             .id = .samples_dropped,
             .labels = &[_]payload.Label{},
+            .dynamic = &.{},
             .sum_value = @intCast(total_dropped),
             .hist_count = 0,
             .hist_sum = 0,
