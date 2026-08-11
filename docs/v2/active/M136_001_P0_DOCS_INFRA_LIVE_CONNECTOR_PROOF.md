@@ -56,6 +56,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Mark external proof complete only after every live rubric row passes. |
 | `playbooks/operations/slack_app_registration/001_playbook.md` | EDIT if discovered | Record corrections proven during the live workspace flow. |
 | `playbooks/operations/github_app_registration/001_playbook.md` | EDIT if discovered | Record corrections proven during the live repository flow. |
+| `ui/packages/app/tests/e2e/acceptance/fleet-count.spec.ts` | EDIT | Dimension 5.1 needs the real reviewer Fleet and a stop/resume cycle; the shipped spec seeds synthetic fleets and only counts upward. |
+| `ui/packages/app/tests/e2e/acceptance/multi-fleet.spec.ts` | EDIT | Dimension 5.2 needs the workspace-stream connection count; the shipped spec asserts tile state only and concedes the stream is unobserved. |
+| `ui/packages/app/tests/e2e/acceptance/reviewer-wall.spec.ts` | CREATE | Dimensions 5.3 and 5.4 have no home: delivery routing to a single tile, and reconnect plus replay leaving activity unduplicated. |
+| `ui/packages/app/playwright.acceptance.config.ts` | EDIT | Schedule the new project after `pulse-wall`, so the reviewer walk runs once the wall chain has settled. |
 
 ## Applicable Rules
 
@@ -65,7 +69,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Gates
 
-N/A — docs/markdown and external proof only. Provider, secret, repository, and runner mutations remain governed by their operational safety rules.
+§5's proof is automation, not observation, so the TypeScript dispatch fires on the acceptance specs. Provider, secret, repository, and runner mutations remain governed by their operational safety rules.
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| TypeScript FILE SHAPE DECISION | yes — one new acceptance spec | shape verdict at PLAN before the file lands |
+| File & Function Length (≤350/≤50/≤70) | yes — the wall specs grow a lifecycle walk | the reviewer walk is its own spec file rather than growth on the two existing ones |
+| UFS (repeated/semantic literals) | yes — seed prefixes, stream paths, and timeouts repeat | named constants per file, sharing the fixture vocabulary the acceptance suite already uses |
+| UI Substitution / DESIGN TOKEN | no — the specs author no user-facing markup | N/A |
+| ZIG / PUB / LIFECYCLE / SCHEMA / LOGGING | no — no Zig, no schema, no daemon surface | N/A |
+| MILESTONE-ID | yes — the new spec is net-new source | the file header cites `M136_001` |
 
 ## Prior-Art / Reference Implementations
 
