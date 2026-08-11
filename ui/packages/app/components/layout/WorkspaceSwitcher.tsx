@@ -10,6 +10,7 @@ import {
   maySpeculateOnHover,
   useIntentModule,
 } from "@/components/domain/island-dynamic/intent-module-loader";
+import { useCreatedWorkspaces } from "./WorkspaceCreationProvider";
 import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
 
 type Props = {
@@ -26,8 +27,14 @@ export default function WorkspaceSwitcher({ workspaces }: Props) {
   const [activated, setActivated] = useState(false);
   const [open, setOpen] = useState(false);
   const routedId = workspaceIdFromPath(pathname);
+  // The server-provided list goes stale the moment creation navigates here:
+  // this trigger is what survives that navigation (the menu unmounts), so it
+  // must resolve just-created workspaces from the creation context or the
+  // header shows the placeholder until a full reload.
+  const createdWorkspaces = useCreatedWorkspaces();
   const active = routedId
-    ? workspaces.find((workspace) => workspace.id === routedId)
+    ? (workspaces.find((workspace) => workspace.id === routedId) ??
+      createdWorkspaces.find((workspace) => workspace.id === routedId))
     : workspaces[0];
   const activeLabel =
     routedId && !active

@@ -41,6 +41,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **PR title (eventual):** fix(api,app,e2e): green the acceptance suite by fixing its seven root causes
 - **Intent (one sentence):** the acceptance suite becomes a trustworthy deploy gate again because the product bugs it caught are fixed and the assertions that measured nothing real are replaced with ones that do.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Restatement (Orly, at PLAN):** every one of the ten failures gets fixed where it actually broke — four in shipped product/server code, three in test contracts that had gone stale — so a green suite means the product works, not that the tests look away. `ASSUMPTIONS I'M MAKING:` (1) Indy's "same PR" instruction overrides the prior handoff's separate-stream note; (2) the dev wallet hole is healed through the replay code path, never by manual data repair; (3) the full-suite proof can only land on the post-merge deploy-dev run, so R6 grades after merge.
 
 ## Implementing agent — read these first
 
@@ -58,6 +59,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/state/signup_bootstrap_test.zig` | EDIT | replay-heal coverage: missing wallet is restored, existing balance untouched |
 | `ui/packages/app/components/layout/WorkspaceSwitcher.tsx` | EDIT | always-mounted trigger merges optimistically created workspaces before resolving its label |
 | `ui/packages/app/components/layout/WorkspaceSwitcher.test.tsx` | CREATE | label resolution coverage incl. the routed-but-not-yet-listed workspace |
+| `ui/packages/app/components/layout/WorkspaceCreationProvider.tsx` | EDIT | gains the read-only created-workspaces hook the trigger consumes |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/actions.ts` | EDIT | gains the replace (rotate) server action wrapping the existing PUT client |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog.tsx` | EDIT | Rotate calls replace, not create; stale "create upsert" comment corrected |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog.test.tsx` | EDIT | asserts the replace action is called; conflict-on-rotate becomes a regression case |
@@ -68,6 +70,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/e2e/acceptance/install-fleet-cli.spec.ts` | EDIT | drops its duplicated trigger fixture for the shared builder |
 | `ui/packages/app/tests/e2e/acceptance/logs-detail.spec.ts` | EDIT | polls the events list by fields it still carries; message text asserted via the detail surface |
 | `ui/packages/app/tests/e2e/acceptance/dashboard-performance.spec.ts` | EDIT | `networkidle` wait replaced by a content gate; blank-frame audit samples at paint boundaries |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/blank-frame-audit.ts` | CREATE | the paint-boundary audit, extracted so the unit lane drives the same logic |
+| `ui/packages/app/tests/blank-frame-audit.test.ts` | CREATE | unit lane for the audit (vitest excludes tests/e2e/** as test files) |
+| `ui/packages/app/tests/acceptance-suite-hygiene.test.ts` | CREATE | grep-backed invariants: shared fixture keys, no local builders, no networkidle |
+| `ui/packages/app/tests/secrets-components.test.ts` | EDIT | dismiss-guard suite follows the rotate action to replace |
 
 ## Applicable Rules
 
@@ -101,8 +107,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Implementation default:** `fixtures/seed.ts` exports the trigger and skill builders it already owns (the empty-body skill variant moves in beside them); spec-local copies are deleted rather than patched.
 
-- **Dimension 1.1** — the shared trigger builder carries every frontmatter key the daemon requires, proven against the parser's requirement set → Test `test_shared_trigger_fixture_satisfies_required_keys`
-- **Dimension 1.2** — no acceptance spec defines a private trigger/skill markdown builder → Test `test_no_spec_local_bundle_builders_remain`
+- **Dimension 1.1** — the shared trigger builder carries every frontmatter key the daemon requires, proven against the parser's requirement set → Test `test_shared_trigger_fixture_satisfies_required_keys` — **DONE**
+- **Dimension 1.2** — no acceptance spec defines a private trigger/skill markdown builder → Test `test_no_spec_local_bundle_builders_remain` — **DONE**
 
 ### §2 — The signup replay converges the wallet invariant
 
@@ -110,9 +116,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Implementation default:** call the existing idempotent starter grant inside the replay path (both the fast path and the unique-violation race path resolve through `replayExisting`); the fail-loud 500 in the billing handler stays — the invariant is converged at bootstrap, not silenced at read.
 
-- **Dimension 2.1** — replaying signup for a tenant with no wallet row restores the starter grant → Test `test_replay_heals_missing_wallet`
-- **Dimension 2.2** — replaying signup for a tenant with a spent-down wallet leaves the balance untouched → Test `test_replay_never_tops_up_existing_wallet`
-- **Dimension 2.3** — the heal logs a distinct event so an operator can see the invariant was converged → Test `test_replay_heal_emits_named_record`
+- **Dimension 2.1** — replaying signup for a tenant with no wallet row restores the starter grant → Test `test_replay_heals_missing_wallet` — **DONE**
+- **Dimension 2.2** — replaying signup for a tenant with a spent-down wallet leaves the balance untouched → Test `test_replay_never_tops_up_existing_wallet` — **DONE**
+- **Dimension 2.3** — the heal logs a distinct event so an operator can see the invariant was converged → Test `test_replay_heal_emits_named_record` — **DONE**
 
 ### §3 — The switcher label survives the navigation that workspace creation triggers
 
@@ -120,24 +126,24 @@ The optimistic merge of a just-created workspace lives only in the lazily-mounte
 
 **Implementation default:** the trigger consumes the same `WorkspaceCreationProvider` context the menu already reads and merges `createdWorkspaces` before resolving its label — restoring the pre-split behavior without adding a fetch or a refresh race.
 
-- **Dimension 3.1** — a routed workspace id found only in `createdWorkspaces` resolves to that workspace's name, not the placeholder → Test `test_trigger_label_resolves_created_workspace`
-- **Dimension 3.2** — a routed id in the server-provided list keeps resolving as today → Test `test_trigger_label_resolves_listed_workspace`
-- **Dimension 3.3** — a routed id known to neither list still shows the placeholder (deep link to a foreign workspace stays honest) → Test `test_trigger_label_placeholder_for_unknown_id`
+- **Dimension 3.1** — a routed workspace id found only in `createdWorkspaces` resolves to that workspace's name, not the placeholder → Test `test_trigger_label_resolves_created_workspace` — **DONE**
+- **Dimension 3.2** — a routed id in the server-provided list keeps resolving as today → Test `test_trigger_label_resolves_listed_workspace` — **DONE**
+- **Dimension 3.3** — a routed id known to neither list still shows the placeholder (deep link to a foreign workspace stays honest) → Test `test_trigger_label_placeholder_for_unknown_id` — **DONE**
 
 ### §4 — Rotating a secret replaces its value instead of claiming its name
 
 Secret creation stopped upserting in `33fd024c9`; the models-settings dialogs were migrated to the PUT replace endpoint the next day (`b5e8e2430`), but the standalone secrets page's edit dialog still rotates via the create action, so every rotation of an existing secret answers `UZ-VAULT-005` and the dialog never closes.
 
-- **Dimension 4.1** — the secrets page owns a replace server action wrapping the existing PUT client → Test `test_secrets_replace_action_calls_put`
-- **Dimension 4.2** — Rotate in the edit dialog invokes replace, and a success closes the dialog → Test `test_rotate_invokes_replace_and_closes`
-- **Dimension 4.3** — the name-conflict error surface remains reachable only from creation, never from rotation of an unchanged name → Test `test_rotate_cannot_conflict_on_own_name`
+- **Dimension 4.1** — the secrets page owns a replace server action wrapping the existing PUT client → Test `test_secrets_replace_action_calls_put` — **DONE**
+- **Dimension 4.2** — Rotate in the edit dialog invokes replace, and a success closes the dialog → Test `test_rotate_invokes_replace_and_closes` — **DONE**
+- **Dimension 4.3** — the name-conflict error surface remains reachable only from creation, never from rotation of an unchanged name → Test `test_rotate_cannot_conflict_on_own_name` — **DONE**
 
 ### §5 — The logs journey asserts through the surface that carries the payload
 
 m154 (`cbd7a945b`) deliberately removed `request_json` from the events list (a daemon integration test asserts its absence); the payload moved to the single-event detail route. `logs-detail.spec.ts` still reads the field off list items and throws before asserting anything.
 
-- **Dimension 5.1** — the journey locates the seeded event via fields the list still carries → Test `the logs journey (repaired in place, same test title)`
-- **Dimension 5.2** — the message text is asserted through the detail surface the operator actually opens → covered by the same repaired journey's detail-dialog assertions
+- **Dimension 5.1** — the journey locates the seeded event via fields the list still carries → Test `the logs journey (repaired in place, same test title)` — **DONE**
+- **Dimension 5.2** — the message text is asserted through the detail surface the operator actually opens → covered by the same repaired journey's detail-dialog assertions — **DONE**
 
 ### §6 — The session keeper refreshes once per tick, and the test waits on content, not silence
 
@@ -145,16 +151,16 @@ m154 (`cbd7a945b`) deliberately removed `request_json` from the events list (a d
 
 **Implementation default:** the effect re-arms on the stable session/user identifier (object held in a ref), preserving the documented 45 s cadence; the e2e wait becomes a content-specific locator from the loaded catalog plus the existing script-request reset.
 
-- **Dimension 6.1** — a reload returning a new user object schedules no additional immediate refresh → Test `test_keeper_single_refresh_despite_identity_churn`
-- **Dimension 6.2** — the 45 s visible-tab cadence and unmount cleanup are unchanged → Test `existing keeper suite stays green unmodified in intent`
-- **Dimension 6.3** — the intent-loading journey gates on rendered catalog content, with no `networkidle` wait anywhere in the acceptance tree → Test `test_no_networkidle_in_acceptance_suite`
+- **Dimension 6.1** — a reload returning a new user object schedules no additional immediate refresh → Test `test_keeper_single_refresh_despite_identity_churn` — **DONE**
+- **Dimension 6.2** — the 45 s visible-tab cadence and unmount cleanup are unchanged → Test `existing keeper suite stays green unmodified in intent` — **DONE**
+- **Dimension 6.3** — the intent-loading journey gates on rendered catalog content, with no `networkidle` wait anywhere in the acceptance tree → Test `test_no_networkidle_in_acceptance_suite` — **DONE**
 
 ### §7 — A blank frame means a painted frame with no content
 
 The blank-frame audit counts DOM states observed at mutation microtasks — states between React commits that the compositor never paints — so back-to-back navigations intermittently "fail" with a blank the user cannot see (`:79` in run 31411517048, `:133` in run 31458941845, both green in between). Sampling at paint boundaries keeps the real invariant (a painted empty `main` still fails) and removes the phantom.
 
-- **Dimension 7.1** — the audit samples `main` at animation-frame timing; a textless state that never reaches a frame does not count → Test `both blank-frame journeys assert 0 via the paint-boundary audit`
-- **Dimension 7.2** — a genuinely blanked `main` (content removed and left empty across a frame) still increments the count → Test `test_paint_boundary_audit_detects_real_blank`
+- **Dimension 7.1** — the audit samples `main` at animation-frame timing; a textless state that never reaches a frame does not count → Test `both blank-frame journeys assert 0 via the paint-boundary audit` — **DONE**
+- **Dimension 7.2** — a genuinely blanked `main` (content removed and left empty across a frame) still increments the count → Test `test_paint_boundary_audit_detects_real_blank` — **DONE**
 
 ## Interfaces
 
