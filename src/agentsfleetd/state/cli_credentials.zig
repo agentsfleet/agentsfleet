@@ -133,7 +133,7 @@ pub fn listForUser(
     var q = PgQuery.from(try conn.query(sql.SELECT_LIVE_CLI_CREDENTIALS_FOR_USER, .{user_id}));
     defer q.deinit();
 
-    var rows = std.ArrayList(Listed){};
+    var rows: std.ArrayList(Listed) = .empty;
     errdefer {
         for (rows.items) |r| r.deinit(alloc);
         rows.deinit(alloc);
@@ -151,17 +151,28 @@ pub fn deinitList(alloc: std.mem.Allocator, rows: []Listed) void {
     alloc.free(rows);
 }
 
-fn copyListed(alloc: std.mem.Allocator, row: anytype) !Listed {
-    const id = try alloc.dupe(u8, row.get([]const u8, 0));
+/// Takes `pg.Row` concretely, never `anytype` — an `anytype` row parameter is
+/// only analysed when something instantiates it, so a column-shape mistake in
+/// here would compile clean until the first caller appeared. `pg.Row.get`
+/// returns an error union in `.safe` mode; each read translates to
+/// `error.DbRowShape` exactly as `cmd/api_key_lookup.zig` does.
+fn copyListed(alloc: std.mem.Allocator, row: pg.Row) !Listed {
+    const id_raw = row.get([]u8, 0) catch return error.DbRowShape;
+    const machine_name_raw = row.get([]u8, 1) catch return error.DbRowShape;
+    const prefix_raw = row.get([]u8, 2) catch return error.DbRowShape;
+    const deployment_raw = row.get([]u8, 3) catch return error.DbRowShape;
+    const created_from_address_raw = row.get([]u8, 4) catch return error.DbRowShape;
+    const created_at = row.get(i64, 5) catch return error.DbRowShape;
+
+    const id = try alloc.dupe(u8, id_raw);
     errdefer alloc.free(id);
-    const machine_name = try alloc.dupe(u8, row.get([]const u8, 1));
+    const machine_name = try alloc.dupe(u8, machine_name_raw);
     errdefer alloc.free(machine_name);
-    const prefix = try alloc.dupe(u8, row.get([]const u8, 2));
+    const prefix = try alloc.dupe(u8, prefix_raw);
     errdefer alloc.free(prefix);
-    const deployment = try alloc.dupe(u8, row.get([]const u8, 3));
+    const deployment = try alloc.dupe(u8, deployment_raw);
     errdefer alloc.free(deployment);
-    const created_from_address = try alloc.dupe(u8, row.get([]const u8, 4));
-    errdefer alloc.free(created_from_address);
+    const created_from_address = try alloc.dupe(u8, created_from_address_raw);
 
     return .{
         .id = id,
@@ -169,6 +180,43 @@ fn copyListed(alloc: std.mem.Allocator, row: anytype) !Listed {
         .prefix = prefix,
         .deployment = deployment,
         .created_from_address = created_from_address,
-        .created_at = row.get(i64, 5),
+        .created_at = created_at,
     };
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────
+
+const testing = std.testing;
+
+// Forces semantic analysis of every declaration above.
+//
+// Nothing in the tree calls this module yet, and Zig only analyses a function
+// body once something references it — so `zig build` reported success over a
+// `copyListed` that could not compile. A bare `_ = @import(...)` in
+// `tests.zig` does not close that hole: it evaluates the module, not its
+// bodies. This reference does, and must stay until real call sites exist.
+test {
+    testing.refAllDecls(@This());
+}
+
+test "listing a user's credentials returns nothing that authenticates" {
+    // Dimension 1.3 — only a hash is stored and the row must not surrender it.
+    // Asserted against the statement text so it holds without a datastore.
+    try testing.expect(std.mem.indexOf(u8, sql.SELECT_LIVE_CLI_CREDENTIALS_FOR_USER, "credential_hash") == null);
+    try testing.expect(std.mem.indexOf(u8, sql.SELECT_LIVE_CLI_CREDENTIALS_FOR_USER, "credential_prefix") != null);
+}
+
+test "both revoke statements are owner-scoped" {
+    // A revoke that forgot `user_id` would let any caller retire a credential
+    // by guessing its identifier, and would make re-login revoke every machine.
+    try testing.expect(std.mem.indexOf(u8, sql.REVOKE_CLI_CREDENTIAL_BY_ID, "user_id") != null);
+    try testing.expect(std.mem.indexOf(u8, sql.REVOKE_CLI_CREDENTIAL_FOR_MACHINE, "user_id") != null);
+    try testing.expect(std.mem.indexOf(u8, sql.REVOKE_CLI_CREDENTIAL_FOR_MACHINE, "machine_name") != null);
+}
+
+test "revoking only ever touches live rows" {
+    // `revoked_at IS NULL` keeps a re-revoke from overwriting the original
+    // timestamp, so the audit trail records when a credential actually died.
+    try testing.expect(std.mem.indexOf(u8, sql.REVOKE_CLI_CREDENTIAL_BY_ID, "revoked_at IS NULL") != null);
+    try testing.expect(std.mem.indexOf(u8, sql.REVOKE_CLI_CREDENTIAL_FOR_MACHINE, "revoked_at IS NULL") != null);
 }
