@@ -71,8 +71,17 @@ pub fn provision(
     balance_nanos: i64,
     grant_source: []const u8,
 ) !void {
-    try store.insertIfAbsent(conn, tenant_id, balance_nanos, grant_source);
+    _ = try store.insertIfAbsent(conn, tenant_id, balance_nanos, grant_source);
     log.info("tenant_billing_provisioned", .{ .tenant_id = tenant_id, .balance_nanos = balance_nanos, .source = grant_source });
+}
+
+/// Replay-path convergence for the bootstrap invariant: restore the starter
+/// grant iff the tenant's wallet row is missing. Returns true when a row was
+/// inserted (the invariant had been violated); an existing wallet — including
+/// a spent-down balance — is never touched, so a replayed webhook can never
+/// top a tenant up.
+pub fn healStarterGrant(conn: *pg.Conn, tenant_id: []const u8) !bool {
+    return store.insertIfAbsent(conn, tenant_id, STARTER_CREDIT_NANOS, BOOTSTRAP_GRANT_SOURCE);
 }
 
 /// Insert the one-time $5 starter grant for a new tenant. Called from the
