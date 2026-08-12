@@ -193,6 +193,23 @@ pub const REVOKE_CLI_CREDENTIAL_BY_ID =
     \\WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL
 ;
 
+/// Resolve an authenticated subject to the user row these endpoints write
+/// against. `core.cli_credentials.user_id` is a foreign key to `core.users(id)`,
+/// but a principal carries the identity provider's subject, so the two are one
+/// lookup apart.
+///
+/// Deliberately narrower than `SELECT_BOOTSTRAP_IDENTITY`, which joins
+/// memberships on the owner role and requires a named workspace: a read-only
+/// collaborator satisfies neither and would resolve nothing. A collaborator
+/// minting a credential for their own terminal is precisely the case the
+/// resolved-capability model exists to keep working.
+pub const SELECT_USER_IDENTITY_BY_SUBJECT =
+    \\SELECT id::text, tenant_id::text
+    \\FROM core.users
+    \\WHERE oidc_subject = $1
+    \\LIMIT 1
+;
+
 /// A user's live credentials, newest first. `credential_prefix` is the only
 /// credential-shaped column returned, and it does not authenticate.
 pub const SELECT_LIVE_CLI_CREDENTIALS_FOR_USER =

@@ -122,6 +122,8 @@ pub const ENTRIES = [_]Entry{
     eu("UZ-AUTH-022", .forbidden, "Insufficient scope", "Your token does not carry a scope required for this action. The required scope is named in the error detail; see the [Scopes](/api-reference/scopes) reference for what each one grants.", "You need an additional scope for that. Ask an agentsfleet admin to grant the scope this action requires."),
     e("UZ-AUTH-023", .unauthorized, "Command-line credential revoked", "This credential was revoked — by a logout, by a newer login from the same machine, or from the dashboard. " ++
         "Run `agentsfleet login` to mint a new one."), // reachable: no — CLI authenticate path
+    e("UZ-AUTH-024", .not_found, "Command-line credential not found", "No live credential of yours has that identifier. It may already be revoked, or it may belong to someone else — " ++
+        "the two answer alike on purpose, so an identifier cannot be probed for whose it is. Run `agentsfleet cli-credentials list` to see your live ones."), // reachable: no — CLI credential management
     // ── API (serving-plane backpressure) ─────────────────────────────────────
     e("UZ-API-001", .too_many_requests, "Too many requests", "The API is handling its maximum number of requests. Wait for the Retry-After delay, then retry."), // reachable: no — instance-wide backpressure shed, hit before routing; not a rendered dashboard error
     e("UZ-API-002", .service_unavailable, "Activity stream capacity reached", "The API is serving its maximum number of activity streams. Close unused dashboard tabs or retry shortly."), // reachable: no — SSE connect rejection surfaces as a stream-level reconnect, not a rendered problem+json page
