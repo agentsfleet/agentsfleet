@@ -207,7 +207,10 @@ fn verifyFleetInWorkspace(
 /// own piece of work. Naming no one is honest; naming the wrong person is not.
 fn buildSteerActor(alloc: std.mem.Allocator, principal: common.AuthPrincipal) ![]u8 {
     return switch (principal.mode) {
-        .jwt_oidc => if (principal.user_id) |uid|
+        // A CLI credential names its person, exactly as a browser session
+        // does — the whole point of the credential being user-scoped is that
+        // a steer from a terminal is attributable to a human, not to "machine".
+        .jwt_oidc, .cli_credential => if (principal.user_id) |uid|
             std.fmt.allocPrint(alloc, ACTOR_STEER_PREFIX ++ "{s}", .{uid})
         else
             alloc.dupe(u8, ACTOR_STEER_MACHINE),

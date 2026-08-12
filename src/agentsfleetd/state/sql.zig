@@ -168,9 +168,11 @@ pub const INSERT_CLI_CREDENTIAL =
 /// for the caller to judge, so a revoked credential is refused with its own
 /// code rather than being indistinguishable from an unknown one.
 pub const SELECT_CLI_CREDENTIAL_BY_HASH =
-    \\SELECT id::text, user_id::text, tenant_id::text, deployment, revoked_at
-    \\FROM core.cli_credentials
-    \\WHERE credential_hash = $1
+    \\SELECT c.id::text, c.user_id::text, c.tenant_id::text, c.deployment,
+    \\       c.revoked_at, u.oidc_subject
+    \\FROM core.cli_credentials c
+    \\JOIN core.users u ON u.id = c.user_id
+    \\WHERE c.credential_hash = $1
     \\LIMIT 1
 ;
 
