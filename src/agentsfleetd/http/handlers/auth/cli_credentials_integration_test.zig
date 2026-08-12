@@ -171,6 +171,35 @@ test "integration: test_revoked_credential_is_refused — a retired credential a
     fixtures.cleanup(h);
 }
 
+test "integration: an unsupported method on either credential route answers 405, not 404 or 500" {
+    // The collection accepts POST and GET; the item form accepts only DELETE.
+    // Both refusals live in the invoke dispatch, past routing and past auth, so
+    // this also proves the router reached the right handler: a matcher that
+    // claimed the wrong shape would answer 404 here instead.
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    {
+        const r = try (try (try h.put(PATH).bearer(fixtures.TOKEN_OWNER)).json("{}")).send();
+        defer r.deinit();
+        try r.expectStatus(.method_not_allowed);
+    }
+    {
+        // A syntactically valid identifier, so the refusal is about the method
+        // rather than the shape of the path segment.
+        const path = try revokePath(fixtures.OWNER_USER_ID);
+        defer ALLOC.free(path);
+        const r = try (try (try h.post(path).bearer(fixtures.TOKEN_OWNER)).json("{}")).send();
+        defer r.deinit();
+        try r.expectStatus(.method_not_allowed);
+    }
+
+    fixtures.cleanup(h);
+}
+
 test "integration: test_tenant_key_refused_on_user_scoped_route — an organisation cannot act as a person" {
     const h = fixtures.seededHarness() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
