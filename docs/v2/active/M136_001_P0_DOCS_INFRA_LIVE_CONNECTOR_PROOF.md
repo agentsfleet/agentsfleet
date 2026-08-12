@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P0 — the flagship reviewer scenario remains incomplete until real provider authorization and replay safety pass.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — starts after the development runner is online
-**Branch:** `feat/m136-live-connector-proof` — shared with M160_001 by Indy's call, Aug 11, 2026; both workstreams land from one branch and one worktree
+**Branch:** `feat/m136-live-connector-proof` — shared with M160_002 by Indy's call, Aug 11, 2026; both workstreams land from one branch and one worktree
 **Test Baseline:** unit=3512 integration=589
 **Depends on:** M135_002 (online runner with advancing heartbeat); M135_001 (provider bags, callback routes, and registration grants); M133_001 (workspace-multiplexed Live Wall, visually accepted with exhaustive deployed proof delegated here)
 **Provenance:** human-directed successor to M135_001 after the Jul 20, 2026 scope decision
@@ -233,10 +233,10 @@ N/A — no files deleted.
 
   **Canonical local invocation:** `cd ui/packages/app && NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net bunx playwright test --config=playwright.acceptance.config.ts` — note no `BASE_URL`.
 
-- **Parked (Aug 11, 2026) — priority, not blockage.** §5's acceptance specs are unwritten and §1–§4 external proof is unrun; the workstream is paused so M160_001 can be implemented first. The harness is proven working, so this resumes without further environment work.
-  > Indy (2026-08-11): "I think if you are able to run the test i defer till we do the full login and so on? can we defer the tests and move on the 161 implementation? I would defer the test to CI" — context: M160_001 takes priority. This workstream stays IN_PROGRESS with no Section marked DONE.
+- **Parked (Aug 11, 2026) — priority, not blockage.** §5's acceptance specs are unwritten and §1–§4 external proof is unrun; the workstream is paused so M160_002 can be implemented first. The harness is proven working, so this resumes without further environment work.
+  > Indy (2026-08-11): "I think if you are able to run the test i defer till we do the full login and so on? can we defer the tests and move on the 161 implementation? I would defer the test to CI" — context: M160_002 takes priority. This workstream stays IN_PROGRESS with no Section marked DONE.
 
-- **Un-parked (Aug 12, 2026).** The parking above is lifted. This workstream shares a branch and a worktree with M160_001, so one Pull Request (PR) carries both, and CHORE(close) requires both specs in `done/` — §5's acceptance specs get written and §1–§4's external proof gets run rather than deferred.
+- **Un-parked (Aug 12, 2026).** The parking above is lifted. This workstream shares a branch and a worktree with M160_002, so one Pull Request (PR) carries both, and CHORE(close) requires both specs in `done/` — §5's acceptance specs get written and §1–§4's external proof gets run rather than deferred.
   > Indy (2026-08-12): "Finish M136's §5 too" — context: asked directly whether to park M136 out of the shared PR's scope, finish it, or split the branches apart. Finishing was chosen.
 
 - **Deferrals** —
