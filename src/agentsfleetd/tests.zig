@@ -111,6 +111,7 @@ test {
     _ = @import("observability/otel_metrics_window_test.zig");
     _ = @import("observability/otel_metrics_flush_test.zig");
     _ = @import("observability/otel_metrics_attribution_test.zig");
+    _ = @import("observability/otel_metrics_dims_test.zig");
     _ = @import("observability/otel_metrics_census_test.zig");
     _ = @import("observability/otel_metrics_egress_test.zig");
     _ = @import("observability/library_stages_window_test.zig");
