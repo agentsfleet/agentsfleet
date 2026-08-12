@@ -50,74 +50,12 @@ fn classify(route: router.Route) RouteTraits {
         .runner_memory_capture,
         .runner_bundle,
         => .{ .runner = true },
-        .model_library,
-        .create_auth_session,
-        .poll_auth_session,
-        .approve_auth_session,
-        .verify_auth_session,
-        .delete_auth_session,
-        .delete_all_auth_sessions,
-        .cli_credentials,
-        .cli_credential_by_id,
-        .create_workspace,
-        .get_tenant_billing,
-        .get_tenant_billing_charges,
-        .list_tenant_workspaces,
-        .tenant_provider,
-        .tenant_model_entries,
-        .tenant_model_entry_by_id,
-        .fleet_bundles,
-        .admin_fleet_library,
-        .admin_fleet_library_by_id,
-        .workspace_fleet_library,
-        .receive_webhook,
-        .receive_svix_webhook,
-        .auth_identity_event_clerk,
-        .approval_webhook,
-        .github_webhook,
-        .app_ingress,
-        .qstash_schedule_ingress,
-        .admin_platform_keys,
-        .delete_admin_platform_key,
-        .admin_models,
-        .admin_model_by_id,
-        .workspace_fleets,
-        .patch_workspace_fleet,
-        .workspace_fleet_schedules,
-        .workspace_fleet_schedule,
-        .workspace_fleet_schedule_sync,
-        .workspace_secrets,
-        .workspace_secret,
-        .workspace_fleet_messages,
-        .workspace_fleet_events,
-        .workspace_fleet_events_stream,
-        .workspace_fleet_event,
-        .workspace_events,
-        .workspace_events_stream,
-        .workspace_onboarding,
-        .workspace_preferences,
-        .workspace_preference,
-        .workspace_approvals,
-        .workspace_approval_detail,
-        .workspace_approval_resolve,
-        .workspace_fleet_memories,
-        .workspace_fleet_memory_item,
-        .list_integration_grants,
-        .revoke_integration_grant,
-        .connector_connect,
-        .connector_status,
-        .connector_catalog,
-        .connector_callback,
-        .slack_events,
-        .tenant_api_keys,
-        .tenant_api_key_by_id,
-        .fleet_runners_list,
-        .fleet_runner_get,
-        .fleet_runner_patch,
-        .fleet_runner_events,
-        .fleet_runner_leases,
-        .fleet_streams_list,
-        => .{},
+        // Everything else is an ordinary tenant-facing request: not a runner
+        // call, and not noisy enough on success to need its own budget. The
+        // default is the conservative one — an unlisted route is traced
+        // normally rather than silently suppressed — so a route added without
+        // touching this file loses no telemetry.
+        else => .{},
     };
 }
 
@@ -173,6 +111,39 @@ pub fn resetForTest() void {
     runner_rejections.store(0, .release);
     server_errors.store(0, .release);
     sampled_successes.store(0, .release);
+}
+
+/// Every route whose traits are NOT the default, named so the test below can
+/// prove no other route quietly acquired a runner budget or lost its success
+/// span. Replaces what the old exhaustive `.{}` arm bought, without listing
+/// every route in the system to buy it.
+const RUNNER_NOISY_ROUTES = [_][]const u8{
+    "runner_heartbeat", "runner_lease", "runner_report", "runner_activity", "runner_renew",
+};
+const RUNNER_QUIET_ROUTES = [_][]const u8{
+    "register_runner",       "runner_self",           "runner_credentials_mint",
+    "runner_memory_hydrate", "runner_memory_capture", "runner_bundle",
+};
+const PROBE_ROUTES = [_][]const u8{ "healthz", "readyz" };
+
+fn expectedTraits(tag_name: []const u8) RouteTraits {
+    for (PROBE_ROUTES) |n| if (std.mem.eql(u8, n, tag_name)) return .{ .noisy_success = true };
+    for (RUNNER_NOISY_ROUTES) |n| if (std.mem.eql(u8, n, tag_name)) return .{ .runner = true, .noisy_success = true };
+    for (RUNNER_QUIET_ROUTES) |n| if (std.mem.eql(u8, n, tag_name)) return .{ .runner = true };
+    return .{};
+}
+
+test "every route's traits are the default unless it is one of the thirteen named" {
+    // The `else` arm means a new route no longer fails compilation here. This
+    // walks the whole union instead: a route that silently gained
+    // `noisy_success` would lose its success spans without anyone noticing,
+    // and one that silently gained `runner` would be charged the wrong budget.
+    const info = @typeInfo(router.Route).@"union";
+    inline for (info.fields) |f| {
+        // SAFETY: classify switches on the tag only and reads no payload.
+        const route: router.Route = @unionInit(router.Route, f.name, undefined);
+        try std.testing.expectEqual(expectedTraits(f.name), classify(route));
+    }
 }
 
 test {

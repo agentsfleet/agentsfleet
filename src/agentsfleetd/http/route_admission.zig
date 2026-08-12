@@ -11,84 +11,40 @@ pub fn classFor(route: router.Route) RouteClass {
     return switch (route) {
         .healthz, .readyz => .ops,
         .workspace_fleet_events_stream, .workspace_events_stream => .stream,
-        .model_library,
-        .create_auth_session,
-        .poll_auth_session,
-        .approve_auth_session,
-        .verify_auth_session,
-        .delete_auth_session,
-        .delete_all_auth_sessions,
-        .cli_credentials,
-        .cli_credential_by_id,
-        .create_workspace,
-        .get_tenant_billing,
-        .get_tenant_billing_charges,
-        .list_tenant_workspaces,
-        .tenant_provider,
-        .tenant_model_entries,
-        .tenant_model_entry_by_id,
-        .fleet_bundles,
-        .admin_fleet_library,
-        .admin_fleet_library_by_id,
-        .workspace_fleet_library,
-        .receive_webhook,
-        .receive_svix_webhook,
-        .auth_identity_event_clerk,
-        .approval_webhook,
-        .github_webhook,
-        .app_ingress,
-        .qstash_schedule_ingress,
-        .admin_platform_keys,
-        .delete_admin_platform_key,
-        .admin_models,
-        .admin_model_by_id,
-        .workspace_fleets,
-        .patch_workspace_fleet,
-        .workspace_fleet_schedules,
-        .workspace_fleet_schedule,
-        .workspace_fleet_schedule_sync,
-        .workspace_secrets,
-        .workspace_secret,
-        .workspace_fleet_messages,
-        .workspace_fleet_events,
-        .workspace_fleet_event,
-        .workspace_events,
-        .workspace_onboarding,
-        .workspace_preferences,
-        .workspace_preference,
-        .workspace_approvals,
-        .workspace_approval_detail,
-        .workspace_approval_resolve,
-        .workspace_fleet_memories,
-        .workspace_fleet_memory_item,
-        .list_integration_grants,
-        .revoke_integration_grant,
-        .connector_connect,
-        .connector_status,
-        .connector_catalog,
-        .connector_callback,
-        .slack_events,
-        .tenant_api_keys,
-        .tenant_api_key_by_id,
-        .register_runner,
-        .fleet_runners_list,
-        .fleet_runner_get,
-        .fleet_runner_patch,
-        .fleet_runner_events,
-        .fleet_runner_leases,
-        .fleet_streams_list,
-        .runner_self,
-        .runner_heartbeat,
-        .runner_lease,
-        .runner_report,
-        .runner_credentials_mint,
-        .runner_activity,
-        .runner_renew,
-        .runner_memory_hydrate,
-        .runner_memory_capture,
-        .runner_bundle,
-        => .api,
+        // Everything else is an ordinary API request, subject to the
+        // in-flight ceiling. The default is deliberately the shed-able class:
+        // a route added without touching this file can only ever fall INTO
+        // backpressure, never out of it, so an omission cannot exempt a new
+        // endpoint from the limit that protects the instance.
+        else => .api,
     };
+}
+
+/// The complete set of routes that are NOT the default class, named here so
+/// the test below can prove no other route escapes the in-flight ceiling.
+/// Adding to either list is a deliberate act with a visible diff — which is
+/// what the old exhaustive `.api` arm bought at the cost of listing every
+/// route in the system.
+const OPS_ROUTES = [_][]const u8{ "healthz", "readyz" };
+const STREAM_ROUTES = [_][]const u8{ "workspace_fleet_events_stream", "workspace_events_stream" };
+
+fn expectedClass(tag_name: []const u8) RouteClass {
+    for (OPS_ROUTES) |n| if (std.mem.eql(u8, n, tag_name)) return .ops;
+    for (STREAM_ROUTES) |n| if (std.mem.eql(u8, n, tag_name)) return .stream;
+    return .api;
+}
+
+test "every route's class is the default unless it is one of the four named exemptions" {
+    // The `else` arm means a new route no longer fails compilation here, so
+    // this walks the whole union instead: any route that silently became `ops`
+    // (never shed) or `stream` (its own limit) fails, and so does an exemption
+    // that silently disappeared.
+    const info = @typeInfo(router.Route).@"union";
+    inline for (info.fields) |f| {
+        // SAFETY: classFor switches on the tag only and reads no payload.
+        const route: router.Route = @unionInit(router.Route, f.name, undefined);
+        try std.testing.expectEqual(expectedClass(f.name), classFor(route));
+    }
 }
 
 test "classFor: ops probes never shed, the SSE tail is stream, the rest api" {
