@@ -68,7 +68,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/custom-secret-create.integration.test.ts` | EDIT | Typed-form regression under the closed catalogue |
 | `cli/test/state.unit.test.ts` | EDIT | Store resolves from caller-supplied environment with the process variable unset |
 | `cli/test/json-contract.test.ts` | EDIT | Drops the inline state-directory guard now that the caller's environment reaches the store |
-| `cli/test/acceptance/secret-vault.spec.ts` | EDIT | End-to-end: an unknown provider exits 2 against a live target with no vault write |
+| `cli/test/acceptance/help-and-errors.spec.ts` | EDIT | End-to-end: a subprocess invocation with an unknown provider exits 2 and issues no request. This file is in `DETERMINISTIC_ACCEPTANCE_FILES`, so the case grades without live credentials — correct, because the behaviour under test makes no network call. `secret-vault.spec.ts` is deliberately not used: it sits in `LIVE_ACCEPTANCE_FILES` and would gate a hermetic assertion behind a live deployment |
 
 ## Applicable Rules
 
@@ -190,13 +190,13 @@ the on-disk file names, locations, and 0o600 mode are unchanged.
 | — | unit | `test_absent_state_dir_falls_back_to_home` | A supplied environment with no state directory set yields paths under the home-directory default; no throw, no empty base directory |
 | — | integration | `test_unwritable_state_dir_surfaces_write_error` | A read-only supplied directory produces the same write failure and exit code as `main` does today; the environment parameter adds no new failure class |
 | — | integration | `test_custom_endpoint_pairing_rules_unchanged` | Regression: the four existing pairing errors (missing key, missing base URL, base URL on a named provider, missing model) produce identical messages and exit codes to `main` |
-| — | e2e | `test_secret_vault_rejects_unknown_provider` | Subprocess acceptance against a live target: unknown provider exits 2 and the vault list is unchanged afterwards |
+| — | e2e | `test_cli_rejects_unknown_provider_end_to_end` | Subprocess acceptance in the deterministic lane: the real binary with an unknown provider exits 2, prints the accepted set, and reaches no network — no live deployment required |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | An unknown provider is rejected before any network call (§1, §2) | `cd cli && bun run build && ./dist/agentsfleet secret create t --provider notaprovider --api-key k --model m; echo "exit=$?"` | `exit=2` and stderr contains `must be one of:` | P0 | |
+| R1 | An unknown provider is rejected before any network call (§1, §2) | `cd cli && bun run build && bun ./dist/bin/agentsfleet.js secret create t --provider notaprovider --api-key k --model m; echo "exit=$?"` | `exit=2` and stderr contains `must be one of:` | P0 | |
 | R2 | The generic `--data` escape hatch is untouched (§2) | `grep -c 'FLAG_PROVIDER.*parseEnumOption' cli/src/program/cli-tree-fleet.ts` | exactly `2` — the two `--provider` sites; `FLAG_DATA_JSON` never pairs with a parser | P1 | |
 | R3 | The state module never reads the process environment (§3, Invariant 3) | `grep -c 'process\.env' cli/src/lib/state.ts` | `0` | P0 | |
 | R4 | The public flag change has a documentation branch | `git -C ~/Projects/docs diff --name-only main...HEAD` | at least 1 path, covering the page documenting `secret create --provider` | P0 | |
@@ -204,7 +204,7 @@ the on-disk file names, locations, and 0o600 mode are unchanged.
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S4 | End-to-end walks the user path | `make cli-acceptance` | exit 0 | P0 | |
+| S4 | End-to-end walks the user path | `make cli-acceptance` | exit 0. Runs the deterministic lane then the live lane; this milestone's new case is in the deterministic half, so a failure there is this diff's and a live-lane failure is not | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 | S9 | Version sync | `make check-version` | exit 0 | P1 | |
