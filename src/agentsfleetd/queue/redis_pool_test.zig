@@ -273,7 +273,16 @@ const SHORT_ACQUIRE_TIMEOUT_MS = 50;
 // Upper-bound slack over the acquire budget: the bounded poll wakes within
 // POLL_INTERVAL (~2ms) of the deadline, so a hit must land well under this.
 // Catches a recompute bug that would re-sleep the full budget each iteration.
-const ACQUIRE_TIMEOUT_OVERSHOOT_MS = 20;
+//
+// Sized by that defect, not by the observed timing. A re-sleep shows up as a
+// MULTIPLE of the budget — 100ms, 150ms — so any ceiling strictly under
+// 2 x SHORT_ACQUIRE_TIMEOUT_MS still catches it. The former 20ms left only a
+// 20ms wall-clock window and failed on a loaded machine while the pool behaved
+// correctly (the acquire timed out and the counter bumped; only this bound
+// tripped). 40ms keeps the ceiling at 90ms — under the 100ms a single re-sleep
+// would produce — while doubling the tolerance for scheduler noise. It cannot
+// go higher without blinding the assertion to the bug it exists for.
+const ACQUIRE_TIMEOUT_OVERSHOOT_MS = 40;
 
 test "Pool hard max_active cap times out a saturated acquire and bumps acquire_timeouts_total" {
     // Finding witness: with a hard ceiling set, an acquire that would push
