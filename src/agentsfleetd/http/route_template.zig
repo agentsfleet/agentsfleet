@@ -30,7 +30,6 @@ pub fn templateFor(route: router.Route) []const u8 {
     return switch (route) {
         .healthz => "/healthz",
         .readyz => "/readyz",
-        .metrics => "/metrics",
         .model_library => model_library.MODEL_LIBRARY_PATH,
 
         .create_auth_session => "/v1/auth/sessions",

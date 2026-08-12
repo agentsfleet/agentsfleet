@@ -13,10 +13,12 @@ name: deploy (dev)
 #   deploy-dev-acceptance.yml  qa-dev + acceptance-e2e-dev + cli-acceptance-dev
 #                              (+ per-gate result outputs)
 # Invariants preserved from the single-file shape: the credential gate blocks
-# everything; worker and Fly always ship together (both need build); verify
-# waits only on Fly (worker deploys in parallel); the verdict keeps per-gate
-# granularity and treats a skipped or cancelled release gate as red, with
-# deploy-worker-dev allowed its documented DEV_WORKER_READY skip.
+# everything; worker and Fly always ship together (worker needs build, so a
+# failed image push updates neither); verify waits only on Fly; the verdict
+# keeps per-gate granularity and treats a skipped or cancelled release gate as
+# red, with deploy-worker-dev allowed its documented DEV_WORKER_READY skip.
+# Worker additionally needs Fly — see the note on the worker job for why its
+# own readiness gate cannot run while the API is still cycling.
 
 on:
   push:
@@ -63,9 +65,16 @@ jobs:
   # ── 3. Deploy development worker via Tailscale Secure Shell (SSH) ───────
   # needs build so the bare-metal worker and Fly.io API always move together:
   # if the Docker push fails the worker binary is not updated either, keeping
-  # the development environment consistent. Runs in parallel with fly + verify.
+  # the development environment consistent.
+  #
+  # needs fly because this lane does not stop at deploying: its own gate
+  # (`playbooks/lib/runner/verify.sh`, verify_control_plane) curls the API's
+  # /readyz *from the runner host*. Run alongside fly and that curl lands
+  # mid-cycle and answers 502, failing a worker that deployed fine. The
+  # production lane already orders it this way — release.yml's
+  # deploy-worker-canary-prod needs deploy-fly-prod.
   worker:
-    needs: build
+    needs: [build, fly]
     uses: ./.github/workflows/deploy-dev-worker.yml
     secrets: inherit
 

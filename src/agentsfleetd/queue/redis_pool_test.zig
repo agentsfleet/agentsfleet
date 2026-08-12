@@ -729,13 +729,17 @@ test "Client.command bumps reconnects_total on non-resumable transport error" {
 
 const Client = @import("redis_client.zig");
 const metrics_redis_pool = @import("../observability/metrics_redis_pool.zig");
-const metrics_render = @import("../observability/metrics_render.zig");
+const otel_window = @import("../observability/otel_metrics_window_test.zig");
 
-test "metrics: registerPool + activity renders all 8 fleet_redis_pool_* lines in Prometheus output" {
-    // Spec coverage: prove the scrape path emits a line per `PoolStats`
-    // field after a Pool is registered. The render layer treats `mrp`
-    // as the single source of truth — a regression that drops a counter
-    // from the renderer would show up here as a missing metric name.
+// Spec Dimension 3.5 — a registered Pool's live statistics appear in a flush
+// window with no renderer present anywhere: the OTLP collector pulls
+// `PoolStats` through the `metrics_redis_pool` seam at flush time (the guard
+// that no rendering entry point survives lives in the census suite).
+test "test_pool_snapshot_reaches_the_collector" {
+    // Prove the export path emits a series per `PoolStats` field after a Pool
+    // is registered. The collector treats `mrp` as the single source of truth
+    // — a regression that drops a counter from the collector would show up
+    // here as a missing family.
     const alloc = std.testing.allocator;
 
     var fake: PingFake = undefined;
@@ -747,8 +751,8 @@ test "metrics: registerPool + activity renders all 8 fleet_redis_pool_* lines in
     defer pool.deinit();
 
     // Register on the singleton; clear on the way out so subsequent tests
-    // see `snapshot() == null`. Without the deferred clear, a parallel
-    // test scraping /metrics would observe this Pool's stale stats.
+    // see `snapshot() == null`. Without the deferred clear, a later flush
+    // would observe this Pool's stale stats.
     metrics_redis_pool.registerPool(&pool);
     defer metrics_redis_pool.clearRegisteredPool();
 
@@ -765,12 +769,12 @@ test "metrics: registerPool + activity renders all 8 fleet_redis_pool_* lines in
     poison_conn.state = .poisoned;
     pool.release(poison_conn, false);
 
-    const text = try metrics_render.renderPrometheus(alloc, true);
-    defer alloc.free(text);
+    const body = try otel_window.flushWindowJson(alloc);
+    defer alloc.free(body);
 
-    // Every Pool-stats line that ships in metrics_render.zig must appear.
-    // Match the metric NAMES (not values) — values drift with timing and
-    // the renderer's order; names are the contract scrapers depend on.
+    // Every Pool-stats family the registry declares must appear. Match the
+    // family NAMES (not every value) — most values drift with timing; names
+    // are the contract the dashboard queries depend on.
     const expected_metric_names = [_][]const u8{
         "agentsfleet_redis_pool_active",
         "agentsfleet_redis_pool_idle",
@@ -782,17 +786,17 @@ test "metrics: registerPool + activity renders all 8 fleet_redis_pool_* lines in
         "agentsfleet_redis_pool_acquire_timeouts_total",
     };
     inline for (expected_metric_names) |name| {
-        if (std.mem.indexOf(u8, text, name) == null) {
-            std.debug.print("FAIL: metric `{s}` missing from rendered Prometheus output\n", .{name});
-            return error.MetricNameMissing;
-        }
+        otel_window.expectFamilySample(body, name) catch |err| {
+            std.debug.print("FAIL: family `{s}` missing from the exported window\n", .{name});
+            return err;
+        };
     }
 
     // Load-bearing value assertions: prove the snapshot path actually
     // pulls live stats (not zeroed defaults). The first acquire dials;
     // the next two reuse idle, then the poisoned release bumps pathology.
-    try std.testing.expect(std.mem.indexOf(u8, text, "agentsfleet_redis_pool_dials_total 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "agentsfleet_redis_pool_poisoned_connections_total 1") != null);
+    try std.testing.expectEqual(@as(i64, 1), try otel_window.familyValueWith(body, "agentsfleet_redis_pool_dials_total", &.{}));
+    try std.testing.expectEqual(@as(i64, 1), try otel_window.familyValueWith(body, "agentsfleet_redis_pool_poisoned_connections_total", &.{}));
 }
 
 // ── #28: failover reconnect flood completes under window ───────────────

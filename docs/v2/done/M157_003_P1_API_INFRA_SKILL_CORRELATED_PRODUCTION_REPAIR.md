@@ -16,6 +16,7 @@ Dependencies sequence it. -->
 **Public docs:** not written; Indy prohibited writes to `~/Projects/docs` for this workstream
 **Base branch:** `main` in both repositories
 **Test Baseline:** unit=3512 integration=589
+**Test Delta (VERIFY):** unit=3589 integration=612 before merging `origin/main` — +77 unit and +23 integration; the post-merge tree reads unit=3633 integration=611 because it also contains tests landed on `main`
 **Depends on:** Milestone 157 Workstream 002 (M157_002), which ships the write mint, initial linkage, and `incident-repairer`
 **Provenance:** agent-generated from Pull Request (PR) #591 Session Notes and Indy's Aug 10–11, 2026 direction
 **Canonical architecture:** `docs/architecture/scenarios/production-deploy-repair.md`
@@ -60,7 +61,7 @@ Dependencies sequence it. -->
 | `src/agentsfleetd/http/handlers/webhooks/github.zig` | EDIT | Use shared repair interception |
 | `src/agentsfleetd/http/handlers/webhooks/github_repair_link.zig` | DELETE | Remove the route-local arm |
 | `src/agentsfleetd/http/webhook_http_integration_test.zig` | EDIT | Prove per-Fleet ingress behavior |
-| `src/agentsfleetd/observability/{metrics_render,metrics_runner,metrics_repair_verification}.zig` | EDIT/CREATE | Define and wire bounded verifier signals |
+| `src/agentsfleetd/observability/{metrics_runner,metrics_repair_verification,otel_instruments,otel_metric_meta,otel_metrics,otel_metrics_attribution,otel_metrics_census_test,otel_metrics_dims,otel_metrics_families,semantic_schema_test}.zig`, `docs/architecture/observability.md` | EDIT/CREATE | Define and wire bounded verifier signals through the closed OTLP registry |
 | `src/agentsfleetd/queue/redis_repair_verification.zig` | CREATE | Enqueue each intent once |
 | `src/agentsfleetd/state/{repair_pr_links,sql,repair_evidence,repair_evidence_integration_test,repair_production_results,repair_run_results,repair_sql,repair_verification_fanout,repair_verifications,repair_verifications_test}.zig` | EDIT/CREATE | Own evidence, reconciliation, statements, and attempts |
 | `src/agentsfleetd/tests.zig` | EDIT | Register daemon unit coverage |

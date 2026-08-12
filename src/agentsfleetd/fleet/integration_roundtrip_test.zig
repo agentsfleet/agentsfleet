@@ -27,7 +27,7 @@ const TestHarness = harness_mod.TestHarness;
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
-const metrics_runner = @import("../observability/metrics_runner.zig");
+const otel_window = @import("../observability/otel_metrics_window_test.zig");
 const telemetry = @import("../observability/telemetry.zig");
 
 const ALLOC = std.testing.allocator;
@@ -303,16 +303,22 @@ test "a failed runner report persists the granular failure_label and increments 
     try std.testing.expect(try failureLabelMatches(conn, lv.event_id.?, "runner_crash"));
 
     // ... and the per-runner metrics carry both the granular reason and the
-    // outcome-bucketed execution on /metrics (render via an allocating writer so
-    // the assertion is robust to runners accumulated by sibling tests).
-    var aw: std.Io.Writer.Allocating = .init(ALLOC);
-    defer aw.deinit();
-    try metrics_runner.renderPrometheus(&aw.writer);
-    const metrics = aw.written();
-    const failure_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",reason=\"runner_crash\"";
-    const exec_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",outcome=\"fleet_error\"";
-    try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, failure_needle));
-    try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, exec_needle));
+    // outcome-bucketed execution in the exported OTLP window (the streamed
+    // appender walks the same slot table the report path wrote; asserting on
+    // labelled series keeps this robust to runners accumulated by sibling
+    // tests).
+    const body = try otel_window.flushWindowJson(ALLOC);
+    defer ALLOC.free(body);
+    var id_buf: [96]u8 = undefined;
+    var dim_buf: [96]u8 = undefined;
+    try otel_window.expectFamilyWith(body, "agentsfleet_runner_failures_total", &.{
+        try otel_window.attrFragment(&id_buf, "runner_id", RUNNER_A_ID),
+        try otel_window.attrFragment(&dim_buf, "reason", "runner_crash"),
+    });
+    try otel_window.expectFamilyWith(body, "agentsfleet_runner_executions_total", &.{
+        try otel_window.attrFragment(&id_buf, "runner_id", RUNNER_A_ID),
+        try otel_window.attrFragment(&dim_buf, "outcome", "fleet_error"),
+    });
 }
 
 test "the reclaim chain enforces monotonic token ordering across runners" {

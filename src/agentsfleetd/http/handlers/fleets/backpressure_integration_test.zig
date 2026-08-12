@@ -4,8 +4,8 @@
 // Dispatch leg: api-class requests above the in-flight ceiling shed 429
 // with Retry-After + X-RateLimit-* headers, the rejection counter moves,
 // the shed path releases its slot — while ops-class routes (/healthz,
-// /readyz, /metrics) are NEVER shed and unmatched paths 404 without
-// consuming admission.
+// /readyz) are NEVER shed and unmatched paths 404 without consuming
+// admission.
 // SSE leg: streams above the dedicated cap shed 503 while /healthz keeps
 // answering on the same pool, a closed stream releases its slot, and the
 // stream class is exempt from the api ceiling.
@@ -122,9 +122,6 @@ test "integration: api-class requests shed 429 at the ceiling; ops routes and 40
     const ready = try (h.get("/readyz")).send();
     defer ready.deinit();
     try std.testing.expect(ready.status != @intFromEnum(std.http.Status.too_many_requests));
-    const ops_scrape = try (h.get("/metrics")).send();
-    defer ops_scrape.deinit();
-    try ops_scrape.expectStatus(.ok);
 
     // Unmatched paths 404 without consuming admission — a 404 is cheaper
     // than the gate, and it must not count as a rejection either.
@@ -155,14 +152,15 @@ test "integration: api-class requests shed 429 at the ceiling; ops routes and 40
     defer ok.deinit();
     try ok.expectStatus(.ok);
 
-    // The gauge counts api-class only: the /metrics scrape itself is
-    // ops-class, so at render time nothing is in flight — which is itself
-    // the ops-exemption assertion.
+    // The gauge counts api-class only: with the admitted api request complete
+    // and a fresh ops probe served on the same pool, nothing api-class is in
+    // flight — the ops request never touches the gauge, which is itself the
+    // ops-exemption assertion.
     h.ctx.api_max_in_flight_requests = 64;
-    const scrape = try (h.get("/metrics")).send();
-    defer scrape.deinit();
-    try scrape.expectStatus(.ok);
-    try std.testing.expect(scrape.bodyContains("agentsfleet_api_in_flight_requests 0"));
+    const ops_probe = try (h.get("/healthz")).send();
+    defer ops_probe.deinit();
+    try ops_probe.expectStatus(.ok);
+    try std.testing.expectEqual(@as(u64, 0), metrics.snapshot().api_in_flight_requests);
 }
 
 test "integration: registry drain closes live streams and rejects new ones" {
@@ -395,10 +393,7 @@ test "integration: SSE streams above the cap shed 503 while healthz stays alive"
     try health.expectStatus(.ok);
 
     // Gauge reports the parked stream.
-    const scrape = try (h.get("/metrics")).send();
-    defer scrape.deinit();
-    try scrape.expectStatus(.ok);
-    try std.testing.expect(scrape.bodyContains("agentsfleet_sse_in_flight_streams 1"));
+    try std.testing.expectEqual(@as(u64, 1), metrics.snapshot().sse_in_flight_streams);
 
     // Closing the parked stream releases its slot: a fresh stream is
     // admitted within the poll budget. Each failed attempt sheds 503 and

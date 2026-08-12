@@ -21,6 +21,7 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../../../cmd/serve_runner_lookup.zig");
 const api_key = @import("../../../auth/api_key.zig");
 const metrics_memory = @import("../../../observability/metrics_memory.zig");
+const otel_window = @import("../../../observability/otel_metrics_window_test.zig");
 const memory_adapter = @import("../../../memory/fleet_memory.zig");
 const protocol = @import("contract").protocol;
 const clock = @import("common").clock;
@@ -498,27 +499,34 @@ test "test_sweep_frees_cap_slots_before_eviction" {
     try std.testing.expect(!hr.bodyContains("\"key\":\"aged-note\""));
 }
 
-// ── §render: the families are live on the real /metrics scrape ──────────────
+// ── §export: the loss families are live through the exported window ─────────
 
-test "test_metrics_render_memory_loss_families_http" {
+test "test_memory_loss_families_reach_the_exported_window" {
     var env = (try setup()) orelse return error.SkipZigTest;
     defer env.deinit();
-    // One hydrate on an over-budget set guarantees memory activity, then the
-    // operator-facing scrape must expose every loss family with HELP lines.
+    // One hydrate on an over-budget set guarantees real memory-loss activity
+    // through the production handler path...
     try seedRows(env, ZID_HYD_DROP, HYD_ROWS, HYD_CONTENT_LEN);
     const url = try memoryUrl(ZID_HYD_DROP);
     defer ALLOC.free(url);
+    const before = metrics_memory.snapshot();
     const hr = try (try env.h.get(url).bearer(RUNNER_TOKEN)).send();
     defer hr.deinit();
     try hr.expectStatus(.ok);
 
-    const scrape = try env.h.get("/metrics").send();
-    defer scrape.deinit();
-    try scrape.expectStatus(.ok);
-    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_hydration_dropped_entries_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_hydration_dropped_bytes_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_cap_evictions_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_capture_truncated_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_capture_skipped_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP agentsfleet_memory_search_zero_hits_total "));
+    // ...that the loop actually recorded (the over-budget window drops rows)...
+    const after = metrics_memory.snapshot();
+    try std.testing.expect(after.hydration_dropped_entries_total > before.hydration_dropped_entries_total);
+    try std.testing.expect(after.hydration_dropped_bytes_total > before.hydration_dropped_bytes_total);
+
+    // ...and every loss family reaches the operator through the one exported
+    // window that replaced the scrape.
+    const body = try otel_window.flushWindowJson(ALLOC);
+    defer ALLOC.free(body);
+    try otel_window.expectFamilySample(body, "agentsfleet_memory_hydration_dropped_entries_total");
+    try otel_window.expectFamilySample(body, "agentsfleet_memory_hydration_dropped_bytes_total");
+    try otel_window.expectFamilySample(body, "agentsfleet_memory_cap_evictions_total");
+    try otel_window.expectFamilySample(body, "agentsfleet_memory_capture_truncated_total");
+    try otel_window.expectFamilySample(body, "agentsfleet_memory_capture_skipped_total");
+    try otel_window.expectFamilySample(body, "agentsfleet_memory_search_zero_hits_total");
 }

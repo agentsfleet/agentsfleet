@@ -217,7 +217,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
         // Workspace identity deliberately does not travel — per-workspace cost
         // is a Postgres query against the execution-telemetry rows.
         .deducted => |nanos| otel_metrics.recordCreditConsumed(nanos, .receive, .{
-            .posture = ctx.posture.label(),
+            .posture = ctx.posture,
             .provider = ctx.provider,
             .model = ctx.model,
         }),
