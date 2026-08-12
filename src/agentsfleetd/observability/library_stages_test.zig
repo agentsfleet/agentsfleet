@@ -10,7 +10,10 @@ const std = @import("std");
 const testing = std.testing;
 
 const stages = @import("library_stages.zig");
-const render = @import("metrics_render.zig");
+
+// The exported-window coverage for these families (family presence, exact
+// values, and the closed-label allowlist on the wire) lives in
+// library_stages_window_test.zig, registered from tests.zig.
 
 // Every dimension of the observation is an enum, so a free-form string cannot
 // reach a label. This fails at `@typeInfo` time the moment someone widens a
@@ -214,90 +217,6 @@ test "resetForTest returns every family to zero" {
     for (snap.cache_outcomes) |v| try testing.expectEqual(@as(u64, 0), v);
     for (snap.payload_bytes) |v| try testing.expectEqual(@as(u64, 0), v);
     for (snap.results) |v| try testing.expectEqual(@as(u64, 0), v);
-}
-
-// The exposition carries every family, and — the half that matters for §1
-// Dimension 1.2 — carries nothing else. Rendering the WHOLE scrape rather than
-// one family is deliberate: a leak reaches an operator through whatever line
-// happens to carry it, so the assertion has to read the same bytes the scraper
-// does.
-test "test_library_evidence_is_secret_and_metadata_free — the scrape emits closed labels only" {
-    stages.resetForTest();
-    defer stages.resetForTest();
-
-    stages.observeStage(.{
-        .surface = .tenant_models,
-        .stage = .secret_project,
-        .outcome = .ok,
-        .duration_ns = std.time.ns_per_s,
-        .bytes = 512,
-        .count = 7,
-    });
-    stages.observeReadOutcome(.tenant_models, .ok);
-
-    const alloc = testing.allocator;
-    const body = try render.renderPrometheus(alloc, true);
-    defer alloc.free(body);
-
-    // Every family is present.
-    try testing.expect(std.mem.containsAtLeast(u8, body, 1, stages.STAGE_DURATION_NAME));
-    try testing.expect(std.mem.containsAtLeast(u8, body, 1, stages.STAGE_OBSERVATIONS_NAME));
-    try testing.expect(std.mem.containsAtLeast(u8, body, 1, stages.READ_OUTCOME_NAME));
-    try testing.expect(std.mem.containsAtLeast(u8, body, 1, stages.POOL_RESULT_NAME));
-    try testing.expect(std.mem.containsAtLeast(u8, body, 1, stages.CACHE_OUTCOME_NAME));
-    try testing.expect(std.mem.containsAtLeast(u8, body, 1, stages.PAYLOAD_BYTES_NAME));
-    try testing.expect(std.mem.containsAtLeast(u8, body, 1, stages.RESULTS_NAME));
-
-    // One second recorded renders as one second, so the ns->s divide is not
-    // silently dropping or scaling the measurement.
-    try testing.expect(std.mem.containsAtLeast(u8, body, 1, "stage=\"secret_project\"} 1"));
-
-    // Every label on every library line is checked against an ALLOW list, not a
-    // deny list. A deny list of secret-shaped substrings cannot decide this
-    // surface: `stage="sql"` and `stage="secret_project"` are legitimate closed
-    // values that contain "sql" and "secret", so a substring scan either
-    // false-fires on them or is weakened until it catches nothing. Requiring
-    // each key to be one of §1's five and each value to be a member of that
-    // key's enum is the property §1 actually states, and it rejects a
-    // free-form value no deny list would have thought to spell.
-    var lines = std.mem.splitScalar(u8, body, '\n');
-    var checked: usize = 0;
-    while (lines.next()) |line| {
-        if (!std.mem.startsWith(u8, line, "agentsfleet_library_")) continue;
-        const open = std.mem.indexOfScalar(u8, line, '{') orelse continue;
-        const close = std.mem.indexOfScalar(u8, line, '}') orelse continue;
-
-        var pairs = std.mem.splitScalar(u8, line[open + 1 .. close], ',');
-        while (pairs.next()) |pair| {
-            const eq = std.mem.indexOfScalar(u8, pair, '=') orelse return error.MalformedLabel;
-            const key = pair[0..eq];
-            const value = std.mem.trim(u8, pair[eq + 1 ..], "\"");
-
-            const permitted: []const []const u8 = if (std.mem.eql(u8, key, stages.LABEL_SURFACE))
-                &stages.SURFACE_LABELS
-            else if (std.mem.eql(u8, key, stages.LABEL_STAGE))
-                &stages.STAGE_LABELS
-            else if (std.mem.eql(u8, key, stages.LABEL_OUTCOME))
-                &stages.OUTCOME_LABELS
-            else if (std.mem.eql(u8, key, stages.LABEL_POOL_RESULT))
-                &stages.POOL_RESULT_LABELS
-            else if (std.mem.eql(u8, key, stages.LABEL_CACHE))
-                &stages.CACHE_LABELS
-            else
-                return error.UnpermittedLabelKey;
-
-            var found = false;
-            for (permitted) |allowed| {
-                if (std.mem.eql(u8, allowed, value)) found = true;
-            }
-            try testing.expect(found);
-            checked += 1;
-        }
-    }
-
-    // A pass with nothing checked would be vacuous — it is what this test looks
-    // like if the families stop rendering entirely.
-    try testing.expect(checked > 0);
 }
 
 // ── concurrency: no lost increments, no hidden serialization ────────────────

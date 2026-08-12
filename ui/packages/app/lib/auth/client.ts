@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useUser, UserButton, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
 
 // `useClientToken()` was retired in M64_006. Every dashboard mutation/read
@@ -16,9 +16,19 @@ const SESSION_REFRESH_INTERVAL_MS = 45_000;
 export function AuthSessionKeeper(): null {
   const { isLoaded, isSignedIn, user } = useUser();
   const refreshInFlight = useRef(false);
+  // Clerk re-instantiates the User resource after every reload(), so an
+  // effect keyed on the object identity re-arms — and fires its immediate
+  // refresh — once per refresh, doubling every FAPI call the keeper makes.
+  // The ref tracks the live resource; the effect re-arms only when the
+  // signed-in identity actually changes.
+  const userRef = useRef(user);
+  useLayoutEffect(() => {
+    userRef.current = user;
+  }, [user]);
+  const userId = user?.id ?? null;
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
+    if (!isLoaded || !isSignedIn || userId === null) return;
 
     const refreshSession = async (): Promise<void> => {
       if (refreshInFlight.current) return;
@@ -26,7 +36,7 @@ export function AuthSessionKeeper(): null {
       try {
         // Clerk documents user.reload() as refreshing both the User resource
         // and the session token without returning token bytes to this module.
-        await user.reload();
+        await userRef.current?.reload();
       } catch {
         // Offline and transient Clerk failures retry on the next interval or
         // browser-resume signal; never leak an unhandled promise rejection.
@@ -49,7 +59,7 @@ export function AuthSessionKeeper(): null {
       window.removeEventListener("online", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [isLoaded, isSignedIn, user]);
+  }, [isLoaded, isSignedIn, userId]);
 
   return null;
 }

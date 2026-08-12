@@ -45,7 +45,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // Health / observability (no auth)
         .healthz => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeHealthz },
         .readyz => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeReadyz },
-        .metrics => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeMetrics },
         // Model library catalogue — bearer-authed, any tenant (no capability scope).
         .model_library => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeModelLibrary },
 
@@ -205,7 +204,6 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     // Spot-check a representative sample of route families.
     _ = specFor(.healthz, &reg);
     _ = specFor(.readyz, &reg);
-    _ = specFor(.metrics, &reg);
     _ = specFor(.create_auth_session, &reg);
     _ = specFor(.{ .poll_auth_session = "s1" }, &reg);
     _ = specFor(.{ .approve_auth_session = "s1" }, &reg);

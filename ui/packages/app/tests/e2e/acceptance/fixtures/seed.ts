@@ -50,7 +50,12 @@ export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<strin
   return res.items[0]!.id;
 }
 
-function triggerMd(name: string): string {
+// The ONE trigger fixture for the whole acceptance tree. The daemon's importer
+// requires name, triggers, tools, and budget in TRIGGER.md frontmatter
+// (fleet_runtime/config_parser.zig) — a spec-local copy that drifts from that
+// set fails every install with UZ-BUNDLE-001, which is why no spec defines its
+// own (pinned by seed.test.ts).
+export function triggerMd(name: string): string {
   // Use cron here so seeded fleets keep a concrete wake rule.
   return [
     "---",
@@ -69,7 +74,7 @@ function triggerMd(name: string): string {
   ].join("\n");
 }
 
-function skillMd(name: string): string {
+export function skillMd(name: string): string {
   // SKILL.md frontmatter requires name (kebab), description, version (semver).
   // Mirrors tests/fixtures/fleetbundle/skill/name_mismatch/SKILL.md.
   return [
@@ -82,6 +87,21 @@ function skillMd(name: string): string {
     `# ${name}`,
     "",
     "Body for fixture fleet used by e2e harness.",
+    "",
+  ].join("\n");
+}
+
+// Same frontmatter as skillMd, body deliberately EMPTY: the runner refuses to
+// execute an instruction-less skill as a generic chat, so every delivery fails
+// closed at startup — the one deterministic, model-free way to place a failed
+// lease on a runner from the outside.
+export function emptyBodySkillMd(name: string): string {
+  return [
+    "---",
+    `name: ${name}`,
+    "description: Fixture skill with an empty body; every delivery fails its startup check.",
+    "version: 0.1.0",
+    "---",
     "",
   ].join("\n");
 }
