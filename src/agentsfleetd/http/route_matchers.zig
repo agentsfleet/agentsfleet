@@ -29,6 +29,9 @@ const S_BUNDLES = "bundles";
 pub const S_PREFERENCES = "preferences";
 const S_AUTH = "auth";
 const S_SESSIONS = "sessions";
+/// Shared with the router: the collection form is exact-matched there, the item
+/// form goes through matchCliCredentialById, and the two must name one segment.
+pub const S_CLI_CREDENTIALS = "cli-credentials";
 const S_ALL = "all";
 const S_APPROVE = "approve";
 const S_VERIFY = "verify";
@@ -128,6 +131,16 @@ pub fn matchAuthSessionApprove(p: Path) ?[]const u8 {
 
 pub fn matchAuthSessionVerify(p: Path) ?[]const u8 {
     return matchAuthSessionAction(p, S_VERIFY);
+}
+
+// ── /cli-credentials/{id} ──────────────────────────────────────────────────
+// The bare collection is exact-matched in router.match(); only the item form
+// needs a matcher, because only it carries a parameter.
+
+pub fn matchCliCredentialById(p: Path) ?[]const u8 {
+    if (p.segs.len != 2) return null;
+    if (!p.eq(0, S_CLI_CREDENTIALS)) return null;
+    return p.param(1);
 }
 
 // Tenant + admin billing matchers (/admin/platform-keys, /api-keys,
