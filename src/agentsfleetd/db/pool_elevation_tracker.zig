@@ -13,13 +13,6 @@
 const std = @import("std");
 const common = @import("common");
 const pg = @import("pg");
-const logging = @import("log");
-const error_codes = @import("../errors/error_registry.zig");
-
-const log = logging.scoped(.db_elevation);
-
-const EVENT_ELEVATED_RELEASE_REFUSED = "elevated_release_refused";
-
 pub const Error = error{
     /// The connection is already elevated (nesting is refused, RULE OWN), or
     /// the tracking table is full.
@@ -40,7 +33,6 @@ const Entry = struct { conn: *pg.Conn, role_name: []const u8 };
 // One mutex, protecting exactly `g_elevated`.
 var g_mutex: common.Mutex = .{};
 var g_elevated: [MAX_TRACKED_ELEVATIONS]?Entry = [_]?Entry{null} ** MAX_TRACKED_ELEVATIONS;
-var g_refused_releases = std.atomic.Value(u64).init(0);
 var g_refused_marks = std.atomic.Value(u64).init(0);
 
 /// Claim a slot for `conn`. Refuses a second claim on the same connection
@@ -80,36 +72,6 @@ pub fn unmark(conn: *pg.Conn) void {
     }
 }
 
-/// Pool-release backstop. Returns the role name a still-open elevation held
-/// (clearing it and counting the refusal), or null for the normal, unelevated
-/// release. Defence in depth that should never fire: `SET LOCAL ROLE` is
-/// reverted by the server when the transaction ends, so a scope that completed
-/// has already stepped down.
-pub fn auditRelease(conn: *pg.Conn) ?[]const u8 {
-    g_mutex.lock();
-    defer g_mutex.unlock();
-    for (&g_elevated) |*entry| {
-        if (entry.*) |e| {
-            if (e.conn == conn) {
-                entry.* = null;
-                _ = g_refused_releases.fetchAdd(1, .monotonic);
-                log.err(EVENT_ELEVATED_RELEASE_REFUSED, .{
-                    .role = e.role_name,
-                    .error_code = error_codes.ERR_INTERNAL_DB_ELEVATED_RELEASE,
-                });
-                return e.role_name;
-            }
-        }
-    }
-    return null;
-}
-
-/// Operator-facing count of connections refused at release (count only, no
-/// identity).
-pub fn refusedReleaseCount() u64 {
-    return g_refused_releases.load(.monotonic);
-}
-
 /// Operator-facing count of elevations refused because the tracking table was
 /// full. Non-zero means the table is undersized for the deployment's pool, so
 /// the pressure is visible instead of arriving as unexplained 500s.
@@ -140,19 +102,6 @@ test "a second claim on the same connection is refused, a different one is not" 
     unmark(a);
     try mark(a, ROLE_A);
     unmark(a);
-}
-
-test "auditRelease clears the entry, counts the refusal, and is one-shot" {
-    const c = fakeConn(0x30000);
-    const before = refusedReleaseCount();
-    try mark(c, ROLE_B);
-    const hit = auditRelease(c);
-    try testing.expect(hit != null);
-    try testing.expectEqualStrings(ROLE_B, hit.?);
-    try testing.expectEqual(before + 1, refusedReleaseCount());
-    // Cleared: a second audit of the same connection is the normal path.
-    try testing.expect(auditRelease(c) == null);
-    try testing.expectEqual(before + 1, refusedReleaseCount());
 }
 
 test "a full table refuses and counts the pressure rather than failing silently" {

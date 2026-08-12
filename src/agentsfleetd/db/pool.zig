@@ -12,7 +12,6 @@ const pg = @import("pg");
 const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
 const pool_migrations = @import("pool_migrations.zig");
-const pool_elevation = @import("pool_elevation.zig");
 const env_resolve = @import("../config/env_resolve.zig");
 const pool_types = @import("pool_types.zig");
 const pool_url = @import("pool_url.zig");
@@ -20,6 +19,10 @@ const pool_url = @import("pool_url.zig");
 const EnvMap = common.env.Map;
 
 const log = logging.scoped(.db);
+
+// A connection handed back mid-transaction: a leaked scope or a missing
+// commit/rollback. pg destroys it rather than pooling it; this names it.
+const EVENT_DIRTY_RELEASE = "conn_released_dirty";
 
 pub const Conn = pg.Conn;
 
@@ -40,17 +43,27 @@ pub const Pool = struct {
         return self.inner.acquire();
     }
 
-    /// Release with the elevation backstop. A connection whose elevation scope
-    /// never ended is refused: reported under `UZ-INTERNAL-005` (inside
-    /// `auditRelease`), counted, and handed to pg's dirty path — `begin()`
-    /// moves an idle connection off `.idle`, and the vendored release destroys
-    /// and replaces any non-idle connection rather than pooling it. A failed
-    /// `begin` leaves the connection in `.fail`, which the same path destroys.
+    /// Release with the dirty-connection backstop.
+    ///
+    /// Elevation is `SET LOCAL ROLE` (pool_elevation.zig), which PostgreSQL
+    /// reverts at COMMIT or ROLLBACK — so a connection with no open
+    /// transaction CANNOT still be elevated, and `_state` is the whole test.
+    /// It is also a strictly wider one: a connection handed back
+    /// mid-transaction is dirty whether or not it was ever elevated.
+    ///
+    /// Enforcement is pg's, not ours — the vendored release destroys and
+    /// replaces any non-idle connection rather than pooling it. What this adds
+    /// is the report, so a leaked scope is visible to an operator instead of
+    /// being silently absorbed as connection churn. The previous form asked a
+    /// side table instead and then called `begin()` to manufacture the very
+    /// non-idle state it was detecting; on a stale mark that poisoned a
+    /// connection the server had already reverted.
     pub fn release(self: *Pool, conn: *Conn) void {
-        if (pool_elevation.auditRelease(conn) != null) {
-            if (conn._state == .idle) {
-                conn.begin() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
-            }
+        if (conn._state != .idle) {
+            log.err(EVENT_DIRTY_RELEASE, .{
+                .conn_state = @tagName(conn._state),
+                .error_code = error_codes.ERR_INTERNAL_DB_ELEVATION_REFUSED,
+            });
         }
         self.inner.release(conn);
     }

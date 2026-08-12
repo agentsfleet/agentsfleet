@@ -62,7 +62,7 @@ pub fn read(
     var secret_scope = try pool_elevation.begin(conn, .vault);
     defer secret_scope.deinit();
     const has_secret = blk: {
-        var q = PgQuery.from(try secret_scope.conn.query(sql.SELECT_HAS_SECRET, .{workspace_id}));
+        var q = PgQuery.from(try secret_scope.query(sql.SELECT_HAS_SECRET, .{workspace_id}));
         defer q.deinit();
         const row = (try q.next()) orelse break :blk false;
         break :blk try row.get(bool, 0);

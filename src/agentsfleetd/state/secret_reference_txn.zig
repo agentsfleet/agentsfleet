@@ -191,7 +191,7 @@ pub fn begin(
     var lock_scope = try pool_elevation.begin(conn, .vault);
     defer lock_scope.deinit();
     const found = blk: {
-        var q = PgQuery.from(try lock_scope.conn.query(LOCK_SECRET, .{ workspace_id, key_name }));
+        var q = PgQuery.from(try lock_scope.query(LOCK_SECRET, .{ workspace_id, key_name }));
         defer q.deinit();
         break :blk (try q.next()) != null;
     };

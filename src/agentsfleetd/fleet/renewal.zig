@@ -205,7 +205,7 @@ pub fn renew(
     defer scope.deinit();
 
     const outcome: ?OutcomeRow = blk: {
-        var q = PgQuery.from(try scope.conn.query(RENEW_METER_SQL, .{
+        var q = PgQuery.from(try scope.query(RENEW_METER_SQL, .{
             lease_id,
             runner_id,
             want_until,

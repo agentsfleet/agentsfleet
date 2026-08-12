@@ -135,7 +135,7 @@ pub fn insertTelemetry(
     // `last_charged_at` equals `created_at` here: a receive fee is charged once,
     // so its span is a point and the budget drain's apportionment degenerates to
     // all-or-nothing, which is what it always was for this row (schema/710).
-    _ = try scope.conn.exec(
+    _ = try scope.exec(
         \\INSERT INTO billing.usage_ledger
         \\  (id, tenant_id, workspace_id, fleet_id, event_id,
         \\   charge_type, posture, model,

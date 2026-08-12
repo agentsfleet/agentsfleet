@@ -37,7 +37,7 @@ fn secretExists(conn: *pg.Conn, workspace_id: []const u8, name: []const u8) !boo
     var scope = try pool_elevation.begin(conn, .vault);
     defer scope.deinit();
     const found = blk: {
-        var q = PgQuery.from(try scope.conn.query(
+        var q = PgQuery.from(try scope.query(
             \\SELECT 1 FROM vault.secrets
             \\WHERE workspace_id = $1::uuid AND key_name = $2
             \\LIMIT 1

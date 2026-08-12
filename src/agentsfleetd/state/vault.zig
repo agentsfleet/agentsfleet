@@ -184,7 +184,7 @@ pub fn markExisting(
     var scope = try pool_elevation.begin(conn, .vault);
     defer scope.deinit();
     {
-        var q = PgQuery.from(try scope.conn.query(
+        var q = PgQuery.from(try scope.query(
             \\SELECT key_name FROM vault.secrets WHERE workspace_id = $1 AND key_name = ANY($2::text[])
         , .{ workspace_id, candidates }));
         defer q.deinit();
@@ -257,7 +257,7 @@ pub fn loadMetadata(
     var scope = try pool_elevation.begin(conn, .vault);
     defer scope.deinit();
     {
-        var q = PgQuery.from(try scope.conn.query(sql.SELECT_METADATA_FOR_KEYS, .{ workspace_id, candidates }));
+        var q = PgQuery.from(try scope.query(sql.SELECT_METADATA_FOR_KEYS, .{ workspace_id, candidates }));
         defer q.deinit();
         while (try q.next()) |row| {
             const found = try row.get([]const u8, 0);
@@ -329,7 +329,7 @@ pub fn deleteCredential(
     // reference protocol's transaction the scope brackets just the statement.
     var scope = try pool_elevation.begin(conn, .vault);
     defer scope.deinit();
-    const rowcount = try scope.conn.exec(
+    const rowcount = try scope.exec(
         \\DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2
     , .{ workspace_id, key_name });
     try scope.commit();

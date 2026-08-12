@@ -34,12 +34,17 @@
 //!     transaction. Outside a transaction the scope owns one, because
 //!     `SET LOCAL` without a transaction is a warning and a no-op.
 //!
-//! Every open elevation is tracked by connection identity in
-//! `pool_elevation_tracker.zig`; `pool.zig`'s release consults `auditRelease`
-//! as the backstop, so a connection that somehow escapes its scope still
-//! elevated is refused back into the pool rather than reused. RULE OWN: one
-//! scope owns the elevation; a nested `begin` on the same connection is
-//! refused, never stacked.
+//! `pool_elevation_tracker.zig` tracks open elevations by connection identity
+//! for ONE purpose: RULE OWN — a nested `begin` on a connection that already
+//! holds a scope is refused, never stacked. Nothing else enforces that, and a
+//! silent overwrite would step the outer scope's role down at the inner
+//! `commit` while the outer scope still believed it held one.
+//!
+//! It is deliberately NOT the pool-release backstop. `SET LOCAL` is reverted by
+//! the server at COMMIT or ROLLBACK, so a connection with no open transaction
+//! cannot still be elevated; `pool.zig`'s release tests `_state` directly,
+//! which is both sufficient and wider (it catches any leaked transaction, not
+//! only an elevated one).
 
 const std = @import("std");
 const pg = @import("pg");
@@ -82,13 +87,11 @@ pub const ROLE_NAME_MEMORY = "memory_runtime";
 // parameter, and composing from the named constants keeps the grep surface one.
 const S_SET_LOCAL_ROLE_PREFIX = "SET LOCAL ROLE ";
 const S_SET_LOCAL_ROLE_NONE = S_SET_LOCAL_ROLE_PREFIX ++ "NONE";
+// One switch over `Role`, not two: `dbName` is the single place a role's
+// identifier is written, and the statement composes from it at comptime. A
+// fifth role added to the enum cannot be half-added here.
 fn setLocalStatement(comptime role: Role) []const u8 {
-    return switch (role) {
-        .vault => S_SET_LOCAL_ROLE_PREFIX ++ ROLE_NAME_VAULT,
-        .billing => S_SET_LOCAL_ROLE_PREFIX ++ ROLE_NAME_BILLING,
-        .metering => S_SET_LOCAL_ROLE_PREFIX ++ ROLE_NAME_METERING,
-        .memory => S_SET_LOCAL_ROLE_PREFIX ++ ROLE_NAME_MEMORY,
-    };
+    return S_SET_LOCAL_ROLE_PREFIX ++ comptime role.dbName();
 }
 
 pub const Error = tracker.Error;
@@ -100,9 +103,29 @@ pub const Error = tracker.Error;
 /// requirement is legible in every signature that needs it.
 pub fn Elevated(comptime role: Role) type {
     return struct {
-        conn: *pg.Conn,
+        const Self = @This();
+
+        /// Underscore-prefixed because Zig has no field privacy. The name is
+        /// the marker: reaching past the handle greps as `._conn`, so a bypass
+        /// is visible in review rather than indistinguishable from ordinary
+        /// field access.
+        _conn: *pg.Conn,
 
         pub const elevated_role = role;
+
+        /// Statements run THROUGH the handle. This is what makes the type
+        /// load-bearing rather than decorative: a function that needs this
+        /// role does its whole job with the proof alone and never needs a raw
+        /// connection, so the signature is the capability.
+        pub fn exec(self: Self, sql_text: []const u8, values: anytype) !?i64 {
+            return self._conn.exec(sql_text, values);
+        }
+
+        /// Forwarding wrapper: ownership of the result passes to the caller,
+        /// which wraps it in `PgQuery` and drains there.
+        pub fn query(self: Self, sql_text: []const u8, values: anytype) !*pg.Result {
+            return self._conn.query(sql_text, values); // check-pg-drain: ok — the caller owns and drains this Result
+        }
 
         // The handle is one pointer, passed by value.
         comptime {
@@ -118,7 +141,7 @@ pub fn Elevated(comptime role: Role) type {
 ///
 ///     var scope = try pool_elevation.begin(conn, .vault);
 ///     defer scope.deinit();
-///     ... statements via scope.handle() / scope.conn ...
+///     ... scope.exec(...) / scope.query(...), or pass scope.handle() ...
 ///     try scope.commit();
 ///
 /// `deinit` after a successful `commit` is a no-op, so the `defer` is always
@@ -127,7 +150,10 @@ pub fn Scope(comptime role: Role) type {
     return struct {
         const Self = @This();
 
-        conn: *pg.Conn,
+        /// Underscore-prefixed for the same reason as `Elevated._conn`: the
+        /// scope's statements go through `exec`/`query` below, and a call site
+        /// that reaches the connection directly should be greppable.
+        _conn: *pg.Conn,
         /// True when `begin` opened the transaction and therefore owns ending
         /// it. False when the caller was already inside one: the scope only
         /// steps the role down and leaves COMMIT/ROLLBACK to its owner.
@@ -136,7 +162,17 @@ pub fn Scope(comptime role: Role) type {
 
         /// The typed proof to pass to functions that require this role.
         pub fn handle(self: Self) Elevated(role) {
-            return .{ .conn = self.conn };
+            return .{ ._conn = self._conn };
+        }
+
+        /// Run a statement in this scope. Delegates to the handle, so the
+        /// in-scope path and the passed-handle path are the same code.
+        pub fn exec(self: Self, sql_text: []const u8, values: anytype) !?i64 {
+            return self.handle().exec(sql_text, values);
+        }
+
+        pub fn query(self: Self, sql_text: []const u8, values: anytype) !*pg.Result {
+            return self.handle().query(sql_text, values);
         }
 
         /// Close the scope successfully: COMMIT when this scope owns the
@@ -148,11 +184,11 @@ pub fn Scope(comptime role: Role) type {
             // transaction is over either way, and `deinit` must not then issue
             // a rollback against a connection whose transaction already ended.
             self.closed = true;
-            defer tracker.unmark(self.conn);
+            defer tracker.unmark(self._conn);
             if (self.owns_txn) {
-                try self.conn.commit();
+                try self._conn.commit();
             } else {
-                _ = try self.conn.exec(S_SET_LOCAL_ROLE_NONE, .{});
+                _ = try self._conn.exec(S_SET_LOCAL_ROLE_NONE, .{});
             }
         }
 
@@ -165,12 +201,12 @@ pub fn Scope(comptime role: Role) type {
         pub fn deinit(self: *Self) void {
             if (self.closed) return;
             self.closed = true;
-            defer tracker.unmark(self.conn);
+            defer tracker.unmark(self._conn);
             if (self.owns_txn) {
-                self.conn.rollback() catch |err|
+                self._conn.rollback() catch |err|
                     log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
             } else {
-                _ = self.conn.exec(S_SET_LOCAL_ROLE_NONE, .{}) catch |err|
+                _ = self._conn.exec(S_SET_LOCAL_ROLE_NONE, .{}) catch |err|
                     log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
             }
         }
@@ -203,7 +239,7 @@ pub fn begin(conn: *pg.Conn, comptime role: Role) !Scope(role) {
         log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 
     _ = try conn.exec(comptime setLocalStatement(role), .{});
-    return .{ .conn = conn, .owns_txn = !in_txn };
+    return .{ ._conn = conn, .owns_txn = !in_txn };
 }
 
 fn logRefusal(conn: *pg.Conn, role_name: []const u8) void {
@@ -212,16 +248,6 @@ fn logRefusal(conn: *pg.Conn, role_name: []const u8) void {
         .conn_state = @tagName(conn._state),
         .error_code = error_codes.ERR_INTERNAL_DB_ELEVATION_REFUSED,
     });
-}
-
-/// Pool-release backstop — see `pool_elevation_tracker.auditRelease`.
-pub fn auditRelease(conn: *pg.Conn) ?[]const u8 {
-    return tracker.auditRelease(conn);
-}
-
-/// Operator-facing count of connections refused at release.
-pub fn refusedReleaseCount() u64 {
-    return tracker.refusedReleaseCount();
 }
 
 /// Operator-facing count of elevations refused by a full tracking table.

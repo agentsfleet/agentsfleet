@@ -150,7 +150,7 @@ fn write(
     // The UPDATE lands only as `vault_runtime` (schema/300).
     var scope = try pool_elevation.begin(conn, .vault);
     defer scope.deinit();
-    const affected = try scope.conn.exec(sql.UPDATE_SECRET_METADATA, .{
+    const affected = try scope.exec(sql.UPDATE_SECRET_METADATA, .{
         workspace_id,
         key_name,
         projection.kind.wire(),

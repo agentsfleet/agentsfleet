@@ -182,7 +182,7 @@ pub fn claimAndSettle(
     defer scope.deinit();
 
     const outcome: ?SettleOutcome = blk: {
-        var q = PgQuery.from(try scope.conn.query(CLAIM_SETTLE_SQL, .{
+        var q = PgQuery.from(try scope.query(CLAIM_SETTLE_SQL, .{
             lease_id,
             runner_id,
             now_ms,

@@ -75,7 +75,7 @@ pub fn load(
     // The query drains at this block's exit, BEFORE the commit below: COMMIT
     // with a result in flight is a protocol error.
     const plaintext = blk: {
-        var result = PgQuery.from(try scope.conn.query(sql.SELECT_SECRET, .{ workspace_id, key_name }));
+        var result = PgQuery.from(try scope.query(sql.SELECT_SECRET, .{ workspace_id, key_name }));
         defer result.deinit();
 
         const row = try result.next() orelse {
@@ -227,7 +227,7 @@ pub fn loadAllForWorkspace(
 
     {
         // Scoped so the result drains before the commit below.
-        var result = PgQuery.from(try scope.conn.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{workspace_id}));
+        var result = PgQuery.from(try scope.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{workspace_id}));
         defer result.deinit();
         while (try result.next()) |row| {
             const key_name = try alloc.dupe(u8, try row.get([]const u8, 0));

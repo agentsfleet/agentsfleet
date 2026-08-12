@@ -136,7 +136,7 @@ fn writeEnvelope(
         if (with_id) {
             const secret_id = try id_format.generateVaultSecretId(alloc);
             defer alloc.free(secret_id);
-            break :blk try scope.conn.exec(statement, .{
+            break :blk try scope.exec(statement, .{
                 secret_id,
                 workspace_id,
                 key_name,
@@ -154,7 +154,7 @@ fn writeEnvelope(
                 projection.has_key,
             });
         }
-        break :blk try scope.conn.exec(statement, .{
+        break :blk try scope.exec(statement, .{
             workspace_id,
             key_name,
             wrapped_dek.ciphertext,

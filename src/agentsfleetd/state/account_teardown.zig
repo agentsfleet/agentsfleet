@@ -109,11 +109,17 @@ const ElevatedIds = struct {
         // ones, which no foreign key cascades behind.
         //
         //   tenant row     — blocks a concurrent workspace INSERT
-        //                    (`core.workspaces` → `core.tenants`). Without it a
-        //                    workspace created here keeps its `vault.secrets`.
+        //                    (`core.workspaces` → `core.tenants`).
         //   workspace rows — blocks a concurrent fleet INSERT
-        //                    (`core.fleets` → `core.workspaces`). Without it a
-        //                    fleet created here keeps its `memory_entries`.
+        //                    (`core.fleets` → `core.workspaces`).
+        //
+        // What leaks is `memory.memory_entries` specifically, at either level.
+        // `vault.secrets` carries `REFERENCES core.workspaces ON DELETE
+        // CASCADE` (schema/300), so the database erases it whichever way the
+        // workspace row goes; the elevated vault delete here is belt-and-
+        // braces. Memory carries no foreign key at all — deliberately, so the
+        // role boundary is not coupled back to `core` (schema/820) — which
+        // makes the frozen array its ONLY eraser, and a miss permanent.
         //
         // Held in parent-to-child order, which is also the order the deletes
         // walk, so two concurrent purges of one tenant queue rather than
@@ -217,7 +223,7 @@ pub fn purgeByOidcSubject(
         if (comptime stmt.role) |role| {
             var scope = try pool_elevation.begin(conn, role);
             defer scope.deinit();
-            _ = try scope.conn.exec(stmt.sql, .{elevated_ids.slice(stmt.bind.?)});
+            _ = try scope.exec(stmt.sql, .{elevated_ids.slice(stmt.bind.?)});
             try scope.commit();
         } else {
             _ = try conn.exec(stmt.sql, .{tenant_id});

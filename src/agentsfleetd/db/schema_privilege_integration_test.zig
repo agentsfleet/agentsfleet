@@ -199,7 +199,7 @@ test "integration: a failed statement inside an elevated callback rolls back and
         var scope = pool_elevation.begin(conn, .vault) catch |err| break :blk err;
         defer scope.deinit();
         // A statement that cannot succeed even elevated: relation absent.
-        _ = scope.conn.exec("SELECT no_such_column FROM vault.secrets", .{}) catch |err| break :blk err;
+        _ = scope.exec("SELECT no_such_column FROM vault.secrets", .{}) catch |err| break :blk err;
         scope.commit() catch |err| break :blk err;
         break :blk {};
     };
@@ -294,7 +294,7 @@ test "integration: api_runtime elevates to metering_runtime and returns to base"
     _ = try conn.exec("SET ROLE api_runtime", .{});
     var scope = try pool_elevation.begin(conn, .metering);
     defer scope.deinit();
-    const inside_role = try currentRoleOwned(alloc, scope.conn);
+    const inside_role = try currentRoleOwned(alloc, scope._conn);
     defer alloc.free(inside_role);
     try scope.commit();
     try std.testing.expectEqualStrings("metering_runtime", inside_role);
@@ -322,7 +322,7 @@ test "integration: a connection returns to the base role and is reusable after a
     // with no reset call anywhere in this test.
     var scope = try pool_elevation.begin(conn, .billing);
     defer scope.deinit();
-    const inside_role = try currentRoleOwned(alloc, scope.conn);
+    const inside_role = try currentRoleOwned(alloc, scope._conn);
     defer alloc.free(inside_role);
     try scope.commit();
     try std.testing.expectEqualStrings("billing_runtime", inside_role);
@@ -332,7 +332,7 @@ test "integration: a connection returns to the base role and is reusable after a
     try std.testing.expectEqualStrings("api_runtime", after_role);
     _ = try scalarI64(conn, "SELECT 1::bigint", .{});
 
-    // And the registry sees nothing left to audit: this release will pool the
-    // connection normally rather than counting a refusal.
-    try std.testing.expect(pool_elevation.auditRelease(conn) == null);
+    // And the connection is clean for the pool: no open transaction, which is
+    // exactly what `Pool.release` tests — `SET LOCAL` cannot outlive one.
+    try std.testing.expect(conn._state == .idle);
 }

@@ -40,7 +40,7 @@ pub fn insertIfAbsent(
     // calls it would fail at runtime rather than at compile time.
     var scope = try pool_elevation.begin(conn, .billing);
     defer scope.deinit();
-    const affected = try scope.conn.exec(sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
+    const affected = try scope.exec(sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
     try scope.commit();
     return (affected orelse 0) > 0;
 }
@@ -72,7 +72,7 @@ pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
     // same UPDATE keeps the transition atomic so the `stop` gate can never see
     // "positive balance AND exhausted_at set".
     const debited: ?DebitResult = blk: {
-        var q = PgQuery.from(try scope.conn.query(sql.DEBIT_TENANT_BALANCE, .{ tenant_id, nanos, now_ms }));
+        var q = PgQuery.from(try scope.query(sql.DEBIT_TENANT_BALANCE, .{ tenant_id, nanos, now_ms }));
         defer q.deinit();
         const row = (try q.next()) orelse break :blk null;
         break :blk .{ .balance_nanos = try row.get(i64, 0), .updated_at_ms = try row.get(i64, 1) };
@@ -88,7 +88,7 @@ pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
 /// Wallet read; the `Elevated(.billing)` parameter is the compile-time proof
 /// it runs only inside an already-elevated callback (RULE OWN).
 fn rowExists(v: pool_elevation.Elevated(.billing), tenant_id: []const u8) !bool {
-    var q = PgQuery.from(try v.conn.query(sql.SELECT_TENANT_BILLING_EXISTS, .{tenant_id}));
+    var q = PgQuery.from(try v.query(sql.SELECT_TENANT_BILLING_EXISTS, .{tenant_id}));
     defer q.deinit();
     return (try q.next()) != null;
 }
@@ -105,7 +105,7 @@ pub fn loadByTenant(
     // ordinary local, so the errdefer below covers a commit that fails after
     // the read succeeded.
     const loaded: ?BillingRow = blk: {
-        var q = PgQuery.from(try scope.conn.query(sql.SELECT_TENANT_BALANCE, .{tenant_id}));
+        var q = PgQuery.from(try scope.query(sql.SELECT_TENANT_BALANCE, .{tenant_id}));
         defer q.deinit();
         const row = (try q.next()) orelse break :blk null;
         const bal = try row.get(i64, 0);
@@ -150,7 +150,7 @@ fn transitionExhaustion(conn: *pg.Conn, tenant_id: []const u8, comptime statemen
     defer scope.deinit();
 
     const transitioned = blk: {
-        var q = PgQuery.from(try scope.conn.query(statement, .{ tenant_id, now_ms }));
+        var q = PgQuery.from(try scope.query(statement, .{ tenant_id, now_ms }));
         defer q.deinit();
         break :blk (try q.next()) != null;
     };

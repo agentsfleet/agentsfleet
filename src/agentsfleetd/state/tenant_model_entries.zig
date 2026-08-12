@@ -209,7 +209,7 @@ pub fn secretExistsForTenant(conn: *pg.Conn, tenant_id: []const u8, secret_ref: 
     var scope = try pool_elevation.begin(conn, .vault);
     defer scope.deinit();
     const found = blk: {
-        var q = PgQuery.from(try scope.conn.query(sql.EXISTS_SECRET_IN_WORKSPACE, .{ workspace_id, secret_ref }));
+        var q = PgQuery.from(try scope.query(sql.EXISTS_SECRET_IN_WORKSPACE, .{ workspace_id, secret_ref }));
         defer q.deinit();
         break :blk (try q.next()) != null;
     };
