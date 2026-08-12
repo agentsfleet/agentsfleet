@@ -53,6 +53,50 @@ pub const UNIT_SECONDS = "s";
 pub const UNIT_TOKENS = "{token}";
 pub const UNIT_NANOCREDITS = "{nanocredit}";
 pub const UNIT_COUNT = "1";
+pub const UNIT_BYTES = "By";
+
+// Annotation units for the level (gauge) families. The OpenTelemetry→
+// Prometheus name translation drops curly-brace annotations entirely, while a
+// bare "1" on a gauge can gain a `_ratio` suffix depending on the store's
+// suffix setting — which would silently break every asset query. Braces make
+// the exported spelling deterministic.
+pub const UNIT_REQUESTS = "{request}";
+pub const UNIT_STREAMS = "{stream}";
+pub const UNIT_WORKERS = "{worker}";
+pub const UNIT_ENTRIES = "{entry}";
+pub const UNIT_FLEETS = "{fleet}";
+pub const UNIT_CONNECTIONS = "{connection}";
+pub const UNIT_LEASES = "{lease}";
+
+// ---------------------------------------------------------------------------
+// Runtime family names (M-prefix free; the operator assets query these exact
+// spellings in PromQL, so they are carried verbatim — Grafana Cloud's OTLP
+// ingest passes an underscore name through unchanged). Families whose owning
+// module already exports its name constant (metrics_counters, metrics_otel,
+// library_stages, metrics_sensitive_memory, metrics_memory, metrics_runner)
+// keep that module as the single source; only names that previously lived as
+// literals in the deleted Prometheus renderer are declared here.
+// ---------------------------------------------------------------------------
+
+pub const METRIC_API_BACKPRESSURE_REJECTIONS = "agentsfleet_api_backpressure_rejections_total";
+pub const METRIC_API_IN_FLIGHT_REQUESTS = "agentsfleet_api_in_flight_requests";
+pub const METRIC_SSE_BACKPRESSURE_REJECTIONS = "agentsfleet_sse_backpressure_rejections_total";
+pub const METRIC_SSE_IN_FLIGHT_STREAMS = "agentsfleet_sse_in_flight_streams";
+pub const METRIC_SSE_DROPPED_FRAMES = "agentsfleet_sse_dropped_frames_total";
+pub const METRIC_SSE_HUB_RECONNECTS = "agentsfleet_sse_hub_reconnects_total";
+pub const METRIC_WORKER_RUNNING = "agentsfleet_worker_running";
+pub const METRIC_FLEET_TRIGGERED = "agentsfleet_fleet_triggered_total";
+pub const METRIC_SIGNUP_BOOTSTRAPPED = "agentsfleet_signup_bootstrapped_total";
+pub const METRIC_SIGNUP_REPLAYED = "agentsfleet_signup_replayed_total";
+pub const METRIC_SIGNUP_FAILED = "agentsfleet_signup_failed_total";
+pub const METRIC_REDIS_POOL_ACTIVE = "agentsfleet_redis_pool_active";
+pub const METRIC_REDIS_POOL_IDLE = "agentsfleet_redis_pool_idle";
+pub const METRIC_REDIS_POOL_DIALS = "agentsfleet_redis_pool_dials_total";
+pub const METRIC_REDIS_POOL_OVERFLOW_DIALS = "agentsfleet_redis_pool_overflow_dials_total";
+pub const METRIC_REDIS_POOL_POISONED = "agentsfleet_redis_pool_poisoned_connections_total";
+pub const METRIC_REDIS_POOL_RECONNECTS = "agentsfleet_redis_pool_reconnects_total";
+pub const METRIC_REDIS_POOL_FORCED_CLOSES = "agentsfleet_redis_pool_forced_closes_total";
+pub const METRIC_REDIS_POOL_ACQUIRE_TIMEOUTS = "agentsfleet_redis_pool_acquire_timeouts_total";
 
 /// Names a payload may never emit: superseded product spellings plus GenAI
 /// client-call metrics whose measured boundary this process cannot observe.
@@ -142,8 +186,15 @@ pub const ChargeClass = enum {
 /// stays off this metric — it multiplies the per-model series budget below,
 /// and it is already carried exactly by the durable event row and the capped
 /// `agentsfleet_runner_failures_total` Prometheus family.
-pub const ERROR_TYPE_FLEET_ERROR = "fleet_error";
-const ERROR_TYPE_SLOTS: usize = 2; // absent on success, or the value above
+pub const ErrorType = enum {
+    fleet_error,
+
+    pub fn label(self: ErrorType) []const u8 {
+        return @tagName(self);
+    }
+};
+
+const ERROR_TYPE_SLOTS: usize = 2; // absent on success, or the one value above
 
 // ---------------------------------------------------------------------------
 // Provider normalization
@@ -172,11 +223,26 @@ pub const WELL_KNOWN_PROVIDERS = [_][]const u8{
 
 /// Map a stored provider identifier onto its exact well-known name, or null
 /// when no exact mapping exists. Never truncates and never invents a value.
-pub fn normalizeProvider(stored: []const u8) ?[]const u8 {
-    for (WELL_KNOWN_PROVIDERS) |known| {
-        if (std.mem.eql(u8, stored, known)) return known;
+/// Position of a stored provider identifier within the well-known table, or
+/// null when no exact mapping exists. The metric writer resolves its interned
+/// value index from this ordinal, so the one walk here replaces both the walk
+/// below and a second walk over every declared closed value.
+pub fn providerOrdinal(stored: []const u8) ?u16 {
+    // Case-insensitive because the identifier reaches us unvalidated from the
+    // Command-Line Interface (CLI) provider option, where "Anthropic" and
+    // "anthropic" name the same provider. The emitted value is always the table's
+    // canonical spelling, so tolerating case here removes a false omission
+    // without ever putting a non-standard spelling on the wire. ASCII-only is
+    // correct: every well-known name is ASCII.
+    for (WELL_KNOWN_PROVIDERS, 0..) |known, i| {
+        if (std.ascii.eqlIgnoreCase(stored, known)) return @intCast(i);
     }
     return null;
+}
+
+pub fn normalizeProvider(stored: []const u8) ?[]const u8 {
+    const ordinal = providerOrdinal(stored) orelse return null;
+    return WELL_KNOWN_PROVIDERS[ordinal];
 }
 
 /// Counted off the resolver's own enum so the derived series budget below can
@@ -238,6 +304,7 @@ pub const TOKEN_BUCKET_BOUNDS = [_]u64{
 };
 
 pub const MILLIS_PER_SECOND: u64 = 1000;
+pub const NANOS_PER_SECOND: u64 = 1_000_000_000;
 
 /// Widest pinned bound table. The payload sizes ONE bucket array for every
 /// histogram, so it must be cut to the longest table — upstream gives duration

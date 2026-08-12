@@ -52,6 +52,10 @@ pub const Hooks = struct {
     wake_threshold: u32 = 50,
     transport_timeout_ms: u64 = NORMAL_EXPORT_TIMEOUT_MS,
     shutdown_timeout_ms: u64 = SHUTDOWN_DRAIN_TIMEOUT_MS,
+    /// A signal whose collect hook produces flush-time snapshot data (levels,
+    /// cumulative counters) runs one collect per cycle even with an empty
+    /// queue; purely evented signals leave this off and skip idle cycles.
+    always_collect: bool = false,
 };
 
 pub fn Exporter(comptime hooks: Hooks) type {
@@ -152,6 +156,10 @@ pub fn Exporter(comptime hooks: Hooks) type {
             const cfg = g_config orelse return;
             var remaining = hooks.pending_count();
             health.setQueueDepth(hooks.signal, remaining);
+            if (remaining == 0 and hooks.always_collect) {
+                idleCollect(client, cfg);
+                return;
+            }
             while (remaining > 0) {
                 const io = g_io orelse return;
                 const deadline_ns = postDeadline(io);
@@ -163,6 +171,31 @@ pub fn Exporter(comptime hooks: Hooks) type {
                 const progressed = handleCollect(&remaining, client, alloc, cfg, result, deadline_ns);
                 health.setQueueDepth(hooks.signal, hooks.pending_count());
                 if (!progressed) return;
+            }
+        }
+
+        /// One snapshot-only batch for an idle always-collect signal. No queue
+        /// bookkeeping: nothing was pending, so the loop's remaining/removed
+        /// arithmetic does not apply — a sample racing in mid-collect is
+        /// simply drained here and the next cycle's count reflects it.
+        fn idleCollect(client: *Client, cfg: config.GrafanaOtlpConfig) void {
+            const io = g_io orelse return;
+            const deadline_ns = postDeadline(io);
+            if (deadlineReached(io, deadline_ns)) return;
+            var payload_buf: [OTLP_PAYLOAD_BUF_BYTES]u8 = undefined;
+            var fba = std.heap.FixedBufferAllocator.init(&payload_buf);
+            const alloc = fba.allocator();
+            switch (hooks.collect(alloc, cfg, 1)) {
+                .empty => {},
+                .serialize_failed => |removed| {
+                    health.recordDiscard(hooks.signal, .serialize_failed, removed);
+                    log.warn(EVENT_SERIALIZE_FAILED, .{ .count = removed });
+                },
+                .ready => |batch| {
+                    if (batch.export_count == 0) return;
+                    const outcome = hooks.post(client, alloc, cfg, hooks.path, batch.body, deadline_ns);
+                    recordPostOutcome(outcome, batch);
+                },
             }
         }
 

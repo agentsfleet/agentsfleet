@@ -36,7 +36,6 @@ fn classify(route: router.Route) RouteTraits {
     return switch (route) {
         .healthz,
         .readyz,
-        .metrics,
         => .{ .noisy_success = true },
         .runner_heartbeat,
         .runner_lease,

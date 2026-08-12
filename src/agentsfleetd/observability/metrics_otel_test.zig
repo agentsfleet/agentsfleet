@@ -1,6 +1,6 @@
 const std = @import("std");
 const metrics = @import("metrics_otel.zig");
-const metrics_render = @import("metrics_render.zig");
+const window = @import("otel_metrics_window_test.zig");
 
 const PRODUCER_COUNT: usize = 100;
 const INCREMENTS_PER_PRODUCER: usize = 1_000;
@@ -40,7 +40,8 @@ test "test_otlp_self_metrics_are_concurrent_and_exact" {
     try std.testing.expectEqualDeep(expected, actual.discarded);
 }
 
-test "test_otlp_self_metrics_render_fixed_labels" {
+test "test_otlp_self_metrics_export_fixed_labels" {
+    const alloc = std.testing.allocator;
     metrics.resetForTest();
     defer metrics.resetForTest();
 
@@ -51,37 +52,39 @@ test "test_otlp_self_metrics_render_fixed_labels" {
     metrics.recordDiscard(.traces, .partial_rejected, 3);
     metrics.recordDiscard(.metrics, .export_uncertain, 4);
 
-    const body = try metrics_render.renderPrometheus(std.testing.allocator, true);
-    defer std.testing.allocator.free(body);
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
 
-    try std.testing.expectEqual(@as(usize, 5), std.mem.count(u8, body, metrics.QUEUE_DEPTH_NAME));
-    try std.testing.expectEqual(@as(usize, 20), std.mem.count(u8, body, metrics.DISCARDED_NAME));
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        body,
-        1,
-        "agentsfleet_otlp_queue_depth{signal=\"logs\"} 7\n",
-    ));
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        body,
-        1,
-        "agentsfleet_otlp_entries_discarded_total{signal=\"traces\",reason=\"partial_rejected\"} 3\n",
-    ));
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        body,
-        1,
-        "agentsfleet_otlp_entries_discarded_total{signal=\"metrics\",reason=\"export_uncertain\"} 4\n",
-    ));
+    // Every fixed cell is a live series: one queue-depth point per signal and
+    // one discard point per (signal, reason) — zero cells included.
+    try std.testing.expectEqual(metrics.SIGNALS.len, try window.countFamilyWith(body, metrics.QUEUE_DEPTH_NAME, &.{}));
+    try std.testing.expectEqual(
+        metrics.SIGNALS.len * metrics.DISCARD_REASONS.len,
+        try window.countFamilyWith(body, metrics.DISCARDED_NAME, &.{}),
+    );
+
+    var sig_buf: [96]u8 = undefined;
+    var reason_buf: [96]u8 = undefined;
+    try std.testing.expectEqual(@as(i64, 7), try window.familyValueWith(body, metrics.QUEUE_DEPTH_NAME, &.{
+        try window.attrFragment(&sig_buf, "signal", "logs"),
+    }));
+    try std.testing.expectEqual(@as(i64, 3), try window.familyValueWith(body, metrics.DISCARDED_NAME, &.{
+        try window.attrFragment(&sig_buf, "signal", "traces"),
+        try window.attrFragment(&reason_buf, "reason", "partial_rejected"),
+    }));
+    try std.testing.expectEqual(@as(i64, 4), try window.familyValueWith(body, metrics.DISCARDED_NAME, &.{
+        try window.attrFragment(&sig_buf, "signal", "metrics"),
+        try window.attrFragment(&reason_buf, "reason", "export_uncertain"),
+    }));
 }
 
-// The omission renderer walks a two-dimensional counter table. A transposed
+// The omission collector walks a two-dimensional counter table. A transposed
 // `[attribute][reason]` index would pair the wrong attribute with the wrong
 // reason, and an operator chasing a gap in model coverage would be sent after
 // the wrong cause. Deliberately distinct per-cell counts make a transposition
-// produce a different body; equal counts would let it through.
-test "test_otlp_attribute_omissions_render_exact_attribute_reason_pairs" {
+// produce a different window; equal counts would let it through.
+test "test_otlp_attribute_omissions_export_exact_attribute_reason_pairs" {
+    const alloc = std.testing.allocator;
     metrics.resetForTest();
     defer metrics.resetForTest();
 
@@ -89,23 +92,36 @@ test "test_otlp_attribute_omissions_render_exact_attribute_reason_pairs" {
     for (0..2) |_| metrics.recordAttributeOmission(.request_model, .budget_exhausted);
     for (0..3) |_| metrics.recordAttributeOmission(.request_model, .value_too_long);
 
-    const body = try metrics_render.renderPrometheus(std.testing.allocator, true);
-    defer std.testing.allocator.free(body);
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
 
     // Label VALUES are the wire attribute keys, so the dashboard label reads as
     // the same string the OTLP payload would have carried.
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "agentsfleet_otel_attribute_omitted_total{attribute=\"gen_ai.provider.name\",reason=\"unmapped_provider\"} 1\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "agentsfleet_otel_attribute_omitted_total{attribute=\"gen_ai.request.model\",reason=\"budget_exhausted\"} 2\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "agentsfleet_otel_attribute_omitted_total{attribute=\"gen_ai.request.model\",reason=\"value_too_long\"} 3\n"));
+    var attr_buf: [96]u8 = undefined;
+    var reason_buf: [96]u8 = undefined;
+    try std.testing.expectEqual(@as(i64, 1), try window.familyValueWith(body, metrics.ATTRIBUTE_OMITTED_NAME, &.{
+        try window.attrFragment(&attr_buf, "attribute", "gen_ai.provider.name"),
+        try window.attrFragment(&reason_buf, "reason", "unmapped_provider"),
+    }));
+    try std.testing.expectEqual(@as(i64, 2), try window.familyValueWith(body, metrics.ATTRIBUTE_OMITTED_NAME, &.{
+        try window.attrFragment(&attr_buf, "attribute", "gen_ai.request.model"),
+        try window.attrFragment(&reason_buf, "reason", "budget_exhausted"),
+    }));
+    try std.testing.expectEqual(@as(i64, 3), try window.familyValueWith(body, metrics.ATTRIBUTE_OMITTED_NAME, &.{
+        try window.attrFragment(&attr_buf, "attribute", "gen_ai.request.model"),
+        try window.attrFragment(&reason_buf, "reason", "value_too_long"),
+    }));
 
     // A pair that was never recorded must stay at zero rather than inherit a
     // neighbouring cell's count — the other half of the transposition guard.
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "agentsfleet_otel_attribute_omitted_total{attribute=\"gen_ai.provider.name\",reason=\"budget_exhausted\"} 0\n"));
+    try std.testing.expectEqual(@as(i64, 0), try window.familyValueWith(body, metrics.ATTRIBUTE_OMITTED_NAME, &.{
+        try window.attrFragment(&attr_buf, "attribute", "gen_ai.provider.name"),
+        try window.attrFragment(&reason_buf, "reason", "budget_exhausted"),
+    }));
 
-    // Every cell renders, so a zeroed counter is still a visible series.
-    const expected_cells = metrics.OMITTED_ATTRIBUTES.len * metrics.OMISSION_REASONS.len;
+    // Every cell exports, so a zeroed counter is still a visible series.
     try std.testing.expectEqual(
-        expected_cells + 2, // + the HELP and TYPE lines
-        std.mem.count(u8, body, metrics.ATTRIBUTE_OMITTED_NAME),
+        metrics.OMITTED_ATTRIBUTES.len * metrics.OMISSION_REASONS.len,
+        try window.countFamilyWith(body, metrics.ATTRIBUTE_OMITTED_NAME, &.{}),
     );
 }

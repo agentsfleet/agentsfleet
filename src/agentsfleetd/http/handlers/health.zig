@@ -1,7 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const metrics = @import("../../observability/metrics.zig");
 const logging = @import("log");
 const ec = @import("../../errors/error_registry.zig");
 const common = @import("common.zig");
@@ -73,18 +72,6 @@ pub fn innerReadyz(hx: Hx) void {
         .database = true,
         .queue = true,
     });
-}
-
-pub fn innerMetrics(hx: Hx, req: *httpz.Request) void {
-    // Prometheus exposition is text/plain, not JSON — write res directly.
-    const body = metrics.renderPrometheus(req.arena, true) catch {
-        hx.res.status = @intFromEnum(std.http.Status.internal_server_error);
-        hx.res.body = "";
-        return;
-    };
-    hx.res.status = @intFromEnum(std.http.Status.ok);
-    hx.res.header("content-type", "text/plain; charset=utf-8");
-    hx.res.body = body;
 }
 
 test "integration: ready decision fails closed when redis queue dependency is degraded" {

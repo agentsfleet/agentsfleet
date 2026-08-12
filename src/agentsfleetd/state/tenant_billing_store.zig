@@ -20,14 +20,17 @@ const BillingRow = struct {
     }
 };
 
+/// Returns true when a row was inserted; false means the tenant already had a
+/// wallet and the ON CONFLICT DO NOTHING left it — and its balance — untouched.
 pub fn insertIfAbsent(
     conn: *pg.Conn,
     tenant_id: []const u8,
     balance_nanos: i64,
     grant_source: []const u8,
-) !void {
+) !bool {
     const now_ms = clock.nowMillis();
-    _ = try conn.exec(sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
+    const affected = try conn.exec(sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
+    return (affected orelse 0) > 0;
 }
 
 pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };

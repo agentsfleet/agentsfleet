@@ -9,8 +9,15 @@ import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const RENDER_TIMEOUT_MS = 15_000;
 
+// The list is payload-free by design (bodies moved to the single-event
+// route), so settlement is detected by an event row existing and the message
+// text is proven against the detail read the operator's dialog uses.
 interface EventPage {
-  items: Array<{ request_json: string }>;
+  items: Array<{ event_id: string }>;
+}
+
+interface EventDetail {
+  request_json: string | null;
 }
 
 test.describe("fleet detail logs", () => {
@@ -35,17 +42,25 @@ test.describe("fleet detail logs", () => {
     await expect(page.getByLabel("Fleet chat").getByText(message)).toBeVisible();
     await persisted;
     const api = clientFor(FIXTURE_KEY.regular);
+    let settledEventId = "";
     await expect
       .poll(
         async () => {
           const events = await api.get<EventPage>(
             `/v1/workspaces/${ws}/fleets/${seeded.id}/events?limit=100`,
           );
-          return events.items.some((event) => event.request_json.includes(message));
+          settledEventId = events.items[0]?.event_id ?? "";
+          return settledEventId !== "";
         },
         { timeout: RENDER_TIMEOUT_MS },
       )
       .toBe(true);
+    // The fleet was seeded in this test, so its first event is this steer;
+    // the body lives only on the single-event route.
+    const detail = await api.get<EventDetail>(
+      `/v1/workspaces/${ws}/fleets/${seeded.id}/events/${settledEventId}`,
+    );
+    expect(detail.request_json ?? "").toContain(message);
 
     // The chat-first console: the summary strip carries status/outcome/cost
     // figures and the chat card carries the conversation.

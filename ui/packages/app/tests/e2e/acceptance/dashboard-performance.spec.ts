@@ -11,56 +11,22 @@ import {
 } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import {
+  installPaintBoundaryAudit,
+  readBlankFrames,
+} from "./fixtures/blank-frame-audit";
 
 const ROUTE_TIMEOUT_MS = 10_000;
 const STREAM_PREFIX = `m143-fluidity-${crypto.randomBytes(4).toString("hex")}`;
 
 async function installBlankFrameAudit(page: import("@playwright/test").Page) {
-  await page.evaluate(() => {
-    const main = document.querySelector("main");
-    if (!main) throw new Error("dashboard main region is missing");
-    const audit = { blankFrames: 0, main };
-    const inspect = () => {
-      if (
-        !main.isConnected ||
-        document.querySelector("main") !== main ||
-        !main.textContent?.trim()
-      ) {
-        audit.blankFrames += 1;
-      }
-    };
-    new MutationObserver(inspect).observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-    (window as typeof window & { __shellBlankAudit?: typeof audit })
-      .__shellBlankAudit = audit;
-  });
+  await page.evaluate(installPaintBoundaryAudit);
 }
 
 async function blankFrameCount(
   page: import("@playwright/test").Page,
 ): Promise<number> {
-  return page.evaluate(
-    () => {
-      const audit = (
-        window as typeof window & {
-          __shellBlankAudit?: {
-            blankFrames: number;
-            main: HTMLElement;
-          };
-        }
-      ).__shellBlankAudit;
-      if (!audit) throw new Error("dashboard blank-frame audit is missing");
-      if (
-        !audit.main.isConnected ||
-        document.querySelector("main") !== audit.main
-      ) {
-        throw new Error("dashboard main region was replaced");
-      }
-      return audit.blankFrames;
-    },
-  );
+  return page.evaluate(readBlankFrames);
 }
 
 test.describe("authenticated dashboard fluidity", () => {
@@ -179,15 +145,16 @@ test.describe("authenticated dashboard fluidity", () => {
 
       await signInAs(page, FIXTURE_KEY.operator);
       await page.goto("/admin/fleet-libraries");
-      await expect(
-        page.getByRole("heading", { level: 1, name: "Fleet library" }),
-      ).toBeVisible();
-      await page.waitForLoadState("networkidle");
-      scriptRequests.length = 0;
-
+      // Gate on content only the LOADED view carries — the route's loading
+      // skeleton renders the same h1, and waiting for network silence is
+      // unreachable here (the Clerk testing proxy holds retried FAPI
+      // requests in-flight; the suite-hygiene test bans that wait).
       const trigger = page.getByRole("button", {
         name: "Create fleet library",
       });
+      await expect(trigger).toBeVisible();
+      scriptRequests.length = 0;
+
       await trigger.hover();
       await expect(trigger).toHaveAttribute(
         "data-intent-hover",

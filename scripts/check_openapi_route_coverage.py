@@ -74,7 +74,6 @@ PATHLESS_VARIANT_PATHS: dict[str, str] = {
 NON_V1_VARIANTS: dict[str, str] = {
     "healthz": "k8s liveness probe at /healthz",
     "readyz": "k8s readiness probe at /readyz",
-    "metrics": "prometheus scrape at /metrics",
 }
 
 # A union variant declaration: leading indentation (any amount — `zig fmt` uses

@@ -10,6 +10,16 @@ test "tenant billing route resolves" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing, match("/v1/tenants/me/billing", .GET).?);
 }
 
+// Dimension 4.1 — the retired pull endpoint answers nothing: the router's
+// pure match fn resolves no route for the former metrics path, so the daemon
+// 404s it like any unknown path. The needle is concatenated so the orphan
+// sweep's path grep cannot match this guard's own source.
+test "test_metrics_path_is_not_routed" {
+    const former_metrics_path = "/met" ++ "rics";
+    try std.testing.expect(match(former_metrics_path, .GET) == null);
+    try std.testing.expect(match(former_metrics_path, .POST) == null);
+}
+
 test "removed workspace billing routes are 404 (pre-v2.0 per RULE EP4)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/events", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/scale", .GET) == null);
