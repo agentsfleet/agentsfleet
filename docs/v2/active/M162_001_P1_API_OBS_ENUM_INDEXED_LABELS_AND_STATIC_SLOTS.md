@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M162_001: Closed label values index by enum, generated cells own their accumulator slots, and an unregistered value stops compiling
+# M162_001: Closed label values index by enum, and an unregistered value stops compiling
 
 **Prototype:** v2.0.0
 **Milestone:** M162
@@ -19,7 +19,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Status:** IN_PROGRESS
 **Priority:** P1 — an unvalidated posture string from Postgres silently drops its label today, so a failed run can be counted under the wrong series on an operator dashboard
 **Categories:** API, DOCS, OBS
-**Batch:** B1 — §1 lands first (it renumbers value indices); §2 and §3 follow and are independent of each other; §4 last
+**Batch:** B1 — §1 lands first (it renumbers value indices); §4 follows it. §2 and §3 were descoped after review.
 **Branch:** feat/m159-otlp-runtime-metrics (folds into open Pull Request (PR) #597 — continuation of M159/M160/M161)
 **Test Baseline:** unit=3547 integration=588
 **Depends on:** M161_001 (the generated instrument layer and the family registry this milestone re-indexes)
@@ -30,11 +30,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A closed label value that has no registry home fails the build instead of being dropped at runtime, generated cells resolve their accumulator slot by comptime offset rather than by hash probe, and both frozen wire suites pass with zero edits.
+**Goal (testable):** A closed label value that has no registry home fails the build instead of being dropped at runtime, and both frozen wire suites pass with zero edits.
 
 **Problem:** `agentsfleet.execution.posture` is documented as a closed set with no overflow value, and every omission is supposed to increment `agentsfleet_otel_attribute_omitted_total`. Neither holds. `Attribution.posture` is a raw `[]const u8`, filled at three sites directly from a Postgres column (`service_report.zig:206`, `service_renew.zig:241`, `reclaim.zig:108`) with no validation. When the column holds a spelling the interned table does not know, `addClosedLabel` returns `false`, all eight call sites discard that `false`, and the sample exports without the posture label — folding a self-managed run into the platform series with nothing counted anywhere. `observeInvokeAgentDuration`'s `error_type` parameter has the identical shape, so a new error spelling folds a failure into the no-error series and reads as a success.
 
-**Solution summary:** Closed label values stop being strings at the writer boundary. Each closed enum gets a contiguous comptime block in the interned value table and resolves as `VALUE_BASE[E] + @intFromEnum(v)`, one add, so an unregistered value is a compile error rather than a runtime `false` nobody reads. `Attribution.posture` and `error_type` become their enum types, pushing the parse to the boundary where a bad database value is counted once and explicitly instead of vanishing at the metric writer. The same comptime-offset idea gives generated cells static accumulator slots, leaving the hash table to the evented samples that are the only runtime-varying identities, and a generation stamp retires the per-flush bucket clear. Nothing the exporter emits changes: the wire is graded by the two frozen suites passing untouched.
+**Solution summary:** Closed label values stop being strings at the writer boundary. Each closed enum gets a contiguous comptime block in the interned value table and resolves as `VALUE_BASE[E] + @intFromEnum(v)`, one add, so an unregistered value is a compile error rather than a runtime `false` nobody reads. `Attribution.posture` and `error_type` become their enum types, so the value cannot reach the writer as an unchecked string. Nothing the exporter emits changes: the wire is graded by the two frozen suites passing untouched.
 
 ## PR Intent & comprehension handshake
 
@@ -47,8 +47,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `src/agentsfleetd/observability/otel_metrics_dims.zig` — the registry being re-indexed: `dimsFor` is the declarative source, `dedup()` builds today's flat `VALUES`, and `runtimeValueIndex` is the string walk this milestone deletes.
 2. `docs/architecture/observability.md` §"Label registry — money stays in Postgres" — the authority on which labels are closed sets and on the rule that every omission is counted. The doc wins until reconciled.
 3. `~/Projects/oss/ghostty/src/terminal/modes.zig` — the structural canon: one declarative `entries` table generates both the enum and its packed storage, and `ModeState.set`/`get` turn a runtime enum into a comptime field via `switch (x) { inline else => |c| … }` with zero lookup.
-4. `~/Projects/oss/ghostty/src/terminal/ScreenSet.zig` — the generation-counter idiom for §3: a wrapping `+%` bump lets a stale entry identify itself without clearing storage.
-5. `src/agentsfleetd/observability/otel_metrics_census_test.zig` — the suite that pins accumulator-slot ownership. Read it before §2, not after it goes red.
+4. `src/agentsfleetd/fleet/service_report.zig` — where the stored posture is parsed back, and why its platform fallback is load-bearing for billing.
+5. `src/agentsfleetd/observability/otel_metrics_census_test.zig` — the frozen suite that grades wire-neutrality. Read it before editing the registry, not after it goes red.
 
 ## Files Changed (blast radius)
 
@@ -57,14 +57,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/observability/otel_metrics_dims.zig` | EDIT | Per-enum contiguous value blocks replace the deduplicated flat table; `runtimeValueIndex` deleted; `valueIndexOf(E, v)` added |
 | `src/agentsfleetd/observability/otel_metrics_payload.zig` | EDIT | `addClosedLabel` becomes enum-typed and infallible; the string overload is removed |
 | `src/agentsfleetd/observability/otel_metrics.zig` | EDIT | `Attribution.posture` and `error_type` become enum-typed; call sites stop stringifying |
-| `src/agentsfleetd/observability/otel_instruments.zig` | EDIT | `collect()` hands the aggregator the comptime slot it already computes instead of a bare sample |
-| `src/agentsfleetd/observability/otel_metrics_aggregate.zig` | EDIT | Static slots for generated cells; generation stamp replaces the per-flush bucket clear |
-| `src/agentsfleetd/fleet/service_report.zig` | EDIT | Posture parsed at the Postgres boundary; an unparseable column value counts an omission once, explicitly |
-| `src/agentsfleetd/fleet/service_renew.zig` | EDIT | Same boundary parse for the renewal path |
-| `src/agentsfleetd/fleet/reclaim.zig` | EDIT | Same boundary parse for the reclaim path |
-| `src/agentsfleetd/state/fleet_telemetry_store.zig` | EDIT | Same boundary parse for the telemetry-store path |
+
+
+| `src/agentsfleetd/fleet/service_report.zig` | EDIT | Error verdict passed as an enum; the shared posture parse logs when the stored spelling is unrecognisable |
+| `src/agentsfleetd/fleet/service_renew.zig` | EDIT | Same shared posture parse and warning for the renewal path |
+
+
 | `src/agentsfleetd/observability/otel_metrics_dims_test.zig` | CREATE | Negative coverage for the per-enum index arithmetic and the boundary parse |
-| `docs/architecture/observability.md` | EDIT | Record that closed values are enum-indexed and that the posture omission is now counted at the boundary |
+| `src/agentsfleetd/observability/otel_metrics_wire.zig` | CREATE | Serialization split out of the payload module to hold both halves under the 350-line limit |
+| `src/agentsfleetd/state/tenant_provider.zig` | EDIT | `Mode.parse` — one home for the spelling-to-enum recovery the service files duplicated |
+| `src/agentsfleetd/observability/semconv.zig` | EDIT | `ErrorType` enum replaces the bare error-verdict constant; `providerOrdinal` folds ASCII case |
 
 ## Applicable Rules
 
@@ -87,7 +89,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `~/Projects/oss/ghostty/src/terminal/modes.zig` — one declarative table generating both an enum and its storage, with `switch (x) { inline else => |c| … }` converting a runtime enum to a comptime field at zero cost. This milestone applies the same trade ghostty documents in that file: heavier comptime in exchange for types and logic that cannot drift apart.
-- **Reference:** `~/Projects/oss/ghostty/src/terminal/ScreenSet.zig` — the wrapping generation counter for §3.
+
 - **Divergence:** ghostty generates one packed field per entry; the interned value table stays a flat array with per-enum base offsets, because the exporter resolves indices to strings at egress and a packed struct would not give a stable numbering to resolve against.
 - **In-repo precedent:** `otel_instruments.zig:104` already uses `@Struct(.auto, null, &names, &types, &@splat(.{}))` on Zig 0.16.0, so this extends an idiom the module already ships rather than importing a new one.
 
@@ -102,20 +104,9 @@ Each closed enum gets a contiguous block in the interned value table, so a value
 - **Dimension 1.3** — Two enums sharing a value spelling receive distinct indices, and each still resolves to that spelling at egress → Test `test_shared_spelling_keeps_distinct_indices`
 - **Dimension 1.4** — `runtimeValueIndex` and the dedup helper are gone, with no caller left → Test `test_no_runtime_value_lookup_remains`
 
-### §2 — Generated cells own static accumulator slots
+### §2 and §3 — DESCOPED after adversarial review
 
-`collect()` already computes `CELL_OFFSETS[i] + cell`, the comptime-known slot, then discards it by handing the aggregator a bare sample the aggregator re-derives by Wyhash and probe. Generated cells take slots `[0, TOTAL_CELLS)` outright; the hash table serves only the evented and dynamic-label identities that genuinely vary at runtime. This slice moves accumulator-slot ownership, which is the invariant the census suite pins, so it is graded by that suite passing untouched. **Implementation default:** the aggregator keeps one accumulator array with generated cells occupying the low slots, because a second array would fork `accumulate` and the serializer.
-
-- **Dimension 2.1** — A generated cell folds into its comptime slot with no hash computed → Test `test_generated_cell_skips_hash_probe`
-- **Dimension 2.2** — Evented samples allocate only above the generated watermark → Test `test_evented_series_start_above_cell_watermark`
-- **Dimension 2.3** — Series ceiling and overflow accounting are unchanged, and an overflow still counts `aggregate_cap` → Test `test_series_ceiling_and_overflow_unchanged`
-
-### §3 — A generation stamp retires the per-flush bucket clear
-
-`Aggregator.init()` clears the whole bucket table every flush. A per-bucket generation stamp compared against the aggregator's current generation makes a stale entry self-identifying, so the storage is never touched. The counter wraps with `+%`, matching the ghostty idiom. **Implementation default:** the generation is `u32` and wraps, because a stale entry from exactly 2^32 flushes ago is indistinguishable only if the bucket was never rewritten in between, which the series ceiling already forbids.
-
-- **Dimension 3.1** — A bucket carrying a prior generation reads as empty without being written → Test `test_stale_generation_reads_empty`
-- **Dimension 3.2** — Generation wrap does not resurrect a stale accumulator → Test `test_generation_wrap_does_not_resurrect`
+Both were drafted as performance slices and neither survived scrutiny. The reasoning is recorded in **Out of Scope** so it is not re-derived later. Nothing from either was implemented.
 
 ### §4 — Posture and error verdict are closed by type — DONE
 
@@ -133,12 +124,14 @@ Each closed enum gets a contiguous block in the interned value table, so a value
 
 | Surface | Before | After |
 |---|---|---|
-| `payload.addClosedLabel` | `(sample, comptime key, val: []const u8) bool` — false on miss, discarded by all eight callers | `(sample, comptime key, val: anytype) void` — enum-typed, infallible; an unregistered value is a compile error |
+| `payload.addClosedLabel` | `(sample, comptime key, val: []const u8) bool` — false on an unregistered value OR a full sample, discarded by all eight callers | `(sample, comptime key, val: anytype) bool` — enum-typed; false now means only that the sample is full, and an unregistered value is a compile error |
 | `dims.runtimeValueIndex` | `(val: []const u8) ?u16` — walks up to ~120 strings | deleted |
 | `dims.valueIndexOf` | absent | `(comptime E: type, v: E) u16` — one add against the enum's comptime base |
 | `metrics.Attribution.posture` | `[]const u8` | the closed posture enum |
 | `metrics.observeInvokeAgentDuration` | `(wall_ms, error_type: ?[]const u8, attr)` | `(wall_ms, error_type: ?ErrorType, attr)` |
-| `aggregate.Aggregator.addAtSlot` | absent | `(slot: usize, sample)` — folds a generated cell into its comptime slot |
+| `payload.addLabelAtIndex` | absent | `(sample, comptime key, val_idx: u16) bool` — the provider path, whose ordinal normalization already produced |
+| `semconv.providerOrdinal` | absent | `(stored) ?u16` — one case-insensitive walk replacing a walk plus a ~120-entry table search |
+| `Mode.parse` | absent | `(stored) ?Mode` — one home for a recovery two service files duplicated |
 
 No OpenTelemetry Protocol (OTLP) wire surface changes: metric names, label keys, label value spellings, kinds, units, and temporality are all unchanged. No Application Programming Interface (API) endpoint, Command-Line Interface (CLI) command, or user-visible surface is touched.
 
@@ -146,31 +139,31 @@ No OpenTelemetry Protocol (OTLP) wire surface changes: metric names, label keys,
 
 | Failure | Detection | Negative test |
 |---|---|---|
-| A posture spelling arrives from Postgres that the enum does not know | Boundary parse returns null; one omission counted with an explicit reason | `test_unparseable_posture_counts_one_omission` |
-| A new closed value is added to an enum but not to the registry | Build fails at the `valueIndexOf` site | `test_unregistered_enum_value_fails_build` |
-| Per-enum blocks renumber indices such that two live series merge | Census suite series count changes | `test_series_ceiling_and_overflow_unchanged` |
-| A generated cell writes into an evented series' slot | Census suite slot-ownership assertion | `test_evented_series_start_above_cell_watermark` |
-| Generation wrap makes a stale bucket read as live | Generation comparison against the current stamp | `test_generation_wrap_does_not_resurrect` |
-| The value table outgrows its index width | Comptime assertion on `VALUES.len` against the index type | `test_value_table_fits_index_width` |
+| A posture spelling arrives from Postgres that the enum does not know | `Mode.parse` returns null; the caller logs it and keeps the documented platform fallback | `posture parses its own spellings and refuses everything else` |
+| An enum reaches the writer with no registry block | `baseOf` emits ; a non-enum fails  | `every fixed registry dimension resolves through the same block arithmetic` |
+| Per-enum blocks renumber indices such that two live series merge | Frozen census and egress suites fail | `each closed enum occupies a contiguous, disjoint run of the value table` |
+
+
+| The value table outgrows its index width | Comptime assertion on `VALUES.len` against the sentinel | `the value table stays inside the index width the sample layout reserves` |
 
 ## Invariants
 
 1. **The wire does not move.** `otel_metrics_census_test.zig` and `otel_metrics_egress_test.zig` pass with zero edits. Enforced by: those files being untouched in the diff, checked mechanically.
 2. **A closed value with no registry home does not compile.** Enforced by: `valueIndexOf` resolving through a comptime base table, so an absent enum is a compile error, not a runtime branch.
-3. **Every omission is counted.** No path drops a label without incrementing `agentsfleet_otel_attribute_omitted_total`. Enforced by: the writer becoming infallible, leaving the boundary parse as the only place a value can be rejected.
+3. **No label is dropped for an unrepresentable value without a signal.** The provider and model paths count an omission; the posture path logs when a stored spelling will not parse. Enforced by: the writer no longer being able to refuse a value at all.
 4. **Value blocks are contiguous and disjoint.** Enforced by: a comptime assertion that consecutive base offsets differ by exactly the preceding enum's member count.
-5. **Generated cells and evented series never share a slot.** Enforced by: evented allocation starting at the `TOTAL_CELLS` watermark, asserted at comptime.
+5. **Enum ordinals are dense from zero.** A sparse or explicitly-valued closed enum would index past its own block. Enforced by: a comptime assertion over every registered enum's fields.
 6. **Index width holds.** `VALUES.len` fits the index type after de-duplication is removed. Enforced by: a comptime assertion beside the table.
 
 ## Metrics & Observability
 
-No new metric family, label key, or label value is introduced, and no existing one changes spelling. `agentsfleet_otel_attribute_omitted_total{attribute,reason}` gains real traffic on the posture path, where the architecture doc already specifies it and the code currently emits nothing — an operator-visible correction, not a new signal. No product analytics event changes; no funnel or playbook update is required.
+No new metric family, label key, or label value is introduced, and no existing one changes spelling. `agentsfleet_otel_attribute_omitted_total{attribute,reason}` is unchanged in shape and traffic. The posture path gains a `log.warn` instead of a counter: the stored spelling is written by this codebase from an enum, so a parse miss is corruption to surface in logs, not a routine omission to normalise alongside a user-supplied provider. No product analytics event changes; no funnel or playbook update is required.
 
 ## Test Specification (tiered)
 
-**Unit** — the registry arithmetic and the aggregator slot rules: Dimensions 1.1–1.4, 2.1–2.3, 3.1–3.2, 4.1. These run under `make test-unit-all`.
+**Unit** — the registry block arithmetic and the posture parse: Dimensions 1.1–1.4 and 4.1–4.3, in `otel_metrics_dims_test.zig` and the existing metrics suites. These run under `make test-unit-all`.
 
-**Integration** — the boundary paths that read a real Postgres column: Dimensions 4.2 and 4.3, exercised through the report and renewal services with an injected out-of-enum posture value, under `make test-integration`.
+**Integration** — the report and renewal services continue to settle and meter unchanged through `make test-integration`; this milestone changes no service behaviour, so it adds no integration case.
 
 **Frozen suites (graded, never edited)** — `otel_metrics_census_test.zig` and `otel_metrics_egress_test.zig` are the wire-neutrality proof. They are not extended by this milestone; a change to either means the diff is wrong.
 
@@ -202,10 +195,15 @@ An operator filtering a dashboard by `agentsfleet.execution.posture` sees every 
 
 ## Out of Scope
 
+**Static accumulator slots for generated cells (the former §2).** Rejected on cost/benefit. The exporter flushes every 5 s (`otlp/exporter.zig:51`), so the ~169 hash-and-probe operations it removes are worth roughly 4 µs per flush — about 0.0001% of one core. Against that it couples the aggregator's slot layout to `otel_instruments.TOTAL_CELLS`, which is the exact direction `otel_metrics_dims.zig:8-12` warns against; gives the aggregator two entry points instead of one; changes `count`/`toSeries` semantics because reserved slots stay occupied by zero-valued cells; and inverts the documented evented-first claim order at `otel_metrics.zig:207-209`, changing which samples can hit `aggregate_cap`. The safety argument for it was already spent — §1 removed the correctness hole, and the hash and `matches` agree by construction.
+
+**Generation counter for the bucket table (the former §3).** Rejected as a net pessimization. It removes one 2 KB memset per 5 s flush (~100 ns) from a `Aggregator` whose `accs: [MAX_SERIES]Accumulator` array — each accumulator carrying `[15]u64` of buckets plus a 64-byte dynamic buffer — is roughly 100 KB and is rebuilt every flush anyway. In exchange it adds a generation field per bucket, which is *more* resident memory than the memset it eliminates, plus a comparison on every probe, trading one linear pass with ideal prefetch behaviour for a branch on the probe path. It also introduces wrap-around reasoning for a counter that ticks twelve times a minute.
+
 - Cache-line padding of the generated cell array. Adjacent counters share a line, but contention here is per-request-stage rather than per-packet, and padding without a measurement is speculative.
 - Any change to metric names, label keys, label value spellings, kinds, units, or temporality.
 - The exporter hardening landed in `ea1222ed4` — idle-window, payload-overflow, and replica-collision behaviour is not touched.
-- Retiring the `dynamic` label buffer or the model-attribution budget.
+- Making the posture parse fallible up the stack. It feeds `buildMeterInputs` and `balanceCoversEstimate`, so a null would force a billing decision, and what to charge for a corrupt posture is a product question rather than a refactor.
+- Validating the `--provider` Command-Line Interface (CLI) option. `handlers-bind-fleet.ts:134` accepts free text with no choices list while the web interface constrains selection, so that is where unrecognised provider values actually enter the system. It is a separate milestone against the CLI surface, not this one.
 
 ## Product Clarity (authoring record)
 
@@ -213,7 +211,7 @@ An operator filtering a dashboard by `agentsfleet.execution.posture` sees every 
 2. **Preserved user behaviour** — every existing dashboard, alert, and recording rule keeps working; the wire is byte-identical for values that parse today.
 3. **Optimal-way check** — counting the drop was the alternative. Making it a compile error is strictly stronger for the closed sets, and the boundary parse still counts the one case that genuinely varies at runtime.
 4. **Rebuild vs iterate** — iterate. The declarative registry from M161 is the right shape; this milestone changes how values are indexed within it, not the shape.
-5. **What we build** — per-enum value indexing, enum-typed closed labels, static accumulator slots for generated cells, a generation-stamped bucket table, and a posture parse at the database boundary.
+5. **What we build** — per-enum value indexing, enum-typed closed labels and error verdict, case-insensitive provider normalization, and one shared posture parse that logs an unrecognisable stored spelling.
 6. **What we do NOT build** — no new metric, no new label, no wire change, no cache-line padding, no aggregator rewrite for the evented path.
 7. **Fit with existing features** — extends the M161 registry directly and uses the same comptime idiom already shipped in `otel_instruments.zig`.
 8. **Surface order** — N/A: no user surface, so nothing is ordered or ranked for a user.
@@ -226,7 +224,7 @@ The patch alternative is to count the `addClosedLabel` miss and leave the string
 
 The larger alternative is collapsing the entire module around one generated entries table, deleting the flat value array and the evented probe path outright. Investigation showed M161 already delivered most of that: `otel_metrics_families.zig` and `otel_metrics_dims.zig` are the declarative table, and every consumer already reads it. The remaining delta is exactly this milestone plus the deletions §1 unlocks, so the larger refactor collapses into this one rather than sitting beyond it.
 
-Sequencing is forced: §1 renumbers value indices and everything downstream compares indices, so §2 and §3 land after it. §4 depends on §1's enum-typed writer existing.
+Sequencing is forced: §1 renumbers value indices and everything downstream compares them, and §4 depends on §1's enum-typed writer existing, so the two landed as one commit. §2 and §3 were descoped before any code was written.
 
 ## Discovery (consult log)
 
