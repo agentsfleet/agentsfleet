@@ -17,12 +17,14 @@ vi.mock("@clerk/nextjs", () => ({
 
 import { AuthSessionKeeper } from "./client";
 
+const USER_ID = "user_session_keeper_fixture";
+
 describe("AuthSessionKeeper", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     reload.mockResolvedValue({});
-    useUser.mockReturnValue({ isLoaded: true, isSignedIn: true, user: { reload } });
+    useUser.mockReturnValue({ isLoaded: true, isSignedIn: true, user: { id: USER_ID, reload } });
   });
 
   afterEach(() => {
@@ -63,6 +65,28 @@ describe("AuthSessionKeeper", () => {
     vi.advanceTimersByTime(90_000);
     window.dispatchEvent(new Event("focus"));
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("test_keeper_single_refresh_despite_identity_churn", async () => {
+    // Clerk re-instantiates the User resource after a reload, so every
+    // render sees a fresh object with the same id. An effect keyed on the
+    // object identity would fire its immediate refresh once per render —
+    // this pins that only the 45s cadence adds calls.
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    useUser.mockImplementation(() => ({
+      isLoaded: true,
+      isSignedIn: true,
+      user: { id: USER_ID, reload },
+    }));
+    const view = render(<AuthSessionKeeper />);
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    view.rerender(<AuthSessionKeeper />);
+    await act(async () => Promise.resolve());
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    await act(async () => vi.advanceTimersByTimeAsync(45_000));
+    expect(reload).toHaveBeenCalledTimes(2);
   });
 
   it("coalesces overlapping refresh signals and retries after failure", async () => {

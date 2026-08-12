@@ -42,7 +42,6 @@ const tenant_provider = @import("../state/tenant_provider.zig");
 const activity_publisher = @import("../fleet_runtime/activity_publisher.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
 const otel_metrics = @import("../observability/otel_metrics.zig");
-const semconv = @import("../observability/semconv.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const runner_events = @import("runner_events.zig");
 
@@ -113,7 +112,7 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
         // The coarse verdict only. The granular failure class stays on the
         // durable event row and the capped runner-failure Prometheus family;
         // on this histogram it would multiply the per-model series budget.
-        if (body.outcome == .fleet_error) semconv.ERROR_TYPE_FLEET_ERROR else null,
+        if (body.outcome == .fleet_error) .fleet_error else null,
         attributionFor(lease),
     );
     captureCompletion(hx, lease, body);
@@ -163,7 +162,7 @@ fn claimReportAndSettle(hx: Hx, runner_id: []const u8, lease: Lease, body: proto
         conn,
         lease.tenant_id,
         lease.provider,
-        parsePosture(lease.posture),
+        parsePosture(lease.posture, lease.fleet_id),
         lease.model,
         now_ms,
         body.input_tokens,
@@ -252,7 +251,7 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
         .workspace_id = lease.workspace_id,
         .fleet_id = lease.fleet_id,
         .event_id = lease.event_id,
-        .posture = parsePosture(lease.posture),
+        .posture = parsePosture(lease.posture, lease.fleet_id),
         .provider = lease.provider,
         .model = lease.model,
     }, @as(u64, body.input_tokens) + @as(u64, body.cached_input_tokens), body.output_tokens, wall_ms, clock.nowMillis() - (std.math.cast(i64, wall_ms) orelse std.math.maxInt(i64)));
@@ -282,7 +281,7 @@ fn buildContextJson(alloc: std.mem.Allocator, checkpoint: protocol.ReportCheckpo
 /// design: they never enter an OTLP metric attribute.
 fn attributionFor(lease: Lease) otel_metrics.Attribution {
     return .{
-        .posture = parsePosture(lease.posture).label(),
+        .posture = parsePosture(lease.posture, lease.fleet_id),
         .provider = lease.provider,
         .model = lease.model,
     };
@@ -290,9 +289,17 @@ fn attributionFor(lease: Lease) otel_metrics.Attribution {
 
 /// Map the stored posture label back to `Mode` for the telemetry span. Keyed on
 /// the enum's own `label()` (RULE UFS — no literal); unknown → platform.
-fn parsePosture(label: []const u8) tenant_provider.Mode {
-    if (std.mem.eql(u8, label, tenant_provider.Mode.self_managed.label())) return .self_managed;
-    return .platform;
+fn parsePosture(label: []const u8, fleet_id: []const u8) tenant_provider.Mode {
+    return tenant_provider.Mode.parse(label) orelse {
+        // Unreachable through this codebase: the lease write path carries the
+        // posture as a `Mode` and stores its own `label()`. A spelling that does
+        // not parse therefore means the column was written out of band, so it is
+        // logged rather than absorbed silently. The platform fallback itself is
+        // unchanged — billing reads the same value it always did, and changing
+        // that is a product decision, not a parse decision.
+        log.warn("report_posture_unparseable", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .posture = label });
+        return .platform;
+    };
 }
 
 /// Release the fleet's affinity claim so its next event becomes leasable. The

@@ -21,6 +21,7 @@ import {
 } from "@/lib/workspace-routes";
 import {
   useWorkspaceCreationController,
+  type CreatedWorkspace,
   type WorkspaceCreationCallbacks,
 } from "@/components/layout/useWorkspaceCreation";
 import {
@@ -135,6 +136,18 @@ export function WorkspaceCreationProvider({
     </WorkspaceCreationContext.Provider>
   );
 }
+
+/// Read-only view of optimistically created workspaces for surfaces that only
+/// resolve a label (the always-mounted switcher trigger). The full
+/// `useWorkspaceCreation` hook registers an owner and callbacks; a label read
+/// must not. Outside a provider this yields the empty list — the trigger then
+/// falls back to the server-provided workspace list, never crashes the header.
+export function useCreatedWorkspaces(): readonly CreatedWorkspace[] {
+  const shared = useContext(WorkspaceCreationContext);
+  return shared?.createdWorkspaces ?? EMPTY_CREATED_WORKSPACES;
+}
+
+const EMPTY_CREATED_WORKSPACES: readonly CreatedWorkspace[] = [];
 
 export function useWorkspaceCreation(callbacks: WorkspaceCreationCallbacks) {
   const shared = useContext(WorkspaceCreationContext);

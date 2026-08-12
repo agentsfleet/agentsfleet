@@ -13,7 +13,7 @@ primary_region = "iad"
 # Match production's per-worker ceiling so development exposes saturation
 # before release. Server-Sent Events (SSE) use dedicated threads.
 # Backpressure: API_MAX_IN_FLIGHT_REQUESTS (default 256) sheds 429 only for
-# API-class routes (/healthz, /readyz, /metrics are ops-class and never shed;
+# API-class routes (/healthz and /readyz are ops-class and never shed;
 # SSE answers to its own cap) and only when set BELOW WORKERS x THREADS (32
 # here). SSE_MAX_STREAMS (default 64) caps event streams per instance.
 [env]
@@ -41,8 +41,3 @@ primary_region = "iad"
   interval = "15s"
   timeout = "5s"
   grace_period = "30s"
-
-[[metrics]]
-  port = 9091
-  path = "/metrics"
-  processes = ["app"]

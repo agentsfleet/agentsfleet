@@ -1,5 +1,7 @@
 const std = @import("std");
+const common = @import("common");
 const metrics = @import("metrics_sensitive_memory.zig");
+const window = @import("otel_metrics_window_test.zig");
 
 const CONCURRENT_WRITERS: usize = 100;
 const INCREMENTS_PER_WRITER: usize = 100;
@@ -29,21 +31,25 @@ test "sensitive memory counters preserve increments from 100 concurrent writers"
     try std.testing.expectEqual(before.response_write_failures_total + expected, after.response_write_failures_total);
 }
 
-test "sensitive memory metrics render current RSS and unlabeled aggregate counters" {
-    var buffer: [2048]u8 = undefined;
-    var writer = std.Io.Writer.fixed(&buffer);
-    try metrics.renderPrometheus(&writer);
-    const output = writer.buffered();
+test "sensitive memory metrics export current RSS and unlabeled aggregate counters" {
+    const alloc = std.testing.allocator;
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
 
-    try expectMetric(output, metrics.METRIC_PROCESS_RESIDENT_MEMORY);
-    try expectMetric(output, metrics.METRIC_REQUEST_ERASED_BYTES);
-    try expectMetric(output, metrics.METRIC_RESPONSE_ERASED_BYTES);
-    try expectMetric(output, metrics.METRIC_RESPONSE_WRITE_FAILURES);
-    try std.testing.expect(std.mem.indexOfScalar(u8, output, '{') == null);
-}
+    // Each aggregate counter exports wholly unlabelled — no tenant, workspace,
+    // fleet, route, or secret identity ever rides a sensitive-memory series.
+    try window.expectFamilyWith(body, metrics.METRIC_REQUEST_ERASED_BYTES, &.{window.NO_ATTRIBUTES});
+    try window.expectFamilyWith(body, metrics.METRIC_RESPONSE_ERASED_BYTES, &.{window.NO_ATTRIBUTES});
+    try window.expectFamilyWith(body, metrics.METRIC_RESPONSE_WRITE_FAILURES, &.{window.NO_ATTRIBUTES});
 
-fn expectMetric(output: []const u8, name: []const u8) !void {
-    try std.testing.expect(std.mem.indexOf(u8, output, name) != null);
+    // The resident-set probe is platform-dependent; when the platform reports
+    // it, the gauge is present (unlabelled) — when it cannot, the family is
+    // absent rather than a fake zero.
+    if (common.rss.currentBytes() != null) {
+        try window.expectFamilyWith(body, metrics.METRIC_PROCESS_RESIDENT_MEMORY, &.{window.NO_ATTRIBUTES});
+    } else {
+        try window.expectNoFamilyWith(body, metrics.METRIC_PROCESS_RESIDENT_MEMORY, &.{});
+    }
 }
 
 fn recordConcurrent() void {

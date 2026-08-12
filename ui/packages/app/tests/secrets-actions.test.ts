@@ -10,21 +10,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // vi.mock is hoisted above the static actions import, so the mock fns must be
 // created via vi.hoisted() to exist when the factories run (see
 // runners-actions.test.ts).
-const { withTokenMock, createSecretMock, deleteSecretMock } = vi.hoisted(() => ({
+const { withTokenMock, createSecretMock, deleteSecretMock, replaceSecretMock } = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
   createSecretMock: vi.fn(),
   deleteSecretMock: vi.fn(),
+  replaceSecretMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
 vi.mock("@/lib/api/secrets", () => ({
   createSecret: createSecretMock,
   deleteSecret: deleteSecretMock,
+  replaceSecret: replaceSecretMock,
 }));
 
 import {
   createSecretAction,
   deleteSecretAction,
+  replaceSecretAction,
 } from "@/app/(dashboard)/w/[workspaceId]/secrets/actions";
 
 beforeEach(() => {
@@ -45,6 +48,14 @@ describe("secret server actions — thin withToken forwarders", () => {
     expect(r).toEqual({ ok: true, data: { name: "openai" } });
     expect(createSecretMock).toHaveBeenCalledWith("ws-1", body, "tok");
     expect(deleteSecretMock).not.toHaveBeenCalled();
+  });
+
+  it("replaceSecretAction threads the token last and returns the wrapped result", async () => {
+    replaceSecretMock.mockResolvedValueOnce({ name: "fly" });
+    const r = await replaceSecretAction("ws-1", "fly", { api_token: "FLY_NEW" });
+    expect(r).toEqual({ ok: true, data: { name: "fly" } });
+    expect(replaceSecretMock).toHaveBeenCalledWith("ws-1", "fly", { api_token: "FLY_NEW" }, "tok");
+    expect(createSecretMock).not.toHaveBeenCalled();
   });
 
   it("deleteSecretAction threads the token last and returns the wrapped result", async () => {

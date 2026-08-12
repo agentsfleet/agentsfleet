@@ -2,9 +2,11 @@
 //!
 //! Every label this module can emit is an enum member declared here. There is no
 //! entry point that accepts a string, so a caller cannot widen the label space
-//! without editing this file — which is the property §1 asks for ("permit only
-//! these enums and numeric duration/count/bytes") expressed as a type rather than
-//! as a review convention.
+//! without editing this file — "permit only these enums and numeric
+//! duration/count/bytes" expressed as a type rather than as a review
+//! convention. The registry (otel_metrics_families.zig) declares each family's
+//! dimensions off these enums, and storage lives in the generated instrument
+//! layer (otel_instruments.zig).
 //!
 //! ## Why the observation fans out instead of carrying five labels
 //!
@@ -23,21 +25,21 @@
 //!
 //! That is 102 fixed series, matching `docs/architecture/observability.md`
 //! §Metrics ("a metric is justified only when it answers an operator question as
-//! a fixed aggregate") and this workstream's Invariant 1. The pool and cache
-//! families deliberately carry NO surface label: §Metrics & Observability grants
-//! them a closed outcome and nothing else, and a starving pool is a process-wide
-//! condition rather than a per-surface one.
+//! a fixed aggregate"). The pool and cache families deliberately carry NO
+//! surface label: a starving pool is a process-wide condition rather than a
+//! per-surface one.
 //!
 //! ## Why stages are metrics and not spans
 //!
 //! `http/route_trace.zig` admits at most ten generic request spans per monotonic
 //! second. Ten stage spans on one library request would spend a whole second's
 //! admission budget and evict the server-error spans that budget exists to
-//! protect. The trace half of §1 is therefore the ingress context — W3C
-//! `traceparent` in, one `http.request` span out — which `handlers/common.zig`
-//! already implements; stage timings live here.
+//! protect. The trace half is therefore the ingress context — W3C `traceparent`
+//! in, one `http.request` span out — which `handlers/common.zig` already
+//! implements; stage timings live here.
 
 const std = @import("std");
+const instruments = @import("otel_instruments.zig");
 
 /// The authenticated read surfaces this schema can describe.
 ///
@@ -85,7 +87,7 @@ pub const Cache = enum { hit, miss, bypass, stale, not_applicable };
 
 /// Outcome of one pool acquisition. `error` is a Zig keyword, so the member is
 /// spelled `@"error"`; its `@tagName` is still `"error"`, which is what reaches
-/// the label and what §1 names.
+/// the label.
 pub const PoolResult = enum { acquired, timeout, cancelled, @"error" };
 
 /// One completed stage of one library read.
@@ -113,23 +115,15 @@ pub const LibraryObservation = struct {
 // ── Family names and labels (RULE UFS: one home per wire string) ─────────────
 
 // Two explicit counters rather than one `summary`: a summary with no quantiles
-// is a shape `promtool check metrics` accepts but no operator can read, and the
-// pair below states plainly what each number is. Mean stage cost is
-// rate(duration_total) / rate(observations_total).
+// is a shape no operator can read, and the pair below states plainly what each
+// number is. Mean stage cost is rate(duration_total) / rate(observations_total).
 pub const STAGE_DURATION_NAME = "agentsfleet_library_stage_duration_seconds_total";
-pub const STAGE_DURATION_HELP = "Seconds spent in one library read stage, by surface and stage. Divide by the observations counter for mean stage cost.";
 pub const STAGE_OBSERVATIONS_NAME = "agentsfleet_library_stage_observations_total";
-pub const STAGE_OBSERVATIONS_HELP = "Completed library read stages, by surface and stage. The denominator for the duration counter above.";
 pub const READ_OUTCOME_NAME = "agentsfleet_library_read_outcome_total";
-pub const READ_OUTCOME_HELP = "Library reads by surface and terminal outcome. Incremented exactly once per request.";
 pub const POOL_RESULT_NAME = "agentsfleet_library_pool_result_total";
-pub const POOL_RESULT_HELP = "Pool acquisitions on library read paths by result. Unlabelled by surface: a starving pool is process-wide, and a tenant label here would outlive the process guard.";
 pub const CACHE_OUTCOME_NAME = "agentsfleet_library_cache_outcome_total";
-pub const CACHE_OUTCOME_HELP = "Cache dispositions on library read paths. Global cache only; carries no tenant or request identity.";
 pub const PAYLOAD_BYTES_NAME = "agentsfleet_library_payload_bytes_total";
-pub const PAYLOAD_BYTES_HELP = "Encoded response bytes produced by library reads, by surface.";
 pub const RESULTS_NAME = "agentsfleet_library_results_total";
-pub const RESULTS_HELP = "Rows materialised into library read projections, by surface.";
 
 pub const LABEL_SURFACE = "surface";
 pub const LABEL_STAGE = "stage";
@@ -174,27 +168,6 @@ comptime {
     std.debug.assert(TOTAL_SERIES == 102);
 }
 
-// ── Family storage ──────────────────────────────────────────────────────────
-//
-// safe because: each cell is an independent monotonic counter. The /metrics
-// scrape tolerates reading one family a few nanoseconds after another, and no
-// other memory is published through these atomics.
-
-const Counter = std.atomic.Value(u64);
-const ZERO = Counter.init(0);
-
-var g_stage_duration_ns: [N_SURFACES][N_STAGES]Counter = .{.{ZERO} ** N_STAGES} ** N_SURFACES;
-var g_stage_count: [N_SURFACES][N_STAGES]Counter = .{.{ZERO} ** N_STAGES} ** N_SURFACES;
-var g_read_outcome: [N_SURFACES][N_OUTCOMES]Counter = .{.{ZERO} ** N_OUTCOMES} ** N_SURFACES;
-var g_pool_result: [N_POOL_RESULTS]Counter = .{ZERO} ** N_POOL_RESULTS;
-var g_cache_outcome: [N_CACHE]Counter = .{ZERO} ** N_CACHE;
-var g_payload_bytes: [N_SURFACES]Counter = .{ZERO} ** N_SURFACES;
-var g_results: [N_SURFACES]Counter = .{ZERO} ** N_SURFACES;
-
-fn idx(value: anytype) usize {
-    return @intFromEnum(value);
-}
-
 /// Record one completed stage.
 ///
 /// Feeds the stage-duration family always, and the pool and cache families only
@@ -202,21 +175,20 @@ fn idx(value: anytype) usize {
 /// the read-outcome family: that one is per-request, and incrementing it here
 /// would multiply every read by however many stages it happened to run.
 pub fn observeStage(obs: LibraryObservation) void {
-    const s = idx(obs.surface);
-    _ = g_stage_duration_ns[s][idx(obs.stage)].fetchAdd(obs.duration_ns, .monotonic);
-    _ = g_stage_count[s][idx(obs.stage)].fetchAdd(1, .monotonic);
+    instruments.add(.library_stage_duration, .{ .surface = obs.surface, .stage = obs.stage }, obs.duration_ns);
+    instruments.inc(.library_stage_observations, .{ .surface = obs.surface, .stage = obs.stage });
 
     if (obs.pool_result) |result| {
-        _ = g_pool_result[idx(result)].fetchAdd(1, .monotonic);
+        instruments.inc(.library_pool_result, .{ .pool_result = result });
     }
     if (obs.cache != .not_applicable) {
-        _ = g_cache_outcome[idx(obs.cache)].fetchAdd(1, .monotonic);
+        instruments.inc(.library_cache_outcome, .{ .cache = obs.cache });
     }
     if (obs.bytes) |b| {
-        _ = g_payload_bytes[s].fetchAdd(b, .monotonic);
+        instruments.add(.library_payload_bytes, .{ .surface = obs.surface }, b);
     }
     if (obs.count) |c| {
-        _ = g_results[s].fetchAdd(c, .monotonic);
+        instruments.add(.library_results, .{ .surface = obs.surface }, c);
     }
 }
 
@@ -225,7 +197,7 @@ pub fn observeStage(obs: LibraryObservation) void {
 /// read that died in `auth_verify` indistinguishable from one that never
 /// arrived, which is the confusion this family exists to remove.
 pub fn observeReadOutcome(surface: Surface, outcome: Outcome) void {
-    _ = g_read_outcome[idx(surface)][idx(outcome)].fetchAdd(1, .monotonic);
+    instruments.inc(.library_read_outcome, .{ .surface = surface, .outcome = outcome });
 }
 
 pub const StageSample = struct {
@@ -244,45 +216,45 @@ pub const Snapshot = struct {
     results: [N_SURFACES]u64,
 };
 
-/// Read every family for one scrape. Not atomic across families by design: the
-/// exposition format has no cross-family consistency requirement, and taking a
-/// lock on the scrape path would put the reader in the writers' way.
+/// Read every family for one assertion window. Not atomic across families by
+/// design: no cross-family consistency requirement exists, and a lock would
+/// put the reader in the writers' way.
 pub fn snapshot() Snapshot {
     // SAFETY: every field of `out` is assigned by the loops below — they are
     // bounded by the same enum field counts that size the struct — before it is
     // read or returned.
     var out: Snapshot = undefined;
     for (0..N_SURFACES) |s| {
+        const surface: Surface = @enumFromInt(s);
         for (0..N_STAGES) |st| {
+            const stage: Stage = @enumFromInt(st);
             out.stages[s][st] = .{
-                .surface = @enumFromInt(s),
-                .stage = @enumFromInt(st),
-                .duration_ns = g_stage_duration_ns[s][st].load(.acquire),
-                .count = g_stage_count[s][st].load(.acquire),
+                .surface = surface,
+                .stage = stage,
+                .duration_ns = instruments.snapshotCell(.library_stage_duration, .{ .surface = surface, .stage = stage }),
+                .count = instruments.snapshotCell(.library_stage_observations, .{ .surface = surface, .stage = stage }),
             };
         }
-        for (0..N_OUTCOMES) |o| out.read_outcomes[s][o] = g_read_outcome[s][o].load(.acquire);
-        out.payload_bytes[s] = g_payload_bytes[s].load(.acquire);
-        out.results[s] = g_results[s].load(.acquire);
+        for (0..N_OUTCOMES) |o| out.read_outcomes[s][o] = instruments.snapshotCell(.library_read_outcome, .{ .surface = surface, .outcome = @enumFromInt(o) });
+        out.payload_bytes[s] = instruments.snapshotCell(.library_payload_bytes, .{ .surface = surface });
+        out.results[s] = instruments.snapshotCell(.library_results, .{ .surface = surface });
     }
-    for (0..N_POOL_RESULTS) |p| out.pool_results[p] = g_pool_result[p].load(.acquire);
-    for (0..N_CACHE) |c| out.cache_outcomes[c] = g_cache_outcome[c].load(.acquire);
+    for (0..N_POOL_RESULTS) |p| out.pool_results[p] = instruments.snapshotCell(.library_pool_result, .{ .pool_result = @enumFromInt(p) });
+    for (0..N_CACHE) |c| out.cache_outcomes[c] = instruments.snapshotCell(.library_cache_outcome, .{ .cache = @enumFromInt(c) });
     return out;
 }
 
 /// Zero every family so one test's assertion is not another test's total.
 pub fn resetForTest() void {
-    for (0..N_SURFACES) |s| {
-        for (0..N_STAGES) |st| {
-            g_stage_duration_ns[s][st].store(0, .release);
-            g_stage_count[s][st].store(0, .release);
-        }
-        for (0..N_OUTCOMES) |o| g_read_outcome[s][o].store(0, .release);
-        g_payload_bytes[s].store(0, .release);
-        g_results[s].store(0, .release);
-    }
-    for (0..N_POOL_RESULTS) |p| g_pool_result[p].store(0, .release);
-    for (0..N_CACHE) |c| g_cache_outcome[c].store(0, .release);
+    instruments.resetCellsForTest(&.{
+        .library_stage_duration,
+        .library_stage_observations,
+        .library_read_outcome,
+        .library_pool_result,
+        .library_cache_outcome,
+        .library_payload_bytes,
+        .library_results,
+    });
 }
 
 test {

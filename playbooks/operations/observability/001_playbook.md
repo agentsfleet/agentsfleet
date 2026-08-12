@@ -11,7 +11,10 @@ Prometheus datasource.
 
 For each environment:
 
-1. Ensure Prometheus scrapes the `agentsfleetd` `/metrics` endpoint.
+1. Confirm the `agentsfleetd` OTLP export credentials (`GRAFANA_OTLP_*`) are
+   set for the environment — runtime metric families arrive via the daemon's
+   own exporter push; nothing scrapes the daemon. The gate's check arm probes
+   the datasource for live series and names any family that is absent.
 2. Create a Grafana service account that can read the selected datasource and
    manage folders, dashboards, and alert rules.
 3. Enable Grafana's current alert-rule resource API. Grafana 12.4 installations
@@ -66,6 +69,7 @@ only `grafana`.
 - `agentsfleet_api_in_flight_requests` returns at least one series.
 - The Grafana token never appears in process arguments or logs.
 
-The dashboard uses Prometheus scrape metrics. OpenTelemetry Protocol (OTLP)
-export credentials remain in `grafana-dev` and `grafana-prod`; they are a
-separate runtime path.
+The dashboard reads runtime families the daemon pushes over the OpenTelemetry
+Protocol (OTLP) — its single metrics egress; there is no scrape path. The
+export credentials live in `grafana-dev` and `grafana-prod`, separate from the
+provisioning service-account items above.
