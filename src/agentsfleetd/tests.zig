@@ -123,6 +123,8 @@ test {
     _ = @import("state/cli_credentials.zig");
     _ = @import("cmd/cli_credential_lookup.zig");
     _ = @import("auth/middleware/cli_credential.zig");
+    _ = @import("auth/clerk_scope_fetch.zig");
+    _ = @import("auth/clerk_scope_resolver.zig");
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
     _ = @import("state/user_preferences.zig");

@@ -10,6 +10,8 @@ const oidc_auth = @import("../auth/oidc.zig");
 const queue_redis = @import("../queue/redis.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const api_key_lookup = @import("api_key_lookup.zig");
+const cli_credential_lookup = @import("cli_credential_lookup.zig");
+const clerk_scope_resolver = @import("../auth/clerk_scope_resolver.zig");
 const serve_runner_lookup = @import("serve_runner_lookup.zig");
 const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
@@ -123,25 +125,38 @@ pub fn initOidc(alloc: std.mem.Allocator, serve_cfg: *const runtime_config.Serve
 /// Registry built BY VALUE and returned into the caller's stable var —
 /// initChains() (which captures field pointers) runs only on that storage,
 /// never here.
-pub fn buildRegistry(
+pub const RegistryDeps = struct {
     verifier: ?*oidc_auth.Verifier,
     api_key_lookup_ctx: *api_key_lookup.Ctx,
+    cli_credential_lookup_ctx: *cli_credential_lookup.Ctx,
+    /// Owns the provider client and the resolved-capability cache. Kept apart
+    /// from the lookup context above because they have different lifetimes and
+    /// different failure modes — one loses a datastore, the other a vendor.
+    scope_resolver: *clerk_scope_resolver.ScopeResolver,
     runner_lookup_ctx: *serve_runner_lookup.Ctx,
     approval_signing_secret: []const u8,
-) auth_mw.MiddlewareRegistry {
+};
+
+pub fn buildRegistry(deps: RegistryDeps) auth_mw.MiddlewareRegistry {
     return .{
         .bearer_or_api_key = .{
-            .verifier = verifier,
+            .verifier = deps.verifier,
         },
         .tenant_api_key_mw = .{
-            .host = api_key_lookup_ctx,
+            .host = deps.api_key_lookup_ctx,
             .lookup = api_key_lookup.lookup,
         },
+        .cli_credential_mw = .{
+            .host = deps.cli_credential_lookup_ctx,
+            .lookup = cli_credential_lookup.lookup,
+            .scope_host = deps.scope_resolver,
+            .resolveScopes = clerk_scope_resolver.resolveScopes,
+        },
         .runner_bearer_mw = .{
-            .host = runner_lookup_ctx,
+            .host = deps.runner_lookup_ctx,
             .lookup = serve_runner_lookup.lookup,
         },
         .require_scope_mw = .{},
-        .webhook_hmac_mw = .{ .secret = approval_signing_secret },
+        .webhook_hmac_mw = .{ .secret = deps.approval_signing_secret },
     };
 }

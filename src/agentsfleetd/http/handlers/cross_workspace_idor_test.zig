@@ -79,6 +79,17 @@ fn stubRunnerLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror
     return null;
 }
 
+fn stubCliCredentialLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.cli_credential.LookupResult {
+    return null;
+}
+
+/// Unreachable while the lookup answers null — capabilities are only resolved
+/// for a credential that was found. Present so the registry is fully
+/// constructed rather than carrying an undefined callback.
+fn stubResolveScopes(_: *anyopaque, alloc: std.mem.Allocator, _: []const u8) anyerror![]const u8 {
+    return alloc.dupe(u8, "");
+}
+
 const HttpResp = struct {
     status: u16,
     body: []u8,
@@ -277,6 +288,14 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .bearer_or_api_key = .{ .verifier = &srv.verifier },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
+        // SAFETY: both stubs ignore their host pointers; this suite drives the
+        // JWT path, so an `afc_` value is simply unknown here.
+        .cli_credential_mw = .{
+            .host = undefined,
+            .lookup = stubCliCredentialLookup,
+            .scope_host = undefined,
+            .resolveScopes = stubResolveScopes,
+        },
         // SAFETY: stubRunnerLookup ignores host and returns null; .host unread.
         .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
         .require_scope_mw = .{},

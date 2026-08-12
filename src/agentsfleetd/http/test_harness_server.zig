@@ -20,6 +20,14 @@ pub fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry 
         .bearer_or_api_key = .{ .verifier = &h.verifier },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKey },
+        // SAFETY: both stubs ignore their host pointers; an `afc_` value is
+        // simply unknown in this harness, so it 401s like any other.
+        .cli_credential_mw = .{
+            .host = undefined,
+            .lookup = stubCliCredential,
+            .scope_host = undefined,
+            .resolveScopes = stubResolveScopes,
+        },
         // SAFETY: stubRunnerLookup ignores host and returns null, so .host is
         // never dereferenced; runner-authed routes 401 in this harness.
         .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
@@ -34,6 +42,17 @@ fn stubTenantApiKey(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror
 
 fn stubRunnerLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.runner_bearer.LookupResult {
     return null;
+}
+
+fn stubCliCredential(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.cli_credential.LookupResult {
+    return null;
+}
+
+/// Unreachable while `stubCliCredential` answers null — the middleware only
+/// resolves capabilities for a credential it first found. Present so the
+/// registry is fully constructed rather than carrying an undefined callback.
+fn stubResolveScopes(_: *anyopaque, alloc: std.mem.Allocator, _: []const u8) anyerror![]const u8 {
+    return alloc.dupe(u8, "");
 }
 
 /// Max bind attempts before `bringUpServer` surfaces the race as a hard error.
