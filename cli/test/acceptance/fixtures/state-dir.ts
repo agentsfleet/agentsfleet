@@ -15,6 +15,7 @@
  */
 
 import fs from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -32,6 +33,27 @@ export interface StubbedStateDir {
   readonly dir: string;
   readonly workspaceId: string;
   cleanup(): Promise<void>;
+}
+
+/**
+ * The inverse of `makeStubbedStateDir`: a state directory with no
+ * `credentials.json` and no `workspaces.json`, so the CLI resolves as
+ * genuinely logged out.
+ *
+ * Needed because `composeEnv` passes the real `HOME` through to the spawned
+ * binary. Without an explicit `AGENTSFLEET_STATE_DIR` the CLI falls back to
+ * `~/.config/agentsfleet` (`src/lib/state.ts` `resolveStatePaths`), so every
+ * "not authenticated" assertion silently depends on whether whoever runs the
+ * suite happens to be logged in. Continuous Integration (CI) has no such
+ * directory and passed regardless; a developer machine with a real login
+ * failed the same tests.
+ *
+ * Synchronous so a module-level const can seed the sync `emptyEnv()` helpers.
+ * The directory stays empty, so there is nothing to clean but the tmpdir entry
+ * itself, which the operating system reclaims.
+ */
+export function makeEmptyStateDirSync(): string {
+  return mkdtempSync(path.join(os.tmpdir(), "agentsfleet-empty-"));
 }
 
 export async function makeStubbedStateDir(opts?: StubbedStateDirOptions): Promise<StubbedStateDir> {
