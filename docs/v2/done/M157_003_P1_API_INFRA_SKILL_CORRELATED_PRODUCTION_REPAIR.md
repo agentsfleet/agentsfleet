@@ -108,64 +108,64 @@ Dependencies sequence it. -->
 
 The daemon's `git/` modules encode one approved write-gate Universally Unique Identifier version 7 (UUIDv7) into a compact branch and resolve it back to authoritative Fleet context. The user-authored trigger supplies the trusted Pull Request base. The daemon binds repository, base, and branch into provider-neutral HTTP rules for exact methods, paths, and locked top-level JSON fields. The runner evaluates those immutable rules and carries no GitHub code or repair-progress state. Before any write, the repairer searches GitHub for the exact repository, branch, base, and all-state Pull Request; it returns the existing Pull Request, creates only the missing Pull Request for a validated existing ref, or creates the missing Git objects, ref, and draft Pull Request. An ambiguous response is resolved by rereading GitHub before another write. Both GitHub routes intercept repair traffic before normal routing.
 
-- **Dimension 1.1** — daemon supplies the compact branch → `test_repair_branch_uses_compact_gate_reference`
-- **Dimension 1.2** — both routes resolve one Fleet-plus-event owner → `test_ingress_resolves_gate_event_owner`
-- **Dimension 1.3** — malformed, unknown, unapproved, foreign, or forked repairs write nothing → `test_invalid_or_unapproved_repair_reference_is_ignored` and `test_foreign_repair_pr_is_refused`
-- **Dimension 1.4** — repair traffic records evidence without waking a Fleet → `test_repair_traffic_never_wakes`
-- **Dimension 1.5** — generic rules accept only the exact host, repository paths, ref, head, base, and draft flag; restart reconciliation uses GitHub state rather than runner memory → runner request-policy tests and repairer skill review
+- **Dimension 1.1 — DONE** — daemon supplies the compact branch → `test_repair_branch_uses_compact_gate_reference`
+- **Dimension 1.2 — DONE** — both routes resolve one Fleet-plus-event owner → `test_ingress_resolves_gate_event_owner`
+- **Dimension 1.3 — DONE** — malformed, unknown, unapproved, foreign, or forked repairs write nothing → `test_invalid_or_unapproved_repair_reference_is_ignored` and `test_foreign_repair_pr_is_refused`
+- **Dimension 1.4 — DONE** — repair traffic records evidence without waking a Fleet → `test_repair_traffic_never_wakes`
+- **Dimension 1.5 — DONE** — generic rules accept only the exact host, repository paths, ref, head, base, and draft flag; restart reconciliation uses GitHub state rather than runner memory → runner request-policy tests and repairer skill review
 
 ### §2 — Retain immutable run and merge evidence — DONE
 
 Every completed repair workflow remains append-only by provider run; a merged PR records the provider-returned commit once. Preview evidence never closes production.
 
-- **Dimension 2.1** — independent runs remain independent → `test_repair_runs_append_independently`
-- **Dimension 2.2** — early delivery and replay retain one row per run → `test_early_repair_run_is_retained`
-- **Dimension 2.3** — merged PR records the exact provider hash once → `test_merged_pr_records_provider_hash`
-- **Dimension 2.4** — unmerged or hashless PR cannot correlate and mutable deploy stamping has no caller → `test_unmerged_or_hashless_pull_request_never_records_merge` plus the dead-code sweep
+- **Dimension 2.1 — DONE** — independent runs remain independent → `test_repair_runs_append_independently`
+- **Dimension 2.2 — DONE** — early delivery and replay retain one row per run → `test_early_repair_run_is_retained`
+- **Dimension 2.3 — DONE** — merged PR records the exact provider hash once → `test_merged_pr_records_provider_hash`
+- **Dimension 2.4 — DONE** — unmerged or hashless PR cannot correlate and mutable deploy stamping has no caller → `test_unmerged_or_hashless_pull_request_never_records_merge` plus the dead-code sweep
 
 ### §3 — Bound write-credential spending — DONE
 
 Each write-credential request reserves one of 32 uses before vault or provider access. Cache hits and failures consume a reservation because authority covers the request.
 
-- **Dimension 3.1** — request reserves before secret access → `test_write_request_reserves_before_vault_load`
-- **Dimension 3.2** — failed request retains its reservation → `test_failed_write_request_still_spends`
-- **Dimension 3.3** — request past 32 returns the registered refusal → `test_write_request_past_ceiling_refuses`
-- **Dimension 3.4** — 100 concurrent requests cannot exceed 32 → `test_concurrent_write_requests_hold_ceiling`
-- **Dimension 3.5** — approval card states the same ceiling → `test_approval_card_states_ceiling`
+- **Dimension 3.1 — DONE** — request reserves before secret access → `test_write_request_reserves_before_vault_load`
+- **Dimension 3.2 — DONE** — failed request retains its reservation → `test_failed_write_request_still_spends`
+- **Dimension 3.3 — DONE** — request past 32 returns the registered refusal → `test_write_request_past_ceiling_refuses`
+- **Dimension 3.4 — DONE** — 100 concurrent requests cannot exceed 32 → `test_concurrent_write_requests_hold_ceiling`
+- **Dimension 3.5 — DONE** — approval card states the same ceiling → `test_approval_card_states_ceiling`
 
 ### §4 — Normalize production identity — DONE
 
 GitHub deployment status retains deployment and status identifiers, repository, production environment, commit, conclusion, and completion. Provider status identifier is the append identity, so a later terminal status for one deployment remains evidence instead of colliding with an earlier status. Vercel qualifies only through GitHub.
 
-- **Dimension 4.1** — terminal GitHub production status normalizes → `test_github_production_status_normalizes`
-- **Dimension 4.2** — Vercel-through-GitHub uses the same shape → `test_vercel_github_status_normalizes`
-- **Dimension 4.3** — non-terminal, non-production, or incomplete status queues nothing → `test_unready_deployment_status_is_ignored` and `test_incomplete_deployment_identity_is_ignored`
-- **Dimension 4.4** — App registration records event, permission, producer boundary, and live proof → release-gate playbook review
-- **Dimension 4.5** — failure followed by success for one deployment retains both provider statuses and correlates the success → GitHub ingress integration test
+- **Dimension 4.1 — DONE** — terminal GitHub production status normalizes → `test_github_production_status_normalizes`
+- **Dimension 4.2 — DONE** — Vercel-through-GitHub uses the same shape → `test_vercel_github_status_normalizes`
+- **Dimension 4.3 — DONE** — non-terminal, non-production, or incomplete status queues nothing → `test_unready_deployment_status_is_ignored` and `test_incomplete_deployment_identity_is_ignored`
+- **Dimension 4.4 — DONE** — App registration records event, permission, producer boundary, and live proof → release-gate playbook review
+- **Dimension 4.5 — DONE** — failure followed by success for one deployment retains both provider statuses and correlates the success → GitHub ingress integration test
 
 ### §5 — Correlate and dispatch exactly once — DONE
 
 Both arrival paths call one evidence service under a transaction-scoped lock keyed by workspace, repository, and commit. A merged close delivery upserts the immutable Pull Request link when its opened delivery was missed. Exact correlation creates every verifier intent with one set-based insert. The dispatcher takes fenced short claims with `FOR UPDATE SKIP LOCKED`, releases the database connection before Redis input/output, and completes only the claim token it owns. Redis replay and stale-claim recovery converge on the original event identifier.
 
-- **Dimension 5.1** — result-first, merge-first, simultaneous arrival, and replay converge once → `integration: production results reconcile in either arrival order and emit verifier once`
-- **Dimension 5.2** — mismatch, missing identity, another workspace, or ambiguity emits nothing → same correlation integration test
-- **Dimension 5.3** — Redis-before-completion replay returns the original event → same correlation integration test
-- **Dimension 5.4** — due time and multi-verifier fan-out remain independent → same correlation integration test
-- **Dimension 5.5** — dispatcher starts, joins, and uses matching indexes → daemon lifecycle and index-use integration tests
-- **Dimension 5.6** — 100 distinct keys progress while one exact key waits → `integration: distinct production correlations admit one hundred requests concurrently`
-- **Dimension 5.7** — a merged close delivery without an earlier opened delivery creates and merges one link → GitHub ingress integration test
-- **Dimension 5.8** — 100 concurrent dispatchers claim one intent once, stale claims recover, and a poison row does not starve later work → dispatcher integration tests
-- **Dimension 5.9** — Redis failure occurs with no database connection held and retries through the same fence → dispatcher integration tests
+- **Dimension 5.1 — DONE** — result-first, merge-first, simultaneous arrival, and replay converge once → `integration: production results reconcile in either arrival order and emit verifier once`
+- **Dimension 5.2 — DONE** — mismatch, missing identity, another workspace, or ambiguity emits nothing → same correlation integration test
+- **Dimension 5.3 — DONE** — Redis-before-completion replay returns the original event → same correlation integration test
+- **Dimension 5.4 — DONE** — due time and multi-verifier fan-out remain independent → same correlation integration test
+- **Dimension 5.5 — DONE** — dispatcher starts, joins, and uses matching indexes → daemon lifecycle and index-use integration tests
+- **Dimension 5.6 — DONE** — 100 distinct keys progress while one exact key waits → `integration: distinct production correlations admit one hundred requests concurrently`
+- **Dimension 5.7 — DONE** — a merged close delivery without an earlier opened delivery creates and merges one link → GitHub ingress integration test
+- **Dimension 5.8 — DONE** — 100 concurrent dispatchers claim one intent once, stale claims recover, and a poison row does not starve later work → dispatcher integration tests
+- **Dimension 5.9 — DONE** — Redis failure occurs with no database connection held and retries through the same fence → dispatcher integration tests
 
 ### §6 — Run the read-only verifier — DONE
 
 `incident-verifier` subscribes only to `repair_production_result`, reads the exact commit and completed telemetry window, and writes one human-readable result to standard Fleet history.
 
-- **Dimension 6.1** — bundle onboards normally and rejects raw deployment status → `test_incident_verifier_onboards`
-- **Dimension 6.2** — repository token is read-only → `test_incident_verifier_token_is_read_only`
-- **Dimension 6.3** — instructions use event merge hash, never current default branch → `test_verifier_uses_event_commit_hash`
-- **Dimension 6.4** — missing or contradictory telemetry yields `inconclusive` → `test_verifier_does_not_guess_without_evidence`
-- **Dimension 6.5** — bundle parse, lease wire, and runner enforce read-only methods and exact query paths → `test_lease_read_only_http_restrictions_survive_the_runner_wire`
+- **Dimension 6.1 — DONE** — bundle onboards normally and rejects raw deployment status → `test_incident_verifier_onboards`
+- **Dimension 6.2 — DONE** — repository token is read-only → `test_incident_verifier_token_is_read_only`
+- **Dimension 6.3 — DONE** — instructions use event merge hash, never current default branch → `test_verifier_uses_event_commit_hash`
+- **Dimension 6.4 — DONE** — missing or contradictory telemetry yields `inconclusive` → `test_verifier_does_not_guess_without_evidence`
+- **Dimension 6.5 — DONE** — bundle parse, lease wire, and runner enforce read-only methods and exact query paths → `test_lease_read_only_http_restrictions_survive_the_runner_wire`
 
 ## Interfaces
 
