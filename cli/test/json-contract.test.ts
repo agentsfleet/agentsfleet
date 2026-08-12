@@ -9,7 +9,6 @@ import os from "node:os";
 import path from "node:path";
 import type { Command } from "commander";
 import { makeBufferStream, ui } from "./helpers.ts";
-import { withFreshStateDir } from "./helpers-cli-state.ts";
 import { runCli } from "../src/cli.ts";
 import { writeError } from "../src/program/io.ts";
 import { buildProgram } from "../src/program/cli-tree.ts";
@@ -147,25 +146,17 @@ describe("JSON mode suppresses banners", () => {
 
 describe("JSON error envelope", () => {
   test("auth required in JSON mode emits AUTH_REQUIRED on stderr", async () => {
-    // Credentials resolve from `process.env.AGENTSFLEET_STATE_DIR`
-    // (src/lib/state.ts `resolveStatePaths`), NOT the `env` handed to
-    // `runCli` — `loadCredentials()` runs before that env is consulted. Sibling
-    // files in this suite write credentials into whatever directory is current,
-    // so take a fresh empty one rather than trusting the runner default to be
-    // pristine by the time this file runs.
-    await withFreshStateDir(async () => {
-      const out = makeBufferStream();
-      const err = makeBufferStream();
-      const code = await runCli(["--json", "workspace", "list"], {
-        stdout: out.stream,
-        stderr: err.stream,
-        env: { NO_COLOR: "1" },
-      });
-      expect(code).toBe(1);
-      const parsed = tryParseJson(err.read()) as { error: { code: string } } | null;
-      expect(parsed).not.toBeNull();
-      expect(parsed?.error.code).toBe("AUTH_REQUIRED");
+    const out = makeBufferStream();
+    const err = makeBufferStream();
+    const code = await runCli(["--json", "workspace", "list"], {
+      stdout: out.stream,
+      stderr: err.stream,
+      env: { NO_COLOR: "1" },
     });
+    expect(code).toBe(1);
+    const parsed = tryParseJson(err.read()) as { error: { code: string } } | null;
+    expect(parsed).not.toBeNull();
+    expect(parsed?.error.code).toBe("AUTH_REQUIRED");
   });
 
   test("removed v1 commands surface as commander unknown-command (exit 2)", async () => {
