@@ -13,6 +13,9 @@ const oidc = @import("../oidc.zig");
 const principal_mod = @import("../principal.zig");
 const cli_credential_mod = @import("cli_credential.zig");
 const bearer_or_api_key = @import("bearer_or_api_key.zig");
+const mod = @import("mod.zig");
+const tenant_api_key_mod = @import("tenant_api_key.zig");
+const runner_bearer_mod = @import("runner_bearer.zig");
 
 const AuthCtx = auth_ctx.AuthCtx;
 const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
@@ -243,4 +246,61 @@ test "bearer_or_api_key short-circuits with 503 when JWKS fetch fails" {
 
     try testing.expectEqual(chain.Outcome.short_circuit, result.outcome);
     try testing.expectEqualStrings(errors.ERR_AUTH_UNAVAILABLE, test_fixtures.last_code);
+}
+
+fn stubTenantLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?tenant_api_key_mod.LookupResult {
+    return null;
+}
+
+fn stubCliLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?cli_credential_mod.LookupResult {
+    return null;
+}
+
+fn stubRunnerLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?runner_bearer_mod.LookupResult {
+    return null;
+}
+
+fn stubResolveScopes(_: *anyopaque, alloc: std.mem.Allocator, _: []const u8) anyerror![]const u8 {
+    return alloc.dupe(u8, "");
+}
+
+test "initChains connects the credential path into the bearer router" {
+    // Without this wiring an `afc_` value falls through to the OIDC path, fails
+    // signature verification, and answers a generic 401 — a durable credential
+    // silently unusable, with no error naming the cause.
+    //
+    // It is easy to miss precisely because nothing fails to compile: the
+    // registry is built field-by-field at each host, and a site that omits the
+    // credential middleware still builds. Two such sites in the test tree did
+    // exactly that, and only broke under the full build.
+    var verifier = try makeVerifier();
+    defer verifier.deinit();
+
+    var reg = mod.MiddlewareRegistry{
+        .bearer_or_api_key = .{ .verifier = &verifier },
+        // SAFETY: every stub below ignores its host pointer and returns null,
+        // so none of these is ever dereferenced.
+        .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantLookup },
+        // SAFETY: as above — neither host pointer is read.
+        .cli_credential_mw = .{
+            .host = undefined,
+            .lookup = stubCliLookup,
+            .scope_host = undefined,
+            .resolveScopes = stubResolveScopes,
+        },
+        // SAFETY: as above.
+        .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
+        .require_scope_mw = .{},
+        .webhook_hmac_mw = .{ .secret = "" },
+    };
+
+    reg.initChains();
+
+    // Identity comparison, not a null check: the router must point at THIS
+    // registry's middleware, so an edit that wires a copy — leaving the live
+    // one unreachable — fails here rather than at runtime.
+    try testing.expect(reg.bearer_or_api_key.cli_credential == &reg.cli_credential_mw);
+    // Asserted alongside so the credential wiring cannot be "restored" by a
+    // change that quietly drops the tenant path sitting next to it.
+    try testing.expect(reg.bearer_or_api_key.tenant_api_key == &reg.tenant_api_key_mw);
 }
