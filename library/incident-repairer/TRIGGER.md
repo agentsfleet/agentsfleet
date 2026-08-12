@@ -21,17 +21,12 @@ x-agentsfleet:
     # Declared explicitly — an omitted `tools` key falls back to the full
     # default set (see the responder's note; same rule).
     #
-    # The memory pair is the duplicate guard: an incident whose repair PR is
-    # already open must produce a report, not a second branch.
     - http_request
-    - memory_store
-    - memory_recall
 
   credentials:
     - elastic
     - grafana
     - github
-    - slack
     # Same shapes as the responder's (substituted at the request boundary).
     # github is the mintable integration — and for THIS bundle the daemon
     # mints WRITE, which is why every event of this fleet parks at the
@@ -46,14 +41,17 @@ x-agentsfleet:
   repositories:
     - agentsfleet/agentsfleet
   repository_access: write
+  repository_base: main
 
   network:
+    read_only: true
+    read_post_paths:
+      - https://demo.es.us-east-1.aws.elastic.cloud/_query
     allow:
       # Deployment-specific hosts, pinned by the playbook or an operator PATCH.
       - demo.es.us-east-1.aws.elastic.cloud
       - demo-grafana.internal
       - api.github.com
-      - slack.com
 
   budget:
     # A repair run reads telemetry, history, AND file contents, then pushes —

@@ -3,6 +3,7 @@
 const std = @import("std");
 const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_runner.zig");
+const mrv = @import("metrics_repair_verification.zig");
 const mrp = @import("metrics_redis_pool.zig");
 const msm = @import("metrics_sensitive_memory.zig");
 const mt = @import("metrics_trace.zig");
@@ -292,6 +293,7 @@ pub fn renderPrometheus(
     try appendLibraryFamilies(writer);
     try appendRedisPoolFamilies(writer);
     try msm.renderPrometheus(writer);
+    try mrv.renderPrometheus(writer);
     // Per-runner failure metrics (pushed in on each runner report).
     try mr.renderPrometheus(writer);
 

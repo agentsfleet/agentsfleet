@@ -34,7 +34,7 @@ execution_started_at: i64 = 0,
 
 comptime {
     const actual = @sizeOf(Self);
-    if (actual != 368) @compileError(std.fmt.comptimePrint("FleetSession size changed: {d}, expected 368", .{actual}));
+    if (actual != 408) @compileError(std.fmt.comptimePrint("FleetSession size changed: {d}, expected 408", .{actual}));
 }
 
 pub fn deinit(self: *Self, alloc: Allocator) void {
@@ -94,7 +94,7 @@ pub fn claimFleet(
     }
 
     // 2. Parse config
-    var config = try fleet_config.parseFleetConfig(alloc, config_json);
+    var config = try fleet_config.parseStoredFleetConfig(alloc, config_json);
     errdefer config.deinit(alloc);
 
     // 3. Extract instructions (borrowed from source_markdown)
