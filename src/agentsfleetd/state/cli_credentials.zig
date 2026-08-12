@@ -13,12 +13,18 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const logging = @import("log");
 const clock = @import("common").clock;
 const sql = @import("sql.zig");
 const cli_credential = @import("../auth/cli_credential.zig");
 const api_key = @import("../auth/api_key.zig");
 const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+
+const log = logging.scoped(.cli_credentials);
+
+const S_BEGIN = "BEGIN";
+const S_COMMIT = "COMMIT";
 
 /// What a freshly minted credential hands back. `secret` is the only time the
 /// raw value exists outside the caller's process — it is returned once, stored
@@ -62,17 +68,25 @@ pub const Listed = struct {
     }
 };
 
-/// Revoke this machine's live credential, then mint its replacement.
+/// Revoke this machine's live credential, then mint its replacement — as one
+/// transaction.
 ///
 /// The two steps are ordered, not optional: the partial unique index on
 /// (user_id, machine_name) WHERE revoked_at IS NULL refuses a second live row,
 /// so skipping the revoke turns a re-login into a loud insert failure rather
-/// than two live credentials an operator cannot tell apart. Callers run this
-/// inside one transaction, so a failed insert leaves the prior credential live
-/// rather than revoking a working terminal for nothing.
+/// than two live credentials an operator cannot tell apart.
+///
+/// They are also atomic, which is what keeps a FAILED mint from destroying a
+/// working terminal: the revoke commits only if the insert does, so an
+/// operator whose re-login fails still holds the credential they arrived with.
+/// This function owns that transaction rather than asking callers for it — the
+/// previous shape declared the requirement here in prose and the only caller
+/// did not honour it, which is what a precondition written in a comment
+/// invites.
 pub fn mint(alloc: std.mem.Allocator, conn: *pg.Conn, new: NewCredential) !Minted {
-    _ = try revokeForMachine(conn, new.user_id, new.machine_name);
-
+    // Both are generated before the transaction opens. Neither touches the
+    // datastore, and holding a transaction open across them would widen the
+    // window on this write path for nothing.
     const secret = try cli_credential.generate(alloc);
     errdefer alloc.free(secret);
 
@@ -80,6 +94,18 @@ pub fn mint(alloc: std.mem.Allocator, conn: *pg.Conn, new: NewCredential) !Minte
     errdefer alloc.free(row_id);
 
     const digest = api_key.sha256Hex(secret);
+
+    _ = try conn.exec(S_BEGIN, .{});
+    // Registered BEFORE the first statement inside the transaction so a failure
+    // of ANY of them rolls back; an errdefer placed later would strand an open
+    // transaction on the pooled connection. `conn.rollback()` rather than
+    // `exec("ROLLBACK")` because the driver's exec short-circuits once the
+    // connection is in FAIL state, which would leave the session stuck in an
+    // aborted transaction (`account_teardown.zig`, `signup_bootstrap.zig`).
+    errdefer conn.rollback() catch |err|
+        log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+
+    _ = try revokeForMachine(conn, new.user_id, new.machine_name);
     _ = try conn.exec(sql.INSERT_CLI_CREDENTIAL, .{
         row_id,
         new.user_id,
@@ -91,6 +117,7 @@ pub fn mint(alloc: std.mem.Allocator, conn: *pg.Conn, new: NewCredential) !Minte
         new.created_from_address,
         clock.nowMillis(),
     });
+    _ = try conn.exec(S_COMMIT, .{});
 
     return .{ .id = row_id, .secret = secret };
 }
